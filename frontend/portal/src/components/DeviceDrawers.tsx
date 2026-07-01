@@ -74,11 +74,13 @@ export function AddDeviceDrawer({
       onClaimed(device);
     } catch (e) {
       setError(
-        e instanceof ApiError && e.status === 409
-          ? 'Diese Referenz ist bereits vergeben. Prüfen Sie die Schreibweise auf dem Typenschild.'
-          : e instanceof ApiError && e.status === 404
-            ? 'Der gewählte Standort wurde nicht gefunden. Bitte laden Sie die Seite neu.'
-            : 'Das Gerät konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
+        e instanceof ApiError && e.status === 422
+          ? 'Diese Geräte-ID ist uns nicht bekannt. Bitte vergleichen Sie Ihre Eingabe genau mit dem Aufkleber auf Ihrem Gerät (z. B. VP-1234-ABCD).'
+          : e instanceof ApiError && e.status === 409
+            ? 'Diese Referenz ist bereits vergeben. Prüfen Sie die Schreibweise auf dem Typenschild.'
+            : e instanceof ApiError && e.status === 404
+              ? 'Der gewählte Standort wurde nicht gefunden. Bitte laden Sie die Seite neu.'
+              : 'Das Gerät konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
       setBusy(false);

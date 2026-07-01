@@ -16,6 +16,7 @@ import { FahrplanPage, MarktpreisePage, WetterPage } from './pages/DataPages';
 import { HistoriePage } from './pages/HistoriePage';
 import { MandantenPage } from './pages/admin/MandantenPage';
 import { BenutzerPage } from './pages/admin/BenutzerPage';
+import { GeraeteRegistryPage } from './pages/admin/GeraeteRegistryPage';
 
 export default function App({
   initialAuth,
@@ -373,6 +374,7 @@ function UnifiedPortal() {
           {page === 'benutzer' && isAdmin && (
             <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
           )}
+          {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
         </>
       )}
     </AppShell>

@@ -136,6 +136,17 @@ class RegistrationApiTest {
         assertThat(site.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String siteId = (String) site.getBody().get("id");
 
+        // The device they received was registered at manufacture: the operator
+        // provisioned its sticker ID, which is what makes the claim below legal
+        // (sticker claims validate against the registry - typos get 422).
+        ResponseEntity<Map<String, Object>> provisioned = rest.exchange(
+                url("/api/v1/admin/provisioned-devices"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("externalRef", "vp-edge-4711"),
+                        bearer(token("admin", "admin"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(provisioned.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(provisioned.getBody()).containsEntry("externalRef", "VP-EDGE-4711");
+
         // ...and claim the edge device they received - onboarding complete.
         ResponseEntity<Map<String, Object>> device = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,

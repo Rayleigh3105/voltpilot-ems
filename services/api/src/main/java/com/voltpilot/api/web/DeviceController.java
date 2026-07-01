@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.repo.ProvisionedDeviceRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
@@ -31,14 +32,20 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/devices")
 public class DeviceController {
 
+    /** Sticker Geräte-IDs carry this prefix; only they are registry-gated. */
+    static final String STICKER_PREFIX = "VP-";
+
     private final DeviceRepository devices;
     private final SiteRepository sites;
+    private final ProvisionedDeviceRepository provisioned;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
+            ProvisionedDeviceRepository provisioned,
             ObjectProvider<ProvisioningPublisher> provisioning) {
         this.devices = devices;
         this.sites = sites;
+        this.provisioned = provisioned;
         this.provisioning = provisioning;
     }
 
@@ -65,8 +72,23 @@ public class DeviceController {
         if (existing.isPresent()) {
             return ResponseEntity.ok(existing.get());
         }
+        // Sticker IDs must exist in the manufacturing registry: a typo'd ID
+        // fails fast (422) instead of silently creating a ghost device that
+        // would "wait for first data" forever. Non-sticker refs (dev seeds,
+        // integrations) stay ungated.
+        String kind = request.kind();
+        if (externalRef.startsWith(STICKER_PREFIX)) {
+            Optional<String> provisionedKind = provisioned.findKind(externalRef);
+            if (provisionedKind.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Unknown Geräte-ID '" + externalRef + "' - not a provisioned device");
+            }
+            if (kind == null || kind.isBlank()) {
+                kind = provisionedKind.get();
+            }
+        }
         try {
-            DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, request.kind());
+            DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, kind);
             // Zero-touch onboarding: hand the waiting device its identity via the
             // retained provision/{ref}/config (best-effort; see ProvisioningPublisher).
             provisioning.ifAvailable(p ->

@@ -41,6 +41,21 @@ export interface CreateUserInput {
   temporaryPassword?: boolean;
 }
 
+export interface ProvisionedDevice {
+  externalRef: string;
+  kind: string;
+  note: string | null;
+  provisionedAt: string;
+  claimed: boolean;
+  claimedByTenant: string | null;
+}
+
+export interface ProvisionDeviceInput {
+  externalRef: string;
+  kind?: string;
+  note?: string;
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -69,6 +84,15 @@ export const adminApi = {
 
   createSite: (tenantId: string, input: CreateSiteInput) =>
     request<Site>(`/api/v1/admin/tenants/${tenantId}/sites`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  listProvisionedDevices: () =>
+    request<ProvisionedDevice[]>('/api/v1/admin/provisioned-devices'),
+
+  provisionDevice: (input: ProvisionDeviceInput) =>
+    request<ProvisionedDevice>('/api/v1/admin/provisioned-devices', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

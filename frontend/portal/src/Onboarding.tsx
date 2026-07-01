@@ -303,9 +303,11 @@ function DeviceStep({
       onClaimed();
     } catch (e) {
       setErr(
-        e instanceof ApiError && e.status === 409
-          ? 'Dieses Gerät ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Geräte-ID - oder kontaktieren Sie unseren Support.'
-          : 'Das Verbinden hat gerade nicht geklappt. Bitte prüfen Sie die Geräte-ID und versuchen Sie es noch einmal.',
+        e instanceof ApiError && e.status === 422
+          ? 'Diese Geräte-ID ist uns nicht bekannt. Bitte vergleichen Sie Ihre Eingabe genau mit dem Aufkleber auf Ihrem Gerät (z. B. VP-1234-ABCD).'
+          : e instanceof ApiError && e.status === 409
+            ? 'Dieses Gerät ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Geräte-ID - oder kontaktieren Sie unseren Support.'
+            : 'Das Verbinden hat gerade nicht geklappt. Bitte prüfen Sie die Geräte-ID und versuchen Sie es noch einmal.',
       );
     } finally {
       setBusy(false);

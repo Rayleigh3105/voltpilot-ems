@@ -15,7 +15,8 @@ export type PageId =
   | 'fahrplan'
   | 'historie'
   | 'mandanten'
-  | 'benutzer';
+  | 'benutzer'
+  | 'geraete-registry';
 
 export interface PageDef {
   id: PageId;
@@ -39,6 +40,7 @@ export const MAIN_PAGES: PageDef[] = [
 export const PLATFORM_PAGES: PageDef[] = [
   { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
+  { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
 ];
 
 const ALL_IDS = new Set<string>([...MAIN_PAGES, ...PLATFORM_PAGES].map((p) => p.id));

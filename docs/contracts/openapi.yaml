@@ -141,7 +141,11 @@ paths:
         Claims an unclaimed edge device (identified by `externalRef`) into one of
         the caller's sites. `externalRef` is canonicalized before use: trimmed,
         and sticker Geräte-IDs (prefix `VP-`, case-insensitive) uppercased, so
-        the typed case never creates a second device. The claim is idempotent
+        the typed case never creates a second device. Sticker IDs additionally
+        validate against the provisioned-device registry (manufactured IDs,
+        maintained via the admin API): an unknown sticker ID yields 422 instead
+        of creating a ghost device, and the claimed device inherits the
+        registry's `kind`. Non-sticker refs stay ungated. The claim is idempotent
         within the tenant: re-claiming a ref the caller already owns returns 200
         with the existing device (at its original site) instead of a conflict.
         `externalRef` is globally unique, so a device claimed by ANOTHER tenant -
@@ -166,6 +170,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Target site not found for this tenant. }
         "409": { description: Device already claimed by another tenant. }
+        "422": { description: Unknown sticker Geräte-ID (not in the provisioned-device registry). }
   /api/v1/sites/{siteId}/telemetry:
     get:
       tags: [telemetry]
@@ -412,6 +417,50 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant not found. }
         "409": { description: A user with that username or email already exists. }
+  /api/v1/admin/provisioned-devices:
+    get:
+      tags: [admin]
+      summary: List the manufacturing registry of sticker Geräte-IDs.
+      description: >
+        Platform-wide view of every provisioned (manufactured) device ID and its
+        claim state - which tenant, if any, has connected it.
+      responses:
+        "200":
+          description: All provisioned devices.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProvisionedDevice" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      summary: Register a manufactured sticker Geräte-ID.
+      description: >
+        Registers a device ID (canonicalized like the claim path - trimmed,
+        uppercased) so a customer can claim it. Only sticker-format IDs
+        (prefix `VP-`) are accepted. Idempotent - re-registering an existing ID
+        returns 200 with the unchanged entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProvisionDeviceRequest" }
+      responses:
+        "200":
+          description: Already registered - the existing, unchanged entry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionedDevice" }
+        "201":
+          description: Geräte-ID registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionedDevice" }
+        "400": { description: Blank or non-sticker-format (missing VP- prefix) Geräte-ID. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/tenants/{tenantId}/users/{userId}/disable:
     post:
       tags: [admin]
@@ -536,6 +585,28 @@ components:
             Newest telemetry timestamp for the device; null until the first data
             arrives. The portal derives the onboarding state from it ("wartet auf
             erste Daten" -> online).
+    ProvisionDeviceRequest:
+      type: object
+      required: [externalRef]
+      properties:
+        externalRef:
+          type: string
+          description: Sticker Geräte-ID (prefix VP-, canonicalized to uppercase).
+          example: VP-1234-ABCD
+        kind: { type: string, description: "Device kind; defaults to 'inverter'.", example: inverter }
+        note: { type: string, nullable: true, description: Free-form operator note (e.g. manufacturing batch). }
+    ProvisionedDevice:
+      type: object
+      properties:
+        externalRef: { type: string, example: VP-1234-ABCD }
+        kind: { type: string, example: inverter }
+        note: { type: string, nullable: true }
+        provisionedAt: { type: string, format: date-time }
+        claimed: { type: boolean, description: Whether any tenant has connected this device. }
+        claimedByTenant:
+          type: string
+          nullable: true
+          description: Name of the claiming tenant (null while unclaimed).
     TelemetryPoint:
       type: object
       properties:

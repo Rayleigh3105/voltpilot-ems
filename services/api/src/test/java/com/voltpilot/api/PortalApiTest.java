@@ -214,6 +214,11 @@ class PortalApiTest {
     void claimIsIdempotentPerTenantAndCanonicalizesStickerIds() {
         String demo = token("demo", "demo");
 
+        // Sticker IDs are registry-gated: this one exists (as manufacturing
+        // provisioning would have registered it).
+        exec("INSERT INTO provisioned_device (external_ref) VALUES ('VP-IDEM-42AB') "
+                + "ON CONFLICT DO NOTHING");
+
         // Sticker Geräte-IDs are printed uppercase - a padded, lowercase entry
         // must land as the canonical uppercase ref, not as a second device.
         ResponseEntity<Map<String, Object>> first = rest.exchange(
@@ -241,6 +246,41 @@ class PortalApiTest {
                         bearer(token("demo2", "demo2"))),
                 String.class);
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void unknownStickerIdIsRejectedInsteadOfCreatingAGhostDevice() {
+        String demo = token("demo", "demo");
+
+        // A typo'd sticker ID is NOT in the manufacturing registry -> the claim
+        // fails fast (422) instead of creating a device that would "wait for
+        // first data" forever.
+        ResponseEntity<String> rejected = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-TYPO-9999"),
+                        bearer(demo)),
+                String.class);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // No ghost device row was created.
+        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(devices.getBody())
+                .extracting(d -> d.get("externalRef")).doesNotContain("VP-TYPO-9999");
+
+        // Once provisioned (with its manufactured kind), the same ID claims fine
+        // and the device inherits the registry kind - the customer never picks it.
+        exec("INSERT INTO provisioned_device (external_ref, kind) "
+                + "VALUES ('VP-TYPO-9999', 'battery') ON CONFLICT DO NOTHING");
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "vp-typo-9999"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(claimed.getBody()).containsEntry("externalRef", "VP-TYPO-9999");
+        assertThat(claimed.getBody()).containsEntry("kind", "battery");
     }
 
     @Test

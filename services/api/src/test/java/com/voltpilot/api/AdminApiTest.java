@@ -272,6 +272,56 @@ class AdminApiTest {
         assertThat(sites.getBody()).extracting(s -> s.get("name")).doesNotContain("Nordwind Hamburg");
     }
 
+    // ---- (b4) device provisioning registry -----------------------------------
+
+    @Test
+    void adminProvisionsStickerIdsWhichGateAndInformCustomerClaims() {
+        String admin = token("admin", "admin");
+
+        // Register a manufactured sticker ID - input is canonicalized like the
+        // claim path (trim + uppercase), so batch tooling can be sloppy about case.
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/admin/provisioned-devices"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("externalRef", "  vp-batch-7001 ", "kind", "inverter",
+                        "note", "Charge 2026-07"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody()).containsEntry("externalRef", "VP-BATCH-7001");
+        assertThat(created.getBody()).containsEntry("claimed", false);
+
+        // Re-running the batch is idempotent: 200 with the existing entry.
+        ResponseEntity<Map<String, Object>> again = rest.exchange(
+                url("/api/v1/admin/provisioned-devices"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("externalRef", "VP-BATCH-7001"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(again.getBody()).containsEntry("note", "Charge 2026-07");
+
+        // A non-sticker ref does not belong in the registry -> 400.
+        assertThat(rest.exchange(url("/api/v1/admin/provisioned-devices"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("externalRef", "edge-thing-1"), bearer(admin)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // The customer's claim of the provisioned ID succeeds...
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-BATCH-7001"),
+                        bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // ...and the admin listing now shows who connected it.
+        ResponseEntity<List<Map<String, Object>>> list = rest.exchange(
+                url("/api/v1/admin/provisioned-devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(list.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> entry = list.getBody().stream()
+                .filter(p -> "VP-BATCH-7001".equals(p.get("externalRef")))
+                .findFirst().orElseThrow();
+        assertThat(entry).containsEntry("claimed", true);
+        assertThat(entry).containsEntry("claimedByTenant", "Demo C&I Tenant");
+    }
+
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
 
     @Test
@@ -297,6 +347,12 @@ class AdminApiTest {
                 url("/api/v1/admin/tenants/" + UUID.randomUUID() + "/sites"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("name", "Rogue Site"), bearer(operator)), String.class)
                 .getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        // Customers cannot write the manufacturing registry either.
+        assertThat(rest.exchange(url("/api/v1/admin/provisioned-devices"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("externalRef", "VP-ROGUE-0001"), bearer(operator)),
+                String.class).getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }
 
