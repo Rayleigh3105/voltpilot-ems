@@ -7,6 +7,12 @@
   color-scheme: light;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+
+  /* Dashboard-scoped semantic tokens (the marketing pages keep the airy
+     light-blue stats; in the data-dense portal the numbers ARE the content,
+     so they get ink-dark color and a tighter scale for readability/contrast). */
+  --vp-stat-ink: var(--vp-navy);
+  --vp-text-stat-sm: clamp(1.35rem, 2.6vw, 1.75rem);
 }
 
 * {
@@ -61,6 +67,7 @@ button {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh; /* mobile browsers: exclude the dynamic URL bar */
 }
 .vp-sidebar .brand {
   display: flex;
@@ -228,7 +235,7 @@ button {
 /* KPI row (hero of the Übersicht) */
 .vp-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr));
   gap: var(--vp-gap);
 }
 
@@ -405,7 +412,12 @@ button {
   border-radius: calc(var(--vp-radius-btn) - 3px);
   cursor: pointer;
   transition: var(--vp-transition-fast);
-  min-height: 36px;
+  min-height: 38px;
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-seg button {
+    min-height: 44px;
+  }
 }
 .vp-seg button:hover {
   color: var(--vp-text-dark);
@@ -431,15 +443,26 @@ button {
   white-space: nowrap;
 }
 .vp-period-nav .step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--vp-border);
   background: var(--vp-surface);
   color: var(--vp-text-dark);
   border-radius: var(--vp-radius-btn);
-  min-width: 36px;
-  min-height: 36px;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0 0.6rem;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
   transition: var(--vp-transition-fast);
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-period-nav .step {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .vp-period-nav .step:hover:not(:disabled) {
   border-color: var(--vp-primary);
@@ -476,7 +499,10 @@ button {
 .vp-timeline .ico {
   flex-shrink: 0;
   width: 26px;
-  text-align: center;
+  display: inline-flex;
+  justify-content: center;
+  align-self: center;
+  color: var(--vp-text-muted);
 }
 .vp-timeline .txt {
   color: var(--vp-text-dark);
@@ -540,6 +566,11 @@ button {
     padding: 0 var(--vp-space-4);
     gap: var(--vp-space-3);
   }
+  /* Admin on a phone: the tenant switcher needs the room - drop the
+     breadcrumb (the page h1 right below carries the same title). */
+  .vp-topbar:has(.vp-context) .crumbs {
+    display: none;
+  }
   .vp-usermenu .meta {
     display: none; /* collapse to the avatar */
   }
@@ -587,6 +618,7 @@ button {
   }
   .vp-table.responsive td::before {
     content: attr(data-label);
+    font-family: var(--vp-font-body); /* labels stay Inter even in mono cells */
     font-size: var(--vp-text-meta);
     text-transform: uppercase;
     letter-spacing: var(--vp-tracking-wide);

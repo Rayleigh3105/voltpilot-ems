@@ -106,10 +106,12 @@
   z-index: 40;
 }
 .vp-drawer {
+  outline: none; /* panel takes programmatic focus on open */
   position: fixed;
   top: 0;
   right: 0;
   height: 100vh;
+  height: 100dvh; /* mobile browsers: exclude the dynamic URL bar */
   width: min(560px, 100%);
   background: var(--vp-surface);
   z-index: 50;
@@ -173,11 +175,11 @@
 }
 .vp-kpi .vp-stat-val {
   font-family: var(--vp-font-heading);
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 800;
-  line-height: 1.05;
-  color: var(--vp-primary-dark);
-  letter-spacing: -1px;
+  line-height: 1.1;
+  color: var(--vp-stat-ink, var(--vp-primary-dark));
+  letter-spacing: -0.5px;
 }
 .vp-kpi .vp-stat-lbl {
   font-size: 0.9rem;
@@ -186,7 +188,7 @@
 }
 @media (max-width: 720px) {
   .vp-kpi .vp-stat-val {
-    font-size: 1.6rem;
+    font-size: 1.5rem;
   }
 }
 

@@ -24,11 +24,11 @@ export function Stat({
     >
       <span style={{
         fontFamily: 'var(--vp-font-heading)',
-        fontSize: 'var(--vp-text-stat)',
+        fontSize: 'var(--vp-text-stat-sm, var(--vp-text-stat))',
         fontWeight: 800,
-        lineHeight: 1.05,
-        color: 'var(--vp-primary-dark)',
-        letterSpacing: '-1px',
+        lineHeight: 1.1,
+        color: 'var(--vp-stat-ink, var(--vp-primary-dark))',
+        letterSpacing: '-0.5px',
       }}>
         {value}
       </span>

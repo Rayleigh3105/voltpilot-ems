@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { api, type Device, type Site } from '../api';
+import { deviceKindLabel, fmtCoords } from '../format';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { DeviceStatusBadge } from '../components/DeviceDrawers';
 
@@ -34,8 +36,8 @@ export function StandortePage({
           <p>Ihre Standorte mit Gebotszone, Koordinaten und Geräten.</p>
         </div>
         <div className="actions">
-          <Button variant="primary" onClick={() => setAddOpen(true)}>
-            ＋ Standort anlegen
+          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
+            Standort anlegen
           </Button>
         </div>
       </div>
@@ -43,11 +45,13 @@ export function StandortePage({
       {sites.length === 0 ? (
         <Card padding="lg" radius="lg">
           <div className="vp-empty">
-            <IconTile category="home" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>⌂</IconTile>
+            <IconTile category="home" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
+              <Icon name="map-pin" size={24} />
+            </IconTile>
             <h3>Noch kein Standort</h3>
-            <p>Legen Sie Ihren ersten Standort an - danach können Sie Geräte hineinbeanspruchen.</p>
-            <Button variant="primary" onClick={() => setAddOpen(true)}>
-              ＋ Ersten Standort anlegen
+            <p>Legen Sie Ihren ersten Standort an - danach können Sie ihm Geräte zuordnen.</p>
+            <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
+              Ersten Standort anlegen
             </Button>
           </div>
         </Card>
@@ -72,10 +76,8 @@ export function StandortePage({
                   <td data-label="Gebotszone">
                     <Badge variant="tint">{s.biddingZone}</Badge>
                   </td>
-                  <td data-label="Koordinaten" className="vp-mono">
-                    {s.latitude != null && s.longitude != null
-                      ? `${s.latitude}, ${s.longitude}`
-                      : '-'}
+                  <td data-label="Koordinaten">
+                    {fmtCoords(s.latitude, s.longitude) ?? <span className="vp-muted">-</span>}
                   </td>
                   <td data-label="Geräte">{deviceCount(s.id)}</td>
                   <td data-label="">
@@ -109,7 +111,11 @@ export function StandortePage({
           open
           onClose={() => setDetail(null)}
           title={detail.name}
-          icon={<IconTile category="home" size={40}>⌂</IconTile>}
+          icon={
+            <IconTile category="home" size={40}>
+              <Icon name="map-pin" size={20} />
+            </IconTile>
+          }
           footer={
             <Button variant="ghost" onClick={() => setDetail(null)}>
               Schließen
@@ -118,9 +124,9 @@ export function StandortePage({
         >
           <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
             <Badge variant="tint">{detail.biddingZone}</Badge>
-            {detail.latitude != null && detail.longitude != null && (
-              <span className="vp-mono" style={{ alignSelf: 'center' }}>
-                {detail.latitude}, {detail.longitude}
+            {fmtCoords(detail.latitude, detail.longitude) && (
+              <span className="vp-note" style={{ alignSelf: 'center' }}>
+                {fmtCoords(detail.latitude, detail.longitude)}
               </span>
             )}
           </div>
@@ -135,7 +141,7 @@ export function StandortePage({
             <h2 style={{ fontSize: '1.05rem' }}>Geräte an diesem Standort</h2>
           </div>
           {deviceCount(detail.id) === 0 ? (
-            <p className="vp-muted">Noch keine Geräte. Fügen Sie unter „Geräte" eines per Edge-Referenz hinzu.</p>
+            <p className="vp-muted">Noch keine Geräte. Fügen Sie unter „Geräte“ eines per Edge-Referenz hinzu.</p>
           ) : (
             <table className="vp-table">
               <thead>
@@ -151,7 +157,7 @@ export function StandortePage({
                   .map((d) => (
                     <tr key={d.id}>
                       <td className="vp-mono">{d.externalRef}</td>
-                      <td>{d.kind}</td>
+                      <td>{deviceKindLabel(d.kind)}</td>
                       <td>
                         <DeviceStatusBadge device={d} />
                       </td>

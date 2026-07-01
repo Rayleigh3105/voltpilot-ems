@@ -6,11 +6,17 @@ import type { History, HistoryBucket } from './api';
 function useChart(render: (chart: echarts.ECharts) => void, deps: unknown[]) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
+  const renderRef = useRef(render);
+  renderRef.current = render;
 
   useEffect(() => {
     if (!ref.current) return;
     chart.current = echarts.init(ref.current);
-    const onResize = () => chart.current?.resize();
+    const onResize = () => {
+      if (!chart.current) return;
+      chart.current.resize();
+      renderRef.current(chart.current);
+    };
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
@@ -83,10 +89,13 @@ export function HistoryEnergyChart({ history }: { history: History }) {
             data: buckets.map((b) => val(b, field)),
           };
 
+    // The 4-item legend wraps to two rows on narrow phones - give the plot
+    // area room so the axis name never collides with the second legend row.
+    const narrow = chart.getWidth() < 520;
     chart.setOption(
       {
         textStyle: { fontFamily: 'Inter, sans-serif', color: AXIS_TEXT },
-        grid: { top: 48, right: 24, bottom: 40, left: 56 },
+        grid: { top: narrow ? 76 : 44, right: 12, bottom: 28, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
           formatter: (params: any[]) => {
@@ -94,7 +103,7 @@ export function HistoryEnergyChart({ history }: { history: History }) {
             for (const p of params) {
               if (p.value == null) continue;
               lines.push(
-                `${p.marker} ${p.seriesName}: ${Number(p.value).toFixed(2)} ${day ? 'kW' : 'kWh'}`,
+                `${p.marker} ${p.seriesName}: ${Number(p.value).toLocaleString('de-DE', { maximumFractionDigits: 2 })} ${day ? 'kW' : 'kWh'}`,
               );
             }
             return lines.join('<br/>');
@@ -156,16 +165,17 @@ export function HistoryDayChart({ history }: { history: History }) {
       .map((v) => Math.abs(v));
     const kwMax = kwAbs.length ? Math.max(...kwAbs, 1) : 1;
 
+    const narrow = chart.getWidth() < 520;
     chart.setOption(
       {
         textStyle: { fontFamily: 'Inter, sans-serif', color: AXIS_TEXT },
-        grid: { top: 40, right: 64, bottom: 40, left: 56 },
+        grid: { top: narrow ? 76 : 44, right: 48, bottom: 28, left: 8, containLabel: true },
         legend: {
           top: 0,
           data: [
             'Batterie (ist)',
             ...(hasPlan ? ['Batterie (geplant)'] : []),
-            'Day-Ahead-Preis',
+            'Börsenpreis',
             'SoC',
           ],
           textStyle: { color: AXIS_TEXT },
@@ -184,13 +194,13 @@ export function HistoryDayChart({ history }: { history: History }) {
               if (p.seriesName === 'Batterie (ist)' || p.seriesName === 'Batterie (geplant)') {
                 const label = v >= 0 ? 'Laden' : 'Entladen';
                 const suffix = p.seriesName === 'Batterie (geplant)' ? ' (geplant)' : '';
-                lines.push(`${p.marker} ${label}${suffix}: ${Math.abs(v).toFixed(2)} kW`);
-              } else if (p.seriesName === 'Day-Ahead-Preis') {
+                lines.push(`${p.marker} ${label}${suffix}: ${Math.abs(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kW`);
+              } else if (p.seriesName === 'Börsenpreis') {
                 lines.push(
-                  `${p.marker} Preis: ${v.toFixed(1)} EUR/MWh (${(v / 10).toFixed(2)} ct/kWh)`,
+                  `${p.marker} Preis: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} EUR/MWh (${(v / 10).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh)`,
                 );
               } else if (p.seriesName === 'SoC') {
-                lines.push(`${p.marker} SoC: ${v.toFixed(1)} %`);
+                lines.push(`${p.marker} SoC: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`);
               }
             }
             return lines.join('<br/>');
@@ -248,7 +258,7 @@ export function HistoryDayChart({ history }: { history: History }) {
               ]
             : []),
           {
-            name: 'Day-Ahead-Preis',
+            name: 'Börsenpreis',
             type: 'line',
             yAxisIndex: 1,
             data: prices,

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import type { WeatherPoint } from './api';
 
@@ -10,11 +10,15 @@ import type { WeatherPoint } from './api';
 export function WeatherChart({ points }: { points: WeatherPoint[] }) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
+  const [rev, setRev] = useState(0);
 
   useEffect(() => {
     if (!ref.current) return;
     chart.current = echarts.init(ref.current);
-    const onResize = () => chart.current?.resize();
+    const onResize = () => {
+      chart.current?.resize();
+      setRev((r) => r + 1); // re-render: axis layout depends on width
+    };
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
@@ -25,6 +29,9 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
 
   useEffect(() => {
     if (!chart.current) return;
+    // Three y-axes do not fit a phone: below 520px the cloud/irradiance axes
+    // hide (their values stay in the tooltip), the temperature axis remains.
+    const narrow = chart.current.getWidth() < 520;
     const time = points.map((p) => p.ts);
     const num = (key: keyof WeatherPoint) =>
       points.map((p) => (p[key] == null ? null : Number(p[key])));
@@ -32,8 +39,12 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
     chart.current.setOption(
       {
         textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
-        grid: { top: 40, right: 92, bottom: 40, left: 52 },
-        tooltip: { trigger: 'axis' },
+        grid: { top: narrow ? 72 : 44, right: narrow ? 12 : 68, bottom: 28, left: 8, containLabel: true },
+        tooltip: {
+          trigger: 'axis',
+          valueFormatter: (v: unknown) =>
+            v == null ? '-' : Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 }),
+        },
         legend: { top: 8, icon: 'roundRect', textStyle: { color: '#1A1A1A', fontWeight: 600 } },
         xAxis: {
           type: 'category',
@@ -41,7 +52,7 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
           boundaryGap: false,
           axisLabel: {
             formatter: (v: string) =>
-              new Date(v).toLocaleString([], {
+              new Date(v).toLocaleString('de-DE', {
                 weekday: 'short',
                 hour: '2-digit',
               }),
@@ -59,20 +70,20 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
           },
           {
             type: 'value',
-            name: 'Wolken %',
+            name: narrow ? '' : 'Wolken %',
             min: 0,
             max: 100,
             position: 'right',
             splitLine: { show: false },
-            axisLabel: { color: '#90A4AE' },
+            axisLabel: { show: !narrow, color: '#90A4AE' },
           },
           {
             type: 'value',
-            name: 'W/m²',
+            name: narrow ? '' : 'W/m²',
             position: 'right',
-            offset: 56,
+            offset: narrow ? 0 : 56,
             splitLine: { show: false },
-            axisLabel: { color: '#FF9800' },
+            axisLabel: { show: !narrow, color: '#FF9800' },
           },
         ],
         series: [
@@ -98,7 +109,7 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
             data: num('cloudCoverPct'),
           },
           {
-            name: 'Einstrahlung (GHI)',
+            name: 'Einstrahlung',
             type: 'line',
             smooth: true,
             showSymbol: false,
@@ -112,7 +123,7 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
       },
       true,
     );
-  }, [points]);
+  }, [points, rev]);
 
   return <div ref={ref} style={{ width: '100%', height: 320 }} />;
 }

@@ -40,8 +40,12 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
 
     chart.current.setOption({
       textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
-      grid: { top: 48, right: 56, bottom: 40, left: 56 },
-      tooltip: { trigger: 'axis' },
+      grid: { top: 44, right: 44, bottom: 28, left: 8, containLabel: true },
+      tooltip: {
+        trigger: 'axis',
+        valueFormatter: (v: unknown) =>
+          v == null ? '-' : Number(v).toLocaleString('de-DE', { maximumFractionDigits: 2 }),
+      },
       legend: {
         top: 8,
         icon: 'roundRect',
@@ -53,7 +57,7 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
         boundaryGap: false,
         axisLabel: {
           formatter: (v: string) =>
-            new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            new Date(v).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
         },
         axisLine: { lineStyle: { color: '#E9ECEF' } },
       },
@@ -76,9 +80,9 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
       ],
       series: [
         series('PV', 'pvPowerKw', '#FF9800'),
-        series('Load', 'loadKw', '#2196F3'),
-        series('Net power', 'powerKw', '#5A8DE8'),
-        series('Battery SoC', 'socPct', '#9C27B0', 1),
+        series('Last', 'loadKw', '#2196F3'),
+        series('Netz', 'powerKw', '#5A8DE8'),
+        series('SoC', 'socPct', '#9C27B0', 1),
       ],
     });
   }, [points]);

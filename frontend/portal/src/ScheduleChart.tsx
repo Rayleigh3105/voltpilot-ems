@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import type { SchedulePlan } from './api';
 
@@ -13,11 +13,15 @@ import type { SchedulePlan } from './api';
 export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
+  const [rev, setRev] = useState(0);
 
   useEffect(() => {
     if (!ref.current) return;
     chart.current = echarts.init(ref.current);
-    const onResize = () => chart.current?.resize();
+    const onResize = () => {
+      chart.current?.resize();
+      setRev((r) => r + 1); // re-render: legend rows depend on width
+    };
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
@@ -34,13 +38,13 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
     const prices = slots.map((s) => (s.priceEurMwh == null ? null : Number(s.priceEurMwh)));
     const soc = slots.map((s) => (s.socPct == null ? null : Number(s.socPct)));
 
-    // Index of the first slot on a later local day: the today/tomorrow divider
-    // (same approach as the price chart).
-    let boundaryIdx = -1;
-    if (slots.length) {
-      const firstDay = new Date(slots[0].start).getDate();
-      boundaryIdx = slots.findIndex((s) => new Date(s.start).getDate() !== firstDay);
-    }
+    // Index of the first slot on the actual local "tomorrow": the
+    // today/tomorrow divider (same approach as the price chart).
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const boundaryIdx = slots.findIndex(
+      (s) => new Date(s.start).toDateString() === tomorrow.toDateString(),
+    );
 
     const kwAbs = battery.filter((v): v is number => v != null).map((v) => Math.abs(v));
     const kwMax = kwAbs.length ? Math.max(...kwAbs, 1) : 1;
@@ -48,16 +52,16 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
     chart.current.setOption(
       {
         textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
-        grid: { top: 40, right: 64, bottom: 40, left: 56 },
+        grid: { top: chart.current.getWidth() < 520 ? 72 : 44, right: 48, bottom: 28, left: 8, containLabel: true },
         legend: {
           top: 0,
-          data: ['Laden/Entladen', 'Day-Ahead-Preis', 'Geplanter SoC'],
+          data: ['Laden/Entladen', 'Börsenpreis', 'Geplanter SoC'],
           textStyle: { color: '#6C757D' },
         },
         tooltip: {
           trigger: 'axis',
           formatter: (params: any[]) => {
-            const time = new Date(params[0]?.axisValue).toLocaleString([], {
+            const time = new Date(params[0]?.axisValue).toLocaleString('de-DE', {
               weekday: 'short',
               hour: '2-digit',
               minute: '2-digit',
@@ -68,11 +72,11 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
               const v = Number(p.value);
               if (p.seriesName === 'Laden/Entladen') {
                 const label = v >= 0 ? 'Laden' : 'Entladen';
-                lines.push(`${p.marker} ${label}: ${Math.abs(v).toFixed(2)} kW`);
-              } else if (p.seriesName === 'Day-Ahead-Preis') {
-                lines.push(`${p.marker} Preis: ${v.toFixed(1)} EUR/MWh (${(v / 10).toFixed(2)} ct/kWh)`);
+                lines.push(`${p.marker} ${label}: ${Math.abs(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kW`);
+              } else if (p.seriesName === 'Börsenpreis') {
+                lines.push(`${p.marker} Preis: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} EUR/MWh (${(v / 10).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh)`);
               } else if (p.seriesName === 'Geplanter SoC') {
-                lines.push(`${p.marker} SoC: ${v.toFixed(1)} %`);
+                lines.push(`${p.marker} SoC: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`);
               }
             }
             return lines.join('<br/>');
@@ -83,7 +87,7 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
           data: times,
           axisLabel: {
             formatter: (v: string) =>
-              new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              new Date(v).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
             color: '#6C757D',
           },
           axisLine: { lineStyle: { color: '#E9ECEF' } },
@@ -130,7 +134,7 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
                 : undefined,
           },
           {
-            name: 'Day-Ahead-Preis',
+            name: 'Börsenpreis',
             type: 'line',
             yAxisIndex: 1,
             data: prices,
@@ -153,7 +157,7 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
       },
       true,
     );
-  }, [plan]);
+  }, [plan, rev]);
 
   return <div ref={ref} style={{ width: '100%', height: 320 }} />;
 }

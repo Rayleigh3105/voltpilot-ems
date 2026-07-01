@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Stat } from '../../designsystem/components/core/Stat';
 import { KpiCard } from '../../designsystem/components/shell/KpiCard';
@@ -17,7 +18,7 @@ import {
   type WeatherForecast,
 } from '../api';
 import { currentUser } from '../auth';
-import { eur, fmtNum } from '../format';
+import { eurAmount, fmtNum } from '../format';
 import type { PageId } from '../nav';
 import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
@@ -91,7 +92,7 @@ export function UebersichtPage({
   // --- KPI derivations (money first) ---------------------------------------
   const today = new Date();
   const savingsToday = (schedule?.slots ?? [])
-    .filter((s) => new Date(s.start).getDate() === today.getDate())
+    .filter((s) => new Date(s.start).toDateString() === today.toDateString())
     .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
 
   const todayPrices = (prices?.points ?? [])
@@ -115,19 +116,21 @@ export function UebersichtPage({
         <div className="vp-page-head">
           <div className="titles">
             <h1>Willkommen bei VoltPilot</h1>
-            <p>Legen Sie Ihren ersten Standort an, um Geräte zu verbinden und Telemetrie, Preise und Fahrplan zu sehen.</p>
+            <p>Legen Sie Ihren ersten Standort an, um Geräte zu verbinden und Live-Daten, Preise und Fahrplan zu sehen.</p>
           </div>
         </div>
         <Card padding="lg" radius="lg">
           <div className="vp-empty">
-            <IconTile category="home" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>⌂</IconTile>
+            <IconTile category="home" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
+              <Icon name="map-pin" size={24} />
+            </IconTile>
             <h3>Noch kein Standort</h3>
             <p>
               Ein Standort bündelt Ihre Geräte, Marktpreise, Wetter und den
               Batterie-Fahrplan. Danach fügen Sie Geräte einfach per Edge-Referenz hinzu.
             </p>
-            <Button variant="primary" onClick={() => setSiteDrawer(true)}>
-              ＋ Ersten Standort anlegen
+            <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
+              Ersten Standort anlegen
             </Button>
           </div>
         </Card>
@@ -149,11 +152,11 @@ export function UebersichtPage({
           <p>Alles Wichtige zu Ihren Standorten und Geräten auf einen Blick.</p>
         </div>
         <div className="actions">
-          <Button variant="outline" onClick={() => setSiteDrawer(true)}>
-            ＋ Standort
+          <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
+            Standort
           </Button>
-          <Button variant="primary" onClick={() => setDeviceDrawer(true)}>
-            ＋ Gerät hinzufügen
+          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDeviceDrawer(true)}>
+            Gerät hinzufügen
           </Button>
         </div>
       </div>
@@ -163,22 +166,22 @@ export function UebersichtPage({
       {/* KPI hero row - money lens leads. */}
       <section className="vp-kpis" aria-label="Kennzahlen">
         <KpiCard
-          icon="€"
+          icon={<Icon name="euro" size={20} />}
           category="battery"
-          value={`${eur(savingsToday)} €`}
+          value={eurAmount(savingsToday)}
           label="Heute geplant gespart"
-          title="Projizierte Ersparnis des Batterie-Fahrplans heute ggü. ohne Speicher"
+          title="Projizierte Ersparnis des Batterie-Fahrplans heute gegenüber einem Betrieb ohne Speicher"
         />
         <KpiCard
-          icon="€"
+          icon={<Icon name="trending-up" size={20} />}
           category="dynamic"
-          value={avgPriceToday == null ? '-' : avgPriceToday.toFixed(1)}
+          value={fmtNum(avgPriceToday, '')}
           label="Ø Preis heute (EUR/MWh)"
         />
-        <KpiCard icon="⌂" category="home" value={sites.length} label="Standorte" />
-        <KpiCard icon="⚡" category="battery" value={devices.length} label="Geräte" />
+        <KpiCard icon={<Icon name="map-pin" size={20} />} category="home" value={sites.length} label="Standorte" />
+        <KpiCard icon={<Icon name="zap" size={20} />} category="battery" value={devices.length} label="Geräte" />
         <KpiCard
-          icon="●"
+          icon={<Icon name="wifi" size={20} />}
           category="ev"
           value={
             <>
@@ -188,7 +191,7 @@ export function UebersichtPage({
               </span>
             </>
           }
-          label="Online"
+          label="Geräte online"
         />
       </section>
 
@@ -197,15 +200,20 @@ export function UebersichtPage({
         <div className="vp-hero-split">
           <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
             <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-              <IconTile category="dynamic" size={40}>∿</IconTile>
-              <h2>Live-Telemetrie</h2>
+              <IconTile category="dynamic" size={40}>
+                <Icon name="activity" size={20} />
+              </IconTile>
+              <h2>Live-Daten</h2>
               {site && <Badge variant="tint">{site.name}</Badge>}
               <span className="actions">
                 <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
               </span>
             </div>
             {telemetry.length === 0 ? (
-              <p className="vp-muted">Keine Telemetriedaten für die letzten 24 Stunden.</p>
+              <p className="vp-muted">
+                Noch keine Messwerte in den letzten 24 Stunden. Sobald Ihr Gerät sendet,
+                erscheinen die Live-Daten hier.
+              </p>
             ) : (
               <>
                 <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
@@ -216,7 +224,7 @@ export function UebersichtPage({
                 </div>
                 <TelemetryChart points={telemetry} />
                 <p className="vp-note" style={{ marginTop: 12 }}>
-                  Telemetrie über den Live-Ingest-Pfad: MQTT → Ingest → Redpanda → TimescaleDB.
+                  Messwerte Ihrer Geräte aus den letzten 24 Stunden.
                 </p>
               </>
             )}
@@ -225,7 +233,9 @@ export function UebersichtPage({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--vp-gap)', minWidth: 0 }}>
             <Card style={{ minWidth: 0 }}>
               <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                <IconTile category="dynamic" size={40}>€</IconTile>
+                <IconTile category="dynamic" size={40}>
+                  <Icon name="euro" size={20} />
+                </IconTile>
                 <h2 style={{ fontSize: '1.1rem' }}>Day-Ahead Preise</h2>
                 <span className="actions">
                   {prices && <Badge variant="tint">{prices.biddingZone}</Badge>}
@@ -241,13 +251,18 @@ export function UebersichtPage({
                   </p>
                 </>
               ) : (
-                <p className="vp-muted">Noch keine Day-Ahead-Preise.</p>
+                <p className="vp-muted">
+                  Noch keine Börsenpreise. Sie werden automatisch geladen, sobald die
+                  Strombörse sie veröffentlicht.
+                </p>
               )}
             </Card>
 
             <Card style={{ minWidth: 0 }}>
               <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                <IconTile category="solar" size={40}>☀</IconTile>
+                <IconTile category="solar" size={40}>
+                  <Icon name="sun" size={20} />
+                </IconTile>
                 <h2 style={{ fontSize: '1.1rem' }}>Wetter</h2>
                 <span className="actions">
                   <span className="vp-note">nächste Stunde</span>
@@ -260,7 +275,7 @@ export function UebersichtPage({
                   <Stat value={fmtNum(now.ghiWM2, 'W/m²', 0)} label="Einstrahlung" />
                 </div>
               ) : (
-                <p className="vp-muted">Noch keine Vorhersage.</p>
+                <p className="vp-muted">Noch keine Vorhersage für diesen Standort.</p>
               )}
               <p className="vp-note" style={{ marginTop: 8 }}>
                 <a href="#/wetter" onClick={(e) => { e.preventDefault(); onNavigate('wetter'); }}>
@@ -275,12 +290,14 @@ export function UebersichtPage({
       {/* Quick site list (first rung of the entity pattern). */}
       <section className="vp-section">
         <div className="vp-section-head">
-          <IconTile category="home" size={40}>⌂</IconTile>
+          <IconTile category="home" size={40}>
+            <Icon name="map-pin" size={20} />
+          </IconTile>
           <h2>Ihre Standorte</h2>
           <Badge variant="tint">{sites.length}</Badge>
           <span className="actions">
-            <Button variant="outline" size="sm" onClick={() => setSiteDrawer(true)}>
-              ＋ Standort anlegen
+            <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
+              Standort anlegen
             </Button>
           </span>
         </div>
@@ -306,11 +323,6 @@ export function UebersichtPage({
                     </Badge>
                   ) : (
                     <span className="vp-note">keine Geräte</span>
-                  )}
-                  {s.latitude != null && s.longitude != null && (
-                    <span className="vp-note">
-                      {s.latitude}, {s.longitude}
-                    </span>
                   )}
                 </div>
               </Card>

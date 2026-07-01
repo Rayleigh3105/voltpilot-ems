@@ -31,11 +31,11 @@ export function Badge({
     },
     warn: {
       background: '#FFF3E0',
-      color: 'var(--vp-solar-end)',
+      color: '#B45309',
     },
     off: {
       background: 'var(--vp-bg-light)',
-      color: 'var(--vp-text-gray)',
+      color: '#57606A',
     },
   };
 

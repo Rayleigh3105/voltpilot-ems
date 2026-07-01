@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import type { Device, Site } from '../api';
-import { fmtRelative } from '../format';
+import { deviceKindLabel, fmtRelative } from '../format';
 import {
   AddDeviceDrawer,
   DeviceDetailDrawer,
@@ -44,11 +45,11 @@ export function GeraetePage({
       <div className="vp-page-head">
         <div className="titles">
           <h1>Geräte</h1>
-          <p>Beanspruchte Edge-Geräte Ihres Mandanten - Referenz, Standort und Verbindungsstatus.</p>
+          <p>Ihre verbundenen Geräte - Referenz, Standort und Verbindungsstatus.</p>
         </div>
         <div className="actions">
-          <Button variant="primary" onClick={() => setAddOpen(true)}>
-            ＋ Gerät hinzufügen
+          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
+            Gerät hinzufügen
           </Button>
         </div>
       </div>
@@ -56,18 +57,25 @@ export function GeraetePage({
       {devices.length === 0 ? (
         <Card padding="lg" radius="lg">
           <div className="vp-empty">
-            <IconTile category="battery" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>⚡</IconTile>
+            <IconTile category="battery" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
+              <Icon name="zap" size={24} />
+            </IconTile>
             <h3>Noch keine Geräte</h3>
             <p>
               Fügen Sie ein Gerät mit seiner Edge-Referenz hinzu - es verbindet sich
               selbst, sobald es eingeschaltet ist. Keine IDs, kein Kopieren.
             </p>
-            <Button variant="primary" onClick={() => setAddOpen(true)} disabled={sites.length === 0}>
-              ＋ Gerät hinzufügen
+            <Button
+              variant="primary"
+              iconLeft={<Icon name="plus" size={18} />}
+              onClick={() => setAddOpen(true)}
+              disabled={sites.length === 0}
+            >
+              Gerät hinzufügen
             </Button>
             {sites.length === 0 && (
               <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                Legen Sie zuerst unter „Standorte" einen Standort an.
+                Legen Sie zuerst unter „Standorte“ einen Standort an.
               </p>
             )}
           </div>
@@ -92,7 +100,7 @@ export function GeraetePage({
                     <td data-label="Referenz" className="vp-mono">
                       {d.externalRef}
                     </td>
-                    <td data-label="Typ">{d.kind}</td>
+                    <td data-label="Typ">{deviceKindLabel(d.kind)}</td>
                     <td data-label="Standort">{siteName(d.siteId)}</td>
                     <td data-label="Status">
                       <DeviceStatusBadge device={d} />
@@ -118,9 +126,10 @@ export function GeraetePage({
             </table>
           </Card>
           <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-            Ein Gerät gilt als <b>online</b>, sobald Telemetrie über den Ingest-Pfad
-            eintrifft. <Badge variant="warn" dot style={{ fontSize: '0.7rem' }}>wartet auf erste Daten</Badge>{' '}
-            heißt: beansprucht, aber noch keine Daten - einfach einschalten.
+            Ein Gerät gilt als <b>online</b>, sobald es Messwerte sendet.{' '}
+            <Badge variant="warn" dot style={{ fontSize: '0.7rem' }}>wartet auf erste Daten</Badge>{' '}
+            bedeutet: Das Gerät ist registriert, hat aber noch nichts gesendet - schalten
+            Sie es einfach ein.
           </p>
         </>
       )}

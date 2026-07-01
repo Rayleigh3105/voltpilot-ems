@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
+import { Icon } from '../../../designsystem/components/core/Icon';
 import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
 import { CreateUserDrawer } from './CreateUserDrawer';
@@ -52,6 +53,9 @@ export function BenutzerPage({
 
   async function disable(u: AdminUser) {
     if (!tenant) return;
+    if (!window.confirm(`Benutzer „${u.username}“ wirklich deaktivieren? Die Person kann sich danach nicht mehr anmelden.`)) {
+      return;
+    }
     try {
       await adminApi.disableUser(tenant.id, u.id);
       await reload();
@@ -65,7 +69,7 @@ export function BenutzerPage({
       <div className="vp-page-head">
         <div className="titles">
           <h1>Benutzer</h1>
-          <p>Kundenbenutzer je Mandant verwalten (Keycloak, tenant-gebunden).</p>
+          <p>Kundenzugänge je Mandant verwalten.</p>
         </div>
         <div className="actions">
           <select
@@ -82,8 +86,8 @@ export function BenutzerPage({
               </option>
             ))}
           </select>
-          <Button variant="primary" onClick={() => setAddOpen(true)} disabled={!tenant}>
-            ＋ Benutzer anlegen
+          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)} disabled={!tenant}>
+            Benutzer anlegen
           </Button>
         </div>
       </div>

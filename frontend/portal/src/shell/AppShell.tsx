@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { NavItem } from '../../designsystem/components/shell/NavItem';
 import logoUrl from '../../designsystem/assets/voltpilot-logo.png';
 import { currentUser, logout } from '../auth';
@@ -42,6 +43,21 @@ export function AppShell({
     setMobileNav(false);
   }, [page]);
 
+  // While the mobile nav is open: lock body scroll and close on Escape.
+  useEffect(() => {
+    if (!mobileNav) return undefined;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileNav(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [mobileNav]);
+
   const initials = (user.name || 'VP')
     .split(/\s+/)
     .map((p) => p[0])
@@ -63,7 +79,7 @@ export function AppShell({
         {MAIN_PAGES.map((p) => (
           <NavItem
             key={p.id}
-            icon={p.icon}
+            icon={<Icon name={p.icon} size={18} />}
             label={p.label}
             active={page === p.id}
             count={
@@ -82,7 +98,7 @@ export function AppShell({
             {PLATFORM_PAGES.map((p) => (
               <NavItem
                 key={p.id}
-                icon={p.icon}
+                icon={<Icon name={p.icon} size={18} />}
                 label={p.label}
                 active={page === p.id}
                 count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
@@ -94,7 +110,7 @@ export function AppShell({
       </nav>
       <div className="side-foot">
         <p className="vp-note" style={{ margin: 0, padding: '0 var(--vp-space-3)' }}>
-          VoltPilot EMS · Geräte-Anleitung: docs/connect-a-device.md
+          VoltPilot EMS
         </p>
       </div>
     </aside>
@@ -112,20 +128,22 @@ export function AppShell({
           <button
             type="button"
             className="vp-hamburger"
-            aria-label="Menü öffnen"
+            aria-label={mobileNav ? 'Menü schließen' : 'Menü öffnen'}
+            aria-expanded={mobileNav}
             onClick={() => setMobileNav((v) => !v)}
           >
-            ☰
+            <Icon name={mobileNav ? 'x' : 'menu'} size={22} />
           </button>
           <div className="crumbs">
             <span className="here">{pageLabel(page)}</span>
           </div>
           <div className="spacer" />
 
-          {isAdmin ? (
+          {isAdmin && (
             // Admin: the context chip is a real tenant SWITCHER - picking a
             // tenant renders the customer pages for that tenant (RLS-scoped
-            // via the X-Tenant-Id header, see api.ts).
+            // via the X-Tenant-Id header, see api.ts). Customers get no chip:
+            // their tenant is fixed by the login, a badge would add nothing.
             <span className="vp-context" title="Mandanten-Kontext wechseln">
               <select
                 aria-label="Mandanten-Kontext"
@@ -139,13 +157,6 @@ export function AppShell({
                   </option>
                 ))}
               </select>
-            </span>
-          ) : (
-            // Customer: the tenant is fixed by the token - read-only badge.
-            <span className="vp-context readonly" title="Ihr Mandant (aus dem OIDC-Token)">
-              <span className="who">
-                Mandant {user.tenantId ? user.tenantId.slice(0, 8) : '-'}
-              </span>
             </span>
           )}
 

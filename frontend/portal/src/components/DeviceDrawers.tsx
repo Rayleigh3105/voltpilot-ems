@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { api, ApiError, deviceLiveStatus, type Device, type Site } from '../api';
-import { fmtRelative } from '../format';
+import { deviceKindLabel, fmtRelative } from '../format';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
 export function DeviceStatusBadge({ device }: { device: Device }) {
@@ -26,7 +27,7 @@ export function DeviceStatusBadge({ device }: { device: Device }) {
   }
   return (
     <Badge variant="off" dot>
-      offline · {fmtRelative(device.lastSeenAt)}
+      offline
     </Badge>
   );
 }
@@ -73,10 +74,10 @@ export function AddDeviceDrawer({
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 409
-          ? 'Dieses Gerät ist bereits beansprucht (evtl. durch einen anderen Mandanten).'
+          ? 'Diese Referenz ist bereits vergeben. Prüfen Sie die Schreibweise auf dem Typenschild.'
           : e instanceof ApiError && e.status === 404
-            ? 'Standort nicht gefunden.'
-            : 'Beanspruchen fehlgeschlagen.',
+            ? 'Der gewählte Standort wurde nicht gefunden. Bitte laden Sie die Seite neu.'
+            : 'Das Gerät konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
       setBusy(false);
@@ -94,7 +95,11 @@ export function AddDeviceDrawer({
       open={open}
       onClose={close}
       title="Gerät hinzufügen"
-      icon={<IconTile category="battery" size={40}>⚡</IconTile>}
+      icon={
+        <IconTile category="battery" size={40}>
+          <Icon name="zap" size={20} />
+        </IconTile>
+      }
       footer={
         claimed ? (
           <Button variant="primary" onClick={close}>
@@ -106,7 +111,7 @@ export function AddDeviceDrawer({
               Abbrechen
             </Button>
             <Button variant="primary" onClick={claim} disabled={busy || !externalRef.trim() || !siteId}>
-              {busy ? 'Beanspruche…' : 'Beanspruchen'}
+              {busy ? 'Wird hinzugefügt…' : 'Gerät hinzufügen'}
             </Button>
           </>
         )
@@ -115,8 +120,8 @@ export function AddDeviceDrawer({
       {claimed ? (
         <>
           <div className="vp-alert vp-alert-ok" style={{ marginTop: 0 }}>
-            Gerät <b>{claimed.externalRef}</b> wurde für <b>{siteName(claimed.siteId)}</b>{' '}
-            beansprucht.
+            Gerät <b>{claimed.externalRef}</b> wurde dem Standort{' '}
+            <b>{siteName(claimed.siteId)}</b> zugeordnet.
           </div>
           <p style={{ margin: 'var(--vp-space-4) 0' }}>
             Mehr ist nicht zu tun: sobald das Gerät mit dieser Referenz online geht,
@@ -124,11 +129,13 @@ export function AddDeviceDrawer({
           </p>
           <ul className="vp-checklist">
             <li>
-              <span className="mk">✓</span>
+              <span className="mk">
+                <Icon name="check" size={13} strokeWidth={3} />
+              </span>
               <div>
-                <b>Gerät beansprucht</b>
+                <b>Gerät registriert</b>
                 <div className="vp-note">
-                  In Ihrem Mandanten registriert, Standort {siteName(claimed.siteId)}.
+                  Zugeordnet zu Standort {siteName(claimed.siteId)}.
                 </div>
               </div>
             </li>
@@ -137,8 +144,8 @@ export function AddDeviceDrawer({
               <div>
                 <b>Gerät einschalten</b>
                 <div className="vp-note">
-                  Das Gerät meldet sich mit seiner Referenz beim Broker und wird
-                  automatisch konfiguriert - keine IDs, kein Kopieren.
+                  Das Gerät meldet sich mit seiner Referenz an und wird automatisch
+                  konfiguriert - keine IDs, kein Kopieren.
                 </div>
               </div>
             </li>
@@ -147,7 +154,7 @@ export function AddDeviceDrawer({
               <div>
                 <b>Auf erste Daten warten</b>
                 <div className="vp-note">
-                  Sobald Telemetrie eintrifft, wechselt der Status automatisch von{' '}
+                  Sobald erste Messwerte eintreffen, wechselt der Status automatisch von{' '}
                   <Badge variant="warn" dot style={{ fontSize: '0.7rem' }}>
                     wartet auf erste Daten
                   </Badge>{' '}
@@ -195,7 +202,7 @@ export function AddDeviceDrawer({
           </div>
           {sites.length === 0 && (
             <div className="vp-alert vp-alert-info">
-              Sie haben noch keinen Standort - legen Sie zuerst unter „Standorte" einen an.
+              Sie haben noch keinen Standort - legen Sie zuerst unter „Standorte“ einen an.
             </div>
           )}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
@@ -224,7 +231,11 @@ export function DeviceDetailDrawer({
       open
       onClose={onClose}
       title={device.externalRef}
-      icon={<IconTile category="battery" size={40}>⚡</IconTile>}
+      icon={
+        <IconTile category="battery" size={40}>
+          <Icon name="zap" size={20} />
+        </IconTile>
+      }
       footer={
         <Button variant="ghost" onClick={onClose}>
           Schließen
@@ -233,7 +244,7 @@ export function DeviceDetailDrawer({
     >
       <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
         <DeviceStatusBadge device={device} />
-        <Badge variant="tint">{device.kind}</Badge>
+        <Badge variant="tint">{deviceKindLabel(device.kind)}</Badge>
         {site && <Badge variant="tint">{site.name}</Badge>}
       </div>
 
@@ -245,7 +256,7 @@ export function DeviceDetailDrawer({
           </tr>
           <tr>
             <th scope="row">Typ</th>
-            <td>{device.kind}</td>
+            <td>{deviceKindLabel(device.kind)}</td>
           </tr>
           <tr>
             <th scope="row">Standort</th>
@@ -262,12 +273,12 @@ export function DeviceDetailDrawer({
         <div className="vp-alert vp-alert-info">
           Das Gerät wurde beansprucht, hat aber noch keine Daten gesendet. Schalten
           Sie es ein - es konfiguriert sich automatisch über seine Referenz und der
-          Status wechselt auf <b>online</b>, sobald Telemetrie eintrifft.
+          Status wechselt auf <b>online</b>, sobald Messwerte eintreffen.
         </div>
       )}
       {status === 'stale' && (
         <div className="vp-alert vp-alert-info">
-          Seit über 5 Minuten keine Telemetrie. Prüfen Sie Stromversorgung und
+          Seit über 5 Minuten keine Daten. Prüfen Sie Stromversorgung und
           Netzwerk des Geräts; nach dem Neustart konfiguriert es sich automatisch neu.
         </div>
       )}

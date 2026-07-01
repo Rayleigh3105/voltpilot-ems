@@ -36,13 +36,17 @@ function LoginScreen({ authError }: { authError: boolean }) {
       <Card padding="lg" radius="lg" className="vp-login-card">
         <img src={logoUrl} alt="VoltPilot" />
         <h1>VoltPilot EMS</h1>
-        <p>Energiemanagement-Portal - melden Sie sich an, um Ihre Standorte und Telemetrie zu sehen.</p>
+        <p>
+          Ihr Energiemanagement-Portal - Standorte, Geräte, Börsenpreise und
+          Batterie-Fahrplan auf einen Blick.
+        </p>
         <Button variant="primary" size="lg" fullWidth onClick={login}>
-          Anmelden mit Keycloak
+          Anmelden
         </Button>
         {authError && (
           <div className="vp-alert vp-alert-err">
-            Keycloak ist nicht erreichbar. Läuft der lokale Stack (docker compose up)?
+            Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in
+            wenigen Minuten erneut.
           </div>
         )}
       </Card>
@@ -59,7 +63,11 @@ function UnifiedPortal() {
 
   // Admin tenant context (the switcher). Customers never have an override -
   // their tenant comes from the JWT and the backend ignores the header anyway.
-  const [tenantId, setTenantId] = useState<string | null>(null);
+  // The selection survives a reload (sessionStorage) so an admin does not
+  // land back on "Mandanten-Kontext wählen" after every refresh.
+  const [tenantId, setTenantId] = useState<string | null>(() =>
+    isAdmin ? sessionStorage.getItem('vp-tenant-override') : null,
+  );
   const [tenants, setTenants] = useState<Tenant[]>([]);
 
   const [sites, setSites] = useState<Site[]>([]);
@@ -109,6 +117,14 @@ function UnifiedPortal() {
     reloadTenants();
   }, [reloadTenants]);
 
+  // A restored override may point at a meanwhile-deleted tenant - drop it.
+  useEffect(() => {
+    if (tenantId && tenants.length > 0 && !tenants.some((t) => t.id === tenantId)) {
+      setTenantId(null);
+      sessionStorage.removeItem('vp-tenant-override');
+    }
+  }, [tenants, tenantId]);
+
   // Tenant-scoped data. For an admin without a selected tenant this yields
   // empty lists (backend default-deny) - the pages show a pick-a-tenant hint.
   const tenantReady = !isAdmin || tenantId != null;
@@ -142,6 +158,8 @@ function UnifiedPortal() {
   const changeTenant = (id: string | null) => {
     setTenantId(id);
     setSelectedSite(null);
+    if (id) sessionStorage.setItem('vp-tenant-override', id);
+    else sessionStorage.removeItem('vp-tenant-override');
   };
 
   const jumpToTenant = (id: string, target: PageId) => {

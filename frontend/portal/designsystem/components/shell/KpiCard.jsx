@@ -16,7 +16,7 @@ export function KpiCard({
   ...props
 }) {
   return (
-    <Card className="vp-kpi" style={{ display: 'flex', ...style }} {...props}>
+    <Card className="vp-kpi" style={{ display: 'flex', padding: '1.25rem 1.5rem', ...style }} {...props}>
       <IconTile category={category} size={40}>{icon}</IconTile>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: 0 }}>
         <span className="vp-stat-val">{value}</span>

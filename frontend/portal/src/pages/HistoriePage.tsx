@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
+import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Stat } from '../../designsystem/components/core/Stat';
 import { KpiCard } from '../../designsystem/components/shell/KpiCard';
@@ -12,7 +13,7 @@ import {
   type ProtocolEvent,
   type Site,
 } from '../api';
-import { eur } from '../format';
+import { eurAmount, NBSP } from '../format';
 import { SitePicker } from '../components/SitePicker';
 import { HistoryDayChart, HistoryEnergyChart } from '../HistoryChart';
 
@@ -79,20 +80,20 @@ function periodLabel(anchor: Date, range: HistoryRange): string {
   return String(anchor.getFullYear());
 }
 
-const EVENT_ICONS: Record<ProtocolEvent['type'], { glyph: string; label: string }> = {
-  'batterie-laden': { glyph: '▲', label: 'Laden' },
-  'batterie-entladen': { glyph: '▼', label: 'Entladen' },
-  'pv-spitze': { glyph: '☀', label: 'PV' },
-  'preis-tief': { glyph: '€', label: 'Preis-Tief' },
-  'preis-hoch': { glyph: '€', label: 'Preis-Hoch' },
+const EVENT_ICONS: Record<ProtocolEvent['type'], { icon: IconName; label: string }> = {
+  'batterie-laden': { icon: 'arrow-up', label: 'Laden' },
+  'batterie-entladen': { icon: 'arrow-down', label: 'Entladen' },
+  'pv-spitze': { icon: 'sun', label: 'PV' },
+  'preis-tief': { icon: 'trending-down', label: 'Preis-Tief' },
+  'preis-hoch': { icon: 'trending-up', label: 'Preis-Hoch' },
 };
 
 function kwh(v: number | null | undefined): string {
-  return v == null ? '-' : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })} kWh`;
+  return v == null ? '-' : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })}${NBSP}kWh`;
 }
 
 function pct(v: number | null | undefined): string {
-  return v == null ? '-' : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
+  return v == null ? '-' : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })}${NBSP}%`;
 }
 
 export function HistoriePage(props: {
@@ -150,7 +151,7 @@ export function HistoriePage(props: {
       {props.sites.length === 0 ? (
         <Card padding="lg" radius="lg">
           <p className="vp-muted">
-            Noch kein Standort - legen Sie zuerst unter „Standorte" einen an.
+            Noch kein Standort - legen Sie zuerst unter „Standorte“ einen an.
           </p>
         </Card>
       ) : (
@@ -180,7 +181,7 @@ export function HistoriePage(props: {
                 aria-label="Vorheriger Zeitraum"
                 onClick={() => setAnchor(shiftAnchor(anchor, range, -1))}
               >
-                ‹
+                <Icon name="chevron-left" size={18} />
               </button>
               <span className="label">{periodLabel(anchor, range)}</span>
               <button
@@ -190,7 +191,7 @@ export function HistoriePage(props: {
                 disabled={nextDisabled}
                 onClick={() => setAnchor(shiftAnchor(anchor, range, 1))}
               >
-                ›
+                <Icon name="chevron-right" size={18} />
               </button>
               <button type="button" className="step" onClick={() => setAnchor(new Date())}>
                 Heute
@@ -203,17 +204,22 @@ export function HistoriePage(props: {
               <p className="vp-muted">Lade Historie…</p>
             </Card>
           )}
-          {err && <div className="vp-alert vp-alert-err">Historie-Fehler: {err}</div>}
+          {err && (
+            <div className="vp-alert vp-alert-err">
+              Die Historie konnte nicht geladen werden ({err}). Bitte versuchen Sie es
+              später erneut.
+            </div>
+          )}
 
           {!loading && !err && history && buckets.length === 0 && (
             <Card padding="lg" radius="lg">
               <div className="vp-empty">
                 <IconTile category="dynamic" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
-                  ◷
+                  <Icon name="history" size={24} />
                 </IconTile>
                 <h3>Keine Daten in diesem Zeitraum</h3>
                 <p>
-                  Sobald Ihr Gerät Telemetrie liefert, entsteht hier die Historie:
+                  Sobald Ihr Gerät Messwerte liefert, entsteht hier die Historie:
                   Kosten, Ersparnis und das Verhalten Ihrer Anlage - Tag für Tag
                   nachvollziehbar. Wählen Sie einen anderen Zeitraum oder schauen
                   Sie später wieder vorbei.
@@ -227,27 +233,27 @@ export function HistoriePage(props: {
               {/* Money headline first (captain: Geld führt). */}
               <section className="vp-kpis" aria-label="Zeitraum-Bilanz">
                 <KpiCard
-                  icon="€"
+                  icon={<Icon name="euro" size={20} />}
                   category="dynamic"
-                  value={totals?.gridCostEur == null ? '-' : `${eur(totals.gridCostEur)} €`}
-                  label="Netzbezug im Zeitraum"
-                  title="Netzbezugsenergie × zugehöriger Day-Ahead-Preis (15-Minuten-Slots)"
+                  value={totals?.gridCostEur == null ? '-' : eurAmount(totals.gridCostEur)}
+                  label="Stromkosten (Netzbezug)"
+                  title="Bezogene Energie × zugehöriger Börsenpreis, je Viertelstunde"
                 />
                 <KpiCard
-                  icon="⛁"
+                  icon={<Icon name="battery-charging" size={20} />}
                   category="battery"
                   value={
-                    totals?.batterySavingsEur == null ? '-' : `${eur(totals.batterySavingsEur)} €`
+                    totals?.batterySavingsEur == null ? '-' : eurAmount(totals.batterySavingsEur)
                   }
                   label="Speicher-Ersparnis"
-                  title="Aus den gespeicherten Optimierer-Fahrplänen: Kosten ggü. ohne Speicher"
+                  title="Aus den gespeicherten Fahrplänen: Kosten gegenüber einem Betrieb ohne Speicher"
                 />
               </section>
               {(totals?.gridCostEur == null || totals?.batterySavingsEur == null) && (
                 <p className="vp-note" style={{ marginTop: 8 }}>
-                  {totals?.gridCostEur == null && 'Keine Preisdaten für diesen Zeitraum. '}
+                  {totals?.gridCostEur == null && 'Für diesen Zeitraum liegen keine Börsenpreise vor. '}
                   {totals?.batterySavingsEur == null &&
-                    'Kein Batterie-Fahrplan in diesem Zeitraum - die Ersparnis entsteht, sobald der Optimierer plant.'}
+                    'Für diesen Zeitraum liegt kein Batterie-Fahrplan vor - die Ersparnis erscheint, sobald geplant wird.'}
                 </p>
               )}
 
@@ -274,7 +280,9 @@ export function HistoriePage(props: {
                 <section className="vp-section">
                   <Card padding="lg" radius="lg">
                     <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                      <IconTile category="battery" size={40}>⛁</IconTile>
+                      <IconTile category="battery" size={40}>
+                        <Icon name="battery" size={20} />
+                      </IconTile>
                       <h2>Speicher &amp; Preis</h2>
                       {history.plan.length > 0 ? (
                         <Badge variant="tint">Plan-Overlay</Badge>
@@ -284,10 +292,10 @@ export function HistoriePage(props: {
                     </div>
                     <HistoryDayChart history={history} />
                     <p className="vp-note" style={{ marginTop: 12 }}>
-                      Tatsächliches Batterieverhalten (grün = laden, rot = entladen) über
-                      dem Day-Ahead-Preis - Laden in günstigen Viertelstunden ist direkt
+                      Tatsächliches Batterieverhalten (grün = laden, rot = entladen) über dem
+                      Börsenpreis - Laden in günstigen Viertelstunden ist direkt
                       sichtbar{history.plan.length > 0
-                        ? '; gestrichelt: der Plan des Optimierers zum Vergleich'
+                        ? '; gestrichelt zum Vergleich: der geplante Fahrplan'
                         : ''}.
                     </p>
                   </Card>
@@ -298,7 +306,9 @@ export function HistoriePage(props: {
               <section className="vp-section">
                 <Card padding="lg" radius="lg">
                   <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                    <IconTile category="dynamic" size={40}>∿</IconTile>
+                    <IconTile category="dynamic" size={40}>
+                      <Icon name="activity" size={20} />
+                    </IconTile>
                     <h2>Energie</h2>
                     <Badge variant="tint">
                       {isDay ? '15-Minuten-Mittel' : range === 'week' ? 'stündlich' : 'täglich'}
@@ -313,7 +323,9 @@ export function HistoriePage(props: {
                 <section className="vp-section">
                   <Card padding="lg" radius="lg">
                     <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-                      <IconTile category="home" size={40}>≣</IconTile>
+                      <IconTile category="home" size={40}>
+                        <Icon name="list" size={20} />
+                      </IconTile>
                       <h2>Tagesprotokoll</h2>
                     </div>
                     {history.protocol.length === 0 ? (
@@ -337,7 +349,9 @@ export function HistoriePage(props: {
                                 {oneSlot ? fmt(e.start) : `${fmt(e.start)} - ${fmt(e.end)}`}
                               </span>
                               <span className="ico" aria-hidden="true">
-                                {EVENT_ICONS[e.type]?.glyph ?? '·'}
+                                {EVENT_ICONS[e.type] ? (
+                                  <Icon name={EVENT_ICONS[e.type].icon} size={16} />
+                                ) : null}
                               </span>
                               <span className="txt">{e.text}</span>
                             </li>
@@ -346,7 +360,7 @@ export function HistoriePage(props: {
                       </ul>
                     )}
                     <p className="vp-note" style={{ marginTop: 12 }}>
-                      Automatisch aus Telemetrie und Börsenpreisen des Tages abgeleitet.
+                      Automatisch aus Messwerten und Börsenpreisen des Tages abgeleitet.
                     </p>
                   </Card>
                 </section>

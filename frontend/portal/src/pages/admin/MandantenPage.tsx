@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
+import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError, type Site } from '../../api';
+import { fmtCoords } from '../../format';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { CreateUserDrawer } from './CreateUserDrawer';
@@ -41,8 +43,8 @@ export function MandantenPage({
           </p>
         </div>
         <div className="actions">
-          <Button variant="primary" onClick={() => setAddOpen(true)}>
-            ＋ Mandant anlegen
+          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
+            Mandant anlegen
           </Button>
         </div>
       </div>
@@ -70,13 +72,13 @@ export function MandantenPage({
                     <b>{t.name}</b>
                   </td>
                   <td data-label="Segment">
-                    <Badge variant="tint">{t.segment}</Badge>
+                    <Badge variant="tint">{segmentLabel(t.segment)}</Badge>
                   </td>
                   <td data-label="Tarif">
-                    <Badge variant="tint">{t.plan}</Badge>
+                    <Badge variant="tint">{t.plan.toUpperCase()}</Badge>
                   </td>
-                  <td data-label="Mandant-ID" className="vp-mono">
-                    {t.id.slice(0, 8)}
+                  <td data-label="Mandant-ID" className="vp-mono" title={t.id}>
+                    {t.id.slice(0, 8)}…
                   </td>
                   <td data-label="">
                     <Button
@@ -96,10 +98,6 @@ export function MandantenPage({
           </table>
         </Card>
       )}
-      <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-        Cross-Tenant-Zugriff läuft über die BYPASSRLS-Admin-Rolle; Kundenkonten bleiben
-        durch RLS strikt auf ihren Mandanten beschränkt.
-      </p>
 
       <CreateTenantDrawer
         open={addOpen}
@@ -142,7 +140,11 @@ function CreateTenantDrawer({
       onCreated(t);
       onClose();
     } catch (e) {
-      setError(e instanceof ApiError ? `Fehler: ${e.message}` : 'Anlegen fehlgeschlagen.');
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? 'Ein Mandant mit diesem Namen existiert bereits.'
+          : 'Der Mandant konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
+      );
     } finally {
       setBusy(false);
     }
@@ -153,14 +155,18 @@ function CreateTenantDrawer({
       open={open}
       onClose={onClose}
       title="Mandant anlegen"
-      icon={<IconTile category="industry" size={40}>◩</IconTile>}
+      icon={
+        <IconTile category="industry" size={40}>
+          <Icon name="building" size={20} />
+        </IconTile>
+      }
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
           <Button variant="primary" onClick={submit} disabled={busy || !name.trim()}>
-            {busy ? 'Lege an…' : 'Mandant anlegen'}
+            {busy ? 'Wird angelegt…' : 'Mandant anlegen'}
           </Button>
         </>
       }
@@ -227,6 +233,9 @@ function TenantDetailDrawer({
   }, [tenant.id]);
 
   async function disable(u: AdminUser) {
+    if (!window.confirm(`Benutzer „${u.username}“ wirklich deaktivieren? Die Person kann sich danach nicht mehr anmelden.`)) {
+      return;
+    }
     try {
       await adminApi.disableUser(tenant.id, u.id);
       await reload();
@@ -241,7 +250,11 @@ function TenantDetailDrawer({
         open
         onClose={onClose}
         title={tenant.name}
-        icon={<IconTile category="industry" size={40}>◩</IconTile>}
+        icon={
+          <IconTile category="industry" size={40}>
+            <Icon name="building" size={20} />
+          </IconTile>
+        }
         footer={
           <>
             <Button variant="ghost" onClick={onClose}>
@@ -254,8 +267,8 @@ function TenantDetailDrawer({
         }
       >
         <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
-          <Badge variant="tint">{tenant.segment}</Badge>
-          <Badge variant="tint">Tarif {tenant.plan}</Badge>
+          <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
+          <Badge variant="tint">Tarif {tenant.plan.toUpperCase()}</Badge>
           <span className="vp-mono" style={{ alignSelf: 'center' }}>{tenant.id}</span>
         </div>
 
@@ -264,8 +277,8 @@ function TenantDetailDrawer({
         <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
           <h2 style={{ fontSize: '1.05rem' }}>Benutzer {users ? `(${users.length})` : ''}</h2>
           <span className="actions">
-            <Button variant="outline" size="sm" onClick={() => setUserDrawer(true)}>
-              ＋ Benutzer anlegen
+            <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setUserDrawer(true)}>
+              Benutzer anlegen
             </Button>
           </span>
         </div>
@@ -309,8 +322,8 @@ function TenantDetailDrawer({
         <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
           <h2 style={{ fontSize: '1.05rem' }}>Standorte {sites ? `(${sites.length})` : ''}</h2>
           <span className="actions">
-            <Button variant="outline" size="sm" onClick={() => setSiteDrawer(true)}>
-              ＋ Standort anlegen
+            <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
+              Standort anlegen
             </Button>
           </span>
         </div>
@@ -336,11 +349,7 @@ function TenantDetailDrawer({
                   <td>
                     <Badge variant="tint">{s.biddingZone}</Badge>
                   </td>
-                  <td className="vp-mono">
-                    {s.latitude != null && s.longitude != null
-                      ? `${s.latitude}, ${s.longitude}`
-                      : '-'}
-                  </td>
+                  <td>{fmtCoords(s.latitude, s.longitude) ?? <span className="vp-muted">-</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -369,4 +378,10 @@ function TenantDetailDrawer({
       />
     </>
   );
+}
+
+function segmentLabel(segment: string): string {
+  if (segment === 'CI') return 'Gewerbe & Industrie';
+  if (segment === 'B2C') return 'Privat';
+  return segment;
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button } from '../../../designsystem/components/core/Button';
+import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
@@ -49,9 +50,7 @@ export function CreateUserDrawer({
       setError(
         e instanceof ApiError && e.status === 409
           ? 'Benutzername oder E-Mail existiert bereits.'
-          : e instanceof ApiError
-            ? `Fehler: ${e.message}`
-            : 'Anlegen fehlgeschlagen.',
+          : 'Der Benutzer konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
       setBusy(false);
@@ -63,21 +62,25 @@ export function CreateUserDrawer({
       open={open}
       onClose={onClose}
       title="Benutzer anlegen"
-      icon={<IconTile category="primary" size={40}>☺</IconTile>}
+      icon={
+        <IconTile category="primary" size={40}>
+          <Icon name="users" size={20} />
+        </IconTile>
+      }
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
           <Button variant="primary" onClick={submit} disabled={busy || !form.username.trim()}>
-            {busy ? 'Lege an…' : 'Benutzer anlegen'}
+            {busy ? 'Wird angelegt…' : 'Benutzer anlegen'}
           </Button>
         </>
       }
     >
       <p className="vp-note" style={{ marginTop: 0 }}>
-        Wird in Keycloak mit dem Mandanten {tenant.name} ({tenant.id.slice(0, 8)}) und der
-        Kundenrolle angelegt - der Benutzer sieht nach der Anmeldung nur diesen Mandanten.
+        Der Zugang wird für den Mandanten <b>{tenant.name}</b> angelegt - die Person sieht
+        nach der Anmeldung ausschließlich dessen Daten.
       </p>
       <div className="vp-form-stack">
         <Input label="Benutzername *" placeholder="z. B. kunde-01" value={form.username} onChange={set('username')} />

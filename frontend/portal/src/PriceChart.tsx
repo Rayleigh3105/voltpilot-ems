@@ -26,29 +26,35 @@ export function PriceChart({ series }: { series: PriceSeries }) {
 
   useEffect(() => {
     if (!chart.current) return;
-    const pts = series.points;
+    // Forward-looking widget: show today + tomorrow (the API may also return
+    // yesterday for the history views).
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const pts = series.points.filter((p) => new Date(p.ts) >= startOfToday);
     const times = pts.map((p) => p.ts);
     const values = pts.map((p) => (p.priceEurMwh == null ? null : Number(p.priceEurMwh)));
     const nums = values.filter((v): v is number => v != null);
     const min = nums.length ? Math.min(...nums) : 0;
     const max = nums.length ? Math.max(...nums) : 100;
 
-    // Index of the first slot that starts on a later local day than the first
-    // slot: that boundary is "tomorrow". Drives the today/tomorrow divider.
-    let boundaryIdx = -1;
-    if (pts.length) {
-      const firstDay = new Date(pts[0].ts).getDate();
-      boundaryIdx = pts.findIndex((p) => new Date(p.ts).getDate() !== firstDay);
-    }
+    // Index of the first slot on the actual local "tomorrow" - drives the
+    // today/tomorrow divider (robust even when the series includes yesterday).
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const boundaryIdx = pts.findIndex(
+      (p) => new Date(p.ts).toDateString() === tomorrow.toDateString(),
+    );
 
     chart.current.setOption(
       {
         textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
-        grid: { top: 24, right: 24, bottom: 40, left: 56 },
+        grid: { top: 28, right: 12, bottom: 28, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
           valueFormatter: (v: number | null) =>
-            v == null ? '-' : `${v.toFixed(1)} EUR/MWh  (${(v / 10).toFixed(2)} ct/kWh)`,
+            v == null
+              ? '-'
+              : `${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} EUR/MWh (${(v / 10).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh)`,
         },
         visualMap: {
           show: false,
@@ -62,7 +68,7 @@ export function PriceChart({ series }: { series: PriceSeries }) {
           data: times,
           axisLabel: {
             formatter: (v: string) =>
-              new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              new Date(v).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
             color: '#6C757D',
           },
           axisLine: { lineStyle: { color: '#E9ECEF' } },
@@ -75,7 +81,7 @@ export function PriceChart({ series }: { series: PriceSeries }) {
         },
         series: [
           {
-            name: 'Day-Ahead',
+            name: 'Börsenpreis',
             type: 'bar',
             data: values,
             barCategoryGap: '10%',
