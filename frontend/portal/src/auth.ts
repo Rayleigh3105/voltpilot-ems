@@ -1,14 +1,18 @@
 import Keycloak from 'keycloak-js';
 
+const KC_URL = import.meta.env.VITE_KEYCLOAK_URL ?? 'http://localhost:8081';
+const KC_REALM = import.meta.env.VITE_KEYCLOAK_REALM ?? 'voltpilot';
+const KC_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID ?? 'voltpilot-frontend';
+
 /**
  * Keycloak OIDC client for the portal (public client, Authorization Code + PKCE).
  * Config comes from VITE_* env (see .env.example); defaults match the local
  * docker-compose stack.
  */
 export const keycloak = new Keycloak({
-  url: import.meta.env.VITE_KEYCLOAK_URL ?? 'http://localhost:8081',
-  realm: import.meta.env.VITE_KEYCLOAK_REALM ?? 'voltpilot',
-  clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID ?? 'voltpilot-frontend',
+  url: KC_URL,
+  realm: KC_REALM,
+  clientId: KC_CLIENT_ID,
 });
 
 export interface UserInfo {
@@ -32,11 +36,117 @@ export function isPlatformAdmin(): boolean {
   return currentRoles().includes(PLATFORM_ADMIN_ROLE);
 }
 
+// ---------------------------------------------------------------------------
+// Seamless post-registration login (Direct Access Grant).
+//
+// A fresh customer just typed their email + password into OUR registration
+// form; sending them to the Keycloak login page to type the same credentials
+// again would be a pointless second hurdle. Instead the register flow mints
+// tokens directly at the token endpoint (grant_type=password on the public
+// client) and boots the SPA with them injected into keycloak-js. Because this
+// path sets no Keycloak SSO cookie, the tokens are kept in sessionStorage and
+// re-validated (refresh grant) on every page load until they expire - then the
+// portal simply falls back to the normal redirect login.
+// ---------------------------------------------------------------------------
+
+const TOKEN_STORE_KEY = 'vp.auth.tokens';
+
+interface TokenSet {
+  access_token: string;
+  refresh_token: string;
+  id_token?: string;
+}
+
+function tokenEndpoint(): string {
+  return `${KC_URL.replace(/\/$/, '')}/realms/${KC_REALM}/protocol/openid-connect/token`;
+}
+
+async function tokenGrant(form: Record<string, string>): Promise<TokenSet> {
+  const res = await fetch(tokenEndpoint(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: KC_CLIENT_ID, scope: 'openid', ...form }),
+  });
+  if (!res.ok) throw new Error(`token grant failed: ${res.status}`);
+  return (await res.json()) as TokenSet;
+}
+
+function storeTokens(t: TokenSet): void {
+  sessionStorage.setItem(TOKEN_STORE_KEY, JSON.stringify(t));
+}
+
+function clearStoredTokens(): void {
+  sessionStorage.removeItem(TOKEN_STORE_KEY);
+}
+
 /**
- * Initialise Keycloak. Uses a silent SSO check so an existing session is picked
- * up without a full redirect; returns whether the user is authenticated.
+ * Re-validate stored tokens against Keycloak (refresh grant). Returns a fresh,
+ * guaranteed-valid token set, or null (clearing the store) when there is no
+ * stored session or it has expired.
+ */
+async function refreshStoredTokens(): Promise<TokenSet | null> {
+  const raw = sessionStorage.getItem(TOKEN_STORE_KEY);
+  if (!raw) return null;
+  try {
+    const stored = JSON.parse(raw) as TokenSet;
+    const fresh = await tokenGrant({
+      grant_type: 'refresh_token',
+      refresh_token: stored.refresh_token,
+    });
+    storeTokens(fresh);
+    return fresh;
+  } catch {
+    clearStoredTokens();
+    return null;
+  }
+}
+
+/**
+ * Sign in with credentials the user just typed (post-registration): mint
+ * tokens via the Direct Access Grant, persist them, and reload the SPA -
+ * initAuth() picks them up and the customer lands in the portal without ever
+ * seeing the Keycloak login page. Throws when the grant is refused so the
+ * caller can fall back to the redirect login.
+ */
+export async function loginWithCredentials(username: string, password: string): Promise<void> {
+  storeTokens(await tokenGrant({ grant_type: 'password', username, password }));
+  window.location.reload();
+}
+
+/**
+ * Initialise Keycloak. A stored direct-grant session (fresh registration) is
+ * re-validated and injected; otherwise a silent SSO check picks up an existing
+ * Keycloak session without a full redirect. Returns whether authenticated.
  */
 export async function initAuth(): Promise<boolean> {
+  const injected = await refreshStoredTokens();
+  if (injected) {
+    // No SSO cookie exists on this path, so skip the SSO iframe check - the
+    // just-refreshed tokens are the session.
+    const ok = await keycloak.init({
+      token: injected.access_token,
+      refreshToken: injected.refresh_token,
+      idToken: injected.id_token,
+      checkLoginIframe: false,
+      pkceMethod: 'S256',
+    });
+    if (ok) {
+      // keycloak-js rotates the tokens on refresh; keep the store current so
+      // a mid-onboarding page reload stays signed in.
+      keycloak.onAuthRefreshSuccess = () => {
+        if (keycloak.token && keycloak.refreshToken) {
+          storeTokens({
+            access_token: keycloak.token,
+            refresh_token: keycloak.refreshToken,
+            id_token: keycloak.idToken,
+          });
+        }
+      };
+      return true;
+    }
+    clearStoredTokens();
+    return false;
+  }
   return keycloak.init({
     onLoad: 'check-sso',
     silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
@@ -50,10 +160,12 @@ export async function initAuth(): Promise<boolean> {
 
 /** Redirect to the Keycloak login; a hint pre-fills the username/email field. */
 export function login(loginHint?: string): void {
+  clearStoredTokens();
   void keycloak.login(loginHint ? { loginHint } : undefined);
 }
 
 export function logout(): void {
+  clearStoredTokens();
   void keycloak.logout({ redirectUri: window.location.origin });
 }
 

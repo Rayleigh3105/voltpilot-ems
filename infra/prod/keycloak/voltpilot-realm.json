@@ -57,7 +57,7 @@
       "protocol": "openid-connect",
       "publicClient": true,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "redirectUris": ["${VP_PUBLIC_ORIGIN}/*"],
       "webOrigins": ["${VP_PUBLIC_ORIGIN}"],
       "attributes": {

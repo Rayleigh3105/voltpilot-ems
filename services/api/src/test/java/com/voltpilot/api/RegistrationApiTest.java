@@ -115,8 +115,10 @@ class RegistrationApiTest {
         // The email became the (lowercased) login name.
         assertThat(registered.getBody()).containsEntry("username", "erika@sonnenhof-kaiser.example");
 
-        // The fresh customer logs in with exactly what they typed.
-        String token = token("erika@sonnenhof-kaiser.example", "sonne-123");
+        // The fresh customer is signed in with exactly what they typed - via the
+        // PUBLIC frontend client's direct grant, the same call the portal makes
+        // for its seamless post-registration auto-login (no Keycloak login page).
+        String token = publicClientToken("erika@sonnenhof-kaiser.example", "sonne-123");
 
         // Their world starts empty (tenant-scoped, not an error)...
         ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
@@ -206,10 +208,24 @@ class RegistrationApiTest {
 
     /** Direct-access-grant token for a realm user via the confidential api client. */
     private String token(String username, String password) {
+        return grantToken(username, password, "voltpilot-api", "voltpilot-api-dev-secret");
+    }
+
+    /**
+     * Direct-access-grant token via the PUBLIC {@code voltpilot-frontend} client
+     * (no secret) - the portal's seamless post-registration auto-login path.
+     */
+    private String publicClientToken(String username, String password) {
+        return grantToken(username, password, "voltpilot-frontend", null);
+    }
+
+    private String grantToken(String username, String password, String clientId, String secret) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "password");
-        form.add("client_id", "voltpilot-api");
-        form.add("client_secret", "voltpilot-api-dev-secret");
+        form.add("client_id", clientId);
+        if (secret != null) {
+            form.add("client_secret", secret);
+        }
         form.add("username", username);
         form.add("password", password);
         form.add("scope", "openid");
@@ -219,7 +235,8 @@ class RegistrationApiTest {
         Map<String, Object> body = new TestRestTemplate().postForObject(
                 KEYCLOAK.getAuthServerUrl() + "/realms/voltpilot/protocol/openid-connect/token",
                 new HttpEntity<>(form, headers), Map.class);
-        assertThat(body).as("token response for " + username).containsKey("access_token");
+        assertThat(body).as("token response for " + username + " via " + clientId)
+                .containsKey("access_token");
         return (String) body.get("access_token");
     }
 }

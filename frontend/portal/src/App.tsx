@@ -3,7 +3,7 @@ import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import logoUrl from '../designsystem/assets/voltpilot-logo.png';
 import { Input } from '../designsystem/components/forms/Input';
-import { isPlatformAdmin, login } from './auth';
+import { isPlatformAdmin, login, loginWithCredentials } from './auth';
 import { api, ApiError, register, setTenantOverride, type Device, type Site } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import { AppShell } from './shell/AppShell';
@@ -85,7 +85,16 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
     setErr(null);
     try {
       await register({ name: name.trim(), email: email.trim(), password });
-      setDone(true);
+      // Sign the fresh customer straight in with the credentials they just
+      // typed (reloads the SPA into the onboarding wizard). If the direct
+      // grant is unavailable (e.g. older realm config), fall back to the
+      // pre-filled Keycloak login.
+      try {
+        await loginWithCredentials(email.trim().toLowerCase(), password);
+        return; // reloading
+      } catch {
+        setDone(true);
+      }
     } catch (e) {
       setErr(
         e instanceof ApiError && e.status === 409
