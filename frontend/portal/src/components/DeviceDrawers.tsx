@@ -7,6 +7,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { api, ApiError, deviceLiveStatus, type Device, type Site } from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
+import { normalizeDeviceIdInput } from '../Onboarding';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
 export function DeviceStatusBadge({ device }: { device: Device }) {
@@ -180,7 +181,12 @@ export function AddDeviceDrawer({
               label="Edge-Referenz *"
               placeholder="z. B. edge-inverter-42"
               value={externalRef}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setExternalRef(e.target.value)}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setExternalRef(normalizeDeviceIdInput(e.target.value))
+              }
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <label htmlFor="claim-site" style={{ fontSize: '0.9rem', fontWeight: 600 }}>

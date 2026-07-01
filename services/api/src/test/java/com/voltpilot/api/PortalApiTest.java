@@ -211,6 +211,39 @@ class PortalApiTest {
     }
 
     @Test
+    void claimIsIdempotentPerTenantAndCanonicalizesStickerIds() {
+        String demo = token("demo", "demo");
+
+        // Sticker Geräte-IDs are printed uppercase - a padded, lowercase entry
+        // must land as the canonical uppercase ref, not as a second device.
+        ResponseEntity<Map<String, Object>> first = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "  vp-idem-42ab "),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(first.getBody()).containsEntry("externalRef", "VP-IDEM-42AB");
+
+        // Re-entering your own device (wizard restart, double submit) is
+        // idempotent: 200 with the SAME device, never a scary 409.
+        ResponseEntity<Map<String, Object>> again = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-idem-42AB"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(again.getBody()).containsEntry("id", first.getBody().get("id"));
+
+        // Another tenant claiming the same sticker ID (any case) stays a conflict.
+        ResponseEntity<String> conflict = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", HAMBURG_SITE, "externalRef", "vp-idem-42ab"),
+                        bearer(token("demo2", "demo2"))),
+                String.class);
+        assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
     void deviceListingCarriesLastSeenFromTelemetry() {
         String demo = token("demo", "demo");
 

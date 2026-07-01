@@ -270,6 +270,15 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
   );
 }
 
+/**
+ * Sticker Geräte-IDs are printed uppercase (VP-1234-ABCD) - typing case must
+ * not matter, so the field mirrors the sticker as you type. Other refs are
+ * left alone. The api canonicalizes the same way on claim.
+ */
+export function normalizeDeviceIdInput(value: string): string {
+  return /^\s*vp/i.test(value) ? value.toUpperCase() : value;
+}
+
 function DeviceStep({
   siteName,
   siteId,
@@ -314,7 +323,10 @@ function DeviceStep({
         label="Geräte-ID"
         placeholder="z. B. VP-1234-ABCD"
         value={deviceId}
-        onChange={(e) => setDeviceId((e.target as HTMLInputElement).value)}
+        autoComplete="off"
+        autoCapitalize="characters"
+        spellCheck={false}
+        onChange={(e) => setDeviceId(normalizeDeviceIdInput((e.target as HTMLInputElement).value))}
         onKeyDown={(e: React.KeyboardEvent) => {
           if (e.key === 'Enter') void submit();
         }}

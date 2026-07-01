@@ -8,6 +8,8 @@ import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
@@ -55,17 +57,37 @@ public class DeviceController {
         if (!sites.existsForCurrentTenant(request.siteId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
+        String externalRef = canonicalExternalRef(request.externalRef());
+        // Idempotent within the tenant: re-entering a device the account already
+        // connected (wizard restart, double submit) returns that device instead
+        // of a conflict. RLS scopes the lookup, so a hit is always the caller's own.
+        Optional<DeviceDto> existing = devices.findByExternalRef(externalRef);
+        if (existing.isPresent()) {
+            return ResponseEntity.ok(existing.get());
+        }
         try {
-            DeviceDto claimed = devices.claim(tenantId, request.siteId(), request.externalRef(), request.kind());
+            DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, request.kind());
             // Zero-touch onboarding: hand the waiting device its identity via the
             // retained provision/{ref}/config (best-effort; see ProvisioningPublisher).
             provisioning.ifAvailable(p ->
                     p.publishConfig(claimed.externalRef(), tenantId, claimed.siteId(), claimed.id()));
             return ResponseEntity.status(HttpStatus.CREATED).body(claimed);
         } catch (DuplicateKeyException ex) {
-            // external_ref already claimed (possibly by another tenant, which RLS hides).
+            // external_ref already claimed by another tenant (which RLS hides above).
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Device '" + request.externalRef() + "' is already claimed");
+                    "Device '" + externalRef + "' is already claimed");
         }
+    }
+
+    /**
+     * Sticker Geräte-IDs are printed uppercase ({@code VP-1234-ABCD}); the typed
+     * case and stray padding must not turn one physical device into two rows.
+     * Non-sticker refs pass through untouched apart from trimming.
+     */
+    static String canonicalExternalRef(String raw) {
+        String trimmed = raw.trim();
+        return trimmed.regionMatches(true, 0, "VP-", 0, 3)
+                ? trimmed.toUpperCase(Locale.ROOT)
+                : trimmed;
     }
 }

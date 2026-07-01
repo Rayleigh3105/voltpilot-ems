@@ -139,15 +139,25 @@ paths:
       summary: Claim an edge device into a site (onboarding = one insert).
       description: >
         Claims an unclaimed edge device (identified by `externalRef`) into one of
-        the caller's sites. `externalRef` is globally unique, so a device already
-        claimed by any tenant - including another one, which RLS hides - yields
-        409. The target site must belong to the caller's tenant, else 404.
+        the caller's sites. `externalRef` is canonicalized before use: trimmed,
+        and sticker Geräte-IDs (prefix `VP-`, case-insensitive) uppercased, so
+        the typed case never creates a second device. The claim is idempotent
+        within the tenant: re-claiming a ref the caller already owns returns 200
+        with the existing device (at its original site) instead of a conflict.
+        `externalRef` is globally unique, so a device claimed by ANOTHER tenant -
+        which RLS hides - yields 409. The target site must belong to the caller's
+        tenant, else 404.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/DeviceClaimRequest" }
       responses:
+        "200":
+          description: Already claimed by the caller's own tenant - the existing device.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
         "201":
           description: Device claimed.
           content:
@@ -155,7 +165,7 @@ paths:
               schema: { $ref: "#/components/schemas/Device" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Target site not found for this tenant. }
-        "409": { description: Device already claimed (possibly by another tenant). }
+        "409": { description: Device already claimed by another tenant. }
   /api/v1/sites/{siteId}/telemetry:
     get:
       tags: [telemetry]
