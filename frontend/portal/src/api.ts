@@ -10,6 +10,13 @@ export interface Site {
   longitude: number | null;
 }
 
+export interface CreateSiteInput {
+  name: string;
+  biddingZone?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
 export interface PricePoint {
   ts: string;
   end: string;
@@ -79,6 +86,11 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
 
 export const api = {
   listSites: () => request<Site[]>('/api/v1/sites'),
+  createSite: (input: CreateSiteInput) =>
+    request<Site>('/api/v1/sites', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   listDevices: () => request<Device[]>('/api/v1/devices'),
   claimDevice: (siteId: string, externalRef: string) =>
     request<Device>('/api/v1/devices/claim', {

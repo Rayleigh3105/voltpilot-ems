@@ -66,6 +66,28 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/Site" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [sites]
+      summary: Create a site for the caller's own tenant (self-service onboarding).
+      description: >
+        Creates a site (Standort) for the CALLER's tenant. The tenant is taken from
+        the OIDC `tenant_id` claim (via TenantContext) and enforced by RLS' WITH
+        CHECK - never from the request body - so a customer can only ever create a
+        site for themselves. This unblocks onboarding: a fresh customer creates a
+        site, then claims devices into it. Implemented in services/api.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSiteRequest" }
+      responses:
+        "201":
+          description: Site created (for the caller's tenant).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "400": { description: Invalid input (blank name, out-of-range coordinates, or bad zone). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/devices:
     get:
       tags: [devices]
@@ -219,6 +241,48 @@ paths:
               schema: { $ref: "#/components/schemas/Tenant" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/tenants/{tenantId}/sites:
+    get:
+      tags: [admin]
+      summary: List the sites of a tenant (platform-admin, cross-tenant).
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The tenant's sites.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Site" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
+    post:
+      tags: [admin]
+      summary: Create a site for a tenant (platform-admin, cross-tenant).
+      description: >
+        Creates a site for the tenant named in the PATH, using the BYPASSRLS admin
+        datasource. The tenant is validated to exist first. The tenant is never
+        taken from client-controlled body data, so this is a deliberate,
+        role-gated cross-tenant write - customer site access stays RLS-scoped.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSiteRequest" }
+      responses:
+        "201":
+          description: Site created for the tenant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "400": { description: Invalid input (blank name, out-of-range coordinates, or bad zone). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
   /api/v1/admin/tenants/{tenantId}/users:
     get:
       tags: [admin]
@@ -309,6 +373,27 @@ components:
           nullable: true
           description: WGS84 longitude.
           example: 13.405
+    CreateSiteRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, description: Site display name (required, non-blank). }
+        biddingZone:
+          type: string
+          enum: [DE-LU, AT, CH]
+          description: "Day-ahead bidding zone; defaults to 'DE-LU'."
+        latitude:
+          type: number
+          nullable: true
+          minimum: -90
+          maximum: 90
+          description: Optional WGS84 latitude; needed for the site's weather forecast.
+        longitude:
+          type: number
+          nullable: true
+          minimum: -180
+          maximum: 180
+          description: Optional WGS84 longitude.
     DeviceClaimRequest:
       type: object
       required: [siteId, externalRef]

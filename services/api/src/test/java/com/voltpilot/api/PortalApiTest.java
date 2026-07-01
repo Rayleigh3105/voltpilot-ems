@@ -158,6 +158,76 @@ class PortalApiTest {
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
+    // ---- site creation (customer self-service, tenant-bound) ----------------
+
+    @Test
+    void customerCreatesSiteForOwnTenantAndSeesItInClaimDropdown() {
+        String demo = token("demo", "demo");
+
+        // Create a site as the customer - tenant taken from the token, not the body.
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Werk Spandau", "biddingZone", "DE-LU",
+                        "latitude", 52.53, "longitude", 13.20), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String newSiteId = (String) created.getBody().get("id");
+        assertThat(newSiteId).isNotBlank();
+        assertThat(created.getBody()).containsEntry("name", "Werk Spandau");
+        assertThat(created.getBody()).containsEntry("biddingZone", "DE-LU");
+
+        // It now shows up in the tenant's own site list (which populates the
+        // "claim device" dropdown), alongside the seeded Berlin site.
+        List<Map<String, Object>> mine = sites(demo);
+        assertThat(mine).extracting(s -> s.get("name"))
+                .contains("Demo Site Berlin", "Werk Spandau");
+
+        // And the freshly-created site can immediately host a device claim.
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", newSiteId, "externalRef", "edge-spandau-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(claim.getBody()).containsEntry("siteId", newSiteId);
+    }
+
+    @Test
+    void customerCannotCreateSiteForAnotherTenant() {
+        // demo2 (tenant B) crafts a request carrying tenant A's id in the body.
+        // The body tenant is ignored (the endpoint uses the token's tenant), so
+        // the row is created for tenant B - and tenant A never sees it.
+        String demo2 = token("demo2", "demo2");
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Fremdstandort",
+                        "tenantId", "00000000-0000-0000-0000-000000000001",
+                        "tenant_id", "00000000-0000-0000-0000-000000000001"), bearer(demo2)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // Tenant B sees the new site (it is theirs)...
+        assertThat(sites(demo2)).extracting(s -> s.get("name"))
+                .contains("Nordwind Hamburg", "Fremdstandort");
+
+        // ...but tenant A does NOT - the crafted tenant_id was never honoured.
+        assertThat(sites(token("demo", "demo"))).extracting(s -> s.get("name"))
+                .doesNotContain("Fremdstandort");
+    }
+
+    @Test
+    void rejectsSiteWithBlankNameOrOutOfRangeCoordinates() {
+        String demo = token("demo", "demo");
+
+        assertThat(rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "  "), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThat(rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Bad Geo", "latitude", 999.0), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
     // ---- data feeds: day-ahead prices + weather -----------------------------
 
     @Test

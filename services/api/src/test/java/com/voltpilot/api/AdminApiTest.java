@@ -179,6 +179,40 @@ class AdminApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    // ---- (b2) admin creates a site for a tenant; its customer then sees it ---
+
+    @Test
+    void platformAdminCreatesSiteForTenantAndCustomerSeesIt() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Rheinkraft AG", "CI").get("id");
+        createUser(admin, tenantId, "rhein-operator", "op@rhein.example", "rhein-pw");
+
+        // Admin creates a site for that arbitrary tenant via the admin API
+        // (cross-tenant, BYPASSRLS) - no seeding needed.
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Rhein Werk Köln", "biddingZone", "DE-LU",
+                        "latitude", 50.9375, "longitude", 6.9603), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody()).containsEntry("name", "Rhein Werk Köln");
+
+        // It shows up in the tenant's admin site listing.
+        ResponseEntity<List<Map<String, Object>>> adminList = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(adminList.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(adminList.getBody()).extracting(s -> s.get("name")).containsExactly("Rhein Werk Köln");
+
+        // And the tenant's own customer, through the RLS-scoped portal, sees it too.
+        String customer = token("rhein-operator", "rhein-pw");
+        ResponseEntity<List<Map<String, Object>>> customerSites = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(customerSites.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(customerSites.getBody()).extracting(s -> s.get("name")).containsExactly("Rhein Werk Köln");
+    }
+
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
 
     @Test
@@ -197,6 +231,12 @@ class AdminApiTest {
         assertThat(rest.exchange(
                 url("/api/v1/admin/tenants/" + UUID.randomUUID() + "/users"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("username", "x"), bearer(operator)), String.class)
+                .getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+
+        assertThat(rest.exchange(
+                url("/api/v1/admin/tenants/" + UUID.randomUUID() + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Rogue Site"), bearer(operator)), String.class)
                 .getStatusCode())
                 .isEqualTo(HttpStatus.FORBIDDEN);
     }

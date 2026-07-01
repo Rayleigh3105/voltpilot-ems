@@ -1,4 +1,6 @@
-import { request } from '../api';
+import { request, type CreateSiteInput, type Site } from '../api';
+
+export type { CreateSiteInput, Site } from '../api';
 
 /**
  * Platform-admin API client (tenants + customer users). Every call goes to
@@ -60,5 +62,14 @@ export const adminApi = {
   disableUser: (tenantId: string, userId: string) =>
     request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/disable`, {
       method: 'POST',
+    }),
+
+  listSites: (tenantId: string) =>
+    request<Site[]>(`/api/v1/admin/tenants/${tenantId}/sites`),
+
+  createSite: (tenantId: string, input: CreateSiteInput) =>
+    request<Site>(`/api/v1/admin/tenants/${tenantId}/sites`, {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 };

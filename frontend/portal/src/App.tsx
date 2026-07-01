@@ -10,6 +10,7 @@ import { currentUser, isPlatformAdmin, login, logout } from './auth';
 import {
   api,
   ApiError,
+  type CreateSiteInput,
   type Device,
   type PriceSeries,
   type Site,
@@ -63,12 +64,12 @@ function Portal() {
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function reload() {
+  async function reload(selectId?: string) {
     try {
       const [s, d] = await Promise.all([api.listSites(), api.listDevices()]);
       setSites(s);
       setDevices(d);
-      setSelectedSite((cur) => cur ?? s[0]?.id ?? null);
+      setSelectedSite((cur) => selectId ?? cur ?? s[0]?.id ?? null);
     } catch (e) {
       setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
     }
@@ -120,6 +121,7 @@ function Portal() {
             selectedSite={selectedSite}
             onSelect={setSelectedSite}
             deviceCount={deviceCount}
+            onCreated={(site) => reload(site.id)}
           />
 
           {selectedSite && (
@@ -148,11 +150,13 @@ function SitesSection({
   selectedSite,
   onSelect,
   deviceCount,
+  onCreated,
 }: {
   sites: Site[];
   selectedSite: string | null;
   onSelect: (id: string) => void;
   deviceCount: (id: string) => number;
+  onCreated: (site: Site) => void;
 }) {
   return (
     <section className="vp-section">
@@ -163,29 +167,159 @@ function SitesSection({
         <h3>Standorte</h3>
       </div>
       {sites.length === 0 ? (
-        <p className="vp-muted">Keine Standorte für diesen Mandanten.</p>
+        // Onboarding: no dead-end. A fresh customer gets a clear call to action to
+        // create their first site, which then populates the "Gerät beanspruchen"
+        // dropdown below.
+        <Card padding="lg" radius="lg">
+          <h4 style={{ marginBottom: 4 }}>Willkommen bei VoltPilot</h4>
+          <p className="vp-muted" style={{ marginBottom: 4 }}>
+            Sie haben noch keinen Standort. Legen Sie Ihren ersten Standort an, um
+            anschließend Geräte zu beanspruchen und Telemetrie, Preise und Wetter zu
+            sehen.
+          </p>
+          <CreateSiteForm onCreated={onCreated} submitLabel="Ersten Standort anlegen" />
+        </Card>
       ) : (
-        <div className="vp-grid vp-grid-sites">
-          {sites.map((s) => (
-            <Card
-              key={s.id}
-              interactive
-              accent="primary"
-              className={`vp-selectable ${selectedSite === s.id ? 'vp-selected' : ''}`}
-              onClick={() => onSelect(s.id)}
-            >
-              <h4 style={{ marginBottom: 8 }}>{s.name}</h4>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Badge variant="tint">{s.biddingZone}</Badge>
-                <span className="vp-note">
-                  {deviceCount(s.id)} Gerät{deviceCount(s.id) === 1 ? '' : 'e'}
-                </span>
-              </div>
-            </Card>
-          ))}
-        </div>
+        <>
+          <div className="vp-grid vp-grid-sites">
+            {sites.map((s) => (
+              <Card
+                key={s.id}
+                interactive
+                accent="primary"
+                className={`vp-selectable ${selectedSite === s.id ? 'vp-selected' : ''}`}
+                onClick={() => onSelect(s.id)}
+              >
+                <h4 style={{ marginBottom: 8 }}>{s.name}</h4>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <Badge variant="tint">{s.biddingZone}</Badge>
+                  <span className="vp-note">
+                    {deviceCount(s.id)} Gerät{deviceCount(s.id) === 1 ? '' : 'e'}
+                  </span>
+                </div>
+              </Card>
+            ))}
+          </div>
+          <Card padding="lg" radius="lg" style={{ marginTop: 24 }}>
+            <h4 style={{ marginBottom: 12 }}>Weiteren Standort anlegen</h4>
+            <CreateSiteForm onCreated={onCreated} submitLabel="Standort anlegen" />
+          </Card>
+        </>
       )}
     </section>
+  );
+}
+
+function CreateSiteForm({
+  onCreated,
+  submitLabel,
+}: {
+  onCreated: (site: Site) => void;
+  submitLabel: string;
+}) {
+  const [name, setName] = useState('');
+  const [biddingZone, setBiddingZone] = useState('DE-LU');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function parseCoord(v: string): number | null | undefined {
+    if (!v.trim()) return undefined;
+    const n = Number(v.replace(',', '.'));
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  async function submit() {
+    if (!name.trim()) return;
+    const lat = parseCoord(latitude);
+    const lon = parseCoord(longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) {
+      setMsg({ ok: false, text: 'Bitte gültige Koordinaten eingeben (oder leer lassen).' });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const input: CreateSiteInput = {
+        name: name.trim(),
+        biddingZone,
+        latitude: lat ?? null,
+        longitude: lon ?? null,
+      };
+      const site = await api.createSite(input);
+      setMsg({ ok: true, text: `Standort "${site.name}" angelegt.` });
+      setName('');
+      setLatitude('');
+      setLongitude('');
+      onCreated(site);
+    } catch (e) {
+      setMsg({
+        ok: false,
+        text:
+          e instanceof ApiError && e.status === 400
+            ? 'Ungültige Eingabe. Prüfen Sie Name und Koordinaten.'
+            : e instanceof ApiError
+              ? `Fehler: ${e.message}`
+              : 'Anlegen fehlgeschlagen.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div className="vp-field-row">
+        <div style={{ flex: '2 1 220px' }}>
+          <Input
+            label="Name *"
+            placeholder="z. B. Werk Nord"
+            value={name}
+            onChange={(e) => setName((e.target as HTMLInputElement).value)}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="site-zone" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Gebotszone
+          </label>
+          <select
+            id="site-zone"
+            className="vp-select"
+            value={biddingZone}
+            onChange={(e) => setBiddingZone(e.target.value)}
+          >
+            <option value="DE-LU">DE-LU (Deutschland/Luxemburg)</option>
+            <option value="AT">AT (Österreich)</option>
+            <option value="CH">CH (Schweiz)</option>
+          </select>
+        </div>
+        <div style={{ flex: '1 1 120px' }}>
+          <Input
+            label="Breitengrad"
+            placeholder="z. B. 52.52"
+            value={latitude}
+            onChange={(e) => setLatitude((e.target as HTMLInputElement).value)}
+          />
+        </div>
+        <div style={{ flex: '1 1 120px' }}>
+          <Input
+            label="Längengrad"
+            placeholder="z. B. 13.405"
+            value={longitude}
+            onChange={(e) => setLongitude((e.target as HTMLInputElement).value)}
+          />
+        </div>
+        <Button variant="primary" onClick={submit} disabled={busy || !name.trim()}>
+          {busy ? 'Lege an…' : submitLabel}
+        </Button>
+      </div>
+      <p className="vp-note" style={{ marginTop: 8 }}>
+        Koordinaten (WGS84) sind optional, aber nötig, damit die Wettervorhersage für
+        den Standort funktioniert.
+      </p>
+      {msg && <div className={`vp-alert ${msg.ok ? 'vp-alert-ok' : 'vp-alert-err'}`}>{msg.text}</div>}
+    </div>
   );
 }
 

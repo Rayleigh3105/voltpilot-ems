@@ -10,8 +10,10 @@ import { ApiError } from '../api';
 import {
   adminApi,
   type AdminUser,
+  type CreateSiteInput,
   type CreateTenantInput,
   type CreateUserInput,
+  type Site,
   type Tenant,
 } from './adminApi';
 
@@ -95,7 +97,10 @@ export default function AdminApp() {
               onSelect={setSelectedTenant}
               onCreated={(t) => reloadTenants(t.id)}
             />
-            <UsersPanel tenant={selectedTenant} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--vp-space-8)' }}>
+              <SitesPanel tenant={selectedTenant} />
+              <UsersPanel tenant={selectedTenant} />
+            </div>
           </div>
         </div>
       </main>
@@ -213,6 +218,186 @@ function CreateTenantForm({ onCreated }: { onCreated: (t: Tenant) => void }) {
       </div>
       {msg && <div className={`vp-alert ${msg.ok ? 'vp-alert-ok' : 'vp-alert-err'}`}>{msg.text}</div>}
     </Card>
+  );
+}
+
+function SitesPanel({ tenant }: { tenant: Tenant | null }) {
+  const [sites, setSites] = useState<Site[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function reload() {
+    if (!tenant) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setSites(await adminApi.listSites(tenant.id));
+    } catch (e) {
+      setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant?.id]);
+
+  if (!tenant) {
+    return (
+      <section className="vp-section" style={{ marginTop: 0 }}>
+        <div className="vp-section-title">
+          <IconTile category="home" size={40}>
+            ⌂
+          </IconTile>
+          <h3>Standorte</h3>
+        </div>
+        <p className="vp-muted">Wählen Sie links einen Mandanten, um dessen Standorte zu verwalten.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="vp-section" style={{ marginTop: 0 }}>
+      <div className="vp-section-title">
+        <IconTile category="home" size={40}>
+          ⌂
+        </IconTile>
+        <h3>Standorte</h3>
+        <Badge variant="tint" title="Mandant">
+          {tenant.name}
+        </Badge>
+      </div>
+
+      <Card padding="lg" radius="lg">
+        {error && <div className="vp-alert vp-alert-err">{error}</div>}
+        {loading ? (
+          <p className="vp-muted">Lade Standorte…</p>
+        ) : sites.length === 0 ? (
+          <p className="vp-muted">
+            Noch keine Standorte für diesen Mandanten. Legen Sie unten den ersten an -
+            danach kann der Kunde Geräte hineinbeanspruchen.
+          </p>
+        ) : (
+          <table className="vp-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Gebotszone</th>
+                <th>Koordinaten</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sites.map((s) => (
+                <tr key={s.id}>
+                  <td>{s.name}</td>
+                  <td>
+                    <Badge variant="tint">{s.biddingZone}</Badge>
+                  </td>
+                  <td className="vp-mono">
+                    {s.latitude != null && s.longitude != null
+                      ? `${s.latitude}, ${s.longitude}`
+                      : '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <CreateSiteForm tenant={tenant} onCreated={reload} />
+      </Card>
+    </section>
+  );
+}
+
+function CreateSiteForm({ tenant, onCreated }: { tenant: Tenant; onCreated: () => void }) {
+  const [name, setName] = useState('');
+  const [biddingZone, setBiddingZone] = useState('DE-LU');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function parseCoord(v: string): number | null | undefined {
+    if (!v.trim()) return undefined;
+    const n = Number(v.replace(',', '.'));
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  async function submit() {
+    if (!name.trim()) return;
+    const lat = parseCoord(latitude);
+    const lon = parseCoord(longitude);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) {
+      setMsg({ ok: false, text: 'Bitte gültige Koordinaten eingeben (oder leer lassen).' });
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const input: CreateSiteInput = {
+        name: name.trim(),
+        biddingZone,
+        latitude: lat ?? null,
+        longitude: lon ?? null,
+      };
+      const site = await adminApi.createSite(tenant.id, input);
+      setMsg({ ok: true, text: `Standort "${site.name}" für ${tenant.name} angelegt.` });
+      setName('');
+      setLatitude('');
+      setLongitude('');
+      onCreated();
+    } catch (e) {
+      setMsg({
+        ok: false,
+        text:
+          e instanceof ApiError && e.status === 400
+            ? 'Ungültige Eingabe. Prüfen Sie Name und Koordinaten.'
+            : e instanceof ApiError
+              ? `Fehler: ${e.message}`
+              : 'Anlegen fehlgeschlagen.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <h4 style={{ marginBottom: 4 }}>Standort anlegen</h4>
+      <p className="vp-note" style={{ marginBottom: 12 }}>
+        Wird für den Mandanten {tenant.name} ({tenant.id.slice(0, 8)}) angelegt. Der Kunde
+        sieht ihn sofort in seinem Portal und kann Geräte hineinbeanspruchen.
+      </p>
+      <div className="vp-admin-form">
+        <Input label="Name *" placeholder="z. B. Werk Nord" value={name} onChange={(e) => setName(e.target.value)} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor={`admin-site-zone-${tenant.id}`} style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Gebotszone
+          </label>
+          <select
+            id={`admin-site-zone-${tenant.id}`}
+            className="vp-select"
+            value={biddingZone}
+            onChange={(e) => setBiddingZone(e.target.value)}
+          >
+            <option value="DE-LU">DE-LU (Deutschland/Luxemburg)</option>
+            <option value="AT">AT (Österreich)</option>
+            <option value="CH">CH (Schweiz)</option>
+          </select>
+        </div>
+        <Input label="Breitengrad" placeholder="z. B. 52.52" value={latitude} onChange={(e) => setLatitude(e.target.value)} />
+        <Input label="Längengrad" placeholder="z. B. 13.405" value={longitude} onChange={(e) => setLongitude(e.target.value)} />
+        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+          <Button variant="primary" fullWidth onClick={submit} disabled={busy || !name.trim()}>
+            {busy ? 'Lege an…' : 'Standort anlegen'}
+          </Button>
+        </div>
+      </div>
+      {msg && <div className={`vp-alert ${msg.ok ? 'vp-alert-ok' : 'vp-alert-err'}`}>{msg.text}</div>}
+    </div>
   );
 }
 

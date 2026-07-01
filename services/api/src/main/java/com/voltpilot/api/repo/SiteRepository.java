@@ -1,6 +1,7 @@
 package com.voltpilot.api.repo;
 
 import com.voltpilot.api.web.dto.SiteDto;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,6 +33,23 @@ public class SiteRepository {
                 "SELECT id, name, bidding_zone, latitude, longitude FROM site WHERE id = ?",
                 SiteRepository::mapSite, siteId);
         return found.isEmpty() ? null : found.get(0);
+    }
+
+    /**
+     * Create a site for the current tenant - a single insert. {@code tenantId}
+     * comes from the request's {@link com.voltpilot.api.tenant.TenantContext}
+     * (the JWT {@code tenant_id} claim), never from client input, and RLS' WITH
+     * CHECK on {@code site} (migration V2) both permits the write and guarantees
+     * the row's {@code tenant_id} equals the session tenant - so a customer can
+     * never create a site for another tenant even with a crafted request.
+     */
+    public SiteDto create(UUID tenantId, String name, String biddingZone,
+            BigDecimal latitude, BigDecimal longitude) {
+        return jdbc.queryForObject(
+                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude) "
+                        + "VALUES (?, ?, ?, ?, ?) "
+                        + "RETURNING id, name, bidding_zone, latitude, longitude",
+                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude);
     }
 
     public boolean existsForCurrentTenant(UUID siteId) {

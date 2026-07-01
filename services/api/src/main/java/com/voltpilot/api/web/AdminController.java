@@ -3,10 +3,13 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.repo.AdminSiteRepository;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.web.dto.AdminUserDto;
+import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.CreateTenantRequest;
 import com.voltpilot.api.web.dto.CreateUserRequest;
+import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TenantDto;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -42,10 +45,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class AdminController {
 
     private final TenantRepository tenants;
+    private final AdminSiteRepository sites;
     private final KeycloakAdminClient keycloak;
 
-    public AdminController(TenantRepository tenants, KeycloakAdminClient keycloak) {
+    public AdminController(TenantRepository tenants, AdminSiteRepository sites,
+            KeycloakAdminClient keycloak) {
         this.tenants = tenants;
+        this.sites = sites;
         this.keycloak = keycloak;
     }
 
@@ -59,6 +65,23 @@ public class AdminController {
     @PostMapping("/tenants")
     public ResponseEntity<TenantDto> createTenant(@Valid @RequestBody CreateTenantRequest request) {
         TenantDto created = tenants.create(request.name(), request.segmentOrDefault());
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    // ---- sites (cross-tenant) ------------------------------------------------
+
+    @GetMapping("/tenants/{tenantId}/sites")
+    public List<SiteDto> listSites(@PathVariable UUID tenantId) {
+        requireTenant(tenantId);
+        return sites.findByTenant(tenantId);
+    }
+
+    @PostMapping("/tenants/{tenantId}/sites")
+    public ResponseEntity<SiteDto> createSite(@PathVariable UUID tenantId,
+            @Valid @RequestBody CreateSiteRequest request) {
+        requireTenant(tenantId);
+        SiteDto created = sites.create(tenantId, request.name().trim(),
+                request.biddingZoneOrDefault(), request.latitude(), request.longitude());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

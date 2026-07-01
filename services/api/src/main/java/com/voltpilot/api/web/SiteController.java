@@ -4,19 +4,25 @@ import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
+import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
+import jakarta.validation.Valid;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -53,6 +59,25 @@ public class SiteController {
     @GetMapping
     public List<SiteDto> listSites() {
         return sites.findAll();
+    }
+
+    /**
+     * Create a site for the CALLER's own tenant (self-service onboarding, "Variante
+     * C"). The tenant is taken from the request's {@link TenantContext} (the JWT
+     * {@code tenant_id} claim) - never from the request body - and RLS' WITH CHECK
+     * guarantees the row lands in that tenant, so a customer can only ever create a
+     * site for themselves. This unblocks the device-claim flow: a fresh customer
+     * makes a site here, then claims devices into it.
+     */
+    @PostMapping
+    public ResponseEntity<SiteDto> createSite(@Valid @RequestBody CreateSiteRequest request) {
+        UUID tenantId = TenantContext.get();
+        if (tenantId == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
+        }
+        SiteDto created = sites.create(tenantId, request.name().trim(),
+                request.biddingZoneOrDefault(), request.latitude(), request.longitude());
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @GetMapping("/{siteId}/telemetry")
