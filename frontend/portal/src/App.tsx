@@ -328,6 +328,22 @@ function UnifiedPortal() {
         <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
       ) : (
         <>
+          {page === 'uebersicht' && !isAdmin && loaded && !error && devices.length === 0 && (
+            // The customer skipped the guided setup ("Später einrichten"):
+            // keep one clear way back in, instead of a dead-end dashboard.
+            <Card padding="lg" radius="lg" accent="primary" className="vp-resume-banner">
+              <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+                <h4 style={{ marginBottom: 4 }}>Ihre Anlage ist noch nicht verbunden</h4>
+                <p className="vp-muted" style={{ margin: 0 }}>
+                  In wenigen Minuten startklar: Standort anlegen, Gerät verbinden -
+                  wir führen Sie Schritt für Schritt durch.
+                </p>
+              </div>
+              <Button variant="primary" onClick={() => setOnboardingDismissed(false)}>
+                Einrichtung fortsetzen
+              </Button>
+            </Card>
+          )}
           {page === 'uebersicht' && (
             <UebersichtPage {...customerProps} onNavigate={navigate} />
           )}

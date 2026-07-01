@@ -393,6 +393,16 @@ button {
   color: var(--vp-primary-deep);
 }
 
+/* Resume banner: the way back into the guided setup after "Später einrichten" */
+.vp-resume-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-5);
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-space-7);
+}
+
 /* Onboarding wizard (first-run: Standort -> Geraet -> erste Daten) */
 .vp-onboarding {
   max-width: 560px;
