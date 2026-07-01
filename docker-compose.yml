@@ -159,6 +159,44 @@ services:
       retries: 15
       start_period: 40s
 
+  # ---------------------------------------------------------------------------
+  # EDGE (field side). Guarded behind the `edge` profile so the default
+  # `docker compose up -d` stays backbone-only. Bring the edge up with:
+  #   docker compose --profile edge up -d --build edge-sim edge-nodered
+  # See edge/node-red/README.md.
+  # ---------------------------------------------------------------------------
+
+  # Simulated SunSpec Modbus TCP inverter/battery (stands in for hardware).
+  edge-sim:
+    build: ./edge/sim
+    container_name: voltpilot-edge-sim
+    profiles: ["edge"]
+    restart: unless-stopped
+    # Modbus TCP 502 is reachable in-cluster as `edge-sim:502`. Exposed on the host
+    # (15020) only for debugging with a Modbus client.
+    ports:
+      - "${EDGE_SIM_PORT:-15020}:502"
+
+  # Thin Node-RED edge runtime. Reaches EMQX at `emqx:1883` and the simulator
+  # at `edge-sim:502` over the compose network (both in-cluster names).
+  edge-nodered:
+    build: ./edge/node-red
+    container_name: voltpilot-edge-nodered
+    profiles: ["edge"]
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+      edge-sim:
+        condition: service_started
+    environment:
+      # Device identity + battery envelope (defaults mirror the dev seed).
+      VP_TENANT_ID: ${VP_TENANT_ID:-00000000-0000-0000-0000-000000000001}
+      VP_SITE_ID: ${VP_SITE_ID:-00000000-0000-0000-0000-000000000002}
+      VP_DEVICE_ID: ${VP_DEVICE_ID:-00000000-0000-0000-0000-000000000003}
+    ports:
+      - "${EDGE_NODERED_PORT:-1880}:1880" # Node-RED editor (dev only)
+
 volumes:
   timescale-data:
   emqx-data:

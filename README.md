@@ -22,7 +22,8 @@ services/optimization/      # Python: MILP/MPC engine (HiGHS via Pyomo)
 services/forecast/          # Python: load/PV forecast (baseline in v1)
 services/marketing-adapter/ # Python: generic Direktvermarktung adapter (stub)
 services/market-data/       # Python: ENTSO-E day-ahead price adapter -> day_ahead_prices
-edge/node-red/              # Node-RED edge container skeleton (thin flows)
+edge/node-red/              # Node-RED thin edge (runnable against the SunSpec sim)
+edge/sim/                   # Simulated SunSpec Modbus TCP inverter/battery (dev only)
 frontend/portal/            # React (Vite) web portal skeleton
 ```
 
@@ -48,6 +49,8 @@ This brings up the MVP data-path backbone:
 | Keycloak | http://localhost:8081 | realm `voltpilot`, clients `voltpilot-api` + `voltpilot-frontend` (admin / see `.env`) |
 
 Tear down (keep data): `docker compose down` - wipe data too: `docker compose down -v`.
+
+The **edge** (Node-RED + a simulated SunSpec Modbus source) is guarded behind the compose `edge` profile, so the default `up` stays backbone-only. Bring it up with `docker compose --profile edge up -d --build edge-sim edge-nodered`; see [`edge/node-red/README.md`](edge/node-red/README.md) for the end-to-end walkthrough.
 
 ### Verify the backbone
 
@@ -90,7 +93,7 @@ The binding interface contracts live in [`docs/contracts/`](docs/contracts/): th
 This scaffold delivers the **runnable local backbone + service skeletons + contracts** only. It deliberately excludes:
 
 - Cloud / Kubernetes / Hetzner deployment manifests and GitOps (Argo CD/Flux).
-- Real business logic: the optimization MILP, Modbus/SunSpec edge I/O, ML forecasting models (the v1 baseline load/PV forecast is built - see `services/forecast`), direct-marketing provider integrations. (ENTSO-E day-ahead price ingestion now exists in `services/market-data`.)
+- Real business logic: the optimization MILP, ML forecasting models (the v1 baseline load/PV forecast is built - see `services/forecast`), direct-marketing provider integrations, and real hardware Modbus/SunSpec edge I/O (the Node-RED edge already runs end-to-end against the simulated SunSpec source in `edge/sim`). ENTSO-E day-ahead price ingestion now exists in `services/market-data`.
 - Core-schema migrations (Flyway/Liquibase) in `services/api` - the local DB is bootstrapped by `infra/local/timescale/` init SQL; `services/market-data` ships the forward-only `day_ahead_prices` migration and `services/forecast` its own Flyway migration `V3__forecast_hypertable.sql`, but running migrations from `services/api` is still future work.
 - Observability stack (Prometheus/Grafana/Loki/OTel) and Edge OTA (Mender).
 

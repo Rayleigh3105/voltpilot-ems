@@ -1,0 +1,9 @@
+{
+  "name": "voltpilot-edge-nodered",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Voltpilot-EMS thin Node-RED edge: acquisition (Modbus/SunSpec incl. §14a limit), publish (MQTT QoS1), schedule-exec, default-watchdog, guards.",
+  "dependencies": {
+    "node-red-contrib-modbus": "^5.43.0"
+  }
+}

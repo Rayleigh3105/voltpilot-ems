@@ -35,7 +35,8 @@ MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Inges
 | `services/forecast` | Python | Load/PV forecast (baseline in v1) | stateless |
 | `services/marketing-adapter` | Python | Generic Direktvermarktung adapter (stub) | stateless |
 | `services/market-data` | Python | ENTSO-E day-ahead price adapter (anti-corruption layer) -> `day_ahead_prices` | stateless (job) |
-| `edge/node-red` | Node-RED | Thin edge: acquisition, publish, schedule-exec, watchdog, guards | edge |
+| `edge/node-red` | Node-RED | Thin edge: acquisition, publish, schedule-exec, watchdog, guards (runnable via the SunSpec sim) | edge |
+| `edge/sim` | Node.js | Simulated SunSpec Modbus TCP inverter/battery (dev only, no hardware) | dev tool |
 | `frontend/portal` | React/Vite | Web portal | - |
 
 ## Ports (local dev)
@@ -51,7 +52,8 @@ MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Inges
 | 8081 | Keycloak (maps to container 8080) |
 | 8090 / 8091 / 8092 | api / ingest / timescale-writer (Spring Boot) |
 | 5173 | frontend/portal (Vite dev) |
-| 1880 | Node-RED editor |
+| 1880 | Node-RED editor (edge) |
+| 15020 | SunSpec Modbus TCP simulator (host debug; in-cluster `edge-sim:502`) |
 
 ## Run the local stack
 
@@ -62,8 +64,19 @@ docker compose ps             # all four core services report healthy
 docker compose down           # stop (keep volumes) ; add -v to wipe data
 ```
 
+The **edge** (Node-RED + SunSpec simulator) is guarded behind the compose `edge` profile, so the default `docker compose up -d` stays backbone-only:
+
+```bash
+docker compose up -d emqx                                        # broker
+docker compose --profile edge up -d --build edge-sim edge-nodered
+# telemetry flows to EMQX; publish a retained schedule to drive setpoints.
+# Details + copy-paste test commands: edge/node-red/README.md
+docker compose --profile edge down
+```
+
 Notes:
 - The app services (`services/*`) are NOT started by compose yet (backbone-first). Each has a `Dockerfile` for later.
+- The edge (`edge/*`) is likewise not started by the default `up`; use `--profile edge`. It reaches EMQX at `emqx:1883` and the simulator at `edge-sim:502` over the compose network.
 - `.env` holds **dev-only** secrets, clearly marked. Never reuse them outside local dev.
 - Data persists in named volumes `timescale-data`, `emqx-data`, `redpanda-data`.
 - Redpanda advertises two listeners: `redpanda:29092` (in-cluster) and `localhost:9092` (host). Services inside compose must use the internal one.
@@ -86,9 +99,14 @@ Notes:
 
 # Frontend (also runs tsc type-check)
 (cd frontend/portal && npm install && npm run build)
+
+# Edge simulator (SunSpec Modbus TCP source; sanity syntax check)
+(cd edge/sim && npm install && node -e "require('./sunspec-sim.js')" & sleep 2; kill %1)
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).
+
+The edge flows are exercised end-to-end against the simulator (not a unit test): bring up `emqx` + the `edge` profile, subscribe to `.../telemetry`, publish a retained `.../schedule`, and watch `edge-sim` log the slot setpoint writes. See `edge/node-red/README.md`. Telemetry conformance to `docs/contracts/mqtt-telemetry.schema.json` was validated with ajv (2020-12).
 
 ## Contracts (binding)
 
@@ -96,6 +114,8 @@ Health endpoints on the JVM services are mapped to root: `GET /health` (Spring B
 - `mqtt-telemetry.schema.json` - MQTT topic convention + telemetry payload (incl. observed §14a `grid_limit_kw`).
 - `telemetry-raw.event.schema.json` - Redpanda `telemetry.raw` event.
 - `openapi.yaml` - portal API stub.
+
+**Gap:** the `.../schedule` (Cloud -> Edge, retained) payload is referenced by `x-topics` but **not yet frozen** in `docs/contracts`. Until it is, the edge consumes the shape documented in `edge/node-red/README.md` (`{ schema_version, slot_minutes, slots:[{ start, battery_setpoint_kw }] }`, `+`=charge/`-`=discharge). Any task that freezes the schedule contract should reconcile with that shape.
 
 ## Market data (ENTSO-E day-ahead prices)
 

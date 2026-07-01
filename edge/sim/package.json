@@ -1,0 +1,13 @@
+{
+  "name": "voltpilot-sunspec-sim",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Simulated SunSpec-style Modbus TCP inverter/battery source for exercising the Voltpilot-EMS Node-RED edge without hardware.",
+  "main": "sunspec-sim.js",
+  "scripts": {
+    "start": "node sunspec-sim.js"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.17"
+  }
+}

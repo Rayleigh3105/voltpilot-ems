@@ -1,19 +1,150 @@
 [
   {
+    "id": "cfg-mbclient",
+    "type": "modbus-client",
+    "name": "sim-inverter (Modbus TCP)",
+    "clienttype": "tcp",
+    "bufferCommands": true,
+    "stateLogEnabled": false,
+    "queueLogEnabled": false,
+    "tcpHost": "edge-sim",
+    "tcpPort": "502",
+    "tcpType": "DEFAULT",
+    "unit_id": "1",
+    "commandDelay": "1",
+    "clientTimeout": "1000",
+    "reconnectOnTimeout": true,
+    "reconnectTimeout": "2000",
+    "parallelUnitIdsAllowed": true,
+    "showErrors": true,
+    "serialPort": "",
+    "serialType": "RTU-BUFFERD",
+    "serialConnectionDelay": "100",
+    "serialBaudrate": "9600",
+    "serialDatabits": "8",
+    "serialStopbits": "1",
+    "serialParity": "none"
+  },
+  {
+    "id": "cfg-mqtt",
+    "type": "mqtt-broker",
+    "name": "EMQX (dev)",
+    "broker": "emqx",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "sessionExpiry": ""
+  },
+  {
     "id": "flow-acquisition",
     "type": "tab",
     "label": "1 - Acquisition",
     "disabled": false,
-    "info": "Modbus TCP / SunSpec poll of the inverter, INCLUDING the observed effective §14a power limit. Placeholder - real Modbus wiring is future work."
+    "info": "Modbus TCP / SunSpec poll of the (simulated) inverter, INCLUDING the observed effective §14a power limit. Reads holding registers 0..8 every 2s and normalizes to the telemetry contract."
   },
   {
     "id": "note-acquisition",
     "type": "comment",
     "z": "flow-acquisition",
     "name": "Acquisition (Modbus TCP/SunSpec poll incl. effective grid limit)",
-    "info": "Reads inverter registers on an interval and normalizes them into the telemetry payload (docs/contracts/mqtt-telemetry.schema.json).",
-    "x": 300,
-    "y": 100,
+    "info": "Reads inverter registers on an interval and normalizes them (docs/contracts/mqtt-telemetry.schema.json).",
+    "x": 340,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "inj-poll",
+    "type": "inject",
+    "z": "flow-acquisition",
+    "name": "poll 2s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "2",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "2",
+    "topic": "",
+    "payload": "{\"value\":\"\",\"fc\":3,\"unitid\":1,\"address\":0,\"quantity\":9}",
+    "payloadType": "json",
+    "x": 130,
+    "y": 140,
+    "wires": [
+      [
+        "mb-read"
+      ]
+    ]
+  },
+  {
+    "id": "mb-read",
+    "type": "modbus-flex-getter",
+    "z": "flow-acquisition",
+    "name": "read inverter (FC3 0..8)",
+    "showStatusActivities": false,
+    "showErrors": true,
+    "logIOActivities": false,
+    "server": "cfg-mbclient",
+    "useIOFile": false,
+    "ioFile": "",
+    "useIOForPayload": false,
+    "emptyMsgOnFail": true,
+    "keepMsgProperties": true,
+    "delayOnStart": false,
+    "startDelayTime": "",
+    "x": 370,
+    "y": 140,
+    "wires": [
+      [
+        "fn-decode"
+      ],
+      []
+    ]
+  },
+  {
+    "id": "fn-decode",
+    "type": "function",
+    "z": "flow-acquisition",
+    "name": "decode SunSpec -> reading",
+    "func": "// Decode the FC3 holding-register block (addr 0..8) from the simulated SunSpec\n// inverter into a normalized reading. Scale factors mirror edge/sim register map.\nconst r = msg.payload;\nif (!Array.isArray(r) || r.length < 9) { node.warn('short modbus read'); return null; }\nconst s16 = (v) => (v > 32767 ? v - 65536 : v);\nconst grid_kw = s16(r[0]) / 100;   // + import / - export at grid coupling\nconst pv_kw   = s16(r[1]) / 100;\nconst load_kw = s16(r[2]) / 100;\nconst batt_kw = s16(r[3]) / 100;   // + charge / - discharge\nconst soc_pct = r[4] / 10;\nconst wmax_lim_pct = r[5] / 100;   // observed §14a limit as % of grid connection\nconst grid_conn_kw = r[6] / 100;\nconst energy_import_wh = r[7] * 65536 + r[8]; // acquired; contract has no field\nconst grid_limit_kw = Math.round((wmax_lim_pct / 100) * grid_conn_kw * 1000) / 1000;\nconst reading = {\n  ts: new Date().toISOString(),\n  grid_kw, pv_kw, load_kw, batt_kw, soc_pct,\n  grid_limit_kw, grid_conn_kw, energy_import_wh,\n};\nglobal.set('latestReading', reading);\nglobal.set('latestReadingTs', Date.now());\nmsg.reading = reading;\nnode.status({ fill: 'green', shape: 'dot', text: 'grid ' + grid_kw.toFixed(1) + 'kW soc ' + soc_pct.toFixed(0) + '%' });\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 640,
+    "y": 140,
+    "wires": [
+      [
+        "lo-reading"
+      ]
+    ]
+  },
+  {
+    "id": "lo-reading",
+    "type": "link out",
+    "z": "flow-acquisition",
+    "name": "reading",
+    "mode": "link",
+    "links": [
+      "li-reading"
+    ],
+    "x": 855,
+    "y": 140,
     "wires": []
   },
   {
@@ -21,16 +152,131 @@
     "type": "tab",
     "label": "2 - Publish",
     "disabled": false,
-    "info": "mTLS MQTT publish (QoS1) to ems/{tenant}/{site}/{device}/telemetry and .../status. Only outbound connections."
+    "info": "MQTT publish (QoS1) to ems/{tenant}/{site}/{device}/telemetry and .../status. Plain TCP in dev; structured so mTLS can be enabled later (see README). Only outbound connections."
   },
   {
     "id": "note-publish",
     "type": "comment",
     "z": "flow-publish",
-    "name": "Publish (mTLS MQTT QoS1 -> EMQX)",
-    "info": "Publishes telemetry/status to EMQX. No inbound ports on the edge.",
-    "x": 260,
-    "y": 100,
+    "name": "Publish (MQTT QoS1 -> EMQX; mTLS-ready)",
+    "info": "Publishes contract-conformant telemetry/status to EMQX. No inbound ports on the edge.",
+    "x": 300,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "li-reading",
+    "type": "link in",
+    "z": "flow-publish",
+    "name": "reading",
+    "links": [
+      "lo-reading"
+    ],
+    "x": 115,
+    "y": 140,
+    "wires": [
+      [
+        "fn-telemetry"
+      ]
+    ]
+  },
+  {
+    "id": "fn-telemetry",
+    "type": "function",
+    "z": "flow-publish",
+    "name": "build telemetry (contract)",
+    "func": "// Build the BINDING telemetry payload (docs/contracts/mqtt-telemetry.schema.json)\n// and publish on ems/{tenant}/{site}/{device}/telemetry at QoS1.\nconst r = msg.reading || global.get('latestReading');\nif (!r) return null;\nconst ids = global.get('ids');\nconst seq = (context.get('seq') || 0) + 1;\ncontext.set('seq', seq);\nmsg.topic = 'ems/' + ids.tenant + '/' + ids.site + '/' + ids.device + '/telemetry';\nmsg.qos = 1;\nmsg.retain = false;\nmsg.payload = {\n  schema_version: '1.0',\n  tenant_id: ids.tenant,\n  site_id: ids.site,\n  device_id: ids.device,\n  ts: r.ts,\n  seq,\n  measurements: {\n    power_kw: r.grid_kw,\n    soc_pct: r.soc_pct,\n    pv_power_kw: r.pv_kw,\n    load_kw: r.load_kw,\n    grid_limit_kw: r.grid_limit_kw,\n  },\n};\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 140,
+    "wires": [
+      [
+        "mqtt-telemetry"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-telemetry",
+    "type": "mqtt out",
+    "z": "flow-publish",
+    "name": "telemetry QoS1",
+    "topic": "",
+    "qos": "1",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cfg-mqtt",
+    "x": 600,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "inj-status",
+    "type": "inject",
+    "z": "flow-publish",
+    "name": "heartbeat 15s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "15",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "5",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 140,
+    "y": 220,
+    "wires": [
+      [
+        "fn-status"
+      ]
+    ]
+  },
+  {
+    "id": "fn-status",
+    "type": "function",
+    "z": "flow-publish",
+    "name": "build status",
+    "func": "// Lightweight heartbeat on .../status. No frozen schema for status yet, so this\n// stays minimal and clearly versioned.\nconst ids = global.get('ids');\nconst r = global.get('latestReading');\nconst schedTs = global.get('scheduleTs') || 0;\nconst STALE_MS = 20 * 60 * 1000;\nconst source = schedTs && (Date.now() - schedTs) <= STALE_MS ? 'schedule' : 'default';\nmsg.topic = 'ems/' + ids.tenant + '/' + ids.site + '/' + ids.device + '/status';\nmsg.qos = 1;\nmsg.retain = false;\nmsg.payload = {\n  schema_version: '1.0',\n  tenant_id: ids.tenant,\n  site_id: ids.site,\n  device_id: ids.device,\n  ts: new Date().toISOString(),\n  online: true,\n  control_source: source,\n  soc_pct: r ? r.soc_pct : null,\n};\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 340,
+    "y": 220,
+    "wires": [
+      [
+        "mqtt-status"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-status",
+    "type": "mqtt out",
+    "z": "flow-publish",
+    "name": "status QoS1",
+    "topic": "",
+    "qos": "1",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cfg-mqtt",
+    "x": 590,
+    "y": 220,
     "wires": []
   },
   {
@@ -38,16 +284,111 @@
     "type": "tab",
     "label": "3 - Schedule-Exec",
     "disabled": false,
-    "info": "Executes the retained cloud schedule slot-by-slot (15-min slots) from ems/{tenant}/{site}/{device}/schedule."
+    "info": "Subscribe to the retained .../schedule topic, cache it, and each 15-min slot write the slot setpoint to the inverter (via Guards)."
   },
   {
     "id": "note-schedule-exec",
     "type": "comment",
     "z": "flow-schedule-exec",
     "name": "Schedule-Exec (retained schedule, 15-min slots)",
-    "info": "Applies the current slot setpoint to the inverter via the Guards flow.",
-    "x": 280,
-    "y": 100,
+    "info": "Caches the retained schedule and applies the current slot setpoint via Guards.",
+    "x": 320,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "mqtt-schedule",
+    "type": "mqtt in",
+    "z": "flow-schedule-exec",
+    "name": "sub schedule (retained)",
+    "topic": "ems/+/+/+/schedule",
+    "qos": "1",
+    "datatype": "json",
+    "broker": "cfg-mqtt",
+    "nl": false,
+    "rap": true,
+    "rh": "0",
+    "inputs": 0,
+    "x": 170,
+    "y": 140,
+    "wires": [
+      [
+        "fn-cache"
+      ]
+    ]
+  },
+  {
+    "id": "fn-cache",
+    "type": "function",
+    "z": "flow-schedule-exec",
+    "name": "cache schedule",
+    "func": "// Cache the retained cloud schedule. Cloud -> Edge, retained; delivered on\n// subscribe. Edge-expected shape (schedule payload contract is NOT yet frozen\n// in docs/contracts - see edge README): { schema_version, slot_minutes, slots:\n// [{ start: RFC3339, battery_setpoint_kw }] }.\n// Subscribed on the wildcard ems/+/+/+/schedule; accept only this device's\n// topic so env-overridden VP_TENANT_ID/VP_SITE_ID/VP_DEVICE_ID still match.\nconst ids = global.get('ids') || {};\nconst parts = (msg.topic || '').split('/'); // ems/{tenant}/{site}/{device}/schedule\nif (parts.length < 5 || parts[1] !== ids.tenant || parts[2] !== ids.site || parts[3] !== ids.device) { return null; }\nconst s = msg.payload;\nif (!s || !Array.isArray(s.slots)) { node.warn('malformed schedule payload'); return null; }\nglobal.set('schedule', s);\nglobal.set('scheduleTs', Date.now());\nnode.status({ fill: 'green', shape: 'dot', text: s.slots.length + ' slots @' + (s.slot_minutes || 15) + 'min' });\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 140,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "inj-slot",
+    "type": "inject",
+    "z": "flow-schedule-exec",
+    "name": "slot tick 10s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "10",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "6",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 140,
+    "y": 220,
+    "wires": [
+      [
+        "fn-slot"
+      ]
+    ]
+  },
+  {
+    "id": "fn-slot",
+    "type": "function",
+    "z": "flow-schedule-exec",
+    "name": "select active slot",
+    "func": "// Schedule-Exec: each tick pick the 15-min slot covering 'now' and emit its\n// setpoint. Only acts while the schedule is FRESH; otherwise the watchdog owns\n// control (mutually exclusive on freshness).\nconst s = global.get('schedule');\nconst ts = global.get('scheduleTs') || 0;\nconst STALE_MS = 20 * 60 * 1000;\nif (!s || (Date.now() - ts) > STALE_MS) { node.status({ fill: 'grey', shape: 'ring', text: 'stale/none' }); return null; }\nconst now = Date.now();\nconst slotMs = (s.slot_minutes || 15) * 60000;\nlet chosen = null;\nfor (const slot of s.slots) {\n  const start = Date.parse(slot.start);\n  if (!isNaN(start) && now >= start && now < start + slotMs) { chosen = slot; break; }\n}\nif (!chosen) { node.status({ fill: 'yellow', shape: 'ring', text: 'no active slot' }); return null; }\nmsg.setpoint = { battery_kw: chosen.battery_setpoint_kw, source: 'schedule', slot_start: chosen.start };\nnode.status({ fill: 'blue', shape: 'dot', text: 'slot ' + chosen.battery_setpoint_kw + 'kW' });\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 220,
+    "wires": [
+      [
+        "lo-sp-sched"
+      ]
+    ]
+  },
+  {
+    "id": "lo-sp-sched",
+    "type": "link out",
+    "z": "flow-schedule-exec",
+    "name": "setpoint (schedule)",
+    "mode": "link",
+    "links": [
+      "li-sp"
+    ],
+    "x": 650,
+    "y": 220,
     "wires": []
   },
   {
@@ -55,16 +396,73 @@
     "type": "tab",
     "label": "4 - Default-Watchdog",
     "disabled": false,
-    "info": "Falls back to a self-consumption default if the cloud connection / schedule is lost (edge autonomy)."
+    "info": "On missing/stale schedule or lost connection, fall back to a simple self-consumption default (PV surplus -> battery, discharge on grid import)."
   },
   {
     "id": "note-default-watchdog",
     "type": "comment",
     "z": "flow-default-watchdog",
     "name": "Default-Watchdog (self-consumption default on outage)",
-    "info": "Monitors schedule freshness and switches to the self-consumption default when stale.",
-    "x": 300,
-    "y": 100,
+    "info": "Takes over when the schedule is stale; battery follows PV - load. Guards clamp it.",
+    "x": 340,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "inj-wd",
+    "type": "inject",
+    "z": "flow-default-watchdog",
+    "name": "watchdog tick 10s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "10",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "8",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 160,
+    "y": 140,
+    "wires": [
+      [
+        "fn-wd"
+      ]
+    ]
+  },
+  {
+    "id": "fn-wd",
+    "type": "function",
+    "z": "flow-default-watchdog",
+    "name": "self-consumption default",
+    "func": "// Default-Watchdog: on a missing/stale schedule, fall back to a deliberately\n// simple self-consumption default - battery follows (PV - load): charge PV\n// surplus, discharge to cover deficit. Guards clamp it. No price/time logic.\nconst ts = global.get('scheduleTs') || 0;\nconst STALE_MS = 20 * 60 * 1000;\nconst fresh = ts && (Date.now() - ts) <= STALE_MS;\nif (fresh) { node.status({ fill: 'grey', shape: 'ring', text: 'schedule fresh' }); return null; }\nconst r = global.get('latestReading');\nif (!r) { node.status({ fill: 'yellow', shape: 'ring', text: 'no reading' }); return null; }\nconst batt_kw = Math.round((r.pv_kw - r.load_kw) * 1000) / 1000;\nmsg.setpoint = { battery_kw: batt_kw, source: 'default' };\nnode.status({ fill: 'blue', shape: 'dot', text: 'self-consumption ' + batt_kw.toFixed(1) + 'kW' });\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 140,
+    "wires": [
+      [
+        "lo-sp-wd"
+      ]
+    ]
+  },
+  {
+    "id": "lo-sp-wd",
+    "type": "link out",
+    "z": "flow-default-watchdog",
+    "name": "setpoint (default)",
+    "mode": "link",
+    "links": [
+      "li-sp"
+    ],
+    "x": 660,
+    "y": 140,
     "wires": []
   },
   {
@@ -72,16 +470,115 @@
     "type": "tab",
     "label": "5 - Guards",
     "disabled": false,
-    "info": "Local plausibility checks before any write to the inverter (safety envelope, incl. observed §14a limit)."
+    "info": "Local plausibility / limit checks (charge/discharge power, SoC bounds, observed §14a envelope) before any write to the inverter."
   },
   {
     "id": "note-guards",
     "type": "comment",
     "z": "flow-guards",
     "name": "Guards (local plausibility checks before write)",
-    "info": "Clamps/blocks setpoints that violate local limits before actuation.",
-    "x": 270,
-    "y": 100,
+    "info": "Clamps/blocks setpoints that violate local limits, then writes FC6 to the inverter.",
+    "x": 300,
+    "y": 60,
     "wires": []
+  },
+  {
+    "id": "li-sp",
+    "type": "link in",
+    "z": "flow-guards",
+    "name": "setpoint",
+    "links": [
+      "lo-sp-sched",
+      "lo-sp-wd"
+    ],
+    "x": 115,
+    "y": 140,
+    "wires": [
+      [
+        "fn-guards"
+      ]
+    ]
+  },
+  {
+    "id": "fn-guards",
+    "type": "function",
+    "z": "flow-guards",
+    "name": "guards (clamp + limit checks)",
+    "func": "// Guards: local plausibility / limit checks before any inverter write.\n// Clamp charge/discharge power, enforce SoC bounds, and keep the commanded\n// battery power inside the observed §14a released envelope. Then write the\n// battery setpoint register (FC6, addr 40) as int16 0.01 kW two's-complement.\nconst L = global.get('assetLimits');\nconst r = global.get('latestReading') || {};\nconst sp = msg.setpoint || {};\nlet kw = Number(sp.battery_kw);\nif (!isFinite(kw)) { node.warn('non-finite setpoint, blocked'); return null; }\n// 1) power limits (+charge / -discharge)\nkw = Math.max(-L.max_discharge_kw, Math.min(L.max_charge_kw, kw));\n// 2) SoC bounds\nif (typeof r.soc_pct === 'number') {\n  if (r.soc_pct >= L.soc_max_pct && kw > 0) kw = 0;\n  if (r.soc_pct <= L.soc_min_pct && kw < 0) kw = 0;\n}\n// 3) observed §14a envelope: don't let charging push grid import past the limit\nif (typeof r.grid_limit_kw === 'number' && typeof r.load_kw === 'number' && typeof r.pv_kw === 'number') {\n  const predictedGrid = r.load_kw + kw - r.pv_kw; // + = import\n  if (predictedGrid > r.grid_limit_kw) {\n    const maxKw = r.grid_limit_kw - r.load_kw + r.pv_kw;\n    if (kw > maxKw) kw = maxKw;\n  }\n}\n// 4) re-apply power limits last: the §14a envelope can push kw below\n// -max_discharge_kw, so the final value must never escape the rated band.\nkw = Math.max(-L.max_discharge_kw, Math.min(L.max_charge_kw, kw));\nkw = Math.round(kw * 1000) / 1000;\nconst raw = Math.round(kw * 100) & 0xffff;\nmsg.payload = { value: raw, fc: 6, unitid: 1, address: 40, quantity: 1 };\nnode.status({ fill: 'blue', shape: 'dot', text: (sp.source || '?') + ' -> ' + kw + 'kW' });\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 140,
+    "wires": [
+      [
+        "mb-write"
+      ]
+    ]
+  },
+  {
+    "id": "mb-write",
+    "type": "modbus-flex-write",
+    "z": "flow-guards",
+    "name": "write setpoint (FC6 addr40)",
+    "showStatusActivities": false,
+    "showErrors": true,
+    "server": "cfg-mbclient",
+    "keepMsgProperties": false,
+    "emptyMsgOnFail": true,
+    "delayOnStart": false,
+    "startDelayTime": "",
+    "x": 640,
+    "y": 140,
+    "wires": [
+      [],
+      []
+    ]
+  },
+  {
+    "id": "inj-enable",
+    "type": "inject",
+    "z": "flow-guards",
+    "name": "assert EMS control (once)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "4",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 170,
+    "y": 220,
+    "wires": [
+      [
+        "fn-enable"
+      ]
+    ]
+  },
+  {
+    "id": "fn-enable",
+    "type": "function",
+    "z": "flow-guards",
+    "name": "enable setpoint (reg41=1)",
+    "func": "// One-shot on start: assert EMS control (reg 41 = 1) so the simulated inverter\n// obeys setpoint writes.\nmsg.payload = { value: 1, fc: 6, unitid: 1, address: 41, quantity: 1 };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 220,
+    "wires": [
+      [
+        "mb-write"
+      ]
+    ]
   }
 ]
