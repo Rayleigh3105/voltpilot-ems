@@ -182,6 +182,45 @@ public class KeycloakAdminClient {
         }
     }
 
+    /**
+     * Set a new password for a user (the support lever - without SMTP there is
+     * no self-service reset, so this is how a customer who forgot their password
+     * gets back in). {@code temporary} forces a password change on the next
+     * login. Also lifts any brute-force lockout so the new password works
+     * immediately instead of being refused until the escalating wait expires.
+     */
+    public void resetPassword(String userId, String password, boolean temporary) {
+        try {
+            admin().put().uri("/admin/realms/{realm}/users/{id}/reset-password",
+                            props.getRealm(), userId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("type", "password", "value", password, "temporary", temporary))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException ex) {
+            throw new KeycloakAdminException(ex.getStatusCode().value(),
+                    "Resetting the password failed: " + ex.getResponseBodyAsString());
+        }
+        clearBruteForceLockout(userId);
+        log.info("Reset password for user {} (temporary={})", userId, temporary);
+    }
+
+    /**
+     * Lift a temporary brute-force lockout. Best-effort: a failure here only
+     * means the lock expires on its own, so it must never fail the reset that
+     * triggered it.
+     */
+    public void clearBruteForceLockout(String userId) {
+        try {
+            admin().delete().uri("/admin/realms/{realm}/attack-detection/brute-force/users/{id}",
+                            props.getRealm(), userId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException ex) {
+            log.warn("Could not clear brute-force lockout for user {}: {}", userId, ex.getMessage());
+        }
+    }
+
     /** Enable/disable a user (disabling blocks their logins immediately). */
     public KeycloakUser setEnabled(String userId, boolean enabled) {
         try {

@@ -477,7 +477,35 @@ paths:
               schema: { $ref: "#/components/schemas/AdminUser" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: Tenant or user not found. }
+        "404": { description: Tenant or user not found (including a user outside this tenant). }
+  /api/v1/admin/tenants/{tenantId}/users/{userId}/reset-password:
+    post:
+      tags: [admin]
+      summary: Reset a customer user's password (support lever).
+      description: >
+        The platform has no SMTP and therefore no self-service password reset;
+        this is how support recovers a customer who forgot their password or
+        locked themselves out guessing. Sets the new password (`temporary`
+        defaults to true: must be changed on next login) and lifts any
+        brute-force lockout so the new password works immediately.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetPasswordRequest" }
+      responses:
+        "200":
+          description: Password reset; any lockout lifted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { description: Invalid password (must be 8-128 characters). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant or user not found (including a user outside this tenant). }
 components:
   securitySchemes:
     bearerAuth:
@@ -786,3 +814,9 @@ components:
         lastName: { type: string }
         password: { type: string, description: Optional initial password. }
         temporaryPassword: { type: boolean, description: "If true, the user must change it at first login. Default false." }
+    ResetPasswordRequest:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 8, maxLength: 128, description: The new password (same length rule as self-registration). }
+        temporary: { type: boolean, description: "If true (default), the user must change it at next login." }

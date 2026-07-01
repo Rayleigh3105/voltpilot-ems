@@ -41,6 +41,11 @@ export interface CreateUserInput {
   temporaryPassword?: boolean;
 }
 
+export interface ResetPasswordInput {
+  password: string;
+  temporary?: boolean;
+}
+
 export interface ProvisionedDevice {
   externalRef: string;
   kind: string;
@@ -77,6 +82,14 @@ export const adminApi = {
   disableUser: (tenantId: string, userId: string) =>
     request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/disable`, {
       method: 'POST',
+    }),
+
+  // Support lever: no SMTP means no self-service reset, so support sets a new
+  // (default temporary) password here; any brute-force lockout is lifted too.
+  resetPassword: (tenantId: string, userId: string, input: ResetPasswordInput) =>
+    request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 
   listSites: (tenantId: string) =>
