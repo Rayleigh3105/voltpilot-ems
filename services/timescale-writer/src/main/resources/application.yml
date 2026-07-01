@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: voltpilot-timescale-writer
+  kafka:
+    bootstrap-servers: ${REDPANDA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: timescale-writer
+      auto-offset-reset: earliest
+  # DataSourceAutoConfiguration is excluded in WriterApplication for the
+  # skeleton. These values are the target once the writer is wired.
+  datasource:
+    url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
+    username: ${POSTGRES_USER:voltpilot}
+    password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
+
+server:
+  port: ${WRITER_PORT:8092}
+
+voltpilot:
+  redpanda:
+    telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
+
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

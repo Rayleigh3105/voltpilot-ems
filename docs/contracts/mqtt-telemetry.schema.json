@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/mqtt-telemetry.schema.json",
+  "title": "Voltpilot MQTT Telemetry Payload",
+  "description": "Payload published by the Node-RED edge on ems/{tenant_id}/{site_id}/{device_id}/telemetry (QoS1). This is a BINDING contract (architecture section 20 item 8). Topic template and the set of edge<->cloud topics are documented in x-topics below.",
+  "type": "object",
+  "x-topics": {
+    "telemetry": "ems/{tenant_id}/{site_id}/{device_id}/telemetry  (Edge -> Cloud, QoS1)",
+    "status": "ems/{tenant_id}/{site_id}/{device_id}/status  (Edge -> Cloud, heartbeat/health)",
+    "schedule": "ems/{tenant_id}/{site_id}/{device_id}/schedule  (Cloud -> Edge, retained)",
+    "command": "ems/{tenant_id}/{site_id}/{device_id}/command  (Cloud -> Edge, ad-hoc)",
+    "config": "ems/{tenant_id}/{site_id}/{device_id}/config  (Cloud -> Edge, retained)"
+  },
+  "required": ["schema_version", "device_id", "site_id", "tenant_id", "ts", "measurements"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Payload contract version."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Measurement timestamp (RFC 3339, UTC)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic sequence number per device for gap detection."
+    },
+    "measurements": {
+      "type": "object",
+      "description": "Instantaneous measurements. All fields optional; a device reports what it has.",
+      "additionalProperties": false,
+      "properties": {
+        "power_kw": {
+          "type": "number",
+          "description": "Active power at the grid coupling point. Positive = import, negative = export."
+        },
+        "soc_pct": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Battery state of charge in percent."
+        },
+        "pv_power_kw": { "type": "number", "description": "PV generation power." },
+        "load_kw": { "type": "number", "description": "Site load." },
+        "grid_limit_kw": {
+          "type": "number",
+          "description": "Observed effective §14a EnWG power limit. The grid operator enforces this via its own parallel control device; the EMS only OBSERVES it and optimizes within the released envelope (architecture section 14)."
+        }
+      }
+    }
+  }
+}

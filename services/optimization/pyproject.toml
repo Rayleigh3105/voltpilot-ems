@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voltpilot-optimization"
+version = "0.1.0"
+description = "Voltpilot-EMS MILP/MPC optimization engine (HiGHS via Pyomo)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyomo>=6.7",
+]
+
+[project.optional-dependencies]
+# HiGHS ships as a platform-specific wheel that isn't available everywhere.
+# Keep it out of the hard runtime deps so `pip install -e` always succeeds and
+# solver.py's lazy import / the test's importorskip can degrade gracefully.
+solver = [
+    "highspy>=1.7",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+voltpilot-optimization = "voltpilot_optimization.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["voltpilot_optimization*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,163 @@
+openapi: 3.1.0
+info:
+  title: Voltpilot-EMS Portal API
+  version: 0.1.0-mvp
+  description: >
+    STUB OpenAPI contract for the portal backend (Spring Boot). BINDING contract
+    (architecture section 20 item 8). Covers the MVP portal surface: auth-guarded
+    tenancy, device claiming, telemetry and schedule views, and economic KPIs
+    (architecture section 4). Endpoints are stubs to be filled by services/api.
+  contact:
+    name: Voltpilot-EMS
+servers:
+  - url: http://localhost:8090
+    description: Local dev (docker compose / `mvn spring-boot:run`)
+security:
+  - bearerAuth: []
+tags:
+  - name: system
+  - name: sites
+  - name: devices
+  - name: telemetry
+  - name: schedules
+  - name: kpis
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Liveness/readiness (Spring Boot Actuator).
+      security: []
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: UP }
+  /api/v1/sites:
+    get:
+      tags: [sites]
+      summary: List sites for the caller's tenant (tenant_id from OIDC token).
+      responses:
+        "200":
+          description: Sites.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Site" }
+  /api/v1/devices/claim:
+    post:
+      tags: [devices]
+      summary: Claim an edge device into a site.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceClaimRequest" }
+      responses:
+        "201":
+          description: Device claimed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+  /api/v1/sites/{siteId}/telemetry:
+    get:
+      tags: [telemetry]
+      summary: Query telemetry timeseries for a site.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Telemetry points.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TelemetryPoint" }
+  /api/v1/sites/{siteId}/schedule:
+    get:
+      tags: [schedules]
+      summary: Current 24h optimization schedule (15-min slots) for a site.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Schedule.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+  /api/v1/sites/{siteId}/kpis:
+    get:
+      tags: [kpis]
+      summary: Economic KPIs (self-consumption, savings) for a site.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: KPIs.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteKpis" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak-issued OIDC access token (realm `voltpilot`).
+  schemas:
+    Site:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        biddingZone: { type: string, example: DE-LU }
+    DeviceClaimRequest:
+      type: object
+      required: [siteId, externalRef]
+      properties:
+        siteId: { type: string, format: uuid }
+        externalRef: { type: string, description: Edge device identifier. }
+    Device:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        externalRef: { type: string }
+        kind: { type: string, example: inverter }
+        status: { type: string, example: claimed }
+    TelemetryPoint:
+      type: object
+      properties:
+        ts: { type: string, format: date-time }
+        powerKw: { type: number }
+        socPct: { type: number }
+        pvPowerKw: { type: number }
+        loadKw: { type: number }
+        gridLimitKw:
+          type: number
+          description: Observed effective §14a power limit.
+    Schedule:
+      type: object
+      properties:
+        siteId: { type: string, format: uuid }
+        generatedAt: { type: string, format: date-time }
+        slots:
+          type: array
+          items:
+            type: object
+            properties:
+              start: { type: string, format: date-time }
+              setpointKw: { type: number }
+    SiteKpis:
+      type: object
+      properties:
+        siteId: { type: string, format: uuid }
+        selfConsumptionPct: { type: number }
+        estimatedSavingsEur: { type: number }
+        window: { type: string, example: last_30_days }

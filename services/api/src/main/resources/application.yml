@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: voltpilot-api
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Only consulted when voltpilot.security.oidc.enabled=true.
+          issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8081/realms/voltpilot}
+
+server:
+  port: ${API_PORT:8090}
+
+# Toggle OIDC resource-server validation. Off by default for offline dev/test;
+# once the api service is added to docker compose it will set
+# VOLTPILOT_SECURITY_OIDC_ENABLED=true.
+voltpilot:
+  security:
+    oidc:
+      enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:false}
+
+# Expose actuator at the root so health is reachable at /health (and /info).
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

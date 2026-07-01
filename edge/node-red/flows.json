@@ -1,0 +1,87 @@
+[
+  {
+    "id": "flow-acquisition",
+    "type": "tab",
+    "label": "1 - Acquisition",
+    "disabled": false,
+    "info": "Modbus TCP / SunSpec poll of the inverter, INCLUDING the observed effective §14a power limit. Placeholder - real Modbus wiring is future work."
+  },
+  {
+    "id": "note-acquisition",
+    "type": "comment",
+    "z": "flow-acquisition",
+    "name": "Acquisition (Modbus TCP/SunSpec poll incl. effective grid limit)",
+    "info": "Reads inverter registers on an interval and normalizes them into the telemetry payload (docs/contracts/mqtt-telemetry.schema.json).",
+    "x": 300,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "flow-publish",
+    "type": "tab",
+    "label": "2 - Publish",
+    "disabled": false,
+    "info": "mTLS MQTT publish (QoS1) to ems/{tenant}/{site}/{device}/telemetry and .../status. Only outbound connections."
+  },
+  {
+    "id": "note-publish",
+    "type": "comment",
+    "z": "flow-publish",
+    "name": "Publish (mTLS MQTT QoS1 -> EMQX)",
+    "info": "Publishes telemetry/status to EMQX. No inbound ports on the edge.",
+    "x": 260,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "flow-schedule-exec",
+    "type": "tab",
+    "label": "3 - Schedule-Exec",
+    "disabled": false,
+    "info": "Executes the retained cloud schedule slot-by-slot (15-min slots) from ems/{tenant}/{site}/{device}/schedule."
+  },
+  {
+    "id": "note-schedule-exec",
+    "type": "comment",
+    "z": "flow-schedule-exec",
+    "name": "Schedule-Exec (retained schedule, 15-min slots)",
+    "info": "Applies the current slot setpoint to the inverter via the Guards flow.",
+    "x": 280,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "flow-default-watchdog",
+    "type": "tab",
+    "label": "4 - Default-Watchdog",
+    "disabled": false,
+    "info": "Falls back to a self-consumption default if the cloud connection / schedule is lost (edge autonomy)."
+  },
+  {
+    "id": "note-default-watchdog",
+    "type": "comment",
+    "z": "flow-default-watchdog",
+    "name": "Default-Watchdog (self-consumption default on outage)",
+    "info": "Monitors schedule freshness and switches to the self-consumption default when stale.",
+    "x": 300,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "flow-guards",
+    "type": "tab",
+    "label": "5 - Guards",
+    "disabled": false,
+    "info": "Local plausibility checks before any write to the inverter (safety envelope, incl. observed §14a limit)."
+  },
+  {
+    "id": "note-guards",
+    "type": "comment",
+    "z": "flow-guards",
+    "name": "Guards (local plausibility checks before write)",
+    "info": "Clamps/blocks setpoints that violate local limits before actuation.",
+    "x": 270,
+    "y": 100,
+    "wires": []
+  }
+]

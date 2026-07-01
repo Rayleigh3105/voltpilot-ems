@@ -1,0 +1,165 @@
+# =============================================================================
+# Voltpilot-EMS - local development stack (stateful backbone)
+# -----------------------------------------------------------------------------
+# `docker compose up -d` brings up the MVP data-path backbone:
+#   EMQX (MQTT) -> [Ingest] -> Redpanda (event log) -> [Writer] -> TimescaleDB
+# plus Keycloak (OIDC). The JVM/Python app services are scaffolded under
+# services/* with their own Dockerfiles; they are intentionally NOT started
+# here yet (backbone-first). See README.md and AGENTS.md.
+#
+# All credentials come from .env (copy .env.example -> .env). DEV-ONLY secrets.
+# =============================================================================
+
+name: ${COMPOSE_PROJECT_NAME:-voltpilot}
+
+services:
+  # ---------------------------------------------------------------------------
+  # TimescaleDB: one Postgres instance for timeseries (hypertables) + master
+  # data. Init scripts in infra/local/timescale/ enable the extension and lay
+  # down the example telemetry hypertable + stammdaten tables.
+  # ---------------------------------------------------------------------------
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: voltpilot-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      # *.sql / *.sh here run once, in filename order, on first init.
+      - ./infra/local/timescale:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-voltpilot} -d ${POSTGRES_DB:-voltpilot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # EMQX: MQTT 5.0 broker (device ingress). Dashboard on :18083.
+  # Topic convention: ems/{tenant_id}/{site_id}/{device_id}/{telemetry|status|
+  # schedule|command|config}. See docs/contracts/mqtt-telemetry.schema.json.
+  # ---------------------------------------------------------------------------
+  emqx:
+    image: emqx/emqx:5.8.3
+    container_name: voltpilot-emqx
+    restart: unless-stopped
+    environment:
+      EMQX_NODE__COOKIE: voltpilot_dev_cookie
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USER:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:-voltpilot_dev_pw}
+    ports:
+      - "${EMQX_MQTT_PORT:-1883}:1883"       # MQTT
+      - "${EMQX_MQTT_TLS_PORT:-8883}:8883"   # MQTT over TLS
+      - "${EMQX_WS_PORT:-8083}:8083"         # MQTT over WebSocket
+      - "${EMQX_DASHBOARD_PORT:-18083}:18083" # Dashboard
+    volumes:
+      - emqx-data:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Redpanda: single-broker Kafka-API event log (durable replay, consumer
+  # decoupling). No Zookeeper/JVM. Topic telemetry.raw created by redpanda-init.
+  # ---------------------------------------------------------------------------
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: voltpilot-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      # Advertise an internal listener (compose network) and an external one
+      # (host) so both in-cluster services and host tooling can connect.
+      - --kafka-addr=INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      - --advertise-kafka-addr=INTERNAL://redpanda:29092,EXTERNAL://localhost:9092
+    ports:
+      - "${REDPANDA_KAFKA_PORT:-9092}:9092"
+      - "${REDPANDA_ADMIN_PORT:-9644}:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # One-shot: create the MVP telemetry.raw topic, then exit 0.
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: voltpilot-redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        rpk topic create ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
+        --brokers redpanda:29092
+        --partitions ${REDPANDA_TELEMETRY_PARTITIONS:-3}
+        --replicas 1 || true;
+        rpk topic list --brokers redpanda:29092
+    restart: "no"
+
+  # Redpanda Console: web UI for topics/consumers (dev convenience).
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: voltpilot-redpanda-console
+    restart: unless-stopped
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "${REDPANDA_CONSOLE_PORT:-8080}:8080"
+
+  # ---------------------------------------------------------------------------
+  # Keycloak: OIDC provider. Dev realm `voltpilot` imported on start with one
+  # client for the API and one for the frontend. Admin console on :8081.
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.5
+    container_name: voltpilot-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm", "--health-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-voltpilot_dev_pw}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8081}:8080"
+    volumes:
+      - ./infra/local/keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # KC 26 exposes health on the management port 9000; /health/ready is the
+      # readiness gate. curl is not in the image, so probe via the bundled JRE.
+      test:
+        - "CMD-SHELL"
+        - "exec 3<>/dev/tcp/localhost/9000; echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"status\": \"UP\"'"
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 40s
+
+volumes:
+  timescale-data:
+  emqx-data:
+  redpanda-data:
