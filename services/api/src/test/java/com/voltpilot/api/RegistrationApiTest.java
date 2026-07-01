@@ -39,6 +39,8 @@ import org.testcontainers.utility.DockerImageName;
  *   <li><b>A duplicate email is refused without leaving an orphan tenant.</b>
  *       The compensating delete keeps tenant creation atomic with its login.</li>
  *   <li><b>Garbage input is refused up front</b> (bean validation, 400).</li>
+ *   <li><b>Anonymous flooding is rate-limited per client address</b> (429
+ *       before any tenant/Keycloak work; other addresses unaffected).</li>
  * </ol>
  *
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
@@ -91,6 +93,12 @@ class RegistrationApiTest {
         registry.add("voltpilot.keycloak.admin.realm", () -> "voltpilot");
         registry.add("voltpilot.keycloak.admin.client-id", () -> "voltpilot-api");
         registry.add("voltpilot.keycloak.admin.client-secret", () -> "voltpilot-api-dev-secret");
+
+        // Low per-client cap so the rate-limit test stays fast. Its requests use
+        // synthetic X-Forwarded-For addresses; the OTHER tests here register from
+        // plain 127.0.0.1, which currently spends 3 of these 5 - keep headroom in
+        // mind when adding registrations to this class.
+        registry.add("voltpilot.registration.rate-limit.per-client-max", () -> "5");
     }
 
     @LocalServerPort
@@ -198,11 +206,56 @@ class RegistrationApiTest {
                 String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    // ---- (4) anonymous flooding -> 429, nothing created -----------------------
+
+    @Test
+    void floodingIsRateLimitedPerClientWithoutSideEffects() {
+        // One address may register a handful of accounts within the window...
+        for (int i = 1; i <= 5; i++) {
+            assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                    json(Map.of("name", "Flut " + i + " GmbH",
+                            "email", "flut-" + i + "@example.com", "password", "flut-pw-123"),
+                            "198.51.100.23"),
+                    String.class).getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        }
+
+        // ...then it is refused BEFORE any tenant or Keycloak work happens...
+        assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                json(Map.of("name", "Flut Sechs GmbH",
+                        "email", "flut-6@example.com", "password", "flut-pw-123"),
+                        "198.51.100.23"),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+
+        // ...while a different customer address registers unaffected.
+        assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                json(Map.of("name", "Nachbar GmbH",
+                        "email", "nachbar@example.com", "password", "nachbar-pw-1"),
+                        "198.51.100.99"),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // The refused attempt left no orphan tenant behind.
+        ResponseEntity<List<Map<String, Object>>> tenants = rest.exchange(
+                url("/api/v1/admin/tenants"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("admin", "admin"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(tenants.getBody()).extracting(t -> t.get("name"))
+                .contains("Flut 5 GmbH", "Nachbar GmbH")
+                .doesNotContain("Flut Sechs GmbH");
+    }
+
     // ---- helpers --------------------------------------------------------------
 
     private static HttpEntity<Map<String, Object>> json(Map<String, Object> body) {
         HttpHeaders h = new HttpHeaders();
         h.setContentType(MediaType.APPLICATION_JSON);
+        return new HttpEntity<>(body, h);
+    }
+
+    /** JSON body arriving via the trusted proxy for the given client address. */
+    private static HttpEntity<Map<String, Object>> json(Map<String, Object> body, String clientIp) {
+        HttpHeaders h = new HttpHeaders();
+        h.setContentType(MediaType.APPLICATION_JSON);
+        h.add("X-Forwarded-For", clientIp);
         return new HttpEntity<>(body, h);
     }
 

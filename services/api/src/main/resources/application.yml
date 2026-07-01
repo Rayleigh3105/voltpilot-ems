@@ -50,6 +50,15 @@ voltpilot:
   # endpoint entirely.
   registration:
     enabled: ${VOLTPILOT_REGISTRATION_ENABLED:true}
+    # Abuse guard for the public endpoint: sliding-window limits per client
+    # address (first X-Forwarded-For hop behind the trusted frontend nginx, else
+    # the socket address) plus a global cap that bounds total volume even across
+    # many addresses. Window is an ISO-8601 duration.
+    rate-limit:
+      enabled: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_ENABLED:true}
+      per-client-max: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_PER_CLIENT_MAX:10}
+      global-max: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_GLOBAL_MAX:100}
+      window: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_WINDOW:PT1H}
   security:
     oidc:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:false}

@@ -120,7 +120,9 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
           ? 'Mit dieser E-Mail-Adresse gibt es bereits ein Konto. Melden Sie sich stattdessen an.'
           : e instanceof ApiError && e.status === 400
             ? 'Bitte prüfen Sie Ihre Eingaben: gültige E-Mail-Adresse und ein Passwort mit mindestens 8 Zeichen.'
-            : 'Die Registrierung hat gerade nicht geklappt. Bitte versuchen Sie es gleich noch einmal.',
+            : e instanceof ApiError && e.status === 429
+              ? 'Zu viele Registrierungsversuche von Ihrem Anschluss. Bitte versuchen Sie es in etwa einer Stunde erneut.'
+              : 'Die Registrierung hat gerade nicht geklappt. Bitte versuchen Sie es gleich noch einmal.',
       );
     } finally {
       setBusy(false);

@@ -85,6 +85,7 @@ paths:
               schema: { $ref: "#/components/schemas/RegistrationResponse" }
         "400": { description: Invalid input (blank name, invalid email, password shorter than 8 chars). }
         "409": { description: An account with this email already exists. }
+        "429": { description: Too many registration attempts (sliding-window rate limit per client address plus a global cap; nothing was created). }
   /api/v1/sites:
     get:
       tags: [sites]

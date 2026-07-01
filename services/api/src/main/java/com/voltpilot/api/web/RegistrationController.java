@@ -7,6 +7,7 @@ import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.web.dto.RegistrationRequest;
 import com.voltpilot.api.web.dto.RegistrationResponse;
 import com.voltpilot.api.web.dto.TenantDto;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Locale;
 import org.slf4j.Logger;
@@ -35,8 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>The endpoint is deliberately unauthenticated (see SecurityConfig) and can
  * be disabled for closed platforms via {@code voltpilot.registration.enabled}.
- * Abuse hardening (email verification, rate limiting/captcha) is known future
- * work; until then the toggle is the off-switch.
+ * Anonymous volume is bounded by {@link RegistrationRateLimiter} (429 before
+ * any work happens); email verification/captcha remain known future work.
  */
 @RestController
 @RequestMapping("/api/v1/registration")
@@ -50,14 +51,22 @@ public class RegistrationController {
 
     private final TenantRepository tenants;
     private final KeycloakAdminClient keycloak;
+    private final RegistrationRateLimiter rateLimiter;
 
-    public RegistrationController(TenantRepository tenants, KeycloakAdminClient keycloak) {
+    public RegistrationController(TenantRepository tenants, KeycloakAdminClient keycloak,
+            RegistrationRateLimiter rateLimiter) {
         this.tenants = tenants;
         this.keycloak = keycloak;
+        this.rateLimiter = rateLimiter;
     }
 
     @PostMapping
-    public ResponseEntity<RegistrationResponse> register(@Valid @RequestBody RegistrationRequest request) {
+    public ResponseEntity<RegistrationResponse> register(@Valid @RequestBody RegistrationRequest request,
+            HttpServletRequest httpRequest) {
+        if (!rateLimiter.tryAcquire(RegistrationRateLimiter.clientKey(httpRequest))) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Too many registration attempts, please try again later");
+        }
         String email = request.email().trim().toLowerCase(Locale.ROOT);
         TenantDto tenant = tenants.create(request.name().trim(), SELF_SERVICE_SEGMENT);
         KeycloakUser user;
