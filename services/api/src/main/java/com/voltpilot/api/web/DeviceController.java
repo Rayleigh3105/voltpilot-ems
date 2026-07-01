@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -8,6 +9,7 @@ import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,10 +31,13 @@ public class DeviceController {
 
     private final DeviceRepository devices;
     private final SiteRepository sites;
+    private final ObjectProvider<ProvisioningPublisher> provisioning;
 
-    public DeviceController(DeviceRepository devices, SiteRepository sites) {
+    public DeviceController(DeviceRepository devices, SiteRepository sites,
+            ObjectProvider<ProvisioningPublisher> provisioning) {
         this.devices = devices;
         this.sites = sites;
+        this.provisioning = provisioning;
     }
 
     @GetMapping
@@ -52,6 +57,10 @@ public class DeviceController {
         }
         try {
             DeviceDto claimed = devices.claim(tenantId, request.siteId(), request.externalRef(), request.kind());
+            // Zero-touch onboarding: hand the waiting device its identity via the
+            // retained provision/{ref}/config (best-effort; see ProvisioningPublisher).
+            provisioning.ifAvailable(p ->
+                    p.publishConfig(claimed.externalRef(), tenantId, claimed.siteId(), claimed.id()));
             return ResponseEntity.status(HttpStatus.CREATED).body(claimed);
         } catch (DuplicateKeyException ex) {
             // external_ref already claimed (possibly by another tenant, which RLS hides).

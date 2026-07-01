@@ -57,6 +57,15 @@ voltpilot:
   admin-datasource:
     username: ${ADMIN_DB_USER:voltpilot_admin}
     password: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
+  # Zero-touch device onboarding (docs/contracts/mqtt-provisioning.schema.json):
+  # on claim, publish the retained provision/{ref}/config to the broker so a
+  # waiting device is configured immediately. Best-effort; off by default so
+  # unit tests and broker-less setups are unaffected (compose turns it on).
+  provisioning:
+    enabled: ${VOLTPILOT_PROVISIONING_ENABLED:false}
+    broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+    username: ${MQTT_USERNAME:}
+    password: ${MQTT_PASSWORD:}
   # Keycloak Admin REST API access for provisioning customer users. The API
   # authenticates as the voltpilot-api service account (client_credentials) that
   # holds the realm-management roles. base-url is the compose-internal Keycloak.

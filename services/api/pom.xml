@@ -71,6 +71,15 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
+        <!-- MQTT (zero-touch provisioning): on device claim the api publishes the
+             retained provision/{ref}/config so a waiting device is configured the
+             moment it is claimed. Best-effort - see ProvisioningPublisher. -->
+        <dependency>
+            <groupId>org.eclipse.paho</groupId>
+            <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+            <version>1.2.5</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

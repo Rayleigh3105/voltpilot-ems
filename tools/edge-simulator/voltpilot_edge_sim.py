@@ -13,6 +13,14 @@ It speaks the BINDING telemetry contract verbatim
 and a lightweight health heartbeat on
     ems/{tenant_id}/{site_id}/{device_id}/status
 
+ZERO-TOUCH mode (docs/contracts/mqtt-provisioning.schema.json): with only
+    --host <broker> --ref <edge-reference>
+the simulator performs the provisioning handshake - it publishes a hello on
+provision/{ref}/hello and waits for the RETAINED provision/{ref}/config that the
+cloud publishes once the ref is claimed in the portal. No UUIDs to copy: the
+device adopts tenant/site/device ids from the config and then speaks the normal
+telemetry contract. Explicit --tenant-id/--site-id/--device-id keep working.
+
 Both plain MQTT (1883, local dev) and mutual-TLS (8883, real remote onboarding
 with a device cert from tools/pki/provision-device.sh) are supported.
 
@@ -26,6 +34,7 @@ import argparse
 import json
 import math
 import os
+import re
 import signal
 import sys
 import time
@@ -42,7 +51,11 @@ except ImportError:  # pragma: no cover - only hit when the dep is missing
     raise
 
 SCHEMA_VERSION = "1.0"
-SW_VERSION = "voltpilot-edge-sim/1.0.0"
+SW_VERSION = "voltpilot-edge-sim/1.1.0"
+
+# Edge reference charset per docs/contracts/mqtt-provisioning.schema.json
+# ($defs/ref): MQTT-topic-safe by construction (no '/', '+', '#').
+REF_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +89,13 @@ class Config:
     tenant_id: str = DEFAULT_TENANT_ID
     site_id: str = DEFAULT_SITE_ID
     device_id: str = DEFAULT_DEVICE_ID
+
+    # Zero-touch provisioning (docs/contracts/mqtt-provisioning.schema.json):
+    # with a ref set, the identity above is IGNORED and adopted from the
+    # retained provision/{ref}/config after the hello handshake.
+    ref: str | None = None
+    provision_retry: float = 10.0    # seconds between hello retries
+    provision_timeout: float = 0.0   # 0 = wait for the claim forever
 
     # Publish cadence
     interval: float = 5.0          # seconds between telemetry samples
@@ -178,6 +198,20 @@ def build_config(argv: list[str] | None = None) -> Config:
     p.add_argument("--site-id", default=_env("EDGE_SIM_SITE_ID") or _env("VP_SITE_ID") or d.site_id)
     p.add_argument("--device-id", default=_env("EDGE_SIM_DEVICE_ID") or _env("VP_DEVICE_ID") or d.device_id)
 
+    # Zero-touch provisioning: identity via the hello/config handshake instead
+    # of explicit UUIDs. The customer claims this ref in the portal; nothing to
+    # copy onto the device besides the broker host and the ref itself.
+    p.add_argument("--ref", default=_env("EDGE_SIM_REF") or _env("VP_REF") or d.ref,
+                   help="Edge reference (zero-touch): publish provision/{ref}/hello and adopt "
+                        "the identity from the retained provision/{ref}/config once claimed. "
+                        "Overrides --tenant-id/--site-id/--device-id.")
+    p.add_argument("--provision-retry", type=float,
+                   default=float(_env("EDGE_SIM_PROVISION_RETRY") or d.provision_retry),
+                   help="Seconds between hello retries while unclaimed.")
+    p.add_argument("--provision-timeout", type=float,
+                   default=float(_env("EDGE_SIM_PROVISION_TIMEOUT") or d.provision_timeout),
+                   help="Give up provisioning after N seconds (0 = wait forever).")
+
     # Cadence
     p.add_argument("--interval", type=float, default=float(_env("EDGE_SIM_INTERVAL") or d.interval),
                    help="Seconds between telemetry samples.")
@@ -219,6 +253,7 @@ def build_config(argv: list[str] | None = None) -> Config:
         username=a.username, password=a.password, client_id=a.client_id,
         keepalive=a.keepalive,
         tenant_id=a.tenant_id, site_id=a.site_id, device_id=a.device_id,
+        ref=a.ref, provision_retry=a.provision_retry, provision_timeout=a.provision_timeout,
         interval=a.interval, status_interval=a.status_interval, count=a.count, qos=a.qos,
         time_scale=a.time_scale, start_hour=a.start_hour,
         pv_peak_kw=a.pv_peak_kw, load_base_kw=a.load_base_kw,
@@ -231,11 +266,23 @@ def build_config(argv: list[str] | None = None) -> Config:
 
 
 def validate_config(cfg: Config) -> None:
-    for name, val in (("tenant_id", cfg.tenant_id), ("site_id", cfg.site_id), ("device_id", cfg.device_id)):
-        try:
-            uuid.UUID(str(val))
-        except (ValueError, TypeError):
-            raise SystemExit(f"error: {name} must be a UUID, got {val!r}")
+    if cfg.ref is not None:
+        # Zero-touch: the identity comes from the handshake, so only the ref
+        # itself is validated here (contract charset, MQTT-topic-safe).
+        if not REF_PATTERN.match(cfg.ref):
+            raise SystemExit(
+                f"error: --ref must match {REF_PATTERN.pattern} (letters, digits, '.', '_', '-'), "
+                f"got {cfg.ref!r}")
+        if cfg.provision_retry <= 0:
+            raise SystemExit("error: --provision-retry must be > 0")
+        if cfg.provision_timeout < 0:
+            raise SystemExit("error: --provision-timeout must be >= 0")
+    else:
+        for name, val in (("tenant_id", cfg.tenant_id), ("site_id", cfg.site_id), ("device_id", cfg.device_id)):
+            try:
+                uuid.UUID(str(val))
+            except (ValueError, TypeError):
+                raise SystemExit(f"error: {name} must be a UUID, got {val!r}")
     if cfg.interval <= 0:
         raise SystemExit("error: --interval must be > 0")
     if cfg.time_scale <= 0:
@@ -466,6 +513,142 @@ def _make_client(cfg: Config) -> "mqtt.Client":
     return client
 
 
+# ---------------------------------------------------------------------------
+# Zero-touch provisioning handshake
+# (docs/contracts/mqtt-provisioning.schema.json)
+# ---------------------------------------------------------------------------
+
+def build_hello_payload(ref: str, ts: str) -> dict:
+    """provision/{ref}/hello payload ($defs/hello in the provisioning contract)."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "ref": ref,
+        "ts": ts,
+        "sw_version": SW_VERSION,
+    }
+
+
+def parse_provision_config(ref: str, raw: bytes | str) -> dict | None:
+    """Validate a provision/{ref}/config payload; None when it must be ignored.
+
+    Per the contract: schema_version 1.0, the payload ref MUST equal our own
+    ref, and the three identity fields must be UUIDs.
+    """
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:
+        return None
+    if data.get("ref") != ref:
+        return None
+    identity = {}
+    for key in ("tenant_id", "site_id", "device_id"):
+        try:
+            identity[key] = str(uuid.UUID(str(data.get(key))))
+        except (ValueError, TypeError):
+            return None
+    return identity
+
+
+def provision(cfg: Config, stopping: dict | None = None) -> bool:
+    """Run the hello/config handshake and adopt the claimed identity into cfg.
+
+    Publishes provision/{ref}/hello (QoS1) and waits subscribed on
+    provision/{ref}/config. Unclaimed refs get no answer - we retry the hello
+    every cfg.provision_retry seconds (this is the normal pre-onboarding state).
+    Because the cloud publishes the config RETAINED, a restart re-provisions
+    instantly from the broker without a cloud round-trip.
+    """
+    stopping = stopping if stopping is not None else {"flag": False}
+    ref = cfg.ref
+    hello_topic = f"provision/{ref}/hello"
+    config_topic = f"provision/{ref}/config"
+    result: dict = {}
+
+    client = _make_bare_client(cfg, client_id=f"provision-{ref}")
+
+    def on_message(client_, userdata, msg):
+        identity = parse_provision_config(ref, msg.payload)
+        if identity is None:
+            _log(cfg, f"ignoring invalid config on {msg.topic}", err=True)
+            return
+        result.update(identity)
+
+    connected = {"ok": False}
+
+    def on_connect(client_, userdata, flags, rc, *args):
+        if rc == 0:
+            connected["ok"] = True
+            client_.subscribe(config_topic, qos=cfg.qos)
+
+    client.on_message = on_message
+    client.on_connect = on_connect
+
+    try:
+        client.connect(cfg.host, cfg.port, keepalive=cfg.keepalive)
+    except Exception as exc:  # noqa: BLE001
+        _log(cfg, f"provisioning connect to {cfg.host}:{cfg.port} failed: {exc}", err=True)
+        return False
+
+    client.loop_start()
+    started = time.monotonic()
+    next_hello = 0.0
+    _log(cfg, f"zero-touch provisioning: waiting for '{ref}' to be claimed "
+              f"(hello every {cfg.provision_retry:g}s"
+              + (f", timeout {cfg.provision_timeout:g}s" if cfg.provision_timeout else "")
+              + ")")
+    try:
+        while not result and not stopping["flag"]:
+            now = time.monotonic()
+            if cfg.provision_timeout and now - started >= cfg.provision_timeout:
+                _log(cfg, f"provisioning timed out after {cfg.provision_timeout:g}s "
+                          f"('{ref}' not claimed?)", err=True)
+                return False
+            if connected["ok"] and now >= next_hello:
+                payload = build_hello_payload(ref, rfc3339_now())
+                client.publish(hello_topic, json.dumps(payload, separators=(",", ":")), qos=cfg.qos)
+                next_hello = now + cfg.provision_retry
+            time.sleep(0.05)
+    finally:
+        client.loop_stop()
+        try:
+            client.disconnect()
+        except Exception:  # noqa: BLE001
+            pass
+
+    if not result:
+        return False
+    cfg.tenant_id = result["tenant_id"]
+    cfg.site_id = result["site_id"]
+    cfg.device_id = result["device_id"]
+    _log(cfg, f"provisioned: tenant={cfg.tenant_id} site={cfg.site_id} device={cfg.device_id}")
+    return True
+
+
+def _make_bare_client(cfg: Config, client_id: str) -> "mqtt.Client":
+    """A client with the transport (TLS/auth) settings but no telemetry will."""
+    try:
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=True)
+    except (AttributeError, TypeError):  # paho-mqtt 1.x
+        client = mqtt.Client(client_id=client_id, clean_session=True)
+    if cfg.username:
+        client.username_pw_set(cfg.username, cfg.password)
+    if cfg.tls:
+        import ssl
+        client.tls_set(
+            ca_certs=cfg.ca_cert,
+            certfile=cfg.client_cert,
+            keyfile=cfg.client_key,
+            cert_reqs=ssl.CERT_REQUIRED,
+            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+        )
+        if cfg.insecure:
+            client.tls_insecure_set(True)
+    client.reconnect_delay_set(min_delay=1, max_delay=30)
+    return client
+
+
 def run(cfg: Config) -> int:
     state = SimState(soc_pct=cfg.soc_init_pct, _rng=_Rng(cfg.seed))
     connected = {"ok": False}
@@ -583,6 +766,13 @@ def _log(cfg: Config, msg: str, err: bool = False) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     cfg = build_config(argv)
+    if cfg.ref:
+        try:
+            if not provision(cfg):
+                return 3
+        except KeyboardInterrupt:
+            _log(cfg, "stopped while waiting to be claimed")
+            return 3
     return run(cfg)
 
 

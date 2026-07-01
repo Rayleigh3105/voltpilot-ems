@@ -41,6 +41,10 @@ export async function initAuth(): Promise<boolean> {
     onLoad: 'check-sso',
     silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
     pkceMethod: 'S256',
+    // Auth-code response in the query string, NOT the fragment: the portal uses
+    // the URL hash for navigation (#/geraete etc.), so the default fragment
+    // response mode would clobber the current page on every login redirect.
+    responseMode: 'query',
   });
 }
 

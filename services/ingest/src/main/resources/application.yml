@@ -26,6 +26,17 @@ voltpilot:
     password: ${MQTT_PASSWORD:}
   redpanda:
     telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
+  # Zero-touch provisioning resolver (docs/contracts/mqtt-provisioning.schema.json):
+  # answers provision/{ref}/hello of CLAIMED refs with a retained
+  # provision/{ref}/config. Lookup is lazy plain JDBC with the trusted backend
+  # credentials (a hello has no tenant, so the RLS app role cannot serve it).
+  provisioning:
+    enabled: ${VOLTPILOT_PROVISIONING_ENABLED:true}
+    hello-topic-filter: ${MQTT_PROVISION_TOPIC_FILTER:provision/+/hello}
+    db:
+      jdbc-url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
+      username: ${POSTGRES_USER:voltpilot}
+      password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
 
 management:
   endpoints:

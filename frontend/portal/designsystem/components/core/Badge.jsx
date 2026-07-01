@@ -1,11 +1,14 @@
 import React from 'react';
 
 /**
- * VoltPilot Badge / Pill — tinted or gradient label.
+ * VoltPilot Badge / Pill — tinted or gradient label, plus the status variants
+ * ok / warn / off (green / amber / muted) used for device and user states.
+ * `dot` renders a small status dot before the label.
  */
 export function Badge({
   children,
-  variant = 'tint', // tint | gradient | solid
+  variant = 'tint', // tint | gradient | solid | ok | warn | off
+  dot = false,
   style = {},
   ...props
 }) {
@@ -21,6 +24,18 @@ export function Badge({
     solid: {
       background: 'var(--vp-primary-deep)',
       color: '#fff',
+    },
+    ok: {
+      background: 'var(--vp-mint-start)',
+      color: '#2e7d32',
+    },
+    warn: {
+      background: '#FFF3E0',
+      color: 'var(--vp-solar-end)',
+    },
+    off: {
+      background: 'var(--vp-bg-light)',
+      color: 'var(--vp-text-gray)',
     },
   };
 
@@ -41,6 +56,17 @@ export function Badge({
       }}
       {...props}
     >
+      {dot && (
+        <span
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 'var(--vp-radius-full)',
+            background: 'currentColor',
+            flexShrink: 0,
+          }}
+        />
+      )}
       {children}
     </span>
   );

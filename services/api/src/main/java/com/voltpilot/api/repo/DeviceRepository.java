@@ -17,8 +17,12 @@ public class DeviceRepository {
     }
 
     public List<DeviceDto> findAll() {
+        // last_seen = newest telemetry sample per device (RLS-scoped like the
+        // device rows themselves); null until the first sample arrives.
         return jdbc.query(
-                "SELECT id, site_id, external_ref, kind, status FROM device ORDER BY created_at",
+                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.status, "
+                        + "(SELECT max(t.time) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
+                        + "FROM device d ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
 
@@ -32,17 +36,19 @@ public class DeviceRepository {
         return jdbc.queryForObject(
                 "INSERT INTO device (tenant_id, site_id, external_ref, kind, status) "
                         + "VALUES (?, ?, ?, ?, 'claimed') "
-                        + "RETURNING id, site_id, external_ref, kind, status",
+                        + "RETURNING id, site_id, external_ref, kind, status, NULL::timestamptz AS last_seen",
                 DeviceRepository::mapDevice,
                 tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind);
     }
 
     private static DeviceDto mapDevice(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+        java.sql.Timestamp lastSeen = rs.getTimestamp("last_seen");
         return new DeviceDto(
                 rs.getObject("id", UUID.class),
                 rs.getObject("site_id", UUID.class),
                 rs.getString("external_ref"),
                 rs.getString("kind"),
-                rs.getString("status"));
+                rs.getString("status"),
+                lastSeen == null ? null : lastSeen.toInstant());
     }
 }

@@ -14,12 +14,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
+import struct
+import threading
 import uuid
 
 import voltpilot_edge_sim as sim
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCHEMA_PATH = os.path.join(REPO_ROOT, "docs", "contracts", "mqtt-telemetry.schema.json")
+PROVISIONING_SCHEMA_PATH = os.path.join(REPO_ROOT, "docs", "contracts", "mqtt-provisioning.schema.json")
 
 RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
 
@@ -177,6 +181,272 @@ def test_time_scale_default_env_only():
     cfg = sim.build_config([])
     assert cfg.time_scale == 1.0
     assert cfg.tenant_id == sim.DEFAULT_TENANT_ID
+
+
+# --- Zero-touch provisioning handshake ---------------------------------------
+#
+# The wire tests run the REAL paho client against an in-process MQTT 3.1.1
+# broker stub (no Docker, no external broker): CONNECT/CONNACK, SUBSCRIBE/
+# SUBACK (with retained delivery), PUBLISH qos0/1 (+PUBACK), PINGREQ/PINGRESP.
+
+
+def _encode_len(n: int) -> bytes:
+    out = bytearray()
+    while True:
+        b = n % 128
+        n //= 128
+        out.append(b | (0x80 if n else 0))
+        if not n:
+            return bytes(out)
+
+
+def _recv_exact(conn: socket.socket, n: int) -> bytes | None:
+    buf = b""
+    while len(buf) < n:
+        chunk = conn.recv(n - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return buf
+
+
+class BrokerStub:
+    """Minimal in-process MQTT 3.1.1 broker for the provisioning handshake.
+
+    `respond_with_config(ref) -> dict | None` plays the cloud resolver: when a
+    hello arrives on provision/{ref}/hello and the callable returns a config
+    dict, it is stored retained and delivered to subscribers of
+    provision/{ref}/config - exactly the contract's claimed-ref behavior.
+    `retained` pre-seeds retained messages (the re-provision-after-restart case).
+    """
+
+    def __init__(self, respond_with_config=None, retained: dict | None = None):
+        self.hellos: list[tuple[str, dict]] = []
+        self._respond = respond_with_config
+        self._retained: dict[str, bytes] = dict(retained or {})
+        self._subs: list[tuple[socket.socket, str]] = []
+        self._lock = threading.Lock()
+        self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._server.bind(("127.0.0.1", 0))
+        self._server.listen(5)
+        self.port = self._server.getsockname()[1]
+        self._closing = False
+        threading.Thread(target=self._accept_loop, daemon=True).start()
+
+    def close(self):
+        self._closing = True
+        try:
+            self._server.close()
+        except OSError:
+            pass
+
+    # -- wire handling --------------------------------------------------------
+
+    def _accept_loop(self):
+        while not self._closing:
+            try:
+                conn, _ = self._server.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+
+    def _serve(self, conn: socket.socket):
+        try:
+            while True:
+                packet = self._read_packet(conn)
+                if packet is None:
+                    return
+                ptype, body = packet
+                kind = ptype >> 4
+                if kind == 1:  # CONNECT
+                    conn.sendall(b"\x20\x02\x00\x00")  # CONNACK, rc=0
+                elif kind == 8:  # SUBSCRIBE
+                    pid = body[0:2]
+                    (tlen,) = struct.unpack("!H", body[2:4])
+                    topic = body[4:4 + tlen].decode()
+                    with self._lock:
+                        self._subs.append((conn, topic))
+                        retained = [(t, p) for t, p in self._retained.items() if t == topic]
+                    conn.sendall(b"\x90\x03" + pid + b"\x01")  # SUBACK, granted qos1
+                    for t, p in retained:
+                        self._send_publish(conn, t, p, retain=True)
+                elif kind == 3:  # PUBLISH
+                    qos = (ptype >> 1) & 0x03
+                    (tlen,) = struct.unpack("!H", body[0:2])
+                    topic = body[2:2 + tlen].decode()
+                    rest = body[2 + tlen:]
+                    if qos:
+                        pid, rest = rest[0:2], rest[2:]
+                        conn.sendall(b"\x40\x02" + pid)  # PUBACK
+                    self._on_publish(topic, rest)
+                elif kind == 12:  # PINGREQ
+                    conn.sendall(b"\xd0\x00")
+                elif kind == 14:  # DISCONNECT
+                    return
+        except OSError:
+            return
+        finally:
+            with self._lock:
+                self._subs = [(c, t) for c, t in self._subs if c is not conn]
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+    @staticmethod
+    def _read_packet(conn: socket.socket):
+        first = _recv_exact(conn, 1)
+        if first is None:
+            return None
+        mult, length = 1, 0
+        while True:
+            b = _recv_exact(conn, 1)
+            if b is None:
+                return None
+            length += (b[0] & 0x7F) * mult
+            if not b[0] & 0x80:
+                break
+            mult *= 128
+        body = _recv_exact(conn, length) if length else b""
+        if length and body is None:
+            return None
+        return first[0], body
+
+    @staticmethod
+    def _send_publish(conn: socket.socket, topic: str, payload: bytes, retain=False):
+        t = topic.encode()
+        body = struct.pack("!H", len(t)) + t + payload  # qos0 delivery, no pid
+        conn.sendall(bytes([0x30 | (0x01 if retain else 0)]) + _encode_len(len(body)) + body)
+
+    def _on_publish(self, topic: str, payload: bytes):
+        m = re.match(r"^provision/([^/]+)/hello$", topic)
+        if m:
+            self.hellos.append((topic, json.loads(payload)))
+            if self._respond:
+                config = self._respond(m.group(1))
+                if config is not None:
+                    self.publish_retained(f"provision/{m.group(1)}/config",
+                                          json.dumps(config).encode())
+
+    def publish_retained(self, topic: str, payload: bytes):
+        with self._lock:
+            self._retained[topic] = payload
+            targets = [c for c, t in self._subs if t == topic]
+        for conn in targets:
+            try:
+                self._send_publish(conn, topic, payload)
+            except OSError:
+                pass
+
+
+_T = "10000000-0000-0000-0000-000000000001"
+_S = "10000000-0000-0000-0000-000000000042"
+_D = "10000000-0000-0000-0000-000000000077"
+
+
+def _config_for(ref: str) -> dict:
+    return {"schema_version": "1.0", "ref": ref,
+            "tenant_id": _T, "site_id": _S, "device_id": _D}
+
+
+def test_provision_claimed_ref_adopts_identity():
+    broker = BrokerStub(respond_with_config=_config_for)
+    try:
+        cfg = _cfg(ref="edge-77", host="127.0.0.1", port=broker.port,
+                   provision_retry=0.3, provision_timeout=15.0)
+        assert sim.provision(cfg) is True
+        assert cfg.tenant_id == _T
+        assert cfg.site_id == _S
+        assert cfg.device_id == _D
+        # ...and the telemetry topic now carries the provisioned identity.
+        assert sim.topic(cfg, "telemetry") == f"ems/{_T}/{_S}/{_D}/telemetry"
+        # The hello that went over the wire is contract-shaped.
+        topic, hello = broker.hellos[0]
+        assert topic == "provision/edge-77/hello"
+        assert hello["schema_version"] == "1.0"
+        assert hello["ref"] == "edge-77"
+        assert RFC3339.match(hello["ts"])
+    finally:
+        broker.close()
+
+
+def test_provision_unclaimed_ref_retries_hello_then_times_out():
+    broker = BrokerStub()  # never answers: the ref is not claimed
+    try:
+        cfg = _cfg(ref="edge-unclaimed", host="127.0.0.1", port=broker.port,
+                   provision_retry=0.25, provision_timeout=1.5)
+        assert sim.provision(cfg) is False
+        # The device kept retrying (>= 2 hellos in 1.5s at 0.25s cadence).
+        assert len(broker.hellos) >= 2
+    finally:
+        broker.close()
+
+
+def test_provision_retained_config_reprovisions_without_hello_answer():
+    # Re-provision after restart: the broker already holds the RETAINED config,
+    # so the identity arrives on subscribe - no resolver round-trip needed.
+    broker = BrokerStub(retained={
+        "provision/edge-restart/config": json.dumps(_config_for("edge-restart")).encode(),
+    })
+    try:
+        cfg = _cfg(ref="edge-restart", host="127.0.0.1", port=broker.port,
+                   provision_retry=5.0, provision_timeout=15.0)
+        assert sim.provision(cfg) is True
+        assert cfg.device_id == _D
+    finally:
+        broker.close()
+
+
+def test_provision_ignores_config_with_foreign_ref():
+    # A config whose payload ref does not match ours MUST be ignored.
+    broker = BrokerStub(respond_with_config=lambda ref: _config_for("someone-else"))
+    try:
+        cfg = _cfg(ref="edge-strict", host="127.0.0.1", port=broker.port,
+                   provision_retry=0.25, provision_timeout=1.5)
+        assert sim.provision(cfg) is False
+    finally:
+        broker.close()
+
+
+def test_parse_provision_config_validation():
+    ok = sim.parse_provision_config("r1", json.dumps(_config_for("r1")))
+    assert ok == {"tenant_id": _T, "site_id": _S, "device_id": _D}
+    assert sim.parse_provision_config("r1", "not json") is None
+    assert sim.parse_provision_config("r1", json.dumps({"schema_version": "2.0"})) is None
+    assert sim.parse_provision_config("r1", json.dumps(_config_for("r2"))) is None
+    bad = _config_for("r1")
+    bad["device_id"] = "not-a-uuid"
+    assert sim.parse_provision_config("r1", json.dumps(bad)) is None
+
+
+def test_hello_payload_matches_provisioning_contract():
+    payload = sim.build_hello_payload("edge-77", sim.rfc3339_now())
+    assert set(payload) == {"schema_version", "ref", "ts", "sw_version"}
+    assert payload["schema_version"] == "1.0"
+    assert sim.REF_PATTERN.match(payload["ref"])
+    assert RFC3339.match(payload["ts"])
+    try:
+        import jsonschema  # type: ignore
+    except ImportError:
+        return
+    with open(PROVISIONING_SCHEMA_PATH, "r", encoding="utf-8") as fh:
+        schema = json.load(fh)
+    jsonschema.validate(payload, schema)  # matches oneOf -> $defs/hello
+    jsonschema.validate(_config_for("edge-77"), schema)  # and $defs/config
+
+
+def test_ref_mode_config_skips_uuid_validation():
+    cfg = sim.build_config(["--host", "broker.local", "--ref", "edge-9"])
+    assert cfg.ref == "edge-9"
+    sim.validate_config(cfg)  # no UUIDs required in ref mode
+
+    try:
+        sim.validate_config(_cfg(ref="bad/ref"))
+    except SystemExit:
+        pass
+    else:
+        raise AssertionError("expected SystemExit for a ref with '/'")
 
 
 if __name__ == "__main__":

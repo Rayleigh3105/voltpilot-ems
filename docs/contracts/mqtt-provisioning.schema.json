@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/mqtt-provisioning.schema.json",
+  "title": "Voltpilot MQTT Zero-Touch Provisioning Handshake",
+  "description": "Zero-touch device onboarding. A factory-fresh edge device knows ONLY its edge reference (ref) and the broker host. It publishes a `hello` on provision/{ref}/hello and subscribes to provision/{ref}/config. Once the ref is claimed in the portal, the cloud publishes the device's identity RETAINED on the config topic; the device adopts it and switches to the normal frozen telemetry topics (mqtt-telemetry.schema.json). This file is a BINDING contract like the other files in this directory; it is ADDITIVE - the frozen telemetry/schedule contracts are unchanged.",
+  "x-topics": {
+    "hello": "provision/{ref}/hello  (Device -> Cloud, QoS1, not retained; re-published on a retry interval until config arrives)",
+    "config": "provision/{ref}/config  (Cloud -> Device, QoS1, RETAINED; published by the resolver on hello for a claimed ref AND by the portal api at claim time)"
+  },
+  "x-semantics": {
+    "unclaimed-ref": "A hello for a ref no tenant has claimed gets NO answer. The device keeps retrying hello; this is normal pre-onboarding state, not an error.",
+    "claim-later": "A device may boot before it is claimed. It waits subscribed to provision/{ref}/config; the portal api publishes the retained config the moment the claim succeeds, so the config arrives without another hello.",
+    "re-provision": "The config is retained, so a device that restarts (or reconnects) receives its identity again immediately on subscribe - no cloud round-trip needed.",
+    "identity": "The ref in the config payload MUST equal the {ref} topic segment; devices MUST ignore a config whose ref does not match their own."
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/hello" },
+    { "$ref": "#/$defs/config" }
+  ],
+  "$defs": {
+    "ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      "description": "The device's edge reference (device.external_ref): what the customer types when claiming. MQTT-topic-safe by construction (no '/', '+', '#')."
+    },
+    "hello": {
+      "type": "object",
+      "title": "provision/{ref}/hello payload",
+      "required": ["schema_version", "ref"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "ref": { "$ref": "#/$defs/ref" },
+        "ts": { "type": "string", "format": "date-time", "description": "Publish timestamp (RFC 3339, UTC)." },
+        "sw_version": { "type": "string", "description": "Device software identifier, for support/diagnostics." }
+      }
+    },
+    "config": {
+      "type": "object",
+      "title": "provision/{ref}/config payload (retained)",
+      "required": ["schema_version", "ref", "tenant_id", "site_id", "device_id"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "ref": { "$ref": "#/$defs/ref" },
+        "tenant_id": { "type": "string", "format": "uuid" },
+        "site_id": { "type": "string", "format": "uuid" },
+        "device_id": { "type": "string", "format": "uuid" }
+      }
+    }
+  }
+}

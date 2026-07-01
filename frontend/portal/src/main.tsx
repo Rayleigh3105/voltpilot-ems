@@ -8,6 +8,8 @@ import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
 import '../designsystem/tokens/spacing.css';
 import '../designsystem/tokens/effects.css';
+// Shell primitives (NavItem / Drawer / KpiCard) styles.
+import '../designsystem/components/shell/shell.css';
 import './index.css';
 
 import { initAuth, keycloak } from './auth';

@@ -213,6 +213,65 @@ class AdminApiTest {
         assertThat(customerSites.getBody()).extracting(s -> s.get("name")).containsExactly("Rhein Werk Köln");
     }
 
+    // ---- (b3) the tenant switcher: admin reads customer pages per tenant -----
+
+    /**
+     * The unified-portal tenant switcher: a Portal-Admin selects a tenant and the
+     * CUSTOMER endpoints (sites/devices/telemetry/...) render that tenant's data,
+     * scoped by the same RLS the customer gets - via the {@code X-Tenant-Id}
+     * header the {@link com.voltpilot.api.tenant.TenantFilter} honors for
+     * platform-admin tokens only.
+     */
+    @Test
+    void adminReadsCustomerEndpointsForSelectedTenantViaHeader() {
+        String admin = token("admin", "admin");
+
+        // Tenant A selected: the admin sees exactly what `demo` sees.
+        ResponseEntity<List<Map<String, Object>>> tenantA = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
+                new ParameterizedTypeReference<>() {});
+        assertThat(tenantA.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(tenantA.getBody()).extracting(s -> s.get("name")).contains("Demo Site Berlin");
+
+        // Switch to tenant B: now exactly what `demo2` sees - never both at once.
+        ResponseEntity<List<Map<String, Object>>> tenantB = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(admin), "10000000-0000-0000-0000-000000000001")),
+                new ParameterizedTypeReference<>() {});
+        assertThat(tenantB.getBody()).extracting(s -> s.get("name")).contains("Nordwind Hamburg");
+        assertThat(tenantB.getBody()).extracting(s -> s.get("name")).doesNotContain("Demo Site Berlin");
+
+        // Devices follow the same context (RLS on the same app datasource).
+        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
+                new ParameterizedTypeReference<>() {});
+        assertThat(devices.getBody()).extracting(d -> d.get("externalRef")).contains("demo-inverter-01");
+
+        // No tenant selected ("Alle Mandanten"): default-deny, zero rows.
+        ResponseEntity<List<Map<String, Object>>> none = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(none.getBody()).isEmpty();
+    }
+
+    /** A customer token can NOT use the header to widen its tenant scope. */
+    @Test
+    void customerCannotSwitchTenantsViaHeader() {
+        String operator = token("demo", "demo"); // tenant A
+
+        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(operator), "10000000-0000-0000-0000-000000000001")),
+                new ParameterizedTypeReference<>() {});
+        assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // Still tenant A's data - the header is ignored for non-admin tokens.
+        assertThat(sites.getBody()).extracting(s -> s.get("name")).contains("Demo Site Berlin");
+        assertThat(sites.getBody()).extracting(s -> s.get("name")).doesNotContain("Nordwind Hamburg");
+    }
+
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
 
     @Test
@@ -292,6 +351,12 @@ class AdminApiTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
+        return h;
+    }
+
+    /** Add the tenant-switcher header (honored only for platform-admin tokens). */
+    private static HttpHeaders withTenant(HttpHeaders h, String tenantId) {
+        h.set("X-Tenant-Id", tenantId);
         return h;
     }
 

@@ -88,6 +88,28 @@ Open http://localhost:5173, click **Anmelden mit Keycloak**, and log in with a s
 | `demo2` | `demo2` | B | Nordwind Hamburg + its telemetry |
 
 After login the portal shows that tenant's sites, a live telemetry chart (PV / load / net power / battery SoC), and its devices - never the other tenant's data (enforced by Postgres RLS).
+Log in as `admin`/`admin` for the same portal with the additive **Plattform** nav group (Mandanten/Benutzer) and the tenant switcher in the top bar.
+
+#### Access the portal from another machine on the LAN
+
+All SPA URLs are env-driven (`VITE_*`); the dev realm already allows the LAN origin `http://192.168.2.77:5173` (adjust `infra/local/keycloak/voltpilot-realm.json` for a different host IP - Keycloak only imports it on a **fresh** volume, so `docker compose down -v && up -d` after changing it). On the machine hosting the stack:
+
+```bash
+# 1. Keycloak must issue tokens with an issuer the OTHER machine can resolve:
+#    set KC_HOSTNAME + the api's expected issuer to the host's LAN IP in .env:
+#      KC_HOSTNAME=http://192.168.2.77:8081
+#      OIDC_ISSUER_URI=http://192.168.2.77:8081/realms/voltpilot
+#      VOLTPILOT_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://192.168.2.77:5173
+#    then: docker compose up -d (recreates keycloak + api with the new env)
+
+# 2. Run Vite bound to all interfaces, pointing the SPA at the LAN URLs:
+(cd frontend/portal && \
+  VITE_KEYCLOAK_URL=http://192.168.2.77:8081 \
+  VITE_API_BASE=http://192.168.2.77:8090 \
+  npm run dev -- --host 0.0.0.0)
+```
+
+Then open `http://192.168.2.77:5173` from the other machine and log in as usual.
 
 ### 4. Verify it's up (backbone + auth + RLS)
 

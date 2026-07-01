@@ -361,6 +361,14 @@ components:
         Keycloak-issued OIDC access token (realm `voltpilot`). Must carry a
         `tenant_id` claim; the API sets it as the Postgres `app.tenant_id`
         session variable to drive Row-Level-Security.
+
+        Tenant switcher (Portal-Admins only): a token with the `platform-admin`
+        realm role (which carries NO tenant_id) may select a tenant per request
+        via the `X-Tenant-Id` header (UUID). The customer endpoints then serve
+        that tenant's data through the same RLS scoping the customer gets. The
+        header is IGNORED for every non-admin token, so it can never widen a
+        customer's access; an admin without the header sees zero rows
+        (default-deny).
   responses:
     Unauthorized:
       description: Missing, expired or invalid Bearer token.
@@ -419,6 +427,14 @@ components:
         externalRef: { type: string }
         kind: { type: string, example: inverter }
         status: { type: string, example: claimed }
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Newest telemetry timestamp for the device; null until the first data
+            arrives. The portal derives the onboarding state from it ("wartet auf
+            erste Daten" -> online).
     TelemetryPoint:
       type: object
       properties:

@@ -136,6 +136,42 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * NEGATIVE security test for the admin tenant switcher: a CUSTOMER token
+     * sending {@code X-Tenant-Id} with ANOTHER tenant's id must be served its
+     * OWN tenant's data only - the header is honored exclusively for
+     * platform-admin tokens ({@code TenantFilter}), so it can never widen a
+     * customer's RLS scope.
+     */
+    @Test
+    void customerXTenantIdHeaderIsIgnoredAndCannotWidenScope() {
+        HttpHeaders spoofed = bearer(token("demo", "demo")); // tenant A
+        spoofed.set("X-Tenant-Id", "10000000-0000-0000-0000-000000000001"); // tenant B
+
+        // The site list is still exactly tenant A's own data.
+        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(spoofed),
+                new ParameterizedTypeReference<>() {});
+        assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(sites.getBody()).extracting(s -> s.get("name")).contains("Demo Site Berlin");
+        assertThat(sites.getBody()).extracting(s -> s.get("name")).doesNotContain("Nordwind Hamburg");
+        assertThat(sites.getBody()).extracting(s -> s.get("id")).doesNotContain(HAMBURG_SITE);
+
+        // And tenant B's site stays invisible (404, not 403) despite the header.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + HAMBURG_SITE + "/telemetry"), HttpMethod.GET,
+                new HttpEntity<>(spoofed), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Same for the device list: only tenant A's devices, none of tenant B's.
+        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(spoofed),
+                new ParameterizedTypeReference<>() {});
+        assertThat(devices.getBody()).extracting(d -> d.get("externalRef"))
+                .contains("demo-inverter-01")
+                .doesNotContain("nordwind-inverter-01");
+    }
+
     // ---- device claiming ----------------------------------------------------
 
     @Test
@@ -148,6 +184,22 @@ class PortalApiTest {
                 new ParameterizedTypeReference<>() {});
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(ok.getBody()).containsEntry("status", "claimed");
+        // A fresh claim has no telemetry yet -> "wartet auf erste Daten" state.
+        assertThat(ok.getBody().get("lastSeenAt")).isNull();
+
+        // The device list carries lastSeenAt: null for the fresh device, the
+        // newest telemetry timestamp for the seeded one (which has demo data).
+        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(devices.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> fresh = devices.getBody().stream()
+                .filter(d -> "edge-fresh-01".equals(d.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(fresh.get("lastSeenAt")).isNull();
+        Map<String, Object> seeded = devices.getBody().stream()
+                .filter(d -> "demo-inverter-01".equals(d.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(seeded.get("lastSeenAt")).isNotNull();
 
         // Tenant B tries to claim tenant A's already-claimed device -> 409.
         ResponseEntity<String> conflict = rest.exchange(

@@ -1,28 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
-import { Badge } from '../designsystem/components/core/Badge';
-import { Stat } from '../designsystem/components/core/Stat';
-import { IconTile } from '../designsystem/components/core/IconTile';
-import { Input } from '../designsystem/components/forms/Input';
 import logoUrl from '../designsystem/assets/voltpilot-logo.png';
-import { currentUser, isPlatformAdmin, login, logout } from './auth';
-import {
-  api,
-  ApiError,
-  type CreateSiteInput,
-  type Device,
-  type PriceSeries,
-  type SchedulePlan,
-  type Site,
-  type TelemetryPoint,
-  type WeatherForecast,
-} from './api';
-import { TelemetryChart } from './TelemetryChart';
-import { PriceChart } from './PriceChart';
-import { ScheduleChart } from './ScheduleChart';
-import { WeatherChart } from './WeatherChart';
-import AdminApp from './admin/AdminApp';
+import { isPlatformAdmin, login } from './auth';
+import { api, ApiError, setTenantOverride, type Device, type Site } from './api';
+import { adminApi, type Tenant } from './admin/adminApi';
+import { AppShell } from './shell/AppShell';
+import { hashForPage, pageFromHash, PLATFORM_PAGES, type PageId } from './nav';
+import { UebersichtPage } from './pages/UebersichtPage';
+import { StandortePage } from './pages/StandortePage';
+import { GeraetePage } from './pages/GeraetePage';
+import { FahrplanPage, MarktpreisePage, WetterPage } from './pages/DataPages';
+import { MandantenPage } from './pages/admin/MandantenPage';
+import { BenutzerPage } from './pages/admin/BenutzerPage';
 
 export default function App({
   initialAuth,
@@ -32,11 +22,11 @@ export default function App({
   authError?: boolean;
 }) {
   if (!initialAuth) return <LoginScreen authError={authError} />;
-  // Role-aware entry: Portal-Admins (platform operators) get the admin console;
-  // Portal-Users (customers) get the tenant-scoped customer portal. The backend
-  // enforces this split too - the UI just picks the right surface.
-  if (isPlatformAdmin()) return <AdminApp />;
-  return <Portal />;
+  // ONE app for both roles (unified shell): a Portal-Admin gets the same
+  // customer pages via the tenant switcher plus the additive "Plattform" nav
+  // group. The backend enforces the role split (403 / header-gated tenant
+  // override) - the UI only adapts the surface.
+  return <UnifiedPortal />;
 }
 
 function LoginScreen({ authError }: { authError: boolean }) {
@@ -59,669 +49,194 @@ function LoginScreen({ authError }: { authError: boolean }) {
   );
 }
 
-function Portal() {
-  const user = useMemo(() => currentUser(), []);
+function UnifiedPortal() {
+  const isAdmin = useMemo(() => isPlatformAdmin(), []);
+  const [page, setPage] = useState<PageId>(() => {
+    const p = pageFromHash();
+    return !isAdmin && PLATFORM_PAGES.some((d) => d.id === p) ? 'uebersicht' : p;
+  });
+
+  // Admin tenant context (the switcher). Customers never have an override -
+  // their tenant comes from the JWT and the backend ignores the header anyway.
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+
   const [sites, setSites] = useState<Site[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function reload(selectId?: string) {
-    try {
-      const [s, d] = await Promise.all([api.listSites(), api.listDevices()]);
-      setSites(s);
-      setDevices(d);
-      setSelectedSite((cur) => selectId ?? cur ?? s[0]?.id ?? null);
-    } catch (e) {
-      setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
-    }
-  }
+  // Keep the module-level API header in sync BEFORE any tenant-scoped fetch.
+  setTenantOverride(isAdmin ? tenantId : null);
+
+  const navigate = useCallback(
+    (p: PageId) => {
+      if (!isAdmin && PLATFORM_PAGES.some((d) => d.id === p)) p = 'uebersicht';
+      window.location.hash = hashForPage(p);
+      setPage(p);
+    },
+    [isAdmin],
+  );
+
+  // Hash routing: back/forward + direct edits.
+  useEffect(() => {
+    const onHash = () => {
+      const p = pageFromHash();
+      setPage(!isAdmin && PLATFORM_PAGES.some((d) => d.id === p) ? 'uebersicht' : p);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [isAdmin]);
+
+  const reloadTenants = useCallback(
+    (selectId?: string) => {
+      if (!isAdmin) return;
+      adminApi
+        .listTenants()
+        .then((t) => {
+          setTenants(t);
+          if (selectId) setTenantId(selectId);
+        })
+        .catch((e) =>
+          setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler'),
+        );
+    },
+    [isAdmin],
+  );
+
+  useEffect(() => {
+    reloadTenants();
+  }, [reloadTenants]);
+
+  // Tenant-scoped data. For an admin without a selected tenant this yields
+  // empty lists (backend default-deny) - the pages show a pick-a-tenant hint.
+  const tenantReady = !isAdmin || tenantId != null;
+  const reload = useCallback(
+    async (selectSiteId?: string) => {
+      if (!tenantReady) {
+        setSites([]);
+        setDevices([]);
+        setSelectedSite(null);
+        return;
+      }
+      try {
+        const [s, d] = await Promise.all([api.listSites(), api.listDevices()]);
+        setSites(s);
+        setDevices(d);
+        setSelectedSite((cur) =>
+          selectSiteId ?? (cur && s.some((x) => x.id === cur) ? cur : s[0]?.id ?? null),
+        );
+        setError(null);
+      } catch (e) {
+        setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+      }
+    },
+    [tenantReady],
+  );
 
   useEffect(() => {
     void reload();
-  }, []);
+  }, [reload, tenantId]);
 
-  const deviceCount = (siteId: string) => devices.filter((d) => d.siteId === siteId).length;
+  const changeTenant = (id: string | null) => {
+    setTenantId(id);
+    setSelectedSite(null);
+  };
+
+  const jumpToTenant = (id: string, target: PageId) => {
+    changeTenant(id);
+    navigate(target);
+  };
+
+  const customerProps = {
+    sites,
+    devices,
+    selectedSite,
+    onSelectSite: setSelectedSite,
+    onReload: (selectSiteId?: string) => void reload(selectSiteId),
+  };
+
+  const needsTenantPick = isAdmin && tenantId == null && !isPlatformPage(page);
 
   return (
-    <div className="vp-shell">
-      <nav className="vp-nav">
-        <div className="vp-container vp-nav-inner">
-          <div className="vp-brand">
-            <img src={logoUrl} alt="VoltPilot EMS" />
-          </div>
-          <div className="vp-nav-user">
-            <div className="vp-nav-user-meta">
-              <div className="vp-nav-user-name">{user.name}</div>
-              {user.email && <div className="vp-nav-user-email">{user.email}</div>}
-            </div>
-            <Button variant="outline" size="sm" onClick={logout}>
-              Abmelden
-            </Button>
-          </div>
-        </div>
-      </nav>
+    <AppShell
+      page={page}
+      onNavigate={navigate}
+      isAdmin={isAdmin}
+      counts={{
+        sites: tenantReady ? sites.length : null,
+        devices: tenantReady ? devices.length : null,
+      }}
+      tenants={tenants}
+      tenantOverride={tenantId}
+      onTenantChange={changeTenant}
+    >
+      {error && <div className="vp-alert vp-alert-err" style={{ marginBottom: 'var(--vp-space-4)' }}>{error}</div>}
 
-      <main className="vp-main">
-        <div className="vp-container">
-          <div className="vp-page-head">
-            <h2>Übersicht</h2>
-            <p>
-              Standorte, Geräte und Telemetrie Ihres Mandanten.{' '}
-              {user.tenantId && (
-                <Badge variant="tint" title="Aus dem OIDC-Token (tenant_id)">
-                  Mandant {user.tenantId.slice(0, 8)}
-                </Badge>
-              )}
-            </p>
-          </div>
-
-          {error && <div className="vp-alert vp-alert-err">{error}</div>}
-
-          <SitesSection
-            sites={sites}
-            selectedSite={selectedSite}
-            onSelect={setSelectedSite}
-            deviceCount={deviceCount}
-            onCreated={(site) => reload(site.id)}
-          />
-
-          {selectedSite && (
-            <TelemetrySection
-              site={sites.find((s) => s.id === selectedSite) ?? null}
-            />
-          )}
-
-          {selectedSite && (
-            <ScheduleSection site={sites.find((s) => s.id === selectedSite) ?? null} />
-          )}
-
-          {selectedSite && (
-            <MarketSection site={sites.find((s) => s.id === selectedSite) ?? null} />
-          )}
-
-          {selectedSite && (
-            <WeatherSection site={sites.find((s) => s.id === selectedSite) ?? null} />
-          )}
-
-          <DevicesSection devices={devices} sites={sites} onClaimed={reload} />
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function SitesSection({
-  sites,
-  selectedSite,
-  onSelect,
-  deviceCount,
-  onCreated,
-}: {
-  sites: Site[];
-  selectedSite: string | null;
-  onSelect: (id: string) => void;
-  deviceCount: (id: string) => number;
-  onCreated: (site: Site) => void;
-}) {
-  return (
-    <section className="vp-section">
-      <div className="vp-section-title">
-        <IconTile category="home" size={40}>
-          ⌂
-        </IconTile>
-        <h3>Standorte</h3>
-      </div>
-      {sites.length === 0 ? (
-        // Onboarding: no dead-end. A fresh customer gets a clear call to action to
-        // create their first site, which then populates the "Gerät beanspruchen"
-        // dropdown below.
-        <Card padding="lg" radius="lg">
-          <h4 style={{ marginBottom: 4 }}>Willkommen bei VoltPilot</h4>
-          <p className="vp-muted" style={{ marginBottom: 4 }}>
-            Sie haben noch keinen Standort. Legen Sie Ihren ersten Standort an, um
-            anschließend Geräte zu beanspruchen und Telemetrie, Preise und Wetter zu
-            sehen.
-          </p>
-          <CreateSiteForm onCreated={onCreated} submitLabel="Ersten Standort anlegen" />
-        </Card>
+      {needsTenantPick ? (
+        <PickTenantNotice tenants={tenants} onPick={changeTenant} />
       ) : (
         <>
-          <div className="vp-grid vp-grid-sites">
-            {sites.map((s) => (
-              <Card
-                key={s.id}
-                interactive
-                accent="primary"
-                className={`vp-selectable ${selectedSite === s.id ? 'vp-selected' : ''}`}
-                onClick={() => onSelect(s.id)}
-              >
-                <h4 style={{ marginBottom: 8 }}>{s.name}</h4>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <Badge variant="tint">{s.biddingZone}</Badge>
-                  <span className="vp-note">
-                    {deviceCount(s.id)} Gerät{deviceCount(s.id) === 1 ? '' : 'e'}
-                  </span>
-                </div>
-              </Card>
-            ))}
-          </div>
-          <Card padding="lg" radius="lg" style={{ marginTop: 24 }}>
-            <h4 style={{ marginBottom: 12 }}>Weiteren Standort anlegen</h4>
-            <CreateSiteForm onCreated={onCreated} submitLabel="Standort anlegen" />
-          </Card>
+          {page === 'uebersicht' && (
+            <UebersichtPage {...customerProps} onNavigate={navigate} />
+          )}
+          {page === 'standorte' && <StandortePage {...customerProps} />}
+          {page === 'geraete' && (
+            <GeraetePage sites={sites} devices={devices} onReload={() => void reload()} />
+          )}
+          {page === 'marktpreise' && (
+            <MarktpreisePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
+          )}
+          {page === 'wetter' && (
+            <WetterPage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
+          )}
+          {page === 'fahrplan' && (
+            <FahrplanPage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
+          )}
+          {page === 'mandanten' && isAdmin && (
+            <MandantenPage
+              tenants={tenants}
+              onReloadTenants={reloadTenants}
+              onJumpToTenant={jumpToTenant}
+            />
+          )}
+          {page === 'benutzer' && isAdmin && (
+            <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
+          )}
         </>
       )}
-    </section>
+    </AppShell>
   );
 }
 
-function CreateSiteForm({
-  onCreated,
-  submitLabel,
+function isPlatformPage(page: PageId): boolean {
+  return PLATFORM_PAGES.some((d) => d.id === page);
+}
+
+/** Admin on a customer page without a tenant context: never a dead-end. */
+function PickTenantNotice({
+  tenants,
+  onPick,
 }: {
-  onCreated: (site: Site) => void;
-  submitLabel: string;
+  tenants: Tenant[];
+  onPick: (tenantId: string) => void;
 }) {
-  const [name, setName] = useState('');
-  const [biddingZone, setBiddingZone] = useState('DE-LU');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  function parseCoord(v: string): number | null | undefined {
-    if (!v.trim()) return undefined;
-    const n = Number(v.replace(',', '.'));
-    return Number.isFinite(n) ? n : NaN;
-  }
-
-  async function submit() {
-    if (!name.trim()) return;
-    const lat = parseCoord(latitude);
-    const lon = parseCoord(longitude);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) {
-      setMsg({ ok: false, text: 'Bitte gültige Koordinaten eingeben (oder leer lassen).' });
-      return;
-    }
-    setBusy(true);
-    setMsg(null);
-    try {
-      const input: CreateSiteInput = {
-        name: name.trim(),
-        biddingZone,
-        latitude: lat ?? null,
-        longitude: lon ?? null,
-      };
-      const site = await api.createSite(input);
-      setMsg({ ok: true, text: `Standort "${site.name}" angelegt.` });
-      setName('');
-      setLatitude('');
-      setLongitude('');
-      onCreated(site);
-    } catch (e) {
-      setMsg({
-        ok: false,
-        text:
-          e instanceof ApiError && e.status === 400
-            ? 'Ungültige Eingabe. Prüfen Sie Name und Koordinaten.'
-            : e instanceof ApiError
-              ? `Fehler: ${e.message}`
-              : 'Anlegen fehlgeschlagen.',
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
-    <div style={{ marginTop: 16 }}>
-      <div className="vp-field-row">
-        <div style={{ flex: '2 1 220px' }}>
-          <Input
-            label="Name *"
-            placeholder="z. B. Werk Nord"
-            value={name}
-            onChange={(e) => setName((e.target as HTMLInputElement).value)}
-          />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="site-zone" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Gebotszone
-          </label>
-          <select
-            id="site-zone"
-            className="vp-select"
-            value={biddingZone}
-            onChange={(e) => setBiddingZone(e.target.value)}
-          >
-            <option value="DE-LU">DE-LU (Deutschland/Luxemburg)</option>
-            <option value="AT">AT (Österreich)</option>
-            <option value="CH">CH (Schweiz)</option>
-          </select>
-        </div>
-        <div style={{ flex: '1 1 120px' }}>
-          <Input
-            label="Breitengrad"
-            placeholder="z. B. 52.52"
-            value={latitude}
-            onChange={(e) => setLatitude((e.target as HTMLInputElement).value)}
-          />
-        </div>
-        <div style={{ flex: '1 1 120px' }}>
-          <Input
-            label="Längengrad"
-            placeholder="z. B. 13.405"
-            value={longitude}
-            onChange={(e) => setLongitude((e.target as HTMLInputElement).value)}
-          />
-        </div>
-        <Button variant="primary" onClick={submit} disabled={busy || !name.trim()}>
-          {busy ? 'Lege an…' : submitLabel}
-        </Button>
-      </div>
-      <p className="vp-note" style={{ marginTop: 8 }}>
-        Koordinaten (WGS84) sind optional, aber nötig, damit die Wettervorhersage für
-        den Standort funktioniert.
-      </p>
-      {msg && <div className={`vp-alert ${msg.ok ? 'vp-alert-ok' : 'vp-alert-err'}`}>{msg.text}</div>}
-    </div>
-  );
-}
-
-function TelemetrySection({ site }: { site: Site | null }) {
-  const [points, setPoints] = useState<TelemetryPoint[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!site) return;
-    let active = true;
-    setLoading(true);
-    setErr(null);
-    api
-      .telemetry(site.id)
-      .then((p) => active && setPoints(p))
-      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [site?.id]);
-
-  const latest = points.length ? points[points.length - 1] : null;
-  const fmt = (v: number | null | undefined, unit: string) =>
-    v == null ? '-' : `${Number(v).toFixed(1)} ${unit}`;
-
-  if (!site) return null;
-
-  return (
-    <section className="vp-section">
-      <div className="vp-section-title">
-        <IconTile category="dynamic" size={40}>
-          ∿
-        </IconTile>
-        <h3>Telemetrie - {site.name}</h3>
-      </div>
-      <Card padding="lg" radius="lg">
-        {loading && <p className="vp-muted">Lade Telemetrie…</p>}
-        {err && <div className="vp-alert vp-alert-err">Telemetrie-Fehler: {err}</div>}
-        {!loading && !err && points.length === 0 && (
-          <p className="vp-muted">Keine Telemetriedaten für die letzten 24 Stunden.</p>
-        )}
-        {!loading && !err && points.length > 0 && (
-          <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
-              <Stat value={fmt(latest?.pvPowerKw, 'kW')} label="PV aktuell" />
-              <Stat value={fmt(latest?.loadKw, 'kW')} label="Last aktuell" />
-              <Stat value={fmt(latest?.powerKw, 'kW')} label="Netto-Leistung" />
-              <Stat value={fmt(latest?.socPct, '%')} label="Batterie-SoC" />
-            </div>
-            <TelemetryChart points={points} />
-            <p className="vp-note" style={{ marginTop: 12 }}>
-              Telemetrie über den Live-Ingest-Pfad: MQTT → Ingest → Redpanda → TimescaleDB.
-            </p>
-          </>
-        )}
-      </Card>
-    </section>
-  );
-}
-
-function ScheduleSection({ site }: { site: Site | null }) {
-  const [plan, setPlan] = useState<SchedulePlan | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!site) return;
-    let active = true;
-    setLoading(true);
-    setErr(null);
-    api
-      .schedule(site.id)
-      .then((p) => active && setPlan(p))
-      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [site?.id]);
-
-  if (!site) return null;
-
-  const slots = plan?.slots ?? [];
-  // Headline: today's portion of the projected savings (the plan spans into
-  // tomorrow; "Heute geplant" should only promise today).
-  const today = new Date().getDate();
-  const savingsToday = slots
-    .filter((s) => new Date(s.start).getDate() === today)
-    .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
-  const savingsTotal = plan?.savingsEur ?? 0;
-  const chargeKwh =
-    slots.reduce((sum, s) => sum + Math.max(s.batteryKw ?? 0, 0), 0) / 4;
-  const dischargeKwh =
-    slots.reduce((sum, s) => sum + Math.max(-(s.batteryKw ?? 0), 0), 0) / 4;
-  const eur = (v: number) =>
-    v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const generatedAt = plan?.generatedAt
-    ? new Date(plan.generatedAt).toLocaleString([], {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : null;
-
-  return (
-    <section className="vp-section">
-      <div className="vp-section-title">
-        <IconTile category="battery" size={40}>
-          ⛁
-        </IconTile>
-        <h3>Fahrplan - {site.name}</h3>
-      </div>
-      <Card padding="lg" radius="lg">
-        {loading && <p className="vp-muted">Lade Fahrplan…</p>}
-        {err && <div className="vp-alert vp-alert-err">Fahrplan-Fehler: {err}</div>}
-        {!loading && !err && slots.length === 0 && (
-          <p className="vp-muted">
-            Noch kein Fahrplan. Der Optimierer plant Standorte mit Batteriespeicher
-            alle 15 Minuten neu, sobald Day-Ahead-Preise vorliegen.
-          </p>
-        )}
-        {!loading && !err && slots.length > 0 && (
-          <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
-              <Stat
-                value={`${eur(savingsToday)} €`}
-                label="Heute geplant: gespart ggü. ohne Speicher"
-              />
-              <Stat value={`${eur(savingsTotal)} €`} label="Ersparnis über den Horizont" />
-              <Stat value={`${chargeKwh.toFixed(1)} kWh`} label="Geplant laden" />
-              <Stat value={`${dischargeKwh.toFixed(1)} kWh`} label="Geplant entladen" />
-            </div>
-            <ScheduleChart plan={plan!} />
-            <p className="vp-note" style={{ marginTop: 12 }}>
-              Kostenoptimaler Batterie-Fahrplan (15-Minuten-Slots) aus Day-Ahead-Preisen
-              und Last-/PV-Prognose{generatedAt ? `, erstellt ${generatedAt}` : ''}. Das
-              Gerät begrenzt jeden Sollwert lokal (Guards, §14a).
-            </p>
-          </>
-        )}
-      </Card>
-    </section>
-  );
-}
-
-function MarketSection({ site }: { site: Site | null }) {
-  const [series, setSeries] = useState<PriceSeries | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!site) return;
-    let active = true;
-    setLoading(true);
-    setErr(null);
-    api
-      .prices(site.id)
-      .then((s) => active && setSeries(s))
-      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [site?.id]);
-
-  if (!site) return null;
-
-  const points = series?.points ?? [];
-  const nums = points.map((p) => p.priceEurMwh).filter((v): v is number => v != null);
-  const min = nums.length ? Math.min(...nums) : null;
-  const max = nums.length ? Math.max(...nums) : null;
-  const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
-  const fmt = (v: number | null) => (v == null ? '-' : `${v.toFixed(1)} EUR/MWh`);
-
-  return (
-    <section className="vp-section">
-      <div className="vp-section-title">
-        <IconTile category="solar" size={40}>
-          €
-        </IconTile>
-        <h3>Day-Ahead Börsenpreise - {site.biddingZone}</h3>
-      </div>
-      <Card padding="lg" radius="lg">
-        {loading && <p className="vp-muted">Lade Börsenpreise…</p>}
-        {err && <div className="vp-alert vp-alert-err">Preis-Fehler: {err}</div>}
-        {!loading && !err && points.length === 0 && (
-          <p className="vp-muted">
-            Noch keine Day-Ahead-Preise. Der Collector (energy-charts.info) füllt sie
-            beim nächsten Lauf.
-          </p>
-        )}
-        {!loading && !err && points.length > 0 && (
-          <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
-              <Stat value={fmt(min)} label="Minimum" />
-              <Stat value={fmt(avg)} label="Ø heute/morgen" />
-              <Stat value={fmt(max)} label="Maximum" />
-              <Stat value={`${points.length}`} label={`Slots @ ${series?.resolution ?? '-'}`} />
-            </div>
-            <PriceChart series={series!} />
-            <p className="vp-note" style={{ marginTop: 12 }}>
-              Quelle: energy-charts.info (Fraunhofer ISE) - 15-Minuten-Slots, keyless.
-            </p>
-          </>
-        )}
-      </Card>
-    </section>
-  );
-}
-
-function WeatherSection({ site }: { site: Site | null }) {
-  const [forecast, setForecast] = useState<WeatherForecast | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!site) return;
-    let active = true;
-    setLoading(true);
-    setErr(null);
-    api
-      .weather(site.id)
-      .then((w) => active && setForecast(w))
-      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-  }, [site?.id]);
-
-  if (!site) return null;
-
-  const points = forecast?.points ?? [];
-  const now = points[0] ?? null;
-  const peakGhi = points.reduce<number | null>(
-    (m, p) => (p.ghiWM2 != null && (m == null || p.ghiWM2 > m) ? p.ghiWM2 : m),
-    null,
-  );
-  const fmt = (v: number | null | undefined, unit: string) =>
-    v == null ? '-' : `${Number(v).toFixed(unit === '°C' ? 1 : 0)} ${unit}`;
-
-  return (
-    <section className="vp-section">
-      <div className="vp-section-title">
-        <IconTile category="dynamic" size={40}>
-          ☀
-        </IconTile>
-        <h3>Wettervorhersage - {site.name}</h3>
-      </div>
-      <Card padding="lg" radius="lg">
-        {loading && <p className="vp-muted">Lade Wettervorhersage…</p>}
-        {err && <div className="vp-alert vp-alert-err">Wetter-Fehler: {err}</div>}
-        {!loading && !err && points.length === 0 && (
-          <p className="vp-muted">
-            Noch keine Vorhersage. Der Collector (Open-Meteo) füllt sie beim nächsten
-            Lauf.
-          </p>
-        )}
-        {!loading && !err && points.length > 0 && (
-          <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
-              <Stat value={fmt(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
-              <Stat value={fmt(now?.cloudCoverPct, '%')} label="Bewölkung" />
-              <Stat value={fmt(peakGhi, 'W/m²')} label="Max. Einstrahlung" />
-              <Stat value={`${points.length} h`} label="Horizont" />
-            </div>
-            <WeatherChart points={points} />
-            <p className="vp-note" style={{ marginTop: 12 }}>
-              Quelle: Open-Meteo (EU-gehostet) - stündlich, keyless. Einstrahlung (GHI)
-              speist die PV-Prognose.
-            </p>
-          </>
-        )}
-      </Card>
-    </section>
-  );
-}
-
-function DevicesSection({
-  devices,
-  sites,
-  onClaimed,
-}: {
-  devices: Device[];
-  sites: Site[];
-  onClaimed: () => void;
-}) {
-  const [externalRef, setExternalRef] = useState('');
-  const [siteId, setSiteId] = useState('');
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!siteId && sites[0]) setSiteId(sites[0].id);
-  }, [sites, siteId]);
-
-  const siteName = (id: string) => sites.find((s) => s.id === id)?.name ?? id.slice(0, 8);
-
-  async function claim() {
-    if (!externalRef.trim() || !siteId) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const d = await api.claimDevice(siteId, externalRef.trim());
-      setMsg({ ok: true, text: `Gerät "${d.externalRef}" beansprucht (${d.status}).` });
-      setExternalRef('');
-      onClaimed();
-    } catch (e) {
-      const text =
-        e instanceof ApiError && e.status === 409
-          ? 'Dieses Gerät ist bereits beansprucht (evtl. durch einen anderen Mandanten).'
-          : e instanceof ApiError && e.status === 404
-            ? 'Standort nicht gefunden.'
-            : 'Beanspruchen fehlgeschlagen.';
-      setMsg({ ok: false, text });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="vp-section">
-      <div className="vp-section-title">
-        <IconTile category="battery" size={40}>
-          ⚡
-        </IconTile>
-        <h3>Geräte</h3>
-      </div>
-      <Card padding="lg" radius="lg">
-        {devices.length === 0 ? (
-          <p className="vp-muted">Noch keine Geräte. Beanspruchen Sie unten ein Edge-Gerät.</p>
-        ) : (
-          <table className="vp-table">
-            <thead>
-              <tr>
-                <th>Referenz</th>
-                <th>Typ</th>
-                <th>Standort</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {devices.map((d) => (
-                <tr key={d.id}>
-                  <td className="vp-mono">{d.externalRef}</td>
-                  <td>{d.kind}</td>
-                  <td>{siteName(d.siteId)}</td>
-                  <td>
-                    <Badge variant={d.status === 'claimed' ? 'gradient' : 'tint'}>{d.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <div style={{ marginTop: 24 }}>
-          <h4 style={{ marginBottom: 12 }}>Gerät beanspruchen</h4>
-          <div className="vp-field-row">
-            <div style={{ flex: '1 1 220px' }}>
-              <Input
-                label="Edge-Referenz"
-                placeholder="z. B. edge-inverter-42"
-                value={externalRef}
-                onChange={(e) => setExternalRef((e.target as HTMLInputElement).value)}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <label htmlFor="claim-site" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                Standort
-              </label>
-              <select
-                id="claim-site"
-                className="vp-select"
-                value={siteId}
-                onChange={(e) => setSiteId(e.target.value)}
-              >
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <Button variant="primary" onClick={claim} disabled={busy || !externalRef.trim()}>
-              {busy ? 'Beanspruche…' : 'Beanspruchen'}
+    <Card padding="lg" radius="lg">
+      <div className="vp-empty">
+        <h3>Mandanten-Kontext wählen</h3>
+        <p>
+          Diese Seite zeigt Kundendaten. Wählen Sie oben im Kontext-Umschalter einen
+          Mandanten (oder hier direkt), um dessen Portal-Ansicht zu sehen.
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--vp-space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {tenants.slice(0, 6).map((t) => (
+            <Button key={t.id} variant="outline" size="sm" onClick={() => onPick(t.id)}>
+              {t.name}
             </Button>
-          </div>
-          {msg && (
-            <div className={`vp-alert ${msg.ok ? 'vp-alert-ok' : 'vp-alert-err'}`}>{msg.text}</div>
-          )}
+          ))}
         </div>
-      </Card>
-    </section>
+      </div>
+    </Card>
   );
 }

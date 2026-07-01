@@ -7,8 +7,26 @@ It is deliberately separate from the Node-RED edge in [`edge/`](../../edge/): th
 
 - Speaks the binding telemetry contract verbatim: [`docs/contracts/mqtt-telemetry.schema.json`](../../docs/contracts/mqtt-telemetry.schema.json) (`schema_version` `"1.0"`).
 - Publishes to `ems/{tenant_id}/{site_id}/{device_id}/telemetry` at **QoS1**, plus a health heartbeat on `.../status`.
+- **Zero-touch onboarding**: with just `--host` + `--ref` it performs the provisioning handshake ([`docs/contracts/mqtt-provisioning.schema.json`](../../docs/contracts/mqtt-provisioning.schema.json)) and adopts its identity once the ref is claimed in the portal - no UUIDs to copy. See below.
 - Both **plain MQTT (1883)** for local dev and **mutual-TLS (8883)** for real remote onboarding with a device cert from [`tools/pki/provision-device.sh`](../pki/provision-device.sh).
 - One runtime dependency: `paho-mqtt`.
+
+## Zero-touch mode (recommended): `--host` + `--ref`
+
+The device needs to know exactly two things - the broker host and its **edge reference** (the string the customer types under *Geräte → Gerät hinzufügen*):
+
+```bash
+python3 voltpilot_edge_sim.py --host 192.168.2.77 --ref pi-sim-01 --verbose
+```
+
+What happens (contract: `mqtt-provisioning.schema.json`):
+
+1. The simulator publishes a hello on `provision/pi-sim-01/hello` (QoS1) and subscribes to `provision/pi-sim-01/config`.
+2. Until the ref is claimed, there is **no answer** - the hello retries every `--provision-retry` seconds (default 10). This is the normal "wartet auf Beanspruchung" state, not an error.
+3. The moment the ref is claimed in the portal, the cloud publishes the identity `{tenant_id, site_id, device_id}` **retained** on the config topic; the simulator adopts it and starts publishing normal contract telemetry. The portal device row flips from *"wartet auf erste Daten"* to *online*.
+4. After a restart the retained config re-provisions the device instantly - no cloud round-trip.
+
+`--provision-timeout N` gives up after N seconds (default `0` = wait for the claim forever). Env twins: `EDGE_SIM_REF` (also `VP_REF`), `EDGE_SIM_PROVISION_RETRY`, `EDGE_SIM_PROVISION_TIMEOUT`. The explicit `--tenant-id/--site-id/--device-id` flags keep working and skip the handshake entirely.
 
 ## What it simulates
 
@@ -38,7 +56,9 @@ Key options (`python3 voltpilot_edge_sim.py --help` for all):
 | `--tls` / `--no-tls` | TLS on/off (auto-on for 8883 or when a client cert is set) | auto |
 | `--ca-cert` / `--client-cert` / `--client-key` | mTLS bundle paths | - |
 | `--insecure` | Skip broker cert verification (dev only) | off |
-| `--tenant-id` / `--site-id` / `--device-id` | Identity (UUIDs) | the `demo` dev seed |
+| `--ref` / `EDGE_SIM_REF` | Zero-touch: edge reference for the provisioning handshake (overrides the explicit identity) | - |
+| `--provision-retry` / `--provision-timeout` | Hello retry cadence / give-up (0 = wait forever) | `10` / `0` |
+| `--tenant-id` / `--site-id` / `--device-id` | Explicit identity (UUIDs), skips the handshake | the `demo` dev seed |
 | `--interval` | Seconds between telemetry samples | `5` |
 | `--count` | Stop after N messages (`0` = forever) | `0` |
 | `--time-scale` | Simulated seconds per real second | `1` |
@@ -186,3 +206,4 @@ python3 -m pytest test_edge_sim.py -q     # or: python3 test_edge_sim.py
 ```
 
 They validate generated payloads against the **real** binding schema, the grid power-balance identity, the PV day/night curve, the battery charge/discharge cycle, SoC bounds, the topic format, and config precedence.
+The zero-touch handshake is tested over the real paho wire path against an in-process MQTT broker stub: claimed ref → identity adopted, unclaimed ref → hello retries then timeout, retained config → instant re-provision after restart, foreign-ref config → ignored.

@@ -1,6 +1,46 @@
-# Connect a real edge device (secure mTLS)
+# Connect an edge device
 
-How a physical Node-RED edge on a customer site connects to the self-hosted VoltPilot broker over the internet and starts publishing telemetry.
+How a physical edge device on a customer site connects to the VoltPilot broker and starts publishing telemetry.
+
+There are two paths:
+
+- **[Zero-touch onboarding](#zero-touch-onboarding-recommended)** (recommended, v1: plain MQTT/dev): the device knows only its **edge reference** and the broker host; identity arrives over the provisioning handshake once the ref is claimed in the portal. No IDs to copy.
+- **[Secure mTLS](#connect-over-mtls-production-hardened-broker)** (production, hardened broker): explicit per-device certificate + IDs, for the internet-facing 8883 listener.
+
+## Zero-touch onboarding (recommended)
+
+The customer flow is exactly two things:
+
+1. **Portal:** *Geräte → ＋ Gerät hinzufügen* - pick the Standort, type the device's **Edge-Referenz** (e.g. `plant-a-inverter-01`), claim. The row shows *"wartet auf erste Daten"*.
+2. **Device:** power it on, configured with only the broker host and its ref.
+
+Under the hood (binding contract [`docs/contracts/mqtt-provisioning.schema.json`](contracts/mqtt-provisioning.schema.json)):
+
+```
+device                                 cloud
+  │  publish provision/{ref}/hello       │   (QoS1; retried until claimed)
+  │  subscribe provision/{ref}/config    │
+  │                                      │  ref claimed? -> publish RETAINED
+  │  ◄─ provision/{ref}/config ───────── │  {tenant_id, site_id, device_id}
+  │  adopt identity, then publish        │
+  │  ems/{t}/{s}/{d}/telemetry (frozen   │
+  │  telemetry contract, unchanged)      │
+```
+
+- **Unclaimed ref:** no answer; the device retries its hello (default every 10 s). Normal pre-onboarding state.
+- **Claim-later:** the portal api publishes the retained config the moment the claim succeeds, so an already-waiting device converges instantly.
+- **Restart:** the config is retained on the broker - the device re-provisions on subscribe with no cloud round-trip.
+- The portal row flips to **online** as soon as the first telemetry arrives.
+
+Try it with the standalone simulator (see [`tools/edge-simulator/README.md`](../tools/edge-simulator/README.md)):
+
+```bash
+python3 tools/edge-simulator/voltpilot_edge_sim.py --host <broker-host> --ref plant-a-inverter-01 --verbose
+```
+
+v1 note: the zero-touch handshake runs over the dev/plain-MQTT listener (1883). The mTLS variant (hello/config over the hardened 8883 listener with a bootstrap cert) is future work - for the hardened production broker, use the explicit mTLS path below.
+
+## Connect over mTLS (production, hardened broker)
 
 The edge makes **only an outbound** MQTT connection (mutual TLS on port 8883).
 It exposes **no inbound ports** - this is a hard architecture rule (architecture §6), so the device works behind NAT/CGNAT with no port-forwarding.

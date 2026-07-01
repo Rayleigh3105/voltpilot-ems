@@ -69,6 +69,21 @@ export interface Device {
   externalRef: string;
   kind: string;
   status: string;
+  /** Newest telemetry timestamp; null until the first data arrives. */
+  lastSeenAt: string | null;
+}
+
+/** Portal onboarding state derived from telemetry recency. */
+export type DeviceLiveStatus = 'online' | 'stale' | 'waiting';
+
+/** A device counts as online when telemetry arrived within this window. */
+export const ONLINE_WINDOW_MS = 5 * 60 * 1000;
+
+export function deviceLiveStatus(d: Device, now: Date = new Date()): DeviceLiveStatus {
+  if (!d.lastSeenAt) return 'waiting';
+  return now.getTime() - new Date(d.lastSeenAt).getTime() <= ONLINE_WINDOW_MS
+    ? 'online'
+    : 'stale';
 }
 
 export interface TelemetryPoint {
@@ -86,6 +101,18 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Portal-Admin tenant switcher: when set, every request carries the selected
+ * tenant as `X-Tenant-Id`. The backend honors the header ONLY for
+ * platform-admin tokens (see TenantFilter), so the customer pages render that
+ * tenant's data through the same RLS scoping the customer gets.
+ */
+let tenantOverride: string | null = null;
+
+export function setTenantOverride(tenantId: string | null): void {
+  tenantOverride = tenantId;
+}
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await freshToken();
   const res = await fetch(`${API_BASE}${path}`, {
@@ -93,6 +120,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     headers: {
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
       ...(init.headers ?? {}),
     },
   });
