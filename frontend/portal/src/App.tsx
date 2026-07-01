@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import logoUrl from '../designsystem/assets/voltpilot-logo.png';
+import { Input } from '../designsystem/components/forms/Input';
 import { isPlatformAdmin, login } from './auth';
-import { api, ApiError, setTenantOverride, type Device, type Site } from './api';
+import { api, ApiError, register, setTenantOverride, type Device, type Site } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import { AppShell } from './shell/AppShell';
 import { hashForPage, pageFromHash, PLATFORM_PAGES, type PageId } from './nav';
@@ -31,18 +32,31 @@ export default function App({
 }
 
 function LoginScreen({ authError }: { authError: boolean }) {
+  const [view, setView] = useState<'login' | 'register'>('login');
   return (
     <div className="vp-login">
       <Card padding="lg" radius="lg" className="vp-login-card">
         <img src={logoUrl} alt="VoltPilot" />
-        <h1>VoltPilot EMS</h1>
-        <p>
-          Ihr Energiemanagement-Portal - Standorte, Geräte, Börsenpreise und
-          Batterie-Fahrplan auf einen Blick.
-        </p>
-        <Button variant="primary" size="lg" fullWidth onClick={login}>
-          Anmelden
-        </Button>
+        {view === 'login' ? (
+          <>
+            <h1>VoltPilot EMS</h1>
+            <p>
+              Ihr Energiemanagement-Portal - Standorte, Geräte, Börsenpreise und
+              Batterie-Fahrplan auf einen Blick.
+            </p>
+            <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
+              Anmelden
+            </Button>
+            <p className="vp-note" style={{ marginTop: 16 }}>
+              Neu bei VoltPilot?{' '}
+              <button type="button" className="vp-linklike" onClick={() => setView('register')}>
+                Konto erstellen
+              </button>
+            </p>
+          </>
+        ) : (
+          <RegisterForm onBack={() => setView('login')} />
+        )}
         {authError && (
           <div className="vp-alert vp-alert-err">
             Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in
@@ -51,6 +65,97 @@ function LoginScreen({ authError }: { authError: boolean }) {
         )}
       </Card>
     </div>
+  );
+}
+
+function RegisterForm({ onBack }: { onBack: () => void }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const valid = name.trim().length > 0 && /\S+@\S+\.\S+/.test(email) && password.length >= 8;
+
+  async function submit() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await register({ name: name.trim(), email: email.trim(), password });
+      setDone(true);
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 409
+          ? 'Mit dieser E-Mail-Adresse gibt es bereits ein Konto. Melden Sie sich stattdessen an.'
+          : e instanceof ApiError && e.status === 400
+            ? 'Bitte prüfen Sie Ihre Eingaben: gültige E-Mail-Adresse und ein Passwort mit mindestens 8 Zeichen.'
+            : 'Die Registrierung hat gerade nicht geklappt. Bitte versuchen Sie es gleich noch einmal.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <>
+        <h1>Ihr Konto ist bereit</h1>
+        <p>
+          Willkommen bei VoltPilot! Melden Sie sich jetzt mit Ihrer E-Mail-Adresse an -
+          danach legen Sie Ihren Standort an und verbinden Ihr Gerät.
+        </p>
+        <Button variant="primary" size="lg" fullWidth onClick={() => login(email.trim())}>
+          Jetzt anmelden
+        </Button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <h1>Konto erstellen</h1>
+      <p>In einer Minute startklar: Konto anlegen, Standort benennen, Gerät verbinden.</p>
+      <div style={{ display: 'grid', gap: 12, textAlign: 'left' }}>
+        <Input
+          label="Ihr Name oder Firmenname"
+          placeholder="z. B. Erika Kaiser"
+          value={name}
+          onChange={(e) => setName((e.target as HTMLInputElement).value)}
+        />
+        <Input
+          label="E-Mail-Adresse"
+          type="email"
+          placeholder="erika@example.com"
+          value={email}
+          onChange={(e) => setEmail((e.target as HTMLInputElement).value)}
+        />
+        <Input
+          label="Passwort (mindestens 8 Zeichen)"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
+        />
+      </div>
+      <Button
+        variant="primary"
+        size="lg"
+        fullWidth
+        onClick={submit}
+        disabled={busy || !valid}
+        style={{ marginTop: 16 }}
+      >
+        {busy ? 'Erstelle Konto…' : 'Konto erstellen'}
+      </Button>
+      {err && <div className="vp-alert vp-alert-err">{err}</div>}
+      <p className="vp-note" style={{ marginTop: 16 }}>
+        Schon ein Konto?{' '}
+        <button type="button" className="vp-linklike" onClick={onBack}>
+          Zur Anmeldung
+        </button>
+      </p>
+    </>
   );
 }
 

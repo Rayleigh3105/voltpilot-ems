@@ -291,6 +291,8 @@ services:
       # OIDC on. Issuer is the browser-facing Keycloak URL (under /auth); JWKS is
       # fetched over the compose-internal URL (the issuer-trap fix).
       VOLTPILOT_SECURITY_OIDC_ENABLED: "true"
+      # Public self-service registration; set false in .env for a closed platform.
+      VOLTPILOT_REGISTRATION_ENABLED: ${VOLTPILOT_REGISTRATION_ENABLED:-true}
       OIDC_ISSUER_URI: https://${DOMAIN:?set DOMAIN in .env}/auth/realms/voltpilot
       OIDC_JWK_SET_URI: http://keycloak:8080/auth/realms/voltpilot/protocol/openid-connect/certs
       # The SPA is served same-origin, so CORS is not strictly needed; allow the

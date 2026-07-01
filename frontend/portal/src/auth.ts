@@ -48,8 +48,9 @@ export async function initAuth(): Promise<boolean> {
   });
 }
 
-export function login(): void {
-  void keycloak.login();
+/** Redirect to the Keycloak login; a hint pre-fills the username/email field. */
+export function login(loginHint?: string): void {
+  void keycloak.login(loginHint ? { loginHint } : undefined);
 }
 
 export function logout(): void {

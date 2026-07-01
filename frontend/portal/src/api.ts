@@ -199,6 +199,35 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface RegistrationResult {
+  tenantId: string;
+  tenantName: string;
+  username: string;
+}
+
+/**
+ * Self-service registration. Deliberately NOT via request(): it runs before any
+ * login exists, and request()'s token refresh would bounce the visitor to the
+ * Keycloak login page instead.
+ */
+export async function register(input: RegisterInput): Promise<RegistrationResult> {
+  const res = await fetch(`${API_BASE}/api/v1/registration`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+  }
+  return (await res.json()) as RegistrationResult;
+}
+
 export const api = {
   listSites: () => request<Site[]>('/api/v1/sites'),
   createSite: (input: CreateSiteInput) =>

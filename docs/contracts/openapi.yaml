@@ -25,6 +25,11 @@ security:
   - bearerAuth: []
 tags:
   - name: system
+  - name: registration
+    description: >
+      Public self-service registration: a new customer creates their own tenant
+      and login in one step (no operator involved). Unauthenticated by design;
+      can be disabled platform-wide via VOLTPILOT_REGISTRATION_ENABLED=false.
   - name: sites
   - name: devices
   - name: telemetry
@@ -55,6 +60,31 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: UP }
+  /api/v1/registration:
+    post:
+      tags: [registration]
+      summary: Self-register - create a tenant and its first login in one step.
+      description: >
+        The front door of customer onboarding. Creates a B2C tenant named after
+        the customer and a Keycloak user (username = email, `tenant_id` attribute
+        + customer role), so the standard OIDC + RLS spine isolates the new
+        account exactly like operator-provisioned customers. If the user cannot
+        be created (e.g. email already registered), the tenant is rolled back -
+        no orphans. Implemented in services/api (RegistrationController).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegistrationRequest" }
+      responses:
+        "201":
+          description: Account created; the customer can now log in via OIDC.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegistrationResponse" }
+        "400": { description: Invalid input (blank name, invalid email, password shorter than 8 chars). }
+        "409": { description: An account with this email already exists. }
   /api/v1/sites:
     get:
       tags: [sites]
@@ -412,6 +442,30 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    RegistrationRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Person or company name; becomes the tenant's display name.
+          example: Erika Kaiser
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Login email (doubles as the username; lowercased).
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+    RegistrationResponse:
+      type: object
+      properties:
+        tenantId: { type: string, format: uuid }
+        tenantName: { type: string }
+        username: { type: string, description: The login name (the lowercased email). }
     Site:
       type: object
       properties:

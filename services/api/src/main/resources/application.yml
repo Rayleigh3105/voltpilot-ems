@@ -45,6 +45,11 @@ server:
 # Toggle OIDC resource-server validation. Off by default for offline unit tests;
 # docker-compose and the integration tests set VOLTPILOT_SECURITY_OIDC_ENABLED=true.
 voltpilot:
+  # Public self-service registration (tenant + login in one step). On by default;
+  # closed platforms set VOLTPILOT_REGISTRATION_ENABLED=false to remove the
+  # endpoint entirely.
+  registration:
+    enabled: ${VOLTPILOT_REGISTRATION_ENABLED:true}
   security:
     oidc:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:false}
