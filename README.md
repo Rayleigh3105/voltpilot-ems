@@ -80,7 +80,7 @@ The portal runs outside compose via the Vite dev server:
 (cd frontend/portal && npm install && npm run dev)   # http://localhost:5173
 ```
 
-Open http://localhost:5173, click **Anmelden mit Keycloak**, and log in with a seeded **dev-only** user:
+Open http://localhost:5173, click **Anmelden** (the branded German VoltPilot login page appears), and log in with a seeded **dev-only** user:
 
 | User | Password | Tenant | Sees |
 |---|---|---|---|
