@@ -31,6 +31,7 @@ tags:
   - name: market
   - name: weather
   - name: schedules
+  - name: history
   - name: kpis
   - name: admin
     description: >
@@ -207,6 +208,42 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Schedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/history:
+    get:
+      tags: [history]
+      summary: A site's history ("Historie") for one period, money lens first.
+      description: >
+        Bucketed pv/load/grid/SoC series (15-min for day, hourly for week,
+        Europe/Berlin-daily for month/year; served from the telemetry rollup
+        tables, day live from raw telemetry) with the matching day-ahead price
+        and per-bucket import cost, plus period totals: consumption / PV /
+        import / export kWh, grid cost EUR (import energy x matching 15-min
+        price), battery savings EUR (persisted optimizer plans, latest run per
+        slot, null where none exist), Autarkiegrad and Eigenverbrauchsquote.
+        For range=day the response additionally carries the Tagesprotokoll
+        (notable events in plain German) and the persisted plan trajectory for
+        the plan-vs-actual overlay. Period boundaries are Europe/Berlin local
+        time. RLS-scoped by tenant.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, enum: [day, week, month, year], default: day }
+        - name: at
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Any date inside the wanted period (default today, Europe/Berlin).
+      responses:
+        "200":
+          description: The site's history for the period (empty buckets if no data).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/History" }
+        "400": { description: Unknown range value. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/kpis:
@@ -512,6 +549,66 @@ components:
               priceEurMwh: { type: number }
               costEur: { type: number, description: "Projected slot cost with the plan." }
               baselineCostEur: { type: number, description: "Projected slot cost with the battery idle." }
+    History:
+      type: object
+      properties:
+        range: { type: string, enum: [day, week, month, year] }
+        from: { type: string, format: date-time, description: Period start (inclusive). }
+        to: { type: string, format: date-time, description: Period end (exclusive). }
+        bucketMinutes: { type: integer, description: "15 (day), 60 (week) or 1440 (month/year)." }
+        buckets:
+          type: array
+          items:
+            type: object
+            properties:
+              start: { type: string, format: date-time }
+              pvKwh: { type: number, nullable: true }
+              loadKwh: { type: number, nullable: true }
+              gridImportKwh: { type: number, nullable: true }
+              gridExportKwh: { type: number, nullable: true }
+              batteryChargeKwh: { type: number, nullable: true, description: Derived from the telemetry power balance. }
+              batteryDischargeKwh: { type: number, nullable: true }
+              socMinPct: { type: number, nullable: true }
+              socMaxPct: { type: number, nullable: true }
+              socLastPct: { type: number, nullable: true }
+              priceEurMwh: { type: number, nullable: true, description: Day-ahead price of the slot (day range only). }
+              costEur: { type: number, nullable: true, description: Import energy x matching day-ahead price. }
+        totals:
+          type: object
+          properties:
+            consumptionKwh: { type: number }
+            pvGenerationKwh: { type: number }
+            gridImportKwh: { type: number }
+            gridExportKwh: { type: number }
+            gridCostEur: { type: number, nullable: true, description: Null when no price data overlaps the period. }
+            batterySavingsEur: { type: number, nullable: true, description: From persisted optimizer plans; null where none exist. }
+            autarkiePct: { type: number, nullable: true, description: "(1 - grid import / consumption) x 100, clamped 0..100." }
+            eigenverbrauchPct: { type: number, nullable: true, description: "(pv - grid export) / pv x 100, clamped 0..100." }
+        protocol:
+          type: array
+          description: Tagesprotokoll (day range only, else empty).
+          items:
+            type: object
+            properties:
+              type: { type: string, enum: [batterie-laden, batterie-entladen, pv-spitze, preis-tief, preis-hoch] }
+              start: { type: string, format: date-time }
+              end: { type: string, format: date-time }
+              text: { type: string, description: Plain-German event description. }
+              energyKwh: { type: number, nullable: true }
+              avgPriceEurMwh: { type: number, nullable: true }
+              avoidedCostEur: { type: number, nullable: true }
+              peakKw: { type: number, nullable: true }
+        plan:
+          type: array
+          description: >
+            Plan-vs-actual overlay (day range only, else empty): per 15-min slot
+            the battery power/SoC of the latest persisted optimizer run.
+          items:
+            type: object
+            properties:
+              time: { type: string, format: date-time }
+              batteryKw: { type: number, nullable: true, description: "+ = charge, - = discharge." }
+              socPct: { type: number, nullable: true }
     SiteKpis:
       type: object
       properties:

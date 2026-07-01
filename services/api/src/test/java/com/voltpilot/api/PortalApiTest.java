@@ -383,6 +383,193 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    // ---- Historie: rollups, totals, formulas, Tagesprotokoll, plan-vs-actual --
+
+    /**
+     * Deterministic seed on a fixed PAST day (2026-06-15, CEST) so the dev
+     * seed's now()-relative demo telemetry never interferes:
+     *
+     * <p>Bucket 10:00Z (12:00 Berlin), 3 samples: load 4 kW, pv 1 kW, grid +2 kW
+     * (import; battery = 2-4+1 = -1 kW discharging) -> load 1.0 kWh, pv 0.25,
+     * import 0.5, discharge 0.25, priced 100 EUR/MWh -> cost 0.05 EUR.
+     *
+     * <p>Bucket 11:00Z, 3 samples: load 1 kW, pv 4 kW, grid -2 kW (export;
+     * battery = -2-1+4 = +1 kW charging) -> load 0.25 kWh, pv 1.0, export 0.5,
+     * charge 0.25, priced 200 EUR/MWh.
+     *
+     * <p>Totals: consumption 1.25, pv 1.25, import 0.5, export 0.5, cost 0.05;
+     * Autarkiegrad = (1 - 0.5/1.25)*100 = 60 %; Eigenverbrauchsquote =
+     * (1.25-0.5)/1.25*100 = 60 %. Two overlapping optimizer runs cover the
+     * 10:00Z slot; only the latest counts: savings 0.10-0.06 = 0.04 EUR.
+     */
+    private void seedHistoryDay() {
+        String t = "'00000000-0000-0000-0000-000000000001'";
+        String d = "'00000000-0000-0000-0000-000000000003'";
+        StringBuilder rows = new StringBuilder();
+        for (int m : new int[] {0, 5, 10}) {
+            rows.append(String.format(
+                    "('2026-06-15T10:%02d:00Z', %s, '%s', %s, 2.0, 50.0, 1.0, 4.0),",
+                    m, t, BERLIN_SITE, d));
+            rows.append(String.format(
+                    "('2026-06-15T11:%02d:00Z', %s, '%s', %s, -2.0, 60.0, 4.0, 1.0),",
+                    m, t, BERLIN_SITE, d));
+        }
+        rows.setLength(rows.length() - 1);
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, load_kw) "
+                + "VALUES " + rows);
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-06-15T10:00:00Z', 'DE-LU', 'PT15M', 100.0, 'EUR', 'energy-charts'), "
+                + "('2026-06-15T11:00:00Z', 'DE-LU', 'PT15M', 200.0, 'EUR', 'energy-charts') "
+                + "ON CONFLICT DO NOTHING");
+        // Two MPC runs plan the 10:00Z slot; the later one supersedes the earlier.
+        exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                + "battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur) VALUES "
+                + "('2026-06-15T10:00:00Z', " + t + ", '" + BERLIN_SITE + "', " + d + ", "
+                + "'bbbbbbbb-0000-0000-0000-000000000001', '2026-06-15T09:00:00Z', "
+                + "-1.0, 2.5, 52.0, 100.0, 0.08, 0.10), "
+                + "('2026-06-15T10:00:00Z', " + t + ", '" + BERLIN_SITE + "', " + d + ", "
+                + "'bbbbbbbb-0000-0000-0000-000000000002', '2026-06-15T09:30:00Z', "
+                + "-1.5, 2.0, 51.0, 100.0, 0.06, 0.10) "
+                + "ON CONFLICT DO NOTHING");
+    }
+
+    @Test
+    void historyDayComputesTotalsProtocolAndPlanOverlay() {
+        seedHistoryDay();
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        assertThat(body).containsEntry("range", "day").containsEntry("bucketMinutes", 15);
+        // Berlin-local day window (CEST in June).
+        assertThat(body).containsEntry("from", "2026-06-14T22:00:00Z");
+        assertThat(body).containsEntry("to", "2026-06-15T22:00:00Z");
+
+        // Exactly the two seeded 15-min buckets, with price + per-bucket cost.
+        List<Map<String, Object>> buckets = list(body, "buckets");
+        assertThat(buckets).hasSize(2);
+        Map<String, Object> b0 = buckets.get(0);
+        assertThat(b0).containsEntry("start", "2026-06-15T10:00:00Z");
+        assertThat(num(b0, "loadKwh")).isEqualTo(1.0);
+        assertThat(num(b0, "pvKwh")).isEqualTo(0.25);
+        assertThat(num(b0, "gridImportKwh")).isEqualTo(0.5);
+        assertThat(num(b0, "batteryDischargeKwh")).isEqualTo(0.25);
+        assertThat(num(b0, "priceEurMwh")).isEqualTo(100.0);
+        assertThat(num(b0, "costEur")).isEqualTo(0.05);
+        assertThat(num(buckets.get(1), "gridExportKwh")).isEqualTo(0.5);
+        assertThat(num(buckets.get(1), "batteryChargeKwh")).isEqualTo(0.25);
+
+        // Period totals + the documented formulas.
+        Map<String, Object> totals = map(body, "totals");
+        assertThat(num(totals, "consumptionKwh")).isEqualTo(1.25);
+        assertThat(num(totals, "pvGenerationKwh")).isEqualTo(1.25);
+        assertThat(num(totals, "gridImportKwh")).isEqualTo(0.5);
+        assertThat(num(totals, "gridExportKwh")).isEqualTo(0.5);
+        assertThat(num(totals, "gridCostEur")).isEqualTo(0.05);
+        assertThat(num(totals, "autarkiePct")).isEqualTo(60.0);
+        assertThat(num(totals, "eigenverbrauchPct")).isEqualTo(60.0);
+        // Battery savings from the LATEST run of the overlapping plans only.
+        assertThat(num(totals, "batterySavingsEur")).isEqualTo(0.04);
+
+        // Tagesprotokoll: discharge (with avoided cost), charge, PV peak, extremes.
+        List<Map<String, Object>> protocol = list(body, "protocol");
+        assertThat(protocol).extracting(e -> e.get("type"))
+                .contains("batterie-entladen", "batterie-laden", "pv-spitze",
+                        "preis-tief", "preis-hoch");
+        Map<String, Object> discharge = protocol.stream()
+                .filter(e -> "batterie-entladen".equals(e.get("type"))).findFirst().orElseThrow();
+        assertThat(num(discharge, "avoidedCostEur")).isEqualTo(0.025);
+        assertThat((String) discharge.get("text")).contains("vermieden");
+        Map<String, Object> peak = protocol.stream()
+                .filter(e -> "pv-spitze".equals(e.get("type"))).findFirst().orElseThrow();
+        assertThat(num(peak, "peakKw")).isEqualTo(4.0);
+
+        // Plan-vs-actual overlay: the latest run's trajectory for the day.
+        List<Map<String, Object>> plan = list(body, "plan");
+        assertThat(plan).hasSize(1);
+        assertThat(num(plan.get(0), "batteryKw")).isEqualTo(-1.5);
+
+        // RLS: tenant B cannot even see the site -> 404, no history leaks.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Garbage range -> 400.
+        ResponseEntity<String> bad = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=decade"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void historyWeekAggregatesFromTheRollupTables() {
+        seedHistoryDay();
+        // The rollup job runs every 15 min in production; the test triggers the
+        // same refresh procedure directly (as the superuser, like the job owner).
+        exec("CALL refresh_telemetry_rollups('2026-06-01T00:00:00Z')");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=week&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        assertThat(body).containsEntry("range", "week").containsEntry("bucketMinutes", 60);
+        // ISO week of Wed 2026-06-17 starts Monday 2026-06-15 (Berlin midnight).
+        assertThat(body).containsEntry("from", "2026-06-14T22:00:00Z");
+
+        // Two hourly buckets from telemetry_rollup_1h, costs merged from the
+        // 15-min rollup x price join.
+        List<Map<String, Object>> buckets = list(body, "buckets");
+        assertThat(buckets).hasSize(2);
+        assertThat(buckets.get(0)).containsEntry("start", "2026-06-15T10:00:00Z");
+        assertThat(num(buckets.get(0), "loadKwh")).isEqualTo(1.0);
+        assertThat(num(buckets.get(0), "costEur")).isEqualTo(0.05);
+
+        // Same totals as the day view - the week contains only that day.
+        Map<String, Object> totals = map(body, "totals");
+        assertThat(num(totals, "consumptionKwh")).isEqualTo(1.25);
+        assertThat(num(totals, "gridCostEur")).isEqualTo(0.05);
+        assertThat(num(totals, "autarkiePct")).isEqualTo(60.0);
+        assertThat(num(totals, "batterySavingsEur")).isEqualTo(0.04);
+
+        // No Tagesprotokoll / plan outside the day range.
+        assertThat(list(body, "protocol")).isEmpty();
+        assertThat(list(body, "plan")).isEmpty();
+
+        // Month range serves from the daily rollup (Berlin days).
+        ResponseEntity<Map<String, Object>> month = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=month&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(month.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> monthBuckets = list(month.getBody(), "buckets");
+        assertThat(monthBuckets).hasSize(1); // one Berlin day with data
+        assertThat(monthBuckets.get(0)).containsEntry("start", "2026-06-14T22:00:00Z");
+        assertThat(num(monthBuckets.get(0), "loadKwh")).isEqualTo(1.25);
+        assertThat(num(monthBuckets.get(0), "costEur")).isEqualTo(0.05);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> list(Map<String, Object> body, String key) {
+        return (List<Map<String, Object>>) body.get(key);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(Map<String, Object> body, String key) {
+        return (Map<String, Object>) body.get(key);
+    }
+
+    private static double num(Map<String, Object> obj, String key) {
+        Object v = obj.get(key);
+        assertThat(v).as(key).isNotNull();
+        return ((Number) v).doubleValue();
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */

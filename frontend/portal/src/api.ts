@@ -63,6 +63,74 @@ export interface SchedulePlan {
   slots: ScheduleSlot[];
 }
 
+export type HistoryRange = 'day' | 'week' | 'month' | 'year';
+
+export interface HistoryBucket {
+  start: string;
+  pvKwh: number | null;
+  loadKwh: number | null;
+  gridImportKwh: number | null;
+  gridExportKwh: number | null;
+  batteryChargeKwh: number | null;
+  batteryDischargeKwh: number | null;
+  socMinPct: number | null;
+  socMaxPct: number | null;
+  socLastPct: number | null;
+  priceEurMwh: number | null;
+  costEur: number | null;
+}
+
+export interface HistoryTotals {
+  consumptionKwh: number;
+  pvGenerationKwh: number;
+  gridImportKwh: number;
+  gridExportKwh: number;
+  /** Null when no price data overlaps the period. */
+  gridCostEur: number | null;
+  /** Null when no optimizer plan covers the period. */
+  batterySavingsEur: number | null;
+  autarkiePct: number | null;
+  eigenverbrauchPct: number | null;
+}
+
+export type ProtocolEventType =
+  | 'batterie-laden'
+  | 'batterie-entladen'
+  | 'pv-spitze'
+  | 'preis-tief'
+  | 'preis-hoch';
+
+export interface ProtocolEvent {
+  type: ProtocolEventType;
+  start: string;
+  end: string;
+  /** Plain-German event description, server-formatted. */
+  text: string;
+  energyKwh: number | null;
+  avgPriceEurMwh: number | null;
+  avoidedCostEur: number | null;
+  peakKw: number | null;
+}
+
+export interface HistoryPlanPoint {
+  time: string;
+  batteryKw: number | null;
+  socPct: number | null;
+}
+
+export interface History {
+  range: HistoryRange;
+  from: string;
+  to: string;
+  bucketMinutes: number;
+  buckets: HistoryBucket[];
+  totals: HistoryTotals;
+  /** Tagesprotokoll - day range only, else empty. */
+  protocol: ProtocolEvent[];
+  /** Plan-vs-actual overlay - day range only, else empty. */
+  plan: HistoryPlanPoint[];
+}
+
 export interface Device {
   id: string;
   siteId: string;
@@ -154,4 +222,7 @@ export const api = {
   prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
   schedule: (siteId: string) => request<SchedulePlan>(`/api/v1/sites/${siteId}/schedule`),
+  /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
+  history: (siteId: string, range: HistoryRange, at: string) =>
+    request<History>(`/api/v1/sites/${siteId}/history?range=${range}&at=${at}`),
 };

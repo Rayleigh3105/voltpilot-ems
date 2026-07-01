@@ -12,6 +12,7 @@ export type PageId =
   | 'marktpreise'
   | 'wetter'
   | 'fahrplan'
+  | 'historie'
   | 'mandanten'
   | 'benutzer';
 
@@ -30,6 +31,7 @@ export const MAIN_PAGES: PageDef[] = [
   { id: 'marktpreise', label: 'Marktpreise', icon: '€' },
   { id: 'wetter', label: 'Wetter', icon: '☀' },
   { id: 'fahrplan', label: 'Fahrplan', icon: '⛁' },
+  { id: 'historie', label: 'Historie', icon: '◷' },
 ];
 
 export const PLATFORM_PAGES: PageDef[] = [

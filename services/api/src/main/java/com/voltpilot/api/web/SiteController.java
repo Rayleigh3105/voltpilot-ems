@@ -1,5 +1,7 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.history.HistoryRange;
+import com.voltpilot.api.history.HistoryService;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -7,6 +9,7 @@ import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
+import com.voltpilot.api.web.dto.HistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
@@ -15,6 +18,7 @@ import com.voltpilot.api.web.dto.TelemetryPointDto;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
 import jakarta.validation.Valid;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
@@ -47,18 +51,21 @@ public class SiteController {
     private final PriceRepository prices;
     private final WeatherRepository weather;
     private final ScheduleRepository schedules;
+    private final HistoryService history;
 
     public SiteController(
             SiteRepository sites,
             TelemetryRepository telemetry,
             PriceRepository prices,
             WeatherRepository weather,
-            ScheduleRepository schedules) {
+            ScheduleRepository schedules,
+            HistoryService history) {
         this.sites = sites;
         this.telemetry = telemetry;
         this.prices = prices;
         this.weather = weather;
         this.schedules = schedules;
+        this.history = history;
     }
 
     @GetMapping
@@ -145,6 +152,34 @@ public class SiteController {
      * baseline. RLS-scoped by tenant like telemetry/weather; a foreign site is a
      * 404, no plan yet is an empty (but well-formed) plan.
      */
+    /**
+     * A site's history for one period ("Historie"): bucketed pv/load/grid/SoC
+     * series with per-bucket import cost, period totals (grid cost, battery
+     * savings, Autarkiegrad, Eigenverbrauchsquote - formulas on
+     * {@code HistoryTotalsDto}), and for {@code range=day} the Tagesprotokoll
+     * plus the persisted plan for the plan-vs-actual overlay. Period
+     * boundaries are Europe/Berlin; {@code at} picks the period containing
+     * that date (default today). RLS-scoped like telemetry - a foreign site
+     * is a 404.
+     */
+    @GetMapping("/{siteId}/history")
+    public HistoryDto history(
+            @PathVariable UUID siteId,
+            @RequestParam(defaultValue = "day") String range,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at) {
+        HistoryRange parsed = HistoryRange.parse(range);
+        if (parsed == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "range must be one of day|week|month|year");
+        }
+        SiteDto site = sites.findById(siteId);
+        if (site == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        LocalDate effectiveAt = at != null ? at : LocalDate.now(HistoryRange.ZONE);
+        return history.history(siteId, site.biddingZone(), parsed, effectiveAt);
+    }
+
     @GetMapping("/{siteId}/schedule")
     public SchedulePlanDto schedule(@PathVariable UUID siteId) {
         if (!sites.existsForCurrentTenant(siteId)) {

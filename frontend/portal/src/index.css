@@ -386,6 +386,112 @@ button {
   margin: 0 auto var(--vp-space-5);
 }
 
+/* Segmented control (Historie period tabs) */
+.vp-seg {
+  display: inline-flex;
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  padding: 3px;
+  gap: 2px;
+}
+.vp-seg button {
+  border: none;
+  background: transparent;
+  color: var(--vp-text-muted);
+  font-weight: 600;
+  font-size: var(--vp-text-sm);
+  padding: 0.4rem 0.9rem;
+  border-radius: calc(var(--vp-radius-btn) - 3px);
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+  min-height: 36px;
+}
+.vp-seg button:hover {
+  color: var(--vp-text-dark);
+}
+.vp-seg button.active {
+  background: var(--vp-surface);
+  color: var(--vp-primary-deep);
+  box-shadow: var(--vp-shadow-sm);
+}
+
+/* Period stepper (prev / label / next / heute) */
+.vp-period-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+.vp-period-nav .label {
+  font-family: var(--vp-font-heading);
+  font-weight: 700;
+  color: var(--vp-text-dark);
+  min-width: 170px;
+  text-align: center;
+  white-space: nowrap;
+}
+.vp-period-nav .step {
+  border: 1px solid var(--vp-border);
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  border-radius: var(--vp-radius-btn);
+  min-width: 36px;
+  min-height: 36px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: var(--vp-transition-fast);
+}
+.vp-period-nav .step:hover:not(:disabled) {
+  border-color: var(--vp-primary);
+  color: var(--vp-primary);
+}
+.vp-period-nav .step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Tagesprotokoll timeline */
+.vp-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.vp-timeline li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-space-4);
+  padding: var(--vp-space-3) 0;
+  border-bottom: 1px solid var(--vp-border);
+}
+.vp-timeline li:last-child {
+  border-bottom: none;
+}
+.vp-timeline .t {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted);
+  white-space: nowrap;
+  min-width: 110px;
+}
+.vp-timeline .ico {
+  flex-shrink: 0;
+  width: 26px;
+  text-align: center;
+}
+.vp-timeline .txt {
+  color: var(--vp-text-dark);
+  min-width: 0;
+}
+@media (max-width: 720px) {
+  .vp-timeline li {
+    flex-wrap: wrap;
+    gap: var(--vp-space-2);
+  }
+  .vp-timeline .t {
+    min-width: 0;
+  }
+}
+
 /* Drawer form stack */
 .vp-form-stack {
   display: flex;
