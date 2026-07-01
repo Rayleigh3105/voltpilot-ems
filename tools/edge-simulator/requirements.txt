@@ -1,0 +1,4 @@
+# VoltPilot edge simulator - runtime dependency.
+# Single, Pi-friendly dependency. Works with both paho-mqtt 1.6.x and 2.x
+# (the code selects the VERSION1 callback API for a stable signature).
+paho-mqtt>=1.6,<3

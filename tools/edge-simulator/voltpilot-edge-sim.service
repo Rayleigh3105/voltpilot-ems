@@ -1,0 +1,41 @@
+# VoltPilot edge simulator - example systemd unit for a Raspberry Pi / Linux host.
+#
+# Install (as root):
+#   sudo useradd --system --create-home --home-dir /opt/voltpilot-edge-sim edgesim
+#   sudo -u edgesim git clone <repo> /opt/voltpilot-edge-sim/repo   # or copy just tools/edge-simulator
+#   cd /opt/voltpilot-edge-sim/repo/tools/edge-simulator
+#   sudo -u edgesim python3 -m venv /opt/voltpilot-edge-sim/venv
+#   sudo -u edgesim /opt/voltpilot-edge-sim/venv/bin/pip install -r requirements.txt
+#   sudo -u edgesim cp .env.example /opt/voltpilot-edge-sim/edge-sim.env   # then edit it
+#   sudo cp voltpilot-edge-sim.service /etc/systemd/system/
+#   # edit paths/WorkingDirectory below if you didn't use the layout above
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now voltpilot-edge-sim
+#   journalctl -u voltpilot-edge-sim -f
+#
+# Put device certs in /opt/voltpilot-edge-sim/certs/ and reference them from the
+# env file (EDGE_SIM_CA_CERT / EDGE_SIM_CLIENT_CERT / EDGE_SIM_CLIENT_KEY).
+
+[Unit]
+Description=VoltPilot simulated edge device (MQTT telemetry publisher)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=edgesim
+Group=edgesim
+WorkingDirectory=/opt/voltpilot-edge-sim/repo/tools/edge-simulator
+EnvironmentFile=/opt/voltpilot-edge-sim/edge-sim.env
+ExecStart=/opt/voltpilot-edge-sim/venv/bin/python voltpilot_edge_sim.py
+Restart=always
+RestartSec=5
+# Hardening (the sim only needs outbound network + read of its cert files).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadOnlyPaths=/opt/voltpilot-edge-sim/certs
+
+[Install]
+WantedBy=multi-user.target

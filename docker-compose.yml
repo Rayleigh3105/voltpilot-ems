@@ -204,6 +204,34 @@ services:
       VP_DEVICE_ID: ${VP_DEVICE_ID:-00000000-0000-0000-0000-000000000003}
     ports:
       - "${EDGE_NODERED_PORT:-1880}:1880" # Node-RED editor (dev only)
+
+  # Standalone edge simulator (tools/edge-simulator): a dependency-light Python
+  # MQTT publisher that emits a believable PV/battery/load day straight to EMQX.
+  # It is the containerized form of the drop-on-a-Pi artifact; guarded behind its
+  # OWN `sim` profile (NOT `edge`) so it never double-publishes with edge-nodered
+  # under the same device id. Bring it up with:
+  #   docker compose --profile edge up -d emqx ingest timescale-writer   # ingest path
+  #   docker compose --profile sim  up -d --build edge-simulator          # the publisher
+  # Defaults mirror the `demo` dev seed, so rows land in the demo telemetry view.
+  edge-simulator:
+    build: ./tools/edge-simulator
+    container_name: voltpilot-edge-simulator
+    profiles: ["sim"]
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+    environment:
+      EDGE_SIM_HOST: emqx
+      EDGE_SIM_PORT: "1883"
+      EDGE_SIM_TENANT_ID: ${VP_TENANT_ID:-00000000-0000-0000-0000-000000000001}
+      EDGE_SIM_SITE_ID: ${VP_SITE_ID:-00000000-0000-0000-0000-000000000002}
+      EDGE_SIM_DEVICE_ID: ${VP_DEVICE_ID:-00000000-0000-0000-0000-000000000003}
+      EDGE_SIM_INTERVAL: ${EDGE_SIM_INTERVAL:-5}
+      # time-scale >1 replays a full day quickly for a demo; 1 = realtime.
+      EDGE_SIM_TIME_SCALE: ${EDGE_SIM_TIME_SCALE:-1}
+      EDGE_SIM_VERBOSE: "true"
+
   # Portal API (Spring Boot): the user-facing spine. OAuth2 resource server
   # (validates Keycloak JWTs), tenant-scoped REST over TimescaleDB with
   # Postgres Row-Level-Security, and device claiming. On start it runs Flyway
