@@ -154,7 +154,11 @@ The binding interface contracts live in [`docs/contracts/`](docs/contracts/): th
 
 ## Connect a real device (secure mTLS broker)
 
-For onboarding a physical remote edge device over the internet - mTLS on `8883`, per-tenant/-device ACL, a device CA + cert-issuance/revocation tool, and a self-hosted secure overlay - see [`docs/connect-a-device.md`](docs/connect-a-device.md) (device guide) and [`docs/security-mqtt.md`](docs/security-mqtt.md) (security model + hardening checklist). The dev stack (plaintext `1883`) is unaffected; the secure listener comes up with `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. Docker-free proof: `python3 tools/pki/verify_mqtt_security.py`.
+For onboarding a physical remote edge device over the internet - mTLS on `8883`, per-tenant/-device ACL, a device CA + cert-issuance/revocation tool - see [`docs/connect-a-device.md`](docs/connect-a-device.md) (device guide) and [`docs/security-mqtt.md`](docs/security-mqtt.md) (security model + hardening checklist). The dev stack (plaintext `1883`) is unaffected; the hardened `8883` broker is part of the standalone production stack (`docker compose -f docker-compose.prod.yml up -d`). Docker-free proof: `python3 tools/pki/verify_mqtt_security.py`.
+
+## Production deployment
+
+Single-VPS deploy (external Caddy TLS + Forgejo push-to-deploy), modeled on saalo: [`docs/deploy.md`](docs/deploy.md). The full server-side stack is `docker-compose.prod.yml` (images pulled from the Forgejo registry, pinned per rollout); the CI/CD lives in [`.forgejo/workflows/`](.forgejo/workflows/) (`deploy.yaml` gated, `deploy-fast.yaml` manual). Prod secrets template: [`.env.prod.example`](.env.prod.example).
 
 ## Scope & future work
 

@@ -42,7 +42,7 @@ Ship `device.crt`, `device.key` and `device-ca.crt` to the device over a secure 
 Reload the broker authorization so the new grant takes effect:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+docker compose -f docker-compose.prod.yml exec emqx emqx ctl conf reload
 ```
 
 ## 2. Broker connection params
@@ -137,12 +137,12 @@ To do the DB claim and the cert in one step, use the helper (it reuses the porta
 
 ```bash
 ./tools/pki/voltpilot-ca.sh revoke --device 00000000-0000-0000-0000-000000000003
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+docker compose -f docker-compose.prod.yml exec emqx emqx ctl conf reload
 ```
 
 Revoke removes the device's ACL grant (an ungranted device_id is denied every topic by default) **and** adds the cert to the CRL. If you enable CRL checking on the listener, the cert is also rejected at the TLS handshake.
 
 ## Verify it works
 
-- Server side: `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f emqx` and the EMQX dashboard (loopback `:18083`) show the client connecting with clientid = `device_id`.
+- Server side: `docker compose -f docker-compose.prod.yml logs -f emqx` and the EMQX dashboard (loopback `:18083`) show the client connecting with clientid = `device_id`.
 - Local proof without a live broker (CI-friendly): `python3 tools/pki/verify_mqtt_security.py` runs the mutual-TLS handshake and the ACL policy checks (valid cert connects, no/untrusted cert rejected, cross-tenant denied, revocation). See [`docs/security-mqtt.md`](security-mqtt.md) for the full model and the live-broker test recipe.

@@ -1,25 +1,183 @@
 # =============================================================================
-# Voltpilot-EMS - SECURE self-hosted overlay (single-host MVP, no Kubernetes).
+# Voltpilot-EMS - PRODUCTION / pilot compose (single-VPS MVP, no Kubernetes).
+# Shipped to the VPS at /srv/docker/voltpilot/ by .forgejo/workflows/deploy.yaml.
+# The app images (api, ingest, timescale-writer, frontend, market-data, forecast)
+# are PULLED from the Forgejo registry, pinned to ${IMAGE_TAG}. This is a
+# self-contained, standalone stack: deploy it with a single
+#   docker compose -f docker-compose.prod.yml up -d
+# (NOT merged with docker-compose.yml - that file is the local dev stack).
+#
 # -----------------------------------------------------------------------------
-# Hardens the EMQX broker for REAL remote edge devices over the internet:
-#   - adds an mTLS listener on 8883 (verify_peer + fail_if_no_peer_cert) driven
-#     by the broker server cert + the device CA (issued by tools/pki/voltpilot-ca.sh),
-#   - binds the device cert identity to per-tenant/-device ACLs (infra/mqtt/acl.conf),
-#   - keeps the plaintext dev listener (1883) for the INTERNAL ingest consumer but
-#     publishes it only on loopback so it is never exposed to the internet.
+# TWO public entry points, everything else internal:
+#   1. frontend  (APP_PORT, plain HTTP) - the SPA + reverse proxy. TLS is
+#      terminated by an EXTERNAL reverse proxy (Caddy on another host) that
+#      forwards all traffic for ${DOMAIN} here. The frontend nginx serves the
+#      SPA and proxies /api/ -> api and /auth/ -> Keycloak, so the API and
+#      Keycloak stay internal - nothing else is published.
+#   2. emqx 8883 (mTLS) - remote edge devices connect outbound with a client
+#      cert (see docs/connect-a-device.md / docs/security-mqtt.md). Preserved
+#      verbatim from the original secure-broker overlay this file grew out of.
 #
-# Usage (after issuing certs - see docs/connect-a-device.md):
-#   ./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com --ip <public-ip>
-#   cp tools/pki/out/server/{server.crt,server.key,device-ca.crt} infra/mqtt/certs/
-#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Your external proxy MUST:
+#   - forward https://${DOMAIN}  ->  http://THIS_VPS:${APP_PORT:-8080}
+#   - preserve the Host header and set X-Forwarded-Proto: https
+# Firewall APP_PORT so ONLY the proxy host can reach it (it is plain HTTP);
+# leave 8883 open to the internet for devices. See docs/deploy.md.
 #
-# This overlay ONLY adds to the base compose; it does not rewrite the shared
-# EMQX block. Merge base + overlay with `-f docker-compose.yml -f docker-compose.prod.yml`.
+# All credentials come from /srv/docker/voltpilot/.env (see .env.prod.example);
+# the ${VAR:?...} entries abort the deploy if a secret is missing. Changing
+# DOMAIN also requires rebuilding the frontend image with a matching
+# VITE_KEYCLOAK_URL (the SPA bakes it in - see the deploy workflow).
 # =============================================================================
+name: voltpilot
 
 services:
-  emqx:
+  # ---------------------------------------------------------------------------
+  # TimescaleDB: one Postgres instance for timeseries (hypertables) + master
+  # data. On a FRESH volume the init scripts create the collector-owned tables
+  # (day_ahead_prices/forecast); the api's Flyway V1/V2 own the core schema, the
+  # RLS policies and the voltpilot_app role when the api container starts.
+  # ---------------------------------------------------------------------------
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
     environment:
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      # *.sql here run once, in filename order, on FIRST init only.
+      - ./infra/prod/timescale:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-voltpilot} -d ${POSTGRES_DB:-voltpilot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Keycloak store - a DEDICATED Postgres, isolated from the application DB
+  # (mirrors saalo's prod split so a TimescaleDB restore never touches auth).
+  # ---------------------------------------------------------------------------
+  keycloak-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD in .env}
+    volumes:
+      - keycloak-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Keycloak (OIDC). Production mode (`start`, not start-dev): persistent
+  # Postgres store + strict hostname. Served under the /auth relative path so the
+  # frontend nginx can reverse-proxy it; TLS terminates on the external proxy
+  # (KC_HTTP_ENABLED + KC_PROXY_HEADERS trust its X-Forwarded-*). The prod realm
+  # is imported on first boot; VP_PUBLIC_ORIGIN / VP_API_CLIENT_SECRET fill its
+  # ${...} placeholders (redirect URIs, web origins, confidential secret).
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0.5
+    restart: unless-stopped
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD in .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in .env}
+      # KC_HOSTNAME MUST include the /auth path, or Keycloak emits frontend URLs
+      # (form actions, CSS links) without it -> 405 on login + unstyled page.
+      KC_HOSTNAME: https://${DOMAIN:?set DOMAIN in .env}/auth
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      # Substituted into the imported realm (infra/prod/keycloak/voltpilot-realm.json).
+      VP_PUBLIC_ORIGIN: https://${DOMAIN:?set DOMAIN in .env}
+      VP_API_CLIENT_SECRET: ${VP_API_CLIENT_SECRET:?set VP_API_CLIENT_SECRET in .env}
+    volumes:
+      - ./infra/prod/keycloak:/opt/keycloak/data/import:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    healthcheck:
+      # The image ships no curl/wget; health lives on the management port 9000.
+      # KC_HTTP_RELATIVE_PATH=/auth also shifts the health endpoint under /auth.
+      test:
+        - "CMD-SHELL"
+        - "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /auth/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"
+      start_period: 90s # first boot runs a config build + DB migration before it answers
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  # ---------------------------------------------------------------------------
+  # Redpanda: single-broker Kafka-API event log. INTERNAL ONLY in prod - only
+  # the in-cluster listener is advertised (redpanda:29092) and no host port is
+  # published, so it is never reachable from outside the compose network.
+  # ---------------------------------------------------------------------------
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=1G
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      # Only the in-cluster listener - no external/host listener in prod.
+      - --kafka-addr=INTERNAL://0.0.0.0:29092
+      - --advertise-kafka-addr=INTERNAL://redpanda:29092
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # One-shot: create the MVP telemetry.raw topic, then exit 0.
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.7
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        rpk topic create ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
+        --brokers redpanda:29092
+        --partitions ${REDPANDA_TELEMETRY_PARTITIONS:-3}
+        --replicas 1 || true;
+        rpk topic list --brokers redpanda:29092
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # EMQX: MQTT broker + the hardened mTLS device ingress (8883). Preserved from
+  # the secure-broker overlay this file grew out of - see docs/security-mqtt.md.
+  # Devices connect OUTBOUND on 8883 with a client cert; 1883 (plaintext) and
+  # the dashboard stay on loopback for the internal ingest consumer + operators.
+  # ---------------------------------------------------------------------------
+  emqx:
+    image: emqx/emqx:5.8.3
+    restart: unless-stopped
+    environment:
+      EMQX_NODE__COOKIE: ${EMQX_NODE_COOKIE:?set EMQX_NODE_COOKIE in .env}
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD_USER:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?set EMQX_DASHBOARD_PASSWORD in .env}
       # --- mTLS listener on 8883 -------------------------------------------
       # Require + verify a client x.509 cert signed by the device CA. A device
       # with no cert / an untrusted cert is dropped at the TLS handshake.
@@ -52,10 +210,209 @@ services:
       - ./infra/mqtt/acl.conf:/opt/emqx/etc/acl.conf:ro
       # Optional CRL for cryptographic revocation (enable CRL check in EMQX to use).
       - ./infra/mqtt/certs/crl.pem:/opt/emqx/etc/certs/crl.pem:ro
+      - emqx-data:/opt/emqx/data
     # Expose ONLY 8883 to the internet. Keep the dashboard, WebSocket and the
     # plaintext listener on loopback so they are reachable only on the host
     # (put a firewall in front regardless - see the hardening checklist).
-    ports: !override
+    ports:
       - "8883:8883"                 # mTLS device ingress (public)
       - "127.0.0.1:1883:1883"       # plaintext, INTERNAL ingest only (loopback)
       - "127.0.0.1:18083:18083"     # dashboard (loopback / tunnel only)
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Portal API (Spring Boot): the user-facing spine. OAuth2 resource server
+  # (validates Keycloak JWTs), tenant-scoped REST over TimescaleDB with Postgres
+  # RLS, device claiming. On start it runs Flyway as the Postgres superuser
+  # (creating the non-privileged voltpilot_app role + RLS policies), then serves
+  # as voltpilot_app so RLS applies. Internal only - reached via the frontend's
+  # /api reverse proxy.
+  # ---------------------------------------------------------------------------
+  api:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      # `local` seeds the two demo tenants + demo telemetry so a fresh deploy is
+      # immediately demoable (matches the demo/demo user in the imported realm).
+      # Set SPRING_PROFILES_ACTIVE= (blank) in .env for a clean production DB.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      SERVER_PORT: 8090
+      # Runtime connection: non-privileged app role (RLS applies to it).
+      POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}
+      APP_DB_USER: ${APP_DB_USER:-voltpilot_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+      # Flyway connection: Postgres superuser (owns schema, creates role + RLS).
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # OIDC on. Issuer is the browser-facing Keycloak URL (under /auth); JWKS is
+      # fetched over the compose-internal URL (the issuer-trap fix).
+      VOLTPILOT_SECURITY_OIDC_ENABLED: "true"
+      OIDC_ISSUER_URI: https://${DOMAIN:?set DOMAIN in .env}/auth/realms/voltpilot
+      OIDC_JWK_SET_URI: http://keycloak:8080/auth/realms/voltpilot/protocol/openid-connect/certs
+      # The SPA is served same-origin, so CORS is not strictly needed; allow the
+      # public origin anyway for direct API tooling.
+      VOLTPILOT_CORS_ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN in .env}
+    healthcheck:
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/localhost/8090; echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"status\":\"UP\"'"
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Ingest: subscribe to EMQX telemetry topics (QoS1), validate against the
+  # telemetry contract, produce telemetry.raw events to Redpanda. Reaches EMQX
+  # in-cluster at emqx:1883 (loopback publish is host-only). Internal.
+  # ---------------------------------------------------------------------------
+  ingest:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/ingest:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      SERVER_PORT: 8091
+      MQTT_BROKER_URL: tcp://emqx:1883
+      MQTT_TELEMETRY_TOPIC_FILTER: ${MQTT_TELEMETRY_TOPIC_FILTER:-ems/+/+/+/telemetry}
+      REDPANDA_BOOTSTRAP_SERVERS: ${REDPANDA_BOOTSTRAP_SERVERS:-redpanda:29092}
+      REDPANDA_TELEMETRY_TOPIC: ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
+    healthcheck:
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/localhost/8091; echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"status\":\"UP\"'"
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+
+  # ---------------------------------------------------------------------------
+  # Writer: consume telemetry.raw and insert into the TimescaleDB `telemetry`
+  # hypertable. Connects as voltpilot_app and sets the RLS tenant per event.
+  # Depends on `api` because api's Flyway owns the schema, RLS and that role.
+  # ---------------------------------------------------------------------------
+  writer:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/timescale-writer:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8092
+      REDPANDA_BOOTSTRAP_SERVERS: ${REDPANDA_BOOTSTRAP_SERVERS:-redpanda:29092}
+      REDPANDA_TELEMETRY_TOPIC: ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
+      POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}
+      APP_DB_USER: ${APP_DB_USER:-voltpilot_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+    healthcheck:
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/localhost/8092; echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"status\":\"UP\"'"
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Market-data collector: ENTSO-E day-ahead prices -> day_ahead_prices. The
+  # image's one-shot `fetch --persist` is wrapped in a daily loop so it behaves
+  # as a self-contained collector on this single VPS (ENTSO-E publishes the next
+  # day ~12:45 market time). Writes market-wide, non-RLS rows over the POSTGRES_*
+  # superuser connection. Needs ENTSOE_SECURITY_TOKEN to fetch (captain-provided;
+  # until it is set the loop just logs and retries next cycle).
+  # ---------------------------------------------------------------------------
+  market-data:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/market-data:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      MARKET_DATA_ZONE: ${MARKET_DATA_ZONE:-DE-LU}
+      ENTSOE_SECURITY_TOKEN: ${ENTSOE_SECURITY_TOKEN:-}
+      ENTSOE_BASE_URL: ${ENTSOE_BASE_URL:-https://web-api.tp.entsoe.eu/api}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "while true; do python -m voltpilot_market_data fetch --persist || echo 'market-data: fetch failed, retrying next cycle'; sleep 86400; done"
+
+  # ---------------------------------------------------------------------------
+  # Forecast collector: baseline load/PV forecasts (architecture 12; no ML in
+  # v1). The module currently runs an OFFLINE baseline demo (the DB-persist path
+  # via TimescaleForecastRepository is wired but not yet exposed on the CLI - see
+  # services/forecast). Included here as a daily-loop collector so the prod stack
+  # already carries it; it will start persisting once that CLI path lands.
+  # ---------------------------------------------------------------------------
+  forecast:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/forecast:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "while true; do python -m voltpilot_forecast || echo 'forecast: run failed, retrying next cycle'; sleep 86400; done"
+
+  # ---------------------------------------------------------------------------
+  # Frontend: the built SPA on nginx, and the SINGLE public HTTP entry point the
+  # external TLS proxy forwards to. nginx also reverse-proxies /api/ -> api and
+  # /auth/ -> keycloak (see frontend/portal/nginx.conf).
+  # ---------------------------------------------------------------------------
+  frontend:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${APP_PORT:-8080}:80"
+    depends_on:
+      - api
+      - keycloak
+
+networks:
+  # A single private bridge network for all services. Only the two published
+  # ports above (frontend APP_PORT, emqx 8883) cross it to the host; everything
+  # else talks over this internal network by compose service name.
+  default:
+    name: voltpilot-prod
+
+volumes:
+  timescale-data:
+  keycloak-db-data:
+  emqx-data:
+  redpanda-data:

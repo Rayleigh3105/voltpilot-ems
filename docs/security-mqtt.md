@@ -10,7 +10,7 @@ How VoltPilot lets a real remote edge device connect securely to the self-hosted
 | `8883` | `ssl/default` | **mTLS** | client x.509 cert | **public** | real remote devices |
 
 The plaintext dev listener (1883) is **kept intact** so the local stack and the internal ingest→Redpanda path work unchanged.
-The secure overlay publishes it on `127.0.0.1` only; devices never use it.
+The production compose (`docker-compose.prod.yml`) publishes it on `127.0.0.1` only; devices never use it.
 
 ## mTLS (transport auth)
 
@@ -35,7 +35,7 @@ Because `peer_cert_as_username = cn`, the broker sees `username = device_id`, wh
 
 ## Per-tenant / per-device ACL
 
-`infra/mqtt/acl.conf` (mounted into EMQX by the secure overlay) is evaluated top-down, first match wins:
+`infra/mqtt/acl.conf` (mounted into EMQX by the production compose) is evaluated top-down, first match wins:
 
 1. `dashboard` may watch `$SYS/#`.
 2. The internal backbone user **`vp-internal`** (ingest/writer on the trusted 1883) gets full `ems/#` - ingest subscribes to `ems/+/+/+/telemetry` across tenants.
@@ -86,8 +86,10 @@ cp tools/pki/out/server/server.key     infra/mqtt/certs/
 cp tools/pki/out/server/device-ca.crt  infra/mqtt/certs/
 cp tools/pki/out/ca/crl.pem            infra/mqtt/certs/     # optional
 
-# 3. Bring up the backbone with the SECURE overlay.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# 3. Bring up the production stack (docker-compose.prod.yml is the full,
+#    standalone server-side stack and includes the hardened 8883 broker).
+#    See docs/deploy.md for the complete first-deploy flow (VPS .env, Caddy, CI).
+docker compose -f docker-compose.prod.yml up -d
 
 # 4. Provision devices (claim + cert) and hand out params - see connect-a-device.md.
 ```

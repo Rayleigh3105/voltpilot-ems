@@ -1,0 +1,242 @@
+name: Build & Deploy
+
+# Gated push-to-deploy for the single-VPS prod stack (docker-compose.prod.yml),
+# modeled on saalo's pipeline: test -> build+push every image to the Forgejo
+# registry -> SSH/SCP roll-out on the VPS. Manual trigger (workflow_dispatch);
+# wire it to `push` on your release branch once the runner + secrets are set.
+#
+# Required Forgejo Actions secrets (Repo -> Settings -> Actions -> Secrets):
+#   FORGEJO_USERNAME / FORGEJO_PASSWORD  - registry login (git.tecmaxx.de)
+#   DEPLOY_HOST / DEPLOY_USER / DEPLOY_PASSWORD  - the VPS SSH target
+#   DOMAIN                               - public FQDN (bakes into the SPA + realm)
+# See docs/deploy.md.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # Pre-deploy gate: all service tests must pass before we spend time building
+  # images. A red test job stops the whole pipeline here.
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ubuntu-latest-mo
+
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: api
+            type: jvm
+            path: services/api
+          - name: ingest
+            type: jvm
+            path: services/ingest
+          - name: timescale-writer
+            type: jvm
+            path: services/timescale-writer
+          - name: market-data
+            type: python
+            path: services/market-data
+          - name: forecast
+            type: python
+            path: services/forecast
+          - name: frontend
+            type: frontend
+            path: frontend/portal
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ---- JVM services (Maven wrapper; Testcontainers tests self-skip when
+      #      Docker is absent - see AGENTS.md) --------------------------------
+      - name: Set up JDK 21
+        if: matrix.type == 'jvm'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Maven test
+        if: matrix.type == 'jvm'
+        working-directory: ${{ matrix.path }}
+        run: ./mvnw -B test
+
+      # ---- Python services -------------------------------------------------
+      - name: Set up Python
+        if: matrix.type == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Pytest
+        if: matrix.type == 'python'
+        working-directory: ${{ matrix.path }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          pytest
+
+      # ---- Frontend (tsc type-check + Vite build) --------------------------
+      - name: Set up Node
+        if: matrix.type == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build (typecheck + bundle)
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: |
+          npm install
+          npm run build
+
+  # Build + push every deployed image in parallel. The deploy job waits for the
+  # whole matrix. Tags: :latest and :${{ github.sha }} (the rollout pins the SHA).
+  build:
+    name: Build & Push ${{ matrix.component }}
+    needs: test
+    runs-on: ubuntu-latest-mo
+
+    strategy:
+      matrix:
+        include:
+          - component: api
+            context: ./services/api
+            build_args: ""
+          - component: ingest
+            context: ./services/ingest
+            build_args: ""
+          - component: timescale-writer
+            context: ./services/timescale-writer
+            build_args: ""
+          - component: market-data
+            context: ./services/market-data
+            build_args: ""
+          - component: forecast
+            context: ./services/forecast
+            build_args: ""
+          # The SPA bakes its config at build time. VITE_API_BASE empty => the SPA
+          # calls same-origin /api/... (nginx proxies it); Keycloak is served under
+          # https://${DOMAIN}/auth behind the external proxy.
+          - component: frontend
+            context: ./frontend/portal
+            build_args: |
+              VITE_API_BASE=
+              VITE_KEYCLOAK_URL=https://${{ secrets.DOMAIN }}/auth
+              VITE_KEYCLOAK_REALM=voltpilot
+              VITE_KEYCLOAK_CLIENT_ID=voltpilot-frontend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Forgejo Registry
+        uses: docker/login-action@v3
+        with:
+          registry: git.tecmaxx.de
+          username: ${{ secrets.FORGEJO_USERNAME }}
+          password: ${{ secrets.FORGEJO_PASSWORD }}
+
+      - name: Build & Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          build-args: ${{ matrix.build_args }}
+          platforms: linux/amd64
+          push: true
+          cache-from: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache
+          cache-to: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache,mode=max
+          tags: |
+            git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:latest
+            git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:${{ github.sha }}
+
+  # Optional smoke gate: voltpilot has no browser e2e suite yet, so it is
+  # deferred (the Testcontainers integration tests in the `test` job already
+  # exercise the ingest pipe + RLS + OIDC end to end). When a Playwright smoke
+  # suite lands, add a `smoke` job here between `build` and `deploy` that brings
+  # up the just-built images and runs it, mirroring saalo's deploy.yaml.
+
+  deploy:
+    name: Deploy on VPS
+    needs: build
+    runs-on: ubuntu-latest-mo
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Ship the compose file + the infra the stack bind-mounts (prod Keycloak
+      # realm, prod TimescaleDB init, the MQTT ACL). Device certs are NOT shipped
+      # - they are staged on the VPS out of band (see docs/connect-a-device.md).
+      - name: Copy compose + infra to VPS
+        uses: https://github.com/appleboy/scp-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl.conf"
+          target: /tmp/voltpilot-deploy
+          overwrite: true
+
+      - name: Deploy via SSH
+        uses: https://github.com/appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR=/srv/docker/voltpilot
+
+            # scp-action preserves the source paths under the target directory.
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S mkdir -p "$DEPLOY_DIR/infra/prod" "$DEPLOY_DIR/infra/mqtt"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/infra/mqtt/acl.conf "$DEPLOY_DIR/infra/mqtt/acl.conf"
+            rm -rf /tmp/voltpilot-deploy
+
+            echo "${{ secrets.FORGEJO_PASSWORD }}" | docker login git.tecmaxx.de -u "${{ secrets.FORGEJO_USERNAME }}" --password-stdin
+
+            cd "$DEPLOY_DIR"
+            # Pin this rollout to the exact images this run built; secrets and all
+            # other settings come from $DEPLOY_DIR/.env (provisioned out of band,
+            # see .env.prod.example). The mTLS device certs must already be staged
+            # under $DEPLOY_DIR/infra/mqtt/certs/ (docs/connect-a-device.md).
+            export IMAGE_TAG="${{ github.sha }}"
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f
+
+  # Red-run notification. The gate jobs already mark the run red in Forgejo (the
+  # commit status check); this makes the failing stage explicit in the summary.
+  notify-failure:
+    name: Notify on red gate
+    needs: [test, build, deploy]
+    if: failure()
+    runs-on: ubuntu-latest-mo
+
+    steps:
+      - name: Summarise the failed run
+        run: |
+          {
+            echo "## :red_circle: Deploy gate failed"
+            echo ""
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            echo "| test   | ${{ needs.test.result }} |"
+            echo "| build  | ${{ needs.build.result }} |"
+            echo "| deploy | ${{ needs.deploy.result }} |"
+            echo ""
+            echo "Commit \`${{ github.sha }}\` was NOT deployed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Deploy gate failed for ${{ github.sha }} - see job results above." >&2
+          exit 1

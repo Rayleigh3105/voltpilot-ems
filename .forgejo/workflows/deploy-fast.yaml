@@ -1,0 +1,118 @@
+name: Build & Deploy (fast, no tests)
+
+# Manual-only fast path: build + push every image, then roll out on the VPS.
+# Unlike "Build & Deploy" this skips the test gate - it trusts the operator and
+# goes straight to production. Use it for quick rollouts when you've already
+# validated locally; use the full gated pipeline otherwise.
+#
+# Same Forgejo Actions secrets as deploy.yaml:
+#   FORGEJO_USERNAME / FORGEJO_PASSWORD, DEPLOY_HOST / DEPLOY_USER /
+#   DEPLOY_PASSWORD, DOMAIN. See docs/deploy.md.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Push ${{ matrix.component }}
+    runs-on: ubuntu-latest-mo
+
+    strategy:
+      matrix:
+        include:
+          - component: api
+            context: ./services/api
+            build_args: ""
+          - component: ingest
+            context: ./services/ingest
+            build_args: ""
+          - component: timescale-writer
+            context: ./services/timescale-writer
+            build_args: ""
+          - component: market-data
+            context: ./services/market-data
+            build_args: ""
+          - component: forecast
+            context: ./services/forecast
+            build_args: ""
+          - component: frontend
+            context: ./frontend/portal
+            build_args: |
+              VITE_API_BASE=
+              VITE_KEYCLOAK_URL=https://${{ secrets.DOMAIN }}/auth
+              VITE_KEYCLOAK_REALM=voltpilot
+              VITE_KEYCLOAK_CLIENT_ID=voltpilot-frontend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Forgejo Registry
+        uses: docker/login-action@v3
+        with:
+          registry: git.tecmaxx.de
+          username: ${{ secrets.FORGEJO_USERNAME }}
+          password: ${{ secrets.FORGEJO_PASSWORD }}
+
+      - name: Build & Push Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/Dockerfile
+          build-args: ${{ matrix.build_args }}
+          platforms: linux/amd64
+          push: true
+          cache-from: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache
+          cache-to: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache,mode=max
+          tags: |
+            git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:latest
+            git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:${{ github.sha }}
+
+  deploy:
+    name: Deploy on VPS
+    needs: build
+    runs-on: ubuntu-latest-mo
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Copy compose + infra to VPS
+        uses: https://github.com/appleboy/scp-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl.conf"
+          target: /tmp/voltpilot-deploy
+          overwrite: true
+
+      - name: Deploy via SSH
+        uses: https://github.com/appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          command_timeout: 15m
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            DEPLOY_DIR=/srv/docker/voltpilot
+
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S mkdir -p "$DEPLOY_DIR/infra/prod" "$DEPLOY_DIR/infra/mqtt"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/infra/mqtt/acl.conf "$DEPLOY_DIR/infra/mqtt/acl.conf"
+            rm -rf /tmp/voltpilot-deploy
+
+            echo "${{ secrets.FORGEJO_PASSWORD }}" | docker login git.tecmaxx.de -u "${{ secrets.FORGEJO_USERNAME }}" --password-stdin
+
+            cd "$DEPLOY_DIR"
+            export IMAGE_TAG="${{ github.sha }}"
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker image prune -f

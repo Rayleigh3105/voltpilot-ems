@@ -9,6 +9,9 @@
 .env
 .env.local
 *.local.env
+# Real prod env lives only on the VPS; the committed template is .env.prod.example.
+.env.prod
+!.env.prod.example
 
 # --- Java / Maven ---
 target/

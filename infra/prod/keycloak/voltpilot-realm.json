@@ -1,0 +1,112 @@
+{
+  "_comment": "PRODUCTION realm import for the single-VPS deploy (docker-compose.prod.yml). Mirrors the dev realm (infra/local/keycloak/voltpilot-realm.json) but parametrizes the browser-facing origin and the confidential-client secret so nothing host-specific or secret is baked in. Keycloak substitutes the ${...} placeholders from the container environment at import time (VP_PUBLIC_ORIGIN and VP_API_CLIENT_SECRET are set by the keycloak service in docker-compose.prod.yml). sslRequired=external: HTTPS is required for external requests, which the external Caddy terminates and signals via X-Forwarded-Proto (KC_PROXY_HEADERS=xforwarded). The demo/demo2 users are seeded so a fresh deploy is immediately loginable alongside SPRING_PROFILES_ACTIVE=local; REMOVE them (and clear the api profile) before a real production launch - see docs/deploy.md.",
+  "realm": "voltpilot",
+  "enabled": true,
+  "displayName": "Voltpilot-EMS",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 900,
+  "roles": {
+    "realm": [
+      { "name": "operator", "description": "Tenant operator" },
+      { "name": "admin", "description": "Tenant admin" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "voltpilot-api",
+      "name": "Voltpilot Portal API",
+      "description": "Confidential OIDC client for the Spring Boot portal API (bearer + service auth).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": true,
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "secret": "${env.VP_API_CLIENT_SECRET:change-me}",
+      "redirectUris": ["${env.VP_PUBLIC_ORIGIN}/*"],
+      "webOrigins": ["${env.VP_PUBLIC_ORIGIN}"],
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "voltpilot-frontend",
+      "name": "Voltpilot Web Portal",
+      "description": "Public OIDC client for the React (Vite) portal SPA (PKCE).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["${env.VP_PUBLIC_ORIGIN}/*"],
+      "webOrigins": ["${env.VP_PUBLIC_ORIGIN}"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "demo",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "demo@voltpilot.local",
+      "firstName": "Demo",
+      "lastName": "Operator",
+      "attributes": {
+        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+      },
+      "credentials": [
+        { "type": "password", "value": "demo", "temporary": false }
+      ],
+      "realmRoles": ["operator"]
+    },
+    {
+      "username": "demo2",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "demo2@voltpilot.local",
+      "firstName": "Nordwind",
+      "lastName": "Operator",
+      "attributes": {
+        "tenant_id": ["10000000-0000-0000-0000-000000000001"]
+      },
+      "credentials": [
+        { "type": "password", "value": "demo2", "temporary": false }
+      ],
+      "realmRoles": ["operator"]
+    }
+  ]
+}
