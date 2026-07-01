@@ -1,0 +1,2 @@
+# Private PKI material - NEVER commit CA or device keys/certs.
+out/

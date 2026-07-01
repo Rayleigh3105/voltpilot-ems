@@ -1,0 +1,5 @@
+# Broker server cert/key, device CA copy and CRL live here at deploy time.
+# NEVER commit private keys. Everything except this file is ignored.
+*
+!.gitignore
+!README.md

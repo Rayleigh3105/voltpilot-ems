@@ -1,0 +1,148 @@
+# Connect a real edge device (secure mTLS)
+
+How a physical Node-RED edge on a customer site connects to the self-hosted VoltPilot broker over the internet and starts publishing telemetry.
+
+The edge makes **only an outbound** MQTT connection (mutual TLS on port 8883).
+It exposes **no inbound ports** - this is a hard architecture rule (architecture §6), so the device works behind NAT/CGNAT with no port-forwarding.
+
+```
+   customer site                      internet            your server (EU)
+ ┌───────────────┐   mqtts:8883   ┌───────────────────────────────────────┐
+ │ Node-RED edge │ ─────────────► │ EMQX  mTLS listener 8883               │
+ │  (device.crt) │  outbound only │  verify_peer + per-device ACL          │
+ └───────────────┘                │  1883 (loopback) → ingest → Redpanda…  │
+                                   └───────────────────────────────────────┘
+```
+
+## Prerequisites
+
+- The device is **claimed** in the portal (it exists in your tenant with a `device_id`). See [Provisioning](#provisioning-claim--issue-cert) to do both steps in one command.
+- You know the topic IDs: `tenant_id`, `site_id`, `device_id` (all UUIDs).
+- You have the device's mTLS bundle: `device.crt`, `device.key`, and `device-ca.crt` (the CA that signs the broker's server cert).
+- Node-RED 4.x on the device (the VoltPilot edge image already has it).
+
+## 1. Get a device certificate
+
+Certs are issued by the device-CA tool. On the server that holds the CA:
+
+```bash
+# One-time: create the device CA + broker server cert for your domain.
+./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com --ip 203.0.113.10
+
+# Per device: issue a client cert whose identity encodes tenant/site/device.
+./tools/pki/voltpilot-ca.sh issue \
+  --tenant 00000000-0000-0000-0000-000000000001 \
+  --site   00000000-0000-0000-0000-000000000002 \
+  --device 00000000-0000-0000-0000-000000000003
+```
+
+This writes the bundle to `tools/pki/out/devices/<device_id>/` and appends an ACL grant to `infra/mqtt/acl.conf` binding that cert to exactly its own topics.
+Ship `device.crt`, `device.key` and `device-ca.crt` to the device over a secure channel (the **private key never leaves your control except onto that one device**).
+
+Reload the broker authorization so the new grant takes effect:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+```
+
+## 2. Broker connection params
+
+| Setting | Value |
+|---|---|
+| Protocol | `mqtts` (MQTT over TLS) |
+| Host | `mqtt.example.com` *(your broker's public FQDN)* |
+| Port | `8883` |
+| TLS | on, **mutual** (present the client cert) |
+| CA cert | `device-ca.crt` (verify the broker) |
+| Client cert / key | `device.crt` / `device.key` |
+| Username / clientid | **do not set** - the broker derives both from the cert CN (`device_id`) |
+| QoS | `1` |
+
+## 3. Topics (contract)
+
+The device may use **only its own** path. Publishing under any other tenant/site/device is denied by the broker ACL.
+
+```
+ems/{tenant_id}/{site_id}/{device_id}/telemetry   # publish  (QoS1)   measurements
+ems/{tenant_id}/{site_id}/{device_id}/status      # publish           heartbeat/health
+ems/{tenant_id}/{site_id}/{device_id}/schedule    # subscribe (retained) cloud→edge schedule
+ems/{tenant_id}/{site_id}/{device_id}/command     # subscribe          ad-hoc command
+ems/{tenant_id}/{site_id}/{device_id}/config      # subscribe (retained) config
+```
+
+Telemetry payload is the binding contract [`docs/contracts/mqtt-telemetry.schema.json`](contracts/mqtt-telemetry.schema.json) (`schema_version` `"1.0"`).
+No payload/mapping change is needed - the existing edge flow already publishes this shape.
+
+## 4. Node-RED MQTT-out config (mTLS)
+
+On the device, configure the `mqtt-broker` config node and a `tls-config` node:
+
+**TLS configuration node**
+
+| Field | Value |
+|---|---|
+| Certificate | `device.crt` |
+| Private Key | `device.key` |
+| CA Certificate | `device-ca.crt` |
+| Verify server certificate | ✅ on |
+| Server name (SNI) | `mqtt.example.com` |
+
+**MQTT broker config node**
+
+| Field | Value |
+|---|---|
+| Server | `mqtt.example.com` |
+| Port | `8883` |
+| Enable secure (SSL/TLS) connection | ✅ on → select the TLS config node above |
+| Protocol | MQTT V3.1.1 or V5 |
+| Client ID | *leave blank* (broker sets it from the cert) |
+| Username / Password | *leave blank* |
+
+The equivalent `flows.json` fragment (the edge already publishes telemetry at QoS1 - only the broker/TLS config changes for production):
+
+```json
+{
+  "id": "cfg-tls-prod", "type": "tls-config",
+  "cert": "/data/certs/device.crt",
+  "key": "/data/certs/device.key",
+  "ca": "/data/certs/device-ca.crt",
+  "verifyservercert": true, "servername": "mqtt.example.com"
+},
+{
+  "id": "cfg-mqtt-prod", "type": "mqtt-broker", "name": "VoltPilot (prod mTLS)",
+  "broker": "mqtt.example.com", "port": "8883",
+  "usetls": true, "tls": "cfg-tls-prod",
+  "protocolVersion": "5", "clientid": "", "keepalive": "60", "cleansession": false
+}
+```
+
+Point the existing `mqtt out` telemetry/status nodes at `cfg-mqtt-prod` (QoS 1) and the `mqtt in` schedule/command/config nodes at the same broker.
+
+## Provisioning (claim + issue cert)
+
+To do the DB claim and the cert in one step, use the helper (it reuses the portal's `POST /api/v1/devices/claim`, then issues the cert bound to the returned `device_id`):
+
+```bash
+./tools/pki/provision-device.sh \
+  --api-base https://portal.example.com \
+  --token "$ACCESS_TOKEN" \
+  --site 00000000-0000-0000-0000-000000000002 \
+  --external-ref plant-a-inverter-01 \
+  --domain mqtt.example.com
+```
+
+`tenant_id` is read from the access token's `tenant_id` claim. The script prints the broker URL, exact topics and the cert bundle path.
+
+## Revoke a compromised device
+
+```bash
+./tools/pki/voltpilot-ca.sh revoke --device 00000000-0000-0000-0000-000000000003
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+```
+
+Revoke removes the device's ACL grant (an ungranted device_id is denied every topic by default) **and** adds the cert to the CRL. If you enable CRL checking on the listener, the cert is also rejected at the TLS handshake.
+
+## Verify it works
+
+- Server side: `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f emqx` and the EMQX dashboard (loopback `:18083`) show the client connecting with clientid = `device_id`.
+- Local proof without a live broker (CI-friendly): `python3 tools/pki/verify_mqtt_security.py` runs the mutual-TLS handshake and the ACL policy checks (valid cert connects, no/untrusted cert rejected, cross-tenant denied, revocation). See [`docs/security-mqtt.md`](security-mqtt.md) for the full model and the live-broker test recipe.

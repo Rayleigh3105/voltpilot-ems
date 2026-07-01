@@ -152,6 +152,10 @@ Each service is independently buildable; see its own README.
 
 The binding interface contracts live in [`docs/contracts/`](docs/contracts/): the MQTT topic + telemetry payload schema (incl. the observed §14a effective power limit), the Redpanda `telemetry.raw` event schema, and the portal OpenAPI (auth/sites/devices/telemetry/claim implemented; schedules/KPIs still stubs). Treat changes there as breaking and versioned.
 
+## Connect a real device (secure mTLS broker)
+
+For onboarding a physical remote edge device over the internet - mTLS on `8883`, per-tenant/-device ACL, a device CA + cert-issuance/revocation tool, and a self-hosted secure overlay - see [`docs/connect-a-device.md`](docs/connect-a-device.md) (device guide) and [`docs/security-mqtt.md`](docs/security-mqtt.md) (security model + hardening checklist). The dev stack (plaintext `1883`) is unaffected; the secure listener comes up with `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`. Docker-free proof: `python3 tools/pki/verify_mqtt_security.py`.
+
 ## Scope & future work
 
 Delivered so far: the **runnable local backbone**, the binding **contracts**, the **portal + authentication spine** (Spring Boot API in compose with Keycloak OIDC + Postgres RLS tenant isolation + device claiming, and a React portal with OIDC login + telemetry view - see [`AGENTS.md`](AGENTS.md)), the baseline **forecast** service, the **ENTSO-E market-data** adapter, and the Node-RED **edge** (SunSpec simulator). The remaining services (`ingest`, `writer`, `optimization`, `marketing-adapter`) are thin skeletons. Still excluded:

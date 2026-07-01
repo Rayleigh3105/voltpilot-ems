@@ -1,0 +1,87 @@
+########################################################################
+# VoltPilot device-PKI OpenSSL configuration.
+#
+# Consumed by tools/pki/voltpilot-ca.sh. All paths resolve under the CA
+# working directory, passed in via the VP_PKI_CA_DIR environment variable
+# (so the private CA material lives outside the repo, in a gitignored dir).
+#
+# ONE CA ("VoltPilot Device CA") signs:
+#   - the broker SERVER certificate  (extendedKeyUsage = serverAuth)
+#   - every per-device CLIENT cert    (extendedKeyUsage = clientAuth)
+# Role separation is by EKU, not by CA, which keeps the MVP single-host
+# trust store minimal: the broker trusts this one CA for client certs, and
+# devices trust this one CA to verify the broker.
+########################################################################
+
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+dir               = $ENV::VP_PKI_CA_DIR
+certs             = $dir/certs
+new_certs_dir     = $dir/newcerts
+database          = $dir/index.txt
+serial            = $dir/serial
+crlnumber         = $dir/crlnumber
+certificate       = $dir/ca.crt
+private_key       = $dir/ca.key
+RANDFILE          = $dir/.rand
+
+default_md        = sha256
+default_days      = 825
+default_crl_days  = 30
+preserve          = no
+policy            = policy_device
+# Allow the same CN (device_id) to be re-issued after revocation.
+unique_subject    = no
+copy_extensions   = none
+
+# Devices carry tenant in O, site in OU, device_id in CN. O and CN are always
+# required; OU is optional so the broker SERVER cert (O + CN, no site) can be
+# signed by the same CA. The issuing script always supplies OU for devices.
+[ policy_device ]
+organizationName        = supplied
+organizationalUnitName  = optional
+commonName              = supplied
+
+[ req ]
+default_bits        = 2048
+default_md          = sha256
+distinguished_name  = req_dn
+prompt              = no
+string_mask         = utf8only
+
+[ req_dn ]
+# Overridden per-invocation via -subj.
+CN = placeholder
+
+# ---- Extensions for the CA root certificate -------------------------------
+[ v3_ca ]
+basicConstraints       = critical, CA:TRUE, pathlen:0
+keyUsage               = critical, keyCertSign, cRLSign
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always
+
+# ---- Extensions for the broker SERVER certificate -------------------------
+[ v3_server ]
+basicConstraints       = CA:FALSE
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = serverAuth
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid,issuer
+# SAN (DNS/IP of the broker) injected at issue time via env.
+subjectAltName         = ${ENV::VP_SERVER_SAN}
+
+# ---- Extensions for per-device CLIENT certificates ------------------------
+[ v3_device ]
+basicConstraints       = CA:FALSE
+keyUsage               = critical, digitalSignature, keyEncipherment
+extendedKeyUsage       = clientAuth
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid,issuer
+# SPIFFE-style URI SAN for audit / future SAN-based authz, injected via env.
+subjectAltName         = ${ENV::VP_DEVICE_SAN}
+
+# ---- CRL extensions -------------------------------------------------------
+[ crl_ext ]
+authorityKeyIdentifier = keyid:always

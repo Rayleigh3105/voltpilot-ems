@@ -1,0 +1,61 @@
+# =============================================================================
+# Voltpilot-EMS - SECURE self-hosted overlay (single-host MVP, no Kubernetes).
+# -----------------------------------------------------------------------------
+# Hardens the EMQX broker for REAL remote edge devices over the internet:
+#   - adds an mTLS listener on 8883 (verify_peer + fail_if_no_peer_cert) driven
+#     by the broker server cert + the device CA (issued by tools/pki/voltpilot-ca.sh),
+#   - binds the device cert identity to per-tenant/-device ACLs (infra/mqtt/acl.conf),
+#   - keeps the plaintext dev listener (1883) for the INTERNAL ingest consumer but
+#     publishes it only on loopback so it is never exposed to the internet.
+#
+# Usage (after issuing certs - see docs/connect-a-device.md):
+#   ./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com --ip <public-ip>
+#   cp tools/pki/out/server/{server.crt,server.key,device-ca.crt} infra/mqtt/certs/
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This overlay ONLY adds to the base compose; it does not rewrite the shared
+# EMQX block. Merge base + overlay with `-f docker-compose.yml -f docker-compose.prod.yml`.
+# =============================================================================
+
+services:
+  emqx:
+    environment:
+      # --- mTLS listener on 8883 -------------------------------------------
+      # Require + verify a client x.509 cert signed by the device CA. A device
+      # with no cert / an untrusted cert is dropped at the TLS handshake.
+      EMQX_LISTENERS__SSL__DEFAULT__BIND: "0.0.0.0:8883"
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/emqx/etc/certs/device-ca.crt
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/server.crt
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/server.key
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__VERIFY: verify_peer
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__FAIL_IF_NO_PEER_CERT: "true"
+      # Bind the cert identity: MQTT username := cert CN (device_id), and the
+      # clientid := CN too, so a device cannot spoof either. The ACL grants are
+      # keyed on this username (see infra/mqtt/acl.conf).
+      EMQX_LISTENERS__SSL__DEFAULT__PEER_CERT_AS_USERNAME: cn
+      EMQX_LISTENERS__SSL__DEFAULT__PEER_CERT_AS_CLIENTID: cn
+      # --- authorization ----------------------------------------------------
+      # The file authorizer (enabled by default) reads our mounted acl.conf.
+      # Deny anything no rule matches (the acl.conf still ends with an explicit
+      # allow for anonymous internal clients on the firewalled 1883).
+      EMQX_AUTHORIZATION__NO_MATCH: deny
+      EMQX_AUTHORIZATION__DENY_ACTION: disconnect
+      # Anonymous MQTT-level login stays on: the SSL listener is gated by the
+      # TLS client cert, and 1883 is loopback-only + firewalled.
+    volumes:
+      # Broker server cert/key + device CA. Populate infra/mqtt/certs/ with the
+      # tool output first (that dir is gitignored - keys never hit the repo).
+      - ./infra/mqtt/certs/server.crt:/opt/emqx/etc/certs/server.crt:ro
+      - ./infra/mqtt/certs/server.key:/opt/emqx/etc/certs/server.key:ro
+      - ./infra/mqtt/certs/device-ca.crt:/opt/emqx/etc/certs/device-ca.crt:ro
+      # Per-tenant/-device ACL (committed; grants appended by the cert tool).
+      - ./infra/mqtt/acl.conf:/opt/emqx/etc/acl.conf:ro
+      # Optional CRL for cryptographic revocation (enable CRL check in EMQX to use).
+      - ./infra/mqtt/certs/crl.pem:/opt/emqx/etc/certs/crl.pem:ro
+    # Expose ONLY 8883 to the internet. Keep the dashboard, WebSocket and the
+    # plaintext listener on loopback so they are reachable only on the host
+    # (put a firewall in front regardless - see the hardening checklist).
+    ports: !override
+      - "8883:8883"                 # mTLS device ingress (public)
+      - "127.0.0.1:1883:1883"       # plaintext, INTERNAL ingest only (loopback)
+      - "127.0.0.1:18083:18083"     # dashboard (loopback / tunnel only)
