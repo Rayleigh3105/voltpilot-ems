@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voltpilot-market-data"
+version = "0.1.0"
+description = "Voltpilot-EMS market-data adapter: ENTSO-E Transparency day-ahead prices behind a provider-agnostic port"
+readme = "README.md"
+requires-python = ">=3.10"
+# HTTP client for the live ENTSO-E fetch. Parsing/resilience use only stdlib, so
+# tests inject a fake HttpClient and never import requests (or hit the network).
+dependencies = [
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# psycopg is only needed for the TimescaleDB writer; kept optional so the
+# package (and its tests) install without a DB driver present.
+db = [
+    "psycopg[binary]>=3.1",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+voltpilot-market-data = "voltpilot_market_data.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["voltpilot_market_data*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

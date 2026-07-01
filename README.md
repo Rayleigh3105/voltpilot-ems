@@ -21,6 +21,7 @@ services/timescale-writer/  # Spring Boot: Redpanda -> TimescaleDB writer
 services/optimization/      # Python: MILP/MPC engine (HiGHS via Pyomo)
 services/forecast/          # Python: load/PV forecast (baseline in v1)
 services/marketing-adapter/ # Python: generic Direktvermarktung adapter (stub)
+services/market-data/       # Python: ENTSO-E day-ahead price adapter -> day_ahead_prices
 edge/node-red/              # Node-RED edge container skeleton (thin flows)
 frontend/portal/            # React (Vite) web portal skeleton
 ```
@@ -74,6 +75,7 @@ Each service is independently buildable; see its own README.
 (cd services/optimization && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev,solver]' && pytest)  # 'solver' extra pulls the HiGHS wheel; drop it where unavailable and the solver test skips
 (cd services/forecast && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)
 (cd services/marketing-adapter && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)
+(cd services/market-data && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)  # add ',db' for the psycopg TimescaleDB writer; tests run fixture-only, no live ENTSO-E
 
 # Frontend
 (cd frontend/portal && npm install && npm run build)
@@ -88,8 +90,8 @@ The binding interface contracts live in [`docs/contracts/`](docs/contracts/): th
 This scaffold delivers the **runnable local backbone + service skeletons + contracts** only. It deliberately excludes:
 
 - Cloud / Kubernetes / Hetzner deployment manifests and GitOps (Argo CD/Flux).
-- Real business logic: the optimization MILP, Modbus/SunSpec edge I/O, forecasting models, direct-marketing provider integrations, ENTSO-E price ingestion.
-- Schema migrations (Flyway/Liquibase) - the local DB is bootstrapped by `infra/local/timescale/` init SQL; production owns the schema via migrations in `services/api`.
+- Real business logic: the optimization MILP, Modbus/SunSpec edge I/O, forecasting models, direct-marketing provider integrations. (ENTSO-E day-ahead price ingestion now exists in `services/market-data`.)
+- Wiring Flyway/Liquibase into `services/api` - the local DB is bootstrapped by `infra/local/timescale/` init SQL, and `services/market-data` ships the first forward-only migration (`day_ahead_prices`); running migrations from `services/api` is still future work.
 - Observability stack (Prometheus/Grafana/Loki/OTel) and Edge OTA (Mender).
 
 See [`AGENTS.md`](AGENTS.md) for the durable stack/ports/run/build/test reference.

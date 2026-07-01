@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Acknowledgement_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-1:acknowledgementdocument:8:0">
+  <mRID>ack-0001</mRID>
+  <createdDateTime>2026-07-01T11:45:00Z</createdDateTime>
+  <Reason>
+    <code>999</code>
+    <text>No matching data found for Data item Day-ahead Prices [12.1.D].</text>
+  </Reason>
+</Acknowledgement_MarketDocument>

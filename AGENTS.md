@@ -34,6 +34,7 @@ MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Inges
 | `services/optimization` | Python | MILP/MPC schedule (HiGHS) | stateless (job) |
 | `services/forecast` | Python | Load/PV forecast (baseline in v1) | stateless |
 | `services/marketing-adapter` | Python | Generic Direktvermarktung adapter (stub) | stateless |
+| `services/market-data` | Python | ENTSO-E day-ahead price adapter (anti-corruption layer) -> `day_ahead_prices` | stateless (job) |
 | `edge/node-red` | Node-RED | Thin edge: acquisition, publish, schedule-exec, watchdog, guards | edge |
 | `frontend/portal` | React/Vite | Web portal | - |
 
@@ -81,6 +82,7 @@ Notes:
 (cd services/optimization && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev,solver]' && pytest)  # 'solver' extra pulls the HiGHS wheel; drop it where unavailable and the solver test skips
 (cd services/forecast && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)
 (cd services/marketing-adapter && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)
+(cd services/market-data && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)  # add ',db' for the psycopg TimescaleDB writer; tests run fixture-only, no live ENTSO-E
 
 # Frontend (also runs tsc type-check)
 (cd frontend/portal && npm install && npm run build)
@@ -95,6 +97,17 @@ Health endpoints on the JVM services are mapped to root: `GET /health` (Spring B
 - `telemetry-raw.event.schema.json` - Redpanda `telemetry.raw` event.
 - `openapi.yaml` - portal API stub.
 
+## Market data (ENTSO-E day-ahead prices)
+
+`services/market-data` is the anti-corruption adapter that feeds day-ahead spot prices into the optimizer (architecture section 11/13: "Marktdaten: ENTSO-E Transparency, hinter Adapter").
+
+- **Port / providers.** `DayAheadPriceSource` (in `source.py`) is the provider-agnostic port; every caller depends on it, never on ENTSO-E. `EntsoeDayAheadPriceSource` is the first implementation; a commercial provider is a drop-in replacement. `ResilientPriceSource` decorates any source with retry (exponential backoff), a circuit breaker, and a **last-good cache**, so the optimizer always gets a usable series even when ENTSO-E is down.
+- **Internal representation.** `PriceSeries` / `PricePoint` (EUR/MWh, UTC slot bounds, `PT15M`/`PT60M`). No vendor vocabulary crosses this boundary.
+- **Zone -> EIC mapping** lives only in `zones.py`: `DE-LU -> 10Y1001A1001A82H`, `AT -> 10YAT-APG------L`, `CH -> 10YCH-SWISSGRIDZ`. DE-LU is implemented end to end; adding AT/CH is a one-line edit there.
+- **Storage.** Prices are timeseries -> the `day_ahead_prices` **hypertable**, keyed by `(bidding_zone, resolution, ts)`. Prices are market-wide **per bidding zone, not per tenant**, so there is deliberately **no `tenant_id`** (and no RLS) on this table, unlike `telemetry`. Schema is owned by the forward-only migration `services/market-data/db/migration/V20260701001200__day_ahead_prices_hypertable.sql` (Flyway/Liquibase-compatible; **date-based version chosen so it does not collide with the api service's future `V1, V2, ...` baseline** - coordinate future market-data migrations to stay in this `V2026...` scope). The local dev stack mirrors it via `infra/local/timescale/02-day-ahead-prices.sql` (additive; the existing `01-init.sql` is untouched).
+- **Token.** `ENTSOE_SECURITY_TOKEN` is a **captain-provided secret** (blank in `.env.example`); obtain via ENTSO-E Transparency registration + a "Restful API access" email (see `services/market-data/README.md`). It is **not** needed for tests/CI - parsing, mapping and resilience run entirely off recorded fixtures in `tests/fixtures/`. A live token is needed only for a real end-to-end fetch; that end-to-end verification is still open.
+- **Fetch cadence.** ENTSO-E publishes the next day's prices ~12:45 market time; run `python -m voltpilot_market_data fetch --zone DE-LU --persist` daily after that (cron `0 13 * * *`, or a future K8s CronJob from the service `Dockerfile`). The CLI `--zone` defaults to the `MARKET_DATA_ZONE` env var (fallback `DE-LU`) when omitted, so the container `CMD` is just `fetch --persist` and picks its zone from the environment. Following the backbone-first convention, the service is **not** wired into `docker-compose.yml`.
+
 ## Conventions & decisions worth knowing
 
 - **Maven over Gradle** for JVM services: `mvn` is available and the wrapper is self-contained; keeps one build tool across the JVM tier. Each service is an independent Maven project (no shared reactor) to preserve clean service boundaries.
@@ -104,4 +117,4 @@ Health endpoints on the JVM services are mapped to root: `GET /health` (Spring B
 
 ## Known future work (not in this scaffold)
 
-Cloud/K8s/Hetzner manifests + GitOps; real optimization MILP; Modbus/SunSpec edge I/O; forecasting models; direct-marketing provider integrations; ENTSO-E ingestion; Flyway/Liquibase migrations; Prometheus/Grafana/Loki/OTel; Mender OTA. RLS is designed for (tenant_id everywhere) but not yet enforced.
+Cloud/K8s/Hetzner manifests + GitOps; real optimization MILP; Modbus/SunSpec edge I/O; forecasting models; direct-marketing provider integrations; Prometheus/Grafana/Loki/OTel; Mender OTA. RLS is designed for (tenant_id everywhere) but not yet enforced. ENTSO-E day-ahead ingestion now exists (`services/market-data`) with the first Flyway/Liquibase-style migration (`day_ahead_prices`); wiring Flyway into `services/api` to actually run migrations is still future work.
