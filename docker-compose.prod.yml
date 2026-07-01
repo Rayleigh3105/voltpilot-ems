@@ -1,8 +1,9 @@
 # =============================================================================
 # Voltpilot-EMS - PRODUCTION / pilot compose (single-VPS MVP, no Kubernetes).
 # Shipped to the VPS at /srv/docker/voltpilot/ by .forgejo/workflows/deploy.yaml.
-# The app images (api, ingest, timescale-writer, frontend, market-data, forecast)
-# are PULLED from the Forgejo registry, pinned to ${IMAGE_TAG}. This is a
+# The app images (api, ingest, timescale-writer, frontend, market-data,
+# forecast, optimization) are PULLED from the Forgejo registry, pinned to
+# ${IMAGE_TAG}. This is a
 # self-contained, standalone stack: deploy it with a single
 #   docker compose -f docker-compose.prod.yml up -d
 # (NOT merged with docker-compose.yml - that file is the local dev stack).
@@ -389,6 +390,37 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - "while true; do python -m voltpilot_forecast || echo 'forecast: run failed, retrying next cycle'; sleep 86400; done"
+
+  # ---------------------------------------------------------------------------
+  # Optimization engine: the rolling battery-dispatch planner. Every 15 min,
+  # for every site with a battery asset, it solves the cost-optimal 24h MILP
+  # over day-ahead prices + forecasts, persists the plan to the `schedule`
+  # hypertable (RLS-scoped; the portal's Fahrplan view reads it) and publishes
+  # it retained to the device's MQTT schedule topic
+  # (docs/contracts/mqtt-schedule.schema.json). Publishes over the INTERNAL
+  # plaintext listener like ingest (the mTLS 8883 listener is for devices).
+  # Depends on api: its Flyway owns the schedule table + battery params.
+  # ---------------------------------------------------------------------------
+  optimization:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/optimization:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      MQTT_HOST: emqx
+      MQTT_PORT: "1883"
+      OPTIMIZER_INTERVAL_SECONDS: ${OPTIMIZER_INTERVAL_SECONDS:-900}
+      OPTIMIZER_HORIZON_HOURS: ${OPTIMIZER_HORIZON_HOURS:-24}
 
   # ---------------------------------------------------------------------------
   # Frontend: the built SPA on nginx, and the SINGLE public HTTP entry point the

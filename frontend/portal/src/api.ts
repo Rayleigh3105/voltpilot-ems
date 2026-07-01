@@ -44,6 +44,25 @@ export interface WeatherForecast {
   points: WeatherPoint[];
 }
 
+export interface ScheduleSlot {
+  start: string;
+  batteryKw: number | null;
+  gridKw: number | null;
+  socPct: number | null;
+  priceEurMwh: number | null;
+  costEur: number | null;
+  baselineCostEur: number | null;
+}
+
+export interface SchedulePlan {
+  planId: string | null;
+  deviceId: string | null;
+  generatedAt: string | null;
+  slotMinutes: number;
+  savingsEur: number | null;
+  slots: ScheduleSlot[];
+}
+
 export interface Device {
   id: string;
   siteId: string;
@@ -106,4 +125,5 @@ export const api = {
   },
   prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
+  schedule: (siteId: string) => request<SchedulePlan>(`/api/v1/sites/${siteId}/schedule`),
 };

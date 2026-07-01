@@ -35,6 +35,12 @@ jobs:
           - component: forecast
             context: ./services/forecast
             build_args: ""
+          # Repo-root context: the optimizer image installs services/forecast
+          # alongside (see services/optimization/Dockerfile).
+          - component: optimization
+            context: .
+            dockerfile: ./services/optimization/Dockerfile
+            build_args: ""
           - component: frontend
             context: ./frontend/portal
             build_args: |
@@ -61,7 +67,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/Dockerfile
+          file: ${{ matrix.dockerfile || format('{0}/Dockerfile', matrix.context) }}
           build-args: ${{ matrix.build_args }}
           platforms: linux/amd64
           push: true

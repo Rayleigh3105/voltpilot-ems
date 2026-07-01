@@ -13,8 +13,9 @@ info:
     `voltpilot`). The `tenant_id` claim scopes all data via Postgres
     Row-Level-Security - a caller only ever sees its own tenant's rows; another
     tenant's resources return 404 (not found) rather than 403. The
-    sites/devices/telemetry and device-claim endpoints are implemented in
-    services/api; schedules and KPIs remain stubs pending later increments.
+    sites/devices/telemetry/prices/weather/schedule and device-claim endpoints
+    are implemented in services/api; KPIs remain a stub pending a later
+    increment.
   contact:
     name: Voltpilot-EMS
 servers:
@@ -191,14 +192,23 @@ paths:
     get:
       tags: [schedules]
       summary: Current 24h optimization schedule (15-min slots) for a site.
+      description: >
+        The latest optimizer run from the schedule hypertable (written by
+        services/optimization): per-slot planned battery power (+charge /
+        -discharge), projected grid power and SoC, the day-ahead price and the
+        projected cost vs. the no-battery baseline, plus the headline savingsEur
+        over the horizon. RLS-scoped by tenant. Empty slots array (null
+        metadata) when no plan has been produced yet.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         "200":
-          description: Schedule.
+          description: The site's current plan (empty slots array if none yet).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Schedule" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/kpis:
     get:
       tags: [kpis]
@@ -466,15 +476,26 @@ components:
     Schedule:
       type: object
       properties:
-        siteId: { type: string, format: uuid }
-        generatedAt: { type: string, format: date-time }
+        planId: { type: string, format: uuid, nullable: true }
+        deviceId: { type: string, format: uuid, nullable: true, description: "Executing battery device (the MQTT schedule topic's device)." }
+        generatedAt: { type: string, format: date-time, nullable: true }
+        slotMinutes: { type: integer, example: 15 }
+        savingsEur:
+          type: number
+          nullable: true
+          description: Projected savings over the horizon vs. leaving the battery idle (the no-battery baseline).
         slots:
           type: array
           items:
             type: object
             properties:
               start: { type: string, format: date-time }
-              setpointKw: { type: number }
+              batteryKw: { type: number, description: "Planned battery power; + = charge, - = discharge." }
+              gridKw: { type: number, description: "Projected net grid power; + = import, - = export." }
+              socPct: { type: number, description: "Planned state of charge at slot end." }
+              priceEurMwh: { type: number }
+              costEur: { type: number, description: "Projected slot cost with the plan." }
+              baselineCostEur: { type: number, description: "Projected slot cost with the battery idle." }
     SiteKpis:
       type: object
       properties:

@@ -13,12 +13,14 @@ import {
   type CreateSiteInput,
   type Device,
   type PriceSeries,
+  type SchedulePlan,
   type Site,
   type TelemetryPoint,
   type WeatherForecast,
 } from './api';
 import { TelemetryChart } from './TelemetryChart';
 import { PriceChart } from './PriceChart';
+import { ScheduleChart } from './ScheduleChart';
 import { WeatherChart } from './WeatherChart';
 import AdminApp from './admin/AdminApp';
 
@@ -128,6 +130,10 @@ function Portal() {
             <TelemetrySection
               site={sites.find((s) => s.id === selectedSite) ?? null}
             />
+          )}
+
+          {selectedSite && (
+            <ScheduleSection site={sites.find((s) => s.id === selectedSite) ?? null} />
           )}
 
           {selectedSite && (
@@ -374,6 +380,92 @@ function TelemetrySection({ site }: { site: Site | null }) {
             <TelemetryChart points={points} />
             <p className="vp-note" style={{ marginTop: 12 }}>
               Telemetrie über den Live-Ingest-Pfad: MQTT → Ingest → Redpanda → TimescaleDB.
+            </p>
+          </>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function ScheduleSection({ site }: { site: Site | null }) {
+  const [plan, setPlan] = useState<SchedulePlan | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!site) return;
+    let active = true;
+    setLoading(true);
+    setErr(null);
+    api
+      .schedule(site.id)
+      .then((p) => active && setPlan(p))
+      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [site?.id]);
+
+  if (!site) return null;
+
+  const slots = plan?.slots ?? [];
+  // Headline: today's portion of the projected savings (the plan spans into
+  // tomorrow; "Heute geplant" should only promise today).
+  const today = new Date().getDate();
+  const savingsToday = slots
+    .filter((s) => new Date(s.start).getDate() === today)
+    .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+  const savingsTotal = plan?.savingsEur ?? 0;
+  const chargeKwh =
+    slots.reduce((sum, s) => sum + Math.max(s.batteryKw ?? 0, 0), 0) / 4;
+  const dischargeKwh =
+    slots.reduce((sum, s) => sum + Math.max(-(s.batteryKw ?? 0), 0), 0) / 4;
+  const eur = (v: number) =>
+    v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const generatedAt = plan?.generatedAt
+    ? new Date(plan.generatedAt).toLocaleString([], {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+
+  return (
+    <section className="vp-section">
+      <div className="vp-section-title">
+        <IconTile category="battery" size={40}>
+          ⛁
+        </IconTile>
+        <h3>Fahrplan - {site.name}</h3>
+      </div>
+      <Card padding="lg" radius="lg">
+        {loading && <p className="vp-muted">Lade Fahrplan…</p>}
+        {err && <div className="vp-alert vp-alert-err">Fahrplan-Fehler: {err}</div>}
+        {!loading && !err && slots.length === 0 && (
+          <p className="vp-muted">
+            Noch kein Fahrplan. Der Optimierer plant Standorte mit Batteriespeicher
+            alle 15 Minuten neu, sobald Day-Ahead-Preise vorliegen.
+          </p>
+        )}
+        {!loading && !err && slots.length > 0 && (
+          <>
+            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
+              <Stat
+                value={`${eur(savingsToday)} €`}
+                label="Heute geplant: gespart ggü. ohne Speicher"
+              />
+              <Stat value={`${eur(savingsTotal)} €`} label="Ersparnis über den Horizont" />
+              <Stat value={`${chargeKwh.toFixed(1)} kWh`} label="Geplant laden" />
+              <Stat value={`${dischargeKwh.toFixed(1)} kWh`} label="Geplant entladen" />
+            </div>
+            <ScheduleChart plan={plan!} />
+            <p className="vp-note" style={{ marginTop: 12 }}>
+              Kostenoptimaler Batterie-Fahrplan (15-Minuten-Slots) aus Day-Ahead-Preisen
+              und Last-/PV-Prognose{generatedAt ? `, erstellt ${generatedAt}` : ''}. Das
+              Gerät begrenzt jeden Sollwert lokal (Guards, §14a).
             </p>
           </>
         )}

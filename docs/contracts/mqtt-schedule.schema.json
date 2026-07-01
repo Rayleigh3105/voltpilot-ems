@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/mqtt-schedule.schema.json",
+  "title": "Voltpilot MQTT Schedule Payload",
+  "description": "Battery dispatch plan published by the cloud optimizer (services/optimization) on ems/{tenant_id}/{site_id}/{device_id}/schedule as a RETAINED QoS1 message, so a (re)connecting edge always receives the current plan immediately. This is a BINDING contract (architecture section 20 item 8). The shape deliberately adopts what the Node-RED schedule-exec flow already consumed (slot_minutes + slots[].start/battery_setpoint_kw) and adds plan metadata for traceability; the edge ignores fields it does not need.",
+  "type": "object",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/schedule  (Cloud -> Edge, QoS1, retained)",
+  "x-failsafe": "The plan is ADVISORY: the edge clamps every commanded setpoint through its local Guards (charge/discharge limits, SoC bounds, the observed §14a envelope) before any register write. When the retained schedule is missing, malformed, or stale (no fresh schedule received for 20 minutes - the edge Default-Watchdog window), or when 'now' falls outside every slot, the edge falls back to the self-consumption default (battery follows PV - load). The optimizer republishes well inside the staleness window (every 15 minutes), so the fallback only engages on a real outage.",
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "site_id",
+    "device_id",
+    "plan_id",
+    "generated_at",
+    "slot_minutes",
+    "slots"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Payload contract version."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "plan_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id of this optimization run; keys the persisted plan (schedule hypertable) for plan-vs-actual evaluation."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the optimizer produced this plan (RFC 3339, UTC)."
+    },
+    "horizon_slots": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of slots in the plan (96 = 24h at 15 min). Redundant with slots.length; carried for cheap introspection."
+    },
+    "slot_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Slot width in minutes. v1 always publishes 15 (the platform-wide optimization grid); the field exists so the edge never has to assume."
+    },
+    "slots": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Contiguous 15-min slots in ascending start order, covering at least the next 24h at publish time. The edge executes the slot whose [start, start+slot_minutes) contains 'now'.",
+      "items": {
+        "type": "object",
+        "required": ["start", "battery_setpoint_kw"],
+        "additionalProperties": false,
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Slot start (RFC 3339, UTC), aligned to the slot grid."
+          },
+          "battery_setpoint_kw": {
+            "type": "number",
+            "description": "Target mean battery power over the slot. Signed: positive = charge, negative = discharge. Advisory - the edge Guards clamp it."
+          }
+        }
+      }
+    }
+  }
+}

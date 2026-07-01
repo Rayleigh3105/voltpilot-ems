@@ -64,15 +64,17 @@ Topic: `ems/{tenant_id}/{site_id}/{device_id}/telemetry` (QoS1). Device identity
 
 `grid_limit_kw` is the **observed** §14a envelope (`WMaxLimPct/100 * grid-connection nameplate`); the EMS only observes it.
 
-### Schedule payload the edge expects (Cloud -> Edge, retained)
+### Schedule payload the edge executes (Cloud -> Edge, retained)
 
-There is **no frozen schedule contract in `docs/contracts` yet** (only telemetry is frozen). Pending that, the edge consumes this shape on `.../schedule`:
+The schedule contract is **frozen** in [`docs/contracts/mqtt-schedule.schema.json`](../../docs/contracts/mqtt-schedule.schema.json) (it adopted the shape this flow already consumed, plus plan metadata the edge ignores). The cloud optimizer (`services/optimization`) publishes it retained at QoS1:
 
 ```json
 {
   "schema_version": "1.0",
   "tenant_id": "…", "site_id": "…", "device_id": "…",
-  "issued_at": "2026-07-01T09:00:00Z",
+  "plan_id": "…",
+  "generated_at": "2026-07-01T09:00:00Z",
+  "horizon_slots": 96,
   "slot_minutes": 15,
   "slots": [
     { "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": -25.0 },
@@ -81,7 +83,7 @@ There is **no frozen schedule contract in `docs/contracts` yet** (only telemetry
 }
 ```
 
-`battery_setpoint_kw`: **+ = charge, - = discharge**. The edge picks the slot whose `[start, start+slot_minutes)` contains *now*.
+`battery_setpoint_kw`: **+ = charge, - = discharge**. The edge picks the slot whose `[start, start+slot_minutes)` contains *now*. The plan is advisory: Guards clamp every setpoint, and a missing/stale schedule (20-min window) hands control to the Default-Watchdog's self-consumption fallback - see the contract's `x-failsafe`.
 
 ## Test end-to-end
 

@@ -277,6 +277,60 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    @Test
+    void scheduleEndpointReturnsLatestPlanTenantScoped() {
+        // Seed two optimizer runs for tenant A's Berlin site (the optimizer writes
+        // as the trusted backend role, bypassing RLS): an older single-slot run and
+        // a newer two-slot run. The endpoint must return the NEWER run only.
+        exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur) "
+                + "VALUES (now(), '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
+                + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000001', "
+                + "now() - interval '1 hour', 0, 0, 50.0, 0, 0, 100.0, 0, 0) "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur) "
+                + "VALUES "
+                + "(now(), '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
+                + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
+                + "now(), 5.0, 8.0, 62.5, 3.0, 0.0, 80.0, 0.02, 0.10), "
+                + "(now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
+                + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
+                + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05) "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/schedule"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody()).containsEntry("planId", "aaaaaaaa-0000-0000-0000-000000000002");
+        assertThat(res.getBody()).containsEntry("slotMinutes", 15);
+        List<?> slots = (List<?>) res.getBody().get("slots");
+        assertThat(slots).hasSize(2); // the latest run only, not the older one
+        // Headline savings = sum(baseline - cost) = (0.10-0.02) + (0.05-0.03).
+        assertThat(((Number) res.getBody().get("savingsEur")).doubleValue())
+                .isCloseTo(0.10, org.assertj.core.data.Offset.offset(1e-9));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> first = (Map<String, Object>) slots.get(0);
+        assertThat(((Number) first.get("batteryKw")).doubleValue()).isEqualTo(5.0);
+        assertThat(((Number) first.get("socPct")).doubleValue()).isEqualTo(62.5);
+
+        // A site with no plan yet: empty but well-formed (tenant B's own site).
+        ResponseEntity<Map<String, Object>> empty = rest.exchange(
+                url("/api/v1/sites/" + HAMBURG_SITE + "/schedule"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(empty.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<?>) empty.getBody().get("slots")).isEmpty();
+
+        // Tenant B cannot even see tenant A's site (RLS => 404), so no plan leaks.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/schedule"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */

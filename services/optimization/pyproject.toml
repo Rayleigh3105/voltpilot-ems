@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "voltpilot-optimization"
-version = "0.1.0"
-description = "Voltpilot-EMS MILP/MPC optimization engine (HiGHS via Pyomo)"
+version = "0.2.0"
+description = "Voltpilot-EMS optimization engine: battery-dispatch MILP (HiGHS via Pyomo), rolling 24h/15-min horizon"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,16 +15,33 @@ dependencies = [
 [project.optional-dependencies]
 # HiGHS ships as a platform-specific wheel that isn't available everywhere.
 # Keep it out of the hard runtime deps so `pip install -e` always succeeds and
-# solver.py's lazy import / the test's importorskip can degrade gracefully.
+# solver tests can importorskip gracefully.
 solver = [
     "highspy>=1.7",
 ]
+# psycopg is only needed for the DB-backed inputs/persistence; kept optional so
+# the solver logic and its tests install without a DB driver present.
+db = [
+    "psycopg[binary]>=3.1",
+]
+# paho is only needed to publish plans to the broker; the contract payload
+# builder itself is pure.
+mqtt = [
+    "paho-mqtt>=2.0",
+]
+# jsonschema validates published payloads against the frozen contract in tests.
 dev = [
     "pytest>=8.0",
+    "jsonschema>=4.21",
 ]
 
+# NOTE: the forecast-fallback (voltpilot_optimization.fallback) additionally
+# reuses the sibling package services/forecast (voltpilot-forecast). It is a
+# path dependency, not a PyPI one, so it cannot be declared here; install it
+# alongside (`pip install -e ../forecast`) - the Dockerfile and CI do.
+
 [project.scripts]
-voltpilot-optimization = "voltpilot_optimization.__main__:main"
+voltpilot-optimization = "voltpilot_optimization.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["voltpilot_optimization*"]

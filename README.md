@@ -52,6 +52,7 @@ docker compose --profile edge ps              # wait until every service shows h
 ```
 
 The `edge` profile adds the Node-RED edge and the simulated SunSpec Modbus source; drop `--profile edge` for a backbone-only bring-up.
+Two further profiles are opt-in: `feeds` (keyless day-ahead prices + weather collectors) and `optimize` (the battery-dispatch optimizer - plans every 15 min against the collected prices and publishes retained MQTT schedules): `docker compose --profile feeds --profile optimize up -d --build`.
 First start runs the TimescaleDB init scripts in `infra/local/timescale/` **once** (they create the `telemetry`, `forecast` and `day_ahead_prices` hypertables), then the api applies its Flyway migrations (`V1` core schema + app role, `V2` RLS, `V100` dev seed) idempotently over that bootstrap.
 
 > **Upgrading an existing volume:** the init scripts only run on a *fresh* data volume.

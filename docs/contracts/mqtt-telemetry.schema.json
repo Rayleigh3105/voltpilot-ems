@@ -7,7 +7,7 @@
   "x-topics": {
     "telemetry": "ems/{tenant_id}/{site_id}/{device_id}/telemetry  (Edge -> Cloud, QoS1)",
     "status": "ems/{tenant_id}/{site_id}/{device_id}/status  (Edge -> Cloud, heartbeat/health)",
-    "schedule": "ems/{tenant_id}/{site_id}/{device_id}/schedule  (Cloud -> Edge, retained)",
+    "schedule": "ems/{tenant_id}/{site_id}/{device_id}/schedule  (Cloud -> Edge, retained; payload contract: mqtt-schedule.schema.json)",
     "command": "ems/{tenant_id}/{site_id}/{device_id}/command  (Cloud -> Edge, ad-hoc)",
     "config": "ems/{tenant_id}/{site_id}/{device_id}/config  (Cloud -> Edge, retained)"
   },

@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.repo.PriceRepository;
+import com.voltpilot.api.repo.ScheduleRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
@@ -8,6 +9,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
+import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
@@ -44,16 +46,19 @@ public class SiteController {
     private final TelemetryRepository telemetry;
     private final PriceRepository prices;
     private final WeatherRepository weather;
+    private final ScheduleRepository schedules;
 
     public SiteController(
             SiteRepository sites,
             TelemetryRepository telemetry,
             PriceRepository prices,
-            WeatherRepository weather) {
+            WeatherRepository weather,
+            ScheduleRepository schedules) {
         this.sites = sites;
         this.telemetry = telemetry;
         this.prices = prices;
         this.weather = weather;
+        this.schedules = schedules;
     }
 
     @GetMapping
@@ -131,5 +136,21 @@ public class SiteController {
         WeatherForecastDto forecast = weather.latestForSite(siteId);
         // No run stored yet: return an empty (but well-formed) forecast, not 404.
         return forecast != null ? forecast : new WeatherForecastDto(null, List.of());
+    }
+
+    /**
+     * Current optimizer plan for a site: the latest run from the {@code schedule}
+     * hypertable (written by services/optimization), including per-slot battery
+     * power / SoC / projected costs and the headline savings vs. the no-battery
+     * baseline. RLS-scoped by tenant like telemetry/weather; a foreign site is a
+     * 404, no plan yet is an empty (but well-formed) plan.
+     */
+    @GetMapping("/{siteId}/schedule")
+    public SchedulePlanDto schedule(@PathVariable UUID siteId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
+        }
+        SchedulePlanDto plan = schedules.latestForSite(siteId);
+        return plan != null ? plan : SchedulePlanDto.empty();
     }
 }

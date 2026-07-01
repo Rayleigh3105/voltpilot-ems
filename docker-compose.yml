@@ -430,6 +430,47 @@ services:
       WEATHER_FORECAST_DAYS: ${WEATHER_FORECAST_DAYS:-3}
       WEATHER_REFRESH_SECONDS: ${WEATHER_REFRESH_SECONDS:-10800}
 
+  # ---------------------------------------------------------------------------
+  # OPTIMIZATION ENGINE. Own `optimize` profile (not `feeds`: it is a consumer
+  # of the feeds and an MQTT publisher, not a keyless collector; not `edge`: it
+  # is cloud-side). Bring it up with:
+  #   docker compose --profile feeds --profile optimize up -d --build
+  # (the feeds provide the day-ahead prices it plans against; without them every
+  # site is skipped until prices land). Build context is the REPO ROOT because
+  # the image installs services/forecast alongside (persistence-baseline
+  # fallback - see services/optimization/Dockerfile).
+  # ---------------------------------------------------------------------------
+
+  # Rolling battery-dispatch planner: every 15 min, for every site with a
+  # battery asset, solve the cost-optimal 24h schedule, persist it to the
+  # `schedule` hypertable and publish it retained to the device's MQTT schedule
+  # topic (docs/contracts/mqtt-schedule.schema.json). Depends on `api` because
+  # its Flyway owns the schedule table + asset.roundtrip_efficiency_pct.
+  optimizer:
+    build:
+      context: .
+      dockerfile: services/optimization/Dockerfile
+    container_name: voltpilot-optimizer
+    profiles: ["optimize"]
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
+      MQTT_HOST: emqx
+      MQTT_PORT: "1883"
+      OPTIMIZER_INTERVAL_SECONDS: ${OPTIMIZER_INTERVAL_SECONDS:-900}
+      OPTIMIZER_HORIZON_HOURS: ${OPTIMIZER_HORIZON_HOURS:-24}
+
 volumes:
   timescale-data:
   emqx-data:

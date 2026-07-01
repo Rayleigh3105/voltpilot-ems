@@ -37,9 +37,17 @@ jobs:
           - name: market-data
             type: python
             path: services/market-data
+            pip_install: "-e '.[dev]'"
           - name: forecast
             type: python
             path: services/forecast
+            pip_install: "-e '.[dev]'"
+          # solver = the HiGHS wheel (needed for the behavioral MILP tests);
+          # ../forecast = the sibling path dep for the persistence fallback.
+          - name: optimization
+            type: python
+            path: services/optimization
+            pip_install: "-e '.[dev,solver]' -e ../forecast"
           - name: frontend
             type: frontend
             path: frontend/portal
@@ -75,7 +83,7 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          pip install ${{ matrix.pip_install }}
           pytest
 
       # ---- Frontend (tsc type-check + Vite build) --------------------------
@@ -117,6 +125,12 @@ jobs:
           - component: forecast
             context: ./services/forecast
             build_args: ""
+          # Repo-root context: the optimizer image installs services/forecast
+          # alongside (see services/optimization/Dockerfile).
+          - component: optimization
+            context: .
+            dockerfile: ./services/optimization/Dockerfile
+            build_args: ""
           # The SPA bakes its config at build time. VITE_API_BASE empty => the SPA
           # calls same-origin /api/... (nginx proxies it); Keycloak is served under
           # https://${DOMAIN}/auth behind the external proxy.
@@ -146,7 +160,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/Dockerfile
+          file: ${{ matrix.dockerfile || format('{0}/Dockerfile', matrix.context) }}
           build-args: ${{ matrix.build_args }}
           platforms: linux/amd64
           push: true

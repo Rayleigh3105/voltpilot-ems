@@ -89,7 +89,7 @@ MQTT-Topics (Edge <-> Cloud):
 ```
 ems/{tenant_id}/{site_id}/{device_id}/telemetry   # Edge -> Cloud, Messwerte (QoS1)
 ems/{tenant_id}/{site_id}/{device_id}/status      # Edge -> Cloud, Heartbeat/Health
-ems/{tenant_id}/{site_id}/{device_id}/schedule    # Cloud -> Edge, Fahrplan (retained)
+ems/{tenant_id}/{site_id}/{device_id}/schedule    # Cloud -> Edge, Fahrplan (retained; Contract: mqtt-schedule.schema.json)
 ems/{tenant_id}/{site_id}/{device_id}/command     # Cloud -> Edge, Ad-hoc-Befehl
 ems/{tenant_id}/{site_id}/{device_id}/config      # Cloud -> Edge, Konfiguration (retained)
 ```
@@ -129,6 +129,8 @@ Datenlebenszyklus: Hot (<90 Tage) volle Auflösung; Warm (90 Tage-2 Jahre) Conti
 ## 11. Optimierungs-Engine (Herzstück)
 
 MILP im MPC-Stil (rollierender Horizont): alle 15 Minuten optimaler Lade-/Entlade-Fahrplan über 24-48h (15-Min-Slots). Nur der erste Slot wird ausgeführt. Solver HiGHS (Pyomo-kompatibel). Zielfunktion: Minimierung Netto-Energiekosten = Bezugskosten - Erlöse (Einspeisung, Direktvermarktung), Eigenverbrauch berücksichtigt. Restriktionen: SoC-Grenzen, max Lade-/Entladeleistung, Wirkungsgrade, optional Zyklen-/Degradationskosten, Netzanschlussgrenzen, beobachtete §14a-Grenze als harte Obergrenze. Eingaben: Last-/PV-Prognose, Day-Ahead-Preise (ENTSO-E), SoC, §14a-Grenze, Tarif, Vermarktungssignale.
+
+Umsetzung v1 (`services/optimization`): 24h-Horizont, symmetrische Spot-Bepreisung für Bezug und Einspeisung (Direktvermarktungs-Annahme), Wirkungsgrad sqrt-symmetrisch aufgeteilt, Binärvariablen gegen gleichzeitiges Laden+Entladen (bei negativen Preisen wäre das im LP profitabel), End-SoC >= Start-SoC als Terminalbedingung. Jeder Lauf wird vollständig in die `schedule`-Hypertable persistiert (Plan-vs-Ist / ML-Grundlage) und retained per MQTT publiziert (Contract: `docs/contracts/mqtt-schedule.schema.json`). Zyklen-/Degradationskosten, Tarife und Vermarktungssignale sind noch offen.
 
 ## 12. Prognose & ML (gestaffelt, kein ML in v1)
 
