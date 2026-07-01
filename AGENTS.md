@@ -6,7 +6,7 @@ The product architecture is in [`docs/architecture.md`](docs/architecture.md); t
 ## What this is
 
 Self-hosted multi-tenant EMS (PV / battery / load management), DACH market. Monorepo.
-This repo currently holds the **MVP scaffold**: the runnable local backbone, thin service skeletons, and the binding contracts. No business logic yet (see "Status" per service README).
+This repo currently holds the **MVP scaffold**: the runnable local backbone, thin service skeletons, and the binding contracts. Business logic is mostly deferred (see "Status" per service README); the exception is `services/forecast`, which ships its baseline v1 load/PV forecast.
 
 MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Ingest -> Redpanda (telemetry.raw) -> TimescaleDB-Writer -> TimescaleDB`.
 
@@ -68,7 +68,7 @@ Notes:
 - Data persists in named volumes `timescale-data`, `emqx-data`, `redpanda-data`.
 - Redpanda advertises two listeners: `redpanda:29092` (in-cluster) and `localhost:9092` (host). Services inside compose must use the internal one.
 - Keycloak realm `voltpilot` is imported on start from `infra/local/keycloak/` with clients `voltpilot-api` (confidential) and `voltpilot-frontend` (public/PKCE), plus a demo user `demo`/`demo` carrying a `tenant_id` attribute.
-- TimescaleDB is bootstrapped once from `infra/local/timescale/*.sql` (extension + example `telemetry` hypertable + tenant/site/device/asset + a deterministic dev seed). Production owns the schema via Flyway/Liquibase migrations (future, in `services/api`).
+- TimescaleDB is bootstrapped once from `infra/local/timescale/*.sql`, applied in filename order: `01-init.sql` (extension + example `telemetry` hypertable + tenant/site/device/asset + a deterministic dev seed) then `02-forecast.sql` (the `forecast` hypertable). Production owns the schema via Flyway/Liquibase migrations (core schema future, in `services/api`); the forecast hypertable already ships a Flyway migration `services/forecast/migrations/V3__forecast_hypertable.sql` (see the Forecast section for version coordination).
 
 ## Build & test per service
 
@@ -108,6 +108,16 @@ Health endpoints on the JVM services are mapped to root: `GET /health` (Spring B
 - **Token.** `ENTSOE_SECURITY_TOKEN` is a **captain-provided secret** (blank in `.env.example`); obtain via ENTSO-E Transparency registration + a "Restful API access" email (see `services/market-data/README.md`). It is **not** needed for tests/CI - parsing, mapping and resilience run entirely off recorded fixtures in `tests/fixtures/`. A live token is needed only for a real end-to-end fetch; that end-to-end verification is still open.
 - **Fetch cadence.** ENTSO-E publishes the next day's prices ~12:45 market time; run `python -m voltpilot_market_data fetch --zone DE-LU --persist` daily after that (cron `0 13 * * *`, or a future K8s CronJob from the service `Dockerfile`). The CLI `--zone` defaults to the `MARKET_DATA_ZONE` env var (fallback `DE-LU`) when omitted, so the container `CMD` is just `fetch --persist` and picks its zone from the environment. Following the backbone-first convention, the service is **not** wired into `docker-compose.yml`.
 
+## Forecast service (`services/forecast`)
+
+Baseline load/PV forecasts for the optimizer (architecture section 12; **no ML in v1**). Pure Python, dependency-free core, offline-first (demo + tests need no DB/network). Full detail in `services/forecast/README.md`.
+
+- **Methods.** Load = baseline (`SeasonalPersistenceLoadForecaster`, `ProfileLoadForecaster`; persistence/profile per architecture 12). PV = physical model (`PhysicalPvForecaster`): solar geometry -> clear-sky irradiance -> plane-of-array transposition -> PVWatts-style capacity/derate. Day-ahead price is not forecast (ENTSO-E-given).
+- **Interfaces (swap points).** `LoadForecaster`, `PvForecaster`, `WeatherProvider` (weather anti-corruption layer, default `ClearSkyWeatherProvider`), `ForecastRepository`. `ForecastService` is the façade the optimizer calls. The later XGBoost/LightGBM load model and a real EU-hosted weather API implement these same interfaces - consumers are unaffected (architecture 12.2/12.3).
+- **Exposure.** Forecasts are timeseries (architecture section 10) -> TimescaleDB `forecast` hypertable, read via `TimescaleForecastRepository` (`.[db]` extra pulls psycopg); `InMemoryForecastRepository` is the offline default. Horizon is 24-48h in 15-min slots.
+- **Migration version coordination.** The `forecast` hypertable ships as Flyway `services/forecast/migrations/V3__forecast_hypertable.sql`. **V1/V2 are reserved** for the core schema (master data, telemetry) that `services/api` will own when it adopts Flyway; forecast deliberately takes **V3** to avoid collision. `infra/local/timescale/02-forecast.sql` mirrors the same DDL for the dev bootstrap - keep the two in sync (migration is the source of truth).
+- **Run/test.** `(cd services/forecast && python -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)`; `python -m voltpilot_forecast` prints a 24h demo forecast for the seeded demo site. Not wired into `docker compose` yet (backbone-first, consistent with the other app services).
+
 ## Conventions & decisions worth knowing
 
 - **Maven over Gradle** for JVM services: `mvn` is available and the wrapper is self-contained; keeps one build tool across the JVM tier. Each service is an independent Maven project (no shared reactor) to preserve clean service boundaries.
@@ -117,4 +127,4 @@ Health endpoints on the JVM services are mapped to root: `GET /health` (Spring B
 
 ## Known future work (not in this scaffold)
 
-Cloud/K8s/Hetzner manifests + GitOps; real optimization MILP; Modbus/SunSpec edge I/O; forecasting models; direct-marketing provider integrations; Prometheus/Grafana/Loki/OTel; Mender OTA. RLS is designed for (tenant_id everywhere) but not yet enforced. ENTSO-E day-ahead ingestion now exists (`services/market-data`) with the first Flyway/Liquibase-style migration (`day_ahead_prices`); wiring Flyway into `services/api` to actually run migrations is still future work.
+Cloud/K8s/Hetzner manifests + GitOps; real optimization MILP; Modbus/SunSpec edge I/O; forecasting ML (XGBoost/LightGBM load model, ML PV correction, real weather API); direct-marketing provider integrations; Prometheus/Grafana/Loki/OTel; Mender OTA. RLS is designed for (tenant_id everywhere) but not yet enforced. ENTSO-E day-ahead ingestion now exists (`services/market-data`) with a Flyway/Liquibase-style migration (`day_ahead_prices`), and the baseline forecast service ships its own (`forecast` hypertable, V3 - see the Forecast section); wiring core-schema Flyway/Liquibase migrations into `services/api` to actually run them is still future work.

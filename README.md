@@ -40,7 +40,7 @@ This brings up the MVP data-path backbone:
 
 | Service | URL / port | Notes |
 |---|---|---|
-| TimescaleDB | `localhost:5432` | db `voltpilot`, extension enabled, example `telemetry` hypertable + stammdaten seeded |
+| TimescaleDB | `localhost:5432` | db `voltpilot`, extension enabled, example `telemetry` + `forecast` hypertables + stammdaten seeded |
 | EMQX (MQTT) | `localhost:1883` | dashboard at http://localhost:18083 (admin / see `.env`) |
 | EMQX (WS/TLS) | `8083` / `8883` | |
 | Redpanda (Kafka API) | `localhost:9092` | topic `telemetry.raw` created on startup |
@@ -90,8 +90,8 @@ The binding interface contracts live in [`docs/contracts/`](docs/contracts/): th
 This scaffold delivers the **runnable local backbone + service skeletons + contracts** only. It deliberately excludes:
 
 - Cloud / Kubernetes / Hetzner deployment manifests and GitOps (Argo CD/Flux).
-- Real business logic: the optimization MILP, Modbus/SunSpec edge I/O, forecasting models, direct-marketing provider integrations. (ENTSO-E day-ahead price ingestion now exists in `services/market-data`.)
-- Wiring Flyway/Liquibase into `services/api` - the local DB is bootstrapped by `infra/local/timescale/` init SQL, and `services/market-data` ships the first forward-only migration (`day_ahead_prices`); running migrations from `services/api` is still future work.
+- Real business logic: the optimization MILP, Modbus/SunSpec edge I/O, ML forecasting models (the v1 baseline load/PV forecast is built - see `services/forecast`), direct-marketing provider integrations. (ENTSO-E day-ahead price ingestion now exists in `services/market-data`.)
+- Core-schema migrations (Flyway/Liquibase) in `services/api` - the local DB is bootstrapped by `infra/local/timescale/` init SQL; `services/market-data` ships the forward-only `day_ahead_prices` migration and `services/forecast` its own Flyway migration `V3__forecast_hypertable.sql`, but running migrations from `services/api` is still future work.
 - Observability stack (Prometheus/Grafana/Loki/OTel) and Edge OTA (Mender).
 
 See [`AGENTS.md`](AGENTS.md) for the durable stack/ports/run/build/test reference.

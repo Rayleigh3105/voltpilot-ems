@@ -1,8 +1,12 @@
-"""Baseline load forecast (v1, no ML).
+"""Flat persistence helper (v1, no ML) - the simplest load baseline.
 
-A persistence baseline: the forecast for each slot equals the most recent
-observed value. Deliberately trivial - it stands in for the v1 baseline named in
-architecture section 12 until the physical PV model and later ML land.
+The forecast for each slot equals the most recent observed value. This is the
+low-level "flat last-value" primitive; the production baselines that carry the
+daily/weekly profile and produce timestamped, storable series live behind the
+``LoadForecaster`` interface in :mod:`voltpilot_forecast.load`
+(``SeasonalPersistenceLoadForecaster``, ``ProfileLoadForecaster``). Kept for the
+trivial numeric case and as the documented reference point for architecture
+section 12's persistence baseline.
 """
 
 from __future__ import annotations
