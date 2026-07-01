@@ -374,6 +374,28 @@ button {
   border-color: var(--vp-primary);
   box-shadow: 0 0 0 3px var(--vp-focus-ring);
 }
+/* Password field with a show/hide toggle in the label row (registration). */
+.vp-pw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.vp-pw-labelrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+}
+.vp-field-label {
+  font-family: var(--vp-font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-text-dark);
+}
+.vp-pw-toggle {
+  font-size: var(--vp-text-meta);
+}
+
 .vp-alert {
   border-radius: var(--vp-radius-sm);
   padding: var(--vp-space-3) var(--vp-space-4);

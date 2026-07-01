@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import logoUrl from '../designsystem/assets/voltpilot-logo.png';
@@ -74,14 +74,32 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [touched, setTouched] = useState({ name: false, email: false, password: false });
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
-  const valid = name.trim().length > 0 && /\S+@\S+\.\S+/.test(email) && password.length >= 8;
+  const nameOk = name.trim().length > 0;
+  const emailOk = /\S+@\S+\.\S+/.test(email.trim());
+  const passwordOk = password.length >= 8;
+  const valid = nameOk && emailOk && passwordOk;
+
+  function touch(field: keyof typeof touched) {
+    setTouched((t) => ({ ...t, [field]: true }));
+  }
 
   async function submit() {
-    if (!valid || busy) return;
+    if (busy) return;
+    if (!valid) {
+      // Point at what's missing instead of silently refusing.
+      setTouched({ name: true, email: true, password: true });
+      (!nameOk ? nameRef : !emailOk ? emailRef : passwordRef).current?.focus();
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -125,36 +143,92 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+      noValidate
+    >
       <h1>Konto erstellen</h1>
       <p>In einer Minute startklar: Konto anlegen, Standort benennen, Gerät verbinden.</p>
       <div style={{ display: 'grid', gap: 12, textAlign: 'left' }}>
         <Input
+          ref={nameRef}
           label="Ihr Name oder Firmenname"
           placeholder="z. B. Erika Kaiser"
+          autoComplete="name"
+          autoFocus
           value={name}
           onChange={(e) => setName((e.target as HTMLInputElement).value)}
+          onBlur={() => touch('name')}
+          error={
+            touched.name && !nameOk
+              ? 'Bitte geben Sie Ihren Namen oder Firmennamen ein.'
+              : null
+          }
         />
         <Input
+          ref={emailRef}
           label="E-Mail-Adresse"
           type="email"
           placeholder="erika@example.com"
+          autoComplete="email"
+          spellCheck={false}
           value={email}
           onChange={(e) => setEmail((e.target as HTMLInputElement).value)}
+          onBlur={() => touch('email')}
+          error={
+            touched.email && !emailOk
+              ? 'Das sieht noch nicht wie eine E-Mail-Adresse aus.'
+              : null
+          }
         />
-        <Input
-          label="Passwort (mindestens 8 Zeichen)"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
-        />
+        <div className="vp-pw-field">
+          <div className="vp-pw-labelrow">
+            <label htmlFor="reg-password" className="vp-field-label">
+              Passwort
+            </label>
+            <button
+              type="button"
+              className="vp-linklike vp-pw-toggle"
+              onClick={() => setShowPassword((s) => !s)}
+              aria-pressed={showPassword}
+            >
+              {showPassword ? 'Verbergen' : 'Anzeigen'}
+            </button>
+          </div>
+          <Input
+            ref={passwordRef}
+            id="reg-password"
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
+            onBlur={() => touch('password')}
+            error={
+              touched.password && !passwordOk
+                ? password.length === 0
+                  ? 'Bitte wählen Sie ein Passwort mit mindestens 8 Zeichen.'
+                  : `Noch ${8 - password.length} Zeichen – mindestens 8 sind nötig.`
+                : null
+            }
+            hint={
+              passwordOk ? (
+                <span style={{ color: 'var(--vp-green)' }}>✓ Passwort ist lang genug.</span>
+              ) : (
+                'Mindestens 8 Zeichen.'
+              )
+            }
+          />
+        </div>
       </div>
       <Button
+        type="submit"
         variant="primary"
         size="lg"
         fullWidth
-        onClick={submit}
-        disabled={busy || !valid}
+        disabled={busy}
         style={{ marginTop: 16 }}
       >
         {busy ? 'Erstelle Konto…' : 'Konto erstellen'}
@@ -166,7 +240,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
           Zur Anmeldung
         </button>
       </p>
-    </>
+    </form>
   );
 }
 

@@ -11,6 +11,8 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 
 /**
  * Text input with optional label, hint and error. White field, soft border,
- * brand-blue focus ring.
+ * brand-blue focus ring. Forwards its ref to the native input element.
  */
-export function Input(props: InputProps): JSX.Element;
+export const Input: React.ForwardRefExoticComponent<
+  InputProps & React.RefAttributes<HTMLInputElement>
+>;
