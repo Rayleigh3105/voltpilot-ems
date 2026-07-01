@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x180" name="Category Accents" subtitle="Gradient-coded solution types" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--vp-font-body); background: var(--vp-surface); }
+  .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; padding: 20px; }
+  .sw { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .chip { width: 100%; height: 56px; border-radius: var(--vp-radius-md); box-shadow: var(--vp-shadow-sm); }
+  .name { font-size: 11px; font-weight: 600; color: var(--vp-text-dark); }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:var(--vp-grad-solar)"></div><span class="name">Solar</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-grad-battery)"></div><span class="name">Storage</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-grad-ev)"></div><span class="name">EV</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-grad-home)"></div><span class="name">Home</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-grad-industry)"></div><span class="name">Industry</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-grad-dynamic)"></div><span class="name">Dynamic</span></div>
+  </div>
+</body>
+</html>

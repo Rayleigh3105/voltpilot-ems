@@ -1,0 +1,39 @@
+/* ============================================================
+   VoltPilot — Typography tokens
+   Body: Inter · Headings/display: Inter Tight
+   ============================================================ */
+:root {
+  /* --- Font families --- */
+  --vp-font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --vp-font-heading: 'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* --- Weights --- */
+  --vp-weight-light:    300;
+  --vp-weight-regular:  400;
+  --vp-weight-medium:   500;
+  --vp-weight-semibold: 600;
+  --vp-weight-bold:     700;
+  --vp-weight-extrabold:800;
+
+  /* --- Type scale (desktop) --- */
+  --vp-text-hero:    clamp(2rem, 5vw, 3rem);   /* hero title, ~48px */
+  --vp-text-h2:      2.5rem;                    /* section title, 40px */
+  --vp-text-h3:      2rem;                      /* sub-heading, 32px */
+  --vp-text-stat:    clamp(1.75rem, 5vw, 3rem); /* big numbers */
+  --vp-text-card:    1.1rem;                     /* card title, ~18px */
+  --vp-text-body:    1.1rem;                     /* body / subtitle */
+  --vp-text-base:    1rem;                       /* 16px */
+  --vp-text-sm:      0.95rem;                    /* body small */
+  --vp-text-meta:    0.85rem;                    /* meta / muted */
+  --vp-text-badge:   0.78rem;                    /* badge / tag */
+
+  /* --- Line heights --- */
+  --vp-leading-tight:   1.15;  /* display */
+  --vp-leading-snug:    1.4;   /* card titles */
+  --vp-leading-normal:  1.6;   /* body copy */
+
+  /* --- Letter spacing --- */
+  --vp-tracking-display: -1px;   /* hero / large headings */
+  --vp-tracking-tight:   -0.4px;
+  --vp-tracking-wide:    0.04em;  /* small uppercase labels */
+}

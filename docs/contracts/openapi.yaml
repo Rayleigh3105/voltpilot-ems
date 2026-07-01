@@ -3,10 +3,18 @@ info:
   title: Voltpilot-EMS Portal API
   version: 0.1.0-mvp
   description: >
-    STUB OpenAPI contract for the portal backend (Spring Boot). BINDING contract
+    OpenAPI contract for the portal backend (Spring Boot). BINDING contract
     (architecture section 20 item 8). Covers the MVP portal surface: auth-guarded
     tenancy, device claiming, telemetry and schedule views, and economic KPIs
-    (architecture section 4). Endpoints are stubs to be filled by services/api.
+    (architecture section 4).
+
+
+    Every non-system endpoint requires a Keycloak-issued Bearer JWT (realm
+    `voltpilot`). The `tenant_id` claim scopes all data via Postgres
+    Row-Level-Security - a caller only ever sees its own tenant's rows; another
+    tenant's resources return 404 (not found) rather than 403. The
+    sites/devices/telemetry and device-claim endpoints are implemented in
+    services/api; schedules and KPIs remain stubs pending later increments.
   contact:
     name: Voltpilot-EMS
 servers:
@@ -42,16 +50,35 @@ paths:
       summary: List sites for the caller's tenant (tenant_id from OIDC token).
       responses:
         "200":
-          description: Sites.
+          description: Sites (only the caller's tenant, via RLS).
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Site" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/devices:
+    get:
+      tags: [devices]
+      summary: List devices for the caller's tenant.
+      responses:
+        "200":
+          description: Devices (only the caller's tenant, via RLS).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Device" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/devices/claim:
     post:
       tags: [devices]
-      summary: Claim an edge device into a site.
+      summary: Claim an edge device into a site (onboarding = one insert).
+      description: >
+        Claims an unclaimed edge device (identified by `externalRef`) into one of
+        the caller's sites. `externalRef` is globally unique, so a device already
+        claimed by any tenant - including another one, which RLS hides - yields
+        409. The target site must belong to the caller's tenant, else 404.
       requestBody:
         required: true
         content:
@@ -63,22 +90,27 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Device" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Target site not found for this tenant. }
+        "409": { description: Device already claimed (possibly by another tenant). }
   /api/v1/sites/{siteId}/telemetry:
     get:
       tags: [telemetry]
       summary: Query telemetry timeseries for a site.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
-        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
-        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
       responses:
         "200":
-          description: Telemetry points.
+          description: Telemetry points (tenant-scoped via RLS). `from`/`to` default to the last 24h.
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/TelemetryPoint" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/schedule:
     get:
       tags: [schedules]
@@ -109,7 +141,13 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Keycloak-issued OIDC access token (realm `voltpilot`).
+      description: >
+        Keycloak-issued OIDC access token (realm `voltpilot`). Must carry a
+        `tenant_id` claim; the API sets it as the Postgres `app.tenant_id`
+        session variable to drive Row-Level-Security.
+  responses:
+    Unauthorized:
+      description: Missing, expired or invalid Bearer token.
   schemas:
     Site:
       type: object
@@ -122,7 +160,8 @@ components:
       required: [siteId, externalRef]
       properties:
         siteId: { type: string, format: uuid }
-        externalRef: { type: string, description: Edge device identifier. }
+        externalRef: { type: string, description: Edge device identifier (globally unique). }
+        kind: { type: string, description: "Device kind; defaults to 'inverter'.", example: inverter }
     Device:
       type: object
       properties:

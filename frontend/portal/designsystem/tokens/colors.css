@@ -1,0 +1,62 @@
+/* ============================================================
+   VoltPilot — Color tokens
+   Clean, modern B2B energy-tech. Cornflower-blue primary,
+   white/light-gray surfaces, gradient-coded solution categories.
+   ============================================================ */
+:root {
+  /* --- Brand (blue) --- */
+  --vp-primary:        #95B9FF;  /* main brand blue */
+  --vp-primary-dark:   #7BA3F7;  /* hover, stat numbers, gradient mid */
+  --vp-primary-light:  #B8D4FF;  /* tints, gradient start, quote marks */
+  --vp-primary-deep:   #5A8DE8;  /* gradient end, active nav, hover text */
+  --vp-navy:           #1E3A5F;  /* deep accent (hero orbit) */
+  --vp-navy-2:         #2C5282;
+
+  /* --- Neutrals --- */
+  --vp-text-dark:      #1A1A1A;  /* headings & body */
+  --vp-text-gray:      #6C757D;  /* muted text, captions */
+  --vp-bg-light:       #F8F9FA;  /* section backgrounds */
+  --vp-bg-offwhite:    #F6F5F4;  /* alt surface */
+  --vp-surface:        #FFFFFF;  /* cards, nav, buttons */
+  --vp-border:         #E9ECEF;  /* card/input borders, dividers */
+  --vp-gray:           #CED4DA;  /* secondary borders/buttons */
+
+  /* --- Category accents (gradient start -> end) --- */
+  --vp-solar:    #FF9800; --vp-solar-end:    #F57C00; /* Solar / PV */
+  --vp-battery:  #9C27B0; --vp-battery-end:  #7B1FA2; /* Battery / Storage */
+  --vp-ev:       #4CAF50; --vp-ev-end:       #388E3C; /* EV / Car */
+  --vp-home:     #2196F3; --vp-home-end:     #1565C0; /* Home / Private */
+  --vp-industry: #F44336; --vp-industry-end: #C62828; /* Industry */
+  --vp-dynamic:  #00BCD4; --vp-dynamic-end:  #0097A7; /* Dynamic pricing */
+  --vp-grid:     #607D8B;                              /* Grid */
+
+  /* --- Funding (BAFA) --- */
+  --vp-green:       #4CAF50;
+  --vp-mint-start:  #E8F5E9;
+  --vp-mint-end:    #C8E6C9;
+  --vp-paleblue-start: #F0F4FF;
+  --vp-paleblue-end:   #E3ECFF;
+
+  /* --- Semantic aliases --- */
+  --vp-text:           var(--vp-text-dark);
+  --vp-text-muted:     var(--vp-text-gray);
+  --vp-link:           var(--vp-primary-deep);
+  --vp-link-hover:     var(--vp-primary-dark);
+  --vp-focus-ring:     rgba(149, 185, 255, 0.15);
+  --vp-tint:           rgba(149, 185, 255, 0.12);
+
+  /* --- Signature gradients --- */
+  --vp-grad-hero:   linear-gradient(135deg, #95B9FF 0%, #7BA3F7 50%, #5A8DE8 100%); /* @kind color */
+  --vp-grad-button: linear-gradient(135deg, #95B9FF, #7BA3F7); /* @kind color */
+  --vp-grad-badge:  linear-gradient(135deg, #B8D4FF, #95B9FF); /* @kind color */
+  --vp-grad-bar:    linear-gradient(90deg, #95B9FF, #B8D4FF); /* @kind color */
+  --vp-grad-funding:linear-gradient(135deg, #E8F5E9, #C8E6C9); /* @kind color */
+
+  /* Category gradients (135deg) */
+  --vp-grad-solar:   linear-gradient(135deg, #FF9800, #F57C00); /* @kind color */
+  --vp-grad-battery: linear-gradient(135deg, #9C27B0, #7B1FA2); /* @kind color */
+  --vp-grad-ev:      linear-gradient(135deg, #4CAF50, #388E3C); /* @kind color */
+  --vp-grad-home:    linear-gradient(135deg, #2196F3, #1565C0); /* @kind color */
+  --vp-grad-industry:linear-gradient(135deg, #F44336, #C62828); /* @kind color */
+  --vp-grad-dynamic: linear-gradient(135deg, #00BCD4, #0097A7); /* @kind color */
+}

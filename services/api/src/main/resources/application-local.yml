@@ -1,0 +1,7 @@
+# Local / dev-compose profile. Adds the DEV-ONLY seed migrations (two tenants +
+# demo telemetry) on top of the prod-safe core migrations. Activated by
+# SPRING_PROFILES_ACTIVE=local (set on the api service in docker-compose.yml)
+# and by the integration tests.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev

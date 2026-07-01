@@ -1,0 +1,4 @@
+/* VoltPilot webfonts — Inter (body) + Inter Tight (headings/display).
+   Loaded from Google Fonts. If you need self-hosted binaries, replace these
+   @import lines with @font-face rules pointing at local .woff2 files. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Inter+Tight:wght@300;400;500;600;700;800&display=swap');

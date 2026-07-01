@@ -6,9 +6,9 @@ The product architecture is in [`docs/architecture.md`](docs/architecture.md); t
 ## What this is
 
 Self-hosted multi-tenant EMS (PV / battery / load management), DACH market. Monorepo.
-This repo currently holds the **MVP scaffold**: the runnable local backbone, thin service skeletons, and the binding contracts. Business logic is mostly deferred (see "Status" per service README); the exception is `services/forecast`, which ships its baseline v1 load/PV forecast.
+On top of the runnable local backbone and binding contracts, several increments now add real functionality: the **portal + authentication spine** (the Spring Boot `api` runs in compose, validates Keycloak JWTs, and serves tenant-scoped sites/devices/telemetry plus device-claiming, enforced end-to-end by Postgres Row-Level-Security; the React portal has real OIDC login and a telemetry view), the baseline **`services/forecast`** (load/PV, no ML), the **`services/market-data`** ENTSO-E day-ahead price adapter, and the Node-RED **edge** (SunSpec Modbus simulator). The remaining services (ingest, writer, optimization, marketing-adapter) are still thin skeletons - see the service map and "Status" per service README.
 
-MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Ingest -> Redpanda (telemetry.raw) -> TimescaleDB-Writer -> TimescaleDB`.
+MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Ingest -> Redpanda (telemetry.raw) -> TimescaleDB-Writer -> TimescaleDB`. The ingest path is not built yet; the portal reads **dev-seeded** demo telemetry.
 
 ## Stack & versions
 
@@ -59,9 +59,12 @@ MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Inges
 
 ```bash
 cp .env.example .env
-docker compose up -d          # backbone: timescaledb, emqx, redpanda (+init, console), keycloak
-docker compose ps             # all four core services report healthy
+docker compose up -d          # backbone (timescaledb, emqx, redpanda, keycloak) + the api service
+docker compose ps             # all report healthy, including voltpilot-api
 docker compose down           # stop (keep volumes) ; add -v to wipe data
+
+# The web portal runs outside compose (Vite dev server):
+(cd frontend/portal && npm install && npm run dev)   # http://localhost:5173
 ```
 
 The **edge** (Node-RED + SunSpec simulator) is guarded behind the compose `edge` profile, so the default `docker compose up -d` stays backbone-only:
@@ -75,13 +78,39 @@ docker compose --profile edge down
 ```
 
 Notes:
-- The app services (`services/*`) are NOT started by compose yet (backbone-first). Each has a `Dockerfile` for later.
+- `compose` now starts **`api`** alongside the backbone (built from `services/api`, healthy once Keycloak + TimescaleDB are up). The remaining app services (`ingest`, `writer`, and the Python services) are still NOT started (backbone-first); each has a `Dockerfile` for later.
 - The edge (`edge/*`) is likewise not started by the default `up`; use `--profile edge`. It reaches EMQX at `emqx:1883` and the simulator at `edge-sim:502` over the compose network.
 - `.env` holds **dev-only** secrets, clearly marked. Never reuse them outside local dev.
 - Data persists in named volumes `timescale-data`, `emqx-data`, `redpanda-data`.
 - Redpanda advertises two listeners: `redpanda:29092` (in-cluster) and `localhost:9092` (host). Services inside compose must use the internal one.
-- Keycloak realm `voltpilot` is imported on start from `infra/local/keycloak/` with clients `voltpilot-api` (confidential) and `voltpilot-frontend` (public/PKCE), plus a demo user `demo`/`demo` carrying a `tenant_id` attribute.
-- TimescaleDB is bootstrapped once from `infra/local/timescale/*.sql`, applied in filename order: `01-init.sql` (extension + example `telemetry` hypertable + tenant/site/device/asset + a deterministic dev seed) then `02-forecast.sql` (the `forecast` hypertable). Production owns the schema via Flyway/Liquibase migrations (core schema future, in `services/api`); the forecast hypertable already ships a Flyway migration `services/forecast/migrations/V3__forecast_hypertable.sql` (see the Forecast section for version coordination).
+- Keycloak realm `voltpilot` is imported on start from `infra/local/keycloak/` with clients `voltpilot-api` (confidential) and `voltpilot-frontend` (public/PKCE, `tenant_id` mapper), plus two dev users (see the auth section): `demo`/`demo` (tenant A) and `demo2`/`demo2` (tenant B).
+- TimescaleDB is bootstrapped once from `infra/local/timescale/*.sql`, applied in filename order (`01-init.sql`: extension + example `telemetry` hypertable + tenant/site/device/asset + a deterministic dev seed; `02-day-ahead-prices.sql`: the market-data hypertable; `02-forecast.sql`: the `forecast` hypertable) so the backbone works without the app services. The **core schema is owned by Flyway migrations in `services/api`** (`db/migration`), which run on api start and are idempotent, so they layer cleanly over that bootstrap and own a fresh DB outright; the `forecast` and `market-data` services ship their own migrations (see their sections for version coordination).
+
+## Portal API: auth, tenancy & RLS (services/api)
+
+The user-facing spine. See `services/api/README.md` for the endpoint list.
+
+**Auth (Keycloak OIDC).** The api is an OAuth2 resource server validating realm `voltpilot` JWTs. The frontend logs in via the public `voltpilot-frontend` client (Authorization Code + PKCE); every token carries a `tenant_id` claim (a Keycloak user attribute, mapped on both clients).
+
+- **Issuer/JWKS split (the "issuer trap" fix).** `KC_HOSTNAME=http://localhost:8081` pins Keycloak's public URL, so browser- and script-minted tokens all carry `iss=http://localhost:8081/realms/voltpilot`. The api validates that issuer (`OIDC_ISSUER_URI`) but fetches signing keys from the compose-internal `OIDC_JWK_SET_URI=http://keycloak:8080/.../certs` - so it never needs to resolve `localhost:8081`. Spring's resource server accepts both `issuer-uri` + `jwk-set-uri` set together: keys from the latter, `iss` checked against the former.
+- OIDC is off by default (`VOLTPILOT_SECURITY_OIDC_ENABLED=false`) for offline unit tests; compose sets it `true`. CORS origins via `VOLTPILOT_CORS_ALLOWED_ORIGINS` (default `http://localhost:5173`).
+
+**Multi-tenancy via Postgres RLS.** `TenantFilter` reads `tenant_id` from the JWT into a request-scoped `TenantContext`; `TenantAwareDataSource` stamps it onto each borrowed connection via `set_config('app.tenant_id', ...)` and RESETs on return to the pool. RLS policies (migration `V2`) scope every table (`tenant`/`site`/`device`/`asset`/`telemetry`) with `tenant_id = current_setting('app.tenant_id')`. No tenant set => **default-deny** (zero rows).
+
+- **Two DB roles, on purpose.** The compose `POSTGRES_USER` (`voltpilot`) is a Postgres **superuser**, and superusers BYPASS RLS. So the api connects at runtime as a dedicated **`voltpilot_app`** role (NOSUPERUSER/NOBYPASSRLS, created by Flyway `V1` with a placeholder password from `APP_DB_PASSWORD`) for which RLS is enforced. **Flyway** runs as the superuser (`spring.flyway.user`) to own the schema, create the role/policies, and seed both tenants (bypassing RLS). Tables are also `FORCE ROW LEVEL SECURITY` so even the owner is scoped.
+
+**Migrations (Flyway).** In `services/api/src/main/resources/db/`: `migration/` = prod-safe core (`V1` idempotent schema + app role, `V2` RLS); `dev/` = the DEV-ONLY seed (`V100`, two tenants + demo telemetry), added to `spring.flyway.locations` only under the `local` profile (compose sets `SPRING_PROFILES_ACTIVE=local`; tests activate it too). `baseline-on-migrate` + `baseline-version=0` let the idempotent `V1` run over the compose bootstrap DB.
+
+**Seeded dev tenants/users (dev-only, disjoint data):**
+
+| Keycloak user | Password | tenant_id | Site | Device |
+|---|---|---|---|---|
+| `demo`  | `demo`  | `00000000-…-0001` | Demo Site Berlin | `demo-inverter-01` |
+| `demo2` | `demo2` | `10000000-…-0001` | Nordwind Hamburg | `nordwind-inverter-01` |
+
+**Device claiming** (`POST /api/v1/devices/claim`) is one insert into the caller's tenant. `external_ref` is **globally unique**, so claiming a device already owned by another tenant (which RLS hides) fails the unique constraint -> HTTP 409; a site outside the tenant -> 404.
+
+**Tests** (`./mvnw test`, auto-skip without Docker via `disabledWithoutDocker`): `TenantFilterTest` (unit, always runs); `RlsIsolationTest` (Testcontainers TimescaleDB, JDBC-level RLS proof); `PortalApiTest` (Testcontainers TimescaleDB + Keycloak, full OIDC + tenant-isolation + claim e2e). Note: Docker 25+ enforces API >= 1.40, so surefire pins `-Dapi.version` (property `docker.api.version`, default 1.44) for the Testcontainers docker-java client.
 
 ## Build & test per service
 
@@ -113,7 +142,16 @@ The edge flows are exercised end-to-end against the simulator (not a unit test):
 `docs/contracts/` holds the interface contracts (architecture section 20 item 8). Changing them is a breaking change; every payload/event carries `schema_version`.
 - `mqtt-telemetry.schema.json` - MQTT topic convention + telemetry payload (incl. observed §14a `grid_limit_kw`).
 - `telemetry-raw.event.schema.json` - Redpanda `telemetry.raw` event.
-- `openapi.yaml` - portal API stub.
+- `openapi.yaml` - portal API. The auth/sites/devices/telemetry/claim endpoints are **implemented** in `services/api`; schedules and KPIs are still stubs. Keep this file in sync when changing those endpoints.
+
+## Web portal (frontend/portal)
+
+React + Vite + TypeScript SPA. `npm run dev` (5173) / `npm run build` (tsc type-check + bundle).
+
+- **Design system** lives in `frontend/portal/designsystem/` - the shared VoltPilot tokens (`tokens/*.css`: colors/typography/spacing/effects/fonts, cornflower-blue brand, Inter/Inter Tight), core/form components (`.jsx` + `.d.ts`), and visual guideline cards. Import all `tokens/*.css` once at the app root (done in `src/main.tsx`); **new UI must build on these components/tokens**, not hand-rolled equivalents. Read each component's `.prompt.md` for its props.
+- Auth via `keycloak-js` (`src/auth.ts`, silent-SSO check + PKCE); the access token is attached to API calls in `src/api.ts` (`freshToken()` refreshes it). Config via `VITE_KEYCLOAK_*` / `VITE_API_BASE`.
+- Telemetry chart uses **ECharts** (`src/TelemetryChart.tsx`). Live channel is REST polling on load (WebSocket/SSE deferred - acceptable per the increment scope).
+- **npm registry:** `frontend/portal/.npmrc` points at **public npm** (`registry.npmjs.org`) so the portal builds on a clean machine (mirrors the Maven-Central decision). The scaffold's lockfile had a corporate mirror baked in; it was repointed. Override `.npmrc` locally if you build behind a mirror.
 
 **Gap:** the `.../schedule` (Cloud -> Edge, retained) payload is referenced by `x-topics` but **not yet frozen** in `docs/contracts`. Until it is, the edge consumes the shape documented in `edge/node-red/README.md` (`{ schema_version, slot_minutes, slots:[{ start, battery_setpoint_kw }] }`, `+`=charge/`-`=discharge). Any task that freezes the schedule contract should reconcile with that shape.
 
@@ -142,9 +180,11 @@ Baseline load/PV forecasts for the optimizer (architecture section 12; **no ML i
 
 - **Maven over Gradle** for JVM services: `mvn` is available and the wrapper is self-contained; keeps one build tool across the JVM tier. Each service is an independent Maven project (no shared reactor) to preserve clean service boundaries.
 - The committed Maven wrapper `distributionUrl` targets **Maven Central**, not any private mirror, so `./mvnw` works on a clean machine.
-- JVM skeletons are startable offline: `api` OIDC is toggled off by default (`VOLTPILOT_SECURITY_OIDC_ENABLED`), `timescale-writer` excludes `DataSourceAutoConfiguration` until the writer is wired.
+- `api` OIDC is toggled off by default (`VOLTPILOT_SECURITY_OIDC_ENABLED`) so unit tests run offline; `timescale-writer` still excludes `DataSourceAutoConfiguration` until the writer is wired.
 - One Postgres instance intentionally serves **both** timeseries (hypertables) and master data (architecture section 10).
+- **RLS needs a non-superuser connection.** Never point the api's runtime datasource at the `voltpilot` superuser - it would silently bypass RLS. Use `voltpilot_app` (see the auth section). New tenant-owned tables must add an RLS policy in a migration and be granted to `voltpilot_app`.
+- Tenant scoping is enforced in the DB, not the queries: repositories carry **no** `tenant_id` predicate. Out-of-tenant rows are invisible, so "not found" is 404, not 403.
 
-## Known future work (not in this scaffold)
+## Known future work (not yet built)
 
-Cloud/K8s/Hetzner manifests + GitOps; real optimization MILP; Modbus/SunSpec edge I/O; forecasting ML (XGBoost/LightGBM load model, ML PV correction, real weather API); direct-marketing provider integrations; Prometheus/Grafana/Loki/OTel; Mender OTA. RLS is designed for (tenant_id everywhere) but not yet enforced. ENTSO-E day-ahead ingestion now exists (`services/market-data`) with a Flyway/Liquibase-style migration (`day_ahead_prices`), and the baseline forecast service ships its own (`forecast` hypertable, V3 - see the Forecast section); wiring core-schema Flyway/Liquibase migrations into `services/api` to actually run them is still future work.
+Real ingest data path (EMQX->ingest->Redpanda->writer) feeding real telemetry (the Node-RED edge already publishes, but `ingest`/`writer` are still skeletons); real optimization MILP; forecasting ML (XGBoost/LightGBM load model, ML PV correction, real weather API); direct-marketing provider integrations; portal schedules/KPIs endpoints; live telemetry channel (WS/SSE); real Modbus/SunSpec hardware I/O (only the simulator exists today); Cloud/K8s/Hetzner manifests + GitOps; Prometheus/Grafana/Loki/OTel; Mender OTA. Core-schema Flyway migrations now run in `services/api` (RLS enforced), and `services/market-data` (`day_ahead_prices`) and `services/forecast` (`forecast` hypertable, V3) ship their own migrations; a unified migration-version scheme across services is still to be reconciled.

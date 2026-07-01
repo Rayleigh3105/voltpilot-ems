@@ -57,7 +57,23 @@
       "webOrigins": ["http://localhost:5173"],
       "attributes": {
         "pkce.code.challenge.method": "S256"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
     }
   ],
   "users": [
@@ -73,6 +89,21 @@
       },
       "credentials": [
         { "type": "password", "value": "demo", "temporary": false }
+      ],
+      "realmRoles": ["operator"]
+    },
+    {
+      "username": "demo2",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "demo2@voltpilot.local",
+      "firstName": "Nordwind",
+      "lastName": "Operator",
+      "attributes": {
+        "tenant_id": ["10000000-0000-0000-0000-000000000001"]
+      },
+      "credentials": [
+        { "type": "password", "value": "demo2", "temporary": false }
       ],
       "realmRoles": ["operator"]
     }

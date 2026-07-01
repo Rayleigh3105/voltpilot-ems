@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Brand Blue" subtitle="Cornflower primary scale" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--vp-font-body); background: var(--vp-surface); }
+  .row { display: flex; gap: 14px; padding: 20px; }
+  .sw { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .chip { height: 64px; border-radius: var(--vp-radius-md); box-shadow: var(--vp-shadow-sm); }
+  .name { font-size: 12px; font-weight: 600; color: var(--vp-text-dark); }
+  .hex { font-size: 11px; color: var(--vp-text-gray); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--vp-primary-light)"></div><span class="name">Primary Light</span><span class="hex">#B8D4FF</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-primary)"></div><span class="name">Primary</span><span class="hex">#95B9FF</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-primary-dark)"></div><span class="name">Primary Dark</span><span class="hex">#7BA3F7</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-primary-deep)"></div><span class="name">Primary Deep</span><span class="hex">#5A8DE8</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-grad-hero)"></div><span class="name">Hero gradient</span><span class="hex">135°</span></div>
+  </div>
+</body>
+</html>

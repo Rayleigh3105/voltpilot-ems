@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Neutrals" subtitle="Text, surfaces & borders" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--vp-font-body); background: var(--vp-surface); }
+  .row { display: flex; gap: 14px; padding: 20px; }
+  .sw { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .chip { height: 64px; border-radius: var(--vp-radius-md); border: 1px solid var(--vp-border); }
+  .name { font-size: 12px; font-weight: 600; color: var(--vp-text-dark); }
+  .hex { font-size: 11px; color: var(--vp-text-gray); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--vp-text-dark)"></div><span class="name">Text Dark</span><span class="hex">#1A1A1A</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-text-gray)"></div><span class="name">Text Gray</span><span class="hex">#6C757D</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-bg-light)"></div><span class="name">BG Light</span><span class="hex">#F8F9FA</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-surface)"></div><span class="name">Surface</span><span class="hex">#FFFFFF</span></div>
+    <div class="sw"><div class="chip" style="background:var(--vp-border)"></div><span class="name">Border</span><span class="hex">#E9ECEF</span></div>
+  </div>
+</body>
+</html>

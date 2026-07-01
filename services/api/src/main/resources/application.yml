@@ -1,23 +1,51 @@
 spring:
   application:
     name: voltpilot-api
+
+  # Runtime connection: the NON-privileged app role so Row-Level-Security applies.
+  datasource:
+    url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
+    username: ${APP_DB_USER:voltpilot_app}
+    password: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+
+  # Migrations run as the Postgres SUPERUSER (owns schema, creates the app role
+  # and the RLS policies). baseline-version 0 lets the idempotent V1 run even on
+  # the dev-compose DB that 01-init.sql already bootstrapped.
+  flyway:
+    enabled: true
+    url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
+    user: ${POSTGRES_USER:voltpilot}
+    password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
+    placeholders:
+      appDbUser: ${APP_DB_USER:voltpilot_app}
+      appDbPassword: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+
   security:
     oauth2:
       resourceserver:
         jwt:
-          # Only consulted when voltpilot.security.oidc.enabled=true.
+          # The issuer the browser-minted tokens carry (Keycloak KC_HOSTNAME).
           issuer-uri: ${OIDC_ISSUER_URI:http://localhost:8081/realms/voltpilot}
+          # JWKS is fetched from here - inside compose this is the internal
+          # keycloak:8080 URL, so the API never needs to resolve localhost:8081.
+          # This is the fix for the issuer/JWKS-host mismatch: iss is validated
+          # against issuer-uri while keys come from a reachable jwk-set-uri.
+          jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8081/realms/voltpilot/protocol/openid-connect/certs}
 
 server:
   port: ${API_PORT:8090}
 
-# Toggle OIDC resource-server validation. Off by default for offline dev/test;
-# once the api service is added to docker compose it will set
-# VOLTPILOT_SECURITY_OIDC_ENABLED=true.
+# Toggle OIDC resource-server validation. Off by default for offline unit tests;
+# docker-compose and the integration tests set VOLTPILOT_SECURITY_OIDC_ENABLED=true.
 voltpilot:
   security:
     oidc:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:false}
+    cors:
+      allowed-origins: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:http://localhost:5173}
 
 # Expose actuator at the root so health is reachable at /health (and /info).
 management:

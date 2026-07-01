@@ -1,0 +1,24 @@
+<!-- @dsCard group="Brand" viewport="700x160" name="Signature Gradients" subtitle="Hero, button, badge, accent bar" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin: 0; font-family: var(--vp-font-body); background: var(--vp-surface); padding: 22px; }
+  .grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 14px; }
+  .tile { height: 50px; border-radius: var(--vp-radius-md); display:flex; align-items:center; padding: 0 16px; color:#fff; font-weight:700; font-family: var(--vp-font-heading); font-size: 13px; box-shadow: var(--vp-shadow-sm); }
+  .barwrap { display:flex; flex-direction:column; gap:8px; }
+  .bar { height: 6px; border-radius: 3px; }
+  .cap { font-size: 11px; color: var(--vp-text-gray); }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="tile" style="background:var(--vp-grad-hero)">Hero · 135° three-stop</div>
+    <div class="tile" style="background:var(--vp-grad-button)">Primary button</div>
+    <div class="tile" style="background:var(--vp-grad-badge);color:var(--vp-primary-deep)">Badge / pill</div>
+    <div class="barwrap"><div class="bar" style="background:var(--vp-grad-bar)"></div><span class="cap">Card top accent bar · 90°</span></div>
+  </div>
+</body>
+</html>

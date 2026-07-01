@@ -1,0 +1,25 @@
+/* ============================================================
+   VoltPilot — Effects: radius, shadows, motion
+   ============================================================ */
+:root {
+  /* --- Border radius --- */
+  --vp-radius-sm:    10px;   /* inputs, nav items */
+  --vp-radius-btn:   12px;   /* buttons */
+  --vp-radius-md:    16px;   /* cards, icon tiles */
+  --vp-radius-lg:    24px;   /* feature cards, CTA box */
+  --vp-radius-pill:  50px;   /* badges, tags */
+  --vp-radius-full:  9999px; /* avatars, circular */
+
+  /* --- Shadows --- */
+  --vp-shadow-sm:    0 2px 8px rgba(0, 0, 0, 0.04);
+  --vp-shadow-md:    0 4px 20px rgba(0, 0, 0, 0.08);
+  --vp-shadow-hover: 0 12px 48px rgba(149, 185, 255, 0.25); /* brand glow */
+  --vp-shadow-btn:   0 4px 20px rgba(149, 185, 255, 0.4);
+
+  /* --- Motion --- */
+  --vp-transition:      all 0.4s cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --vp-transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --vp-ease:            cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --vp-lift:            translateY(-3px); /* @kind other */
+  --vp-lift-lg:         translateY(-8px); /* @kind other */
+}

@@ -33,11 +33,11 @@ Prerequisites: Docker (with Compose v2), and for building the services: JDK 21, 
 
 ```bash
 cp .env.example .env          # dev-only secrets, clearly marked
-docker compose up -d          # bring up the stateful backbone
+docker compose up -d          # bring up the backbone + the portal API
 docker compose ps             # wait until all show healthy
 ```
 
-This brings up the MVP data-path backbone:
+This brings up the MVP data-path backbone plus the portal API:
 
 | Service | URL / port | Notes |
 |---|---|---|
@@ -47,6 +47,9 @@ This brings up the MVP data-path backbone:
 | Redpanda (Kafka API) | `localhost:9092` | topic `telemetry.raw` created on startup |
 | Redpanda Console | http://localhost:8080 | topic/consumer web UI |
 | Keycloak | http://localhost:8081 | realm `voltpilot`, clients `voltpilot-api` + `voltpilot-frontend` (admin / see `.env`) |
+| Portal API | http://localhost:8090 | Spring Boot; OIDC resource server + RLS tenant isolation; `GET /health` |
+
+The web portal runs outside compose via Vite: `(cd frontend/portal && npm install && npm run dev)` -> http://localhost:5173. Log in as `demo`/`demo` (tenant A) or `demo2`/`demo2` (tenant B).
 
 Tear down (keep data): `docker compose down` - wipe data too: `docker compose down -v`.
 
@@ -62,6 +65,19 @@ docker compose exec timescaledb psql -U voltpilot -d voltpilot -c "SELECT extnam
 docker compose exec redpanda rpk topic list --brokers localhost:29092
 # Keycloak: realm reachable
 curl -s http://localhost:8081/realms/voltpilot/.well-known/openid-configuration | head -c 200
+# Portal API: healthy, and rejects unauthenticated calls
+curl -s http://localhost:8090/health
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/sites   # 401
+```
+
+### Verify the portal + tenant isolation
+
+```bash
+# Mint a tenant-A token and call the API (tenant B: demo2/demo2)
+TOKEN=$(curl -s http://localhost:8081/realms/voltpilot/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=voltpilot-api -d client_secret=voltpilot-api-dev-secret \
+  -d username=demo -d password=demo -d scope=openid | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/v1/sites   # only tenant A's sites
 ```
 
 ## Building & running the services
@@ -86,15 +102,16 @@ Each service is independently buildable; see its own README.
 
 ## Contracts
 
-The binding interface contracts live in [`docs/contracts/`](docs/contracts/): the MQTT topic + telemetry payload schema (incl. the observed §14a effective power limit), the Redpanda `telemetry.raw` event schema, and the portal OpenAPI stub. Treat changes there as breaking and versioned.
+The binding interface contracts live in [`docs/contracts/`](docs/contracts/): the MQTT topic + telemetry payload schema (incl. the observed §14a effective power limit), the Redpanda `telemetry.raw` event schema, and the portal OpenAPI (auth/sites/devices/telemetry/claim implemented; schedules/KPIs still stubs). Treat changes there as breaking and versioned.
 
 ## Scope & future work
 
-This scaffold delivers the **runnable local backbone + service skeletons + contracts** only. It deliberately excludes:
+Delivered so far: the **runnable local backbone**, the binding **contracts**, the **portal + authentication spine** (Spring Boot API in compose with Keycloak OIDC + Postgres RLS tenant isolation + device claiming, and a React portal with OIDC login + telemetry view - see [`AGENTS.md`](AGENTS.md)), the baseline **forecast** service, the **ENTSO-E market-data** adapter, and the Node-RED **edge** (SunSpec simulator). The remaining services (`ingest`, `writer`, `optimization`, `marketing-adapter`) are thin skeletons. Still excluded:
 
+- The real **ingest** data path (EMQX->ingest->Redpanda->writer) feeding real telemetry - the Node-RED edge already publishes, but `ingest`/`writer` are still skeletons, so the portal currently reads dev-seeded demo telemetry - plus the portal's schedules/KPIs endpoints and a live telemetry channel (WS/SSE).
 - Cloud / Kubernetes / Hetzner deployment manifests and GitOps (Argo CD/Flux).
 - Real business logic: the optimization MILP, ML forecasting models (the v1 baseline load/PV forecast is built - see `services/forecast`), direct-marketing provider integrations, and real hardware Modbus/SunSpec edge I/O (the Node-RED edge already runs end-to-end against the simulated SunSpec source in `edge/sim`). ENTSO-E day-ahead price ingestion now exists in `services/market-data`.
-- Core-schema migrations (Flyway/Liquibase) in `services/api` - the local DB is bootstrapped by `infra/local/timescale/` init SQL; `services/market-data` ships the forward-only `day_ahead_prices` migration and `services/forecast` its own Flyway migration `V3__forecast_hypertable.sql`, but running migrations from `services/api` is still future work.
+- Migration-version coordination across services - `services/api` now runs core-schema Flyway migrations (RLS enforced), `services/market-data` ships the forward-only `day_ahead_prices` migration, and `services/forecast` its own `V3__forecast_hypertable.sql`; a unified scheme is still to be reconciled.
 - Observability stack (Prometheus/Grafana/Loki/OTel) and Edge OTA (Mender).
 
 See [`AGENTS.md`](AGENTS.md) for the durable stack/ports/run/build/test reference.

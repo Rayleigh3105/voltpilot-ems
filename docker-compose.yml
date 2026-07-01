@@ -132,6 +132,13 @@ services:
   # ---------------------------------------------------------------------------
   # Keycloak: OIDC provider. Dev realm `voltpilot` imported on start with one
   # client for the API and one for the frontend. Admin console on :8081.
+  #
+  # KC_HOSTNAME pins the issuer/frontend URL to http://localhost:8081. This is
+  # the fix for the issuer trap: every token (browser- or script-minted) now
+  # carries iss=http://localhost:8081/realms/voltpilot, which the API validates,
+  # while the API fetches JWKS over the internal keycloak:8080 URL (see the api
+  # service's OIDC_JWK_SET_URI). Issuer host and JWKS host are decoupled, so a
+  # browser-obtained token validates on the compose-internal resource server.
   # ---------------------------------------------------------------------------
   keycloak:
     image: quay.io/keycloak/keycloak:26.0.5
@@ -142,6 +149,7 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-voltpilot_dev_pw}
       KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: ${KC_HOSTNAME:-http://localhost:8081}
       KC_HOSTNAME_STRICT: "false"
       KC_HEALTH_ENABLED: "true"
     ports:
@@ -196,6 +204,54 @@ services:
       VP_DEVICE_ID: ${VP_DEVICE_ID:-00000000-0000-0000-0000-000000000003}
     ports:
       - "${EDGE_NODERED_PORT:-1880}:1880" # Node-RED editor (dev only)
+  # Portal API (Spring Boot): the user-facing spine. OAuth2 resource server
+  # (validates Keycloak JWTs), tenant-scoped REST over TimescaleDB with
+  # Postgres Row-Level-Security, and device claiming. On start it runs Flyway
+  # migrations as the Postgres superuser (creating the non-privileged
+  # voltpilot_app role, the RLS policies and - under the `local` profile - the
+  # two-tenant dev seed), then serves requests as voltpilot_app so RLS applies.
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ./services/api
+    container_name: voltpilot-api
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      # Activates the dev seed migrations (two tenants + demo telemetry).
+      SPRING_PROFILES_ACTIVE: local
+      SERVER_PORT: 8090
+      # Runtime connection: non-privileged app role (RLS applies to it).
+      POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}
+      APP_DB_USER: ${APP_DB_USER:-voltpilot_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-voltpilot_app_dev_pw}
+      # Flyway connection: Postgres superuser (owns schema, creates role + RLS).
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
+      # OIDC on. Issuer is the browser-facing Keycloak URL; JWKS is fetched over
+      # the compose-internal URL (the issuer-trap fix - see the keycloak block).
+      VOLTPILOT_SECURITY_OIDC_ENABLED: "true"
+      OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-http://localhost:8081/realms/voltpilot}
+      OIDC_JWK_SET_URI: ${OIDC_JWK_SET_URI:-http://keycloak:8080/realms/voltpilot/protocol/openid-connect/certs}
+      VOLTPILOT_CORS_ALLOWED_ORIGINS: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "${API_PORT:-8090}:8090"
+    healthcheck:
+      # The temurin JRE image has no curl and its /bin/sh is dash (no /dev/tcp),
+      # so probe /health explicitly through bash.
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/localhost/8090; echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"status\":\"UP\"'"
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
 
 volumes:
   timescale-data:

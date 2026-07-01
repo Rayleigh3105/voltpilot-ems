@@ -1,0 +1,10 @@
+<!doctype html>
+<!-- Keycloak silent SSO check target. keycloak-js loads this in a hidden iframe
+     to detect an existing session without a full-page redirect. -->
+<html>
+  <body>
+    <script>
+      parent.postMessage(location.href, location.origin);
+    </script>
+  </body>
+</html>

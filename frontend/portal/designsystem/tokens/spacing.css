@@ -1,0 +1,24 @@
+/* ============================================================
+   VoltPilot — Spacing & layout tokens
+   ============================================================ */
+:root {
+  /* --- Spacing scale --- */
+  --vp-space-1:  0.25rem;  /* 4px */
+  --vp-space-2:  0.5rem;   /* 8px */
+  --vp-space-3:  0.75rem;  /* 12px */
+  --vp-space-4:  1rem;     /* 16px */
+  --vp-space-5:  1.5rem;   /* 24px */
+  --vp-space-6:  2rem;     /* 32px */
+  --vp-space-7:  2.5rem;   /* 40px */
+  --vp-space-8:  3rem;     /* 48px */
+  --vp-space-10: 5rem;     /* 80px */
+
+  /* --- Layout --- */
+  --vp-container:     1100px;  /* content max-width */
+  --vp-section-pad:   5rem;    /* desktop section padding (vertical) */
+  --vp-section-pad-sm:3rem;    /* mobile section padding */
+  --vp-card-pad:      2rem;    /* solution/testimonial card */
+  --vp-card-pad-lg:   2.5rem;  /* BAFA / feature card */
+  --vp-gap:           1.5rem;  /* default grid gap */
+  --vp-gap-lg:        2.5rem;  /* stat row / wide grid gap */
+}
