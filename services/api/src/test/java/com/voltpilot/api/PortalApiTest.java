@@ -210,6 +210,46 @@ class PortalApiTest {
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
+    @Test
+    void deviceListingCarriesLastSeenFromTelemetry() {
+        String demo = token("demo", "demo");
+
+        // A fresh claim has never reported -> lastSeenAt is null.
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-lastseen-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(claimed.getBody().get("lastSeenAt")).isNull();
+        String newDeviceId = (String) claimed.getBody().get("id");
+
+        // Once telemetry lands for it (seeded as the ingest pipe would write it),
+        // the listing reports the newest sample time as lastSeenAt.
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, payload) "
+                + "VALUES (now() - interval '3 minutes', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', '" + newDeviceId + "', 1.5, "
+                + "jsonb_build_object('schema_version', 1, 'source', 'test'))");
+
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> mine = res.getBody().stream()
+                .filter(d -> "edge-lastseen-01".equals(d.get("externalRef")))
+                .findFirst().orElseThrow();
+        String lastSeenAt = (String) mine.get("lastSeenAt");
+        assertThat(lastSeenAt).isNotNull();
+        assertThat(java.time.Instant.parse(lastSeenAt))
+                .isBetween(java.time.Instant.now().minusSeconds(600), java.time.Instant.now());
+
+        // The seeded demo inverter has ~24h of dev telemetry -> lastSeenAt set too.
+        Map<String, Object> seeded = res.getBody().stream()
+                .filter(d -> "demo-inverter-01".equals(d.get("externalRef")))
+                .findFirst().orElseThrow();
+        assertThat((String) seeded.get("lastSeenAt")).isNotNull();
+    }
+
     // ---- site creation (customer self-service, tenant-bound) ----------------
 
     @Test
