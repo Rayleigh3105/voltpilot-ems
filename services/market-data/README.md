@@ -7,9 +7,26 @@
 expose an internal, provider-agnostic price series to the optimizer.
 
 Day-ahead prices are an input to the MILP optimizer (architecture section 11:
-"Eingaben: ... Day-Ahead-Preise (ENTSO-E)"). ENTSO-E Transparency is the first
-provider; a commercial data provider can be swapped in later **without touching
-callers** - that is the whole point of the port below (architecture section 13).
+"Eingaben: ... Day-Ahead-Preise (ENTSO-E)"). ENTSO-E Transparency is one provider;
+a commercial data provider can be swapped in later **without touching callers** -
+that is the whole point of the port below (architecture section 13).
+
+> **KEYLESS by default: energy-charts.info.** The default source is
+> `EnergyChartsDayAheadPriceSource` (`energy_charts.py`) against the Fraunhofer ISE
+> **energy-charts.info** API - **no API key / token**, so real DE-LU day-ahead
+> prices at **15-min** resolution flow with zero captain secret. ENTSO-E remains
+> available via `--source entsoe` (needs `ENTSOE_SECURITY_TOKEN`). Resolution is
+> derived from the data (900 s -> `PT15M`, 3600 s -> `PT60M`), following the
+> Oct-2025 EPEX 15-min MTU. The new `serve` command refreshes **today+tomorrow on
+> startup then periodically** (`MARKET_DATA_REFRESH_SECONDS`, default 6h):
+>
+> ```bash
+> python -m voltpilot_market_data fetch            # one-shot, tomorrow (energy-charts)
+> python -m voltpilot_market_data serve --persist  # startup + periodic refresh
+> ```
+>
+> In compose it runs as the `market-data` service in the `feeds` profile
+> (`docker compose --profile feeds up -d --build market-data`).
 
 ## Design (the anti-corruption layer)
 

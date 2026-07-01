@@ -6,6 +6,35 @@ export interface Site {
   id: string;
   name: string;
   biddingZone: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+export interface PricePoint {
+  ts: string;
+  end: string;
+  priceEurMwh: number | null;
+}
+
+export interface PriceSeries {
+  biddingZone: string;
+  resolution: string | null;
+  currency: string;
+  points: PricePoint[];
+}
+
+export interface WeatherPoint {
+  ts: string;
+  temperatureC: number | null;
+  cloudCoverPct: number | null;
+  ghiWM2: number | null;
+  dniWM2: number | null;
+  dhiWM2: number | null;
+}
+
+export interface WeatherForecast {
+  runAt: string | null;
+  points: WeatherPoint[];
 }
 
 export interface Device {
@@ -63,4 +92,6 @@ export const api = {
     const qs = q.toString();
     return request<TelemetryPoint[]>(`/api/v1/sites/${siteId}/telemetry${qs ? `?${qs}` : ''}`);
   },
+  prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
+  weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
 };

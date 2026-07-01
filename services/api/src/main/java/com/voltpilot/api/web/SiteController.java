@@ -1,9 +1,14 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
+import com.voltpilot.api.repo.WeatherRepository;
+import com.voltpilot.api.web.dto.PricePointDto;
+import com.voltpilot.api.web.dto.PriceSeriesDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
+import com.voltpilot.api.web.dto.WeatherForecastDto;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -27,13 +32,22 @@ import org.springframework.web.server.ResponseStatusException;
 public class SiteController {
 
     private static final int MAX_POINTS = 5000;
+    private static final int MAX_PRICE_POINTS = 1000;
 
     private final SiteRepository sites;
     private final TelemetryRepository telemetry;
+    private final PriceRepository prices;
+    private final WeatherRepository weather;
 
-    public SiteController(SiteRepository sites, TelemetryRepository telemetry) {
+    public SiteController(
+            SiteRepository sites,
+            TelemetryRepository telemetry,
+            PriceRepository prices,
+            WeatherRepository weather) {
         this.sites = sites;
         this.telemetry = telemetry;
+        this.prices = prices;
+        this.weather = weather;
     }
 
     @GetMapping
@@ -53,5 +67,44 @@ public class SiteController {
         Instant effectiveTo = to != null ? to : Instant.now();
         Instant effectiveFrom = from != null ? from : effectiveTo.minus(24, ChronoUnit.HOURS);
         return telemetry.findForSite(siteId, effectiveFrom, effectiveTo, MAX_POINTS);
+    }
+
+    /**
+     * Day-ahead spot prices for a site's bidding zone (15-min slots). Prices are
+     * market-wide per zone, but the endpoint is site-scoped so the portal reads
+     * "the price for this site": we resolve the site (RLS => 404 if not the
+     * caller's) and return its zone's series. Defaults span roughly today+tomorrow.
+     */
+    @GetMapping("/{siteId}/prices")
+    public PriceSeriesDto prices(
+            @PathVariable UUID siteId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
+        SiteDto site = sites.findById(siteId);
+        if (site == null) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
+        }
+        Instant now = Instant.now();
+        Instant effectiveFrom = from != null ? from : now.minus(24, ChronoUnit.HOURS);
+        Instant effectiveTo = to != null ? to : now.plus(48, ChronoUnit.HOURS);
+        String zone = site.biddingZone();
+        List<PricePointDto> points = prices.findForZone(zone, effectiveFrom, effectiveTo, MAX_PRICE_POINTS);
+        String resolution = prices.latestResolution(zone);
+        return new PriceSeriesDto(zone, resolution, prices.currencyFor(zone), points);
+    }
+
+    /**
+     * Latest weather forecast for a site (hourly, coming days). The
+     * {@code weather_forecast} table is RLS-scoped by tenant, and the site lookup
+     * itself is RLS-gated, so a foreign site is a 404 (never another tenant's data).
+     */
+    @GetMapping("/{siteId}/weather")
+    public WeatherForecastDto weather(@PathVariable UUID siteId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
+        }
+        WeatherForecastDto forecast = weather.latestForSite(siteId);
+        // No run stored yet: return an empty (but well-formed) forecast, not 404.
+        return forecast != null ? forecast : new WeatherForecastDto(null, List.of());
     }
 }

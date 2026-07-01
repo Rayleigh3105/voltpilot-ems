@@ -371,6 +371,65 @@ services:
       retries: 12
       start_period: 60s
 
+  # ---------------------------------------------------------------------------
+  # DATA FEEDS (KEYLESS public sources). Guarded behind the `feeds` profile so
+  # the default `docker compose up -d` stays backbone-only. Bring them up with:
+  #   docker compose --profile feeds up -d --build market-data weather-collector
+  # Both are long-running collectors (no host ports): they refresh on startup and
+  # then periodically, writing into hypertables the portal reads.
+  # ---------------------------------------------------------------------------
+
+  # Day-ahead spot prices (15-min) from energy-charts.info (Fraunhofer ISE, no
+  # API key). `serve` refreshes today+tomorrow on startup then every 6h. Writes
+  # into day_ahead_prices as the superuser (public per-zone table, no RLS).
+  market-data:
+    build:
+      context: ./services/market-data
+    container_name: voltpilot-market-data
+    profiles: ["feeds"]
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    command: ["serve", "--persist"]
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
+      # Keyless energy-charts is the default source (no ENTSOE_SECURITY_TOKEN).
+      MARKET_DATA_SOURCE: ${MARKET_DATA_SOURCE:-energy-charts}
+      MARKET_DATA_ZONE: ${MARKET_DATA_ZONE:-DE-LU}
+      MARKET_DATA_REFRESH_SECONDS: ${MARKET_DATA_REFRESH_SECONDS:-21600}
+
+  # Weather forecast (hourly, coming days) from Open-Meteo (EU-hosted, no API
+  # key). Reads sites' lat/lon, fetches per site, upserts into weather_forecast.
+  # Depends on `api` so the RLS-scoped weather_forecast table + grants exist.
+  weather-collector:
+    build:
+      context: ./services/forecast
+    container_name: voltpilot-weather-collector
+    profiles: ["feeds"]
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "voltpilot_forecast.weather_collect"]
+    command: ["serve", "--persist"]
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
+      WEATHER_FORECAST_DAYS: ${WEATHER_FORECAST_DAYS:-3}
+      WEATHER_REFRESH_SECONDS: ${WEATHER_REFRESH_SECONDS:-10800}
+
 volumes:
   timescale-data:
   emqx-data:

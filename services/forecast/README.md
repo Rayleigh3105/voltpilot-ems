@@ -14,9 +14,36 @@ ML (XGBoost/LightGBM, quantile objectives) is a later stage that slots in behind
 |---|---|---|
 | **Load** | Baseline. Two swappable implementations: `SeasonalPersistenceLoadForecaster` (repeat the value from the same slot one day ago) and `ProfileLoadForecaster` (typical daily profile per weekday-type, averaged over recent history). Both fall back to flat last-value when history is sparse. | `voltpilot_forecast/load.py` |
 | **PV** | Physical model. Solar geometry (NOAA position) -> clear-sky irradiance -> plane-of-array transposition -> PVWatts-style capacity/derate, clipped to nameplate. No ML correction yet. | `voltpilot_forecast/pv.py`, `voltpilot_forecast/solar.py` |
-| **Weather** | Anti-corruption layer. `WeatherProvider` interface with a dependency-free `ClearSkyWeatherProvider` default (analytic GHI). A real EU-hosted weather API drops in here without touching the PV forecaster. | `voltpilot_forecast/weather.py` |
+| **Weather** | Anti-corruption layer. `WeatherProvider` interface with a dependency-free `ClearSkyWeatherProvider` default (analytic GHI), plus the **keyless Open-Meteo** provider (`OpenMeteoWeatherProvider`) that feeds *measured* irradiance to the PV model. A real EU-hosted weather API drops in here without touching the PV forecaster. | `voltpilot_forecast/weather.py`, `voltpilot_forecast/openmeteo.py` |
 
 Day-ahead price is **not** forecast (given via ENTSO-E; architecture section 12) and is out of scope for this service.
+
+## Weather forecast collector (KEYLESS Open-Meteo)
+
+Beyond the load/PV forecast, this service ships a **weather collector** that stores
+a real hourly weather forecast per site for the portal (and to enrich PV):
+
+- **Source.** `openmeteo.py` - the **Open-Meteo** API (`api.open-meteo.com`, EU-hosted,
+  **no API key**): hourly `temperature_2m`, `cloud_cover`, and shortwave/direct/diffuse
+  radiation (GHI is the PV-relevant channel) over the coming days.
+- **Storage.** A new **`weather_forecast`** hypertable (`(site_id, run_at, time)`),
+  carrying `tenant_id` and **RLS-scoped like telemetry** (schema owned by the api
+  Flyway migration `V20260701010000`; dev mirror `infra/local/timescale/03-weather.sql`).
+  `TimescaleWeatherForecastRepository` writes it; `InMemoryWeatherForecastRepository`
+  is the offline default.
+- **Collector.** `weather_collect.py` (console script `voltpilot-weather`): reads every
+  site's `latitude`/`longitude`, fetches, and upserts. `fetch` = one-shot, `serve` =
+  startup + periodic (`WEATHER_REFRESH_SECONDS`, default 3h).
+
+```bash
+pip install -e '.[db,weather]'
+python -m voltpilot_forecast.weather_collect fetch --persist   # all sites, once
+python -m voltpilot_forecast.weather_collect serve --persist   # startup + periodic
+```
+
+In compose it runs as the `weather-collector` service in the `feeds` profile
+(`docker compose --profile feeds up -d --build weather-collector`). Read in the
+portal via `GET /api/v1/sites/{siteId}/weather`.
 
 ## Interfaces (the swap points)
 

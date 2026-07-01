@@ -1,0 +1,25 @@
+{
+  "latitude": 52.52,
+  "longitude": 13.4,
+  "generationtime_ms": 0.12,
+  "utc_offset_seconds": 0,
+  "timezone": "GMT",
+  "timezone_abbreviation": "GMT",
+  "elevation": 37.0,
+  "hourly_units": {
+    "time": "iso8601",
+    "temperature_2m": "°C",
+    "cloud_cover": "%",
+    "shortwave_radiation": "W/m²",
+    "direct_radiation": "W/m²",
+    "diffuse_radiation": "W/m²"
+  },
+  "hourly": {
+    "time": ["2026-07-01T00:00", "2026-07-01T01:00", "2026-07-01T02:00", "2026-07-01T12:00", "2026-07-01T13:00"],
+    "temperature_2m": [14.2, 13.8, 13.5, 24.1, 25.0],
+    "cloud_cover": [80, 75, 60, 20, 10],
+    "shortwave_radiation": [0.0, 0.0, 0.0, 720.0, 680.0],
+    "direct_radiation": [0.0, 0.0, 0.0, 540.0, 500.0],
+    "diffuse_radiation": [0.0, 0.0, 0.0, 180.0, 180.0]
+  }
+}

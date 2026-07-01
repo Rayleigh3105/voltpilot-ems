@@ -15,6 +15,8 @@ Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped 
 | GET | `/devices` | List the caller's devices |
 | POST | `/devices/claim` | Claim an edge device into a site (409 if already claimed, 404 if site not in tenant) |
 | GET | `/sites/{siteId}/telemetry?from&to` | Recent telemetry for a site (defaults to last 24h) |
+| GET | `/sites/{siteId}/prices?from&to` | Day-ahead spot prices (15-min) for the site's bidding zone; defaults to ~today+tomorrow |
+| GET | `/sites/{siteId}/weather` | Latest weather forecast (hourly, coming days) for the site |
 
 ## Run / build / test
 
@@ -30,4 +32,4 @@ Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped 
 
 ## Status
 
-Implemented: OIDC resource-server, RLS tenant isolation (Flyway `db/migration` V1/V2 + dev seed `db/dev` V100), sites/devices/telemetry reads, device claiming. Schedules and KPIs (see OpenAPI) remain stubs. Real telemetry ingest is a separate increment; the portal reads dev-seeded demo telemetry.
+Implemented: OIDC resource-server, RLS tenant isolation (Flyway `db/migration` V1/V2 + `V20260701010000` site-geo/data-feeds + dev seed `db/dev` V100), sites/devices/telemetry reads, device claiming, and the KEYLESS **day-ahead price** + **weather** reads (fed by `services/market-data` energy-charts + `services/forecast` Open-Meteo, run in the compose `feeds` profile). Schedules and KPIs (see OpenAPI) remain stubs. Real telemetry ingest is a separate increment; the portal reads dev-seeded demo telemetry.

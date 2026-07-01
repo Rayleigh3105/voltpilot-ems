@@ -7,8 +7,18 @@ import { IconTile } from '../designsystem/components/core/IconTile';
 import { Input } from '../designsystem/components/forms/Input';
 import logoUrl from '../designsystem/assets/voltpilot-logo.png';
 import { currentUser, isPlatformAdmin, login, logout } from './auth';
-import { api, ApiError, type Device, type Site, type TelemetryPoint } from './api';
+import {
+  api,
+  ApiError,
+  type Device,
+  type PriceSeries,
+  type Site,
+  type TelemetryPoint,
+  type WeatherForecast,
+} from './api';
 import { TelemetryChart } from './TelemetryChart';
+import { PriceChart } from './PriceChart';
+import { WeatherChart } from './WeatherChart';
 import AdminApp from './admin/AdminApp';
 
 export default function App({
@@ -119,6 +129,14 @@ function Portal() {
             />
           )}
 
+          {selectedSite && (
+            <MarketSection site={sites.find((s) => s.id === selectedSite) ?? null} />
+          )}
+
+          {selectedSite && (
+            <WeatherSection site={sites.find((s) => s.id === selectedSite) ?? null} />
+          )}
+
           <DevicesSection devices={devices} sites={sites} onClaimed={reload} />
         </div>
       </main>
@@ -223,6 +241,139 @@ function TelemetrySection({ site }: { site: Site | null }) {
             <TelemetryChart points={points} />
             <p className="vp-note" style={{ marginTop: 12 }}>
               Demo-Daten (dev-seed) - der reale Ingest-Pfad folgt in einem späteren Increment.
+            </p>
+          </>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function MarketSection({ site }: { site: Site | null }) {
+  const [series, setSeries] = useState<PriceSeries | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!site) return;
+    let active = true;
+    setLoading(true);
+    setErr(null);
+    api
+      .prices(site.id)
+      .then((s) => active && setSeries(s))
+      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [site?.id]);
+
+  if (!site) return null;
+
+  const points = series?.points ?? [];
+  const nums = points.map((p) => p.priceEurMwh).filter((v): v is number => v != null);
+  const min = nums.length ? Math.min(...nums) : null;
+  const max = nums.length ? Math.max(...nums) : null;
+  const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+  const fmt = (v: number | null) => (v == null ? '-' : `${v.toFixed(1)} EUR/MWh`);
+
+  return (
+    <section className="vp-section">
+      <div className="vp-section-title">
+        <IconTile category="solar" size={40}>
+          €
+        </IconTile>
+        <h3>Day-Ahead Börsenpreise - {site.biddingZone}</h3>
+      </div>
+      <Card padding="lg" radius="lg">
+        {loading && <p className="vp-muted">Lade Börsenpreise…</p>}
+        {err && <div className="vp-alert vp-alert-err">Preis-Fehler: {err}</div>}
+        {!loading && !err && points.length === 0 && (
+          <p className="vp-muted">
+            Noch keine Day-Ahead-Preise. Der Collector (energy-charts.info) füllt sie
+            beim nächsten Lauf.
+          </p>
+        )}
+        {!loading && !err && points.length > 0 && (
+          <>
+            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
+              <Stat value={fmt(min)} label="Minimum" />
+              <Stat value={fmt(avg)} label="Ø heute/morgen" />
+              <Stat value={fmt(max)} label="Maximum" />
+              <Stat value={`${points.length}`} label={`Slots @ ${series?.resolution ?? '-'}`} />
+            </div>
+            <PriceChart series={series!} />
+            <p className="vp-note" style={{ marginTop: 12 }}>
+              Quelle: energy-charts.info (Fraunhofer ISE) - 15-Minuten-Slots, keyless.
+            </p>
+          </>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+function WeatherSection({ site }: { site: Site | null }) {
+  const [forecast, setForecast] = useState<WeatherForecast | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!site) return;
+    let active = true;
+    setLoading(true);
+    setErr(null);
+    api
+      .weather(site.id)
+      .then((w) => active && setForecast(w))
+      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
+      .finally(() => active && setLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [site?.id]);
+
+  if (!site) return null;
+
+  const points = forecast?.points ?? [];
+  const now = points[0] ?? null;
+  const peakGhi = points.reduce<number | null>(
+    (m, p) => (p.ghiWM2 != null && (m == null || p.ghiWM2 > m) ? p.ghiWM2 : m),
+    null,
+  );
+  const fmt = (v: number | null | undefined, unit: string) =>
+    v == null ? '-' : `${Number(v).toFixed(unit === '°C' ? 1 : 0)} ${unit}`;
+
+  return (
+    <section className="vp-section">
+      <div className="vp-section-title">
+        <IconTile category="dynamic" size={40}>
+          ☀
+        </IconTile>
+        <h3>Wettervorhersage - {site.name}</h3>
+      </div>
+      <Card padding="lg" radius="lg">
+        {loading && <p className="vp-muted">Lade Wettervorhersage…</p>}
+        {err && <div className="vp-alert vp-alert-err">Wetter-Fehler: {err}</div>}
+        {!loading && !err && points.length === 0 && (
+          <p className="vp-muted">
+            Noch keine Vorhersage. Der Collector (Open-Meteo) füllt sie beim nächsten
+            Lauf.
+          </p>
+        )}
+        {!loading && !err && points.length > 0 && (
+          <>
+            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
+              <Stat value={fmt(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
+              <Stat value={fmt(now?.cloudCoverPct, '%')} label="Bewölkung" />
+              <Stat value={fmt(peakGhi, 'W/m²')} label="Max. Einstrahlung" />
+              <Stat value={`${points.length} h`} label="Horizont" />
+            </div>
+            <WeatherChart points={points} />
+            <p className="vp-note" style={{ marginTop: 12 }}>
+              Quelle: Open-Meteo (EU-gehostet) - stündlich, keyless. Einstrahlung (GHI)
+              speist die PV-Prognose.
             </p>
           </>
         )}

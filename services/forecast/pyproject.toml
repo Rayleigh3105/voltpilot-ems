@@ -14,15 +14,21 @@ dependencies = []
 dev = [
     "pytest>=8.0",
 ]
-# TimescaleForecastRepository needs a Postgres driver; kept optional so the
-# forecast logic and its tests run dependency-free (offline-first, like the
-# rest of the scaffold). Install with `pip install -e '.[db]'`.
+# TimescaleForecastRepository / the weather collector need a Postgres driver;
+# kept optional so the forecast logic and its tests run dependency-free
+# (offline-first, like the rest of the scaffold). Install with `pip install -e '.[db]'`.
 db = [
     "psycopg[binary]>=3.1",
+]
+# The keyless Open-Meteo weather collector's live HTTP client. Parsing/mapping use
+# only stdlib, so tests inject a fake HttpClient and never import requests.
+weather = [
+    "requests>=2.31",
 ]
 
 [project.scripts]
 voltpilot-forecast = "voltpilot_forecast.__main__:main"
+voltpilot-weather = "voltpilot_forecast.weather_collect:main"
 
 [tool.setuptools.packages.find]
 include = ["voltpilot_forecast*"]

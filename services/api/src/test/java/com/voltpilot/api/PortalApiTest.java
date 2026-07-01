@@ -3,6 +3,9 @@ package com.voltpilot.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -155,7 +158,67 @@ class PortalApiTest {
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
+    // ---- data feeds: day-ahead prices + weather -----------------------------
+
+    @Test
+    void pricesEndpointReturnsZoneSeries() {
+        // Prices are public market data (no RLS); seed a couple of DE-LU slots.
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "VALUES (now(), 'DE-LU', 'PT15M', 42.5, 'EUR', 'energy-charts'), "
+                + "(now() + interval '15 minutes', 'DE-LU', 'PT15M', 55.0, 'EUR', 'energy-charts') "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/prices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody()).containsEntry("biddingZone", "DE-LU");
+        assertThat(res.getBody()).containsEntry("resolution", "PT15M");
+        List<?> points = (List<?>) res.getBody().get("points");
+        assertThat(points).isNotEmpty();
+
+        // A foreign site is invisible via RLS -> 404 (never another tenant's zone).
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/prices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void weatherIsTenantScoped() {
+        // Seed one weather row for tenant A's Berlin site (writer bypasses RLS).
+        exec("INSERT INTO weather_forecast "
+                + "(time, tenant_id, site_id, run_at, temperature_c, cloud_cover_pct, ghi_w_m2, source) "
+                + "VALUES (now(), '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
+                + "now(), 21.5, 30.0, 500.0, 'open-meteo') ON CONFLICT DO NOTHING");
+
+        // Tenant A reads its own site's weather.
+        ResponseEntity<String> own = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/weather"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(own.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(own.getBody()).contains("temperatureC");
+
+        // Tenant B cannot even see tenant A's site (RLS => 404), so no weather leaks.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/weather"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     // ---- helpers ------------------------------------------------------------
+
+    /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */
+    private static void exec(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement()) {
+            st.execute(sql);
+        } catch (Exception e) {
+            throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
 
     private String url(String path) {
         return "http://localhost:" + port + path;

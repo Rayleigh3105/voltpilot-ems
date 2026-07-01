@@ -1,0 +1,7 @@
+{
+  "license_info": "CC BY 4.0 (creativecommons.org/licenses/by/4.0) from Bundesnetzagentur | SMARD.de",
+  "unix_seconds": [1782943200, 1782944100, 1782945000, 1782945900],
+  "price": [85.5, 82.1, 79.9, 88.3],
+  "unit": "EUR/MWh",
+  "deprecated": false
+}

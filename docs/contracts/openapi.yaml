@@ -27,6 +27,8 @@ tags:
   - name: sites
   - name: devices
   - name: telemetry
+  - name: market
+  - name: weather
   - name: schedules
   - name: kpis
   - name: admin
@@ -116,6 +118,51 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/TelemetryPoint" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/prices:
+    get:
+      tags: [market]
+      summary: Day-ahead spot prices (15-min slots) for a site's bidding zone.
+      description: >
+        Returns the day-ahead electricity spot prices for the site's bidding zone
+        (DE-LU). Prices are market-wide PER ZONE (not per tenant), but the endpoint
+        is site-scoped so the portal reads "the price for this site": the site is
+        resolved via RLS (a foreign site is 404), then its zone's series is
+        returned. Collected KEYLESS from energy-charts.info (Fraunhofer ISE), with
+        ENTSO-E as an alternative source. `from`/`to` default to roughly
+        today+tomorrow. Implemented in services/api.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Price series for the site's zone.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceSeries" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/weather:
+    get:
+      tags: [weather]
+      summary: Latest weather forecast (hourly) for a site.
+      description: >
+        Returns the most recent weather-forecast run for the site (temperature,
+        cloud cover and shortwave/GHI radiation useful for PV), hourly over the
+        coming days. The `weather_forecast` table carries `tenant_id` and is
+        RLS-scoped, and the site lookup is RLS-gated, so a foreign site is 404 and
+        no other tenant's weather can leak. Collected KEYLESS from Open-Meteo
+        (EU-hosted). Implemented in services/api.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Latest weather forecast (empty points array if none stored yet).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WeatherForecast" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/schedule:
@@ -252,6 +299,16 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         biddingZone: { type: string, example: DE-LU }
+        latitude:
+          type: number
+          nullable: true
+          description: WGS84 latitude; ties the site to its weather forecast.
+          example: 52.52
+        longitude:
+          type: number
+          nullable: true
+          description: WGS84 longitude.
+          example: 13.405
     DeviceClaimRequest:
       type: object
       required: [siteId, externalRef]
@@ -278,6 +335,49 @@ components:
         gridLimitKw:
           type: number
           description: Observed effective §14a power limit.
+    PriceSeries:
+      type: object
+      description: Day-ahead spot prices for a bidding zone (market-wide, not per tenant).
+      properties:
+        biddingZone: { type: string, example: DE-LU }
+        resolution:
+          type: string
+          nullable: true
+          description: ISO-8601 slot resolution of the latest data.
+          example: PT15M
+        currency: { type: string, example: EUR }
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/PricePoint" }
+    PricePoint:
+      type: object
+      properties:
+        ts: { type: string, format: date-time, description: Slot start (UTC). }
+        end: { type: string, format: date-time, description: Slot end (exclusive). }
+        priceEurMwh: { type: number, description: Spot price in EUR/MWh. }
+    WeatherForecast:
+      type: object
+      properties:
+        runAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Issue time of the forecast run (null if none stored yet).
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/WeatherPoint" }
+    WeatherPoint:
+      type: object
+      properties:
+        ts: { type: string, format: date-time, description: Forecast target hour (UTC). }
+        temperatureC: { type: number, nullable: true, description: 2 m air temperature. }
+        cloudCoverPct: { type: number, nullable: true, description: Total cloud cover 0..100. }
+        ghiWM2:
+          type: number
+          nullable: true
+          description: Shortwave / global-horizontal irradiance (W/m²), PV-relevant.
+        dniWM2: { type: number, nullable: true, description: Direct (beam) radiation (W/m²). }
+        dhiWM2: { type: number, nullable: true, description: Diffuse radiation (W/m²). }
     Schedule:
       type: object
       properties:
