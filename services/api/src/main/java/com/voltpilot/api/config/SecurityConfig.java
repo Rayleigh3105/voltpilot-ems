@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
@@ -28,6 +29,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * duration of the request, driving Postgres Row-Level-Security.
  */
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Value("${voltpilot.security.cors.allowed-origins:http://localhost:5173}")
@@ -43,7 +45,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/health", "/info", "/actuator/**").permitAll()
                 .anyRequest().authenticated())
-            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+            // Map Keycloak realm roles -> ROLE_* authorities so @PreAuthorize on the
+            // admin API can gate Portal-Admins (platform-admin) from Portal-Users.
+            .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
+                jwt.jwtAuthenticationConverter(new KeycloakRealmRoleConverter())))
             .addFilterAfter(tenantFilter, BearerTokenAuthenticationFilter.class);
         return http.build();
     }

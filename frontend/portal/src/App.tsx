@@ -6,9 +6,10 @@ import { Stat } from '../designsystem/components/core/Stat';
 import { IconTile } from '../designsystem/components/core/IconTile';
 import { Input } from '../designsystem/components/forms/Input';
 import logoUrl from '../designsystem/assets/voltpilot-logo.png';
-import { currentUser, login, logout } from './auth';
+import { currentUser, isPlatformAdmin, login, logout } from './auth';
 import { api, ApiError, type Device, type Site, type TelemetryPoint } from './api';
 import { TelemetryChart } from './TelemetryChart';
+import AdminApp from './admin/AdminApp';
 
 export default function App({
   initialAuth,
@@ -18,6 +19,10 @@ export default function App({
   authError?: boolean;
 }) {
   if (!initialAuth) return <LoginScreen authError={authError} />;
+  // Role-aware entry: Portal-Admins (platform operators) get the admin console;
+  // Portal-Users (customers) get the tenant-scoped customer portal. The backend
+  // enforces this split too - the UI just picks the right surface.
+  if (isPlatformAdmin()) return <AdminApp />;
   return <Portal />;
 }
 

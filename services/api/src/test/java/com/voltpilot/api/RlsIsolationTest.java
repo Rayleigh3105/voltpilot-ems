@@ -50,7 +50,9 @@ class RlsIsolationTest {
                 .locations("classpath:db/migration", "classpath:db/dev")
                 .baselineOnMigrate(true)
                 .baselineVersion("0")
-                .placeholders(java.util.Map.of("appDbUser", APP_USER, "appDbPassword", APP_PW))
+                .placeholders(java.util.Map.of(
+                        "appDbUser", APP_USER, "appDbPassword", APP_PW,
+                        "adminDbUser", "voltpilot_admin", "adminDbPassword", "voltpilot_admin_test_pw"))
                 .load()
                 .migrate();
     }

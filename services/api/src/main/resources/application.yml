@@ -22,6 +22,10 @@ spring:
     placeholders:
       appDbUser: ${APP_DB_USER:voltpilot_app}
       appDbPassword: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+      # V4 creates the dedicated cross-tenant admin role (BYPASSRLS) used only by
+      # the platform-admin API. Password is a placeholder like the app role.
+      adminDbUser: ${ADMIN_DB_USER:voltpilot_admin}
+      adminDbPassword: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
 
   security:
     oauth2:
@@ -46,6 +50,23 @@ voltpilot:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:false}
     cors:
       allowed-origins: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  # Dedicated cross-tenant datasource for the platform-admin API. Connects as the
+  # voltpilot_admin BYPASSRLS role (created by Flyway V4) to the SAME database as
+  # the app datasource (URL falls back to spring.datasource.url); only the role
+  # credentials differ. Set voltpilot.admin-datasource.url only to point elsewhere.
+  admin-datasource:
+    username: ${ADMIN_DB_USER:voltpilot_admin}
+    password: ${ADMIN_DB_PASSWORD:voltpilot_admin_dev_pw}
+  # Keycloak Admin REST API access for provisioning customer users. The API
+  # authenticates as the voltpilot-api service account (client_credentials) that
+  # holds the realm-management roles. base-url is the compose-internal Keycloak.
+  keycloak:
+    admin:
+      base-url: ${KEYCLOAK_ADMIN_BASE_URL:http://keycloak:8080}
+      realm: ${KEYCLOAK_REALM:voltpilot}
+      client-id: ${KEYCLOAK_API_CLIENT_ID:voltpilot-api}
+      client-secret: ${KEYCLOAK_API_CLIENT_SECRET:voltpilot-api-dev-secret}
+      customer-role: operator
 
 # Expose actuator at the root so health is reachable at /health (and /info).
 management:

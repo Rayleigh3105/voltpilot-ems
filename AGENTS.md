@@ -83,7 +83,7 @@ Notes:
 - `.env` holds **dev-only** secrets, clearly marked. Never reuse them outside local dev.
 - Data persists in named volumes `timescale-data`, `emqx-data`, `redpanda-data`.
 - Redpanda advertises two listeners: `redpanda:29092` (in-cluster) and `localhost:9092` (host). Services inside compose must use the internal one.
-- Keycloak realm `voltpilot` is imported on start from `infra/local/keycloak/` with clients `voltpilot-api` (confidential) and `voltpilot-frontend` (public/PKCE, `tenant_id` mapper), plus two dev users (see the auth section): `demo`/`demo` (tenant A) and `demo2`/`demo2` (tenant B).
+- Keycloak realm `voltpilot` is imported on start from `infra/local/keycloak/` with clients `voltpilot-api` (confidential; its service account holds `realm-management` roles for the admin API) and `voltpilot-frontend` (public/PKCE, `tenant_id` mapper), plus dev users (see the auth + admin sections): `admin`/`admin` (Portal-Admin, `platform-admin`), `demo`/`demo` (tenant A) and `demo2`/`demo2` (tenant B).
 - TimescaleDB is bootstrapped once from `infra/local/timescale/*.sql`, applied in filename order (`01-init.sql`: extension + example `telemetry` hypertable + tenant/site/device/asset + a deterministic dev seed; `02-day-ahead-prices.sql`: the market-data hypertable; `02-forecast.sql`: the `forecast` hypertable) so the backbone works without the app services. The **core schema is owned by Flyway migrations in `services/api`** (`db/migration`), which run on api start and are idempotent, so they layer cleanly over that bootstrap and own a fresh DB outright; the `forecast` and `market-data` services ship their own migrations (see their sections for version coordination).
 - **The full stack has been verified end-to-end from a clean bring-up** (`docker compose --profile edge up -d --build`): all five merged increments co-run, the api's Flyway `V1/V2/V100` apply cleanly over the init-script bootstrap, all three hypertables (`telemetry`/`forecast`/`day_ahead_prices`) exist, OIDC auth + RLS isolation + the telemetry API + the React portal login/telemetry view all work, and the edge publishes contract-conformant telemetry to EMQX. See the README "Run the full stack locally" section for the exact commands + verification. Two footguns worth knowing: (1) the `infra/local/timescale/*.sql` init scripts only run on a **fresh** data volume, so after pulling newly-merged increments you must `down -v` (or the new `forecast`/`day_ahead_prices` tables silently stay absent on an already-initialized volume); (2) host-port collisions on `8090`/`5432`/etc. are resolved by overriding the port in the git-ignored `.env` (e.g. `API_PORT`, and matching `VITE_API_BASE`), not by editing compose.
 
@@ -100,18 +100,36 @@ The user-facing spine. See `services/api/README.md` for the endpoint list.
 
 - **Two DB roles, on purpose.** The compose `POSTGRES_USER` (`voltpilot`) is a Postgres **superuser**, and superusers BYPASS RLS. So the api connects at runtime as a dedicated **`voltpilot_app`** role (NOSUPERUSER/NOBYPASSRLS, created by Flyway `V1` with a placeholder password from `APP_DB_PASSWORD`) for which RLS is enforced. **Flyway** runs as the superuser (`spring.flyway.user`) to own the schema, create the role/policies, and seed both tenants (bypassing RLS). Tables are also `FORCE ROW LEVEL SECURITY` so even the owner is scoped.
 
-**Migrations (Flyway).** In `services/api/src/main/resources/db/`: `migration/` = prod-safe core (`V1` idempotent schema + app role, `V2` RLS); `dev/` = the DEV-ONLY seed (`V100`, two tenants + demo telemetry), added to `spring.flyway.locations` only under the `local` profile (compose sets `SPRING_PROFILES_ACTIVE=local`; tests activate it too). `baseline-on-migrate` + `baseline-version=0` let the idempotent `V1` run over the compose bootstrap DB.
+**Migrations (Flyway).** In `services/api/src/main/resources/db/`: `migration/` = prod-safe core (`V1` idempotent schema + app role, `V2` RLS, `V4` cross-tenant admin role - see the admin section; **V3 is skipped**, reserved by `services/forecast`); `dev/` = the DEV-ONLY seed (`V100`, two tenants + demo telemetry), added to `spring.flyway.locations` only under the `local` profile (compose sets `SPRING_PROFILES_ACTIVE=local`; tests activate it too). `baseline-on-migrate` + `baseline-version=0` let the idempotent `V1` run over the compose bootstrap DB.
 
-**Seeded dev tenants/users (dev-only, disjoint data):**
+**Seeded dev users (dev-only):**
 
-| Keycloak user | Password | tenant_id | Site | Device |
+| Keycloak user | Password | Role | tenant_id | Sees |
 |---|---|---|---|---|
-| `demo`  | `demo`  | `00000000-…-0001` | Demo Site Berlin | `demo-inverter-01` |
-| `demo2` | `demo2` | `10000000-…-0001` | Nordwind Hamburg | `nordwind-inverter-01` |
+| `admin` | `admin` | `platform-admin` (Portal-Admin) | *none* | Admin console: all tenants + users |
+| `demo`  | `demo`  | `operator` (Portal-User) | `00000000-…-0001` | Demo Site Berlin / `demo-inverter-01` |
+| `demo2` | `demo2` | `operator` (Portal-User) | `10000000-…-0001` | Nordwind Hamburg / `nordwind-inverter-01` |
 
 **Device claiming** (`POST /api/v1/devices/claim`) is one insert into the caller's tenant. `external_ref` is **globally unique**, so claiming a device already owned by another tenant (which RLS hides) fails the unique constraint -> HTTP 409; a site outside the tenant -> 404.
 
-**Tests** (`./mvnw test`, auto-skip without Docker via `disabledWithoutDocker`): `TenantFilterTest` (unit, always runs); `RlsIsolationTest` (Testcontainers TimescaleDB, JDBC-level RLS proof); `PortalApiTest` (Testcontainers TimescaleDB + Keycloak, full OIDC + tenant-isolation + claim e2e). Note: Docker 25+ enforces API >= 1.40, so surefire pins `-Dapi.version` (property `docker.api.version`, default 1.44) for the Testcontainers docker-java client.
+**Tests** (`./mvnw test`, auto-skip without Docker via `disabledWithoutDocker`): `TenantFilterTest` + `KeycloakRealmRoleConverterTest` (unit, always run); `RlsIsolationTest` (Testcontainers TimescaleDB, JDBC-level RLS proof); `PortalApiTest` (Testcontainers TimescaleDB + Keycloak, full OIDC + tenant-isolation + claim e2e); `AdminApiTest` (same stack - admin creates tenant + customer user, the new customer logs in tenant-scoped, a Portal-User gets 403 on admin routes). Note: Docker 25+ enforces API >= 1.40, so surefire pins `-Dapi.version` (property `docker.api.version`, default 1.44) for the Testcontainers docker-java client.
+
+## Admin API & the Portal-Admin / Portal-User split (services/api + frontend)
+
+Two distinct kinds of principal, separated in the **backend** (the UI only picks a surface):
+
+- **Portal-Admin = platform operator.** Keycloak realm role **`platform-admin`**. **Not** tenant-scoped (carries **no** `tenant_id`). Manages tenants and customer users across the whole platform. Seeded login `admin`/`admin`.
+- **Portal-User = customer.** Realm role **`operator`**, scoped to exactly one tenant via the `tenant_id` claim + RLS (the `demo`/`demo2` users). Unchanged from before.
+
+**Role -> authority mapping.** `KeycloakRealmRoleConverter` maps the token's `realm_access.roles` onto `ROLE_*` authorities, wired into the `secured` chain via `jwtAuthenticationConverter`. `@EnableMethodSecurity` + `@PreAuthorize("hasRole('platform-admin')")` on `AdminController` is what makes a customer token get **403** on every `/api/v1/admin/**` route. This converter is the ONLY thing that turns a token into an authority; it is orthogonal to tenant scoping (still `TenantFilter` + RLS).
+
+**Admin endpoints** (`AdminController`, all Portal-Admin-only): `GET/POST /api/v1/admin/tenants`; `GET/POST /api/v1/admin/tenants/{tenantId}/users`; `POST /api/v1/admin/tenants/{tenantId}/users/{userId}/disable`. Kept in `docs/contracts/openapi.yaml` (tag `admin`).
+
+**Cross-tenant without weakening RLS.** Admin reads/writes span all tenants, but the customer-facing RLS must NOT be loosened. So there are **two DB roles / two datasources**: customer endpoints keep the `@Primary` tenant-aware `voltpilot_app` datasource (NOBYPASSRLS, RLS enforced); the admin repository (`TenantRepository`) uses a **separate** `adminJdbcTemplate` bound to the dedicated **`voltpilot_admin`** role (**BYPASSRLS**, created by Flyway **`V4`**, granted table privileges since BYPASSRLS skips policies not grants). The two never mix. Note: defining `adminJdbcTemplate` backs off Boot's auto `JdbcTemplate`, so `DataSourceConfig` declares an explicit **`@Primary` `jdbcTemplate`** on the tenant-aware datasource - customer repos must get that one.
+
+**User provisioning via Keycloak Admin REST API.** `KeycloakAdminClient` authenticates as the **`voltpilot-api` service account** (`client_credentials`) which is granted `realm-management` roles (`manage-users`/`view-users`/`query-users`/`view-realm`) in the realm import; it creates the user with the `tenant_id` attribute + `operator` role (so the existing OIDC+RLS spine isolates them exactly like the seeded tenants), then sets the password. `base-url` is the compose-internal Keycloak (`KEYCLOAK_ADMIN_BASE_URL`, default `http://keycloak:8080`), decoupled from the browser-facing issuer like the JWKS split; secret via `KEYCLOAK_API_CLIENT_SECRET` (env only). **Keycloak-26 footgun:** the realm import declares a **declarative user profile** (in `voltpilot-realm.json` `components`) with `tenant_id` declared + `unmanagedAttributePolicy: ADMIN_EDIT` and firstName/lastName **optional** - without it, the Admin API silently drops the unmanaged `tenant_id` and password-grant login fails with "Account is not fully set up".
+
+**Frontend.** `frontend/portal/src/auth.ts` exposes `isPlatformAdmin()` (reads `realm_access.roles`); `App.tsx` branches to `src/admin/AdminApp.tsx` (admin console: create/list tenants, create/list/disable customer users, built on the design system) for Portal-Admins and the existing `Portal` for customers. The admin surface is self-contained under `src/admin/` (keeps the customer portal free to evolve separately). Admin calls go through `src/admin/adminApi.ts` reusing `api.ts`'s exported `request`.
 
 ## Live ingest pipe (`services/ingest` + `services/timescale-writer`)
 

@@ -15,6 +15,21 @@ export interface UserInfo {
   name: string;
   email?: string;
   tenantId?: string;
+  roles: string[];
+}
+
+/** Realm role that marks a Portal-Admin (platform operator). */
+export const PLATFORM_ADMIN_ROLE = 'platform-admin';
+
+/** Realm roles from the access token (Keycloak `realm_access.roles`). */
+export function currentRoles(): string[] {
+  const t = keycloak.tokenParsed as { realm_access?: { roles?: string[] } } | undefined;
+  return t?.realm_access?.roles ?? [];
+}
+
+/** True when the logged-in user is a Portal-Admin (sees the admin console). */
+export function isPlatformAdmin(): boolean {
+  return currentRoles().includes(PLATFORM_ADMIN_ROLE);
 }
 
 /**
@@ -43,6 +58,7 @@ export function currentUser(): UserInfo {
     name: (t?.['name'] as string) || (t?.['preferred_username'] as string) || 'Operator',
     email: t?.['email'] as string | undefined,
     tenantId: t?.['tenant_id'] as string | undefined,
+    roles: currentRoles(),
   };
 }
 

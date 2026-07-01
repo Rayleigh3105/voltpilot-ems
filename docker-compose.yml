@@ -257,6 +257,10 @@ services:
       POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}
       APP_DB_USER: ${APP_DB_USER:-voltpilot_app}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-voltpilot_app_dev_pw}
+      # Dedicated cross-tenant admin role (BYPASSRLS, created by Flyway V4) used
+      # ONLY by the platform-admin API; customer endpoints keep using the app role.
+      ADMIN_DB_USER: ${ADMIN_DB_USER:-voltpilot_admin}
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-voltpilot_admin_dev_pw}
       # Flyway connection: Postgres superuser (owns schema, creates role + RLS).
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
@@ -265,6 +269,12 @@ services:
       VOLTPILOT_SECURITY_OIDC_ENABLED: "true"
       OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-http://localhost:8081/realms/voltpilot}
       OIDC_JWK_SET_URI: ${OIDC_JWK_SET_URI:-http://keycloak:8080/realms/voltpilot/protocol/openid-connect/certs}
+      # Keycloak Admin REST API (provisioning customer users). The API calls it as
+      # the voltpilot-api service account; base-url is the compose-internal host.
+      KEYCLOAK_ADMIN_BASE_URL: ${KEYCLOAK_ADMIN_BASE_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-voltpilot}
+      KEYCLOAK_API_CLIENT_ID: ${KEYCLOAK_API_CLIENT_ID:-voltpilot-api}
+      KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET:-voltpilot-api-dev-secret}
       VOLTPILOT_CORS_ALLOWED_ORIGINS: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     ports:
       - "${API_PORT:-8090}:8090"

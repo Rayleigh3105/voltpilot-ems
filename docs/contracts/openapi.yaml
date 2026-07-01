@@ -29,6 +29,13 @@ tags:
   - name: telemetry
   - name: schedules
   - name: kpis
+  - name: admin
+    description: >
+      Platform-admin API (Portal-Admins only). Every operation requires the
+      `platform-admin` realm role and is refused with 403 for customer tokens
+      (`operator`). These endpoints are cross-tenant by design and do NOT rely on
+      the tenant_id claim / RLS; they use a dedicated admin database role and the
+      Keycloak Admin API.
 paths:
   /health:
     get:
@@ -135,6 +142,94 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SiteKpis" }
+  /api/v1/admin/tenants:
+    get:
+      tags: [admin]
+      summary: List all tenants (platform-wide).
+      responses:
+        "200":
+          description: Every tenant on the platform.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Tenant" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      summary: Create a tenant.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTenantRequest" }
+      responses:
+        "201":
+          description: Tenant created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tenant" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/tenants/{tenantId}/users:
+    get:
+      tags: [admin]
+      summary: List the customer users (Portal-Users) of a tenant.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Users carrying this tenant's `tenant_id` in Keycloak.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
+    post:
+      tags: [admin]
+      summary: Provision a customer user into a tenant.
+      description: >
+        Creates a Keycloak user with the `tenant_id` attribute and the customer
+        (`operator`) realm role, so the account is tenant-scoped by the existing
+        OIDC + RLS spine. An optional password is set (temporary for an invite
+        flow). A duplicate username/email yields 409.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateUserRequest" }
+      responses:
+        "201":
+          description: Customer user created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
+        "409": { description: A user with that username or email already exists. }
+  /api/v1/admin/tenants/{tenantId}/users/{userId}/disable:
+    post:
+      tags: [admin]
+      summary: Disable a customer user (blocks their logins).
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant or user not found. }
 components:
   securitySchemes:
     bearerAuth:
@@ -148,6 +243,8 @@ components:
   responses:
     Unauthorized:
       description: Missing, expired or invalid Bearer token.
+    Forbidden:
+      description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
     Site:
       type: object
@@ -200,3 +297,37 @@ components:
         selfConsumptionPct: { type: number }
         estimatedSavingsEur: { type: number }
         window: { type: string, example: last_30_days }
+    Tenant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        segment: { type: string, enum: [CI, B2C], example: CI }
+        plan: { type: string, example: mvp }
+        createdAt: { type: string, format: date-time }
+    CreateTenantRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        segment: { type: string, enum: [CI, B2C], description: "Defaults to 'CI'." }
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string, description: Keycloak user id. }
+        username: { type: string }
+        email: { type: string, nullable: true }
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        enabled: { type: boolean }
+        tenantId: { type: string, format: uuid, nullable: true, description: From the user's tenant_id attribute. }
+    CreateUserRequest:
+      type: object
+      required: [username]
+      properties:
+        username: { type: string }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        password: { type: string, description: Optional initial password. }
+        temporaryPassword: { type: boolean, description: "If true, the user must change it at first login. Default false." }

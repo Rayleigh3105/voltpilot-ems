@@ -246,3 +246,23 @@ button {
   background: #fdecea;
   color: var(--vp-industry-end);
 }
+
+/* Admin console */
+.vp-admin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-space-8);
+}
+@media (min-width: 960px) {
+  .vp-admin-grid {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: var(--vp-gap-lg);
+    align-items: start;
+  }
+}
+.vp-admin-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: var(--vp-space-4);
+  align-items: end;
+}

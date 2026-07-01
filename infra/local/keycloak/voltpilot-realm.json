@@ -8,8 +8,18 @@
   "accessTokenLifespan": 900,
   "roles": {
     "realm": [
-      { "name": "operator", "description": "Tenant operator (dev)" },
-      { "name": "admin", "description": "Tenant admin (dev)" }
+      {
+        "name": "operator",
+        "description": "Portal-User: customer, scoped to one tenant via tenant_id (dev)"
+      },
+      {
+        "name": "admin",
+        "description": "Tenant admin (dev, legacy)"
+      },
+      {
+        "name": "platform-admin",
+        "description": "Portal-Admin: platform operator, manages tenants and users across all tenants (dev)"
+      }
     ]
   },
   "clients": [
@@ -25,8 +35,12 @@
       "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": true,
       "secret": "voltpilot-api-dev-secret",
-      "redirectUris": ["http://localhost:8090/*"],
-      "webOrigins": ["http://localhost:8090"],
+      "redirectUris": [
+        "http://localhost:8090/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8090"
+      ],
       "protocolMappers": [
         {
           "name": "tenant_id",
@@ -53,8 +67,12 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["http://localhost:5173/*"],
-      "webOrigins": ["http://localhost:5173"],
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },
@@ -78,6 +96,37 @@
   ],
   "users": [
     {
+      "username": "service-account-voltpilot-api",
+      "enabled": true,
+      "serviceAccountClientId": "voltpilot-api",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users",
+          "view-realm"
+        ]
+      }
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin@voltpilot.local",
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "platform-admin"
+      ]
+    },
+    {
       "username": "demo",
       "enabled": true,
       "emailVerified": true,
@@ -85,12 +134,20 @@
       "firstName": "Demo",
       "lastName": "Operator",
       "attributes": {
-        "tenant_id": ["00000000-0000-0000-0000-000000000001"]
+        "tenant_id": [
+          "00000000-0000-0000-0000-000000000001"
+        ]
       },
       "credentials": [
-        { "type": "password", "value": "demo", "temporary": false }
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["operator"]
+      "realmRoles": [
+        "operator"
+      ]
     },
     {
       "username": "demo2",
@@ -100,12 +157,34 @@
       "firstName": "Nordwind",
       "lastName": "Operator",
       "attributes": {
-        "tenant_id": ["10000000-0000-0000-0000-000000000001"]
+        "tenant_id": [
+          "10000000-0000-0000-0000-000000000001"
+        ]
       },
       "credentials": [
-        { "type": "password", "value": "demo2", "temporary": false }
+        {
+          "type": "password",
+          "value": "demo2",
+          "temporary": false
+        }
       ],
-      "realmRoles": ["operator"]
+      "realmRoles": [
+        "operator"
+      ]
     }
-  ]
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "name": "declarative-user-profile",
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
+          ]
+        }
+      }
+    ]
+  }
 }
