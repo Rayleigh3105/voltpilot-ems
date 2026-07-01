@@ -27,57 +27,105 @@ edge/sim/                   # Simulated SunSpec Modbus TCP inverter/battery (dev
 frontend/portal/            # React (Vite) web portal skeleton
 ```
 
-## Quickstart - local dev stack
+## Run the full stack locally
 
-Prerequisites: Docker (with Compose v2), and for building the services: JDK 21, Python 3.10+, Node 20+.
+This is the verified, copy-paste path to a healthy full stack (stateful backbone + portal API + edge) plus a working portal login and telemetry view.
+
+**Prerequisites:** Docker with Compose v2 (tested on Docker 29 / Compose v2), and - to run the web portal - Node 20+ (Node 22 works).
+Building the services from source additionally needs JDK 21 and Python 3.10+, but the containers build those images for you.
+
+### 1. Configure env
 
 ```bash
-cp .env.example .env          # dev-only secrets, clearly marked
-docker compose up -d          # bring up the backbone + the portal API
-docker compose ps             # wait until all show healthy
+cp .env.example .env          # dev-only secrets, clearly marked - never reuse outside local dev
 ```
 
-This brings up the MVP data-path backbone plus the portal API:
+The defaults in `.env` work as-is.
+`ENTSOE_SECURITY_TOKEN` is intentionally blank (only a live market-data fetch needs it - not the stack).
+If a host port is already taken on your machine, override it in `.env` (it is git-ignored) - e.g. `API_PORT=18090` if something else already listens on `8090`; if you change `API_PORT`, also set `VITE_API_BASE=http://localhost:<that port>` so the portal targets the API.
+
+### 2. Bring the whole stack up
+
+```bash
+docker compose --profile edge up -d --build   # backbone + api + edge (Node-RED + SunSpec sim)
+docker compose --profile edge ps              # wait until every service shows healthy
+```
+
+The `edge` profile adds the Node-RED edge and the simulated SunSpec Modbus source; drop `--profile edge` for a backbone-only bring-up.
+First start runs the TimescaleDB init scripts in `infra/local/timescale/` **once** (they create the `telemetry`, `forecast` and `day_ahead_prices` hypertables), then the api applies its Flyway migrations (`V1` core schema + app role, `V2` RLS, `V100` dev seed) idempotently over that bootstrap.
+
+> **Upgrading an existing volume:** the init scripts only run on a *fresh* data volume.
+> If you ran an earlier (backbone-only) stack and then pulled the merged increments, the newer `02-forecast.sql` / `02-day-ahead-prices.sql` scripts will **not** re-run, so those two tables stay absent.
+> Recreate the volume to pick them up: `docker compose --profile edge down -v && docker compose --profile edge up -d --build`.
+
+Services and where to reach them:
 
 | Service | URL / port | Notes |
 |---|---|---|
-| TimescaleDB | `localhost:5432` | db `voltpilot`, extension enabled, example `telemetry` + `forecast` hypertables + stammdaten seeded |
+| TimescaleDB | `localhost:5432` | db `voltpilot`; `telemetry` + `forecast` + `day_ahead_prices` hypertables + stammdaten seeded |
 | EMQX (MQTT) | `localhost:1883` | dashboard at http://localhost:18083 (admin / see `.env`) |
 | EMQX (WS/TLS) | `8083` / `8883` | |
 | Redpanda (Kafka API) | `localhost:9092` | topic `telemetry.raw` created on startup |
 | Redpanda Console | http://localhost:8080 | topic/consumer web UI |
 | Keycloak | http://localhost:8081 | realm `voltpilot`, clients `voltpilot-api` + `voltpilot-frontend` (admin / see `.env`) |
 | Portal API | http://localhost:8090 | Spring Boot; OIDC resource server + RLS tenant isolation; `GET /health` |
+| Node-RED edge | http://localhost:1880 | thin edge (only with `--profile edge`); publishes telemetry to EMQX |
 
-The web portal runs outside compose via Vite: `(cd frontend/portal && npm install && npm run dev)` -> http://localhost:5173. Log in as `demo`/`demo` (tenant A) or `demo2`/`demo2` (tenant B).
+### 3. Run the web portal
 
-Tear down (keep data): `docker compose down` - wipe data too: `docker compose down -v`.
-
-The **edge** (Node-RED + a simulated SunSpec Modbus source) is guarded behind the compose `edge` profile, so the default `up` stays backbone-only. Bring it up with `docker compose --profile edge up -d --build edge-sim edge-nodered`; see [`edge/node-red/README.md`](edge/node-red/README.md) for the end-to-end walkthrough.
-
-### Verify the backbone
+The portal runs outside compose via the Vite dev server:
 
 ```bash
-# TimescaleDB: extension + seeded schema
-docker compose exec timescaledb psql -U voltpilot -d voltpilot -c "\dt"
-docker compose exec timescaledb psql -U voltpilot -d voltpilot -c "SELECT extname FROM pg_extension WHERE extname='timescaledb';"
-# Redpanda: topic exists
-docker compose exec redpanda rpk topic list --brokers localhost:29092
-# Keycloak: realm reachable
-curl -s http://localhost:8081/realms/voltpilot/.well-known/openid-configuration | head -c 200
-# Portal API: healthy, and rejects unauthenticated calls
-curl -s http://localhost:8090/health
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/sites   # 401
+(cd frontend/portal && npm install && npm run dev)   # http://localhost:5173
 ```
 
-### Verify the portal + tenant isolation
+Open http://localhost:5173, click **Anmelden mit Keycloak**, and log in with a seeded **dev-only** user:
+
+| User | Password | Tenant | Sees |
+|---|---|---|---|
+| `demo`  | `demo`  | A | Demo Site Berlin + its telemetry |
+| `demo2` | `demo2` | B | Nordwind Hamburg + its telemetry |
+
+After login the portal shows that tenant's sites, a live telemetry chart (PV / load / net power / battery SoC), and its devices - never the other tenant's data (enforced by Postgres RLS).
+
+### 4. Verify it's up (backbone + auth + RLS)
 
 ```bash
-# Mint a tenant-A token and call the API (tenant B: demo2/demo2)
+# TimescaleDB: hypertables present
+docker compose exec timescaledb psql -U voltpilot -d voltpilot \
+  -c "SELECT hypertable_name FROM timescaledb_information.hypertables ORDER BY 1;"
+# api: healthy, and rejects unauthenticated calls
+curl -s http://localhost:8090/health                                              # {"status":"UP",...}
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/sites       # 401
+
+# Mint a tenant-A token (password grant) and call the tenant-scoped API
 TOKEN=$(curl -s http://localhost:8081/realms/voltpilot/protocol/openid-connect/token \
   -d grant_type=password -d client_id=voltpilot-api -d client_secret=voltpilot-api-dev-secret \
   -d username=demo -d password=demo -d scope=openid | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/v1/sites   # only tenant A's sites
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/v1/sites       # only tenant A's site
+# RLS proof: tenant A cannot see tenant B's site -> 404 (not 403; the row is invisible)
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8090/api/v1/sites/10000000-0000-0000-0000-000000000002/telemetry?channel=power_kw
+```
+
+### 5. Verify the edge -> MQTT path (with `--profile edge`)
+
+The Node-RED edge reads the SunSpec simulator and publishes contract-conformant telemetry to EMQX.
+Subscribe to one message (needs a broker container on the compose network):
+
+```bash
+T='ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003'
+docker run --rm --network voltpilot_default eclipse-mosquitto:2 \
+  mosquitto_sub -h emqx -p 1883 -t "$T/telemetry" -C 1 -v -W 25
+```
+
+See [`edge/node-red/README.md`](edge/node-red/README.md) for the full walkthrough (schedule execution, watchdog, guards).
+
+### Tear down
+
+```bash
+docker compose --profile edge down       # stop, keep data volumes
+docker compose --profile edge down -v    # stop and wipe data (forces a fresh init on next up)
 ```
 
 ## Building & running the services
