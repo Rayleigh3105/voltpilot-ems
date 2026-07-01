@@ -6,9 +6,9 @@ The product architecture is in [`docs/architecture.md`](docs/architecture.md); t
 ## What this is
 
 Self-hosted multi-tenant EMS (PV / battery / load management), DACH market. Monorepo.
-On top of the runnable local backbone and binding contracts, several increments now add real functionality: the **portal + authentication spine** (the Spring Boot `api` runs in compose, validates Keycloak JWTs, and serves tenant-scoped sites/devices/telemetry plus device-claiming, enforced end-to-end by Postgres Row-Level-Security; the React portal has real OIDC login and a telemetry view), the baseline **`services/forecast`** (load/PV, no ML), the **`services/market-data`** ENTSO-E day-ahead price adapter, and the Node-RED **edge** (SunSpec Modbus simulator). The remaining services (ingest, writer, optimization, marketing-adapter) are still thin skeletons - see the service map and "Status" per service README.
+On top of the runnable local backbone and binding contracts, several increments now add real functionality: the **portal + authentication spine** (the Spring Boot `api` runs in compose, validates Keycloak JWTs, and serves tenant-scoped sites/devices/telemetry plus device-claiming, enforced end-to-end by Postgres Row-Level-Security; the React portal has real OIDC login and a telemetry view), the **live ingest pipe** (`services/ingest` + `services/timescale-writer`, wired into the `edge` compose profile - real edge telemetry now flows MQTT -> Redpanda -> TimescaleDB and surfaces in the portal), the baseline **`services/forecast`** (load/PV, no ML), the **`services/market-data`** ENTSO-E day-ahead price adapter, and the Node-RED **edge** (SunSpec Modbus simulator). The remaining services (optimization, marketing-adapter) are still thin skeletons - see the service map and "Status" per service README.
 
-MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Ingest -> Redpanda (telemetry.raw) -> TimescaleDB-Writer -> TimescaleDB`. The ingest path is not built yet; the portal reads **dev-seeded** demo telemetry.
+MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Ingest -> Redpanda (telemetry.raw) -> TimescaleDB-Writer -> TimescaleDB`. This path is **built** (see "Live ingest pipe" below); it runs under the compose `edge` profile. A plain backbone `up` still leaves the portal reading only **dev-seeded** demo telemetry.
 
 ## Stack & versions
 
@@ -78,8 +78,8 @@ docker compose --profile edge down
 ```
 
 Notes:
-- `compose` now starts **`api`** alongside the backbone (built from `services/api`, healthy once Keycloak + TimescaleDB are up). The remaining app services (`ingest`, `writer`, and the Python services) are still NOT started (backbone-first); each has a `Dockerfile` for later.
-- The edge (`edge/*`) is likewise not started by the default `up`; use `--profile edge`. It reaches EMQX at `emqx:1883` and the simulator at `edge-sim:502` over the compose network.
+- `compose` now starts **`api`** alongside the backbone (built from `services/api`, healthy once Keycloak + TimescaleDB are up). The Python services are still NOT started (backbone-first); each has a `Dockerfile` for later.
+- The edge (`edge/*`) **and the live ingest pipe (`ingest` + `writer`)** are guarded behind the `edge` profile, so the default `docker compose up -d` stays backbone-only. `docker compose --profile edge up -d --build` brings up the whole live path (edge -> EMQX -> ingest -> Redpanda -> writer -> TimescaleDB); see "Live ingest pipe" below. Services reach EMQX at `emqx:1883`, Redpanda at `redpanda:29092`, TimescaleDB at `timescaledb:5432` and the simulator at `edge-sim:502` over the compose network.
 - `.env` holds **dev-only** secrets, clearly marked. Never reuse them outside local dev.
 - Data persists in named volumes `timescale-data`, `emqx-data`, `redpanda-data`.
 - Redpanda advertises two listeners: `redpanda:29092` (in-cluster) and `localhost:9092` (host). Services inside compose must use the internal one.
@@ -112,6 +112,20 @@ The user-facing spine. See `services/api/README.md` for the endpoint list.
 
 **Tests** (`./mvnw test`, auto-skip without Docker via `disabledWithoutDocker`): `TenantFilterTest` (unit, always runs); `RlsIsolationTest` (Testcontainers TimescaleDB, JDBC-level RLS proof); `PortalApiTest` (Testcontainers TimescaleDB + Keycloak, full OIDC + tenant-isolation + claim e2e). Note: Docker 25+ enforces API >= 1.40, so surefire pins `-Dapi.version` (property `docker.api.version`, default 1.44) for the Testcontainers docker-java client.
 
+## Live ingest pipe (`services/ingest` + `services/timescale-writer`)
+
+The MVP core data loop: real edge telemetry flows `Node-RED edge -> EMQX (MQTT) -> ingest -> Redpanda (telemetry.raw) -> timescale-writer -> TimescaleDB telemetry hypertable`, and the portal's telemetry view shows it live for the `demo` user. Both services are stateless Spring Boot apps in the compose **`edge` profile** (so `docker compose --profile edge up -d --build` runs the whole live path; a plain backbone `up` does not, leaving the portal on dev-seed only).
+
+**Ingest (`services/ingest`, container port 8091).** A Spring Integration Paho adapter subscribes to `ems/+/+/+/telemetry` at **QoS1**. Each message is validated/normalized (`TelemetryValidator`) against `docs/contracts/mqtt-telemetry.schema.json`: `schema_version == "1.0"`, tenant/site/device are UUIDs, `ts` is RFC-3339, `measurements` is an object, **and the topic identity must equal the payload identity** (a device may not publish under another's topic). Valid messages become a `telemetry.raw` event (`docs/contracts/telemetry-raw.event.schema.json`: adds `event_id` + `ingested_at` + `source_topic`, carries `measurements` through unchanged) produced to Redpanda **keyed by `{tenant_id}:{site_id}`** so a site's samples share a partition and stay ordered. Malformed messages are **logged and skipped** (never crash the stream); the QoS1 delivery is already acked and Redpanda is the durable log.
+
+**Writer (`services/timescale-writer`, container port 8092).** A `@KafkaListener` consumes `telemetry.raw` and inserts one row into `telemetry`, mapping `measurements.{power_kw,soc_pct,pv_power_kw,load_kw,grid_limit_kw}` to columns plus the full event JSON into `payload`, with `time=observed_at` and the event's `tenant_id`/`site_id`/`device_id`.
+- **Tenant handling (RLS).** The writer connects as the **non-privileged `voltpilot_app`** role - the same role the portal reads with - and, per event, opens a transaction that runs `set_config('app.tenant_id', <event tenant>, true)` before the INSERT. The RLS `WITH CHECK` (api migration V2) then both permits the write and **guarantees the row's `tenant_id` equals the session tenant** - a mismatched tenant can never be written, and the row lands exactly where that tenant's portal read (also RLS-scoped) finds it. (This is why `writer` `depends_on` `api`: api's Flyway owns the schema, the RLS policies and the `voltpilot_app` role.)
+- **Idempotency / at-least-once.** Insert is a guarded `INSERT ... WHERE NOT EXISTS` on `(device_id, time)`, so a Kafka redelivery is a no-op. Offsets commit only after the listener returns (`ack-mode: record`, auto-commit off); a transient DB failure re-throws so Kafka redelivers - safe because the insert is idempotent. Per-site partition ordering means redeliveries are sequential, not concurrent.
+
+**Closing the loop for `demo`.** No seed/ID change was needed: the edge's default identity (`VP_TENANT_ID/SITE_ID/DEVICE_ID` = `…0001/…0002/…0003`) already matches Tenant A / Demo Site Berlin / `demo-inverter-01`, which is exactly what the `demo` login surfaces. Live rows therefore appear in the demo telemetry view alongside (newer than) the dev seed.
+
+**Tests (Testcontainers, `disabledWithoutDocker`, `docker.api.version` pinned like api).** `services/ingest`: `TelemetryValidatorTest` (unit, always runs - mapping + every rejection case) and `IngestPipeTest` (real EMQX + Redpanda: publish an edge-shaped MQTT message, assert the contract-shaped `telemetry.raw` event with the right key/fields). `services/timescale-writer`: `WriterPipeTest` (real Redpanda + TimescaleDB: produce a `telemetry.raw` event, assert exactly one hypertable row with the right identity/measurements, **idempotency** on duplicate delivery, and **RLS scoping** - visible to the owning tenant, hidden from another). The two pipe tests meet at the frozen `telemetry.raw` contract and together cover MQTT -> Redpanda -> Timescale. They use throwaway containers on random ports and never touch the shared dev stack.
+
 ## Build & test per service
 
 ```bash
@@ -134,6 +148,8 @@ The user-facing spine. See `services/api/README.md` for the endpoint list.
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).
+
+Dependency resolution uses **Maven Central** (matching the committed wrapper `distributionUrl`). On a clean machine `./mvnw test` just works. If your `~/.m2/settings.xml` pins a corporate mirror (`<mirrorOf>*</mirrorOf>`) that a sandbox/CI can't reach, build with a Central-only settings override: `./mvnw -s .mvn-central-settings.xml test` (that helper file is git-ignored, create it locally with a single `central-direct` mirror at `https://repo.maven.apache.org/maven2`).
 
 The edge flows are exercised end-to-end against the simulator (not a unit test): bring up `emqx` + the `edge` profile, subscribe to `.../telemetry`, publish a retained `.../schedule`, and watch `edge-sim` log the slot setpoint writes. See `edge/node-red/README.md`. Telemetry conformance to `docs/contracts/mqtt-telemetry.schema.json` was validated with ajv (2020-12).
 
@@ -187,4 +203,4 @@ Baseline load/PV forecasts for the optimizer (architecture section 12; **no ML i
 
 ## Known future work (not yet built)
 
-Real ingest data path (EMQX->ingest->Redpanda->writer) feeding real telemetry (the Node-RED edge already publishes, but `ingest`/`writer` are still skeletons); real optimization MILP; forecasting ML (XGBoost/LightGBM load model, ML PV correction, real weather API); direct-marketing provider integrations; portal schedules/KPIs endpoints; live telemetry channel (WS/SSE); real Modbus/SunSpec hardware I/O (only the simulator exists today); Cloud/K8s/Hetzner manifests + GitOps; Prometheus/Grafana/Loki/OTel; Mender OTA. Core-schema Flyway migrations now run in `services/api` (RLS enforced), and `services/market-data` (`day_ahead_prices`) and `services/forecast` (`forecast` hypertable, V3) ship their own migrations; a unified migration-version scheme across services is still to be reconciled.
+Real optimization MILP; forecasting ML (XGBoost/LightGBM load model, ML PV correction, real weather API); direct-marketing provider integrations; portal schedules/KPIs endpoints; live telemetry channel (WS/SSE - the portal still polls REST); real Modbus/SunSpec hardware I/O (only the simulator exists today); Cloud/K8s/Hetzner manifests + GitOps; Prometheus/Grafana/Loki/OTel; Mender OTA. The **live ingest pipe now works** (EMQX -> ingest -> Redpanda -> writer -> TimescaleDB; see its section) - remaining hardening there: a real hypertable unique index on `(device_id, time)` to back the idempotent write with a DB constraint (today it is a guarded `WHERE NOT EXISTS`; a unique index would need to be added by the api Flyway schema owner), a malformed-message dead-letter topic (today is log+skip), and MQTT mTLS/authn on the EMQX ingress. Core-schema Flyway migrations run in `services/api` (RLS enforced), and `services/market-data` (`day_ahead_prices`) and `services/forecast` (`forecast` hypertable, V3) ship their own migrations; a unified migration-version scheme across services is still to be reconciled.

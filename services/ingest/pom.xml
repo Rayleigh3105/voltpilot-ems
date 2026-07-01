@@ -19,6 +19,11 @@
 
     <properties>
         <java.version>21</java.version>
+        <testcontainers.version>1.20.6</testcontainers.version>
+        <!-- Docker 25+ enforces Engine API >= 1.40; pin the version the
+             Testcontainers docker-java client negotiates (see services/api). -->
+        <docker.api.version>1.44</docker.api.version>
+        <paho.version>1.2.5</paho.version>
     </properties>
 
     <dependencies>
@@ -30,11 +35,17 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-        <!-- MVP data path: consume MQTT (EMQX), publish to Redpanda (Kafka API).
-             Declared here to fix the integration surface; wiring is future work. -->
+        <!-- MVP data path: consume MQTT (EMQX), publish to Redpanda (Kafka API). -->
         <dependency>
             <groupId>org.springframework.integration</groupId>
             <artifactId>spring-integration-mqtt</artifactId>
+        </dependency>
+        <!-- Eclipse Paho MQTT v3 client (the transport spring-integration-mqtt
+             drives; not pulled in transitively, so declared explicitly). -->
+        <dependency>
+            <groupId>org.eclipse.paho</groupId>
+            <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+            <version>${paho.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.kafka</groupId>
@@ -46,13 +57,52 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Testcontainers: real EMQX + Redpanda for the end-to-end pipe proof
+             (MQTT -> ingest -> telemetry.raw). Auto-skips without Docker. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>redpanda</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- Pin the Docker Engine API version docker-java negotiates
+                         so the Testcontainers pipe test runs on Docker 25+ (see
+                         the same pin in services/api). -->
+                    <systemPropertyVariables>
+                        <api.version>${docker.api.version}</api.version>
+                    </systemPropertyVariables>
+                    <environmentVariables>
+                        <DOCKER_API_VERSION>${docker.api.version}</DOCKER_API_VERSION>
+                    </environmentVariables>
+                </configuration>
             </plugin>
         </plugins>
     </build>

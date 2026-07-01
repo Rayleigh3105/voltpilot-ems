@@ -6,12 +6,20 @@ spring:
     consumer:
       group-id: timescale-writer
       auto-offset-reset: earliest
-  # DataSourceAutoConfiguration is excluded in WriterApplication for the
-  # skeleton. These values are the target once the writer is wired.
+      # We deserialize to String and parse JSON ourselves (see the consumer).
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # At-least-once: the container commits offsets only after the listener
+      # returns normally; a write failure re-throws and Kafka redelivers.
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
+  # Runtime connection: the non-privileged app role so Postgres RLS is enforced
+  # on writes (the writer sets app.tenant_id per event; see the repository).
   datasource:
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
-    username: ${POSTGRES_USER:voltpilot}
-    password: ${POSTGRES_PASSWORD:voltpilot_dev_pw}
+    username: ${APP_DB_USER:voltpilot_app}
+    password: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
 
 server:
   port: ${WRITER_PORT:8092}

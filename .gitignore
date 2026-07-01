@@ -38,3 +38,6 @@ npm-debug.log*
 
 # --- Docker / local data ---
 infra/local/data/
+
+# Local-only Maven settings to bypass a corporate mirror (see AGENTS.md build notes)
+.mvn-central-settings.xml

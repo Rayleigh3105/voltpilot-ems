@@ -253,6 +253,86 @@ services:
       retries: 12
       start_period: 60s
 
+  # ---------------------------------------------------------------------------
+  # LIVE INGEST PIPE (EMQX -> ingest -> Redpanda -> writer -> TimescaleDB).
+  # In the `edge` profile so a full `docker compose --profile edge up` brings up
+  # the whole live data path alongside the edge; a plain backbone `up` stays
+  # lean (portal then shows only dev-seeded telemetry). No host ports are
+  # published (health is probed in-container) so these never collide with the
+  # shared dev stack.
+  # ---------------------------------------------------------------------------
+
+  # Ingest: subscribe to EMQX telemetry topics (QoS1), validate against the
+  # telemetry contract, and produce telemetry.raw events to Redpanda keyed by
+  # {tenant_id}:{site_id}.
+  ingest:
+    build:
+      context: ./services/ingest
+    container_name: voltpilot-ingest
+    profiles: ["edge"]
+    restart: unless-stopped
+    depends_on:
+      emqx:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      SERVER_PORT: 8091
+      MQTT_BROKER_URL: tcp://emqx:1883
+      MQTT_TELEMETRY_TOPIC_FILTER: ${MQTT_TELEMETRY_TOPIC_FILTER:-ems/+/+/+/telemetry}
+      REDPANDA_BOOTSTRAP_SERVERS: ${REDPANDA_BOOTSTRAP_SERVERS:-redpanda:29092}
+      REDPANDA_TELEMETRY_TOPIC: ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
+    healthcheck:
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/localhost/8091; echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"status\":\"UP\"'"
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+
+  # Writer: consume telemetry.raw and insert into the TimescaleDB `telemetry`
+  # hypertable. Connects as the non-privileged voltpilot_app role and sets the
+  # RLS tenant per event, so writes land under the message's tenant exactly
+  # where that tenant's portal read finds them. Depends on `api` because api's
+  # Flyway migrations own the schema, the RLS policies and the voltpilot_app role.
+  writer:
+    build:
+      context: ./services/timescale-writer
+    container_name: voltpilot-writer
+    profiles: ["edge"]
+    restart: unless-stopped
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      timescaledb:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: 8092
+      REDPANDA_BOOTSTRAP_SERVERS: ${REDPANDA_BOOTSTRAP_SERVERS:-redpanda:29092}
+      REDPANDA_TELEMETRY_TOPIC: ${REDPANDA_TELEMETRY_TOPIC:-telemetry.raw}
+      POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}
+      APP_DB_USER: ${APP_DB_USER:-voltpilot_app}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-voltpilot_app_dev_pw}
+    healthcheck:
+      test:
+        - "CMD"
+        - "bash"
+        - "-c"
+        - "exec 3<>/dev/tcp/localhost/8092; echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; cat <&3 | grep -q '\"status\":\"UP\"'"
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
 volumes:
   timescale-data:
   emqx-data:

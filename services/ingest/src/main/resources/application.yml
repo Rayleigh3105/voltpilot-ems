@@ -1,18 +1,29 @@
 spring:
   application:
     name: voltpilot-ingest
-  # Kafka producer target (Redpanda). Not connected until the producer is wired.
+  # Redpanda (Kafka API) producer target. String key/value; we serialize the
+  # telemetry.raw event to JSON ourselves. Idempotent + acks=all for durability.
   kafka:
     bootstrap-servers: ${REDPANDA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
 
 server:
   port: ${INGEST_PORT:8091}
 
-# MQTT ingress (EMQX). Consumed once the MQTT inbound adapter is wired.
+# MQTT ingress (EMQX) + Redpanda egress.
 voltpilot:
   mqtt:
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
+    client-id: ${MQTT_CLIENT_ID:voltpilot-ingest}
     telemetry-topic-filter: ${MQTT_TELEMETRY_TOPIC_FILTER:ems/+/+/+/telemetry}
+    qos: ${MQTT_QOS:1}
+    username: ${MQTT_USERNAME:}
+    password: ${MQTT_PASSWORD:}
   redpanda:
     telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
 
