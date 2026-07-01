@@ -8,6 +8,7 @@ import { api, ApiError, register, setTenantOverride, type Device, type Site } fr
 import { adminApi, type Tenant } from './admin/adminApi';
 import { AppShell } from './shell/AppShell';
 import { hashForPage, pageFromHash, PLATFORM_PAGES, type PageId } from './nav';
+import { OnboardingWizard } from './Onboarding';
 import { UebersichtPage } from './pages/UebersichtPage';
 import { StandortePage } from './pages/StandortePage';
 import { GeraetePage } from './pages/GeraetePage';
@@ -179,6 +180,8 @@ function UnifiedPortal() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   // Keep the module-level API header in sync BEFORE any tenant-scoped fetch.
   setTenantOverride(isAdmin ? tenantId : null);
@@ -251,6 +254,8 @@ function UnifiedPortal() {
         setError(null);
       } catch (e) {
         setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+      } finally {
+        setLoaded(true);
       }
     },
     [tenantReady],
@@ -282,6 +287,17 @@ function UnifiedPortal() {
 
   const needsTenantPick = isAdmin && tenantId == null && !isPlatformPage(page);
 
+  // First-run journey: until the customer has a device sending data, the whole
+  // portal IS the onboarding. No empty dashboard with disconnected forms.
+  // Customers only - an admin browsing an empty tenant keeps the normal pages.
+  const showOnboarding =
+    !isAdmin && loaded && !error && devices.length === 0 && !onboardingDismissed;
+
+  function finishOnboarding() {
+    setOnboardingDismissed(true);
+    void reload();
+  }
+
   return (
     <AppShell
       page={page}
@@ -299,6 +315,8 @@ function UnifiedPortal() {
 
       {needsTenantPick ? (
         <PickTenantNotice tenants={tenants} onPick={changeTenant} />
+      ) : showOnboarding ? (
+        <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
       ) : (
         <>
           {page === 'uebersicht' && (
