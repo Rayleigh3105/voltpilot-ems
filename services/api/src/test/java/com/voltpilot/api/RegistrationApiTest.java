@@ -17,6 +17,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -41,6 +42,10 @@ import org.testcontainers.utility.DockerImageName;
  *   <li><b>Garbage input is refused up front</b> (bean validation, 400).</li>
  *   <li><b>Anonymous flooding is rate-limited per client address</b> (429
  *       before any tenant/Keycloak work; other addresses unaffected).</li>
+ *   <li><b>Password guessing at the token endpoint locks the account
+ *       temporarily</b> (Keycloak brute-force detection covering the ROPC
+ *       surface the seamless auto-login opened), and an operator can lift the
+ *       lock so the customer is never stranded.</li>
  * </ol>
  *
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
@@ -243,6 +248,53 @@ class RegistrationApiTest {
                 .doesNotContain("Flut Sechs GmbH");
     }
 
+    // ---- (5) password guessing -> temporary account lock ----------------------
+
+    @Test
+    void passwordGuessingAtTheTokenEndpointLocksTheAccountTemporarily() {
+        // A fresh customer (registered via a synthetic proxy address so this
+        // test never touches the 127.0.0.1 rate-limit budget)...
+        assertThat(rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                json(Map.of("name", "Sturm GmbH",
+                        "email", "sturm@example.com", "password", "sturm-pw-123"),
+                        "203.0.113.77"),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // ...can log in with the right password (baseline)...
+        assertThat(tryPublicGrant("sturm@example.com", "sturm-pw-123"))
+                .containsKey("access_token");
+
+        // ...but an attacker hammering wrong passwords at the public client's
+        // token endpoint never gets a token...
+        for (int i = 0; i < 10; i++) {
+            assertThat(tryPublicGrant("sturm@example.com", "guess-" + i))
+                    .doesNotContainKey("access_token");
+        }
+
+        // ...and the account is now temporarily locked: even the RIGHT password
+        // is refused, so an unthrottled online brute-force is impossible.
+        assertThat(tryPublicGrant("sturm@example.com", "sturm-pw-123"))
+                .doesNotContainKey("access_token");
+
+        // Keycloak's attack detection confirms the lock (and gives support the
+        // lever): the user shows as brute-force-disabled...
+        String master = masterAdminToken();
+        String userId = realmUserId(master, "sturm@example.com");
+        String bruteForceUrl = KEYCLOAK.getAuthServerUrl()
+                + "/admin/realms/voltpilot/attack-detection/brute-force/users/" + userId;
+        ResponseEntity<Map<String, Object>> status = new TestRestTemplate().exchange(
+                bruteForceUrl, HttpMethod.GET, new HttpEntity<>(bearer(master)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(status.getBody()).containsEntry("disabled", true);
+
+        // ...and lifting the lock (what support does; time does it too) makes
+        // the right password work again - the customer is never stranded.
+        new TestRestTemplate().exchange(bruteForceUrl, HttpMethod.DELETE,
+                new HttpEntity<>(bearer(master)), Void.class);
+        assertThat(tryPublicGrant("sturm@example.com", "sturm-pw-123"))
+                .containsKey("access_token");
+    }
+
     // ---- helpers --------------------------------------------------------------
 
     private static HttpEntity<Map<String, Object>> json(Map<String, Object> body) {
@@ -284,6 +336,22 @@ class RegistrationApiTest {
     }
 
     private String grantToken(String username, String password, String clientId, String secret) {
+        Map<String, Object> body = tryGrant("voltpilot", username, password, clientId, secret);
+        assertThat(body).as("token response for " + username + " via " + clientId)
+                .containsKey("access_token");
+        return (String) body.get("access_token");
+    }
+
+    /**
+     * Attempt a direct grant via the public frontend client WITHOUT asserting
+     * success - the raw token response, for the brute-force lockout test.
+     */
+    private Map<String, Object> tryPublicGrant(String username, String password) {
+        return tryGrant("voltpilot", username, password, "voltpilot-frontend", null);
+    }
+
+    private Map<String, Object> tryGrant(String realm, String username, String password,
+            String clientId, String secret) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "password");
         form.add("client_id", clientId);
@@ -296,11 +364,48 @@ class RegistrationApiTest {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        Map<String, Object> body = new TestRestTemplate().postForObject(
-                KEYCLOAK.getAuthServerUrl() + "/realms/voltpilot/protocol/openid-connect/token",
+        return keycloakRest().postForObject(
+                KEYCLOAK.getAuthServerUrl() + "/realms/" + realm + "/protocol/openid-connect/token",
                 new HttpEntity<>(form, headers), Map.class);
-        assertThat(body).as("token response for " + username + " via " + clientId)
-                .containsKey("access_token");
+    }
+
+    /**
+     * Rest client for direct Keycloak calls. The default JDK
+     * {@code HttpURLConnection} cannot read a 401 body on a streamed POST
+     * (HttpRetryException), which a refused password grant triggers - the
+     * java.net.http-based factory handles it fine.
+     */
+    private static TestRestTemplate keycloakRest() {
+        TestRestTemplate t = new TestRestTemplate();
+        t.getRestTemplate().setRequestFactory(new JdkClientHttpRequestFactory());
+        return t;
+    }
+
+    /** Master-realm admin-cli token for Keycloak's own admin API. */
+    private String masterAdminToken() {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("grant_type", "password");
+        form.add("client_id", "admin-cli");
+        form.add("username", KEYCLOAK.getAdminUsername());
+        form.add("password", KEYCLOAK.getAdminPassword());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        Map<String, Object> body = new TestRestTemplate().postForObject(
+                KEYCLOAK.getAuthServerUrl() + "/realms/master/protocol/openid-connect/token",
+                new HttpEntity<>(form, headers), Map.class);
+        assertThat(body).as("master admin token").containsKey("access_token");
         return (String) body.get("access_token");
+    }
+
+    /** Resolve a voltpilot-realm user's id by exact username via the admin API. */
+    private String realmUserId(String masterToken, String username) {
+        ResponseEntity<List<Map<String, Object>>> users = new TestRestTemplate().exchange(
+                KEYCLOAK.getAuthServerUrl() + "/admin/realms/voltpilot/users?exact=true&username="
+                        + username,
+                HttpMethod.GET, new HttpEntity<>(bearer(masterToken)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(users.getBody()).as("user lookup for " + username).hasSize(1);
+        return (String) users.getBody().get(0).get("id");
     }
 }
