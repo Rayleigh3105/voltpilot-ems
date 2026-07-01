@@ -85,8 +85,7 @@ function Portal() {
       <nav className="vp-nav">
         <div className="vp-container vp-nav-inner">
           <div className="vp-brand">
-            <img src={logoUrl} alt="VoltPilot" />
-            <span className="vp-brand-name">VoltPilot EMS</span>
+            <img src={logoUrl} alt="VoltPilot EMS" />
           </div>
           <div className="vp-nav-user">
             <div className="vp-nav-user-meta">
@@ -240,7 +239,7 @@ function TelemetrySection({ site }: { site: Site | null }) {
             </div>
             <TelemetryChart points={points} />
             <p className="vp-note" style={{ marginTop: 12 }}>
-              Demo-Daten (dev-seed) - der reale Ingest-Pfad folgt in einem späteren Increment.
+              Telemetrie über den Live-Ingest-Pfad: MQTT → Ingest → Redpanda → TimescaleDB.
             </p>
           </>
         )}

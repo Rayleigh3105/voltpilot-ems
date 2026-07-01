@@ -57,8 +57,7 @@ export default function AdminApp() {
       <nav className="vp-nav">
         <div className="vp-container vp-nav-inner">
           <div className="vp-brand">
-            <img src={logoUrl} alt="VoltPilot" />
-            <span className="vp-brand-name">VoltPilot EMS</span>
+            <img src={logoUrl} alt="VoltPilot EMS" />
             <Badge variant="solid" title="Sie sind als Plattform-Administrator angemeldet">
               Admin-Konsole
             </Badge>

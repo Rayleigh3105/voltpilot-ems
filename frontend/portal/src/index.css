@@ -80,12 +80,6 @@ button {
   width: auto;
   display: block;
 }
-.vp-brand-name {
-  font-family: var(--vp-font-heading);
-  font-weight: var(--vp-weight-extrabold);
-  font-size: 1.15rem;
-  letter-spacing: var(--vp-tracking-tight);
-}
 .vp-nav-user {
   display: flex;
   align-items: center;
