@@ -1,16 +1,20 @@
 {
-  "_comment": "PRODUCTION realm import for the single-VPS deploy (docker-compose.prod.yml). Mirrors the dev realm (infra/local/keycloak/voltpilot-realm.json) but parametrizes the browser-facing origin and the confidential-client secret so nothing host-specific or secret is baked in. Keycloak substitutes the ${...} placeholders from the container environment at import time (VP_PUBLIC_ORIGIN and VP_API_CLIENT_SECRET are set by the keycloak service in docker-compose.prod.yml). sslRequired=external: HTTPS is required for external requests, which the external Caddy terminates and signals via X-Forwarded-Proto (KC_PROXY_HEADERS=xforwarded). The demo/demo2 users are seeded so a fresh deploy is immediately loginable alongside SPRING_PROFILES_ACTIVE=local; REMOVE them (and clear the api profile) before a real production launch - see docs/deploy.md.",
   "realm": "voltpilot",
   "enabled": true,
   "displayName": "Voltpilot-EMS",
+  "loginTheme": "voltpilot",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["de", "en"],
+  "defaultLocale": "de",
   "sslRequired": "external",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "accessTokenLifespan": 900,
   "roles": {
     "realm": [
-      { "name": "operator", "description": "Tenant operator" },
-      { "name": "admin", "description": "Tenant admin" }
+      { "name": "operator", "description": "Portal-User: customer, scoped to one tenant via tenant_id" },
+      { "name": "admin", "description": "Tenant admin (legacy)" },
+      { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" }
     ]
   },
   "clients": [
@@ -25,9 +29,9 @@
       "standardFlowEnabled": true,
       "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": true,
-      "secret": "${env.VP_API_CLIENT_SECRET:change-me}",
-      "redirectUris": ["${env.VP_PUBLIC_ORIGIN}/*"],
-      "webOrigins": ["${env.VP_PUBLIC_ORIGIN}"],
+      "secret": "${VP_API_CLIENT_SECRET:change-me}",
+      "redirectUris": ["${VP_PUBLIC_ORIGIN}/*"],
+      "webOrigins": ["${VP_PUBLIC_ORIGIN}"],
       "protocolMappers": [
         {
           "name": "tenant_id",
@@ -54,8 +58,8 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": ["${env.VP_PUBLIC_ORIGIN}/*"],
-      "webOrigins": ["${env.VP_PUBLIC_ORIGIN}"],
+      "redirectUris": ["${VP_PUBLIC_ORIGIN}/*"],
+      "webOrigins": ["${VP_PUBLIC_ORIGIN}"],
       "attributes": {
         "pkce.code.challenge.method": "S256"
       },
@@ -78,6 +82,31 @@
     }
   ],
   "users": [
+    {
+      "username": "service-account-voltpilot-api",
+      "enabled": true,
+      "serviceAccountClientId": "voltpilot-api",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users",
+          "view-realm"
+        ]
+      }
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin@voltpilot.local",
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "credentials": [
+        { "type": "password", "value": "${VP_PORTAL_ADMIN_PASSWORD:admin}", "temporary": false }
+      ],
+      "realmRoles": ["platform-admin"]
+    },
     {
       "username": "demo",
       "enabled": true,
@@ -108,5 +137,19 @@
       ],
       "realmRoles": ["operator"]
     }
-  ]
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "name": "declarative-user-profile",
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
+          ]
+        }
+      }
+    ]
+  }
 }

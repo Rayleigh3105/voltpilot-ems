@@ -92,7 +92,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
-          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl.conf"
+          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl.conf,deploy/keycloak/themes/voltpilot/**"
           target: /tmp/voltpilot-deploy
           overwrite: true
 
@@ -113,6 +113,10 @@ jobs:
             echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
             echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
             echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/infra/mqtt/acl.conf "$DEPLOY_DIR/infra/mqtt/acl.conf"
+            # VoltPilot Keycloak login theme to the compose bind-mount path.
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S rm -rf "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/deploy/keycloak/themes/voltpilot "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
             rm -rf /tmp/voltpilot-deploy
 
             echo "${{ secrets.FORGEJO_PASSWORD }}" | docker login git.tecmaxx.de -u "${{ secrets.FORGEJO_USERNAME }}" --password-stdin
@@ -121,4 +125,7 @@ jobs:
             export IMAGE_TAG="${{ github.sha }}"
             docker compose pull
             docker compose up -d --remove-orphans
+            # Theme + gzip caches live on the container FS and survive a plain
+            # restart - recreate so theme changes actually reach browsers.
+            docker compose up -d --force-recreate keycloak
             docker image prune -f

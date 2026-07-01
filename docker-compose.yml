@@ -156,6 +156,11 @@ services:
       - "${KEYCLOAK_PORT:-8081}:8080"
     volumes:
       - ./infra/local/keycloak:/opt/keycloak/data/import:ro
+      # VoltPilot login theme (deploy/keycloak/themes/voltpilot). start-dev keeps
+      # the theme cache off, so CSS edits show up on reload; the realm import
+      # selects it via loginTheme. A keycloak RESTART is needed once after the
+      # mount is first added.
+      - ./deploy/keycloak/themes/voltpilot:/opt/keycloak/themes/voltpilot:ro
     healthcheck:
       # KC 26 exposes health on the management port 9000; /health/ready is the
       # readiness gate. curl is not in the image, so probe via the bundled JRE.

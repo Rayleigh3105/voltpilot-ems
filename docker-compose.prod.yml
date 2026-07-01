@@ -1,20 +1,25 @@
 # =============================================================================
-# Voltpilot-EMS - PRODUCTION / pilot compose (single-VPS MVP, no Kubernetes).
-# Shipped to the VPS at /srv/docker/voltpilot/ by .forgejo/workflows/deploy.yaml.
-# The app images (api, ingest, timescale-writer, frontend, market-data,
-# forecast, optimization) are PULLED from the Forgejo registry, pinned to
-# ${IMAGE_TAG}. This is a
-# self-contained, standalone stack: deploy it with a single
-#   docker compose -f docker-compose.prod.yml up -d
-# (NOT merged with docker-compose.yml - that file is the local dev stack).
+# Voltpilot-EMS - PRODUCTION / pilot compose (single VM/VPS MVP, no Kubernetes).
+# Two ways to get the app images (api, ingest, timescale-writer, frontend,
+# market-data, forecast, optimization) - see docs/deploy.md:
+#   a) MANUAL first deploy (no CI): git clone on the server, then
+#        docker compose -f docker-compose.prod.yml build
+#        docker compose -f docker-compose.prod.yml up -d
+#      (the `build:` contexts build every image locally from this clone).
+#   b) CI push-to-deploy (.forgejo/workflows/deploy.yaml): images are PULLED
+#      from the Forgejo registry, pinned to ${IMAGE_TAG}; the workflow ships
+#      this file to /srv/docker/voltpilot/ and runs `pull` + `up -d`.
+# This is a self-contained, standalone stack - NOT merged with
+# docker-compose.yml (that file is the local dev stack).
 #
 # -----------------------------------------------------------------------------
 # TWO public entry points, everything else internal:
 #   1. frontend  (APP_PORT, plain HTTP) - the SPA + reverse proxy. TLS is
-#      terminated by an EXTERNAL reverse proxy (Caddy on another host) that
-#      forwards all traffic for ${DOMAIN} here. The frontend nginx serves the
-#      SPA and proxies /api/ -> api and /auth/ -> Keycloak, so the API and
-#      Keycloak stay internal - nothing else is published.
+#      terminated by an EXTERNAL reverse proxy on another host (Nginx Proxy
+#      Manager or Caddy - see docs/deploy.md) that forwards all traffic for
+#      ${DOMAIN} here. The frontend nginx serves the SPA and proxies
+#      /api/ -> api and /auth/ -> Keycloak, so the API and Keycloak stay
+#      internal - nothing else is published.
 #   2. emqx 8883 (mTLS) - remote edge devices connect outbound with a client
 #      cert (see docs/connect-a-device.md / docs/security-mqtt.md). Preserved
 #      verbatim from the original secure-broker overlay this file grew out of.
@@ -105,8 +110,17 @@ services:
       # Substituted into the imported realm (infra/prod/keycloak/voltpilot-realm.json).
       VP_PUBLIC_ORIGIN: https://${DOMAIN:?set DOMAIN in .env}
       VP_API_CLIENT_SECRET: ${VP_API_CLIENT_SECRET:?set VP_API_CLIENT_SECRET in .env}
+      # Password of the seeded Portal-Admin user `admin` (realm role platform-admin).
+      VP_PORTAL_ADMIN_PASSWORD: ${VP_PORTAL_ADMIN_PASSWORD:?set VP_PORTAL_ADMIN_PASSWORD in .env}
     volumes:
       - ./infra/prod/keycloak:/opt/keycloak/data/import:ro
+      # VoltPilot login theme. On a CI roll-out the deploy workflow ships this
+      # directory to $DEPLOY_DIR/deploy/keycloak/themes/voltpilot (saalo pattern);
+      # a git clone has it at the same relative path. In `start` mode themes are
+      # cached at boot and pre-gzipped onto the container FS (kc-gzip-cache),
+      # which SURVIVES a plain restart - the workflow therefore force-recreates
+      # keycloak after `up -d` so theme changes actually reach browsers.
+      - ./deploy/keycloak/themes/voltpilot:/opt/keycloak/themes/voltpilot:ro
     depends_on:
       keycloak-db:
         condition: service_healthy
@@ -236,6 +250,12 @@ services:
   # ---------------------------------------------------------------------------
   api:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/api:${IMAGE_TAG:-latest}
+    # For the manual no-CI path: `docker compose -f docker-compose.prod.yml build`
+    # builds every app image locally from a git clone and tags it with the
+    # `image:` name, so the subsequent `up -d` uses the local build instead of
+    # pulling. The CI path ignores `build:` (it runs `pull` + `up -d`).
+    build:
+      context: ./services/api
     restart: unless-stopped
     depends_on:
       timescaledb:
@@ -252,9 +272,22 @@ services:
       POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}
       APP_DB_USER: ${APP_DB_USER:-voltpilot_app}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+      # Cross-tenant admin datasource (voltpilot_admin, BYPASSRLS, created by
+      # Flyway V4) - used ONLY by the platform-admin endpoints. Without these the
+      # api would fall back to the hardcoded dev password for that role.
+      ADMIN_DB_USER: ${ADMIN_DB_USER:-voltpilot_admin}
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:?set ADMIN_DB_PASSWORD in .env}
       # Flyway connection: Postgres superuser (owns schema, creates role + RLS).
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Keycloak Admin REST API (customer-user provisioning). Compose-internal
+      # base URL - prod serves Keycloak under the /auth relative path, so the
+      # dev default (no path) would 404. The secret is the same confidential
+      # client secret the realm import bakes into voltpilot-api.
+      KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: voltpilot
+      KEYCLOAK_API_CLIENT_ID: voltpilot-api
+      KEYCLOAK_API_CLIENT_SECRET: ${VP_API_CLIENT_SECRET:?set VP_API_CLIENT_SECRET in .env}
       # OIDC on. Issuer is the browser-facing Keycloak URL (under /auth); JWKS is
       # fetched over the compose-internal URL (the issuer-trap fix).
       VOLTPILOT_SECURITY_OIDC_ENABLED: "true"
@@ -281,6 +314,8 @@ services:
   # ---------------------------------------------------------------------------
   ingest:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/ingest:${IMAGE_TAG:-latest}
+    build:
+      context: ./services/ingest
     restart: unless-stopped
     depends_on:
       emqx:
@@ -313,6 +348,8 @@ services:
   # ---------------------------------------------------------------------------
   writer:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/timescale-writer:${IMAGE_TAG:-latest}
+    build:
+      context: ./services/timescale-writer
     restart: unless-stopped
     depends_on:
       redpanda:
@@ -351,6 +388,8 @@ services:
   # ---------------------------------------------------------------------------
   market-data:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/market-data:${IMAGE_TAG:-latest}
+    build:
+      context: ./services/market-data
     restart: unless-stopped
     depends_on:
       timescaledb:
@@ -377,6 +416,8 @@ services:
   # ---------------------------------------------------------------------------
   forecast:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/forecast:${IMAGE_TAG:-latest}
+    build:
+      context: ./services/forecast
     restart: unless-stopped
     depends_on:
       timescaledb:
@@ -403,6 +444,11 @@ services:
   # ---------------------------------------------------------------------------
   optimization:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/optimization:${IMAGE_TAG:-latest}
+    # Repo-root context (unlike the sibling services): the optimizer's image
+    # bundles the sibling forecast package for its persistence fallback.
+    build:
+      context: .
+      dockerfile: services/optimization/Dockerfile
     restart: unless-stopped
     depends_on:
       timescaledb:
@@ -429,6 +475,17 @@ services:
   # ---------------------------------------------------------------------------
   frontend:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/frontend:${IMAGE_TAG:-latest}
+    # The SPA bakes its config in at BUILD time (import.meta.env). A local
+    # `docker compose build frontend` therefore needs DOMAIN from .env - same
+    # values the CI build passes via secrets. VITE_API_BASE stays empty
+    # (same-origin /api through this image's nginx).
+    build:
+      context: ./frontend/portal
+      args:
+        VITE_API_BASE: ""
+        VITE_KEYCLOAK_URL: https://${DOMAIN:-voltpilot.example.com}/auth
+        VITE_KEYCLOAK_REALM: voltpilot
+        VITE_KEYCLOAK_CLIENT_ID: voltpilot-frontend
     restart: unless-stopped
     ports:
       - "0.0.0.0:${APP_PORT:-8080}:80"

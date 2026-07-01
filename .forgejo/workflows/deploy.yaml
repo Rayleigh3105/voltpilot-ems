@@ -186,15 +186,16 @@ jobs:
         uses: actions/checkout@v4
 
       # Ship the compose file + the infra the stack bind-mounts (prod Keycloak
-      # realm, prod TimescaleDB init, the MQTT ACL). Device certs are NOT shipped
-      # - they are staged on the VPS out of band (see docs/connect-a-device.md).
+      # realm, prod TimescaleDB init, the MQTT ACL, the Keycloak login theme).
+      # Device certs are NOT shipped - they are staged on the VPS out of band
+      # (see docs/connect-a-device.md).
       - name: Copy compose + infra to VPS
         uses: https://github.com/appleboy/scp-action@master
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
-          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl.conf"
+          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl.conf,deploy/keycloak/themes/voltpilot/**"
           target: /tmp/voltpilot-deploy
           overwrite: true
 
@@ -216,6 +217,11 @@ jobs:
             echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
             echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
             echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/infra/mqtt/acl.conf "$DEPLOY_DIR/infra/mqtt/acl.conf"
+            # VoltPilot Keycloak login theme to the compose bind-mount path
+            # (./deploy/keycloak/themes/voltpilot in docker-compose.prod.yml).
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S rm -rf "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
+            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/deploy/keycloak/themes/voltpilot "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
             rm -rf /tmp/voltpilot-deploy
 
             echo "${{ secrets.FORGEJO_PASSWORD }}" | docker login git.tecmaxx.de -u "${{ secrets.FORGEJO_USERNAME }}" --password-stdin
@@ -228,6 +234,14 @@ jobs:
             export IMAGE_TAG="${{ github.sha }}"
             docker compose pull
             docker compose up -d --remove-orphans
+            # Keycloak keeps image + config, so `up -d` does not recreate it. In
+            # `start` mode themes are cached at boot, AND served theme resources
+            # are pre-gzipped into /opt/keycloak/data/tmp/kc-gzip-cache on the
+            # CONTAINER filesystem - which survives a plain `restart`. So a
+            # restart still serves the OLD theme css to browsers (they accept
+            # gzip; only curl without Accept-Encoding sees the new file).
+            # Recreating the container drops that cache. Verified on KC 26.0.5.
+            docker compose up -d --force-recreate keycloak
             docker image prune -f
 
   # Red-run notification. The gate jobs already mark the run red in Forgejo (the
