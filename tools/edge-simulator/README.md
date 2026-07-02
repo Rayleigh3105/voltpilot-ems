@@ -149,7 +149,7 @@ python3 voltpilot_edge_sim.py \
 
 Notes:
 - Port `8883` **auto-enables TLS**; passing the client cert makes it mutual TLS. Do **not** set username/clientid - the broker derives both from the cert CN (`device_id`), and its per-device ACL confines the cert to exactly its own `ems/{t}/{s}/{d}/...` topics.
-- Broker verification uses the host you dial. Because `init-ca --domain <fqdn> --ip <ip>` puts **both** in the server cert SAN, dialing either the FQDN or the IP verifies with no extra flags. For a throwaway test against a cert that lists neither, `--insecure` skips verification (dev only).
+- Broker verification uses the host you dial. Because `init-ca --domain <fqdn> --ip <ip>` puts **both** in the server cert SAN, dialing either the FQDN or the IP verifies with no extra flags. In production, prefer dialing the broker's MQTT domain (e.g. `mqtt.<domain>`, a plain DNS A record to the server) with the IP as fallback - see [`docs/connect-a-device.md`](../../docs/connect-a-device.md). For a throwaway test against a cert that lists neither, `--insecure` skips verification (dev only).
 - The device makes an **outbound-only** connection (architecture §6) - it needs no inbound ports and works behind NAT.
 
 Confirm on the captain's side: EMQX dashboard (`http://localhost:18083`) shows a client connected with clientid = `device_id`, and the portal telemetry view fills in. Full model: [`docs/security-mqtt.md`](../../docs/security-mqtt.md) and [`docs/connect-a-device.md`](../../docs/connect-a-device.md).

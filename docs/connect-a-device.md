@@ -36,7 +36,7 @@ device                                 cloud
 Try it with the standalone simulator (see [`tools/edge-simulator/README.md`](../tools/edge-simulator/README.md)):
 
 ```bash
-python3 tools/edge-simulator/voltpilot_edge_sim.py --host <broker-host> --ref plant-a-inverter-01 --verbose
+python3 tools/edge-simulator/voltpilot_edge_sim.py --host mqtt.example.com --ref plant-a-inverter-01 --verbose
 ```
 
 v1 note: the zero-touch handshake runs over the dev/plain-MQTT listener (1883). The mTLS variant (hello/config over the hardened 8883 listener with a bootstrap cert) is future work - for the hardened production broker, use the explicit mTLS path below.
@@ -98,6 +98,9 @@ docker compose -f docker-compose.prod.yml exec emqx emqx ctl conf reload
 | Client cert / key | `device.crt` / `device.key` |
 | Username / clientid | **do not set** - the broker derives both from the cert CN (`device_id`) |
 | QoS | `1` |
+
+The host you dial must be in the broker server cert's SAN: `init-ca --domain mqtt.example.com --ip <ip>` puts both in, so the **MQTT domain (recommended)** and the raw IP both verify.
+If the domain was added only after the broker went live, re-running `init-ca` is safe - it keeps the existing CA (all device certs stay valid) and re-issues only the server cert with the new SANs; re-stage `server.crt`/`server.key` and restart EMQX (see [`deploy.md`](deploy.md)).
 
 ## 3. Topics (contract)
 

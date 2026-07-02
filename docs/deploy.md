@@ -67,11 +67,13 @@ They are git-ignored, so a fresh clone does not have them; generate them right o
 
 ```bash
 cd /srv/docker/voltpilot
-./tools/pki/voltpilot-ca.sh init-ca --domain voltpilot.<company-domain> --ip <VM-IP>
+./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.<company-domain> --ip <VM-IP>
 mkdir -p infra/mqtt/certs
 cp tools/pki/out/server/{server.crt,server.key,device-ca.crt} infra/mqtt/certs/
 cp tools/pki/out/ca/crl.pem infra/mqtt/certs/
 ```
+
+`--domain` is the name devices will dial: the recommended setup is a **dedicated MQTT subdomain** (`mqtt.<company-domain>`, plain DNS A record to the VM - see the MQTT note in the NPM section below); the `--ip` lands in the SAN too, so dialing the raw IP stays a working fallback.
 
 (If the CA should not live on the VM, run `init-ca` elsewhere and `scp` the four files over - see [Device mTLS material](#3-device-mtls-material-staged-once-on-the-vps).)
 
@@ -129,10 +131,19 @@ Header expectations - NPM's default proxy host template already does the right t
   Entries further left are client-supplied and are deliberately ignored - never lower `trusted-proxies`, and raise it by one for every additional own proxy layer in front of NPM.
 - If you use an internal CA instead of Let's Encrypt, colleagues' browsers/OS trust stores must contain that CA - the stack itself does not care.
 
-**MQTT is TCP, not HTTP** - NPM proxy hosts do NOT cover it.
-Edge devices connect to `<VM-IP>:8883` (mTLS) directly; give them the VM's address (or a dedicated DNS record pointing at the VM).
-If you prefer one entry point, NPM can pass TCP through with a **Stream** (incoming `8883` -> `<VM-IP>:8883`), but plain direct access on the internal net is simpler.
-Note: the broker's server certificate contains the names passed to `init-ca --domain/--ip`, so devices must dial one of those - if devices should connect via a different name than `${DOMAIN}`, include it at CA init time.
+**MQTT is TCP, not HTTP** - NPM proxy hosts are HTTP-only and do NOT cover it.
+Recommended: give devices a **dedicated MQTT subdomain** via a plain DNS **A record** `mqtt.<company-domain> -> <VM-IP>` - `8883` is published by the VM directly, so no NPM involvement is needed.
+An NPM **Stream** (incoming `8883` -> `<VM-IP>:8883`) could pass the TCP through if you insist on one entry point, but it is unnecessary; dialing the raw `<VM-IP>` also keeps working as a fallback.
+The broker's server certificate must contain the name devices dial (`init-ca --domain/--ip` puts both the domain and the IP in the SAN).
+Adding the MQTT domain to an **already-running** broker is safe: re-running `init-ca` keeps the existing CA (all issued device certs stay valid) and re-issues only the server cert with the new DNS+IP SANs - then re-stage it and restart the broker:
+
+```bash
+./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.<company-domain> --ip <VM-IP>
+cp tools/pki/out/server/{server.crt,server.key} infra/mqtt/certs/
+docker compose -f docker-compose.prod.yml restart emqx
+```
+
+Afterwards both the domain and the IP verify.
 
 ### Firewall (internal VM)
 
@@ -223,8 +234,10 @@ The EMQX service bind-mounts the broker cert/key + device CA from `/srv/docker/v
 These keys are **never** in the repo or the images - stage them on the VPS before the first `up`:
 
 ```bash
-# On the machine that holds the CA (see docs/security-mqtt.md):
-./tools/pki/voltpilot-ca.sh init-ca --domain ${DOMAIN} --ip <vps-public-ip>
+# On the machine that holds the CA (see docs/security-mqtt.md).
+# --domain is the name devices dial - recommended: a dedicated MQTT subdomain
+# with a plain DNS A record to the VPS (the IP in the SAN stays a fallback):
+./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com --ip <vps-public-ip>
 
 # Copy the broker material to the VPS deploy dir:
 scp tools/pki/out/server/{server.crt,server.key,device-ca.crt} \
@@ -290,7 +303,7 @@ The full checklist is in [`security-mqtt.md`](security-mqtt.md#hardening-checkli
 
 ## How devices reach 8883
 
-Unchanged from the secure-broker design: a device makes an **outbound-only** mutual-TLS connection to `${DOMAIN}:8883` with a client cert issued by `tools/pki/voltpilot-ca.sh`.
+Unchanged from the secure-broker design: a device makes an **outbound-only** mutual-TLS connection to `mqtt.<domain>:8883` (the dedicated MQTT subdomain, a plain DNS A record to the server; the raw IP works as fallback since both are in the server cert SAN) with a client cert issued by `tools/pki/voltpilot-ca.sh`.
 The cert CN carries the `device_id`; EMQX binds identity from the cert and the per-device ACL confines it to `ems/{tenant}/{site}/{device}/#`.
 Issue + hand out certs with the provisioning flow in [`connect-a-device.md`](connect-a-device.md); revoke with `voltpilot-ca.sh revoke` + an EMQX config reload.
 

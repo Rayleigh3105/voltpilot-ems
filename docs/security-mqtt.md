@@ -77,7 +77,10 @@ Two independent cut-offs (architecture §6.6):
 ## Run the secure broker (single self-hosted host)
 
 ```bash
-# 1. Create CA + broker cert for your public domain.
+# 1. Create CA + broker cert for the name devices dial - recommended: a dedicated
+#    MQTT subdomain (plain DNS A record to this host); the --ip SAN keeps the raw
+#    IP working as fallback. Safe to re-run later to add the domain: the CA (and
+#    all issued device certs) is kept, only the server cert is re-issued.
 ./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.example.com --ip <public-ip>
 
 # 2. Stage the broker material (dir is git-ignored).
