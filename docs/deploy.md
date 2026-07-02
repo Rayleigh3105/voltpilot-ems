@@ -204,7 +204,7 @@ They are placeholders in the pipeline today; fill them with the real values.
 |---|---|
 | `FORGEJO_USERNAME` / `FORGEJO_PASSWORD` | Login for the Forgejo container registry `git.tecmaxx.de` (build push + VPS pull). |
 | `DEPLOY_HOST` | The VPS hostname/IP the pipeline SSHes into. |
-| `DEPLOY_USER` / `DEPLOY_PASSWORD` | SSH user + password on the VPS (the user needs `sudo` and Docker access). |
+| `DEPLOY_USER` / `DEPLOY_PASSWORD` | SSH user + password on the VPS. `root` works directly (no `sudo` needed on the host); a non-root user needs `sudo`, or - on a host without `sudo` - must own `/srv/docker/voltpilot` and be in the `docker` group. |
 | `DOMAIN` | Public FQDN, e.g. `ems.example.com`. Baked into the SPA build (`VITE_KEYCLOAK_URL=https://${DOMAIN}/auth`). |
 
 ### 2. The VPS `.env`

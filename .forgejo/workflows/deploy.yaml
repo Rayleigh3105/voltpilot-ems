@@ -225,27 +225,38 @@ jobs:
 
       - name: Deploy via SSH
         uses: https://github.com/appleboy/ssh-action@master
+        env:
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
           command_timeout: 15m
           script_stop: true
+          # DEPLOY_PASSWORD reaches the remote shell via `envs:` (the action
+          # exports the step env vars there), so the secret never interpolates
+          # into the script text and special characters can't break quoting.
+          envs: DEPLOY_PASSWORD
           script: |
             set -euo pipefail
 
             DEPLOY_DIR=/srv/docker/voltpilot
 
+            # Privilege helper: a root deploy user runs commands directly
+            # (hosts without sudo installed); a non-root user goes through
+            # `sudo -S` with the password on stdin, as before.
+            priv() { if [ "$(id -u)" -eq 0 ]; then "$@"; else printf '%s\n' "$DEPLOY_PASSWORD" | sudo -S "$@"; fi; }
+
             # scp-action preserves the source paths under the target directory.
-            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S mkdir -p "$DEPLOY_DIR/infra/prod" "$DEPLOY_DIR/infra/mqtt"
-            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
-            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
-            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp /tmp/voltpilot-deploy/infra/mqtt/acl.conf "$DEPLOY_DIR/infra/mqtt/acl.conf"
+            priv mkdir -p "$DEPLOY_DIR/infra/prod" "$DEPLOY_DIR/infra/mqtt"
+            priv cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
+            priv cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
+            priv cp /tmp/voltpilot-deploy/infra/mqtt/acl.conf "$DEPLOY_DIR/infra/mqtt/acl.conf"
             # VoltPilot Keycloak login theme to the compose bind-mount path
             # (./deploy/keycloak/themes/voltpilot in docker-compose.prod.yml).
-            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
-            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S rm -rf "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
-            echo "${{ secrets.DEPLOY_PASSWORD }}" | sudo -S cp -r /tmp/voltpilot-deploy/deploy/keycloak/themes/voltpilot "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
+            priv mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
+            priv rm -rf "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
+            priv cp -r /tmp/voltpilot-deploy/deploy/keycloak/themes/voltpilot "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
             rm -rf /tmp/voltpilot-deploy
 
             echo "${{ secrets.FORGEJO_PASSWORD }}" | docker login git.tecmaxx.de -u "${{ secrets.FORGEJO_USERNAME }}" --password-stdin
