@@ -22,4 +22,5 @@ Deps install from **public npm** (`.npmrc` in this folder); override it if you b
 
 ## Status
 
-Implemented: Keycloak OIDC login/logout (`voltpilot-frontend` public client, PKCE), token-authenticated API calls, and the post-login view - the tenant's sites/devices and a telemetry chart (ECharts) + device-claim form, all built on the design system. Telemetry is loaded via REST (live WS/SSE deferred). Schedule/KPI views are future work.
+Implemented: Keycloak OIDC login/logout (`voltpilot-frontend` public client, PKCE) plus public **self-registration** ("Konto erstellen") with seamless post-registration auto-login (`loginWithCredentials()` in `src/auth.ts`), the **guided first-run onboarding wizard** (`src/Onboarding.tsx`: Standort -> Gerät -> Startklar, keyless address search, waits for first data), and the unified shell for both roles - sites/devices (live connectivity status from `lastSeenAt`), telemetry/prices/weather/Fahrplan/Historie views (ECharts + design system), and the admin **Plattform** pages (Mandanten, Benutzer incl. "Passwort zurücksetzen", Geräte-Registry) with the tenant switcher.
+Telemetry is loaded via REST polling (live WS/SSE deferred); KPI views are future work.

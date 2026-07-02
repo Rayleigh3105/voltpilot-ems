@@ -6,3 +6,4 @@ Text input with optional label, hint and error states. Focus shows a blue border
 ```
 
 Props: `label`, `hint`, `error`, plus all native `<input>` attributes.
+Forwards its ref to the native `<input>`, so callers can focus a field (e.g. focus-the-first-invalid-field on submit).

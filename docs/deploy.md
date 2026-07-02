@@ -289,6 +289,8 @@ Before serving real customers:
 
 - Set `SPRING_PROFILES_ACTIVE=` (blank) in `.env` so the api does **not** seed demo tenants/telemetry.
 - Remove the `demo`/`demo2` users from `infra/prod/keycloak/voltpilot-realm.json` (or delete them in the Keycloak admin console) and create real users, each with a `tenant_id` attribute and a matching `tenant` row.
+- Decide whether to keep public self-registration (`VOLTPILOT_REGISTRATION_ENABLED`, default `true`; set `false` in `.env` for a closed platform where only Portal-Admins create accounts).
+  Its rate limiter assumes **2** own proxy hops appending to `X-Forwarded-For` (external reverse proxy → frontend nginx, `VOLTPILOT_REGISTRATION_RATE_LIMIT_TRUSTED_PROXIES=2`) - adjust the value if you add or remove a proxy layer.
 - Rotate every secret in `.env` and the EMQX dashboard password.
 - Confirm the firewall rules above and change the Keycloak admin password.
 

@@ -12,6 +12,7 @@ There are two paths:
 The customer flow is exactly two things:
 
 1. **Portal:** *Geräte → ＋ Gerät hinzufügen* - pick the Standort, type the device's **Edge-Referenz** (e.g. `plant-a-inverter-01`), claim. The row shows *"wartet auf erste Daten"*.
+   Sticker Geräte-IDs (prefix `VP-`, case-insensitive, uppercased on claim) must first be registered in the provisioned-device registry (admin *Geräte-Registry* page or `POST /api/v1/admin/provisioned-devices`), or the claim is refused; free-form refs like the example stay ungated.
 2. **Device:** power it on, configured with only the broker host and its ref.
 
 Under the hood (binding contract [`docs/contracts/mqtt-provisioning.schema.json`](contracts/mqtt-provisioning.schema.json)):

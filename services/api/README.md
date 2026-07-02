@@ -7,16 +7,22 @@
 Serves the portal REST API (OpenAPI, see [`docs/contracts/openapi.yaml`](../../docs/contracts/openapi.yaml)).
 Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped layer sets the Postgres RLS tenant context (`app.tenant_id`) on the connection so every query is transparently scoped to the caller's tenant. Full design and rationale are in the repo `AGENTS.md` ("Portal API: auth, tenancy & RLS").
 
-## Endpoints (`/api/v1`, Bearer JWT required)
+## Endpoints (`/api/v1`, Bearer JWT required unless noted)
 
 | Method | Path | Purpose |
 |---|---|---|
+| POST | `/registration` | **Public** (no token) self-registration: creates a tenant + its Keycloak login in one step (rate-limited, toggle `VOLTPILOT_REGISTRATION_ENABLED`) |
 | GET | `/sites` | List the caller's sites |
-| GET | `/devices` | List the caller's devices |
-| POST | `/devices/claim` | Claim an edge device into a site (409 if already claimed, 404 if site not in tenant) |
+| POST | `/sites` | Create a site for the caller's tenant (name, bidding zone, optional lat/lon) |
+| GET | `/devices` | List the caller's devices (incl. `lastSeenAt` for the portal's live status) |
+| POST | `/devices/claim` | Claim an edge device into a site (canonicalizes sticker `VP-` IDs; idempotent re-claim in the own tenant -> 200; 409 if claimed by another tenant, 404 if site not in tenant, 422 if the sticker ID is not in the provisioned-device registry) |
 | GET | `/sites/{siteId}/telemetry?from&to` | Recent telemetry for a site (defaults to last 24h) |
 | GET | `/sites/{siteId}/prices?from&to` | Day-ahead spot prices (15-min) for the site's bidding zone; defaults to ~today+tomorrow |
 | GET | `/sites/{siteId}/weather` | Latest weather forecast (hourly, coming days) for the site |
+| GET | `/sites/{siteId}/schedule` | Latest optimizer battery-dispatch plan + projected savings |
+| GET | `/sites/{siteId}/history?range&at` | History rollups (day/week/month/year), totals + Tagesprotokoll |
+
+Platform-admin-only (`/api/v1/admin/**`, realm role `platform-admin`): tenants, per-tenant sites/users (incl. user `disable` and the support `reset-password`, which also lifts a brute-force lockout), and the `provisioned-devices` manufacturing registry gating sticker claims. See the repo `AGENTS.md` admin section.
 
 ## Run / build / test
 
@@ -32,4 +38,6 @@ Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped 
 
 ## Status
 
-Implemented: OIDC resource-server, RLS tenant isolation (Flyway `db/migration` V1/V2 + `V20260701010000` site-geo/data-feeds + dev seed `db/dev` V100), sites/devices/telemetry reads, device claiming, and the KEYLESS **day-ahead price** + **weather** reads (fed by `services/market-data` energy-charts + `services/forecast` Open-Meteo, run in the compose `feeds` profile). Schedules and KPIs (see OpenAPI) remain stubs. Real telemetry ingest is a separate increment; the portal reads dev-seeded demo telemetry.
+Implemented: OIDC resource-server, RLS tenant isolation (Flyway `db/migration` V1/V2/V4 + the date-versioned site-geo/data-feeds, battery-efficiency, history-rollup and provisioned-device migrations + dev seeds `db/dev` V100/V20260702000100), public **self-registration** (tenant + Keycloak login in one request, sliding-window rate-limited), site creation, sites/devices/telemetry reads, **device claiming** (canonicalized, idempotent per tenant, sticker IDs gated by the provisioned-device registry), the **admin API** (tenants, per-tenant sites/users incl. disable + support password-reset, provisioned devices), and the KEYLESS **day-ahead price** + **weather** reads plus the **schedule** and **history** reads (fed by the compose `feeds`/`optimize` profiles).
+KPIs (see OpenAPI) remain a stub.
+Live telemetry arrives via the separate ingest pipe (compose `edge` profile); without it the portal reads dev-seeded demo telemetry.

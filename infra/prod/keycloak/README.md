@@ -12,6 +12,9 @@ Key points:
   NOTE: the Wildfly-era `${env.VAR}` prefix syntax is NOT substituted by Keycloak 26 - it reaches client validation literally and aborts the import with "A redirect URI is not a valid URI" (verified against 26.0.5).
 - `sslRequired=external`: HTTPS is required for external requests, which the external reverse proxy (Nginx Proxy Manager or Caddy) terminates and signals via `X-Forwarded-Proto` (`KC_PROXY_HEADERS=xforwarded`).
 - `loginTheme: voltpilot` selects the branded login theme (`deploy/keycloak/themes/voltpilot`, bind-mounted by the compose).
+- `voltpilot-frontend` has `directAccessGrantsEnabled=true` (same as dev): the portal's seamless post-registration auto-login mints tokens via the password grant on this public client.
+- `bruteForceProtected` is on (temporary lockout: 10 failures -> 60 s wait escalating to 15 min, never permanent) to bound password guessing at the token endpoint; support lifts a lock via the admin console's "Passwort zurücksetzen" (which also sets a new password).
+  Like every realm change, these reach an EXISTING Keycloak volume only after a fresh import.
 - The `realm-management` roles on the `voltpilot-api` service account and the declarative user profile (`tenant_id`, `ADMIN_EDIT`) are required for Portal-Admin user provisioning - same as dev.
   Keycloak 26 silently drops unmanaged attributes without the profile ("Account is not fully set up" on login).
 - The `admin` (Portal-Admin) and `demo`/`demo2` users are seeded so a fresh deploy is immediately loginable alongside `SPRING_PROFILES_ACTIVE=local`.
