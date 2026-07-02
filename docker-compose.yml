@@ -281,6 +281,10 @@ services:
       KEYCLOAK_API_CLIENT_ID: ${KEYCLOAK_API_CLIENT_ID:-voltpilot-api}
       KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET:-voltpilot-api-dev-secret}
       VOLTPILOT_CORS_ALLOWED_ORIGINS: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      # Which forecast model is LIVE per kind (display in Prognosequalität) -
+      # keep in sync with forecast-collector + optimizer (same .env variables).
+      VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
+      VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
       # Zero-touch onboarding: on claim, publish the retained provision/{ref}/config
       # (docs/contracts/mqtt-provisioning.schema.json). Best-effort - the api stays
       # healthy without the broker; the ingest resolver answers hello retries.
@@ -446,6 +450,42 @@ services:
       WEATHER_FORECAST_DAYS: ${WEATHER_FORECAST_DAYS:-3}
       WEATHER_REFRESH_SECONDS: ${WEATHER_REFRESH_SECONDS:-10800}
 
+  # Forecast collector (shadow-mode model registry, docs/forecasting.md): every
+  # 15 min it runs the BASELINE models plus the gated XGBoost challengers for
+  # every site, persists each run model-tagged into the `forecast` hypertable,
+  # keeps the per-model status in forecast_model_state, and once per Berlin day
+  # retrains the challengers + runs the forecast/plan evaluation
+  # (forecast_accuracy / plan_accuracy). The optimizer consumes ONLY the active
+  # model's rows (VOLTPILOT_ACTIVE_*; default = baselines - flip to promote).
+  # Depends on `api`: its Flyway owns forecast.model + the quality tables.
+  forecast-collector:
+    build:
+      context: ./services/forecast
+    container_name: voltpilot-forecast-collector
+    profiles: ["feeds"]
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "voltpilot_forecast.forecast_collect"]
+    command: ["serve"]
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
+      FORECAST_INTERVAL_SECONDS: ${FORECAST_INTERVAL_SECONDS:-900}
+      FORECAST_HORIZON_HOURS: ${FORECAST_HORIZON_HOURS:-24}
+      # Challenger self-gate: full telemetry days required before training.
+      VOLTPILOT_ML_MIN_DAYS: ${VOLTPILOT_ML_MIN_DAYS:-21}
+      # Which model the OPTIMIZER consumes (promotion = captain flips these on
+      # BOTH forecast-collector and optimizer; defaults are the baselines).
+      VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
+      VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
+
   # ---------------------------------------------------------------------------
   # OPTIMIZATION ENGINE. Own `optimize` profile (not `feeds`: it is a consumer
   # of the feeds and an MQTT publisher, not a keyless collector; not `edge`: it
@@ -486,6 +526,10 @@ services:
       MQTT_PORT: "1883"
       OPTIMIZER_INTERVAL_SECONDS: ${OPTIMIZER_INTERVAL_SECONDS:-900}
       OPTIMIZER_HORIZON_HOURS: ${OPTIMIZER_HORIZON_HOURS:-24}
+      # Shadow-mode forecasting: the optimizer reads ONLY this model's rows
+      # from the forecast hypertable (keep in sync with forecast-collector).
+      VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
+      VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
 
 volumes:
   timescale-data:

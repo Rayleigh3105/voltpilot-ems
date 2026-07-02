@@ -70,15 +70,17 @@ def test_save_builds_one_row_per_point_with_lead_time():
     assert "INSERT INTO forecast" in conn.sink["sql"]
 
     first = rows[0]
-    # (time, tenant_id, site_id, kind, value_kw, run_at, horizon_min, method, sv)
+    # (time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min,
+    #  method, sv)
     assert first[1] == "tenant-1"
     assert first[2] == "site-1"
     assert first[3] == "pv"
-    assert first[4] == 1.5
-    assert first[6] == 15   # 5:15 is 15 min after run_at 5:00
-    assert rows[1][6] == 30  # 5:30 is 30 min after run_at
-    assert first[7] == "clear_sky_v1:clear_sky"
-    assert first[8] == 1     # schema_version
+    assert first[4] == "pv-physical"  # untagged series defaults to the baseline id
+    assert first[5] == 1.5
+    assert first[7] == 15   # 5:15 is 15 min after run_at 5:00
+    assert rows[1][7] == 30  # 5:30 is 30 min after run_at
+    assert first[8] == "clear_sky_v1:clear_sky"
+    assert first[9] == 1     # schema_version
 
 
 def test_save_empty_series_is_a_noop():

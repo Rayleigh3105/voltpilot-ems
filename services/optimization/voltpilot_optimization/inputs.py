@@ -18,6 +18,7 @@ collector); psycopg is a lazy import behind the optional ``db`` extra.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -43,6 +44,24 @@ MIN_HORIZON_SLOTS = 16
 FALLBACK_HISTORY = timedelta(days=3)
 
 DEFAULT_SOC_PCT = 50.0
+
+# Shadow-mode forecasting (docs/forecasting.md): the forecast hypertable holds
+# every model's runs, tagged with a model id; the optimizer consumes ONLY the
+# ACTIVE model's rows. Promotion is a deliberate env flip (set the same values
+# on the forecast collector); the defaults are the baselines, which mirror
+# voltpilot_forecast.registry.BASELINE_MODELS - so out of the box nothing
+# changes behaviorally. Read per cycle (not at import) so a restart with new
+# env is the only deployment step a promotion needs.
+ACTIVE_LOAD_MODEL_ENV = "VOLTPILOT_ACTIVE_LOAD_MODEL"
+ACTIVE_PV_MODEL_ENV = "VOLTPILOT_ACTIVE_PV_MODEL"
+BASELINE_MODEL_BY_KIND = {"load": "load-persistence", "pv": "pv-physical"}
+
+
+def active_model(kind: str, env=None) -> str:
+    """The forecast model id whose rows this optimizer consumes for ``kind``."""
+    env = os.environ if env is None else env
+    var = ACTIVE_LOAD_MODEL_ENV if kind == "load" else ACTIVE_PV_MODEL_ENV
+    return env.get(var, "").strip() or BASELINE_MODEL_BY_KIND[kind]
 
 
 class SkipSite(Exception):
@@ -198,10 +217,11 @@ def _forecast_or_fallback(
     slot_starts: list[datetime],
     now: datetime,
 ) -> list[float]:
-    """The latest stored forecast run when it covers the horizon, else the
-    persistence baseline over recent telemetry (never fails: with no telemetry
-    at all it degrades to zeros, i.e. a pure price-arbitrage plan)."""
-    stored = _load_forecast(dsn, site.site_id, kind)
+    """The ACTIVE model's latest stored forecast run when it covers the
+    horizon, else the persistence baseline over recent telemetry (never fails:
+    with no telemetry at all it degrades to zeros, i.e. a pure price-arbitrage
+    plan). Shadow challengers' rows are never consumed here."""
+    stored = _load_forecast(dsn, site.site_id, kind, active_model(kind))
     if all(s in stored for s in slot_starts):
         return [stored[s] for s in slot_starts]
 
@@ -220,13 +240,17 @@ def _forecast_or_fallback(
     return persistence_forecast(history, slot_starts)
 
 
-def _load_forecast(dsn: str, site_id: UUID, kind: str) -> dict[datetime, float]:
+def _load_forecast(
+    dsn: str, site_id: UUID, kind: str, model: str
+) -> dict[datetime, float]:
+    """Latest run of ONE model (the active one) - shadow rows stay invisible."""
     import psycopg  # lazy: optional [db] extra
 
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT max(run_at) FROM forecast WHERE site_id = %s AND kind = %s",
-            (site_id, kind),
+            "SELECT max(run_at) FROM forecast "
+            "WHERE site_id = %s AND kind = %s AND model = %s",
+            (site_id, kind, model),
         )
         row = cur.fetchone()
         if row is None or row[0] is None:
@@ -234,10 +258,10 @@ def _load_forecast(dsn: str, site_id: UUID, kind: str) -> dict[datetime, float]:
         cur.execute(
             """
             SELECT time, value_kw FROM forecast
-            WHERE site_id = %s AND kind = %s AND run_at = %s
+            WHERE site_id = %s AND kind = %s AND model = %s AND run_at = %s
             ORDER BY time
             """,
-            (site_id, kind, row[0]),
+            (site_id, kind, model, row[0]),
         )
         return {ensure_utc(ts): float(v) for ts, v in cur.fetchall()}
 

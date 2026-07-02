@@ -131,6 +131,68 @@ export interface History {
   plan: HistoryPlanPoint[];
 }
 
+/**
+ * Prognosequalität (shadow-mode forecasting): which model is live per kind,
+ * every model's lifecycle, and the daily error/skill series from the
+ * evaluation job. Model ids: load-persistence / pv-physical (Vergleichsmodelle),
+ * load-xgb / pv-residual-xgb (lernende Kandidaten, shadow-only until promoted).
+ */
+export type ForecastModelId =
+  | 'load-persistence'
+  | 'pv-physical'
+  | 'load-xgb'
+  | 'pv-residual-xgb';
+
+export interface FeatureImportance {
+  feature: string;
+  /** Plain-German label, server-provided. */
+  label: string;
+  weight: number;
+}
+
+export interface ForecastModelState {
+  model: ForecastModelId;
+  kind: 'load' | 'pv';
+  /** 'collecting' = challenger still gathering training days (no predictions). */
+  status: 'collecting' | 'ready';
+  /** Whether the optimizer consumes THIS model's forecasts. */
+  active: boolean;
+  daysCollected: number | null;
+  daysRequired: number | null;
+  trainedAt: string | null;
+  trainRows: number | null;
+  featureImportance: FeatureImportance[];
+  updatedAt: string | null;
+}
+
+export interface ForecastAccuracyPoint {
+  day: string;
+  model: ForecastModelId;
+  kind: 'load' | 'pv';
+  maeKw: number;
+  nmaePct: number | null;
+  biasKw: number | null;
+  /** 1 - mae/mae_baseline; positive = better than the baseline; null for the baseline. */
+  skillVsBaseline: number | null;
+  nSlots: number;
+}
+
+export interface PlanAccuracyPoint {
+  day: string;
+  plannedCostEur: number | null;
+  baselineCostEur: number | null;
+  realizedCostEur: number | null;
+  nSlots: number;
+}
+
+export interface ForecastQuality {
+  activeLoadModel: ForecastModelId;
+  activePvModel: ForecastModelId;
+  models: ForecastModelState[];
+  accuracy: ForecastAccuracyPoint[];
+  planAccuracy: PlanAccuracyPoint[];
+}
+
 export interface Device {
   id: string;
   siteId: string;
@@ -222,6 +284,8 @@ export const api = {
   prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
   schedule: (siteId: string) => request<SchedulePlan>(`/api/v1/sites/${siteId}/schedule`),
+  forecastQuality: (siteId: string, days = 30) =>
+    request<ForecastQuality>(`/api/v1/sites/${siteId}/forecast-quality?days=${days}`),
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
   history: (siteId: string, range: HistoryRange, at: string) =>
     request<History>(`/api/v1/sites/${siteId}/history?range=${range}&at=${at}`),

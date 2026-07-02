@@ -41,9 +41,12 @@ class LoadForecaster(ABC):
 
     The single seam architecture section 12 asks for: swap the implementation
     (persistence -> profile -> future ML) and every consumer is unaffected.
+    ``model_id`` is the registry-level id every persisted prediction is tagged
+    with (see :mod:`voltpilot_forecast.registry`).
     """
 
     method: str = "load"
+    model_id: str = "load-persistence"
 
     @abstractmethod
     def forecast(
@@ -81,6 +84,7 @@ def _flat_last_value(
     horizon: Horizon,
     run_at: datetime,
     method: str,
+    model_id: str,
 ) -> ForecastSeries:
     last = history[-1].value_kw if history else 0.0
     points = [ForecastPoint(ts, round(last, 4)) for ts in horizon.slot_starts(run_at)]
@@ -91,6 +95,7 @@ def _flat_last_value(
         run_at=run_at,
         method=method,
         points=points,
+        model=model_id,
     )
 
 
@@ -104,6 +109,7 @@ class SeasonalPersistenceLoadForecaster(LoadForecaster):
     """
 
     method = "persistence"
+    model_id = "load-persistence"
 
     def __init__(self, period: timedelta = timedelta(days=1)) -> None:
         if period <= timedelta(0):
@@ -120,7 +126,8 @@ class SeasonalPersistenceLoadForecaster(LoadForecaster):
     ) -> ForecastSeries:
         if not history:
             return _flat_last_value(
-                site_id, tenant_id, history, horizon, run_at, self.method
+                site_id, tenant_id, history, horizon, run_at, self.method,
+                self.model_id,
             )
 
         history = _sorted_history(history)
@@ -154,6 +161,7 @@ class SeasonalPersistenceLoadForecaster(LoadForecaster):
             run_at=run_at,
             method=self.method,
             points=points,
+            model=self.model_id,
         )
 
 
@@ -167,6 +175,7 @@ class ProfileLoadForecaster(LoadForecaster):
     """
 
     method = "profile"
+    model_id = "load-profile"
 
     def forecast(
         self,
@@ -178,7 +187,8 @@ class ProfileLoadForecaster(LoadForecaster):
     ) -> ForecastSeries:
         if not history:
             return _flat_last_value(
-                site_id, tenant_id, history, horizon, run_at, self.method
+                site_id, tenant_id, history, horizon, run_at, self.method,
+                self.model_id,
             )
 
         history = _sorted_history(history)
@@ -212,4 +222,5 @@ class ProfileLoadForecaster(LoadForecaster):
             run_at=run_at,
             method=self.method,
             points=points,
+            model=self.model_id,
         )

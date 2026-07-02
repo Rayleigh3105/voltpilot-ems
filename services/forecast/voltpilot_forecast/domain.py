@@ -149,10 +149,13 @@ class ForecastPoint:
 class ForecastSeries:
     """An ordered forecast over the horizon, tagged with provenance.
 
-    ``method`` records which implementation produced it (e.g. ``persistence``,
-    ``profile``, ``clear_sky_v1``) so a later XGBoost method is distinguishable in
-    storage without changing consumers. ``run_at`` is the issue time; every point
-    carries a positive lead time relative to it.
+    ``model`` is the registry-level model id (see
+    :mod:`voltpilot_forecast.registry`) every persisted prediction is tagged
+    with - the traceability key the optimizer filters on and the daily
+    evaluation compares by. ``method`` stays as the finer-grained
+    implementation detail (e.g. ``persistence``, ``clear_sky_v1:open_meteo``).
+    ``run_at`` is the issue time; every point carries a positive lead time
+    relative to it.
     """
 
     kind: ForecastKind
@@ -162,6 +165,18 @@ class ForecastSeries:
     method: str
     points: list[ForecastPoint] = field(default_factory=list)
     schema_version: int = 1
+    model: str = ""
+
+    def __post_init__(self) -> None:
+        # Untagged series default to the kind's baseline id so nothing ever
+        # lands in storage without a model tag (the column is NOT NULL). The
+        # literals mirror registry.BASELINE_MODELS (registry imports domain,
+        # so domain cannot import registry back).
+        if not self.model:
+            fallback = (
+                "load-persistence" if self.kind is ForecastKind.LOAD else "pv-physical"
+            )
+            object.__setattr__(self, "model", fallback)
 
     @property
     def values(self) -> list[float]:

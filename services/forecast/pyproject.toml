@@ -25,10 +25,21 @@ db = [
 weather = [
     "requests>=2.31",
 ]
+# The gradient-boosted challenger models (voltpilot_forecast.ml), isolated like
+# the optimizer's HiGHS solver extra: the baselines, the evaluation math and
+# their tests run without it (ML tests skip via importorskip). macOS wheels
+# need the OpenMP runtime (`brew install libomp`); the Dockerfile installs
+# libgomp1 for the Linux wheels.
+ml = [
+    "xgboost>=2.0",
+    "numpy>=1.24",
+]
 
 [project.scripts]
 voltpilot-forecast = "voltpilot_forecast.__main__:main"
 voltpilot-weather = "voltpilot_forecast.weather_collect:main"
+voltpilot-forecast-collect = "voltpilot_forecast.forecast_collect:main"
+voltpilot-forecast-eval = "voltpilot_forecast.evaluate:main"
 
 [tool.setuptools.packages.find]
 include = ["voltpilot_forecast*"]

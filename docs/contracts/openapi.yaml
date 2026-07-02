@@ -246,6 +246,38 @@ paths:
         "400": { description: Unknown range value. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/forecast-quality:
+    get:
+      tags: [forecast-quality]
+      summary: Forecast-model quality ("Prognosequalität") for a site.
+      description: >
+        The shadow-mode forecasting transparency view (docs/forecasting.md):
+        which forecast model is LIVE per kind (activeLoadModel/activePvModel,
+        resolved from server config - the same env the optimizer reads), the
+        lifecycle of every model that has run on the site (challengers report
+        "collecting: day X of N" while their self-gate is unmet; trained models
+        carry trainedAt/trainRows and the top feature importances with
+        plain-German labels), the per-model daily error series (MAE kW, nMAE %,
+        bias, skill vs the baseline - positive = better) computed by the daily
+        evaluation job, and the daily plan-vs-actual economics. Challenger
+        promotion is NEVER automatic; it is an operator env flip informed by
+        this data. All rows come from RLS-scoped tables - a foreign site is a
+        404; a fresh site yields empty (but well-formed) lists.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 30, minimum: 1, maximum: 90 }
+          description: How many trailing days of accuracy/plan series to return.
+      responses:
+        "200":
+          description: The site's forecast-quality view.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ForecastQuality" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/kpis:
     get:
       tags: [kpis]
@@ -609,6 +641,67 @@ components:
               time: { type: string, format: date-time }
               batteryKw: { type: number, nullable: true, description: "+ = charge, - = discharge." }
               socPct: { type: number, nullable: true }
+    ForecastQuality:
+      type: object
+      description: >
+        Shadow-mode forecast transparency for one site. Model ids are the
+        registry vocabulary: load-persistence / pv-physical (baselines),
+        load-xgb / pv-residual-xgb (challengers).
+      properties:
+        activeLoadModel: { type: string, example: load-persistence, description: The model whose load forecasts the optimizer consumes. }
+        activePvModel: { type: string, example: pv-physical }
+        models:
+          type: array
+          description: Lifecycle of every model that has run on this site.
+          items:
+            type: object
+            properties:
+              model: { type: string, example: load-xgb }
+              kind: { type: string, enum: [load, pv] }
+              status:
+                type: string
+                enum: [collecting, ready]
+                description: "'collecting' = self-gate unmet, the challenger emits NO predictions yet."
+              active: { type: boolean, description: Whether the optimizer consumes this model. }
+              daysCollected: { type: integer, nullable: true }
+              daysRequired: { type: integer, nullable: true, description: Training-day gate (default 21). }
+              trainedAt: { type: string, format: date-time, nullable: true }
+              trainRows: { type: integer, nullable: true }
+              featureImportance:
+                type: array
+                description: Top features of the last training run, most important first.
+                items:
+                  type: object
+                  properties:
+                    feature: { type: string, example: lag_1d_kw }
+                    label: { type: string, example: Verbrauch gestern zur gleichen Zeit, description: Plain-German label. }
+                    weight: { type: number, description: Normalized share of total gain, 0..1. }
+              updatedAt: { type: string, format: date-time }
+        accuracy:
+          type: array
+          description: Daily forecast-vs-actual metrics per model (Europe/Berlin days).
+          items:
+            type: object
+            properties:
+              day: { type: string, format: date }
+              model: { type: string }
+              kind: { type: string, enum: [load, pv] }
+              maeKw: { type: number, description: Mean absolute error over the day's evaluated 15-min slots. }
+              nmaePct: { type: number, nullable: true, description: MAE / mean absolute actual x 100; null on all-zero days. }
+              biasKw: { type: number, nullable: true, description: Mean signed error (forecast - actual). }
+              skillVsBaseline: { type: number, nullable: true, description: "1 - mae/mae_baseline; positive = better than the baseline; null for the baseline itself." }
+              nSlots: { type: integer }
+        planAccuracy:
+          type: array
+          description: Daily plan-vs-actual economics of the optimizer's persisted plans.
+          items:
+            type: object
+            properties:
+              day: { type: string, format: date }
+              plannedCostEur: { type: number, nullable: true }
+              baselineCostEur: { type: number, nullable: true, description: Projected cost with the battery idle. }
+              realizedCostEur: { type: number, nullable: true, description: Actual signed grid cost (telemetry x price). }
+              nSlots: { type: integer }
     SiteKpis:
       type: object
       properties:

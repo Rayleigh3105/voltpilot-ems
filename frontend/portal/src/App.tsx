@@ -12,6 +12,7 @@ import { StandortePage } from './pages/StandortePage';
 import { GeraetePage } from './pages/GeraetePage';
 import { FahrplanPage, MarktpreisePage, WetterPage } from './pages/DataPages';
 import { HistoriePage } from './pages/HistoriePage';
+import { PrognosePage } from './pages/PrognosePage';
 import { MandantenPage } from './pages/admin/MandantenPage';
 import { BenutzerPage } from './pages/admin/BenutzerPage';
 
@@ -214,6 +215,9 @@ function UnifiedPortal() {
           )}
           {page === 'historie' && (
             <HistoriePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
+          )}
+          {page === 'prognose' && (
+            <PrognosePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
           )}
           {page === 'mandanten' && isAdmin && (
             <MandantenPage

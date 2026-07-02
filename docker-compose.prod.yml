@@ -296,6 +296,10 @@ services:
       # The SPA is served same-origin, so CORS is not strictly needed; allow the
       # public origin anyway for direct API tooling.
       VOLTPILOT_CORS_ALLOWED_ORIGINS: https://${DOMAIN:?set DOMAIN in .env}
+      # Which forecast model is LIVE per kind (display in Prognosequalität) -
+      # keep in sync with the forecast + optimization services (same .env vars).
+      VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
+      VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
     healthcheck:
       test:
         - "CMD"
@@ -408,11 +412,16 @@ services:
       - "while true; do python -m voltpilot_market_data fetch --persist || echo 'market-data: fetch failed, retrying next cycle'; sleep 86400; done"
 
   # ---------------------------------------------------------------------------
-  # Forecast collector: baseline load/PV forecasts (architecture 12; no ML in
-  # v1). The module currently runs an OFFLINE baseline demo (the DB-persist path
-  # via TimescaleForecastRepository is wired but not yet exposed on the CLI - see
-  # services/forecast). Included here as a daily-loop collector so the prod stack
-  # already carries it; it will start persisting once that CLI path lands.
+  # Forecast collector (shadow-mode model registry, docs/forecasting.md): every
+  # 15 min it runs the BASELINE models (load-persistence, pv-physical) plus the
+  # self-gated XGBoost challengers (load-xgb, pv-residual-xgb) for every site,
+  # persists each run model-tagged into the `forecast` hypertable, maintains
+  # forecast_model_state, and once per Berlin day retrains the challengers and
+  # runs the daily forecast/plan evaluation (forecast_accuracy/plan_accuracy).
+  # The optimizer consumes ONLY the active model's rows (VOLTPILOT_ACTIVE_*;
+  # default = baselines - promotion is a deliberate flip of these vars on BOTH
+  # this service and `optimization`). Depends on api: its Flyway owns
+  # forecast.model + the RLS-scoped quality tables.
   # ---------------------------------------------------------------------------
   forecast:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/forecast:${IMAGE_TAG:-latest}
@@ -422,15 +431,21 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+      api:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "voltpilot_forecast.forecast_collect"]
+    command: ["serve"]
     environment:
       POSTGRES_HOST: timescaledb
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - "while true; do python -m voltpilot_forecast || echo 'forecast: run failed, retrying next cycle'; sleep 86400; done"
+      FORECAST_INTERVAL_SECONDS: ${FORECAST_INTERVAL_SECONDS:-900}
+      FORECAST_HORIZON_HOURS: ${FORECAST_HORIZON_HOURS:-24}
+      VOLTPILOT_ML_MIN_DAYS: ${VOLTPILOT_ML_MIN_DAYS:-21}
+      VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
+      VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
 
   # ---------------------------------------------------------------------------
   # Optimization engine: the rolling battery-dispatch planner. Every 15 min,
@@ -467,6 +482,10 @@ services:
       MQTT_PORT: "1883"
       OPTIMIZER_INTERVAL_SECONDS: ${OPTIMIZER_INTERVAL_SECONDS:-900}
       OPTIMIZER_HORIZON_HOURS: ${OPTIMIZER_HORIZON_HOURS:-24}
+      # Shadow-mode forecasting: the optimizer reads ONLY this model's rows
+      # from the forecast hypertable (keep in sync with the forecast service).
+      VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
+      VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
 
   # ---------------------------------------------------------------------------
   # Frontend: the built SPA on nginx, and the SINGLE public HTTP entry point the

@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.history.HistoryService;
+import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -9,6 +10,7 @@ import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
+import com.voltpilot.api.web.dto.ForecastQualityDto;
 import com.voltpilot.api.web.dto.HistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
@@ -21,7 +23,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -52,6 +56,9 @@ public class SiteController {
     private final WeatherRepository weather;
     private final ScheduleRepository schedules;
     private final HistoryService history;
+    private final ForecastQualityRepository forecastQuality;
+    private final String activeLoadModel;
+    private final String activePvModel;
 
     public SiteController(
             SiteRepository sites,
@@ -59,13 +66,19 @@ public class SiteController {
             PriceRepository prices,
             WeatherRepository weather,
             ScheduleRepository schedules,
-            HistoryService history) {
+            HistoryService history,
+            ForecastQualityRepository forecastQuality,
+            @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
+            @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.telemetry = telemetry;
         this.prices = prices;
         this.weather = weather;
         this.schedules = schedules;
         this.history = history;
+        this.forecastQuality = forecastQuality;
+        this.activeLoadModel = activeLoadModel;
+        this.activePvModel = activePvModel;
     }
 
     @GetMapping
@@ -178,6 +191,32 @@ public class SiteController {
         }
         LocalDate effectiveAt = at != null ? at : LocalDate.now(HistoryRange.ZONE);
         return history.history(siteId, site.biddingZone(), parsed, effectiveAt);
+    }
+
+    /**
+     * "Prognosequalität" for a site: which forecast model is live per kind
+     * (from the api's config - the same env the optimizer reads), every
+     * model's lifecycle incl. challengers still collecting training data, the
+     * daily error/skill series computed by the evaluation job, and the daily
+     * plan-vs-actual economics. All from RLS-scoped tables - a foreign site
+     * is a 404; a fresh site yields empty (but well-formed) lists.
+     */
+    @GetMapping("/{siteId}/forecast-quality")
+    public ForecastQualityDto forecastQuality(
+            @PathVariable UUID siteId,
+            @RequestParam(defaultValue = "30") int days) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        int window = Math.min(Math.max(days, 1), 90);
+        LocalDate since = LocalDate.now(HistoryRange.ZONE).minusDays(window);
+        Set<String> active = Set.of(activeLoadModel, activePvModel);
+        return new ForecastQualityDto(
+                activeLoadModel,
+                activePvModel,
+                forecastQuality.modelStates(siteId, active),
+                forecastQuality.accuracySeries(siteId, since),
+                forecastQuality.planAccuracySeries(siteId, since));
     }
 
     @GetMapping("/{siteId}/schedule")

@@ -30,11 +30,14 @@ DEFAULT_DIFFUSE_FRACTION = 0.15  # clear-sky diffuse share when only GHI is know
 class PvForecaster(ABC):
     """Interface for PV generation forecasting over the optimization horizon.
 
-    A future ML-corrected implementation implements this same method, so the
+    An ML-corrected implementation implements this same method, so the
     optimizer and the forecast service never learn which variant they hold.
+    ``model_id`` is the registry-level id every persisted prediction is tagged
+    with (see :mod:`voltpilot_forecast.registry`).
     """
 
     method: str = "pv"
+    model_id: str = "pv-physical"
 
     @abstractmethod
     def forecast(
@@ -53,6 +56,7 @@ class PhysicalPvForecaster(PvForecaster):
     """
 
     method = "clear_sky_v1"
+    model_id = "pv-physical"
 
     def __init__(
         self,
@@ -77,11 +81,39 @@ class PhysicalPvForecaster(PvForecaster):
                 run_at=run_at,
                 method=method,
                 points=points,
+                model=self.model_id,
             )
 
+        values = self.power_series(config, timestamps)
+        points = [
+            ForecastPoint(ts, round(kw, 4)) for ts, kw in zip(timestamps, values)
+        ]
+
+        return ForecastSeries(
+            kind=ForecastKind.PV,
+            site_id=config.site_id,
+            tenant_id=config.tenant_id,
+            run_at=run_at,
+            method=method,
+            points=points,
+            model=self.model_id,
+        )
+
+    def power_series(
+        self, config: SiteForecastConfig, timestamps: list[datetime]
+    ) -> list[float]:
+        """AC power (kW) at arbitrary timestamps - past or future.
+
+        The per-slot physics extracted from :meth:`forecast` so the residual
+        challenger (:mod:`voltpilot_forecast.ml`) can compute the physical
+        base value for HISTORICAL slots when learning the residual. Semantics
+        are identical to :meth:`forecast`; a site without a plant yields zeros.
+        """
+        if config.plant is None or config.plant.capacity_kwp == 0.0:
+            return [0.0 for _ in timestamps]
         plant = config.plant
         samples = self._weather.irradiance(config.location, timestamps)
-        points: list[ForecastPoint] = []
+        values: list[float] = []
         for ts, sample in zip(timestamps, samples):
             position = solar_position(config.location, ts)
             poa = poa_irradiance(
@@ -96,14 +128,5 @@ class PhysicalPvForecaster(PvForecaster):
             )
             dc_kw = plant.capacity_kwp * (poa / STC_IRRADIANCE_W_M2)
             ac_kw = dc_kw * (1.0 - plant.system_loss_fraction)
-            ac_kw = max(0.0, min(ac_kw, plant.capacity_kwp))
-            points.append(ForecastPoint(ts, round(ac_kw, 4)))
-
-        return ForecastSeries(
-            kind=ForecastKind.PV,
-            site_id=config.site_id,
-            tenant_id=config.tenant_id,
-            run_at=run_at,
-            method=method,
-            points=points,
-        )
+            values.append(max(0.0, min(ac_kw, plant.capacity_kwp)))
+        return values

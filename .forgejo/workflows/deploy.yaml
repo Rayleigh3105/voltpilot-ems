@@ -38,10 +38,12 @@ jobs:
             type: python
             path: services/market-data
             pip_install: "-e '.[dev]'"
+          # ml = xgboost/numpy so the shadow-challenger tests (test_ml.py) run
+          # in the gate instead of skipping; the Ubuntu runner ships libgomp.
           - name: forecast
             type: python
             path: services/forecast
-            pip_install: "-e '.[dev]'"
+            pip_install: "-e '.[dev,ml]'"
           # solver = the HiGHS wheel (needed for the behavioral MILP tests);
           # ../forecast = the sibling path dep for the persistence fallback.
           - name: optimization

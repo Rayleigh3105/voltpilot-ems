@@ -383,6 +383,99 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    // ---- Prognosequalität: model states + accuracy series, RLS-scoped ---------
+
+    /**
+     * Shadow-mode forecasting read path: the collector/evaluator write model
+     * states and daily accuracy rows as the trusted backend role; the endpoint
+     * serves them tenant-scoped with the ACTIVE model resolved from config
+     * (defaults = the baselines), and a foreign site stays a 404.
+     */
+    @Test
+    void forecastQualityIsTenantScopedAndMarksTheActiveModel() {
+        String t = "'00000000-0000-0000-0000-000000000001'";
+        // The baseline is live; the challenger is still collecting (day 5 of 21).
+        exec("INSERT INTO forecast_model_state (tenant_id, site_id, model, kind, status, "
+                + "days_collected, days_required, trained_at, train_rows, feature_importance, updated_at) VALUES "
+                + "(" + t + ", '" + BERLIN_SITE + "', 'load-persistence', 'load', 'ready', "
+                + "NULL, NULL, NULL, NULL, '[]'::jsonb, now()), "
+                + "(" + t + ", '" + BERLIN_SITE + "', 'load-xgb', 'load', 'collecting', "
+                + "5, 21, NULL, NULL, '[]'::jsonb, now()), "
+                + "(" + t + ", '" + BERLIN_SITE + "', 'pv-residual-xgb', 'pv', 'ready', "
+                + "30, 21, now(), 2880, "
+                + "'[{\"feature\": \"physical_kw\", \"label\": \"Physikalische PV-Prognose\", \"weight\": 0.62}]'::jsonb, now()) "
+                + "ON CONFLICT (site_id, model) DO NOTHING");
+        exec("INSERT INTO forecast_accuracy (day, tenant_id, site_id, model, kind, "
+                + "mae_kw, nmae_pct, bias_kw, skill_vs_baseline, n_slots) VALUES "
+                + "(current_date - 1, " + t + ", '" + BERLIN_SITE + "', 'load-persistence', 'load', "
+                + "0.8, 40.0, 0.1, NULL, 96), "
+                + "(current_date - 1, " + t + ", '" + BERLIN_SITE + "', 'load-xgb', 'load', "
+                + "0.4, 20.0, -0.05, 0.5, 96) "
+                + "ON CONFLICT (site_id, model, day) DO NOTHING");
+        exec("INSERT INTO plan_accuracy (day, tenant_id, site_id, planned_cost_eur, "
+                + "baseline_cost_eur, realized_cost_eur, n_slots) VALUES "
+                + "(current_date - 1, " + t + ", '" + BERLIN_SITE + "', 1.20, 1.50, 1.25, 96) "
+                + "ON CONFLICT (site_id, day) DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast-quality"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        // Active models come from config (defaults = the baselines).
+        assertThat(body).containsEntry("activeLoadModel", "load-persistence");
+        assertThat(body).containsEntry("activePvModel", "pv-physical");
+
+        List<Map<String, Object>> models = list(body, "models");
+        assertThat(models).extracting(m -> m.get("model"))
+                .contains("load-persistence", "load-xgb", "pv-residual-xgb");
+        Map<String, Object> baseline = models.stream()
+                .filter(m -> "load-persistence".equals(m.get("model"))).findFirst().orElseThrow();
+        assertThat(baseline).containsEntry("active", true).containsEntry("status", "ready");
+        Map<String, Object> collecting = models.stream()
+                .filter(m -> "load-xgb".equals(m.get("model"))).findFirst().orElseThrow();
+        assertThat(collecting).containsEntry("active", false)
+                .containsEntry("status", "collecting")
+                .containsEntry("daysCollected", 5)
+                .containsEntry("daysRequired", 21);
+        Map<String, Object> trained = models.stream()
+                .filter(m -> "pv-residual-xgb".equals(m.get("model"))).findFirst().orElseThrow();
+        assertThat(trained).containsEntry("trainRows", 2880);
+        List<Map<String, Object>> importance = list(trained, "featureImportance");
+        assertThat(importance).hasSize(1);
+        assertThat(importance.get(0)).containsEntry("label", "Physikalische PV-Prognose");
+
+        List<Map<String, Object>> accuracy = list(body, "accuracy");
+        Map<String, Object> challengerDay = accuracy.stream()
+                .filter(a -> "load-xgb".equals(a.get("model"))).findFirst().orElseThrow();
+        assertThat(num(challengerDay, "maeKw")).isEqualTo(0.4);
+        assertThat(num(challengerDay, "skillVsBaseline")).isEqualTo(0.5);
+        Map<String, Object> baselineDay = accuracy.stream()
+                .filter(a -> "load-persistence".equals(a.get("model"))).findFirst().orElseThrow();
+        assertThat(baselineDay.get("skillVsBaseline")).isNull();
+
+        List<Map<String, Object>> plan = list(body, "planAccuracy");
+        assertThat(plan).hasSize(1);
+        assertThat(num(plan.get(0), "plannedCostEur")).isEqualTo(1.2);
+        assertThat(num(plan.get(0), "realizedCostEur")).isEqualTo(1.25);
+
+        // Tenant B's own (empty) site: well-formed empty lists, active models set.
+        ResponseEntity<Map<String, Object>> empty = rest.exchange(
+                url("/api/v1/sites/" + HAMBURG_SITE + "/forecast-quality"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(empty.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<?>) empty.getBody().get("models")).isEmpty();
+        assertThat((List<?>) empty.getBody().get("accuracy")).isEmpty();
+
+        // RLS: tenant B cannot even see tenant A's site -> 404, nothing leaks.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/forecast-quality"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     // ---- Historie: rollups, totals, formulas, Tagesprotokoll, plan-vs-actual --
 
     /**

@@ -14,6 +14,7 @@ export type PageId =
   | 'wetter'
   | 'fahrplan'
   | 'historie'
+  | 'prognose'
   | 'mandanten'
   | 'benutzer';
 
@@ -34,6 +35,7 @@ export const MAIN_PAGES: PageDef[] = [
   { id: 'wetter', label: 'Wetter', icon: 'sun' },
   { id: 'fahrplan', label: 'Fahrplan', icon: 'battery-charging' },
   { id: 'historie', label: 'Historie', icon: 'history' },
+  { id: 'prognose', label: 'Prognosequalität', icon: 'trending-up' },
 ];
 
 export const PLATFORM_PAGES: PageDef[] = [
