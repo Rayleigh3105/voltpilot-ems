@@ -156,6 +156,11 @@ jobs:
             priv sh "$DEPLOY_DIR/tools/pki/merge-acl-grants.sh" \
               /tmp/voltpilot-deploy/infra/mqtt/acl/acl.conf "$DEPLOYED_ACL" /tmp/voltpilot-deploy/acl.merged
             priv cp /tmp/voltpilot-deploy/acl.merged "$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
+            # The broker reads the ACL as a different non-root uid: a root
+            # umask (or a stray restrictive mode) must never leave the dir or
+            # file unreadable, or EMQX fails boot-time config validation.
+            priv chmod 755 "$DEPLOY_DIR/infra/mqtt/acl"
+            priv chmod 644 "$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
             # VoltPilot Keycloak login theme to the compose bind-mount path.
             priv mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
             priv rm -rf "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"

@@ -9,8 +9,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +47,17 @@ class AclGrantWriter {
     private static final Logger log = LoggerFactory.getLogger(AclGrantWriter.class);
 
     static final String END_ANCHOR = "%%<<END GENERATED DEVICE GRANTS>>";
+
+    /**
+     * rw-r--r-- : the EMQX broker reads the file as a DIFFERENT non-root uid
+     * through a read-only mount. {@link Files#createTempFile} creates 0600 and
+     * the atomic rename carries that mode onto acl.conf; a running broker keeps
+     * its compiled rules, so the breakage only surfaces at the next authz
+     * reload or broker restart, which then fails boot-time config validation
+     * ("failed_to_read_acl_file: Permission denied" - a real prod outage).
+     */
+    private static final Set<PosixFilePermission> ACL_FILE_PERMISSIONS =
+            PosixFilePermissions.fromString("rw-r--r--");
 
     private final Path aclFile;
 
@@ -125,6 +139,7 @@ class AclGrantWriter {
         Path tmp = Files.createTempFile(aclFile.toAbsolutePath().getParent(), "acl", ".tmp");
         try {
             Files.write(tmp, lines, StandardCharsets.UTF_8);
+            ensureBrokerReadable(tmp);
             try {
                 atomicMove(tmp, aclFile);
             } catch (FileSystemException e) {
@@ -164,6 +179,18 @@ class AclGrantWriter {
                 channel.write(buffer);
             }
             channel.force(true);
+        }
+        // The rewrite inherits the existing file's mode, which a prior 0600
+        // rename may have left broker-unreadable - restore it here too.
+        ensureBrokerReadable(aclFile);
+    }
+
+    /** Forces {@link #ACL_FILE_PERMISSIONS}; no-op on non-POSIX filesystems. */
+    private static void ensureBrokerReadable(Path file) throws IOException {
+        try {
+            Files.setPosixFilePermissions(file, ACL_FILE_PERMISSIONS);
+        } catch (UnsupportedOperationException e) {
+            // non-POSIX filesystem (tests may run anywhere; prod is Linux)
         }
     }
 }

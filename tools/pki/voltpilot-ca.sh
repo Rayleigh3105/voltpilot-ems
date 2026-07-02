@@ -203,6 +203,10 @@ EOF
     index($0, anchor) { while ((getline line < blockfile) > 0) print line; close(blockfile) }
     { print }
   ' "$ACL_FILE" > "$tmp"
+  # mktemp creates 0600 and mv carries that mode onto the ACL file, which the
+  # broker (different non-root uid, read-only mount) then cannot read - it
+  # fails boot-time config validation on its next restart.
+  chmod 644 "$tmp"
   mv "$tmp" "$ACL_FILE"
   rm -f "$blockfile"
   info "ACL grant written for device ${device}"
@@ -217,6 +221,7 @@ remove_acl_grant() {
     skip && $0 ~ ("^%%<<end device " dev ">>") { skip=0; next }
     !skip { print }
   ' "$ACL_FILE" > "$tmp"
+  chmod 644 "$tmp"  # keep the ACL broker-readable (see write_acl_grant)
   mv "$tmp" "$ACL_FILE"
 }
 

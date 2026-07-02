@@ -2,10 +2,13 @@ package com.voltpilot.api.enrollment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -131,6 +134,37 @@ class AclGrantWriterTest {
 
         mounted.removeGrant(DEVICE);
         assertThat(Files.readString(aclFile)).doesNotContain(DEVICE.toString());
+    }
+
+    /**
+     * Regression for the prod boot-loop after PR #32: {@code createTempFile}
+     * creates the temp file 0600 and the atomic rename carries that mode onto
+     * acl.conf, so the broker (a DIFFERENT non-root uid on a read-only mount)
+     * fails boot-time config validation on its next restart
+     * ("failed_to_read_acl_file: Permission denied").
+     */
+    @Test
+    void grantWriteLeavesTheFileReadableForTheBrokerUser() throws Exception {
+        assumeTrue(posixFileSystem());
+        writer.writeGrant(TENANT, SITE, DEVICE);
+        assertThat(Files.getPosixFilePermissions(aclFile))
+                .contains(PosixFilePermission.GROUP_READ, PosixFilePermission.OTHERS_READ);
+    }
+
+    @Test
+    void fallbackInPlaceWriteRestoresBrokerReadability() throws Exception {
+        assumeTrue(posixFileSystem());
+        // The in-place rewrite inherits the existing file's mode; a prior 0600
+        // rename may have left it broker-unreadable, so it must be restored.
+        Files.setPosixFilePermissions(aclFile, PosixFilePermissions.fromString("rw-------"));
+        AclGrantWriter mounted = writerWithRefusedRename();
+        mounted.writeGrant(TENANT, SITE, DEVICE);
+        assertThat(Files.getPosixFilePermissions(aclFile))
+                .contains(PosixFilePermission.GROUP_READ, PosixFilePermission.OTHERS_READ);
+    }
+
+    private boolean posixFileSystem() {
+        return aclFile.getFileSystem().supportedFileAttributeViews().contains("posix");
     }
 
     @Test
