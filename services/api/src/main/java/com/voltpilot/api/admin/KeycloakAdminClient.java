@@ -242,7 +242,7 @@ public class KeycloakAdminClient {
                             props.getRealm(), userId)
                     .retrieve()
                     .toBodilessEntity();
-        } catch (RestClientResponseException ex) {
+        } catch (RuntimeException ex) {
             log.warn("Could not clear brute-force lockout for user {}: {}", userId, ex.getMessage());
         }
     }
