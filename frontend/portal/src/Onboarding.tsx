@@ -276,7 +276,7 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
  * left alone. The api canonicalizes the same way on claim.
  */
 export function normalizeDeviceIdInput(value: string): string {
-  return /^\s*vp/i.test(value) ? value.toUpperCase() : value;
+  return /^\s*vp-/i.test(value) ? value.toUpperCase() : value;
 }
 
 function DeviceStep({

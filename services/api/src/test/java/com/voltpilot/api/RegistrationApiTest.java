@@ -102,8 +102,11 @@ class RegistrationApiTest {
         // Low per-client cap so the rate-limit test stays fast. Its requests use
         // synthetic X-Forwarded-For addresses; the OTHER tests here register from
         // plain 127.0.0.1, which currently spends 3 of these 5 - keep headroom in
-        // mind when adding registrations to this class.
+        // mind when adding registrations to this class. trusted-proxies=1 makes
+        // the limiter honor those synthetic addresses (the test client plays the
+        // single trusted proxy); the production default ignores the header.
         registry.add("voltpilot.registration.rate-limit.per-client-max", () -> "5");
+        registry.add("voltpilot.registration.rate-limit.trusted-proxies", () -> "1");
     }
 
     @LocalServerPort

@@ -108,9 +108,35 @@ public class KeycloakAdminClient {
         }
 
         String userId = extractId(res.getHeaders().getLocation());
-        assignRealmRole(userId, props.getCustomerRole());
-        log.info("Provisioned customer user '{}' ({}) in tenant {}", username, userId, tenantId);
-        return getUser(userId);
+        try {
+            assignRealmRole(userId, props.getCustomerRole());
+            KeycloakUser user = getUser(userId);
+            log.info("Provisioned customer user '{}' ({}) in tenant {}", username, userId, tenantId);
+            return user;
+        } catch (RuntimeException ex) {
+            // All-or-nothing: a half-provisioned user (created but without the
+            // customer role) would strand the email - every retry hits 409 and
+            // only manual Keycloak surgery recovers it. Roll the creation back
+            // so the caller can simply retry.
+            bestEffortDeleteUser(userId);
+            throw ex;
+        }
+    }
+
+    /**
+     * Compensating delete for a partially provisioned user. Best-effort: if
+     * this fails too the original error still propagates, we just could not
+     * clean up.
+     */
+    private void bestEffortDeleteUser(String userId) {
+        try {
+            admin().delete().uri("/admin/realms/{realm}/users/{id}", props.getRealm(), userId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException cleanupEx) {
+            log.warn("Could not roll back partially provisioned user {}: {}", userId,
+                    cleanupEx.getMessage());
+        }
     }
 
     /** Assign a realm role to a user (idempotent from Keycloak's side). */

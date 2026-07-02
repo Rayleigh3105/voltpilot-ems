@@ -26,12 +26,16 @@ import org.springframework.stereotype.Component;
  *       attacker rotates addresses (or spoofs {@code X-Forwarded-For}).</li>
  * </ul>
  *
- * <p>The client address is the first {@code X-Forwarded-For} hop when present,
- * else the socket address. In production the api is reachable only through the
- * frontend nginx (which appends the real client to {@code X-Forwarded-For}), so
- * the header is trustworthy there; a spoofed header from a directly-reachable
- * api merely segregates the attacker's own buckets while the global cap still
- * bounds the total.
+ * <p>The client address comes from the proxy chain (the {@code X-Forwarded-For}
+ * entries followed by the socket address): the last {@code trusted-proxies}
+ * entries are our own proxies, and the entry right before them is the real
+ * client. Every proxy on the way APPENDS to the header, so any earlier entries
+ * are client-supplied and must never be trusted - trusting the first hop would
+ * let an attacker rotate buckets or exhaust a victim's budget with a spoofed
+ * header. With {@code trusted-proxies: 0} (the default, right for a
+ * directly-reachable dev api) the header is ignored entirely and the socket
+ * address is used; production (client -> external proxy -> frontend nginx ->
+ * api) sets 2.
  *
  * <p>Refused attempts consume no budget: the client's allowance recovers as its
  * oldest accepted attempts age out of the window. State is in-memory and
@@ -45,6 +49,7 @@ public class RegistrationRateLimiter {
     private final int perClientMax;
     private final int globalMax;
     private final Duration window;
+    private final int trustedProxies;
     private final Clock clock;
 
     /** Accepted-attempt timestamps per client key, oldest first. */
@@ -57,16 +62,18 @@ public class RegistrationRateLimiter {
             @Value("${voltpilot.registration.rate-limit.enabled:true}") boolean enabled,
             @Value("${voltpilot.registration.rate-limit.per-client-max:10}") int perClientMax,
             @Value("${voltpilot.registration.rate-limit.global-max:100}") int globalMax,
-            @Value("${voltpilot.registration.rate-limit.window:PT1H}") Duration window) {
-        this(enabled, perClientMax, globalMax, window, Clock.systemUTC());
+            @Value("${voltpilot.registration.rate-limit.window:PT1H}") Duration window,
+            @Value("${voltpilot.registration.rate-limit.trusted-proxies:0}") int trustedProxies) {
+        this(enabled, perClientMax, globalMax, window, trustedProxies, Clock.systemUTC());
     }
 
     RegistrationRateLimiter(boolean enabled, int perClientMax, int globalMax, Duration window,
-            Clock clock) {
+            int trustedProxies, Clock clock) {
         this.enabled = enabled;
         this.perClientMax = perClientMax;
         this.globalMax = globalMax;
         this.window = window;
+        this.trustedProxies = trustedProxies;
         this.clock = clock;
     }
 
@@ -94,13 +101,28 @@ public class RegistrationRateLimiter {
         return true;
     }
 
-    /** The bucket key for a request: first X-Forwarded-For hop, else the socket. */
-    public static String clientKey(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+    /**
+     * The bucket key for a request: the {@code trustedProxies}-from-the-right
+     * entry of the proxy chain (X-Forwarded-For hops + the socket address). Only
+     * the rightmost entries were appended by our own proxies; anything further
+     * left is client-supplied. If the header carries fewer hops than expected
+     * (a request that bypassed a proxy), the socket address is used.
+     */
+    public String clientKey(HttpServletRequest request) {
+        if (trustedProxies <= 0) {
+            return request.getRemoteAddr();
         }
-        return request.getRemoteAddr();
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded == null || forwarded.isBlank()) {
+            return request.getRemoteAddr();
+        }
+        String[] hops = forwarded.split(",");
+        int clientIndex = hops.length - trustedProxies;
+        if (clientIndex < 0) {
+            return request.getRemoteAddr();
+        }
+        String hop = hops[clientIndex].trim();
+        return hop.isEmpty() ? request.getRemoteAddr() : hop;
     }
 
     private static void prune(Deque<Instant> attempts, Instant cutoff) {

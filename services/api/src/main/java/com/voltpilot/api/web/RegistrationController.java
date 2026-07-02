@@ -30,9 +30,10 @@ import org.springframework.web.server.ResponseStatusException;
  * <p>The tenant row is created through the BYPASSRLS admin datasource (there is
  * no caller tenant yet), then the user is provisioned in Keycloak with the
  * {@code tenant_id} attribute + customer role - exactly like admin-provisioned
- * customers, so the same OIDC + RLS spine isolates them. If Keycloak refuses
- * (e.g. the email is already registered), the just-created tenant is deleted
- * again so no orphan accumulates.
+ * customers, so the same OIDC + RLS spine isolates them. If provisioning the
+ * login fails for ANY reason (Keycloak refuses, e.g. the email is already
+ * registered, or is unreachable), the just-created tenant is deleted again so
+ * no orphan accumulates.
  *
  * <p>The endpoint is deliberately unauthenticated (see SecurityConfig) and can
  * be disabled for closed platforms via {@code voltpilot.registration.enabled}.
@@ -63,7 +64,7 @@ public class RegistrationController {
     @PostMapping
     public ResponseEntity<RegistrationResponse> register(@Valid @RequestBody RegistrationRequest request,
             HttpServletRequest httpRequest) {
-        if (!rateLimiter.tryAcquire(RegistrationRateLimiter.clientKey(httpRequest))) {
+        if (!rateLimiter.tryAcquire(rateLimiter.clientKey(httpRequest))) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "Too many registration attempts, please try again later");
         }
@@ -74,13 +75,20 @@ public class RegistrationController {
             // The email is the login username; the account is enabled immediately.
             user = keycloak.createCustomerUser(tenant.id(), email, email,
                     null, null, request.password(), false);
-        } catch (KeycloakAdminException ex) {
-            // Compensate: never leave a tenant without its login behind.
+        } catch (RuntimeException ex) {
+            // Compensate: never leave a tenant without its login behind. This
+            // covers transport failures (Keycloak unreachable, timeouts) too,
+            // not only Keycloak's own refusals.
             tenants.deleteById(tenant.id());
-            HttpStatusCode status = HttpStatusCode.valueOf(
-                    ex.status() >= 400 && ex.status() < 600 ? ex.status() : 502);
-            throw new ResponseStatusException(status,
-                    ex.status() == 409 ? "An account with this email already exists" : ex.getMessage());
+            if (ex instanceof KeycloakAdminException kex) {
+                HttpStatusCode status = HttpStatusCode.valueOf(
+                        kex.status() >= 400 && kex.status() < 600 ? kex.status() : 502);
+                throw new ResponseStatusException(status,
+                        kex.status() == 409 ? "An account with this email already exists"
+                                : kex.getMessage());
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Registration is temporarily unavailable, please try again later", ex);
         }
         log.info("Self-registered tenant '{}' ({}) with user '{}'", tenant.name(), tenant.id(),
                 user.username());

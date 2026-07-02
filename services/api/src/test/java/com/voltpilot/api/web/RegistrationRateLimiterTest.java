@@ -41,7 +41,7 @@ class RegistrationRateLimiterTest {
 
     private RegistrationRateLimiter limiter(int perClientMax, int globalMax) {
         return new RegistrationRateLimiter(true, perClientMax, globalMax,
-                Duration.ofHours(1), clock);
+                Duration.ofHours(1), 0, clock);
     }
 
     @Test
@@ -93,21 +93,60 @@ class RegistrationRateLimiterTest {
     @Test
     void disabledLimiterAllowsEverything() {
         RegistrationRateLimiter limiter = new RegistrationRateLimiter(false, 1, 1,
-                Duration.ofHours(1), clock);
+                Duration.ofHours(1), 0, clock);
         for (int i = 0; i < 10; i++) {
             assertThat(limiter.tryAcquire("anyone")).isTrue();
         }
     }
 
+    private RegistrationRateLimiter limiterWithTrustedProxies(int trustedProxies) {
+        return new RegistrationRateLimiter(true, 10, 100, Duration.ofHours(1),
+                trustedProxies, clock);
+    }
+
     @Test
-    void clientKeyPrefersFirstForwardedHopOverSocketAddress() {
+    void clientKeyIgnoresForwardedHeaderWithoutTrustedProxies() {
+        RegistrationRateLimiter limiter = limiterWithTrustedProxies(0);
         MockHttpServletRequest direct = new MockHttpServletRequest();
         direct.setRemoteAddr("192.0.2.10");
-        assertThat(RegistrationRateLimiter.clientKey(direct)).isEqualTo("192.0.2.10");
+        assertThat(limiter.clientKey(direct)).isEqualTo("192.0.2.10");
 
+        // A spoofed header on a directly-reachable api must not pick the bucket.
+        MockHttpServletRequest spoofed = new MockHttpServletRequest();
+        spoofed.setRemoteAddr("192.0.2.10");
+        spoofed.addHeader("X-Forwarded-For", "203.0.113.99");
+        assertThat(limiter.clientKey(spoofed)).isEqualTo("192.0.2.10");
+    }
+
+    @Test
+    void clientKeyTakesTheTrustedProxiesFromTheRightHop() {
+        // Prod topology: client -> external proxy -> frontend nginx -> api.
+        // nginx is the socket peer; the header carries [.., real client, proxy].
+        RegistrationRateLimiter limiter = limiterWithTrustedProxies(2);
         MockHttpServletRequest proxied = new MockHttpServletRequest();
-        proxied.setRemoteAddr("172.18.0.5"); // the nginx container, same for everyone
-        proxied.addHeader("X-Forwarded-For", "198.51.100.23, 172.18.0.5");
-        assertThat(RegistrationRateLimiter.clientKey(proxied)).isEqualTo("198.51.100.23");
+        proxied.setRemoteAddr("172.18.0.5");
+        proxied.addHeader("X-Forwarded-For", "198.51.100.23, 203.0.113.4");
+        assertThat(limiter.clientKey(proxied)).isEqualTo("198.51.100.23");
+
+        // Every proxy APPENDS, so attacker-supplied leading entries are ignored.
+        MockHttpServletRequest crafted = new MockHttpServletRequest();
+        crafted.setRemoteAddr("172.18.0.5");
+        crafted.addHeader("X-Forwarded-For", "10.0.0.1, 1.2.3.4, 198.51.100.23, 203.0.113.4");
+        assertThat(limiter.clientKey(crafted)).isEqualTo("198.51.100.23");
+    }
+
+    @Test
+    void clientKeyFallsBackToSocketOnShortOrMissingChains() {
+        RegistrationRateLimiter limiter = limiterWithTrustedProxies(2);
+
+        MockHttpServletRequest noHeader = new MockHttpServletRequest();
+        noHeader.setRemoteAddr("192.0.2.10");
+        assertThat(limiter.clientKey(noHeader)).isEqualTo("192.0.2.10");
+
+        // Fewer hops than trusted proxies: the request bypassed a proxy layer.
+        MockHttpServletRequest shortChain = new MockHttpServletRequest();
+        shortChain.setRemoteAddr("192.0.2.10");
+        shortChain.addHeader("X-Forwarded-For", "203.0.113.4");
+        assertThat(limiter.clientKey(shortChain)).isEqualTo("192.0.2.10");
     }
 }
