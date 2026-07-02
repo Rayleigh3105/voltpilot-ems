@@ -135,12 +135,15 @@ jobs:
             build_args: ""
           # The SPA bakes its config at build time. VITE_API_BASE empty => the SPA
           # calls same-origin /api/... (nginx proxies it); Keycloak is served under
-          # https://${DOMAIN}/auth behind the external proxy.
+          # https://${DOMAIN}/auth behind the external proxy. VITE_KEYCLOAK_URL is
+          # appended in the "Compose image build args" step below: the secrets
+          # context is NOT available inside strategy.matrix (Forgejo resolves the
+          # matrix before secrets exist and rejects the whole job), so
+          # ${{ secrets.DOMAIN }} must never appear here.
           - component: frontend
             context: ./frontend/portal
             build_args: |
               VITE_API_BASE=
-              VITE_KEYCLOAK_URL=https://${{ secrets.DOMAIN }}/auth
               VITE_KEYCLOAK_REALM=voltpilot
               VITE_KEYCLOAK_CLIENT_ID=voltpilot-frontend
 
@@ -158,12 +161,31 @@ jobs:
           username: ${{ secrets.FORGEJO_USERNAME }}
           password: ${{ secrets.FORGEJO_PASSWORD }}
 
+      # Secrets are valid in steps but not in strategy.matrix, so the final
+      # build-args list is composed here: the matrix's non-secret args plus, for
+      # the frontend only, the secret-derived VITE_KEYCLOAK_URL line.
+      - name: Compose image build args
+        id: args
+        env:
+          COMPONENT: ${{ matrix.component }}
+          MATRIX_BUILD_ARGS: ${{ matrix.build_args }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+        run: |
+          {
+            echo 'build_args<<VP_BUILD_ARGS_EOF'
+            printf '%s\n' "$MATRIX_BUILD_ARGS"
+            if [ "$COMPONENT" = "frontend" ]; then
+              echo "VITE_KEYCLOAK_URL=https://${DOMAIN}/auth"
+            fi
+            echo 'VP_BUILD_ARGS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build & Push Image
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile || format('{0}/Dockerfile', matrix.context) }}
-          build-args: ${{ matrix.build_args }}
+          build-args: ${{ steps.args.outputs.build_args }}
           platforms: linux/amd64
           push: true
           cache-from: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache
