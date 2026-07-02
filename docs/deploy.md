@@ -207,6 +207,11 @@ openssl rand -hex 16      # EMQX_NODE_COOKIE
 Set `DOMAIN` and `APP_PORT` to match your reverse-proxy config.
 Leave `SPRING_PROFILES_ACTIVE=local` to seed the two demo tenants + demo users for a first look; set it **blank** for a clean production database (and remove the demo users from the realm - see below).
 
+**Optional: ENTSO-E as the day-ahead price source.**
+The `market-data` collector defaults to the keyless energy-charts.info API (`MARKET_DATA_SOURCE=energy-charts`), so prices flow with no secret.
+To fetch from the official ENTSO-E Transparency Platform instead, set **both** `MARKET_DATA_SOURCE=entsoe` and `ENTSOE_SECURITY_TOKEN=<your token>` in the VPS `.env`, then recreate the collector: `docker compose -f docker-compose.prod.yml up -d market-data`.
+Setting only the token has no effect - the source stays energy-charts until `MARKET_DATA_SOURCE` is flipped; switching back is the same edit in reverse, no code change or image rebuild either way.
+
 **Optional: Marktstammdatenregister (MaStR) credentials.**
 `MASTR_API_KEY` and `MASTR_MARKTAKTEUR_NUMMER` may stay blank: the portal's "Anlage verknüpfen" step then uses the keyless public MaStR JSON backend, which is fine to launch with.
 To promote lookups to the official BNetzA SOAP webservice, do the one-time free registration (MaStR account -> register the company as Marktakteur -> create a **Webdienstnutzer**, which yields the Webdienst-Schlüssel), fill both variables and `docker compose up -d api` - the api picks the source per config, no code change or image rebuild.

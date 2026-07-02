@@ -394,12 +394,13 @@ services:
       start_period: 60s
 
   # ---------------------------------------------------------------------------
-  # Market-data collector: ENTSO-E day-ahead prices -> day_ahead_prices. The
-  # image's one-shot `fetch --persist` is wrapped in a daily loop so it behaves
-  # as a self-contained collector on this single VPS (ENTSO-E publishes the next
-  # day ~12:45 market time). Writes market-wide, non-RLS rows over the POSTGRES_*
-  # superuser connection. Needs ENTSOE_SECURITY_TOKEN to fetch (captain-provided;
-  # until it is set the loop just logs and retries next cycle).
+  # Market-data collector: day-ahead spot prices -> day_ahead_prices. Runs the
+  # CLI's `serve --persist` mode like the dev stack: refresh today+tomorrow on
+  # startup, then every 6h (MARKET_DATA_REFRESH_SECONDS). The default source is
+  # the KEYLESS energy-charts.info API (Fraunhofer ISE); set
+  # MARKET_DATA_SOURCE=entsoe (plus ENTSOE_SECURITY_TOKEN) to fetch from the
+  # ENTSO-E Transparency Platform instead - see docs/deploy.md. Writes
+  # market-wide, non-RLS rows over the POSTGRES_* superuser connection.
   # ---------------------------------------------------------------------------
   market-data:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/market-data:${IMAGE_TAG:-latest}
@@ -409,18 +410,47 @@ services:
     depends_on:
       timescaledb:
         condition: service_healthy
+    command: ["serve", "--persist"]
     environment:
       POSTGRES_HOST: timescaledb
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # energy-charts (keyless) by default; `entsoe` needs the token below.
+      MARKET_DATA_SOURCE: ${MARKET_DATA_SOURCE:-energy-charts}
       MARKET_DATA_ZONE: ${MARKET_DATA_ZONE:-DE-LU}
+      MARKET_DATA_REFRESH_SECONDS: ${MARKET_DATA_REFRESH_SECONDS:-21600}
       ENTSOE_SECURITY_TOKEN: ${ENTSOE_SECURITY_TOKEN:-}
       ENTSOE_BASE_URL: ${ENTSOE_BASE_URL:-https://web-api.tp.entsoe.eu/api}
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - "while true; do python -m voltpilot_market_data fetch --persist || echo 'market-data: fetch failed, retrying next cycle'; sleep 86400; done"
+
+  # ---------------------------------------------------------------------------
+  # Weather collector: hourly forecast (Open-Meteo, keyless, EU-hosted) per
+  # site's lat/lon -> weather_forecast (RLS-scoped; rows tenant-stamped from the
+  # owning site). `serve --persist` refreshes on startup then every 3h, same as
+  # the dev stack. Reuses the forecast image (same package, different
+  # entrypoint). Depends on api: its Flyway owns weather_forecast + the grants.
+  # ---------------------------------------------------------------------------
+  weather-collector:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/forecast:${IMAGE_TAG:-latest}
+    build:
+      context: ./services/forecast
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "voltpilot_forecast.weather_collect"]
+    command: ["serve", "--persist"]
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      WEATHER_FORECAST_DAYS: ${WEATHER_FORECAST_DAYS:-3}
+      WEATHER_REFRESH_SECONDS: ${WEATHER_REFRESH_SECONDS:-10800}
 
   # ---------------------------------------------------------------------------
   # Forecast collector (shadow-mode model registry, docs/forecasting.md): every
