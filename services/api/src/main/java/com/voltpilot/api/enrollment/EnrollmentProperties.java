@@ -12,7 +12,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * host as part of the PKI trust boundary (see docs/security-mqtt.md).
  * {@code aclFile} is the EMQX authorization file that receives the per-device
  * grant on issuance (blank = skip grant writing, e.g. when an operator manages
- * grants out of band). {@code mqttHost}/{@code mqttPort} are the broker
+ * grants out of band); in a container, bind-mount the file's DIRECTORY, never
+ * the file itself - the grant writer replaces the file atomically via rename,
+ * which fails with EBUSY on a single-file mountpoint (see AclGrantWriter).
+ * {@code mqttHost}/{@code mqttPort} are the broker
  * connection params handed to the device together with its certificate.
  */
 @ConfigurationProperties(prefix = "voltpilot.enrollment")

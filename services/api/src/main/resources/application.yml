@@ -104,7 +104,9 @@ voltpilot:
   # claimed, the api signs the CSR with the device CA (ca-dir = the working dir
   # tools/pki/voltpilot-ca.sh init-ca creates; mount it read-write) and appends
   # the per-device broker ACL grant (acl-file; blank = grants managed out of
-  # band). Off by default - only deployments that stage the CA enable it (see
+  # band; in a container, bind-mount the file's DIRECTORY, never the file - a
+  # single-file mount breaks the atomic replace with EBUSY, see AclGrantWriter).
+  # Off by default - only deployments that stage the CA enable it (see
   # docker-compose.prod.yml). mqtt-host/-port are handed to the device together
   # with its certificate. The rate limiter guards the unauthenticated
   # endpoints; defaults accommodate legitimate certificate polling (the

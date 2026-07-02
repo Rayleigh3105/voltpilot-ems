@@ -14,7 +14,7 @@ SAME machinery EMQX uses:
 
   (B) ACL policy - a faithful re-implementation of EMQX's file-authorizer
       semantics (top-down, first-match-wins, MQTT topic-filter matching)
-      evaluated against the real infra/mqtt/acl.conf, proving:
+      evaluated against the real infra/mqtt/acl/acl.conf, proving:
         B1 a device may publish its own telemetry/status,
         B2 a device may subscribe its own schedule/command/config,
         B3 a device is DENIED publishing another tenant's telemetry (cross-tenant),
@@ -43,7 +43,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "pki" / "voltpilot-ca.sh"
-ACL = REPO / "infra" / "mqtt" / "acl.conf"
+ACL = REPO / "infra" / "mqtt" / "acl" / "acl.conf"
 
 TENANT_A = "00000000-0000-0000-0000-000000000001"
 SITE_A = "00000000-0000-0000-0000-000000000002"
@@ -287,7 +287,7 @@ def evaluate(rules: list[Rule], client: dict, action: str, topic: str) -> str:
 
 
 def verify_acl() -> None:
-    print("(B) ACL policy (EMQX file-authorizer semantics on infra/mqtt/acl.conf):")
+    print("(B) ACL policy (EMQX file-authorizer semantics on infra/mqtt/acl/acl.conf):")
     rules = parse_acl(ACL.read_text())
 
     dev = {"username": DEVICE_A, "clientid": DEVICE_A, "ipaddr": "203.0.113.9"}

@@ -39,6 +39,7 @@ class AclGrantWriterTest {
                 {allow, all}.
                 """, StandardCharsets.UTF_8);
         writer = new AclGrantWriter(aclFile);
+        originalInode = Files.getAttribute(aclFile, "unix:ino");
     }
 
     @Test
@@ -90,6 +91,67 @@ class AclGrantWriterTest {
         assertThatThrownBy(() -> new AclGrantWriter(noAnchor).writeGrant(TENANT, SITE, DEVICE))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("anchor");
+    }
+
+    /**
+     * Regression for the prod EBUSY failure: with the ACL file bind-mounted as
+     * a SINGLE FILE into the container, rename(tmp -> target) fails with
+     * {@code FileSystemException} ("Device or resource busy") because the
+     * target is a mountpoint. A mountpoint cannot be fabricated in a unit
+     * test, so the rename seam is forced to fail the way the kernel does; the
+     * writer must fall back to the in-place rewrite instead of failing the
+     * whole certificate issuance.
+     */
+    @Test
+    void fallsBackToInPlaceRewriteWhenTheAtomicRenameIsRefused() throws Exception {
+        AclGrantWriter mounted = writerWithRefusedRename();
+        mounted.writeGrant(TENANT, SITE, DEVICE);
+
+        Object inodeAfter = Files.getAttribute(aclFile, "unix:ino");
+        String content = Files.readString(aclFile);
+        assertThat(content).contains("%%<<device " + DEVICE + " tenant " + TENANT + " site " + SITE + ">>");
+        // In-place: the write went through the ORIGINAL inode - on a single-file
+        // bind mount that is the only write the broker's view ever sees.
+        assertThat(inodeAfter).isEqualTo(originalInode);
+        // The temp file of the failed rename does not leak into the ACL dir.
+        try (var files = Files.list(dir)) {
+            assertThat(files.filter(p -> p.getFileName().toString().endsWith(".tmp"))).isEmpty();
+        }
+    }
+
+    @Test
+    void fallbackRewriteProducesTheSameContentAsTheRenamePath() throws Exception {
+        writer.writeGrant(TENANT, SITE, DEVICE);
+        String renamed = Files.readString(aclFile);
+
+        setUp(); // fresh base file
+        AclGrantWriter mounted = writerWithRefusedRename();
+        mounted.writeGrant(TENANT, SITE, DEVICE);
+        assertThat(Files.readString(aclFile)).isEqualTo(renamed);
+
+        mounted.removeGrant(DEVICE);
+        assertThat(Files.readString(aclFile)).doesNotContain(DEVICE.toString());
+    }
+
+    @Test
+    void normalPathStaysAtomicByReplacingTheFile() throws Exception {
+        writer.writeGrant(TENANT, SITE, DEVICE);
+        // The rename path swaps in the temp file: a new inode replaces the old
+        // one - the property that makes a half-written broker read impossible.
+        assertThat(Files.getAttribute(aclFile, "unix:ino")).isNotEqualTo(originalInode);
+    }
+
+    private Object originalInode;
+
+    /** The writer as it behaves on a single-file bind mount: rename refused with EBUSY. */
+    private AclGrantWriter writerWithRefusedRename() {
+        return new AclGrantWriter(aclFile) {
+            @Override
+            void atomicMove(Path tmp, Path target) throws java.io.IOException {
+                throw new java.nio.file.FileSystemException(tmp.toString(), target.toString(),
+                        "Device or resource busy");
+            }
+        };
     }
 
     private static int countOccurrences(String haystack, String needle) {

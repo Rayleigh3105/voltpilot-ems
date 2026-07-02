@@ -94,7 +94,7 @@ cat <<EOF
       device-ca.crt              CA to verify the broker
 
  Reload broker authz so the new ACL grant applies:
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+   ./tools/pki/reload-broker-authz.sh
  Then follow docs/connect-a-device.md for the Node-RED MQTT-out config.
 ============================================================================
 EOF

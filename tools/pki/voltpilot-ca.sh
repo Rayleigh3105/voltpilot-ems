@@ -35,8 +35,10 @@ SERVER_DIR="${VP_PKI_OUT}/server"
 
 # ACL file that the per-device grants are written into. Defaults to the
 # committed base ACL so a local run is self-contained; point it at your
-# deployed copy (the file mounted into EMQX) in production via --acl / env.
-ACL_FILE="${VP_ACL_FILE:-${SCRIPT_DIR}/../../infra/mqtt/acl.conf}"
+# deployed copy (the acl/ dir mounted into EMQX) in production via --acl / env.
+# Apply changes with tools/pki/reload-broker-authz.sh (a running broker does
+# not re-read the file on its own).
+ACL_FILE="${VP_ACL_FILE:-${SCRIPT_DIR}/../../infra/mqtt/acl/acl.conf}"
 
 UUID_RE='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
 
@@ -165,7 +167,7 @@ device bundle written to ${dir}/
   device.key      client private key  (KEEP SECRET, ship to the device only)
   device-ca.crt   CA cert to verify the broker (device trusts this)
 ACL grant added to ${ACL_FILE} - reload EMQX authz to apply:
-  docker compose -f docker-compose.yml -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+  ./tools/pki/reload-broker-authz.sh
 EOF
 }
 
@@ -241,7 +243,7 @@ cmd_revoke() {
   cmd_gen_crl
   cat >&2 <<EOF
 device ${device} revoked. Apply on the broker:
-  - reload ACL:  emqx ctl conf reload   (default-deny cuts the device off immediately)
+  - reload ACL:  ./tools/pki/reload-broker-authz.sh   (default-deny cuts the device off immediately)
   - refresh CRL: copy ${VP_PKI_CA_DIR}/crl.pem to the broker and, if CRL check is
     enabled, reload TLS so the cert is rejected at the handshake.
 EOF

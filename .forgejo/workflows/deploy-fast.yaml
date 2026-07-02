@@ -114,7 +114,7 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_PASSWORD }}
-          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl.conf,deploy/keycloak/themes/voltpilot/**"
+          source: "docker-compose.prod.yml,infra/prod/**,infra/mqtt/acl/acl.conf,tools/pki/merge-acl-grants.sh,tools/pki/reload-broker-authz.sh,deploy/keycloak/themes/voltpilot/**"
           target: /tmp/voltpilot-deploy
           overwrite: true
 
@@ -142,10 +142,20 @@ jobs:
             # `sudo -S` with the password on stdin, as before.
             priv() { if [ "$(id -u)" -eq 0 ]; then "$@"; else printf '%s\n' "$DEPLOY_PASSWORD" | sudo -S "$@"; fi; }
 
-            priv mkdir -p "$DEPLOY_DIR/infra/prod" "$DEPLOY_DIR/infra/mqtt"
+            priv mkdir -p "$DEPLOY_DIR/infra/prod" "$DEPLOY_DIR/infra/mqtt/acl" "$DEPLOY_DIR/tools/pki"
             priv cp /tmp/voltpilot-deploy/docker-compose.prod.yml "$DEPLOY_DIR/docker-compose.yml"
             priv cp -r /tmp/voltpilot-deploy/infra/prod/. "$DEPLOY_DIR/infra/prod/"
-            priv cp /tmp/voltpilot-deploy/infra/mqtt/acl.conf "$DEPLOY_DIR/infra/mqtt/acl.conf"
+            priv cp /tmp/voltpilot-deploy/tools/pki/merge-acl-grants.sh /tmp/voltpilot-deploy/tools/pki/reload-broker-authz.sh "$DEPLOY_DIR/tools/pki/"
+            # MQTT ACL: MERGE, never overwrite - the grants between the anchors
+            # are runtime state (api enrollment issuance / voltpilot-ca.sh) and
+            # a plain copy would revoke every enrolled device. Deploys before
+            # the acl/ directory mount kept the file one level up - migrate its
+            # grants on the first run.
+            DEPLOYED_ACL="$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
+            [ -f "$DEPLOYED_ACL" ] || DEPLOYED_ACL="$DEPLOY_DIR/infra/mqtt/acl.conf"
+            priv sh "$DEPLOY_DIR/tools/pki/merge-acl-grants.sh" \
+              /tmp/voltpilot-deploy/infra/mqtt/acl/acl.conf "$DEPLOYED_ACL" /tmp/voltpilot-deploy/acl.merged
+            priv cp /tmp/voltpilot-deploy/acl.merged "$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
             # VoltPilot Keycloak login theme to the compose bind-mount path.
             priv mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
             priv rm -rf "$DEPLOY_DIR/deploy/keycloak/themes/voltpilot"
@@ -161,4 +171,10 @@ jobs:
             # Theme + gzip caches live on the container FS and survive a plain
             # restart - recreate so theme changes actually reach browsers.
             docker compose up -d --force-recreate keycloak
+            # Make ACL changes effective: the file authorizer compiles its rules
+            # at source init and a running broker never re-reads acl.conf on its
+            # own (emqx ctl conf reload does NOT do it - verified on 5.8.3).
+            # Non-fatal: a still-booting broker reads the fresh file anyway.
+            EMQX_EXEC="docker compose exec -T emqx" sh tools/pki/reload-broker-authz.sh \
+              || echo "warn: broker authz reload failed - ACL changes apply at the next broker (re)start"
             docker image prune -f

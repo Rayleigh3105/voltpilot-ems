@@ -112,7 +112,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile edge u
 #    tools/pki/out/devices/<device_id>/{device.crt,device.key,device-ca.crt}
 
 # Reload the broker so the new per-device ACL grant applies.
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+./tools/pki/reload-broker-authz.sh
 ```
 
 > Prefer to skip the portal? `./tools/pki/voltpilot-ca.sh issue --tenant <t> --site <s> --device <d>` issues a cert for IDs you already own (use the demo seed IDs to land in the `demo` view). Reload the broker afterwards the same way.

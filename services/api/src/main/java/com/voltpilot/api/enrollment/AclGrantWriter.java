@@ -1,13 +1,19 @@
 package com.voltpilot.api.enrollment;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Writes the per-device EMQX ACL grant on certificate issuance - the Java twin
@@ -21,9 +27,21 @@ import java.util.UUID;
  * the catch-all deny rules); re-issuing replaces the device's existing block
  * (idempotent). The rewrite is atomic (temp file + move) so the broker never
  * reads a half-written file. The broker applies changes on its next authz
- * reload ({@code emqx ctl conf reload} - see docs/deploy.md).
+ * reload ({@code tools/pki/reload-broker-authz.sh} - see docs/deploy.md).
+ *
+ * <p><strong>Deployment constraint:</strong> the ACL file's DIRECTORY must be
+ * bind-mounted into this container, never the file alone. A single-file bind
+ * mount makes the target a mountpoint, so the atomic rename fails with EBUSY
+ * ("Device or resource busy") - and even where a replace succeeds, the broker's
+ * own single-file mount would stay pinned to the replaced inode and never see
+ * updates. When the rename is refused anyway (a misconfigured mount), the
+ * writer degrades to a NON-atomic in-place rewrite with a loud warning: on a
+ * single-file mount that is the only write that propagates, and a torn read is
+ * only possible during the broker's explicit authz reload.
  */
 class AclGrantWriter {
+
+    private static final Logger log = LoggerFactory.getLogger(AclGrantWriter.class);
 
     static final String END_ANCHOR = "%%<<END GENERATED DEVICE GRANTS>>";
 
@@ -33,7 +51,7 @@ class AclGrantWriter {
         this.aclFile = aclFile;
     }
 
-    void writeGrant(UUID tenantId, UUID siteId, UUID deviceId) {
+    synchronized void writeGrant(UUID tenantId, UUID siteId, UUID deviceId) {
         try {
             List<String> lines = new ArrayList<>(Files.readAllLines(aclFile, StandardCharsets.UTF_8));
             removeBlock(lines, deviceId);
@@ -50,7 +68,7 @@ class AclGrantWriter {
      * Removes a device's grant block (the unclaim counterpart: an ungranted
      * device_id falls into the ACL's default-deny). No-op when absent.
      */
-    void removeGrant(UUID deviceId) {
+    synchronized void removeGrant(UUID deviceId) {
         try {
             List<String> lines = new ArrayList<>(Files.readAllLines(aclFile, StandardCharsets.UTF_8));
             removeBlock(lines, deviceId);
@@ -105,8 +123,47 @@ class AclGrantWriter {
 
     private void writeAtomically(List<String> lines) throws IOException {
         Path tmp = Files.createTempFile(aclFile.toAbsolutePath().getParent(), "acl", ".tmp");
-        Files.write(tmp, lines, StandardCharsets.UTF_8);
-        Files.move(tmp, aclFile, StandardCopyOption.REPLACE_EXISTING,
+        try {
+            Files.write(tmp, lines, StandardCharsets.UTF_8);
+            try {
+                atomicMove(tmp, aclFile);
+            } catch (FileSystemException e) {
+                // rename() refused - the classic cause is the target being a
+                // mountpoint (single-file bind mount -> EBUSY). Degrade to the
+                // in-place rewrite: non-atomic, but on a single-file mount it
+                // is the only write the broker's view of the file ever sees.
+                log.warn("Atomic replace of {} failed ({}) - falling back to a non-atomic "
+                        + "in-place rewrite. Mount the ACL file's directory into this "
+                        + "container instead of the file itself (see docker-compose.prod.yml).",
+                        aclFile, e.getMessage());
+                writeInPlace(lines);
+            }
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+
+    /** Seam for tests: the rename that cannot be provoked to fail without a mountpoint. */
+    void atomicMove(Path tmp, Path target) throws IOException {
+        Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING,
                 StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /**
+     * Truncate-and-rewrite the ACL file through its existing inode, fsynced.
+     * NOT atomic - a concurrent reader can observe a truncated file - but it
+     * propagates through a single-file bind mount, which pins that inode.
+     */
+    private void writeInPlace(List<String> lines) throws IOException {
+        byte[] content = (String.join(System.lineSeparator(), lines) + System.lineSeparator())
+                .getBytes(StandardCharsets.UTF_8);
+        try (FileChannel channel = FileChannel.open(aclFile, StandardOpenOption.WRITE,
+                StandardOpenOption.TRUNCATE_EXISTING)) {
+            ByteBuffer buffer = ByteBuffer.wrap(content);
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
+            channel.force(true);
+        }
     }
 }

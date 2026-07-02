@@ -98,13 +98,13 @@ Certs are issued by the device-CA tool. On the server that holds the CA:
   --device 00000000-0000-0000-0000-000000000003
 ```
 
-This writes the bundle to `tools/pki/out/devices/<device_id>/` and appends an ACL grant to `infra/mqtt/acl.conf` binding that cert to exactly its own topics.
+This writes the bundle to `tools/pki/out/devices/<device_id>/` and appends an ACL grant to `infra/mqtt/acl/acl.conf` binding that cert to exactly its own topics.
 Ship `device.crt`, `device.key` and `device-ca.crt` to the device over a secure channel (the **private key never leaves your control except onto that one device**).
 
 Reload the broker authorization so the new grant takes effect:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+./tools/pki/reload-broker-authz.sh
 ```
 
 ## 2. Broker connection params
@@ -202,7 +202,7 @@ To do the DB claim and the cert in one step, use the helper (it reuses the porta
 
 ```bash
 ./tools/pki/voltpilot-ca.sh revoke --device 00000000-0000-0000-0000-000000000003
-docker compose -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+./tools/pki/reload-broker-authz.sh
 ```
 
 Revoke removes the device's ACL grant (an ungranted device_id is denied every topic by default) **and** adds the cert to the CRL. If you enable CRL checking on the listener, the cert is also rejected at the TLS handshake.

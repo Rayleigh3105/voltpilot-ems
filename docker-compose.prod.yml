@@ -204,7 +204,7 @@ services:
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__FAIL_IF_NO_PEER_CERT: "true"
       # Bind the cert identity: MQTT username := cert CN (device_id), and the
       # clientid := CN too, so a device cannot spoof either. The ACL grants are
-      # keyed on this username (see infra/mqtt/acl.conf).
+      # keyed on this username (see infra/mqtt/acl/acl.conf).
       # NOTE: in EMQX 5.x this is the GLOBAL mqtt.* setting, NOT a listener
       # field - the listener-scoped env form is rejected as unknown_env_vars
       # and silently ignored (verified on 5.8.3). Global is safe: a connection
@@ -213,7 +213,13 @@ services:
       EMQX_MQTT__PEER_CERT_AS_USERNAME: cn
       EMQX_MQTT__PEER_CERT_AS_CLIENTID: cn
       # --- authorization ----------------------------------------------------
-      # The file authorizer (enabled by default) reads our mounted acl.conf.
+      # The file authorizer reads acl.conf from the DIRECTORY mount below (the
+      # default path /opt/emqx/etc/acl.conf cannot be used: a directory cannot
+      # be mounted onto a file path, and a single-file bind mount pins the old
+      # inode - the api's atomic grant rewrite would never become visible here).
+      # The env value is parsed as HOCON, replacing the default sources array
+      # (verified on 5.8.3 - no unknown_env_vars complaint).
+      EMQX_AUTHORIZATION__SOURCES: '[{type = file, enable = true, path = "/opt/emqx/etc/acl/acl.conf"}]'
       # Deny anything no rule matches (the acl.conf still ends with an explicit
       # allow for anonymous internal clients on the firewalled 1883).
       EMQX_AUTHORIZATION__NO_MATCH: deny
@@ -226,8 +232,13 @@ services:
       - ./infra/mqtt/certs/server.crt:/opt/emqx/etc/certs/server.crt:ro
       - ./infra/mqtt/certs/server.key:/opt/emqx/etc/certs/server.key:ro
       - ./infra/mqtt/certs/device-ca.crt:/opt/emqx/etc/certs/device-ca.crt:ro
-      # Per-tenant/-device ACL (committed; grants appended by the cert tool).
-      - ./infra/mqtt/acl.conf:/opt/emqx/etc/acl.conf:ro
+      # Per-tenant/-device ACL (committed; grants appended by the cert tool and
+      # the api's enrollment issuance). Mounted as a DIRECTORY on purpose: the
+      # api replaces acl.conf atomically (tmp + rename), and only a directory
+      # mount lets this container see the renamed-in file - a single-file bind
+      # mount would stay pinned to the original inode forever. Grants apply on
+      # the next authz reload (tools/pki/reload-broker-authz.sh).
+      - ./infra/mqtt/acl:/opt/emqx/etc/acl:ro
       # Optional CRL for cryptographic revocation (enable CRL check in EMQX to use).
       - ./infra/mqtt/certs/crl.pem:/opt/emqx/etc/certs/crl.pem:ro
       - emqx-data:/opt/emqx/data
@@ -325,7 +336,7 @@ services:
       # staged on this host (issuance then answers 503, everything else works).
       VOLTPILOT_ENROLLMENT_ENABLED: ${VOLTPILOT_ENROLLMENT_ENABLED:-true}
       VP_ENROLLMENT_CA_DIR: /pki/ca
-      VP_ENROLLMENT_ACL_FILE: /pki/acl.conf
+      VP_ENROLLMENT_ACL_FILE: /pki/acl/acl.conf
       # What enrolled devices are told to dial: the dedicated MQTT domain
       # (plain DNS A record to this VM - see docs/deploy.md), port 8883.
       VP_ENROLLMENT_MQTT_HOST: ${MQTT_DOMAIN:-mqtt.${DOMAIN}}
@@ -337,11 +348,15 @@ services:
       # Device-CA working dir (created by tools/pki/voltpilot-ca.sh init-ca in
       # this clone). READ-WRITE on purpose: issuance advances the CA's
       # serial/index.txt database, shared with the shell tool so revoke/list/
-      # gen-crl keep working over api-issued certs. The ACL file is the same
-      # one EMQX mounts read-only - grants the api appends apply on the next
-      # `emqx ctl conf reload` (see docs/deploy.md).
+      # gen-crl keep working over api-issued certs. The ACL lives in the same
+      # directory EMQX mounts read-only - grants the api writes apply on the
+      # next authz reload (tools/pki/reload-broker-authz.sh, see docs/deploy.md).
+      # Both are DIRECTORY mounts on purpose: the grant writer replaces
+      # acl.conf atomically via rename, which fails with EBUSY when the target
+      # is a single-file bind mount (and such a mount would pin EMQX to the
+      # replaced inode anyway). Never mount acl.conf as a single file.
       - ${VP_PKI_CA_DIR:-./tools/pki/out/ca}:/pki/ca
-      - ./infra/mqtt/acl.conf:/pki/acl.conf
+      - ./infra/mqtt/acl:/pki/acl
     healthcheck:
       test:
         - "CMD"

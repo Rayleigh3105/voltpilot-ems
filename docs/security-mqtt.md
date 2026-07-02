@@ -37,7 +37,7 @@ Because `peer_cert_as_username = cn`, the broker sees `username = device_id`, wh
 
 ## Per-tenant / per-device ACL
 
-`infra/mqtt/acl.conf` (mounted into EMQX by the production compose) is evaluated top-down, first match wins:
+`infra/mqtt/acl/acl.conf` (mounted into EMQX by the production compose) is evaluated top-down, first match wins:
 
 1. `dashboard` may watch `$SYS/#`.
 2. The internal backbone user **`vp-internal`** (ingest/writer on the trusted 1883) gets full `ems/#` - ingest subscribes to `ems/+/+/+/telemetry` across tenants.
@@ -52,7 +52,9 @@ Because `peer_cert_as_username = cn`, the broker sees `username = device_id`, wh
 
 **Result:** a device can talk on its own `ems/{tenant}/{site}/{device}/…` path and nothing else. One site cannot publish as another - a cross-tenant publish falls through to default-deny.
 
-The grants are managed by `tools/pki/voltpilot-ca.sh` (`issue` inserts a block, `revoke` removes it). Apply changes with `emqx ctl conf reload`.
+The grants are managed by `tools/pki/voltpilot-ca.sh` (`issue` inserts a block, `revoke` removes it) and by the api's enrollment issuance.
+Apply changes with `tools/pki/reload-broker-authz.sh` - a running broker never re-reads the file on its own, and `emqx ctl conf reload` does **not** re-initialize the file authorizer (verified on 5.8.3; the script forces the re-init via `emqx_authz:update/2`).
+The ACL lives in its own directory (`infra/mqtt/acl/`) which is mounted **as a directory** into both EMQX (read-only) and the api (read-write): the api replaces `acl.conf` atomically via rename, which fails with EBUSY when the target is a single-file bind mount - and such a mount would pin the broker's view to the replaced inode anyway. Never mount `acl.conf` as a single file.
 
 ## CA & certificate issuance
 
@@ -79,7 +81,7 @@ Mitigations: the signing code path is one small audited class (`services/api` `e
 
 Two independent cut-offs (architecture §6.6):
 
-1. **ACL denylist (immediate):** `revoke` removes the device's grant; the default-deny rule then blocks it on the next `emqx ctl conf reload` - no restart, no handshake change.
+1. **ACL denylist (immediate):** `revoke` removes the device's grant; the default-deny rule then blocks it on the next `tools/pki/reload-broker-authz.sh` - no restart, no handshake change.
 2. **CRL (cryptographic backstop):** `revoke` also marks the cert on the CA CRL (`out/ca/crl.pem`). Copy it to `infra/mqtt/certs/crl.pem`; if you enable CRL checking on the listener (`ssl_options.enable_crl_check = true` + a served CRL) the revoked cert is rejected at the TLS handshake itself.
 
 ## Run the secure broker (single self-hosted host)
@@ -113,7 +115,7 @@ docker compose -f docker-compose.prod.yml up -d
 - [ ] **Cert identity is bound**: `peer_cert_as_username/clientid = cn` - devices cannot self-assign identity.
 - [ ] **ACL default-deny for devices**: ungranted UUID usernames get nothing (`no_match = deny` + the UUID deny rule).
 - [ ] **Rotate certs**: default validity 825 days; re-issue before expiry. Rotating = `issue` a fresh cert (same IDs), ship it, reload.
-- [ ] **Revocation ready**: `revoke` + `emqx ctl conf reload` on any suspected compromise; keep the CRL current.
+- [ ] **Revocation ready**: `revoke` + `tools/pki/reload-broker-authz.sh` on any suspected compromise; keep the CRL current.
 - [ ] **Internal creds**: give ingest/writer the `vp-internal` username (or tighten the last ACL rule to your internal clientids) and keep 1883 loopback-only.
 - [ ] **Dashboard**: change the default dashboard password; reach it via SSH tunnel to `127.0.0.1:18083`, not publicly.
 - [ ] **Secrets**: CA/device keys stay in `tools/pki/out/` (git-ignored) or your secret store - never in the repo or images.
@@ -143,7 +145,8 @@ docker run --rm -d --name emqx-secure-test -p 18883:8883 \
   -v "$PWD/tools/pki/out/server/server.crt:/opt/emqx/etc/certs/server.crt:ro" \
   -v "$PWD/tools/pki/out/server/server.key:/opt/emqx/etc/certs/server.key:ro" \
   -v "$PWD/tools/pki/out/server/device-ca.crt:/opt/emqx/etc/certs/device-ca.crt:ro" \
-  -v "$PWD/infra/mqtt/acl.conf:/opt/emqx/etc/acl.conf:ro" \
+  -v "$PWD/infra/mqtt/acl:/opt/emqx/etc/acl:ro" \
+  -e 'EMQX_AUTHORIZATION__SOURCES=[{type = file, enable = true, path = "/opt/emqx/etc/acl/acl.conf"}]' \
   -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE=/opt/emqx/etc/certs/device-ca.crt \
   -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE=/opt/emqx/etc/certs/server.crt \
   -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE=/opt/emqx/etc/certs/server.key \
