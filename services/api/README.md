@@ -12,6 +12,8 @@ Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped 
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/registration` | **Public** (no token) self-registration: creates a tenant + its Keycloak login in one step (rate-limited, toggle `VOLTPILOT_REGISTRATION_ENABLED`) |
+| POST | `/enrollment/{ref}/csr` | **Public** (no token) first-boot enrollment: store the device-generated CSR for a reference (rate-limited; `VP-` refs registry-gated -> 422; replaceable until issued -> then 409) |
+| GET | `/enrollment/{ref}/certificate` | **Public** (no token) poll for the device's mTLS certificate: 404 `pending` until the ref is claimed (identical for unknown refs), then cert + CA + broker params (toggle `VOLTPILOT_ENROLLMENT_ENABLED`) |
 | GET | `/sites` | List the caller's sites |
 | POST | `/sites` | Create a site for the caller's tenant (name, bidding zone, optional lat/lon) |
 | GET | `/devices` | List the caller's devices (incl. `lastSeenAt` for the portal's live status) |
@@ -41,6 +43,6 @@ Platform-admin-only (`/api/v1/admin/**`, realm role `platform-admin`): tenants, 
 
 ## Status
 
-Implemented: OIDC resource-server, RLS tenant isolation (Flyway `db/migration` V1/V2/V4 + the date-versioned site-geo/data-feeds, battery-efficiency, history-rollup and provisioned-device migrations + dev seeds `db/dev` V100/V20260702020100), public **self-registration** (tenant + Keycloak login in one request, sliding-window rate-limited), site creation, sites/devices/telemetry reads, **device claiming** (canonicalized, idempotent per tenant, sticker IDs gated by the provisioned-device registry), the **admin API** (tenants, per-tenant sites/users incl. disable + support password-reset, provisioned devices), the **MaStR integration** (lookup/apply/assets, see the repo `AGENTS.md`), and the KEYLESS **day-ahead price** + **weather** reads plus the **schedule** and **history** reads (fed by the compose `feeds`/`optimize` profiles).
+Implemented: OIDC resource-server, RLS tenant isolation (Flyway `db/migration` V1/V2/V4 + the date-versioned site-geo/data-feeds, battery-efficiency, history-rollup and provisioned-device migrations + dev seeds `db/dev` V100/V20260702020100), public **self-registration** (tenant + Keycloak login in one request, sliding-window rate-limited), site creation, sites/devices/telemetry reads, **device claiming** (canonicalized, idempotent per tenant, sticker IDs gated by the provisioned-device registry), the **admin API** (tenants, per-tenant sites/users incl. disable + support password-reset, provisioned devices), the **MaStR integration** (lookup/apply/assets, see the repo `AGENTS.md`), the KEYLESS **day-ahead price** + **weather** reads plus the **schedule** and **history** reads (fed by the compose `feeds`/`optimize` profiles), and **first-boot device enrollment** (public CSR upload + certificate poll; the api signs with the device CA once the ref is claimed - see the repo `AGENTS.md` enrollment section).
 KPIs (see OpenAPI) remain a stub.
 Live telemetry arrives via the separate ingest pipe (compose `edge` profile); without it the portal reads dev-seeded demo telemetry.

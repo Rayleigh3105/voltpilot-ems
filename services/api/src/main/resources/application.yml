@@ -99,6 +99,28 @@ voltpilot:
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}
+  # First-boot device enrollment over HTTPS: a fresh edge device uploads a CSR
+  # for its reference and polls for its mTLS certificate; once the ref is
+  # claimed, the api signs the CSR with the device CA (ca-dir = the working dir
+  # tools/pki/voltpilot-ca.sh init-ca creates; mount it read-write) and appends
+  # the per-device broker ACL grant (acl-file; blank = grants managed out of
+  # band). Off by default - only deployments that stage the CA enable it (see
+  # docker-compose.prod.yml). mqtt-host/-port are handed to the device together
+  # with its certificate. The rate limiter guards the unauthenticated
+  # endpoints; defaults accommodate legitimate certificate polling (the
+  # documented 30-60 s poll interval).
+  enrollment:
+    enabled: ${VOLTPILOT_ENROLLMENT_ENABLED:false}
+    ca-dir: ${VP_ENROLLMENT_CA_DIR:}
+    acl-file: ${VP_ENROLLMENT_ACL_FILE:}
+    mqtt-host: ${VP_ENROLLMENT_MQTT_HOST:localhost}
+    mqtt-port: ${VP_ENROLLMENT_MQTT_PORT:8883}
+    rate-limit:
+      enabled: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_ENABLED:true}
+      per-client-max: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_PER_CLIENT_MAX:240}
+      global-max: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_GLOBAL_MAX:5000}
+      window: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_WINDOW:PT1H}
+      trusted-proxies: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_TRUSTED_PROXIES:0}
   # Keycloak Admin REST API access for provisioning customer users. The API
   # authenticates as the voltpilot-api service account (client_credentials) that
   # holds the realm-management roles. base-url is the compose-internal Keycloak.

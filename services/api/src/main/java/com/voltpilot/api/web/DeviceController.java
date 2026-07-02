@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
@@ -46,15 +47,18 @@ public class DeviceController {
     private final SeriesRepository series;
     private final ProvisionedDeviceRepository provisioned;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
+    private final ObjectProvider<EnrollmentService> enrollment;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, ProvisionedDeviceRepository provisioned,
-            ObjectProvider<ProvisioningPublisher> provisioning) {
+            ObjectProvider<ProvisioningPublisher> provisioning,
+            ObjectProvider<EnrollmentService> enrollment) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
         this.provisioned = provisioned;
         this.provisioning = provisioning;
+        this.enrollment = enrollment;
     }
 
     @GetMapping
@@ -146,6 +150,10 @@ public class DeviceController {
         }
         provisioning.ifAvailable(p ->
                 p.clearRetained(device.externalRef(), tenantId, device.siteId(), device.id()));
+        // First-boot enrollment counterpart: drop the device's broker ACL grant
+        // so an issued mTLS certificate loses topic access (best-effort; CRL
+        // revocation stays the operator-run cryptographic backstop).
+        enrollment.ifAvailable(e -> e.onDeviceUnclaimed(device.id()));
         return ResponseEntity.noContent().build();
     }
 

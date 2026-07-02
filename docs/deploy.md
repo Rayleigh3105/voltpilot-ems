@@ -75,7 +75,15 @@ cp tools/pki/out/ca/crl.pem infra/mqtt/certs/
 
 `--domain` is the name devices will dial: the recommended setup is a **dedicated MQTT subdomain** (`mqtt.<company-domain>`, plain DNS A record to the VM - see the MQTT note in the NPM section below); the `--ip` lands in the SAN too, so dialing the raw IP stays a working fallback.
 
-(If the CA should not live on the VM, run `init-ca` elsewhere and `scp` the four files over - see [Device mTLS material](#3-device-mtls-material-staged-once-on-the-vps).)
+The CA working dir this creates (`tools/pki/out/ca` in the clone) also powers **first-boot device enrollment**: the api mounts it read-write (`docker-compose.prod.yml`) and signs device CSRs with it once their ref is claimed in the portal, plus the ACL file `infra/mqtt/acl.conf` to append per-device grants (see [connect-a-device.md](connect-a-device.md)).
+Security consideration: this makes the api container the CA **signer**, so the VM and that mount are part of the PKI trust boundary; every issuance is audit-logged by the api, and `voltpilot-ca.sh revoke` keeps working over api-issued certs (shared serial/index.txt database).
+EMQX reads the ACL file **read-only** and applies newly appended grants only on an authz reload - after an enrollment issuance, run (or cron, e.g. every 5 minutes):
+
+```bash
+docker compose -f docker-compose.prod.yml exec emqx emqx ctl conf reload
+```
+
+If the CA must NOT live on this host, set `VOLTPILOT_ENROLLMENT_ENABLED=false` in `.env`, run `init-ca` elsewhere and `scp` the four broker files over - see [Device mTLS material](#3-device-mtls-material-staged-once-on-the-vps); device certs are then issued manually with `voltpilot-ca.sh issue`.
 
 ### 4. Build and start
 

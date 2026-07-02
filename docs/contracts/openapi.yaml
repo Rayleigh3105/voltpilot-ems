@@ -32,6 +32,23 @@ tags:
       can be disabled platform-wide via VOLTPILOT_REGISTRATION_ENABLED=false.
   - name: sites
   - name: devices
+  - name: enrollment
+    description: >
+      First-boot device enrollment over HTTPS (the "kinderleicht" mTLS
+      onboarding): a fresh edge device knows only its printed reference and the
+      portal URL. It generates a keypair ON the device, uploads the CSR (the
+      private key never travels), and polls for its certificate. Once the
+      customer claims the reference in the portal, the poll returns a
+      device-CA-signed client certificate - identity ENFORCED from the claim
+      (CN=device_id, O=tenant_id, OU=site_id + SPIFFE URI SAN), never from the
+      CSR - plus the CA and broker connection params for the mTLS listener
+      (8883). Unauthenticated by design and strictly rate-limited; a pending
+      reference answers exactly like an unknown one, so polling cannot
+      enumerate refs. Polling etiquette for device agents: start at ~10 s
+      intervals, back off to >= 60 s after the first minutes, and keep polling
+      indefinitely (claiming may happen days after first boot); on 429 back
+      off harder (>= 5 min). Disabled unless the deployment stages the device
+      CA (VOLTPILOT_ENROLLMENT_ENABLED; see docker-compose.prod.yml).
   - name: telemetry
   - name: market
   - name: weather
@@ -92,6 +109,80 @@ paths:
         "400": { description: Invalid input (blank name, invalid email, password shorter than 8 chars). }
         "409": { description: An account with this email already exists. }
         "429": { description: Too many registration attempts (sliding-window rate limit per client address plus a global cap; nothing was created). }
+  /api/v1/enrollment/{ref}/csr:
+    post:
+      tags: [enrollment]
+      summary: Upload the device-generated CSR for a reference (first boot).
+      description: >
+        Stores the pending CSR keyed by the canonical reference (trimmed;
+        VP- sticker refs uppercased, exactly like the claim endpoint). The CSR
+        must be a PEM PKCS#10 request, self-signed by the enclosed key (proof
+        of possession), with an RSA >= 2048 or EC P-256/P-384 key; the subject
+        it requests is irrelevant - issuance overrides it with the
+        claim-derived identity. Sticker refs (VP-) must exist in the
+        provisioned-device registry (422 otherwise). Idempotent per ref:
+        re-POSTing replaces the pending CSR until a certificate is issued;
+        afterwards the enrolled key is fixed (409) and re-keying goes through
+        the operator (revoke + unclaim/re-claim). Implemented in services/api
+        (EnrollmentController).
+      security: []
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema: { type: string, maxLength: 64 }
+          description: The device reference printed on the device (Edge-Referenz / sticker Geräte-ID).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnrollmentCsrRequest" }
+      responses:
+        "202":
+          description: CSR stored; poll GET .../certificate until the ref is claimed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollmentPending" }
+        "400": { description: Invalid reference, or the CSR is unparsable / badly signed / off key policy. }
+        "409": { description: A certificate was already issued for this reference (the enrolled key is fixed). }
+        "422": { description: Unknown sticker Geräte-ID (not in the provisioned-device registry). }
+        "429": { description: Rate limit (per client address + global sliding window). Back off >= 5 min. }
+  /api/v1/enrollment/{ref}/certificate:
+    get:
+      tags: [enrollment]
+      summary: Poll for the issued device certificate (long-poll-friendly 404 while pending).
+      description: >
+        404 with body status=pending while the reference is unclaimed - and
+        identically for a reference that was never enrolled (no enumeration).
+        Once the reference is claimed in the portal, the response carries the
+        CA-signed client certificate (subject CN=device_id, O=tenant_id,
+        OU=site_id, SPIFFE URI SAN), the CA PEM to verify the broker, the
+        broker host/port and the topic identity. The certificate stays
+        retrievable for device retries (the private key is the secret and
+        never left the device); the per-device broker ACL grant is written at
+        issuance. Revocation stays the operator kill switch
+        (tools/pki/voltpilot-ca.sh revoke - api-issued certs are recorded in
+        the same CA database). After an unclaim the poll returns to pending;
+        a re-claim re-issues against the stored CSR with the new identity.
+      security: []
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Certificate issued (or re-fetched) - the device switches to mTLS operation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollmentCertificate" }
+        "400": { description: Invalid reference. }
+        "404":
+          description: Pending (unclaimed ref, unknown ref, or no CSR yet - deliberately indistinguishable). Keep polling with backoff.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnrollmentPending" }
+        "429": { description: Rate limit. Back off >= 5 min. }
   /api/v1/sites:
     get:
       tags: [sites]
@@ -895,6 +986,34 @@ components:
         tenantId: { type: string, format: uuid }
         tenantName: { type: string }
         username: { type: string, description: The login name (the lowercased email). }
+    EnrollmentCsrRequest:
+      type: object
+      required: [csrPem]
+      properties:
+        csrPem:
+          type: string
+          maxLength: 20480
+          description: PEM-encoded PKCS#10 CSR, generated on the device (RSA >= 2048 or EC P-256/P-384).
+        deviceInfo:
+          type: string
+          maxLength: 500
+          description: Optional free-form device metadata (model, firmware) for support.
+    EnrollmentPending:
+      type: object
+      properties:
+        status: { type: string, example: pending }
+        ref: { type: string, description: The canonical reference (POST response only). }
+        message: { type: string }
+    EnrollmentCertificate:
+      type: object
+      properties:
+        deviceCertPem: { type: string, description: The CA-signed client certificate (pair with the device-held key). }
+        caPem: { type: string, description: The device CA certificate (verify the broker with this). }
+        mqttHost: { type: string, example: mqtt.example.com }
+        mqttPort: { type: integer, example: 8883 }
+        tenantId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid, description: Also the certificate CN and the device's MQTT username/clientid. }
     Site:
       type: object
       properties:

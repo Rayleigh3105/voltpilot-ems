@@ -67,6 +67,12 @@ The grants are managed by `tools/pki/voltpilot-ca.sh` (`issue` inserts a block, 
 Keys are written under `tools/pki/out/` (git-ignored). **CA and device private keys are never committed.**
 `openssl.cnf` holds the CA policy and the server/device extension profiles (serverAuth vs clientAuth EKU).
 
+### The api as second issuer (first-boot enrollment)
+
+Production also wires the CA into the **api service** for [first-boot enrollment over HTTPS](connect-a-device.md#first-boot-enrollment-over-https-kinderleicht-production): the device uploads a CSR (its key never travels), and once the ref is claimed the api signs the client cert itself - subject enforced from the claim, same `[v3_device]` extension profile, same ACL grant block, recorded into the same serial/`index.txt` CA database, so `revoke`/`gen-crl`/`list` cover api-issued certs too.
+Security trade-off, made deliberately: the api container holds the CA key (read-write mount in `docker-compose.prod.yml`), which puts the api host inside the PKI trust boundary.
+Mitigations: the signing code path is one small audited class (`services/api` `enrollment/DeviceCertificateAuthority`), every issuance is logged with serial + full identity, the public endpoints are rate-limited and enforce the subject regardless of the CSR, and `VOLTPILOT_ENROLLMENT_ENABLED=false` removes the whole surface for deployments that keep the CA offline.
+
 ## Revocation
 
 Two independent cut-offs (architecture §6.6):

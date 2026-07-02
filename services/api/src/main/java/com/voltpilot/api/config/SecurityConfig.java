@@ -54,6 +54,12 @@ public class SecurityConfig {
                 // before the caller has any token (the controller can be turned
                 // off via voltpilot.registration.enabled).
                 .requestMatchers(HttpMethod.POST, "/api/v1/registration").permitAll()
+                // First-boot device enrollment: a fresh edge device has no token,
+                // only its reference - it uploads a CSR and polls for its mTLS
+                // certificate. Rate-limited + validated in EnrollmentController
+                // (absent unless voltpilot.enrollment.enabled).
+                .requestMatchers(HttpMethod.POST, "/api/v1/enrollment/*/csr").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/enrollment/*/certificate").permitAll()
                 .anyRequest().authenticated())
             // Map Keycloak realm roles -> ROLE_* authorities so @PreAuthorize on the
             // admin API can gate Portal-Admins (platform-admin) from Portal-Users.

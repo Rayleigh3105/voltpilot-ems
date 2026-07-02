@@ -2,10 +2,31 @@
 
 How a physical edge device on a customer site connects to the VoltPilot broker and starts publishing telemetry.
 
-There are two paths:
+There are three paths:
 
-- **[Zero-touch onboarding](#zero-touch-onboarding-recommended)** (recommended, v1: plain MQTT/dev): the device knows only its **edge reference** and the broker host; identity arrives over the provisioning handshake once the ref is claimed in the portal. No IDs to copy.
-- **[Secure mTLS](#connect-over-mtls-production-hardened-broker)** (production, hardened broker): explicit per-device certificate + IDs, for the internet-facing 8883 listener.
+- **[First-boot enrollment over HTTPS](#first-boot-enrollment-over-https-kinderleicht-production)** (recommended for production): the device knows only its **reference** and the **portal URL**; its mTLS certificate arrives automatically once the customer claims the reference. No manual cert copying.
+- **[Zero-touch onboarding](#zero-touch-onboarding-plain-mqtt-dev)** (v1: plain MQTT/dev): the device knows only its **edge reference** and the broker host; identity arrives over the provisioning handshake once the ref is claimed in the portal. No IDs to copy.
+- **[Secure mTLS, manual](#connect-over-mtls-production-hardened-broker)** (production, hardened broker): explicit per-device certificate + IDs issued by the operator, for the internet-facing 8883 listener.
+
+## First-boot enrollment over HTTPS (kinderleicht, production)
+
+Der kinderleichte Weg: das Gerät zeigt seine Referenz, der Kunde beansprucht sie im Portal, das Zertifikat kommt automatisch.
+The device ships knowing only its printed **reference** and the **portal URL**; the customer types the reference into the portal (*Geräte → ＋ Gerät hinzufügen*), and the device fetches its own mTLS certificate - no cert files to copy, no IDs to type.
+
+Under the hood (binding contract: the `enrollment` tag in [`docs/contracts/openapi.yaml`](contracts/openapi.yaml)):
+
+1. On first boot the device generates a keypair **locally** (the private key never leaves the device) and uploads a CSR: `POST /api/v1/enrollment/{ref}/csr`.
+2. It polls `GET /api/v1/enrollment/{ref}/certificate` - 404 `status=pending` until the reference is claimed in the portal (poll every ~10 s at first, back off to >= 60 s; keep polling indefinitely - claiming may happen days later).
+3. Once claimed, the response carries the device-CA-signed client certificate (subject enforced from the claim: `CN=device_id, O=tenant_id, OU=site_id` + SPIFFE SAN), the CA PEM to verify the broker, and the broker host/port.
+   The per-device broker ACL grant is written at the same moment.
+4. The device stores the bundle and connects to `mqtts://<mqttHost>:8883` exactly as in the [mTLS section](#connect-over-mtls-production-hardened-broker) below.
+
+Notes:
+
+- Sticker refs (`VP-`) must be registered in the provisioned-device registry, exactly like portal claims; the CSR key must be RSA >= 2048 or EC P-256/P-384.
+- The certificate stays retrievable for device retries (the private key is the secret, and it never traveled). Re-keying a device = operator revokes + the customer unclaims/re-claims.
+- Unclaiming a device removes its ACL grant (default-deny at the next authz reload); `voltpilot-ca.sh revoke` remains the cryptographic kill switch - api-issued certs are recorded in the same CA database.
+- Server side this requires the device CA staged on the api host (see [`deploy.md`](deploy.md)); the endpoints are rate-limited and unauthenticated by design.
 
 ## Zero-touch onboarding (recommended)
 

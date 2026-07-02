@@ -80,6 +80,16 @@
             <version>1.2.5</version>
         </dependency>
 
+        <!-- X.509 for first-boot device enrollment (enrollment package): the api
+             parses device CSRs and signs client certs with the device CA,
+             mirroring the openssl extensions of tools/pki/voltpilot-ca.sh.
+             bcpkix pulls bcprov + bcutil transitively. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.78.1</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>

@@ -311,6 +311,32 @@ services:
       # keep in sync with the forecast + optimization services (same .env vars).
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
+      # --- First-boot device enrollment over HTTPS (kinderleicht mTLS) --------
+      # A fresh device knowing only its ref + portal URL uploads a CSR and polls
+      # for its certificate; on claim the api signs it with the device CA
+      # mounted below (see docs/connect-a-device.md). Security note: this makes
+      # the api the CA signer - the CA mount and this VM are part of the PKI
+      # trust boundary (docs/security-mqtt.md). Set false if the CA is not
+      # staged on this host (issuance then answers 503, everything else works).
+      VOLTPILOT_ENROLLMENT_ENABLED: ${VOLTPILOT_ENROLLMENT_ENABLED:-true}
+      VP_ENROLLMENT_CA_DIR: /pki/ca
+      VP_ENROLLMENT_ACL_FILE: /pki/acl.conf
+      # What enrolled devices are told to dial: the dedicated MQTT domain
+      # (plain DNS A record to this VM - see docs/deploy.md), port 8883.
+      VP_ENROLLMENT_MQTT_HOST: ${MQTT_DOMAIN:-mqtt.${DOMAIN}}
+      VP_ENROLLMENT_MQTT_PORT: 8883
+      # Same proxy-chain depth as the registration limiter (external reverse
+      # proxy -> frontend nginx).
+      VOLTPILOT_ENROLLMENT_RATE_LIMIT_TRUSTED_PROXIES: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_TRUSTED_PROXIES:-2}
+    volumes:
+      # Device-CA working dir (created by tools/pki/voltpilot-ca.sh init-ca in
+      # this clone). READ-WRITE on purpose: issuance advances the CA's
+      # serial/index.txt database, shared with the shell tool so revoke/list/
+      # gen-crl keep working over api-issued certs. The ACL file is the same
+      # one EMQX mounts read-only - grants the api appends apply on the next
+      # `emqx ctl conf reload` (see docs/deploy.md).
+      - ${VP_PKI_CA_DIR:-./tools/pki/out/ca}:/pki/ca
+      - ./infra/mqtt/acl.conf:/pki/acl.conf
     healthcheck:
       test:
         - "CMD"
