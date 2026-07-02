@@ -69,6 +69,13 @@ voltpilot:
   forecast:
     active-load-model: ${VOLTPILOT_ACTIVE_LOAD_MODEL:load-persistence}
     active-pv-model: ${VOLTPILOT_ACTIVE_PV_MODEL:pv-physical}
+  # Marktstammdatenregister lookups ("Anlage verknuepfen"). Dual-source: with
+  # the captain's Webdienstnutzer credentials set, the official SOAP webservice
+  # is used; with the BLANK defaults, the keyless public JSON backend serves
+  # the same port - so dev and a fresh deployment need no registry secret.
+  mastr:
+    api-key: ${MASTR_API_KEY:}
+    marktakteur-nummer: ${MASTR_MARKTAKTEUR_NUMMER:}
   provisioning:
     enabled: ${VOLTPILOT_PROVISIONING_ENABLED:false}
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}

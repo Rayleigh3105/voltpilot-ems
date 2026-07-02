@@ -205,6 +205,11 @@ openssl rand -hex 16      # EMQX_NODE_COOKIE
 Set `DOMAIN` and `APP_PORT` to match your reverse-proxy config.
 Leave `SPRING_PROFILES_ACTIVE=local` to seed the two demo tenants + demo users for a first look; set it **blank** for a clean production database (and remove the demo users from the realm - see below).
 
+**Optional: Marktstammdatenregister (MaStR) credentials.**
+`MASTR_API_KEY` and `MASTR_MARKTAKTEUR_NUMMER` may stay blank: the portal's "Anlage verknüpfen" step then uses the keyless public MaStR JSON backend, which is fine to launch with.
+To promote lookups to the official BNetzA SOAP webservice, do the one-time free registration (MaStR account -> register the company as Marktakteur -> create a **Webdienstnutzer**, which yields the Webdienst-Schlüssel), fill both variables and `docker compose up -d api` - the api picks the source per config, no code change or image rebuild.
+Handle the key like `ENTSOE_SECURITY_TOKEN`: env only, never committed.
+
 ### 3. Device mTLS material (staged once on the VPS)
 
 The EMQX service bind-mounts the broker cert/key + device CA from `/srv/docker/voltpilot/infra/mqtt/certs/`.

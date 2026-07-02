@@ -1,18 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { api, type Device, type Site } from '../api';
-import { deviceKindLabel, fmtCoords } from '../format';
+import { api, type Device, type Site, type SiteAsset } from '../api';
+import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative } from '../format';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { DeviceStatusBadge } from '../components/DeviceDrawers';
+import { MastrDrawer } from '../components/MastrDrawer';
 
 /**
  * Standorte: the repeatable entity pattern - list-in-card, "＋ anlegen" opens
- * the add drawer, a row click opens the detail drawer (site facts + devices).
+ * the add drawer, a row click opens the detail drawer (site facts + Anlage +
+ * devices). The Anlage section is the optional MaStR link step.
  */
 export function StandortePage({
   sites,
@@ -25,8 +27,38 @@ export function StandortePage({
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [detail, setDetail] = useState<Site | null>(null);
+  const [mastrOpen, setMastrOpen] = useState(false);
+  const [assets, setAssets] = useState<SiteAsset[] | null>(null);
 
   const deviceCount = (siteId: string) => devices.filter((d) => d.siteId === siteId).length;
+
+  useEffect(() => {
+    if (!detail) {
+      setAssets(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .siteAssets(detail.id)
+      .then((a) => {
+        if (!cancelled) setAssets(a);
+      })
+      .catch(() => {
+        if (!cancelled) setAssets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail]);
+
+  const linkedAssets = (assets ?? []).filter((a) => a.registry != null);
+  const pvAsset = linkedAssets.find((a) => a.type === 'pv');
+  const batteryAsset = linkedAssets.find((a) => a.type === 'battery');
+  const lastFetched = linkedAssets
+    .map((a) => a.registryFetchedAt)
+    .filter((t): t is string => t != null)
+    .sort()
+    .pop();
 
   return (
     <>
@@ -124,6 +156,11 @@ export function StandortePage({
         >
           <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
             <Badge variant="tint">{detail.biddingZone}</Badge>
+            {linkedAssets.length > 0 && (
+              <Badge variant="ok" dot>
+                MaStR verknüpft
+              </Badge>
+            )}
             {fmtCoords(detail.latitude, detail.longitude) && (
               <span className="vp-note" style={{ alignSelf: 'center' }}>
                 {fmtCoords(detail.latitude, detail.longitude)}
@@ -135,6 +172,90 @@ export function StandortePage({
             <div className="vp-alert vp-alert-info" style={{ marginTop: 0, marginBottom: 'var(--vp-space-4)' }}>
               Ohne Koordinaten gibt es keine Wettervorhersage für diesen Standort.
             </div>
+          )}
+
+          <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
+            <h2 style={{ fontSize: '1.05rem' }}>Anlage</h2>
+          </div>
+          {assets === null ? (
+            <p className="vp-muted">Anlagendaten werden geladen…</p>
+          ) : linkedAssets.length === 0 ? (
+            <>
+              <p className="vp-muted">
+                Optional: Verknüpfen Sie Ihre PV-Anlage (und ggf. den Speicher) mit dem
+                Marktstammdatenregister, damit Prognose und Optimierung mit den amtlich
+                registrierten Werten rechnen.
+              </p>
+              <Button
+                variant="outline"
+                iconLeft={<Icon name="sun" size={16} />}
+                onClick={() => setMastrOpen(true)}
+                style={{ marginBottom: 'var(--vp-space-5)' }}
+              >
+                Anlage verknüpfen
+              </Button>
+            </>
+          ) : (
+            <>
+              <table className="vp-table" style={{ marginBottom: 'var(--vp-space-3)' }}>
+                <tbody>
+                  {pvAsset && (
+                    <>
+                      <tr>
+                        <th scope="row">PV-Leistung</th>
+                        <td>
+                          {pvAsset.pvCapacityKwp != null ? fmtNum(pvAsset.pvCapacityKwp, 'kWp', 2) : '-'}
+                          {pvAsset.moduleCount != null ? ` · ${pvAsset.moduleCount} Module` : ''}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row">Ausrichtung / Neigung</th>
+                        <td>
+                          {pvAsset.azimuthDeg != null ? fmtNum(pvAsset.azimuthDeg, '°', 0) : 'Standard (Süd)'}
+                          {' / '}
+                          {pvAsset.tiltDeg != null ? fmtNum(pvAsset.tiltDeg, '°', 0) : 'Standard (30°)'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row">MaStR-Nummer PV</th>
+                        <td className="vp-mono">{pvAsset.registryUnitId}</td>
+                      </tr>
+                    </>
+                  )}
+                  {batteryAsset && (
+                    <>
+                      <tr>
+                        <th scope="row">Speicher</th>
+                        <td>
+                          {batteryAsset.capacityKwh != null ? fmtNum(batteryAsset.capacityKwh, 'kWh', 1) : '-'}
+                          {batteryAsset.maxDischargeKw != null
+                            ? ` · ${fmtNum(batteryAsset.maxDischargeKw, 'kW', 2)}`
+                            : ''}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row">MaStR-Nummer Speicher</th>
+                        <td className="vp-mono">{batteryAsset.registryUnitId}</td>
+                      </tr>
+                    </>
+                  )}
+                  {lastFetched && (
+                    <tr>
+                      <th scope="row">Zuletzt abgerufen</th>
+                      <td>{fmtRelative(lastFetched)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMastrOpen(true)}
+                style={{ marginBottom: 'var(--vp-space-5)' }}
+              >
+                Neu aus dem Register abrufen
+              </Button>
+            </>
           )}
 
           <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
@@ -167,6 +288,15 @@ export function StandortePage({
             </table>
           )}
         </Drawer>
+      )}
+
+      {detail && (
+        <MastrDrawer
+          site={detail}
+          open={mastrOpen}
+          onClose={() => setMastrOpen(false)}
+          onApplied={(a) => setAssets(a)}
+        />
       )}
     </>
   );

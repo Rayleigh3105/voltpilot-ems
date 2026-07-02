@@ -17,6 +17,9 @@ Multi-tenancy comes from the Keycloak `tenant_id` token claim; a request-scoped 
 | GET | `/sites/{siteId}/telemetry?from&to` | Recent telemetry for a site (defaults to last 24h) |
 | GET | `/sites/{siteId}/prices?from&to` | Day-ahead spot prices (15-min) for the site's bidding zone; defaults to ~today+tomorrow |
 | GET | `/sites/{siteId}/weather` | Latest weather forecast (hourly, coming days) for the site |
+| GET | `/sites/{siteId}/assets` | The site's asset master data incl. MaStR provenance |
+| POST | `/sites/{siteId}/mastr-lookup` | Fetch one MaStR unit for confirmation (preview only; German error messages) |
+| POST | `/sites/{siteId}/mastr-apply` | Persist confirmed registry values onto the site's PV/battery assets |
 
 ## Run / build / test
 

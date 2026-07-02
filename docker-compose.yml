@@ -285,6 +285,11 @@ services:
       # keep in sync with forecast-collector + optimizer (same .env variables).
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
+      # Marktstammdatenregister ("Anlage verknüpfen"): blank = the keyless public
+      # JSON backend; set the captain's Webdienst credentials to use the official
+      # SOAP webservice instead (see AGENTS.md, "MaStR integration").
+      MASTR_API_KEY: ${MASTR_API_KEY:-}
+      MASTR_MARKTAKTEUR_NUMMER: ${MASTR_MARKTAKTEUR_NUMMER:-}
       # Zero-touch onboarding: on claim, publish the retained provision/{ref}/config
       # (docs/contracts/mqtt-provisioning.schema.json). Best-effort - the api stays
       # healthy without the broker; the ingest resolver answers hello retries.

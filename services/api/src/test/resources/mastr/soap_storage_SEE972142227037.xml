@@ -1,0 +1,42 @@
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <GetEinheitStromSpeicherResponse xmlns="https://www.marktstammdatenregister.de/Services/Public/1_2/Modelle/Anlage">
+      <GetEinheitStromSpeicherAntwort xmlns:a="https://www.marktstammdatenregister.de/Services/Public/1_2/Modelle" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+        <a:Ergebniscode>OK</a:Ergebniscode>
+        <a:AufrufVeraltet>false</a:AufrufVeraltet>
+        <a:AufrufLebenszeitEnde i:nil="true" />
+        <a:AufrufVersion>1</a:AufrufVersion>
+        <a:EinheitMastrNummer>SEE972142227037</a:EinheitMastrNummer>
+        <a:DatumLetzteAktualisierung>2026-07-01T17:49:07.656</a:DatumLetzteAktualisierung>
+        <a:LokationMastrNummer>SEL947592174825</a:LokationMastrNummer>
+        <a:NetzbetreiberpruefungStatus>Geprueft</a:NetzbetreiberpruefungStatus>
+        <a:AnlagenbetreiberMastrNummer>ABR913534634293</a:AnlagenbetreiberMastrNummer>
+        <a:Land>Deutschland</a:Land>
+        <a:Bundesland>BadenWuerttemberg</a:Bundesland>
+        <a:Landkreis>Loerrach</a:Landkreis>
+        <a:Gemeinde>Todtnau</a:Gemeinde>
+        <a:Postleitzahl>79674</a:Postleitzahl>
+        <a:Ort>Todtnau</a:Ort>
+        <a:Strasse i:nil="true" />
+        <a:Hausnummer i:nil="true" />
+        <a:Breitengrad i:nil="true" />
+        <a:Laengengrad i:nil="true" />
+        <a:Registrierungsdatum>2026-07-01</a:Registrierungsdatum>
+        <a:Inbetriebnahmedatum>2026-07-01</a:Inbetriebnahmedatum>
+        <a:EinheitSystemstatus>Aktiviert</a:EinheitSystemstatus>
+        <a:EinheitBetriebsstatus>35</a:EinheitBetriebsstatus>
+        <a:NameStromerzeugungseinheit>Batteriespeicher</a:NameStromerzeugungseinheit>
+        <a:Bruttoleistung>8.76</a:Bruttoleistung>
+        <a:Nettonennleistung>8.76</a:Nettonennleistung>
+        <a:AcDcKoppelung>DcKoppelung</a:AcDcKoppelung>
+        <a:Batterietechnologie>727</a:Batterietechnologie>
+        <a:LeistungsaufnahmeBeimEinspeichern>8.20</a:LeistungsaufnahmeBeimEinspeichern>
+        <a:NutzbareSpeicherkapazitaet>12.8</a:NutzbareSpeicherkapazitaet>
+        <a:ZugeordneteWirkleistungWechselrichter>8.76</a:ZugeordneteWirkleistungWechselrichter>
+        <a:SpeMastrNummer>SSE933136239009</a:SpeMastrNummer>
+        <a:EegMastrNummer>EEG968785306994</a:EegMastrNummer>
+        <a:GemeinsamRegistrierteSolareinheitMastrNummer>SEE912345678901</a:GemeinsamRegistrierteSolareinheitMastrNummer>
+      </GetEinheitStromSpeicherAntwort>
+    </GetEinheitStromSpeicherResponse>
+  </s:Body>
+</s:Envelope>

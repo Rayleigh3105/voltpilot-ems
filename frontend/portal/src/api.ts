@@ -216,6 +216,69 @@ export function deviceLiveStatus(d: Device, now: Date = new Date()): DeviceLiveS
     : 'stale';
 }
 
+/** One asset row of a site: optimizer battery params, forecast PV params, registry provenance. */
+export interface SiteAsset {
+  id: string;
+  type: string;
+  capacityKwh: number | null;
+  maxChargeKw: number | null;
+  maxDischargeKw: number | null;
+  pvCapacityKwp: number | null;
+  moduleCount: number | null;
+  azimuthDeg: number | null;
+  tiltDeg: number | null;
+  commissionedOn: string | null;
+  registry: string | null;
+  registryUnitId: string | null;
+  registryFetchedAt: string | null;
+}
+
+/**
+ * Mapped MaStR record for confirmation ("Anlage verknüpfen" step 2). Nothing
+ * is persisted until mastrApply; null fields mean "nicht im Register
+ * hinterlegt" (e.g. Balkonkraftwerke carry no orientation).
+ */
+export interface MastrPreview {
+  mastrNummer: string;
+  kind: 'pv' | 'storage';
+  name: string | null;
+  status: string | null;
+  plantType: string | null;
+  powerKw: number | null;
+  inverterPowerKw: number | null;
+  moduleCount: number | null;
+  azimuthLabel: string | null;
+  azimuthDeg: number | null;
+  tiltLabel: string | null;
+  tiltDeg: number | null;
+  commissionedOn: string | null;
+  storageCapacityKwh: number | null;
+  chargePowerKw: number | null;
+  batteryTechnology: string | null;
+  plz: string | null;
+  ort: string | null;
+  linkedUnitNumber: string | null;
+  warnings: string[];
+}
+
+export interface MastrApplyInput {
+  pv?: {
+    mastrNummer: string;
+    capacityKwp: number | null;
+    moduleCount: number | null;
+    azimuthDeg: number | null;
+    tiltDeg: number | null;
+    commissionedOn: string | null;
+  };
+  storage?: {
+    mastrNummer: string;
+    capacityKwh: number | null;
+    maxChargeKw: number | null;
+    maxDischargeKw: number | null;
+    commissionedOn: string | null;
+  };
+}
+
 export interface TelemetryPoint {
   ts: string;
   powerKw: number | null;
@@ -255,7 +318,15 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     },
   });
   if (!res.ok) {
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+    // Some endpoints (MaStR lookup) return a customer-facing German message.
+    let message = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.message === 'string' && body.message) message = body.message;
+    } catch {
+      // non-JSON error body: keep the status text
+    }
+    throw new ApiError(res.status, message);
   }
   // 201 with body for claim; others JSON. 204 would be empty.
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
@@ -281,6 +352,17 @@ export const api = {
     const qs = q.toString();
     return request<TelemetryPoint[]>(`/api/v1/sites/${siteId}/telemetry${qs ? `?${qs}` : ''}`);
   },
+  siteAssets: (siteId: string) => request<SiteAsset[]>(`/api/v1/sites/${siteId}/assets`),
+  mastrLookup: (siteId: string, einheitNummer: string) =>
+    request<MastrPreview>(`/api/v1/sites/${siteId}/mastr-lookup`, {
+      method: 'POST',
+      body: JSON.stringify({ einheitNummer }),
+    }),
+  mastrApply: (siteId: string, input: MastrApplyInput) =>
+    request<SiteAsset[]>(`/api/v1/sites/${siteId}/mastr-apply`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
   schedule: (siteId: string) => request<SchedulePlan>(`/api/v1/sites/${siteId}/schedule`),

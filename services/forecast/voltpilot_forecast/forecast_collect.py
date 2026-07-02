@@ -110,6 +110,10 @@ class SiteRow:
     tenant_id: str
     site_id: str
     location: GeoLocation | None
+    #: Registry-confirmed PV parameters from the site's `pv` asset row (the
+    #: MaStR "Anlage verknüpfen" step). None = fall back to the observed-peak
+    #: capacity estimate below.
+    plant: PlantSpec | None = None
 
 
 @dataclass
@@ -130,17 +134,47 @@ class CollectorConfig:
 # ---- DB reads -------------------------------------------------------------------
 
 def load_sites(conn) -> list[SiteRow]:
+    """Every site, with its authoritative PV asset parameters when linked.
+
+    The LEFT JOIN picks the site's `pv` asset row (created by the portal's
+    MaStR "Anlage verknüpfen" apply step); orientation/tilt are nullable there
+    on purpose (Balkonkraftwerk / Ost-West), so PlantSpec's DACH defaults
+    (south, 30 deg) fill the gaps.
+    """
     with conn.cursor() as cur:
-        cur.execute("SELECT tenant_id, id, latitude, longitude FROM site ORDER BY id")
+        cur.execute(
+            """
+            SELECT s.tenant_id, s.id, s.latitude, s.longitude,
+                   a.pv_capacity_kwp, a.azimuth_deg, a.tilt_deg
+            FROM site s
+            LEFT JOIN LATERAL (
+                SELECT pv_capacity_kwp, azimuth_deg, tilt_deg
+                FROM asset
+                WHERE site_id = s.id AND type = 'pv' AND pv_capacity_kwp > 0
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) a ON TRUE
+            ORDER BY s.id
+            """
+        )
         rows = cur.fetchall()
     sites = []
-    for tenant_id, site_id, lat, lon in rows:
+    for tenant_id, site_id, lat, lon, kwp, azimuth, tilt in rows:
         location = (
             GeoLocation(latitude=float(lat), longitude=float(lon))
             if lat is not None and lon is not None
             else None
         )
-        sites.append(SiteRow(str(tenant_id), str(site_id), location))
+        plant = (
+            PlantSpec(
+                capacity_kwp=float(kwp),
+                azimuth_deg=float(azimuth) if azimuth is not None else 180.0,
+                tilt_deg=float(tilt) if tilt is not None else 30.0,
+            )
+            if kwp is not None
+            else None
+        )
+        sites.append(SiteRow(str(tenant_id), str(site_id), location, plant))
     return sites
 
 
@@ -249,12 +283,16 @@ def collect_site(
     berlin_day = now.astimezone(BERLIN).date()
 
     location = site.location or DEFAULT_LOCATION
-    peak_pv = max((obs.value_kw for obs in pv_history), default=0.0)
-    plant = (
-        PlantSpec(capacity_kwp=round(peak_pv * CAPACITY_HEADROOM, 3))
-        if peak_pv > MIN_CAPACITY_KWP
-        else None
-    )
+    # Registry-confirmed plant parameters (MaStR link) are authoritative;
+    # without them the nameplate is estimated from the observed peak.
+    plant = site.plant
+    if plant is None:
+        peak_pv = max((obs.value_kw for obs in pv_history), default=0.0)
+        plant = (
+            PlantSpec(capacity_kwp=round(peak_pv * CAPACITY_HEADROOM, 3))
+            if peak_pv > MIN_CAPACITY_KWP
+            else None
+        )
     config = SiteForecastConfig(
         tenant_id=site.tenant_id,
         site_id=site.site_id,

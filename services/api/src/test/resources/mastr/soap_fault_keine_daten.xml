@@ -1,0 +1,8 @@
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <s:Fault>
+      <faultcode>s:Client</faultcode>
+      <faultstring xml:lang="de-DE">KeineDatenVorhanden: Es konnten keine Daten zur angegebenen MaStR-Nummer ermittelt werden.</faultstring>
+    </s:Fault>
+  </s:Body>
+</s:Envelope>

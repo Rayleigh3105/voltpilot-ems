@@ -32,6 +32,12 @@ tags:
   - name: weather
   - name: schedules
   - name: history
+  - name: registry
+    description: >
+      Optional MaStR "Anlage verknüpfen" step: look a unit up in the German
+      Marktstammdatenregister (preview only), then persist the
+      customer-confirmed values onto the site's assets. Tenant-scoped like all
+      site endpoints (foreign site = 404 via RLS).
   - name: kpis
   - name: admin
     description: >
@@ -278,6 +284,88 @@ paths:
               schema: { $ref: "#/components/schemas/ForecastQuality" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/assets:
+    get:
+      tags: [registry]
+      summary: The site's asset master data incl. registry provenance.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Asset rows (battery params for the optimizer, PV params for the forecast).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteAsset" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/mastr-lookup:
+    post:
+      tags: [registry]
+      summary: Fetch one MaStR unit for confirmation (nothing persisted).
+      description: >
+        Looks the SEE unit number up in the Marktstammdatenregister (official
+        SOAP webservice when credentials are configured, keyless public JSON
+        backend otherwise) and returns the mapped preview: kWp, module count,
+        orientation/tilt decoded from catalog values to degrees (nullable -
+        e.g. Balkonkraftwerke carry none), commissioning date, storage kWh/kW,
+        and the registry's PLZ/Ort for the customer's own plausibility check.
+        Storage units are ALSO SEE-numbered; `kind` states what the registry
+        says the unit is. Error bodies carry a customer-facing German
+        `message`.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [einheitNummer]
+              properties:
+                einheitNummer:
+                  type: string
+                  description: SEE + 12 digits; lowercase/spaces are normalized.
+                  example: SEE966831669444
+      responses:
+        "200":
+          description: Mapped preview for confirmation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MastrPreview" }
+        "400": { description: Invalid unit number (German hint in `message`, e.g. the SES/SSE/EEG prefix mix-ups). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant, or no unit with this number in the registry. }
+        "502": { description: Registry currently unreachable. }
+  /api/v1/sites/{siteId}/mastr-apply:
+    post:
+      tags: [registry]
+      summary: Persist the confirmed registry values onto the site's assets.
+      description: >
+        Creates or updates the site's `pv` and/or `battery` asset rows with the
+        values the customer confirmed in the preview, plus provenance (registry
+        id, unit number, fetch timestamp). Battery values land in the columns
+        the optimizer reads; PV values feed the forecast's PlantSpec. At least
+        one of `pv`/`storage` is required.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MastrApplyRequest" }
+      responses:
+        "200":
+          description: The site's asset rows after the apply.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteAsset" }
+        "400": { description: Neither pv nor storage present, or values out of range. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
   /api/v1/sites/{siteId}/kpis:
     get:
       tags: [kpis]
@@ -460,6 +548,75 @@ components:
           nullable: true
           description: WGS84 longitude.
           example: 13.405
+    SiteAsset:
+      type: object
+      description: One asset row incl. registry provenance; null = not set.
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, example: battery, description: "'battery' | 'pv' (more later)" }
+        capacityKwh: { type: number, nullable: true }
+        maxChargeKw: { type: number, nullable: true }
+        maxDischargeKw: { type: number, nullable: true }
+        pvCapacityKwp: { type: number, nullable: true }
+        moduleCount: { type: integer, nullable: true }
+        azimuthDeg: { type: number, nullable: true, description: Clockwise from North; 180 = South. }
+        tiltDeg: { type: number, nullable: true }
+        commissionedOn: { type: string, format: date, nullable: true }
+        registry: { type: string, nullable: true, example: mastr }
+        registryUnitId: { type: string, nullable: true, example: SEE966831669444 }
+        registryFetchedAt: { type: string, format: date-time, nullable: true }
+    MastrPreview:
+      type: object
+      description: >
+        Mapped registry record for confirmation. Nullable = "nicht im Register
+        hinterlegt". `warnings` are honest German notes (Ost-West/nachgeführt
+        orientation, symmetric-charging assumption on the keyless source).
+      properties:
+        mastrNummer: { type: string, example: SEE966831669444 }
+        kind: { type: string, enum: [pv, storage] }
+        name: { type: string, nullable: true }
+        status: { type: string, nullable: true, example: In Betrieb }
+        plantType: { type: string, nullable: true, example: Gebäudesolaranlage }
+        powerKw: { type: number, nullable: true, description: PV = kWp (Bruttoleistung); storage = discharge kW. }
+        inverterPowerKw: { type: number, nullable: true }
+        moduleCount: { type: integer, nullable: true }
+        azimuthLabel: { type: string, nullable: true, example: Süd }
+        azimuthDeg: { type: number, nullable: true, example: 180 }
+        tiltLabel: { type: string, nullable: true, example: 21 - 40 Grad }
+        tiltDeg: { type: number, nullable: true, example: 30 }
+        commissionedOn: { type: string, format: date, nullable: true }
+        storageCapacityKwh: { type: number, nullable: true }
+        chargePowerKw: { type: number, nullable: true }
+        batteryTechnology: { type: string, nullable: true, example: Lithium-Batterie }
+        plz: { type: string, nullable: true }
+        ort: { type: string, nullable: true }
+        linkedUnitNumber: { type: string, nullable: true, description: Cross-linked sibling unit (SOAP source only). }
+        warnings:
+          type: array
+          items: { type: string }
+    MastrApplyRequest:
+      type: object
+      description: At least one of pv/storage is required.
+      properties:
+        pv:
+          type: object
+          required: [mastrNummer]
+          properties:
+            mastrNummer: { type: string, pattern: "SEE\\d{12}" }
+            capacityKwp: { type: number, nullable: true }
+            moduleCount: { type: integer, nullable: true }
+            azimuthDeg: { type: number, nullable: true }
+            tiltDeg: { type: number, nullable: true }
+            commissionedOn: { type: string, format: date, nullable: true }
+        storage:
+          type: object
+          required: [mastrNummer]
+          properties:
+            mastrNummer: { type: string, pattern: "SEE\\d{12}" }
+            capacityKwh: { type: number, nullable: true }
+            maxChargeKw: { type: number, nullable: true }
+            maxDischargeKw: { type: number, nullable: true }
+            commissionedOn: { type: string, format: date, nullable: true }
     CreateSiteRequest:
       type: object
       required: [name]

@@ -285,6 +285,11 @@ services:
       # dev default (no path) would 404. The secret is the same confidential
       # client secret the realm import bakes into voltpilot-api.
       KEYCLOAK_ADMIN_BASE_URL: http://keycloak:8080/auth
+      # Marktstammdatenregister ("Anlage verknüpfen"): blank = keyless public
+      # JSON backend; the captain's Webdienst credentials switch lookups to the
+      # official SOAP webservice (no code change, just these two variables).
+      MASTR_API_KEY: ${MASTR_API_KEY:-}
+      MASTR_MARKTAKTEUR_NUMMER: ${MASTR_MARKTAKTEUR_NUMMER:-}
       KEYCLOAK_REALM: voltpilot
       KEYCLOAK_API_CLIENT_ID: voltpilot-api
       KEYCLOAK_API_CLIENT_SECRET: ${VP_API_CLIENT_SECRET:?set VP_API_CLIENT_SECRET in .env}

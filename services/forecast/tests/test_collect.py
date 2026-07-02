@@ -9,13 +9,14 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from voltpilot_forecast import registry
-from voltpilot_forecast.domain import ForecastKind, GeoLocation
+from voltpilot_forecast.domain import ForecastKind, GeoLocation, PlantSpec
 from voltpilot_forecast.evaluate import evaluate_day
 from voltpilot_forecast.forecast_collect import (
     ChallengerCache,
     CollectorConfig,
     SiteRow,
     collect_site,
+    load_sites,
 )
 from voltpilot_forecast.quality_repository import (
     STATUS_COLLECTING,
@@ -110,6 +111,88 @@ def _collect(telemetry: dict[str, list]):
         ml_available=_HAS_ML,
     )
     return forecasts, quality, summary
+
+
+def test_registry_plant_spec_is_preferred_over_the_peak_estimate():
+    """A MaStR-linked site forecasts with its authoritative nameplate."""
+    telemetry = _telemetry_days(3, pv=3.0)  # observed peak ~3 kW
+    linked = SiteRow(
+        tenant_id=SITE.tenant_id,
+        site_id=SITE.site_id,
+        location=SITE.location,
+        plant=PlantSpec(capacity_kwp=12.0, azimuth_deg=180.0, tilt_deg=30.0),
+    )
+    forecasts = InMemoryForecastRepository()
+    collect_site(
+        _FakeConnection(telemetry),
+        forecasts,
+        InMemoryQualityRepository(),
+        linked,
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+    )
+    with_plant = forecasts.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
+
+    estimated_repo = InMemoryForecastRepository()
+    collect_site(
+        _FakeConnection(telemetry),
+        estimated_repo,
+        InMemoryQualityRepository(),
+        SITE,  # no plant -> observed-peak estimate (~3.15 kWp)
+        NOW,
+        CollectorConfig(),
+        ChallengerCache(),
+        ml_available=False,
+    )
+    estimated = estimated_repo.latest(SITE.site_id, ForecastKind.PV, registry.PV_PHYSICAL)
+
+    peak_linked = max(p.value_kw for p in with_plant.points)
+    peak_estimated = max(p.value_kw for p in estimated.points)
+    # The physical model scales with capacity: 12 kWp vs ~3.15 kWp estimate.
+    assert peak_linked > 2.5 * peak_estimated > 0
+
+
+class _SiteQueryConn:
+    """Serves only the load_sites join with canned rows."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def cursor(self):
+        conn = self
+
+        class _Cur:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, params=()):
+                assert "FROM site s" in sql and "type = 'pv'" in sql
+
+            def fetchall(self):
+                return conn._rows
+
+        return _Cur()
+
+
+def test_load_sites_builds_the_plant_from_the_pv_asset_row():
+    rows = [
+        # linked site: full geometry from the registry
+        ("t1", "s1", 52.52, 13.405, 6.05, 180.0, 30.0),
+        # Balkonkraftwerk: kWp known, orientation not in the registry -> defaults
+        ("t1", "s2", 52.52, 13.405, 0.8, None, None),
+        # unlinked site: no pv asset row
+        ("t2", "s3", None, None, None, None, None),
+    ]
+    sites = load_sites(_SiteQueryConn(rows))
+
+    assert sites[0].plant == PlantSpec(capacity_kwp=6.05, azimuth_deg=180.0, tilt_deg=30.0)
+    assert sites[1].plant == PlantSpec(capacity_kwp=0.8, azimuth_deg=180.0, tilt_deg=30.0)
+    assert sites[2].plant is None and sites[2].location is None
 
 
 def test_baselines_always_persist_model_tagged_series():
