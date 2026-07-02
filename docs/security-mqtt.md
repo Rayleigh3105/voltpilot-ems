@@ -20,6 +20,8 @@ The 8883 listener runs with:
 - `cacertfile = device-ca.crt` - the trust anchor for client certs.
 - `certfile/keyfile = server.crt/server.key` - the broker's own identity, which the device verifies against the CA it was shipped.
 - `peer_cert_as_username = cn` and `peer_cert_as_clientid = cn` - the MQTT username **and** clientid are taken from the cert CN, so a device cannot spoof its identity by setting them in the CONNECT packet.
+  In EMQX 5.x these two are **global `mqtt.*` settings, not listener fields** (env: `EMQX_MQTT__PEER_CERT_AS_USERNAME` / `EMQX_MQTT__PEER_CERT_AS_CLIENTID`; the listener-scoped `EMQX_LISTENERS__SSL__DEFAULT__PEER_CERT_AS_*` form is rejected as `unknown_env_vars` and silently ignored - verified on 5.8.3).
+  Setting them globally is safe: a connection that presents no client cert (the loopback-only 1883 backbone clients) keeps whatever username/clientid it sent.
 
 ## Identity binding
 
@@ -147,7 +149,8 @@ docker run --rm -d --name emqx-secure-test -p 18883:8883 \
   -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE=/opt/emqx/etc/certs/server.key \
   -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__VERIFY=verify_peer \
   -e EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__FAIL_IF_NO_PEER_CERT=true \
-  -e EMQX_LISTENERS__SSL__DEFAULT__PEER_CERT_AS_USERNAME=cn \
+  -e EMQX_MQTT__PEER_CERT_AS_USERNAME=cn \
+  -e EMQX_MQTT__PEER_CERT_AS_CLIENTID=cn \
   -e EMQX_AUTHORIZATION__NO_MATCH=deny \
   emqx/emqx:5.8.3
 sleep 15
@@ -172,4 +175,4 @@ mosquitto_pub -h localhost -p 18883 --cafile $D/device-ca.crt \
 docker rm -f emqx-secure-test
 ```
 
-> This repo's sandbox blocks the Docker socket, so the live recipe above is documented for the captain's host; the automated `verify_mqtt_security.py` covers the same three guarantees (mTLS gating + ACL confinement + revocation) without Docker.
+> This recipe has been executed against the real `emqx/emqx:5.8.3` image (2026-07-02): valid cert + own-topic publish gets PUBACK and is delivered, a foreign-tenant publish/subscribe is denied by the file authorizer and disconnected, a no-cert connect fails the TLS handshake with `certificate required`, and `emqx ctl clients show` confirms `username = clientid = <device_id>` (the cert CN). The automated `verify_mqtt_security.py` covers the same guarantees (mTLS gating + ACL confinement + revocation) without Docker.

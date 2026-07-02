@@ -205,8 +205,13 @@ services:
       # Bind the cert identity: MQTT username := cert CN (device_id), and the
       # clientid := CN too, so a device cannot spoof either. The ACL grants are
       # keyed on this username (see infra/mqtt/acl.conf).
-      EMQX_LISTENERS__SSL__DEFAULT__PEER_CERT_AS_USERNAME: cn
-      EMQX_LISTENERS__SSL__DEFAULT__PEER_CERT_AS_CLIENTID: cn
+      # NOTE: in EMQX 5.x this is the GLOBAL mqtt.* setting, NOT a listener
+      # field - the listener-scoped env form is rejected as unknown_env_vars
+      # and silently ignored (verified on 5.8.3). Global is safe: a connection
+      # without a client cert (the loopback-only 1883 backbone clients) is
+      # unaffected, its username/clientid stay whatever the client sent.
+      EMQX_MQTT__PEER_CERT_AS_USERNAME: cn
+      EMQX_MQTT__PEER_CERT_AS_CLIENTID: cn
       # --- authorization ----------------------------------------------------
       # The file authorizer (enabled by default) reads our mounted acl.conf.
       # Deny anything no rule matches (the acl.conf still ends with an explicit
