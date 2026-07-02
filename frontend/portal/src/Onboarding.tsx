@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
+import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
 import { api, ApiError, type Site } from './api';
 
@@ -87,7 +88,7 @@ export function LocationSearch({
   if (selected) {
     return (
       <div className="vp-geo-selected">
-        <span aria-hidden="true">📍</span>
+        <Icon name="map-pin" size={16} />
         <span>{selected.label}</span>
         <button type="button" className="vp-linklike" onClick={() => onSelect(null)}>
           Ändern
@@ -128,7 +129,8 @@ export function LocationSearch({
               className="vp-geo-result"
               onClick={() => onSelect(r)}
             >
-              <span aria-hidden="true">📍</span> {r.label}
+              <Icon name="map-pin" size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+              {r.label}
             </button>
           ))}
         </div>
@@ -148,7 +150,7 @@ function Steps({ current }: { current: 1 | 2 | 3 }) {
         return (
           <li key={label} className={`vp-step vp-step-${state}`}>
             <span className="vp-step-num" aria-hidden="true">
-              {state === 'done' ? '✓' : n}
+              {state === 'done' ? <Icon name="check" size={13} strokeWidth={3} /> : n}
             </span>
             <span className="vp-step-label">{label}</span>
           </li>
@@ -377,7 +379,7 @@ function FirstDataStep({ siteId, onDone }: { siteId: string; onDone: () => void 
     return (
       <div className="vp-onboarding-step" style={{ textAlign: 'center' }}>
         <div className="vp-success-mark" aria-hidden="true">
-          ✓
+          <Icon name="check" size={26} strokeWidth={2.5} />
         </div>
         <h3>Ihre Anlage ist verbunden</h3>
         <p className="vp-muted">

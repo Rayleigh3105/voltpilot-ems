@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
+import { Icon } from '../designsystem/components/core/Icon';
 import logoUrl from '../designsystem/assets/voltpilot-logo.png';
 import { Input } from '../designsystem/components/forms/Input';
 import { isPlatformAdmin, login, loginWithCredentials } from './auth';
@@ -217,7 +218,15 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
             }
             hint={
               passwordOk ? (
-                <span style={{ color: 'var(--vp-green)' }}>✓ Passwort ist lang genug.</span>
+                <span style={{ color: 'var(--vp-green)' }}>
+                  <Icon
+                    name="check"
+                    size={12}
+                    strokeWidth={3}
+                    style={{ verticalAlign: '-1px', marginRight: 4 }}
+                  />
+                  Passwort ist lang genug.
+                </span>
               ) : (
                 'Mindestens 8 Zeichen.'
               )

@@ -79,7 +79,12 @@ public class RegistrationController {
             // Compensate: never leave a tenant without its login behind. This
             // covers transport failures (Keycloak unreachable, timeouts) too,
             // not only Keycloak's own refusals.
-            tenants.deleteById(tenant.id());
+            try {
+                tenants.deleteById(tenant.id());
+            } catch (RuntimeException cleanupEx) {
+                log.warn("Failed to delete tenant {} while compensating a registration failure",
+                        tenant.id(), cleanupEx);
+            }
             if (ex instanceof KeycloakAdminException kex) {
                 HttpStatusCode status = HttpStatusCode.valueOf(
                         kex.status() >= 400 && kex.status() < 600 ? kex.status() : 502);
