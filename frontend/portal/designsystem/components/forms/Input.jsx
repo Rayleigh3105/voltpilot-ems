@@ -2,15 +2,16 @@ import React from 'react';
 
 /**
  * VoltPilot Input — white field, soft border, brand focus ring.
+ * Forwards its ref to the native <input> so callers can focus fields.
  */
-export function Input({
+export const Input = React.forwardRef(function Input({
   label = null,
   hint = null,
   error = null,
   id,
   style = {},
   ...props
-}) {
+}, ref) {
   const [focused, setFocused] = React.useState(false);
   const inputId = id || React.useId();
 
@@ -30,6 +31,7 @@ export function Input({
         </label>
       )}
       <input
+        ref={ref}
         id={inputId}
         onFocus={(e) => { setFocused(true); props.onFocus && props.onFocus(e); }}
         onBlur={(e) => { setFocused(false); props.onBlur && props.onBlur(e); }}
@@ -61,4 +63,4 @@ export function Input({
       )}
     </div>
   );
-}
+});

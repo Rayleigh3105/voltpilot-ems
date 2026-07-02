@@ -3,12 +3,16 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
 import com.voltpilot.api.repo.AdminSiteRepository;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.web.dto.AdminUserDto;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.CreateTenantRequest;
 import com.voltpilot.api.web.dto.CreateUserRequest;
+import com.voltpilot.api.web.dto.ProvisionDeviceRequest;
+import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
+import com.voltpilot.api.web.dto.ResetPasswordRequest;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TenantDto;
 import jakarta.validation.Valid;
@@ -46,12 +50,14 @@ public class AdminController {
 
     private final TenantRepository tenants;
     private final AdminSiteRepository sites;
+    private final AdminProvisionedDeviceRepository provisionedDevices;
     private final KeycloakAdminClient keycloak;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
-            KeycloakAdminClient keycloak) {
+            AdminProvisionedDeviceRepository provisionedDevices, KeycloakAdminClient keycloak) {
         this.tenants = tenants;
         this.sites = sites;
+        this.provisionedDevices = provisionedDevices;
         this.keycloak = keycloak;
     }
 
@@ -85,6 +91,34 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    // ---- provisioned devices (manufacturing registry) -------------------------
+
+    @GetMapping("/provisioned-devices")
+    public List<ProvisionedDeviceDto> listProvisionedDevices() {
+        return provisionedDevices.findAll();
+    }
+
+    /**
+     * Register a manufactured sticker Geräte-ID so a customer can claim it.
+     * Idempotent: re-registering (a re-run manufacturing batch) returns 200 with
+     * the existing entry instead of an error.
+     */
+    @PostMapping("/provisioned-devices")
+    public ResponseEntity<ProvisionedDeviceDto> provisionDevice(
+            @Valid @RequestBody ProvisionDeviceRequest request) {
+        String externalRef = DeviceController.canonicalExternalRef(request.externalRef());
+        if (!externalRef.startsWith(DeviceController.STICKER_PREFIX)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Geräte-ID must use the sticker format (prefix "
+                            + DeviceController.STICKER_PREFIX + ")");
+        }
+        String note = request.note() == null || request.note().isBlank()
+                ? null : request.note().trim();
+        return provisionedDevices.insertIfAbsent(externalRef, request.kindOrDefault(), note)
+                .map(created -> ResponseEntity.status(HttpStatus.CREATED).body(created))
+                .orElseGet(() -> ResponseEntity.ok(provisionedDevices.find(externalRef).orElseThrow()));
+    }
+
     // ---- customer users ------------------------------------------------------
 
     @GetMapping("/tenants/{tenantId}/users")
@@ -115,7 +149,28 @@ public class AdminController {
     public AdminUserDto disableUser(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);
         try {
+            requireUserInTenant(tenantId, userId);
             return toDto(keycloak.setEnabled(userId, false));
+        } catch (KeycloakAdminException ex) {
+            throw toResponse(ex);
+        }
+    }
+
+    /**
+     * Support-driven password reset: without SMTP there is no self-service
+     * reset, so this is how a customer who forgot their password (or locked
+     * themselves out guessing) gets back in. Sets the new password (temporary by
+     * default: must change on next login) and lifts any brute-force lockout so
+     * it works immediately.
+     */
+    @PostMapping("/tenants/{tenantId}/users/{userId}/reset-password")
+    public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId,
+            @Valid @RequestBody ResetPasswordRequest request) {
+        requireTenant(tenantId);
+        try {
+            KeycloakUser user = requireUserInTenant(tenantId, userId);
+            keycloak.resetPassword(userId, request.password(), request.temporaryOrDefault());
+            return toDto(user);
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
         }
@@ -127,6 +182,19 @@ public class AdminController {
         if (!tenants.existsById(tenantId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
         }
+    }
+
+    /**
+     * A user addressed under a tenant path must actually carry that tenant -
+     * a user reached through the wrong tenant's path is "not found", never
+     * acted on.
+     */
+    private KeycloakUser requireUserInTenant(UUID tenantId, String userId) {
+        KeycloakUser user = keycloak.getUser(userId);
+        if (!tenantId.toString().equals(user.tenantId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found in this tenant");
+        }
+        return user;
     }
 
     private static AdminUserDto toDto(KeycloakUser u) {

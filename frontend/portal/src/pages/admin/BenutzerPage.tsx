@@ -3,6 +3,8 @@ import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
+import { Input } from '../../../designsystem/components/forms/Input';
+import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
 import { CreateUserDrawer } from './CreateUserDrawer';
@@ -24,6 +26,7 @@ export function BenutzerPage({
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     if (tenantOverride) setTenantId(tenantOverride);
@@ -135,7 +138,10 @@ export function BenutzerPage({
                       {u.enabled ? 'aktiv' : 'deaktiviert'}
                     </Badge>
                   </td>
-                  <td data-label="" style={{ textAlign: 'right' }}>
+                  <td data-label="" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <Button variant="ghost" size="sm" onClick={() => setResetUser(u)}>
+                      Passwort zurücksetzen
+                    </Button>
                     {u.enabled && (
                       <Button variant="ghost" size="sm" onClick={() => disable(u)}>
                         Deaktivieren
@@ -157,6 +163,108 @@ export function BenutzerPage({
           onCreated={() => void reload()}
         />
       )}
+      {tenant && resetUser && (
+        <ResetPasswordDrawer
+          key={resetUser.id}
+          tenant={tenant}
+          user={resetUser}
+          onClose={() => setResetUser(null)}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * Support password reset: the platform has no SMTP (no self-service reset), so
+ * this is how support recovers a customer who forgot their password or locked
+ * themselves out guessing. The backend also lifts any brute-force lockout so
+ * the new password works immediately.
+ */
+function ResetPasswordDrawer({
+  tenant,
+  user,
+  onClose,
+}: {
+  tenant: Tenant;
+  user: AdminUser;
+  onClose: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [temporary, setTemporary] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const valid = password.length >= 8;
+
+  async function submit() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await adminApi.resetPassword(tenant.id, user.id, { password, temporary });
+      setPassword('');
+      setMsg({
+        ok: true,
+        text:
+          `Neues Passwort für „${user.username}“ gesetzt` +
+          (temporary ? ' - muss bei der nächsten Anmeldung geändert werden.' : '.') +
+          ' Eine eventuelle Anmeldesperre wurde aufgehoben.',
+      });
+    } catch (e) {
+      setMsg({
+        ok: false,
+        text:
+          e instanceof ApiError && e.status === 400
+            ? 'Das Passwort muss mindestens 8 Zeichen lang sein.'
+            : e instanceof ApiError
+              ? `Zurücksetzen fehlgeschlagen: ${e.message}`
+              : 'Zurücksetzen fehlgeschlagen.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title={`Passwort zurücksetzen: ${user.username}`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Schließen
+          </Button>
+          <Button variant="primary" onClick={submit} disabled={busy || !valid}>
+            {busy ? 'Setze zurück…' : 'Passwort setzen'}
+          </Button>
+        </>
+      }
+    >
+      <p className="vp-note" style={{ marginTop: 0 }}>
+        Teilen Sie dem Kunden das neue Passwort auf einem sicheren Weg mit. Eine eventuelle
+        Anmeldesperre (zu viele Fehlversuche) wird dabei aufgehoben.
+      </p>
+      <div className="vp-form-stack">
+        <Input
+          label="Neues Passwort *"
+          type="password"
+          placeholder="mind. 8 Zeichen"
+          value={password}
+          autoComplete="new-password"
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
+        />
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={temporary}
+            onChange={(e) => setTemporary(e.target.checked)}
+          />
+          <span style={{ fontSize: '0.9rem' }}>Muss bei nächster Anmeldung geändert werden</span>
+        </label>
+      </div>
+      {msg && <div className={`vp-alert ${msg.ok ? 'vp-alert-ok' : 'vp-alert-err'}`}>{msg.text}</div>}
+    </Drawer>
   );
 }

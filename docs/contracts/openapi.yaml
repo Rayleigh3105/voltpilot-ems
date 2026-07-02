@@ -25,6 +25,11 @@ security:
   - bearerAuth: []
 tags:
   - name: system
+  - name: registration
+    description: >
+      Public self-service registration: a new customer creates their own tenant
+      and login in one step (no operator involved). Unauthenticated by design;
+      can be disabled platform-wide via VOLTPILOT_REGISTRATION_ENABLED=false.
   - name: sites
   - name: devices
   - name: telemetry
@@ -61,6 +66,32 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: UP }
+  /api/v1/registration:
+    post:
+      tags: [registration]
+      summary: Self-register - create a tenant and its first login in one step.
+      description: >
+        The front door of customer onboarding. Creates a B2C tenant named after
+        the customer and a Keycloak user (username = email, `tenant_id` attribute
+        + customer role), so the standard OIDC + RLS spine isolates the new
+        account exactly like operator-provisioned customers. If the user cannot
+        be created (e.g. email already registered), the tenant is rolled back -
+        no orphans. Implemented in services/api (RegistrationController).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegistrationRequest" }
+      responses:
+        "201":
+          description: Account created; the customer can now log in via OIDC.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegistrationResponse" }
+        "400": { description: Invalid input (blank name, invalid email, password shorter than 8 chars). }
+        "409": { description: An account with this email already exists. }
+        "429": { description: Too many registration attempts (sliding-window rate limit per client address plus a global cap; nothing was created). }
   /api/v1/sites:
     get:
       tags: [sites]
@@ -115,15 +146,29 @@ paths:
       summary: Claim an edge device into a site (onboarding = one insert).
       description: >
         Claims an unclaimed edge device (identified by `externalRef`) into one of
-        the caller's sites. `externalRef` is globally unique, so a device already
-        claimed by any tenant - including another one, which RLS hides - yields
-        409. The target site must belong to the caller's tenant, else 404.
+        the caller's sites. `externalRef` is canonicalized before use: trimmed,
+        and sticker Geräte-IDs (prefix `VP-`, case-insensitive) uppercased, so
+        the typed case never creates a second device. Sticker IDs additionally
+        validate against the provisioned-device registry (manufactured IDs,
+        maintained via the admin API): an unknown sticker ID yields 422 instead
+        of creating a ghost device, and the claimed device inherits the
+        registry's `kind`. Non-sticker refs stay ungated. The claim is idempotent
+        within the tenant: re-claiming a ref the caller already owns returns 200
+        with the existing device (at its original site) instead of a conflict.
+        `externalRef` is globally unique, so a device claimed by ANOTHER tenant -
+        which RLS hides - yields 409. The target site must belong to the caller's
+        tenant, else 404.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/DeviceClaimRequest" }
       responses:
+        "200":
+          description: Already claimed by the caller's own tenant - the existing device.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
         "201":
           description: Device claimed.
           content:
@@ -131,7 +176,8 @@ paths:
               schema: { $ref: "#/components/schemas/Device" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Target site not found for this tenant. }
-        "409": { description: Device already claimed (possibly by another tenant). }
+        "409": { description: Device already claimed by another tenant. }
+        "422": { description: Unknown sticker Geräte-ID (not in the provisioned-device registry). }
   /api/v1/sites/{siteId}/telemetry:
     get:
       tags: [telemetry]
@@ -492,6 +538,50 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant not found. }
         "409": { description: A user with that username or email already exists. }
+  /api/v1/admin/provisioned-devices:
+    get:
+      tags: [admin]
+      summary: List the manufacturing registry of sticker Geräte-IDs.
+      description: >
+        Platform-wide view of every provisioned (manufactured) device ID and its
+        claim state - which tenant, if any, has connected it.
+      responses:
+        "200":
+          description: All provisioned devices.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProvisionedDevice" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      summary: Register a manufactured sticker Geräte-ID.
+      description: >
+        Registers a device ID (canonicalized like the claim path - trimmed,
+        uppercased) so a customer can claim it. Only sticker-format IDs
+        (prefix `VP-`) are accepted. Idempotent - re-registering an existing ID
+        returns 200 with the unchanged entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProvisionDeviceRequest" }
+      responses:
+        "200":
+          description: Already registered - the existing, unchanged entry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionedDevice" }
+        "201":
+          description: Geräte-ID registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionedDevice" }
+        "400": { description: Blank or non-sticker-format (missing VP- prefix) Geräte-ID. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/tenants/{tenantId}/users/{userId}/disable:
     post:
       tags: [admin]
@@ -507,7 +597,35 @@ paths:
               schema: { $ref: "#/components/schemas/AdminUser" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { description: Tenant or user not found. }
+        "404": { description: Tenant or user not found (including a user outside this tenant). }
+  /api/v1/admin/tenants/{tenantId}/users/{userId}/reset-password:
+    post:
+      tags: [admin]
+      summary: Reset a customer user's password (support lever).
+      description: >
+        The platform has no SMTP and therefore no self-service password reset;
+        this is how support recovers a customer who forgot their password or
+        locked themselves out guessing. Sets the new password (`temporary`
+        defaults to true: must be changed on next login) and lifts any
+        brute-force lockout so the new password works immediately.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetPasswordRequest" }
+      responses:
+        "200":
+          description: Password reset; any lockout lifted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { description: Invalid password (must be 8-128 characters). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant or user not found (including a user outside this tenant). }
 components:
   securitySchemes:
     bearerAuth:
@@ -532,6 +650,30 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    RegistrationRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          description: Person or company name; becomes the tenant's display name.
+          example: Erika Kaiser
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Login email (doubles as the username; lowercased).
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+    RegistrationResponse:
+      type: object
+      properties:
+        tenantId: { type: string, format: uuid }
+        tenantName: { type: string }
+        username: { type: string, description: The login name (the lowercased email). }
     Site:
       type: object
       properties:
@@ -661,6 +803,28 @@ components:
             Newest telemetry timestamp for the device; null until the first data
             arrives. The portal derives the onboarding state from it ("wartet auf
             erste Daten" -> online).
+    ProvisionDeviceRequest:
+      type: object
+      required: [externalRef]
+      properties:
+        externalRef:
+          type: string
+          description: Sticker Geräte-ID (prefix VP-, canonicalized to uppercase).
+          example: VP-1234-ABCD
+        kind: { type: string, description: "Device kind; defaults to 'inverter'.", example: inverter }
+        note: { type: string, nullable: true, description: Free-form operator note (e.g. manufacturing batch). }
+    ProvisionedDevice:
+      type: object
+      properties:
+        externalRef: { type: string, example: VP-1234-ABCD }
+        kind: { type: string, example: inverter }
+        note: { type: string, nullable: true }
+        provisionedAt: { type: string, format: date-time }
+        claimed: { type: boolean, description: Whether any tenant has connected this device. }
+        claimedByTenant:
+          type: string
+          nullable: true
+          description: Name of the claiming tenant (null while unclaimed).
     TelemetryPoint:
       type: object
       properties:
@@ -900,3 +1064,9 @@ components:
         lastName: { type: string }
         password: { type: string, description: Optional initial password. }
         temporaryPassword: { type: boolean, description: "If true, the user must change it at first login. Default false." }
+    ResetPasswordRequest:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 8, maxLength: 128, description: The new password (same length rule as self-registration). }
+        temporary: { type: boolean, description: "If true (default), the user must change it at next login." }

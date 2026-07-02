@@ -210,6 +210,119 @@ class PortalApiTest {
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
+    @Test
+    void claimIsIdempotentPerTenantAndCanonicalizesStickerIds() {
+        String demo = token("demo", "demo");
+
+        // Sticker IDs are registry-gated: this one exists (as manufacturing
+        // provisioning would have registered it).
+        exec("INSERT INTO provisioned_device (external_ref) VALUES ('VP-IDEM-42AB') "
+                + "ON CONFLICT DO NOTHING");
+
+        // Sticker Geräte-IDs are printed uppercase - a padded, lowercase entry
+        // must land as the canonical uppercase ref, not as a second device.
+        ResponseEntity<Map<String, Object>> first = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "  vp-idem-42ab "),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(first.getBody()).containsEntry("externalRef", "VP-IDEM-42AB");
+
+        // Re-entering your own device (wizard restart, double submit) is
+        // idempotent: 200 with the SAME device, never a scary 409.
+        ResponseEntity<Map<String, Object>> again = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-idem-42AB"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(again.getBody()).containsEntry("id", first.getBody().get("id"));
+
+        // Another tenant claiming the same sticker ID (any case) stays a conflict.
+        ResponseEntity<String> conflict = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", HAMBURG_SITE, "externalRef", "vp-idem-42ab"),
+                        bearer(token("demo2", "demo2"))),
+                String.class);
+        assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void unknownStickerIdIsRejectedInsteadOfCreatingAGhostDevice() {
+        String demo = token("demo", "demo");
+
+        // A typo'd sticker ID is NOT in the manufacturing registry -> the claim
+        // fails fast (422) instead of creating a device that would "wait for
+        // first data" forever.
+        ResponseEntity<String> rejected = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-TYPO-9999"),
+                        bearer(demo)),
+                String.class);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // No ghost device row was created.
+        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(devices.getBody())
+                .extracting(d -> d.get("externalRef")).doesNotContain("VP-TYPO-9999");
+
+        // Once provisioned (with its manufactured kind), the same ID claims fine
+        // and the device inherits the registry kind - the customer never picks it.
+        exec("INSERT INTO provisioned_device (external_ref, kind) "
+                + "VALUES ('VP-TYPO-9999', 'battery') ON CONFLICT DO NOTHING");
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "vp-typo-9999"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(claimed.getBody()).containsEntry("externalRef", "VP-TYPO-9999");
+        assertThat(claimed.getBody()).containsEntry("kind", "battery");
+    }
+
+    @Test
+    void deviceListingCarriesLastSeenFromTelemetry() {
+        String demo = token("demo", "demo");
+
+        // A fresh claim has never reported -> lastSeenAt is null.
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-lastseen-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(claimed.getBody().get("lastSeenAt")).isNull();
+        String newDeviceId = (String) claimed.getBody().get("id");
+
+        // Once telemetry lands for it (seeded as the ingest pipe would write it),
+        // the listing reports the newest sample time as lastSeenAt.
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, payload) "
+                + "VALUES (now() - interval '3 minutes', '00000000-0000-0000-0000-000000000001', '"
+                + BERLIN_SITE + "', '" + newDeviceId + "', 1.5, "
+                + "jsonb_build_object('schema_version', 1, 'source', 'test'))");
+
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> mine = res.getBody().stream()
+                .filter(d -> "edge-lastseen-01".equals(d.get("externalRef")))
+                .findFirst().orElseThrow();
+        String lastSeenAt = (String) mine.get("lastSeenAt");
+        assertThat(lastSeenAt).isNotNull();
+        assertThat(java.time.Instant.parse(lastSeenAt))
+                .isBetween(java.time.Instant.now().minusSeconds(600), java.time.Instant.now());
+
+        // The seeded demo inverter has ~24h of dev telemetry -> lastSeenAt set too.
+        Map<String, Object> seeded = res.getBody().stream()
+                .filter(d -> "demo-inverter-01".equals(d.get("externalRef")))
+                .findFirst().orElseThrow();
+        assertThat((String) seeded.get("lastSeenAt")).isNotNull();
+    }
+
     // ---- site creation (customer self-service, tenant-bound) ----------------
 
     @Test

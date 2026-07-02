@@ -1,11 +1,13 @@
 package com.voltpilot.api.config;
 
 import com.voltpilot.api.tenant.TenantFilter;
+import jakarta.servlet.DispatcherType;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -43,7 +45,15 @@ public class SecurityConfig {
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+                // Spring Security 6 filters ERROR dispatches too; without this an
+                // anonymous caller's 400/409 would be masked as 401 by the /error
+                // forward (relevant for the public registration endpoint).
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .requestMatchers("/health", "/info", "/actuator/**").permitAll()
+                // Self-service registration is the front door - it must work
+                // before the caller has any token (the controller can be turned
+                // off via voltpilot.registration.enabled).
+                .requestMatchers(HttpMethod.POST, "/api/v1/registration").permitAll()
                 .anyRequest().authenticated())
             // Map Keycloak realm roles -> ROLE_* authorities so @PreAuthorize on the
             // admin API can gate Portal-Admins (platform-admin) from Portal-Users.

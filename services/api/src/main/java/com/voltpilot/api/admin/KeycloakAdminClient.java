@@ -108,9 +108,35 @@ public class KeycloakAdminClient {
         }
 
         String userId = extractId(res.getHeaders().getLocation());
-        assignRealmRole(userId, props.getCustomerRole());
-        log.info("Provisioned customer user '{}' ({}) in tenant {}", username, userId, tenantId);
-        return getUser(userId);
+        try {
+            assignRealmRole(userId, props.getCustomerRole());
+            KeycloakUser user = getUser(userId);
+            log.info("Provisioned customer user '{}' ({}) in tenant {}", username, userId, tenantId);
+            return user;
+        } catch (RuntimeException ex) {
+            // All-or-nothing: a half-provisioned user (created but without the
+            // customer role) would strand the email - every retry hits 409 and
+            // only manual Keycloak surgery recovers it. Roll the creation back
+            // so the caller can simply retry.
+            bestEffortDeleteUser(userId);
+            throw ex;
+        }
+    }
+
+    /**
+     * Compensating delete for a partially provisioned user. Best-effort: if
+     * this fails too the original error still propagates, we just could not
+     * clean up.
+     */
+    private void bestEffortDeleteUser(String userId) {
+        try {
+            admin().delete().uri("/admin/realms/{realm}/users/{id}", props.getRealm(), userId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException cleanupEx) {
+            log.warn("Could not roll back partially provisioned user {}: {}", userId,
+                    cleanupEx.getMessage());
+        }
     }
 
     /** Assign a realm role to a user (idempotent from Keycloak's side). */
@@ -179,6 +205,45 @@ public class KeycloakAdminClient {
         } catch (RestClientResponseException ex) {
             throw new KeycloakAdminException(ex.getStatusCode().value(),
                     "User not found: " + userId);
+        }
+    }
+
+    /**
+     * Set a new password for a user (the support lever - without SMTP there is
+     * no self-service reset, so this is how a customer who forgot their password
+     * gets back in). {@code temporary} forces a password change on the next
+     * login. Also lifts any brute-force lockout so the new password works
+     * immediately instead of being refused until the escalating wait expires.
+     */
+    public void resetPassword(String userId, String password, boolean temporary) {
+        try {
+            admin().put().uri("/admin/realms/{realm}/users/{id}/reset-password",
+                            props.getRealm(), userId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("type", "password", "value", password, "temporary", temporary))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException ex) {
+            throw new KeycloakAdminException(ex.getStatusCode().value(),
+                    "Resetting the password failed: " + ex.getResponseBodyAsString());
+        }
+        clearBruteForceLockout(userId);
+        log.info("Reset password for user {} (temporary={})", userId, temporary);
+    }
+
+    /**
+     * Lift a temporary brute-force lockout. Best-effort: a failure here only
+     * means the lock expires on its own, so it must never fail the reset that
+     * triggered it.
+     */
+    public void clearBruteForceLockout(String userId) {
+        try {
+            admin().delete().uri("/admin/realms/{realm}/attack-detection/brute-force/users/{id}",
+                            props.getRealm(), userId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException ex) {
+            log.warn("Could not clear brute-force lockout for user {}: {}", userId, ex.getMessage());
         }
     }
 

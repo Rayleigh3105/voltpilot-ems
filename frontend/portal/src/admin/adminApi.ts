@@ -41,6 +41,26 @@ export interface CreateUserInput {
   temporaryPassword?: boolean;
 }
 
+export interface ResetPasswordInput {
+  password: string;
+  temporary?: boolean;
+}
+
+export interface ProvisionedDevice {
+  externalRef: string;
+  kind: string;
+  note: string | null;
+  provisionedAt: string;
+  claimed: boolean;
+  claimedByTenant: string | null;
+}
+
+export interface ProvisionDeviceInput {
+  externalRef: string;
+  kind?: string;
+  note?: string;
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -64,11 +84,28 @@ export const adminApi = {
       method: 'POST',
     }),
 
+  // Support lever: no SMTP means no self-service reset, so support sets a new
+  // (default temporary) password here; any brute-force lockout is lifted too.
+  resetPassword: (tenantId: string, userId: string, input: ResetPasswordInput) =>
+    request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
   listSites: (tenantId: string) =>
     request<Site[]>(`/api/v1/admin/tenants/${tenantId}/sites`),
 
   createSite: (tenantId: string, input: CreateSiteInput) =>
     request<Site>(`/api/v1/admin/tenants/${tenantId}/sites`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  listProvisionedDevices: () =>
+    request<ProvisionedDevice[]>('/api/v1/admin/provisioned-devices'),
+
+  provisionDevice: (input: ProvisionDeviceInput) =>
+    request<ProvisionedDevice>('/api/v1/admin/provisioned-devices', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

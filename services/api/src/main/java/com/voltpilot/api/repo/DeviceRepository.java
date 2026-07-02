@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -24,6 +25,22 @@ public class DeviceRepository {
                         + "(SELECT max(t.time) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
                         + "FROM device d ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
+    }
+
+    /**
+     * The current tenant's device with this external ref, if it has one. RLS
+     * hides other tenants' devices, so a hit always means "already claimed by
+     * the caller's own account".
+     */
+    public Optional<DeviceDto> findByExternalRef(String externalRef) {
+        return jdbc.query(
+                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.status, t.last_seen "
+                        + "FROM device d "
+                        + "LEFT JOIN LATERAL (SELECT time AS last_seen FROM telemetry "
+                        + "  WHERE device_id = d.id ORDER BY time DESC LIMIT 1) t ON true "
+                        + "WHERE d.external_ref = ?",
+                DeviceRepository::mapDevice,
+                externalRef).stream().findFirst();
     }
 
     /**

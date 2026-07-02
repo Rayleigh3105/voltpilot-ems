@@ -80,7 +80,7 @@ The portal runs outside compose via the Vite dev server:
 (cd frontend/portal && npm install && npm run dev)   # http://localhost:5173
 ```
 
-Open http://localhost:5173, click **Anmelden mit Keycloak**, and log in with a seeded **dev-only** user:
+Open http://localhost:5173, click **Anmelden** (the branded German VoltPilot login page appears), and log in with a seeded **dev-only** user:
 
 | User | Password | Tenant | Sees |
 |---|---|---|---|
@@ -88,7 +88,8 @@ Open http://localhost:5173, click **Anmelden mit Keycloak**, and log in with a s
 | `demo2` | `demo2` | B | Nordwind Hamburg + its telemetry |
 
 After login the portal shows that tenant's sites, a live telemetry chart (PV / load / net power / battery SoC), and its devices - never the other tenant's data (enforced by Postgres RLS).
-Log in as `admin`/`admin` for the same portal with the additive **Plattform** nav group (Mandanten/Benutzer) and the tenant switcher in the top bar.
+Log in as `admin`/`admin` for the same portal with the additive **Plattform** nav group (Mandanten/Benutzer/Geräte-Registry) and the tenant switcher in the top bar.
+Alternatively, create a fresh customer account via **Konto erstellen** (public self-registration): you land signed-in in the guided onboarding wizard (Standort → Gerät → Startklar).
 
 #### Access the portal from another machine on the LAN
 
@@ -173,7 +174,7 @@ Each service is independently buildable; see its own README.
 
 ## Contracts
 
-The binding interface contracts live in [`docs/contracts/`](docs/contracts/): the MQTT topic + telemetry payload schema (incl. the observed §14a effective power limit), the Redpanda `telemetry.raw` event schema, and the portal OpenAPI (auth/sites/devices/telemetry/claim implemented; schedules/KPIs still stubs). Treat changes there as breaking and versioned.
+The binding interface contracts live in [`docs/contracts/`](docs/contracts/): the MQTT topic + telemetry payload schema (incl. the observed §14a effective power limit), the Redpanda `telemetry.raw` event schema, the MQTT schedule + provisioning schemas, and the portal OpenAPI (registration/auth/sites/devices/claim/telemetry/prices/weather/schedule/history plus the admin API implemented; KPIs still a stub). Treat changes there as breaking and versioned.
 
 ## Connect a real device (secure mTLS broker)
 
@@ -185,11 +186,11 @@ Single-VPS deploy (external Caddy TLS + Forgejo push-to-deploy), modeled on saal
 
 ## Scope & future work
 
-Delivered so far: the **runnable local backbone**, the binding **contracts**, the **portal + authentication spine** (Spring Boot API in compose with Keycloak OIDC + Postgres RLS tenant isolation + device claiming, and a React portal with OIDC login + telemetry view - see [`AGENTS.md`](AGENTS.md)), the baseline **forecast** service, the **ENTSO-E market-data** adapter, and the Node-RED **edge** (SunSpec simulator). The remaining services (`ingest`, `writer`, `optimization`, `marketing-adapter`) are thin skeletons. Still excluded:
+Delivered so far: the **runnable local backbone**, the binding **contracts**, the **portal + authentication spine** (Spring Boot API in compose with Keycloak OIDC + Postgres RLS tenant isolation, public **self-registration** with seamless auto-login, the guided **onboarding wizard**, and device claiming gated by the provisioned-device registry - see [`AGENTS.md`](AGENTS.md)), the **live ingest pipe** (`ingest` + `timescale-writer`, compose `edge` profile), the baseline **forecast** service, the **market-data** day-ahead price adapter, the **optimization** battery-dispatch engine, and the Node-RED **edge** (SunSpec simulator). Only `marketing-adapter` remains a thin skeleton. Still excluded:
 
-- The real **ingest** data path (EMQX->ingest->Redpanda->writer) feeding real telemetry - the Node-RED edge already publishes, but `ingest`/`writer` are still skeletons, so the portal currently reads dev-seeded demo telemetry - plus the portal's schedules/KPIs endpoints and a live telemetry channel (WS/SSE).
+- The portal's KPIs endpoint and a live telemetry channel (WS/SSE - the portal polls REST); self-registration email verification/captcha (SMTP would also unlock self-service password reset - today recovery is the support reset in the admin Benutzer page).
 - Cloud / Kubernetes / Hetzner deployment manifests and GitOps (Argo CD/Flux).
-- Real business logic: the optimization MILP, ML forecasting models (the v1 baseline load/PV forecast is built - see `services/forecast`), direct-marketing provider integrations, and real hardware Modbus/SunSpec edge I/O (the Node-RED edge already runs end-to-end against the simulated SunSpec source in `edge/sim`). ENTSO-E day-ahead price ingestion now exists in `services/market-data`.
+- Remaining business logic: promoting the shadow-mode ML forecasters (baselines are active, XGBoost challengers run in shadow - see `services/forecast` and the `AGENTS.md` "Shadow-mode forecasting" section), direct-marketing provider integrations, and real hardware Modbus/SunSpec edge I/O (the Node-RED edge runs end-to-end against the simulated SunSpec source in `edge/sim`).
 - Migration-version coordination across services - `services/api` now runs core-schema Flyway migrations (RLS enforced), `services/market-data` ships the forward-only `day_ahead_prices` migration, and `services/forecast` its own `V3__forecast_hypertable.sql`; a unified scheme is still to be reconciled.
 - Observability stack (Prometheus/Grafana/Loki/OTel) and Edge OTA (Mender).
 

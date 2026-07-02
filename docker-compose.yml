@@ -272,6 +272,8 @@ services:
       # OIDC on. Issuer is the browser-facing Keycloak URL; JWKS is fetched over
       # the compose-internal URL (the issuer-trap fix - see the keycloak block).
       VOLTPILOT_SECURITY_OIDC_ENABLED: "true"
+      # Public self-service registration (portal "Konto erstellen"); on in dev.
+      VOLTPILOT_REGISTRATION_ENABLED: ${VOLTPILOT_REGISTRATION_ENABLED:-true}
       OIDC_ISSUER_URI: ${OIDC_ISSUER_URI:-http://localhost:8081/realms/voltpilot}
       OIDC_JWK_SET_URI: ${OIDC_JWK_SET_URI:-http://keycloak:8080/realms/voltpilot/protocol/openid-connect/certs}
       # Keycloak Admin REST API (provisioning customer users). The API calls it as

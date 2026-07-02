@@ -40,6 +40,15 @@ public class TenantRepository {
                 TenantRepository::map, name, segment);
     }
 
+    /**
+     * Delete a tenant row. Used only to compensate a failed self-registration
+     * (the tenant was just created and owns no data yet); child rows would make
+     * this fail by FK, which is the safety we want.
+     */
+    public void deleteById(UUID tenantId) {
+        jdbc.update("DELETE FROM tenant WHERE id = ?", tenantId);
+    }
+
     public boolean existsById(UUID tenantId) {
         Integer count = jdbc.queryForObject(
                 "SELECT count(*) FROM tenant WHERE id = ?", Integer.class, tenantId);

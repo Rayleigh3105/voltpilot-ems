@@ -125,6 +125,8 @@ Header expectations - NPM's default proxy host template already does the right t
 - NPM forwards the original `Host` header and sets `X-Forwarded-Proto` (`$scheme`, i.e. `https`) and `X-Forwarded-For` automatically.
 - The stack **requires** exactly that: Keycloak (`KC_PROXY_HEADERS=xforwarded`) and the frontend nginx trust `X-Forwarded-Proto` to reconstruct HTTPS URLs, and the `/auth` login flow breaks without it.
   No custom-location or advanced-config snippets are needed.
+- The registration rate limiter keys clients by the **`X-Forwarded-For`** chain: NPM appends the real client address, the frontend nginx appends NPM's, so the api (with `VOLTPILOT_REGISTRATION_RATE_LIMIT_TRUSTED_PROXIES=2`, the prod default) reads the 2nd-from-the-right entry as the client.
+  Entries further left are client-supplied and are deliberately ignored - never lower `trusted-proxies`, and raise it by one for every additional own proxy layer in front of NPM.
 - If you use an internal CA instead of Let's Encrypt, colleagues' browsers/OS trust stores must contain that CA - the stack itself does not care.
 
 **MQTT is TCP, not HTTP** - NPM proxy hosts do NOT cover it.
@@ -294,6 +296,8 @@ Before serving real customers:
 
 - Set `SPRING_PROFILES_ACTIVE=` (blank) in `.env` so the api does **not** seed demo tenants/telemetry.
 - Remove the `demo`/`demo2` users from `infra/prod/keycloak/voltpilot-realm.json` (or delete them in the Keycloak admin console) and create real users, each with a `tenant_id` attribute and a matching `tenant` row.
+- Decide whether to keep public self-registration (`VOLTPILOT_REGISTRATION_ENABLED`, default `true`; set `false` in `.env` for a closed platform where only Portal-Admins create accounts).
+  Its rate limiter assumes **2** own proxy hops appending to `X-Forwarded-For` (external reverse proxy → frontend nginx, `VOLTPILOT_REGISTRATION_RATE_LIMIT_TRUSTED_PROXIES=2`) - adjust the value if you add or remove a proxy layer.
 - Rotate every secret in `.env` and the EMQX dashboard password.
 - Confirm the firewall rules above and change the Keycloak admin password.
 

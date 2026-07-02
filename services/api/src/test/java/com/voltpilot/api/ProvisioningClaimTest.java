@@ -152,6 +152,62 @@ class ProvisioningClaimTest {
         rebooted.disconnect();
     }
 
+    /**
+     * The manufacturing-registry gate composes with zero-touch onboarding:
+     * a registered sticker Geräte-ID (VP- prefix) passes the claim gate and the
+     * waiting device still receives its retained config - on the CANONICAL
+     * uppercase topic (the ref as printed on the sticker), even when the
+     * customer typed it lowercase in the portal.
+     */
+    @Test
+    void registeredStickerRefClaimPublishesRetainedProvisioningConfig() throws Exception {
+        String canonicalRef = "VP-ZTP-77AA";
+
+        // Manufacturing registers the produced sticker ID (admin API, lowercase
+        // on purpose - the endpoint canonicalizes like the claim path).
+        HttpHeaders admin = bearer(token("admin", "admin"));
+        ResponseEntity<Map<String, Object>> provisioned = rest.exchange(
+                url("/api/v1/admin/provisioned-devices"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("externalRef", "vp-ztp-77aa", "kind", "inverter"), admin),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(provisioned.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(provisioned.getBody()).containsEntry("externalRef", canonicalRef);
+
+        // The physical device knows only its printed (uppercase) ref: it is
+        // already subscribed to that config topic ("claim-later").
+        MqttClient device = new MqttClient(
+                "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883),
+                "device-" + canonicalRef, new MemoryPersistence());
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(true);
+        device.connect(options);
+        BlockingQueue<String> configs = new ArrayBlockingQueue<>(4);
+        device.subscribe("provision/" + canonicalRef + "/config", 1,
+                (topic, msg) -> configs.add(new String(msg.getPayload())));
+
+        // The customer types the sticker ID sloppily; the gate lets the
+        // registered ID through and the claim canonicalizes it.
+        HttpHeaders customer = bearer(token("demo", "demo"));
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "  vp-ztp-77aa "),
+                        customer),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(claim.getBody()).containsEntry("externalRef", canonicalRef);
+        String deviceId = (String) claim.getBody().get("id");
+
+        // Zero-touch converges: the waiting device receives its identity.
+        String config = configs.poll(15, TimeUnit.SECONDS);
+        assertThat(config).as("config pushed on gated sticker claim").isNotNull();
+        JsonNode node = mapper.readTree(config);
+        assertThat(node.get("ref").asText()).isEqualTo(canonicalRef);
+        assertThat(node.get("tenant_id").asText()).isEqualTo(TENANT_A);
+        assertThat(node.get("site_id").asText()).isEqualTo(BERLIN_SITE);
+        assertThat(node.get("device_id").asText()).isEqualTo(deviceId);
+        device.disconnect();
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private String url(String path) {

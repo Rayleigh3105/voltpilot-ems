@@ -170,7 +170,7 @@ export function AppShell({
                   </Badge>
                 )}
               </div>
-              {user.email && <div className="e">{user.email}</div>}
+              {user.email && user.email !== user.name && <div className="e">{user.email}</div>}
             </div>
             <span className="vp-avatar" title={user.name}>
               {initials}

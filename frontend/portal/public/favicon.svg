@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Brand mark: white bolt on the VoltPilot primary gradient (design-system tokens). -->
+  <defs>
+    <linearGradient id="vp" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B8D4FF"/>
+      <stop offset="0.5" stop-color="#7BA3F7"/>
+      <stop offset="1" stop-color="#5A8DE8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#vp)"/>
+  <path d="M36.5 10 L20 36.5 h10.5 L27.5 54 L44 27.5 h-10.5 Z" fill="#FFFFFF"/>
+</svg>
