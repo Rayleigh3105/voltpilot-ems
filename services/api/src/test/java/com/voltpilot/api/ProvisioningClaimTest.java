@@ -208,6 +208,67 @@ class ProvisioningClaimTest {
         device.disconnect();
     }
 
+    /**
+     * The unclaim MQTT cleanup: deleting a device clears the RETAINED
+     * {@code provision/{ref}/config} (a rebooting device no longer receives a
+     * stale identity - it falls back to hello retries) and the ref is claimable
+     * again; a fresh claim then re-publishes the retained config with the NEW
+     * device identity. claim -> unclaim -> re-claim, end to end.
+     */
+    @Test
+    void unclaimClearsRetainedConfigAndReclaimRepublishesIt() throws Exception {
+        String ref = "recycle-" + UUID.randomUUID().toString().substring(0, 8);
+        HttpHeaders headers = bearer(token("demo", "demo"));
+
+        // Claim: the retained config exists on the broker.
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", ref), headers),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String firstDeviceId = (String) claim.getBody().get("id");
+        assertThat(pollRetainedConfig(ref, 15)).as("retained config after claim").isNotNull();
+
+        // Unclaim: 204, and the retained config is GONE - a fresh subscribe
+        // (device reboot) receives nothing instead of a stale identity.
+        ResponseEntity<String> deleted = rest.exchange(
+                url("/api/v1/devices/" + firstDeviceId),
+                org.springframework.http.HttpMethod.DELETE, new HttpEntity<>(headers), String.class);
+        assertThat(deleted.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(pollRetainedConfig(ref, 3)).as("retained config after unclaim").isNull();
+
+        // Re-claim the freed ref: a NEW device row, and the retained config is
+        // back with the new identity.
+        ResponseEntity<Map<String, Object>> reclaim = rest.exchange(
+                url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", ref), headers),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(reclaim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String secondDeviceId = (String) reclaim.getBody().get("id");
+        assertThat(secondDeviceId).isNotEqualTo(firstDeviceId);
+        String replayed = pollRetainedConfig(ref, 15);
+        assertThat(replayed).as("retained config after re-claim").isNotNull();
+        assertThat(mapper.readTree(replayed).get("device_id").asText()).isEqualTo(secondDeviceId);
+    }
+
+    /** Fresh subscriber: the retained config payload, or null if none arrives. */
+    private String pollRetainedConfig(String ref, int timeoutSeconds) throws Exception {
+        MqttClient probe = new MqttClient(
+                "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883),
+                "probe-" + UUID.randomUUID().toString().substring(0, 8), new MemoryPersistence());
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(true);
+        probe.connect(options);
+        try {
+            BlockingQueue<String> received = new ArrayBlockingQueue<>(4);
+            probe.subscribe("provision/" + ref + "/config", 1,
+                    (topic, msg) -> received.add(new String(msg.getPayload())));
+            return received.poll(timeoutSeconds, TimeUnit.SECONDS);
+        } finally {
+            probe.disconnect();
+        }
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private String url(String path) {

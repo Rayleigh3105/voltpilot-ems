@@ -7,6 +7,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { api, ApiError, deviceLiveStatus, type Device, type Site } from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
+import { DangerZone } from './DangerZone';
 import { normalizeDeviceIdInput } from '../Onboarding';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
@@ -220,25 +221,54 @@ export function AddDeviceDrawer({
   );
 }
 
-/** Device detail drawer (row click): reference, site, status, last data. */
+/**
+ * Device detail drawer (row click): reference, site, status, last data - plus
+ * "Bearbeiten" (type + label; the reference is the immutable identity) and the
+ * unclaim delete with an explicit consequence list.
+ */
 export function DeviceDetailDrawer({
   device,
   sites,
   onClose,
+  onChanged,
 }: {
   device: Device | null;
   sites: Site[];
   onClose: () => void;
+  onChanged: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditing(false);
+    setDeleteError(null);
+  }, [device?.id]);
+
   if (!device) return null;
   const site = sites.find((s) => s.id === device.siteId);
   const status = deviceLiveStatus(device);
+
+  async function unclaim(d: Device) {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await api.deleteDevice(d.id);
+      onClose();
+      onChanged();
+    } catch {
+      setDeleteError('Das Gerät konnte nicht entfernt werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   return (
     <Drawer
       open
       onClose={onClose}
-      title={device.externalRef}
+      title={device.name || device.externalRef}
       icon={
         <IconTile category="battery" size={40}>
           <Icon name="zap" size={20} />
@@ -254,42 +284,156 @@ export function DeviceDetailDrawer({
         <DeviceStatusBadge device={device} />
         <Badge variant="tint">{deviceKindLabel(device.kind)}</Badge>
         {site && <Badge variant="tint">{site.name}</Badge>}
+        {!editing && (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconLeft={<Icon name="pencil" size={16} />}
+            onClick={() => setEditing(true)}
+            style={{ marginLeft: 'auto' }}
+          >
+            Bearbeiten
+          </Button>
+        )}
       </div>
 
-      <table className="vp-table">
-        <tbody>
-          <tr>
-            <th scope="row">Referenz</th>
-            <td className="vp-mono">{device.externalRef}</td>
-          </tr>
-          <tr>
-            <th scope="row">Typ</th>
-            <td>{deviceKindLabel(device.kind)}</td>
-          </tr>
-          <tr>
-            <th scope="row">Standort</th>
-            <td>{site?.name ?? device.siteId.slice(0, 8)}</td>
-          </tr>
-          <tr>
-            <th scope="row">Zuletzt gesehen</th>
-            <td>{fmtRelative(device.lastSeenAt)}</td>
-          </tr>
-        </tbody>
-      </table>
+      {editing ? (
+        <DeviceEditForm
+          device={device}
+          onCancel={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      ) : (
+        <>
+          <table className="vp-table">
+            <tbody>
+              <tr>
+                <th scope="row">Referenz</th>
+                <td className="vp-mono">{device.externalRef}</td>
+              </tr>
+              <tr>
+                <th scope="row">Bezeichnung</th>
+                <td>{device.name ?? <span className="vp-muted">-</span>}</td>
+              </tr>
+              <tr>
+                <th scope="row">Typ</th>
+                <td>{deviceKindLabel(device.kind)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Standort</th>
+                <td>{site?.name ?? device.siteId.slice(0, 8)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Zuletzt gesehen</th>
+                <td>{fmtRelative(device.lastSeenAt)}</td>
+              </tr>
+            </tbody>
+          </table>
 
-      {status === 'waiting' && (
-        <div className="vp-alert vp-alert-info">
-          Das Gerät wurde beansprucht, hat aber noch keine Daten gesendet. Schalten
-          Sie es ein - es konfiguriert sich automatisch über seine Referenz und der
-          Status wechselt auf <b>online</b>, sobald Messwerte eintreffen.
-        </div>
-      )}
-      {status === 'stale' && (
-        <div className="vp-alert vp-alert-info">
-          Seit über 5 Minuten keine Daten. Prüfen Sie Stromversorgung und
-          Netzwerk des Geräts; nach dem Neustart konfiguriert es sich automatisch neu.
-        </div>
+          {status === 'waiting' && (
+            <div className="vp-alert vp-alert-info">
+              Das Gerät wurde beansprucht, hat aber noch keine Daten gesendet. Schalten
+              Sie es ein - es konfiguriert sich automatisch über seine Referenz und der
+              Status wechselt auf <b>online</b>, sobald Messwerte eintreffen.
+            </div>
+          )}
+          {status === 'stale' && (
+            <div className="vp-alert vp-alert-info">
+              Seit über 5 Minuten keine Daten. Prüfen Sie Stromversorgung und
+              Netzwerk des Geräts; nach dem Neustart konfiguriert es sich automatisch neu.
+            </div>
+          )}
+
+          <DangerZone
+            actionLabel="Gerät entfernen"
+            description="Falsches Gerät verbunden? Entfernen macht die Geräte-ID wieder frei - sie kann danach erneut (auch von einem anderen Konto) verbunden werden."
+            consequences={[
+              `Das Gerät „${device.name || device.externalRef}" wird von Ihrem Konto getrennt`,
+              'Alle aufgezeichneten Messdaten dieses Geräts werden gelöscht',
+              'Das physische Gerät verliert seinen Fahrplan und fällt in den sicheren Standardbetrieb zurück',
+            ]}
+            confirmLabel="Gerät endgültig entfernen"
+            busy={deleteBusy}
+            error={deleteError}
+            onConfirm={() => void unclaim(device)}
+          />
+        </>
       )}
     </Drawer>
+  );
+}
+
+/**
+ * Inline edit form: type + Bezeichnung only. The Referenz is deliberately not
+ * editable - it is the device's identity (sticker/topics); a wrong reference
+ * is fixed by removing the device and connecting the right one.
+ */
+function DeviceEditForm({
+  device,
+  onCancel,
+  onSaved,
+}: {
+  device: Device;
+  onCancel: () => void;
+  onSaved: (updated: Device) => void;
+}) {
+  const [kind, setKind] = useState(device.kind);
+  const [name, setName] = useState(device.name ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.updateDevice(device.id, { kind, name: name.trim() || null });
+      onSaved(updated);
+    } catch {
+      setError('Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 'var(--vp-space-4)' }}>
+      <div className="vp-form-stack">
+        <Input label="Referenz" value={device.externalRef} disabled readOnly
+          hint="Die Referenz ist die Identität des Geräts und kann nicht geändert werden. Falsche Referenz? Entfernen Sie das Gerät und verbinden Sie das richtige." />
+        <Input
+          label="Bezeichnung"
+          placeholder="z. B. Wechselrichter Garage"
+          value={name}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="edit-device-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Typ
+          </label>
+          <select
+            id="edit-device-kind"
+            className="vp-select"
+            value={kind}
+            onChange={(e) => setKind(e.target.value)}
+          >
+            <option value="inverter">Wechselrichter</option>
+            <option value="battery">Batteriespeicher</option>
+            <option value="meter">Zähler</option>
+          </select>
+        </div>
+      </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Abbrechen
+        </Button>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
+        </Button>
+      </div>
+    </div>
   );
 }

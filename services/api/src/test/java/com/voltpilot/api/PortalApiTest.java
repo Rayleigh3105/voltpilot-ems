@@ -393,6 +393,161 @@ class PortalApiTest {
                 String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    // ---- entity lifecycle: edit + delete -------------------------------------
+
+    @Test
+    void siteEditIsTenantScopedAndMirrorsCreateValidation() {
+        String demo = token("demo", "demo");
+
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Werk Tippfehlre"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String siteId = (String) created.getBody().get("id");
+
+        // Fix the typo'd name and add zone + coordinates in one edit.
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Werk Tippfehler behoben", "biddingZone", "AT",
+                        "latitude", 47.27, "longitude", 11.39), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody()).containsEntry("name", "Werk Tippfehler behoben");
+        assertThat(updated.getBody()).containsEntry("biddingZone", "AT");
+        assertThat(sites(demo)).extracting(s -> s.get("name")).contains("Werk Tippfehler behoben");
+
+        // Validation mirrors create: blank name / out-of-range coordinates -> 400.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "  "), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Ok", "latitude", 999.0), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Cross-tenant: another tenant can neither see nor edit it (404, RLS).
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Übernahme"), bearer(token("demo2", "demo2"))),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(sites(demo)).extracting(s -> s.get("name")).doesNotContain("Übernahme");
+    }
+
+    @Test
+    void siteDeleteIsGuardedByDevicesAndCascadesSeriesData() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        // A disposable site with a device and recorded series data.
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Werk Wegwerf"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        String siteId = (String) created.getBody().get("id");
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-wegwerf-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        String deviceId = (String) claim.getBody().get("id");
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
+                + "(now() - interval '2 hours', '" + tenantA + "', '" + siteId + "', '" + deviceId + "', 1.0), "
+                + "(now() - interval '1 hour', '" + tenantA + "', '" + siteId + "', '" + deviceId + "', 2.0)");
+        exec("INSERT INTO forecast (time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) "
+                + "VALUES (now(), '" + tenantA + "', '" + siteId + "', 'load', 'load-persistence', 1.2, now(), 60, 'test')");
+        exec("INSERT INTO weather_forecast (time, tenant_id, site_id, run_at, temperature_c, source) "
+                + "VALUES (now(), '" + tenantA + "', '" + siteId + "', now(), 20.0, 'open-meteo')");
+
+        // The deletion preview lists the concrete consequences for the dialog.
+        ResponseEntity<Map<String, Object>> preview = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/deletion-preview"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(preview.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(preview.getBody()).containsEntry("deviceCount", 1);
+        assertThat(((Number) preview.getBody().get("telemetryCount")).longValue()).isEqualTo(2L);
+        assertThat(preview.getBody().get("telemetryFrom")).isNotNull();
+        assertThat(((Number) preview.getBody().get("weatherCount")).longValue()).isEqualTo(1L);
+
+        // GUARD: while a device exists, the delete is refused (409).
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        // Cross-tenant: the other tenant gets 404, not the guard's 409.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Unclaim the device, then the delete goes through...
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+
+        // ...the site is gone from the listing and every series row with it.
+        assertThat(sites(demo)).extracting(s -> s.get("name")).doesNotContain("Werk Wegwerf");
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE site_id = '" + siteId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM forecast WHERE site_id = '" + siteId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM weather_forecast WHERE site_id = '" + siteId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId + "'")).isZero();
+    }
+
+    @Test
+    void deviceEditAndUnclaimDeleteTelemetryAndAllowReclaim() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        String deviceId = (String) claim.getBody().get("id");
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
+                + "(now(), '" + tenantA + "', '" + BERLIN_SITE + "', '" + deviceId + "', 3.3)");
+
+        // Edit: kind + label. The externalRef is identity and stays untouched.
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/devices/" + deviceId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("kind", "battery", "name", "Speicher Keller"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody()).containsEntry("kind", "battery");
+        assertThat(updated.getBody()).containsEntry("name", "Speicher Keller");
+        assertThat(updated.getBody()).containsEntry("externalRef", "edge-unclaim-01");
+
+        // A bad kind mirrors the enum validation (400).
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("kind", "toaster"), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Cross-tenant: another tenant can neither edit nor delete it (404).
+        String demo2 = token("demo2", "demo2");
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "fremd"), bearer(demo2)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo2)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Unclaim: the device row AND its telemetry are gone.
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId + "'")).isZero();
+
+        // The freed ref is claimable again (fresh row, fresh id).
+        ResponseEntity<Map<String, Object>> reclaimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(reclaimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(reclaimed.getBody().get("id")).isNotEqualTo(deviceId);
+    }
+
     // ---- data feeds: day-ahead prices + weather -----------------------------
 
     @Test
@@ -777,6 +932,19 @@ class PortalApiTest {
     }
 
     // ---- helpers ------------------------------------------------------------
+
+    /** Scalar count query as the Postgres superuser (sees all tenants' rows). */
+    private static long queryLong(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
 
     /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */
     private static void exec(String sql) {

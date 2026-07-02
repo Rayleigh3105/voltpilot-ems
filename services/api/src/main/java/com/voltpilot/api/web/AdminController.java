@@ -3,28 +3,43 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
 import com.voltpilot.api.repo.AdminSiteRepository;
 import com.voltpilot.api.repo.TenantRepository;
+import com.voltpilot.api.repo.TenantRepository.OffboardCounts;
+import com.voltpilot.api.repo.TenantRepository.TenantDevice;
 import com.voltpilot.api.web.dto.AdminUserDto;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.CreateTenantRequest;
 import com.voltpilot.api.web.dto.CreateUserRequest;
+import com.voltpilot.api.web.dto.DeleteTenantRequest;
 import com.voltpilot.api.web.dto.ProvisionDeviceRequest;
 import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
 import com.voltpilot.api.web.dto.ResetPasswordRequest;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TenantDto;
+import com.voltpilot.api.web.dto.TenantOffboardingReportDto;
+import com.voltpilot.api.web.dto.UpdateTenantRequest;
+import com.voltpilot.api.web.dto.UpdateUserRequest;
 import jakarta.validation.Valid;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,17 +63,22 @@ import org.springframework.web.server.ResponseStatusException;
 @PreAuthorize("hasRole('platform-admin')")
 public class AdminController {
 
+    private static final Logger log = LoggerFactory.getLogger(AdminController.class);
+
     private final TenantRepository tenants;
     private final AdminSiteRepository sites;
     private final AdminProvisionedDeviceRepository provisionedDevices;
     private final KeycloakAdminClient keycloak;
+    private final ObjectProvider<ProvisioningPublisher> provisioning;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
-            AdminProvisionedDeviceRepository provisionedDevices, KeycloakAdminClient keycloak) {
+            AdminProvisionedDeviceRepository provisionedDevices, KeycloakAdminClient keycloak,
+            ObjectProvider<ProvisioningPublisher> provisioning) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
         this.keycloak = keycloak;
+        this.provisioning = provisioning;
     }
 
     // ---- tenants -------------------------------------------------------------
@@ -72,6 +92,77 @@ public class AdminController {
     public ResponseEntity<TenantDto> createTenant(@Valid @RequestBody CreateTenantRequest request) {
         TenantDto created = tenants.create(request.name(), request.segmentOrDefault());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /** Update a tenant's master data (name/segment). */
+    @PutMapping("/tenants/{tenantId}")
+    public TenantDto updateTenant(@PathVariable UUID tenantId,
+            @Valid @RequestBody UpdateTenantRequest request) {
+        TenantDto updated = tenants.update(tenantId, request.name().trim(),
+                request.segmentOrDefault());
+        if (updated == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
+        }
+        return updated;
+    }
+
+    /**
+     * Offboard a tenant - the most destructive action on the platform, so it is
+     * type-to-confirm: the body must carry the tenant's EXACT name or nothing
+     * happens (400). The database cascade (sites, devices, assets, all series
+     * data, the tenant row) runs in ONE transaction; the tenant's retained MQTT
+     * topics and Keycloak users are then cleaned best-effort, and every user
+     * whose deletion failed is reported by name - a partial directory failure
+     * is visible, never silent.
+     */
+    @PostMapping("/tenants/{tenantId}/delete")
+    public TenantOffboardingReportDto deleteTenant(@PathVariable UUID tenantId,
+            @Valid @RequestBody DeleteTenantRequest request) {
+        TenantDto tenant = tenants.findById(tenantId);
+        if (tenant == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
+        }
+        if (!tenant.name().equals(request.confirmName().trim())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "confirmName does not match the tenant name");
+        }
+
+        // Collected BEFORE the cascade: afterwards the rows are gone.
+        List<TenantDevice> devices = tenants.devicesOfTenant(tenantId);
+        List<KeycloakUser> users;
+        try {
+            users = keycloak.listUsersForTenant(tenantId);
+        } catch (KeycloakAdminException ex) {
+            // Refuse rather than orphan logins we could not even enumerate.
+            throw toResponse(ex);
+        }
+
+        OffboardCounts counts = tenants.offboard(tenantId);
+
+        // Broker cleanup (best-effort): clear each device's retained
+        // provisioning config + schedule so the hardware falls back to its
+        // watchdog default and the refs become claimable again.
+        provisioning.ifAvailable(p -> devices.forEach(d ->
+                p.clearRetained(d.externalRef(), tenantId, d.siteId(), d.id())));
+
+        List<String> deletedUsers = new ArrayList<>();
+        List<String> failedUsers = new ArrayList<>();
+        for (KeycloakUser user : users) {
+            try {
+                keycloak.deleteUser(user.id());
+                deletedUsers.add(user.username());
+            } catch (RuntimeException ex) {
+                log.warn("Offboarding tenant {}: could not delete Keycloak user '{}': {}",
+                        tenantId, user.username(), ex.getMessage());
+                failedUsers.add(user.username());
+            }
+        }
+        log.info("Offboarded tenant {} ('{}'): {} sites, {} devices, {} telemetry rows, "
+                + "{} users deleted, {} user deletions failed", tenantId, tenant.name(),
+                counts.sites(), counts.devices(), counts.telemetryRows(),
+                deletedUsers.size(), failedUsers.size());
+        return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
+                counts.devices(), counts.telemetryRows(), deletedUsers, failedUsers);
     }
 
     // ---- sites (cross-tenant) ------------------------------------------------
@@ -145,12 +236,55 @@ public class AdminController {
         }
     }
 
+    /** Update a customer user's profile (email/name; the username is immutable). */
+    @PutMapping("/tenants/{tenantId}/users/{userId}")
+    public AdminUserDto updateUser(@PathVariable UUID tenantId, @PathVariable String userId,
+            @Valid @RequestBody UpdateUserRequest request) {
+        requireTenant(tenantId);
+        try {
+            requireUserInTenant(tenantId, userId);
+            return toDto(keycloak.updateProfile(userId, request.email(),
+                    request.firstName(), request.lastName()));
+        } catch (KeycloakAdminException ex) {
+            throw toResponse(ex);
+        }
+    }
+
     @PostMapping("/tenants/{tenantId}/users/{userId}/disable")
-    public AdminUserDto disableUser(@PathVariable UUID tenantId, @PathVariable String userId) {
+    public AdminUserDto disableUser(@PathVariable UUID tenantId, @PathVariable String userId,
+            @AuthenticationPrincipal Jwt caller) {
+        requireNotSelf(caller, userId, "deaktivieren");
         requireTenant(tenantId);
         try {
             requireUserInTenant(tenantId, userId);
             return toDto(keycloak.setEnabled(userId, false));
+        } catch (KeycloakAdminException ex) {
+            throw toResponse(ex);
+        }
+    }
+
+    /** Re-enable a disabled user (the counterpart to disable). */
+    @PostMapping("/tenants/{tenantId}/users/{userId}/enable")
+    public AdminUserDto enableUser(@PathVariable UUID tenantId, @PathVariable String userId) {
+        requireTenant(tenantId);
+        try {
+            requireUserInTenant(tenantId, userId);
+            return toDto(keycloak.setEnabled(userId, true));
+        } catch (KeycloakAdminException ex) {
+            throw toResponse(ex);
+        }
+    }
+
+    /** Permanently delete a customer user's login. */
+    @DeleteMapping("/tenants/{tenantId}/users/{userId}")
+    public ResponseEntity<Void> deleteUser(@PathVariable UUID tenantId,
+            @PathVariable String userId, @AuthenticationPrincipal Jwt caller) {
+        requireNotSelf(caller, userId, "löschen");
+        requireTenant(tenantId);
+        try {
+            requireUserInTenant(tenantId, userId);
+            keycloak.deleteUser(userId);
+            return ResponseEntity.noContent().build();
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
         }
@@ -176,7 +310,40 @@ public class AdminController {
         }
     }
 
+    /**
+     * Remove a wrongly registered sticker Geräte-ID from the manufacturing
+     * registry. Refused (409) while a customer's claim references it - the
+     * device must be unclaimed first, so the registry can never contradict a
+     * live device.
+     */
+    @DeleteMapping("/provisioned-devices/{externalRef}")
+    public ResponseEntity<Void> deleteProvisionedDevice(@PathVariable String externalRef) {
+        String canonical = DeviceController.canonicalExternalRef(externalRef);
+        ProvisionedDeviceDto entry = provisionedDevices.find(canonical)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Provisioned device not found"));
+        if (entry.claimed()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Geräte-ID '" + canonical + "' is claimed by a customer - unclaim the device first");
+        }
+        provisionedDevices.delete(canonical);
+        return ResponseEntity.noContent().build();
+    }
+
     // ---- helpers -------------------------------------------------------------
+
+    /**
+     * An admin must never disable or delete their OWN account - the platform
+     * would lose its operator. Compared against the token's {@code sub} BEFORE
+     * any tenant check, so the guard also fires when the admin addresses
+     * themselves through an arbitrary tenant path.
+     */
+    private static void requireNotSelf(Jwt caller, String userId, String verb) {
+        if (caller != null && userId.equals(caller.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Sie können Ihr eigenes Konto nicht " + verb + ".");
+        }
+    }
 
     private void requireTenant(UUID tenantId) {
         if (!tenants.existsById(tenantId)) {

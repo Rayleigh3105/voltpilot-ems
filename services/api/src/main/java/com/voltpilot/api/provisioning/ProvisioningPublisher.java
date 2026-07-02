@@ -75,6 +75,37 @@ public class ProvisioningPublisher {
         }
     }
 
+    /**
+     * MQTT cleanup for an unclaimed (deleted) device: clear the retained
+     * {@code provision/{ref}/config} - so the ref becomes claimable again
+     * without a stale identity waiting on the broker - and the retained
+     * schedule topic, so the physical device falls back to its watchdog
+     * default instead of executing a plan for an owner that no longer exists.
+     * Best-effort like {@link #publishConfig}: a broker outage must never
+     * block the unclaim; a failure is logged for the operator.
+     */
+    public boolean clearRetained(String externalRef, UUID tenantId, UUID siteId, UUID deviceId) {
+        if (!ProvisioningTopics.isValidRef(externalRef)) {
+            return false;
+        }
+        try {
+            synchronized (lock) {
+                MqttClient c = connected();
+                // An empty retained publish deletes the retained message (MQTT 3.1.1 §3.3.1.3).
+                c.publish(ProvisioningTopics.configTopic(externalRef), new byte[0], 1, true);
+                c.publish(ProvisioningTopics.scheduleTopic(tenantId, siteId, deviceId),
+                        new byte[0], 1, true);
+            }
+            log.info("Cleared retained provisioning config + schedule for ref '{}' (device {})",
+                    externalRef, deviceId);
+            return true;
+        } catch (Exception e) {
+            log.warn("Could not clear retained MQTT state for ref '{}' (device {}): {}",
+                    externalRef, deviceId, e.getMessage());
+            return false;
+        }
+    }
+
     static String configPayload(String ref, UUID tenantId, UUID siteId, UUID deviceId) {
         // Shape per docs/contracts/mqtt-provisioning.schema.json ($defs/config).
         return "{\"schema_version\":\"1.0\",\"ref\":\"" + ref + "\",\"tenant_id\":\"" + tenantId

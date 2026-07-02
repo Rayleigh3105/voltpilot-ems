@@ -127,6 +127,61 @@ paths:
               schema: { $ref: "#/components/schemas/Site" }
         "400": { description: Invalid input (blank name, out-of-range coordinates, or bad zone). }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/sites/{siteId}:
+    put:
+      tags: [sites]
+      summary: Update a site (name/bidding zone/coordinates).
+      description: >
+        Validation mirrors create. RLS makes a foreign site a 404 and pins the
+        row to its tenant, so a site can never be moved across tenants. Admins
+        edit any tenant's sites through the same endpoint via the X-Tenant-Id
+        tenant switcher.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSiteRequest" }
+      responses:
+        "200":
+          description: Updated site.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Site" }
+        "400": { description: Invalid input (blank name, out-of-range coordinates, or bad zone). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    delete:
+      tags: [sites]
+      summary: Delete a site (guarded; cascades assets + series data).
+      description: >
+        Refused (409) while the site still has devices - they must be removed
+        first. On success the site's assets cascade by FK and its series data
+        (telemetry, rollups, forecast, schedule, weather, forecast-quality rows)
+        is deleted in the same transaction. Use the deletion-preview endpoint to
+        show the concrete consequences before confirming.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Site and its recorded data deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "409": { description: The site still has devices; remove them first. }
+  /api/v1/sites/{siteId}/deletion-preview:
+    get:
+      tags: [sites]
+      summary: What deleting this site would remove (for the confirm dialog).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Device count and recorded-data extent/counts.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteDeletionPreview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/devices:
     get:
       tags: [devices]
@@ -140,6 +195,46 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/Device" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/devices/{deviceId}:
+    put:
+      tags: [devices]
+      summary: Update a device (type + label only; the ref is immutable).
+      description: >
+        Only `kind` and the optional customer-facing label `name` are editable.
+        The `externalRef` is the device's identity (MQTT topics, registry
+        gating, the printed sticker) and cannot be changed - a wrong ref is
+        fixed by unclaiming and re-claiming.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateDeviceRequest" }
+      responses:
+        "200":
+          description: Updated device.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "400": { description: Invalid kind or over-long label. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Device not found for this tenant. }
+    delete:
+      tags: [devices]
+      summary: Unclaim (delete) a device incl. its telemetry + MQTT cleanup.
+      description: >
+        Removes the device row AND its telemetry, and clears the broker's
+        retained `provision/{ref}/config` and schedule topics (best-effort,
+        like the on-claim publish) so the physical device falls back to its
+        watchdog default. The ref becomes claimable again; a sticker ID stays
+        registered in the manufacturing registry.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Device unclaimed; its telemetry deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Device not found for this tenant. }
   /api/v1/devices/claim:
     post:
       tags: [devices]
@@ -454,6 +549,57 @@ paths:
               schema: { $ref: "#/components/schemas/Tenant" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/tenants/{tenantId}:
+    put:
+      tags: [admin]
+      summary: Update a tenant's master data (name/segment).
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTenantRequest" }
+      responses:
+        "200":
+          description: Updated tenant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tenant" }
+        "400": { description: Invalid input (blank name or bad segment). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
+  /api/v1/admin/tenants/{tenantId}/delete:
+    post:
+      tags: [admin]
+      summary: Offboard a tenant (type-to-confirm full cascade).
+      description: >
+        The most destructive platform action. The body must carry the tenant's
+        EXACT name (`confirmName`); a mismatch is refused (400) before anything
+        is touched. The database cascade - all series data, sites, devices,
+        assets and the tenant row - runs in ONE transaction. The tenant's
+        retained MQTT topics and Keycloak users are then cleaned best-effort;
+        users whose deletion failed are reported by name in `failedUsers` so a
+        partial directory failure is never silent.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeleteTenantRequest" }
+      responses:
+        "200":
+          description: Tenant offboarded; the report of what was removed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantOffboardingReport" }
+        "400": { description: confirmName does not match the tenant's name. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant not found. }
+        "502": { description: Keycloak unreachable - refused before deleting anything (the tenant's logins could not be enumerated). }
   /api/v1/admin/tenants/{tenantId}/sites:
     get:
       tags: [admin]
@@ -582,10 +728,85 @@ paths:
         "400": { description: Blank or non-sticker-format (missing VP- prefix) Geräte-ID. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/provisioned-devices/{externalRef}:
+    delete:
+      tags: [admin]
+      summary: Remove a wrongly registered sticker Geräte-ID from the registry.
+      description: >
+        Refused (409) while a customer's claim references the ID - the device
+        must be unclaimed first. The path ref is canonicalized like the claim
+        path (trimmed, uppercased).
+      parameters:
+        - { name: externalRef, in: path, required: true, schema: { type: string }, example: VP-1234-ABCD }
+      responses:
+        "204": { description: Registry entry removed; the ID can no longer be claimed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: No such registry entry. }
+        "409": { description: The ID is claimed by a customer; unclaim the device first. }
+  /api/v1/admin/tenants/{tenantId}/users/{userId}:
+    put:
+      tags: [admin]
+      summary: Update a customer user's profile (email/name).
+      description: The username is the login identity and stays immutable.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateUserRequest" }
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { description: Invalid email or over-long name. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant or user not found (including a user outside this tenant). }
+        "409": { description: A user with that email already exists. }
+    delete:
+      tags: [admin]
+      summary: Permanently delete a customer user's login.
+      description: >
+        Admins can never delete their OWN account (409) - the guard fires
+        before any tenant check.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: User deleted; their login stops working immediately. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant or user not found (including a user outside this tenant). }
+        "409": { description: Attempt to delete one's own account. }
   /api/v1/admin/tenants/{tenantId}/users/{userId}/disable:
     post:
       tags: [admin]
       summary: Disable a customer user (blocks their logins).
+      description: >
+        Admins can never disable their OWN account (409) - the guard fires
+        before any tenant check.
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Tenant or user not found (including a user outside this tenant). }
+        "409": { description: Attempt to disable one's own account. }
+  /api/v1/admin/tenants/{tenantId}/users/{userId}/enable:
+    post:
+      tags: [admin]
+      summary: Re-enable a disabled customer user.
       parameters:
         - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: userId, in: path, required: true, schema: { type: string } }
@@ -780,6 +1001,35 @@ components:
           minimum: -180
           maximum: 180
           description: Optional WGS84 longitude.
+    UpdateSiteRequest:
+      type: object
+      required: [name]
+      description: Same fields and validation as CreateSiteRequest.
+      properties:
+        name: { type: string, description: Site display name (required, non-blank). }
+        biddingZone:
+          type: string
+          enum: [DE-LU, AT, CH]
+          description: "Day-ahead bidding zone; defaults to 'DE-LU'."
+        latitude: { type: number, nullable: true, minimum: -90, maximum: 90 }
+        longitude: { type: number, nullable: true, minimum: -180, maximum: 180 }
+    SiteDeletionPreview:
+      type: object
+      description: What deleting a site would remove (drives the confirm dialog).
+      properties:
+        deviceCount: { type: integer, description: Devices still at the site; > 0 blocks the delete (409). }
+        telemetryCount: { type: integer, format: int64 }
+        telemetryFrom: { type: string, format: date-time, nullable: true }
+        telemetryTo: { type: string, format: date-time, nullable: true }
+        forecastCount: { type: integer, format: int64 }
+        scheduleCount: { type: integer, format: int64 }
+        weatherCount: { type: integer, format: int64 }
+    UpdateDeviceRequest:
+      type: object
+      description: Only kind + label are editable; the externalRef is immutable.
+      properties:
+        kind: { type: string, enum: [inverter, battery, meter], nullable: true, description: Unchanged when omitted. }
+        name: { type: string, nullable: true, maxLength: 120, description: Customer-facing label; blank/null removes it. }
     DeviceClaimRequest:
       type: object
       required: [siteId, externalRef]
@@ -794,6 +1044,10 @@ components:
         siteId: { type: string, format: uuid }
         externalRef: { type: string }
         kind: { type: string, example: inverter }
+        name:
+          type: string
+          nullable: true
+          description: Optional customer-facing label (Bezeichnung); the immutable externalRef stays the identity.
         status: { type: string, example: claimed }
         lastSeenAt:
           type: string
@@ -1070,3 +1324,42 @@ components:
       properties:
         password: { type: string, minLength: 8, maxLength: 128, description: The new password (same length rule as self-registration). }
         temporary: { type: boolean, description: "If true (default), the user must change it at next login." }
+    UpdateTenantRequest:
+      type: object
+      required: [name]
+      description: Same validation as CreateTenantRequest.
+      properties:
+        name: { type: string }
+        segment: { type: string, enum: [CI, B2C], description: "Defaults to 'CI'." }
+    DeleteTenantRequest:
+      type: object
+      required: [confirmName]
+      properties:
+        confirmName:
+          type: string
+          description: Must equal the tenant's exact name (type-to-confirm fat-finger protection).
+    TenantOffboardingReport:
+      type: object
+      description: >
+        What the offboarding removed. The database part is transactional
+        (all-or-nothing); `failedUsers` lists Keycloak logins that could not be
+        deleted and need manual cleanup.
+      properties:
+        tenantId: { type: string, format: uuid }
+        tenantName: { type: string }
+        deletedSites: { type: integer }
+        deletedDevices: { type: integer }
+        deletedTelemetryRows: { type: integer, format: int64 }
+        deletedUsers:
+          type: array
+          items: { type: string }
+        failedUsers:
+          type: array
+          items: { type: string }
+    UpdateUserRequest:
+      type: object
+      description: Email/name only; the username is immutable.
+      properties:
+        email: { type: string, format: email, nullable: true }
+        firstName: { type: string, nullable: true, maxLength: 120 }
+        lastName: { type: string, nullable: true, maxLength: 120 }

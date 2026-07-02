@@ -1,0 +1,65 @@
+package com.voltpilot.api.repo;
+
+import com.voltpilot.api.web.dto.SiteDeletionPreviewDto;
+import java.sql.Timestamp;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Series-data cleanup for entity deletion. The timeseries hypertables carry no
+ * foreign keys (hypertables), so deleting a site or device must remove its
+ * series rows explicitly - through the SAME RLS-scoped app datasource as every
+ * customer query, so the deletes are transparently limited to the caller's
+ * tenant. {@code forecast} is the one table without RLS (backend-only
+ * consumers); its delete is safe because the controller has already resolved
+ * the site through the RLS-scoped {@link SiteRepository}, proving ownership.
+ */
+@Repository
+public class SeriesRepository {
+
+    private final JdbcTemplate jdbc;
+
+    public SeriesRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    /** What deleting this site would remove (for the portal's confirm dialog). */
+    public SiteDeletionPreviewDto previewForSite(UUID siteId, int deviceCount) {
+        return jdbc.queryForObject(
+                "SELECT (SELECT count(*) FROM telemetry WHERE site_id = ?) AS telemetry_count, "
+                        + "(SELECT min(time) FROM telemetry WHERE site_id = ?) AS telemetry_from, "
+                        + "(SELECT max(time) FROM telemetry WHERE site_id = ?) AS telemetry_to, "
+                        + "(SELECT count(*) FROM forecast WHERE site_id = ?) AS forecast_count, "
+                        + "(SELECT count(*) FROM schedule WHERE site_id = ?) AS schedule_count, "
+                        + "(SELECT count(*) FROM weather_forecast WHERE site_id = ?) AS weather_count",
+                (rs, i) -> {
+                    Timestamp from = rs.getTimestamp("telemetry_from");
+                    Timestamp to = rs.getTimestamp("telemetry_to");
+                    return new SiteDeletionPreviewDto(
+                            deviceCount,
+                            rs.getLong("telemetry_count"),
+                            from == null ? null : from.toInstant(),
+                            to == null ? null : to.toInstant(),
+                            rs.getLong("forecast_count"),
+                            rs.getLong("schedule_count"),
+                            rs.getLong("weather_count"));
+                },
+                siteId, siteId, siteId, siteId, siteId, siteId);
+    }
+
+    /** Remove every series row of a site (telemetry, rollups, feeds, quality). */
+    public void deleteForSite(UUID siteId) {
+        for (String table : new String[] {
+                "telemetry", "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d",
+                "weather_forecast", "schedule", "forecast",
+                "forecast_model_state", "forecast_accuracy", "plan_accuracy"}) {
+            jdbc.update("DELETE FROM " + table + " WHERE site_id = ?", siteId);
+        }
+    }
+
+    /** Remove a device's telemetry (unclaim deletes the device's recorded data). */
+    public void deleteForDevice(UUID deviceId) {
+        jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId);
+    }
+}

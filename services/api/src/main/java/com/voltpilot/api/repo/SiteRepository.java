@@ -52,6 +52,31 @@ public class SiteRepository {
                 SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude);
     }
 
+    /**
+     * Update a site's editable fields. RLS both hides foreign sites (no row
+     * updated => empty => 404) and - via WITH CHECK - forbids moving the row to
+     * another tenant, so the update can never cross a tenant boundary.
+     */
+    public SiteDto update(UUID siteId, String name, String biddingZone,
+            BigDecimal latitude, BigDecimal longitude) {
+        List<SiteDto> updated = jdbc.query(
+                "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ? "
+                        + "WHERE id = ? "
+                        + "RETURNING id, name, bidding_zone, latitude, longitude",
+                SiteRepository::mapSite, name, biddingZone, latitude, longitude, siteId);
+        return updated.isEmpty() ? null : updated.get(0);
+    }
+
+    /**
+     * Delete a site row. Assets cascade by FK; devices must be gone already
+     * (the controller refuses while any exist); series rows are removed by
+     * {@link SeriesRepository} in the same transaction. False when RLS hides
+     * the site (=> 404).
+     */
+    public boolean delete(UUID siteId) {
+        return jdbc.update("DELETE FROM site WHERE id = ?", siteId) > 0;
+    }
+
     public boolean existsForCurrentTenant(UUID siteId) {
         Integer count = jdbc.queryForObject(
                 "SELECT count(*) FROM site WHERE id = ?", Integer.class, siteId);

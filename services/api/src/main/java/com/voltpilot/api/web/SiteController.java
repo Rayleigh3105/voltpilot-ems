@@ -2,9 +2,11 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.history.HistoryService;
+import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
+import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
@@ -15,8 +17,10 @@ import com.voltpilot.api.web.dto.HistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
+import com.voltpilot.api.web.dto.SiteDeletionPreviewDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
+import com.voltpilot.api.web.dto.UpdateSiteRequest;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
 import jakarta.validation.Valid;
 import java.time.Instant;
@@ -29,9 +33,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -51,6 +58,8 @@ public class SiteController {
     private static final int MAX_PRICE_POINTS = 1000;
 
     private final SiteRepository sites;
+    private final DeviceRepository devices;
+    private final SeriesRepository series;
     private final TelemetryRepository telemetry;
     private final PriceRepository prices;
     private final WeatherRepository weather;
@@ -62,6 +71,8 @@ public class SiteController {
 
     public SiteController(
             SiteRepository sites,
+            DeviceRepository devices,
+            SeriesRepository series,
             TelemetryRepository telemetry,
             PriceRepository prices,
             WeatherRepository weather,
@@ -71,6 +82,8 @@ public class SiteController {
             @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
             @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
+        this.devices = devices;
+        this.series = series;
         this.telemetry = telemetry;
         this.prices = prices;
         this.weather = weather;
@@ -103,6 +116,63 @@ public class SiteController {
         SiteDto created = sites.create(tenantId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /**
+     * Update a site's editable fields (name/bidding zone/coordinates) -
+     * validation mirrors create. RLS makes a foreign site invisible (404) and
+     * pins the row to its tenant, so neither a customer nor an admin using the
+     * tenant switcher can ever move a site across tenants.
+     */
+    @PutMapping("/{siteId}")
+    public SiteDto updateSite(@PathVariable UUID siteId,
+            @Valid @RequestBody UpdateSiteRequest request) {
+        SiteDto updated = sites.update(siteId, request.name().trim(),
+                request.biddingZoneOrDefault(), request.latitude(), request.longitude());
+        if (updated == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return updated;
+    }
+
+    /**
+     * What deleting this site would remove - feeds the portal's confirm dialog
+     * so the consequences (device count, recorded data ranges) are explicit
+     * before the customer confirms.
+     */
+    @GetMapping("/{siteId}/deletion-preview")
+    public SiteDeletionPreviewDto deletionPreview(@PathVariable UUID siteId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return series.previewForSite(siteId, devices.countForSite(siteId));
+    }
+
+    /**
+     * Delete a site. GUARDED: refused (409) while devices exist - devices must
+     * be removed first, so nobody deletes a live plant by accident. The site's
+     * assets cascade by FK; its series data (telemetry/rollups/forecast/
+     * schedule/weather/quality rows) is removed in the same transaction. All
+     * through the RLS-scoped datasource: a foreign site is a 404 and the
+     * cascade can never touch another tenant's rows.
+     */
+    @DeleteMapping("/{siteId}")
+    @Transactional
+    public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        int deviceCount = devices.countForSite(siteId);
+        if (deviceCount > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Der Standort hat noch " + deviceCount + " Gerät(e). "
+                            + "Bitte entfernen Sie zuerst alle Geräte dieses Standorts.");
+        }
+        series.deleteForSite(siteId);
+        if (!sites.delete(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{siteId}/telemetry")

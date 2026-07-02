@@ -3,10 +3,12 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
+import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
+import com.voltpilot.api.web.dto.UpdateDeviceRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Locale;
@@ -16,8 +18,12 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,14 +43,16 @@ public class DeviceController {
 
     private final DeviceRepository devices;
     private final SiteRepository sites;
+    private final SeriesRepository series;
     private final ProvisionedDeviceRepository provisioned;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
-            ProvisionedDeviceRepository provisioned,
+            SeriesRepository series, ProvisionedDeviceRepository provisioned,
             ObjectProvider<ProvisioningPublisher> provisioning) {
         this.devices = devices;
         this.sites = sites;
+        this.series = series;
         this.provisioned = provisioned;
         this.provisioning = provisioning;
     }
@@ -99,6 +107,46 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Device '" + externalRef + "' is already claimed");
         }
+    }
+
+    /**
+     * Update a device's editable fields: TYPE and label (Bezeichnung) only.
+     * The {@code external_ref} is the device's identity - MQTT topics and the
+     * registry gate hang off it - and stays immutable; a wrong ref is fixed by
+     * unclaiming and re-claiming. RLS makes a foreign device a 404.
+     */
+    @PutMapping("/{deviceId}")
+    public DeviceDto update(@PathVariable UUID deviceId,
+            @Valid @RequestBody UpdateDeviceRequest request) {
+        DeviceDto existing = devices.findById(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+        String kind = request.kind() == null || request.kind().isBlank()
+                ? existing.kind() : request.kind();
+        return devices.update(deviceId, kind, request.nameOrNull())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+    }
+
+    /**
+     * Unclaim (delete) a device: removes the device row AND its telemetry, and
+     * cleans the broker - the retained {@code provision/{ref}/config} and the
+     * retained schedule topic are cleared (best-effort, like the on-claim
+     * publish), so the physical device falls back to its watchdog default and
+     * the ref becomes claimable again. A sticker ref stays registered in the
+     * manufacturing registry, so re-claiming it later just works.
+     */
+    @DeleteMapping("/{deviceId}")
+    @Transactional
+    public ResponseEntity<Void> unclaim(@PathVariable UUID deviceId) {
+        UUID tenantId = TenantContext.get();
+        DeviceDto device = devices.findById(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+        series.deleteForDevice(deviceId);
+        if (!devices.delete(deviceId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
+        }
+        provisioning.ifAvailable(p ->
+                p.clearRetained(device.externalRef(), tenantId, device.siteId(), device.id()));
+        return ResponseEntity.noContent().build();
     }
 
     /**

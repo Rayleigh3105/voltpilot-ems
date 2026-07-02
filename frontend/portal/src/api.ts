@@ -198,9 +198,28 @@ export interface Device {
   siteId: string;
   externalRef: string;
   kind: string;
+  /** Optional customer-facing label (Bezeichnung); externalRef stays the identity. */
+  name: string | null;
   status: string;
   /** Newest telemetry timestamp; null until the first data arrives. */
   lastSeenAt: string | null;
+}
+
+/** Only type + label are editable; the externalRef is the device's identity. */
+export interface UpdateDeviceInput {
+  kind?: string;
+  name?: string | null;
+}
+
+/** What deleting a site would remove - drives the confirm dialog. */
+export interface SiteDeletionPreview {
+  deviceCount: number;
+  telemetryCount: number;
+  telemetryFrom: string | null;
+  telemetryTo: string | null;
+  forecastCount: number;
+  scheduleCount: number;
+  weatherCount: number;
 }
 
 /** Portal onboarding state derived from telemetry recency. */
@@ -368,12 +387,30 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  updateSite: (siteId: string, input: CreateSiteInput) =>
+    request<Site>(`/api/v1/sites/${siteId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  /** 409 while the site still has devices (remove them first). */
+  deleteSite: (siteId: string) =>
+    request<void>(`/api/v1/sites/${siteId}`, { method: 'DELETE' }),
+  siteDeletionPreview: (siteId: string) =>
+    request<SiteDeletionPreview>(`/api/v1/sites/${siteId}/deletion-preview`),
   listDevices: () => request<Device[]>('/api/v1/devices'),
   claimDevice: (siteId: string, externalRef: string) =>
     request<Device>('/api/v1/devices/claim', {
       method: 'POST',
       body: JSON.stringify({ siteId, externalRef }),
     }),
+  updateDevice: (deviceId: string, input: UpdateDeviceInput) =>
+    request<Device>(`/api/v1/devices/${deviceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  /** Unclaim: deletes the device and its telemetry; the ref becomes claimable again. */
+  deleteDevice: (deviceId: string) =>
+    request<void>(`/api/v1/devices/${deviceId}`, { method: 'DELETE' }),
   telemetry: (siteId: string, from?: string, to?: string) => {
     const q = new URLSearchParams();
     if (from) q.set('from', from);

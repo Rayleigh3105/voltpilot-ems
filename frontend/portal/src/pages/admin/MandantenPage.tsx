@@ -7,9 +7,15 @@ import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError, type Site } from '../../api';
-import { fmtCoords } from '../../format';
-import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
+import { fmtCoords, fmtNum } from '../../format';
+import {
+  adminApi,
+  type AdminUser,
+  type Tenant,
+  type TenantOffboardingReport,
+} from '../../admin/adminApi';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
+import { DangerZone } from '../../components/DangerZone';
 import { CreateUserDrawer } from './CreateUserDrawer';
 import type { PageId } from '../../nav';
 
@@ -110,6 +116,14 @@ export function MandantenPage({
           tenant={detail}
           onClose={() => setDetail(null)}
           onJumpToTenant={onJumpToTenant}
+          onChanged={(t) => {
+            if (t) setDetail(t);
+            onReloadTenants(t?.id);
+          }}
+          onDeleted={() => {
+            setDetail(null);
+            onReloadTenants();
+          }}
         />
       )}
     </>
@@ -202,16 +216,24 @@ function TenantDetailDrawer({
   tenant,
   onClose,
   onJumpToTenant,
+  onChanged,
+  onDeleted,
 }: {
   tenant: Tenant;
   onClose: () => void;
   onJumpToTenant: (tenantId: string, page: PageId) => void;
+  onChanged: (tenant?: Tenant) => void;
+  onDeleted: () => void;
 }) {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userDrawer, setUserDrawer] = useState(false);
   const [siteDrawer, setSiteDrawer] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [report, setReport] = useState<TenantOffboardingReport | null>(null);
 
   async function reload() {
     setError(null);
@@ -244,6 +266,84 @@ function TenantDetailDrawer({
     }
   }
 
+  async function enable(u: AdminUser) {
+    try {
+      await adminApi.enableUser(tenant.id, u.id);
+      await reload();
+    } catch (e) {
+      setError(e instanceof ApiError ? `Aktivieren fehlgeschlagen: ${e.message}` : 'Fehler');
+    }
+  }
+
+  async function offboard() {
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      setReport(await adminApi.deleteTenant(tenant.id, tenant.name));
+    } catch (e) {
+      setDeleteError(
+        e instanceof ApiError && e.status === 502
+          ? 'Die Benutzerverwaltung ist gerade nicht erreichbar - es wurde nichts gelöscht. Bitte versuchen Sie es später erneut.'
+          : e instanceof ApiError
+            ? `Löschen fehlgeschlagen: ${e.message}`
+            : 'Löschen fehlgeschlagen. Es wurde nichts gelöscht.',
+      );
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  // Offboarding done: show the report instead of the (now gone) tenant data.
+  if (report) {
+    return (
+      <Drawer
+        open
+        onClose={onDeleted}
+        title={`Mandant gelöscht: ${report.tenantName}`}
+        icon={
+          <IconTile category="industry" size={40}>
+            <Icon name="trash" size={20} />
+          </IconTile>
+        }
+        footer={
+          <Button variant="primary" onClick={onDeleted}>
+            Schließen
+          </Button>
+        }
+      >
+        <div className="vp-alert vp-alert-ok" style={{ marginTop: 0 }}>
+          Der Mandant „{report.tenantName}" wurde vollständig entfernt.
+        </div>
+        <table className="vp-table" style={{ marginTop: 'var(--vp-space-4)' }}>
+          <tbody>
+            <tr>
+              <th scope="row">Standorte</th>
+              <td>{report.deletedSites}</td>
+            </tr>
+            <tr>
+              <th scope="row">Geräte</th>
+              <td>{report.deletedDevices}</td>
+            </tr>
+            <tr>
+              <th scope="row">Messpunkte</th>
+              <td>{fmtNum(report.deletedTelemetryRows, '', 0)}</td>
+            </tr>
+            <tr>
+              <th scope="row">Gelöschte Benutzer</th>
+              <td>{report.deletedUsers.length > 0 ? report.deletedUsers.join(', ') : '-'}</td>
+            </tr>
+          </tbody>
+        </table>
+        {report.failedUsers.length > 0 && (
+          <div className="vp-alert vp-alert-err">
+            Diese Benutzerkonten konnten nicht gelöscht werden und brauchen manuelle
+            Nacharbeit: <b>{report.failedUsers.join(', ')}</b>
+          </div>
+        )}
+      </Drawer>
+    );
+  }
+
   return (
     <>
       <Drawer
@@ -270,7 +370,29 @@ function TenantDetailDrawer({
           <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
           <Badge variant="tint">Tarif {tenant.plan.toUpperCase()}</Badge>
           <span className="vp-mono" style={{ alignSelf: 'center' }}>{tenant.id}</span>
+          {!editing && (
+            <Button
+              variant="ghost"
+              size="sm"
+              iconLeft={<Icon name="pencil" size={16} />}
+              onClick={() => setEditing(true)}
+              style={{ marginLeft: 'auto' }}
+            >
+              Bearbeiten
+            </Button>
+          )}
         </div>
+
+        {editing && (
+          <TenantEditForm
+            tenant={tenant}
+            onCancel={() => setEditing(false)}
+            onSaved={(t) => {
+              setEditing(false);
+              onChanged(t);
+            }}
+          />
+        )}
 
         {error && <div className="vp-alert vp-alert-err">{error}</div>}
 
@@ -307,9 +429,13 @@ function TenantDetailDrawer({
                     </Badge>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    {u.enabled && (
+                    {u.enabled ? (
                       <Button variant="ghost" size="sm" onClick={() => disable(u)}>
                         Deaktivieren
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => enable(u)}>
+                        Aktivieren
                       </Button>
                     )}
                   </td>
@@ -361,6 +487,22 @@ function TenantDetailDrawer({
           Geräte und Übersicht dieses Mandanten - dieselben Seiten wie der Kunde, nur
           mit gesetztem Mandanten-Kontext.
         </div>
+
+        <DangerZone
+          actionLabel="Mandant löschen (Offboarding)"
+          description="Offboarding entfernt den Mandanten mit allen Daten und Zugängen - die endgültigste Aktion auf der Plattform."
+          consequences={[
+            `Alle Standorte (${sites?.length ?? '…'}) und Geräte des Mandanten`,
+            'Alle Messdaten, Prognosen und Fahrpläne',
+            `Alle Benutzerkonten (${users?.length ?? '…'}) - die Personen können sich nicht mehr anmelden`,
+            `Der Mandant „${tenant.name}" selbst`,
+          ]}
+          confirmLabel="Mandant endgültig löschen"
+          typeToConfirm={tenant.name}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={() => void offboard()}
+        />
       </Drawer>
 
       <CreateUserDrawer
@@ -377,6 +519,75 @@ function TenantDetailDrawer({
         contextNote={`Wird für den Mandanten ${tenant.name} (${tenant.id.slice(0, 8)}) angelegt. Der Kunde sieht ihn sofort in seinem Portal.`}
       />
     </>
+  );
+}
+
+/** Inline edit form of the tenant drawer: name + segment (same fields as create). */
+function TenantEditForm({
+  tenant,
+  onCancel,
+  onSaved,
+}: {
+  tenant: Tenant;
+  onCancel: () => void;
+  onSaved: (updated: Tenant) => void;
+}) {
+  const [name, setName] = useState(tenant.name);
+  const [segment, setSegment] = useState(tenant.segment);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await adminApi.updateTenant(tenant.id, { name: name.trim(), segment });
+      onSaved(updated);
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 400
+          ? 'Ungültige Eingabe. Bitte prüfen Sie Name und Segment.'
+          : 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 'var(--vp-space-5)' }}>
+      <div className="vp-form-stack">
+        <Input
+          label="Name *"
+          value={name}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="edit-tenant-segment" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Segment
+          </label>
+          <select
+            id="edit-tenant-segment"
+            className="vp-select"
+            value={segment}
+            onChange={(e) => setSegment(e.target.value)}
+          >
+            <option value="CI">CI (Gewerbe/Industrie)</option>
+            <option value="B2C">B2C (Privat)</option>
+          </select>
+        </div>
+      </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Abbrechen
+        </Button>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
+          {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
+        </Button>
+      </div>
+    </div>
   );
 }
 

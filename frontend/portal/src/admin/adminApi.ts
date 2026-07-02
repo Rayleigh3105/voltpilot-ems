@@ -61,6 +61,29 @@ export interface ProvisionDeviceInput {
   note?: string;
 }
 
+export interface UpdateTenantInput {
+  name: string;
+  segment?: string;
+}
+
+export interface UpdateUserInput {
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
+/** Report of what the tenant offboarding removed (DB transactional, Keycloak best-effort). */
+export interface TenantOffboardingReport {
+  tenantId: string;
+  tenantName: string;
+  deletedSites: number;
+  deletedDevices: number;
+  deletedTelemetryRows: number;
+  deletedUsers: string[];
+  /** Keycloak logins that could not be deleted - need manual cleanup. */
+  failedUsers: string[];
+}
+
 export const adminApi = {
   listTenants: () => request<Tenant[]>('/api/v1/admin/tenants'),
 
@@ -68,6 +91,20 @@ export const adminApi = {
     request<Tenant>('/api/v1/admin/tenants', {
       method: 'POST',
       body: JSON.stringify(input),
+    }),
+
+  updateTenant: (tenantId: string, input: UpdateTenantInput) =>
+    request<Tenant>(`/api/v1/admin/tenants/${tenantId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+
+  // Type-to-confirm offboarding: confirmName must equal the tenant's exact
+  // name or the backend refuses (400) before touching anything.
+  deleteTenant: (tenantId: string, confirmName: string) =>
+    request<TenantOffboardingReport>(`/api/v1/admin/tenants/${tenantId}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmName }),
     }),
 
   listUsers: (tenantId: string) =>
@@ -79,9 +116,25 @@ export const adminApi = {
       body: JSON.stringify(input),
     }),
 
+  updateUser: (tenantId: string, userId: string, input: UpdateUserInput) =>
+    request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+
   disableUser: (tenantId: string, userId: string) =>
     request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/disable`, {
       method: 'POST',
+    }),
+
+  enableUser: (tenantId: string, userId: string) =>
+    request<AdminUser>(`/api/v1/admin/tenants/${tenantId}/users/${userId}/enable`, {
+      method: 'POST',
+    }),
+
+  deleteUser: (tenantId: string, userId: string) =>
+    request<void>(`/api/v1/admin/tenants/${tenantId}/users/${userId}`, {
+      method: 'DELETE',
     }),
 
   // Support lever: no SMTP means no self-service reset, so support sets a new
@@ -108,5 +161,11 @@ export const adminApi = {
     request<ProvisionedDevice>('/api/v1/admin/provisioned-devices', {
       method: 'POST',
       body: JSON.stringify(input),
+    }),
+
+  // 409 while a customer's claim references the ID (unclaim the device first).
+  deleteProvisionedDevice: (externalRef: string) =>
+    request<void>(`/api/v1/admin/provisioned-devices/${encodeURIComponent(externalRef)}`, {
+      method: 'DELETE',
     }),
 };

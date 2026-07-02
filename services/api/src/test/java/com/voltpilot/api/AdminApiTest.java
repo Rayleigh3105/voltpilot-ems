@@ -431,6 +431,232 @@ class AdminApiTest {
                 .isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
+    // ---- (c) entity lifecycle: edit + delete ----------------------------------
+
+    @Test
+    void adminUpdatesTenantAndEditsCustomerSitesViaTenantSwitcher() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Tippfelher GmbH", "CI").get("id");
+
+        // Fix the typo'd tenant name + change the segment.
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Tippfehler GmbH", "segment", "B2C"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody()).containsEntry("name", "Tippfehler GmbH");
+        assertThat(updated.getBody()).containsEntry("segment", "B2C");
+
+        // Unknown tenant -> 404; bad segment -> 400.
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + UUID.randomUUID()), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "X"), bearer(admin)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "X", "segment", "B2B"), bearer(admin)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Admin creates a site for the tenant, then EDITS and DELETES it through
+        // the CUSTOMER endpoints with the tenant switcher (X-Tenant-Id) - the
+        // any-tenant admin path for sites/devices, RLS-scoped, never BYPASSRLS.
+        ResponseEntity<Map<String, Object>> site = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Werk Alt"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        String siteId = (String) site.getBody().get("id");
+
+        ResponseEntity<Map<String, Object>> renamed = rest.exchange(
+                url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Werk Neu", "biddingZone", "DE-LU"),
+                        withTenant(bearer(admin), tenantId)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(renamed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(renamed.getBody()).containsEntry("name", "Werk Neu");
+
+        // Without a selected tenant the admin has no RLS context -> 404, no edit.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Kontextlos"), bearer(admin)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
+                new HttpEntity<>(withTenant(bearer(admin), tenantId)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        ResponseEntity<List<Map<String, Object>>> remaining = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(remaining.getBody()).extracting(s -> s.get("name")).doesNotContain("Werk Neu");
+    }
+
+    @Test
+    void tenantOffboardingIsTypeToConfirmAndCascadesDataAndKeycloakUsers() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Weggezogen GmbH", "CI").get("id");
+        createUser(admin, tenantId, "weggezogen-operator", "op@weg.example", "weg-pw-123");
+
+        // The customer builds up real state: a site, a claimed device, telemetry.
+        String customer = token("weggezogen-operator", "weg-pw-123");
+        ResponseEntity<Map<String, Object>> site = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Werk Weg"), bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        String siteId = (String) site.getBody().get("id");
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-weg-01"),
+                        bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        String deviceId = (String) claim.getBody().get("id");
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
+                + "(now(), '" + tenantId + "', '" + siteId + "', '" + deviceId + "', 1.0)");
+
+        // Type-to-confirm: a wrong name is refused and NOTHING is deleted.
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("confirmName", "Weggezogen"), bearer(admin)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1L);
+
+        // A customer must not be able to offboard anyone (403).
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("confirmName", "Weggezogen GmbH"), bearer(customer)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        // The exact name unlocks the cascade; the report says what was removed.
+        ResponseEntity<Map<String, Object>> report = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("confirmName", "Weggezogen GmbH"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(report.getBody()).containsEntry("deletedSites", 1);
+        assertThat(report.getBody()).containsEntry("deletedDevices", 1);
+        assertThat(((Number) report.getBody().get("deletedTelemetryRows")).longValue()).isEqualTo(1L);
+        assertThat((List<?>) report.getBody().get("deletedUsers"))
+                .isEqualTo(List.of("weggezogen-operator"));
+        assertThat((List<?>) report.getBody().get("failedUsers")).isEmpty();
+
+        // Database: tenant, site, device, telemetry - all gone.
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM site WHERE tenant_id = '" + tenantId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM device WHERE tenant_id = '" + tenantId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE tenant_id = '" + tenantId + "'")).isZero();
+
+        // Keycloak: the login is gone too.
+        assertThat(tryToken("weggezogen-operator", "weg-pw-123")).doesNotContainKey("access_token");
+
+        // And the offboarded tenant is not in the listing anymore.
+        ResponseEntity<List<Map<String, Object>>> tenants = rest.exchange(
+                url("/api/v1/admin/tenants"), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(tenants.getBody()).extracting(t -> t.get("id")).doesNotContain(tenantId);
+    }
+
+    @Test
+    void adminEditsEnablesAndDeletesUsersButNeverTheirOwnAccount() throws Exception {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Benutzerpflege AG", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "pflege-operator",
+                "alt@pflege.example", "pflege-pw").get("id");
+
+        // Edit email + name; the username is immutable and stays.
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("email", "neu@pflege.example", "firstName", "Petra",
+                        "lastName", "Pflege"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody()).containsEntry("email", "neu@pflege.example");
+        assertThat(updated.getBody()).containsEntry("firstName", "Petra");
+        assertThat(updated.getBody()).containsEntry("username", "pflege-operator");
+
+        // A user addressed through the WRONG tenant's path is 404, never edited.
+        String otherTenant = (String) createTenant(admin, "Falscher Pfad eG", "CI").get("id");
+        assertThat(rest.exchange(
+                url("/api/v1/admin/tenants/" + otherTenant + "/users/" + userId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("email", "x@x.example"), bearer(admin)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Disable blocks the login; enable (the new counterpart) restores it.
+        rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/disable"),
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class);
+        assertThat(tryToken("pflege-operator", "pflege-pw")).doesNotContainKey("access_token");
+        ResponseEntity<Map<String, Object>> enabled = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/enable"),
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(enabled.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(enabled.getBody()).containsEntry("enabled", true);
+        assertThat(tryToken("pflege-operator", "pflege-pw")).containsKey("access_token");
+
+        // SELF-GUARD: the admin can neither disable nor delete their own account,
+        // regardless of which tenant path they route through (409 before any
+        // tenant check).
+        String adminSub = jwtSub(admin);
+        assertThat(rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + adminSub + "/disable"),
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        assertThat(rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + adminSub),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+        assertThat(tryToken("admin", "admin")).containsKey("access_token");
+
+        // Delete removes the customer's login for good.
+        assertThat(rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(tryToken("pflege-operator", "pflege-pw")).doesNotContainKey("access_token");
+        ResponseEntity<List<Map<String, Object>>> users = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/users"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(users.getBody()).extracting(u -> u.get("username")).doesNotContain("pflege-operator");
+    }
+
+    @Test
+    void registryEntryDeleteIsRefusedWhileClaimedAndFreedByUnclaim() {
+        String admin = token("admin", "admin");
+        provision(admin, "VP-DEL-0001");
+        provision(admin, "VP-DEL-0002");
+
+        // A customer connects the first ID.
+        String demo = token("demo", "demo");
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-DEL-0001"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String deviceId = (String) claim.getBody().get("id");
+
+        // Claimed -> the registry entry cannot be removed (409).
+        assertThat(rest.exchange(url("/api/v1/admin/provisioned-devices/VP-DEL-0001"),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.CONFLICT);
+
+        // Unclaimed entries delete fine (path input is canonicalized like the claim).
+        assertThat(rest.exchange(url("/api/v1/admin/provisioned-devices/vp-del-0002"),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        ResponseEntity<List<Map<String, Object>>> list = rest.exchange(
+                url("/api/v1/admin/provisioned-devices"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(list.getBody()).extracting(p -> p.get("externalRef")).doesNotContain("VP-DEL-0002");
+
+        // Unknown entry -> 404.
+        assertThat(rest.exchange(url("/api/v1/admin/provisioned-devices/VP-NIE-0000"),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Once the customer removes the device, the entry is deletable.
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(rest.exchange(url("/api/v1/admin/provisioned-devices/VP-DEL-0001"),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private Map<String, Object> createTenant(String token, String name, String segment) {
@@ -451,6 +677,47 @@ class AdminApiTest {
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return res.getBody();
+    }
+
+    /** Register a sticker Geräte-ID in the manufacturing registry. */
+    private void provision(String adminToken, String externalRef) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/admin/provisioned-devices"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("externalRef", externalRef), bearer(adminToken)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode().is2xxSuccessful()).isTrue();
+    }
+
+    /** The token's subject (= the Keycloak user id of the caller). */
+    private static String jwtSub(String token) throws Exception {
+        String payload = new String(java.util.Base64.getUrlDecoder()
+                .decode(token.split("\\.")[1]), java.nio.charset.StandardCharsets.UTF_8);
+        return new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(payload).get("sub").asText();
+    }
+
+    /** Run a statement as the Postgres superuser (bypasses RLS). */
+    private static void exec(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement()) {
+            st.execute(sql);
+        } catch (Exception e) {
+            throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
+
+    /** Scalar count query as the Postgres superuser (sees all tenants' rows). */
+    private static long queryLong(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
     }
 
     /** Insert a site for a tenant using the Postgres superuser (bypasses RLS). */

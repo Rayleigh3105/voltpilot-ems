@@ -26,4 +26,15 @@ public final class ProvisioningTopics {
     public static String helloTopic(String ref) {
         return "provision/" + ref + "/hello";
     }
+
+    /**
+     * The retained dispatch-plan topic of a claimed device
+     * (docs/contracts/mqtt-schedule.schema.json). Needed here for the unclaim
+     * cleanup: clearing the retained schedule lets the physical device fall
+     * back to its watchdog default.
+     */
+    public static String scheduleTopic(java.util.UUID tenantId, java.util.UUID siteId,
+            java.util.UUID deviceId) {
+        return "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/schedule";
+    }
 }

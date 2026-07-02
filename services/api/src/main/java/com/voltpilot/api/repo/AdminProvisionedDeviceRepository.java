@@ -54,6 +54,15 @@ public class AdminProvisionedDeviceRepository {
                 externalRef, kind, note).stream().findFirst();
     }
 
+    /**
+     * Remove a wrongly registered sticker ID from the registry. The caller has
+     * already verified it is not claimed (a claimed entry answers 409 - the
+     * device row would otherwise reference a gone registry entry).
+     */
+    public boolean delete(String externalRef) {
+        return jdbc.update("DELETE FROM provisioned_device WHERE external_ref = ?", externalRef) > 0;
+    }
+
     private static ProvisionedDeviceDto map(java.sql.ResultSet rs, int rowNum)
             throws java.sql.SQLException {
         String claimedBy = rs.getString("claimed_by");

@@ -247,6 +247,46 @@ public class KeycloakAdminClient {
         }
     }
 
+    /**
+     * Update a user's profile (email/name). The username is the login identity
+     * and stays untouched; sending only the changed fields keeps Keycloak's
+     * other attributes (incl. {@code tenant_id}) as they are.
+     */
+    public KeycloakUser updateProfile(String userId, String email, String firstName,
+            String lastName) {
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("email", email == null || email.isBlank() ? null : email.trim());
+        body.put("firstName", firstName == null || firstName.isBlank() ? null : firstName.trim());
+        body.put("lastName", lastName == null || lastName.isBlank() ? null : lastName.trim());
+        try {
+            admin().put().uri("/admin/realms/{realm}/users/{id}", props.getRealm(), userId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 409) {
+                throw new KeycloakAdminException(409, "A user with that email already exists");
+            }
+            throw new KeycloakAdminException(ex.getStatusCode().value(),
+                    "Updating user failed: " + ex.getResponseBodyAsString());
+        }
+        return getUser(userId);
+    }
+
+    /** Permanently delete a user (their login stops working immediately). */
+    public void deleteUser(String userId) {
+        try {
+            admin().delete().uri("/admin/realms/{realm}/users/{id}", props.getRealm(), userId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientResponseException ex) {
+            throw new KeycloakAdminException(ex.getStatusCode().value(),
+                    "Deleting user failed: " + ex.getResponseBodyAsString());
+        }
+        log.info("Deleted user {}", userId);
+    }
+
     /** Enable/disable a user (disabling blocks their logins immediately). */
     public KeycloakUser setEnabled(String userId, boolean enabled) {
         try {

@@ -40,6 +40,23 @@ public class TenantRepository {
                 TenantRepository::map, name, segment);
     }
 
+    /** Update a tenant's master data. Null when the tenant does not exist. */
+    public TenantDto update(UUID tenantId, String name, String segment) {
+        List<TenantDto> updated = jdbc.query(
+                "UPDATE tenant SET name = ?, segment = ? WHERE id = ? "
+                        + "RETURNING id, name, segment, plan, created_at",
+                TenantRepository::map, name, segment, tenantId);
+        return updated.isEmpty() ? null : updated.get(0);
+    }
+
+    /** The tenant by id, or null. */
+    public TenantDto findById(UUID tenantId) {
+        List<TenantDto> found = jdbc.query(
+                "SELECT id, name, segment, plan, created_at FROM tenant WHERE id = ?",
+                TenantRepository::map, tenantId);
+        return found.isEmpty() ? null : found.get(0);
+    }
+
     /**
      * Delete a tenant row. Used only to compensate a failed self-registration
      * (the tenant was just created and owns no data yet); child rows would make
@@ -47,6 +64,84 @@ public class TenantRepository {
      */
     public void deleteById(UUID tenantId) {
         jdbc.update("DELETE FROM tenant WHERE id = ?", tenantId);
+    }
+
+    /** A device row of the tenant, as needed for the MQTT retained-topic cleanup. */
+    public record TenantDevice(UUID id, UUID siteId, String externalRef) {
+    }
+
+    public List<TenantDevice> devicesOfTenant(UUID tenantId) {
+        return jdbc.query(
+                "SELECT id, site_id, external_ref FROM device WHERE tenant_id = ?",
+                (rs, i) -> new TenantDevice(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("site_id", UUID.class),
+                        rs.getString("external_ref")),
+                tenantId);
+    }
+
+    /** What the database cascade of {@link #offboard} removed. */
+    public record OffboardCounts(int sites, int devices, long telemetryRows) {
+    }
+
+    /**
+     * Offboard a tenant: remove every series row of the tenant (the hypertables
+     * carry no FKs) and then the tenant row itself, whose FKs cascade
+     * site/device/asset - all in ONE database transaction, so a failure leaves
+     * the tenant fully intact. Keycloak cleanup is separate and best-effort
+     * (see the controller): the directory is another system and must not be
+     * able to roll back the data deletion the operator confirmed.
+     */
+    public OffboardCounts offboard(UUID tenantId) {
+        return jdbc.execute((java.sql.Connection con) -> {
+            boolean autoCommit = con.getAutoCommit();
+            con.setAutoCommit(false);
+            try {
+                long telemetryRows = deleteByTenant(con, "telemetry", tenantId);
+                for (String table : new String[] {
+                        "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d",
+                        "weather_forecast", "schedule", "forecast",
+                        "forecast_model_state", "forecast_accuracy", "plan_accuracy"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
+                int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
+                int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
+                deleteByTenant(con, "tenant", tenantId, "id");
+                con.commit();
+                return new OffboardCounts(sites, devices, telemetryRows);
+            } catch (Exception e) {
+                con.rollback();
+                throw e instanceof java.sql.SQLException sql ? sql
+                        : new java.sql.SQLException("tenant offboarding failed", e);
+            } finally {
+                con.setAutoCommit(autoCommit);
+            }
+        });
+    }
+
+    private static long deleteByTenant(java.sql.Connection con, String table, UUID tenantId)
+            throws java.sql.SQLException {
+        return deleteByTenant(con, table, tenantId, "tenant_id");
+    }
+
+    private static long deleteByTenant(java.sql.Connection con, String table, UUID tenantId,
+            String column) throws java.sql.SQLException {
+        try (java.sql.PreparedStatement st = con.prepareStatement(
+                "DELETE FROM " + table + " WHERE " + column + " = ?")) {
+            st.setObject(1, tenantId);
+            return st.executeUpdate();
+        }
+    }
+
+    private static int count(java.sql.Connection con, String sql, UUID tenantId)
+            throws java.sql.SQLException {
+        try (java.sql.PreparedStatement st = con.prepareStatement(sql)) {
+            st.setObject(1, tenantId);
+            try (java.sql.ResultSet rs = st.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        }
     }
 
     public boolean existsById(UUID tenantId) {

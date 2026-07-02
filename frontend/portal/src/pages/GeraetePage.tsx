@@ -97,8 +97,15 @@ export function GeraetePage({
               <tbody>
                 {devices.map((d) => (
                   <tr key={d.id} className="clickable" onClick={() => setDetailId(d.id)}>
-                    <td data-label="Referenz" className="vp-mono">
-                      {d.externalRef}
+                    <td data-label="Referenz">
+                      {d.name ? (
+                        <>
+                          <b>{d.name}</b>
+                          <div className="vp-note vp-mono">{d.externalRef}</div>
+                        </>
+                      ) : (
+                        <span className="vp-mono">{d.externalRef}</span>
+                      )}
                     </td>
                     <td data-label="Typ">{deviceKindLabel(d.kind)}</td>
                     <td data-label="Standort">{siteName(d.siteId)}</td>
@@ -140,7 +147,12 @@ export function GeraetePage({
         sites={sites}
         onClaimed={onReload}
       />
-      <DeviceDetailDrawer device={detail} sites={sites} onClose={() => setDetailId(null)} />
+      <DeviceDetailDrawer
+        device={detail}
+        sites={sites}
+        onClose={() => setDetailId(null)}
+        onChanged={onReload}
+      />
     </>
   );
 }

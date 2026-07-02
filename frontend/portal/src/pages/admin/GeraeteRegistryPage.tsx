@@ -34,6 +34,25 @@ export function GeraeteRegistryPage() {
     }
   }
 
+  async function remove(d: ProvisionedDevice) {
+    if (!window.confirm(`Geräte-ID „${d.externalRef}“ aus der Registry entfernen? Sie kann danach von keinem Kunden mehr verbunden werden.`)) {
+      return;
+    }
+    setError(null);
+    try {
+      await adminApi.deleteProvisionedDevice(d.externalRef);
+      await reload();
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 409
+          ? `„${d.externalRef}“ ist bereits mit einem Kundenkonto verbunden und kann nicht entfernt werden. Der Kunde (oder Sie über die Mandanten-Ansicht) muss das Gerät zuerst entfernen.`
+          : e instanceof ApiError
+            ? `Entfernen fehlgeschlagen: ${e.message}`
+            : 'Entfernen fehlgeschlagen. Bitte versuchen Sie es erneut.',
+      );
+    }
+  }
+
   useEffect(() => {
     void reload();
   }, []);
@@ -77,6 +96,7 @@ export function GeraeteRegistryPage() {
                 <th>Notiz</th>
                 <th>Registriert</th>
                 <th>Status</th>
+                <th aria-label="Aktionen" />
               </tr>
             </thead>
             <tbody>
@@ -98,6 +118,22 @@ export function GeraeteRegistryPage() {
                         noch nicht verbunden
                       </Badge>
                     )}
+                  </td>
+                  <td data-label="" style={{ textAlign: 'right' }}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(d)}
+                      disabled={d.claimed}
+                      title={
+                        d.claimed
+                          ? 'Verbundene Geräte-IDs können nicht entfernt werden - das Gerät muss zuerst vom Kundenkonto getrennt werden.'
+                          : undefined
+                      }
+                      style={d.claimed ? undefined : { color: 'var(--vp-industry-end)' }}
+                    >
+                      Entfernen
+                    </Button>
                   </td>
                 </tr>
               ))}
