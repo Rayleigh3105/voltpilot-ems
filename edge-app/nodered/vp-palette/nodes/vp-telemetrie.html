@@ -1,0 +1,40 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-telemetrie', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'bridge.svg',
+    align: 'right',
+    label: function () { return this.name || 'vp-telemetrie'; },
+    paletteLabel: 'vp-telemetrie'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-telemetrie">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-telemetrie">
+  <p>Sendet Messwerte an den VoltPilot Core-Agenten (lokaler Bus,
+  <code>edge/telemetrie</code>-Namensraum). Der Core stempelt Identität und
+  Sequenznummer, puffert bei Cloud-Ausfall auf Datenträger und veröffentlicht
+  den verbindlichen Telemetrie-Contract in die Cloud.</p>
+  <p><code>msg.payload</code>: Objekt mit beliebigen der Felder
+  <code>power_kw</code>, <code>soc_pct</code>, <code>pv_power_kw</code>,
+  <code>load_kw</code>, <code>grid_limit_kw</code> (Zahlen) und optional
+  <code>ts</code> (RFC&nbsp;3339). Die Aliasse <code>grid_kw</code> und
+  <code>pv_kw</code> aus dem klassischen Acquisition-Decode werden ebenfalls
+  akzeptiert.</p>
+</script>

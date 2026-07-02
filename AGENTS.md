@@ -37,6 +37,8 @@ MVP data path (architecture section 4/7): `Node-RED edge -> EMQX (MQTT) -> Inges
 | `services/market-data` | Python | ENTSO-E day-ahead price adapter (anti-corruption layer) -> `day_ahead_prices` | stateless (job) |
 | `edge/node-red` | Node-RED | Thin edge: acquisition, publish, schedule-exec, watchdog, guards (runnable via the SunSpec sim) | edge |
 | `edge/sim` | Node.js | Simulated SunSpec Modbus TCP inverter/battery (dev only, no hardware) | dev tool |
+| `edge-app/core` | Go | Customer-side edge core agent: enrollment, mTLS cloud link, buffering, schedule exec + guards, local bus + web app | edge (stateful data dir) |
+| `edge-app/nodered` | Node-RED | Customer-side I/O flows (vp-palette; wired by VoltPilot per customer) | edge |
 | `frontend/portal` | React/Vite | Web portal | - |
 
 ## Ports (local dev)
@@ -226,6 +228,23 @@ An **installable-anywhere** simulated edge device: a single dependency-light Pyt
 - **Simulation.** Diurnal PV (zero at night, noon peak), household load profile, battery charge-midday/discharge-evening (SoC clamped 10-100%), `power_kw = load - pv + battery` (signed +import/-export), mild noise (seedable). `--time-scale N` replays a full day fast (e.g. 288 → a day in 5 min); `--time-scale 1` tracks the real clock. `--count N` exits after N messages.
 - **Packaging.** `requirements.txt`, `Dockerfile` (multi-arch, non-root), example `voltpilot-edge-sim.service` systemd unit for a Pi, and an **opt-in compose service `edge-simulator`** under its **own `sim` profile** (NOT `edge`, so it never double-publishes with `edge-nodered`): `docker compose --profile sim up -d --build edge-simulator`.
 - **Tests/proof.** `python3 -m pytest tools/edge-simulator/test_edge_sim.py -q` (or `python3 test_edge_sim.py`) runs fully offline - validates generated payloads against the **real** schema, the power-balance identity, PV day/night, battery cycle, SoC bounds, topic format, config precedence. Live proof: `tools/edge-simulator/proof/publish_and_verify.sh` publishes N and shows rows land in TimescaleDB (needs the `edge`-profile ingest path up). The real paho wire path (CONNECT + QoS1 PUBLISH/PUBACK) was verified against an in-process broker stub since this sandbox blocks Docker.
+## VoltPilot Edge-App (`edge-app/`): the installable customer-side edge
+
+The productized two-layer edge the captain decided on (2026-07-02); one docker-compose package the customer installs on their device.
+Full docs in [`edge-app/README.md`](edge-app/README.md).
+It is SEPARATE from `edge/` (the thin dev Node-RED edge in the cloud-stack compose) and from `tools/edge-simulator` (the MQTT-publisher sim) - do not conflate the three.
+
+- **Layer 2 = `edge-app/core` (Go, module `.../edge-app/core`, binary `vp-edge-core`)** - identical at every customer, the ONLY thing talking to the cloud:
+  first-boot HTTPS **enrollment** (EC P-256 key on-device -> CSR -> poll; consumes the api's enrollment endpoints exactly; conflict/unknown-ref states surfaced in German), the single outbound **mTLS MQTT** link (paho; broker derives identity from the cert CN),
+  **store-and-forward** telemetry (segmented JSONL disk ring, default 48 h, cursor + monotonic seq persisted, ack-after-QoS1-confirm, replay oldest-first with ORIGINAL timestamps - safe because ingest is idempotent per (device, time)),
+  **schedule cache + execution** (frozen `mqtt-schedule` contract; plan persisted to disk for reboot-without-network; 20-min staleness window mirrored from the contract's `x-failsafe`; guards clamp EVERY setpoint: rated power band, SoC bounds, observed §14a envelope on import AND export; stale/no plan -> self-consumption fallback = PV − load),
+  an **embedded local MQTT bus** (mochi-mqtt in-process, topics `edge/telemetry`, `edge/setpoint` (retained), `edge/status`), and the German read-only **local web app** on `:8484` (Referenz-ID + pairing state - the customer's whole install experience; `/health` for watchdogs). Config: env > `config.json` > defaults (`config.Defaults()`); an unset ref is generated once and persisted.
+- **Layer 1 = `edge-app/nodered`** - the per-customer I/O layer, **wired by VoltPilot, never by the customer** (editor LAN-only behind adminAuth, `VP_NODERED_PASSWORD`). Ships the **vp-palette** (`@voltpilot/node-red-vp-palette`: `vp-core` config node + `vp-telemetrie`/`vp-sollwert`/`vp-status`, preconfigured to `core:1883`) and two template tabs: **"SunSpec (Simulator)"** (ENABLED - hardware-free e2e against `edge-sim`) and **"SunSpec Wechselrichter (Vorlage)"** (DISABLED - the per-customer starting point; enable + point at the real inverter + disable the sim tab).
+- **Sim mode is first-class:** `docker compose --profile sim up -d --build` in `edge-app/` also starts the SunSpec Modbus simulator (built from `../edge/sim`) = the FULL edge app end-to-end with zero hardware.
+- **Dev escape hatches** (never on customer devices): `VP_DEV_TENANT_ID/SITE_ID/DEVICE_ID` (skips enrollment) + `VP_DEV_CLOUD_URL` (plain-MQTT cloud) - this is what the isolated compose e2e uses.
+- **Tests:** `(cd edge-app/core && go test ./...)` - unit (guards clamp incl. §14a both directions, 20-min staleness -> fallback, buffer replay/eviction/restart, enrollment state machine incl. 409/422/key-conflict, config precedence) + an in-process **integration test** (real mTLS mochi cloud broker + enrollment stub with a real CA: enroll -> telemetry with original ts -> retained schedule -> clamped setpoint on the local bus -> outage -> buffer grows -> reconnect -> ordered replay). `(cd edge-app/nodered/vp-palette && npm install && npm test)` - shaping units + node-red-node-test-helper against an in-process bus (aedes). `edge-app/test/e2e-compose.sh` - isolated compose bring-up (own project name + high ports, stand-in mosquitto cloud; covers the `sim` profile): contract telemetry at the broker, retained schedule -> `edge-sim` logs the setpoint write, web `/api/state` shows `fahrplan` + inverter link up.
+- **MVP non-goals** (documented in `edge-app/README.md`): OTA/auto-update, on-edge ML, local optimization beyond the self-consumption fallback.
+
 ## Production deployment (single VM/VPS, "deploy like saalo")
 
 MVP-on-one-server: an external reverse proxy on another host terminates TLS (the company's **Nginx Proxy Manager** for the internal-VM deployment; Caddy stays documented as the alternative), the whole server-side stack runs from **`docker-compose.prod.yml`** (a self-contained, standalone file - NOT merged with the dev `docker-compose.yml`), and Forgejo does push-to-deploy once CI secrets are set. Full guide in [`docs/deploy.md`](docs/deploy.md); the recipe mirrors the saalo repo's proven pattern.
@@ -259,6 +278,11 @@ MVP-on-one-server: an external reverse proxy on another host terminates TLS (the
 
 # Edge simulator (SunSpec Modbus TCP source; sanity syntax check)
 (cd edge/sim && npm install && node -e "require('./sunspec-sim.js')" & sleep 2; kill %1)
+
+# Edge-App (customer-side edge; see its AGENTS.md section)
+(cd edge-app/core && go test ./...)                          # Go 1.24+; incl. in-process mTLS integration test
+(cd edge-app/nodered/vp-palette && npm install && npm test)  # vp-palette node tests
+edge-app/test/e2e-compose.sh                                 # isolated compose e2e (Docker; own project/ports)
 ```
 
 Health endpoints on the JVM services are mapped to root: `GET /health` (Spring Boot Actuator).

@@ -1,0 +1,379 @@
+// Package enroll implements first-boot device enrollment over HTTPS against
+// the portal api (openapi.yaml tag "enrollment", built by services/api):
+//
+//	POST /api/v1/enrollment/{ref}/csr        upload the device-generated CSR
+//	GET  /api/v1/enrollment/{ref}/certificate poll until the ref is claimed
+//
+// The device generates an EC P-256 keypair LOCALLY (the private key never
+// leaves the device), uploads a CSR proving key possession, and polls with
+// backoff (~10 s at first, backing off to >= 60 s per docs/connect-a-device.md;
+// claiming may happen days later). Once claimed, the response carries the
+// CA-signed client certificate, the CA PEM to verify the broker, the broker
+// host/port and the topic identity - everything is persisted to the data dir
+// and enrollment never runs again (idempotent on restart).
+package enroll
+
+import (
+	"bytes"
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// Identity is the persisted result of a successful enrollment.
+type Identity struct {
+	TenantID string `json:"tenant_id"`
+	SiteID   string `json:"site_id"`
+	DeviceID string `json:"device_id"`
+	MqttHost string `json:"mqtt_host"`
+	MqttPort int    `json:"mqtt_port"`
+}
+
+// State is the pairing state shown in the local web app.
+type State string
+
+const (
+	// StateWaitingForClaim: CSR uploaded, polling until the customer claims
+	// the reference in the portal.
+	StateWaitingForClaim State = "warte_auf_beanspruchung"
+	// StateCertificateReceived: certificate persisted, cloud link starting.
+	StateCertificateReceived State = "zertifikat_erhalten"
+	// StateKeyConflict: the portal already issued a certificate for this
+	// reference against a DIFFERENT key. Needs operator action (revoke +
+	// unclaim/re-claim) - the device cannot resolve this itself.
+	StateKeyConflict State = "schluessel_konflikt"
+	// StateRefUnknown: a VP- sticker reference the registry does not know
+	// (HTTP 422). Retried slowly; usually a typo in VP_REF or a missing
+	// registry entry.
+	StateRefUnknown State = "referenz_unbekannt"
+)
+
+// Enroller drives the enrollment state machine for one device.
+type Enroller struct {
+	PortalBaseURL string
+	Ref           string
+	Dir           string // identity dir (device.key / device.crt / ca.crt / identity.json)
+	HTTP          *http.Client
+	DeviceInfo    string
+	// OnState is called on every pairing-state change (for the web UI).
+	OnState func(State)
+	// Backoff bounds; overridable in tests.
+	PollMin time.Duration
+	PollMax time.Duration
+}
+
+func (e *Enroller) client() *http.Client {
+	if e.HTTP != nil {
+		return e.HTTP
+	}
+	return &http.Client{Timeout: 30 * time.Second}
+}
+
+func (e *Enroller) setState(s State) {
+	if e.OnState != nil {
+		e.OnState(s)
+	}
+}
+
+// Paths of the persisted material.
+func (e *Enroller) keyPath() string      { return filepath.Join(e.Dir, "device.key") }
+func (e *Enroller) certPath() string     { return filepath.Join(e.Dir, "device.crt") }
+func (e *Enroller) caPath() string       { return filepath.Join(e.Dir, "ca.crt") }
+func (e *Enroller) identityPath() string { return filepath.Join(e.Dir, "identity.json") }
+
+// Enrolled reports whether a complete enrollment is already on disk.
+func (e *Enroller) Enrolled() bool {
+	for _, p := range []string{e.keyPath(), e.certPath(), e.caPath(), e.identityPath()} {
+		if _, err := os.Stat(p); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// LoadIdentity returns the persisted identity (call after Enrolled() == true
+// or a successful Run).
+func (e *Enroller) LoadIdentity() (Identity, error) {
+	var id Identity
+	raw, err := os.ReadFile(e.identityPath())
+	if err != nil {
+		return id, err
+	}
+	err = json.Unmarshal(raw, &id)
+	return id, err
+}
+
+// CertFiles returns the paths of the client key/cert and CA for the mTLS
+// cloud link.
+func (e *Enroller) CertFiles() (keyPath, certPath, caPath string) {
+	return e.keyPath(), e.certPath(), e.caPath()
+}
+
+// Run executes the state machine until enrolled or ctx is done. It is
+// idempotent: an existing enrollment returns immediately; an existing key is
+// reused (never regenerated).
+func (e *Enroller) Run(ctx context.Context) (Identity, error) {
+	if e.Enrolled() {
+		id, err := e.LoadIdentity()
+		if err == nil {
+			e.setState(StateCertificateReceived)
+		}
+		return id, err
+	}
+	if err := os.MkdirAll(e.Dir, 0o700); err != nil {
+		return Identity{}, err
+	}
+
+	key, err := e.loadOrCreateKey()
+	if err != nil {
+		return Identity{}, err
+	}
+	csrPem, err := buildCSR(key, e.Ref)
+	if err != nil {
+		return Identity{}, err
+	}
+
+	pollMin, pollMax := e.PollMin, e.PollMax
+	if pollMin <= 0 {
+		pollMin = 10 * time.Second
+	}
+	if pollMax <= 0 {
+		pollMax = 60 * time.Second
+	}
+
+	// 1) Upload the CSR. 202 = stored; 409 = a certificate exists already
+	// (retrievable - poll straight away); 422 = unknown sticker ref (retry
+	// slowly, the registry entry may land later); anything else retries.
+	e.setState(StateWaitingForClaim)
+	delay := pollMin
+	for {
+		status, body, err := e.postCSR(ctx, csrPem)
+		if err == nil {
+			if status == http.StatusAccepted || status == http.StatusConflict {
+				if status == http.StatusConflict {
+					slog.Info("enrollment: certificate already issued for this reference, fetching it", "ref", e.Ref)
+				}
+				break
+			}
+			if status == http.StatusUnprocessableEntity {
+				e.setState(StateRefUnknown)
+				slog.Warn("enrollment: reference unknown to the provisioned-device registry (422); retrying",
+					"ref", e.Ref, "body", string(body))
+			} else {
+				slog.Warn("enrollment: CSR upload refused; retrying", "status", status, "body", string(body))
+			}
+		} else {
+			slog.Warn("enrollment: CSR upload failed; retrying", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return Identity{}, ctx.Err()
+		case <-time.After(delay):
+		}
+		if delay < pollMax {
+			delay *= 2
+			if delay > pollMax {
+				delay = pollMax
+			}
+		}
+	}
+
+	// 2) Poll for the certificate until the customer claims the reference.
+	e.setState(StateWaitingForClaim)
+	delay = pollMin
+	for {
+		cert, err := e.getCertificate(ctx)
+		if err == nil && cert != nil {
+			var id Identity
+			id, err = e.persist(key, cert)
+			if err == nil {
+				e.setState(StateCertificateReceived)
+				slog.Info("enrollment complete", "ref", e.Ref, "device_id", id.DeviceID, "mqtt", fmt.Sprintf("%s:%d", id.MqttHost, id.MqttPort))
+				return id, nil
+			}
+		}
+		if errors.Is(err, errKeyMismatch) {
+			e.setState(StateKeyConflict)
+			slog.Error("enrollment: issued certificate does not match this device's key; operator must revoke + re-claim", "ref", e.Ref)
+			// Keep polling slowly - a revoke + re-claim re-issues against
+			// a fresh CSR (which we re-POST first).
+			if _, _, perr := e.postCSR(ctx, csrPem); perr != nil {
+				slog.Warn("enrollment: CSR re-upload failed", "err", perr)
+			}
+			delay = pollMax
+		} else if err != nil && !errors.Is(err, errPending) {
+			slog.Warn("enrollment: certificate poll failed; retrying", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return Identity{}, ctx.Err()
+		case <-time.After(delay):
+		}
+		if delay < pollMax {
+			delay *= 2
+			if delay > pollMax {
+				delay = pollMax
+			}
+		}
+	}
+}
+
+var (
+	errPending     = errors.New("enrollment pending")
+	errKeyMismatch = errors.New("issued certificate does not match the device key")
+)
+
+func (e *Enroller) loadOrCreateKey() (*ecdsa.PrivateKey, error) {
+	raw, err := os.ReadFile(e.keyPath())
+	if err == nil {
+		block, _ := pem.Decode(raw)
+		if block == nil {
+			return nil, errors.New("device.key: not PEM")
+		}
+		key, err := x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("device.key: %w", err)
+		}
+		return key, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	der, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})
+	if err := os.WriteFile(e.keyPath(), pemBytes, 0o600); err != nil {
+		return nil, err
+	}
+	slog.Info("enrollment: generated device keypair (EC P-256); the key never leaves this device")
+	return key, nil
+}
+
+func buildCSR(key *ecdsa.PrivateKey, ref string) (string, error) {
+	// The requested subject is irrelevant - issuance overrides it with the
+	// claim-derived identity. The CSR only proves key possession.
+	der, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		Subject: pkix.Name{CommonName: ref},
+	}, key)
+	if err != nil {
+		return "", err
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})), nil
+}
+
+func (e *Enroller) postCSR(ctx context.Context, csrPem string) (int, []byte, error) {
+	payload, _ := json.Marshal(map[string]string{
+		"csrPem":     csrPem,
+		"deviceInfo": e.DeviceInfo,
+	})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		e.PortalBaseURL+"/api/v1/enrollment/"+e.Ref+"/csr", bytes.NewReader(payload))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.client().Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	return resp.StatusCode, body, nil
+}
+
+type certificateResponse struct {
+	DeviceCertPem string `json:"deviceCertPem"`
+	CaPem         string `json:"caPem"`
+	MqttHost      string `json:"mqttHost"`
+	MqttPort      int    `json:"mqttPort"`
+	TenantID      string `json:"tenantId"`
+	SiteID        string `json:"siteId"`
+	DeviceID      string `json:"deviceId"`
+}
+
+func (e *Enroller) getCertificate(ctx context.Context) (*certificateResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		e.PortalBaseURL+"/api/v1/enrollment/"+e.Ref+"/certificate", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := e.client().Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errPending // pending (unclaimed / unknown - indistinguishable by design)
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("certificate poll: HTTP %d: %s", resp.StatusCode, body)
+	}
+	var cr certificateResponse
+	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+		return nil, err
+	}
+	if cr.DeviceCertPem == "" || cr.CaPem == "" {
+		return nil, errors.New("certificate response incomplete")
+	}
+	return &cr, nil
+}
+
+// persist verifies the issued certificate matches our key, then writes the
+// bundle + identity atomically enough for a restart to be consistent (the
+// identity file is written LAST; Enrolled() requires all four files).
+func (e *Enroller) persist(key *ecdsa.PrivateKey, cr *certificateResponse) (Identity, error) {
+	block, _ := pem.Decode([]byte(cr.DeviceCertPem))
+	if block == nil {
+		return Identity{}, errors.New("issued certificate: not PEM")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return Identity{}, fmt.Errorf("issued certificate: %w", err)
+	}
+	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok || !pub.Equal(&key.PublicKey) {
+		return Identity{}, errKeyMismatch
+	}
+
+	if err := os.WriteFile(e.certPath(), []byte(cr.DeviceCertPem), 0o644); err != nil {
+		return Identity{}, err
+	}
+	if err := os.WriteFile(e.caPath(), []byte(cr.CaPem), 0o644); err != nil {
+		return Identity{}, err
+	}
+	id := Identity{
+		TenantID: cr.TenantID,
+		SiteID:   cr.SiteID,
+		DeviceID: cr.DeviceID,
+		MqttHost: cr.MqttHost,
+		MqttPort: cr.MqttPort,
+	}
+	raw, err := json.MarshalIndent(id, "", "  ")
+	if err != nil {
+		return Identity{}, err
+	}
+	if err := os.WriteFile(e.identityPath(), raw, 0o644); err != nil {
+		return Identity{}, err
+	}
+	return id, nil
+}

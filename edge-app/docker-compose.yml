@@ -1,0 +1,84 @@
+# VoltPilot Edge-App: the installable customer-side edge.
+#
+#   docker compose up -d                      -> core + Node-RED (real inverter, wired per customer)
+#   docker compose --profile sim up -d --build -> PLUS the SunSpec simulator: full edge, zero hardware
+#
+# Two layers, one package:
+#   core     Layer 2 (Go): identity/enrollment, the ONLY cloud connection (mTLS
+#            MQTT), telemetry store-and-forward, schedule cache + guards +
+#            execution, embedded local MQTT bus, local device web app (:8484).
+#   nodered  Layer 1: per-customer I/O flows (inverter read / setpoint write)
+#            talking ONLY to the core's local bus. Wired by VoltPilot.
+#
+# Configuration: copy .env.example to .env. Nothing is strictly required -
+# an unconfigured device generates a persistent reference and shows it in the
+# local web app.
+
+name: voltpilot-edge
+
+services:
+  core:
+    build:
+      context: ./core
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest
+    restart: unless-stopped
+    environment:
+      VP_PORTAL_BASE_URL: ${VP_PORTAL_BASE_URL:-https://voltpilot.de}
+      VP_MQTT_HOST: ${VP_MQTT_HOST:-mqtt.voltpilot.de}
+      VP_MQTT_PORT: ${VP_MQTT_PORT:-8883}
+      VP_REF: ${VP_REF:-}
+      VP_MAX_CHARGE_KW: ${VP_MAX_CHARGE_KW:-50}
+      VP_MAX_DISCHARGE_KW: ${VP_MAX_DISCHARGE_KW:-50}
+      VP_SOC_MIN_PCT: ${VP_SOC_MIN_PCT:-5}
+      VP_SOC_MAX_PCT: ${VP_SOC_MAX_PCT:-95}
+      VP_BUFFER_HOURS: ${VP_BUFFER_HOURS:-48}
+      # Dev-only escape hatches (skip enrollment / plain-MQTT cloud). Leave
+      # EMPTY on customer devices - see README.
+      VP_DEV_TENANT_ID: ${VP_DEV_TENANT_ID:-}
+      VP_DEV_SITE_ID: ${VP_DEV_SITE_ID:-}
+      VP_DEV_DEVICE_ID: ${VP_DEV_DEVICE_ID:-}
+      VP_DEV_CLOUD_URL: ${VP_DEV_CLOUD_URL:-}
+    volumes:
+      - vp-edge-data:/data
+    ports:
+      # Local device web app (LAN): http://<geraet>:8484
+      - "${VP_WEB_PORT:-8484}:8484"
+      # Embedded local MQTT bus, host-loopback only (debugging; Layer 1
+      # reaches it via the compose network as core:1883).
+      - "127.0.0.1:${VP_BUS_PORT:-1884}:1883"
+
+  nodered:
+    build:
+      context: ./nodered
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest
+    restart: unless-stopped
+    depends_on:
+      - core
+    environment:
+      VP_NODERED_USER: ${VP_NODERED_USER:-voltpilot}
+      VP_NODERED_PASSWORD: ${VP_NODERED_PASSWORD:-voltpilot}
+    volumes:
+      # Named volume so per-customer flow wiring survives container
+      # recreation; seeded from the image (template flows) on first run.
+      - vp-nodered-data:/data
+    ports:
+      # Node-RED editor (LAN, behind adminAuth): the VoltPilot service
+      # access for per-customer flow wiring. NOT for customers.
+      - "${VP_NODERED_PORT:-1881}:1880"
+
+  # --- sim profile: hardware-free end-to-end mode -------------------------
+  # Starts the SunSpec Modbus TCP simulator (the repo's edge/sim source) so
+  # `docker compose --profile sim up -d --build` runs the FULL edge app with
+  # zero hardware: sim -> Node-RED "SunSpec (Simulator)" flow -> core -> cloud.
+  edge-sim:
+    profiles: [sim]
+    build:
+      context: ../edge/sim
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-sim:latest
+    restart: unless-stopped
+    environment:
+      SIM_PORT: "502"
+
+volumes:
+  vp-edge-data:
+  vp-nodered-data:

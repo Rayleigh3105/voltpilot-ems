@@ -1,0 +1,36 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-status', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'status.svg',
+    align: 'right',
+    label: function () { return this.name || 'vp-status'; },
+    paletteLabel: 'vp-status'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-status">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-status">
+  <p>Meldet dem VoltPilot Core-Agenten, ob die Verbindung zum Wechselrichter
+  steht (<code>up</code>/<code>down</code>). Die lokale Geräte-Webansicht
+  zeigt daraus „Wechselrichter: verbunden/getrennt".</p>
+  <p><code>msg.payload</code>: <code>true</code>/<code>false</code>,
+  <code>"up"</code>/<code>"down"</code> oder
+  <code>{ inverter_link: "up"|"down" }</code>.</p>
+</script>

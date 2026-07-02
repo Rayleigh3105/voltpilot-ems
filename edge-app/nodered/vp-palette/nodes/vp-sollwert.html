@@ -1,0 +1,38 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-sollwert', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 1,
+    icon: 'inject.svg',
+    label: function () { return this.name || 'vp-sollwert'; },
+    paletteLabel: 'vp-sollwert'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-sollwert">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-sollwert">
+  <p>Empfängt den aktuellen Batterie-Sollwert des VoltPilot Core-Agenten
+  (lokaler Bus, retained). Der Wert ist bereits durch die Guards des Core
+  begrenzt (Leistungsband, SoC-Grenzen, §14a-Hüllkurve) - der Flow übersetzt
+  ihn nur noch ins Geräteprotokoll (z.&nbsp;B. Modbus-Register-Write).</p>
+  <p><code>msg.payload</code>: Sollwert in kW (+ = laden, − = entladen).<br>
+  <code>msg.setpoint</code>: das vollständige Kommando
+  (<code>battery_setpoint_kw</code>, <code>source</code>
+  <code>"schedule"|"default"</code>, ggf. <code>slot_start</code>,
+  <code>ts</code>).</p>
+</script>

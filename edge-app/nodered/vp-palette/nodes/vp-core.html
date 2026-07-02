@@ -1,0 +1,35 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-core', {
+    category: 'config',
+    defaults: {
+      name: { value: 'VoltPilot Core' },
+      host: { value: 'core' },
+      port: { value: '1883' }
+    },
+    label: function () {
+      return this.name || 'VoltPilot Core (' + this.host + ':' + this.port + ')';
+    }
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-core">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-config-input-name" placeholder="VoltPilot Core">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-host"><i class="fa fa-server"></i> Host</label>
+    <input type="text" id="node-config-input-host" placeholder="core">
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-port"><i class="fa fa-plug"></i> Port</label>
+    <input type="text" id="node-config-input-port" placeholder="1883">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-core">
+  <p>Verbindung zum lokalen Bus des VoltPilot Core-Agenten (eingebetteter
+  MQTT-Broker). Im Standard-Compose heißt der Host <code>core</code> und der
+  Bus lauscht auf Port 1883. Diese Konfiguration wird von allen vp-Knoten
+  gemeinsam genutzt.</p>
+</script>

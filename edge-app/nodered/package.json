@@ -1,0 +1,11 @@
+{
+  "name": "voltpilot-edge-app-nodered",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VoltPilot Edge-App Layer 1: per-customer I/O flows (inverter read + setpoint write) against the core agent's local bus. Wired by VoltPilot, not by the customer.",
+  "dependencies": {
+    "node-red-contrib-modbus": "^5.43.0",
+    "bcryptjs": "^2.4.3",
+    "@voltpilot/node-red-vp-palette": "file:./vp-palette"
+  }
+}

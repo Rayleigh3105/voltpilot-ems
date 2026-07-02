@@ -1,0 +1,20 @@
+# E2E overlay: adds a stand-in cloud broker (plain MQTT) and points the core
+# at it via the dev escape hatches, so the FULL two-layer edge (sim ->
+# Node-RED -> core -> "cloud") runs isolated with no real cloud stack.
+# Used by test/e2e-compose.sh with its own project name + high ports - never
+# against a live stack.
+services:
+  cloud-broker:
+    image: eclipse-mosquitto:2
+    volumes:
+      # Relative to the PROJECT directory (the base compose file's dir).
+      - ./test/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  core:
+    depends_on:
+      - cloud-broker
+    environment:
+      VP_DEV_TENANT_ID: "00000000-0000-0000-0000-000000000001"
+      VP_DEV_SITE_ID: "00000000-0000-0000-0000-000000000002"
+      VP_DEV_DEVICE_ID: "00000000-0000-0000-0000-000000000003"
+      VP_DEV_CLOUD_URL: "tcp://cloud-broker:1883"

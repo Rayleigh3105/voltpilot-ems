@@ -1,0 +1,535 @@
+// Package agent wires the core together: local bus, enrollment, cloud link,
+// store-and-forward buffer, schedule cache + guards + setpoint loop, and the
+// runtime state for the local web app.
+package agent
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
+)
+
+// Version is stamped by the build (ldflags); shown in the UI + deviceInfo.
+var Version = "dev"
+
+// Agent is the running core.
+type Agent struct {
+	Cfg   config.Config
+	State *state.Store
+	Bus   *localbus.Bus
+
+	buf       *buffer.Buffer
+	planStore *plan.Store
+
+	mu          sync.Mutex
+	currentPlan *plan.Plan
+	lastReading guards.Reading
+	lastRawSoc  *float64
+
+	link   *cloud.Link
+	linkMu sync.Mutex
+
+	// wake signals the publisher that new telemetry or connectivity arrived.
+	wake chan struct{}
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   sync.WaitGroup
+}
+
+// LoadRef returns the effective device reference: the configured one, or a
+// generated persistent reference stored in the data dir (kinderleicht: an
+// unconfigured device still shows a claimable reference in its web app).
+func LoadRef(cfg config.Config) (string, error) {
+	if cfg.Ref != "" {
+		return strings.TrimSpace(cfg.Ref), nil
+	}
+	refPath := filepath.Join(cfg.DataDir, "ref")
+	if raw, err := os.ReadFile(refPath); err == nil {
+		if ref := strings.TrimSpace(string(raw)); ref != "" {
+			return ref, nil
+		}
+	}
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		return "", err
+	}
+	// Short, human-typeable, MQTT-topic-safe (provisioning ref charset).
+	// Non-VP refs are ungated in the registry, so the claim just works.
+	ref := "edge-" + randomToken(6)
+	if err := os.WriteFile(refPath, []byte(ref+"\n"), 0o644); err != nil {
+		return "", err
+	}
+	slog.Info("generated persistent device reference", "ref", ref)
+	return ref, nil
+}
+
+func randomToken(n int) string {
+	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789" // no 0/O/1/l/i lookalikes
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b)
+}
+
+// New builds the agent (opens buffer + plan store, starts nothing yet).
+func New(cfg config.Config) (*Agent, error) {
+	ref, err := LoadRef(cfg)
+	if err != nil {
+		return nil, err
+	}
+	buf, err := buffer.Open(filepath.Join(cfg.DataDir, "buffer"), time.Duration(cfg.BufferHours)*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	ps, err := plan.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	a := &Agent{
+		Cfg:       cfg,
+		State:     state.New(ref, Version),
+		buf:       buf,
+		planStore: ps,
+		wake:      make(chan struct{}, 1),
+		lastReading: guards.Reading{
+			SocPct: guards.Unknown(), PvKw: guards.Unknown(),
+			LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown(),
+		},
+	}
+	// Boot-without-network: the disk-cached plan is available immediately.
+	if p, err := ps.Load(); err == nil && p != nil {
+		a.currentPlan = p
+		a.State.Update(func(s *state.Snapshot) {
+			s.PlanReceived = p.ReceivedAt
+			s.PlanSlots = len(p.Slots)
+		})
+		slog.Info("loaded cached plan from disk", "slots", len(p.Slots), "received_at", p.ReceivedAt)
+	} else if err != nil {
+		slog.Warn("cached plan unreadable; starting without", "err", err)
+	}
+	return a, nil
+}
+
+// Start brings up the local bus, the setpoint loop, enrollment and the cloud
+// link. It returns once the local side is up; enrollment/cloud run in the
+// background (claiming may happen days later).
+func (a *Agent) Start(ctx context.Context) error {
+	ctx, a.cancel = context.WithCancel(ctx)
+	a.ctx = ctx
+
+	bus, err := localbus.Start(a.Cfg.LocalMQTTAddr, slog.Default().WithGroup("localbus"))
+	if err != nil {
+		return fmt.Errorf("local bus: %w", err)
+	}
+	a.Bus = bus
+
+	if err := bus.Subscribe(localbus.TopicTelemetry, 1, a.onLocalTelemetry); err != nil {
+		return err
+	}
+	if err := bus.Subscribe(localbus.TopicStatus, 2, a.onLocalStatus); err != nil {
+		return err
+	}
+
+	a.done.Add(2)
+	go a.setpointLoop(ctx)
+	go a.publisherLoop(ctx)
+
+	if a.Cfg.DevIdentity() {
+		id := enroll.Identity{
+			TenantID: a.Cfg.DevTenantID,
+			SiteID:   a.Cfg.DevSiteID,
+			DeviceID: a.Cfg.DevDeviceID,
+			MqttHost: a.Cfg.MQTTHost,
+			MqttPort: a.Cfg.MQTTPort,
+		}
+		slog.Warn("DEV identity configured - skipping enrollment (never do this on a customer device)",
+			"device_id", id.DeviceID)
+		a.State.Update(func(s *state.Snapshot) {
+			s.PairingState = string(enroll.StateCertificateReceived)
+			s.TenantID, s.SiteID, s.DeviceID = id.TenantID, id.SiteID, id.DeviceID
+			s.MqttHost = id.MqttHost
+		})
+		return a.startCloud(id, "", "", "")
+	}
+
+	a.done.Add(1)
+	go func() {
+		defer a.done.Done()
+		a.enrollAndConnect(ctx)
+	}()
+	return nil
+}
+
+func (a *Agent) enrollAndConnect(ctx context.Context) {
+	e := &enroll.Enroller{
+		PortalBaseURL: strings.TrimRight(a.Cfg.PortalBaseURL, "/"),
+		Ref:           a.State.Get().Ref,
+		Dir:           filepath.Join(a.Cfg.DataDir, "identity"),
+		DeviceInfo:    "vp-edge-core " + Version,
+		OnState: func(st enroll.State) {
+			a.State.Update(func(s *state.Snapshot) { s.PairingState = string(st) })
+		},
+	}
+	id, err := e.Run(ctx)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			slog.Error("enrollment aborted", "err", err)
+		}
+		return
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		s.TenantID, s.SiteID, s.DeviceID = id.TenantID, id.SiteID, id.DeviceID
+		s.MqttHost = id.MqttHost
+	})
+	key, cert, ca := e.CertFiles()
+	if err := a.startCloud(id, key, cert, ca); err != nil {
+		slog.Error("cloud link failed to start", "err", err)
+	}
+}
+
+func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string) error {
+	link, err := cloud.New(cloud.Options{
+		Identity:    id,
+		KeyPath:     keyPath,
+		CertPath:    certPath,
+		CAPath:      caPath,
+		DevURL:      a.Cfg.DevCloudURL,
+		DevInsecure: a.Cfg.DevInsecure,
+		OnSchedule:  a.onSchedule,
+		OnConnect: func(connected bool) {
+			a.State.Update(func(s *state.Snapshot) {
+				s.CloudConnected = connected
+				if connected {
+					s.PairingState = "verbunden"
+				}
+			})
+			if connected {
+				a.kick()
+			}
+		},
+	})
+	if err != nil {
+		return err
+	}
+	a.linkMu.Lock()
+	a.link = link
+	a.linkMu.Unlock()
+	link.Connect()
+
+	// Status heartbeat.
+	a.done.Add(1)
+	go func() {
+		defer a.done.Done()
+		t := time.NewTicker(15 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				if !link.Connected() {
+					continue
+				}
+				snap := a.State.Get()
+				src := "default"
+				if snap.Mode == state.ModeSchedule {
+					src = "schedule"
+				}
+				a.mu.Lock()
+				soc := a.lastRawSoc
+				a.mu.Unlock()
+				if err := link.PublishStatus(src, soc); err != nil {
+					slog.Warn("status publish failed", "err", err)
+				}
+			case <-a.ctx.Done():
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+// onLocalTelemetry ingests one Layer-1 measurement sample: update the guard
+// reading, buffer it (store-and-forward), and wake the publisher.
+func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
+	var m struct {
+		Ts          string   `json:"ts"`
+		PowerKw     *float64 `json:"power_kw"`
+		SocPct      *float64 `json:"soc_pct"`
+		PvPowerKw   *float64 `json:"pv_power_kw"`
+		LoadKw      *float64 `json:"load_kw"`
+		GridLimitKw *float64 `json:"grid_limit_kw"`
+	}
+	if err := json.Unmarshal(payload, &m); err != nil {
+		slog.Warn("local telemetry malformed; skipped", "err", err)
+		return
+	}
+	ts := time.Now().UTC()
+	if m.Ts != "" {
+		if t, err := time.Parse(time.RFC3339, m.Ts); err == nil {
+			ts = t.UTC()
+		}
+	}
+	measurements := map[string]float64{}
+	put := func(k string, v *float64) {
+		if v != nil && !math.IsNaN(*v) && !math.IsInf(*v, 0) {
+			measurements[k] = *v
+		}
+	}
+	put("power_kw", m.PowerKw)
+	put("soc_pct", m.SocPct)
+	put("pv_power_kw", m.PvPowerKw)
+	put("load_kw", m.LoadKw)
+	put("grid_limit_kw", m.GridLimitKw)
+	if len(measurements) == 0 {
+		slog.Warn("local telemetry carried no known measurement; skipped")
+		return
+	}
+
+	a.mu.Lock()
+	pick := func(k string) float64 {
+		if v, ok := measurements[k]; ok {
+			return v
+		}
+		return guards.Unknown()
+	}
+	a.lastReading = guards.Reading{
+		SocPct:      pick("soc_pct"),
+		PvKw:        pick("pv_power_kw"),
+		LoadKw:      pick("load_kw"),
+		GridLimitKw: pick("grid_limit_kw"),
+	}
+	a.lastRawSoc = m.SocPct
+	a.mu.Unlock()
+
+	if _, err := a.buf.Append(ts, measurements); err != nil {
+		slog.Error("telemetry buffer append failed", "err", err)
+		return
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		s.LastTelemetry = ts
+		s.BufferPending = a.buf.Pending()
+		if v, ok := measurements["soc_pct"]; ok {
+			s.SocPct = v
+		}
+		if v, ok := measurements["pv_power_kw"]; ok {
+			s.PvKw = v
+		}
+		if v, ok := measurements["load_kw"]; ok {
+			s.LoadKw = v
+		}
+		if v, ok := measurements["grid_limit_kw"]; ok {
+			s.GridLimitKw = v
+		}
+	})
+	a.kick()
+}
+
+// onLocalStatus tracks the inverter link state Layer 1 reports.
+func (a *Agent) onLocalStatus(_ string, payload []byte) {
+	var m struct {
+		InverterLink string `json:"inverter_link"`
+	}
+	if err := json.Unmarshal(payload, &m); err != nil || (m.InverterLink != "up" && m.InverterLink != "down") {
+		slog.Warn("local status malformed; skipped")
+		return
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		s.InverterLink = m.InverterLink
+		s.InverterLinkSeen = time.Now().UTC()
+	})
+}
+
+// onSchedule handles a (retained) schedule payload from the cloud: validate
+// against the frozen contract, verify it addresses THIS device, cache it in
+// memory + on disk.
+func (a *Agent) onSchedule(payload []byte) {
+	p, err := plan.Parse(payload, time.Now().UTC())
+	if err != nil {
+		slog.Warn("schedule payload rejected", "err", err)
+		return
+	}
+	// Identity check mirrors the Node-RED edge: the subscription is already
+	// device-scoped, but a defensive payload check costs nothing.
+	var ids struct {
+		DeviceID string `json:"device_id"`
+	}
+	_ = json.Unmarshal(payload, &ids)
+	snap := a.State.Get()
+	if ids.DeviceID != "" && snap.DeviceID != "" && ids.DeviceID != snap.DeviceID {
+		slog.Warn("schedule for another device ignored", "payload_device", ids.DeviceID)
+		return
+	}
+	a.mu.Lock()
+	a.currentPlan = p
+	a.mu.Unlock()
+	if err := a.planStore.Save(p); err != nil {
+		slog.Warn("plan not persisted", "err", err)
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		s.PlanReceived = p.ReceivedAt
+		s.PlanSlots = len(p.Slots)
+	})
+	slog.Info("schedule cached", "plan_id", p.PlanID, "slots", len(p.Slots), "slot_minutes", p.SlotMinutes)
+	a.applySetpoint(time.Now().UTC()) // react immediately, don't wait for the tick
+}
+
+// setpointLoop recomputes + publishes the current setpoint on every tick
+// (the interval divides 15 min, so every slot boundary is hit).
+func (a *Agent) setpointLoop(ctx context.Context) {
+	defer a.done.Done()
+	t := time.NewTicker(a.Cfg.SetpointInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			a.applySetpoint(time.Now().UTC())
+		}
+	}
+}
+
+// applySetpoint computes the guarded setpoint for now and publishes it
+// RETAINED on the local bus, so Layer 1 always sees the latest command.
+func (a *Agent) applySetpoint(now time.Time) {
+	a.mu.Lock()
+	p := a.currentPlan
+	r := a.lastReading
+	a.mu.Unlock()
+
+	hasReading := !math.IsNaN(r.PvKw) || !math.IsNaN(r.LoadKw) || !math.IsNaN(r.SocPct)
+
+	limits := guards.Limits{
+		MaxChargeKw:    a.Cfg.MaxChargeKw,
+		MaxDischargeKw: a.Cfg.MaxDischargeKw,
+		SocMinPct:      a.Cfg.SocMinPct,
+		SocMaxPct:      a.Cfg.SocMaxPct,
+	}
+
+	var (
+		kw        float64
+		mode      state.Mode
+		source    string
+		slotStart time.Time
+	)
+	if raw, start, ok := p.ActiveSetpoint(now); ok {
+		kw = guards.Clamp(raw, limits, r)
+		mode, source, slotStart = state.ModeSchedule, "schedule", start
+	} else if hasReading {
+		kw = guards.Clamp(guards.SelfConsumption(r), limits, r)
+		mode, source = state.ModeSelfConsume, "default"
+	} else {
+		// No inverter reading at all: publish nothing (mirrors the Node-RED
+		// watchdog, which does not write without a reading).
+		a.State.Update(func(s *state.Snapshot) { s.Mode = state.ModeNoReading })
+		return
+	}
+
+	msg := map[string]any{
+		"battery_setpoint_kw": kw,
+		"source":              source,
+		"ts":                  now.Format(time.RFC3339Nano),
+	}
+	if !slotStart.IsZero() {
+		msg["slot_start"] = slotStart.UTC().Format(time.RFC3339)
+	}
+	raw, _ := json.Marshal(msg)
+	if err := a.Bus.Publish(localbus.TopicSetpoint, raw, true); err != nil {
+		slog.Error("setpoint publish failed", "err", err)
+		return
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		s.Mode = mode
+		s.SetpointKw = kw
+		s.SlotStart = slotStart
+	})
+}
+
+// publisherLoop drains the buffer oldest-first whenever the cloud link is
+// up, acking each entry only after the broker confirmed the QoS1 publish.
+func (a *Agent) publisherLoop(ctx context.Context) {
+	defer a.done.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-a.wake:
+		case <-time.After(5 * time.Second):
+		}
+		a.linkMu.Lock()
+		link := a.link
+		a.linkMu.Unlock()
+		if link == nil || !link.Connected() {
+			continue
+		}
+		for {
+			e, ok := a.buf.Next()
+			if !ok {
+				break
+			}
+			if err := link.PublishTelemetry(e); err != nil {
+				slog.Warn("telemetry publish failed; will retry", "seq", e.Seq, "err", err)
+				break
+			}
+			if err := a.buf.Ack(); err != nil {
+				slog.Error("buffer ack failed", "err", err)
+				break
+			}
+			a.State.Update(func(s *state.Snapshot) {
+				s.LastCloudPub = time.Now().UTC()
+				s.BufferPending = a.buf.Pending()
+			})
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+		}
+	}
+}
+
+// kick wakes the publisher without blocking.
+func (a *Agent) kick() {
+	select {
+	case a.wake <- struct{}{}:
+	default:
+	}
+}
+
+// Stop shuts everything down.
+func (a *Agent) Stop() {
+	if a.cancel != nil {
+		a.cancel()
+	}
+	a.linkMu.Lock()
+	if a.link != nil {
+		a.link.Close()
+	}
+	a.linkMu.Unlock()
+	if a.Bus != nil {
+		_ = a.Bus.Close()
+	}
+	a.done.Wait()
+	_ = a.buf.Close()
+}

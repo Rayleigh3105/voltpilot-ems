@@ -1,0 +1,163 @@
+/* VoltPilot Edge - local device UI.
+   Self-contained stylesheet; the color/typography values are the VoltPilot
+   design-system tokens (frontend/portal/designsystem/tokens/colors.css)
+   baked in, so the page needs no network and stays on-brand. */
+
+:root {
+  --vp-primary: #95B9FF;
+  --vp-primary-dark: #7BA3F7;
+  --vp-primary-light: #B8D4FF;
+  --vp-primary-deep: #5A8DE8;
+  --vp-text-dark: #1A1A1A;
+  --vp-text-gray: #6C757D;
+  --vp-bg-light: #F8F9FA;
+  --vp-surface: #FFFFFF;
+  --vp-ok: #2E9E5B;
+  --vp-warn: #C77700;
+  --vp-err: #C0392B;
+  --vp-radius: 14px;
+  --vp-shadow: 0 1px 3px rgba(26, 26, 26, .08), 0 4px 16px rgba(26, 26, 26, .06);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--vp-bg-light);
+  color: var(--vp-text-dark);
+  line-height: 1.5;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 22px;
+  background: var(--vp-surface);
+  box-shadow: var(--vp-shadow);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 17px;
+}
+
+.brand-mark { width: 22px; height: 22px; color: var(--vp-primary-deep); }
+.version { color: var(--vp-text-gray); font-size: 12px; }
+
+main { max-width: 860px; margin: 24px auto 48px; padding: 0 16px; }
+
+.card {
+  background: var(--vp-surface);
+  border-radius: var(--vp-radius);
+  box-shadow: var(--vp-shadow);
+  padding: 22px;
+  margin-bottom: 18px;
+}
+
+.hero { text-align: center; padding: 34px 22px; }
+.hero-label { margin: 0 0 8px; color: var(--vp-text-gray); font-size: 14px; }
+
+.ref-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ref {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: clamp(24px, 6vw, 40px);
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: var(--vp-bg-light);
+  border: 2px dashed var(--vp-primary);
+  border-radius: 10px;
+  padding: 10px 20px;
+  user-select: all;
+}
+
+.copy {
+  border: 1px solid var(--vp-primary-deep);
+  color: var(--vp-primary-deep);
+  background: var(--vp-surface);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.copy:hover { background: var(--vp-primary-light); }
+
+.hero-hint { color: var(--vp-text-gray); font-size: 14px; max-width: 460px; margin: 14px auto 20px; }
+
+.pairing {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  max-width: 380px;
+  text-align: left;
+}
+.pairing li {
+  position: relative;
+  padding: 8px 0 8px 34px;
+  color: var(--vp-text-gray);
+}
+.pairing li::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 12px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--vp-text-gray);
+  background: var(--vp-surface);
+}
+.pairing li.active { color: var(--vp-text-dark); font-weight: 600; }
+.pairing li.active::before { border-color: var(--vp-primary-deep); background: var(--vp-primary-light); }
+.pairing li.done { color: var(--vp-text-dark); }
+.pairing li.done::before {
+  border-color: var(--vp-ok);
+  background: var(--vp-ok);
+  content: "";
+}
+
+.pairing-error {
+  color: var(--vp-err);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.stat { margin-bottom: 0; }
+.stat-label { margin: 0; color: var(--vp-text-gray); font-size: 13px; }
+.stat-value { margin: 4px 0 0; font-size: 22px; font-weight: 700; }
+.stat-sub { margin: 2px 0 0; color: var(--vp-text-gray); font-size: 12px; min-height: 1em; }
+
+.ok { color: var(--vp-ok); }
+.warn { color: var(--vp-warn); }
+.err { color: var(--vp-err); }
+
+.details h2 { margin: 0 0 12px; font-size: 16px; }
+.details dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 16px;
+  margin: 0;
+}
+.details dt { color: var(--vp-text-gray); font-size: 14px; }
+.details dd { margin: 0; font-weight: 600; font-size: 14px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.foot { color: var(--vp-text-gray); font-size: 12px; text-align: center; }

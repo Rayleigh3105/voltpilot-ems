@@ -1,0 +1,31 @@
+{
+  "name": "@voltpilot/node-red-vp-palette",
+  "version": "0.1.0",
+  "description": "VoltPilot Edge-App Node-RED-Palette: vp-telemetrie, vp-sollwert und vp-status verbinden die Kunden-I/O-Flows mit dem lokalen Bus des VoltPilot Core-Agenten.",
+  "license": "UNLICENSED",
+  "private": true,
+  "keywords": [
+    "node-red"
+  ],
+  "node-red": {
+    "version": ">=3.0.0",
+    "nodes": {
+      "vp-core": "nodes/vp-core.js",
+      "vp-telemetrie": "nodes/vp-telemetrie.js",
+      "vp-sollwert": "nodes/vp-sollwert.js",
+      "vp-status": "nodes/vp-status.js"
+    }
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  },
+  "devDependencies": {
+    "mocha": "^10.7.3",
+    "node-red": "^4.0.5",
+    "node-red-node-test-helper": "^0.3.4",
+    "aedes": "^0.51.3"
+  },
+  "scripts": {
+    "test": "mocha test/*_spec.js --timeout 10000 --exit"
+  }
+}

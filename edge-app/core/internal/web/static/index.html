@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VoltPilot Edge</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
+      <span>VoltPilot&nbsp;Edge</span>
+    </div>
+    <span class="version" id="version"></span>
+  </header>
+
+  <main>
+    <section class="card hero">
+      <p class="hero-label">Referenz-ID dieses Geräts</p>
+      <div class="ref-row">
+        <code class="ref" id="ref">…</code>
+        <button class="copy" id="copyBtn" title="Referenz kopieren">Kopieren</button>
+      </div>
+      <p class="hero-hint">
+        Geben Sie diese Referenz im VoltPilot-Portal unter
+        <strong>Geräte&nbsp;→&nbsp;＋&nbsp;Gerät hinzufügen</strong> ein.
+        Alles Weitere passiert automatisch.
+      </p>
+      <ol class="pairing" id="pairing">
+        <li data-step="claim">Warte auf Beanspruchung im Portal</li>
+        <li data-step="cert">Zertifikat erhalten</li>
+        <li data-step="connected">Verbunden mit VoltPilot</li>
+      </ol>
+      <p class="pairing-error" id="pairingError" hidden></p>
+    </section>
+
+    <section class="grid">
+      <div class="card stat">
+        <p class="stat-label">Cloud-Verbindung</p>
+        <p class="stat-value" id="cloud">–</p>
+        <p class="stat-sub" id="cloudSub"></p>
+      </div>
+      <div class="card stat">
+        <p class="stat-label">Letzte Messdaten</p>
+        <p class="stat-value" id="telemetry">–</p>
+        <p class="stat-sub" id="telemetrySub"></p>
+      </div>
+      <div class="card stat">
+        <p class="stat-label">Betriebsmodus</p>
+        <p class="stat-value" id="mode">–</p>
+        <p class="stat-sub" id="modeSub"></p>
+      </div>
+      <div class="card stat">
+        <p class="stat-label">Wechselrichter</p>
+        <p class="stat-value" id="inverter">–</p>
+        <p class="stat-sub" id="inverterSub"></p>
+      </div>
+    </section>
+
+    <section class="card details">
+      <h2>Details</h2>
+      <dl>
+        <dt>Aktueller Sollwert (Batterie)</dt><dd id="setpoint">–</dd>
+        <dt>Ladezustand (SoC)</dt><dd id="soc">–</dd>
+        <dt>PV-Leistung</dt><dd id="pv">–</dd>
+        <dt>Hausverbrauch</dt><dd id="load">–</dd>
+        <dt>Zwischengespeicherte Messwerte</dt><dd id="buffer">–</dd>
+        <dt>Fahrplan</dt><dd id="plan">–</dd>
+      </dl>
+    </section>
+
+    <footer class="foot">
+      Lokale Geräteansicht – nur lesend. Einstellungen erfolgen über die
+      Gerätekonfiguration, die Anlagensteuerung über das VoltPilot-Portal.
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
