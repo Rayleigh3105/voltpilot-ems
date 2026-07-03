@@ -9,7 +9,7 @@ import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
 import { CreateUserDrawer } from './CreateUserDrawer';
 import { RowMenu } from '../../components/RowMenu';
-import { TableSkeleton } from '../../components/States';
+import { ErrorState, TableSkeleton } from '../../components/States';
 
 /**
  * Plattform → Benutzer: customer users per tenant, same list + add-drawer
@@ -27,6 +27,9 @@ export function BenutzerPage({
   const [tenantId, setTenantId] = useState<string | null>(tenantOverride);
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Load failure kept distinct from action errors (and from the loading `null`)
+  // so a failed load shows a retryable ErrorState, not a permanent skeleton.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [resetUser, setResetUser] = useState<AdminUser | null>(null);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
@@ -44,10 +47,11 @@ export function BenutzerPage({
   async function reload() {
     if (!tenant) return;
     setError(null);
+    setLoadError(null);
     try {
       setUsers(await adminApi.listUsers(tenant.id));
     } catch (e) {
-      setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+      setLoadError(e instanceof ApiError ? e.message : 'Die Benutzer konnten nicht geladen werden.');
     }
   }
 
@@ -135,6 +139,8 @@ export function BenutzerPage({
             Wählen Sie oben einen Mandanten, um dessen Benutzer zu sehen und anzulegen.
           </p>
         </Card>
+      ) : loadError ? (
+        <ErrorState message={loadError} onRetry={() => void reload()} />
       ) : users == null ? (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <TableSkeleton rows={4} cols={5} />

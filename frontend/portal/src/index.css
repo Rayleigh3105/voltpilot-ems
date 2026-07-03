@@ -443,9 +443,9 @@ a:focus-visible,
   z-index: 30;
 }
 .vp-rowmenu-pop {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
+  /* Rendered into document.body at fixed coords (see RowMenu.tsx) so the host
+     card's overflow:hidden never clips it; top/left are set inline. */
+  position: fixed;
   z-index: 31;
   min-width: 210px;
   background: var(--vp-surface);

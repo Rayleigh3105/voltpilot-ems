@@ -14,7 +14,7 @@ import {
   type SiteAsset,
   type SiteDeletionPreview,
 } from '../api';
-import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative } from '../format';
+import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, zoneLabel } from '../format';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { DangerZone } from '../components/DangerZone';
 import { DeviceStatusBadge } from '../components/DeviceDrawers';
@@ -183,7 +183,7 @@ export function StandortePage({
                     <b>{s.name}</b>
                   </td>
                   <td data-label="Gebotszone">
-                    <Badge variant="tint">{s.biddingZone}</Badge>
+                    <Badge variant="tint">{zoneLabel(s.biddingZone)}</Badge>
                   </td>
                   <td data-label="Koordinaten">
                     {fmtCoords(s.latitude, s.longitude) ?? <span className="vp-muted">-</span>}
@@ -232,7 +232,7 @@ export function StandortePage({
           }
         >
           <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
-            <Badge variant="tint">{detail.biddingZone}</Badge>
+            <Badge variant="tint">{zoneLabel(detail.biddingZone)}</Badge>
             {linkedAssets.length > 0 && (
               <Badge variant="ok" dot>
                 MaStR verknüpft

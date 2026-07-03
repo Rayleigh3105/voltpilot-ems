@@ -8,7 +8,7 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi, type ProvisionedDevice } from '../../admin/adminApi';
-import { TableSkeleton } from '../../components/States';
+import { ErrorState, TableSkeleton } from '../../components/States';
 import { normalizeDeviceIdInput } from '../../Onboarding';
 import { deviceKindLabel } from '../../format';
 
@@ -24,14 +24,18 @@ const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('de-DE');
 export function GeraeteRegistryPage() {
   const [devices, setDevices] = useState<ProvisionedDevice[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Load failure kept distinct from action errors (and from the loading `null`)
+  // so a failed load shows a retryable ErrorState, not a permanent skeleton.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   async function reload() {
     setError(null);
+    setLoadError(null);
     try {
       setDevices(await adminApi.listProvisionedDevices());
     } catch (e) {
-      setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+      setLoadError(e instanceof ApiError ? e.message : 'Die Registry konnte nicht geladen werden.');
     }
   }
 
@@ -77,7 +81,9 @@ export function GeraeteRegistryPage() {
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
 
-      {devices == null ? (
+      {loadError ? (
+        <ErrorState message={loadError} onRetry={() => void reload()} />
+      ) : devices == null ? (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <TableSkeleton rows={4} cols={6} />
         </Card>

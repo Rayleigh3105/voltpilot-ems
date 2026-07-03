@@ -16,7 +16,7 @@ import {
 } from '../../admin/adminApi';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
-import { TextSkeleton } from '../../components/States';
+import { ErrorState, TextSkeleton } from '../../components/States';
 import { CreateUserDrawer } from './CreateUserDrawer';
 import type { PageId } from '../../nav';
 
@@ -229,6 +229,9 @@ function TenantDetailDrawer({
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Load failure kept distinct from action errors (and the loading `null`), so a
+  // failed load shows a retryable ErrorState instead of permanent skeletons.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [userDrawer, setUserDrawer] = useState(false);
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -238,6 +241,7 @@ function TenantDetailDrawer({
 
   async function reload() {
     setError(null);
+    setLoadError(null);
     try {
       const [u, s] = await Promise.all([
         adminApi.listUsers(tenant.id),
@@ -246,7 +250,9 @@ function TenantDetailDrawer({
       setUsers(u);
       setSites(s);
     } catch (e) {
-      setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+      setLoadError(
+        e instanceof ApiError ? e.message : 'Die Mandantendaten konnten nicht geladen werden.',
+      );
     }
   }
 
@@ -405,7 +411,9 @@ function TenantDetailDrawer({
             </Button>
           </span>
         </div>
-        {users == null ? (
+        {loadError ? (
+          <ErrorState message={loadError} onRetry={() => void reload()} />
+        ) : users == null ? (
           <TextSkeleton lines={3} />
         ) : users.length === 0 ? (
           <p className="vp-muted">Noch keine Benutzer für diesen Mandanten.</p>
@@ -454,7 +462,11 @@ function TenantDetailDrawer({
             </Button>
           </span>
         </div>
-        {sites == null ? (
+        {loadError ? (
+          // The single ErrorState above the users section already covers this
+          // shared load failure and offers the retry.
+          null
+        ) : sites == null ? (
           <TextSkeleton lines={3} />
         ) : sites.length === 0 ? (
           <p className="vp-muted">

@@ -425,8 +425,13 @@ export function FahrplanPage(props: {
     .filter((s) => new Date(s.start).toDateString() === today)
     .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
   const savingsTotal = plan?.savingsEur ?? 0;
-  const chargeKwh = slots.reduce((sum, s) => sum + Math.max(s.batteryKw ?? 0, 0), 0) / 4;
-  const dischargeKwh = slots.reduce((sum, s) => sum + Math.max(-(s.batteryKw ?? 0), 0), 0) / 4;
+  // Energy = mean power over each slot × slot length in hours. Derive slots-per-
+  // hour from the plan's authoritative slotMinutes instead of hardcoding /4, so
+  // a non-15-min slot length stays correct.
+  const slotsPerHour = plan && plan.slotMinutes > 0 ? 60 / plan.slotMinutes : 4;
+  const chargeKwh = slots.reduce((sum, s) => sum + Math.max(s.batteryKw ?? 0, 0), 0) / slotsPerHour;
+  const dischargeKwh =
+    slots.reduce((sum, s) => sum + Math.max(-(s.batteryKw ?? 0), 0), 0) / slotsPerHour;
   const generatedAt = plan?.generatedAt
     ? new Date(plan.generatedAt).toLocaleString('de-DE', {
         day: '2-digit',

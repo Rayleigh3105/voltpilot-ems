@@ -350,14 +350,44 @@
   });
 
   // ---------- copy ----------
+  // The dashboard is served over plain HTTP on a LAN IP - an insecure context
+  // where navigator.clipboard is unavailable (only localhost/https expose it).
+  // Fall back to a hidden-textarea execCommand("copy"), and on genuine failure
+  // tell the user to copy manually instead of silently no-opping.
+  function copyRef(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        var ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        ok ? resolve() : reject(new Error("execCommand copy failed"));
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
   $("copyBtn").addEventListener("click", function () {
     var ref = $("ref").textContent;
-    (navigator.clipboard ? navigator.clipboard.writeText(ref) : Promise.reject())
+    copyRef(ref)
       .then(function () {
         $("copyLabel").textContent = "Kopiert ✓";
         setTimeout(function () { $("copyLabel").textContent = "Kopieren"; }, 1500);
       })
-      .catch(function () {});
+      .catch(function () {
+        $("copyLabel").textContent = "Bitte manuell markieren und kopieren";
+        setTimeout(function () { $("copyLabel").textContent = "Kopieren"; }, 3000);
+      });
   });
 
   // Keep the axes scrolling even when idle.
@@ -477,9 +507,11 @@
     return {
       update: function (d) {
         // Node value labels.
-        nodeEls.pv.val.textContent = d.pv == null ? "–" : fmt(d.pv, "");
-        nodeEls.load.val.textContent = d.load == null ? "–" : fmt(d.load, "");
-        nodeEls.grid.val.textContent = d.grid == null ? "–" : fmt(Math.abs(d.grid), "");
+        // PV/Haus/Netz are power in kW; label the unit so the numbers aren't
+        // ambiguous next to the battery's "%".
+        nodeEls.pv.val.textContent = d.pv == null ? "–" : fmt(d.pv, " kW");
+        nodeEls.load.val.textContent = d.load == null ? "–" : fmt(d.load, " kW");
+        nodeEls.grid.val.textContent = d.grid == null ? "–" : fmt(Math.abs(d.grid), " kW");
         nodeEls.batt.val.textContent = d.soc == null ? "–" : nf0.format(d.soc) + "%";
 
         // Geometry is node->hub. Inflow (node into hub) = normal animation.
