@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -79,6 +80,7 @@ public class BrokerAuthzReloader implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
     private final AtomicBoolean scheduled = new AtomicBoolean(false);
 
+    @Autowired
     public BrokerAuthzReloader(
             @Value("${voltpilot.enrollment.acl-file:}") String aclFile,
             @Value("${voltpilot.enrollment.broker-authz-reload.api-url:}") String apiUrl,
