@@ -15,6 +15,7 @@ const vpCore = require('../nodes/vp-core.js');
 const vpTelemetrie = require('../nodes/vp-telemetrie.js');
 const vpSollwert = require('../nodes/vp-sollwert.js');
 const vpStatus = require('../nodes/vp-status.js');
+const vpInverterConfig = require('../nodes/vp-inverter-config.js');
 
 helper.init(require.resolve('node-red'));
 
@@ -82,6 +83,34 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpStatus.shape({ inverter_link: 'down' }).inverter_link, 'down');
     assert.strictEqual(vpStatus.shape('kaputt'), null);
     assert.strictEqual(vpStatus.shape(42), null);
+  });
+
+  it('vp-inverter-config parses a valid retained selection', function () {
+    const sel = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0',
+      brand: 'deye',
+      label: 'Deye · Hybrid, 3-phasig',
+      family: 'hybrid_3p',
+      communication: 'solarman_v5',
+      connection: { ip: '192.168.0.28', serial: '2985159064' },
+      updated_at: '2026-07-03T12:00:00Z',
+    })));
+    assert.strictEqual(sel.family, 'hybrid_3p');
+    assert.strictEqual(sel.communication, 'solarman_v5');
+    assert.strictEqual(sel.connection.ip, '192.168.0.28');
+  });
+
+  it('vp-inverter-config rejects malformed / wrong-version / incomplete selections', function () {
+    assert.strictEqual(vpInverterConfig.parse(Buffer.from('kaputt')), null);
+    assert.strictEqual(vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '2.0', communication: 'modbus_tcp', family: 'sunspec', connection: { ip: 'x' },
+    }))), null);
+    assert.strictEqual(vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', communication: 'carrier-pigeon', family: 'x', connection: { ip: 'y' },
+    }))), null);
+    assert.strictEqual(vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', communication: 'modbus_tcp', family: 'sunspec', connection: {},
+    }))), null);
   });
 });
 
@@ -199,6 +228,42 @@ describe('nodes against a local-bus stand-in', function () {
       setTimeout(function () {
         t1.receive({ payload: { load_kw: 3 } });
       }, 300);
+    });
+  });
+
+  it('vp-inverter-config emits the retained selection from edge/inverter/config', function (done) {
+    const flow = coreFlow([
+      { id: 'ic1', type: 'vp-inverter-config', core: 'core1', wires: [['h1']] },
+      { id: 'h1', type: 'helper' },
+    ]);
+    // Publish the retained config BEFORE the node subscribes, so this also
+    // proves the retain-on-(re)connect behaviour the contract relies on.
+    const pub = mqtt.connect('mqtt://127.0.0.1:' + port);
+    pub.on('connect', function () {
+      pub.publish('edge/inverter/config', JSON.stringify({
+        schema_version: '1.0',
+        brand: 'generic_modbus',
+        label: 'Anderer Hersteller (Modbus / SunSpec) · SunSpec (Standard)',
+        family: 'sunspec',
+        communication: 'modbus_tcp',
+        connection: { ip: 'edge-sim', port: 502, unit_id: 1, profile: 'sunspec' },
+        updated_at: '2026-07-03T12:00:00Z',
+      }), { qos: 1, retain: true }, function () {
+        pub.end();
+        helper.load([vpCore, vpInverterConfig], flow, function () {
+          const h1 = helper.getNode('h1');
+          h1.on('input', function (msg) {
+            try {
+              assert.strictEqual(msg.payload.communication, 'modbus_tcp');
+              assert.strictEqual(msg.payload.family, 'sunspec');
+              assert.strictEqual(msg.inverter.connection.ip, 'edge-sim');
+              done();
+            } catch (e) {
+              done(e);
+            }
+          });
+        });
+      });
     });
   });
 

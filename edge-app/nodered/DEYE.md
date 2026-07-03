@@ -1,8 +1,28 @@
-# Deye-Wechselrichter über die deye-CLI (Node-RED-Vorlage)
+# Deye-Wechselrichter lesen (Solarman-V5) - Referenz + Kalibrierung
 
-Operator-Anleitung für den **"Deye (Vorlage)"**-Tab in `flows.json`.
+> **Selbstverdrahtung statt manueller Vorlage (seit Tranche 3b).**
+> Deye wird jetzt aus der **Wechselrichter-Auswahl** des Kunden getrieben: der
+> Kunde wählt im Edge-App-Portal Marke=Deye + Familie + Datenlogger-Daten, der
+> Core veröffentlicht das retained auf `edge/inverter/config`, und der
+> **immer aktive** Node-RED-Tab **"Wechselrichter (automatisch)"** liest per
+> Solarman-V5 mit der gewählten `family`-Registerkarte - **kein Flow-Edit pro
+> Kunde** (Contract: [`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md), Routing:
+> [`inverter-routing.js`](inverter-routing.js)).
+> Die frühere manuelle **"Deye (Vorlage)"**-Karte ist damit **entfallen**.
+> Der Selbstverdrahtungs-Lesepfad nutzt **ausschließlich `solarman_v5`** (die
+> Kommunikationsmethode ist pro Marke fix); die AT-CLI (`at_cli`) ist kein
+> Flow-Pfad mehr (die `deye`-CLI bleibt im Image nur als Diagnose-Werkzeug).
+>
+> **Dieses Dokument bleibt die maßgebliche Referenz** für die Registerkarten je
+> Familie, die On-Device-Verifikation mit `solarman-probe.js`, die
+> Vorzeichen-Kalibrierung und das `power_scale`/HV-Thema - VoltPilot nutzt sie
+> beim Anlegen einer Familie und beim Kalibrieren eines Geräts.
+> Die Werte, die der Kunde im Portal einträgt (`ip`/`port`/`serial`/
+> `mb_slave_id`/`family`/`invert_grid_sign`/`power_scale`), sind genau die
+> `connection`-Felder unten.
+
 Er liest Deye-Wechselrichter (alle großen Familien) über den WiFi-Datenlogger und speist die Messwerte als `edge/telemetry` in den VoltPilot-Core.
-**Konfigurationsgetrieben:** der Operator wählt pro Wechselrichter die **Kommunikationsmethode** und die **Modell-Familie**, die passende Registerkarte greift automatisch.
+**Auswahlgetrieben:** der Kunde wählt die **Modell-Familie**, die passende Registerkarte greift automatisch.
 
 Es gibt zwei Kommunikationsmethoden (Feld `communication` in der Konfiguration):
 
@@ -284,38 +304,21 @@ Prüfen: `docker compose exec nodered deye` zeigt die Usage; ein Live-Lesetest: 
 
 ---
 
-## 7. Aktivieren & konfigurieren
+## 7. Einrichten (Selbstverdrahtung - kein Flow-Edit)
 
-1. Editor öffnen (`http://<geraet>:1881`, Service-Zugang - siehe `edge-app/README.md`).
-2. Tab **"Deye (Vorlage)"**, Knoten **"Deye-Konfiguration"** öffnen und das Array anpassen:
+Deye wird über die **Wechselrichter-Auswahl** im Edge-App-Portal eingerichtet; der immer aktive Tab **"Wechselrichter (automatisch)"** liest daraus per Solarman-V5. Es gibt **keine** manuelle Deye-Vorlage mehr.
 
-   ```js
-   flow.set('deye_wechselrichter', [
-     {
-       id: 'wr1',
-       ip: '192.168.1.50',           // IP des Deye-WiFi-Loggers
-       communication: 'solarman_v5', // 'solarman_v5' (empfohlen, TCP 8899) | 'at_cli' (UDP 48899)
-       port: 8899,                   // solarman_v5: 8899 | at_cli: 48899
-       serial: 0,                    // solarman_v5 PFLICHT: DATALOGGER-Seriennummer (Zahl!) - siehe Abschnitt 0
-       mb_slave_id: 1,               // Modbus-Unit-ID (Standard 1)
-       family: 'hybrid_1p',          // 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'
-       invert_grid_sign: false,
-       invert_batt_sign: false,
-       power_scale: 1,               // nur hybrid_3p HV bei Bedarf 10 (Dezawatt-Firmware) - siehe Abschnitt 2
-       limit_stages: []              // nur string/micro: z. B. [0, 25, 50, 75, 100]
-     }
-   ]);
-   ```
+1. Zuerst am Gerät verifizieren: `node deye/solarman-probe.js --ip <logger> --serial <n> --family <f>` ([Abschnitt 0](#0-solarman-v5-empfohlene-methode-tcp-8899)) - bestätigt Transport + Familie + Datenlogger-Seriennummer, bevor du sie einträgst.
+2. Lokale Webansicht öffnen (`http://<geraet>:8484` → **"Wechselrichter einrichten"**) und wählen:
+   - Marke **Deye**, **Familie** (`string` | `hybrid_1p` | `hybrid_3p` | `micro`),
+   - Logger-**IP**, **Datenlogger-Seriennummer** (die Zahl aus der Probe - NICHT die Wechselrichter-Seriennummer), ggf. Modbus-Slave-ID,
+   - **"Netz-Vorzeichen invertieren"** und **Leistungsskalierung (×10)** bleiben zunächst aus und werden bei der Kalibrierung gesetzt.
+   Diese Felder sind exakt die `connection`-Parameter aus [`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md); der Transport (Solarman-V5, TCP 8899) ist pro Marke fix.
+3. Familie unbekannt? Mit `solarman-probe.js --ip <logger> --serial <n> --start 0x00B8 --count 1` (low map) vs `--start 0x024C --count 1` (high map) prüfen: genau eine liefert einen sinnvollen SoC (0..100) → `hybrid_1p` vs `hybrid_3p`. `string`/`micro` haben keinen SoC und werden manuell gewählt.
+4. **Vorzeichen am Gerät kalibrieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)): stimmt das Netz-Vorzeichen nicht, in der Auswahl "Netz-Vorzeichen invertieren" setzen; zeigt eine HV-Firmware die Leistung 10× zu niedrig, Leistungsskalierung ×10.
+5. Batterie-Limits im `.env` setzen (`VP_MAX_CHARGE_KW`, `VP_MAX_DISCHARGE_KW`, `VP_SOC_*`) und `docker compose up -d`.
 
-   (Diese Form spiegelt die `config.wechselrichter`-Struktur des Operators, `type` implizit `deye`.)
-   Mehrere Wechselrichter: das Array erweitern und den Tab pro Gerät duplizieren (die Lese-Kette bedient Index 0).
-3. **Methode `solarman_v5`?** Zuerst mit dem Standalone-Skript am Gerät verifizieren ([Abschnitt 0](#0-solarman-v5-empfohlene-methode-tcp-8899)), dann die Seriennummer eintragen. Bei `at_cli`: die `deye`-CLI muss im Container liegen ([Abschnitt 6](#6-die-deye-cli-im-container)).
-4. Familie unbekannt? Inject **"Familie erkennen"** auslösen (nur Hybride; nutzt die AT-CLI - alternativ mit `solarman-probe.js --start` die SoC-Register prüfen).
-5. Diesen Tab **aktivieren**, den Tab **"SunSpec (Simulator)"** deaktivieren, **deploy**.
-6. Vorzeichen am Gerät kalibrieren ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)).
-7. Batterie-Limits im `.env` setzen (`VP_MAX_CHARGE_KW`, `VP_MAX_DISCHARGE_KW`, `VP_SOC_*`) und `docker compose up -d`.
-
-Struktur wie bei SunSpec: `read → vp-telemetrie`, `Link-Status → vp-status`; alles Cloud-seitige bleibt im Core.
+Die Auswahl treibt den Lesepfad `read → vp-telemetrie`, `Link-Status → vp-status`; alles Cloud-seitige bleibt im Core.
 Der Messwert-Kontrakt (Felder/Einheiten/Vorzeichen, QoS/Kadenz) steht in [`CUSTOM-INVERTER.md`](CUSTOM-INVERTER.md).
 
 ---

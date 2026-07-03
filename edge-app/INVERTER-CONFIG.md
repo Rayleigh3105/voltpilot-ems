@@ -78,8 +78,8 @@ inconsistent transport can't be requested.
 ```
 
 `family` is the Modbus/SunSpec profile id. Today: `sunspec` (the standard
-SunSpec register model, matching the `edge/sim` SunSpec source and the
-"SunSpec Wechselrichter (Vorlage)" Node-RED tab).
+SunSpec register model, matching the `edge/sim` SunSpec source; the profile is
+decoded by the `PROFILES` map in `nodered/modbus-tcp.js`, additive per profile).
 
 ## Catalog (what the UI offers)
 
@@ -103,15 +103,28 @@ The current selection also appears on `GET /api/state` under `inverter`
 (`{brand,label,family,communication,host,configured}`) so the dashboard can show
 the configured model.
 
-## Node-RED consumer notes (next tranche)
+## Node-RED consumer (IMPLEMENTED)
 
-- Subscribe to `edge/inverter/config` (retained) on `core:1883`.
-- Branch on `communication`:
+The Layer-1 consumer is the **"Wechselrichter (automatisch)"** tab in
+`nodered/flows.json` - it self-wires from this contract, no per-customer flow
+edit:
+
+- The **`vp-inverter-config`** palette node (`nodered/vp-palette/nodes/`)
+  subscribes `edge/inverter/config` (retained) on `core:1883` and emits the
+  parsed selection; a store function keeps it in flow context.
+- A poll timer drives the **"Router / Leseplan"** function
+  (`nodered/inverter-routing.js` = source of truth, synced copy inline) which
+  branches on `communication`:
   - `solarman_v5` → the Solarman-V5 reader (`nodered/deye/solarman-v5.js`),
     passing `family` + the connection params to the register map / decode
     (`nodered/deye/deye-decode.js`).
-  - `modbus_tcp` → the generic SunSpec/Modbus reader with `profile` + `unit_id`.
-- Publish the decoded canonical measurements to `edge/telemetry` as today
+  - `modbus_tcp` → the generic Modbus-TCP reader + profile decode
+    (`nodered/modbus-tcp.js`), using `profile` (= `family`) + `unit_id`.
+- The decoded canonical measurements go to `edge/telemetry` via `vp-telemetrie`
   (`power_kw`/`soc_pct`/`pv_power_kw`/`load_kw`/`grid_limit_kw`); this contract
   changes only how the adapter is **selected**, not the telemetry shape.
-- `schema_version` is `"1.0"`; treat unknown future fields as ignorable.
+- No/unknown selection → the tab stays idle-safe (a node status note, no crash,
+  no telemetry) and picks up the retained config the moment it arrives.
+- `schema_version` is `"1.0"`; unknown future fields are ignored.
+
+Read/monitoring only - nothing in this path controls the inverter.

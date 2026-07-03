@@ -91,33 +91,19 @@ docker compose logs -f core   # "vp-edge-core started" + "enrollment: generated 
 
 Der Core erzeugt beim ersten Start seinen EC-P-256-Schlüssel lokal (der private Schlüssel verlässt das Gerät nie), lädt den CSR zum Portal hoch und pollt - der Pairing-Zustand steht dann auf *warte_auf_beanspruchung*.
 
-## 4. Deye-Integration in Node-RED konfigurieren
+## 4. Wechselrichter auswählen (Selbstverdrahtung, kein Flow-Edit)
 
-Der Node-RED-Editor läuft LAN-only hinter Auth: **`http://<vm>:1881`** (bzw. dein `VP_NODERED_PORT`), Benutzer `voltpilot`, Passwort = `VP_NODERED_PASSWORD`.
-Kunden bekommen diesen Zugang nie - das ist der VoltPilot-Service-Zugang.
+Der Wechselrichter wird **in der lokalen Webansicht ausgewählt** - Node-RED verdrahtet sich daraus selbst ("vorne auswählen, hinten ist alles verdrahtet"). Es ist **kein** Flow-Edit pro Kunde nötig.
 
-1. Tab **"Deye (Vorlage)"** öffnen, Knoten **"Deye-Konfiguration"** öffnen und das Array auf deinen Wechselrichter setzen:
+1. Lokale Webansicht öffnen (**`http://<vm>:<VP_WEB_PORT>` → "Wechselrichter einrichten"**) und den Wechselrichter wählen: **Marke → Familie/Typ → Verbindungsdaten**.
+   - **Deye:** Marke `Deye`, Familie (`string` | `hybrid_1p` | `hybrid_3p` | `micro`), Logger-**IP** und die **Datenlogger-Seriennummer** (NICHT die Wechselrichter-Seriennummer - steht z. B. im WLAN-Namen `AP_<serial>`). Transport ist fix Solarman-V5 (TCP 8899).
+   - **Anderer Hersteller:** Marke `Anderer Hersteller (Modbus / SunSpec)`, Profil `sunspec`, Wechselrichter-**IP** + Unit-ID. Transport ist fix Modbus-TCP (Port 502).
+2. Speichern. Der Core veröffentlicht die Auswahl retained auf `edge/inverter/config`; der immer aktive Node-RED-Tab **"Wechselrichter (automatisch)"** liest sie und fährt den passenden Leseadapter automatisch an. Die Messwerte erscheinen als Telemetrie, sobald das Gerät beansprucht + verbunden ist (Schritt 5).
+3. **Deye - Vorzeichen am Gerät kalibrieren** (mittags PV-Überschuss → Netz negativ; erzwungenes Laden → Batterie positiv): stimmt das Netz-Vorzeichen nicht, in der Auswahl **"Netz-Vorzeichen invertieren"** setzen. Zeigt eine HV-Firmware die PV-Leistung um Faktor 10 zu niedrig, **Leistungsskalierung = ×10 (Dekawatt)** wählen.
 
-   ```js
-   flow.set('deye_wechselrichter', [
-     {
-       id: 'wr1',
-       ip: '192.168.1.50',    // IP deines Deye-WiFi-Loggers
-       port: 48899,
-       family: 'hybrid_1p',   // 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'
-       invert_grid_sign: false,
-       invert_batt_sign: false,
-       limit_stages: []       // nur string/micro
-     }
-   ]);
-   ```
-
-2. Familie unbekannt? Inject **"Familie erkennen"** auslösen (nur Hybride: der Probe entscheidet `hybrid_1p` vs `hybrid_3p`; `string`/`micro` haben keinen SoC und werden manuell gewählt).
-3. Tab **"Deye (Vorlage)"** **aktivieren**, den Tab **"SunSpec (Simulator)"** **deaktivieren**, **Deploy**.
-4. **Vorzeichen am Gerät kalibrieren** (mittags PV-Überschuss -> Netz negativ; erzwungenes Laden -> Batterie positiv) und `invert_grid_sign`/`invert_batt_sign` entsprechend setzen.
-
-Alle Register, die Familien-Autoerkennung, die Wirkleistungsbegrenzung (string/micro) und die Kalibrierung im Detail: **[`nodered/DEYE.md`](nodered/DEYE.md)**.
-Der lokale Bus-Kontrakt (Messwert-Payload, Einheiten/Vorzeichen, QoS/Kadenz) - falls du einen anderen Wechselrichter verdrahtest: **[`nodered/CUSTOM-INVERTER.md`](nodered/CUSTOM-INVERTER.md)**.
+Vor dem Eintragen der Deye-Seriennummer den Transport am Gerät verifizieren: `node nodered/deye/solarman-probe.js --ip <logger> --serial <n> --family <f>` auf der Edge-VM (siehe [`nodered/DEYE.md`](nodered/DEYE.md)).
+Alle Register je Familie, die On-Device-Probe und die Kalibrierung im Detail: **[`nodered/DEYE.md`](nodered/DEYE.md)**.
+Ein Wechselrichter ohne fertiges Profil? VoltPilot ergänzt ein Modbus-Profil (`nodered/modbus-tcp.js`) bzw. eine Deye-Familie (`nodered/deye/deye-decode.js`); der lokale Bus-Kontrakt für eine komplett eigene Verdrahtung steht in **[`nodered/CUSTOM-INVERTER.md`](nodered/CUSTOM-INVERTER.md)** (Node-RED-Editor LAN-only: `http://<vm>:1881`, Benutzer `voltpilot`, Passwort `VP_NODERED_PASSWORD` - Kunden bekommen diesen Zugang nie).
 
 ## 5. Enrollen + im Portal beanspruchen
 

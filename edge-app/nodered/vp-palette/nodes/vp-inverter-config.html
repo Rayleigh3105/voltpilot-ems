@@ -1,0 +1,39 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-inverter-config', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 1,
+    icon: 'inject.svg',
+    label: function () { return this.name || 'vp-inverter-config'; },
+    paletteLabel: 'vp-inverter-config'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-inverter-config">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-inverter-config">
+  <p>Empfängt die im Edge-App-Webportal getroffene Wechselrichter-Auswahl vom
+  VoltPilot Core-Agenten (lokaler Bus <code>edge/inverter/config</code>,
+  retained). Damit verdrahtet sich der Flow selbst: der Kunde wählt vorne aus,
+  hinten läuft automatisch der richtige Leseadapter - kein Flow-Edit pro
+  Kunde.</p>
+  <p>Ausgang <code>msg.payload</code> / <code>msg.inverter</code>: die geparste
+  Auswahl (<code>brand</code>, <code>family</code>, <code>communication</code>
+  <code>"solarman_v5"|"modbus_tcp"</code>, <code>connection</code>). Eine
+  ungültige oder unbekannte Auswahl wird verworfen (der Flow bleibt untätig).
+  Nur Auswahl/Monitoring - dieser Knoten steuert nichts.</p>
+</script>

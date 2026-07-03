@@ -7,7 +7,7 @@ Two layers in one package:
 | Layer | Service | Responsibility |
 |---|---|---|
 | **Layer 2 - Core-Agent** (`core/`, Go) | `core` | Identical at every customer, the reliability layer: identity + first-boot enrollment, the ONLY cloud connection (mTLS MQTT), telemetry store-and-forward, schedule cache + guarded execution + offline fallback, the embedded local MQTT bus, the local device web app. |
-| **Layer 1 - I/O-Flows** (`nodered/`) | `nodered` | Per-customer inverter wiring in Node-RED (read measurements, write setpoints), talking ONLY to the core's local bus via the **vp-palette** nodes. **VoltPilot wires these flows - the customer never edits them.** |
+| **Layer 1 - I/O-Flows** (`nodered/`) | `nodered` | Inverter I/O in Node-RED, talking ONLY to the core's local bus via the **vp-palette** nodes. **Self-wiring:** it reads the customer's inverter selection (retained `edge/inverter/config`) and runs the matching read adapter automatically - no per-customer flow edit. |
 
 Intelligence stays in the cloud (the optimizer plans, the edge executes and guards); the edge works with the cloud gone for days.
 
@@ -24,7 +24,7 @@ This starts core + Node-RED **plus** the SunSpec-Modbus-Simulator (`edge-sim`, t
 
 Then open the local web app: **http://localhost:8484** - it shows the device's reference and the pairing state. Claim the reference in the portal (*Geräte → ＋ Gerät hinzufügen*) and watch the state walk through *Warte auf Beanspruchung* → *Zertifikat erhalten* → *Verbunden mit VoltPilot*.
 
-Without the `sim` profile (`docker compose up -d`) the same stack runs for a **real inverter**; the flow template for that is on the (disabled) tab "SunSpec Wechselrichter (Vorlage)" - see "Einen neuen Kunden verdrahten" below.
+Without the `sim` profile (`docker compose up -d`) the same stack runs for a **real inverter**: the customer picks the inverter in the local web app and the always-on tab **"Wechselrichter (automatisch)"** self-wires the right read adapter - no flow edit. See "Einen neuen Kunden verdrahten" below.
 
 **Auf einer eigenen VM gegen die Live-Cloud ausrollen** (echter Deye-Wechselrichter, First-Boot-Enrollment, selbst beanspruchen): das Schritt-für-Schritt-Runbook steht in [`DEPLOY.md`](DEPLOY.md).
 
@@ -50,28 +50,32 @@ There is nothing to configure for the customer; the local web app is read-only.
 
 ## vp-palette (Layer 1 building blocks)
 
-Three Node-RED nodes (`nodered/vp-palette/`), all preconfigured to the core's bus via the shared `vp-core` config node (`core:1883` in compose):
+Four Node-RED nodes (`nodered/vp-palette/`), all preconfigured to the core's bus via the shared `vp-core` config node (`core:1883` in compose):
 
 | Node | Direction | Contract |
 |---|---|---|
 | `vp-telemetrie` | flow → core | `msg.payload` = `{power_kw?, soc_pct?, pv_power_kw?, load_kw?, grid_limit_kw?, ts?}` (aliases `grid_kw`/`pv_kw` accepted). The core stamps identity/seq and owns the cloud contract. |
 | `vp-sollwert` | core → flow | Emits `msg.payload` = setpoint kW (+ laden / − entladen), `msg.setpoint` = full command. Already guard-clamped - just translate to the device protocol. |
 | `vp-status` | flow → core | `msg.payload` = `true`/`false`, `"up"`/`"down"` - feeds "Wechselrichter: verbunden/getrennt" in the web app. |
+| `vp-inverter-config` | core → flow | Emits the retained inverter **selection** (`msg.payload`/`msg.inverter` = `{brand, family, communication, connection, …}`). This is what lets the "Wechselrichter (automatisch)" tab self-wire the right read adapter. |
+
+**Self-wiring read path** (`nodered/inverter-routing.js` + `modbus-tcp.js` + `deye/*.js`, all offline-tested; the flow's function nodes carry synced copies): the "Wechselrichter (automatisch)" tab subscribes `edge/inverter/config`, and per the selection routes to either the **Deye Solarman-V5** reader (`communication=solarman_v5`, the `family` register map) or the **generic Modbus-TCP** reader (`communication=modbus_tcp`, the `profile`), then publishes the canonical `edge/telemetry` via `vp-telemetrie`. No selection yet → the tab stays idle-safe and picks up the retained config the moment it arrives.
 
 **Custom inverter integration:** the full local-bus contract - payload schema, units/signs, QoS/cadence, the copy-paste function + `mqtt out` recipe, and the gotchas - is documented in [`nodered/CUSTOM-INVERTER.md`](nodered/CUSTOM-INVERTER.md).
 
-**Deye inverters:** a config-driven template for all major Deye families (string, hybrid 1p/3p, micro) over the bundled `deye` CLI is on the disabled **"Deye (Vorlage)"** flow tab - pick the family, the register map applies. Read/monitoring for all families + the string/micro power-limit write; hybrid battery control is a documented follow-up. See [`nodered/DEYE.md`](nodered/DEYE.md).
+**Deye inverters:** the self-wiring tab reads all major Deye families (string, hybrid 1p/3p, micro) over Solarman-V5 (TCP 8899) using the selected `family` register map. Read/monitoring only (the string/micro power-limit write + hybrid battery control are out of scope here). Register maps, sign calibration and the on-device probe: [`nodered/DEYE.md`](nodered/DEYE.md).
 
 ## Einen neuen Kunden verdrahten (VoltPilot service task)
 
-The Node-RED editor runs LAN-only behind auth: `http://<geraet>:1881`, user `voltpilot`, password from `VP_NODERED_PASSWORD` (default `voltpilot` - **change it per installation**). Customers never get these credentials.
+The capstone of the framework: **"vorne auswählen, hinten ist alles verdrahtet"** - the customer picks the inverter once, Node-RED just works.
 
-1. Open the disabled tab **"SunSpec Wechselrichter (Vorlage)"** (a SunSpec/Modbus-TCP inverter) or **"Deye (Vorlage)"** (a Deye WiFi-logger inverter over the bundled `deye` CLI - see [`nodered/DEYE.md`](nodered/DEYE.md)).
-2. SunSpec: set the inverter IP in the config node *Wechselrichter (Modbus TCP)*; adapt the `decode`/`write` functions to the device's register map (the simulator tab shows a complete working example; register semantics: `edge/sim/sunspec-sim.js`). Deye: set `ip`/`port`/`family` in the *Deye-Konfiguration* node (the family selects the register map); calibrate the grid/battery signs on-device.
-3. Enable the template tab, disable the simulator tab, deploy.
-4. Set the battery's real limits in `.env` (`VP_MAX_CHARGE_KW`, `VP_MAX_DISCHARGE_KW`, `VP_SOC_*`) and `docker compose up -d` again.
+1. In the local web app (**http://\<geraet\>:8484 → "Wechselrichter einrichten"**) pick the inverter: brand → family/type → connection params. The communication follows from the brand (Deye → Solarman-V5; everything else → Modbus-TCP), so no transport is chosen by hand. The core persists it and publishes it retained on `edge/inverter/config`.
+2. That's it for the read path. The always-on Node-RED tab **"Wechselrichter (automatisch)"** picks up the retained selection and runs the matching adapter automatically - **no flow edit per customer** (this is the point of the design; the former manual "Vorlage" tabs are retired).
+3. Set the battery's real limits in `.env` (`VP_MAX_CHARGE_KW`, `VP_MAX_DISCHARGE_KW`, `VP_SOC_*`) and `docker compose up -d`.
 
-The structure is always the same: read → `vp-telemetrie`, `vp-sollwert` → write, link state → `vp-status`. Everything cloud-related stays in the core.
+For a **custom inverter** whose register map is not yet a built-in profile, VoltPilot adds a profile to `nodered/modbus-tcp.js` (Modbus) or a `family` to `nodered/deye/deye-decode.js` (Deye) - both additive, the routing carries the id through. The Node-RED editor is available LAN-only behind auth for that (`http://<geraet>:1881`, user `voltpilot`, password `VP_NODERED_PASSWORD` - customers never get these credentials); the hand-wiring contract for a fully bespoke inverter is [`nodered/CUSTOM-INVERTER.md`](nodered/CUSTOM-INVERTER.md).
+
+The structure is always the same: selection → self-wired read → `vp-telemetrie`, link state → `vp-status`. Everything cloud-related (and the setpoint write loop) stays in the core / the Simulator tab. Read/monitoring only - the selection never controls the inverter.
 
 **LAN-Logger nicht aus dem Container erreichbar?** Manche WiFi-Logger (Deye/Solarman-Dongle, UDP 48899) antworten dem Bridge-Container nicht (UDP-über-NAT). Fix: Node-RED aufs Host-Netz - `docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d` (Override `docker-compose.hostnet.yml`). Details + Caveats in [`DEPLOY.md`](DEPLOY.md#lan-logger-nicht-aus-dem-container-erreichbar-host-networking).
 
@@ -89,9 +93,10 @@ See [`.env.example`](.env.example). Everything is optional; the dev escape hatch
 # vp-palette (pure shaping + node-red-node-test-helper against an in-process bus)
 (cd nodered/vp-palette && npm install && npm test)
 
-# Deye decode (offline: +ok=0103 parser, per-family register maps, PV sum,
-# sign inversion, power-limit write, family auto-detect - no hardware/network)
-node --test nodered/deye/
+# Self-wiring read path + Deye decode (offline: config→adapter routing, generic
+# Modbus-TCP codec + SunSpec profile, flow-vs-module sync guard, +ok=0103 parser,
+# per-family register maps, PV sum, sign inversion - no hardware/network)
+node --test nodered/*.test.js nodered/deye/*.test.js
 
 # Isolated compose e2e (own project name/ports; sim -> nodered -> core ->
 # stand-in cloud broker; retained schedule -> guards -> sim setpoint write)

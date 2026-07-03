@@ -33,30 +33,248 @@
     "serialParity": "none"
   },
   {
-    "id": "cfg-mb-real",
-    "type": "modbus-client",
-    "name": "Wechselrichter (Modbus TCP) - pro Kunde anpassen",
-    "clienttype": "tcp",
-    "bufferCommands": true,
-    "stateLogEnabled": false,
-    "queueLogEnabled": false,
-    "tcpHost": "192.168.1.100",
-    "tcpPort": "502",
-    "tcpType": "DEFAULT",
-    "unit_id": "1",
-    "commandDelay": "1",
-    "clientTimeout": "1000",
-    "reconnectOnTimeout": true,
-    "reconnectTimeout": "2000",
-    "parallelUnitIdsAllowed": true,
-    "showErrors": false,
-    "serialPort": "",
-    "serialType": "RTU-BUFFERD",
-    "serialConnectionDelay": "100",
-    "serialBaudrate": "9600",
-    "serialDatabits": "8",
-    "serialStopbits": "1",
-    "serialParity": "none"
+    "id": "tab-auto",
+    "type": "tab",
+    "label": "Wechselrichter (automatisch)",
+    "disabled": false,
+    "info": "SELBSTVERDRAHTUNG (Capstone): der Kunde waehlt seinen Wechselrichter EINMAL\nim Edge-App-Webportal (:8484 -> \"Wechselrichter einrichten\"); der Core\nveroeffentlicht die Auswahl retained auf dem lokalen Bus\n(edge/inverter/config). Dieser Tab liest sie und faehrt AUTOMATISCH den\nrichtigen Leseadapter - OHNE Flow-Edit pro Kunde:\n\n  - Deye (communication=solarman_v5) -> Solarman-V5 ueber TCP 8899, mit der\n    gewaehlten family-Registerkarte (deye/deye-decode.js).\n  - alles andere (generic_modbus / modbus_tcp) -> Modbus-TCP ueber Port 502\n    mit dem gewaehlten Profil (modbus-tcp.js).\n\nOhne Auswahl bleibt der Tab idle-sicher (kein Absturz). Nur Lesen/Monitoring\n- dieser Tab steuert NICHTS. Routing/Codecs: edge-app/nodered/\ninverter-routing.js + modbus-tcp.js + deye/*.js (getestet, Quelle der\nWahrheit; die Funktionsknoten tragen synchron gehaltene Kopien)."
+  },
+  {
+    "id": "auto-note",
+    "type": "comment",
+    "z": "tab-auto",
+    "name": "Vorne auswaehlen (Edge-App-Portal), hinten ist alles verdrahtet: edge/inverter/config -> passender Leseadapter",
+    "info": "",
+    "x": 470,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "auto-cfg",
+    "type": "vp-inverter-config",
+    "z": "tab-auto",
+    "name": "Auswahl vom Core (retained)",
+    "core": "cfg-vp-core",
+    "x": 190,
+    "y": 100,
+    "wires": [
+      [
+        "auto-store"
+      ]
+    ]
+  },
+  {
+    "id": "auto-store",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Auswahl uebernehmen",
+    "func": "// Uebernimmt die im Edge-App-Portal getroffene Wechselrichter-Auswahl\n// (retained auf edge/inverter/config, von vp-inverter-config geparst) in den\n// Flow-Kontext. Der Router unten liest sie bei jedem Poll - so verdrahtet sich\n// der Flow selbst, ohne Edit pro Kunde. payload === null => Auswahl geloescht.\nconst sel = msg.payload || null;\nflow.set('inverter_config', sel);\nif (sel) {\n  node.status({ fill: 'green', shape: 'dot', text: (sel.label || sel.brand || sel.family) + ' (' + sel.communication + ')' });\n} else {\n  node.status({ fill: 'grey', shape: 'ring', text: 'Auswahl zurueckgesetzt' });\n}\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 470,
+    "y": 100,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "auto-poll",
+    "type": "inject",
+    "z": "tab-auto",
+    "name": "poll 5s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "5",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "3",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 130,
+    "y": 180,
+    "wires": [
+      [
+        "auto-router"
+      ]
+    ]
+  },
+  {
+    "id": "auto-router",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Router / Leseplan",
+    "func": "// Router / Leseplan - das Herzstueck der Selbstverdrahtung: liest die aktive\n// Wechselrichter-Auswahl aus dem Flow-Kontext (von vp-inverter-config gesetzt)\n// und waehlt GENAU EINEN Lesepfad. Synchron gehalten mit\n// edge-app/nodered/inverter-routing.js (route) + den Registerkarten aus\n// deye/deye-decode.js und modbus-tcp.js.\n//   Ausgang 1: Deye Solarman-V5   (msg.deye)\n//   Ausgang 2: generisches Modbus (msg.mb)\n//   Ausgang 3: untaetig           (keine/unbekannte Auswahl)\nconst DEYE_READS = {\n  string:    [{ start: 0x0050, count: 0x0002 }],\n  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],\n  hybrid_3p: [{ start: 0x024c, count: 0x0058 }],\n  micro:     [{ start: 0x0056, count: 0x0002 }]\n};\nconst MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };\nconst num = (v, d) => { const n = typeof v === 'string' ? Number(v.trim()) : v; return (typeof n === 'number' && isFinite(n)) ? n : d; };\nconst idle = (reason) => { node.status({ fill: 'grey', shape: 'ring', text: reason }); msg.idle = reason; return [null, null, msg]; };\nconst sel = flow.get('inverter_config');\nif (!sel) return idle('keine Auswahl');\nconst conn = sel.connection || {};\nconst ip = (typeof conn.ip === 'string' ? conn.ip : '').trim();\nif (!ip) return idle('keine IP-Adresse');\nif (sel.communication === 'solarman_v5') {\n  const reads = DEYE_READS[sel.family];\n  if (!reads) return idle('unbekannte Deye-Familie: ' + sel.family);\n  const serial = conn.serial;\n  if (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) return idle('Datenlogger-Seriennummer fehlt');\n  const port = num(conn.port, 8899);\n  const cfg = {\n    ip, port, serial,\n    mb_slave_id: num(conn.mb_slave_id, 1),\n    family: sel.family,\n    invert_grid_sign: !!conn.invert_grid_sign,\n    invert_batt_sign: !!conn.invert_batt_sign,\n    power_scale: num(conn.power_scale, 1) > 0 ? num(conn.power_scale, 1) : 1\n  };\n  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => ({ start: r.start, count: r.count })), i: 0, blocks: [] };\n  node.status({ fill: 'blue', shape: 'dot', text: 'Deye ' + sel.family + ' -> Solarman-V5' });\n  return [msg, null, null];\n}\nif (sel.communication === 'modbus_tcp') {\n  const read = MODBUS_PROFILES[sel.family];\n  if (!read) return idle('unbekanntes Modbus-Profil: ' + sel.family);\n  const port = num(conn.port, 502);\n  msg.mb = { conn: { ip, port, unit_id: num(conn.unit_id, 1) }, profile: sel.family, read: { fc: read.fc, addr: read.addr, count: read.count }, target: ip + ':' + port };\n  node.status({ fill: 'blue', shape: 'dot', text: 'Modbus ' + sel.family + ' @ ' + ip + ':' + port });\n  return [null, msg, null];\n}\nreturn idle('unbekannte Kommunikationsmethode');",
+    "outputs": 3,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 320,
+    "y": 180,
+    "wires": [
+      [
+        "auto-solarman"
+      ],
+      [
+        "auto-modbus"
+      ],
+      [
+        "auto-idle"
+      ]
+    ]
+  },
+  {
+    "id": "auto-solarman",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Solarman-V5 lesen (TCP 8899)",
+    "func": "// Solarman-V5-Transport: Modbus-RTU im Solarman-V5-Rahmen ueber TCP 8899 - die\n// ROBUSTE Deye-Anbindung (ersetzt die flaky AT-CLI ueber UDP 48899). Eine\n// einzige, geordnete TCP-Verbindung pro Poll (der Logger erlaubt nur EINEN\n// Client), sequenzielle Bloecke, Reconnect je Poll.\n//\n// Traegt eine KOPIE von edge-app/nodered/deye/solarman-v5.js (ein Node-RED-Flow\n// ist self-contained JSON und kann keine Repo-Datei zur Laufzeit requiren).\n// Quelle der Wahrheit + Offline-Tests: deye/solarman-v5.js - beide synchron halten.\nconst net = global.get('net');\nif (!net) {\n  node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' });\n  node.error('functionGlobalContext.net in settings.js setzen (siehe DEYE.md)', msg);\n  return null;\n}\nconst ctx = msg.deye;\nif (!ctx) return null;\nconst cfg = ctx.cfg;\nconst serial = cfg.serial;\nif (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) {\n  node.status({ fill: 'red', shape: 'ring', text: 'Logger-Serial fehlt' });\n  node.error('cfg.serial (Datalogger-Seriennummer, Zahl) ist fuer solarman_v5 erforderlich', msg);\n  return null;\n}\nconst sn = Number(serial) >>> 0;\nconst port = cfg.port || 8899;\nconst slaveId = cfg.mb_slave_id || 1;\nconst timeoutMs = cfg.timeout_ms || 8000;\n\n// --- codec (Kopie von deye/solarman-v5.js) ---\nconst modbusCrc16 = (buf) => { let c = 0xffff; for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let b = 0; b < 8; b++) c = (c & 1) ? ((c >>> 1) ^ 0xa001) : (c >>> 1); } return c & 0xffff; };\nconst readReq = (sl, start, count) => { const b = Buffer.alloc(6); b[0] = sl & 0xff; b[1] = 0x03; b.writeUInt16BE(start & 0xffff, 2); b.writeUInt16BE(count & 0xffff, 4); const c = modbusCrc16(b); return Buffer.concat([b, Buffer.from([c & 0xff, (c >> 8) & 0xff])]); };\nconst v5cs = (f) => { let s = 0; for (let i = 1; i < f.length - 2; i++) s = (s + f[i]) & 0xff; return s & 0xff; };\nconst buildReq = (seq, mb) => { const len = 15 + mb.length; const h = Buffer.alloc(11); h[0] = 0xa5; h.writeUInt16LE(len, 1); h.writeUInt16LE(0x4510, 3); h.writeUInt16LE(seq & 0xffff, 5); h.writeUInt32LE(sn, 7); const pre = Buffer.alloc(15); pre[0] = 0x02; const fr = Buffer.concat([h, pre, mb, Buffer.from([0x00, 0x15])]); fr[fr.length - 2] = v5cs(fr); return fr; };\nconst frameLen = (buf) => { if (buf.length < 3) return null; if (buf[0] !== 0xa5) throw new Error('Startbyte'); return 11 + buf.readUInt16LE(1) + 2; };\nconst parseResp = (buf) => {\n  if (buf.length < 13) throw new Error('Frame zu kurz');\n  if (buf[0] !== 0xa5) throw new Error('Startbyte');\n  const total = 11 + buf.readUInt16LE(1) + 2;\n  if (buf.length < total) throw new Error('Frame kuerzer als Laengenfeld');\n  const f = buf.slice(0, total);\n  if (f[f.length - 1] !== 0x15) throw new Error('Endbyte');\n  if (v5cs(f) !== f[f.length - 2]) throw new Error('V5-Pruefsumme');\n  if (f.readUInt16LE(3) !== 0x1510) throw new Error('Controlcode 0x' + f.readUInt16LE(3).toString(16));\n  if (f.readUInt32LE(7) !== sn) throw new Error('Logger-Serial weicht ab: ' + f.readUInt32LE(7));\n  const mb = f.slice(25, f.length - 2);\n  if (mb.length < 5) throw new Error('Modbus zu kurz');\n  return mb;\n};\nconst parseModbus = (mb) => {\n  if (mb.readUInt16LE(mb.length - 2) !== modbusCrc16(mb.slice(0, mb.length - 2))) throw new Error('Modbus-CRC');\n  if (mb[1] & 0x80) throw new Error('Modbus-Ausnahme 0x' + mb[2].toString(16));\n  if (mb[1] !== 0x03) throw new Error('Modbus-Funktion 0x' + mb[1].toString(16));\n  const bc = mb[2]; const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(mb.readUInt16BE(3 + i * 2)); return regs;\n};\n\n// --- eine Leseanfrage ueber den offenen Socket (TCP-Segmente reassemblieren) ---\nconst readBlock = (sock, start, count, seq) => new Promise((resolve, reject) => {\n  let acc = Buffer.alloc(0);\n  const t = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, timeoutMs);\n  const onData = (chunk) => {\n    acc = Buffer.concat([acc, chunk]);\n    let need; try { need = frameLen(acc); } catch (e) { cleanup(); return reject(e); }\n    if (need !== null && acc.length >= need) { cleanup(); try { resolve(parseModbus(parseResp(acc.slice(0, need)))); } catch (e) { reject(e); } }\n  };\n  const onErr = (e) => { cleanup(); reject(e); };\n  const cleanup = () => { clearTimeout(t); sock.removeListener('data', onData); sock.removeListener('error', onErr); };\n  sock.on('data', onData); sock.on('error', onErr);\n  sock.write(buildReq(seq, readReq(slaveId, start, count)));\n});\n\nlet seq = context.get('seq') || 0;\nreturn new Promise((resolve) => {\n  const sock = new net.Socket();\n  sock.setNoDelay(true);\n  let done = false;\n  const finish = (err) => {\n    if (done) return; done = true;\n    try { sock.destroy(); } catch (e) { /* ignore */ }\n    if (err) { node.status({ fill: 'red', shape: 'ring', text: 'V5: ' + err.message }); resolve(null); }\n    else { resolve(msg); }\n  };\n  const connTimer = setTimeout(() => finish(new Error('Verbindungs-Timeout')), timeoutMs);\n  sock.once('error', (e) => { clearTimeout(connTimer); finish(e); });\n  sock.connect(port, cfg.ip, async () => {\n    clearTimeout(connTimer);\n    try {\n      for (const r of ctx.reads) { seq = (seq + 1) & 0xffff; ctx.blocks.push({ start: r.start, regs: await readBlock(sock, r.start, r.count, seq) }); }\n      context.set('seq', seq);\n      finish();\n    } catch (e) { finish(e); }\n  });\n});",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 140,
+    "wires": [
+      [
+        "auto-deye-decode"
+      ]
+    ]
+  },
+  {
+    "id": "auto-deye-decode",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Deye-Register -> Messwerte",
+    "func": "// Decodiert die gelesenen Register in die flache edge/telemetry-Nachricht.\n// Nur die kanonischen Cloud-Felder gehen an vp-telemetrie; die Batterieleistung\n// (batt_kw) ist reine Kalibrierhilfe (Status/Debug) - die Cloud leitet sie aus\n// der Leistungsbilanz ab. Quelle der Wahrheit + Tests:\n// edge-app/nodered/deye/deye-decode.js\nconst ctx = msg.deye;\nif (!ctx || !ctx.blocks.length) { node.status({ fill: 'red', shape: 'ring', text: 'keine Register' }); return null; }\nconst cfg = ctx.cfg;\nconst FAMILIES = {\n  string: { hasBattery: false, fields: {\n    pv:   { addr: 0x0050, bits: 32, signed: false, scale: 0.1 } } },\n  hybrid_1p: { hasBattery: true, fields: {\n    grid: { addr: 0x00a9, bits: 16, signed: true,  scale: 1 },\n    load: { addr: 0x00b2, bits: 16, signed: false, scale: 1 },\n    soc:  { addr: 0x00b8, bits: 16, signed: false, scale: 1, kind: 'pct' },\n    pv:   { addrs: [0x00ba, 0x00bb], bits: 16, signed: false, scale: 1, sum: true },\n    batt: { addr: 0x00be, bits: 16, signed: true,  scale: 1 } } },\n  hybrid_3p: { hasBattery: true, fields: {\n    soc:  { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' },\n    batt: { addr: 0x024e, bits: 16, signed: true,  scale: 1 },\n    grid: { addr: 0x0271, bits: 16, signed: true,  scale: 1 },\n    load: { addr: 0x028d, bits: 16, signed: false, scale: 1 },\n    pv:   { addrs: [0x02a0, 0x02a1, 0x02a2, 0x02a3], bits: 16, signed: false, scale: 1, sum: true } } },\n  micro: { hasBattery: false, fields: {\n    pv: { addr: 0x0056, bits: 32, signed: false, scale: 0.1 } } }\n};\nconst fam = FAMILIES[cfg.family];\nif (!fam) { node.status({ fill: 'red', shape: 'ring', text: 'unbekannte Familie' }); return null; }\nconst s16 = (v) => { v &= 0xffff; return v > 0x7fff ? v - 0x10000 : v; };\nconst r3 = (x) => Math.round(x * 1000) / 1000;\nconst r1 = (x) => Math.round(x * 10) / 10;\nconst readReg = (addr) => {\n  for (const b of ctx.blocks) { const o = addr - b.start; if (o >= 0 && o < b.regs.length) return b.regs[o]; }\n  return undefined;\n};\nconst fieldValue = (f) => {\n  let raw;\n  if (f.bits === 32) {\n    const lo = readReg(f.addr), hi = readReg(f.addr + 1);\n    if (lo === undefined || hi === undefined) return undefined;\n    raw = hi * 65536 + lo; if (f.signed && raw > 0x7fffffff) raw -= 0x100000000;\n  } else if (f.sum) {\n    raw = 0; for (const a of f.addrs) { const v = readReg(a); if (v === undefined) return undefined; raw += f.signed ? s16(v) : (v & 0xffff); }\n  } else {\n    const v = readReg(f.addr); if (v === undefined) return undefined; raw = f.signed ? s16(v) : (v & 0xffff);\n  }\n  return raw * (f.scale === undefined ? 1 : f.scale);\n};\nconst pscale = Number(cfg.power_scale) > 0 ? Number(cfg.power_scale) : 1;\nconst toKw = (w) => r3((w * pscale) / 1000);\nconst f = fam.fields;\nconst reading = { ts: new Date().toISOString() };\nif (f.pv)   { const w = fieldValue(f.pv);   if (w !== undefined) reading.pv_power_kw = toKw(w); }\nif (f.load) { const w = fieldValue(f.load); if (w !== undefined) reading.load_kw = toKw(w); }\nif (f.grid) { let w = fieldValue(f.grid);   if (w !== undefined) { if (cfg.invert_grid_sign) w = -w; reading.power_kw = toKw(w); } }\nif (fam.hasBattery && f.soc)  { const s = fieldValue(f.soc);  if (s !== undefined) reading.soc_pct = r1(s); }\nlet batt_kw;\nif (fam.hasBattery && f.batt) { let w = fieldValue(f.batt);   if (w !== undefined) { if (cfg.invert_batt_sign) w = -w; batt_kw = toKw(w); } }\nconst keys = Object.keys(reading).filter((k) => k !== 'ts');\nif (keys.length === 0) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine Messwerte decodiert' }); return null; }\nconst pv = reading.pv_power_kw !== undefined ? reading.pv_power_kw.toFixed(1) : '?';\nconst soc = reading.soc_pct !== undefined ? (', SoC ' + reading.soc_pct.toFixed(0) + ' %') : '';\nconst bt = batt_kw !== undefined ? (', Batt ' + batt_kw.toFixed(1) + ' kW') : '';\nnode.status({ fill: 'green', shape: 'dot', text: 'pv ' + pv + ' kW' + soc + bt });\nreturn [{ payload: reading }, { payload: true }];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 200,
+    "wires": [
+      [
+        "auto-telemetrie"
+      ],
+      [
+        "auto-status",
+        "auto-linkwatch"
+      ]
+    ]
+  },
+  {
+    "id": "auto-modbus",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Modbus-TCP lesen (FC3)",
+    "func": "// Generischer Modbus-TCP-Leser (FC3, Holding Registers): eine geordnete\n// TCP-Verbindung pro Poll, ein Registerblock, TCP-Segmente reassembliert.\n// Traegt eine KOPIE des Codecs aus edge-app/nodered/modbus-tcp.js\n// (buildReadRequest/expectedFrameLength/parseReadResponse) - beide synchron\n// halten (ein Node-RED-Flow ist self-contained JSON und kann keine Repo-Datei\n// zur Laufzeit requiren). Quelle der Wahrheit + Offline-Tests: modbus-tcp.js.\nconst net = global.get('net');\nif (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }\nconst mb = msg.mb;\nif (!mb) return null;\nconst conn = mb.conn;\nconst unitId = conn.unit_id || 1;\nconst timeoutMs = conn.timeout_ms || 5000;\nconst buildReq = (txid, addr, count) => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x03; b.writeUInt16BE(addr & 0xffff, 8); b.writeUInt16BE(count & 0xffff, 10); return b; };\nconst frameLen = (buf) => (buf.length < 6 ? null : 6 + buf.readUInt16BE(4));\nconst parseResp = (buf, txid) => {\n  if (buf.length < 9) throw new Error('Antwort zu kurz');\n  if (buf.readUInt16BE(2) !== 0) throw new Error('Protokoll-ID');\n  if (buf.readUInt16BE(0) !== (txid & 0xffff)) throw new Error('Transaktions-ID weicht ab');\n  const fn = buf[7];\n  if (fn & 0x80) throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16));\n  if (fn !== 0x03) throw new Error('Modbus-Funktion 0x' + fn.toString(16));\n  const bc = buf[8];\n  if (bc <= 0 || buf.length < 9 + bc) throw new Error('Nutzlast unvollstaendig');\n  const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(buf.readUInt16BE(9 + i * 2)); return regs;\n};\nlet txid = context.get('txid') || 0;\nreturn new Promise((resolve) => {\n  const sock = new net.Socket();\n  sock.setNoDelay(true);\n  let done = false;\n  let acc = Buffer.alloc(0);\n  const finish = (err) => { if (done) return; done = true; try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Modbus: ' + err.message }); resolve(null); } else { resolve(msg); } };\n  const t = setTimeout(() => finish(new Error('Timeout')), timeoutMs);\n  txid = (txid + 1) & 0xffff; context.set('txid', txid);\n  sock.once('error', (e) => { clearTimeout(t); finish(e); });\n  sock.connect(conn.port || 502, conn.ip, () => {\n    sock.on('data', (chunk) => {\n      acc = Buffer.concat([acc, chunk]);\n      const need = frameLen(acc);\n      if (need !== null && acc.length >= need) { clearTimeout(t); try { mb.regs = parseResp(acc.slice(0, need), txid); finish(); } catch (e) { finish(e); } }\n    });\n    sock.write(buildReq(txid, mb.read.addr, mb.read.count));\n  });\n});",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 590,
+    "y": 280,
+    "wires": [
+      [
+        "auto-mb-decode"
+      ]
+    ]
+  },
+  {
+    "id": "auto-mb-decode",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Modbus-Register -> Messwerte",
+    "func": "// Decodiert den Modbus-Block laut Profil in die flache edge/telemetry-Nachricht.\n// Traegt eine KOPIE der PROFILES aus edge-app/nodered/modbus-tcp.js - synchron\n// halten. Ausgang 1: Messwerte fuer vp-telemetrie; Ausgang 2: true als Link-\n// Lebenszeichen. Das Profil 'sunspec' entspricht dem kompakten Block des\n// SunSpec-Simulators (edge/sim/sunspec-sim.js), FC3 Adr. 0..8.\nconst mb = msg.mb;\nif (!mb || !Array.isArray(mb.regs)) { node.status({ fill: 'red', shape: 'ring', text: 'keine Register' }); return null; }\nconst s16 = (v) => { v &= 0xffff; return v > 0x7fff ? v - 0x10000 : v; };\nconst r3 = (x) => Math.round(x * 1000) / 1000;\nconst r1 = (x) => Math.round(x * 10) / 10;\nconst PROFILES = {\n  sunspec: (regs) => {\n    if (regs.length < 7) return null;\n    const gridKw = s16(regs[0]) / 100;   // + Bezug / - Einspeisung\n    const pvKw = s16(regs[1]) / 100;\n    const loadKw = s16(regs[2]) / 100;\n    const socPct = regs[4] / 10;\n    const wmax = regs[5] / 100;          // beobachtete §14a-Begrenzung in %\n    const gridConn = regs[6] / 100;\n    const reading = { ts: new Date().toISOString(), power_kw: r3(gridKw), pv_power_kw: r3(pvKw), load_kw: r3(loadKw), soc_pct: r1(socPct), grid_limit_kw: r3((wmax / 100) * gridConn) };\n    return { reading, batt_kw: r3(s16(regs[3]) / 100) };\n  }\n};\nconst dec = PROFILES[mb.profile];\nif (!dec) { node.status({ fill: 'red', shape: 'ring', text: 'unbekanntes Profil: ' + mb.profile }); return null; }\nconst out = dec(mb.regs);\nif (!out) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine Messwerte decodiert' }); return null; }\nconst pv = out.reading.pv_power_kw !== undefined ? out.reading.pv_power_kw.toFixed(1) : '?';\nconst soc = out.reading.soc_pct !== undefined ? (', SoC ' + out.reading.soc_pct.toFixed(0) + ' %') : '';\nnode.status({ fill: 'green', shape: 'dot', text: 'pv ' + pv + ' kW' + soc });\nreturn [{ payload: out.reading }, { payload: true }];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 340,
+    "wires": [
+      [
+        "auto-telemetrie"
+      ],
+      [
+        "auto-status",
+        "auto-linkwatch"
+      ]
+    ]
+  },
+  {
+    "id": "auto-idle",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "untaetig (Statusanzeige)",
+    "func": "// Untaetig: keine oder unbekannte Auswahl. Setzt nur den Knotenstatus als\n// sichtbaren Hinweis - es wird KEIN edge/status veroeffentlicht (sonst wuerde\n// es im reinen Simulator-Betrieb mit dem Link-Status des Simulator-Tabs\n// kollidieren). Sobald eine gueltige Auswahl retained eintrifft, laeuft der\n// passende Lesepfad automatisch an.\nnode.status({ fill: 'grey', shape: 'ring', text: msg.idle || 'keine Auswahl' });\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 420,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "auto-telemetrie",
+    "type": "vp-telemetrie",
+    "z": "tab-auto",
+    "name": "an VoltPilot Core",
+    "core": "cfg-vp-core",
+    "x": 900,
+    "y": 180,
+    "wires": []
+  },
+  {
+    "id": "auto-status",
+    "type": "vp-status",
+    "z": "tab-auto",
+    "name": "Wechselrichter-Status",
+    "core": "cfg-vp-core",
+    "x": 920,
+    "y": 260,
+    "wires": []
+  },
+  {
+    "id": "auto-linkwatch",
+    "type": "trigger",
+    "z": "tab-auto",
+    "name": "15s ohne Messwert -> down",
+    "op1": "",
+    "op1type": "nul",
+    "op2": "false",
+    "op2type": "bool",
+    "duration": "15",
+    "extend": true,
+    "overrideDelay": false,
+    "units": "s",
+    "reset": "",
+    "bytopic": "all",
+    "topic": "topic",
+    "outputs": 1,
+    "x": 640,
+    "y": 260,
+    "wires": [
+      [
+        "auto-status"
+      ]
+    ]
   },
   {
     "id": "tab-sim",
@@ -80,7 +298,11 @@
     "type": "inject",
     "z": "tab-sim",
     "name": "poll 2s",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "2",
     "crontab": "",
     "once": true,
@@ -90,7 +312,11 @@
     "payloadType": "json",
     "x": 130,
     "y": 140,
-    "wires": [["sim-read"]]
+    "wires": [
+      [
+        "sim-read"
+      ]
+    ]
   },
   {
     "id": "sim-read",
@@ -110,7 +336,12 @@
     "startDelayTime": "",
     "x": 350,
     "y": 140,
-    "wires": [["sim-decode"], []]
+    "wires": [
+      [
+        "sim-decode"
+      ],
+      []
+    ]
   },
   {
     "id": "sim-decode",
@@ -125,7 +356,15 @@
     "libs": [],
     "x": 610,
     "y": 140,
-    "wires": [["sim-telemetrie"], ["sim-status", "sim-linkwatch"]]
+    "wires": [
+      [
+        "sim-telemetrie"
+      ],
+      [
+        "sim-status",
+        "sim-linkwatch"
+      ]
+    ]
   },
   {
     "id": "sim-telemetrie",
@@ -166,7 +405,11 @@
     "outputs": 1,
     "x": 640,
     "y": 240,
-    "wires": [["sim-status"]]
+    "wires": [
+      [
+        "sim-status"
+      ]
+    ]
   },
   {
     "id": "sim-sollwert",
@@ -176,7 +419,11 @@
     "core": "cfg-vp-core",
     "x": 140,
     "y": 320,
-    "wires": [["sim-sp2reg"]]
+    "wires": [
+      [
+        "sim-sp2reg"
+      ]
+    ]
   },
   {
     "id": "sim-sp2reg",
@@ -191,7 +438,11 @@
     "libs": [],
     "x": 380,
     "y": 320,
-    "wires": [["sim-write"]]
+    "wires": [
+      [
+        "sim-write"
+      ]
+    ]
   },
   {
     "id": "sim-write",
@@ -207,14 +458,21 @@
     "startDelayTime": "",
     "x": 640,
     "y": 320,
-    "wires": [[], []]
+    "wires": [
+      [],
+      []
+    ]
   },
   {
     "id": "sim-enable-inj",
     "type": "inject",
     "z": "tab-sim",
     "name": "EMS-Steuerung aktivieren (einmalig)",
-    "props": [{ "p": "payload" }],
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
     "repeat": "",
     "crontab": "",
     "once": true,
@@ -224,7 +482,11 @@
     "payloadType": "date",
     "x": 200,
     "y": 400,
-    "wires": [["sim-enable-fn"]]
+    "wires": [
+      [
+        "sim-enable-fn"
+      ]
+    ]
   },
   {
     "id": "sim-enable-fn",
@@ -239,592 +501,10 @@
     "libs": [],
     "x": 450,
     "y": 400,
-    "wires": [["sim-write"]]
-  },
-  {
-    "id": "tab-real",
-    "type": "tab",
-    "label": "SunSpec Wechselrichter (Vorlage)",
-    "disabled": true,
-    "info": "VORLAGE für die Verdrahtung eines echten SunSpec-/Modbus-TCP-Wechselrichters - wird von VoltPilot pro Kunde angepasst (Host/Registerbelegung/Skalierung), der Kunde ändert hier nichts. Vorgehen: (1) im Konfigurationsknoten 'Wechselrichter (Modbus TCP)' die IP des Wechselrichters eintragen, (2) decode/write an die Registerbelegung des Geräts anpassen, (3) diesen Tab aktivieren und den Simulator-Tab deaktivieren, (4) deploy. Struktur ist identisch zur Simulator-Variante: read -> vp-telemetrie, vp-sollwert -> write, Link-Status -> vp-status."
-  },
-  {
-    "id": "real-note",
-    "type": "comment",
-    "z": "tab-real",
-    "name": "Pro-Kunde-Vorlage: Host + Registerbelegung anpassen, dann Tab aktivieren",
-    "info": "",
-    "x": 370,
-    "y": 60,
-    "wires": []
-  },
-  {
-    "id": "real-poll",
-    "type": "inject",
-    "z": "tab-real",
-    "name": "poll 2s",
-    "props": [{ "p": "payload" }],
-    "repeat": "2",
-    "crontab": "",
-    "once": true,
-    "onceDelay": "2",
-    "topic": "",
-    "payload": "{\"value\":\"\",\"fc\":3,\"unitid\":1,\"address\":0,\"quantity\":9}",
-    "payloadType": "json",
-    "x": 130,
-    "y": 140,
-    "wires": [["real-read"]]
-  },
-  {
-    "id": "real-read",
-    "type": "modbus-flex-getter",
-    "z": "tab-real",
-    "name": "read inverter",
-    "showStatusActivities": false,
-    "showErrors": false,
-    "logIOActivities": false,
-    "server": "cfg-mb-real",
-    "useIOFile": false,
-    "ioFile": "",
-    "useIOForPayload": false,
-    "emptyMsgOnFail": true,
-    "keepMsgProperties": true,
-    "delayOnStart": false,
-    "startDelayTime": "",
-    "x": 330,
-    "y": 140,
-    "wires": [["real-decode"], []]
-  },
-  {
-    "id": "real-decode",
-    "type": "function",
-    "z": "tab-real",
-    "name": "decode -> Messwerte (pro Gerät anpassen)",
-    "func": "// PRO KUNDE ANPASSEN: Registerbelegung + Skalierung des konkreten\n// Wechselrichters. Ausgang 1: Messwerte für vp-telemetrie; Ausgang 2: true\n// als Link-Lebenszeichen.\nconst r = msg.payload;\nif (!Array.isArray(r) || r.length < 9) { return null; }\nconst s16 = (v) => (v > 32767 ? v - 65536 : v);\nconst reading = {\n  ts: new Date().toISOString(),\n  power_kw: s16(r[0]) / 100,\n  soc_pct: r[4] / 10,\n  pv_power_kw: s16(r[1]) / 100,\n  load_kw: s16(r[2]) / 100,\n  grid_limit_kw: Math.round(((r[5] / 100) / 100) * (r[6] / 100) * 1000) / 1000,\n};\nreturn [{ payload: reading }, { payload: true }];",
-    "outputs": 2,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 620,
-    "y": 140,
-    "wires": [["real-telemetrie"], ["real-status", "real-linkwatch"]]
-  },
-  {
-    "id": "real-telemetrie",
-    "type": "vp-telemetrie",
-    "z": "tab-real",
-    "name": "an VoltPilot Core",
-    "core": "cfg-vp-core",
-    "x": 900,
-    "y": 120,
-    "wires": []
-  },
-  {
-    "id": "real-status",
-    "type": "vp-status",
-    "z": "tab-real",
-    "name": "Wechselrichter-Status",
-    "core": "cfg-vp-core",
-    "x": 920,
-    "y": 180,
-    "wires": []
-  },
-  {
-    "id": "real-linkwatch",
-    "type": "trigger",
-    "z": "tab-real",
-    "name": "15s ohne Messwert -> down",
-    "op1": "",
-    "op1type": "nul",
-    "op2": "false",
-    "op2type": "bool",
-    "duration": "15",
-    "extend": true,
-    "overrideDelay": false,
-    "units": "s",
-    "reset": "",
-    "bytopic": "all",
-    "topic": "topic",
-    "outputs": 1,
-    "x": 650,
-    "y": 240,
-    "wires": [["real-status"]]
-  },
-  {
-    "id": "real-sollwert",
-    "type": "vp-sollwert",
-    "z": "tab-real",
-    "name": "Sollwert vom Core",
-    "core": "cfg-vp-core",
-    "x": 140,
-    "y": 320,
-    "wires": [["real-sp2reg"]]
-  },
-  {
-    "id": "real-sp2reg",
-    "type": "function",
-    "z": "tab-real",
-    "name": "Sollwert -> Register (pro Gerät anpassen)",
-    "func": "// PRO KUNDE ANPASSEN: Zielregister/Encoding des Wechselrichters.\nconst kw = Number(msg.payload);\nif (!isFinite(kw)) { return null; }\nconst raw = Math.round(kw * 100) & 0xffff;\nmsg.payload = { value: raw, fc: 6, unitid: 1, address: 40, quantity: 1 };\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 420,
-    "y": 320,
-    "wires": [["real-write"]]
-  },
-  {
-    "id": "real-write",
-    "type": "modbus-flex-write",
-    "z": "tab-real",
-    "name": "write setpoint",
-    "showStatusActivities": false,
-    "showErrors": false,
-    "server": "cfg-mb-real",
-    "keepMsgProperties": false,
-    "emptyMsgOnFail": true,
-    "delayOnStart": false,
-    "startDelayTime": "",
-    "x": 660,
-    "y": 320,
-    "wires": [[], []]
-  },
-  {
-    "id": "tab-deye",
-    "type": "tab",
-    "label": "Deye (Vorlage)",
-    "disabled": true,
-    "info": "VORLAGE fuer Deye-Wechselrichter ueber die deye-CLI (s10l/deye-logger-at-cmd) - deaktiviert. VoltPilot passt sie pro Kunde an (der Kunde nie). Konfigurationsgetrieben: im Knoten \"Deye-Konfiguration\" ip/port/family setzen (family: string | hybrid_1p | hybrid_3p | micro), die passende Registerkarte greift automatisch. Familie unbekannt? Den Inject \"Familie erkennen\" ausloesen. Vorgehen: (1) Konfiguration setzen, (2) ggf. Familie erkennen, (3) diesen Tab aktivieren + den Simulator-Tab deaktivieren, (4) deploy, (5) Vorzeichen am Geraet kalibrieren. Details: edge-app/nodered/DEYE.md. Hybrid-Batteriesteuerung ist hier NICHT enthalten (nur Monitoring + string/micro-Leistungsbegrenzung) - bewusst ausgeklammert, siehe DEYE.md."
-  },
-  {
-    "id": "deye-note",
-    "type": "comment",
-    "z": "tab-deye",
-    "name": "Deye-Vorlage: Kommunikationsmethode waehlen (solarman_v5=empfohlen, TCP 8899 | at_cli=UDP 48899) -> Konfiguration setzen -> ggf. Familie erkennen -> Tab aktivieren",
-    "info": "Registerkarten + Tests: edge-app/nodered/deye/deye-decode.js + solarman-v5.js. Anleitung: edge-app/nodered/DEYE.md.",
-    "x": 470,
-    "y": 40,
-    "wires": []
-  },
-  {
-    "id": "deye-config-inject",
-    "type": "inject",
-    "z": "tab-deye",
-    "name": "Konfiguration laden (beim Start)",
-    "props": [
-      {
-        "p": "payload"
-      }
-    ],
-    "repeat": "",
-    "crontab": "",
-    "once": true,
-    "onceDelay": "1",
-    "topic": "",
-    "payload": "",
-    "payloadType": "date",
-    "x": 200,
-    "y": 100,
     "wires": [
       [
-        "deye-config"
+        "sim-write"
       ]
     ]
-  },
-  {
-    "id": "deye-config",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "Deye-Konfiguration (pro Kunde anpassen)",
-    "func": "// Deye-Konfiguration - PRO KUNDE ANPASSEN (VoltPilot-Service, nicht der Kunde).\n// communication: 'solarman_v5' (EMPFOHLEN, robust, Modbus in Solarman-V5 ueber TCP 8899)\n//              | 'at_cli' (AT-CLI ueber UDP 48899 - veraltet, oft flaky hinter NAT).\n// Fuer solarman_v5 ist die DATALOGGER-Seriennummer (serial) PFLICHT - das ist NICHT\n// die Wechselrichter-Seriennummer! Sie steht z. B. im AP-SSID \"AP_<serial>\", auf dem\n// Logger-Label oder auf der Status-Seite des Loggers.\n// family: 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'.\n// hybrid_3p deckt die 3-phasigen Hybride ab: SG04LP3 (LV, 2 MPPT) UND\n// SG01HP3 (HV, SUN-29.9..50K-SG01HP3-EU-BM3/BM4, 3-4 MPPT) - gleiche high-map.\n// Vorzeichen (Netz/Batterie) ERST AM GERAET kalibrieren - siehe DEYE.md.\nflow.set('deye_wechselrichter', [\n  {\n    id: 'wr1',\n    ip: '192.168.1.50',          // IP des Deye-WiFi-Loggers (Bestaetigtes Captain-Geraet: 192.168.0.28)\n    communication: 'solarman_v5', // 'solarman_v5' (empfohlen) | 'at_cli'\n    port: 8899,                   // solarman_v5: 8899 | at_cli: 48899\n    serial: 0,                    // solarman_v5 PFLICHT: Datalogger-Seriennummer (Zahl!) - NICHT die WR-Seriennummer (Captain-Logger: 2985159064)\n    mb_slave_id: 1,               // Modbus-Unit-ID (Standard 1)\n    family: 'hybrid_3p',          // Captain-Geraet: SUN-*-SG01HP3-EU (3-phasig HV Hybrid)\n    invert_grid_sign: false,\n    invert_batt_sign: false,\n    // Nur hybrid_3p HV bei Bedarf 10 (Dezawatt-Firmware) - siehe DEYE.md Abschnitt 2\n    power_scale: 1,\n    // Nur string/micro: erlaubte Stufen der Wirkleistungsbegrenzung in %\n    // (leer = 1-%-Schritte), z. B. [0, 25, 50, 75, 100].\n    limit_stages: []\n  }\n]);\nnode.status({ fill: 'grey', shape: 'dot', text: 'Konfiguration geladen' });\nreturn null;",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 520,
-    "y": 100,
-    "wires": [
-      []
-    ]
-  },
-  {
-    "id": "deye-poll",
-    "type": "inject",
-    "z": "tab-deye",
-    "name": "poll 5s",
-    "props": [
-      {
-        "p": "payload"
-      }
-    ],
-    "repeat": "5",
-    "crontab": "",
-    "once": true,
-    "onceDelay": "3",
-    "topic": "",
-    "payload": "",
-    "payloadType": "date",
-    "x": 130,
-    "y": 180,
-    "wires": [
-      [
-        "deye-plan"
-      ]
-    ]
-  },
-  {
-    "id": "deye-plan",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "Leseplan bauen",
-    "func": "// Baut den Leseplan (Modbus-Bloecke) fuer den konfigurierten Wechselrichter und\n// waehlt die Kommunikationsmethode:\n//   communication: 'solarman_v5' (empfohlen, TCP 8899) -> Ausgang 2 (Solarman-V5 lesen)\n//   communication: 'at_cli'      (AT-CLI, UDP 48899)   -> Ausgang 1 (deye -xmb)\n// Registerkarten/Skalierung: edge-app/nodered/deye/deye-decode.js (getestet).\nconst READS = {\n  string:    [{ start: 0x0050, count: 0x0002 }],\n  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],\n  hybrid_3p: [{ start: 0x024c, count: 0x0058 }],\n  micro:     [{ start: 0x0056, count: 0x0002 }]\n};\nconst list = flow.get('deye_wechselrichter') || [];\nconst cfg = list[0];\nif (!cfg) { node.status({ fill: 'red', shape: 'ring', text: 'keine Konfiguration' }); return null; }\nconst reads = READS[cfg.family] || [];\nif (reads.length === 0) {\n  node.status({ fill: 'grey', shape: 'ring', text: cfg.family + ': keine Messwert-Register' });\n  return null;\n}\nconst comm = cfg.communication || 'solarman_v5';\nconst target = cfg.ip + ':' + (cfg.port || (comm === 'at_cli' ? 48899 : 8899));\nmsg.deye = { cfg, target, reads, i: 0, blocks: [] };\nif (comm === 'at_cli') {\n  const h4 = (n) => (n & 0xffff).toString(16).padStart(4, '0').toUpperCase();\n  const r = reads[0];\n  msg.payload = ['-t', target, '-xmb', h4(r.start) + h4(r.count)].join(' ');\n  return [msg, null]; // Ausgang 1: AT-CLI-Kette\n}\nreturn [null, msg];    // Ausgang 2: Solarman-V5-Transport",
-    "outputs": 2,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 320,
-    "y": 180,
-    "wires": [["deye-read"], ["deye-solarman"]]
-  },
-  {
-    "id": "deye-read",
-    "type": "exec",
-    "z": "tab-deye",
-    "command": "deye",
-    "addpay": "payload",
-    "append": "",
-    "useSpawn": "false",
-    "timer": "10",
-    "winHide": false,
-    "oldrc": false,
-    "name": "deye -xmb (Modbus-Lesen)",
-    "x": 560,
-    "y": 180,
-    "wires": [
-      [
-        "deye-parse-next"
-      ],
-      [],
-      []
-    ]
-  },
-  {
-    "id": "deye-solarman",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "Solarman-V5 lesen (TCP 8899)",
-    "func": "// Solarman-V5-Transport: Modbus-RTU im Solarman-V5-Rahmen ueber TCP 8899 - die\n// ROBUSTE Deye-Anbindung (ersetzt die flaky AT-CLI ueber UDP 48899). Eine\n// einzige, geordnete TCP-Verbindung pro Poll (der Logger erlaubt nur EINEN\n// Client), sequenzielle Bloecke, Reconnect je Poll.\n//\n// Traegt eine KOPIE von edge-app/nodered/deye/solarman-v5.js (ein Node-RED-Flow\n// ist self-contained JSON und kann keine Repo-Datei zur Laufzeit requiren).\n// Quelle der Wahrheit + Offline-Tests: deye/solarman-v5.js - beide synchron halten.\nconst net = global.get('net');\nif (!net) {\n  node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' });\n  node.error('functionGlobalContext.net in settings.js setzen (siehe DEYE.md)', msg);\n  return null;\n}\nconst ctx = msg.deye;\nif (!ctx) return null;\nconst cfg = ctx.cfg;\nconst serial = cfg.serial;\nif (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) {\n  node.status({ fill: 'red', shape: 'ring', text: 'Logger-Serial fehlt' });\n  node.error('cfg.serial (Datalogger-Seriennummer, Zahl) ist fuer solarman_v5 erforderlich', msg);\n  return null;\n}\nconst sn = Number(serial) >>> 0;\nconst port = cfg.port || 8899;\nconst slaveId = cfg.mb_slave_id || 1;\nconst timeoutMs = cfg.timeout_ms || 8000;\n\n// --- codec (Kopie von deye/solarman-v5.js) ---\nconst modbusCrc16 = (buf) => { let c = 0xffff; for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let b = 0; b < 8; b++) c = (c & 1) ? ((c >>> 1) ^ 0xa001) : (c >>> 1); } return c & 0xffff; };\nconst readReq = (sl, start, count) => { const b = Buffer.alloc(6); b[0] = sl & 0xff; b[1] = 0x03; b.writeUInt16BE(start & 0xffff, 2); b.writeUInt16BE(count & 0xffff, 4); const c = modbusCrc16(b); return Buffer.concat([b, Buffer.from([c & 0xff, (c >> 8) & 0xff])]); };\nconst v5cs = (f) => { let s = 0; for (let i = 1; i < f.length - 2; i++) s = (s + f[i]) & 0xff; return s & 0xff; };\nconst buildReq = (seq, mb) => { const len = 15 + mb.length; const h = Buffer.alloc(11); h[0] = 0xa5; h.writeUInt16LE(len, 1); h.writeUInt16LE(0x4510, 3); h.writeUInt16LE(seq & 0xffff, 5); h.writeUInt32LE(sn, 7); const pre = Buffer.alloc(15); pre[0] = 0x02; const fr = Buffer.concat([h, pre, mb, Buffer.from([0x00, 0x15])]); fr[fr.length - 2] = v5cs(fr); return fr; };\nconst frameLen = (buf) => { if (buf.length < 3) return null; if (buf[0] !== 0xa5) throw new Error('Startbyte'); return 11 + buf.readUInt16LE(1) + 2; };\nconst parseResp = (buf) => {\n  if (buf.length < 13) throw new Error('Frame zu kurz');\n  if (buf[0] !== 0xa5) throw new Error('Startbyte');\n  const total = 11 + buf.readUInt16LE(1) + 2;\n  if (buf.length < total) throw new Error('Frame kuerzer als Laengenfeld');\n  const f = buf.slice(0, total);\n  if (f[f.length - 1] !== 0x15) throw new Error('Endbyte');\n  if (v5cs(f) !== f[f.length - 2]) throw new Error('V5-Pruefsumme');\n  if (f.readUInt16LE(3) !== 0x1510) throw new Error('Controlcode 0x' + f.readUInt16LE(3).toString(16));\n  if (f.readUInt32LE(7) !== sn) throw new Error('Logger-Serial weicht ab: ' + f.readUInt32LE(7));\n  const mb = f.slice(25, f.length - 2);\n  if (mb.length < 5) throw new Error('Modbus zu kurz');\n  return mb;\n};\nconst parseModbus = (mb) => {\n  if (mb.readUInt16LE(mb.length - 2) !== modbusCrc16(mb.slice(0, mb.length - 2))) throw new Error('Modbus-CRC');\n  if (mb[1] & 0x80) throw new Error('Modbus-Ausnahme 0x' + mb[2].toString(16));\n  if (mb[1] !== 0x03) throw new Error('Modbus-Funktion 0x' + mb[1].toString(16));\n  const bc = mb[2]; const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(mb.readUInt16BE(3 + i * 2)); return regs;\n};\n\n// --- eine Leseanfrage ueber den offenen Socket (TCP-Segmente reassemblieren) ---\nconst readBlock = (sock, start, count, seq) => new Promise((resolve, reject) => {\n  let acc = Buffer.alloc(0);\n  const t = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, timeoutMs);\n  const onData = (chunk) => {\n    acc = Buffer.concat([acc, chunk]);\n    let need; try { need = frameLen(acc); } catch (e) { cleanup(); return reject(e); }\n    if (need !== null && acc.length >= need) { cleanup(); try { resolve(parseModbus(parseResp(acc.slice(0, need)))); } catch (e) { reject(e); } }\n  };\n  const onErr = (e) => { cleanup(); reject(e); };\n  const cleanup = () => { clearTimeout(t); sock.removeListener('data', onData); sock.removeListener('error', onErr); };\n  sock.on('data', onData); sock.on('error', onErr);\n  sock.write(buildReq(seq, readReq(slaveId, start, count)));\n});\n\nlet seq = context.get('seq') || 0;\nreturn new Promise((resolve) => {\n  const sock = new net.Socket();\n  sock.setNoDelay(true);\n  let done = false;\n  const finish = (err) => {\n    if (done) return; done = true;\n    try { sock.destroy(); } catch (e) { /* ignore */ }\n    if (err) { node.status({ fill: 'red', shape: 'ring', text: 'V5: ' + err.message }); resolve(null); }\n    else { resolve(msg); }\n  };\n  const connTimer = setTimeout(() => finish(new Error('Verbindungs-Timeout')), timeoutMs);\n  sock.once('error', (e) => { clearTimeout(connTimer); finish(e); });\n  sock.connect(port, cfg.ip, async () => {\n    clearTimeout(connTimer);\n    try {\n      for (const r of ctx.reads) { seq = (seq + 1) & 0xffff; ctx.blocks.push({ start: r.start, regs: await readBlock(sock, r.start, r.count, seq) }); }\n      context.set('seq', seq);\n      finish();\n    } catch (e) { finish(e); }\n  });\n});",
-    "outputs": 1,
-    "timeout": 0,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 700,
-    "y": 300,
-    "wires": [["deye-decode"]]
-  },
-  {
-    "id": "deye-parse-next",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "+ok parsen / naechster Block",
-    "func": "// Parst die +ok=0103-Antwort des aktuellen Blocks (stdout des exec-Knotens),\n// haengt die Register an msg.deye.blocks und liest den naechsten Block - oder\n// gibt an den Decoder ab (Ausgang 2). Sequenziell, damit nie zwei deye-Prozesse\n// gleichzeitig auf den Logger zugreifen.\nconst ctx = msg.deye;\nif (!ctx) return null;\nconst parseOk = (stdout) => {\n  if (typeof stdout !== 'string') return null;\n  const m = stdout.match(/\\+ok=0103([0-9a-fA-F]{2})([0-9a-fA-F]+)/);\n  if (!m) return null;\n  const byteCount = parseInt(m[1], 16);\n  const hex = m[2];\n  if (!byteCount || hex.length < byteCount * 2) return null;\n  const dataHex = hex.slice(0, byteCount * 2);\n  const regs = [];\n  for (let j = 0; j * 4 < dataHex.length; j++) regs.push(parseInt(dataHex.substr(j * 4, 4), 16));\n  return regs;\n};\nconst regs = parseOk(msg.payload);\nconst cur = ctx.reads[ctx.i];\nif (regs) ctx.blocks.push({ start: cur.start, regs });\nelse node.status({ fill: 'yellow', shape: 'ring', text: 'Block ' + ctx.i + ' ohne Antwort' });\nctx.i += 1;\nif (ctx.i < ctx.reads.length) {\n  const h4 = (n) => (n & 0xffff).toString(16).padStart(4, '0').toUpperCase();\n  const r = ctx.reads[ctx.i];\n  msg.payload = ['-t', ctx.target, '-xmb', h4(r.start) + h4(r.count)].join(' ');\n  return [msg, null]; // naechster Block -> zurueck an exec\n}\nreturn [null, msg]; // alle Bloecke gelesen -> Decoder",
-    "outputs": 2,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 820,
-    "y": 180,
-    "wires": [
-      [
-        "deye-read"
-      ],
-      [
-        "deye-decode"
-      ]
-    ]
-  },
-  {
-    "id": "deye-decode",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "Register -> Messwerte",
-    "func": "// Decodiert die gelesenen Register in die flache edge/telemetry-Nachricht.\n// Nur die kanonischen Cloud-Felder gehen an vp-telemetrie; die Batterieleistung\n// (batt_kw) ist reine Kalibrierhilfe (Status/Debug) - die Cloud leitet sie aus\n// der Leistungsbilanz ab. Quelle der Wahrheit + Tests:\n// edge-app/nodered/deye/deye-decode.js\nconst ctx = msg.deye;\nif (!ctx || !ctx.blocks.length) { node.status({ fill: 'red', shape: 'ring', text: 'keine Register' }); return null; }\nconst cfg = ctx.cfg;\nconst FAMILIES = {\n  string: { hasBattery: false, fields: {\n    pv:   { addr: 0x0050, bits: 32, signed: false, scale: 0.1 } } },\n  hybrid_1p: { hasBattery: true, fields: {\n    grid: { addr: 0x00a9, bits: 16, signed: true,  scale: 1 },\n    load: { addr: 0x00b2, bits: 16, signed: false, scale: 1 },\n    soc:  { addr: 0x00b8, bits: 16, signed: false, scale: 1, kind: 'pct' },\n    pv:   { addrs: [0x00ba, 0x00bb], bits: 16, signed: false, scale: 1, sum: true },\n    batt: { addr: 0x00be, bits: 16, signed: true,  scale: 1 } } },\n  hybrid_3p: { hasBattery: true, fields: {\n    soc:  { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' },\n    batt: { addr: 0x024e, bits: 16, signed: true,  scale: 1 },\n    grid: { addr: 0x0271, bits: 16, signed: true,  scale: 1 },\n    load: { addr: 0x028d, bits: 16, signed: false, scale: 1 },\n    pv:   { addrs: [0x02a0, 0x02a1, 0x02a2, 0x02a3], bits: 16, signed: false, scale: 1, sum: true } } },\n  micro: { hasBattery: false, fields: {\n    pv: { addr: 0x0056, bits: 32, signed: false, scale: 0.1 } } }\n};\nconst fam = FAMILIES[cfg.family];\nif (!fam) { node.status({ fill: 'red', shape: 'ring', text: 'unbekannte Familie' }); return null; }\nconst s16 = (v) => { v &= 0xffff; return v > 0x7fff ? v - 0x10000 : v; };\nconst r3 = (x) => Math.round(x * 1000) / 1000;\nconst r1 = (x) => Math.round(x * 10) / 10;\nconst readReg = (addr) => {\n  for (const b of ctx.blocks) { const o = addr - b.start; if (o >= 0 && o < b.regs.length) return b.regs[o]; }\n  return undefined;\n};\nconst fieldValue = (f) => {\n  let raw;\n  if (f.bits === 32) {\n    const lo = readReg(f.addr), hi = readReg(f.addr + 1);\n    if (lo === undefined || hi === undefined) return undefined;\n    raw = hi * 65536 + lo; if (f.signed && raw > 0x7fffffff) raw -= 0x100000000;\n  } else if (f.sum) {\n    raw = 0; for (const a of f.addrs) { const v = readReg(a); if (v === undefined) return undefined; raw += f.signed ? s16(v) : (v & 0xffff); }\n  } else {\n    const v = readReg(f.addr); if (v === undefined) return undefined; raw = f.signed ? s16(v) : (v & 0xffff);\n  }\n  return raw * (f.scale === undefined ? 1 : f.scale);\n};\nconst pscale = Number(cfg.power_scale) > 0 ? Number(cfg.power_scale) : 1;\nconst toKw = (w) => r3((w * pscale) / 1000);\nconst f = fam.fields;\nconst reading = { ts: new Date().toISOString() };\nif (f.pv)   { const w = fieldValue(f.pv);   if (w !== undefined) reading.pv_power_kw = toKw(w); }\nif (f.load) { const w = fieldValue(f.load); if (w !== undefined) reading.load_kw = toKw(w); }\nif (f.grid) { let w = fieldValue(f.grid);   if (w !== undefined) { if (cfg.invert_grid_sign) w = -w; reading.power_kw = toKw(w); } }\nif (fam.hasBattery && f.soc)  { const s = fieldValue(f.soc);  if (s !== undefined) reading.soc_pct = r1(s); }\nlet batt_kw;\nif (fam.hasBattery && f.batt) { let w = fieldValue(f.batt);   if (w !== undefined) { if (cfg.invert_batt_sign) w = -w; batt_kw = toKw(w); } }\nconst keys = Object.keys(reading).filter((k) => k !== 'ts');\nif (keys.length === 0) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine Messwerte decodiert' }); return null; }\nconst pv = reading.pv_power_kw !== undefined ? reading.pv_power_kw.toFixed(1) : '?';\nconst soc = reading.soc_pct !== undefined ? (', SoC ' + reading.soc_pct.toFixed(0) + ' %') : '';\nconst bt = batt_kw !== undefined ? (', Batt ' + batt_kw.toFixed(1) + ' kW') : '';\nnode.status({ fill: 'green', shape: 'dot', text: 'pv ' + pv + ' kW' + soc + bt });\nreturn [{ payload: reading }, { payload: true }];",
-    "outputs": 2,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 320,
-    "y": 260,
-    "wires": [
-      [
-        "deye-telemetrie"
-      ],
-      [
-        "deye-status",
-        "deye-linkwatch"
-      ]
-    ]
-  },
-  {
-    "id": "deye-telemetrie",
-    "type": "vp-telemetrie",
-    "z": "tab-deye",
-    "name": "an VoltPilot Core",
-    "core": "cfg-vp-core",
-    "x": 600,
-    "y": 240,
-    "wires": []
-  },
-  {
-    "id": "deye-status",
-    "type": "vp-status",
-    "z": "tab-deye",
-    "name": "Wechselrichter-Status",
-    "core": "cfg-vp-core",
-    "x": 620,
-    "y": 300,
-    "wires": []
-  },
-  {
-    "id": "deye-linkwatch",
-    "type": "trigger",
-    "z": "tab-deye",
-    "name": "15s ohne Messwert -> down",
-    "op1": "",
-    "op1type": "nul",
-    "op2": "false",
-    "op2type": "bool",
-    "duration": "15",
-    "extend": true,
-    "overrideDelay": false,
-    "units": "s",
-    "reset": "",
-    "bytopic": "all",
-    "topic": "topic",
-    "outputs": 1,
-    "x": 360,
-    "y": 340,
-    "wires": [
-      [
-        "deye-status"
-      ]
-    ]
-  },
-  {
-    "id": "deye-detect-note",
-    "type": "comment",
-    "z": "tab-deye",
-    "name": "Familie erkennen (nur Hybride): sondiert SoC low 0x00B8 vs. high 0x024C",
-    "info": "",
-    "x": 400,
-    "y": 420,
-    "wires": []
-  },
-  {
-    "id": "deye-detect-inject",
-    "type": "inject",
-    "z": "tab-deye",
-    "name": "Familie erkennen",
-    "props": [
-      {
-        "p": "payload"
-      }
-    ],
-    "repeat": "",
-    "crontab": "",
-    "once": false,
-    "onceDelay": "",
-    "topic": "",
-    "payload": "",
-    "payloadType": "date",
-    "x": 160,
-    "y": 460,
-    "wires": [
-      [
-        "deye-detect-start"
-      ]
-    ]
-  },
-  {
-    "id": "deye-detect-start",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "SoC-Sonde starten",
-    "func": "// Familien-Autoerkennung: sondiert die SoC-Register beider Hybrid-Karten\n// (low 0x00B8 vs. high 0x024C). Genau eine liefert einen sinnvollen 0..100-Wert\n// -> Hybrid-Familie erkannt. String/micro haben keinen SoC und werden manuell\n// gewaehlt. Ergebnis erscheint im Debug-Fenster + Knotenstatus.\nconst list = flow.get('deye_wechselrichter') || [];\nconst cfg = list[0];\nif (!cfg) { node.status({ fill: 'red', shape: 'ring', text: 'keine Konfiguration' }); return null; }\nconst target = cfg.ip + ':' + (cfg.port || 48899);\nmsg.detect = { target, step: 0, low: null, high: null };\nmsg.payload = ['-t', target, '-xmb', '00B80001'].join(' '); // low-map SoC\nnode.status({ fill: 'blue', shape: 'dot', text: 'sondiere low map (0x00B8)...' });\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 380,
-    "y": 460,
-    "wires": [
-      [
-        "deye-detect-read"
-      ]
-    ]
-  },
-  {
-    "id": "deye-detect-read",
-    "type": "exec",
-    "z": "tab-deye",
-    "command": "deye",
-    "addpay": "payload",
-    "append": "",
-    "useSpawn": "false",
-    "timer": "10",
-    "winHide": false,
-    "oldrc": false,
-    "name": "deye -xmb (SoC-Sonde)",
-    "x": 610,
-    "y": 460,
-    "wires": [
-      [
-        "deye-detect-eval"
-      ],
-      [],
-      []
-    ]
-  },
-  {
-    "id": "deye-detect-eval",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "Familie bestimmen",
-    "func": "// Wertet die SoC-Sonden aus. Schritt 0: low-map-Antwort merken, high-map anfragen.\n// Schritt 1: high-map-Antwort merken, Familie bestimmen.\nconst d = msg.detect;\nif (!d) return null;\nconst probeSoc = (stdout) => {\n  if (typeof stdout !== 'string') return null;\n  const m = stdout.match(/\\+ok=0103([0-9a-fA-F]{2})([0-9a-fA-F]+)/);\n  if (!m) return null; const bc = parseInt(m[1], 16); const hex = m[2];\n  if (!bc || hex.length < bc * 2) return null;\n  return parseInt(hex.substr(0, 4), 16);\n};\nconst soc = probeSoc(msg.payload);\nif (d.step === 0) {\n  d.low = soc; d.step = 1;\n  msg.payload = ['-t', d.target, '-xmb', '024C0001'].join(' '); // high-map SoC\n  node.status({ fill: 'blue', shape: 'dot', text: 'sondiere high map (0x024C)...' });\n  return [msg, null];\n}\nd.high = soc;\nconst sane = (v) => typeof v === 'number' && v >= 0 && v <= 100;\nconst lowOk = sane(d.low), highOk = sane(d.high);\nlet family = null;\nif (lowOk && !highOk) family = 'hybrid_1p';\nelse if (highOk && !lowOk) family = 'hybrid_3p';\nconst txt = family\n  ? ('Familie erkannt: ' + family + ' (low=' + d.low + ', high=' + d.high + ')')\n  : ('unklar - low=' + d.low + ', high=' + d.high + ' (string/micro manuell)');\nnode.status({ fill: family ? 'green' : 'yellow', shape: family ? 'dot' : 'ring', text: txt });\nmsg.payload = { family, low_soc: d.low, high_soc: d.high };\nreturn [null, msg];",
-    "outputs": 2,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 840,
-    "y": 460,
-    "wires": [
-      [
-        "deye-detect-read"
-      ],
-      [
-        "deye-detect-debug"
-      ]
-    ]
-  },
-  {
-    "id": "deye-detect-debug",
-    "type": "debug",
-    "z": "tab-deye",
-    "name": "erkannte Familie",
-    "active": true,
-    "tosidebar": true,
-    "console": false,
-    "tostatus": false,
-    "complete": "payload",
-    "targetType": "msg",
-    "statusVal": "",
-    "statusType": "auto",
-    "x": 1080,
-    "y": 460,
-    "wires": []
-  },
-  {
-    "id": "deye-limit-note",
-    "type": "comment",
-    "z": "tab-deye",
-    "name": "Wirkleistungsbegrenzung (nur string/micro) -> Register 0x0028, 0..100 %",
-    "info": "Batteriesteuerung fuer Hybride ist bewusst ausgeklammert - siehe DEYE.md.",
-    "x": 410,
-    "y": 540,
-    "wires": []
-  },
-  {
-    "id": "deye-limit-inject",
-    "type": "inject",
-    "z": "tab-deye",
-    "name": "Begrenzung 100 % (Test)",
-    "props": [
-      {
-        "p": "payload"
-      }
-    ],
-    "repeat": "",
-    "crontab": "",
-    "once": false,
-    "onceDelay": "",
-    "topic": "",
-    "payload": "100",
-    "payloadType": "num",
-    "x": 180,
-    "y": 580,
-    "wires": [
-      [
-        "deye-limit-fn"
-      ]
-    ]
-  },
-  {
-    "id": "deye-limit-fn",
-    "type": "function",
-    "z": "tab-deye",
-    "name": "Prozent -> 0x0028-Schreibbefehl",
-    "func": "// Wirkleistungsbegrenzung fuer string/micro -> Register 0x0028 (0..100 %).\n// Eingang: msg.payload = gewuenschte Begrenzung in Prozent.\n// DIES ist die klar benannte Steuerstelle: hier bildet VoltPilot seine\n// Kurve / §14a-Vorgabe auf die vom Geraet akzeptierten Stufen ab\n// (cfg.limit_stages). Batteriesteuerung fuer Hybride ist BEWUSST NICHT hier -\n// siehe den Abschnitt \"Ausgeklammert\" in DEYE.md.\nconst list = flow.get('deye_wechselrichter') || [];\nconst cfg = list[0];\nif (!cfg) { node.status({ fill: 'red', shape: 'ring', text: 'keine Konfiguration' }); return null; }\nif (!(cfg.family === 'string' || cfg.family === 'micro')) {\n  node.status({ fill: 'yellow', shape: 'ring', text: cfg.family + ': kein 0x0028-Schreibpfad' });\n  return null;\n}\nconst target = cfg.ip + ':' + (cfg.port || 48899);\nlet p = Math.round(Number(msg.payload));\nif (!isFinite(p)) p = 100;\np = Math.max(0, Math.min(100, p));\nconst stages = Array.isArray(cfg.limit_stages) ? cfg.limit_stages : [];\nif (stages.length) p = stages.reduce((b, s) => (Math.abs(s - p) < Math.abs(b - p) ? s : b), stages[0]);\nconst h4 = (n) => (n & 0xffff).toString(16).padStart(4, '0').toUpperCase();\nmsg.payload = ['-t', target, '-xmbw', '00280001' + '02' + h4(p)].join(' ');\nnode.status({ fill: 'blue', shape: 'dot', text: 'Begrenzung -> ' + p + ' %' });\nreturn msg;",
-    "outputs": 1,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 470,
-    "y": 580,
-    "wires": [
-      [
-        "deye-limit-write"
-      ]
-    ]
-  },
-  {
-    "id": "deye-limit-write",
-    "type": "exec",
-    "z": "tab-deye",
-    "command": "deye",
-    "addpay": "payload",
-    "append": "",
-    "useSpawn": "false",
-    "timer": "10",
-    "winHide": false,
-    "oldrc": false,
-    "name": "deye -xmbw (Begrenzung schreiben)",
-    "x": 760,
-    "y": 580,
-    "wires": [
-      [
-        "deye-limit-debug"
-      ],
-      [],
-      []
-    ]
-  },
-  {
-    "id": "deye-limit-debug",
-    "type": "debug",
-    "z": "tab-deye",
-    "name": "Schreib-Antwort",
-    "active": true,
-    "tosidebar": true,
-    "console": false,
-    "tostatus": false,
-    "complete": "payload",
-    "targetType": "msg",
-    "statusVal": "",
-    "statusType": "auto",
-    "x": 1030,
-    "y": 580,
-    "wires": []
   }
 ]

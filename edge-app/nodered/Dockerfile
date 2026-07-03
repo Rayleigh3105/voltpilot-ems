@@ -5,10 +5,11 @@
 
 # --- stage 1: build the `deye` CLI (github.com/s10l/deye-logger-at-cmd) --------
 # A dependency-free Go binary that speaks the Deye WiFi logger's AT-command
-# Modbus tunnel; the "Deye (Vorlage)" flow tab shells out to it via exec nodes.
-# Under buildx the golang stage runs per target platform, so `go build` yields
-# the correct arch natively - no cross-compile flags needed. Pin DEYE_REF to a
-# commit/tag for reproducible builds.
+# Modbus tunnel (UDP 48899). The self-wiring read path uses Solarman-V5 (TCP
+# 8899), NOT this CLI - it is kept on PATH only as a DIAGNOSTIC tool (the at_cli
+# fallback + ad-hoc register dumps documented in DEYE.md). Under buildx the
+# golang stage runs per target platform, so `go build` yields the correct arch
+# natively - no cross-compile flags needed. Pin DEYE_REF for reproducible builds.
 FROM golang:1.22-bookworm AS deye-build
 # Pinned to a commit for reproducible builds; override to a branch/tag/SHA.
 ARG DEYE_REF=2c09976a5d1480432170376c539dec758bd02d00
@@ -34,9 +35,11 @@ COPY vp-palette /data/vp-palette
 COPY package.json /data/package.json
 RUN cd /data && npm install --omit=dev
 
-# Template flows: "SunSpec (Simulator)" active (hardware-free e2e via the
-# compose `sim` profile) + the disabled per-customer templates
-# "SunSpec Wechselrichter (Vorlage)" and "Deye (Vorlage)".
+# Flows: "Wechselrichter (automatisch)" - the self-wiring path that reads the
+# retained edge/inverter/config selection and runs the matching read adapter
+# (Deye Solarman-V5 or generic Modbus-TCP) WITHOUT a per-customer flow edit -
+# plus "SunSpec (Simulator)" for the hardware-free e2e (compose `sim` profile).
+# The former manual "Vorlage" tabs are retired (the selection now drives it).
 COPY settings.js /data/settings.js
 COPY flows.json /data/flows.json
 
