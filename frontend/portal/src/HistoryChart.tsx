@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import type { History, HistoryBucket } from './api';
+import { chartTheme } from './chartTheme';
 
 /** Shared echarts lifecycle (init/resize/dispose) for the history charts. */
 function useChart(render: (chart: echarts.ECharts) => void, deps: unknown[]) {
@@ -33,9 +34,6 @@ function useChart(render: (chart: echarts.ECharts) => void, deps: unknown[]) {
   return ref;
 }
 
-const AXIS_TEXT = '#6C757D';
-const GRID_LINE = '#F1F3F5';
-
 /** Bucket label: day -> "12:15", week -> "Mi 06:00", month/year -> "15.06.". */
 function timeLabel(iso: string, range: History['range']): string {
   const d = new Date(iso);
@@ -63,6 +61,7 @@ function kw(kwh: number | null, bucketMinutes: number): number | null {
  */
 export function HistoryEnergyChart({ history }: { history: History }) {
   const ref = useChart((chart) => {
+    const t = chartTheme();
     const { buckets, bucketMinutes } = history;
     const day = history.range === 'day';
     const times = buckets.map((b) => b.start);
@@ -94,7 +93,7 @@ export function HistoryEnergyChart({ history }: { history: History }) {
     const narrow = chart.getWidth() < 520;
     chart.setOption(
       {
-        textStyle: { fontFamily: 'Inter, sans-serif', color: AXIS_TEXT },
+        textStyle: { fontFamily: t.font, color: t.axis },
         grid: { top: narrow ? 76 : 44, right: 12, bottom: 28, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
@@ -109,32 +108,32 @@ export function HistoryEnergyChart({ history }: { history: History }) {
             return lines.join('<br/>');
           },
         },
-        legend: { top: 8, icon: 'roundRect', textStyle: { color: '#1A1A1A', fontWeight: 600 } },
+        legend: { top: 8, icon: 'roundRect', textStyle: { color: t.ink, fontWeight: 600 } },
         xAxis: {
           type: 'category',
           data: times,
           boundaryGap: !day,
-          axisLabel: { formatter: (v: string) => timeLabel(v, history.range), color: AXIS_TEXT },
-          axisLine: { lineStyle: { color: '#E9ECEF' } },
+          axisLabel: { formatter: (v: string) => timeLabel(v, history.range), color: t.axis },
+          axisLine: { lineStyle: { color: t.axisLine } },
         },
         yAxis: {
           type: 'value',
           name: day ? 'kW' : 'kWh',
-          splitLine: { lineStyle: { color: GRID_LINE } },
-          axisLabel: { color: AXIS_TEXT },
+          splitLine: { lineStyle: { color: t.grid } },
+          axisLabel: { color: t.axis },
         },
         series: [
-          series('PV-Erzeugung', 'pvKwh', '#FF9800'),
-          series('Verbrauch', 'loadKwh', '#2196F3'),
-          series('Netzbezug', 'gridImportKwh', '#E53935'),
-          series('Einspeisung', 'gridExportKwh', '#2E9E5B'),
+          series('PV-Erzeugung', 'pvKwh', t.pv),
+          series('Verbrauch', 'loadKwh', t.load),
+          series('Netzbezug', 'gridImportKwh', t.discharge),
+          series('Einspeisung', 'gridExportKwh', t.charge),
         ],
       },
       true,
     );
   }, [history]);
 
-  return <div ref={ref} style={{ width: '100%', height: 320 }} />;
+  return <div ref={ref} className="vp-chart" />;
 }
 
 /**
@@ -147,6 +146,7 @@ export function HistoryEnergyChart({ history }: { history: History }) {
  */
 export function HistoryDayChart({ history }: { history: History }) {
   const ref = useChart((chart) => {
+    const t = chartTheme();
     const { buckets, plan, bucketMinutes } = history;
     const times = buckets.map((b) => b.start);
     const battery = buckets.map((b) =>
@@ -168,7 +168,7 @@ export function HistoryDayChart({ history }: { history: History }) {
     const narrow = chart.getWidth() < 520;
     chart.setOption(
       {
-        textStyle: { fontFamily: 'Inter, sans-serif', color: AXIS_TEXT },
+        textStyle: { fontFamily: t.font, color: t.axis },
         grid: { top: narrow ? 76 : 44, right: 48, bottom: 28, left: 8, containLabel: true },
         legend: {
           top: 0,
@@ -178,7 +178,7 @@ export function HistoryDayChart({ history }: { history: History }) {
             'Börsenpreis',
             'SoC',
           ],
-          textStyle: { color: AXIS_TEXT },
+          textStyle: { color: t.axis },
         },
         tooltip: {
           trigger: 'axis',
@@ -209,8 +209,8 @@ export function HistoryDayChart({ history }: { history: History }) {
         xAxis: {
           type: 'category',
           data: times,
-          axisLabel: { formatter: (v: string) => timeLabel(v, 'day'), color: AXIS_TEXT },
-          axisLine: { lineStyle: { color: '#E9ECEF' } },
+          axisLabel: { formatter: (v: string) => timeLabel(v, 'day'), color: t.axis },
+          axisLine: { lineStyle: { color: t.axisLine } },
         },
         yAxis: [
           {
@@ -218,15 +218,15 @@ export function HistoryDayChart({ history }: { history: History }) {
             name: 'kW',
             min: -Math.ceil(kwMax),
             max: Math.ceil(kwMax),
-            splitLine: { lineStyle: { color: GRID_LINE } },
-            axisLabel: { color: AXIS_TEXT },
+            splitLine: { lineStyle: { color: t.grid } },
+            axisLabel: { color: t.axis },
           },
           {
             type: 'value',
             name: 'EUR/MWh',
             position: 'right',
             splitLine: { show: false },
-            axisLabel: { color: AXIS_TEXT },
+            axisLabel: { color: t.axis },
           },
           // Hidden SoC axis (0-100%): the trajectory rides along, values in the tooltip.
           { type: 'value', min: 0, max: 100, show: false },
@@ -240,7 +240,7 @@ export function HistoryDayChart({ history }: { history: History }) {
             barCategoryGap: '10%',
             itemStyle: {
               borderRadius: 2,
-              color: (p: any) => (Number(p.value) >= 0 ? '#2E9E5B' : '#E53935'),
+              color: (p: any) => (Number(p.value) >= 0 ? t.charge : t.discharge),
             },
           },
           ...(hasPlan
@@ -252,8 +252,8 @@ export function HistoryDayChart({ history }: { history: History }) {
                   data: planned,
                   step: 'middle' as const,
                   symbol: 'none',
-                  lineStyle: { color: '#1E3A5F', width: 1.5, type: 'dashed' as const },
-                  itemStyle: { color: '#1E3A5F' },
+                  lineStyle: { color: t.plan, width: 1.5, type: 'dashed' as const },
+                  itemStyle: { color: t.plan },
                 },
               ]
             : []),
@@ -264,8 +264,8 @@ export function HistoryDayChart({ history }: { history: History }) {
             data: prices,
             step: 'end',
             symbol: 'none',
-            lineStyle: { color: '#5A8DE8', width: 2 },
-            itemStyle: { color: '#5A8DE8' },
+            lineStyle: { color: t.price, width: 2 },
+            itemStyle: { color: t.price },
           },
           {
             name: 'SoC',
@@ -274,8 +274,8 @@ export function HistoryDayChart({ history }: { history: History }) {
             data: soc,
             smooth: true,
             symbol: 'none',
-            lineStyle: { color: '#9C27B0', width: 1.5, type: 'dotted' },
-            itemStyle: { color: '#9C27B0' },
+            lineStyle: { color: t.soc, width: 1.5, type: 'dotted' },
+            itemStyle: { color: t.soc },
           },
         ],
       },
@@ -283,5 +283,5 @@ export function HistoryDayChart({ history }: { history: History }) {
     );
   }, [history]);
 
-  return <div ref={ref} style={{ width: '100%', height: 320 }} />;
+  return <div ref={ref} className="vp-chart" />;
 }

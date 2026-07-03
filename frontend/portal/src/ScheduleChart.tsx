@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import type { SchedulePlan } from './api';
+import { chartTheme } from './chartTheme';
 
 /**
  * The optimizer plan over the day-ahead price curve, on one shared time axis:
@@ -32,6 +33,7 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
 
   useEffect(() => {
     if (!chart.current) return;
+    const t = chartTheme();
     const slots = plan.slots;
     const times = slots.map((s) => s.start);
     const battery = slots.map((s) => (s.batteryKw == null ? null : Number(s.batteryKw)));
@@ -51,12 +53,12 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
 
     chart.current.setOption(
       {
-        textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
+        textStyle: { fontFamily: t.font, color: t.axis },
         grid: { top: chart.current.getWidth() < 520 ? 72 : 44, right: 48, bottom: 28, left: 8, containLabel: true },
         legend: {
           top: 0,
           data: ['Laden/Entladen', 'Börsenpreis', 'Geplanter SoC'],
-          textStyle: { color: '#6C757D' },
+          textStyle: { color: t.axis },
         },
         tooltip: {
           trigger: 'axis',
@@ -88,9 +90,9 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
           axisLabel: {
             formatter: (v: string) =>
               new Date(v).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-            color: '#6C757D',
+            color: t.axis,
           },
-          axisLine: { lineStyle: { color: '#E9ECEF' } },
+          axisLine: { lineStyle: { color: t.axisLine } },
         },
         yAxis: [
           {
@@ -98,15 +100,15 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
             name: 'kW',
             min: -Math.ceil(kwMax),
             max: Math.ceil(kwMax),
-            splitLine: { lineStyle: { color: '#F1F3F5' } },
-            axisLabel: { color: '#6C757D' },
+            splitLine: { lineStyle: { color: t.grid } },
+            axisLabel: { color: t.axis },
           },
           {
             type: 'value',
             name: 'EUR/MWh',
             position: 'right',
             splitLine: { show: false },
-            axisLabel: { color: '#6C757D' },
+            axisLabel: { color: t.axis },
           },
           // Hidden SoC axis (0-100%): the trajectory rides along, values in the tooltip.
           { type: 'value', min: 0, max: 100, show: false },
@@ -120,15 +122,15 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
             barCategoryGap: '10%',
             itemStyle: {
               borderRadius: 2,
-              color: (p: any) => (Number(p.value) >= 0 ? '#2E9E5B' : '#E53935'),
+              color: (p: any) => (Number(p.value) >= 0 ? t.charge : t.discharge),
             },
             markLine:
               boundaryIdx > 0
                 ? {
                     silent: true,
                     symbol: 'none',
-                    lineStyle: { color: '#5A8DE8', type: 'dashed', width: 1.5 },
-                    label: { formatter: 'Morgen', color: '#5A8DE8', position: 'insideEndTop' },
+                    lineStyle: { color: t.price, type: 'dashed', width: 1.5 },
+                    label: { formatter: 'Morgen', color: t.price, position: 'insideEndTop' },
                     data: [{ xAxis: boundaryIdx }],
                   }
                 : undefined,
@@ -140,8 +142,8 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
             data: prices,
             step: 'end',
             symbol: 'none',
-            lineStyle: { color: '#5A8DE8', width: 2 },
-            itemStyle: { color: '#5A8DE8' },
+            lineStyle: { color: t.price, width: 2 },
+            itemStyle: { color: t.price },
           },
           {
             name: 'Geplanter SoC',
@@ -150,8 +152,8 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
             data: soc,
             smooth: true,
             symbol: 'none',
-            lineStyle: { color: '#6C757D', width: 1.5, type: 'dashed' },
-            itemStyle: { color: '#6C757D' },
+            lineStyle: { color: t.axis, width: 1.5, type: 'dashed' },
+            itemStyle: { color: t.axis },
           },
         ],
       },
@@ -159,5 +161,5 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
     );
   }, [plan, rev]);
 
-  return <div ref={ref} style={{ width: '100%', height: 320 }} />;
+  return <div ref={ref} className="vp-chart" />;
 }

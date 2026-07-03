@@ -17,11 +17,12 @@ import {
   type WeatherForecast,
 } from '../api';
 import { currentUser } from '../auth';
-import { eurAmount, fmtNum } from '../format';
+import { ctPerKwh, eurAmount, fmtNum, zoneLabel } from '../format';
 import type { PageId } from '../nav';
 import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
+import { InfoTip } from '../components/InfoTip';
 import { ChartCardSkeleton, ErrorState, Skeleton, TextSkeleton } from '../components/States';
 import { TelemetryChart } from '../TelemetryChart';
 import { PriceChart } from '../PriceChart';
@@ -169,7 +170,7 @@ export function UebersichtPage({
             <p>
               {isAdmin
                 ? 'Sobald für diesen Mandanten ein Standort angelegt ist, erscheinen hier seine Geräte, Marktpreise, Wetter und der Batterie-Fahrplan. Sie können im Namen des Mandanten einen Standort anlegen.'
-                : 'Ein Standort bündelt Ihre Geräte, Marktpreise, Wetter und den Batterie-Fahrplan. Danach fügen Sie Geräte einfach per Edge-Referenz hinzu.'}
+                : 'Ein Standort bündelt Ihre Geräte, Marktpreise, Wetter und den Batterie-Fahrplan. Danach verbinden Sie Ihre Geräte in wenigen Schritten.'}
             </p>
             <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
               {isAdmin ? 'Standort anlegen' : 'Ersten Standort anlegen'}
@@ -218,14 +219,19 @@ export function UebersichtPage({
         </div>
       )}
 
-      {/* KPI hero row - money lens leads. */}
-      <section className="vp-kpis" aria-label="Kennzahlen">
+      {/* Money-first hero: ONE calm money number leads, the day's price second.
+          Counts are demoted to the compact strip below (report P3). */}
+      <section className="vp-kpis vp-kpis-hero" aria-label="Kennzahlen">
         <KpiCard
           icon={<Icon name="euro" size={20} />}
           category="battery"
           value={failed.schedule || !hasTodayPlan ? '—' : eurAmount(savingsToday)}
           label={
-            failed.schedule ? 'Heute geplant gespart' : hasTodayPlan ? 'Heute geplant gespart' : 'Noch kein Fahrplan'
+            failed.schedule
+              ? 'Ersparnis gerade nicht verfügbar'
+              : hasTodayPlan
+                ? 'Heute geplant gespart'
+                : 'Noch kein Fahrplan'
           }
           title={
             failed.schedule
@@ -238,25 +244,28 @@ export function UebersichtPage({
         <KpiCard
           icon={<Icon name="trending-up" size={20} />}
           category="dynamic"
-          value={failed.prices ? '—' : fmtNum(avgPriceToday, '')}
-          label="Ø Preis heute (EUR/MWh)"
-        />
-        <KpiCard icon={<Icon name="map-pin" size={20} />} category="home" value={sites.length} label="Standorte" />
-        <KpiCard icon={<Icon name="zap" size={20} />} category="battery" value={devices.length} label="Geräte" />
-        <KpiCard
-          icon={<Icon name="wifi" size={20} />}
-          category="ev"
-          value={
-            <>
-              {online}
-              <span style={{ fontSize: '1rem', color: 'var(--vp-text-gray)', fontWeight: 600 }}>
-                {' '}/ {devices.length}
-              </span>
-            </>
-          }
-          label="Geräte online"
+          value={failed.prices || avgPriceToday == null ? '—' : ctPerKwh(avgPriceToday)}
+          label="Ø Strompreis heute"
+          title="Durchschnittlicher Börsen-Strompreis heute in Cent pro Kilowattstunde"
         />
       </section>
+
+      {/* Bestand: counts demoted to a calm secondary strip. */}
+      <div className="vp-count-strip" role="group" aria-label="Bestand">
+        <span className="vp-count-item">
+          <Icon name="map-pin" size={16} />
+          <strong>{sites.length}</strong> Standorte
+        </span>
+        <span className="vp-count-item">
+          <Icon name="zap" size={16} />
+          <strong>{devices.length}</strong> Geräte
+        </span>
+        <span className="vp-count-item">
+          <Badge variant={online > 0 ? 'ok' : 'off'} dot>
+            {online}/{devices.length} online
+          </Badge>
+        </span>
+      </div>
 
       {/* Hero split: live telemetry primary, prices + weather secondary. */}
       <section className="vp-section">
@@ -287,10 +296,32 @@ export function UebersichtPage({
             ) : (
               <>
                 <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
-                  <Stat value={fmtNum(latest?.pvPowerKw, 'kW')} label="PV aktuell" />
-                  <Stat value={fmtNum(latest?.loadKw, 'kW')} label="Last aktuell" />
-                  <Stat value={fmtNum(latest?.powerKw, 'kW')} label="Netto-Leistung" />
-                  <Stat value={fmtNum(latest?.socPct, '%')} label="Batterie-SoC" />
+                  <Stat value={fmtNum(latest?.pvPowerKw, 'kW')} label="PV-Erzeugung" />
+                  <Stat value={fmtNum(latest?.loadKw, 'kW')} label="Verbrauch" />
+                  <Stat
+                    value={fmtNum(latest?.powerKw, 'kW')}
+                    label={
+                      <>
+                        Netzleistung{' '}
+                        <InfoTip label="Was bedeutet Netzleistung?">
+                          Leistung an Ihrem Netzanschluss: positiv = Sie beziehen Strom aus dem
+                          Netz, negativ = Sie speisen ein.
+                        </InfoTip>
+                      </>
+                    }
+                  />
+                  <Stat
+                    value={fmtNum(latest?.socPct, '%')}
+                    label={
+                      <>
+                        Batterie-Ladestand{' '}
+                        <InfoTip label="Was bedeutet Batterie-Ladestand?">
+                          Ladezustand der Batterie (SoC) in Prozent - 100 % bedeutet voll
+                          geladen, 0 % leer.
+                        </InfoTip>
+                      </>
+                    }
+                  />
                 </div>
                 <TelemetryChart points={telemetry} />
                 <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
@@ -306,9 +337,9 @@ export function UebersichtPage({
                 <IconTile category="dynamic" size={40}>
                   <Icon name="euro" size={20} />
                 </IconTile>
-                <h2 style={{ fontSize: '1.1rem' }}>Day-Ahead Preise</h2>
+                <h2 style={{ fontSize: '1.1rem' }}>Börsen-Strompreise</h2>
                 <span className="actions">
-                  {prices && <Badge variant="tint">{prices.biddingZone}</Badge>}
+                  {prices && <Badge variant="tint">{zoneLabel(prices.biddingZone)}</Badge>}
                 </span>
               </div>
               {loading && !prices && !failed.prices ? (
@@ -400,7 +431,7 @@ export function UebersichtPage({
               >
                 <h4 style={{ marginBottom: 'var(--vp-space-2)' }}>{s.name}</h4>
                 <div style={{ display: 'flex', gap: 'var(--vp-space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <Badge variant="tint">{s.biddingZone}</Badge>
+                  <Badge variant="tint">{zoneLabel(s.biddingZone)}</Badge>
                   {siteDevices.length > 0 ? (
                     <Badge variant={siteOnline > 0 ? 'ok' : 'off'} dot>
                       {siteOnline}/{siteDevices.length} online

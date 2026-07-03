@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import type { TelemetryPoint } from './api';
+import { chartTheme } from './chartTheme';
 
 /**
  * Line chart of a site's telemetry (PV, load, net power on the left axis,
- * battery SoC on the right). Brand palette from the design-system category
- * colors: solar orange, home blue, primary blue, battery purple.
+ * battery SoC on the right). Palette + type from the shared design-system chart
+ * tokens (chartTheme): solar orange, home blue, action ink, battery purple.
  */
 export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -25,6 +26,7 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
 
   useEffect(() => {
     if (!chart.current) return;
+    const t = chartTheme();
     const time = points.map((p) => p.ts);
     const series = (name: string, key: keyof TelemetryPoint, color: string, axis = 0) => ({
       name,
@@ -39,7 +41,7 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
     });
 
     chart.current.setOption({
-      textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
+      textStyle: { fontFamily: t.font, color: t.axis },
       grid: { top: 44, right: 44, bottom: 28, left: 8, containLabel: true },
       tooltip: {
         trigger: 'axis',
@@ -49,7 +51,7 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
       legend: {
         top: 8,
         icon: 'roundRect',
-        textStyle: { color: '#1A1A1A', fontWeight: 600 },
+        textStyle: { color: t.ink, fontWeight: 600 },
       },
       xAxis: {
         type: 'category',
@@ -59,14 +61,14 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
           formatter: (v: string) =>
             new Date(v).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
         },
-        axisLine: { lineStyle: { color: '#E9ECEF' } },
+        axisLine: { lineStyle: { color: t.axisLine } },
       },
       yAxis: [
         {
           type: 'value',
           name: 'kW',
-          splitLine: { lineStyle: { color: '#F1F3F5' } },
-          axisLabel: { color: '#6C757D' },
+          splitLine: { lineStyle: { color: t.grid } },
+          axisLabel: { color: t.axis },
         },
         {
           type: 'value',
@@ -75,17 +77,17 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
           max: 100,
           position: 'right',
           splitLine: { show: false },
-          axisLabel: { color: '#9C27B0' },
+          axisLabel: { color: t.soc },
         },
       ],
       series: [
-        series('PV', 'pvPowerKw', '#FF9800'),
-        series('Last', 'loadKw', '#2196F3'),
-        series('Netz', 'powerKw', '#5A8DE8'),
-        series('SoC', 'socPct', '#9C27B0', 1),
+        series('PV', 'pvPowerKw', t.pv),
+        series('Last', 'loadKw', t.load),
+        series('Netz', 'powerKw', t.price),
+        series('SoC', 'socPct', t.soc, 1),
       ],
     });
   }, [points]);
 
-  return <div ref={ref} style={{ width: '100%', height: 360 }} />;
+  return <div ref={ref} className="vp-chart tall" />;
 }

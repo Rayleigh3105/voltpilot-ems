@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import type { ForecastAccuracyPoint, ForecastModelId } from './api';
+import { chartTheme } from './chartTheme';
 
 /**
  * Daily forecast accuracy per model as lines over the last weeks: y = mittlere
@@ -35,6 +36,7 @@ export function ForecastQualityChart({
 
   useEffect(() => {
     if (!chart.current) return;
+    const t = chartTheme();
     const days = [...new Set(points.map((p) => p.day))].sort();
     const models = [...new Set(points.map((p) => p.model))].sort(
       // Active model first, so the legend reads "live model, then candidates".
@@ -44,7 +46,7 @@ export function ForecastQualityChart({
 
     chart.current.setOption(
       {
-        textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
+        textStyle: { fontFamily: t.font, color: t.axis },
         grid: { top: 40, right: 12, bottom: 28, left: 8, containLabel: true },
         legend: {
           top: 0,
@@ -52,7 +54,7 @@ export function ForecastQualityChart({
           icon: 'roundRect',
           itemWidth: 14,
           itemHeight: 3,
-          textStyle: { color: '#6C757D' },
+          textStyle: { color: t.axis },
         },
         tooltip: {
           trigger: 'axis',
@@ -67,15 +69,15 @@ export function ForecastQualityChart({
           axisLabel: {
             formatter: (v: string) =>
               new Date(v).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
-            color: '#6C757D',
+            color: t.axis,
           },
-          axisLine: { lineStyle: { color: '#E9ECEF' } },
+          axisLine: { lineStyle: { color: t.axisLine } },
         },
         yAxis: {
           type: 'value',
           name: 'kW',
-          splitLine: { lineStyle: { color: '#F1F3F5' } },
-          axisLabel: { color: '#6C757D' },
+          splitLine: { lineStyle: { color: t.grid } },
+          axisLabel: { color: t.axis },
         },
         series: models.map((model) => {
           const isActive = model === activeModel;
@@ -88,9 +90,9 @@ export function ForecastQualityChart({
             lineStyle: {
               width: 2.5,
               type: isActive ? 'solid' : 'dashed',
-              color: isActive ? '#5A8DE8' : '#FF9800',
+              color: isActive ? t.price : t.pv,
             },
-            itemStyle: { color: isActive ? '#5A8DE8' : '#FF9800' },
+            itemStyle: { color: isActive ? t.price : t.pv },
           };
         }),
       },
@@ -98,5 +100,5 @@ export function ForecastQualityChart({
     );
   }, [points, modelLabels, activeModel]);
 
-  return <div ref={ref} style={{ width: '100%', height: 280 }} />;
+  return <div ref={ref} className="vp-chart compact" />;
 }

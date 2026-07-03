@@ -60,6 +60,25 @@
   --vp-grad-bar:    linear-gradient(90deg, #95B9FF, #B8D4FF); /* @kind color */
   --vp-grad-funding:linear-gradient(135deg, #E8F5E9, #C8E6C9); /* @kind color */
 
+  /* --- Chart palette ---
+     ECharts renders to canvas and can't resolve var() at paint time, so
+     src/chartTheme.ts reads these once from :root: every chart shares ONE
+     palette + the portal type tokens instead of scattering hard-coded hex,
+     and re-theming the data surfaces is a single edit here. */
+  --vp-chart-axis:      #6C757D;  /* axis + muted legend text (= text-gray) */
+  --vp-chart-ink:       #1A1A1A;  /* legend labels (= text-dark) */
+  --vp-chart-grid:      #F1F3F5;  /* split lines */
+  --vp-chart-axisline:  #E9ECEF;  /* axis lines (= border) */
+  --vp-chart-pv:        #FF9800;  /* PV / irradiance (= solar) */
+  --vp-chart-temp:      #F57C00;  /* temperature (= solar-end) */
+  --vp-chart-load:      #2196F3;  /* consumption (= home) */
+  --vp-chart-price:     #2F6BD6;  /* price + net reference line (= action) */
+  --vp-chart-soc:       #9C27B0;  /* battery SoC (= battery) */
+  --vp-chart-charge:    #2E9E5B;  /* charge / feed-in green */
+  --vp-chart-discharge: #E53935;  /* discharge / grid draw red */
+  --vp-chart-plan:      #1E3A5F;  /* plan overlay (= navy) */
+  --vp-chart-cloud:     #90A4AE;  /* cloud cover grey */
+
   /* Category gradients (135deg) */
   --vp-grad-solar:   linear-gradient(135deg, #FF9800, #F57C00); /* @kind color */
   --vp-grad-battery: linear-gradient(135deg, #9C27B0, #7B1FA2); /* @kind color */

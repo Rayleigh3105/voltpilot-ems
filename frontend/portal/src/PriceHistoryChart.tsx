@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import type { PriceHistory } from './api';
+import { chartTheme } from './chartTheme';
 
 /** Shared echarts lifecycle (init/resize/dispose), re-render on resize. */
 function useChart(render: (chart: echarts.ECharts) => void, deps: unknown[]) {
@@ -32,11 +33,6 @@ function useChart(render: (chart: echarts.ECharts) => void, deps: unknown[]) {
 
   return ref;
 }
-
-const AXIS_TEXT = '#6C757D';
-const GRID_LINE = '#F1F3F5';
-const BAND = '#5A8DE8';
-const AVG_LINE = '#3B6FD4';
 
 /** de-DE EUR/MWh + ct/kWh for a tooltip value. */
 function fmtPrice(v: number | null): string {
@@ -86,6 +82,7 @@ function tooltipHead(iso: string, bucket: string): string {
 export function PriceHistoryChart({ history }: { history: PriceHistory }) {
   const ref = useChart(
     (chart) => {
+      const t = chartTheme();
       const { buckets, bucket } = history;
       const isDay = bucket === 'PT15M';
       const times = buckets.map((b) => b.ts);
@@ -107,7 +104,7 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
 
         chart.setOption(
           {
-            textStyle: { fontFamily: 'Inter, sans-serif', color: AXIS_TEXT },
+            textStyle: { fontFamily: t.font, color: t.axis },
             grid: { top: 28, right: 12, bottom: 28, left: 8, containLabel: true },
             tooltip: {
               trigger: 'axis',
@@ -124,19 +121,19 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
               min,
               max,
               dimension: 1,
-              inRange: { color: ['#2E9E5B', '#FF9800', '#E53935'] },
+              inRange: { color: [t.charge, t.pv, t.discharge] },
             },
             xAxis: {
               type: 'category',
               data: times,
-              axisLabel: { formatter: (v: string) => axisLabel(v, bucket), color: AXIS_TEXT },
-              axisLine: { lineStyle: { color: '#E9ECEF' } },
+              axisLabel: { formatter: (v: string) => axisLabel(v, bucket), color: t.axis },
+              axisLine: { lineStyle: { color: t.axisLine } },
             },
             yAxis: {
               type: 'value',
               name: 'EUR/MWh',
-              splitLine: { lineStyle: { color: GRID_LINE } },
-              axisLabel: { color: AXIS_TEXT },
+              splitLine: { lineStyle: { color: t.grid } },
+              axisLabel: { color: t.axis },
             },
             series: [
               {
@@ -150,8 +147,8 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
                     ? {
                         silent: true,
                         symbol: 'none',
-                        lineStyle: { color: BAND, type: 'dashed', width: 1.5 },
-                        label: { formatter: 'Morgen', color: BAND, position: 'insideEndTop' },
+                        lineStyle: { color: t.price, type: 'dashed', width: 1.5 },
+                        label: { formatter: 'Morgen', color: t.price, position: 'insideEndTop' },
                         data: [{ xAxis: boundaryIdx }],
                       }
                     : undefined,
@@ -172,7 +169,7 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
 
       chart.setOption(
         {
-          textStyle: { fontFamily: 'Inter, sans-serif', color: AXIS_TEXT },
+          textStyle: { fontFamily: t.font, color: t.axis },
           grid: { top: 28, right: 12, bottom: 28, left: 8, containLabel: true },
           tooltip: {
             trigger: 'axis',
@@ -196,14 +193,14 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
             type: 'category',
             data: times,
             boundaryGap: false,
-            axisLabel: { formatter: (v: string) => axisLabel(v, bucket), color: AXIS_TEXT },
-            axisLine: { lineStyle: { color: '#E9ECEF' } },
+            axisLabel: { formatter: (v: string) => axisLabel(v, bucket), color: t.axis },
+            axisLine: { lineStyle: { color: t.axisLine } },
           },
           yAxis: {
             type: 'value',
             name: 'EUR/MWh',
-            splitLine: { lineStyle: { color: GRID_LINE } },
-            axisLabel: { color: AXIS_TEXT },
+            splitLine: { lineStyle: { color: t.grid } },
+            axisLabel: { color: t.axis },
           },
           series: [
             {
@@ -225,7 +222,7 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
               symbol: 'none',
               silent: true,
               lineStyle: { opacity: 0 },
-              areaStyle: { color: BAND, opacity: 0.14 },
+              areaStyle: { color: t.price, opacity: 0.14 },
               z: 1,
             },
             {
@@ -234,8 +231,8 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
               data: avg,
               symbol: 'none',
               smooth: false,
-              lineStyle: { color: AVG_LINE, width: 2.5 },
-              itemStyle: { color: AVG_LINE },
+              lineStyle: { color: t.price, width: 2.5 },
+              itemStyle: { color: t.price },
               z: 2,
             },
           ],
@@ -246,5 +243,5 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
     [history],
   );
 
-  return <div ref={ref} style={{ width: '100%', height: 320 }} />;
+  return <div ref={ref} className="vp-chart" />;
 }

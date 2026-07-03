@@ -47,6 +47,36 @@ export function fmtCoords(lat: number | null | undefined, lon: number | null | u
   return `${f(lat)}°${NBSP}${lat < 0 ? 'S' : 'N'} · ${f(lon)}°${NBSP}${lon < 0 ? 'W' : 'O'}`;
 }
 
+/**
+ * Wholesale EUR/MWh -> the customer-relatable "12,34 ct/kWh" (÷10). Customer
+ * surfaces speak ct/kWh (the unit on an electricity bill), never MWh. A regular
+ * space before the unit lets it wrap under the number in a narrow KPI card.
+ */
+export function ctPerKwh(eurMwh: number | null | undefined, digits = 2): string {
+  if (eurMwh == null) return '-';
+  const n = (Number(eurMwh) / 10).toLocaleString('de-DE', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  return `${n} ct/kWh`;
+}
+
+/**
+ * Friendly German label for a bidding-zone code on customer surfaces. Onboarding
+ * deliberately hides the raw "DE-LU"/"AT"/"CH" jargon; the dashboard shouldn't
+ * re-expose it. Unknown codes pass through unchanged.
+ */
+export function zoneLabel(zone: string | null | undefined): string {
+  if (!zone) return '';
+  const map: Record<string, string> = {
+    'DE-LU': 'Deutschland',
+    DE: 'Deutschland',
+    AT: 'Österreich',
+    CH: 'Schweiz',
+  };
+  return map[zone] ?? zone;
+}
+
 /** German decimal number + unit, joined with a non-breaking space. */
 export function fmtNum(v: number | null | undefined, unit: string, digits = 1): string {
   if (v == null) return '-';

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import type { PriceSeries } from './api';
+import { chartTheme } from './chartTheme';
 
 /**
  * Day-ahead spot prices as 15-min bars for today + tomorrow. Bars are colour-
@@ -26,6 +27,7 @@ export function PriceChart({ series }: { series: PriceSeries }) {
 
   useEffect(() => {
     if (!chart.current) return;
+    const t = chartTheme();
     // Forward-looking widget: show today + tomorrow (the API may also return
     // yesterday for the history views).
     const startOfToday = new Date();
@@ -47,7 +49,7 @@ export function PriceChart({ series }: { series: PriceSeries }) {
 
     chart.current.setOption(
       {
-        textStyle: { fontFamily: 'Inter, sans-serif', color: '#6C757D' },
+        textStyle: { fontFamily: t.font, color: t.axis },
         grid: { top: 28, right: 12, bottom: 28, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
@@ -61,7 +63,7 @@ export function PriceChart({ series }: { series: PriceSeries }) {
           min,
           max,
           dimension: 1,
-          inRange: { color: ['#2E9E5B', '#FF9800', '#E53935'] },
+          inRange: { color: [t.charge, t.pv, t.discharge] },
         },
         xAxis: {
           type: 'category',
@@ -69,15 +71,15 @@ export function PriceChart({ series }: { series: PriceSeries }) {
           axisLabel: {
             formatter: (v: string) =>
               new Date(v).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
-            color: '#6C757D',
+            color: t.axis,
           },
-          axisLine: { lineStyle: { color: '#E9ECEF' } },
+          axisLine: { lineStyle: { color: t.axisLine } },
         },
         yAxis: {
           type: 'value',
           name: 'EUR/MWh',
-          splitLine: { lineStyle: { color: '#F1F3F5' } },
-          axisLabel: { color: '#6C757D' },
+          splitLine: { lineStyle: { color: t.grid } },
+          axisLabel: { color: t.axis },
         },
         series: [
           {
@@ -91,8 +93,8 @@ export function PriceChart({ series }: { series: PriceSeries }) {
                 ? {
                     silent: true,
                     symbol: 'none',
-                    lineStyle: { color: '#5A8DE8', type: 'dashed', width: 1.5 },
-                    label: { formatter: 'Morgen', color: '#5A8DE8', position: 'insideEndTop' },
+                    lineStyle: { color: t.price, type: 'dashed', width: 1.5 },
+                    label: { formatter: 'Morgen', color: t.price, position: 'insideEndTop' },
                     data: [{ xAxis: boundaryIdx }],
                   }
                 : undefined,
@@ -103,5 +105,5 @@ export function PriceChart({ series }: { series: PriceSeries }) {
     );
   }, [series]);
 
-  return <div ref={ref} style={{ width: '100%', height: 300 }} />;
+  return <div ref={ref} className="vp-chart compact" />;
 }
