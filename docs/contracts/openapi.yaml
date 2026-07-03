@@ -406,6 +406,46 @@ paths:
               schema: { $ref: "#/components/schemas/PriceSeries" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/price-history:
+    get:
+      tags: [market]
+      summary: Day-ahead prices aggregated over one range (Tag/Woche/Monat/Jahr).
+      description: >
+        Day-ahead spot prices for the site's bidding zone, aggregated over one
+        historical period, mirroring the Historie period pattern. `at` picks the
+        period containing that date; boundaries are Europe/Berlin. Aggregation
+        happens in SQL (TimescaleDB time_bucket): 15-min buckets for the day,
+        hourly for the week, Europe/Berlin-daily for month/year - so a year is
+        ~365 rows, not ~35k slots. Each bucket carries avg/min/max (the band the
+        chart draws), and the response includes range summary stats (avg/min/max,
+        cheapest & most expensive slot, slot count, actual data coverage). The
+        day range anchored on today extends `to` into tomorrow so the
+        forward-looking day-ahead curve stays visible; past days show one day.
+        Prices are market-wide per zone (no tenant); the site is resolved via RLS
+        (foreign site => 404). Because the collector only fetches today+tomorrow,
+        historical depth grows one day per collector day - empty/partial windows
+        are expected and returned as empty bucket lists. Implemented in
+        services/api.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: range
+          in: query
+          required: false
+          schema: { type: string, enum: [day, week, month, year], default: day }
+        - name: at
+          in: query
+          required: false
+          description: Any ISO date (YYYY-MM-DD) inside the wanted period (Europe/Berlin); defaults to today.
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Aggregated price series for the range (empty buckets if no data).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceHistory" }
+        "400": { description: Invalid range value. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/weather:
     get:
       tags: [weather]
@@ -1229,6 +1269,41 @@ components:
         ts: { type: string, format: date-time, description: Slot start (UTC). }
         end: { type: string, format: date-time, description: Slot end (exclusive). }
         priceEurMwh: { type: number, description: Spot price in EUR/MWh. }
+    PriceHistory:
+      type: object
+      description: Day-ahead prices aggregated over a historical range (market-wide per zone).
+      properties:
+        biddingZone: { type: string, example: DE-LU }
+        currency: { type: string, example: EUR }
+        bucket:
+          type: string
+          description: Aggregation granularity as ISO-8601 duration (PT15M day, PT1H week, P1D month/year).
+          example: P1D
+        from: { type: string, format: date-time, description: Window start (inclusive, UTC). }
+        to: { type: string, format: date-time, description: Window end (exclusive, UTC). }
+        buckets:
+          type: array
+          items: { $ref: "#/components/schemas/PriceBucket" }
+        summary: { $ref: "#/components/schemas/PriceRangeSummary" }
+    PriceBucket:
+      type: object
+      properties:
+        ts: { type: string, format: date-time, description: Bucket start (UTC). }
+        avgEurMwh: { type: number, nullable: true, description: Mean price over the bucket (EUR/MWh). }
+        minEurMwh: { type: number, nullable: true, description: Lowest slot price in the bucket (EUR/MWh). }
+        maxEurMwh: { type: number, nullable: true, description: Highest slot price in the bucket (EUR/MWh). }
+    PriceRangeSummary:
+      type: object
+      description: Headline stats over the raw slots in the range window.
+      properties:
+        avgEurMwh: { type: number, nullable: true }
+        minEurMwh: { type: number, nullable: true }
+        maxEurMwh: { type: number, nullable: true }
+        cheapestTs: { type: string, format: date-time, nullable: true, description: Start of the cheapest slot. }
+        mostExpensiveTs: { type: string, format: date-time, nullable: true, description: Start of the most expensive slot. }
+        count: { type: integer, description: Number of raw price slots in the window. }
+        coverageStart: { type: string, format: date-time, nullable: true, description: Earliest slot with data. }
+        coverageEnd: { type: string, format: date-time, nullable: true, description: Latest slot with data. }
     WeatherForecast:
       type: object
       properties:

@@ -14,6 +14,7 @@ import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.ForecastQualityDto;
 import com.voltpilot.api.web.dto.HistoryDto;
+import com.voltpilot.api.web.dto.PriceHistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
@@ -211,6 +212,61 @@ public class SiteController {
         List<PricePointDto> points = prices.findForZone(zone, effectiveFrom, effectiveTo, MAX_PRICE_POINTS);
         String resolution = prices.latestResolution(zone);
         return new PriceSeriesDto(zone, resolution, prices.currencyFor(zone), points);
+    }
+
+    /**
+     * Day-ahead prices aggregated over one historical range (Tag/Woche/Monat/
+     * Jahr), mirroring the Historie period pattern: {@code at} picks the period
+     * containing that date, boundaries are Europe/Berlin. The day range on today
+     * extends into tomorrow so the forward-looking day-ahead curve stays visible;
+     * past days show that single day. Aggregation runs in SQL (time_bucket:
+     * 15-min for the day, hourly for the week, daily for month/year) so a year is
+     * ~365 rows, not ~35k slots. Prices are market-wide per zone; the endpoint is
+     * site-scoped (RLS => 404 for a foreign site) and reads the site's zone.
+     */
+    @GetMapping("/{siteId}/price-history")
+    public PriceHistoryDto priceHistory(
+            @PathVariable UUID siteId,
+            @RequestParam(defaultValue = "day") String range,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at) {
+        HistoryRange parsed = HistoryRange.parse(range);
+        if (parsed == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "range must be one of day|week|month|year");
+        }
+        SiteDto site = sites.findById(siteId);
+        if (site == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        LocalDate today = LocalDate.now(HistoryRange.ZONE);
+        LocalDate effectiveAt = at != null ? at : today;
+        HistoryRange.Window window = parsed.window(effectiveAt);
+        Instant from = window.from();
+        Instant to = window.to();
+        // Day view on "today": extend into tomorrow so the published day-ahead
+        // prices (the page's forward-looking core value) stay on the chart.
+        if (parsed == HistoryRange.DAY && effectiveAt.equals(today)) {
+            to = effectiveAt.plusDays(2).atStartOfDay(HistoryRange.ZONE).toInstant();
+        }
+        String bucketInterval = switch (parsed) {
+            case DAY -> "15 minutes";
+            case WEEK -> "1 hour";
+            case MONTH, YEAR -> "1 day";
+        };
+        String bucketLabel = switch (parsed) {
+            case DAY -> "PT15M";
+            case WEEK -> "PT1H";
+            case MONTH, YEAR -> "P1D";
+        };
+        String zone = site.biddingZone();
+        return new PriceHistoryDto(
+                zone,
+                prices.currencyFor(zone),
+                bucketLabel,
+                from,
+                to,
+                prices.aggregate(zone, from, to, bucketInterval, parsed.dailyBuckets()),
+                prices.summarize(zone, from, to));
     }
 
     /**

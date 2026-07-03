@@ -30,6 +30,35 @@ export interface PriceSeries {
   points: PricePoint[];
 }
 
+export interface PriceBucket {
+  ts: string;
+  avgEurMwh: number | null;
+  minEurMwh: number | null;
+  maxEurMwh: number | null;
+}
+
+export interface PriceRangeSummary {
+  avgEurMwh: number | null;
+  minEurMwh: number | null;
+  maxEurMwh: number | null;
+  cheapestTs: string | null;
+  mostExpensiveTs: string | null;
+  count: number;
+  coverageStart: string | null;
+  coverageEnd: string | null;
+}
+
+export interface PriceHistory {
+  biddingZone: string;
+  currency: string;
+  /** ISO-8601 duration: PT15M (day), PT1H (week), P1D (month/year). */
+  bucket: string;
+  from: string;
+  to: string;
+  buckets: PriceBucket[];
+  summary: PriceRangeSummary;
+}
+
 export interface WeatherPoint {
   ts: string;
   temperatureC: number | null;
@@ -430,6 +459,9 @@ export const api = {
       body: JSON.stringify(input),
     }),
   prices: (siteId: string) => request<PriceSeries>(`/api/v1/sites/${siteId}/prices`),
+  /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
+  priceHistory: (siteId: string, range: HistoryRange, at: string) =>
+    request<PriceHistory>(`/api/v1/sites/${siteId}/price-history?range=${range}&at=${at}`),
   weather: (siteId: string) => request<WeatherForecast>(`/api/v1/sites/${siteId}/weather`),
   schedule: (siteId: string) => request<SchedulePlan>(`/api/v1/sites/${siteId}/schedule`),
   forecastQuality: (siteId: string, days = 30) =>

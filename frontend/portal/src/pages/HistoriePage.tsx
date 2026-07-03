@@ -14,6 +14,7 @@ import {
   type Site,
 } from '../api';
 import { eurAmount, NBSP } from '../format';
+import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
 import { HistoryDayChart, HistoryEnergyChart } from '../HistoryChart';
 
@@ -23,62 +24,6 @@ import { HistoryDayChart, HistoryEnergyChart } from '../HistoryChart';
  * behavior directly over the price curve (plus the plan overlay), and the
  * Tagesprotokoll narrates the day in plain German.
  */
-
-const RANGES: { id: HistoryRange; label: string }[] = [
-  { id: 'day', label: 'Tag' },
-  { id: 'week', label: 'Woche' },
-  { id: 'month', label: 'Monat' },
-  { id: 'year', label: 'Jahr' },
-];
-
-/** Local calendar date as the API's `at` param (YYYY-MM-DD). */
-function isoDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
-}
-
-function shiftAnchor(anchor: Date, range: HistoryRange, dir: 1 | -1): Date {
-  const d = new Date(anchor);
-  if (range === 'day') d.setDate(d.getDate() + dir);
-  if (range === 'week') d.setDate(d.getDate() + 7 * dir);
-  if (range === 'month') d.setMonth(d.getMonth() + dir, 1);
-  if (range === 'year') d.setFullYear(d.getFullYear() + dir, 0, 1);
-  return d;
-}
-
-/** ISO-8601 week number (Monday-start), for the week label. */
-function isoWeek(d: Date): number {
-  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-}
-
-function periodLabel(anchor: Date, range: HistoryRange): string {
-  if (range === 'day') {
-    return anchor.toLocaleDateString('de-DE', {
-      weekday: 'short',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  }
-  if (range === 'week') {
-    const monday = new Date(anchor);
-    const off = (monday.getDay() + 6) % 7;
-    monday.setDate(monday.getDate() - off);
-    const sunday = new Date(monday);
-    sunday.setDate(sunday.getDate() + 6);
-    const fmt = (x: Date) => x.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-    return `KW ${isoWeek(anchor)} · ${fmt(monday)} - ${fmt(sunday)}`;
-  }
-  if (range === 'month') {
-    return anchor.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
-  }
-  return String(anchor.getFullYear());
-}
 
 const EVENT_ICONS: Record<ProtocolEvent['type'], { icon: IconName; label: string }> = {
   'batterie-laden': { icon: 'arrow-up', label: 'Laden' },
@@ -162,7 +107,7 @@ export function HistoriePage(props: {
             style={{ marginBottom: 'var(--vp-space-5)', alignItems: 'center' }}
           >
             <div className="vp-seg" role="tablist" aria-label="Zeitraum">
-              {RANGES.map((r) => (
+              {PERIOD_RANGES.map((r) => (
                 <button
                   key={r.id}
                   role="tab"

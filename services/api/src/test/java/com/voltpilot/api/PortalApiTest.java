@@ -614,6 +614,87 @@ class PortalApiTest {
     }
 
     @Test
+    void priceHistoryAggregatesByRangeWithSummaryAndBandStats() {
+        // Deterministic far-past seed (2023) so other tests' now()-based DE-LU rows
+        // never leak into these windows. Two slots on 2023-06-05 (spread 20..80)
+        // and one on 2023-06-20 (60).
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2023-06-05T03:00:00Z', 'DE-LU', 'PT15M', 20.0, 'EUR', 'energy-charts'), "
+                + "('2023-06-05T18:00:00Z', 'DE-LU', 'PT15M', 80.0, 'EUR', 'energy-charts'), "
+                + "('2023-06-20T12:00:00Z', 'DE-LU', 'PT15M', 60.0, 'EUR', 'energy-charts') "
+                + "ON CONFLICT DO NOTHING");
+
+        // Month view: daily buckets (Europe/Berlin), avg/min/max band + summary.
+        ResponseEntity<Map<String, Object>> month = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/price-history?range=month&at=2023-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(month.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(month.getBody()).containsEntry("biddingZone", "DE-LU");
+        assertThat(month.getBody()).containsEntry("bucket", "P1D");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> buckets = (List<Map<String, Object>>) month.getBody().get("buckets");
+        // Two Berlin days with data (bucket ts is the Berlin-day start in UTC, e.g.
+        // June 5 Berlin = 2023-06-04T22:00Z, so match the aggregated day by value).
+        assertThat(buckets).hasSize(2);
+        Map<String, Object> june5 = buckets.stream()
+                .filter(b -> b.get("avgEurMwh") != null && num(b, "avgEurMwh") == 50.0)
+                .findFirst().orElseThrow(); // (20+80)/2
+        assertThat(num(june5, "minEurMwh")).isEqualTo(20.0);
+        assertThat(num(june5, "maxEurMwh")).isEqualTo(80.0);
+
+        Map<String, Object> summary = map(month.getBody(), "summary");
+        assertThat(num(summary, "count")).isEqualTo(3.0);
+        assertThat(num(summary, "minEurMwh")).isEqualTo(20.0);
+        assertThat(num(summary, "maxEurMwh")).isEqualTo(80.0);
+        assertThat((String) summary.get("cheapestTs")).startsWith("2023-06-05T03:00");
+        assertThat((String) summary.get("mostExpensiveTs")).startsWith("2023-06-05T18:00");
+
+        // Day view of a past day: raw 15-min buckets, no forward extension.
+        ResponseEntity<Map<String, Object>> day = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/price-history?range=day&at=2023-06-05"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(day.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(day.getBody()).containsEntry("bucket", "PT15M");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> dayBuckets = (List<Map<String, Object>>) day.getBody().get("buckets");
+        assertThat(dayBuckets).hasSize(2);
+
+        // Bad range -> 400.
+        ResponseEntity<String> bad = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/price-history?range=decade"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Foreign site invisible via RLS -> 404.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/price-history?range=month&at=2023-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void priceHistoryDayExtendsIntoTomorrowForForwardLookingView() {
+        // A distinctive slot for tomorrow; the day view on "today" must include it
+        // (the forward-looking day-ahead value the page keeps).
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "VALUES (date_trunc('day', now()) + interval '1 day 12 hours', 'DE-LU', 'PT15M', "
+                + "1234.5, 'EUR', 'energy-charts') ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> today = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/price-history?range=day"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(today.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> buckets = (List<Map<String, Object>>) today.getBody().get("buckets");
+        // The tomorrow slot (1234.5) is present -> the window extended past today.
+        assertThat(buckets).anyMatch(b -> b.get("avgEurMwh") != null
+                && ((Number) b.get("avgEurMwh")).doubleValue() == 1234.5);
+    }
+
+    @Test
     void weatherIsTenantScoped() {
         // Seed one weather row for tenant A's Berlin site (writer bypasses RLS).
         exec("INSERT INTO weather_forecast "
