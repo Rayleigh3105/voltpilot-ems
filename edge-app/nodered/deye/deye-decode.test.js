@@ -54,31 +54,40 @@ test('parseOk returns null for junk / truncated / non-string input', () => {
   assert.strictEqual(D.parseOk(null), null);
 });
 
-// --- string family: 32-bit low-word-first + x0.1 PV scaling ------------------
+// --- string family: AC-output-as-generation, 32-bit low-word-first + x0.1 ----
+// Per ha-solarman deye_string.yaml a string inverter reports only its "Total
+// Output AC Power" (0x0050/0x0051, u32 low-word-first, x0.1 -> W) = generation
+// across all MPPTs. It has NO house-load or grid-meter register (hybrid-only),
+// so the family exposes pv_power_kw and nothing else.
 
-test('string decode: 32-bit low-word-first, PV x0.1, signed grid export', () => {
+test('string decode: AC output at 0x0050 (32-bit low-word-first, x0.1) is pv_power_kw', () => {
   const start = 0x0050;
-  const count = 0x007d;
+  const count = 0x0002;
   const regs = block(start, count, {
-    // PV raw 50000 (x0.1 = 5000 W = 5 kW). low word first.
+    // AC output raw 50000 (x0.1 = 5000 W = 5 kW). low word first.
     0x0050: 50000 & 0xffff,
     0x0051: (50000 >> 16) & 0xffff,
-    // load 2000 W -> 2 kW
-    0x00c6: 2000,
-    0x00c7: 0,
-    // grid -1000 W -> -1 kW (export). 32-bit two's complement, low word first.
-    0x00cb: (-1000 >>> 0) & 0xffff,
-    0x00cc: ((-1000 >>> 0) >> 16) & 0xffff,
   });
   const { reading, batt_kw } = D.decode([regs], { family: 'string' });
   assert.strictEqual(reading.pv_power_kw, 5);
-  assert.strictEqual(reading.load_kw, 2);
-  assert.strictEqual(reading.power_kw, -1);
+  assert.strictEqual('load_kw' in reading, false, 'string inverter has no load meter');
+  assert.strictEqual('power_kw' in reading, false, 'string inverter has no grid meter');
   assert.strictEqual('soc_pct' in reading, false, 'string family has no battery -> no soc');
   assert.strictEqual(batt_kw, undefined);
 });
 
-test('string reads are a single Modbus block within the 125-register max', () => {
+// AC output is post-inverter and therefore already the sum of every MPPT string
+// (1..4), so a large multi-string plant still decodes from the one 32-bit pair.
+test('string decode: AC output already sums all MPPT strings (>32767 via 32-bit)', () => {
+  const regs = block(0x0050, 0x0002, {
+    0x0050: 200000 & 0xffff, // 20 kW plant (well past int16) -> x0.1 = 20000 W
+    0x0051: (200000 >> 16) & 0xffff,
+  });
+  const { reading } = D.decode([regs], { family: 'string' });
+  assert.strictEqual(reading.pv_power_kw, 20);
+});
+
+test('string reads are a single small Modbus block within the 125-register max', () => {
   const [r] = D.planReads({ family: 'string' });
   assert.strictEqual(r.start, 0x0050);
   assert.ok(r.count <= 125, 'must not exceed the Modbus fn-0x03 register limit');
@@ -86,7 +95,7 @@ test('string reads are a single Modbus block within the 125-register max', () =>
     '-t',
     '1.2.3.4:48899',
     '-xmb',
-    '0050007D',
+    '00500002',
   ]);
 });
 
@@ -259,8 +268,55 @@ test('detectHybridFamily returns null when both/neither look sane', () => {
 });
 
 // --- micro -------------------------------------------------------------------
+// ha-solarman deye_2mppt/deye_4mppt (SUN600..2000G3): generation is the single
+// "Total AC Output Power (Active)" pair at 0x0056/0x0057 (u32 low-word, x0.1).
+// No battery, grid or load. Also keeps the 0x0028 active-power-limit write.
 
-test('micro family has no telemetry reads (write-only control path)', () => {
-  assert.deepStrictEqual(D.planReads({ family: 'micro' }), []);
-  assert.strictEqual(D.decode([], { family: 'micro' }).reading.power_kw, undefined);
+test('micro decode: AC output at 0x0056 (32-bit low-word-first, x0.1) is pv_power_kw', () => {
+  const regs = block(0x0056, 0x0002, {
+    0x0056: 6000 & 0xffff, // raw 6000 x0.1 = 600 W = 0.6 kW (a SUN600G3 at peak)
+    0x0057: (6000 >> 16) & 0xffff,
+  });
+  const { reading, batt_kw } = D.decode([regs], { family: 'micro' });
+  assert.strictEqual(reading.pv_power_kw, 0.6);
+  assert.strictEqual('load_kw' in reading, false);
+  assert.strictEqual('power_kw' in reading, false);
+  assert.strictEqual('soc_pct' in reading, false);
+  assert.strictEqual(batt_kw, undefined);
+});
+
+test('micro read plan is one block at 0x0056 and still supports the 0x0028 limit write', () => {
+  const [r] = D.planReads({ family: 'micro' });
+  assert.strictEqual(r.start, 0x0056);
+  assert.strictEqual(r.count, 0x0002);
+  assert.deepStrictEqual(D.readCmd('h:8899', r.start, r.count), ['-t', 'h:8899', '-xmb', '00560002']);
+  // active-power-limit write path is unchanged for micro
+  assert.deepStrictEqual(D.powerLimitCmd('h:8899', 50).args, ['-t', 'h:8899', '-xmbw', '0028000102' + '0032']);
+});
+
+// --- hybrid_3p HV decawatt-scaling lever (power_scale, VERIFY-on-device) ------
+// Default scale is 1 W (ha-solarman). An HV firmware that reports decawatts is
+// handled by config `power_scale: 10` - no map/code edit. It scales every power
+// field (pv/grid/load/batt) but never SoC.
+
+test('power_scale multiplies all power fields but leaves SoC untouched', () => {
+  const b = block(0x024c, 0x58, {
+    0x024c: 77, // SoC 77 %
+    0x024e: 300, // batt raw 300
+    0x0271: 1500, // grid raw 1500
+    0x028d: 900, // load raw 900
+    0x02a0: 2000, // PV1 raw 2000
+    0x02a1: 500, // PV2 raw 500 -> raw sum 2500
+  });
+  const scaled = D.decode([b], { family: 'hybrid_3p', power_scale: 10 });
+  // raw W x10 /1000 -> kW
+  assert.strictEqual(scaled.reading.pv_power_kw, 25, '2500 raw x10 = 25 kW');
+  assert.strictEqual(scaled.reading.power_kw, 15, '1500 raw x10 = 15 kW');
+  assert.strictEqual(scaled.reading.load_kw, 9, '900 raw x10 = 9 kW');
+  assert.strictEqual(scaled.batt_kw, 3, '300 raw x10 = 3 kW');
+  assert.strictEqual(scaled.reading.soc_pct, 77, 'SoC is a percent, never power-scaled');
+  // default (scale 1) is the #49-verified behavior
+  const plain = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(plain.reading.pv_power_kw, 2.5);
+  assert.strictEqual(plain.reading.power_kw, 1.5);
 });

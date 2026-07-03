@@ -220,20 +220,17 @@ test('hybrid_1p: a synthetic V5 read decodes through deye-decode to a reading', 
   assert.strictEqual(batt_kw, -1.2);
 });
 
-test('string family: 32-bit low-word-first survives the V5 round trip', () => {
+test('string family: AC-output 32-bit low-word-first survives the V5 round trip', () => {
   const start = 0x0050;
-  const count = 0x7d;
+  const count = 0x02;
   const regs = new Array(count).fill(0);
-  regs[0x0050 - start] = 50000 & 0xffff; // PV low word (raw 50000 x0.1 = 5 kW)
+  regs[0x0050 - start] = 50000 & 0xffff; // AC output low word (raw 50000 x0.1 = 5 kW)
   regs[0x0051 - start] = (50000 >> 16) & 0xffff;
-  regs[0x00c6 - start] = 2000; // load low word -> 2 kW
-  regs[0x00cb - start] = (-1000 >>> 0) & 0xffff; // grid export -1 kW
-  regs[0x00cc - start] = ((-1000 >>> 0) >> 16) & 0xffff;
 
   const frame = makeResponseFrame(regs, { loggerSerial: 42 });
   const block = S.registerBlock(start, frame);
   const { reading } = D.decode([block], { family: 'string' });
   assert.strictEqual(reading.pv_power_kw, 5);
-  assert.strictEqual(reading.load_kw, 2);
-  assert.strictEqual(reading.power_kw, -1);
+  assert.strictEqual('load_kw' in reading, false, 'string has no house-load meter');
+  assert.strictEqual('power_kw' in reading, false, 'string has no grid meter');
 });

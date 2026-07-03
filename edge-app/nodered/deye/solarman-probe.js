@@ -29,7 +29,7 @@
  *   --serial <n>       datalogger serial number, decimal (required) - the LOGGER
  *                      serial (e.g. from the AP SSID AP_<serial>), NOT the inverter serial
  *   --port <n>         TCP port (default 8899)
- *   --family <f>       string | hybrid_1p | hybrid_3p  (reads that family's block[s] + decodes)
+ *   --family <f>       string | hybrid_1p | hybrid_3p | micro  (reads that family's block[s] + decodes)
  *   --start <reg>      raw read: first holding register (hex 0x.. or decimal)
  *   --count <n>        raw read: register count (with --start; max 125)
  *   --slave <n>        Modbus slave/unit id (default 1)
@@ -112,13 +112,11 @@ function v5Read(sock, frame, timeoutMs) {
   });
 }
 
-// --- family read plans (must match deye-decode.js) ---------------------------
-
-const FAMILY_READS = {
-  string: [{ start: 0x0050, count: 0x007d }],
-  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],
-  hybrid_3p: [{ start: 0x024c, count: 0x0058 }], // 0x024C..0x02A3 (SOC..PV4)
-};
+// --- family read plans -------------------------------------------------------
+// Derived from deye-decode.js so the probe never drifts from the canonical maps.
+const FAMILY_READS = Object.fromEntries(
+  Object.keys(D.FAMILIES).map((fam) => [fam, D.planReads({ family: fam })])
+);
 
 function printRegisters(block) {
   const s16 = (v) => (v > 0x7fff ? v - 0x10000 : v);
@@ -157,7 +155,9 @@ async function readOnce(args) {
     family = null;
   } else {
     if (!family || !FAMILY_READS[family]) {
-      throw new Error("--family muss 'string' | 'hybrid_1p' | 'hybrid_3p' sein (oder --start/--count nutzen)");
+      throw new Error(
+        "--family muss " + Object.keys(FAMILY_READS).map((k) => `'${k}'`).join(' | ') + ' sein (oder --start/--count nutzen)'
+      );
     }
     plan = FAMILY_READS[family];
   }

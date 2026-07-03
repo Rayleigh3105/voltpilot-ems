@@ -24,11 +24,26 @@
  *
  * 32-bit values are LOW-WORD-FIRST: value = (reg[addr+1] << 16) + reg[addr].
  *
- * IMPORTANT: every scaling factor and sign below is TRIANGULATED from public
- * register maps (sunsynk / ha-solarman / deye-controller) and MUST be verified
- * on the actual device (see the sign-calibration procedure in DEYE.md). The
+ * The register maps are taken from StephanJoubert/home_assistant_solarman's
+ * Deye definition library (the community reference for reading Deye over a
+ * Solarman logger). The five ha-solarman Deye definitions collapse to FOUR
+ * distinct maps, one per family here:
+ *
+ *   ha-solarman definition        | family      | Deye models (examples)
+ *   ------------------------------|-------------|--------------------------------
+ *   deye_string.yaml              | string      | SUN-*-G03/G04 string grid-tie
+ *   deye_2mppt / deye_4mppt.yaml  | micro       | SUN600..2000G3 micro-inverters
+ *   deye_hybrid.yaml (low map)    | hybrid_1p   | SUN-*-SG03LP1 1-phase hybrid
+ *   deye_sg04lp3.yaml (high map)  | hybrid_3p   | SUN-*-SG04LP3 (LV) / SG01HP3 (HV)
+ *
+ * See the model->family table in DEYE.md.
+ *
+ * IMPORTANT: the ADDRESSES are authoritative from ha-solarman, but a few
+ * SCALINGS and all raw SIGNS are firmware-dependent and MUST be verified on the
+ * actual device (see the sign-calibration procedure in DEYE.md). The
  * per-inverter `invert_grid_sign` / `invert_batt_sign` flags exist precisely
- * because raw grid/battery signs differ between firmwares.
+ * because raw grid/battery signs differ between firmwares, and the optional
+ * `power_scale` (default 1) exists for the hybrid_3p HV-decawatt contingency.
  */
 
 // --- core telemetry sign convention ------------------------------------------
@@ -38,44 +53,61 @@
 //             read it only as a calibration aid / status text).
 
 const FAMILIES = {
-  // Deye 3-phase string / grid-tie inverter with an energy meter, NO battery.
-  // All three fields are 32-bit low-word-first. PV comes scaled x0.1 (-> W).
+  // Deye grid-tie STRING inverter, NO battery, NO house-load/grid meter
+  // (ha-solarman deye_string.yaml; SUN-*-G03/G04 string models, 1-2 MPPT).
+  // A string inverter only knows its OWN AC output - it has no grid-import/
+  // export or house-load register (those are hybrid features). ha-solarman's
+  // headline power for it is "Total Output AC Power" at 0x0050/0x0051
+  // (32-bit low-word-first, x0.1 -> W); that AC output already sums ALL PV
+  // strings post-inverter, so it is MPPT-count-agnostic (1..4 MPPT). We expose
+  // it as pv_power_kw (the plant's generation). Per-string DC detail (PVn V/I
+  // at 0x006D..) is listed in DEYE.md for operators who want it; the cloud only
+  // needs the generation total. The active-power-limit WRITE (0x0028) stays.
   string: {
     label: 'String / netzgekoppelt (ohne Speicher)',
     hasBattery: false,
-    // One contiguous block 0x0050..0x00CC (grid pair ends at 0x00CC). 125 regs
-    // is the Modbus fn-0x03 maximum; if a logger rejects it, split per DEYE.md.
-    reads: [{ start: 0x0050, count: 0x007d }],
+    // Just the AC-output pair (ha-solarman reads 0x0003..0x0070 for the full
+    // sensor set; we only need generation). One small block.
+    reads: [{ start: 0x0050, count: 0x0002 }],
     fields: {
+      // "Total Output AC Power" = total PV generation across all MPPT strings.
       pv: { addr: 0x0050, bits: 32, signed: false, scale: 0.1 }, // raw x0.1 -> W
-      load: { addr: 0x00c6, bits: 32, signed: false, scale: 1 }, // W
-      grid: { addr: 0x00cb, bits: 32, signed: true, scale: 1 }, // W (signed)
     },
   },
 
   // Deye single-phase hybrid, "low" holding-register map
-  // (SUN-5/6/8K-SG03LP1 and relatives).
+  // (ha-solarman deye_hybrid.yaml; SUN-5/6/8/10/12K-SG03LP1). Verified against
+  // the definition: SOC 184, load 178, grid 169 (s16), batt 190 (s16),
+  // PV1 186 + PV2 187 (u16, summed). All scale 1 -> W / %.
   hybrid_1p: {
     label: 'Hybrid 1-phasig (SG03LP1, low map)',
     hasBattery: true,
     reads: [{ start: 0x00a9, count: 0x0016 }], // 0x00A9..0x00BE
     fields: {
-      grid: { addr: 0x00a9, bits: 16, signed: true, scale: 1 }, // W
-      load: { addr: 0x00b2, bits: 16, signed: false, scale: 1 }, // W
-      soc: { addr: 0x00b8, bits: 16, signed: false, scale: 1, kind: 'pct' },
-      pv: { addrs: [0x00ba, 0x00bb], bits: 16, signed: false, scale: 1, sum: true }, // PV1+PV2, W
-      batt: { addr: 0x00be, bits: 16, signed: true, scale: 1 }, // W
+      grid: { addr: 0x00a9, bits: 16, signed: true, scale: 1 }, // reg 169, W (signed)
+      load: { addr: 0x00b2, bits: 16, signed: false, scale: 1 }, // reg 178, W
+      soc: { addr: 0x00b8, bits: 16, signed: false, scale: 1, kind: 'pct' }, // reg 184, %
+      pv: { addrs: [0x00ba, 0x00bb], bits: 16, signed: false, scale: 1, sum: true }, // reg 186+187, W
+      batt: { addr: 0x00be, bits: 16, signed: true, scale: 1 }, // reg 190, W (calibration only)
     },
   },
 
   // Deye three-phase hybrid, "high" holding-register map. Covers the LV line
   // (SUN-5..12K-SG04LP3, 2 MPPT) AND the HV line
   // (SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4, 3-4 MPPT). They share this modbus
-  // map; the only per-model difference is the MPPT count, so PV sums ALL FOUR
-  // tracker power registers (an absent PV3/PV4 reads 0 and is harmless).
+  // map (there is no separate SG01HP3 definition in ha-solarman); the only
+  // per-model difference is the MPPT count, so PV sums ALL FOUR tracker power
+  // registers (an absent PV3/PV4 reads 0 and is harmless).
   // Addresses are authoritative from StephanJoubert/home_assistant_solarman
-  // deye_sg04lp3.yaml (SOC 588, batt 590, grid 625, load 653, PV1..PV4 672..675).
-  // Confirmed device: captain's SUN-*-SG01HP3-EU (inverter serial 2407224048).
+  // deye_sg04lp3.yaml (SOC 588, batt 590, grid 625 s16, load 653, PV1 672, PV2
+  // 673 - all u16 scale 1); PV3/PV4 (674/675) fall inside ha-solarman's
+  // 0x02A0..0x02A7 read range and come from the Deye Modbus manual for the HV
+  // 3-4 MPPT units. Confirmed device: captain's SUN-*-SG01HP3-EU (inverter
+  // serial 2407224048, #49 real-logger read).
+  // HV-SCALING (VERIFY-on-device): ha-solarman uses scale 1 (W). If a live read
+  // on an HV unit shows PV ~10x low vs the logger status page or power_kw
+  // saturating at +/-32.7 kW (int16), that firmware reports DECAWATTS - set
+  // `power_scale: 10` in the inverter config (no code edit). Default 1.
   hybrid_3p: {
     label: 'Hybrid 3-phasig (SG04LP3 LV / SG01HP3 HV, high map, bis 4 MPPT)',
     hasBattery: true,
@@ -91,13 +123,19 @@ const FAMILIES = {
     },
   },
 
-  // Deye / Bosswerk micro-inverter: monitoring is minimal; the deliverable is
-  // the active-power-limit WRITE at 0x0028 (see powerLimitCmd + DEYE.md).
+  // Deye / Bosswerk MICRO-inverter (ha-solarman deye_2mppt.yaml = SUN600..1600G3,
+  // 2 MPPT; deye_4mppt.yaml = SUN2000G3, 4 MPPT). Both surface generation as a
+  // single "Total AC Output Power (Active)" register at 0x0056/0x0057 (32-bit
+  // low-word-first, x0.1 -> W) - post-inverter, so it sums all MPPTs and is
+  // MPPT-count-agnostic. No battery, no grid meter, no SoC. We expose it as
+  // pv_power_kw. The active-power-limit WRITE (0x0028) stays the control lever.
   micro: {
-    label: 'Mikrowechselrichter (nur Leistungsbegrenzung)',
+    label: 'Mikrowechselrichter (SUN*G3, Erzeugung + Leistungsbegrenzung)',
     hasBattery: false,
-    reads: [],
-    fields: {},
+    reads: [{ start: 0x0056, count: 0x0002 }],
+    fields: {
+      pv: { addr: 0x0056, bits: 32, signed: false, scale: 0.1 }, // AC output, raw x0.1 -> W
+    },
   },
 };
 
@@ -181,13 +219,17 @@ function fieldValue(blocks, f) {
  * canonical cloud fields (power_kw / pv_power_kw / load_kw / soc_pct) and
  * `batt_kw` is the calibration-only battery power (never published).
  *
- * config = { family, invert_grid_sign?, invert_batt_sign? }.
+ * config = { family, invert_grid_sign?, invert_batt_sign?, power_scale? }.
+ * `power_scale` (default 1) multiplies every POWER field (pv/load/grid/batt,
+ * never SoC) on top of its per-field base scale - the documented lever for the
+ * hybrid_3p HV-decawatt firmware (set 10) without touching the map.
  */
 function decode(blocks, config) {
   const fam = FAMILIES[config && config.family];
   if (!fam) return null;
   const f = fam.fields;
-  const toKw = (w) => round3(w / 1000);
+  const pscale = Number(config.power_scale) > 0 ? Number(config.power_scale) : 1;
+  const toKw = (w) => round3((w * pscale) / 1000);
   const reading = {};
   let batt_kw;
 

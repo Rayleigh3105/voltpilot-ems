@@ -54,7 +54,7 @@ flow.set('deye_wechselrichter', [
     port: 8899,                // Solarman-V5-Standardport
     serial: 2985159064,        // PFLICHT: DATALOGGER-Seriennummer (Zahl!) - NICHT die WR-Seriennummer
     mb_slave_id: 1,            // Modbus-Unit-ID (Standard 1)
-    family: 'string',          // 'string' | 'hybrid_1p' | 'hybrid_3p'
+    family: 'string',          // 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'
     invert_grid_sign: false,
     invert_batt_sign: false,
     limit_stages: []
@@ -141,30 +141,52 @@ Die Funktionsknoten im Flow tragen eine **Kopie** dieser Logik (ein Node-RED-Flo
 
 ## 2. Familien & Registerkarten
 
-Alle Momentanleistungen sind **einzelne 16-Bit-Register (in W)**, sofern nicht als 32-Bit markiert; die Skalierung wird zu **kW (/1000)** gerechnet, PV wird bei geteilten Strings summiert.
+Die Registerkarten stammen aus der Deye-Definitionsbibliothek von [StephanJoubert/home_assistant_solarman](https://github.com/StephanJoubert/home_assistant_solarman) - der Community-Referenz zum Lesen von Deye über einen Solarman-Logger.
+Die **fünf** ha-solarman-Deye-Definitionen fallen auf **vier** unterschiedliche Karten (= Familien) zusammen:
+
+### Modell → Familie (Auswahlhilfe)
+
+| Deye-Modelle (Beispiele) | ha-solarman-Definition | Familie | Telemetrie |
+|---|---|---|---|
+| **String / netzgekoppelt**, 1-2 MPPT, ohne Speicher: `SUN-4/5/6/8/10/12K-G03`, 3-phasige `-G04`-String | `deye_string.yaml` | **`string`** | `pv_power_kw` (= AC-Ausgang) |
+| **Mikrowechselrichter** (Deye/Bosswerk): `SUN600/800/1000/1300/1600G3` (2 MPPT), `SUN2000G3` (4 MPPT), Bosswerk MI300-MI2000 | `deye_2mppt.yaml`, `deye_4mppt.yaml` | **`micro`** | `pv_power_kw` (= AC-Ausgang) |
+| **1-phasige Hybride** (low map): `SUN-5/6/8/10/12K-SG03LP1` | `deye_hybrid.yaml` | **`hybrid_1p`** | `soc_pct`, `pv_power_kw`, `load_kw`, `power_kw`, `batt`\* |
+| **3-phasige Hybride** (high map): LV `SUN-5..12K-SG04LP3` (2 MPPT), HV `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4` (3-4 MPPT) | `deye_sg04lp3.yaml` | **`hybrid_3p`** | `soc_pct`, `pv_power_kw`, `load_kw`, `power_kw`, `batt`\* |
+
+\* `batt` (Batterieleistung) ist **kein** Cloud-Telemetriefeld - nur Kalibrier-/Statushilfe (siehe Ende von [Abschnitt 2](#micro---deyebosswerk-mikrowechselrichter)).
+
+**String und Mikro liefern nur die Erzeugung** (AC-Ausgangsleistung des Wechselrichters) - sie haben **kein** Netz-/Last-Register (das ist ein Hybrid-Feature). Die AC-Ausgangsleistung summiert bereits **alle MPPT-Strings** (post-inverter), ist also MPPT-Zahl-unabhängig (1-4 Strings).
+
+Alle Momentanleistungen sind **einzelne 16-Bit-Register (in W)**, sofern nicht als 32-Bit markiert; die Skalierung wird zu **kW (/1000)** gerechnet, PV wird bei geteilten Strings (Hybride) summiert.
 `power_kw`-Konvention: **+ = Netzbezug / − = Einspeisung** (kalibrieren!).
 
-> ⚠️ **Skalierung und Vorzeichen sind trianguliert** (aus sunsynk / ha-solarman / deye-controller) und **am Gerät zu verifizieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)).
+> ⚠️ **Die Adressen sind autoritativ aus ha-solarman**; einzelne **Skalierungen und alle rohen Vorzeichen** sind firmwareabhängig und **am Gerät zu verifizieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)).
 
-### `string` - 3-phasig netzgekoppelt + Zähler, **ohne** Batterie (kein SoC)
+### `string` - netzgekoppelter String-Wechselrichter, **ohne** Batterie (kein SoC)
 
-| Feld | Register | Breite | Skalierung |
-|---|---|---|---|
-| `pv_power_kw` | `0x0050` | 32-Bit | × 0,1 → W → /1000 |
-| `load_kw` | `0x00C6` | 32-Bit | × 1 → W → /1000 |
-| `power_kw` (Netz) | `0x00CB` | 32-Bit, **vorzeichenbehaftet** | × 1 → W → /1000 |
+Ein String-Wechselrichter kennt nur seine **eigene AC-Ausgangsleistung** (= PV-Erzeugung). Er hat **kein** Netz-Import/Export- oder Hauslast-Register (das sind Hybrid-Features).
+ha-solarman (`deye_string.yaml`) führt als Leistungs-Headline "Total Output AC Power":
 
-Ein Leseblock: `-xmb 0050007D` (0x50..0xCC, 125 Register = Modbus-fn-0x03-Maximum).
+| Feld | Register | Breite | Skalierung | Quelle |
+|---|---|---|---|---|
+| `pv_power_kw` (= AC-Ausgang) | `0x0050`/`0x0051` | 32-Bit, low-word-first | × 0,1 → W → /1000 | ha-solarman "Total Output AC Power" |
 
-### `hybrid_1p` - SUN-5/6/8K-SG03LP1 (low map)
+Die AC-Ausgangsleistung ist **post-inverter** und damit bereits die **Summe aller MPPT-Strings** (1-4), also MPPT-Zahl-unabhängig.
+Ein Leseblock: `-xmb 00500002` (nur das AC-Ausgangs-Paar; ha-solarman liest 0x0003..0x0070 für den vollen Sensorsatz - wir brauchen nur die Erzeugung).
 
-| Feld | Register | Breite |
+> Wer **je-String-DC-Detail** will: die Register `0x006D`/`0x006E` (PV1 U/I), `0x006F`/`0x0070` (PV2 U/I) usw. liefern Spannung/Strom (× 0,1); DC-Leistung = U × I je String. Für die Cloud genügt aber die AC-Erzeugungssumme oben.
+
+### `hybrid_1p` - 1-phasige Hybride, low map (SUN-5/6/8/10/12K-SG03LP1)
+
+Adressen **exakt** aus ha-solarman `deye_hybrid.yaml` (alle × 1 → W bzw. %):
+
+| Feld | Register (dez.) | Breite |
 |---|---|---|
-| `soc_pct` | `0x00B8` | 16-Bit (%) |
-| `pv_power_kw` | `0x00BA` + `0x00BB` (PV1+PV2, Summe) | 16-Bit |
-| `power_kw` (Netz) | `0x00A9` | 16-Bit, **vorzeichenbehaftet** |
-| `load_kw` | `0x00B2` | 16-Bit |
-| `batt` (nur Kalibrierung) | `0x00BE` | 16-Bit, **vorzeichenbehaftet** |
+| `soc_pct` | `0x00B8` (184) | 16-Bit (%) |
+| `pv_power_kw` | `0x00BA` (186) + `0x00BB` (187), Summe PV1+PV2 | 16-Bit je |
+| `power_kw` (Netz) | `0x00A9` (169) | 16-Bit, **vorzeichenbehaftet** |
+| `load_kw` | `0x00B2` (178) | 16-Bit |
+| `batt` (nur Kalibrierung) | `0x00BE` (190) | 16-Bit, **vorzeichenbehaftet** |
 
 Ein Leseblock: `-xmb 00A90016` (0xA9..0xBE, 22 Register).
 
@@ -190,15 +212,20 @@ Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein
 >
 > **VERIFY-on-device (offen bis zum Live-Read):**
 > 1. **Netz-Vorzeichen** (`invert_grid_sign`) - firmwareabhängig; mittags per PV-Überschuss kalibrieren (siehe [Abschnitt 5](#5-vorzeichen-kalibrierung-am-gerät)).
-> 2. **Skalierung auf dem 50-kW-HV-Gerät.** Die Karte nutzt `scale = 1` (Watt) wie ha-solarman. Falls die Live-Werte gegen die Logger-Statusseite **~10× zu klein** wirken oder `power_kw` bei ±32,7 kW klemmt (int16-Sättigung), nutzt diese HV-Firmware **Dezawatt** - dann in [`deye/deye-decode.js`](deye/deye-decode.js) die `scale` von `grid`/`load`/`pv` in `hybrid_3p` auf `10` setzen (ein Ein-Zeilen-Fix je Feld) und den Test anpassen.
+> 2. **Skalierung auf dem HV-Gerät** (`power_scale`, Default `1`). Die Karte nutzt Watt (`scale = 1`) wie ha-solarman - so am Captain-SG01HP3 in #49 gelesen. Falls die Live-Werte auf **einem anderen** HV-Gerät gegen die Logger-Statusseite **~10× zu klein** wirken oder `power_kw` bei ±32,7 kW klemmt (int16-Sättigung), nutzt diese HV-Firmware **Dezawatt** - dann **`power_scale: 10`** in die Wechselrichter-Konfiguration setzen (kein Code-/Karten-Edit; `power_scale` multipliziert alle Leistungsfelder pv/grid/load/batt, niemals SoC).
 
-### `micro` - Deye/Bosswerk-Mikrowechselrichter
+### `micro` - Deye/Bosswerk-Mikrowechselrichter (SUN*G3)
 
-Monitoring minimal; der Deliverable ist die **Wirkleistungsbegrenzung** an `0x0028` ([Abschnitt 4](#4-wirkleistungsbegrenzung-stringmicro)).
-Es werden keine Messwertregister gelesen (kein Telemetrie-Block).
+ha-solarman `deye_2mppt.yaml` (SUN600..1600G3, 2 MPPT) und `deye_4mppt.yaml` (SUN2000G3, 4 MPPT) führen die Erzeugung als **eine** "Total AC Output Power (Active)":
 
-> **Warum ein Block statt vieler Einzel-Lesungen?** Ein Lesebefehl liefert einen zusammenhängenden Block; die Felder werden per absoluter Adresse extrahiert. Das hält die AT-Runden minimal und vermeidet gleichzeitige `deye`-Prozesse auf dem Logger.
-> Falls ein Logger den 125-Register-Block der `string`-Familie ablehnt, den Leseplan im Knoten *Leseplan bauen* in zwei Blöcke teilen (`0x0050`/Länge 2 für PV und `0x00C6`/Länge 7 für Last+Netz) - die Lese-Kette ist bereits sequenziell und verträgt mehrere Blöcke.
+| Feld | Register | Breite | Skalierung | Quelle |
+|---|---|---|---|---|
+| `pv_power_kw` (= AC-Ausgang) | `0x0056`/`0x0057` | 32-Bit, low-word-first | × 0,1 → W → /1000 | ha-solarman "Total AC Output Power (Active)" |
+
+Ein Leseblock: `-xmb 00560002`. Wie beim String ist der AC-Ausgang post-inverter = Summe aller MPPTs (2 oder 4), also MPPT-Zahl-unabhängig. Kein Netz, keine Last, kein SoC.
+Zusätzlich bleibt die **Wirkleistungsbegrenzung** an `0x0028` ([Abschnitt 4](#4-wirkleistungsbegrenzung-stringmicro)) der Steuerpfad.
+
+> **Warum ein Block statt vieler Einzel-Lesungen?** Ein Lesebefehl liefert einen zusammenhängenden Block; die Felder werden per absoluter Adresse extrahiert. Das hält die AT-Runden minimal und vermeidet gleichzeitige `deye`-Prozesse auf dem Logger. Die Hybrid-Familien lesen einen 22- (`hybrid_1p`) bzw. 88-Register-Block (`hybrid_3p`), string/micro nur ein 2-Register-Paar - alle unter dem 125-Register-Maximum von Modbus fn 0x03. Die Lese-Kette ist sequenziell und verträgt bei Bedarf auch mehrere Blöcke.
 
 `batt` ist **kein** Cloud-Telemetriefeld: es wird nur gelesen, um Vorzeichen zu kalibrieren und im Knotenstatus/Debug anzuzeigen. Die Cloud leitet die Batterieleistung aus der Leistungsbilanz ab (siehe `CUSTOM-INVERTER.md`).
 `grid_limit_kw` (§14a-Hüllkurve) liefern diese Deye-Register nicht direkt; das Feld bleibt daher leer (optional). Wer es aus einem separaten Zähler/Register hat, ergänzt es im Decoder-Knoten.
@@ -274,6 +301,7 @@ Prüfen: `docker compose exec nodered deye` zeigt die Usage; ein Live-Lesetest: 
        family: 'hybrid_1p',          // 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'
        invert_grid_sign: false,
        invert_batt_sign: false,
+       power_scale: 1,               // nur hybrid_3p HV bei Bedarf 10 (Dezawatt-Firmware) - siehe Abschnitt 2
        limit_stages: []              // nur string/micro: z. B. [0, 25, 50, 75, 100]
      }
    ]);
