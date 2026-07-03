@@ -172,6 +172,12 @@ func (e *Enroller) Run(ctx context.Context) (Identity, error) {
 				e.setState(StateRefUnknown)
 				slog.Warn("enrollment: reference unknown to the provisioned-device registry (422); retrying",
 					"ref", e.Ref, "body", string(body))
+			} else if status == http.StatusNotFound {
+				// The enrollment endpoint is absent at this host. The usual
+				// cause is VP_PORTAL_BASE_URL pointing at the marketing site
+				// (voltpilot.de) instead of the portal API (portal.voltpilot.de).
+				slog.Error("enrollment: the portal API has no enrollment endpoint at this URL (HTTP 404) - check VP_PORTAL_BASE_URL; it must be the portal API host (e.g. https://portal.voltpilot.de), NOT the marketing site",
+					"portal_base_url", e.PortalBaseURL, "ref", e.Ref)
 			} else {
 				slog.Warn("enrollment: CSR upload refused; retrying", "status", status, "body", string(body))
 			}

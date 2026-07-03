@@ -41,9 +41,12 @@ cp .env.example .env
 Dann in `.env` mindestens diese Werte setzen:
 
 ```dotenv
-# Live-Cloud - der Portal-Host MUSS explizit gesetzt werden.
-# (Der eingebaute Standard ist https://voltpilot.de und stimmt fuer echte
-#  Geraete NICHT - immer portal.voltpilot.de eintragen.)
+# Live-Cloud. WICHTIG: der Portal-Host ist die Portal-API portal.voltpilot.de,
+# NICHT die Marketing-Seite voltpilot.de. Der Default ist inzwischen korrekt
+# (portal.voltpilot.de), aber setze VP_PORTAL_BASE_URL fuer den Produktivbetrieb
+# hier explizit - so ist der Cloud-Endpunkt unmissverstaendlich dokumentiert.
+# (Ein falscher Host -> HTTP 404 auf den CSR-Upload; der Core loggt das mit
+#  einem klaren Hinweis auf VP_PORTAL_BASE_URL.)
 VP_PORTAL_BASE_URL=https://portal.voltpilot.de
 VP_MQTT_HOST=mqtt.voltpilot.de
 VP_MQTT_PORT=8883
@@ -142,6 +145,7 @@ Wenn die Werte im Portal stehen, ist das Gerät produktiv angebunden.
 
 ## Fehlerbilder (kurz)
 
+- **CSR-Upload wird mit HTTP 404 abgelehnt** (Core-Log: "the portal API has no enrollment endpoint at this URL"): `VP_PORTAL_BASE_URL` zeigt auf den falschen Host (die Marketing-Seite `voltpilot.de` statt der Portal-API `portal.voltpilot.de`). Korrigieren und `docker compose up -d` erneut.
 - **Pairing bleibt auf *warte_auf_beanspruchung*:** Referenz im Portal noch nicht beansprucht, oder ein Tippfehler zwischen `VP_REF` und der beanspruchten Referenz - beide müssen exakt übereinstimmen.
 - **VP-Aufkleber-ID wird abgelehnt (unbekannte Referenz):** eine `VP-`-Referenz muss in der Geräte-Registry hinterlegt sein (Plattform -> Geräte-Registry). Für einen Eigenbetrieb einfach `VP_REF` leer lassen (ungegatete `edge-xxxxxx`) oder eine eigene Nicht-`VP-`-Referenz wählen.
 - **Keine Telemetrie trotz "Verbunden":** Deye-Tab noch nicht aktiviert / Simulator-Tab noch aktiv, oder `ip`/`family` im *Deye-Konfiguration*-Knoten falsch - Node-RED-Debug prüfen, siehe [`nodered/DEYE.md`](nodered/DEYE.md).

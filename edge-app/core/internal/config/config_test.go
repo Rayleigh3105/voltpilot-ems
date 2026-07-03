@@ -27,7 +27,7 @@ func TestDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.PortalBaseURL != "https://voltpilot.de" {
+	if cfg.PortalBaseURL != "https://portal.voltpilot.de" {
 		t.Errorf("portal default: %q", cfg.PortalBaseURL)
 	}
 	if cfg.MQTTHost != "mqtt.voltpilot.de" || cfg.MQTTPort != 8883 {

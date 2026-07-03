@@ -23,7 +23,7 @@ services:
     image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest
     restart: unless-stopped
     environment:
-      VP_PORTAL_BASE_URL: ${VP_PORTAL_BASE_URL:-https://voltpilot.de}
+      VP_PORTAL_BASE_URL: ${VP_PORTAL_BASE_URL:-https://portal.voltpilot.de}
       VP_MQTT_HOST: ${VP_MQTT_HOST:-mqtt.voltpilot.de}
       VP_MQTT_PORT: ${VP_MQTT_PORT:-8883}
       VP_REF: ${VP_REF:-}

@@ -76,7 +76,7 @@ type Config struct {
 // Defaults returns the built-in configuration.
 func Defaults() Config {
 	return Config{
-		PortalBaseURL:            "https://voltpilot.de",
+		PortalBaseURL:            "https://portal.voltpilot.de",
 		MQTTHost:                 "mqtt.voltpilot.de",
 		MQTTPort:                 8883,
 		DataDir:                  "/data",
