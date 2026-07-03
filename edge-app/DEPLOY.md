@@ -76,7 +76,8 @@ VP_NODERED_PORT=1881
 ## 3. Im echten Modus hochfahren (ohne Simulator)
 
 ```bash
-docker compose up -d --build
+docker login git.tecmaxx.de   # einmalig, mit den bereitgestellten Zugangsdaten
+docker compose up -d           # zieht die fertigen Registry-Images (pull_policy: always), kein lokaler Build
 ```
 
 Das startet genau **`core` + `nodered`** - **kein** `edge-sim` (der Simulator hängt am Profil `sim` und bleibt hier aus).
@@ -99,7 +100,7 @@ docker compose pull core nodered      # fertige Images ziehen (kein Build)
 docker compose up -d                  # ohne --build starten
 ```
 
-Der lokale Build (`docker compose up -d --build` aus Abschnitt 3) bleibt der Fallback, wenn die VM die Registry nicht erreicht oder ein Image für die Ziel-Architektur fehlt.
+Der lokale Build (`docker compose up -d --build`) bleibt der Fallback, wenn die VM die Registry nicht erreicht oder ein Image für die Ziel-Architektur fehlt.
 
 Der Core erzeugt beim ersten Start seinen EC-P-256-Schlüssel lokal (der private Schlüssel verlässt das Gerät nie), lädt den CSR zum Portal hoch und pollt - der Pairing-Zustand steht dann auf *warte_auf_beanspruchung*.
 

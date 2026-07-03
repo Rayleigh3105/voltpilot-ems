@@ -1,7 +1,14 @@
 # VoltPilot Edge-App: the installable customer-side edge.
 #
-#   docker compose up -d                      -> core + Node-RED (real inverter, wired per customer)
-#   docker compose --profile sim up -d --build -> PLUS the SunSpec simulator: full edge, zero hardware
+# Pull-based deploy (prebuilt images, no local build):
+#   docker login git.tecmaxx.de
+#   docker compose up -d                       -> core + Node-RED (real inverter, wired per customer)
+#   docker compose --profile sim up -d         -> PLUS the SunSpec simulator: full edge, zero hardware
+#
+# Every `up` always pulls the prebuilt registry images (pull_policy: always).
+# Developers can still force a local build with `--build`:
+#   docker compose up -d --build
+#   docker compose --profile sim up -d --build
 #
 # Two layers, one package:
 #   core     Layer 2 (Go): identity/enrollment, the ONLY cloud connection (mTLS
@@ -21,9 +28,10 @@ services:
     build:
       context: ./core
     image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest
+    pull_policy: always
     restart: unless-stopped
     environment:
-      VP_PORTAL_BASE_URL: ${VP_PORTAL_BASE_URL:-https://voltpilot.de}
+      VP_PORTAL_BASE_URL: ${VP_PORTAL_BASE_URL:-https://portal.voltpilot.de}
       VP_MQTT_HOST: ${VP_MQTT_HOST:-mqtt.voltpilot.de}
       VP_MQTT_PORT: ${VP_MQTT_PORT:-8883}
       VP_REF: ${VP_REF:-}
@@ -51,6 +59,7 @@ services:
     build:
       context: ./nodered
     image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       - core
@@ -75,6 +84,7 @@ services:
     build:
       context: ../edge/sim
     image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-sim:latest
+    pull_policy: always
     restart: unless-stopped
     environment:
       SIM_PORT: "502"
