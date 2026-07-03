@@ -15,6 +15,7 @@ import {
 } from '../api';
 import { NBSP } from '../format';
 import { SitePicker } from '../components/SitePicker';
+import { InfoTip } from '../components/InfoTip';
 import { ForecastQualityChart } from '../ForecastQualityChart';
 
 /**
@@ -32,9 +33,15 @@ const MODEL_LABELS: Record<ForecastModelId, string> = {
   'pv-residual-xgb': 'Lernende PV-Korrektur',
 };
 
+/**
+ * The two forecast KINDS the system runs, named consistently everywhere so the
+ * "2 Arten × (1 aktiv + 1 Kandidat)" structure is unmistakable: one Verbrauchs-
+ * and one PV-Prognose, each with exactly one active model and at most one
+ * shadow challenger.
+ */
 const KIND_LABELS: Record<'load' | 'pv', string> = {
-  load: 'Verbrauch (Last)',
-  pv: 'PV-Erzeugung',
+  load: 'Verbrauchsprognose (Last)',
+  pv: 'PV-Prognose (Erzeugung)',
 };
 
 function modelLabel(model: ForecastModelId): string {
@@ -141,6 +148,60 @@ export function PrognosePage(props: {
         </Card>
       ) : (
         <>
+          {/* Intro: what this page is, and what "live" vs "Schattenbetrieb" mean. */}
+          <section className="vp-section" style={{ marginTop: 'var(--vp-space-5)' }}>
+            <Card padding="lg" radius="lg">
+              <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
+                <IconTile category="primary" size={40}>
+                  <Icon name="info" size={20} />
+                </IconTile>
+                <h2>Was sehe ich hier?</h2>
+              </div>
+              <p style={{ margin: 0, maxWidth: '74ch' }}>
+                Diese Seite zeigt, wie treffsicher die Prognosen sind, mit denen Ihre
+                Anlage ihren Batterie-Fahrplan plant. Ihre Anlage nutzt dafür{' '}
+                <strong>zwei getrennte Prognosen</strong>: eine für den{' '}
+                <strong>Verbrauch (Last)</strong> und eine für die{' '}
+                <strong>PV-Erzeugung</strong>. Aus beiden berechnet die Optimierung, wann
+                sich Laden und Entladen lohnt - je genauer die Prognose, desto besser der
+                Plan.
+              </p>
+              <p style={{ margin: 'var(--vp-space-3) 0 0', maxWidth: '74ch' }}>
+                Jede der beiden Prognosen hat genau <strong>ein aktives Modell</strong>,
+                das den Fahrplan steuert - und optional einen{' '}
+                <strong>lernenden Kandidaten</strong>, der im Hintergrund mitrechnet, ohne
+                etwas zu steuern. Unten stehen beide Prognosen getrennt: erst die aktiven
+                Modelle, dann die Kandidaten.
+              </p>
+              <div className="vp-legend" style={{ marginTop: 'var(--vp-space-4)' }}>
+                <div className="vp-legend-item">
+                  <span className="vp-badge-hold">
+                    <Badge variant="ok" dot>
+                      live
+                    </Badge>
+                  </span>
+                  <span>
+                    Das aktive Modell - genau diese Prognosen nutzt die Optimierung, um
+                    Ihre Anlage zu steuern.
+                  </span>
+                </div>
+                <div className="vp-legend-item">
+                  <span className="vp-badge-hold">
+                    <Badge variant="tint">Schattenbetrieb</Badge>
+                  </span>
+                  <span>
+                    Lernende Kandidaten - sie rechnen mit und werden bewertet, haben aber
+                    keinerlei Einfluss auf die Steuerung.
+                  </span>
+                </div>
+              </div>
+              <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+                Ein Kandidat wird nie automatisch aktiv: Das Umschalten des aktiven Modells
+                ist immer eine bewusste Entscheidung anhand dieser Auswertung.
+              </p>
+            </Card>
+          </section>
+
           {loading && (
             <Card padding="lg" radius="lg">
               <p className="vp-muted">Lade Prognosequalität…</p>
@@ -162,22 +223,31 @@ export function PrognosePage(props: {
                     <IconTile category="dynamic" size={40}>
                       <Icon name="check" size={20} />
                     </IconTile>
-                    <h2>Aktive Prognosen</h2>
+                    <h2>Aktive Modelle</h2>
+                    <InfoTip title="Ø Abweichung (MAE)">
+                      Mittlerer absoluter Fehler in kW: der durchschnittliche Abstand
+                      zwischen Prognose und tatsächlichem Messwert - berechnet je
+                      Viertelstunde und über die Tage gemittelt. Niedriger = genauer.
+                    </InfoTip>
                   </div>
-                  <div className="vp-grid vp-grid-stats">
+                  <p className="vp-muted" style={{ margin: '0 0 var(--vp-space-4)' }}>
+                    Je ein aktives Modell steuert die beiden Prognosen. Genau diese Modelle
+                    plant Ihre Anlage - keine Doppelung, sondern zwei verschiedene Arten.
+                  </p>
+                  <div className="vp-grid vp-grid-two">
                     {(['load', 'pv'] as const).map((kind) => {
                       const model = activeByKind[kind];
                       const recent = recentMae(quality.accuracy, model);
                       return (
-                        <div key={kind}>
-                          <p className="vp-muted" style={{ margin: '0 0 4px' }}>
-                            {KIND_LABELS[kind]}
-                          </p>
-                          <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
-                            {modelLabel(model)}{' '}
+                        <div key={kind} className="vp-kind-card">
+                          <div className="vp-kind-head">
+                            <span className="vp-kind-title">{KIND_LABELS[kind]}</span>
                             <Badge variant="ok" dot>
-                              live
+                              aktiv
                             </Badge>
+                          </div>
+                          <p style={{ margin: '0 0 10px', fontWeight: 600 }}>
+                            {modelLabel(model)}
                           </p>
                           <Stat
                             value={recent ? kw(recent.mae) : '-'}
@@ -207,15 +277,27 @@ export function PrognosePage(props: {
                     </IconTile>
                     <h2>Lernende Kandidaten</h2>
                     <Badge variant="tint">Schattenbetrieb</Badge>
+                    <InfoTip title="Skill: besser als das aktive Modell?">
+                      Skill = 1 − (Fehler des Kandidaten ÷ Fehler des aktiven Modells).
+                      0 = so gut wie das aktive Modell, positiv = besser, negativ =
+                      schlechter. „In X von Y Bewertungen genauer“ zählt die Tage mit
+                      positivem Skill.
+                    </InfoTip>
                   </div>
+                  <p className="vp-muted" style={{ margin: '0 0 var(--vp-space-4)' }}>
+                    Zu jeder der beiden Prognosen kann höchstens ein Kandidat mitlernen. Er
+                    wird gegen genau das aktive Modell derselben Art bewertet - der
+                    Verbrauchs-Kandidat gegen die Verbrauchsprognose, der PV-Kandidat gegen
+                    die PV-Prognose.
+                  </p>
 
                   {challengers.length === 0 ? (
                     <div className="vp-empty">
                       <h3>Noch keine Kandidaten aktiv</h3>
                       <p>
-                        Sobald Messdaten eintreffen, beginnen die lernenden Modelle im
-                        Hintergrund mitzurechnen. Die Bewertung startet nach dem ersten
-                        vollen Tag mit Daten.
+                        Sobald Messdaten eintreffen, beginnt je Prognoseart ein lernendes
+                        Modell im Hintergrund mitzurechnen. Die Bewertung startet nach dem
+                        ersten vollen Tag mit Daten.
                       </p>
                     </div>
                   ) : (
@@ -244,6 +326,12 @@ export function PrognosePage(props: {
                           <Icon name="activity" size={20} />
                         </IconTile>
                         <h2>Treffsicherheit {KIND_LABELS[kind]}</h2>
+                        <InfoTip title="Ø Abweichung (MAE) je Tag">
+                          Jeder Punkt ist die mittlere Abweichung eines Modells an einem
+                          Tag in kW (Prognose gegen Messwert). Niedriger = genauer.
+                          Durchgezogen: aktives Modell. Gestrichelt: lernender Kandidat
+                          (ohne Einfluss auf die Steuerung).
+                        </InfoTip>
                       </div>
                       <ForecastQualityChart
                         points={points}
@@ -375,8 +463,10 @@ function ChallengerCard({
             </div>
           )}
           <p className="vp-note" style={{ marginTop: 8 }}>
-            Der Kandidat wartet, bis genug Messtage vorliegen - vorher gibt er bewusst
-            keine Prognose ab.
+            Das ist normal: Ein lernendes Modell trainiert erst nach 21 vollständigen
+            Messtagen. Bis dahin sammelt es nur Daten und gibt bewusst keine Prognose ab.
+            Danach erstellt es automatisch eigene Vorhersagen und wird täglich gegen das
+            aktive Modell bewertet.
           </p>
         </>
       ) : (

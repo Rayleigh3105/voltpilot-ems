@@ -18,6 +18,7 @@ export type IconName =
   | 'x'
   | 'menu'
   | 'check'
+  | 'info'
   | 'pencil'
   | 'trash'
   | 'chevron-left'

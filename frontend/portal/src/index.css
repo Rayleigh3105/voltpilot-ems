@@ -336,6 +336,112 @@ button {
   font-size: var(--vp-text-meta);
   color: var(--vp-text-muted);
 }
+
+/* InfoTip: inline info icon + hover/tap explanation bubble */
+.vp-infotip {
+  display: inline-flex;
+  vertical-align: middle;
+}
+.vp-infotip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vp-text-muted);
+  border-radius: var(--vp-radius-full);
+  cursor: help;
+  transition: var(--vp-transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.vp-infotip-btn:hover,
+.vp-infotip-btn[aria-expanded='true'] {
+  color: var(--vp-primary-deep);
+}
+.vp-infotip-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-infotip-bubble {
+  position: fixed;
+  z-index: 1200;
+  max-width: min(300px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--vp-space-3) var(--vp-space-4);
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  box-shadow: var(--vp-shadow-md);
+  font-size: var(--vp-text-sm);
+  line-height: 1.5;
+  pointer-events: none;
+}
+.vp-infotip-title {
+  font-weight: 700;
+}
+.vp-infotip-body {
+  color: var(--vp-text-muted);
+}
+
+/* Legend rows (badge + one-line gloss) */
+.vp-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+.vp-legend-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text);
+}
+.vp-legend-item > .vp-badge-hold {
+  flex: 0 0 auto;
+  min-width: 8.5rem;
+}
+.vp-legend-item > span:last-child {
+  min-width: 0;
+}
+@media (max-width: 520px) {
+  .vp-legend-item {
+    flex-direction: column;
+    gap: var(--vp-space-1);
+  }
+}
+
+/* Two side-by-side kind cards (Verbrauchs- vs PV-Prognose) */
+.vp-grid-two {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--vp-space-4);
+}
+.vp-kind-card {
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  padding: var(--vp-space-4);
+  background: var(--vp-surface);
+}
+.vp-kind-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  margin-bottom: var(--vp-space-3);
+}
+.vp-kind-title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--vp-text-meta);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--vp-tracking-wide);
+  color: var(--vp-primary-deep);
+}
 /* An inline text action styled as a link (register/back toggles). */
 .vp-linklike {
   background: none;
