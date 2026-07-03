@@ -1,0 +1,129 @@
+/* ============================================================
+   VoltPilot design system - core component styles.
+   Button and Card affordance moved from inline JS onMouseEnter/Leave
+   to real CSS :hover / :active / :focus-visible so touch and keyboard
+   users get the same feedback (and the inline event handlers shrink).
+   Plus the shared Skeleton shimmer. Built entirely on the tokens.
+   Import once at the app root (see frontend/portal/src/main.tsx).
+   ============================================================ */
+
+/* ---------- Button ---------- */
+.vp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--vp-font-heading);
+  font-weight: 700;
+  line-height: 1;
+  border: 2px solid transparent;
+  border-radius: var(--vp-radius-btn);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--vp-transition);
+  /* size defaults (md); overridden by the size modifiers below */
+  padding: 0.85rem 1.75rem;
+  font-size: 1rem;
+}
+.vp-btn--sm { padding: 0.55rem 1.1rem; font-size: 0.9rem; }
+.vp-btn--md { padding: 0.85rem 1.75rem; font-size: 1rem; }
+.vp-btn--lg { padding: 1rem 2.25rem; font-size: 1.05rem; }
+
+.vp-btn:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-btn:not(:disabled):hover { transform: var(--vp-lift); }
+.vp-btn:not(:disabled):active { transform: translateY(-1px); }
+.vp-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+
+/* primary: deep action ink so white text passes AA (was a pale gradient) */
+.vp-btn--primary {
+  background: var(--vp-action);
+  color: #fff;
+  box-shadow: var(--vp-shadow-btn);
+}
+.vp-btn--primary:not(:disabled):hover {
+  box-shadow: var(--vp-shadow-hover);
+  filter: brightness(0.95);
+}
+.vp-btn--primary:not(:disabled):active { filter: brightness(0.9); }
+
+.vp-btn--white {
+  background: var(--vp-surface);
+  color: var(--vp-action);
+  box-shadow: var(--vp-shadow-md);
+}
+
+.vp-btn--outline {
+  background: transparent;
+  color: var(--vp-action);
+  border-color: var(--vp-action);
+}
+.vp-btn--outline:not(:disabled):hover { background: var(--vp-tint); }
+
+.vp-btn--outline-light {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+.vp-btn--outline-light:not(:disabled):hover { background: rgba(255, 255, 255, 0.15); }
+
+.vp-btn--ghost {
+  background: transparent;
+  color: var(--vp-text-gray);
+}
+.vp-btn--ghost:not(:disabled):hover { background: var(--vp-bg-light); }
+
+/* ---------- Card ---------- */
+.vp-card {
+  position: relative;
+  background: var(--vp-surface);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  box-shadow: var(--vp-shadow-sm);
+  overflow: hidden;
+  transition: var(--vp-transition);
+}
+.vp-card--interactive { cursor: pointer; }
+.vp-card--interactive:hover {
+  transform: var(--vp-lift-lg);
+  box-shadow: var(--vp-shadow-hover);
+}
+.vp-card__accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: var(--vp-transition);
+}
+.vp-card--interactive:hover .vp-card__accent,
+.vp-card--interactive:focus-visible .vp-card__accent { transform: scaleX(1); }
+.vp-card--interactive:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* ---------- Skeleton (loading placeholder) ---------- */
+.vp-skeleton {
+  display: block;
+  border-radius: var(--vp-radius-sm);
+  background: linear-gradient(
+    100deg,
+    var(--vp-bg-light) 30%,
+    var(--vp-border) 50%,
+    var(--vp-bg-light) 70%
+  );
+  background-size: 200% 100%;
+  animation: vp-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes vp-skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-skeleton { animation: none; }
+}

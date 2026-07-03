@@ -8,6 +8,7 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi, type ProvisionedDevice } from '../../admin/adminApi';
+import { TableSkeleton } from '../../components/States';
 import { normalizeDeviceIdInput } from '../../Onboarding';
 import { deviceKindLabel } from '../../format';
 
@@ -77,8 +78,8 @@ export function GeraeteRegistryPage() {
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
 
       {devices == null ? (
-        <Card padding="lg" radius="lg">
-          <p className="vp-muted">Lade Geräte-Registry…</p>
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <TableSkeleton rows={4} cols={6} />
         </Card>
       ) : devices.length === 0 ? (
         <Card padding="lg" radius="lg">

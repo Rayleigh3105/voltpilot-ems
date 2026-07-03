@@ -22,6 +22,7 @@ import type { PageId } from '../nav';
 import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
+import { ChartCardSkeleton, ErrorState, Skeleton, TextSkeleton } from '../components/States';
 import { TelemetryChart } from '../TelemetryChart';
 import { PriceChart } from '../PriceChart';
 
@@ -31,14 +32,7 @@ import { PriceChart } from '../PriceChart';
  * honest instead of reassuring.
  */
 function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="vp-alert vp-alert-err" style={{ marginTop: 0 }}>
-      <div style={{ marginBottom: 'var(--vp-space-3)' }}>{message}</div>
-      <Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={onRetry}>
-        Erneut versuchen
-      </Button>
-    </div>
-  );
+  return <ErrorState message={message} onRetry={onRetry} />;
 }
 
 /**
@@ -80,6 +74,7 @@ export function UebersichtPage({
     schedule: false,
   });
   const [reloadKey, setReloadKey] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [deviceDrawer, setDeviceDrawer] = useState(false);
 
@@ -93,6 +88,7 @@ export function UebersichtPage({
       return;
     }
     let active = true;
+    setLoading(true);
     Promise.allSettled([
       api.telemetry(site.id),
       api.prices(site.id),
@@ -110,6 +106,7 @@ export function UebersichtPage({
         weather: w.status === 'rejected',
         schedule: s.status === 'rejected',
       });
+      setLoading(false);
     });
     return () => {
       active = false;
@@ -120,9 +117,16 @@ export function UebersichtPage({
 
   // --- KPI derivations (money first) ---------------------------------------
   const today = new Date();
-  const savingsToday = (schedule?.slots ?? [])
-    .filter((s) => new Date(s.start).toDateString() === today.toDateString())
-    .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+  const todaySlots = (schedule?.slots ?? []).filter(
+    (s) => new Date(s.start).toDateString() === today.toDateString(),
+  );
+  // Distinguish "no plan exists yet" from a genuine 0,00 € (D1): a brand-new
+  // customer must not read the headline as "you saved nothing today".
+  const hasTodayPlan = todaySlots.length > 0;
+  const savingsToday = todaySlots.reduce(
+    (sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)),
+    0,
+  );
 
   const todayPrices = (prices?.points ?? [])
     .filter((p) => new Date(p.ts).toDateString() === today.toDateString())
@@ -219,12 +223,16 @@ export function UebersichtPage({
         <KpiCard
           icon={<Icon name="euro" size={20} />}
           category="battery"
-          value={failed.schedule ? '—' : eurAmount(savingsToday)}
-          label="Heute geplant gespart"
+          value={failed.schedule || !hasTodayPlan ? '—' : eurAmount(savingsToday)}
+          label={
+            failed.schedule ? 'Heute geplant gespart' : hasTodayPlan ? 'Heute geplant gespart' : 'Noch kein Fahrplan'
+          }
           title={
             failed.schedule
               ? 'Der Fahrplan konnte nicht geladen werden - die Ersparnis ist gerade nicht verfügbar.'
-              : 'Projizierte Ersparnis des Batterie-Fahrplans heute gegenüber einem Betrieb ohne Speicher'
+              : hasTodayPlan
+                ? 'Projizierte Ersparnis des Batterie-Fahrplans heute gegenüber einem Betrieb ohne Speicher'
+                : 'Für heute liegt noch kein Batterie-Fahrplan vor - sobald einer erstellt wird, erscheint hier Ihre geplante Ersparnis.'
           }
         />
         <KpiCard
@@ -264,7 +272,9 @@ export function UebersichtPage({
                 <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
               </span>
             </div>
-            {failed.telemetry ? (
+            {loading && telemetry.length === 0 && !failed.telemetry ? (
+              <ChartCardSkeleton />
+            ) : failed.telemetry ? (
               <WidgetError
                 message="Die Live-Daten konnten nicht geladen werden."
                 onRetry={retry}
@@ -283,7 +293,7 @@ export function UebersichtPage({
                   <Stat value={fmtNum(latest?.socPct, '%')} label="Batterie-SoC" />
                 </div>
                 <TelemetryChart points={telemetry} />
-                <p className="vp-note" style={{ marginTop: 12 }}>
+                <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
                   Messwerte Ihrer Geräte aus den letzten 24 Stunden.
                 </p>
               </>
@@ -301,7 +311,9 @@ export function UebersichtPage({
                   {prices && <Badge variant="tint">{prices.biddingZone}</Badge>}
                 </span>
               </div>
-              {failed.prices ? (
+              {loading && !prices && !failed.prices ? (
+                <Skeleton height={140} radius="var(--vp-radius-md)" />
+              ) : failed.prices ? (
                 <WidgetError
                   message="Die Börsenpreise konnten nicht geladen werden."
                   onRetry={retry}
@@ -309,7 +321,7 @@ export function UebersichtPage({
               ) : prices && prices.points.length > 0 ? (
                 <>
                   <PriceChart series={prices} />
-                  <p className="vp-note" style={{ marginTop: 8 }}>
+                  <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
                     <a href="#/marktpreise" onClick={(e) => { e.preventDefault(); onNavigate('marktpreise'); }}>
                       Alle Marktpreise →
                     </a>
@@ -333,7 +345,9 @@ export function UebersichtPage({
                   <span className="vp-note">nächste Stunde</span>
                 </span>
               </div>
-              {failed.weather ? (
+              {loading && !weather && !failed.weather ? (
+                <TextSkeleton lines={2} />
+              ) : failed.weather ? (
                 <WidgetError
                   message="Die Wettervorhersage konnte nicht geladen werden."
                   onRetry={retry}
@@ -347,7 +361,7 @@ export function UebersichtPage({
               ) : (
                 <p className="vp-muted">Noch keine Vorhersage für diesen Standort.</p>
               )}
-              <p className="vp-note" style={{ marginTop: 8 }}>
+              <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
                 <a href="#/wetter" onClick={(e) => { e.preventDefault(); onNavigate('wetter'); }}>
                   Zur Wettervorhersage →
                 </a>
@@ -384,8 +398,8 @@ export function UebersichtPage({
                 style={{ minWidth: 0 }}
                 onClick={() => onSelectSite(s.id)}
               >
-                <h4 style={{ marginBottom: 8 }}>{s.name}</h4>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <h4 style={{ marginBottom: 'var(--vp-space-2)' }}>{s.name}</h4>
+                <div style={{ display: 'flex', gap: 'var(--vp-space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
                   <Badge variant="tint">{s.biddingZone}</Badge>
                   {siteDevices.length > 0 ? (
                     <Badge variant={siteOnline > 0 ? 'ok' : 'off'} dot>

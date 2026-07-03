@@ -19,6 +19,7 @@ import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { DangerZone } from '../components/DangerZone';
 import { DeviceStatusBadge } from '../components/DeviceDrawers';
 import { MastrDrawer } from '../components/MastrDrawer';
+import { ErrorState, TextSkeleton } from '../components/States';
 
 /**
  * Standorte: the repeatable entity pattern - list-in-card, "＋ anlegen" opens
@@ -40,6 +41,8 @@ export function StandortePage({
   const [detail, setDetail] = useState<Site | null>(null);
   const [mastrOpen, setMastrOpen] = useState(false);
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
+  const [assetsError, setAssetsError] = useState(false);
+  const [assetsReloadKey, setAssetsReloadKey] = useState(0);
   const [editing, setEditing] = useState(false);
   const [preview, setPreview] = useState<SiteDeletionPreview | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -53,16 +56,21 @@ export function StandortePage({
     setDeleteError(null);
     if (!detail) {
       setAssets(null);
+      setAssetsError(false);
       return;
     }
     let cancelled = false;
+    setAssets(null);
+    setAssetsError(false);
     api
       .siteAssets(detail.id)
       .then((a) => {
         if (!cancelled) setAssets(a);
       })
       .catch(() => {
-        if (!cancelled) setAssets([]);
+        // Distinguish "couldn't load" from "you have none" (D3): a backend/RLS
+        // failure must not masquerade as an empty Anlage section.
+        if (!cancelled) setAssetsError(true);
       });
     api
       .siteDeletionPreview(detail.id)
@@ -75,7 +83,8 @@ export function StandortePage({
     return () => {
       cancelled = true;
     };
-  }, [detail?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.id, assetsReloadKey]);
 
   async function deleteSite(site: Site) {
     setDeleteBusy(true);
@@ -270,8 +279,13 @@ export function StandortePage({
           <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
             <h2 style={{ fontSize: '1.05rem' }}>Anlage</h2>
           </div>
-          {assets === null ? (
-            <p className="vp-muted">Anlagendaten werden geladen…</p>
+          {assetsError ? (
+            <ErrorState
+              message="Die Anlagendaten konnten nicht geladen werden."
+              onRetry={() => setAssetsReloadKey((k) => k + 1)}
+            />
+          ) : assets === null ? (
+            <TextSkeleton lines={2} />
           ) : linkedAssets.length === 0 ? (
             <>
               <p className="vp-muted">

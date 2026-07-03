@@ -16,6 +16,7 @@ import {
 import { NBSP } from '../format';
 import { SitePicker } from '../components/SitePicker';
 import { InfoTip } from '../components/InfoTip';
+import { ChartCardSkeleton, ErrorState } from '../components/States';
 import { ForecastQualityChart } from '../ForecastQualityChart';
 
 /**
@@ -97,6 +98,7 @@ export function PrognosePage(props: {
   const [quality, setQuality] = useState<ForecastQuality | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!site) {
@@ -114,7 +116,7 @@ export function PrognosePage(props: {
     return () => {
       active = false;
     };
-  }, [site?.id]);
+  }, [site?.id, reloadKey]);
 
   const challengers = useMemo(
     () => (quality?.models ?? []).filter((m) => !m.active),
@@ -204,14 +206,14 @@ export function PrognosePage(props: {
 
           {loading && (
             <Card padding="lg" radius="lg">
-              <p className="vp-muted">Lade Prognosequalität…</p>
+              <ChartCardSkeleton stats={2} />
             </Card>
           )}
           {err && (
-            <div className="vp-alert vp-alert-err">
-              Die Prognosequalität konnte nicht geladen werden ({err}). Bitte versuchen
-              Sie es später erneut.
-            </div>
+            <ErrorState
+              message={`Die Prognosequalität konnte nicht geladen werden (${err}).`}
+              onRetry={() => setReloadKey((k) => k + 1)}
+            />
           )}
 
           {!loading && !err && quality && (
@@ -246,7 +248,7 @@ export function PrognosePage(props: {
                               aktiv
                             </Badge>
                           </div>
-                          <p style={{ margin: '0 0 10px', fontWeight: 600 }}>
+                          <p style={{ margin: '0 0 var(--vp-space-2)', fontWeight: 600 }}>
                             {modelLabel(model)}
                           </p>
                           <Stat
@@ -261,7 +263,7 @@ export function PrognosePage(props: {
                       );
                     })}
                   </div>
-                  <p className="vp-note" style={{ marginTop: 12 }}>
+                  <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
                     Die Abweichung vergleicht jede Viertelstunden-Prognose mit dem
                     tatsächlichen Messwert Ihrer Anlage - je niedriger, desto genauer.
                   </p>
@@ -338,7 +340,7 @@ export function PrognosePage(props: {
                         modelLabels={MODEL_LABELS}
                         activeModel={activeByKind[kind]}
                       />
-                      <p className="vp-note" style={{ marginTop: 12 }}>
+                      <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
                         Tägliche mittlere Abweichung je Modell - je niedriger die Linie,
                         desto genauer die Prognose. Gestrichelt: der lernende Kandidat
                         (ohne Einfluss auf die Steuerung).
@@ -413,12 +415,12 @@ function ChallengerCard({
   return (
     <div
       style={{
-        border: '1px solid var(--vp-color-border, #E9ECEF)',
-        borderRadius: 'var(--vp-radius-md, 10px)',
+        border: '1px solid var(--vp-border)',
+        borderRadius: 'var(--vp-radius-md)',
         padding: 'var(--vp-space-4)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--vp-space-2)', flexWrap: 'wrap' }}>
         <strong>{modelLabel(state.model)}</strong>
         {collecting ? (
           <Badge variant="warn" dot>
@@ -436,7 +438,7 @@ function ChallengerCard({
 
       {collecting ? (
         <>
-          <p style={{ margin: '10px 0 6px' }}>
+          <p style={{ margin: 'var(--vp-space-3) 0 var(--vp-space-2)' }}>
             Sammelt Daten: Tag {state.daysCollected ?? 0} von {state.daysRequired ?? 21}.
           </p>
           {progress != null && (
@@ -449,7 +451,7 @@ function ChallengerCard({
               style={{
                 height: 6,
                 borderRadius: 3,
-                background: 'var(--vp-color-border, #E9ECEF)',
+                background: 'var(--vp-border)',
                 overflow: 'hidden',
               }}
             >
@@ -457,12 +459,12 @@ function ChallengerCard({
                 style={{
                   width: `${progress}%`,
                   height: '100%',
-                  background: 'var(--vp-color-primary, #5A8DE8)',
+                  background: 'var(--vp-action)',
                 }}
               />
             </div>
           )}
-          <p className="vp-note" style={{ marginTop: 8 }}>
+          <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
             Das ist normal: Ein lernendes Modell trainiert erst nach 21 vollständigen
             Messtagen. Bis dahin sammelt es nur Daten und gibt bewusst keine Prognose ab.
             Danach erstellt es automatisch eigene Vorhersagen und wird täglich gegen das
@@ -471,14 +473,14 @@ function ChallengerCard({
         </>
       ) : (
         <>
-          <p style={{ margin: '10px 0 4px' }}>
+          <p style={{ margin: 'var(--vp-space-3) 0 var(--vp-space-1)' }}>
             {record
               ? `In ${record.better} der letzten ${record.total} ${
                   record.total === 1 ? 'Bewertung' : 'Bewertungen'
                 } genauer als das aktive Modell.`
               : 'Rechnet mit - die erste Tagesbewertung folgt nach dem nächsten vollen Tag.'}
           </p>
-          <p className="vp-muted" style={{ margin: '0 0 8px', fontSize: 'var(--vp-text-sm)' }}>
+          <p className="vp-muted" style={{ margin: '0 0 var(--vp-space-2)', fontSize: 'var(--vp-text-sm)' }}>
             {state.trainedAt
               ? `Zuletzt trainiert am ${new Date(state.trainedAt).toLocaleDateString('de-DE', {
                   day: '2-digit',
@@ -492,10 +494,10 @@ function ChallengerCard({
           </p>
           {state.featureImportance.length > 0 && (
             <>
-              <p style={{ margin: '8px 0 4px', fontWeight: 600, fontSize: 'var(--vp-text-sm)' }}>
+              <p style={{ margin: 'var(--vp-space-2) 0 var(--vp-space-1)', fontWeight: 600, fontSize: 'var(--vp-text-sm)' }}>
                 Worauf das Modell besonders achtet:
               </p>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <ul style={{ margin: 0, paddingLeft: 'var(--vp-space-5)' }}>
                 {state.featureImportance.slice(0, 5).map((fi) => (
                   <li key={fi.feature} style={{ fontSize: 'var(--vp-text-sm)' }}>
                     {fi.label}{' '}

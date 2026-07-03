@@ -8,6 +8,8 @@ import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
 import { CreateUserDrawer } from './CreateUserDrawer';
+import { RowMenu } from '../../components/RowMenu';
+import { TableSkeleton } from '../../components/States';
 
 /**
  * Plattform → Benutzer: customer users per tenant, same list + add-drawer
@@ -134,8 +136,8 @@ export function BenutzerPage({
           </p>
         </Card>
       ) : users == null ? (
-        <Card padding="lg" radius="lg">
-          <p className="vp-muted">Lade Benutzer…</p>
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <TableSkeleton rows={4} cols={5} />
         </Card>
       ) : users.length === 0 ? (
         <Card padding="lg" radius="lg">
@@ -169,29 +171,17 @@ export function BenutzerPage({
                     </Badge>
                   </td>
                   <td data-label="" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
-                      Bearbeiten
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setResetUser(u)}>
-                      Passwort zurücksetzen
-                    </Button>
-                    {u.enabled ? (
-                      <Button variant="ghost" size="sm" onClick={() => disable(u)}>
-                        Deaktivieren
-                      </Button>
-                    ) : (
-                      <Button variant="ghost" size="sm" onClick={() => enable(u)}>
-                        Aktivieren
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => remove(u)}
-                      style={{ color: 'var(--vp-industry-end)' }}
-                    >
-                      Löschen
-                    </Button>
+                    <RowMenu
+                      label={`Aktionen für ${u.username}`}
+                      items={[
+                        { label: 'Bearbeiten', icon: 'pencil', onClick: () => setEditUser(u) },
+                        { label: 'Passwort zurücksetzen', icon: 'refresh-cw', onClick: () => setResetUser(u) },
+                        u.enabled
+                          ? { label: 'Deaktivieren', icon: 'x', onClick: () => disable(u) }
+                          : { label: 'Aktivieren', icon: 'check', onClick: () => enable(u) },
+                        { label: 'Löschen', icon: 'trash', danger: true, onClick: () => remove(u) },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

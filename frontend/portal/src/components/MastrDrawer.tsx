@@ -42,7 +42,7 @@ const NOT_IN_REGISTRY = <span className="vp-muted">nicht im Register hinterlegt<
 function PreviewCard({ preview }: { preview: MastrPreview }) {
   const isPv = preview.kind === 'pv';
   return (
-    <div style={{ border: '1px solid var(--vp-border)', borderRadius: 'var(--vp-radius-card)', padding: 'var(--vp-space-4)', marginBottom: 'var(--vp-space-3)' }}>
+    <div style={{ border: '1px solid var(--vp-border)', borderRadius: 'var(--vp-radius-md)', padding: 'var(--vp-space-4)', marginBottom: 'var(--vp-space-3)' }}>
       <div style={{ display: 'flex', gap: 'var(--vp-space-2)', alignItems: 'center', marginBottom: 'var(--vp-space-3)', flexWrap: 'wrap' }}>
         <Badge variant="tint">{isPv ? 'PV-Anlage' : 'Batteriespeicher'}</Badge>
         {preview.status && (

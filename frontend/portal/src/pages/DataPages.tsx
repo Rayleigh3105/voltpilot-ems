@@ -18,6 +18,7 @@ import { eurAmount, fmtNum } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
 import { InfoTip } from '../components/InfoTip';
+import { ChartCardSkeleton, ErrorState } from '../components/States';
 import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
 import { ScheduleChart } from '../ScheduleChart';
@@ -26,10 +27,11 @@ import { ScheduleChart } from '../ScheduleChart';
 function useSiteData<T>(
   site: Site | null,
   load: (siteId: string) => Promise<T>,
-): { data: T | null; loading: boolean; err: string | null } {
+): { data: T | null; loading: boolean; err: string | null; reload: () => void } {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!site) {
@@ -47,9 +49,9 @@ function useSiteData<T>(
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [site?.id]);
+  }, [site?.id, reloadKey]);
 
-  return { data, loading, err };
+  return { data, loading, err, reload: () => setReloadKey((k) => k + 1) };
 }
 
 function PageFrame({
@@ -88,7 +90,7 @@ function PageFrame({
         // Sites exist but the selection hasn't resolved yet: show a loading
         // state, not the "you have no prices/weather" empty copy (m2).
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">Standort wird geladen…</p>
+          <ChartCardSkeleton />
         </Card>
       ) : (
         children
@@ -144,6 +146,7 @@ export function MarktpreisePage(props: {
   const [history, setHistory] = useState<PriceHistory | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const at = isoDate(anchor);
   useEffect(() => {
@@ -163,7 +166,7 @@ export function MarktpreisePage(props: {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [site?.id, range, at]);
+  }, [site?.id, range, at, reloadKey]);
 
   const nextDisabled = shiftAnchor(anchor, range, 1) > new Date();
   const summary = history?.summary ?? null;
@@ -227,14 +230,14 @@ export function MarktpreisePage(props: {
 
       {loading && (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">Lade Börsenpreise…</p>
+          <ChartCardSkeleton />
         </Card>
       )}
       {err && (
-        <div className="vp-alert vp-alert-err">
-          Die Börsenpreise konnten nicht geladen werden ({err}). Bitte versuchen Sie es
-          später erneut.
-        </div>
+        <ErrorState
+          message={`Die Börsenpreise konnten nicht geladen werden (${err}).`}
+          onRetry={() => setReloadKey((k) => k + 1)}
+        />
       )}
 
       {!loading && !err && !hasData && (
@@ -306,7 +309,7 @@ export function MarktpreisePage(props: {
               </div>
 
               {/* EUR/MWh detail for the professional reader. */}
-              <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
+              <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
                 <Stat value={fmtNum(summary.minEurMwh, '')} label="Minimum (EUR/MWh)" />
                 <Stat value={fmtNum(summary.avgEurMwh, '')} label="Ø im Zeitraum (EUR/MWh)" />
                 <Stat value={fmtNum(summary.maxEurMwh, '')} label="Maximum (EUR/MWh)" />
@@ -324,7 +327,7 @@ export function MarktpreisePage(props: {
               <PriceHistoryChart history={history} />
 
               {partialFrom && summary.coverageStart && (
-                <p className="vp-note" style={{ marginTop: 12 }}>
+                <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
                   Hinweis: Für diesen Zeitraum liegen erst Preise ab dem{' '}
                   {shortDate(summary.coverageStart)} vor - ältere Börsenpreise wurden noch
                   nicht erfasst.
@@ -351,7 +354,7 @@ export function WetterPage(props: {
   onSelectSite: (id: string) => void;
 }) {
   const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
-  const { data: forecast, loading, err } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
+  const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
 
   const points = forecast?.points ?? [];
   const now = points[0] ?? null;
@@ -373,12 +376,12 @@ export function WetterPage(props: {
           </IconTile>
           <h2>Vorhersage {site?.name ?? ''}</h2>
         </div>
-        {loading && <p className="vp-muted">Lade Wettervorhersage…</p>}
+        {loading && <ChartCardSkeleton />}
         {err && (
-          <div className="vp-alert vp-alert-err">
-            Die Wettervorhersage konnte nicht geladen werden ({err}). Bitte versuchen Sie es
-            später erneut.
-          </div>
+          <ErrorState
+            message={`Die Wettervorhersage konnte nicht geladen werden (${err}).`}
+            onRetry={reload}
+          />
         )}
         {!loading && !err && points.length === 0 && (
           <p className="vp-muted">
@@ -388,14 +391,14 @@ export function WetterPage(props: {
         )}
         {!loading && !err && points.length > 0 && (
           <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
+            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
               <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
               <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
               <Stat value={fmtNum(peakGhi, '', 0)} label="Max. Einstrahlung (W/m²)" />
               <Stat value={fmtNum(points.length, 'h', 0)} label="Vorhersagehorizont" />
             </div>
             <WeatherChart points={points} />
-            <p className="vp-note" style={{ marginTop: 12 }}>
+            <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
               Quelle: Open-Meteo, stündlich aktualisiert. Die Einstrahlung (GHI) fließt in
               die PV-Prognose Ihres Standorts ein.
             </p>
@@ -414,7 +417,7 @@ export function FahrplanPage(props: {
   onSelectSite: (id: string) => void;
 }) {
   const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
-  const { data: plan, loading, err } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
+  const { data: plan, loading, err, reload } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
 
   const slots = plan?.slots ?? [];
   const today = new Date().toDateString();
@@ -456,12 +459,12 @@ export function FahrplanPage(props: {
             Fahrplan.
           </InfoTip>
         </div>
-        {loading && <p className="vp-muted">Lade Fahrplan…</p>}
+        {loading && <ChartCardSkeleton />}
         {err && (
-          <div className="vp-alert vp-alert-err">
-            Der Fahrplan konnte nicht geladen werden ({err}). Bitte versuchen Sie es später
-            erneut.
-          </div>
+          <ErrorState
+            message={`Der Fahrplan konnte nicht geladen werden (${err}).`}
+            onRetry={reload}
+          />
         )}
         {!loading && !err && slots.length === 0 && (
           <p className="vp-muted">
@@ -471,7 +474,7 @@ export function FahrplanPage(props: {
         )}
         {!loading && !err && slots.length > 0 && (
           <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 24 }}>
+            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
               <Stat
                 value={eurAmount(savingsToday)}
                 label="Heute geplant gespart (ggü. ohne Speicher)"
@@ -481,7 +484,7 @@ export function FahrplanPage(props: {
               <Stat value={fmtNum(dischargeKwh, 'kWh')} label="Geplant entladen" />
             </div>
             <ScheduleChart plan={plan!} />
-            <p className="vp-note" style={{ marginTop: 12 }}>
+            <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
               Kostenoptimaler Batterie-Fahrplan in 15-Minuten-Schritten aus Börsenpreisen
               und Last-/PV-Prognose{generatedAt ? `, erstellt am ${generatedAt} Uhr` : ''}.
               Ihr Gerät begrenzt jeden Sollwert zusätzlich lokal (u. a. §14a EnWG).

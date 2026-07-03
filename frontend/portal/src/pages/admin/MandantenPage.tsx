@@ -16,6 +16,7 @@ import {
 } from '../../admin/adminApi';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
+import { TextSkeleton } from '../../components/States';
 import { CreateUserDrawer } from './CreateUserDrawer';
 import type { PageId } from '../../nav';
 
@@ -405,7 +406,7 @@ function TenantDetailDrawer({
           </span>
         </div>
         {users == null ? (
-          <p className="vp-muted">Lade Benutzer…</p>
+          <TextSkeleton lines={3} />
         ) : users.length === 0 ? (
           <p className="vp-muted">Noch keine Benutzer für diesen Mandanten.</p>
         ) : (
@@ -454,7 +455,7 @@ function TenantDetailDrawer({
           </span>
         </div>
         {sites == null ? (
-          <p className="vp-muted">Lade Standorte…</p>
+          <TextSkeleton lines={3} />
         ) : sites.length === 0 ? (
           <p className="vp-muted">
             Noch keine Standorte - der Kunde kann erst danach Geräte beanspruchen.

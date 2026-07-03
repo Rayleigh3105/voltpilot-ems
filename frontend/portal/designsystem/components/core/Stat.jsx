@@ -27,7 +27,7 @@ export function Stat({
         fontSize: 'var(--vp-text-stat-sm, var(--vp-text-stat))',
         fontWeight: 800,
         lineHeight: 1.1,
-        color: 'var(--vp-stat-ink, var(--vp-primary-dark))',
+        color: 'var(--vp-stat-ink, var(--vp-action))',
         letterSpacing: '-0.5px',
       }}>
         {value}

@@ -16,6 +16,7 @@ import {
 import { eurAmount, NBSP } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
+import { ChartCardSkeleton, ErrorState } from '../components/States';
 import { HistoryDayChart, HistoryEnergyChart } from '../HistoryChart';
 
 /**
@@ -52,6 +53,7 @@ export function HistoriePage(props: {
   const [history, setHistory] = useState<History | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const at = isoDate(anchor);
   useEffect(() => {
@@ -71,7 +73,7 @@ export function HistoriePage(props: {
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [site?.id, range, at]);
+  }, [site?.id, range, at, reloadKey]);
 
   const nextDisabled = shiftAnchor(anchor, range, 1) > new Date();
   const totals = history?.totals ?? null;
@@ -146,14 +148,14 @@ export function HistoriePage(props: {
 
           {loading && (
             <Card padding="lg" radius="lg">
-              <p className="vp-muted">Lade Historie…</p>
+              <ChartCardSkeleton />
             </Card>
           )}
           {err && (
-            <div className="vp-alert vp-alert-err">
-              Die Historie konnte nicht geladen werden ({err}). Bitte versuchen Sie es
-              später erneut.
-            </div>
+            <ErrorState
+              message={`Die Historie konnte nicht geladen werden (${err}).`}
+              onRetry={() => setReloadKey((k) => k + 1)}
+            />
           )}
 
           {!loading && !err && history && buckets.length === 0 && (
