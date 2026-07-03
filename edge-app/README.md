@@ -26,6 +26,8 @@ Then open the local web app: **http://localhost:8484** - it shows the device's r
 
 Without the `sim` profile (`docker compose up -d`) the same stack runs for a **real inverter**; the flow template for that is on the (disabled) tab "SunSpec Wechselrichter (Vorlage)" - see "Einen neuen Kunden verdrahten" below.
 
+**Auf einer eigenen VM gegen die Live-Cloud ausrollen** (echter Deye-Wechselrichter, First-Boot-Enrollment, selbst beanspruchen): das Schritt-für-Schritt-Runbook steht in [`DEPLOY.md`](DEPLOY.md).
+
 ## Kundenerlebnis (production)
 
 1. Install: `cp .env.example .env` (optional), `docker compose up -d`.
