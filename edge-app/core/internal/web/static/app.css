@@ -31,23 +31,35 @@ body {
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 22px;
-  background: var(--vp-surface);
-  box-shadow: var(--vp-shadow);
+  padding: 12px 22px;
+  background: rgba(255, 255, 255, .82);
+  backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid #E3E9F1;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  font-size: 17px;
+  gap: 10px;
+  font-weight: 750;
+  font-size: 16.5px;
+  letter-spacing: -.01em;
 }
 
-.brand-mark { width: 22px; height: 22px; color: var(--vp-primary-deep); }
+.brand-mark {
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border-radius: 9px; color: #fff;
+  background: linear-gradient(135deg, #5A8DE8 0%, #3E72CE 100%);
+  box-shadow: 0 2px 8px rgba(62, 114, 206, .35);
+}
+.brand-mark svg { width: 17px; height: 17px; }
+.brand small { display: block; font-weight: 500; font-size: 11px; color: var(--vp-text-gray); letter-spacing: .02em; margin-top: -2px; }
 .version { color: var(--vp-text-gray); font-size: 12px; }
 
 main { max-width: 860px; margin: 24px auto 48px; padding: 0 16px; }

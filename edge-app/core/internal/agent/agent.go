@@ -22,6 +22,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
@@ -31,6 +32,11 @@ import (
 // Version is stamped by the build (ldflags); shown in the UI + deviceInfo.
 var Version = "dev"
 
+// historyCapacity bounds the in-memory live-chart ring. At a typical 2-10 s
+// telemetry cadence this comfortably covers several hours of recent data; the
+// dashboard only ever asks for the last hour or two.
+const historyCapacity = 5000
+
 // Agent is the running core.
 type Agent struct {
 	Cfg   config.Config
@@ -38,6 +44,7 @@ type Agent struct {
 	Bus   *localbus.Bus
 
 	buf       *buffer.Buffer
+	hist      *history.Ring
 	planStore *plan.Store
 	invStore  *inverter.Store
 	invCat    inverter.Catalog
@@ -125,6 +132,7 @@ func New(cfg config.Config) (*Agent, error) {
 		Cfg:          cfg,
 		State:        state.New(ref, Version),
 		buf:          buf,
+		hist:         history.New(historyCapacity),
 		planStore:    ps,
 		invStore:     is,
 		invCat:       inverter.DefaultCatalog(),
@@ -438,6 +446,16 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		slog.Error("telemetry buffer append failed", "err", err)
 		return
 	}
+	// Feed the in-memory live-chart ring (local dashboard only). Uses the raw
+	// pointer values so an absent measurement stays absent on the chart.
+	a.hist.Add(history.Sample{
+		Ts:          ts,
+		PvKw:        m.PvPowerKw,
+		LoadKw:      m.LoadKw,
+		GridKw:      m.PowerKw,
+		SocPct:      m.SocPct,
+		GridLimitKw: m.GridLimitKw,
+	})
 	a.State.Update(func(s *state.Snapshot) {
 		s.LastTelemetry = ts
 		s.BufferPending = a.buf.Pending()
@@ -630,6 +648,10 @@ func (a *Agent) kick() {
 }
 
 // --- Inverter selection (the local web app's config surface) ---
+
+// History exposes the in-memory live-telemetry ring for the local web app's
+// charts (recent samples + live stream). Local, read-only.
+func (a *Agent) History() *history.Ring { return a.hist }
 
 // InverterCatalog returns the selectable brand/family/field option tree.
 func (a *Agent) InverterCatalog() inverter.Catalog { return a.invCat }

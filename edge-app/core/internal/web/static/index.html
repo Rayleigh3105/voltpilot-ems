@@ -3,83 +3,197 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VoltPilot Edge</title>
-  <link rel="stylesheet" href="app.css">
+  <meta name="theme-color" content="#5A8DE8">
+  <title>VoltPilot Edge · Energiemonitor</title>
+  <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
-      <span>VoltPilot&nbsp;Edge</span>
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
+      </span>
+      <span>VoltPilot&nbsp;Edge<small>Lokaler Energiemonitor</small></span>
     </div>
-    <nav class="topnav">
-      <a class="topnav-link" href="inverter.html">Wechselrichter einrichten</a>
+    <div class="topbar-right">
+      <span class="pill off" id="cloudPill"><span class="dot"></span><span id="cloudPillText">–</span></span>
+      <a class="link-btn" href="inverter.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Wechselrichter einrichten</span>
+      </a>
       <span class="version" id="version"></span>
-    </nav>
+    </div>
   </header>
 
   <main>
-    <section class="card hero">
-      <p class="hero-label">Referenz-ID dieses Geräts</p>
-      <div class="ref-row">
-        <code class="ref" id="ref">…</code>
-        <button class="copy" id="copyBtn" title="Referenz kopieren">Kopieren</button>
+    <!-- Pairing / onboarding (prominent until connected) -->
+    <section class="card pairing-card" id="pairingCard">
+      <div class="pairing-head">
+        <span class="pairing-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        </span>
+        <div>
+          <h2 id="pairingTitle">Gerät mit VoltPilot verbinden</h2>
+          <p id="pairingLead">Geben Sie die Referenz-ID im Portal ein - alles Weitere passiert automatisch.</p>
+        </div>
       </div>
-      <p class="hero-hint">
-        Geben Sie diese Referenz im VoltPilot-Portal unter
-        <strong>Geräte&nbsp;→&nbsp;＋&nbsp;Gerät hinzufügen</strong> ein.
-        Alles Weitere passiert automatisch.
+
+      <div class="ref-block" id="refBlock">
+        <div>
+          <div class="ref-label">Referenz-ID dieses Geräts</div>
+          <div class="ref-row" style="margin-top:8px">
+            <code class="ref" id="ref">…</code>
+            <button class="copy" id="copyBtn" title="Referenz kopieren">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span id="copyLabel">Kopieren</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <p class="ref-hint" id="refHint">
+        Portal öffnen und unter <strong>Geräte → ＋ Gerät hinzufügen</strong> diese
+        Referenz eintragen. Das Gerät wird danach automatisch freigeschaltet.
       </p>
-      <ol class="pairing" id="pairing">
-        <li data-step="claim">Warte auf Beanspruchung im Portal</li>
-        <li data-step="cert">Zertifikat erhalten</li>
-        <li data-step="connected">Verbunden mit VoltPilot</li>
+
+      <ol class="steps" id="steps">
+        <li data-step="0"><span class="mark">1</span> Im Portal beanspruchen</li>
+        <li data-step="1"><span class="mark">2</span> Zertifikat erhalten</li>
+        <li data-step="2"><span class="mark">✓</span> Verbunden mit VoltPilot</li>
       </ol>
       <p class="pairing-error" id="pairingError" hidden></p>
     </section>
 
-    <section class="grid">
-      <div class="card stat">
-        <p class="stat-label">Cloud-Verbindung</p>
-        <p class="stat-value" id="cloud">–</p>
-        <p class="stat-sub" id="cloudSub"></p>
+    <!-- At-a-glance KPI cards -->
+    <div class="section-title">Aktuelle Leistung</div>
+    <section class="kpis" id="kpis">
+      <div class="card kpi pv">
+        <div class="kpi-top">
+          <span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>
+          <span class="kpi-tag">Solar</span>
+        </div>
+        <p class="kpi-label">PV-Erzeugung</p>
+        <p class="kpi-value"><span id="pvVal">–</span><span class="u">kW</span></p>
+        <p class="kpi-sub" id="pvSub">wartet auf Daten</p>
       </div>
-      <div class="card stat">
-        <p class="stat-label">Letzte Messdaten</p>
-        <p class="stat-value" id="telemetry">–</p>
-        <p class="stat-sub" id="telemetrySub"></p>
+
+      <div class="card kpi batt">
+        <div class="kpi-top">
+          <span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg></span>
+          <span class="kpi-tag" id="battState">–</span>
+        </div>
+        <p class="kpi-label">Batterie-Ladezustand</p>
+        <p class="kpi-value"><span id="socVal">–</span><span class="u">%</span></p>
+        <div class="soc-bar"><span class="soc-fill" id="socFill" style="width:0%"></span></div>
+        <p class="kpi-sub" id="battSub">&nbsp;</p>
       </div>
-      <div class="card stat">
-        <p class="stat-label">Betriebsmodus</p>
-        <p class="stat-value" id="mode">–</p>
-        <p class="stat-sub" id="modeSub"></p>
+
+      <div class="card kpi load">
+        <div class="kpi-top">
+          <span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 8.5V21h14V8.5"/><path d="M9 21v-6h6v6"/></svg></span>
+          <span class="kpi-tag">Haus</span>
+        </div>
+        <p class="kpi-label">Hausverbrauch</p>
+        <p class="kpi-value"><span id="loadVal">–</span><span class="u">kW</span></p>
+        <p class="kpi-sub" id="loadSub">wartet auf Daten</p>
       </div>
-      <div class="card stat">
-        <p class="stat-label">Wechselrichter</p>
-        <p class="stat-value" id="inverter">–</p>
-        <p class="stat-sub" id="inverterSub"></p>
+
+      <div class="card kpi grid">
+        <div class="kpi-top">
+          <span class="kpi-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 22v-6M9 8h6l1 8H8l1-8z"/><path d="M4 22h16"/><path d="M7 8 4 4M17 8l3-4"/></svg></span>
+          <span class="kpi-tag" id="gridTag">Netz</span>
+        </div>
+        <p class="kpi-label" id="gridLabel">Netzanschluss</p>
+        <p class="kpi-value"><span id="gridVal">–</span><span class="u">kW</span></p>
+        <p class="kpi-sub" id="gridSub">wartet auf Daten</p>
       </div>
     </section>
 
-    <section class="card details">
-      <h2>Details</h2>
-      <dl>
-        <dt>Wechselrichter-Modell</dt><dd id="invModel">nicht eingerichtet</dd>
-        <dt>Aktueller Sollwert (Batterie)</dt><dd id="setpoint">–</dd>
-        <dt>Ladezustand (SoC)</dt><dd id="soc">–</dd>
-        <dt>PV-Leistung</dt><dd id="pv">–</dd>
-        <dt>Hausverbrauch</dt><dd id="load">–</dd>
-        <dt>Zwischengespeicherte Messwerte</dt><dd id="buffer">–</dd>
-        <dt>Fahrplan</dt><dd id="plan">–</dd>
-      </dl>
+    <!-- Energy flow + operational status -->
+    <div class="cols" style="margin-top:16px">
+      <section class="card flow-card">
+        <div class="chart-head">
+          <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M4 12l4-4M4 12l4 4"/></svg></span>Energiefluss</h3>
+        </div>
+        <div class="flow-wrap" id="flowWrap"><!-- SVG injected by dashboard.js --></div>
+        <div class="flow-legend">
+          <span><i style="background:var(--pv)"></i>PV</span>
+          <span><i style="background:var(--load)"></i>Haus</span>
+          <span><i style="background:var(--batt)"></i>Batterie</span>
+          <span><i style="background:var(--grid-c)"></i>Netz</span>
+        </div>
+      </section>
+
+      <section class="card status-card">
+        <div class="chart-head">
+          <h3 class="chart-title"><span class="ico" style="background:var(--bg-2);color:var(--muted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Betrieb &amp; Status</h3>
+        </div>
+        <div class="status-list">
+          <div class="status-row">
+            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>Betriebsmodus</span>
+            <span class="status-val" id="modeVal">–<small id="modeSub"></small></span>
+          </div>
+          <div class="status-row">
+            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A4.5 4.5 0 0 0 6.5 19z"/></svg></span>Cloud-Verbindung</span>
+            <span class="status-val" id="cloudVal">–<small id="cloudSub"></small></span>
+          </div>
+          <div class="status-row">
+            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg></span>Wechselrichter</span>
+            <span class="status-val" id="invVal">–<small id="invSub"></small></span>
+          </div>
+          <div class="status-row">
+            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v6"/></svg></span>Fahrplan</span>
+            <span class="status-val" id="planVal">–<small id="planSub"></small></span>
+          </div>
+          <div class="status-row">
+            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M12 7v5l3 2"/></svg></span>Letzte Messdaten</span>
+            <span class="status-val" id="telVal">–<small id="telSub"></small></span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Live power chart -->
+    <div class="section-title">Verlauf</div>
+    <section class="card chart-card">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--pv-soft);color:var(--pv)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></span>Leistung</h3>
+        <div class="seg" id="rangeSeg">
+          <button data-min="15">15 Min</button>
+          <button data-min="60" class="active">1 Std</button>
+          <button data-min="180">3 Std</button>
+        </div>
+      </div>
+      <div class="legend" style="margin-bottom:10px">
+        <span><i style="background:var(--pv)"></i>PV-Erzeugung</span>
+        <span><i style="background:var(--load)"></i>Hausverbrauch</span>
+        <span><i style="background:var(--grid-c)"></i>Netz (+ Bezug / − Einspeisung)</span>
+        <span><i style="background:var(--batt)"></i>Batterie (+ laden / − entladen)</span>
+      </div>
+      <div class="chart-canvas-wrap" style="height:260px">
+        <canvas id="powerChart"></canvas>
+        <div class="chart-empty" id="powerEmpty" hidden><div>Noch keine Messdaten. Sobald die Anlage Werte liefert, erscheint hier der Live-Verlauf.</div></div>
+      </div>
+    </section>
+
+    <!-- SoC chart -->
+    <section class="card chart-card" style="margin-top:16px">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--batt-soft);color:var(--batt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg></span>Batterie-Ladezustand</h3>
+        <div class="legend"><span><i style="background:var(--batt)"></i>SoC (%)</span></div>
+      </div>
+      <div class="chart-canvas-wrap" style="height:180px">
+        <canvas id="socChart"></canvas>
+        <div class="chart-empty" id="socEmpty" hidden><div>Kein Ladezustand verfügbar. Batteriewerte liefern nur Hybrid-Wechselrichter.</div></div>
+      </div>
     </section>
 
     <footer class="foot">
-      Lokale Geräteansicht – nur lesend. Einstellungen erfolgen über die
-      Gerätekonfiguration, die Anlagensteuerung über das VoltPilot-Portal.
+      Lokale Geräteansicht - nur lesend. Die Anlagensteuerung erfolgt über das VoltPilot-Portal.<br>
+      Alle Daten bleiben auf diesem Gerät und werden verschlüsselt an VoltPilot übertragen.
     </footer>
   </main>
 
-  <script src="app.js"></script>
+  <script src="charts.js"></script>
+  <script src="dashboard.js"></script>
 </body>
 </html>
