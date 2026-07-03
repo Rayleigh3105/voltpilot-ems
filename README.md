@@ -1,197 +1,393 @@
-# Voltpilot-EMS
+# VoltPilot-EMS
 
-Self-hosted, multi-tenant **Energy Management System (EMS)** for PV, battery storage and load management in the DACH market.
-It computes the economically optimal operating schedule per customer site (charge on cheap/PV-surplus power, discharge when expensive), maximizing self-consumption and - later - marketing flexibility via a direct marketer.
+**Self-hosted, multi-tenant Energy Management System for PV, battery storage and load management in the DACH market.**
 
-Intelligence lives in the **cloud** (multi-tenant portal, optimization, forecasting, marketing); the **edge** (Node-RED on Raspberry-Pi-class hardware) stays deliberately thin.
+VoltPilot computes the economically optimal battery schedule per customer site - charge on cheap or PV-surplus power, discharge when power is expensive - maximizing self-consumption and, over time, marketing flexibility via a direct marketer.
+The **intelligence lives in the cloud** (multi-tenant portal, optimization, forecasting); the **edge stays deliberately thin**, executing a 24-hour plan slot by slot and falling back to a safe self-consumption default whenever the cloud is unreachable.
+Everything runs **self-hosted on EU infrastructure, GDPR-friendly by design**, and serves both **B2C** (private homes) and **C&I** (commercial) customers on one platform.
 
-> Canonical architecture: [`docs/architecture.md`](docs/architecture.md). This repository is the MVP scaffold derived from it (section 4 MVP-Schnitt: C&I + DE first, backbone `EMQX -> Ingest -> Redpanda -> TimescaleDB-Writer -> TimescaleDB`).
+## System context
 
-## Repository layout
+Who talks to whom: customer edge devices, the VoltPilot cloud, and the external data sources it consumes.
 
+```mermaid
+graph TB
+    subgraph Site["Customer site (edge)"]
+        INV["Inverter / battery<br/>(Modbus TCP / SunSpec)"]
+        EDGE["VoltPilot Edge-App<br/>(Go core + Node-RED)"]
+        INV <-->|Modbus| EDGE
+    end
+
+    subgraph Cloud["VoltPilot Cloud (self-hosted, EU)"]
+        BROKER["EMQX MQTT broker<br/>(mTLS 8883)"]
+        PIPE["Ingest -> Redpanda -> Writer"]
+        DB[("TimescaleDB<br/>master data + time series")]
+        API["API (Spring Boot)"]
+        OPT["Optimization (MILP)"]
+        FC["Forecast"]
+        KC["Keycloak (OIDC)"]
+        WEB["Portal (React SPA)"]
+    end
+
+    subgraph Ext["External systems"]
+        PRICES["Day-ahead prices<br/>energy-charts / ENTSO-E"]
+        WEATHER["Weather<br/>Open-Meteo"]
+        MASTR["Grid registry<br/>MaStR / BNetzA"]
+    end
+
+    USER["Customer / operator<br/>(browser)"]
+    ADMIN["Platform admin<br/>(browser)"]
+
+    EDGE -->|"MQTT mTLS: telemetry up"| BROKER
+    BROKER -->|"MQTT: schedule down (retained)"| EDGE
+    EDGE -->|"first-boot enrollment (HTTPS)"| API
+    BROKER --> PIPE --> DB
+    API --> DB
+    OPT --> DB
+    OPT -->|"retained schedule"| BROKER
+    FC --> DB
+    PRICES --> OPT
+    WEATHER --> FC
+    MASTR --> API
+    USER -->|HTTPS| WEB
+    ADMIN -->|HTTPS| WEB
+    WEB --> API
+    API <-->|OIDC / JWT| KC
+    WEB <-->|login OIDC / PKCE| KC
 ```
-docker-compose.yml          # local dev stack (stateful backbone)
-.env.example                # every env var, with dev defaults
-docs/architecture.md        # canonical architecture document
-docs/contracts/             # BINDING interface contracts (MQTT, Redpanda, OpenAPI)
-infra/local/                # per-service config + init scripts for the stack
-services/api/               # Spring Boot: portal backend / API (REST + WebSocket)
-services/ingest/            # Spring Boot: MQTT -> Redpanda ingest
-services/timescale-writer/  # Spring Boot: Redpanda -> TimescaleDB writer
-services/optimization/      # Python: MILP/MPC engine (HiGHS via Pyomo)
-services/forecast/          # Python: load/PV forecast (baseline in v1)
-services/marketing-adapter/ # Python: generic Direktvermarktung adapter (stub)
-services/market-data/       # Python: ENTSO-E day-ahead price adapter -> day_ahead_prices
-edge/node-red/              # Node-RED thin edge (runnable against the SunSpec sim)
-edge/sim/                   # Simulated SunSpec Modbus TCP inverter/battery (dev only)
-frontend/portal/            # React (Vite) web portal skeleton
+
+## Architecture
+
+Every service and the protocols between them. In production only **two ports are public**: the frontend (HTTP behind a TLS-terminating reverse proxy) and EMQX `8883` (mTLS, for devices). Everything else lives on the internal network.
+
+```mermaid
+graph LR
+    subgraph edge["Edge (customer hardware)"]
+        CORE["edge-app/core (Go)<br/>vp-edge-core"]
+        NR["edge-app/nodered<br/>(vp-palette)"]
+        SIM["edge-sim<br/>(SunSpec simulator)"]
+        CORE -->|"local MQTT bus<br/>(mochi, in-process)"| NR
+        NR -->|"Modbus TCP :502"| SIM
+    end
+
+    subgraph public["Public"]
+        FE["frontend (nginx + SPA)"]
+        EMQX8883["EMQX mTLS :8883"]
+    end
+
+    subgraph internal["Internal network"]
+        API["api :8090<br/>(Spring Boot)"]
+        KC["keycloak :8080<br/>(/auth)"]
+        KCDB[("keycloak-db<br/>Postgres 16")]
+        TS[("timescaledb :5432<br/>2.17.2-pg16")]
+        RP["redpanda :29092<br/>(Kafka API)"]
+        ING["ingest :8091"]
+        WR["timescale-writer :8092"]
+        MD["market-data (serve)"]
+        WC["weather-collector"]
+        FCC["forecast (collect)"]
+        OPT["optimization (15-min job)"]
+        EMQX1883["EMQX :1883 (loopback)"]
+    end
+
+    CORE -->|"MQTT mTLS telemetry"| EMQX8883
+    CORE -->|"HTTPS enrollment /api/v1/enrollment"| FE
+    EMQX8883 -.->|"peer_cert_as_username=cn"| EMQX1883
+    EMQX1883 -->|"sub ems/+/+/+/telemetry QoS1"| ING
+    ING -->|"produce telemetry.raw<br/>key {tenant}:{site}"| RP
+    RP -->|"@KafkaListener"| WR
+    WR -->|"INSERT (voltpilot_app, RLS)"| TS
+    OPT -->|"retained schedule QoS1"| EMQX1883
+    OPT --> TS
+    MD --> TS
+    WC --> TS
+    FCC --> TS
+    FE -->|"/api/ -> api:8090"| API
+    FE -->|"/auth/ -> keycloak:8080"| KC
+    API --> TS
+    API <--> KC
+    KC --> KCDB
+    API -->|"enrollment: sign CSR, write ACL"| EMQX8883
 ```
 
-## Run the full stack locally
+**What each service does:**
 
-This is the verified, copy-paste path to a healthy full stack (stateful backbone + portal API + edge) plus a working portal login and telemetry view.
-
-**Prerequisites:** Docker with Compose v2 (tested on Docker 29 / Compose v2), and - to run the web portal - Node 20+ (Node 22 works).
-Building the services from source additionally needs JDK 21 and Python 3.10+, but the containers build those images for you.
-
-### 1. Configure env
-
-```bash
-cp .env.example .env          # dev-only secrets, clearly marked - never reuse outside local dev
-```
-
-The defaults in `.env` work as-is.
-`ENTSOE_SECURITY_TOKEN` is intentionally blank (only a live market-data fetch needs it - not the stack).
-If a host port is already taken on your machine, override it in `.env` (it is git-ignored) - e.g. `API_PORT=18090` if something else already listens on `8090`; if you change `API_PORT`, also set `VITE_API_BASE=http://localhost:<that port>` so the portal targets the API.
-
-### 2. Bring the whole stack up
-
-```bash
-docker compose --profile edge up -d --build   # backbone + api + edge (Node-RED + SunSpec sim)
-docker compose --profile edge ps              # wait until every service shows healthy
-```
-
-The `edge` profile adds the Node-RED edge and the simulated SunSpec Modbus source; drop `--profile edge` for a backbone-only bring-up.
-Two further profiles are opt-in: `feeds` (keyless day-ahead prices + weather collectors) and `optimize` (the battery-dispatch optimizer - plans every 15 min against the collected prices and publishes retained MQTT schedules): `docker compose --profile feeds --profile optimize up -d --build`.
-First start runs the TimescaleDB init scripts in `infra/local/timescale/` **once** (they create the `telemetry`, `forecast` and `day_ahead_prices` hypertables), then the api applies its Flyway migrations (`V1` core schema + app role, `V2` RLS, `V100` dev seed) idempotently over that bootstrap.
-
-> **Upgrading an existing volume:** the init scripts only run on a *fresh* data volume.
-> If you ran an earlier (backbone-only) stack and then pulled the merged increments, the newer `02-forecast.sql` / `02-day-ahead-prices.sql` scripts will **not** re-run, so those two tables stay absent.
-> Recreate the volume to pick them up: `docker compose --profile edge down -v && docker compose --profile edge up -d --build`.
-
-Services and where to reach them:
-
-| Service | URL / port | Notes |
+| Service | Path | Job |
 |---|---|---|
-| TimescaleDB | `localhost:5432` | db `voltpilot`; `telemetry` + `forecast` + `day_ahead_prices` hypertables + stammdaten seeded |
-| EMQX (MQTT) | `localhost:1883` | dashboard at http://localhost:18083 (admin / see `.env`) |
-| EMQX (WS/TLS) | `8083` / `8883` | |
-| Redpanda (Kafka API) | `localhost:9092` | topic `telemetry.raw` created on startup |
-| Redpanda Console | http://localhost:8080 | topic/consumer web UI |
-| Keycloak | http://localhost:8081 | realm `voltpilot`, clients `voltpilot-api` + `voltpilot-frontend` (admin / see `.env`) |
-| Portal API | http://localhost:8090 | Spring Boot; OIDC resource server + RLS tenant isolation; `GET /health` |
-| Node-RED edge | http://localhost:1880 | thin edge (only with `--profile edge`); publishes telemetry to EMQX |
+| **api** | `services/api` | Portal backend: REST/WS, tenancy, business logic, device-enrollment CA |
+| **ingest** | `services/ingest` | Consume MQTT, validate, publish to Redpanda |
+| **timescale-writer** | `services/timescale-writer` | Redpanda -> TimescaleDB writer |
+| **optimization** | `services/optimization` | Battery-dispatch MILP (Pyomo + HiGHS): 24h / 15-min plan |
+| **forecast** | `services/forecast` | Load/PV forecast: active baselines + shadow-mode ML challengers |
+| **market-data** | `services/market-data` | Day-ahead price adapter (energy-charts / ENTSO-E) |
+| **weather-collector** | `services/forecast` | Open-Meteo weather forecasts (keyless, EU-hosted) |
+| **marketing-adapter** | `services/marketing-adapter` | Direct-marketing adapter (stub) |
+| **frontend** | `frontend/portal` | React SPA + nginx (single web entry point) |
+| **edge-app/core** | `edge-app/core` | Go edge agent: enrollment, mTLS link, buffering, schedule execution + guards |
+| **edge-app/nodered** | `edge-app/nodered` | Per-customer I/O flows (vp-palette) |
 
-### 3. Run the web portal
+**Tech stack:**
 
-The portal runs outside compose via the Vite dev server:
+| Concern | Choice | Version |
+|---|---|---|
+| JVM services | Java + Spring Boot (Maven) | Java 21, Boot 3.3.5 |
+| Python services | setuptools + pyproject, pytest | Python 3.10+ |
+| Optimization solver | Pyomo + HiGHS | pyomo 6.7+ |
+| Frontend | React + Vite + TypeScript | React 18, Vite 5 |
+| Edge core | Go | 1.24+ |
+| Edge I/O | Node-RED | 4.0 |
+| Time series + master data | TimescaleDB (Postgres 16) | 2.17.2-pg16 |
+| MQTT broker | EMQX | 5.8.3 |
+| Event log | Redpanda (Kafka API) | v24.2.7 |
+| Auth (OIDC) | Keycloak | 26.0.5 |
+
+## Edge ↔ Portal data flows
+
+The heart of the product: three flows over the MQTT + HTTPS link between a customer's edge and the cloud.
+
+### 1. First-boot enrollment (automatic mTLS)
+
+A factory-fresh device knows only its printed reference and the portal URL. It generates its keypair locally - **the private key never leaves the device** - uploads a CSR, and polls. The moment the customer claims the reference in the portal, the api signs the certificate and the device switches to normal mTLS operation. No manual certificate copying.
+
+```mermaid
+sequenceDiagram
+    participant D as Edge device (Go core)
+    participant API as api (EnrollmentController)
+    participant CA as DeviceCertificateAuthority
+    participant P as Customer (portal)
+
+    D->>D: generate EC P-256 keypair locally (key stays on device)
+    D->>API: POST /api/v1/enrollment/{ref}/csr (CSR PEM)
+    API->>API: validate CSR (self-signature, RSA>=2048 / EC P-256/384)
+    API->>API: VP sticker? -> provisioned_device gate (else 422)
+    API-->>D: 202 stored (pending)
+    loop every 30-60 s
+        D->>API: GET /api/v1/enrollment/{ref}/certificate
+        API-->>D: 404 {status: pending}  (until claimed)
+    end
+    P->>API: claim device in the portal
+    Note over API: device row now exists (tenant/site/device_id)
+    D->>API: GET /api/v1/enrollment/{ref}/certificate
+    API->>CA: issue(CSR, tenant, site, device_id)
+    CA->>CA: subject O=tenant / OU=site / CN=device_id + SPIFFE SAN
+    API-->>D: 200 {deviceCertPem, caPem, mqttHost, mqttPort, tenant/site/device}
+    D->>D: persist cert + identity, switch to mTLS 8883
+```
+
+### 2. Telemetry uplink
+
+The core MVP data path: `edge -> EMQX (mTLS) -> ingest -> Redpanda -> writer -> TimescaleDB -> api -> portal`. Every message is validated (identity, schema) and written idempotently, so at-least-once delivery is safe.
+
+```mermaid
+sequenceDiagram
+    participant E as Edge (Go core)
+    participant B as EMQX 8883 (mTLS)
+    participant I as ingest (Paho + validator)
+    participant R as Redpanda (telemetry.raw)
+    participant W as timescale-writer
+    participant DB as TimescaleDB (telemetry)
+    participant API as api
+    participant P as Portal
+
+    E->>B: PUBLISH ems/{t}/{s}/{d}/telemetry (QoS1, payload v1.0)
+    Note over B: peer_cert_as_username=cn -> username == device_id
+    B->>B: ACL first-match: device may only use its own topic
+    B->>I: sub ems/+/+/+/telemetry (QoS1)
+    I->>I: validate schema_version, UUIDs, ts, measurements,<br/>topic identity == payload identity
+    I->>R: produce telemetry.raw, key {tenant_id}:{site_id}
+    R->>W: consume (ack after write)
+    W->>DB: set_config('app.tenant_id') + INSERT ... WHERE NOT EXISTS (device_id, time)
+    P->>API: GET /sites/{id}/telemetry
+    API->>DB: SELECT (RLS-scoped, voltpilot_app)
+    API-->>P: telemetry series -> ECharts
+```
+
+### 3. Schedule / setpoint downlink
+
+The optimizer solves a fresh plan every 15 minutes and publishes it **retained** on the schedule topic, so a reconnecting edge receives the current plan immediately. The edge caches it to disk, executes it slot by slot, and **clamps every setpoint** through local guards before any register write.
+
+```mermaid
+sequenceDiagram
+    participant OP as optimization (MILP, every 15 min)
+    participant DB as TimescaleDB (schedule)
+    participant B as EMQX
+    participant E as Edge (plan + guards)
+    participant NR as Node-RED
+    participant INV as Inverter / battery
+
+    OP->>OP: solve MILP (prices + forecasts), build plan
+    OP->>DB: upsert plan (savingsEur, SoC trajectory)
+    OP->>B: PUBLISH ems/{t}/{s}/{d}/schedule (QoS1, RETAINED)
+    B->>E: schedule (also immediately on reconnect - retained)
+    E->>E: cache plan + persist to disk
+    loop every ~10 s
+        alt plan fresh (under 20 min) and slot matches
+            E->>E: clamp setpoint (rated power, SoC bounds, §14a envelope)
+        else stale / no plan
+            E->>E: self-consumption fallback = PV - load
+        end
+        E->>NR: edge/setpoint (retained, local bus)
+        NR->>INV: write Modbus register
+    end
+```
+
+**Topics** (binding contracts in [`docs/contracts/`](docs/contracts/)):
+
+```
+ems/{tenant_id}/{site_id}/{device_id}/telemetry   Edge -> Cloud, QoS1
+ems/{tenant_id}/{site_id}/{device_id}/status       Edge -> Cloud, heartbeat
+ems/{tenant_id}/{site_id}/{device_id}/schedule     Cloud -> Edge, retained
+ems/{tenant_id}/{site_id}/{device_id}/command      Cloud -> Edge, ad-hoc
+ems/{tenant_id}/{site_id}/{device_id}/config       Cloud -> Edge, retained
+provision/{ref}/hello   |   provision/{ref}/config  zero-touch onboarding handshake
+```
+
+## Security & multi-tenancy
+
+Two reinforcing layers keep one customer's data invisible to another. On the wire, **mTLS binds identity into the certificate** and a per-device broker ACL locks each device to its own topics. In the database, **Postgres Row-Level Security** scopes every tenant-owned table - enforced by the DB, not by query filters, so an out-of-tenant row is simply invisible (a miss is a 404, never a 403).
+
+```mermaid
+graph TB
+    subgraph untrusted["Untrusted zone (internet / customer)"]
+        DEV["Edge device<br/>key on-device (never transmitted)"]
+    end
+
+    subgraph broker["Broker trust boundary (EMQX 8883)"]
+        TLS["mTLS: verify_peer + fail_if_no_peer_cert"]
+        IDENT["peer_cert_as_username = cn<br/>=> MQTT username == device_id (CN)"]
+        ACL["file ACL first-match<br/>default-deny for any UUID without a grant"]
+    end
+
+    subgraph trusted["Trusted cloud zone (internal network)"]
+        CA["Device CA (signing key in api)"]
+        RLS["TimescaleDB Row-Level Security"]
+        CRL["CRL / revocation"]
+    end
+
+    DEV -->|"client cert O=tenant, OU=site, CN=device_id"| TLS
+    TLS --> IDENT --> ACL
+    ACL -->|"only ems/{own-path}/#"| RLS
+    CA -.->|"issues cert, writes grant"| ACL
+    CA -.->|"revoke -> remove grant + CRL"| CRL
+    CRL -.-> TLS
+```
+
+- **mTLS transport** - EMQX on 8883 with `verify_peer` + `fail_if_no_peer_cert`. Devices connect outbound-only (no open edge ports).
+- **Identity binding** - the certificate subject is `O=tenant_id, OU=site_id, CN=device_id`; the broker derives the MQTT username from the CN, so a device cannot spoof its identity.
+- **Per-device ACL** - each device gets a generated grant allowing only its own `telemetry`/`status` (up) and `schedule`/`command`/`config` (down). Any identity without a grant is default-denied; cross-tenant publish is impossible.
+- **Database RLS** - a request's `tenant_id` claim is stamped onto the connection (`set_config`), and `FORCE ROW LEVEL SECURITY` scopes every tenant table. The runtime role is `NOBYPASSRLS`, so even application bugs cannot cross tenants; a separate `BYPASSRLS` admin role stays behind `/api/v1/admin/**` only.
+
+## Core data model
+
+One Postgres/TimescaleDB instance serves both master data and time-series hypertables. Tenant-owned tables carry `tenant_id` and are RLS-scoped; market-wide and manufacturing tables deliberately are not.
+
+```mermaid
+erDiagram
+    tenant ||--o{ site : has
+    site ||--o{ device : has
+    site ||--o{ asset : has
+    device |o--o{ asset : "linked (SET NULL)"
+    tenant ||--o{ telemetry : "tenant_id (RLS)"
+    site ||--o{ telemetry : site_id
+    device ||--o{ telemetry : device_id
+    site ||--o{ schedule : "plan slots"
+    site ||--o{ forecast : "forecast (no RLS)"
+    site ||--o{ weather_forecast : "weather (RLS)"
+    provisioned_device ||..o{ device : "external_ref (sticker gate)"
+    device_enrollment ||..|| device : "external_ref (at claim)"
+
+    tenant {
+        uuid id PK
+        text name
+        text segment "CI | B2C"
+    }
+    site {
+        uuid id PK
+        uuid tenant_id FK
+        text name
+        text bidding_zone "DE-LU"
+        numeric latitude
+        numeric longitude
+    }
+    device {
+        uuid id PK
+        uuid tenant_id FK
+        uuid site_id FK
+        text external_ref "globally unique"
+        text kind
+        text name
+    }
+    asset {
+        uuid id PK
+        uuid site_id FK
+        uuid device_id FK "SET NULL"
+        text type "battery | pv | meter | load"
+        numeric capacity_kwh
+        numeric max_charge_kw
+        numeric roundtrip_efficiency_pct
+        numeric pv_capacity_kwp
+        text registry "MaStR"
+    }
+```
+
+Time series live in hypertables: `telemetry`, `telemetry_rollup_15m/1h/1d`, `forecast`, `day_ahead_prices`, `weather_forecast`, `schedule`. The schema is owned by Flyway migrations in `services/api` (RLS enforced), with `services/market-data` and `services/forecast` shipping their own.
+
+## What the portal does
+
+One unified shell for both roles - a left sidebar, a top bar with the tenant context, and one page at a time. Platform admins get an additive **Plattform** nav group and a tenant switcher; customers see a read-only tenant badge.
+
+| Page | What it does |
+|---|---|
+| **Übersicht** | Money-first KPIs (planned savings, avg price), live telemetry, price + weather widgets |
+| **Standorte** | Sites with detail drawers; asset section with MaStR grid-registry linking |
+| **Geräte** | Zero-touch device add (site + reference only), live online status |
+| **Marktpreise** | Day-ahead price chart (15-min bars, today/tomorrow) |
+| **Wetter** | Temperature / cloud cover / irradiance forecast |
+| **Fahrplan** | Battery schedule: setpoint bars over the price line + planned SoC |
+| **Historie** | Day/week/month/year with money headline, daily protocol, plan-vs-actual |
+| **Prognosequalität** | Active models, forecast-error series, shadow challenger progress |
+| **Mandanten / Benutzer / Geräte-Registry** (admin) | Tenant, user and manufacturing-registry management |
+
+**Behind the portal:**
+
+- **Optimization** - a deterministic battery-dispatch MILP (Pyomo + HiGHS), MPC-style: rolling 24h horizon in 15-min slots, re-planned every 15 min. Minimizes grid cost against day-ahead prices and load/PV forecasts, honoring SoC bounds, charge/discharge limits and the observed §14a grid-limit envelope. Publishes a retained schedule and a projected-savings headline.
+- **Forecast** - a measurable, swappable model registry: active baselines (seasonal persistence for load, a physical PV model) plus XGBoost challengers running in **shadow mode** with daily evaluation and a plain-German quality view. Promotion is a deliberate human decision, never automatic.
+- **Market data & weather** - keyless, EU-hosted collectors (energy-charts day-ahead prices, Open-Meteo weather) feed the optimizer and portal; ENTSO-E is an optional keyed alternative.
+- **Onboarding** - public self-registration with seamless auto-login into a guided 3-step wizard (site via address search → device by reference → connected), and optional MaStR asset linking that prefills PV/battery parameters from the public grid registry.
+
+## Quickstart
+
+Copy-paste path to a healthy full stack plus a working portal login. Full detail (LAN access, per-service builds, verification commands) is in [`docs/development.md`](docs/development.md).
+
+**Prerequisites:** Docker with Compose v2, and Node 20+ for the portal.
+
+```bash
+cp .env.example .env                            # dev-only secrets; defaults work as-is
+docker compose --profile edge up -d --build     # backbone + api + edge (Node-RED + SunSpec sim)
+docker compose --profile edge ps                # wait until every service is healthy
+```
+
+The `edge` profile adds the Node-RED edge and simulated SunSpec source; drop it for a backbone-only bring-up. Two further profiles are opt-in: `feeds` (day-ahead prices + weather) and `optimize` (the battery optimizer). On first start the TimescaleDB init scripts run **once** and the api applies its Flyway migrations over that bootstrap.
+
+Run the web portal (outside compose, via Vite):
 
 ```bash
 (cd frontend/portal && npm install && npm run dev)   # http://localhost:5173
 ```
 
-Open http://localhost:5173, click **Anmelden** (the branded German VoltPilot login page appears), and log in with a seeded **dev-only** user:
+Open http://localhost:5173, click **Anmelden**, and log in with a seeded dev-only user - `demo`/`demo` (tenant A) or `demo2`/`demo2` (tenant B) for the customer portal, or `admin`/`admin` for the platform admin surface. Each customer sees only their own tenant's data (enforced by Postgres RLS). You can also self-register a fresh account via **Konto erstellen** and land in the onboarding wizard.
 
-| User | Password | Tenant | Sees |
-|---|---|---|---|
-| `demo`  | `demo`  | A | Demo Site Berlin + its telemetry |
-| `demo2` | `demo2` | B | Nordwind Hamburg + its telemetry |
+Tear down with `docker compose --profile edge down` (add `-v` to wipe data).
 
-After login the portal shows that tenant's sites, a live telemetry chart (PV / load / net power / battery SoC), and its devices - never the other tenant's data (enforced by Postgres RLS).
-Log in as `admin`/`admin` for the same portal with the additive **Plattform** nav group (Mandanten/Benutzer/Geräte-Registry) and the tenant switcher in the top bar.
-Alternatively, create a fresh customer account via **Konto erstellen** (public self-registration): you land signed-in in the guided onboarding wizard (Standort → Gerät → Startklar).
+## Documentation
 
-#### Access the portal from another machine on the LAN
-
-All SPA URLs are env-driven (`VITE_*`); the dev realm already allows the LAN origin `http://192.168.2.77:5173` (adjust `infra/local/keycloak/voltpilot-realm.json` for a different host IP - Keycloak only imports it on a **fresh** volume, so `docker compose down -v && up -d` after changing it). On the machine hosting the stack:
-
-```bash
-# 1. Keycloak must issue tokens with an issuer the OTHER machine can resolve:
-#    set KC_HOSTNAME + the api's expected issuer to the host's LAN IP in .env:
-#      KC_HOSTNAME=http://192.168.2.77:8081
-#      OIDC_ISSUER_URI=http://192.168.2.77:8081/realms/voltpilot
-#      VOLTPILOT_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://192.168.2.77:5173
-#    then: docker compose up -d (recreates keycloak + api with the new env)
-
-# 2. Run Vite bound to all interfaces, pointing the SPA at the LAN URLs:
-(cd frontend/portal && \
-  VITE_KEYCLOAK_URL=http://192.168.2.77:8081 \
-  VITE_API_BASE=http://192.168.2.77:8090 \
-  npm run dev -- --host 0.0.0.0)
-```
-
-Then open `http://192.168.2.77:5173` from the other machine and log in as usual.
-
-### 4. Verify it's up (backbone + auth + RLS)
-
-```bash
-# TimescaleDB: hypertables present
-docker compose exec timescaledb psql -U voltpilot -d voltpilot \
-  -c "SELECT hypertable_name FROM timescaledb_information.hypertables ORDER BY 1;"
-# api: healthy, and rejects unauthenticated calls
-curl -s http://localhost:8090/health                                              # {"status":"UP",...}
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/sites       # 401
-
-# Mint a tenant-A token (password grant) and call the tenant-scoped API
-TOKEN=$(curl -s http://localhost:8081/realms/voltpilot/protocol/openid-connect/token \
-  -d grant_type=password -d client_id=voltpilot-api -d client_secret=voltpilot-api-dev-secret \
-  -d username=demo -d password=demo -d scope=openid | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/v1/sites       # only tenant A's site
-# RLS proof: tenant A cannot see tenant B's site -> 404 (not 403; the row is invisible)
-curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8090/api/v1/sites/10000000-0000-0000-0000-000000000002/telemetry?channel=power_kw
-```
-
-### 5. Verify the edge -> MQTT path (with `--profile edge`)
-
-The Node-RED edge reads the SunSpec simulator and publishes contract-conformant telemetry to EMQX.
-Subscribe to one message (needs a broker container on the compose network):
-
-```bash
-T='ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003'
-docker run --rm --network voltpilot_default eclipse-mosquitto:2 \
-  mosquitto_sub -h emqx -p 1883 -t "$T/telemetry" -C 1 -v -W 25
-```
-
-See [`edge/node-red/README.md`](edge/node-red/README.md) for the full walkthrough (schedule execution, watchdog, guards).
-
-### Tear down
-
-```bash
-docker compose --profile edge down       # stop, keep data volumes
-docker compose --profile edge down -v    # stop and wipe data (forces a fresh init on next up)
-```
-
-## Building & running the services
-
-Each service is independently buildable; see its own README.
-
-```bash
-# JVM services (Spring Boot, Java 21) - Maven wrapper included
-(cd services/api && ./mvnw test)
-(cd services/ingest && ./mvnw test)
-(cd services/timescale-writer && ./mvnw test)
-
-# Python services
-(cd services/optimization && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev,solver]' && pytest)  # 'solver' extra pulls the HiGHS wheel; drop it where unavailable and the solver test skips
-(cd services/forecast && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)
-(cd services/marketing-adapter && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)
-(cd services/market-data && python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]' && pytest)  # add ',db' for the psycopg TimescaleDB writer; tests run fixture-only, no live ENTSO-E
-
-# Frontend
-(cd frontend/portal && npm install && npm run build)
-```
-
-## Contracts
-
-The binding interface contracts live in [`docs/contracts/`](docs/contracts/): the MQTT topic + telemetry payload schema (incl. the observed §14a effective power limit), the Redpanda `telemetry.raw` event schema, the MQTT schedule + provisioning schemas, and the portal OpenAPI (registration/auth/sites/devices/claim/telemetry/prices/weather/schedule/history plus the admin API implemented; KPIs still a stub). Treat changes there as breaking and versioned.
-
-## Connect a real device (secure mTLS broker)
-
-For onboarding a physical remote edge device over the internet - mTLS on `8883`, per-tenant/-device ACL, a device CA + cert-issuance/revocation tool - see [`docs/connect-a-device.md`](docs/connect-a-device.md) (device guide) and [`docs/security-mqtt.md`](docs/security-mqtt.md) (security model + hardening checklist). The dev stack (plaintext `1883`) is unaffected; the hardened `8883` broker is part of the standalone production stack (`docker compose -f docker-compose.prod.yml up -d`). Docker-free proof: `python3 tools/pki/verify_mqtt_security.py`.
-
-## Production deployment
-
-Single-VPS deploy (external Caddy TLS + Forgejo push-to-deploy), modeled on saalo: [`docs/deploy.md`](docs/deploy.md). The full server-side stack is `docker-compose.prod.yml` (images pulled from the Forgejo registry, pinned per rollout); the CI/CD lives in [`.forgejo/workflows/`](.forgejo/workflows/) (`deploy.yaml` gated, `deploy-fast.yaml` manual). Prod secrets template: [`.env.prod.example`](.env.prod.example).
-
-## Scope & future work
-
-Delivered so far: the **runnable local backbone**, the binding **contracts**, the **portal + authentication spine** (Spring Boot API in compose with Keycloak OIDC + Postgres RLS tenant isolation, public **self-registration** with seamless auto-login, the guided **onboarding wizard**, and device claiming gated by the provisioned-device registry - see [`AGENTS.md`](AGENTS.md)), the **live ingest pipe** (`ingest` + `timescale-writer`, compose `edge` profile), the baseline **forecast** service, the **market-data** day-ahead price adapter, the **optimization** battery-dispatch engine, and the Node-RED **edge** (SunSpec simulator). Only `marketing-adapter` remains a thin skeleton. Still excluded:
-
-- The portal's KPIs endpoint and a live telemetry channel (WS/SSE - the portal polls REST); self-registration email verification/captcha (SMTP would also unlock self-service password reset - today recovery is the support reset in the admin Benutzer page).
-- Cloud / Kubernetes / Hetzner deployment manifests and GitOps (Argo CD/Flux).
-- Remaining business logic: promoting the shadow-mode ML forecasters (baselines are active, XGBoost challengers run in shadow - see `services/forecast` and the `AGENTS.md` "Shadow-mode forecasting" section), direct-marketing provider integrations, and real hardware Modbus/SunSpec edge I/O (the Node-RED edge runs end-to-end against the simulated SunSpec source in `edge/sim`).
-- Migration-version coordination across services - `services/api` now runs core-schema Flyway migrations (RLS enforced), `services/market-data` ships the forward-only `day_ahead_prices` migration, and `services/forecast` its own `V3__forecast_hypertable.sql`; a unified scheme is still to be reconciled.
-- Observability stack (Prometheus/Grafana/Loki/OTel) and Edge OTA (Mender).
-
-See [`AGENTS.md`](AGENTS.md) for the durable stack/ports/run/build/test reference.
+| Doc | Content |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | Canonical product architecture |
+| [`docs/development.md`](docs/development.md) | Full local bring-up, verification, per-service builds |
+| [`docs/contracts/`](docs/contracts/) | Binding interface contracts (MQTT telemetry/schedule/provisioning, Redpanda event, portal OpenAPI) |
+| [`docs/connect-a-device.md`](docs/connect-a-device.md) | Connecting a real remote edge device over mTLS |
+| [`docs/security-mqtt.md`](docs/security-mqtt.md) | Security model + hardening checklist |
+| [`docs/deploy.md`](docs/deploy.md) | Single-VM production deployment (external TLS + Forgejo push-to-deploy) |
+| [`edge-app/nodered/CUSTOM-INVERTER.md`](edge-app/nodered/CUSTOM-INVERTER.md) | Wiring a custom inverter into the edge |
+| [`AGENTS.md`](AGENTS.md) | Durable stack/ports/run/build/test reference |
