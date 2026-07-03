@@ -57,12 +57,14 @@ Three Node-RED nodes (`nodered/vp-palette/`), all preconfigured to the core's bu
 
 **Custom inverter integration:** the full local-bus contract - payload schema, units/signs, QoS/cadence, the copy-paste function + `mqtt out` recipe, and the gotchas - is documented in [`nodered/CUSTOM-INVERTER.md`](nodered/CUSTOM-INVERTER.md).
 
+**Deye inverters:** a config-driven template for all major Deye families (string, hybrid 1p/3p, micro) over the bundled `deye` CLI is on the disabled **"Deye (Vorlage)"** flow tab - pick the family, the register map applies. Read/monitoring for all families + the string/micro power-limit write; hybrid battery control is a documented follow-up. See [`nodered/DEYE.md`](nodered/DEYE.md).
+
 ## Einen neuen Kunden verdrahten (VoltPilot service task)
 
 The Node-RED editor runs LAN-only behind auth: `http://<geraet>:1881`, user `voltpilot`, password from `VP_NODERED_PASSWORD` (default `voltpilot` - **change it per installation**). Customers never get these credentials.
 
-1. Open the disabled tab **"SunSpec Wechselrichter (Vorlage)"**.
-2. Set the inverter IP in the config node *Wechselrichter (Modbus TCP)*; adapt the `decode`/`write` functions to the device's register map (the simulator tab shows a complete working example; register semantics: `edge/sim/sunspec-sim.js`).
+1. Open the disabled tab **"SunSpec Wechselrichter (Vorlage)"** (a SunSpec/Modbus-TCP inverter) or **"Deye (Vorlage)"** (a Deye WiFi-logger inverter over the bundled `deye` CLI - see [`nodered/DEYE.md`](nodered/DEYE.md)).
+2. SunSpec: set the inverter IP in the config node *Wechselrichter (Modbus TCP)*; adapt the `decode`/`write` functions to the device's register map (the simulator tab shows a complete working example; register semantics: `edge/sim/sunspec-sim.js`). Deye: set `ip`/`port`/`family` in the *Deye-Konfiguration* node (the family selects the register map); calibrate the grid/battery signs on-device.
 3. Enable the template tab, disable the simulator tab, deploy.
 4. Set the battery's real limits in `.env` (`VP_MAX_CHARGE_KW`, `VP_MAX_DISCHARGE_KW`, `VP_SOC_*`) and `docker compose up -d` again.
 
@@ -81,6 +83,10 @@ See [`.env.example`](.env.example). Everything is optional; the dev escape hatch
 
 # vp-palette (pure shaping + node-red-node-test-helper against an in-process bus)
 (cd nodered/vp-palette && npm install && npm test)
+
+# Deye decode (offline: +ok=0103 parser, per-family register maps, PV sum,
+# sign inversion, power-limit write, family auto-detect - no hardware/network)
+node --test nodered/deye/
 
 # Isolated compose e2e (own project name/ports; sim -> nodered -> core ->
 # stand-in cloud broker; retained schedule -> guards -> sim setpoint write)

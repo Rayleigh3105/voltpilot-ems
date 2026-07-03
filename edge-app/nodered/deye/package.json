@@ -1,0 +1,10 @@
+{
+  "name": "voltpilot-edge-deye-decode",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Canonical, unit-tested reference for the Deye Node-RED template's Modbus +ok=0103 parser, per-family register maps and telemetry decode. The flows.json function nodes carry a copy of this logic.",
+  "main": "deye-decode.js",
+  "scripts": {
+    "test": "node --test"
+  }
+}
