@@ -83,18 +83,28 @@ Es muss auf einem Rechner **im selben LAN wie der Logger** laufen (die VoltPilot
 Es öffnet eine TCP-Verbindung, macht **einen** Solarman-V5-Lesevorgang mit der Seriennummer und druckt die Roh-Register **und** die decodierten Messwerte:
 
 ```bash
-# Auf der Edge-VM (gleiches LAN wie der Logger), im Repo:
+# FINALE LIVE-PRÜFUNG des Captain-Geräts (SG01HP3, 3-phasig HV Hybrid):
+# decodiert SoC/Netz/Last/PV direkt über die hybrid_3p-Karte.
 node edge-app/nodered/deye/solarman-probe.js \
-  --ip 192.168.0.28 --serial 2985159064 --family string
+  --ip 192.168.0.28 --serial 2985159064 --family hybrid_3p
 
 # Fortlaufend (alle 5 s, Ctrl-C beendet):
 node edge-app/nodered/deye/solarman-probe.js \
-  --ip 192.168.0.28 --serial 2985159064 --family string --loop 5
+  --ip 192.168.0.28 --serial 2985159064 --family hybrid_3p --loop 5
 
-# Roh-Register erkunden (z. B. um die Registerkarte am Gerät zu bestätigen):
+# Roh-Messwertblock erkunden (0x024C..0x02A3 = SoC bis PV4):
 node edge-app/nodered/deye/solarman-probe.js \
-  --ip 192.168.0.28 --serial 2985159064 --start 0x0050 --count 20
+  --ip 192.168.0.28 --serial 2985159064 --start 0x0240 --count 100
 ```
+
+> **Erwartung beim Live-Check (SG01HP3):** `soc_pct` 0..100, `load_kw ≥ 0`,
+> `pv_power_kw` = Summe aller MPPTs (~ Wert der Logger-Statusseite "Current power",
+> nachts ≈ 0). Passt `pv_power_kw` gegen die Statusseite **~10× zu klein** oder
+> klemmt `power_kw` bei ±32,7 kW, ist es die HV-Dezawatt-Skalierung → siehe
+> VERIFY-Hinweis in [Abschnitt 2, `hybrid_3p`](#hybrid_3p---3-phasige-hybride-high-map-sg04lp3-und-sg01hp3).
+> Der frühere `--family string`-Lauf lieferte **Müll** (30 MW), weil er die
+> Batterie-/Konfig-Register `0x0050..0x00CC` als Messwerte fehlinterpretierte -
+> für dieses Gerät ist `hybrid_3p` korrekt.
 
 Das Skript druckt jede gelesene Registeradresse mit u16-/s16-Wert und die decodierte `edge/telemetry`-Nachricht.
 **Plausibilität:** PV nachts ≈ 0, `load_kw ≥ 0`, SoC 0..100, `power_kw` `+` = Netzbezug / `−` = Einspeisung.
@@ -158,17 +168,29 @@ Ein Leseblock: `-xmb 0050007D` (0x50..0xCC, 125 Register = Modbus-fn-0x03-Maximu
 
 Ein Leseblock: `-xmb 00A90016` (0xA9..0xBE, 22 Register).
 
-### `hybrid_3p` - SUN-5..12K-SG04LP3 / SG01HP3 (high map)
+### `hybrid_3p` - 3-phasige Hybride, high map (SG04LP3 **und** SG01HP3)
 
-| Feld | Register (dez.) | Breite |
-|---|---|---|
-| `soc_pct` | `0x024C` (588) | 16-Bit (%) |
-| `pv_power_kw` | `0x02A0` + `0x02A1` (672/673, Summe) | 16-Bit |
-| `power_kw` (Netz) | `0x0271` (625) | 16-Bit, **vorzeichenbehaftet** |
-| `load_kw` | `0x028D` (653) | 16-Bit |
-| `batt` (nur Kalibrierung) | `0x024E` (590) | 16-Bit, **vorzeichenbehaftet** |
+Deckt zwei Baureihen mit **derselben** high-map ab:
+- **SG04LP3** (LV-Batterie): `SUN-5..12K-SG04LP3`, 2 MPPT.
+- **SG01HP3** (HV-Batterie): `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4`, 3-4 MPPT. **Das bestätigte Captain-Gerät** (WR-Serial `2407224048`, Logger `2985159064` @ `192.168.0.28`).
 
-Ein Leseblock: `-xmb 024C0056` (0x24C..0x2A1, 86 Register).
+| Feld | Register (dez.) | Breite | Quelle |
+|---|---|---|---|
+| `soc_pct` | `0x024C` (588) | 16-Bit (%) | ha-solarman `deye_sg04lp3.yaml` |
+| `pv_power_kw` | `0x02A0`..`0x02A3` (672-675, **Summe PV1..PV4**) | 16-Bit je | ha-solarman + Deye-Modbus-Manual |
+| `power_kw` (Netz) | `0x0271` (625) | 16-Bit, **vorzeichenbehaftet** | ha-solarman ("Total Grid Power") |
+| `load_kw` | `0x028D` (653) | 16-Bit | ha-solarman ("Total Load Power") |
+| `batt` (nur Kalibrierung) | `0x024E` (590) | 16-Bit, **vorzeichenbehaftet** | ha-solarman ("Battery Power") |
+
+Ein Leseblock: `-xmb 024C0058` (0x024C..0x02A3, 88 Register - deckt SoC bis PV4 ab, unter dem 125-Register-Limit).
+
+Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein nicht bestücktes PV3/PV4 liest `0` und stört die Summe nicht.
+
+> **Adressen sind autoritativ** aus StephanJoubert/home_assistant_solarman (`deye_sg04lp3.yaml`, das die SG01HP3-Nutzer laut Repo-Issue #444 ebenfalls verwenden) plus dem Deye-Modbus-Manual für PV3/PV4 (674/675).
+>
+> **VERIFY-on-device (offen bis zum Live-Read):**
+> 1. **Netz-Vorzeichen** (`invert_grid_sign`) - firmwareabhängig; mittags per PV-Überschuss kalibrieren (siehe [Abschnitt 5](#5-vorzeichen-kalibrierung-am-gerät)).
+> 2. **Skalierung auf dem 50-kW-HV-Gerät.** Die Karte nutzt `scale = 1` (Watt) wie ha-solarman. Falls die Live-Werte gegen die Logger-Statusseite **~10× zu klein** wirken oder `power_kw` bei ±32,7 kW klemmt (int16-Sättigung), nutzt diese HV-Firmware **Dezawatt** - dann in [`deye/deye-decode.js`](deye/deye-decode.js) die `scale` von `grid`/`load`/`pv` in `hybrid_3p` auf `10` setzen (ein Ein-Zeilen-Fix je Feld) und den Test anpassen.
 
 ### `micro` - Deye/Bosswerk-Mikrowechselrichter
 

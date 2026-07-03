@@ -117,7 +117,7 @@ function v5Read(sock, frame, timeoutMs) {
 const FAMILY_READS = {
   string: [{ start: 0x0050, count: 0x007d }],
   hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],
-  hybrid_3p: [{ start: 0x024c, count: 0x0056 }],
+  hybrid_3p: [{ start: 0x024c, count: 0x0058 }], // 0x024C..0x02A3 (SOC..PV4)
 };
 
 function printRegisters(block) {

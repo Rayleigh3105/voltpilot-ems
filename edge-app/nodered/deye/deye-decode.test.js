@@ -139,7 +139,7 @@ test('hybrid_1p read plan is one block 0x00A9..0x00BE', () => {
 // --- hybrid_3p ---------------------------------------------------------------
 
 test('hybrid_3p decode: high-map registers, PV summed, SoC & signs', () => {
-  const b = block(0x024c, 0x56, {
+  const b = block(0x024c, 0x58, {
     0x024c: 66, // SoC 66 %
     0x024e: 500, // battery +500 W (charge) -> 0.5 kW
     0x0271: 4000, // grid import 4000 W -> 4 kW
@@ -155,10 +155,55 @@ test('hybrid_3p decode: high-map registers, PV summed, SoC & signs', () => {
   assert.strictEqual(batt_kw, 0.5);
 });
 
-test('hybrid_3p read plan is one block 0x024C..0x02A1', () => {
+test('hybrid_3p read plan is one block 0x024C..0x02A3 (covers PV1..PV4)', () => {
   const [r] = D.planReads({ family: 'hybrid_3p' });
   assert.strictEqual(r.start, 0x024c);
-  assert.strictEqual(r.count, 0x56);
+  assert.strictEqual(r.count, 0x58);
+  // last summed PV register (0x02A3) must fall inside the read block
+  assert.ok(r.start + r.count - 1 >= 0x02a3, 'read block must reach PV4 at 0x02A3');
+});
+
+// --- SG01HP3 (HV, 3-4 MPPT) - the confirmed captain device -------------------
+// SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4. Synthetic 0x024C block modelling a
+// midday PV-surplus moment: 4 MPPTs producing, battery charging, grid EXPORTING.
+// Proves all four tracker registers are summed and the grid sign flips to export.
+test('hybrid_3p SG01HP3: sums all 4 MPPTs and decodes an export moment', () => {
+  const b = block(0x024c, 0x58, {
+    0x024c: 88, // SoC 88 %
+    0x024e: 6000, // battery +6000 W (charging from PV surplus) -> 6 kW
+    0x0271: (-12000 & 0xffff), // raw grid -12000 W; with invert_grid_sign -> +12 kW below
+    0x028d: 9000, // total load 9000 W -> 9 kW
+    0x02a0: 12000, // PV1 12 kW
+    0x02a1: 11000, // PV2 11 kW
+    0x02a2: 3000, // PV3  3 kW
+    0x02a3: 1000, // PV4  1 kW  -> total 27 kW
+  });
+  // Raw (no sign flip): grid reads -12 kW (this firmware's raw export sign).
+  const raw = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(raw.reading.soc_pct, 88);
+  assert.strictEqual(raw.reading.pv_power_kw, 27, 'PV1+PV2+PV3+PV4 summed');
+  assert.strictEqual(raw.reading.load_kw, 9);
+  assert.strictEqual(raw.reading.power_kw, -12);
+  assert.strictEqual(raw.batt_kw, 6, 'battery charge (calibration field only)');
+  // With invert_grid_sign the export reads as a negative import per the contract
+  // convention (+ import / - export) - here the raw was already negative, so the
+  // flag makes it positive; the flag is the on-device grid-sign calibration lever.
+  const flipped = D.decode([b], { family: 'hybrid_3p', invert_grid_sign: true });
+  assert.strictEqual(flipped.reading.power_kw, 12, 'invert_grid_sign flips grid only');
+  assert.strictEqual(flipped.reading.pv_power_kw, 27, 'PV untouched by sign flags');
+});
+
+// A BM3 (3-MPPT) unit has no PV4 wired: register 0x02A3 reads 0 and the sum is
+// still correct - proves the 4-register sum is safe on 3-MPPT hardware.
+test('hybrid_3p BM3: absent PV4 (0x02A3=0) does not corrupt the PV sum', () => {
+  const b = block(0x024c, 0x58, {
+    0x024c: 50,
+    0x02a0: 5000,
+    0x02a1: 4000,
+    0x02a2: 1000, // 3 trackers -> 10 kW, PV4 absent (0)
+  });
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.pv_power_kw, 10);
 });
 
 // --- end-to-end through a synthetic tool response ----------------------------

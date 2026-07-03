@@ -68,18 +68,26 @@ const FAMILIES = {
     },
   },
 
-  // Deye three-phase hybrid, "high" holding-register map
-  // (SUN-5..12K-SG04LP3 / SG01HP3).
+  // Deye three-phase hybrid, "high" holding-register map. Covers the LV line
+  // (SUN-5..12K-SG04LP3, 2 MPPT) AND the HV line
+  // (SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4, 3-4 MPPT). They share this modbus
+  // map; the only per-model difference is the MPPT count, so PV sums ALL FOUR
+  // tracker power registers (an absent PV3/PV4 reads 0 and is harmless).
+  // Addresses are authoritative from StephanJoubert/home_assistant_solarman
+  // deye_sg04lp3.yaml (SOC 588, batt 590, grid 625, load 653, PV1..PV4 672..675).
+  // Confirmed device: captain's SUN-*-SG01HP3-EU (inverter serial 2407224048).
   hybrid_3p: {
-    label: 'Hybrid 3-phasig (SG04LP3 / SG01HP3, high map)',
+    label: 'Hybrid 3-phasig (SG04LP3 LV / SG01HP3 HV, high map, bis 4 MPPT)',
     hasBattery: true,
-    reads: [{ start: 0x024c, count: 0x0056 }], // 0x024C..0x02A1
+    // 0x024C..0x02A3 (88 regs) - one block, under the 125-reg fn-0x03 limit.
+    reads: [{ start: 0x024c, count: 0x0058 }],
     fields: {
-      soc: { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' }, // reg 588
-      batt: { addr: 0x024e, bits: 16, signed: true, scale: 1 }, // reg 590, W
-      grid: { addr: 0x0271, bits: 16, signed: true, scale: 1 }, // reg 625, W
+      soc: { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' }, // reg 588, %
+      batt: { addr: 0x024e, bits: 16, signed: true, scale: 1 }, // reg 590, W (calibration only)
+      grid: { addr: 0x0271, bits: 16, signed: true, scale: 1 }, // reg 625, W (+ import / - export)
       load: { addr: 0x028d, bits: 16, signed: false, scale: 1 }, // reg 653, W
-      pv: { addrs: [0x02a0, 0x02a1], bits: 16, signed: false, scale: 1, sum: true }, // reg 672/673, W
+      // PV1..PV4 power, reg 672/673/674/675 (BM3 uses 3, BM4 uses 4; PV4=0 on LV/BM3).
+      pv: { addrs: [0x02a0, 0x02a1, 0x02a2, 0x02a3], bits: 16, signed: false, scale: 1, sum: true },
     },
   },
 
