@@ -89,6 +89,18 @@ docker compose ps
 docker compose logs -f core   # "vp-edge-core started" + "enrollment: generated device keypair"
 ```
 
+### 3a. Ohne lokalen Build: fertige Images ziehen (empfohlen)
+
+Die Edge-App-Images sind in der Forgejo-Registry veröffentlicht (`git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core` + `edge-app-nodered`, Plattform `linux/amd64`) - gebaut vom Workflow `.forgejo/workflows/edge-images.yaml` (nativ auf dem Runner) bzw. von VoltPilot gepusht. Die `docker-compose.yml` benennt genau diese Images, sodass auf der Edge-VM **kein** lokaler Build (`--build`) nötig ist - besonders auf schwacher Hardware sind gebaute Images deutlich schneller als ein `--build` (der `nodered`-Build kompiliert u. a. das Deye-CLI in einer Go-Stage).
+
+```bash
+docker login git.tecmaxx.de           # einmalig, mit den bereitgestellten Zugangsdaten
+docker compose pull core nodered      # fertige Images ziehen (kein Build)
+docker compose up -d                  # ohne --build starten
+```
+
+Der lokale Build (`docker compose up -d --build` aus Abschnitt 3) bleibt der Fallback, wenn die VM die Registry nicht erreicht oder ein Image für die Ziel-Architektur fehlt.
+
 Der Core erzeugt beim ersten Start seinen EC-P-256-Schlüssel lokal (der private Schlüssel verlässt das Gerät nie), lädt den CSR zum Portal hoch und pollt - der Pairing-Zustand steht dann auf *warte_auf_beanspruchung*.
 
 ## 4. Wechselrichter auswählen (Selbstverdrahtung, kein Flow-Edit)
@@ -167,4 +179,5 @@ Danach wieder in Abschnitt 4 den Deye-Read testen - er sollte jetzt Werte liefer
 
 - **Neustart-fest:** `restart: unless-stopped`; Identität + Puffer liegen im Volume `vp-edge-data`, die Node-RED-Verdrahtung in `vp-nodered-data`.
 - **Cloud-Ausfall:** Telemetrie wird lokal gepuffert (Standard 48 h, `VP_BUFFER_HOURS`) und bei Reconnect geordnet nachgeliefert; ohne frischen Fahrplan (> 20 min) fällt der Core auf Eigenverbrauch (PV − Last) zurück.
-- **Update:** `git pull && docker compose up -d --build` (die Volumes bleiben erhalten).
+- **Update (Pull-basiert, empfohlen):** `docker compose pull core nodered && docker compose up -d` - zieht die frischen Registry-Images ohne lokalen Build; die Volumes bleiben erhalten.
+- **Update (lokaler Build):** `git pull && docker compose up -d --build` - Fallback, wenn die VM die Registry nicht erreicht.
