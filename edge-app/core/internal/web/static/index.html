@@ -12,7 +12,10 @@
       <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
       <span>VoltPilot&nbsp;Edge</span>
     </div>
-    <span class="version" id="version"></span>
+    <nav class="topnav">
+      <a class="topnav-link" href="inverter.html">Wechselrichter einrichten</a>
+      <span class="version" id="version"></span>
+    </nav>
   </header>
 
   <main>
@@ -61,6 +64,7 @@
     <section class="card details">
       <h2>Details</h2>
       <dl>
+        <dt>Wechselrichter-Modell</dt><dd id="invModel">nicht eingerichtet</dd>
         <dt>Aktueller Sollwert (Batterie)</dt><dd id="setpoint">–</dd>
         <dt>Ladezustand (SoC)</dt><dd id="soc">–</dd>
         <dt>PV-Leistung</dt><dd id="pv">–</dd>

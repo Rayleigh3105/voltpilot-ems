@@ -39,6 +39,10 @@ type Snapshot struct {
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`
 
+	// Inverter is the customer's inverter selection (brand/type/transport),
+	// nil until one is chosen in the local web app.
+	Inverter *InverterInfo `json:"inverter,omitempty"`
+
 	SocPct      float64 `json:"soc_pct"`
 	PvKw        float64 `json:"pv_kw"`
 	LoadKw      float64 `json:"load_kw"`
@@ -46,6 +50,16 @@ type Snapshot struct {
 
 	StartedAt time.Time `json:"started_at"`
 	Version   string    `json:"version"`
+}
+
+// InverterInfo is the UI-facing summary of the selected inverter.
+type InverterInfo struct {
+	Brand         string `json:"brand"`
+	Label         string `json:"label"`
+	Family        string `json:"family"`
+	Communication string `json:"communication"`
+	Host          string `json:"host"`
+	Configured    bool   `json:"configured"`
 }
 
 // Store is the concurrency-safe holder.

@@ -22,6 +22,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -38,11 +39,16 @@ type Agent struct {
 
 	buf       *buffer.Buffer
 	planStore *plan.Store
+	invStore  *inverter.Store
+	invCat    inverter.Catalog
 
 	mu          sync.Mutex
 	currentPlan *plan.Plan
 	lastReading guards.Reading
 	lastRawSoc  *float64
+
+	invMu sync.Mutex
+	inv   *inverter.Selection // the customer's inverter choice; nil until set
 
 	link   *cloud.Link
 	linkMu sync.Mutex
@@ -111,11 +117,17 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	is, err := inverter.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	a := &Agent{
 		Cfg:          cfg,
 		State:        state.New(ref, Version),
 		buf:          buf,
 		planStore:    ps,
+		invStore:     is,
+		invCat:       inverter.DefaultCatalog(),
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
 		lastReading: guards.Reading{
@@ -133,6 +145,15 @@ func New(cfg config.Config) (*Agent, error) {
 		slog.Info("loaded cached plan from disk", "slots", len(p.Slots), "received_at", p.ReceivedAt)
 	} else if err != nil {
 		slog.Warn("cached plan unreadable; starting without", "err", err)
+	}
+	// Restore the customer's inverter selection (persisted across restarts); it
+	// is (re-)published retained on the local bus once the bus is up in Start.
+	if sel, ok, err := is.Load(); err == nil && ok {
+		a.inv = &sel
+		a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
+		slog.Info("loaded inverter selection from disk", "brand", sel.Brand, "family", sel.Family)
+	} else if err != nil {
+		slog.Warn("stored inverter selection unreadable; starting without", "err", err)
 	}
 	return a, nil
 }
@@ -156,6 +177,10 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(localbus.TopicStatus, 2, a.onLocalStatus); err != nil {
 		return err
 	}
+
+	// Re-publish the persisted inverter selection retained, so a Node-RED that
+	// (re)joins the bus after a reboot immediately self-wires the right adapter.
+	a.publishInverterConfig()
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
@@ -601,6 +626,72 @@ func (a *Agent) kick() {
 	select {
 	case a.wake <- struct{}{}:
 	default:
+	}
+}
+
+// --- Inverter selection (the local web app's config surface) ---
+
+// InverterCatalog returns the selectable brand/family/field option tree.
+func (a *Agent) InverterCatalog() inverter.Catalog { return a.invCat }
+
+// GetInverter returns the current selection, ok=false if none is set yet.
+func (a *Agent) GetInverter() (inverter.Selection, bool) {
+	a.invMu.Lock()
+	defer a.invMu.Unlock()
+	if a.inv == nil {
+		return inverter.Selection{}, false
+	}
+	return *a.inv, true
+}
+
+// SetInverter validates a selection request against the catalog, persists it,
+// updates the UI state, and (re-)publishes it retained on the local bus so
+// Layer 1 picks up the change immediately. A bad request returns a
+// *inverter.ValidationError (the web layer maps it to HTTP 400).
+func (a *Agent) SetInverter(req inverter.SelectionRequest) (inverter.Selection, error) {
+	sel, err := a.invCat.Normalize(req, time.Now())
+	if err != nil {
+		return inverter.Selection{}, err
+	}
+	if err := a.invStore.Save(sel); err != nil {
+		return inverter.Selection{}, fmt.Errorf("inverter selection not persisted: %w", err)
+	}
+	a.invMu.Lock()
+	a.inv = &sel
+	a.invMu.Unlock()
+	a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
+	a.publishInverterConfig()
+	slog.Info("inverter selection updated", "brand", sel.Brand, "family", sel.Family,
+		"communication", sel.Communication)
+	return sel, nil
+}
+
+// publishInverterConfig publishes the current selection retained on the local
+// bus. No-op when nothing is selected yet or the bus is not up.
+func (a *Agent) publishInverterConfig() {
+	a.invMu.Lock()
+	sel := a.inv
+	a.invMu.Unlock()
+	if sel == nil || a.Bus == nil {
+		return
+	}
+	if err := a.Bus.Publish(localbus.TopicInverterConfig, sel.BusPayload(), true); err != nil {
+		slog.Error("inverter config publish failed", "err", err)
+	}
+}
+
+// inverterInfo projects a selection onto the UI-facing snapshot summary.
+func inverterInfo(sel *inverter.Selection) *state.InverterInfo {
+	if sel == nil {
+		return nil
+	}
+	return &state.InverterInfo{
+		Brand:         sel.Brand,
+		Label:         sel.Label,
+		Family:        sel.Family,
+		Communication: sel.Communication,
+		Host:          sel.Connection.IP,
+		Configured:    true,
 	}
 }
 

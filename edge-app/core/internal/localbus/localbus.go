@@ -13,6 +13,10 @@
 //	                 "slot_start"?: RFC3339, "ts": RFC3339}
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
+//	edge/inverter/config  core -> Layer 1   RETAINED inverter selection the
+//	                customer made in the local web app (brand/family/
+//	                communication/connection). Node-RED reads it to self-wire
+//	                the right read adapter. Shape: edge-app/INVERTER-CONFIG.md.
 package localbus
 
 import (
@@ -26,9 +30,10 @@ import (
 
 // Topics of the local bus namespace.
 const (
-	TopicTelemetry = "edge/telemetry"
-	TopicSetpoint  = "edge/setpoint"
-	TopicStatus    = "edge/status"
+	TopicTelemetry      = "edge/telemetry"
+	TopicSetpoint       = "edge/setpoint"
+	TopicStatus         = "edge/status"
+	TopicInverterConfig = "edge/inverter/config"
 )
 
 // Bus wraps the embedded broker.

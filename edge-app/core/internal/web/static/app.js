@@ -101,6 +101,10 @@
       invSub.textContent = "Noch keine Meldung der Anlagenanbindung";
     }
 
+    var invModel = $("invModel");
+    if (invModel) {
+      invModel.textContent = (s.inverter && s.inverter.configured) ? s.inverter.label : "nicht eingerichtet";
+    }
     $("setpoint").textContent = (s.mode === "keine_messwerte") ? "–" : kw(s.setpoint_kw) + (s.setpoint_kw > 0 ? " (laden)" : (s.setpoint_kw < 0 ? " (entladen)" : ""));
     $("soc").textContent = s.last_telemetry ? pct(s.soc_pct) : "–";
     $("pv").textContent = s.last_telemetry ? kw(s.pv_kw) : "–";

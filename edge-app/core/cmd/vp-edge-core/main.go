@@ -44,7 +44,7 @@ func main() {
 
 	httpSrv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           web.Handler(a.State),
+		Handler:           web.Handler(a.State, a),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VoltPilot Edge – Wechselrichter</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
+      <span>VoltPilot&nbsp;Edge</span>
+    </div>
+    <nav class="topnav">
+      <a class="topnav-link" href="index.html">← Übersicht</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="card">
+      <h1 class="page-title">Wechselrichter einrichten</h1>
+      <p class="page-lead">
+        Wählen Sie Ihren Wechselrichter aus. Die Anbindung erfolgt automatisch –
+        Sie müssen nur Marke, Typ und die Verbindungsdaten Ihres Geräts angeben.
+        VoltPilot liest die Anlage danach nur aus; gesteuert wird nichts.
+      </p>
+
+      <div class="current" id="current" hidden>
+        <span class="current-badge" id="currentBadge">konfiguriert</span>
+        <div>
+          <p class="current-model" id="currentModel">–</p>
+          <p class="current-detail" id="currentDetail"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <form id="form" novalidate>
+        <div class="field">
+          <label for="brand">Marke</label>
+          <select id="brand" required></select>
+          <p class="field-help" id="brandHelp"></p>
+        </div>
+
+        <div class="field">
+          <label for="family">Modell / Typ</label>
+          <select id="family" required></select>
+          <p class="field-help" id="familyHelp"></p>
+        </div>
+
+        <div class="field">
+          <label>Kommunikationsmethode</label>
+          <div class="comm-readonly" id="comm">–</div>
+          <p class="field-help">Wird automatisch aus der Marke abgeleitet.</p>
+        </div>
+
+        <fieldset class="conn">
+          <legend>Verbindungsdaten</legend>
+          <div id="fields"></div>
+        </fieldset>
+
+        <p class="form-error" id="formError" hidden></p>
+        <p class="form-ok" id="formOk" hidden>Gespeichert. Die Anlage wird jetzt angebunden.</p>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="saveBtn">Speichern</button>
+        </div>
+      </form>
+    </section>
+
+    <footer class="foot">
+      Lokale Geräteansicht. Die Auswahl gilt nur für dieses Gerät; die
+      Anlagensteuerung erfolgt über das VoltPilot-Portal.
+    </footer>
+  </main>
+
+  <script src="inverter.js"></script>
+</body>
+</html>
