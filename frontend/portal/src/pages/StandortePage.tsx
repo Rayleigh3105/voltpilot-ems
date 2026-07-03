@@ -29,10 +29,12 @@ export function StandortePage({
   sites,
   devices,
   onReload,
+  isAdmin = false,
 }: {
   sites: Site[];
   devices: Device[];
   onReload: (selectSiteId?: string) => void;
+  isAdmin?: boolean;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [detail, setDetail] = useState<Site | null>(null);
@@ -142,10 +144,14 @@ export function StandortePage({
             <IconTile category="home" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
               <Icon name="map-pin" size={24} />
             </IconTile>
-            <h3>Noch kein Standort</h3>
-            <p>Legen Sie Ihren ersten Standort an - danach können Sie ihm Geräte zuordnen.</p>
+            <h3>{isAdmin ? 'Dieser Mandant hat noch keine Standorte' : 'Noch kein Standort'}</h3>
+            <p>
+              {isAdmin
+                ? 'Sobald für diesen Mandanten ein Standort angelegt ist, erscheint er hier. Sie können im Namen des Mandanten einen Standort anlegen.'
+                : 'Legen Sie Ihren ersten Standort an - danach können Sie ihm Geräte zuordnen.'}
+            </p>
             <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
-              Ersten Standort anlegen
+              {isAdmin ? 'Standort anlegen' : 'Ersten Standort anlegen'}
             </Button>
           </div>
         </Card>

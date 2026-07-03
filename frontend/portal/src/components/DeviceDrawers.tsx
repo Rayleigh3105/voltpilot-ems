@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { api, ApiError, deviceLiveStatus, type Device, type Site } from '../api';
+import { api, ApiError, deviceLiveStatus, deviceWaitedTooLong, type Device, type Site } from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
 import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../Onboarding';
@@ -54,9 +54,11 @@ export function AddDeviceDrawer({
 }) {
   const [externalRef, setExternalRef] = useState('');
   const [siteId, setSiteId] = useState('');
+  const [refTouched, setRefTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<Device | null>(null);
+  const refInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!siteId && sites[0]) setSiteId(sites[0].id);
@@ -65,7 +67,13 @@ export function AddDeviceDrawer({
   const siteName = (id: string) => sites.find((s) => s.id === id)?.name ?? id.slice(0, 8);
 
   async function claim() {
-    if (!externalRef.trim() || !siteId) return;
+    if (busy || !siteId) return;
+    if (!externalRef.trim()) {
+      // Mirror RegisterForm: keep the button live, point at the empty field (m6).
+      setRefTouched(true);
+      refInput.current?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -114,7 +122,7 @@ export function AddDeviceDrawer({
             <Button variant="ghost" onClick={close}>
               Abbrechen
             </Button>
-            <Button variant="primary" onClick={claim} disabled={busy || !externalRef.trim() || !siteId}>
+            <Button variant="primary" onClick={claim} disabled={busy || !siteId}>
               {busy ? 'Wird hinzugefügt…' : 'Gerät hinzufügen'}
             </Button>
           </>
@@ -180,15 +188,19 @@ export function AddDeviceDrawer({
           </p>
           <div className="vp-form-stack">
             <Input
+              ref={refInput}
               label={`${DEVICE_ID_FIELD.label} *`}
               placeholder={DEVICE_ID_FIELD.placeholder}
               value={externalRef}
               autoComplete="off"
               autoCapitalize="characters"
               spellCheck={false}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setExternalRef(normalizeDeviceIdInput(e.target.value))
-              }
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setExternalRef(normalizeDeviceIdInput(e.target.value));
+                if (refTouched) setRefTouched(false);
+              }}
+              onBlur={() => setRefTouched(true)}
+              error={refTouched && !externalRef.trim() ? 'Bitte geben Sie die Geräte-ID ein.' : null}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <label htmlFor="claim-site" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
@@ -248,6 +260,7 @@ export function DeviceDetailDrawer({
   if (!device) return null;
   const site = sites.find((s) => s.id === device.siteId);
   const status = deviceLiveStatus(device);
+  const waitedTooLong = deviceWaitedTooLong(device);
 
   async function unclaim(d: Device) {
     setDeleteBusy(true);
@@ -332,11 +345,44 @@ export function DeviceDetailDrawer({
             </tbody>
           </table>
 
-          {status === 'waiting' && (
+          {status === 'waiting' && !waitedTooLong && (
             <div className="vp-alert vp-alert-info">
               Das Gerät wurde beansprucht, hat aber noch keine Daten gesendet. Schalten
               Sie es ein - es konfiguriert sich automatisch über seine Referenz und der
               Status wechselt auf <b>online</b>, sobald Messwerte eintreffen.
+            </div>
+          )}
+          {status === 'waiting' && waitedTooLong && (
+            <div className="vp-alert vp-alert-warn">
+              <b>Seit der Verbindung ({fmtRelative(device.createdAt)}) sind noch keine
+              Daten eingetroffen.</b> Das ist ungewöhnlich lange. Häufige Ursachen:
+              <ul style={{ margin: '8px 0 12px', paddingLeft: '1.2em' }}>
+                <li>
+                  Die Geräte-ID wurde vertippt - vergleichen Sie{' '}
+                  <span className="vp-mono">{device.externalRef}</span> Zeichen für Zeichen
+                  mit der ID, die Ihr Gerät anzeigt.
+                </li>
+                <li>Das Gerät ist nicht mit Strom oder Internet verbunden.</li>
+                <li>Der Wechselrichter ist am Gerät noch nicht eingerichtet.</li>
+              </ul>
+              Bei einer vertippten ID entfernen Sie das Gerät und verbinden es mit der
+              korrekten ID neu.
+              <div style={{ marginTop: 'var(--vp-space-3)' }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  iconLeft={<Icon name="trash" size={16} />}
+                  onClick={() => void unclaim(device)}
+                  disabled={deleteBusy}
+                >
+                  {deleteBusy ? 'Wird entfernt…' : 'Gerät entfernen und neu verbinden'}
+                </Button>
+              </div>
+              {deleteError && (
+                <div className="vp-alert vp-alert-err" style={{ marginTop: 'var(--vp-space-2)' }}>
+                  {deleteError}
+                </div>
+              )}
             </div>
           )}
           {status === 'stale' && (

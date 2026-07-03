@@ -23,16 +23,20 @@ export function GeraetePage({
   sites,
   devices,
   onReload,
+  onPoll,
 }: {
   sites: Site[];
   devices: Device[];
   onReload: () => void;
+  /** Background refresh for the 30 s poll: fails silently, no app-wide banner (m5). */
+  onPoll?: () => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(onReload, POLL_MS);
+    const tick = onPoll ?? onReload;
+    const timer = setInterval(tick, POLL_MS);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -136,7 +140,8 @@ export function GeraetePage({
             Ein Gerät gilt als <b>online</b>, sobald es Messwerte sendet.{' '}
             <Badge variant="warn" dot style={{ fontSize: '0.7rem' }}>wartet auf erste Daten</Badge>{' '}
             bedeutet: Das Gerät ist registriert, hat aber noch nichts gesendet - schalten
-            Sie es einfach ein.
+            Sie es einfach ein. Bleibt es länger als 15 Minuten in diesem Zustand,
+            öffnen Sie die Details des Geräts - dort finden Sie eine Hilfe zur Fehlersuche.
           </p>
         </>
       )}

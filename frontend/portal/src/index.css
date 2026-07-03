@@ -520,6 +520,10 @@ button {
   background: var(--vp-paleblue-start);
   color: var(--vp-primary-deep);
 }
+.vp-alert-warn {
+  background: #fff4e5;
+  color: #8a5300;
+}
 
 /* Resume banner: the way back into the guided setup after "Später einrichten" */
 .vp-resume-banner {

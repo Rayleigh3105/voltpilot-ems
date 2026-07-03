@@ -186,6 +186,9 @@ class PortalApiTest {
         assertThat(ok.getBody()).containsEntry("status", "claimed");
         // A fresh claim has no telemetry yet -> "wartet auf erste Daten" state.
         assertThat(ok.getBody().get("lastSeenAt")).isNull();
+        // createdAt is set at claim time - the portal uses it to escalate the
+        // permanently-waiting copy after a threshold (M3).
+        assertThat(ok.getBody().get("createdAt")).isNotNull();
 
         // The device list carries lastSeenAt: null for the fresh device, the
         // newest telemetry timestamp for the seeded one (which has demo data).

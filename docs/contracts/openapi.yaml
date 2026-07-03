@@ -1236,6 +1236,14 @@ components:
             Newest telemetry timestamp for the device; null until the first data
             arrives. The portal derives the onboarding state from it ("wartet auf
             erste Daten" -> online).
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            When the device was claimed. The portal escalates the "wartet auf
+            erste Daten" copy to troubleshooting guidance once the wait since
+            claiming exceeds a threshold.
     ProvisionDeviceRequest:
       type: object
       required: [externalRef]

@@ -9,8 +9,11 @@ import java.util.UUID;
  * immutable {@code externalRef} stays the identity). {@code lastSeenAt} is the
  * newest telemetry timestamp for the device (null until the first sample
  * arrives) - the portal derives the onboarding status "wartet auf erste Daten"
- * vs. "online" from it.
+ * vs. "online" from it. {@code createdAt} is when the device was claimed; the
+ * portal escalates the "wartet auf erste Daten" copy once the wait exceeds a
+ * threshold (a permanently-waiting device usually means a mistyped ID or an
+ * offline device).
  */
 public record DeviceDto(UUID id, UUID siteId, String externalRef, String kind, String name,
-        String status, Instant lastSeenAt) {
+        String status, Instant lastSeenAt, Instant createdAt) {
 }

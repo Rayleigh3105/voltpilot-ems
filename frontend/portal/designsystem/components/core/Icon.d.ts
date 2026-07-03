@@ -21,6 +21,7 @@ export type IconName =
   | 'info'
   | 'pencil'
   | 'trash'
+  | 'refresh-cw'
   | 'chevron-left'
   | 'chevron-right'
   | 'arrow-up'

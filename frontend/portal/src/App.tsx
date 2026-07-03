@@ -333,7 +333,7 @@ function UnifiedPortal() {
   // empty lists (backend default-deny) - the pages show a pick-a-tenant hint.
   const tenantReady = !isAdmin || tenantId != null;
   const reload = useCallback(
-    async (selectSiteId?: string) => {
+    async (selectSiteId?: string, opts?: { background?: boolean }) => {
       if (!tenantReady) {
         setSites([]);
         setDevices([]);
@@ -349,7 +349,12 @@ function UnifiedPortal() {
         );
         setError(null);
       } catch (e) {
-        setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+        // A background poll (Geräte-Seite alle 30 s) must not raise the app-wide
+        // red banner on a momentary blip - it keeps the last good data and
+        // fails silently; only a user-triggered/initial load surfaces the error.
+        if (!opts?.background) {
+          setError(e instanceof ApiError ? `API-Fehler: ${e.message}` : 'Unbekannter Fehler');
+        }
       } finally {
         setLoaded(true);
       }
@@ -383,6 +388,13 @@ function UnifiedPortal() {
 
   const needsTenantPick = isAdmin && tenantId == null && !isPlatformPage(page);
 
+  // An INITIAL sites/devices load failure must not masquerade as an empty
+  // account ("Willkommen … ersten Standort anlegen"): with no data AND an
+  // error we render a distinct error+retry state instead (M2). A transient
+  // error while data is already present only raises the top banner.
+  const loadFailed =
+    error != null && loaded && tenantReady && sites.length === 0 && devices.length === 0;
+
   // First-run journey: until the customer has a device sending data, the whole
   // portal IS the onboarding. No empty dashboard with disconnected forms.
   // Customers only - an admin browsing an empty tenant keeps the normal pages.
@@ -407,10 +419,22 @@ function UnifiedPortal() {
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
     >
-      {error && <div className="vp-alert vp-alert-err" style={{ marginBottom: 'var(--vp-space-4)' }}>{error}</div>}
+      {error && !loadFailed && (
+        <div
+          className="vp-alert vp-alert-err"
+          style={{ marginBottom: 'var(--vp-space-4)', display: 'flex', alignItems: 'center', gap: 'var(--vp-space-3)', flexWrap: 'wrap' }}
+        >
+          <span style={{ flex: '1 1 320px' }}>{error}</span>
+          <Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={() => void reload()}>
+            Erneut laden
+          </Button>
+        </div>
+      )}
 
       {needsTenantPick ? (
         <PickTenantNotice tenants={tenants} onPick={changeTenant} />
+      ) : loadFailed ? (
+        <LoadErrorNotice onRetry={() => void reload()} />
       ) : showOnboarding ? (
         <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
       ) : (
@@ -432,11 +456,16 @@ function UnifiedPortal() {
             </Card>
           )}
           {page === 'uebersicht' && (
-            <UebersichtPage {...customerProps} onNavigate={navigate} />
+            <UebersichtPage {...customerProps} onNavigate={navigate} isAdmin={isAdmin} />
           )}
-          {page === 'standorte' && <StandortePage {...customerProps} />}
+          {page === 'standorte' && <StandortePage {...customerProps} isAdmin={isAdmin} />}
           {page === 'geraete' && (
-            <GeraetePage sites={sites} devices={devices} onReload={() => void reload()} />
+            <GeraetePage
+              sites={sites}
+              devices={devices}
+              onReload={() => void reload()}
+              onPoll={() => void reload(undefined, { background: true })}
+            />
           )}
           {page === 'marktpreise' && (
             <MarktpreisePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
@@ -472,6 +501,28 @@ function UnifiedPortal() {
 
 function isPlatformPage(page: PageId): boolean {
   return PLATFORM_PAGES.some((d) => d.id === page);
+}
+
+/**
+ * Initial data load failed (backend outage/unreachable): a distinct error +
+ * retry, NEVER the "Willkommen … ersten Standort anlegen" onboarding copy on
+ * top of an outage (M2).
+ */
+function LoadErrorNotice({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Card padding="lg" radius="lg">
+      <div className="vp-empty">
+        <h3>Daten konnten nicht geladen werden</h3>
+        <p>
+          Ihre Standorte und Geräte ließen sich gerade nicht laden. Das liegt
+          meist an einer kurzen Verbindungsstörung. Bitte versuchen Sie es erneut.
+        </p>
+        <Button variant="primary" iconLeft={<Icon name="refresh-cw" size={18} />} onClick={onRetry}>
+          Erneut laden
+        </Button>
+      </div>
+    </Card>
+  );
 }
 
 /** Admin on a customer page without a tenant context: never a dead-end. */

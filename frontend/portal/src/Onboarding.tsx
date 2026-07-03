@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
@@ -190,7 +190,12 @@ export function OnboardingWizard({
           />
         )}
         {step === 2 && site && (
-          <DeviceStep siteName={site.name} siteId={site.id} onClaimed={() => setStep(3)} />
+          <DeviceStep
+            sites={sites}
+            site={site}
+            onSiteChange={setSite}
+            onClaimed={() => setStep(3)}
+          />
         )}
         {step === 3 && site && <FirstDataStep siteId={site.id} onDone={onDone} />}
         {step < 3 && (
@@ -208,13 +213,22 @@ export function OnboardingWizard({
 function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
   const [name, setName] = useState('');
   const [place, setPlace] = useState<GeoPlace | null>(null);
+  const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const valid = name.trim().length > 0;
 
   async function submit() {
-    if (!valid || busy) return;
+    if (busy) return;
+    if (!valid) {
+      // Mirror RegisterForm: never a silently-disabled button - point at the
+      // missing field instead (m6).
+      setTouched(true);
+      nameRef.current?.focus();
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -245,10 +259,16 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
       </p>
       <div style={{ display: 'grid', gap: 16 }}>
         <Input
+          ref={nameRef}
           label="Name des Standorts"
           placeholder="z. B. Zuhause"
           value={name}
-          onChange={(e) => setName((e.target as HTMLInputElement).value)}
+          onChange={(e) => {
+            setName((e.target as HTMLInputElement).value);
+            if (touched) setTouched(false);
+          }}
+          onBlur={() => setTouched(true)}
+          error={touched && !valid ? 'Bitte geben Sie einen Namen für den Standort ein.' : null}
         />
         <LocationSearch selected={place} onSelect={setPlace} />
       </div>
@@ -257,7 +277,7 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
         size="lg"
         fullWidth
         onClick={submit}
-        disabled={busy || !valid}
+        disabled={busy}
         style={{ marginTop: 20 }}
       >
         {busy ? 'Lege Standort an…' : 'Weiter'}
@@ -302,26 +322,39 @@ export const DEVICE_ID_UNKNOWN_MSG =
   'Diese Geräte-ID kennen wir nicht. Bitte vergleichen Sie Ihre Eingabe Zeichen für Zeichen mit der ID, die Ihr Gerät anzeigt - schon ein Tippfehler verhindert die Verbindung.';
 
 function DeviceStep({
-  siteName,
-  siteId,
+  sites,
+  site,
+  onSiteChange,
   onClaimed,
 }: {
-  siteName: string;
-  siteId: string;
+  sites: Site[];
+  site: Site;
+  onSiteChange: (site: Site) => void;
   onClaimed: () => void;
 }) {
   const [deviceId, setDeviceId] = useState('');
+  const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // A returning multi-site customer must be able to pick the target site
+  // instead of being pinned to sites[0] (M6).
+  const multiSite = sites.length > 1;
   const valid = deviceId.trim().length > 0;
 
   async function submit() {
-    if (!valid || busy) return;
+    if (busy) return;
+    if (!valid) {
+      // Mirror RegisterForm: keep the button live, point at the empty field (m6).
+      setTouched(true);
+      inputRef.current?.focus();
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
-      await api.claimDevice(siteId, deviceId.trim());
+      await api.claimDevice(site.id, deviceId.trim());
       onClaimed();
     } catch (e) {
       setErr(
@@ -340,26 +373,57 @@ function DeviceStep({
     <div className="vp-onboarding-step">
       <h3>Verbinden Sie Ihr VoltPilot-Gerät</h3>
       <p className="vp-muted">
-        {DEVICE_ID_FIELD.help} Das Gerät wird mit dem Standort „{siteName}“ verbunden.
+        {DEVICE_ID_FIELD.help}
+        {!multiSite && ` Das Gerät wird mit dem Standort „${site.name}“ verbunden.`}
       </p>
-      <Input
-        label={DEVICE_ID_FIELD.label}
-        placeholder={DEVICE_ID_FIELD.placeholder}
-        value={deviceId}
-        autoComplete="off"
-        autoCapitalize="characters"
-        spellCheck={false}
-        onChange={(e) => setDeviceId(normalizeDeviceIdInput((e.target as HTMLInputElement).value))}
-        onKeyDown={(e: React.KeyboardEvent) => {
-          if (e.key === 'Enter') void submit();
-        }}
-      />
+      <div style={{ display: 'grid', gap: 16 }}>
+        {multiSite && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label htmlFor="onboarding-site" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+              Standort
+            </label>
+            <select
+              id="onboarding-site"
+              className="vp-select"
+              value={site.id}
+              onChange={(e) => {
+                const next = sites.find((s) => s.id === e.target.value);
+                if (next) onSiteChange(next);
+              }}
+            >
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <Input
+          ref={inputRef}
+          label={DEVICE_ID_FIELD.label}
+          placeholder={DEVICE_ID_FIELD.placeholder}
+          value={deviceId}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          onChange={(e) => {
+            setDeviceId(normalizeDeviceIdInput((e.target as HTMLInputElement).value));
+            if (touched) setTouched(false);
+          }}
+          onBlur={() => setTouched(true)}
+          error={touched && !valid ? 'Bitte geben Sie die Geräte-ID ein.' : null}
+          onKeyDown={(e: React.KeyboardEvent) => {
+            if (e.key === 'Enter') void submit();
+          }}
+        />
+      </div>
       <Button
         variant="primary"
         size="lg"
         fullWidth
         onClick={submit}
-        disabled={busy || !valid}
+        disabled={busy}
         style={{ marginTop: 20 }}
       >
         {busy ? 'Verbinde…' : 'Gerät verbinden'}

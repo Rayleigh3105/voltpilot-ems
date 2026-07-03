@@ -24,7 +24,7 @@ public class DeviceRepository {
         // see migration V20260703000000). RLS-scoped like the device rows; null
         // until the first sample arrives.
         return jdbc.query(
-                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, "
+                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
                         + "FROM device d ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
@@ -33,7 +33,7 @@ public class DeviceRepository {
     /** The current tenant's device, or empty when RLS hides it (=> 404). */
     public Optional<DeviceDto> findById(UUID deviceId) {
         return jdbc.query(
-                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, "
+                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
                         + "FROM device d WHERE d.id = ?",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
@@ -46,7 +46,7 @@ public class DeviceRepository {
      */
     public Optional<DeviceDto> findByExternalRef(String externalRef) {
         return jdbc.query(
-                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, t.last_seen "
+                "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, d.created_at, t.last_seen "
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT received_at AS last_seen FROM telemetry "
                         + "  WHERE device_id = d.id ORDER BY received_at DESC LIMIT 1) t ON true "
@@ -65,7 +65,7 @@ public class DeviceRepository {
         return jdbc.queryForObject(
                 "INSERT INTO device (tenant_id, site_id, external_ref, kind, status) "
                         + "VALUES (?, ?, ?, ?, 'claimed') "
-                        + "RETURNING id, site_id, external_ref, kind, name, status, "
+                        + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "NULL::timestamptz AS last_seen",
                 DeviceRepository::mapDevice,
                 tenantId, siteId, externalRef, kind == null || kind.isBlank() ? "inverter" : kind);
@@ -79,7 +79,7 @@ public class DeviceRepository {
     public Optional<DeviceDto> update(UUID deviceId, String kind, String name) {
         return jdbc.query(
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? "
-                        + "RETURNING id, site_id, external_ref, kind, name, status, "
+                        + "RETURNING id, site_id, external_ref, kind, name, status, created_at, "
                         + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = device.id) AS last_seen",
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
@@ -98,6 +98,7 @@ public class DeviceRepository {
 
     private static DeviceDto mapDevice(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         java.sql.Timestamp lastSeen = rs.getTimestamp("last_seen");
+        java.sql.Timestamp createdAt = rs.getTimestamp("created_at");
         return new DeviceDto(
                 rs.getObject("id", UUID.class),
                 rs.getObject("site_id", UUID.class),
@@ -105,6 +106,7 @@ public class DeviceRepository {
                 rs.getString("kind"),
                 rs.getString("name"),
                 rs.getString("status"),
-                lastSeen == null ? null : lastSeen.toInstant());
+                lastSeen == null ? null : lastSeen.toInstant(),
+                createdAt == null ? null : createdAt.toInstant());
     }
 }

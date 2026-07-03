@@ -8,7 +8,6 @@ import { Stat } from '../../designsystem/components/core/Stat';
 import { KpiCard } from '../../designsystem/components/shell/KpiCard';
 import {
   api,
-  ApiError,
   deviceLiveStatus,
   type Device,
   type PriceSeries,
@@ -27,6 +26,22 @@ import { TelemetryChart } from '../TelemetryChart';
 import { PriceChart } from '../PriceChart';
 
 /**
+ * A widget whose data failed to load: a distinct error card with a retry, NOT
+ * the benign "waiting for data / no prices" empty copy (M2). Keeps the outage
+ * honest instead of reassuring.
+ */
+function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="vp-alert vp-alert-err" style={{ marginTop: 0 }}>
+      <div style={{ marginBottom: 'var(--vp-space-3)' }}>{message}</div>
+      <Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={onRetry}>
+        Erneut versuchen
+      </Button>
+    </div>
+  );
+}
+
+/**
  * The Übersicht landing: money-first KPI hero row (savings + price lead),
  * live telemetry as the primary widget, prices + weather secondary, and the
  * quick site list. Per the redesign report section 4 + captain decisions.
@@ -38,6 +53,7 @@ export function UebersichtPage({
   onSelectSite,
   onNavigate,
   onReload,
+  isAdmin = false,
 }: {
   sites: Site[];
   devices: Device[];
@@ -45,6 +61,7 @@ export function UebersichtPage({
   onSelectSite: (id: string) => void;
   onNavigate: (page: PageId) => void;
   onReload: (selectSiteId?: string) => void;
+  isAdmin?: boolean;
 }) {
   const user = currentUser();
   const site = sites.find((s) => s.id === selectedSite) ?? null;
@@ -53,7 +70,16 @@ export function UebersichtPage({
   const [prices, setPrices] = useState<PriceSeries | null>(null);
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
   const [schedule, setSchedule] = useState<SchedulePlan | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  // Per-widget load failure flags: an outage must render a distinct
+  // "konnte nicht geladen werden" card, NOT the benign "waiting for data /
+  // no prices" empty state (M2). Each is set when its endpoint rejects.
+  const [failed, setFailed] = useState({
+    telemetry: false,
+    prices: false,
+    weather: false,
+    schedule: false,
+  });
+  const [reloadKey, setReloadKey] = useState(0);
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [deviceDrawer, setDeviceDrawer] = useState(false);
 
@@ -63,10 +89,10 @@ export function UebersichtPage({
       setPrices(null);
       setWeather(null);
       setSchedule(null);
+      setFailed({ telemetry: false, prices: false, weather: false, schedule: false });
       return;
     }
     let active = true;
-    setErr(null);
     Promise.allSettled([
       api.telemetry(site.id),
       api.prices(site.id),
@@ -78,16 +104,19 @@ export function UebersichtPage({
       if (p.status === 'fulfilled') setPrices(p.value);
       if (w.status === 'fulfilled') setWeather(w.value);
       if (s.status === 'fulfilled') setSchedule(s.value);
-      const failed = [t, p, w, s].filter((r) => r.status === 'rejected');
-      if (failed.length === 4) {
-        const reason = (failed[0] as PromiseRejectedResult).reason;
-        setErr(reason instanceof ApiError ? `API-Fehler: ${reason.message}` : 'Daten konnten nicht geladen werden.');
-      }
+      setFailed({
+        telemetry: t.status === 'rejected',
+        prices: p.status === 'rejected',
+        weather: w.status === 'rejected',
+        schedule: s.status === 'rejected',
+      });
     });
     return () => {
       active = false;
     };
-  }, [site?.id]);
+  }, [site?.id, reloadKey]);
+
+  const retry = () => setReloadKey((k) => k + 1);
 
   // --- KPI derivations (money first) ---------------------------------------
   const today = new Date();
@@ -106,17 +135,25 @@ export function UebersichtPage({
   const online = devices.filter((d) => deviceLiveStatus(d) === 'online').length;
   const latest = telemetry.length ? telemetry[telemetry.length - 1] : null;
   const now = weather?.points?.[0] ?? null;
+  const allFailed =
+    site != null && failed.telemetry && failed.prices && failed.weather && failed.schedule;
 
   const firstName = (user.name || '').split(/\s+/)[0] || user.name;
 
   if (sites.length === 0) {
-    // Onboarding empty state: never a dead-end.
+    // Empty-state: for a customer this is the onboarding entry (never a
+    // dead-end); for an admin viewing an empty tenant it is a neutral notice,
+    // not customer-directed "Willkommen"-onboarding copy (m3).
     return (
       <>
         <div className="vp-page-head">
           <div className="titles">
-            <h1>Willkommen bei VoltPilot</h1>
-            <p>Legen Sie Ihren ersten Standort an, um Geräte zu verbinden und Live-Daten, Preise und Fahrplan zu sehen.</p>
+            <h1>{isAdmin ? 'Übersicht' : 'Willkommen bei VoltPilot'}</h1>
+            <p>
+              {isAdmin
+                ? 'Dieser Mandant hat noch keine Standorte.'
+                : 'Legen Sie Ihren ersten Standort an, um Geräte zu verbinden und Live-Daten, Preise und Fahrplan zu sehen.'}
+            </p>
           </div>
         </div>
         <Card padding="lg" radius="lg">
@@ -124,13 +161,14 @@ export function UebersichtPage({
             <IconTile category="home" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
               <Icon name="map-pin" size={24} />
             </IconTile>
-            <h3>Noch kein Standort</h3>
+            <h3>{isAdmin ? 'Dieser Mandant hat noch keine Standorte' : 'Noch kein Standort'}</h3>
             <p>
-              Ein Standort bündelt Ihre Geräte, Marktpreise, Wetter und den
-              Batterie-Fahrplan. Danach fügen Sie Geräte einfach per Edge-Referenz hinzu.
+              {isAdmin
+                ? 'Sobald für diesen Mandanten ein Standort angelegt ist, erscheinen hier seine Geräte, Marktpreise, Wetter und der Batterie-Fahrplan. Sie können im Namen des Mandanten einen Standort anlegen.'
+                : 'Ein Standort bündelt Ihre Geräte, Marktpreise, Wetter und den Batterie-Fahrplan. Danach fügen Sie Geräte einfach per Edge-Referenz hinzu.'}
             </p>
             <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
-              Ersten Standort anlegen
+              {isAdmin ? 'Standort anlegen' : 'Ersten Standort anlegen'}
             </Button>
           </div>
         </Card>
@@ -161,21 +199,38 @@ export function UebersichtPage({
         </div>
       </div>
 
-      {err && <div className="vp-alert vp-alert-err">{err}</div>}
+      {allFailed && (
+        <div
+          className="vp-alert vp-alert-err"
+          style={{ display: 'flex', alignItems: 'center', gap: 'var(--vp-space-3)', flexWrap: 'wrap' }}
+        >
+          <span style={{ flex: '1 1 320px' }}>
+            Die Daten dieses Standorts konnten gerade nicht geladen werden. Bitte prüfen Sie
+            Ihre Verbindung und versuchen Sie es erneut.
+          </span>
+          <Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={retry}>
+            Erneut versuchen
+          </Button>
+        </div>
+      )}
 
       {/* KPI hero row - money lens leads. */}
       <section className="vp-kpis" aria-label="Kennzahlen">
         <KpiCard
           icon={<Icon name="euro" size={20} />}
           category="battery"
-          value={eurAmount(savingsToday)}
+          value={failed.schedule ? '—' : eurAmount(savingsToday)}
           label="Heute geplant gespart"
-          title="Projizierte Ersparnis des Batterie-Fahrplans heute gegenüber einem Betrieb ohne Speicher"
+          title={
+            failed.schedule
+              ? 'Der Fahrplan konnte nicht geladen werden - die Ersparnis ist gerade nicht verfügbar.'
+              : 'Projizierte Ersparnis des Batterie-Fahrplans heute gegenüber einem Betrieb ohne Speicher'
+          }
         />
         <KpiCard
           icon={<Icon name="trending-up" size={20} />}
           category="dynamic"
-          value={fmtNum(avgPriceToday, '')}
+          value={failed.prices ? '—' : fmtNum(avgPriceToday, '')}
           label="Ø Preis heute (EUR/MWh)"
         />
         <KpiCard icon={<Icon name="map-pin" size={20} />} category="home" value={sites.length} label="Standorte" />
@@ -209,7 +264,12 @@ export function UebersichtPage({
                 <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
               </span>
             </div>
-            {telemetry.length === 0 ? (
+            {failed.telemetry ? (
+              <WidgetError
+                message="Die Live-Daten konnten nicht geladen werden."
+                onRetry={retry}
+              />
+            ) : telemetry.length === 0 ? (
               <p className="vp-muted">
                 Noch keine Messwerte in den letzten 24 Stunden. Sobald Ihr Gerät sendet,
                 erscheinen die Live-Daten hier.
@@ -241,7 +301,12 @@ export function UebersichtPage({
                   {prices && <Badge variant="tint">{prices.biddingZone}</Badge>}
                 </span>
               </div>
-              {prices && prices.points.length > 0 ? (
+              {failed.prices ? (
+                <WidgetError
+                  message="Die Börsenpreise konnten nicht geladen werden."
+                  onRetry={retry}
+                />
+              ) : prices && prices.points.length > 0 ? (
                 <>
                   <PriceChart series={prices} />
                   <p className="vp-note" style={{ marginTop: 8 }}>
@@ -268,7 +333,12 @@ export function UebersichtPage({
                   <span className="vp-note">nächste Stunde</span>
                 </span>
               </div>
-              {now ? (
+              {failed.weather ? (
+                <WidgetError
+                  message="Die Wettervorhersage konnte nicht geladen werden."
+                  onRetry={retry}
+                />
+              ) : now ? (
                 <div style={{ display: 'flex', gap: 'var(--vp-space-5)', flexWrap: 'wrap' }}>
                   <Stat value={fmtNum(now.temperatureC, '°C')} label="Temperatur" />
                   <Stat value={fmtNum(now.cloudCoverPct, '%', 0)} label="Bewölkung" />

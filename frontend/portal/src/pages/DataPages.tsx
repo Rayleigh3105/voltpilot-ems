@@ -84,6 +84,12 @@ function PageFrame({
             Noch kein Standort - legen Sie zuerst unter „Standorte“ einen an.
           </p>
         </Card>
+      ) : !sites.some((s) => s.id === selectedSite) ? (
+        // Sites exist but the selection hasn't resolved yet: show a loading
+        // state, not the "you have no prices/weather" empty copy (m2).
+        <Card padding="lg" radius="lg">
+          <p className="vp-muted">Standort wird geladen…</p>
+        </Card>
       ) : (
         children
       )}

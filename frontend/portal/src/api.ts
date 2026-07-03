@@ -232,6 +232,8 @@ export interface Device {
   status: string;
   /** Newest telemetry timestamp; null until the first data arrives. */
   lastSeenAt: string | null;
+  /** When the device was claimed; drives the waiting-too-long escalation. */
+  createdAt: string | null;
 }
 
 /** Only type + label are editable; the externalRef is the device's identity. */
@@ -262,6 +264,19 @@ export function deviceLiveStatus(d: Device, now: Date = new Date()): DeviceLiveS
   return now.getTime() - new Date(d.lastSeenAt).getTime() <= ONLINE_WINDOW_MS
     ? 'online'
     : 'stale';
+}
+
+/**
+ * A device claimed longer ago than this without ever sending data is treated
+ * as abnormal (likely a mistyped ID or an offline device) - the portal then
+ * escalates the "wartet auf erste Daten" copy to troubleshooting guidance.
+ */
+export const WAITING_ESCALATION_MS = 15 * 60 * 1000;
+
+/** True when a still-waiting device has waited past {@link WAITING_ESCALATION_MS} since claiming. */
+export function deviceWaitedTooLong(d: Device, now: Date = new Date()): boolean {
+  if (deviceLiveStatus(d, now) !== 'waiting' || !d.createdAt) return false;
+  return now.getTime() - new Date(d.createdAt).getTime() > WAITING_ESCALATION_MS;
 }
 
 /** One asset row of a site: optimizer battery params, forecast PV params, registry provenance. */
