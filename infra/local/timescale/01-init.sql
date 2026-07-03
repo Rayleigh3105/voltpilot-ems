@@ -76,12 +76,17 @@ CREATE TABLE telemetry (
     pv_power_kw      NUMERIC(12, 4),   -- PV generation
     load_kw          NUMERIC(12, 4),   -- site load
     grid_limit_kw    NUMERIC(12, 4),   -- observed effective §14a power limit
-    payload          JSONB             -- full original payload for forward-compat
+    payload          JSONB,            -- full original payload for forward-compat
+    -- Arrival time (when the cloud RECEIVED the sample) = the device-liveness
+    -- signal, distinct from `time` (observation), which a store-and-forward edge
+    -- replays with old timestamps. See api migration V20260703000000.
+    received_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 SELECT create_hypertable('telemetry', 'time', chunk_time_interval => INTERVAL '7 days');
 CREATE INDEX idx_telemetry_device_time ON telemetry (device_id, time DESC);
 CREATE INDEX idx_telemetry_tenant_time ON telemetry (tenant_id, time DESC);
+CREATE INDEX idx_telemetry_device_received ON telemetry (device_id, received_at DESC);
 
 -- -----------------------------------------------------------------------------
 -- Minimal dev seed so the portal has something to show. Ids are deterministic

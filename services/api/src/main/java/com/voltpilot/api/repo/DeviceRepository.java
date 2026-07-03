@@ -18,11 +18,14 @@ public class DeviceRepository {
     }
 
     public List<DeviceDto> findAll() {
-        // last_seen = newest telemetry sample per device (RLS-scoped like the
-        // device rows themselves); null until the first sample arrives.
+        // last_seen = newest telemetry ARRIVAL per device (received_at, not the
+        // observation time: a reconnecting edge replays buffered samples with old
+        // observation timestamps, so arrival is the only correct liveness signal -
+        // see migration V20260703000000). RLS-scoped like the device rows; null
+        // until the first sample arrives.
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, "
-                        + "(SELECT max(t.time) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
+                        + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
                         + "FROM device d ORDER BY d.created_at",
                 DeviceRepository::mapDevice);
     }
@@ -31,7 +34,7 @@ public class DeviceRepository {
     public Optional<DeviceDto> findById(UUID deviceId) {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, "
-                        + "(SELECT max(t.time) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
+                        + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = d.id) AS last_seen "
                         + "FROM device d WHERE d.id = ?",
                 DeviceRepository::mapDevice, deviceId).stream().findFirst();
     }
@@ -45,8 +48,8 @@ public class DeviceRepository {
         return jdbc.query(
                 "SELECT d.id, d.site_id, d.external_ref, d.kind, d.name, d.status, t.last_seen "
                         + "FROM device d "
-                        + "LEFT JOIN LATERAL (SELECT time AS last_seen FROM telemetry "
-                        + "  WHERE device_id = d.id ORDER BY time DESC LIMIT 1) t ON true "
+                        + "LEFT JOIN LATERAL (SELECT received_at AS last_seen FROM telemetry "
+                        + "  WHERE device_id = d.id ORDER BY received_at DESC LIMIT 1) t ON true "
                         + "WHERE d.external_ref = ?",
                 DeviceRepository::mapDevice,
                 externalRef).stream().findFirst();
@@ -77,7 +80,7 @@ public class DeviceRepository {
         return jdbc.query(
                 "UPDATE device SET kind = ?, name = ? WHERE id = ? "
                         + "RETURNING id, site_id, external_ref, kind, name, status, "
-                        + "(SELECT max(t.time) FROM telemetry t WHERE t.device_id = device.id) AS last_seen",
+                        + "(SELECT max(t.received_at) FROM telemetry t WHERE t.device_id = device.id) AS last_seen",
                 DeviceRepository::mapDevice, kind, name, deviceId).stream().findFirst();
     }
 

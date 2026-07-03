@@ -323,6 +323,44 @@ class PortalApiTest {
         assertThat((String) seeded.get("lastSeenAt")).isNotNull();
     }
 
+    @Test
+    void deviceReplayingBackloggedTelemetryReadsLiveNotStale() {
+        String demo = token("demo", "demo");
+
+        // A reconnecting store-and-forward edge replays its buffer oldest-first
+        // with ORIGINAL observation timestamps: it is actively delivering samples
+        // RIGHT NOW, but each sample's `time` is hours old. Liveness must follow
+        // the arrival time (received_at), not the observation time - otherwise an
+        // online device wrongly reads offline (regression for the device-list
+        // online indicator).
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-backlog-01"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String newDeviceId = (String) claimed.getBody().get("id");
+
+        // Observation time = 3h ago (buffered), but it ARRIVED ~20s ago.
+        exec("INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, power_kw, payload) "
+                + "VALUES (now() - interval '3 hours', now() - interval '20 seconds', "
+                + "'00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', '" + newDeviceId + "', 1.5, "
+                + "jsonb_build_object('schema_version', 1, 'source', 'test'))");
+
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        Map<String, Object> mine = res.getBody().stream()
+                .filter(d -> "edge-backlog-01".equals(d.get("externalRef")))
+                .findFirst().orElseThrow();
+        String lastSeenAt = (String) mine.get("lastSeenAt");
+        assertThat(lastSeenAt).isNotNull();
+        // Arrival-based liveness keeps the device inside the 5-min online window
+        // even though its newest observation timestamp is 3h old.
+        assertThat(java.time.Instant.parse(lastSeenAt))
+                .isAfter(java.time.Instant.now().minusSeconds(120));
+    }
+
     // ---- site creation (customer self-service, tenant-bound) ----------------
 
     @Test

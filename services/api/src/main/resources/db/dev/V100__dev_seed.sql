@@ -49,6 +49,9 @@ ON CONFLICT (id) DO NOTHING;
 -- ---- Demo telemetry: ~24h at 15-min resolution for both sites' devices.
 -- Shapes: a PV bell curve over the day, load noise, battery SoC tracking, and a
 -- §14a grid_limit_kw. NOT EXISTS keeps re-seeding a no-op on a persisted volume.
+-- Note: received_at is intentionally omitted here - this DEV seed runs before the
+-- date-versioned migration that adds the column (Flyway orders V100 < V2026...),
+-- and that migration backfills seeded rows to received_at = time (== ts here).
 INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, load_kw, grid_limit_kw, payload)
 SELECT
     ts,

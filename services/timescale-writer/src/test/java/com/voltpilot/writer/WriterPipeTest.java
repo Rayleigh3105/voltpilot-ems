@@ -7,6 +7,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -110,7 +111,8 @@ class WriterPipeTest {
         try (Connection c = admin();
                 Statement st = c.createStatement();
                 ResultSet rs = st.executeQuery(
-                        "SELECT tenant_id, site_id, device_id, power_kw, soc_pct, grid_limit_kw "
+                        "SELECT tenant_id, site_id, device_id, power_kw, soc_pct, grid_limit_kw, "
+                                + "time, received_at "
                                 + "FROM telemetry WHERE device_id = '" + DEVICE + "'")) {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getString("tenant_id")).isEqualTo(TENANT_A);
@@ -119,6 +121,13 @@ class WriterPipeTest {
             assertThat(rs.getBigDecimal("power_kw")).isEqualByComparingTo("2.29");
             assertThat(rs.getBigDecimal("soc_pct")).isEqualByComparingTo("55.1");
             assertThat(rs.getBigDecimal("grid_limit_kw")).isEqualByComparingTo("50");
+            // Liveness signal: `time` is the observation timestamp, but `received_at`
+            // is the ARRIVAL time (the event's ingested_at) - the two are distinct, so
+            // a device replaying buffered samples with old observation times still
+            // reads as recently-seen. See DeviceRepository + api migration V20260703...
+            assertThat(rs.getTimestamp("time").toInstant()).isEqualTo(Instant.parse(OBSERVED_AT));
+            assertThat(rs.getTimestamp("received_at").toInstant())
+                    .isEqualTo(Instant.parse("2026-07-01T08:58:46.000Z"));
         }
 
         // RLS: visible to the owning tenant, invisible to another (portal parity).

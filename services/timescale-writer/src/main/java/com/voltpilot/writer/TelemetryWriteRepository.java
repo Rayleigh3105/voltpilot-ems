@@ -48,14 +48,23 @@ public class TelemetryWriteRepository {
                 "SELECT set_config('app.tenant_id', ?, true)", String.class, event.tenant_id().toString());
 
         JsonNode m = event.measurements();
+        // received_at = when the cloud actually RECEIVED this sample, taken from
+        // the event's ingested_at (stamped by ingest at MQTT receipt). It is the
+        // liveness signal (device online/offline) and MUST NOT be the observation
+        // time: a reconnecting edge replays buffered samples with old observation
+        // timestamps but arrives now. Falls back to observed_at if a producer
+        // omitted ingested_at.
+        Timestamp receivedAt = Timestamp.from(
+                event.ingested_at() != null ? event.ingested_at() : event.observed_at());
         int rows = jdbc.update(
                 "INSERT INTO telemetry "
-                        + "(time, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, "
+                        + "(time, received_at, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, "
                         + " load_kw, grid_limit_kw, payload) "
-                        + "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb "
+                        + "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb "
                         + "WHERE NOT EXISTS ("
                         + "  SELECT 1 FROM telemetry WHERE device_id = ? AND time = ?)",
                 Timestamp.from(event.observed_at()),
+                receivedAt,
                 event.tenant_id(),
                 event.site_id(),
                 event.device_id(),

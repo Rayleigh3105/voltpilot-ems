@@ -25,12 +25,15 @@ CREATE TABLE IF NOT EXISTS telemetry (
     pv_power_kw      NUMERIC(12, 4),
     load_kw          NUMERIC(12, 4),
     grid_limit_kw    NUMERIC(12, 4),
-    payload          JSONB
+    payload          JSONB,
+    -- Arrival time (device-liveness signal); mirrors api migration V20260703000000.
+    received_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 SELECT create_hypertable('telemetry', 'time',
     chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_telemetry_device_time ON telemetry (device_id, time DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_device_received ON telemetry (device_id, received_at DESC);
 
 GRANT USAGE ON SCHEMA public TO voltpilot_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON telemetry TO voltpilot_app;
