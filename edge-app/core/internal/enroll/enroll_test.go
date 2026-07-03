@@ -86,12 +86,31 @@ type apiStub struct {
 	mu        sync.Mutex
 	claimed   bool
 	refKnown  bool
-	csrPem    string     // last stored CSR
-	issuedPem string     // set once issued (409 on further CSR posts)
+	csrPem    string           // last stored CSR
+	issuedPem string           // set once issued (409 on further CSR posts)
 	forceKey  *ecdsa.PublicKey // when set, issue against THIS key (mismatch case)
+	device    string           // issued/returned device_id ("" => the deviceID const)
 
 	csrPosts  int
 	certPolls int
+}
+
+// deviceOrDefault is the device_id the stub currently issues/serves.
+func (s *apiStub) deviceOrDefault() string {
+	if s.device != "" {
+		return s.device
+	}
+	return deviceID
+}
+
+// reclaim simulates an unclaim+re-claim in the portal: the ref now maps to a
+// NEW device row id, so the next certificate poll re-issues against the stored
+// CSR (mirrors EnrollmentService.certificateFor / storeCertificate).
+func (s *apiStub) reclaim(newDevice string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.device = newDevice
+	s.issuedPem = "" // force a re-issue for the new device on the next poll
 }
 
 const (
@@ -152,7 +171,7 @@ func (s *apiStub) handler() http.Handler {
 				}
 				pub = csr.PublicKey
 			}
-			s.issuedPem = s.ca.issue(s.t, pub, tenantID, siteID, deviceID)
+			s.issuedPem = s.ca.issue(s.t, pub, tenantID, siteID, s.deviceOrDefault())
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"deviceCertPem": s.issuedPem,
@@ -161,7 +180,7 @@ func (s *apiStub) handler() http.Handler {
 			"mqttPort":      8883,
 			"tenantId":      tenantID,
 			"siteId":        siteID,
-			"deviceId":      deviceID,
+			"deviceId":      s.deviceOrDefault(),
 		})
 	})
 	return mux
@@ -393,6 +412,143 @@ func TestUnknownStickerRefRetriesUntilRegistered(t *testing.T) {
 	}
 	if !sawUnknown {
 		t.Error("422 must surface as referenz_unbekannt")
+	}
+}
+
+// enrollOnce runs a full enrollment against an already-claimed stub and returns
+// the enroller + the resulting identity, ready for Reconcile calls.
+func enrollOnce(t *testing.T, srvURL, dir string) (*Enroller, Identity) {
+	t.Helper()
+	var states []State
+	e := newEnroller(t, srvURL, dir, &states)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	id, err := e.Run(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e, id
+}
+
+func TestReconcileNoOpWhenIdentityUnchanged(t *testing.T) {
+	ca := newTestCA(t)
+	stub := &apiStub{t: t, ca: ca, refKnown: true, claimed: true}
+	srv := httptest.NewServer(stub.handler())
+	defer srv.Close()
+
+	dir := t.TempDir()
+	e, id := enrollOnce(t, srv.URL, dir)
+
+	// Snapshot the on-disk cert so we can prove it was NOT rewritten.
+	certBefore, err := os.ReadFile(filepath.Join(dir, "device.crt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := e.Reconcile(ctx, id)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if res.Changed {
+		t.Fatalf("identity unchanged, but reconcile reported a change: %+v", res.Identity)
+	}
+	certAfter, _ := os.ReadFile(filepath.Join(dir, "device.crt"))
+	if string(certAfter) != string(certBefore) {
+		t.Error("reconcile rewrote the certificate despite an unchanged identity")
+	}
+}
+
+func TestReconcileAdoptsChangedDeviceID(t *testing.T) {
+	ca := newTestCA(t)
+	stub := &apiStub{t: t, ca: ca, refKnown: true, claimed: true}
+	srv := httptest.NewServer(stub.handler())
+	defer srv.Close()
+
+	dir := t.TempDir()
+	e, id := enrollOnce(t, srv.URL, dir)
+	if id.DeviceID != deviceID {
+		t.Fatalf("initial device id: %s", id.DeviceID)
+	}
+	keyBefore, err := os.ReadFile(filepath.Join(dir, "device.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The customer unclaims + re-claims: the ref now maps to a NEW device row.
+	const newDevice = "44444444-4444-4444-4444-444444444444"
+	stub.reclaim(newDevice)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := e.Reconcile(ctx, id)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if !res.Changed {
+		t.Fatal("device id changed, but reconcile reported no change")
+	}
+	if res.Identity.DeviceID != newDevice {
+		t.Fatalf("adopted device id = %s, want %s", res.Identity.DeviceID, newDevice)
+	}
+	// The new identity is persisted (survives a restart)...
+	persisted, err := e.LoadIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.DeviceID != newDevice {
+		t.Fatalf("persisted device id = %s, want %s", persisted.DeviceID, newDevice)
+	}
+	// ...the certificate now certifies the new id...
+	certPem, _ := os.ReadFile(filepath.Join(dir, "device.crt"))
+	block, _ := pem.Decode(certPem)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cert.Subject.CommonName != newDevice {
+		t.Fatalf("adopted cert CN = %s, want %s", cert.Subject.CommonName, newDevice)
+	}
+	// ...and the private key was REUSED, never regenerated.
+	keyAfter, _ := os.ReadFile(filepath.Join(dir, "device.key"))
+	if string(keyAfter) != string(keyBefore) {
+		t.Error("reconcile regenerated the device key; a re-issue must reuse it")
+	}
+
+	// A second reconcile against the now-current identity is a no-op.
+	res2, err := e.Reconcile(ctx, res.Identity)
+	if err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+	if res2.Changed {
+		t.Error("second reconcile reported a spurious change")
+	}
+}
+
+func TestReconcilePendingIsNoOp(t *testing.T) {
+	ca := newTestCA(t)
+	// Ref known but NOT claimed -> the certificate poll returns 404 pending.
+	stub := &apiStub{t: t, ca: ca, refKnown: true, claimed: true}
+	srv := httptest.NewServer(stub.handler())
+	defer srv.Close()
+
+	dir := t.TempDir()
+	e, id := enrollOnce(t, srv.URL, dir)
+
+	// Simulate an unclaim: the portal now answers the poll with 404 pending.
+	stub.mu.Lock()
+	stub.claimed = false
+	stub.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := e.Reconcile(ctx, id)
+	if err != nil {
+		t.Fatalf("reconcile on a pending/unclaimed ref must not error: %v", err)
+	}
+	if res.Changed {
+		t.Error("pending poll must not change the identity")
 	}
 }
 

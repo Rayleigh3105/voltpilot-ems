@@ -49,6 +49,10 @@ type Agent struct {
 
 	// wake signals the publisher that new telemetry or connectivity arrived.
 	wake chan struct{}
+	// reconcileNow nudges the identity-reconcile loop to re-check ahead of its
+	// tick (e.g. right after a cloud disconnect, which is how a broker rejects
+	// a device whose identity has drifted).
+	reconcileNow chan struct{}
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -108,11 +112,12 @@ func New(cfg config.Config) (*Agent, error) {
 		return nil, err
 	}
 	a := &Agent{
-		Cfg:       cfg,
-		State:     state.New(ref, Version),
-		buf:       buf,
-		planStore: ps,
-		wake:      make(chan struct{}, 1),
+		Cfg:          cfg,
+		State:        state.New(ref, Version),
+		buf:          buf,
+		planStore:    ps,
+		wake:         make(chan struct{}, 1),
+		reconcileNow: make(chan struct{}, 1),
 		lastReading: guards.Reading{
 			SocPct: guards.Unknown(), PvKw: guards.Unknown(),
 			LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown(),
@@ -206,6 +211,83 @@ func (a *Agent) enrollAndConnect(ctx context.Context) {
 	key, cert, ca := e.CertFiles()
 	if err := a.startCloud(id, key, cert, ca); err != nil {
 		slog.Error("cloud link failed to start", "err", err)
+		return
+	}
+	// Stay reconciled while connected: adopt a re-claim's new device_id so the
+	// edge never keeps publishing under a stale identity. Blocks until ctx is
+	// done (this goroutine is dedicated to enrollment + its follow-up).
+	a.reconcileLoop(ctx, e, id)
+}
+
+// reconcileLoop periodically (and on a disconnect nudge) re-checks the device's
+// identity against the portal and adopts a changed device_id. It runs only for
+// enrolled devices (a DevIdentity never drifts). No-op when the identity is
+// unchanged, so it does not thrash.
+func (a *Agent) reconcileLoop(ctx context.Context, e *enroll.Enroller, current enroll.Identity) {
+	interval := a.Cfg.ReconcileInterval
+	if interval <= 0 {
+		interval = time.Duration(a.Cfg.ReconcileIntervalSeconds) * time.Second
+	}
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		case <-a.reconcileNow:
+		}
+		res, err := e.Reconcile(ctx, current)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				slog.Warn("identity reconcile failed; will retry", "err", err)
+			}
+			continue
+		}
+		if !res.Changed {
+			continue
+		}
+		key, cert, ca := e.CertFiles()
+		if err := a.adoptIdentity(res.Identity, key, cert, ca); err != nil {
+			slog.Error("failed to adopt new device identity", "err", err)
+			continue
+		}
+		current = res.Identity
+	}
+}
+
+// adoptIdentity switches the cloud link to a new device identity: the old mTLS
+// link is torn down and a fresh one is stood up with the new certificate and
+// topics. Reconnecting is REQUIRED - the hardened broker derives the identity
+// from the client-cert CN and its ACL only grants that device its own topics,
+// so publishing new-device topics over the old connection would be denied. The
+// store-and-forward buffer is untouched: pending entries are stamped with the
+// current identity at publish time, so they flow to the new device_id.
+func (a *Agent) adoptIdentity(id enroll.Identity, keyPath, certPath, caPath string) error {
+	a.linkMu.Lock()
+	old := a.link
+	a.link = nil
+	a.linkMu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+	a.State.Update(func(s *state.Snapshot) {
+		s.TenantID, s.SiteID, s.DeviceID = id.TenantID, id.SiteID, id.DeviceID
+		s.MqttHost = id.MqttHost
+		s.CloudConnected = false
+	})
+	slog.Info("switching cloud link to new device identity", "device_id", id.DeviceID)
+	return a.startCloud(id, keyPath, certPath, caPath)
+}
+
+// pokeReconcile nudges the reconcile loop without blocking.
+func (a *Agent) pokeReconcile() {
+	select {
+	case a.reconcileNow <- struct{}{}:
+	default:
 	}
 }
 
@@ -227,6 +309,11 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 			})
 			if connected {
 				a.kick()
+			} else {
+				// A drifted identity is rejected by the broker as a connection
+				// failure; re-check the identity promptly instead of waiting for
+				// the next tick (a no-op if nothing actually changed).
+				a.pokeReconcile()
 			}
 		},
 	})

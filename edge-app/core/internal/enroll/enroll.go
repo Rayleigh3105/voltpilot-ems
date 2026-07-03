@@ -236,23 +236,89 @@ var (
 	errKeyMismatch = errors.New("issued certificate does not match the device key")
 )
 
-func (e *Enroller) loadOrCreateKey() (*ecdsa.PrivateKey, error) {
+// ReconcileResult is the outcome of a while-connected identity re-check.
+type ReconcileResult struct {
+	// Changed is true only when the portal now reports a DIFFERENT device_id
+	// for this reference and the new certificate/identity was adopted on disk.
+	Changed bool
+	// Identity is the freshly adopted identity (valid only when Changed).
+	Identity Identity
+}
+
+// Reconcile re-polls the certificate endpoint for an ALREADY-enrolled device
+// and adopts a changed identity in place, closing the device-identity-drift
+// gap: a re-claim (or a DB reset + re-claim) mints a new device row id and the
+// api re-issues a certificate for it against the stored CSR, but a device that
+// only enrolls once at first boot would keep publishing under its stale,
+// persisted device_id forever (orphan telemetry; the portal's Geräte tab reads
+// "wartet auf erste Daten" permanently). Calling this periodically while
+// connected keeps telemetry.device_id in lockstep with the current device row.
+//
+// It is a deliberate no-op (Changed=false, nil error) when:
+//   - the portal still reports the same device_id (the common case), or
+//   - the reference is (temporarily) unclaimed/unknown -> HTTP 404 pending.
+//
+// The device key is REUSED (never regenerated): the re-issue is bound to the
+// original CSR, so the returned certificate matches the on-disk key. A cert
+// that does not match is surfaced as an error (errKeyMismatch) and nothing on
+// disk is touched, so the existing identity keeps working until an operator
+// resolves it (revoke + re-claim).
+func (e *Enroller) Reconcile(ctx context.Context, current Identity) (ReconcileResult, error) {
+	cert, err := e.getCertificate(ctx)
+	if err != nil {
+		if errors.Is(err, errPending) {
+			// Unclaimed/unknown: keep the current identity, retry later.
+			return ReconcileResult{}, nil
+		}
+		return ReconcileResult{}, err
+	}
+	if cert.DeviceID == "" || cert.DeviceID == current.DeviceID {
+		return ReconcileResult{}, nil // unchanged - no thrash
+	}
+	// Identity drift: the reference now maps to a new device row. Adopt it,
+	// reusing the persisted key (persist re-verifies the key match first and
+	// only overwrites the cert/identity on success).
+	key, err := e.loadKey()
+	if err != nil {
+		return ReconcileResult{}, fmt.Errorf("reconcile: load device key: %w", err)
+	}
+	id, err := e.persist(key, cert)
+	if err != nil {
+		return ReconcileResult{}, err
+	}
+	slog.Info("enrollment: adopted new device identity after re-claim",
+		"ref", e.Ref, "old_device_id", current.DeviceID, "new_device_id", id.DeviceID)
+	return ReconcileResult{Changed: true, Identity: id}, nil
+}
+
+// loadKey reads the persisted device key, erroring (incl. os.ErrNotExist) when
+// it is absent. Used by reconcile, which must NEVER regenerate: a re-issue is
+// bound to the original CSR/key, so a fresh key would only ever mismatch.
+func (e *Enroller) loadKey() (*ecdsa.PrivateKey, error) {
 	raw, err := os.ReadFile(e.keyPath())
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil, errors.New("device.key: not PEM")
+	}
+	key, err := x509.ParseECPrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("device.key: %w", err)
+	}
+	return key, nil
+}
+
+func (e *Enroller) loadOrCreateKey() (*ecdsa.PrivateKey, error) {
+	key, err := e.loadKey()
 	if err == nil {
-		block, _ := pem.Decode(raw)
-		if block == nil {
-			return nil, errors.New("device.key: not PEM")
-		}
-		key, err := x509.ParseECPrivateKey(block.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("device.key: %w", err)
-		}
 		return key, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}

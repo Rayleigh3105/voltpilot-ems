@@ -27,6 +27,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +39,7 @@ import (
 	"github.com/mochi-mqtt/server/v2/packets"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -104,6 +106,12 @@ func newPKI(t *testing.T) *pki {
 }
 
 func (p *pki) issueClient(t *testing.T, csrPem string) string {
+	return p.issueClientAs(t, csrPem, tDevice)
+}
+
+// issueClientAs signs a client cert whose CN is the claim-derived device id
+// (the api ignores the CSR subject). A re-claim issues under a NEW device id.
+func (p *pki) issueClientAs(t *testing.T, csrPem, device string) string {
 	t.Helper()
 	block, _ := pem.Decode([]byte(csrPem))
 	csr, err := x509.ParseCertificateRequest(block.Bytes)
@@ -116,7 +124,7 @@ func (p *pki) issueClient(t *testing.T, csrPem string) string {
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject: pkix.Name{
-			CommonName:         tDevice,
+			CommonName:         device,
 			Organization:       []string{tTenant},
 			OrganizationalUnit: []string{tSite},
 		},
@@ -194,6 +202,19 @@ func (cb *cloudBroker) telemetry() []map[string]any {
 	return out
 }
 
+// telemetryCountForDevice counts arrived telemetry stamped with a device_id.
+func (cb *cloudBroker) telemetryCountForDevice(device string) int {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	n := 0
+	for _, m := range cb.received {
+		if m["device_id"] == device {
+			n++
+		}
+	}
+	return n
+}
+
 func (cb *cloudBroker) publishRetainedSchedule(t *testing.T, payload []byte) {
 	t.Helper()
 	topic := fmt.Sprintf("ems/%s/%s/%s/schedule", tTenant, tSite, tDevice)
@@ -244,6 +265,72 @@ func startEnrollmentStub(t *testing.T, p *pki, mqttPort int) *httptest.Server {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// reclaimEnrollStub is an enrollment API stub whose issued device_id can be
+// changed at runtime to model an unclaim+re-claim (the api re-issues the cert
+// against the stored CSR for the new device row - EnrollmentService).
+type reclaimEnrollStub struct {
+	t        *testing.T
+	pki      *pki
+	mqttPort int
+	srv      *httptest.Server
+
+	mu     sync.Mutex
+	csrPem string
+	device string // current issued device_id
+	issued string // cached cert for the current device
+}
+
+func startReclaimEnrollStub(t *testing.T, p *pki, mqttPort int) *reclaimEnrollStub {
+	t.Helper()
+	s := &reclaimEnrollStub{t: t, pki: p, mqttPort: mqttPort, device: tDevice}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/enrollment/{ref}/csr", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			CsrPem string `json:"csrPem"`
+		}
+		if json.NewDecoder(r.Body).Decode(&body) != nil || body.CsrPem == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		s.mu.Lock()
+		s.csrPem = body.CsrPem
+		s.mu.Unlock()
+		w.WriteHeader(http.StatusAccepted)
+	})
+	mux.HandleFunc("GET /api/v1/enrollment/{ref}/certificate", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.csrPem == "" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"status":"pending"}`))
+			return
+		}
+		if s.issued == "" {
+			s.issued = s.pki.issueClientAs(t, s.csrPem, s.device)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"deviceCertPem": s.issued,
+			"caPem":         s.pki.caPem,
+			"mqttHost":      "localhost",
+			"mqttPort":      s.mqttPort,
+			"tenantId":      tTenant,
+			"siteId":        tSite,
+			"deviceId":      s.device,
+		})
+	})
+	s.srv = httptest.NewServer(mux)
+	t.Cleanup(s.srv.Close)
+	return s
+}
+
+// reclaim points the ref at a new device row id, forcing a re-issue.
+func (s *reclaimEnrollStub) reclaim(newDevice string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.device = newDevice
+	s.issued = ""
 }
 
 // --- Layer-1 stand-in on the local bus ---
@@ -476,4 +563,87 @@ func TestFullLoopEnrollExecuteBufferReplay(t *testing.T) {
 	waitFor(t, 10*time.Second, "buffer drained", func() bool {
 		return a.State.Get().BufferPending == 0
 	})
+}
+
+// TestReconcileSwitchesIdentityWhileConnected proves the device-identity-drift
+// fix: a connected edge whose device row id changes (unclaim + re-claim, or a
+// DB reset + re-claim) re-reconciles its identity and resumes publishing under
+// the CURRENT device_id - so the portal's Geräte tab reads online again instead
+// of "wartet auf erste Daten" forever.
+func TestReconcileSwitchesIdentityWhileConnected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+	const newDevice = "44444444-4444-4444-4444-444444444444"
+	p := newPKI(t)
+
+	cloudPort := freePort(t)
+	cb := startCloudBroker(t, p, fmt.Sprintf("127.0.0.1:%d", cloudPort))
+	defer cb.stop()
+
+	stub := startReclaimEnrollStub(t, p, cloudPort)
+
+	busPort := freePort(t)
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.PortalBaseURL = stub.srv.URL
+	cfg.Ref = "VP-ITEST-DRIFT-01"
+	cfg.LocalMQTTAddr = fmt.Sprintf("127.0.0.1:%d", busPort)
+	cfg.HTTPAddr = "127.0.0.1:0"
+	cfg.SetpointIntervalSeconds = 1
+	cfg.SetpointInterval = time.Second
+	// Re-check the identity aggressively so the test does not wait minutes.
+	cfg.ReconcileInterval = 300 * time.Millisecond
+
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := a.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer a.Stop()
+
+	// 1) Enroll + connect under the ORIGINAL identity.
+	waitFor(t, 30*time.Second, "cloud link up", func() bool {
+		s := a.State.Get()
+		return s.CloudConnected && s.DeviceID == tDevice
+	})
+
+	l1 := startLayer1(t, cfg.LocalMQTTAddr)
+	l1.publishTelemetry(t, time.Now().UTC(), 12, 8, 50, 100)
+	waitFor(t, 15*time.Second, "telemetry under original device_id", func() bool {
+		return cb.telemetryCountForDevice(tDevice) >= 1
+	})
+
+	// 2) The customer unclaims + re-claims -> the ref now maps to a new device
+	// row id; the api re-issues the certificate for it.
+	stub.reclaim(newDevice)
+
+	// 3) The connected edge re-reconciles: it adopts the new identity, switches
+	// the cloud link, and its persisted/live identity now reads the new id.
+	waitFor(t, 30*time.Second, "identity switched to the re-claimed device", func() bool {
+		s := a.State.Get()
+		return s.CloudConnected && s.DeviceID == newDevice
+	})
+
+	// 4) Fresh telemetry now arrives under the CURRENT device_id - which is what
+	// the portal's per-device liveness query keys on.
+	countBefore := cb.telemetryCountForDevice(newDevice)
+	l1.publishTelemetry(t, time.Now().UTC(), 10, 6, 55, 100)
+	waitFor(t, 15*time.Second, "telemetry under re-claimed device_id", func() bool {
+		return cb.telemetryCountForDevice(newDevice) > countBefore
+	})
+
+	// The adopted identity is persisted (survives a restart).
+	e := &enroll.Enroller{Dir: filepath.Join(cfg.DataDir, "identity")}
+	persisted, err := e.LoadIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.DeviceID != newDevice {
+		t.Fatalf("persisted device id = %s, want %s", persisted.DeviceID, newDevice)
+	}
 }

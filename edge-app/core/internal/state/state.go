@@ -18,23 +18,23 @@ const (
 
 // Snapshot is one consistent view of the agent for the UI / health endpoint.
 type Snapshot struct {
-	Ref          string    `json:"ref"`
-	PairingState string    `json:"pairing_state"` // enroll.State + "verbunden" once cloud-linked
-	DeviceID     string    `json:"device_id,omitempty"`
-	SiteID       string    `json:"site_id,omitempty"`
-	TenantID     string    `json:"tenant_id,omitempty"`
-	MqttHost     string    `json:"mqtt_host,omitempty"`
+	Ref          string `json:"ref"`
+	PairingState string `json:"pairing_state"` // enroll.State + "verbunden" once cloud-linked
+	DeviceID     string `json:"device_id,omitempty"`
+	SiteID       string `json:"site_id,omitempty"`
+	TenantID     string `json:"tenant_id,omitempty"`
+	MqttHost     string `json:"mqtt_host,omitempty"`
 
 	CloudConnected bool      `json:"cloud_connected"`
 	LastTelemetry  time.Time `json:"last_telemetry,omitzero"`
 	LastCloudPub   time.Time `json:"last_cloud_publish,omitzero"`
 	BufferPending  int       `json:"buffer_pending"`
 
-	Mode          Mode      `json:"mode"`
-	SetpointKw    float64   `json:"setpoint_kw"`
-	SlotStart     time.Time `json:"slot_start,omitzero"`
-	PlanReceived  time.Time `json:"plan_received,omitzero"`
-	PlanSlots     int       `json:"plan_slots"`
+	Mode         Mode      `json:"mode"`
+	SetpointKw   float64   `json:"setpoint_kw"`
+	SlotStart    time.Time `json:"slot_start,omitzero"`
+	PlanReceived time.Time `json:"plan_received,omitzero"`
+	PlanSlots    int       `json:"plan_slots"`
 
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`

@@ -55,31 +55,40 @@ type Config struct {
 	// SetpointIntervalSeconds is the config-file/env form of SetpointInterval.
 	SetpointIntervalSeconds int `json:"setpoint_interval_seconds"`
 
+	// ReconcileInterval is how often an enrolled device re-checks its identity
+	// against the portal while connected, so a re-claim (which mints a new
+	// device row id and re-issues the certificate) is adopted automatically
+	// instead of the edge publishing under a stale device_id forever.
+	ReconcileInterval time.Duration `json:"-"`
+	// ReconcileIntervalSeconds is the config-file/env form of ReconcileInterval.
+	ReconcileIntervalSeconds int `json:"reconcile_interval_seconds"`
+
 	// Dev-only escape hatches (mirrors tools/edge-simulator): a fixed
 	// identity skips enrollment, and a plain-MQTT cloud URL skips mTLS.
 	// NEVER set these on a customer device.
-	DevTenantID  string `json:"dev_tenant_id"`
-	DevSiteID    string `json:"dev_site_id"`
-	DevDeviceID  string `json:"dev_device_id"`
-	DevCloudURL  string `json:"dev_cloud_url"`
-	DevInsecure  bool   `json:"dev_insecure"`
+	DevTenantID string `json:"dev_tenant_id"`
+	DevSiteID   string `json:"dev_site_id"`
+	DevDeviceID string `json:"dev_device_id"`
+	DevCloudURL string `json:"dev_cloud_url"`
+	DevInsecure bool   `json:"dev_insecure"`
 }
 
 // Defaults returns the built-in configuration.
 func Defaults() Config {
 	return Config{
-		PortalBaseURL:           "https://voltpilot.de",
-		MQTTHost:                "mqtt.voltpilot.de",
-		MQTTPort:                8883,
-		DataDir:                 "/data",
-		LocalMQTTAddr:           ":1883",
-		HTTPAddr:                ":8484",
-		MaxChargeKw:             50,
-		MaxDischargeKw:          50,
-		SocMinPct:               5,
-		SocMaxPct:               95,
-		BufferHours:             48,
-		SetpointIntervalSeconds: 10,
+		PortalBaseURL:            "https://voltpilot.de",
+		MQTTHost:                 "mqtt.voltpilot.de",
+		MQTTPort:                 8883,
+		DataDir:                  "/data",
+		LocalMQTTAddr:            ":1883",
+		HTTPAddr:                 ":8484",
+		MaxChargeKw:              50,
+		MaxDischargeKw:           50,
+		SocMinPct:                5,
+		SocMaxPct:                95,
+		BufferHours:              48,
+		SetpointIntervalSeconds:  10,
+		ReconcileIntervalSeconds: 300,
 	}
 }
 
@@ -117,6 +126,10 @@ func Load() (Config, error) {
 		cfg.SetpointIntervalSeconds = Defaults().SetpointIntervalSeconds
 	}
 	cfg.SetpointInterval = time.Duration(cfg.SetpointIntervalSeconds) * time.Second
+	if cfg.ReconcileIntervalSeconds <= 0 {
+		cfg.ReconcileIntervalSeconds = Defaults().ReconcileIntervalSeconds
+	}
+	cfg.ReconcileInterval = time.Duration(cfg.ReconcileIntervalSeconds) * time.Second
 	if cfg.BufferHours <= 0 {
 		cfg.BufferHours = Defaults().BufferHours
 	}
@@ -156,6 +169,7 @@ func applyEnv(cfg *Config) {
 	f64("VP_SOC_MAX_PCT", &cfg.SocMaxPct)
 	num("VP_BUFFER_HOURS", &cfg.BufferHours)
 	num("VP_SETPOINT_INTERVAL_SECONDS", &cfg.SetpointIntervalSeconds)
+	num("VP_RECONCILE_INTERVAL_SECONDS", &cfg.ReconcileIntervalSeconds)
 	str("VP_DEV_TENANT_ID", &cfg.DevTenantID)
 	str("VP_DEV_SITE_ID", &cfg.DevSiteID)
 	str("VP_DEV_DEVICE_ID", &cfg.DevDeviceID)
