@@ -55,6 +55,8 @@ Three Node-RED nodes (`nodered/vp-palette/`), all preconfigured to the core's bu
 | `vp-sollwert` | core → flow | Emits `msg.payload` = setpoint kW (+ laden / − entladen), `msg.setpoint` = full command. Already guard-clamped - just translate to the device protocol. |
 | `vp-status` | flow → core | `msg.payload` = `true`/`false`, `"up"`/`"down"` - feeds "Wechselrichter: verbunden/getrennt" in the web app. |
 
+**Custom inverter integration:** the full local-bus contract - payload schema, units/signs, QoS/cadence, the copy-paste function + `mqtt out` recipe, and the gotchas - is documented in [`nodered/CUSTOM-INVERTER.md`](nodered/CUSTOM-INVERTER.md).
+
 ## Einen neuen Kunden verdrahten (VoltPilot service task)
 
 The Node-RED editor runs LAN-only behind auth: `http://<geraet>:1881`, user `voltpilot`, password from `VP_NODERED_PASSWORD` (default `voltpilot` - **change it per installation**). Customers never get these credentials.
