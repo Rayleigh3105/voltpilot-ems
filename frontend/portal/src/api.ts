@@ -1,4 +1,4 @@
-import { freshToken } from './auth';
+import { AuthRedirectError, freshToken } from './auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
@@ -370,7 +370,16 @@ export function setTenantOverride(tenantId: string | null): void {
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = await freshToken();
+  let token: string | undefined;
+  try {
+    token = await freshToken();
+  } catch (e) {
+    // freshToken() already triggered a full-page login redirect. Abort this
+    // request by never resolving - the browser navigates away, so no error
+    // banner (and no raw "401") flashes before the redirect (m4).
+    if (e instanceof AuthRedirectError) return new Promise<never>(() => {});
+    throw e;
+  }
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -381,13 +390,16 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     },
   });
   if (!res.ok) {
-    // Some endpoints (MaStR lookup) return a customer-facing German message.
-    let message = `${res.status} ${res.statusText}`;
+    // Never leak a raw HTTP status/statusText into customer-facing copy (m4):
+    // default to a plain-German message and let a server-provided German
+    // `message` (e.g. MaStR lookup) override it. The numeric status stays on
+    // ApiError.status for callers that branch on it (409/422/…).
+    let message = 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.';
     try {
       const body = await res.json();
       if (body && typeof body.message === 'string' && body.message) message = body.message;
     } catch {
-      // non-JSON error body: keep the status text
+      // non-JSON error body: keep the generic message
     }
     throw new ApiError(res.status, message);
   }
@@ -419,7 +431,17 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
     body: JSON.stringify(input),
   });
   if (!res.ok) {
-    throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+    // Carry the server's message (don't discard it) but keep it off the raw
+    // status text; App maps the status to German copy, incl. the 502/503
+    // outage branch (m7).
+    let message = 'Die Registrierung ist zurzeit nicht möglich.';
+    try {
+      const body = await res.json();
+      if (body && typeof body.message === 'string' && body.message) message = body.message;
+    } catch {
+      // non-JSON error body: keep the generic message
+    }
+    throw new ApiError(res.status, message);
   }
   return (await res.json()) as RegistrationResult;
 }

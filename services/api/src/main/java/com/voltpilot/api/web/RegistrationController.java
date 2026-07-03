@@ -86,13 +86,19 @@ public class RegistrationController {
                         tenant.id(), cleanupEx);
             }
             if (ex instanceof KeycloakAdminException kex) {
+                // Keycloak refused: pass a real 4xx/5xx through (409 = email taken).
+                // An out-of-range/unknown status is an upstream outage -> 503.
                 HttpStatusCode status = HttpStatusCode.valueOf(
-                        kex.status() >= 400 && kex.status() < 600 ? kex.status() : 502);
+                        kex.status() >= 400 && kex.status() < 600 ? kex.status() : 503);
                 throw new ResponseStatusException(status,
                         kex.status() == 409 ? "An account with this email already exists"
                                 : kex.getMessage());
             }
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+            // Transport failure (Keycloak unreachable/timeout): a temporary
+            // outage, not a bad gateway response -> 503 so the portal shows the
+            // "try again in a few minutes" outage copy rather than a transient
+            // "gleich noch einmal" hint (m7).
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Registration is temporarily unavailable, please try again later", ex);
         }
         log.info("Self-registered tenant '{}' ({}) with user '{}'", tenant.name(), tenant.id(),

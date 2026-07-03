@@ -12,7 +12,7 @@ import '../designsystem/tokens/effects.css';
 import '../designsystem/components/shell/shell.css';
 import './index.css';
 
-import { initAuth, keycloak } from './auth';
+import { initAuth, keycloak, wasSessionExpired } from './auth';
 
 // Keep the access token fresh in the background.
 keycloak.onTokenExpired = () => {
@@ -23,7 +23,7 @@ initAuth()
   .then((authenticated) => {
     ReactDOM.createRoot(document.getElementById('root')!).render(
       <React.StrictMode>
-        <App initialAuth={authenticated} />
+        <App initialAuth={authenticated} sessionExpired={wasSessionExpired()} />
       </React.StrictMode>,
     );
   })

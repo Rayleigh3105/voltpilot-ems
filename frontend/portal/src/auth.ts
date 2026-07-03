@@ -51,6 +51,29 @@ export function isPlatformAdmin(): boolean {
 
 const TOKEN_STORE_KEY = 'vp.auth.tokens';
 
+/**
+ * Thrown by freshToken() when it has already triggered a full-page redirect to
+ * the Keycloak login (the session is gone). request() catches it and aborts the
+ * pending call instead of firing an unauthenticated fetch that would 401 and
+ * flash a raw "API-Fehler: 401" at the user just before the redirect lands.
+ */
+export class AuthRedirectError extends Error {
+  constructor() {
+    super('auth redirect in progress');
+    this.name = 'AuthRedirectError';
+  }
+}
+
+// Set when a STORED direct-grant session existed but could not be refreshed on
+// boot (expired or a persistent failure): the login screen then explains
+// "Sitzung abgelaufen" instead of showing a blank card (M5).
+let storedSessionExpired = false;
+
+/** True when a stored session was found on boot but its refresh ultimately failed. */
+export function wasSessionExpired(): boolean {
+  return storedSessionExpired;
+}
+
 interface TokenSet {
   access_token: string;
   refresh_token: string;
@@ -87,18 +110,35 @@ function clearStoredTokens(): void {
 async function refreshStoredTokens(): Promise<TokenSet | null> {
   const raw = sessionStorage.getItem(TOKEN_STORE_KEY);
   if (!raw) return null;
+  let stored: TokenSet;
   try {
-    const stored = JSON.parse(raw) as TokenSet;
-    const fresh = await tokenGrant({
-      grant_type: 'refresh_token',
-      refresh_token: stored.refresh_token,
-    });
-    storeTokens(fresh);
-    return fresh;
+    stored = JSON.parse(raw) as TokenSet;
   } catch {
     clearStoredTokens();
     return null;
   }
+  // Retry the grant ONCE before giving up: a single transient network blip on
+  // the immediate post-registration reload must not silently bounce a
+  // just-signed-in customer to a blank login card (M5).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fresh = await tokenGrant({
+        grant_type: 'refresh_token',
+        refresh_token: stored.refresh_token,
+      });
+      storeTokens(fresh);
+      return fresh;
+    } catch {
+      if (attempt === 1) {
+        // A stored session existed but could not be refreshed - the session is
+        // truly gone. Flag it so the login screen says "Sitzung abgelaufen".
+        storedSessionExpired = true;
+        clearStoredTokens();
+        return null;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -184,8 +224,11 @@ export async function freshToken(): Promise<string | undefined> {
   try {
     await keycloak.updateToken(30);
   } catch {
-    // Refresh failed (session gone) - force a fresh login.
+    // Refresh failed (session gone) - redirect to a fresh login and ABORT the
+    // pending request via AuthRedirectError, so it never fires an
+    // unauthenticated call that would 401 and flash a raw status at the user.
     login();
+    throw new AuthRedirectError();
   }
   return keycloak.token;
 }

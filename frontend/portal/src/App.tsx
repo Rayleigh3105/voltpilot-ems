@@ -23,11 +23,13 @@ import { GeraeteRegistryPage } from './pages/admin/GeraeteRegistryPage';
 export default function App({
   initialAuth,
   authError = false,
+  sessionExpired = false,
 }: {
   initialAuth: boolean;
   authError?: boolean;
+  sessionExpired?: boolean;
 }) {
-  if (!initialAuth) return <LoginScreen authError={authError} />;
+  if (!initialAuth) return <LoginScreen authError={authError} sessionExpired={sessionExpired} />;
   // ONE app for both roles (unified shell): a Portal-Admin gets the same
   // customer pages via the tenant switcher plus the additive "Plattform" nav
   // group. The backend enforces the role split (403 / header-gated tenant
@@ -35,7 +37,13 @@ export default function App({
   return <UnifiedPortal />;
 }
 
-function LoginScreen({ authError }: { authError: boolean }) {
+function LoginScreen({
+  authError,
+  sessionExpired = false,
+}: {
+  authError: boolean;
+  sessionExpired?: boolean;
+}) {
   const [view, setView] = useState<'login' | 'register'>('login');
   return (
     <div className="vp-login">
@@ -48,18 +56,46 @@ function LoginScreen({ authError }: { authError: boolean }) {
               Ihr Energiemanagement-Portal - Standorte, Geräte, Börsenpreise und
               Batterie-Fahrplan auf einen Blick.
             </p>
-            <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
-              Anmelden
-            </Button>
-            <p className="vp-note" style={{ marginTop: 16 }}>
-              Neu bei VoltPilot?{' '}
-              <button type="button" className="vp-linklike" onClick={() => setView('register')}>
-                Konto erstellen
-              </button>
+            {authError ? (
+              // Keycloak is unreachable: sending the user to keycloak.login()
+              // would just redirect to the same dead host, OUTSIDE the SPA, with
+              // no way back. Offer a plain in-app retry instead (M4).
+              <Button
+                variant="primary"
+                size="lg"
+                fullWidth
+                iconLeft={<Icon name="refresh-cw" size={18} />}
+                onClick={() => window.location.reload()}
+              >
+                Erneut versuchen
+              </Button>
+            ) : (
+              <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
+                Anmelden
+              </Button>
+            )}
+            {/* Registration also needs a reachable Keycloak, so hide it while
+                the auth service is down - it would be a second dead path (M4). */}
+            {!authError && (
+              <p className="vp-note" style={{ marginTop: 16 }}>
+                Neu bei VoltPilot?{' '}
+                <button type="button" className="vp-linklike" onClick={() => setView('register')}>
+                  Konto erstellen
+                </button>
+              </p>
+            )}
+            {/* No self-service reset without SMTP - point at support (m8). */}
+            <p className="vp-note" style={{ marginTop: authError ? 16 : 8 }}>
+              Passwort vergessen? Bitte kontaktieren Sie unseren Support.
             </p>
           </>
         ) : (
           <RegisterForm onBack={() => setView('login')} />
+        )}
+        {sessionExpired && !authError && view === 'login' && (
+          <div className="vp-alert vp-alert-err">
+            Ihre Sitzung ist abgelaufen, bitte erneut anmelden.
+          </div>
         )}
         {authError && (
           <div className="vp-alert vp-alert-err">
@@ -124,7 +160,11 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
             ? 'Bitte prüfen Sie Ihre Eingaben: gültige E-Mail-Adresse und ein Passwort mit mindestens 8 Zeichen.'
             : e instanceof ApiError && e.status === 429
               ? 'Zu viele Registrierungsversuche von Ihrem Anschluss. Bitte versuchen Sie es in etwa einer Stunde erneut.'
-              : 'Die Registrierung hat gerade nicht geklappt. Bitte versuchen Sie es gleich noch einmal.',
+              : e instanceof ApiError && (e.status === 502 || e.status === 503)
+                ? // Keycloak/anmeldedienst is down: this is an outage, not a
+                  // transient hiccup - don't invite an immediate retry (m7).
+                  'Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in wenigen Minuten erneut.'
+                : 'Die Registrierung hat gerade nicht geklappt. Bitte versuchen Sie es gleich noch einmal.',
       );
     } finally {
       setBusy(false);
