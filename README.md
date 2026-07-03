@@ -242,6 +242,38 @@ ems/{tenant_id}/{site_id}/{device_id}/config       Cloud -> Edge, retained
 provision/{ref}/hello   |   provision/{ref}/config  zero-touch onboarding handshake
 ```
 
+## How the schedule is computed
+
+The plan the downlink carries is the output of a deterministic **battery-dispatch MILP** (Pyomo + HiGHS), run MPC-style: **once per site with a battery, independently**, over a rolling **24-hour horizon in 15-minute slots**, re-planned **every 15 minutes**. Each site is optimized on its own inputs, so every site gets its own schedule.
+
+```mermaid
+flowchart LR
+    subgraph IN["Inputs (per site)"]
+        P["Day-ahead prices<br/>(per bidding zone)"]
+        F["Load + PV forecast<br/>(15-min slots)"]
+        S["Live state of charge"]
+        B["Battery params<br/>(capacity, power, efficiency)"]
+        G["Observed §14a<br/>grid limit"]
+    end
+    IN --> MILP["MILP (HiGHS)<br/>minimize grid cost"]
+    MILP --> OUT["Schedule plan<br/>setpoints · SoC trajectory · savings"]
+    OUT --> DB["schedule hypertable"]
+    OUT --> MQTT["retained MQTT schedule"]
+```
+
+**Objective.** Minimize the total cost of grid energy over the horizon - `Σ price × grid_power × Δt`, where `grid = load − PV + charge − discharge` (positive = import, negative = export). In effect: charge when power is cheap or PV is in surplus, discharge when it is expensive, and maximize self-consumption.
+
+**Inputs**, all slot-aligned:
+
+- **Day-ahead prices** from the market-data collector, taken **per bidding zone** (e.g. `DE-LU`) - the same public spot price for every site in a zone.
+- **Load and PV forecasts** from the forecast service's active model, with a persistence-baseline fallback over recent telemetry when no fresh run covers the horizon.
+- **Live state of charge** and the **observed §14a grid limit**, read from the site's latest telemetry.
+- **Battery parameters** from the site's asset record: usable capacity, charge/discharge power limits, and round-trip efficiency.
+
+**Constraints.** State-of-charge dynamics with round-trip efficiency split symmetrically across charge and discharge; a usable SoC reserve band; charge/discharge power caps; the **§14a grid limit as a hard cap on both import and export**; a terminal condition that the battery ends the horizon no lower than it started (savings can't come from simply draining the battery); and mutually exclusive charge/discharge per slot. If the §14a cap makes a slot infeasible, the plan degrades gracefully to one without that constraint - the edge guards and the grid operator enforce the physical limit regardless.
+
+**Outputs.** Every run is persisted to the `schedule` hypertable (setpoints, SoC trajectory, per-slot economics) and published as the **retained MQTT schedule** the edge consumes, together with a projected-savings headline measured against a no-battery baseline (same load and PV, battery idle).
+
 ## Security & multi-tenancy
 
 Two reinforcing layers keep one customer's data invisible to another. On the wire, **mTLS binds identity into the certificate** and a per-device broker ACL locks each device to its own topics. In the database, **Postgres Row-Level Security** scopes every tenant-owned table - enforced by the DB, not by query filters, so an out-of-tenant row is simply invisible (a miss is a 404, never a 403).

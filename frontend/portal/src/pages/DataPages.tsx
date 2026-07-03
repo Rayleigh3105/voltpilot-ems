@@ -14,6 +14,7 @@ import {
 } from '../api';
 import { eurAmount, fmtNum } from '../format';
 import { SitePicker } from '../components/SitePicker';
+import { InfoTip } from '../components/InfoTip';
 import { PriceChart } from '../PriceChart';
 import { WeatherChart } from '../WeatherChart';
 import { ScheduleChart } from '../ScheduleChart';
@@ -254,6 +255,16 @@ export function FahrplanPage(props: {
             <Icon name="battery-charging" size={20} />
           </IconTile>
           <h2>Fahrplan {site?.name ?? ''}</h2>
+          <InfoTip title="Wie der Fahrplan berechnet wird">
+            Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet -
+            für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell
+            (MILP) plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden:
+            laden bei günstigem Strom oder PV-Überschuss, entladen wenn Strom teuer ist,
+            Eigenverbrauch maximieren. Eingaben je Anlage sind die Börsen-Day-Ahead-Preise,
+            die Last- und PV-Prognose, der aktuelle Ladestand, die Batteriegrenzen und die
+            §14a-Netzgrenze. Weil jede Anlage eigene Eingaben hat, erhält sie ihren eigenen
+            Fahrplan.
+          </InfoTip>
         </div>
         {loading && <p className="vp-muted">Lade Fahrplan…</p>}
         {err && (
