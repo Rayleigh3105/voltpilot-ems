@@ -123,6 +123,27 @@ voltpilot:
       global-max: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_GLOBAL_MAX:5000}
       window: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_WINDOW:PT1H}
       trusted-proxies: ${VOLTPILOT_ENROLLMENT_RATE_LIMIT_TRUSTED_PROXIES:0}
+    # Auto-reload the EMQX file authorizer the moment a device grant is written
+    # (issuance) or removed (unclaim), so a freshly claimed device is publishable
+    # within seconds instead of waiting for the deploy-time / cron reload
+    # (tools/pki/reload-broker-authz.sh, which stays as the backstop). EMQX's
+    # file authorizer never re-reads acl.conf on its own; the api can't run
+    # `emqx eval` (no docker), so it re-initialises the source over the EMQX REST
+    # management API: PUT {api-url}/authorization/sources/file with the current
+    # acl.conf as `rules` (verified on 5.8.3 - see BrokerAuthzReloader). Off by
+    # default; only enrollment deployments that expose the internal EMQX REST
+    # port enable it. api-url is the REST base incl. /api/v5 (e.g.
+    # http://emqx:18083/api/v5). Auth: an EMQX API key (Basic, preferred) OR the
+    # dashboard user/password (reuses EMQX_DASHBOARD_* already in the prod stack).
+    broker-authz-reload:
+      enabled: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_ENABLED:false}
+      api-url: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_API_URL:}
+      api-key: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_API_KEY:}
+      api-secret: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_API_SECRET:}
+      username: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_USERNAME:}
+      password: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_PASSWORD:}
+      timeout: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_TIMEOUT:PT5S}
+      debounce: ${VOLTPILOT_BROKER_AUTHZ_RELOAD_DEBOUNCE:PT0.3S}
   # Keycloak Admin REST API access for provisioning customer users. The API
   # authenticates as the voltpilot-api service account (client_credentials) that
   # holds the realm-management roles. base-url is the compose-internal Keycloak.

@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -42,9 +43,12 @@ public class EnrollmentService {
     private final EnrollmentDeviceLookup devices;
     private final DeviceCertificateAuthority ca;
     private final AclGrantWriter aclWriter; // null = grant writing not configured
+    // Empty unless broker-authz-reload is enabled + configured; when present it
+    // pushes the freshly written ACL to EMQX so grants apply within seconds.
+    private final ObjectProvider<BrokerAuthzReloader> authzReloader;
 
     public EnrollmentService(EnrollmentProperties properties, EnrollmentRepository enrollments,
-            EnrollmentDeviceLookup devices) {
+            EnrollmentDeviceLookup devices, ObjectProvider<BrokerAuthzReloader> authzReloader) {
         if (properties.caDir() == null || properties.caDir().isBlank()) {
             throw new IllegalStateException("voltpilot.enrollment.enabled=true requires "
                     + "voltpilot.enrollment.ca-dir (the device-CA working directory)");
@@ -52,6 +56,7 @@ public class EnrollmentService {
         this.properties = properties;
         this.enrollments = enrollments;
         this.devices = devices;
+        this.authzReloader = authzReloader;
         this.ca = new DeviceCertificateAuthority(Path.of(properties.caDir()),
                 properties.certDays(), Clock.systemUTC());
         this.aclWriter = properties.aclFile() == null || properties.aclFile().isBlank()
@@ -60,6 +65,15 @@ public class EnrollmentService {
             log.warn("Enrollment is enabled without voltpilot.enrollment.acl-file - "
                     + "broker ACL grants must be managed out of band");
         }
+    }
+
+    /**
+     * Nudge the broker to re-read the ACL file after a grant write/removal so the
+     * change is enforced immediately (no-op unless broker-authz-reload is
+     * configured). Always non-fatal - the cron/deploy reload is the backstop.
+     */
+    private void requestBrokerAuthzReload() {
+        authzReloader.ifAvailable(BrokerAuthzReloader::requestReload);
     }
 
     /** What the device receives once its ref is claimed. */
@@ -103,6 +117,9 @@ public class EnrollmentService {
         // and the grant write is idempotent - a failed signing retries both.
         if (aclWriter != null) {
             aclWriter.writeGrant(device.tenantId(), device.siteId(), device.deviceId());
+            // The grant is on disk; make EMQX enforce it now instead of at the
+            // next deploy/cron reload (closes the "claimed-but-refused" window).
+            requestBrokerAuthzReload();
         }
         DeviceCertificateAuthority.IssuedCertificate issued =
                 ca.issue(csr, device.tenantId(), device.siteId(), device.deviceId());
@@ -139,6 +156,9 @@ public class EnrollmentService {
         }
         try {
             aclWriter.removeGrant(deviceId);
+            // Push the removal to EMQX now so the old certificate loses topic
+            // access within seconds (default-deny), not at the next reload.
+            requestBrokerAuthzReload();
             log.info("Removed broker ACL grant for unclaimed device {} (CRL revocation via "
                     + "tools/pki/voltpilot-ca.sh remains the cryptographic kill switch)", deviceId);
         } catch (RuntimeException e) {
