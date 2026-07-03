@@ -172,6 +172,26 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .steps li.done .mark { border-color: var(--ok); background: var(--ok); color: #fff; }
 .pairing-error { color: var(--err); background: var(--err-soft); border: 1px solid #F1CDCD;
   padding: 11px 14px; border-radius: 10px; font-size: 13.5px; font-weight: 600; margin: 16px 0 0; }
+/* Softer (informational) variant for a transient, self-healing state. */
+.pairing-error.soft { color: var(--warn); background: var(--warn-soft); border-color: #F3E2C4; }
+
+/* Setup CTA banner: shown until an inverter is configured. */
+.setup-banner {
+  display: flex; align-items: center; gap: 14px; text-decoration: none;
+  margin-bottom: 20px; padding: 15px 18px;
+  background: var(--warn-soft); border: 1px solid #F3E2C4; border-radius: var(--radius);
+  color: var(--ink); box-shadow: var(--shadow-sm);
+}
+.setup-banner:hover { border-color: var(--warn); }
+.setup-banner-ico {
+  width: 40px; height: 40px; flex: none; border-radius: 11px; display: grid; place-items: center;
+  background: #fff; color: var(--warn); border: 1px solid #F3E2C4;
+}
+.setup-banner-ico svg { width: 22px; height: 22px; }
+.setup-banner-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.setup-banner-text strong { font-size: 14.5px; font-weight: 700; }
+.setup-banner-text small { color: var(--ink-2); font-size: 13px; }
+.setup-banner-arrow { margin-left: auto; color: var(--warn); font-size: 20px; font-weight: 700; flex: none; }
 
 /* ---------------- KPI cards ---------------- */
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }

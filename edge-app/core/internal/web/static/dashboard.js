@@ -146,6 +146,10 @@
     if (s.cloud_connected) {
       cv.className = "status-val ok"; cv.childNodes[0].nodeValue = "Verbunden";
       csub.textContent = "Daten werden übertragen";
+    } else if (s.buffer_data_loss) {
+      // Long outage overran the buffer: the oldest samples are being discarded.
+      cv.className = "status-val err"; cv.childNodes[0].nodeValue = "Getrennt";
+      csub.textContent = "Zwischenspeicher voll - älteste Messwerte werden verworfen";
     } else {
       cv.className = "status-val warn"; cv.childNodes[0].nodeValue = "Getrennt";
       csub.textContent = s.buffer_pending > 0
@@ -211,36 +215,62 @@
 
   // ---------- Pairing card ----------
   function renderPairing(s) {
+    var st = s.pairing_state;
     $("ref").textContent = s.ref || "…";
     $("version").textContent = (!s.version || s.version === "dev") ? "" : "v" + s.version;
 
-    var reached = s.pairing_state === "verbunden" ? 2
-      : s.pairing_state === "zertifikat_erhalten" ? 1 : 0;
+    // reached: 2 = cloud-connected, 1 = certificate on disk (device is claimed),
+    // 0 = still pairing (incl. the pre-portal error states).
+    var reached = st === "verbunden" ? 2
+      : (st === "zertifikat_erhalten" || st === "cloud_getrennt" || st === "cloud_fehler") ? 1 : 0;
     document.querySelectorAll("#steps li").forEach(function (li, i) {
       li.classList.toggle("done", i < reached || (i === 2 && reached === 2));
       li.classList.toggle("active", i === reached && reached < 2);
     });
 
+    // Error / status box: transport, local-init and cloud failures each get an
+    // actionable German message instead of the old "hide it for everything else".
     var err = $("pairingError");
-    if (s.pairing_state === "schluessel_konflikt") {
-      err.hidden = false; err.textContent = "Registrierung gesperrt: Für diese Referenz ist bereits ein anderes Gerät registriert. Bitte den Support kontaktieren.";
-    } else if (s.pairing_state === "referenz_unbekannt") {
-      err.hidden = false; err.textContent = "Diese Geräte-ID ist dem System nicht bekannt. Bitte die Referenz auf dem Aufkleber prüfen.";
-    } else { err.hidden = true; }
+    var msg = null, soft = false;
+    if (st === "schluessel_konflikt") {
+      msg = "Registrierung gesperrt: Für diese Referenz ist bereits ein anderes Gerät registriert. Bitte den Support kontaktieren.";
+    } else if (st === "referenz_unbekannt") {
+      msg = "Diese Geräte-ID ist dem System nicht bekannt. Bitte die Referenz auf dem Aufkleber prüfen.";
+    } else if (st === "portal_nicht_erreichbar") {
+      msg = "Gerät kann das Portal nicht erreichen - bitte die Internetverbindung prüfen. Es wird automatisch weiter versucht.";
+    } else if (st === "geraet_fehler") {
+      msg = "Auf dem Gerät ist ein Fehler aufgetreten (z. B. Speicher nicht beschreibbar). Bitte das Gerät neu starten; hält der Fehler an, den Support kontaktieren.";
+    } else if (st === "cloud_fehler") {
+      msg = "Verbindung zu VoltPilot konnte nicht aufgebaut werden. Das Gerät versucht es automatisch erneut.";
+    } else if (st === "cloud_getrennt") {
+      msg = "Verbindung zu VoltPilot unterbrochen - sie wird automatisch wiederhergestellt."; soft = true;
+    }
+    if (msg) { err.hidden = false; err.textContent = msg; err.classList.toggle("soft", soft); }
+    else { err.hidden = true; err.classList.remove("soft"); }
 
-    // Once fully connected, collapse the onboarding card to a slim confirmation.
+    // Collapse the onboarding card once the device is claimed (a certificate is
+    // on disk): don't re-prompt for the reference on a mere cloud blip.
     var card = $("pairingCard");
-    var connected = s.pairing_state === "verbunden";
-    card.classList.toggle("compact", connected);
-    $("refBlock").hidden = connected;
-    $("refHint").hidden = connected;
-    $("steps").hidden = connected;
+    var connected = st === "verbunden";
+    var paired = reached >= 1;
+    card.classList.toggle("compact", paired);
+    $("refBlock").hidden = paired;
+    $("refHint").hidden = paired;
+    $("steps").hidden = paired;
     if (connected) {
       $("pairingTitle").textContent = "Gerät verbunden";
       $("pairingLead").innerHTML = "Referenz <strong>" + escapeHtml(s.ref || "") + "</strong> · erfolgreich mit VoltPilot gekoppelt.";
+    } else if (paired) {
+      $("pairingTitle").textContent = "Gerät wird verbunden";
+      $("pairingLead").textContent = "Das Gerät ist eingerichtet und stellt die Verbindung zu VoltPilot her.";
     } else {
       $("pairingTitle").textContent = "Gerät mit VoltPilot verbinden";
-      $("pairingLead").textContent = "Geben Sie die Referenz-ID im Portal ein - alles Weitere passiert automatisch.";
+      // Only promise "automatic" once a data source (inverter) is configured -
+      // otherwise the customer still has a required setup step ahead (see M1).
+      var invReady = s.inverter && s.inverter.configured;
+      $("pairingLead").textContent = invReady
+        ? "Geben Sie die Referenz-ID im Portal ein - alles Weitere passiert automatisch."
+        : "Geben Sie die Referenz-ID im Portal ein, um die Kopplung abzuschließen.";
     }
   }
 
@@ -263,9 +293,18 @@
     syncClock(s.server_now_ms);
     renderPill(s);
     renderPairing(s);
+    renderInverterCta(s);
     renderKpis(s);
     renderStatus(s);
     renderFlow();
+  }
+
+  // Prominent CTA while no inverter is configured: without it the Node-RED
+  // read flow is idle and NO telemetry ever reaches the device, so the
+  // dashboard would otherwise "wait for data" forever with no guidance (M1).
+  function renderInverterCta(s) {
+    var need = !(s.inverter && s.inverter.configured);
+    $("inverterBanner").hidden = !need;
   }
 
   // ---------- data loading + streaming ----------

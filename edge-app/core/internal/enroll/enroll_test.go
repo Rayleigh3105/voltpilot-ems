@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -83,13 +84,14 @@ type apiStub struct {
 	t  *testing.T
 	ca *testCA
 
-	mu        sync.Mutex
-	claimed   bool
-	refKnown  bool
-	csrPem    string           // last stored CSR
-	issuedPem string           // set once issued (409 on further CSR posts)
-	forceKey  *ecdsa.PublicKey // when set, issue against THIS key (mismatch case)
-	device    string           // issued/returned device_id ("" => the deviceID const)
+	mu          sync.Mutex
+	claimed     bool
+	refKnown    bool
+	csrPem      string           // last stored CSR
+	issuedPem   string           // set once issued (409 on further CSR posts)
+	forceKey    *ecdsa.PublicKey // when set, issue against THIS key (mismatch case)
+	device      string           // issued/returned device_id ("" => the deviceID const)
+	emptyBroker bool             // when set, the cert response omits the broker endpoint
 
 	csrPosts  int
 	certPolls int
@@ -173,11 +175,15 @@ func (s *apiStub) handler() http.Handler {
 			}
 			s.issuedPem = s.ca.issue(s.t, pub, tenantID, siteID, s.deviceOrDefault())
 		}
+		host, port := "mqtt.example.com", 8883
+		if s.emptyBroker {
+			host, port = "", 0
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"deviceCertPem": s.issuedPem,
 			"caPem":         s.ca.caPem,
-			"mqttHost":      "mqtt.example.com",
-			"mqttPort":      8883,
+			"mqttHost":      host,
+			"mqttPort":      port,
 			"tenantId":      tenantID,
 			"siteId":        siteID,
 			"deviceId":      s.deviceOrDefault(),
@@ -549,6 +555,110 @@ func TestReconcilePendingIsNoOp(t *testing.T) {
 	}
 	if res.Changed {
 		t.Error("pending poll must not change the identity")
+	}
+}
+
+func containsState(states []State, want State) bool {
+	for _, s := range states {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+// A dial error / timeout reaching the portal must surface as
+// portal_nicht_erreichbar, not the cheerful "waiting for claim".
+func TestPortalUnreachableSurfacesOnDialError(t *testing.T) {
+	dir := t.TempDir()
+	var states []State
+	// 127.0.0.1:1 refuses immediately - a stand-in for "no portal reachable".
+	e := newEnroller(t, "http://127.0.0.1:1", dir, &states)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if _, err := e.Run(ctx); err == nil {
+		t.Fatal("expected the cancelled run to return an error")
+	}
+	if !containsState(states, StatePortalUnreachable) {
+		t.Errorf("expected portal_nicht_erreichbar to surface, got %v", states)
+	}
+	// It must NOT be mistaken for a device-local failure.
+	if containsState(states, StateDeviceError) {
+		t.Errorf("a transport failure must not surface as geraet_fehler: %v", states)
+	}
+}
+
+// A 5xx on the CSR upload (portal up but erroring) also maps to unreachable.
+func TestPortalErrorOnCSRSurfacesUnreachable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	var states []State
+	e := newEnroller(t, srv.URL, dir, &states)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, _ = e.Run(ctx)
+	if !containsState(states, StatePortalUnreachable) {
+		t.Errorf("a 5xx on CSR upload must surface portal_nicht_erreichbar, got %v", states)
+	}
+}
+
+// A local first-boot failure (unwritable data dir) is a terminal device error,
+// distinct from any portal/transport problem.
+func TestLocalInitFailureSurfacesDeviceError(t *testing.T) {
+	base := t.TempDir()
+	// A regular file where the identity dir's PARENT should be -> MkdirAll fails.
+	blocker := filepath.Join(base, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var states []State
+	e := newEnroller(t, "http://127.0.0.1:1", filepath.Join(blocker, "identity"), &states)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := e.Run(ctx); err == nil {
+		t.Fatal("expected a local-init error")
+	}
+	if !containsState(states, StateDeviceError) {
+		t.Errorf("expected geraet_fehler, got %v", states)
+	}
+}
+
+// getCertificate must reject a claim response that carries no broker endpoint
+// (which would otherwise be persisted and then fail cloud setup silently).
+func TestMissingBrokerEndpointRejectsCertificate(t *testing.T) {
+	ca := newTestCA(t)
+	stub := &apiStub{t: t, ca: ca, refKnown: true, claimed: true, emptyBroker: true}
+	srv := httptest.NewServer(stub.handler())
+	defer srv.Close()
+
+	dir := t.TempDir()
+	var states []State
+	e := newEnroller(t, srv.URL, dir, &states)
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csrPem, err := buildCSR(key, e.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// Store the CSR so the stub is willing to "issue" (with an empty broker).
+	if _, _, err := e.postCSR(ctx, csrPem); err != nil {
+		t.Fatal(err)
+	}
+	_, err = e.getCertificate(ctx)
+	if err == nil {
+		t.Fatal("expected a certificate with no broker endpoint to be rejected")
+	}
+	if !strings.Contains(err.Error(), "broker endpoint") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 

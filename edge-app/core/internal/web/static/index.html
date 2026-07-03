@@ -34,7 +34,7 @@
         </span>
         <div>
           <h2 id="pairingTitle">Gerät mit VoltPilot verbinden</h2>
-          <p id="pairingLead">Geben Sie die Referenz-ID im Portal ein - alles Weitere passiert automatisch.</p>
+          <p id="pairingLead">Geben Sie die Referenz-ID im Portal ein, um die Kopplung abzuschließen.</p>
         </div>
       </div>
 
@@ -62,6 +62,18 @@
       </ol>
       <p class="pairing-error" id="pairingError" hidden></p>
     </section>
+
+    <!-- Setup CTA: shown until an inverter is configured (no inverter = no data) -->
+    <a class="setup-banner" id="inverterBanner" href="inverter.html" hidden>
+      <span class="setup-banner-ico" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </span>
+      <span class="setup-banner-text">
+        <strong>Wechselrichter noch nicht eingerichtet</strong>
+        <small>Ohne Wechselrichter empfängt VoltPilot keine Messwerte. Jetzt einrichten.</small>
+      </span>
+      <span class="setup-banner-arrow" aria-hidden="true">→</span>
+    </a>
 
     <!-- At-a-glance KPI cards -->
     <div class="section-title">Aktuelle Leistung</div>

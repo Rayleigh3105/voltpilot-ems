@@ -218,6 +218,31 @@ func TestHistoryReturnsRecentSamplesWithDerivedBattery(t *testing.T) {
 	}
 }
 
+// The buffer data-loss flag reaches the UI via /api/state so the dashboard can
+// warn during a long outage (Batch B m1).
+func TestStateExposesBufferDataLoss(t *testing.T) {
+	st := state.New("edge-test", "test")
+	st.Update(func(s *state.Snapshot) { s.BufferDataLoss = true; s.BufferPending = 7 })
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		BufferDataLoss bool `json:"buffer_data_loss"`
+		BufferPending  int  `json:"buffer_pending"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.BufferDataLoss || body.BufferPending != 7 {
+		t.Fatalf("state did not expose buffer data-loss: %+v", body)
+	}
+}
+
 func TestStreamPushesStateThenNewSamples(t *testing.T) {
 	srv, _, h := newServerWithHistory(t)
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stream", nil)

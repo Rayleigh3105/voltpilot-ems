@@ -166,3 +166,37 @@ func TestPendingCountsAcrossSegments(t *testing.T) {
 		t.Errorf("pending after acks: got %d, want %d", p, n-10)
 	}
 }
+
+// A long outage that overruns the retention horizon drops the oldest,
+// never-published entries. That data loss must be observable (DataLoss) so the
+// UI can warn instead of the pending count silently plateauing - and the flag
+// must clear again once the backlog drains.
+func TestDataLossFlagOnEvictionAndClearsOnDrain(t *testing.T) {
+	b := openT(t, t.TempDir(), time.Nanosecond)
+	if b.DataLoss() {
+		t.Fatal("fresh buffer must not report data loss")
+	}
+	base := time.Now().UTC()
+	// Fill past one whole segment (monotonic timestamps) without ever acking, so
+	// eviction drops a segment the read cursor is still inside = real loss.
+	for i := 0; i < segmentEntries+2; i++ {
+		if _, err := b.Append(base.Add(time.Duration(i)*time.Millisecond), map[string]float64{"power_kw": 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !b.DataLoss() {
+		t.Fatal("expected data-loss flag after evicting un-published entries")
+	}
+	// Drain the surviving backlog -> the flag clears.
+	for {
+		if _, ok := b.Next(); !ok {
+			break
+		}
+		if err := b.Ack(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if b.DataLoss() {
+		t.Error("data-loss flag should clear once the backlog fully drains")
+	}
+}

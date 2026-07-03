@@ -29,6 +29,10 @@ type Snapshot struct {
 	LastTelemetry  time.Time `json:"last_telemetry,omitzero"`
 	LastCloudPub   time.Time `json:"last_cloud_publish,omitzero"`
 	BufferPending  int       `json:"buffer_pending"`
+	// BufferDataLoss is true while a long outage is discarding the oldest
+	// buffered telemetry (retention horizon overrun) - the UI warns the customer
+	// instead of the pending count silently plateauing.
+	BufferDataLoss bool `json:"buffer_data_loss"`
 
 	Mode         Mode      `json:"mode"`
 	SetpointKw   float64   `json:"setpoint_kw"`

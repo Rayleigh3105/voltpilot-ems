@@ -53,6 +53,14 @@ type Buffer struct {
 	readSeg int // cursor: segment number
 	readIdx int // cursor: entries already acked within readSeg
 
+	// lostData is set when eviction discarded entries that had NOT yet been
+	// published (the read cursor was still inside the dropped segment), i.e. a
+	// long outage overran the retention horizon and telemetry is being lost. It
+	// is cleared once the backlog fully drains again. Surfaced to the UI so the
+	// silently-plateauing pending count grows an honest "oldest values are being
+	// discarded" warning.
+	lostData bool
+
 	writer *os.File
 }
 
@@ -185,6 +193,11 @@ func (b *Buffer) evictLocked(now time.Time) {
 			"segment", oldest, "newest_entry_ts", last.Ts, "retention", b.retention)
 		b.segments = b.segments[1:]
 		if b.readSeg < b.segments[0] {
+			// The read cursor was still inside the dropped segment: these
+			// entries were never published - real data loss.
+			b.lostData = true
+			slog.Warn("buffer dropped un-published telemetry (outage exceeded retention horizon)",
+				"segment", oldest, "retention", b.retention)
 			b.readSeg = b.segments[0]
 			b.readIdx = 0
 			_ = b.saveCursorLocked()
@@ -247,11 +260,15 @@ func (b *Buffer) Next() (Entry, bool) {
 }
 
 // Ack advances the cursor past the entry last returned by Next and persists
-// the position.
+// the position. Once the backlog fully drains, any prior data-loss warning is
+// cleared (the outage is over and the buffer is healthy again).
 func (b *Buffer) Ack() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.readIdx++
+	if b.lostData && b.pendingLocked() == 0 {
+		b.lostData = false
+	}
 	return b.saveCursorLocked()
 }
 
@@ -259,6 +276,10 @@ func (b *Buffer) Ack() error {
 func (b *Buffer) Pending() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.pendingLocked()
+}
+
+func (b *Buffer) pendingLocked() int {
 	total := 0
 	for _, n := range b.segments {
 		if n < b.readSeg {
@@ -274,6 +295,15 @@ func (b *Buffer) Pending() int {
 		total += c
 	}
 	return total
+}
+
+// DataLoss reports whether the buffer is currently discarding un-published
+// telemetry because a long outage overran the retention horizon. It clears once
+// the backlog drains again (see Ack).
+func (b *Buffer) DataLoss() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lostData
 }
 
 func readSegment(path string) ([]Entry, error) {

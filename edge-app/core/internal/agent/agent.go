@@ -259,26 +259,88 @@ func (a *Agent) enrollAndConnect(ctx context.Context) {
 			a.State.Update(func(s *state.Snapshot) { s.PairingState = string(st) })
 		},
 	}
-	id, err := e.Run(ctx)
-	if err != nil {
-		if !errors.Is(err, context.Canceled) {
-			slog.Error("enrollment aborted", "err", err)
-		}
-		return
+	// Run enrollment, retrying local-init failures (geraet_fehler) with backoff
+	// instead of silently exiting the goroutine - a transient disk problem then
+	// recovers on its own, and a persistent one keeps the error state visible.
+	id, ok := a.runEnrollment(ctx, e)
+	if !ok {
+		return // ctx cancelled
 	}
 	a.State.Update(func(s *state.Snapshot) {
 		s.TenantID, s.SiteID, s.DeviceID = id.TenantID, id.SiteID, id.DeviceID
 		s.MqttHost = id.MqttHost
 	})
 	key, cert, ca := e.CertFiles()
-	if err := a.startCloud(id, key, cert, ca); err != nil {
-		slog.Error("cloud link failed to start", "err", err)
-		return
+	// Bring up the cloud link, retrying setup failures (cloud_fehler) with
+	// backoff rather than exiting - the certificate is on disk, so a corrupt
+	// bundle or a momentary broker problem must not strand an enrolled device.
+	if !a.startCloudWithRetry(ctx, id, key, cert, ca) {
+		return // ctx cancelled while retrying
 	}
 	// Stay reconciled while connected: adopt a re-claim's new device_id so the
 	// edge never keeps publishing under a stale identity. Blocks until ctx is
 	// done (this goroutine is dedicated to enrollment + its follow-up).
 	a.reconcileLoop(ctx, e, id)
+}
+
+// runEnrollment drives the enroller to completion, retrying local-init failures
+// (which surface as geraet_fehler) with capped backoff. Returns ok=false only
+// when ctx is cancelled.
+func (a *Agent) runEnrollment(ctx context.Context, e *enroll.Enroller) (enroll.Identity, bool) {
+	backoff := 5 * time.Second
+	for {
+		id, err := e.Run(ctx)
+		if err == nil {
+			return id, true
+		}
+		if errors.Is(err, context.Canceled) {
+			return enroll.Identity{}, false
+		}
+		// Non-cancel error = a local-init failure (Run already set the
+		// geraet_fehler pairing state). Retry with backoff.
+		slog.Error("enrollment failed; retrying", "err", err, "retry_in", backoff)
+		select {
+		case <-ctx.Done():
+			return enroll.Identity{}, false
+		case <-time.After(backoff):
+		}
+		if backoff < time.Minute {
+			backoff *= 2
+			if backoff > time.Minute {
+				backoff = time.Minute
+			}
+		}
+	}
+}
+
+// startCloudWithRetry brings up the cloud link, retrying a setup failure with
+// capped backoff and surfacing it as cloud_fehler (distinct from a normal
+// disconnect). Returns false only when ctx is cancelled while retrying.
+func (a *Agent) startCloudWithRetry(ctx context.Context, id enroll.Identity, keyPath, certPath, caPath string) bool {
+	backoff := 5 * time.Second
+	for {
+		if err := a.startCloud(id, keyPath, certPath, caPath); err == nil {
+			return true
+		} else {
+			slog.Error("cloud link failed to start; retrying", "err", err, "retry_in", backoff)
+			a.State.Update(func(s *state.Snapshot) {
+				if s.PairingState != string(enroll.StateConnected) {
+					s.PairingState = string(enroll.StateCloudError)
+				}
+			})
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(backoff):
+		}
+		if backoff < time.Minute {
+			backoff *= 2
+			if backoff > time.Minute {
+				backoff = time.Minute
+			}
+		}
+	}
 }
 
 // reconcileLoop periodically (and on a disconnect nudge) re-checks the device's
@@ -366,7 +428,12 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected
 				if connected {
-					s.PairingState = "verbunden"
+					s.PairingState = string(enroll.StateConnected)
+				} else if s.PairingState == string(enroll.StateConnected) {
+					// Was connected and dropped: move the pairing checklist off
+					// the green "Verbunden" so it agrees with the Cloud stat now
+					// showing "getrennt" (reconnect is automatic).
+					s.PairingState = string(enroll.StateCloudDisconnected)
 				}
 			})
 			if connected {
@@ -488,6 +555,7 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	a.State.Update(func(s *state.Snapshot) {
 		s.LastTelemetry = ts
 		s.BufferPending = a.buf.Pending()
+		s.BufferDataLoss = a.buf.DataLoss()
 		if v, ok := measurements["soc_pct"]; ok {
 			s.SocPct = v
 		}
@@ -658,6 +726,7 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.LastCloudPub = time.Now().UTC()
 				s.BufferPending = a.buf.Pending()
+				s.BufferDataLoss = a.buf.DataLoss()
 			})
 			select {
 			case <-ctx.Done():

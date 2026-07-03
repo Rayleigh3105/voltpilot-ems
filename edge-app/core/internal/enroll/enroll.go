@@ -59,6 +59,30 @@ const (
 	// (HTTP 422). Retried slowly; usually a typo in VP_REF or a missing
 	// registry entry.
 	StateRefUnknown State = "referenz_unbekannt"
+	// StatePortalUnreachable: the device cannot reach the portal at all - a
+	// dial error, a timeout, or a 5xx on the CSR upload / certificate poll (a
+	// 404 stays "pending", not this). Distinct from "waiting for claim" so the
+	// customer sees an actionable "check the internet connection" hint instead
+	// of a cheerful "waiting" that never resolves. Retried; clears itself the
+	// moment the portal answers again.
+	StatePortalUnreachable State = "portal_nicht_erreichbar"
+	// StateDeviceError: a LOCAL first-boot failure before the device could even
+	// talk to the portal - e.g. the data dir is read-only, the key cannot be
+	// written, or the CSR cannot be built. Retried with backoff; surfaced so a
+	// permanently broken device is visible instead of silently stuck at "start".
+	StateDeviceError State = "geraet_fehler"
+	// StateConnected: the cloud mTLS link is up (set by the agent once the
+	// broker accepts the device). The final pairing step.
+	StateConnected State = "verbunden"
+	// StateCloudError: enrollment succeeded (certificate on disk) but the cloud
+	// link could not be established - e.g. a corrupt certificate bundle or a
+	// missing broker endpoint. Retried with backoff; distinct from a normal
+	// disconnect so the customer isn't told a transient blip is a setup failure.
+	StateCloudError State = "cloud_fehler"
+	// StateCloudDisconnected: the cloud link was up and dropped (network blip).
+	// Keeps the pairing checklist honest - it must not stay green "Verbunden"
+	// while the Cloud stat shows "getrennt". Reconnect is automatic.
+	StateCloudDisconnected State = "cloud_getrennt"
 )
 
 // Enroller drives the enrollment state machine for one device.
@@ -133,17 +157,23 @@ func (e *Enroller) Run(ctx context.Context) (Identity, error) {
 		}
 		return id, err
 	}
+	// Local first-boot setup: the data dir, the device key and the CSR. A
+	// failure here is a device-local problem (read-only volume, disk full) the
+	// device cannot fix by talking to the portal - surface it as geraet_fehler
+	// so it is visible in the web app instead of a silent stall at "start".
 	if err := os.MkdirAll(e.Dir, 0o700); err != nil {
-		return Identity{}, err
+		e.setState(StateDeviceError)
+		return Identity{}, fmt.Errorf("enrollment: create identity dir: %w", err)
 	}
-
 	key, err := e.loadOrCreateKey()
 	if err != nil {
-		return Identity{}, err
+		e.setState(StateDeviceError)
+		return Identity{}, fmt.Errorf("enrollment: device key: %w", err)
 	}
 	csrPem, err := buildCSR(key, e.Ref)
 	if err != nil {
-		return Identity{}, err
+		e.setState(StateDeviceError)
+		return Identity{}, fmt.Errorf("enrollment: build CSR: %w", err)
 	}
 
 	pollMin, pollMax := e.PollMin, e.PollMax
@@ -172,11 +202,17 @@ func (e *Enroller) Run(ctx context.Context) (Identity, error) {
 				e.setState(StateRefUnknown)
 				slog.Warn("enrollment: reference unknown to the provisioned-device registry (422); retrying",
 					"ref", e.Ref, "body", string(body))
+			} else if status >= 500 {
+				// The portal is up but erroring - treat like unreachable.
+				e.setState(StatePortalUnreachable)
+				slog.Warn("enrollment: portal error on CSR upload; retrying", "status", status, "body", string(body))
 			} else {
 				slog.Warn("enrollment: CSR upload refused; retrying", "status", status, "body", string(body))
 			}
 		} else {
-			slog.Warn("enrollment: CSR upload failed; retrying", "err", err)
+			// Dial error / timeout: the portal cannot be reached at all.
+			e.setState(StatePortalUnreachable)
+			slog.Warn("enrollment: cannot reach the portal for CSR upload; retrying", "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -214,7 +250,14 @@ func (e *Enroller) Run(ctx context.Context) (Identity, error) {
 				slog.Warn("enrollment: CSR re-upload failed", "err", perr)
 			}
 			delay = pollMax
-		} else if err != nil && !errors.Is(err, errPending) {
+		} else if errors.Is(err, errPortalUnreachable) {
+			e.setState(StatePortalUnreachable)
+			slog.Warn("enrollment: cannot reach the portal for the certificate poll; retrying", "err", err)
+		} else if errors.Is(err, errPending) {
+			// 404 = still unclaimed (or the portal just recovered): back to a
+			// plain "waiting for claim" (clears a prior portal-unreachable).
+			e.setState(StateWaitingForClaim)
+		} else if err != nil {
 			slog.Warn("enrollment: certificate poll failed; retrying", "err", err)
 		}
 		select {
@@ -234,6 +277,9 @@ func (e *Enroller) Run(ctx context.Context) (Identity, error) {
 var (
 	errPending     = errors.New("enrollment pending")
 	errKeyMismatch = errors.New("issued certificate does not match the device key")
+	// errPortalUnreachable classifies a dial error / timeout / 5xx on the
+	// certificate poll (a 404 is errPending, not this).
+	errPortalUnreachable = errors.New("portal unreachable")
 )
 
 // ReconcileResult is the outcome of a while-connected identity re-check.
@@ -384,11 +430,15 @@ func (e *Enroller) getCertificate(ctx context.Context) (*certificateResponse, er
 	}
 	resp, err := e.client().Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", errPortalUnreachable, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, errPending // pending (unclaimed / unknown - indistinguishable by design)
+	}
+	if resp.StatusCode >= 500 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("%w: HTTP %d: %s", errPortalUnreachable, resp.StatusCode, body)
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -400,6 +450,12 @@ func (e *Enroller) getCertificate(ctx context.Context) (*certificateResponse, er
 	}
 	if cr.DeviceCertPem == "" || cr.CaPem == "" {
 		return nil, errors.New("certificate response incomplete")
+	}
+	// A certificate with no broker endpoint cannot start the cloud link;
+	// validate it here so a malformed claim response is rejected (and retried)
+	// rather than silently persisted and then failing cloud setup.
+	if cr.MqttHost == "" || cr.MqttPort <= 0 {
+		return nil, fmt.Errorf("certificate response missing broker endpoint (host=%q port=%d)", cr.MqttHost, cr.MqttPort)
 	}
 	return &cr, nil
 }
