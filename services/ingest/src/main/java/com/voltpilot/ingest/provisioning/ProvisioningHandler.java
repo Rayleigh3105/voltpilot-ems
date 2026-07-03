@@ -2,6 +2,7 @@ package com.voltpilot.ingest.provisioning;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -69,9 +70,14 @@ public class ProvisioningHandler {
             return;
         }
 
+        // Look the ref up in its canonical form so a device that hello's under a
+        // different case than the claim stored still resolves (a lowercase VP-
+        // hello vs the uppercase-stored row - otherwise it stays silently
+        // unprovisioned). The reply is still published on the ORIGINAL topic the
+        // device subscribed to (MQTT topics are case-sensitive).
         final Optional<DeviceDirectory.DeviceIdentity> identity;
         try {
-            identity = directory.findByRef(ref);
+            identity = directory.findByRef(canonicalRef(ref));
         } catch (Exception e) {
             log.warn("Provisioning lookup for ref '{}' failed (device will retry): {}", ref, e.getMessage());
             return;
@@ -119,6 +125,22 @@ public class ProvisioningHandler {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Canonicalize a ref for the device lookup exactly as the claim path does
+     * (DeviceController.canonicalExternalRef in services/api): sticker IDs are
+     * stored uppercase and self-generated edge refs lowercase. Kept in lockstep
+     * with that method - the two must agree or a hello silently misses its row.
+     */
+    static String canonicalRef(String ref) {
+        if (ref.regionMatches(true, 0, "VP-", 0, 3)) {
+            return ref.toUpperCase(Locale.ROOT);
+        }
+        if (ref.regionMatches(true, 0, "edge-", 0, 5)) {
+            return ref.toLowerCase(Locale.ROOT);
+        }
+        return ref;
     }
 
     static String configPayload(String ref, DeviceDirectory.DeviceIdentity id) {

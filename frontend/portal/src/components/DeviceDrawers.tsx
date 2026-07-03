@@ -8,7 +8,7 @@ import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { api, ApiError, deviceLiveStatus, type Device, type Site } from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
-import { normalizeDeviceIdInput } from '../Onboarding';
+import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../Onboarding';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
 export function DeviceStatusBadge({ device }: { device: Device }) {
@@ -76,9 +76,9 @@ export function AddDeviceDrawer({
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 422
-          ? 'Diese Geräte-ID ist uns nicht bekannt. Bitte vergleichen Sie Ihre Eingabe genau mit dem Aufkleber auf Ihrem Gerät (z. B. VP-1234-ABCD).'
+          ? DEVICE_ID_UNKNOWN_MSG
           : e instanceof ApiError && e.status === 409
-            ? 'Diese Referenz ist bereits vergeben. Prüfen Sie die Schreibweise auf dem Typenschild.'
+            ? 'Diese Geräte-ID ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Schreibweise - oder kontaktieren Sie unseren Support.'
             : e instanceof ApiError && e.status === 404
               ? 'Der gewählte Standort wurde nicht gefunden. Bitte laden Sie die Seite neu.'
               : 'Das Gerät konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
@@ -175,14 +175,13 @@ export function AddDeviceDrawer({
       ) : (
         <>
           <p className="vp-note" style={{ marginTop: 0 }}>
-            Geben Sie die Referenz ein, die auf dem Gerät steht (Typenschild bzw.
-            Konfiguration). Das Gerät verbindet sich selbst - Sie müssen keine IDs
-            übertragen.
+            {DEVICE_ID_FIELD.help} Das Gerät verbindet sich selbst - Sie müssen keine
+            IDs übertragen.
           </p>
           <div className="vp-form-stack">
             <Input
-              label="Edge-Referenz *"
-              placeholder="z. B. edge-inverter-42"
+              label={`${DEVICE_ID_FIELD.label} *`}
+              placeholder={DEVICE_ID_FIELD.placeholder}
               value={externalRef}
               autoComplete="off"
               autoCapitalize="characters"

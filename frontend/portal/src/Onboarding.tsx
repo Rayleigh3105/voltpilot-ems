@@ -273,13 +273,33 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
 }
 
 /**
- * Sticker Geräte-IDs are printed uppercase (VP-1234-ABCD) - typing case must
- * not matter, so the field mirrors the sticker as you type. Other refs are
- * left alone. The api canonicalizes the same way on claim.
+ * Geräte-IDs come in two shapes and typing case must not matter, so the field
+ * mirrors the canonical form as you type (the api canonicalizes the same way on
+ * claim): sticker IDs are printed uppercase (VP-1234-ABCD), self-generated edge
+ * references lowercase (edge-k7m2xqp). Other refs are left alone.
  */
 export function normalizeDeviceIdInput(value: string): string {
-  return /^\s*vp-/i.test(value) ? value.toUpperCase() : value;
+  if (/^\s*vp-/i.test(value)) return value.toUpperCase();
+  if (/^\s*edge-/i.test(value)) return value.toLowerCase();
+  return value;
 }
+
+/**
+ * Shared claim-field copy so the onboarding wizard and the Geräte drawer speak
+ * with ONE voice about where the Geräte-ID comes from - the device shows it in
+ * its own app, and some devices also carry a sticker. This replaces the former
+ * mismatch (wizard said "Aufkleber", drawer said "Typenschild") that fed the
+ * one-character-typo dead-end.
+ */
+export const DEVICE_ID_FIELD = {
+  label: 'Geräte-ID',
+  placeholder: 'z. B. edge-k7m2xqp',
+  help: 'Die Geräte-ID zeigt Ihnen Ihr VoltPilot-Gerät direkt an - in der Geräte-App unter „Gerät verbinden". Manche Geräte tragen sie zusätzlich auf einem Aufkleber.',
+} as const;
+
+/** One 422 message for both gates (unknown sticker OR mistyped edge reference). */
+export const DEVICE_ID_UNKNOWN_MSG =
+  'Diese Geräte-ID kennen wir nicht. Bitte vergleichen Sie Ihre Eingabe Zeichen für Zeichen mit der ID, die Ihr Gerät anzeigt - schon ein Tippfehler verhindert die Verbindung.';
 
 function DeviceStep({
   siteName,
@@ -306,7 +326,7 @@ function DeviceStep({
     } catch (e) {
       setErr(
         e instanceof ApiError && e.status === 422
-          ? 'Diese Geräte-ID ist uns nicht bekannt. Bitte vergleichen Sie Ihre Eingabe genau mit dem Aufkleber auf Ihrem Gerät (z. B. VP-1234-ABCD).'
+          ? DEVICE_ID_UNKNOWN_MSG
           : e instanceof ApiError && e.status === 409
             ? 'Dieses Gerät ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Geräte-ID - oder kontaktieren Sie unseren Support.'
             : 'Das Verbinden hat gerade nicht geklappt. Bitte prüfen Sie die Geräte-ID und versuchen Sie es noch einmal.',
@@ -320,12 +340,11 @@ function DeviceStep({
     <div className="vp-onboarding-step">
       <h3>Verbinden Sie Ihr VoltPilot-Gerät</h3>
       <p className="vp-muted">
-        Die Geräte-ID finden Sie auf dem Aufkleber Ihres VoltPilot-Geräts. Das Gerät wird
-        mit dem Standort „{siteName}“ verbunden.
+        {DEVICE_ID_FIELD.help} Das Gerät wird mit dem Standort „{siteName}“ verbunden.
       </p>
       <Input
-        label="Geräte-ID"
-        placeholder="z. B. VP-1234-ABCD"
+        label={DEVICE_ID_FIELD.label}
+        placeholder={DEVICE_ID_FIELD.placeholder}
         value={deviceId}
         autoComplete="off"
         autoCapitalize="characters"

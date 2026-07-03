@@ -323,6 +323,36 @@ class AdminApiTest {
         assertThat(entry).containsEntry("claimedByTenant", "Demo C&I Tenant");
     }
 
+    @Test
+    void pendingEnrollmentsListsEnrolledButUnclaimedDevices() {
+        String admin = token("admin", "admin");
+
+        // A device enrolled (uploaded a CSR) under a ref that was never claimed -
+        // the mistyped-reference dead-end: the device polls forever, invisible to
+        // the customer. It must show up in the operator's pending view.
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
+                + "VALUES ('edge-orphan-77', 'dummy-csr') ON CONFLICT DO NOTHING");
+        // A ref that IS claimed (the dev-seeded device demo-inverter-01) enrolled
+        // too - it has a matching device row, so it is NOT pending.
+        exec("INSERT INTO device_enrollment (external_ref, csr_pem) "
+                + "VALUES ('demo-inverter-01', 'dummy-csr') ON CONFLICT DO NOTHING");
+
+        ResponseEntity<List<Map<String, Object>>> pending = rest.exchange(
+                url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(pending.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Object> refs = pending.getBody().stream().map(e -> e.get("externalRef")).toList();
+        assertThat(refs).contains("edge-orphan-77").doesNotContain("demo-inverter-01");
+        Map<String, Object> orphan = pending.getBody().stream()
+                .filter(e -> "edge-orphan-77".equals(e.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(orphan).containsEntry("everIssued", false);
+
+        // A customer may never see the operator view.
+        assertThat(rest.exchange(url("/api/v1/admin/enrollments/pending"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
     // ---- (b4) support password reset -----------------------------------------
 
     /**

@@ -284,6 +284,40 @@ class PortalApiTest {
     }
 
     @Test
+    void mistypedGeneratedEdgeRefIsRejectedWhileTheValidRefClaims() {
+        String demo = token("demo", "demo");
+
+        // A self-generated edge reference ("edge-" + 6 body chars + a check char);
+        // "edge-abcdefj" carries the correct check character (see EdgeRefTest).
+        String valid = "edge-abcdefj";
+
+        // A one-character typo of the shown reference (last char off by one) fails
+        // its checksum -> 422, so no ghost device that would wait for data forever.
+        ResponseEntity<String> rejected = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-abcdefk"),
+                        bearer(demo)),
+                String.class);
+        assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        ResponseEntity<List<Map<String, Object>>> afterTypo = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(afterTypo.getBody())
+                .extracting(d -> d.get("externalRef")).doesNotContain("edge-abcdefk");
+
+        // The correctly-typed reference round-trips (ungated insert, 201). A mobile
+        // keyboard's uppercase is canonicalized back to the stored lowercase form.
+        ResponseEntity<Map<String, Object>> ok = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "EDGE-ABCDEFJ"),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(ok.getBody()).containsEntry("externalRef", valid);
+    }
+
+    @Test
     void deviceListingCarriesLastSeenFromTelemetry() {
         String demo = token("demo", "demo");
 

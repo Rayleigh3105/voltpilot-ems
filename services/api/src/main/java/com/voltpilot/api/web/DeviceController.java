@@ -39,6 +39,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/devices")
 public class DeviceController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DeviceController.class);
+
     /** Sticker Geräte-IDs carry this prefix; only they are registry-gated. */
     static final String STICKER_PREFIX = "VP-";
 
@@ -84,10 +86,14 @@ public class DeviceController {
         if (existing.isPresent()) {
             return ResponseEntity.ok(existing.get());
         }
-        // Sticker IDs must exist in the manufacturing registry: a typo'd ID
-        // fails fast (422) instead of silently creating a ghost device that
-        // would "wait for first data" forever. Non-sticker refs (dev seeds,
-        // integrations) stay ungated.
+        // Two ID formats are typo-gated so a mistyped ID fails fast (422)
+        // instead of silently creating a ghost device that would "wait for first
+        // data" forever:
+        //   - Sticker IDs (VP-...) must exist in the manufacturing registry.
+        //   - Self-generated edge refs (edge-...) must carry a valid check
+        //     character (the format the shipping Edge-App shows on its :8484 web
+        //     app). A single-character typo breaks the checksum (see EdgeRef).
+        // Other free-form refs (dev seeds, integrations) stay ungated.
         String kind = request.kind();
         if (externalRef.startsWith(STICKER_PREFIX)) {
             Optional<String> provisionedKind = provisioned.findKind(externalRef);
@@ -98,13 +104,24 @@ public class DeviceController {
             if (kind == null || kind.isBlank()) {
                 kind = provisionedKind.get();
             }
+        } else if (EdgeRef.isGeneratedFormat(externalRef) && !EdgeRef.isValid(externalRef)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Unknown Geräte-ID '" + externalRef + "' - Prüfzeichen ungültig (Tippfehler?)");
         }
         try {
             DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, kind);
             // Zero-touch onboarding: hand the waiting device its identity via the
             // retained provision/{ref}/config (best-effort; see ProvisioningPublisher).
-            provisioning.ifAvailable(p ->
-                    p.publishConfig(claimed.externalRef(), tenantId, claimed.siteId(), claimed.id()));
+            // The claim still succeeds if the broker is down, but a discarded
+            // failure means the device only converges on its next hello retry -
+            // so surface it as a WARN naming the device rather than swallowing it.
+            provisioning.ifAvailable(p -> {
+                if (!p.publishConfig(claimed.externalRef(), tenantId, claimed.siteId(), claimed.id())) {
+                    log.warn("Claim of device {} (ref '{}') succeeded but the retained "
+                            + "provisioning config did not go out - the device converges on its "
+                            + "next hello via the ingest resolver", claimed.id(), claimed.externalRef());
+                }
+            });
             return ResponseEntity.status(HttpStatus.CREATED).body(claimed);
         } catch (DuplicateKeyException ex) {
             // external_ref already claimed by another tenant (which RLS hides above).
@@ -158,14 +175,21 @@ public class DeviceController {
     }
 
     /**
-     * Sticker Geräte-IDs are printed uppercase ({@code VP-1234-ABCD}); the typed
-     * case and stray padding must not turn one physical device into two rows.
-     * Non-sticker refs pass through untouched apart from trimming.
+     * Canonicalize a typed Geräte-ID so the same physical device never becomes
+     * two rows and so the typo gates see a normalized form. Sticker IDs are
+     * printed uppercase ({@code VP-1234-ABCD}) and self-generated edge refs are
+     * lowercase ({@code edge-k7m2xqp}); both are case-folded to their canonical
+     * form (a mobile keyboard's {@code autoCapitalize} must not matter). Other
+     * free-form refs pass through untouched apart from trimming.
      */
     static String canonicalExternalRef(String raw) {
         String trimmed = raw.trim();
-        return trimmed.regionMatches(true, 0, "VP-", 0, 3)
-                ? trimmed.toUpperCase(Locale.ROOT)
-                : trimmed;
+        if (trimmed.regionMatches(true, 0, STICKER_PREFIX, 0, STICKER_PREFIX.length())) {
+            return trimmed.toUpperCase(Locale.ROOT);
+        }
+        if (trimmed.regionMatches(true, 0, EdgeRef.PREFIX, 0, EdgeRef.PREFIX.length())) {
+            return trimmed.toLowerCase(Locale.ROOT);
+        }
+        return trimmed;
     }
 }

@@ -4,6 +4,7 @@ import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
+import com.voltpilot.api.repo.AdminEnrollmentRepository;
 import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
 import com.voltpilot.api.repo.AdminSiteRepository;
 import com.voltpilot.api.repo.TenantRepository;
@@ -14,6 +15,7 @@ import com.voltpilot.api.web.dto.CreateSiteRequest;
 import com.voltpilot.api.web.dto.CreateTenantRequest;
 import com.voltpilot.api.web.dto.CreateUserRequest;
 import com.voltpilot.api.web.dto.DeleteTenantRequest;
+import com.voltpilot.api.web.dto.PendingEnrollmentDto;
 import com.voltpilot.api.web.dto.ProvisionDeviceRequest;
 import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
 import com.voltpilot.api.web.dto.ResetPasswordRequest;
@@ -68,15 +70,18 @@ public class AdminController {
     private final TenantRepository tenants;
     private final AdminSiteRepository sites;
     private final AdminProvisionedDeviceRepository provisionedDevices;
+    private final AdminEnrollmentRepository enrollments;
     private final KeycloakAdminClient keycloak;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
-            AdminProvisionedDeviceRepository provisionedDevices, KeycloakAdminClient keycloak,
+            AdminProvisionedDeviceRepository provisionedDevices,
+            AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
             ObjectProvider<ProvisioningPublisher> provisioning) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
+        this.enrollments = enrollments;
         this.keycloak = keycloak;
         this.provisioning = provisioning;
     }
@@ -208,6 +213,21 @@ public class AdminController {
         return provisionedDevices.insertIfAbsent(externalRef, request.kindOrDefault(), note)
                 .map(created -> ResponseEntity.status(HttpStatus.CREATED).body(created))
                 .orElseGet(() -> ResponseEntity.ok(provisionedDevices.find(externalRef).orElseThrow()));
+    }
+
+    // ---- enrollments (enrolled-but-unclaimed devices) ------------------------
+
+    /**
+     * Enrolled-but-unclaimed devices: a device uploaded a CSR and is polling for
+     * its certificate, but no matching {@code device} row exists (the ref was
+     * never claimed, or was unclaimed after issuance). This is the operator's
+     * window onto the mistyped-reference dead-end - a device that "did its part"
+     * while the customer typed a different ref, otherwise invisible on both
+     * sides. Read-only; the device-facing poll stays opaque (no enumeration).
+     */
+    @GetMapping("/enrollments/pending")
+    public List<PendingEnrollmentDto> listPendingEnrollments() {
+        return enrollments.findPending();
     }
 
     // ---- customer users ------------------------------------------------------

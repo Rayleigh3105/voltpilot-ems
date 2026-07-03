@@ -875,6 +875,26 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: No such registry entry. }
         "409": { description: The ID is claimed by a customer; unclaim the device first. }
+  /api/v1/admin/enrollments/pending:
+    get:
+      tags: [admin]
+      summary: List enrolled-but-unclaimed devices.
+      description: >
+        Operator view onto devices that uploaded an enrollment CSR but have no
+        matching claimed device row (the ref was never claimed - e.g. a customer
+        typed a different reference - or was unclaimed after issuance). Surfaces
+        the otherwise-invisible half of a mistyped-reference dead-end. Read-only;
+        the device-facing enrollment poll stays opaque (pending == unknown).
+      responses:
+        "200":
+          description: Pending (enrolled-but-unclaimed) enrollments, newest CSR first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PendingEnrollment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/tenants/{tenantId}/users/{userId}:
     put:
       tags: [admin]
@@ -1238,6 +1258,19 @@ components:
           type: string
           nullable: true
           description: Name of the claiming tenant (null while unclaimed).
+    PendingEnrollment:
+      type: object
+      description: A device that enrolled (uploaded a CSR) but has no claimed device row.
+      properties:
+        externalRef: { type: string, example: edge-k7m2xqp }
+        deviceInfo: { type: string, nullable: true, description: Free-form device info from the CSR upload. }
+        csrUpdatedAt: { type: string, format: date-time, description: When the pending CSR was last (re)uploaded. }
+        everIssued:
+          type: boolean
+          description: >
+            True when a certificate was once issued and the device was later
+            unclaimed (a stale enrollment), false when never claimed at all.
+        issuedAt: { type: string, format: date-time, nullable: true, description: When a certificate was issued (null if never). }
     TelemetryPoint:
       type: object
       properties:

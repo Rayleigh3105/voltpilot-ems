@@ -88,9 +88,11 @@ func LoadRef(cfg config.Config) (string, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return "", err
 	}
-	// Short, human-typeable, MQTT-topic-safe (provisioning ref charset).
-	// Non-VP refs are ungated in the registry, so the claim just works.
-	ref := "edge-" + randomToken(6)
+	// Short, human-typeable, MQTT-topic-safe (provisioning ref charset), with a
+	// trailing check character so the portal can reject a single-character typo
+	// instead of silently creating a ghost device that "waits for first data"
+	// forever (see EdgeRef.java on the api side - the two MUST stay in lockstep).
+	ref := newGeneratedRef()
 	if err := os.WriteFile(refPath, []byte(ref+"\n"), 0o644); err != nil {
 		return "", err
 	}
@@ -98,14 +100,41 @@ func LoadRef(cfg config.Config) (string, error) {
 	return ref, nil
 }
 
+// refAlphabet has no 0/O/1/l/i lookalikes, so a customer reading a reference off
+// the :8484 web app is unlikely to confuse characters. The api-side validator
+// (EdgeRef.java) uses the SAME alphabet and check-character algorithm.
+const refAlphabet = "abcdefghjkmnpqrstuvwxyz23456789"
+
+// generatedRefPrefix marks a self-generated reference. The portal validates the
+// trailing check character for refs carrying this prefix.
+const generatedRefPrefix = "edge-"
+
+// newGeneratedRef builds "edge-" + six random body characters + one check
+// character (a position-weighted mod-31 checksum over the body). A single-char
+// substitution, adjacent transposition, or wrong length breaks the checksum, so
+// the api claim path rejects a typo with 422.
+func newGeneratedRef() string {
+	body := randomToken(6)
+	return generatedRefPrefix + body + string(refCheckChar(body))
+}
+
+// refCheckChar computes the check character for a generated-ref body. MUST match
+// EdgeRef.isValid on the api side byte for byte.
+func refCheckChar(body string) byte {
+	sum := 0
+	for i := 0; i < len(body); i++ {
+		sum += (i + 1) * strings.IndexByte(refAlphabet, body[i])
+	}
+	return refAlphabet[sum%len(refAlphabet)]
+}
+
 func randomToken(n int) string {
-	const alphabet = "abcdefghjkmnpqrstuvwxyz23456789" // no 0/O/1/l/i lookalikes
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}
 	for i := range b {
-		b[i] = alphabet[int(b[i])%len(alphabet)]
+		b[i] = refAlphabet[int(b[i])%len(refAlphabet)]
 	}
 	return string(b)
 }
