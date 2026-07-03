@@ -1,0 +1,39 @@
+# VoltPilot Edge-App: Host-Networking-Override fuer Node-RED.
+#
+# Wann brauche ich das?
+#   Ein Docker-Bridge-Container erreicht viele LAN-Wechselrichter-Logger (Deye/
+#   Solarman-WiFi-Dongle, UDP 48899) NICHT zuverlaessig: das ausgehende UDP-
+#   Paket wird ge-SNAT-tet, die Antwort des Dongles kommt oft von einem anderen
+#   Quellport oder als Broadcast zurueck und wird von conntrack verworfen -> der
+#   `deye`-Read liefert leer / laeuft in den Timeout, obwohl die IP stimmt.
+#   Host-Networking setzt den Node-RED-Container direkt aufs LAN (kein NAT) und
+#   ist der Standard-Fix fuer Solarman/USR-UDP-Logger.
+#
+# Verwendung (Node-RED aufs Host-Netz, core + sim unveraendert):
+#   docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
+#
+# Ohne dieses Override laeuft alles wie gehabt (Bridge). Details + Caveats:
+# siehe DEPLOY.md, Abschnitt "LAN-Logger nicht aus dem Container erreichbar?".
+#
+# Hinweis: Host-Networking ist ein Linux-Feature (Kundengeraete: Raspberry Pi /
+# Linux-VM). Auf Docker Desktop (macOS/Windows) hat `network_mode: host` keine
+# volle Wirkung - das ist nur fuer den Linux-Produktivbetrieb gedacht.
+
+services:
+  nodered:
+    # Direkt aufs Host-LAN: kein NAT, damit der UDP-Austausch mit dem Deye-
+    # Logger (48899) klappt.
+    network_mode: host
+    # Portmappings sind mit host-networking ungueltig (der Container bindet die
+    # Hostports direkt): Node-RED-Editor liegt danach fest auf Host-Port 1880
+    # (nicht mehr VP_NODERED_PORT).
+    ports: !reset []
+    environment:
+      VP_NODERED_USER: ${VP_NODERED_USER:-voltpilot}
+      VP_NODERED_PASSWORD: ${VP_NODERED_PASSWORD:-voltpilot}
+      # Auf dem Host-Netz ist der Compose-Dienstname "core" nicht mehr
+      # aufloesbar. Der Core gibt den lokalen Bus per Host-Loopback frei
+      # (127.0.0.1:${VP_BUS_PORT:-1884} -> core:1883), also zeigen die vp-Knoten
+      # dorthin. VP_CORE_HOST/PORT haben Vorrang vor der Flow-Konfiguration.
+      VP_CORE_HOST: 127.0.0.1
+      VP_CORE_PORT: ${VP_BUS_PORT:-1884}

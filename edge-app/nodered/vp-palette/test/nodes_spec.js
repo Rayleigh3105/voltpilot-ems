@@ -171,6 +171,37 @@ describe('nodes against a local-bus stand-in', function () {
     });
   });
 
+  it('VP_CORE_HOST/PORT override the flow config (host-networking mode)', function (done) {
+    // The seeded flow pins host=core/port=1883; on the host network that name
+    // no longer resolves, so hostnet mode points the bus via env at the core's
+    // loopback mapping. The env vars MUST win over the stored config.
+    process.env.VP_CORE_HOST = '127.0.0.1';
+    process.env.VP_CORE_PORT = String(port);
+    const flow = [
+      { id: 'core1', type: 'vp-core', name: 'test-core', host: 'core', port: '1883' },
+      { id: 't1', type: 'vp-telemetrie', core: 'core1' },
+    ];
+    broker.subscribe('edge/telemetry', function (packet, cb) {
+      cb();
+      const m = JSON.parse(packet.payload.toString());
+      try {
+        assert.strictEqual(m.load_kw, 3);
+        done();
+      } catch (e) {
+        done(e);
+      } finally {
+        delete process.env.VP_CORE_HOST;
+        delete process.env.VP_CORE_PORT;
+      }
+    }, function () {});
+    helper.load([vpCore, vpTelemetrie], flow, function () {
+      const t1 = helper.getNode('t1');
+      setTimeout(function () {
+        t1.receive({ payload: { load_kw: 3 } });
+      }, 300);
+    });
+  });
+
   it('vp-status publishes the retained link state on edge/status', function (done) {
     const flow = coreFlow([
       { id: 'st1', type: 'vp-status', core: 'core1' },

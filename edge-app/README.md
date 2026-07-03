@@ -72,6 +72,8 @@ The Node-RED editor runs LAN-only behind auth: `http://<geraet>:1881`, user `vol
 
 The structure is always the same: read → `vp-telemetrie`, `vp-sollwert` → write, link state → `vp-status`. Everything cloud-related stays in the core.
 
+**LAN-Logger nicht aus dem Container erreichbar?** Manche WiFi-Logger (Deye/Solarman-Dongle, UDP 48899) antworten dem Bridge-Container nicht (UDP-über-NAT). Fix: Node-RED aufs Host-Netz - `docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d` (Override `docker-compose.hostnet.yml`). Details + Caveats in [`DEPLOY.md`](DEPLOY.md#lan-logger-nicht-aus-dem-container-erreichbar-host-networking).
+
 ## Konfiguration
 
 See [`.env.example`](.env.example). Everything is optional; the dev escape hatches (`VP_DEV_*`: fixed identity skips enrollment, `VP_DEV_CLOUD_URL` = plain-MQTT cloud) exist for development/e2e ONLY and must stay empty on customer devices.

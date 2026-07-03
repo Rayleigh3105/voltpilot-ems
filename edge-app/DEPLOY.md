@@ -140,11 +140,41 @@ Falls die Auto-Reload-Flag in deinem Deployment aus ist, greift der Backstop: de
 
 Wenn die Werte im Portal stehen, ist das Gerät produktiv angebunden.
 
+## LAN-Logger nicht aus dem Container erreichbar? (Host-Networking)
+
+**Symptom:** Der `deye`-Read liefert leer / läuft in den Timeout, obwohl die Logger-IP stimmt (`nc -zu <deye-logger-ip> 48899` von der VM aus klappt, aber aus dem Node-RED-Container heraus kommt nichts zurück).
+
+**Ursache:** Ein Docker-Bridge-Container spricht viele WiFi-Logger (Deye/Solarman-Dongle, USR-Chip) über **UDP 48899** nicht zuverlässig an: das ausgehende Paket wird ge-SNAT-tet, die Antwort des Dongles kommt oft von einem **anderen Quellport** oder als **Broadcast** zurück und wird von conntrack verworfen -> der Read bleibt leer. Das ist ein bekanntes Verhalten dieser Logger, nicht ein Konfigurationsfehler in VoltPilot.
+
+**Fix:** Node-RED auf **Host-Networking** umstellen. Dann sitzt der Container direkt auf dem LAN (kein NAT) und der UDP-Austausch mit dem Dongle klappt - der Standard-Fix für Solarman/USR-Logger. Dafür gibt es das Override `docker-compose.hostnet.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
+```
+
+`core` und der Simulator bleiben unverändert; nur `nodered` wandert aufs Host-Netz. Ohne das Override läuft alles wie gehabt (Bridge).
+
+**Caveats (wichtig):**
+
+- **Feste Ports:** Host-Networking bindet die Hostports direkt - es gibt kein Portmapping mehr. Der Node-RED-Editor liegt danach fest auf **Host-Port `1880`** (nicht mehr `VP_NODERED_PORT`). `http://<vm>:1880`, Zugang wie gehabt (`voltpilot` / `VP_NODERED_PASSWORD`).
+- **Bus über Loopback:** Auf dem Host-Netz ist der Compose-Dienstname `core` nicht mehr auflösbar. Das Override setzt deshalb `VP_CORE_HOST=127.0.0.1` und `VP_CORE_PORT=${VP_BUS_PORT:-1884}` - die vp-Knoten sprechen den lokalen Bus dann über die Host-Loopback-Freigabe des Core an (`127.0.0.1:1884 -> core:1883`). Diese Env-Variablen haben Vorrang vor der Flow-Konfiguration, du musst den Flow also nicht anfassen. Der Cloud-Weg (Enrollment/mTLS) läuft weiter über den `core`-Container und ist davon unberührt.
+- **Nur Linux:** Host-Networking ist ein Linux-Feature (Kundengeräte: Raspberry Pi / Linux-VM). Auf Docker Desktop (macOS/Windows) hat `network_mode: host` keine volle Wirkung.
+- **Sim-Tab:** Im Host-Netz erreicht der SunSpec-Simulator-Tab den Dienst `edge-sim` nicht mehr (der lebt im Bridge-Netz). Host-Networking ist der Weg für den **echten** LAN-Wechselrichter, nicht für den Simulator.
+
+Prüfen, dass der Container wirklich auf dem Host-Netz ist:
+
+```bash
+docker inspect -f '{{.HostConfig.NetworkMode}}' $(docker compose -f docker-compose.yml -f docker-compose.hostnet.yml ps -q nodered)   # -> host
+```
+
+Danach wieder in Abschnitt 4 den Deye-Read testen - er sollte jetzt Werte liefern.
+
 ## Fehlerbilder (kurz)
 
 - **Pairing bleibt auf *warte_auf_beanspruchung*:** Referenz im Portal noch nicht beansprucht, oder ein Tippfehler zwischen `VP_REF` und der beanspruchten Referenz - beide müssen exakt übereinstimmen.
 - **VP-Aufkleber-ID wird abgelehnt (unbekannte Referenz):** eine `VP-`-Referenz muss in der Geräte-Registry hinterlegt sein (Plattform -> Geräte-Registry). Für einen Eigenbetrieb einfach `VP_REF` leer lassen (ungegatete `edge-xxxxxx`) oder eine eigene Nicht-`VP-`-Referenz wählen.
 - **Keine Telemetrie trotz "Verbunden":** Deye-Tab noch nicht aktiviert / Simulator-Tab noch aktiv, oder `ip`/`family` im *Deye-Konfiguration*-Knoten falsch - Node-RED-Debug prüfen, siehe [`nodered/DEYE.md`](nodered/DEYE.md).
+- **Deye-Read bleibt leer / Timeout trotz richtiger Logger-IP:** typischer UDP-über-NAT-Fall - Node-RED auf Host-Networking umstellen, siehe Abschnitt ["LAN-Logger nicht aus dem Container erreichbar?"](#lan-logger-nicht-aus-dem-container-erreichbar-host-networking).
 - **Werte mit falschem Vorzeichen:** `invert_grid_sign`/`invert_batt_sign` kalibrieren (Abschnitt 4).
 
 ## Betrieb

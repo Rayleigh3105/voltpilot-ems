@@ -32,4 +32,10 @@
   MQTT-Broker). Im Standard-Compose heißt der Host <code>core</code> und der
   Bus lauscht auf Port 1883. Diese Konfiguration wird von allen vp-Knoten
   gemeinsam genutzt.</p>
+  <p>Die Umgebungsvariablen <code>VP_CORE_HOST</code> / <code>VP_CORE_PORT</code>
+  haben Vorrang vor diesen Feldern, ohne den Flow zu ändern. Der Host-Networking-
+  Modus (<code>docker-compose.hostnet.yml</code>) nutzt das: dort ist der
+  Dienstname <code>core</code> nicht auflösbar, also zeigt der Bus per
+  <code>127.0.0.1:&lt;VP_BUS_PORT&gt;</code> auf die Host-Loopback-Freigabe des
+  Core.</p>
 </script>
