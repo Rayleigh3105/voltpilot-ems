@@ -403,8 +403,8 @@
     "id": "deye-note",
     "type": "comment",
     "z": "tab-deye",
-    "name": "Deye-Vorlage (deye-CLI, konfigurationsgetrieben): Konfiguration setzen -> ggf. Familie erkennen -> Tab aktivieren",
-    "info": "Registerkarten + Tests: edge-app/nodered/deye/deye-decode.js. Anleitung: edge-app/nodered/DEYE.md.",
+    "name": "Deye-Vorlage: Kommunikationsmethode waehlen (solarman_v5=empfohlen, TCP 8899 | at_cli=UDP 48899) -> Konfiguration setzen -> ggf. Familie erkennen -> Tab aktivieren",
+    "info": "Registerkarten + Tests: edge-app/nodered/deye/deye-decode.js + solarman-v5.js. Anleitung: edge-app/nodered/DEYE.md.",
     "x": 470,
     "y": 40,
     "wires": []
@@ -439,7 +439,7 @@
     "type": "function",
     "z": "tab-deye",
     "name": "Deye-Konfiguration (pro Kunde anpassen)",
-    "func": "// Deye-Konfiguration - PRO KUNDE ANPASSEN (VoltPilot-Service, nicht der Kunde).\n// Mehrere Wechselrichter: das Array erweitern; die Lese-Kette liest Index 0,\n// fuer weitere Geraete diesen Tab duplizieren.\n// family: 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'.\n// Vorzeichen (Netz/Batterie) ERST AM GERAET kalibrieren - siehe DEYE.md.\nflow.set('deye_wechselrichter', [\n  {\n    id: 'wr1',\n    ip: '192.168.1.50',\n    port: 48899,\n    family: 'hybrid_1p',\n    invert_grid_sign: false,\n    invert_batt_sign: false,\n    // Nur string/micro: erlaubte Stufen der Wirkleistungsbegrenzung in %\n    // (leer = 1-%-Schritte), z. B. [0, 25, 50, 75, 100].\n    limit_stages: []\n  }\n]);\nnode.status({ fill: 'grey', shape: 'dot', text: 'Konfiguration geladen' });\nreturn null;",
+    "func": "// Deye-Konfiguration - PRO KUNDE ANPASSEN (VoltPilot-Service, nicht der Kunde).\n// communication: 'solarman_v5' (EMPFOHLEN, robust, Modbus in Solarman-V5 ueber TCP 8899)\n//              | 'at_cli' (AT-CLI ueber UDP 48899 - veraltet, oft flaky hinter NAT).\n// Fuer solarman_v5 ist die DATALOGGER-Seriennummer (serial) PFLICHT - das ist NICHT\n// die Wechselrichter-Seriennummer! Sie steht z. B. im AP-SSID \"AP_<serial>\", auf dem\n// Logger-Label oder auf der Status-Seite des Loggers.\n// family: 'string' | 'hybrid_1p' | 'hybrid_3p' | 'micro'.\n// Vorzeichen (Netz/Batterie) ERST AM GERAET kalibrieren - siehe DEYE.md.\nflow.set('deye_wechselrichter', [\n  {\n    id: 'wr1',\n    ip: '192.168.1.50',          // IP des Deye-WiFi-Loggers\n    communication: 'solarman_v5', // 'solarman_v5' (empfohlen) | 'at_cli'\n    port: 8899,                   // solarman_v5: 8899 | at_cli: 48899\n    serial: 0,                    // solarman_v5 PFLICHT: Datalogger-Seriennummer (Zahl!) - NICHT die WR-Seriennummer\n    mb_slave_id: 1,               // Modbus-Unit-ID (Standard 1)\n    family: 'hybrid_1p',\n    invert_grid_sign: false,\n    invert_batt_sign: false,\n    // Nur string/micro: erlaubte Stufen der Wirkleistungsbegrenzung in %\n    // (leer = 1-%-Schritte), z. B. [0, 25, 50, 75, 100].\n    limit_stages: []\n  }\n]);\nnode.status({ fill: 'grey', shape: 'dot', text: 'Konfiguration geladen' });\nreturn null;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
@@ -481,19 +481,15 @@
     "type": "function",
     "z": "tab-deye",
     "name": "Leseplan bauen",
-    "func": "// Baut den Leseplan (Modbus-Bloecke) fuer den konfigurierten Wechselrichter und\n// stoesst die erste Leseanfrage an. Ausgabe: msg.payload = deye-Argumente\n// (String, wird vom exec-Knoten an \"deye\" angehaengt), msg.deye = Laufkontext.\n// Registerkarten/Skalierung: edge-app/nodered/deye/deye-decode.js (getestet).\nconst READS = {\n  string:    [{ start: 0x0050, count: 0x007d }],\n  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],\n  hybrid_3p: [{ start: 0x024c, count: 0x0056 }],\n  micro:     []\n};\nconst list = flow.get('deye_wechselrichter') || [];\nconst cfg = list[0];\nif (!cfg) { node.status({ fill: 'red', shape: 'ring', text: 'keine Konfiguration' }); return null; }\nconst reads = READS[cfg.family] || [];\nif (reads.length === 0) {\n  node.status({ fill: 'grey', shape: 'ring', text: cfg.family + ': keine Messwert-Register' });\n  return null;\n}\nconst target = cfg.ip + ':' + (cfg.port || 48899);\nconst h4 = (n) => (n & 0xffff).toString(16).padStart(4, '0').toUpperCase();\nmsg.deye = { cfg, target, reads, i: 0, blocks: [] };\nconst r = reads[0];\nmsg.payload = ['-t', target, '-xmb', h4(r.start) + h4(r.count)].join(' ');\nreturn msg;",
-    "outputs": 1,
+    "func": "// Baut den Leseplan (Modbus-Bloecke) fuer den konfigurierten Wechselrichter und\n// waehlt die Kommunikationsmethode:\n//   communication: 'solarman_v5' (empfohlen, TCP 8899) -> Ausgang 2 (Solarman-V5 lesen)\n//   communication: 'at_cli'      (AT-CLI, UDP 48899)   -> Ausgang 1 (deye -xmb)\n// Registerkarten/Skalierung: edge-app/nodered/deye/deye-decode.js (getestet).\nconst READS = {\n  string:    [{ start: 0x0050, count: 0x007d }],\n  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],\n  hybrid_3p: [{ start: 0x024c, count: 0x0056 }],\n  micro:     []\n};\nconst list = flow.get('deye_wechselrichter') || [];\nconst cfg = list[0];\nif (!cfg) { node.status({ fill: 'red', shape: 'ring', text: 'keine Konfiguration' }); return null; }\nconst reads = READS[cfg.family] || [];\nif (reads.length === 0) {\n  node.status({ fill: 'grey', shape: 'ring', text: cfg.family + ': keine Messwert-Register' });\n  return null;\n}\nconst comm = cfg.communication || 'solarman_v5';\nconst target = cfg.ip + ':' + (cfg.port || (comm === 'at_cli' ? 48899 : 8899));\nmsg.deye = { cfg, target, reads, i: 0, blocks: [] };\nif (comm === 'at_cli') {\n  const h4 = (n) => (n & 0xffff).toString(16).padStart(4, '0').toUpperCase();\n  const r = reads[0];\n  msg.payload = ['-t', target, '-xmb', h4(r.start) + h4(r.count)].join(' ');\n  return [msg, null]; // Ausgang 1: AT-CLI-Kette\n}\nreturn [null, msg];    // Ausgang 2: Solarman-V5-Transport",
+    "outputs": 2,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
     "x": 320,
     "y": 180,
-    "wires": [
-      [
-        "deye-read"
-      ]
-    ]
+    "wires": [["deye-read"], ["deye-solarman"]]
   },
   {
     "id": "deye-read",
@@ -516,6 +512,22 @@
       [],
       []
     ]
+  },
+  {
+    "id": "deye-solarman",
+    "type": "function",
+    "z": "tab-deye",
+    "name": "Solarman-V5 lesen (TCP 8899)",
+    "func": "// Solarman-V5-Transport: Modbus-RTU im Solarman-V5-Rahmen ueber TCP 8899 - die\n// ROBUSTE Deye-Anbindung (ersetzt die flaky AT-CLI ueber UDP 48899). Eine\n// einzige, geordnete TCP-Verbindung pro Poll (der Logger erlaubt nur EINEN\n// Client), sequenzielle Bloecke, Reconnect je Poll.\n//\n// Traegt eine KOPIE von edge-app/nodered/deye/solarman-v5.js (ein Node-RED-Flow\n// ist self-contained JSON und kann keine Repo-Datei zur Laufzeit requiren).\n// Quelle der Wahrheit + Offline-Tests: deye/solarman-v5.js - beide synchron halten.\nconst net = global.get('net');\nif (!net) {\n  node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' });\n  node.error('functionGlobalContext.net in settings.js setzen (siehe DEYE.md)', msg);\n  return null;\n}\nconst ctx = msg.deye;\nif (!ctx) return null;\nconst cfg = ctx.cfg;\nconst serial = cfg.serial;\nif (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) {\n  node.status({ fill: 'red', shape: 'ring', text: 'Logger-Serial fehlt' });\n  node.error('cfg.serial (Datalogger-Seriennummer, Zahl) ist fuer solarman_v5 erforderlich', msg);\n  return null;\n}\nconst sn = Number(serial) >>> 0;\nconst port = cfg.port || 8899;\nconst slaveId = cfg.mb_slave_id || 1;\nconst timeoutMs = cfg.timeout_ms || 8000;\n\n// --- codec (Kopie von deye/solarman-v5.js) ---\nconst modbusCrc16 = (buf) => { let c = 0xffff; for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let b = 0; b < 8; b++) c = (c & 1) ? ((c >>> 1) ^ 0xa001) : (c >>> 1); } return c & 0xffff; };\nconst readReq = (sl, start, count) => { const b = Buffer.alloc(6); b[0] = sl & 0xff; b[1] = 0x03; b.writeUInt16BE(start & 0xffff, 2); b.writeUInt16BE(count & 0xffff, 4); const c = modbusCrc16(b); return Buffer.concat([b, Buffer.from([c & 0xff, (c >> 8) & 0xff])]); };\nconst v5cs = (f) => { let s = 0; for (let i = 1; i < f.length - 2; i++) s = (s + f[i]) & 0xff; return s & 0xff; };\nconst buildReq = (seq, mb) => { const len = 15 + mb.length; const h = Buffer.alloc(11); h[0] = 0xa5; h.writeUInt16LE(len, 1); h.writeUInt16LE(0x4510, 3); h.writeUInt16LE(seq & 0xffff, 5); h.writeUInt32LE(sn, 7); const pre = Buffer.alloc(15); pre[0] = 0x02; const fr = Buffer.concat([h, pre, mb, Buffer.from([0x00, 0x15])]); fr[fr.length - 2] = v5cs(fr); return fr; };\nconst frameLen = (buf) => { if (buf.length < 3) return null; if (buf[0] !== 0xa5) throw new Error('Startbyte'); return 11 + buf.readUInt16LE(1) + 2; };\nconst parseResp = (buf) => {\n  if (buf.length < 13) throw new Error('Frame zu kurz');\n  if (buf[0] !== 0xa5) throw new Error('Startbyte');\n  const total = 11 + buf.readUInt16LE(1) + 2;\n  if (buf.length < total) throw new Error('Frame kuerzer als Laengenfeld');\n  const f = buf.slice(0, total);\n  if (f[f.length - 1] !== 0x15) throw new Error('Endbyte');\n  if (v5cs(f) !== f[f.length - 2]) throw new Error('V5-Pruefsumme');\n  if (f.readUInt16LE(3) !== 0x1510) throw new Error('Controlcode 0x' + f.readUInt16LE(3).toString(16));\n  if (f.readUInt32LE(7) !== sn) throw new Error('Logger-Serial weicht ab: ' + f.readUInt32LE(7));\n  const mb = f.slice(25, f.length - 2);\n  if (mb.length < 5) throw new Error('Modbus zu kurz');\n  return mb;\n};\nconst parseModbus = (mb) => {\n  if (mb.readUInt16LE(mb.length - 2) !== modbusCrc16(mb.slice(0, mb.length - 2))) throw new Error('Modbus-CRC');\n  if (mb[1] & 0x80) throw new Error('Modbus-Ausnahme 0x' + mb[2].toString(16));\n  if (mb[1] !== 0x03) throw new Error('Modbus-Funktion 0x' + mb[1].toString(16));\n  const bc = mb[2]; const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(mb.readUInt16BE(3 + i * 2)); return regs;\n};\n\n// --- eine Leseanfrage ueber den offenen Socket (TCP-Segmente reassemblieren) ---\nconst readBlock = (sock, start, count, seq) => new Promise((resolve, reject) => {\n  let acc = Buffer.alloc(0);\n  const t = setTimeout(() => { cleanup(); reject(new Error('Timeout')); }, timeoutMs);\n  const onData = (chunk) => {\n    acc = Buffer.concat([acc, chunk]);\n    let need; try { need = frameLen(acc); } catch (e) { cleanup(); return reject(e); }\n    if (need !== null && acc.length >= need) { cleanup(); try { resolve(parseModbus(parseResp(acc.slice(0, need)))); } catch (e) { reject(e); } }\n  };\n  const onErr = (e) => { cleanup(); reject(e); };\n  const cleanup = () => { clearTimeout(t); sock.removeListener('data', onData); sock.removeListener('error', onErr); };\n  sock.on('data', onData); sock.on('error', onErr);\n  sock.write(buildReq(seq, readReq(slaveId, start, count)));\n});\n\nlet seq = context.get('seq') || 0;\nreturn new Promise((resolve) => {\n  const sock = new net.Socket();\n  sock.setNoDelay(true);\n  let done = false;\n  const finish = (err) => {\n    if (done) return; done = true;\n    try { sock.destroy(); } catch (e) { /* ignore */ }\n    if (err) { node.status({ fill: 'red', shape: 'ring', text: 'V5: ' + err.message }); resolve(null); }\n    else { resolve(msg); }\n  };\n  const connTimer = setTimeout(() => finish(new Error('Verbindungs-Timeout')), timeoutMs);\n  sock.once('error', (e) => { clearTimeout(connTimer); finish(e); });\n  sock.connect(port, cfg.ip, async () => {\n    clearTimeout(connTimer);\n    try {\n      for (const r of ctx.reads) { seq = (seq + 1) & 0xffff; ctx.blocks.push({ start: r.start, regs: await readBlock(sock, r.start, r.count, seq) }); }\n      context.set('seq', seq);\n      finish();\n    } catch (e) { finish(e); }\n  });\n});",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 700,
+    "y": 300,
+    "wires": [["deye-decode"]]
   },
   {
     "id": "deye-parse-next",

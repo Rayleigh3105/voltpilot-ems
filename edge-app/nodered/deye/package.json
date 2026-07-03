@@ -2,7 +2,7 @@
   "name": "voltpilot-edge-deye-decode",
   "version": "0.1.0",
   "private": true,
-  "description": "Canonical, unit-tested reference for the Deye Node-RED template's Modbus +ok=0103 parser, per-family register maps and telemetry decode. The flows.json function nodes carry a copy of this logic.",
+  "description": "Canonical, unit-tested reference for the Deye Node-RED template: the Solarman-V5 transport codec (solarman-v5.js, TCP 8899, recommended), the AT-CLI +ok=0103 parser, the per-family register maps + telemetry decode (deye-decode.js), and the standalone hardware probe (solarman-probe.js). The flows.json function nodes carry a synced copy of this logic.",
   "main": "deye-decode.js",
   "scripts": {
     "test": "node --test"

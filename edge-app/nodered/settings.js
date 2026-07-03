@@ -18,6 +18,13 @@ module.exports = {
   flowFile: "flows.json",
   uiPort: process.env.NODE_RED_PORT || 1880,
 
+  // Expose Node's built-in `net` to Function nodes so the Deye "Solarman-V5
+  // lesen" node can open the single TCP:8899 connection to the Solarman/Deye
+  // WiFi logger (Modbus-RTU in a Solarman V5 frame). See DEYE.md "Solarman V5".
+  functionGlobalContext: {
+    net: require("net"),
+  },
+
   adminAuth: {
     type: "credentials",
     users: [
