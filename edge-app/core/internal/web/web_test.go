@@ -154,7 +154,15 @@ func TestPostInverterMalformedBodyReturns400(t *testing.T) {
 }
 
 func TestStateEnvelopeCarriesServerClock(t *testing.T) {
-	srv, _ := newServer(t)
+	// Unlock the onboarding gate so the reference is present in the envelope
+	// (it is withheld until the inverter delivers data - see the gate tests).
+	st := state.New("edge-test", "test")
+	st.Update(func(s *state.Snapshot) {
+		s.Inverter = configuredInverter()
+		s.LastTelemetry = time.Now().UTC()
+	})
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
 		t.Fatal(err)
@@ -240,6 +248,90 @@ func TestStateExposesBufferDataLoss(t *testing.T) {
 	}
 	if !body.BufferDataLoss || body.BufferPending != 7 {
 		t.Fatalf("state did not expose buffer data-loss: %+v", body)
+	}
+}
+
+// getState fetches /api/state and decodes the onboarding-gate fields.
+func getState(t *testing.T, srv *httptest.Server) struct {
+	Ref               string `json:"ref"`
+	OnboardingStep    string `json:"onboarding_step"`
+	InverterConnected bool   `json:"inverter_connected"`
+	ClaimUnlocked     bool   `json:"claim_unlocked"`
+} {
+	t.Helper()
+	resp, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Ref               string `json:"ref"`
+		OnboardingStep    string `json:"onboarding_step"`
+		InverterConnected bool   `json:"inverter_connected"`
+		ClaimUnlocked     bool   `json:"claim_unlocked"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+func configuredInverter() *state.InverterInfo {
+	return &state.InverterInfo{Brand: "deye", Label: "Deye Hybrid 3-Phasen", Configured: true}
+}
+
+// The enforced onboarding gate: the reference stays withheld and the customer is
+// held on the inverter step until an inverter is configured AND has delivered at
+// least one telemetry reading - only then does the portal-claim step unlock.
+func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
+	// (a) No inverter configured -> step "inverter", locked, no reference.
+	st := state.New("edge-gate", "test")
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	defer srv.Close()
+
+	b := getState(t, srv)
+	if b.OnboardingStep != "inverter" || b.InverterConnected || b.ClaimUnlocked {
+		t.Fatalf("no inverter: got %+v", b)
+	}
+	if b.Ref != "" {
+		t.Fatalf("reference must be withheld before the gate, got %q", b.Ref)
+	}
+
+	// (b) Inverter configured but no telemetry yet -> still locked, no reference.
+	st.Update(func(s *state.Snapshot) { s.Inverter = configuredInverter() })
+	b = getState(t, srv)
+	if b.OnboardingStep != "inverter" || b.InverterConnected || b.ClaimUnlocked {
+		t.Fatalf("configured, no data: got %+v", b)
+	}
+	if b.Ref != "" {
+		t.Fatalf("reference must stay withheld until data arrives, got %q", b.Ref)
+	}
+
+	// (c) Inverter delivers data -> step "claim", unlocked, reference revealed.
+	st.Update(func(s *state.Snapshot) { s.LastTelemetry = time.Now().UTC() })
+	b = getState(t, srv)
+	if b.OnboardingStep != "claim" || !b.InverterConnected || !b.ClaimUnlocked {
+		t.Fatalf("inverter delivering: got %+v", b)
+	}
+	if b.Ref != "edge-gate" {
+		t.Fatalf("reference must be revealed once unlocked, got %q", b.Ref)
+	}
+}
+
+// A paired device (certificate on disk) is past onboarding: the gate no longer
+// governs and the reference is always available, even without live telemetry.
+func TestOnboardingGateDoneOncePaired(t *testing.T) {
+	st := state.New("edge-paired", "test")
+	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	defer srv.Close()
+
+	b := getState(t, srv)
+	if b.OnboardingStep != "done" || !b.ClaimUnlocked {
+		t.Fatalf("paired device: got %+v", b)
+	}
+	if b.Ref != "edge-paired" {
+		t.Fatalf("paired device keeps its reference, got %q", b.Ref)
 	}
 }
 

@@ -35,14 +35,71 @@ type InverterController interface {
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
-// its own clock drifts from the edge device's.
+// its own clock drifts from the edge device's, plus the derived onboarding-gate
+// signals the guided two-step onboarding needs.
 type stateEnvelope struct {
 	state.Snapshot
 	ServerNowMs int64 `json:"server_now_ms"`
+
+	// InverterConnected is the gate for the portal-claim step: an inverter is
+	// configured AND at least one telemetry reading has arrived (the inverter is
+	// proven to actually deliver data). Only then may the customer claim the
+	// device in the portal.
+	InverterConnected bool `json:"inverter_connected"`
+	// OnboardingStep is the current guided step: "inverter" (connect the
+	// inverter first), "claim" (inverter delivers data -> claim in the portal),
+	// or "done" (device already claimed/paired - onboarding no longer governs).
+	OnboardingStep string `json:"onboarding_step"`
+	// ClaimUnlocked is true once the reference may be shown (gate satisfied or
+	// the device is already paired). While false the reference is withheld from
+	// the envelope entirely so the UI cannot accidentally reveal it (the
+	// belt-and-suspenders half of the enforcement).
+	ClaimUnlocked bool `json:"claim_unlocked"`
+}
+
+// paired reports whether a certificate is already on disk (the device is
+// claimed), mirroring the frontend's step derivation: any post-claim pairing
+// state counts, including the transient cloud-error/disconnect states.
+func paired(pairingState string) bool {
+	switch pairingState {
+	case "verbunden", "zertifikat_erhalten", "cloud_getrennt", "cloud_fehler":
+		return true
+	}
+	return false
+}
+
+// deriveOnboarding computes the gate signals from a snapshot: the inverter is
+// "connected" only when it is configured AND has delivered at least one reading.
+func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, claimUnlocked bool) {
+	inverterConfigured := snap.Inverter != nil && snap.Inverter.Configured
+	inverterConnected = inverterConfigured && !snap.LastTelemetry.IsZero()
+	switch {
+	case paired(snap.PairingState):
+		return "done", inverterConnected, true
+	case inverterConnected:
+		return "claim", inverterConnected, true
+	default:
+		return "inverter", inverterConnected, false
+	}
 }
 
 func envelope(st *state.Store) stateEnvelope {
-	return stateEnvelope{Snapshot: st.Get(), ServerNowMs: time.Now().UnixMilli()}
+	snap := st.Get()
+	step, invConnected, claimUnlocked := deriveOnboarding(snap)
+	// Withhold the reference until the claim step is unlocked, so the portal
+	// reference cannot leak into the UI before the inverter is proven to work.
+	// The device's own enrollment uses the ref from its config, not this
+	// envelope, so this never blocks the background key/CSR/cert handshake.
+	if !claimUnlocked {
+		snap.Ref = ""
+	}
+	return stateEnvelope{
+		Snapshot:          snap,
+		ServerNowMs:       time.Now().UnixMilli(),
+		InverterConnected: invConnected,
+		OnboardingStep:    step,
+		ClaimUnlocked:     claimUnlocked,
+	}
 }
 
 // Handler builds the HTTP mux: the single-page UI, the state JSON it polls, the

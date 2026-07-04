@@ -124,8 +124,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 }
 
 /* ---------------- Pairing / onboarding ---------------- */
-.pairing-card { padding: 26px; margin-bottom: 20px; overflow: hidden; position: relative; }
-.pairing-card.compact { padding: 14px 18px; }
+.onboard-card { padding: 26px; margin-bottom: 20px; overflow: hidden; position: relative; }
+.onboard-card.compact { padding: 14px 18px; }
 .pairing-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .pairing-icon {
   width: 46px; height: 46px; flex: none; border-radius: 12px; display: grid; place-items: center;
@@ -135,7 +135,82 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .pairing-head h2 { margin: 0; font-size: 17px; font-weight: 700; }
 .pairing-head p { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
 
-.ref-block { margin-top: 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+/* Step progress rail (1 → 2 → ✓) */
+.onboard-progress {
+  list-style: none; margin: 22px 0 4px; padding: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.onboard-progress li[data-p] {
+  display: inline-flex; align-items: center; gap: 9px; flex: none;
+  font-size: 13px; font-weight: 650; color: var(--muted);
+}
+.onboard-progress .op-num {
+  width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  border: 2px solid #C7D2E0; background: #fff; color: var(--muted); font-size: 12.5px; font-weight: 700;
+}
+.onboard-progress li.active { color: var(--ink); }
+.onboard-progress li.active .op-num { border-color: var(--brand-deep); color: var(--brand-deep); background: var(--brand-soft); }
+.onboard-progress li.done { color: var(--ink-2); }
+.onboard-progress li.done .op-num { border-color: var(--ok); background: var(--ok); color: #fff; }
+.onboard-progress .op-sep { flex: 1 1 auto; height: 2px; min-width: 14px; background: var(--line); border-radius: 2px; }
+
+/* Step blocks */
+.step-block {
+  margin-top: 14px; padding: 18px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--bg-2);
+  transition: border-color .2s, background .2s, opacity .2s;
+}
+.step-block.active { border-color: var(--brand); background: linear-gradient(180deg, #fff, var(--brand-soft)); box-shadow: var(--shadow-sm); }
+.step-block.done { border-color: #CBEBD5; background: linear-gradient(180deg, #fff, var(--ok-soft)); }
+.step-block.locked { opacity: .72; }
+.step-block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.step-tag { font-size: 11.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.step-block.active .step-tag { color: var(--brand-deep); }
+.step-block.done .step-tag { color: var(--ok); }
+.step-block-title { margin: 8px 0 0; font-size: 16px; font-weight: 700; }
+.step-block-desc { margin: 5px 0 0; color: var(--ink-2); font-size: 13.5px; max-width: 620px; }
+
+/* Step status chip */
+.step-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.step-status .ss-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.step-status.ok { color: var(--ok); }
+.step-status.warn { color: var(--warn); }
+.step-status.wait { color: var(--brand-deep); }
+.step-status.locked { color: var(--muted); }
+.step-status.locked .ss-dot { background: #B4C0CF; }
+.ss-spin {
+  width: 12px; height: 12px; flex: none; border-radius: 50%;
+  border: 2px solid rgba(62,114,206,.3); border-top-color: var(--brand-deep);
+  display: inline-block; animation: ss-spin .7s linear infinite;
+}
+@keyframes ss-spin { to { transform: rotate(360deg); } }
+
+/* Step CTA button */
+.step-cta {
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
+  padding: 11px 18px; border-radius: 11px; min-height: 44px;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%); color: #fff;
+  font-size: 14px; font-weight: 700; text-decoration: none;
+  box-shadow: 0 2px 10px rgba(62,114,206,.32);
+}
+.step-cta:hover { filter: brightness(1.04); }
+.step-cta svg { width: 17px; height: 17px; }
+.step-cta.ghost {
+  background: var(--surface); color: var(--brand-deep);
+  border: 1px solid var(--line); box-shadow: none;
+}
+.step-cta.ghost:hover { background: var(--brand-soft); border-color: #D3DCE8; filter: none; }
+
+/* Step 2 locked note */
+.step-locked-note { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.step-locked-note .lock-ico {
+  width: 38px; height: 38px; flex: none; border-radius: 11px; display: grid; place-items: center;
+  background: #EEF2F7; color: var(--muted); border: 1px solid var(--line);
+}
+.step-locked-note .lock-ico svg { width: 20px; height: 20px; }
+.step-locked-note p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+.ref-block { margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .ref-label { font-size: 12.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .ref-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ref {
@@ -156,20 +231,6 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .ref-hint { margin: 14px 0 0; color: var(--muted); font-size: 13.5px; max-width: 620px; }
 .ref-hint strong { color: var(--ink-2); }
 
-/* Pairing steps */
-.steps { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-wrap: wrap; gap: 10px; }
-.steps li {
-  display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--muted);
-  padding: 9px 14px 9px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg-2);
-}
-.steps li .mark {
-  width: 20px; height: 20px; flex: none; border-radius: 50%; display: grid; place-items: center;
-  border: 2px solid #C7D2E0; background: #fff; color: transparent; font-size: 11px;
-}
-.steps li.active { color: var(--ink); font-weight: 650; border-color: var(--brand); background: var(--brand-soft); }
-.steps li.active .mark { border-color: var(--brand-deep); background: var(--brand-soft); }
-.steps li.done { color: var(--ink-2); }
-.steps li.done .mark { border-color: var(--ok); background: var(--ok); color: #fff; }
 .pairing-error { color: var(--err); background: var(--err-soft); border: 1px solid #F1CDCD;
   padding: 11px 14px; border-radius: 10px; font-size: 13.5px; font-weight: 600; margin: 16px 0 0; }
 /* Softer (informational) variant for a transient, self-healing state. */
@@ -310,8 +371,15 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 
   .section-title { margin: 22px 2px 10px; }
   .card { padding: 18px; }
-  .pairing-card { padding: 20px; }
-  .pairing-card.compact { padding: 14px 16px; }
+  .onboard-card { padding: 20px; }
+  .onboard-card.compact { padding: 14px 16px; }
+
+  /* Progress rail: hide the word labels on phones, keep the numbered dots +
+     connectors so the 1 → 2 → ✓ sequence stays clear without wrapping. */
+  .onboard-progress { gap: 6px; }
+  .onboard-progress .op-lbl { display: none; }
+  .step-block { padding: 16px; }
+  .step-cta { width: 100%; justify-content: center; }
 
   .kpis { grid-template-columns: 1fr 1fr; gap: 12px; }
   .kpi { padding: 15px; }

@@ -213,23 +213,121 @@
     }
   }
 
-  // ---------- Pairing card ----------
+  // ---------- Guided two-step onboarding card ----------
+  // The customer MUST connect the inverter first; the portal-claim step (with
+  // the reference) stays LOCKED until the inverter actually delivers data. The
+  // gate itself is computed server-side (s.onboarding_step / s.inverter_connected),
+  // and the reference is withheld from /api/state until unlocked, so the wrong
+  // path (claiming before the inverter works) is not reachable in the UI.
   function renderPairing(s) {
     var st = s.pairing_state;
+    var step = s.onboarding_step || "inverter"; // "inverter" | "claim" | "done"
     $("ref").textContent = s.ref || "…";
     $("version").textContent = (!s.version || s.version === "dev") ? "" : "v" + s.version;
 
-    // reached: 2 = cloud-connected, 1 = certificate on disk (device is claimed),
-    // 0 = still pairing (incl. the pre-portal error states).
-    var reached = st === "verbunden" ? 2
-      : (st === "zertifikat_erhalten" || st === "cloud_getrennt" || st === "cloud_fehler") ? 1 : 0;
-    document.querySelectorAll("#steps li").forEach(function (li, i) {
-      li.classList.toggle("done", i < reached || (i === 2 && reached === 2));
-      li.classList.toggle("active", i === reached && reached < 2);
+    var connected = st === "verbunden";
+    var done = step === "done";
+
+    // Progress rail: 1 = inverter, 2 = portal, 3 = verbunden.
+    // reached = index of the last completed dot; active = the current dot.
+    var reached = done ? (connected ? 3 : 2) : (step === "claim" ? 1 : 0);
+    var activeIdx = done ? (connected ? 3 : 3) : (step === "claim" ? 2 : 1);
+    document.querySelectorAll("#onboardProgress li[data-p]").forEach(function (li) {
+      var p = parseInt(li.getAttribute("data-p"), 10);
+      li.classList.toggle("done", p <= reached);
+      li.classList.toggle("active", p === activeIdx && p > reached);
     });
 
-    // Error / status box: transport, local-init and cloud failures each get an
-    // actionable German message instead of the old "hide it for everything else".
+    renderPairingError(st);
+
+    // Collapse the whole onboarding body once the device is claimed (a
+    // certificate is on disk): don't re-prompt on a mere cloud blip.
+    $("pairingCard").classList.toggle("compact", done);
+    $("onboardBody").hidden = done;
+
+    if (done) {
+      if (connected) {
+        $("pairingTitle").textContent = "Gerät verbunden";
+        $("pairingLead").innerHTML = "Referenz <strong>" + escapeHtml(s.ref || "") + "</strong> · erfolgreich mit VoltPilot gekoppelt.";
+      } else {
+        $("pairingTitle").textContent = "Gerät wird verbunden";
+        $("pairingLead").textContent = "Das Gerät ist eingerichtet und stellt die Verbindung zu VoltPilot her.";
+      }
+      return;
+    }
+
+    // Onboarding in progress.
+    $("pairingTitle").textContent = "In zwei Schritten startklar";
+    $("pairingLead").textContent = step === "claim"
+      ? "Ihr Wechselrichter liefert Daten. Schließen Sie jetzt die Kopplung im Portal ab."
+      : "Zuerst den Wechselrichter verbinden - danach schalten Sie das Gerät im Portal frei.";
+
+    renderStep1(s, step);
+    renderStep2(s, step);
+  }
+
+  // Schritt 1 - Wechselrichter verbinden.
+  function renderStep1(s, step) {
+    var block = $("step1");
+    var configured = !!(s.inverter && s.inverter.configured);
+    var invConnected = !!s.inverter_connected;
+    var stateEl = $("step1Status"), txt = $("step1StatusText");
+    var desc = $("step1Desc"), cta = $("step1Cta"), ctaLabel = $("step1CtaLabel");
+
+    // done whenever the customer is past step 1 (inverter delivers data).
+    block.classList.toggle("done", step !== "inverter");
+    block.classList.toggle("active", step === "inverter");
+
+    if (step !== "inverter") {
+      // Inverter connected and delivering data.
+      stateEl.className = "step-status ok";
+      txt.textContent = "Verbunden";
+      desc.textContent = s.inverter && s.inverter.label
+        ? s.inverter.label + " liefert Messwerte."
+        : "Wechselrichter liefert Messwerte.";
+      ctaLabel.textContent = "Einstellungen ändern";
+      cta.className = "step-cta ghost";
+    } else if (!configured) {
+      // Not configured yet - the active task.
+      stateEl.className = "step-status warn";
+      txt.textContent = "Jetzt einrichten";
+      desc.textContent = "Wählen Sie Ihren Wechselrichter aus, damit dieses Gerät Messwerte empfängt. Das dauert nur eine Minute.";
+      ctaLabel.textContent = "Wechselrichter einrichten";
+      cta.className = "step-cta";
+    } else if (!invConnected) {
+      // Configured but no data yet.
+      stateEl.className = "step-status wait";
+      txt.innerHTML = "<span class='ss-spin'></span>Warte auf erste Daten…";
+      desc.textContent = s.inverter && s.inverter.label
+        ? s.inverter.label + " ist eingerichtet - warte auf die ersten Messwerte vom Wechselrichter. Bitte prüfen, ob der Wechselrichter eingeschaltet und erreichbar ist."
+        : "Wechselrichter ist eingerichtet - warte auf die ersten Messwerte.";
+      ctaLabel.textContent = "Einstellungen prüfen";
+      cta.className = "step-cta ghost";
+    }
+  }
+
+  // Schritt 2 - Mit dem VoltPilot-Portal verbinden. Locked until Schritt 1 done.
+  function renderStep2(s, step) {
+    var block = $("step2");
+    var unlocked = step === "claim"; // done is handled by the compact collapse
+    block.classList.toggle("locked", !unlocked);
+    block.classList.toggle("active", unlocked);
+    $("step2Locked").hidden = unlocked;
+    $("step2Unlocked").hidden = !unlocked;
+
+    var stateEl = $("step2Status"), txt = $("step2StatusText");
+    if (unlocked) {
+      stateEl.className = "step-status warn";
+      txt.textContent = "Jetzt koppeln";
+    } else {
+      stateEl.className = "step-status locked";
+      txt.textContent = "Gesperrt";
+    }
+  }
+
+  // The pairing error / status box: transport, local-init and cloud failures
+  // each get an actionable German message.
+  function renderPairingError(st) {
     var err = $("pairingError");
     var msg = null, soft = false;
     if (st === "schluessel_konflikt") {
@@ -247,31 +345,6 @@
     }
     if (msg) { err.hidden = false; err.textContent = msg; err.classList.toggle("soft", soft); }
     else { err.hidden = true; err.classList.remove("soft"); }
-
-    // Collapse the onboarding card once the device is claimed (a certificate is
-    // on disk): don't re-prompt for the reference on a mere cloud blip.
-    var card = $("pairingCard");
-    var connected = st === "verbunden";
-    var paired = reached >= 1;
-    card.classList.toggle("compact", paired);
-    $("refBlock").hidden = paired;
-    $("refHint").hidden = paired;
-    $("steps").hidden = paired;
-    if (connected) {
-      $("pairingTitle").textContent = "Gerät verbunden";
-      $("pairingLead").innerHTML = "Referenz <strong>" + escapeHtml(s.ref || "") + "</strong> · erfolgreich mit VoltPilot gekoppelt.";
-    } else if (paired) {
-      $("pairingTitle").textContent = "Gerät wird verbunden";
-      $("pairingLead").textContent = "Das Gerät ist eingerichtet und stellt die Verbindung zu VoltPilot her.";
-    } else {
-      $("pairingTitle").textContent = "Gerät mit VoltPilot verbinden";
-      // Only promise "automatic" once a data source (inverter) is configured -
-      // otherwise the customer still has a required setup step ahead (see M1).
-      var invReady = s.inverter && s.inverter.configured;
-      $("pairingLead").textContent = invReady
-        ? "Geben Sie die Referenz-ID im Portal ein - alles Weitere passiert automatisch."
-        : "Geben Sie die Referenz-ID im Portal ein, um die Kopplung abzuschließen.";
-    }
   }
 
   function escapeHtml(s) { return s.replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
@@ -300,10 +373,12 @@
   }
 
   // Prominent CTA while no inverter is configured: without it the Node-RED
-  // read flow is idle and NO telemetry ever reaches the device, so the
-  // dashboard would otherwise "wait for data" forever with no guidance (M1).
+  // read flow is idle and NO telemetry ever reaches the device (M1). During
+  // onboarding, Schritt 1 already owns this guidance, so the banner only shows
+  // AFTER the device is paired (step "done") if the inverter is ever missing -
+  // otherwise it would duplicate the onboarding card.
   function renderInverterCta(s) {
-    var need = !(s.inverter && s.inverter.configured);
+    var need = !(s.inverter && s.inverter.configured) && s.onboarding_step === "done";
     $("inverterBanner").hidden = !need;
   }
 

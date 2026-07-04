@@ -26,40 +26,83 @@
   </header>
 
   <main>
-    <!-- Pairing / onboarding (prominent until connected) -->
-    <section class="card pairing-card" id="pairingCard">
+    <!-- Guided, enforced two-step onboarding (prominent until connected).
+         Schritt 1 = Wechselrichter verbinden; Schritt 2 = im Portal koppeln,
+         GESPERRT bis der Wechselrichter tatsächlich Daten liefert. -->
+    <section class="card onboard-card" id="pairingCard">
       <div class="pairing-head">
         <span class="pairing-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
         </span>
         <div>
-          <h2 id="pairingTitle">Gerät mit VoltPilot verbinden</h2>
-          <p id="pairingLead">Geben Sie die Referenz-ID im Portal ein, um die Kopplung abzuschließen.</p>
+          <h2 id="pairingTitle">In zwei Schritten startklar</h2>
+          <p id="pairingLead">Zuerst den Wechselrichter verbinden, danach das Gerät im Portal freischalten.</p>
         </div>
       </div>
 
-      <div class="ref-block" id="refBlock">
-        <div>
-          <div class="ref-label">Referenz-ID dieses Geräts</div>
-          <div class="ref-row" style="margin-top:8px">
-            <code class="ref" id="ref">…</code>
-            <button class="copy" id="copyBtn" title="Referenz kopieren">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              <span id="copyLabel">Kopieren</span>
-            </button>
+      <!-- Everything below collapses once the device is paired (compact view). -->
+      <div id="onboardBody">
+        <!-- Step progress rail -->
+        <ol class="onboard-progress" id="onboardProgress">
+          <li data-p="1"><span class="op-num">1</span><span class="op-lbl">Wechselrichter</span></li>
+          <li class="op-sep" aria-hidden="true"></li>
+          <li data-p="2"><span class="op-num">2</span><span class="op-lbl">Portal</span></li>
+          <li class="op-sep" aria-hidden="true"></li>
+          <li data-p="3"><span class="op-num">✓</span><span class="op-lbl">Verbunden</span></li>
+        </ol>
+
+        <!-- Schritt 1: Wechselrichter verbinden -->
+        <div class="step-block" id="step1">
+          <div class="step-block-head">
+            <span class="step-tag">Schritt 1</span>
+            <span class="step-status" id="step1Status"><span class="ss-dot"></span><span id="step1StatusText">–</span></span>
+          </div>
+          <h3 class="step-block-title">Wechselrichter verbinden</h3>
+          <p class="step-block-desc" id="step1Desc">Wählen Sie Ihren Wechselrichter aus, damit dieses Gerät Messwerte empfängt.</p>
+          <a class="step-cta" id="step1Cta" href="inverter.html">
+            <span id="step1CtaLabel">Wechselrichter einrichten</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+        </div>
+
+        <!-- Schritt 2: Mit dem VoltPilot-Portal verbinden (locked until Schritt 1 done) -->
+        <div class="step-block locked" id="step2">
+          <div class="step-block-head">
+            <span class="step-tag">Schritt 2</span>
+            <span class="step-status" id="step2Status"><span class="ss-dot"></span><span id="step2StatusText">Gesperrt</span></span>
+          </div>
+          <h3 class="step-block-title">Mit dem VoltPilot-Portal verbinden</h3>
+
+          <!-- Locked hint: shown until the inverter delivers data. No reference here. -->
+          <div class="step-locked-note" id="step2Locked">
+            <span class="lock-ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <p>Zuerst den Wechselrichter verbinden. Sobald er Daten liefert, erscheint hier Ihre Referenz-ID für das Portal.</p>
+          </div>
+
+          <!-- Unlocked content: the reference + copy + portal guidance -->
+          <div id="step2Unlocked" hidden>
+            <div class="ref-block" id="refBlock">
+              <div>
+                <div class="ref-label">Referenz-ID dieses Geräts</div>
+                <div class="ref-row" style="margin-top:8px">
+                  <code class="ref" id="ref">…</code>
+                  <button class="copy" id="copyBtn" title="Referenz kopieren">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span id="copyLabel">Kopieren</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p class="ref-hint" id="refHint">
+              Portal öffnen und unter <strong>Geräte → ＋ Gerät hinzufügen</strong> diese
+              Referenz eintragen. Das Gerät wird danach automatisch freigeschaltet.
+            </p>
           </div>
         </div>
       </div>
-      <p class="ref-hint" id="refHint">
-        Portal öffnen und unter <strong>Geräte → ＋ Gerät hinzufügen</strong> diese
-        Referenz eintragen. Das Gerät wird danach automatisch freigeschaltet.
-      </p>
 
-      <ol class="steps" id="steps">
-        <li data-step="0"><span class="mark">1</span> Im Portal beanspruchen</li>
-        <li data-step="1"><span class="mark">2</span> Zertifikat erhalten</li>
-        <li data-step="2"><span class="mark">✓</span> Verbunden mit VoltPilot</li>
-      </ol>
       <p class="pairing-error" id="pairingError" hidden></p>
     </section>
 
