@@ -2,6 +2,7 @@ package buffer
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -176,7 +177,10 @@ func TestDataLossFlagOnEvictionAndClearsOnDrain(t *testing.T) {
 	if b.DataLoss() {
 		t.Fatal("fresh buffer must not report data loss")
 	}
-	base := time.Now().UTC()
+	// Entries are stamped in the PAST relative to the wall clock: eviction is
+	// driven by the core clock (G3), not the sample ts, so a 1ns retention drops
+	// the oldest segment the read cursor is still inside = real loss.
+	base := time.Now().UTC().Add(-time.Hour)
 	// Fill past one whole segment (monotonic timestamps) without ever acking, so
 	// eviction drops a segment the read cursor is still inside = real loss.
 	for i := 0; i < segmentEntries+2; i++ {
@@ -198,5 +202,60 @@ func TestDataLossFlagOnEvictionAndClearsOnDrain(t *testing.T) {
 	}
 	if b.DataLoss() {
 		t.Error("data-loss flag should clear once the backlog fully drains")
+	}
+}
+
+// Draining a backlog must parse each segment ONCE (serving entries from an
+// in-memory cache), not once per entry (the former O(n^2) drain). See G1.
+func TestSegmentParsedOncePerDrain(t *testing.T) {
+	b := openT(t, t.TempDir(), 48*time.Hour)
+	now := time.Now().UTC()
+	n := segmentEntries*2 + 3 // three segments: two full + a partial tail
+	for i := 0; i < n; i++ {
+		if _, err := b.Append(now, map[string]float64{"n": float64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := b.parseCount
+	for i := 0; i < n; i++ {
+		if _, ok := b.Next(); !ok {
+			t.Fatalf("entry %d missing", i)
+		}
+		if err := b.Ack(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	parses := b.parseCount - before
+	if parses > len(b.segments) {
+		t.Errorf("expected at most one parse per segment (%d segments), got %d parses draining %d entries",
+			len(b.segments), parses, n)
+	}
+}
+
+// Eviction must not stall behind an unreadable (empty/corrupt) oldest segment:
+// it drops that segment and keeps enforcing retention on the rest. See G3.
+func TestEvictionDropsUnreadableOldestSegment(t *testing.T) {
+	dir := t.TempDir()
+	b := openT(t, dir, time.Hour)
+	old := time.Now().UTC().Add(-3 * time.Hour)
+	// Two full old segments + a fresh tail entry.
+	for i := 0; i < segmentEntries*2; i++ {
+		if _, err := b.Append(old.Add(time.Duration(i)*time.Millisecond), map[string]float64{"n": float64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Corrupt the oldest segment (truncate to empty) so lastEntry returns ok=false.
+	if err := os.Truncate(b.segPath(b.segments[0]), 0); err != nil {
+		t.Fatal(err)
+	}
+	// A fresh append triggers eviction; the empty oldest segment must be dropped
+	// AND the second (over-horizon) segment evicted behind it.
+	if _, err := b.Append(time.Now().UTC(), map[string]float64{"n": -1}); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range b.segments {
+		if n < 2 {
+			t.Errorf("over-horizon segments (incl. the unreadable one) should be gone; still have segment %d", n)
+		}
 	}
 }

@@ -78,25 +78,68 @@ public class ProvisioningConfig {
             @Value("${voltpilot.mqtt.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.mqtt.client-id:voltpilot-ingest}") String clientIdPrefix) {
         String clientId = clientIdPrefix + "-provision-out-" + UUID.randomUUID();
-        // One lazily connected client, reconnect handled by Paho options from the
-        // shared factory (automaticReconnect is set there).
-        Object lock = new Object();
-        IMqttAsyncClient[] holder = new IMqttAsyncClient[1];
-        return (topic, payload) -> {
+        return new PahoRetainedConfigPublisher(clientFactory, brokerUrl, clientId);
+    }
+
+    /**
+     * Lazily-connected retained-config publisher. Implements {@link AutoCloseable}
+     * so Spring disconnects + closes the Paho client on context shutdown - Paho's
+     * client threads are not daemon threads and {@code automaticReconnect} keeps a
+     * reconnect loop alive, so an un-closed client would linger past shutdown.
+     */
+    static final class PahoRetainedConfigPublisher
+            implements ProvisioningHandler.RetainedConfigPublisher, AutoCloseable {
+
+        private final MqttPahoClientFactory clientFactory;
+        private final String brokerUrl;
+        private final String clientId;
+        private final Object lock = new Object();
+        private IMqttAsyncClient client;
+
+        PahoRetainedConfigPublisher(MqttPahoClientFactory clientFactory, String brokerUrl,
+                String clientId) {
+            this.clientFactory = clientFactory;
+            this.brokerUrl = brokerUrl;
+            this.clientId = clientId;
+        }
+
+        @Override
+        public void publishRetained(String topic, String payload) throws Exception {
             synchronized (lock) {
-                if (holder[0] == null) {
-                    holder[0] = clientFactory.getAsyncClientInstance(brokerUrl, clientId);
+                if (client == null) {
+                    client = clientFactory.getAsyncClientInstance(brokerUrl, clientId);
                 }
-                if (!holder[0].isConnected()) {
-                    holder[0].connect(clientFactory.getConnectionOptions())
-                            .waitForCompletion(5000);
+                if (!client.isConnected()) {
+                    client.connect(clientFactory.getConnectionOptions()).waitForCompletion(5000);
                 }
                 MqttMessage message = new MqttMessage(payload.getBytes(StandardCharsets.UTF_8));
                 message.setQos(1);
                 message.setRetained(true);
-                holder[0].publish(topic, message).waitForCompletion(5000);
+                client.publish(topic, message).waitForCompletion(5000);
             }
-        };
+        }
+
+        @Override
+        public void close() {
+            synchronized (lock) {
+                if (client == null) {
+                    return;
+                }
+                try {
+                    if (client.isConnected()) {
+                        client.disconnect().waitForCompletion(5000);
+                    }
+                } catch (Exception ignored) {
+                    // shutdown must proceed
+                }
+                try {
+                    client.close();
+                } catch (Exception ignored) {
+                    // shutdown must proceed
+                }
+                client = null;
+            }
+        }
     }
 
     @Bean

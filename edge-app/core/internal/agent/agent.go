@@ -57,8 +57,9 @@ type Agent struct {
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
 
-	link   *cloud.Link
-	linkMu sync.Mutex
+	link       *cloud.Link
+	linkCancel context.CancelFunc // cancels the current link's heartbeat goroutine
+	linkMu     sync.Mutex
 
 	// wake signals the publisher that new telemetry or connectivity arrived.
 	wake chan struct{}
@@ -393,8 +394,13 @@ func (a *Agent) reconcileLoop(ctx context.Context, e *enroll.Enroller, current e
 func (a *Agent) adoptIdentity(id enroll.Identity, keyPath, certPath, caPath string) error {
 	a.linkMu.Lock()
 	old := a.link
+	oldCancel := a.linkCancel
 	a.link = nil
+	a.linkCancel = nil
 	a.linkMu.Unlock()
+	if oldCancel != nil {
+		oldCancel() // stop the old link's heartbeat goroutine
+	}
 	if old != nil {
 		old.Close()
 	}
@@ -449,8 +455,14 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 	if err != nil {
 		return err
 	}
+	// Each link gets its own context so its heartbeat goroutine exits when the
+	// link is replaced (identity adoption) or closed - not only at process
+	// shutdown. Without this, every re-claim leaked a heartbeat goroutine holding
+	// the closed old link and ticking forever.
+	linkCtx, linkCancel := context.WithCancel(a.ctx)
 	a.linkMu.Lock()
 	a.link = link
+	a.linkCancel = linkCancel
 	a.linkMu.Unlock()
 	link.Connect()
 
@@ -477,7 +489,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				if err := link.PublishStatus(src, soc); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
-			case <-a.ctx.Done():
+			case <-linkCtx.Done():
 				return
 			}
 		}

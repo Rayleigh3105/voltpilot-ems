@@ -319,9 +319,6 @@ function UnifiedPortal() {
   const [loaded, setLoaded] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
-  // Keep the module-level API header in sync BEFORE any tenant-scoped fetch.
-  setTenantOverride(isAdmin ? tenantId : null);
-
   const navigate = useCallback(
     (p: PageId) => {
       if (!isAdmin && PLATFORM_PAGES.some((d) => d.id === p)) p = 'uebersicht';
@@ -401,6 +398,16 @@ function UnifiedPortal() {
     },
     [tenantReady],
   );
+
+  // Keep the module-level API header in sync in an EFFECT (not during render):
+  // mutating shared module state in the render body is impure and, under React
+  // concurrent features, an interrupted/discarded render would still stamp the
+  // header - a cross-tenant leak hazard. Declared BEFORE the tenant-scoped fetch
+  // effect so it runs first (effects fire in declaration order), guaranteeing
+  // the header is set before any listSites/listDevices call.
+  useEffect(() => {
+    setTenantOverride(isAdmin ? tenantId : null);
+  }, [isAdmin, tenantId]);
 
   useEffect(() => {
     void reload();

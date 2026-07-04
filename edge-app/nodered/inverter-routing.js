@@ -141,6 +141,7 @@ function route(sel) {
         serial,
         mb_slave_id: num(conn.mb_slave_id, 1),
         invert_grid_sign: !!conn.invert_grid_sign,
+        invert_batt_sign: !!conn.invert_batt_sign,
         power_scale: num(conn.power_scale, 1) > 0 ? num(conn.power_scale, 1) : 1,
       },
       reads,

@@ -28,6 +28,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -629,6 +631,13 @@ func TestReconcileSwitchesIdentityWhileConnected(t *testing.T) {
 		return s.CloudConnected && s.DeviceID == newDevice
 	})
 
+	// G2 regression: adopting the new identity must stop the OLD link's heartbeat
+	// goroutine (per-link context cancel), not leak one per re-claim. Exactly one
+	// heartbeat goroutine (the current link's) should remain.
+	waitFor(t, 10*time.Second, "old heartbeat goroutine stopped after adoption", func() bool {
+		return heartbeatGoroutines() == 1
+	})
+
 	// 4) Fresh telemetry now arrives under the CURRENT device_id - which is what
 	// the portal's per-device liveness query keys on.
 	countBefore := cb.telemetryCountForDevice(newDevice)
@@ -646,4 +655,20 @@ func TestReconcileSwitchesIdentityWhileConnected(t *testing.T) {
 	if persisted.DeviceID != newDevice {
 		t.Fatalf("persisted device id = %s, want %s", persisted.DeviceID, newDevice)
 	}
+}
+
+// heartbeatGoroutines counts the live status-heartbeat goroutines spawned in
+// startCloud, by scanning the full goroutine dump for their "created by ...
+// startCloud" frame. Each cloud link has exactly one; a leak (G2) shows as >1.
+func heartbeatGoroutines() int {
+	buf := make([]byte, 1<<20)
+	n := runtime.Stack(buf, true)
+	dump := string(buf[:n])
+	count := 0
+	for _, block := range strings.Split(dump, "\n\n") {
+		if strings.Contains(block, "startCloud") {
+			count++
+		}
+	}
+	return count
 }

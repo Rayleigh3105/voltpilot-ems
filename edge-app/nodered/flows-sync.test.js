@@ -57,7 +57,7 @@ test('flow router matches inverter-routing.route() for solarman_v5', () => {
   const sel = {
     schema_version: '1.0', brand: 'deye', label: 'Deye', family: 'hybrid_3p',
     communication: 'solarman_v5',
-    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, invert_grid_sign: true, power_scale: 10 },
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, invert_grid_sign: true, invert_batt_sign: true, power_scale: 10 },
   };
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
   // output 1 carries msg.deye
@@ -67,6 +67,7 @@ test('flow router matches inverter-routing.route() for solarman_v5', () => {
   assert.strictEqual(outMsg.deye.cfg.family, expected.family);
   assert.strictEqual(outMsg.deye.cfg.serial, expected.connection.serial);
   assert.strictEqual(outMsg.deye.cfg.invert_grid_sign, expected.connection.invert_grid_sign);
+  assert.strictEqual(outMsg.deye.cfg.invert_batt_sign, expected.connection.invert_batt_sign);
   assert.strictEqual(outMsg.deye.cfg.power_scale, expected.connection.power_scale);
   assert.deepStrictEqual(outMsg.deye.reads, expected.reads);
 });

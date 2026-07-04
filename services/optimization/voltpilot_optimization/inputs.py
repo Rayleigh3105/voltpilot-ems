@@ -58,10 +58,24 @@ BASELINE_MODEL_BY_KIND = {"load": "load-persistence", "pv": "pv-physical"}
 
 
 def active_model(kind: str, env=None) -> str:
-    """The forecast model id whose rows this optimizer consumes for ``kind``."""
+    """The forecast model id whose rows this optimizer consumes for ``kind``.
+
+    Delegates to :func:`voltpilot_forecast.registry.active_model`, the sibling
+    that feeds the collector/portal, so both sides validate the configured id
+    identically: an unknown or wrong-kind id (a promotion typo like ``load_xgb``
+    or a PV id under the load env) raises ``ValueError`` here instead of being
+    silently accepted - which would find zero stored rows and quietly revert the
+    optimizer to its persistence baseline while the portal still shows the
+    challenger as "live" (a promotion that is a no-op with no error). Imported
+    lazily, mirroring :mod:`voltpilot_optimization.fallback`, so solver-only
+    installs without the forecast package are unaffected.
+    """
+    from voltpilot_forecast import registry
+    from voltpilot_forecast.domain import ForecastKind
+
     env = os.environ if env is None else env
-    var = ACTIVE_LOAD_MODEL_ENV if kind == "load" else ACTIVE_PV_MODEL_ENV
-    return env.get(var, "").strip() or BASELINE_MODEL_BY_KIND[kind]
+    fkind = ForecastKind.LOAD if kind == "load" else ForecastKind.PV
+    return registry.active_model(fkind, env)
 
 
 class SkipSite(Exception):

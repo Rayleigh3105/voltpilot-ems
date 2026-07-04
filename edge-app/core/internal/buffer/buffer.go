@@ -40,6 +40,14 @@ type Entry struct {
 
 const segmentEntries = 512 // rotate after this many entries per file
 
+// cursorSaveInterval bounds how many acks pass between cursor.json flushes.
+// Persisting the read cursor on EVERY ack turned a backlog drain into tens of
+// thousands of tmp-write+rename syscalls; because redelivery is idempotent per
+// (device, time) on the writer side, a crash mid-batch just replays the last
+// <interval> already-published entries harmlessly. Close() always flushes, so a
+// clean shutdown loses nothing.
+const cursorSaveInterval = 64
+
 // Buffer is safe for concurrent use.
 type Buffer struct {
 	mu        sync.Mutex
@@ -52,6 +60,17 @@ type Buffer struct {
 
 	readSeg int // cursor: segment number
 	readIdx int // cursor: entries already acked within readSeg
+
+	// cacheSeg/cacheEntries memoize the parsed contents of the segment the read
+	// cursor currently sits in, so Next() serves entries from memory instead of
+	// re-reading and re-parsing the whole segment file per entry (the former
+	// O(n^2) drain). The cache is invalidated when the cursor leaves the segment
+	// (cacheSeg != readSeg) and when Append writes into the cached segment.
+	cacheSeg     int // segment number cached in cacheEntries; -1 = none
+	cacheEntries []Entry
+	parseCount   int // observability/tests: segment parses performed by Next
+
+	acksSinceSave int // acks since the last cursor flush (see cursorSaveInterval)
 
 	// lostData is set when eviction discarded entries that had NOT yet been
 	// published (the read cursor was still inside the dropped segment), i.e. a
@@ -75,7 +94,7 @@ func Open(dir string, retention time.Duration) (*Buffer, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	b := &Buffer{dir: dir, retention: retention}
+	b := &Buffer{dir: dir, retention: retention, cacheSeg: -1}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -168,29 +187,48 @@ func (b *Buffer) Append(ts time.Time, measurements map[string]float64) (Entry, e
 	}
 	b.tailN++
 	b.seq++
+	// The reader may be sitting in the tail segment we just extended; drop the
+	// stale cache so Next re-reads the new entry.
+	if b.cacheSeg == tail {
+		b.cacheSeg = -1
+		b.cacheEntries = nil
+	}
 	if err := b.saveCursorLocked(); err != nil {
 		return Entry{}, err
 	}
-	b.evictLocked(ts)
+	b.evictLocked()
 	return e, nil
 }
 
 // evictLocked drops whole OLDEST segments whose newest entry is older than
-// the retention horizon. The tail segment is never dropped.
-func (b *Buffer) evictLocked(now time.Time) {
-	horizon := now.Add(-b.retention)
+// the retention horizon. The tail segment is never dropped. The horizon is
+// computed from the core's WALL CLOCK (time.Now), never from an incoming
+// sample's timestamp: a misconfigured Layer-1 clock stamping far-future
+// timestamps must not jump the horizon forward and drop still-unpublished
+// telemetry.
+func (b *Buffer) evictLocked() {
+	horizon := time.Now().UTC().Add(-b.retention)
 	for len(b.segments) > 1 {
 		oldest := b.segments[0]
 		last, ok := lastEntry(b.segPath(oldest))
-		if !ok || !last.Ts.Before(horizon) {
+		if ok && !last.Ts.Before(horizon) {
+			// Newest entry is still within the horizon; keep it and everything
+			// newer.
 			return
 		}
+		// Either the segment is over-horizon, or its last entry is unreadable
+		// (empty/corrupt): drop it either way so eviction can't stall behind a
+		// bad segment and let the buffer grow unbounded.
 		if err := os.Remove(b.segPath(oldest)); err != nil {
 			slog.Warn("buffer eviction failed", "segment", oldest, "err", err)
 			return
 		}
-		slog.Info("buffer evicted oldest segment (retention horizon passed)",
-			"segment", oldest, "newest_entry_ts", last.Ts, "retention", b.retention)
+		if ok {
+			slog.Info("buffer evicted oldest segment (retention horizon passed)",
+				"segment", oldest, "newest_entry_ts", last.Ts, "retention", b.retention)
+		} else {
+			slog.Warn("buffer dropped unreadable oldest segment", "segment", oldest)
+		}
 		b.segments = b.segments[1:]
 		if b.readSeg < b.segments[0] {
 			// The read cursor was still inside the dropped segment: these
@@ -236,12 +274,17 @@ func (b *Buffer) Next() (Entry, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for {
-		entries, err := readSegment(b.segPath(b.readSeg))
-		if err != nil {
-			return Entry{}, false
+		if b.cacheSeg != b.readSeg {
+			entries, err := readSegment(b.segPath(b.readSeg))
+			if err != nil {
+				return Entry{}, false
+			}
+			b.cacheSeg = b.readSeg
+			b.cacheEntries = entries
+			b.parseCount++
 		}
-		if b.readIdx < len(entries) {
-			return entries[b.readIdx], true
+		if b.readIdx < len(b.cacheEntries) {
+			return b.cacheEntries[b.readIdx], true
 		}
 		// Segment drained; move to the next one if it exists.
 		next := -1
@@ -256,6 +299,7 @@ func (b *Buffer) Next() (Entry, bool) {
 		}
 		b.readSeg = next
 		b.readIdx = 0
+		// cacheSeg != readSeg now, so the next loop iteration re-reads.
 	}
 }
 
@@ -267,9 +311,18 @@ func (b *Buffer) Ack() error {
 	defer b.mu.Unlock()
 	b.readIdx++
 	if b.lostData && b.pendingLocked() == 0 {
+		// State change worth persisting immediately (and rare).
 		b.lostData = false
+		return b.saveCursorLocked()
 	}
-	return b.saveCursorLocked()
+	// Persist the cursor only periodically: a redelivery of the last few acked
+	// entries is a harmless no-op on the idempotent writer, so we trade a bit of
+	// replay-on-crash for far fewer syscalls during a large backlog drain.
+	b.acksSinceSave++
+	if b.acksSinceSave >= cursorSaveInterval {
+		return b.saveCursorLocked()
+	}
+	return nil
 }
 
 // Pending returns the number of entries buffered but not yet acked.
@@ -331,6 +384,7 @@ func readSegment(path string) ([]Entry, error) {
 }
 
 func (b *Buffer) saveCursorLocked() error {
+	b.acksSinceSave = 0
 	raw, err := json.Marshal(cursor{ReadSeg: b.readSeg, ReadIdx: b.readIdx, Seq: b.seq})
 	if err != nil {
 		return err
@@ -342,14 +396,19 @@ func (b *Buffer) saveCursorLocked() error {
 	return os.Rename(tmp, filepath.Join(b.dir, "cursor.json"))
 }
 
-// Close releases the append handle.
+// Close flushes the read cursor (see cursorSaveInterval) and releases the
+// append handle.
 func (b *Buffer) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	cursorErr := b.saveCursorLocked()
+	var writerErr error
 	if b.writer != nil {
-		err := b.writer.Close()
+		writerErr = b.writer.Close()
 		b.writer = nil
-		return err
 	}
-	return nil
+	if writerErr != nil {
+		return writerErr
+	}
+	return cursorErr
 }

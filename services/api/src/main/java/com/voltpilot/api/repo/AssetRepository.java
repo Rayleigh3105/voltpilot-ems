@@ -38,48 +38,53 @@ public class AssetRepository {
                 AssetRepository::mapAsset, siteId);
     }
 
-    /** Create-or-update the site's PV asset from confirmed registry values. */
+    /**
+     * Create-or-update the site's PV asset from confirmed registry values. One
+     * atomic {@code INSERT ... ON CONFLICT (site_id, type) DO UPDATE} (backed by
+     * the {@code uq_asset_site_type} unique index, migration V20260703010000):
+     * update-in-place preserves the existing row id and its device link, and a
+     * concurrent double-submit can never create a duplicate row.
+     */
     public void applyPv(UUID tenantId, UUID siteId, MastrApplyRequest.PvApply pv,
             String registry, Instant fetchedAt) {
-        int updated = jdbc.update(
-                "UPDATE asset SET pv_capacity_kwp = ?, module_count = ?, azimuth_deg = ?, "
-                        + "tilt_deg = ?, commissioned_on = ?, registry = ?, registry_unit_id = ?, "
-                        + "registry_fetched_at = ? WHERE site_id = ? AND type = 'pv'",
-                pv.capacityKwp(), pv.moduleCount(), pv.azimuthDeg(), pv.tiltDeg(),
-                pv.commissionedOn(), registry, pv.mastrNummer(), Timestamp.from(fetchedAt), siteId);
-        if (updated == 0) {
-            jdbc.update(
-                    "INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp, module_count, "
-                            + "azimuth_deg, tilt_deg, commissioned_on, registry, registry_unit_id, "
-                            + "registry_fetched_at) VALUES (?, ?, 'pv', ?, ?, ?, ?, ?, ?, ?, ?)",
-                    tenantId, siteId, pv.capacityKwp(), pv.moduleCount(), pv.azimuthDeg(),
-                    pv.tiltDeg(), pv.commissionedOn(), registry, pv.mastrNummer(),
-                    Timestamp.from(fetchedAt));
-        }
+        jdbc.update(
+                "INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp, module_count, "
+                        + "azimuth_deg, tilt_deg, commissioned_on, registry, registry_unit_id, "
+                        + "registry_fetched_at) VALUES (?, ?, 'pv', ?, ?, ?, ?, ?, ?, ?, ?) "
+                        + "ON CONFLICT (site_id, type) DO UPDATE SET "
+                        + "pv_capacity_kwp = EXCLUDED.pv_capacity_kwp, "
+                        + "module_count = EXCLUDED.module_count, "
+                        + "azimuth_deg = EXCLUDED.azimuth_deg, tilt_deg = EXCLUDED.tilt_deg, "
+                        + "commissioned_on = EXCLUDED.commissioned_on, registry = EXCLUDED.registry, "
+                        + "registry_unit_id = EXCLUDED.registry_unit_id, "
+                        + "registry_fetched_at = EXCLUDED.registry_fetched_at",
+                tenantId, siteId, pv.capacityKwp(), pv.moduleCount(), pv.azimuthDeg(),
+                pv.tiltDeg(), pv.commissionedOn(), registry, pv.mastrNummer(),
+                Timestamp.from(fetchedAt));
     }
 
     /**
      * Create-or-update the site's battery asset. Lands in the SAME columns the
      * optimizer reads ({@code capacity_kwh}/{@code max_charge_kw}/{@code
      * max_discharge_kw}); {@code roundtrip_efficiency_pct} is untouched - the
-     * registry has no efficiency, the platform default applies.
+     * registry has no efficiency, the platform default applies. Atomic upsert on
+     * {@code (site_id, type)} like {@link #applyPv}.
      */
     public void applyBattery(UUID tenantId, UUID siteId, MastrApplyRequest.StorageApply st,
             String registry, Instant fetchedAt) {
-        int updated = jdbc.update(
-                "UPDATE asset SET capacity_kwh = ?, max_charge_kw = ?, max_discharge_kw = ?, "
-                        + "commissioned_on = ?, registry = ?, registry_unit_id = ?, "
-                        + "registry_fetched_at = ? WHERE site_id = ? AND type = 'battery'",
-                st.capacityKwh(), st.maxChargeKw(), st.maxDischargeKw(), st.commissionedOn(),
-                registry, st.mastrNummer(), Timestamp.from(fetchedAt), siteId);
-        if (updated == 0) {
-            jdbc.update(
-                    "INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
-                            + "max_discharge_kw, commissioned_on, registry, registry_unit_id, "
-                            + "registry_fetched_at) VALUES (?, ?, 'battery', ?, ?, ?, ?, ?, ?, ?)",
-                    tenantId, siteId, st.capacityKwh(), st.maxChargeKw(), st.maxDischargeKw(),
-                    st.commissionedOn(), registry, st.mastrNummer(), Timestamp.from(fetchedAt));
-        }
+        jdbc.update(
+                "INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                        + "max_discharge_kw, commissioned_on, registry, registry_unit_id, "
+                        + "registry_fetched_at) VALUES (?, ?, 'battery', ?, ?, ?, ?, ?, ?, ?) "
+                        + "ON CONFLICT (site_id, type) DO UPDATE SET "
+                        + "capacity_kwh = EXCLUDED.capacity_kwh, "
+                        + "max_charge_kw = EXCLUDED.max_charge_kw, "
+                        + "max_discharge_kw = EXCLUDED.max_discharge_kw, "
+                        + "commissioned_on = EXCLUDED.commissioned_on, registry = EXCLUDED.registry, "
+                        + "registry_unit_id = EXCLUDED.registry_unit_id, "
+                        + "registry_fetched_at = EXCLUDED.registry_fetched_at",
+                tenantId, siteId, st.capacityKwh(), st.maxChargeKw(), st.maxDischargeKw(),
+                st.commissionedOn(), registry, st.mastrNummer(), Timestamp.from(fetchedAt));
     }
 
     private static SiteAssetDto mapAsset(ResultSet rs, int rowNum) throws SQLException {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -34,11 +34,15 @@ export function GeraetePage({
   const [addOpen, setAddOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
 
+  // Keep the poll firing the LATEST callback without tearing down/recreating the
+  // 30 s interval on every render: stash it in a ref updated each render and
+  // read it from a stable interval. (Before, `[]` deps captured the first
+  // render's callbacks - benign only as long as they kept reading live globals.)
+  const tickRef = useRef<() => void>(() => {});
+  tickRef.current = onPoll ?? onReload;
   useEffect(() => {
-    const tick = onPoll ?? onReload;
-    const timer = setInterval(tick, POLL_MS);
+    const timer = setInterval(() => tickRef.current(), POLL_MS);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const siteName = (id: string) => sites.find((s) => s.id === id)?.name ?? id.slice(0, 8);

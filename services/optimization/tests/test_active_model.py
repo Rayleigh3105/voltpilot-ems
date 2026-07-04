@@ -129,3 +129,26 @@ def test_promotion_flip_switches_the_consumed_model(fake_psycopg, monkeypatch):
 
     assert inp.load_kw == [999.0] * SLOTS  # the promoted challenger
     assert inp.pv_kw == [0.5] * SLOTS      # PV stays on its baseline
+
+
+def test_typoed_active_model_fails_loudly_instead_of_reverting_to_baseline(
+    fake_psycopg, monkeypatch
+):
+    # A promotion typo (wrong hyphen/underscore) must NOT silently find zero rows
+    # and drop back to the persistence baseline while the portal shows the
+    # challenger as live - it must raise, exactly like the forecast-side sibling.
+    monkeypatch.setenv("VOLTPILOT_ACTIVE_LOAD_MODEL", "load_xgb")
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+
+    with pytest.raises(ValueError, match="load_xgb"):
+        gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+
+def test_wrong_kind_active_model_is_rejected(fake_psycopg, monkeypatch):
+    # A PV model id configured under the LOAD env is a misconfiguration, not a
+    # silent baseline fallback.
+    monkeypatch.setenv("VOLTPILOT_ACTIVE_LOAD_MODEL", "pv-physical")
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+
+    with pytest.raises(ValueError):
+        gather_inputs("postgresql://fake", _site(), NOW, SLOTS)

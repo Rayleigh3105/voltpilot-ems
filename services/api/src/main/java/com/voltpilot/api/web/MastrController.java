@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -66,7 +67,12 @@ public class MastrController {
         return mastr.lookup(request.einheitNummer());
     }
 
-    /** Persist the confirmed values onto the site's PV/battery assets. */
+    /**
+     * Persist the confirmed values onto the site's PV/battery assets. Runs in
+     * ONE transaction so pv+battery apply atomically - a failure on the second
+     * rolls the first back instead of leaving a half-applied state.
+     */
+    @Transactional
     @PostMapping("/mastr-apply")
     public List<SiteAssetDto> apply(@PathVariable UUID siteId,
             @Valid @RequestBody MastrApplyRequest request) {

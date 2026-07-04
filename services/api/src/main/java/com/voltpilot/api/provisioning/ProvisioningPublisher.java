@@ -1,5 +1,6 @@
 package com.voltpilot.api.provisioning;
 
+import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttClient;
@@ -110,6 +111,34 @@ public class ProvisioningPublisher {
         // Shape per docs/contracts/mqtt-provisioning.schema.json ($defs/config).
         return "{\"schema_version\":\"1.0\",\"ref\":\"" + ref + "\",\"tenant_id\":\"" + tenantId
                 + "\",\"site_id\":\"" + siteId + "\",\"device_id\":\"" + deviceId + "\"}";
+    }
+
+    /**
+     * Disconnect + close the lazily-created client on context shutdown. Paho's
+     * client threads are not daemon threads, and {@code automaticReconnect(true)}
+     * keeps a reconnect loop alive, so without this the JVM lingers after a
+     * shutdown. Best-effort: swallow failures so shutdown always proceeds.
+     */
+    @PreDestroy
+    public void close() {
+        synchronized (lock) {
+            if (client == null) {
+                return;
+            }
+            try {
+                if (client.isConnected()) {
+                    client.disconnect();
+                }
+            } catch (Exception e) {
+                log.debug("Provisioning MQTT disconnect failed on shutdown: {}", e.getMessage());
+            }
+            try {
+                client.close(true);
+            } catch (Exception e) {
+                log.debug("Provisioning MQTT close failed on shutdown: {}", e.getMessage());
+            }
+            client = null;
+        }
     }
 
     private MqttClient connected() throws Exception {

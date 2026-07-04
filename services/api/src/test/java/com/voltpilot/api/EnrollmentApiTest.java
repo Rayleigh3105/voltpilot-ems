@@ -233,6 +233,54 @@ class EnrollmentApiTest {
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    @Test
+    void concurrentPollsIssueExactlyOneCertificateWithoutBurningSerials() throws Exception {
+        provisionSticker("VP-ENROLL-RACE");
+        KeyPair deviceKey = TestPki.rsaKeyPair(2048);
+        String csr = TestPki.csrPem(deviceKey, "CN=dev");
+        assertThat(postCsr("VP-ENROLL-RACE", csr, null).getStatusCode())
+                .isEqualTo(HttpStatus.ACCEPTED);
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-ENROLL-RACE"),
+                        bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String deviceId = (String) claimed.getBody().get("id");
+
+        // Fire many parallel first-polls at the just-claimed ref. Without a
+        // per-ref guard each would call ca.issue(), burning a serial and leaving
+        // an orphaned cert line in index.txt; with the guard exactly one signs.
+        int n = 8;
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(n);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.List<java.util.concurrent.Future<ResponseEntity<Map<String, Object>>>> futures =
+                new java.util.ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            futures.add(pool.submit(() -> {
+                start.await();
+                return getCertificate("VP-ENROLL-RACE");
+            }));
+        }
+        start.countDown();
+        java.util.Set<Object> certs = new java.util.HashSet<>();
+        for (var f : futures) {
+            ResponseEntity<Map<String, Object>> resp = f.get();
+            assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+            certs.add(resp.getBody().get("deviceCertPem"));
+        }
+        pool.shutdown();
+
+        // Every poll got the SAME certificate...
+        assertThat(certs).hasSize(1);
+        // ...and the CA database recorded exactly ONE issuance for this device
+        // (no serial burned on a discarded concurrent sign).
+        long linesForDevice = Files.readAllLines(PKI_DIR.resolve("ca/index.txt")).stream()
+                .filter(line -> line.contains("/CN=" + deviceId)).count();
+        assertThat(linesForDevice).isEqualTo(1);
+    }
+
     // ---- (2) registry gate, no enumeration, CSR policy, replace, rate limit ---
 
     @Test

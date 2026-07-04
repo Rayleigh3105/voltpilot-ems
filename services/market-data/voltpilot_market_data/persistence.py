@@ -138,7 +138,14 @@ class TimescaleDayAheadPriceRepository:
         if not rows:
             return None
 
-        resolution = rows[0][1]
+        # A window may (rarely) hold rows at MORE THAN ONE resolution: the PK
+        # (bidding_zone, resolution, ts) lets a PT15M and a PT60M row for the same
+        # slot coexist, e.g. straddling the Oct-2025 EPEX 60->15 min MTU switch. A
+        # PriceSeries is single-resolution by contract, and stamping one width on
+        # rows of another makes the reconstructed slots overlap/duplicate. So
+        # segment to ONE resolution - the newest row's, i.e. the current market
+        # MTU (rows are ORDER BY ts) - and drop the rest.
+        resolution = rows[-1][1]
         slot = timedelta(minutes=resolution_minutes(resolution))
         points = tuple(
             PricePoint(
@@ -146,12 +153,15 @@ class TimescaleDayAheadPriceRepository:
                 end=ts + slot,
                 price_eur_mwh=float(price),
             )
-            for ts, _res, price, _currency, _source in rows
+            for ts, res, price, _currency, _source in rows
+            if res == resolution
         )
+        if not points:
+            return None
         return PriceSeries(
             zone=zone,
             resolution=resolution,
-            currency=rows[0][3],
+            currency=rows[-1][3],
             points=points,
-            source=rows[0][4],
+            source=rows[-1][4],
         )

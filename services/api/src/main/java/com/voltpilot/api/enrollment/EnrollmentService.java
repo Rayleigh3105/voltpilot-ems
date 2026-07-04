@@ -47,6 +47,14 @@ public class EnrollmentService {
     // pushes the freshly written ACL to EMQX so grants apply within seconds.
     private final ObjectProvider<BrokerAuthzReloader> authzReloader;
 
+    // Per-ref lock stripes serialize the claim->sign->store sequence: without
+    // this, two concurrent certificate polls for a just-claimed ref both see
+    // issued==false and both call ca.issue(), burning a serial and orphaning a
+    // cert in the CA database (the DB store-guard lets only one win). Striped so
+    // the map can't grow unboundedly; false-sharing across refs is harmless.
+    private static final int LOCK_STRIPES = 64;
+    private final Object[] refLocks = new Object[LOCK_STRIPES];
+
     public EnrollmentService(EnrollmentProperties properties, EnrollmentRepository enrollments,
             EnrollmentDeviceLookup devices, ObjectProvider<BrokerAuthzReloader> authzReloader) {
         if (properties.caDir() == null || properties.caDir().isBlank()) {
@@ -57,6 +65,9 @@ public class EnrollmentService {
         this.enrollments = enrollments;
         this.devices = devices;
         this.authzReloader = authzReloader;
+        for (int i = 0; i < LOCK_STRIPES; i++) {
+            refLocks[i] = new Object();
+        }
         this.ca = new DeviceCertificateAuthority(Path.of(properties.caDir()),
                 properties.certDays(), Clock.systemUTC());
         this.aclWriter = properties.aclFile() == null || properties.aclFile().isBlank()
@@ -103,7 +114,23 @@ public class EnrollmentService {
         if (enrollment.issued() && device.deviceId().equals(enrollment.deviceId())) {
             return Optional.of(response(enrollment.certPem(), device));
         }
-        return Optional.of(issue(enrollment, device));
+        return Optional.of(issueGuarded(externalRef, device));
+    }
+
+    /**
+     * Serialize signing per ref so concurrent polls cannot double-sign. Inside
+     * the lock the enrollment is re-loaded and the issued-state re-checked: a
+     * poll that lost the race sees the cert already issued and serves it without
+     * signing again (no burned serial, no orphaned cert).
+     */
+    private IssuedEnrollment issueGuarded(String externalRef, DeviceIdentity device) {
+        synchronized (refLocks[Math.floorMod(externalRef.hashCode(), LOCK_STRIPES)]) {
+            Enrollment enrollment = enrollments.find(externalRef).orElseThrow();
+            if (enrollment.issued() && device.deviceId().equals(enrollment.deviceId())) {
+                return response(enrollment.certPem(), device);
+            }
+            return issue(enrollment, device);
+        }
     }
 
     /**

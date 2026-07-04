@@ -1,0 +1,22 @@
+-- =============================================================================
+-- V20260703010000 - one asset row per (site, type), enforced in the DB.
+-- -----------------------------------------------------------------------------
+-- The MaStR "Anlage verknüpfen" apply upserts a site's pv/battery asset with an
+-- update-in-place-else-insert. With no unique constraint, two concurrent applies
+-- (a double-submit, or two tabs) both see 0 rows updated and both INSERT, so the
+-- site ends up with duplicate asset rows that the optimizer/forecast then read
+-- ambiguously. This unique index turns that upsert into an atomic
+-- INSERT ... ON CONFLICT (site_id, type) DO UPDATE (see AssetRepository), which
+-- can never double-insert.
+--
+-- Matches the invariant the apply code has always intended ("one asset row per
+-- (site, type)"); the current asset-creation paths (dev seed + MaStR apply) both
+-- honour it, so no de-duplication is needed on existing data.
+--
+-- RLS: `asset` is already policy-scoped + granted to the app role (V2); an index
+-- carries no privileges, so nothing security-related is needed here.
+-- Version: date-based per the AGENTS.md migration-version coordination, after
+-- the latest api migration (V20260703000000).
+-- =============================================================================
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_asset_site_type ON asset (site_id, type);
