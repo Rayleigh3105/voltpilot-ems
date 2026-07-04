@@ -17,7 +17,7 @@
      data-stat numbers. The pale cornflower above stays for DECORATIVE fills
      (gradients, IconTiles, accent bars, tints) where contrast doesn't bind.
      Retuning the brand action shade = change this one value. */
-  --vp-action:         #2F6BD6;  /* white-on-fill 4.68:1, on #F8F9FA 4.53:1 */
+  --vp-action:         #2C5282;  /* brand navy (= --vp-navy-2); white-on-fill ~8:1, on #F8F9FA passes AA for normal text */
 
   /* --- Neutrals --- */
   --vp-text-dark:      #1A1A1A;  /* headings & body */
