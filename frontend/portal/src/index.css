@@ -574,6 +574,146 @@ a:focus-visible,
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Self-explaining chart chrome (ChartExplain.tsx): one-line subtitle, an HTML
+   legend with colour swatches + units, and a plain-language insight callout.
+   These sit around every Fahrplan/Historie chart so the diagram is obvious at
+   a glance (captain: "it takes me a while to understand the diagrams").
+   --------------------------------------------------------------------------- */
+
+/* "Was zeigt das?" caption under a chart title. */
+.vp-chart-sub {
+  margin: calc(-1 * var(--vp-space-2)) 0 var(--vp-space-4);
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-sm);
+  line-height: 1.5;
+  max-width: 74ch;
+}
+
+/* HTML legend: swatch + plain-German label + unit, wraps to any width. */
+.vp-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2) var(--vp-space-4);
+  margin-bottom: var(--vp-space-4);
+}
+.vp-cl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+  line-height: 1.3;
+}
+button.vp-cl-item.is-toggle {
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-full);
+  padding: 4px var(--vp-space-3) 4px 6px;
+  background: var(--vp-surface);
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+  min-height: 32px;
+}
+button.vp-cl-item.is-toggle:hover {
+  border-color: var(--vp-primary-deep);
+}
+button.vp-cl-item.is-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+button.vp-cl-item.is-off {
+  opacity: 0.45;
+}
+button.vp-cl-item.is-off .vp-cl-label {
+  text-decoration: line-through;
+}
+.vp-cl-unit {
+  color: var(--vp-text-muted);
+  font-size: var(--vp-text-meta);
+}
+
+/* Series swatch - shape mirrors how the series is drawn on the canvas. */
+.vp-swatch {
+  flex: 0 0 auto;
+  display: inline-block;
+  --sw: currentColor;
+}
+.vp-swatch-bar {
+  width: 15px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--sw);
+}
+.vp-swatch-area {
+  width: 15px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--sw);
+  opacity: 0.9;
+  border-top: 2.5px solid var(--sw);
+  position: relative;
+}
+.vp-swatch-area::after {
+  /* lighten the fill so the top line reads as the series colour over a tint */
+  content: '';
+  position: absolute;
+  inset: 2.5px 0 0;
+  background: var(--vp-surface);
+  opacity: 0.78;
+}
+.vp-swatch-line,
+.vp-swatch-dashed,
+.vp-swatch-dotted {
+  width: 18px;
+  height: 0;
+  border-top-width: 2.5px;
+  border-top-color: var(--sw);
+}
+.vp-swatch-line {
+  border-top-style: solid;
+}
+.vp-swatch-dashed {
+  border-top-style: dashed;
+}
+.vp-swatch-dotted {
+  border-top-style: dotted;
+  border-top-width: 3px;
+}
+
+/* Insight callout - the chart's takeaway in one sentence. */
+.vp-insight {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-4);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  background: var(--vp-tint);
+  border: 1px solid var(--vp-primary-light);
+  border-radius: var(--vp-radius-md);
+  color: var(--vp-text-dark);
+  font-size: var(--vp-text-sm);
+  line-height: 1.55;
+}
+.vp-insight-ico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--vp-radius-full);
+  background: var(--vp-action);
+  color: #fff;
+  margin-top: 1px;
+}
+.vp-insight-txt {
+  min-width: 0;
+}
+.vp-insight-txt strong {
+  color: var(--vp-action);
+}
+
 /* Two side-by-side kind cards (Verbrauchs- vs PV-Prognose) */
 .vp-grid-two {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));

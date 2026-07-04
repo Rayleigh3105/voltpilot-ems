@@ -16,7 +16,9 @@ import {
 import { eurAmount, NBSP } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
-import { ChartCardSkeleton, ErrorState } from '../components/States';
+import { InfoTip } from '../components/InfoTip';
+import { ChartSubtitle } from '../components/ChartExplain';
+import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { HistoryDayChart, HistoryEnergyChart } from '../HistoryChart';
 
 /**
@@ -160,18 +162,12 @@ export function HistoriePage(props: {
 
           {!loading && !err && history && buckets.length === 0 && (
             <Card padding="lg" radius="lg">
-              <div className="vp-empty">
-                <IconTile category="dynamic" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
-                  <Icon name="history" size={24} />
-                </IconTile>
-                <h3>Keine Daten in diesem Zeitraum</h3>
-                <p>
-                  Sobald Ihr Gerät Messwerte liefert, entsteht hier die Historie:
-                  Kosten, Ersparnis und das Verhalten Ihrer Anlage - Tag für Tag
-                  nachvollziehbar. Wählen Sie einen anderen Zeitraum oder schauen
-                  Sie später wieder vorbei.
-                </p>
-              </div>
+              <EmptyState
+                icon="history"
+                category="dynamic"
+                title="Keine Daten in diesem Zeitraum"
+                description="Sobald Ihr Gerät Messwerte liefert, entsteht hier die Historie: Kosten, Ersparnis und das Verhalten Ihrer Anlage - Tag für Tag nachvollziehbar. Wählen Sie einen anderen Zeitraum oder schauen Sie später wieder vorbei."
+              />
             </Card>
           )}
 
@@ -207,18 +203,43 @@ export function HistoriePage(props: {
               {/* Energy KPIs below the money. */}
               <section className="vp-section">
                 <Card padding="lg" radius="lg">
+                  <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
+                    <IconTile category="dynamic" size={40}>
+                      <Icon name="zap" size={20} />
+                    </IconTile>
+                    <h2>Energie-Bilanz im Zeitraum</h2>
+                  </div>
                   <div className="vp-grid vp-grid-stats">
-                    <Stat value={pct(totals?.autarkiePct)} label="Autarkiegrad" />
-                    <Stat value={pct(totals?.eigenverbrauchPct)} label="Eigenverbrauchsquote" />
+                    <Stat
+                      value={pct(totals?.autarkiePct)}
+                      label={
+                        <>
+                          Autarkiegrad
+                          <InfoTip title="Autarkiegrad">
+                            Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben (aus PV und
+                            Speicher) - der Rest kam aus dem Netz. Formel: 1 −
+                            Netzbezug/Verbrauch.
+                          </InfoTip>
+                        </>
+                      }
+                    />
+                    <Stat
+                      value={pct(totals?.eigenverbrauchPct)}
+                      label={
+                        <>
+                          Eigenverbrauchsquote
+                          <InfoTip title="Eigenverbrauchsquote">
+                            Anteil Ihrer PV-Erzeugung, den Sie selbst genutzt statt eingespeist
+                            haben. Formel: selbst genutzte PV / PV-Erzeugung.
+                          </InfoTip>
+                        </>
+                      }
+                    />
                     <Stat value={kwh(totals?.consumptionKwh)} label="Verbrauch" />
                     <Stat value={kwh(totals?.pvGenerationKwh)} label="PV-Erzeugung" />
                     <Stat value={kwh(totals?.gridImportKwh)} label="Netzbezug" />
                     <Stat value={kwh(totals?.gridExportKwh)} label="Einspeisung" />
                   </div>
-                  <p className="vp-note" style={{ marginTop: 12 }}>
-                    Autarkiegrad = 1 − Netzbezug/Verbrauch · Eigenverbrauchsquote =
-                    selbst genutzte PV/PV-Erzeugung.
-                  </p>
                 </Card>
               </section>
 
@@ -232,19 +253,17 @@ export function HistoriePage(props: {
                       </IconTile>
                       <h2>Speicher &amp; Preis</h2>
                       {history.plan.length > 0 ? (
-                        <Badge variant="tint">Plan-Overlay</Badge>
+                        <Badge variant="tint">Plan &amp; Ist</Badge>
                       ) : (
                         <Badge variant="off">kein Plan</Badge>
                       )}
                     </div>
+                    <ChartSubtitle>
+                      Was Ihr Speicher an diesem Tag wirklich getan hat - direkt über dem
+                      Börsen-Strompreis, damit Sie sehen, dass er günstig lädt und teuer
+                      entlädt.
+                    </ChartSubtitle>
                     <HistoryDayChart history={history} />
-                    <p className="vp-note" style={{ marginTop: 12 }}>
-                      Tatsächliches Batterieverhalten (grün = laden, rot = entladen) über dem
-                      Börsenpreis - Laden in günstigen Viertelstunden ist direkt
-                      sichtbar{history.plan.length > 0
-                        ? '; gestrichelt zum Vergleich: der geplante Fahrplan'
-                        : ''}.
-                    </p>
                   </Card>
                 </section>
               )}
@@ -256,11 +275,16 @@ export function HistoriePage(props: {
                     <IconTile category="dynamic" size={40}>
                       <Icon name="activity" size={20} />
                     </IconTile>
-                    <h2>Energie</h2>
+                    <h2>Energie: Erzeugung &amp; Verbrauch</h2>
                     <Badge variant="tint">
                       {isDay ? '15-Minuten-Mittel' : range === 'week' ? 'stündlich' : 'täglich'}
                     </Badge>
                   </div>
+                  <ChartSubtitle>
+                    {isDay
+                      ? 'Der Tagesverlauf Ihrer Anlage: wie viel Strom die PV erzeugt, wie viel das Haus verbraucht und wie viel aus dem Netz kommt oder eingespeist wird.'
+                      : 'Erzeugung und Verbrauch je Abschnitt im gewählten Zeitraum - als Energiemengen in Kilowattstunden.'}
+                  </ChartSubtitle>
                   <HistoryEnergyChart history={history} />
                 </Card>
               </section>

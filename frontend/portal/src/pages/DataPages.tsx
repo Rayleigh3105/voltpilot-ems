@@ -18,7 +18,8 @@ import { eurAmount, fmtNum } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
 import { InfoTip } from '../components/InfoTip';
-import { ChartCardSkeleton, ErrorState } from '../components/States';
+import { ChartSubtitle } from '../components/ChartExplain';
+import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
 import { ScheduleChart } from '../ScheduleChart';
@@ -424,7 +425,6 @@ export function FahrplanPage(props: {
   const savingsToday = slots
     .filter((s) => new Date(s.start).toDateString() === today)
     .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
-  const savingsTotal = plan?.savingsEur ?? 0;
   // Energy = mean power over each slot × slot length in hours. Derive slots-per-
   // hour from the plan's authoritative slotMinutes instead of hardcoding /4, so
   // a non-15-min slot length stays correct.
@@ -447,12 +447,39 @@ export function FahrplanPage(props: {
       subtitle={`Kostenoptimaler Batterie-Fahrplan${site ? ` für ${site.name}` : ''} aus Börsenpreisen und Prognosen.`}
       {...props}
     >
+      {/* Money-first headline: today's planned saving leads (captain: Geld führt). */}
+      {!loading && !err && slots.length > 0 && (
+        <section className="vp-kpis" aria-label="Fahrplan-Kennzahlen" style={{ marginBottom: 'var(--vp-space-5)' }}>
+          <KpiCard
+            icon={<Icon name="euro" size={20} />}
+            category="dynamic"
+            value={eurAmount(savingsToday)}
+            label="Heute geplant gespart"
+            title="Gegenüber einem Betrieb ganz ohne Batteriespeicher"
+          />
+          <KpiCard
+            icon={<Icon name="arrow-down" size={20} />}
+            category="battery"
+            value={fmtNum(chargeKwh, 'kWh')}
+            label="Geplant zu laden"
+            title="Summe der geplanten Ladeenergie über den Planungszeitraum"
+          />
+          <KpiCard
+            icon={<Icon name="arrow-up" size={20} />}
+            category="industry"
+            value={fmtNum(dischargeKwh, 'kWh')}
+            label="Geplant zu entladen"
+            title="Summe der geplanten Entladeenergie über den Planungszeitraum"
+          />
+        </section>
+      )}
+
       <Card padding="lg" radius="lg">
-        <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
+        <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-2)' }}>
           <IconTile category="battery" size={40}>
             <Icon name="battery-charging" size={20} />
           </IconTile>
-          <h2>Fahrplan {site?.name ?? ''}</h2>
+          <h2>Batterie-Fahrplan {site?.name ?? ''}</h2>
           <InfoTip title="Wie der Fahrplan berechnet wird">
             Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet -
             für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell
@@ -464,7 +491,14 @@ export function FahrplanPage(props: {
             Fahrplan.
           </InfoTip>
         </div>
-        {loading && <ChartCardSkeleton />}
+        {!loading && !err && slots.length > 0 && (
+          <ChartSubtitle>
+            So plant Ihr Speicher den Tag: die Balken zeigen, wann er lädt (grün) oder
+            entlädt (rot), die blaue Linie den Börsen-Strompreis dahinter. Kein Balken heißt:
+            der Speicher hält. Alles links vom „Jetzt“ ist bereits vergangen.
+          </ChartSubtitle>
+        )}
+        {loading && <ChartCardSkeleton stats={0} />}
         {err && (
           <ErrorState
             message={`Der Fahrplan konnte nicht geladen werden (${err}).`}
@@ -472,24 +506,17 @@ export function FahrplanPage(props: {
           />
         )}
         {!loading && !err && slots.length === 0 && (
-          <p className="vp-muted">
-            Noch kein Fahrplan. Der Optimierer plant Standorte mit Batteriespeicher
-            alle 15 Minuten neu, sobald Day-Ahead-Preise vorliegen.
-          </p>
+          <EmptyState
+            icon="battery-charging"
+            category="battery"
+            title="Noch kein Fahrplan"
+            description="Sobald Ihre Anlage einen Batteriespeicher meldet und Börsenpreise vorliegen, plant der Optimierer alle 15 Minuten einen kostenoptimalen Tagesfahrplan - er erscheint dann automatisch hier."
+          />
         )}
         {!loading && !err && slots.length > 0 && (
           <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
-              <Stat
-                value={eurAmount(savingsToday)}
-                label="Heute geplant gespart (ggü. ohne Speicher)"
-              />
-              <Stat value={eurAmount(savingsTotal)} label="Ersparnis im Planungszeitraum" />
-              <Stat value={fmtNum(chargeKwh, 'kWh')} label="Geplant laden" />
-              <Stat value={fmtNum(dischargeKwh, 'kWh')} label="Geplant entladen" />
-            </div>
             <ScheduleChart plan={plan!} />
-            <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+            <p className="vp-note" style={{ marginTop: 'var(--vp-space-4)' }}>
               Kostenoptimaler Batterie-Fahrplan in 15-Minuten-Schritten aus Börsenpreisen
               und Last-/PV-Prognose{generatedAt ? `, erstellt am ${generatedAt} Uhr` : ''}.
               Ihr Gerät begrenzt jeden Sollwert zusätzlich lokal (u. a. §14a EnWG).

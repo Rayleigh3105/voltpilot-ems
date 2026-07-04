@@ -2,26 +2,58 @@ import { useEffect, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import type { SchedulePlan } from './api';
 import { chartTheme } from './chartTheme';
+import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
 
 /**
- * The optimizer plan over the day-ahead price curve, on one shared time axis:
- * planned battery power as signed bars (green = charge, red = discharge; left
- * axis, kW), the price as a stepped line (right axis, EUR/MWh) so WHY the plan
- * charges/discharges is visible at a glance, and the planned SoC trajectory as
- * a subtle dashed line (hidden 0-100% axis, shown in the tooltip). A dashed
- * marker separates today from tomorrow at the local-midnight slot.
+ * The optimizer plan for the day, made obvious at a glance: planned battery
+ * power as signed bars (grün = laden, rot = entladen; left axis, kW) directly
+ * over the day-ahead price (stepped line, right axis, ct/kWh) so WHY the plan
+ * charges/discharges is visible, plus the planned Ladestand (SoC) as a dashed
+ * line. A "Jetzt"-marker and a shaded past region separate what already
+ * happened from what is still planned; a dashed line splits today from morgen.
+ * The colour swatches + one-line takeaway below the canvas explain the diagram
+ * in plain German (captain: the diagrams should be understandable instantly).
  */
+
+/** Weighted-average ct/kWh over the slots where `weight(slot)` is positive. */
+function weightedCt(
+  slots: SchedulePlan['slots'],
+  weight: (batteryKw: number) => number,
+): number | null {
+  let num = 0;
+  let den = 0;
+  for (const s of slots) {
+    if (s.batteryKw == null || s.priceEurMwh == null) continue;
+    const w = weight(Number(s.batteryKw));
+    if (w <= 0) continue;
+    num += w * (Number(s.priceEurMwh) / 10);
+    den += w;
+  }
+  return den > 0 ? num / den : null;
+}
+
+function ct(v: number | null): string {
+  return v == null
+    ? '-'
+    : `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh`;
+}
+
+function eur(v: number): string {
+  return `${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+}
+
 export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
   const ref = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
   const [rev, setRev] = useState(0);
+  const t = chartTheme();
 
   useEffect(() => {
     if (!ref.current) return;
     chart.current = echarts.init(ref.current);
     const onResize = () => {
       chart.current?.resize();
-      setRev((r) => r + 1); // re-render: legend rows depend on width
+      setRev((r) => r + 1);
     };
     window.addEventListener('resize', onResize);
     return () => {
@@ -33,33 +65,49 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
 
   useEffect(() => {
     if (!chart.current) return;
-    const t = chartTheme();
     const slots = plan.slots;
     const times = slots.map((s) => s.start);
     const battery = slots.map((s) => (s.batteryKw == null ? null : Number(s.batteryKw)));
-    const prices = slots.map((s) => (s.priceEurMwh == null ? null : Number(s.priceEurMwh)));
+    // Price shown in ct/kWh (the unit on the customer's bill), not EUR/MWh.
+    const pricesCt = slots.map((s) => (s.priceEurMwh == null ? null : Number(s.priceEurMwh) / 10));
     const soc = slots.map((s) => (s.socPct == null ? null : Number(s.socPct)));
 
-    // Index of the first slot on the actual local "tomorrow": the
-    // today/tomorrow divider (same approach as the price chart).
+    // today/tomorrow divider: first slot on the local "tomorrow".
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const boundaryIdx = slots.findIndex(
       (s) => new Date(s.start).toDateString() === tomorrow.toDateString(),
     );
 
+    // "Jetzt": the last slot whose start is at/before now (past is shaded).
+    const nowMs = Date.now();
+    let nowIdx = -1;
+    for (let i = 0; i < slots.length; i++) {
+      if (new Date(slots[i].start).getTime() <= nowMs) nowIdx = i;
+      else break;
+    }
+
     const kwAbs = battery.filter((v): v is number => v != null).map((v) => Math.abs(v));
     const kwMax = kwAbs.length ? Math.max(...kwAbs, 1) : 1;
+
+    const markLineData: any[] = [];
+    if (boundaryIdx > 0)
+      markLineData.push({
+        xAxis: boundaryIdx,
+        lineStyle: { color: t.axis, type: 'dashed', width: 1.5 },
+        label: { formatter: 'Morgen', color: t.axis, position: 'insideEndTop' },
+      });
+    if (nowIdx >= 0 && nowIdx < slots.length - 1)
+      markLineData.push({
+        xAxis: nowIdx,
+        lineStyle: { color: t.price, type: 'solid', width: 2 },
+        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop' },
+      });
 
     chart.current.setOption(
       {
         textStyle: { fontFamily: t.font, color: t.axis },
-        grid: { top: chart.current.getWidth() < 520 ? 72 : 44, right: 48, bottom: 28, left: 8, containLabel: true },
-        legend: {
-          top: 0,
-          data: ['Laden/Entladen', 'Börsenpreis', 'Geplanter SoC'],
-          textStyle: { color: t.axis },
-        },
+        grid: { top: 30, right: 52, bottom: 26, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
           formatter: (params: any[]) => {
@@ -68,18 +116,29 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
               hour: '2-digit',
               minute: '2-digit',
             });
-            const lines = [`<b>${time}</b>`];
+            const lines = [`<b>${time} Uhr</b>`];
+            let batV: number | null = null;
             for (const p of params) {
               if (p.value == null) continue;
               const v = Number(p.value);
-              if (p.seriesName === 'Laden/Entladen') {
-                const label = v >= 0 ? 'Laden' : 'Entladen';
-                lines.push(`${p.marker} ${label}: ${Math.abs(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kW`);
+              if (p.seriesName === 'Batterie') {
+                batV = v;
+                const label = v > 0.05 ? 'lädt' : v < -0.05 ? 'entlädt' : 'hält';
+                const amt =
+                  Math.abs(v) < 0.05
+                    ? ''
+                    : ` ${Math.abs(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })} kW`;
+                lines.push(`${p.marker} Batterie ${label}${amt}`);
               } else if (p.seriesName === 'Börsenpreis') {
-                lines.push(`${p.marker} Preis: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} EUR/MWh (${(v / 10).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh)`);
-              } else if (p.seriesName === 'Geplanter SoC') {
-                lines.push(`${p.marker} SoC: ${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`);
+                lines.push(`${p.marker} Strompreis: ${ct(v)}`);
+              } else if (p.seriesName === 'Ladestand') {
+                lines.push(`${p.marker} Ladestand: ${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`);
               }
+            }
+            if (batV != null && Math.abs(batV) > 0.05) {
+              lines.push(
+                `<span style="color:${t.axis}">${batV > 0 ? 'Speichert günstigen Strom' : 'Deckt den Verbrauch aus dem Speicher'}</span>`,
+              );
             }
             return lines.join('<br/>');
           },
@@ -91,13 +150,16 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
             formatter: (v: string) =>
               new Date(v).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }),
             color: t.axis,
+            hideOverlap: true,
           },
           axisLine: { lineStyle: { color: t.axisLine } },
         },
         yAxis: [
           {
             type: 'value',
-            name: 'kW',
+            name: 'Leistung (kW)',
+            nameTextStyle: { color: t.axis, align: 'left' },
+            nameGap: 12,
             min: -Math.ceil(kwMax),
             max: Math.ceil(kwMax),
             splitLine: { lineStyle: { color: t.grid } },
@@ -105,61 +167,102 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
           },
           {
             type: 'value',
-            name: 'EUR/MWh',
+            name: 'Preis (ct/kWh)',
+            nameTextStyle: { color: t.price, align: 'right' },
+            nameGap: 12,
             position: 'right',
             splitLine: { show: false },
-            axisLabel: { color: t.axis },
+            axisLabel: { color: t.price, formatter: '{value}' },
           },
           // Hidden SoC axis (0-100%): the trajectory rides along, values in the tooltip.
           { type: 'value', min: 0, max: 100, show: false },
         ],
         series: [
           {
-            name: 'Laden/Entladen',
+            name: 'Batterie',
             type: 'bar',
             yAxisIndex: 0,
             data: battery,
-            barCategoryGap: '10%',
+            barCategoryGap: '8%',
+            z: 3,
             itemStyle: {
               borderRadius: 2,
               color: (p: any) => (Number(p.value) >= 0 ? t.charge : t.discharge),
             },
-            markLine:
-              boundaryIdx > 0
+            // Shade the already-elapsed part of the day, and mark today|morgen + jetzt.
+            markArea:
+              nowIdx > 0
                 ? {
                     silent: true,
-                    symbol: 'none',
-                    lineStyle: { color: t.price, type: 'dashed', width: 1.5 },
-                    label: { formatter: 'Morgen', color: t.price, position: 'insideEndTop' },
-                    data: [{ xAxis: boundaryIdx }],
+                    itemStyle: { color: t.axis, opacity: 0.08 },
+                    data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
                   }
                 : undefined,
+            markLine: markLineData.length
+              ? { silent: true, symbol: 'none', data: markLineData }
+              : undefined,
           },
           {
             name: 'Börsenpreis',
             type: 'line',
             yAxisIndex: 1,
-            data: prices,
+            data: pricesCt,
             step: 'end',
             symbol: 'none',
+            z: 2,
             lineStyle: { color: t.price, width: 2 },
             itemStyle: { color: t.price },
           },
           {
-            name: 'Geplanter SoC',
+            name: 'Ladestand',
             type: 'line',
             yAxisIndex: 2,
             data: soc,
             smooth: true,
             symbol: 'none',
-            lineStyle: { color: t.axis, width: 1.5, type: 'dashed' },
-            itemStyle: { color: t.axis },
+            z: 1,
+            lineStyle: { color: t.soc, width: 1.5, type: 'dashed' },
+            itemStyle: { color: t.soc },
           },
         ],
       },
       true,
     );
-  }, [plan, rev]);
+  }, [plan, rev, t]);
 
-  return <div ref={ref} className="vp-chart" />;
+  // Insight: charge cheap, discharge expensive, and today's saving.
+  const chargeCt = weightedCt(plan.slots, (kw) => Math.max(kw, 0));
+  const dischargeCt = weightedCt(plan.slots, (kw) => Math.max(-kw, 0));
+  const today = new Date().toDateString();
+  const savingsToday = plan.slots
+    .filter((s) => new Date(s.start).toDateString() === today)
+    .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+
+  const legend: LegendItem[] = [
+    { color: t.charge, label: 'Laden (günstiger Strom)', unit: 'kW', shape: 'bar' },
+    { color: t.discharge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar' },
+    { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line' },
+    { color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed' },
+  ];
+
+  return (
+    <div>
+      <ChartLegend items={legend} />
+      <div ref={ref} className="vp-chart tall" />
+      {chargeCt != null && dischargeCt != null && (
+        <ChartInsight>
+          Der Speicher <strong>lädt günstig</strong> (Ø {ct(chargeCt)}) und{' '}
+          <strong>entlädt teuer</strong> (Ø {ct(dischargeCt)}), um den Abendverbrauch zu decken -{' '}
+          {savingsToday > 0.005 ? (
+            <>
+              das spart heute rund <strong>{eur(savingsToday)}</strong> gegenüber einem Betrieb
+              ohne Speicher.
+            </>
+          ) : (
+            <>bei flachem Preisverlauf bleibt der Speicher überwiegend in Ruhe.</>
+          )}
+        </ChartInsight>
+      )}
+    </div>
+  );
 }
