@@ -181,7 +181,7 @@
         <span><i style="background:var(--grid-c)"></i>Netz (+ Bezug / − Einspeisung)</span>
         <span><i style="background:var(--batt)"></i>Batterie (+ laden / − entladen)</span>
       </div>
-      <div class="chart-canvas-wrap" style="height:260px">
+      <div class="chart-canvas-wrap chart-power">
         <canvas id="powerChart"></canvas>
         <div class="chart-empty" id="powerEmpty" hidden><div>Noch keine Messdaten. Sobald die Anlage Werte liefert, erscheint hier der Live-Verlauf.</div></div>
       </div>
@@ -193,7 +193,7 @@
         <h3 class="chart-title"><span class="ico" style="background:var(--batt-soft);color:var(--batt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg></span>Batterie-Ladezustand</h3>
         <div class="legend"><span><i style="background:var(--batt)"></i>SoC (%)</span></div>
       </div>
-      <div class="chart-canvas-wrap" style="height:180px">
+      <div class="chart-canvas-wrap chart-soc">
         <canvas id="socChart"></canvas>
         <div class="chart-empty" id="socEmpty" hidden><div>Kein Ladezustand verfügbar. Batteriewerte liefern nur Hybrid-Wechselrichter.</div></div>
       </div>

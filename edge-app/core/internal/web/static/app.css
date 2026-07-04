@@ -302,3 +302,30 @@ main { max-width: 860px; margin: 24px auto 48px; padding: 0 16px; }
 }
 .btn-primary:hover { background: #4A7DD8; }
 .btn-primary:disabled { opacity: .6; cursor: default; }
+
+/* ---------------- Responsive (phone-first) ---------------- */
+.brand { min-width: 0; }
+.topnav { min-width: 0; flex-shrink: 0; }
+
+@media (max-width: 640px) {
+  .topbar { padding: 10px 14px; gap: 10px; }
+  .brand { font-size: 15.5px; }
+  .brand small { display: none; }
+  .topnav-link { padding: 8px 10px; }
+
+  main { margin: 18px auto 40px; padding: 0 14px; }
+  .card { padding: 18px; }
+
+  .page-title { font-size: 20px; }
+  .page-lead { font-size: 13.5px; }
+
+  /* Keep the "configured" badge on top of the model text on narrow screens
+     instead of squeezing them onto one cramped row. */
+  .current { flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; }
+
+  /* Full-width, easy-to-hit primary action on phones. */
+  .form-actions { justify-content: stretch; }
+  .btn-primary { width: 100%; }
+
+  .conn { padding: 14px 14px 2px; }
+}

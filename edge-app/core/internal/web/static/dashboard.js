@@ -404,31 +404,42 @@
   // ==================================================================
   function buildFlow(container) {
     var NS = "http://www.w3.org/2000/svg";
-    var W = 400, H = 250, hub = { x: 200, y: 128 };
-    var nodes = {
-      pv:   { x: 200, y: 40,  label: "PV",       color: cssVar("--pv"),     soft: cssVar("--pv-soft") },
-      load: { x: 336, y: 128, label: "Haus",     color: cssVar("--load"),   soft: cssVar("--load-soft") },
-      grid: { x: 200, y: 216, label: "Netz",     color: cssVar("--grid-c"), soft: cssVar("--grid-soft") },
-      batt: { x: 64,  y: 128, label: "Batterie", color: cssVar("--batt"),   soft: cssVar("--batt-soft") }
+
+    // Two layouts sharing the same node->hub topology, so the animation logic
+    // is identical; only the coordinates differ. WIDE is the landscape diamond
+    // (tablet/desktop); NARROW is a taller portrait cross that fills a phone's
+    // width - the viewBox is close to the container width there, so the labels
+    // render near full size instead of shrinking into an unreadable diamond.
+    var LAYOUTS = {
+      wide:   { W: 400, H: 250, hubR: 22, nodeR: 26, lblF: 10.5, valF: 10,
+                hub: { x: 200, y: 128 },
+                pos: { pv: { x: 200, y: 40 }, load: { x: 336, y: 128 },
+                       grid: { x: 200, y: 216 }, batt: { x: 64, y: 128 } } },
+      narrow: { W: 280, H: 344, hubR: 26, nodeR: 32, lblF: 13, valF: 12,
+                hub: { x: 140, y: 172 },
+                pos: { pv: { x: 140, y: 52 }, load: { x: 214, y: 172 },
+                       grid: { x: 140, y: 292 }, batt: { x: 66, y: 172 } } }
     };
+    var META = {
+      pv:   { label: "PV",       color: cssVar("--pv"),     soft: cssVar("--pv-soft") },
+      load: { label: "Haus",     color: cssVar("--load"),   soft: cssVar("--load-soft") },
+      grid: { label: "Netz",     color: cssVar("--grid-c"), soft: cssVar("--grid-soft") },
+      batt: { label: "Batterie", color: cssVar("--batt"),   soft: cssVar("--batt-soft") }
+    };
+    var KEYS = ["pv", "load", "grid", "batt"];
+
     var svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
     svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
 
     // Base spoke lines + animated flow overlays (node -> hub geometry).
     var spokes = {};
-    ["pv", "load", "grid", "batt"].forEach(function (k) {
-      var n = nodes[k];
+    KEYS.forEach(function (k) {
       var base = document.createElementNS(NS, "line");
-      base.setAttribute("x1", n.x); base.setAttribute("y1", n.y);
-      base.setAttribute("x2", hub.x); base.setAttribute("y2", hub.y);
       base.setAttribute("stroke", "#E3E9F1"); base.setAttribute("stroke-width", "6");
       base.setAttribute("stroke-linecap", "round");
       svg.appendChild(base);
       var flowLine = document.createElementNS(NS, "line");
-      flowLine.setAttribute("x1", n.x); flowLine.setAttribute("y1", n.y);
-      flowLine.setAttribute("x2", hub.x); flowLine.setAttribute("y2", hub.y);
-      flowLine.setAttribute("stroke", n.color); flowLine.setAttribute("stroke-width", "3");
+      flowLine.setAttribute("stroke", META[k].color); flowLine.setAttribute("stroke-width", "3");
       flowLine.setAttribute("stroke-linecap", "round");
       flowLine.setAttribute("stroke-dasharray", "2 10");
       flowLine.style.opacity = "0";
@@ -438,43 +449,72 @@
 
     // Hub.
     var hubC = document.createElementNS(NS, "circle");
-    hubC.setAttribute("cx", hub.x); hubC.setAttribute("cy", hub.y); hubC.setAttribute("r", "22");
     hubC.setAttribute("fill", "#fff"); hubC.setAttribute("stroke", "#E3E9F1"); hubC.setAttribute("stroke-width", "2");
     svg.appendChild(hubC);
     var hubIco = document.createElementNS(NS, "path");
     hubIco.setAttribute("d", "M13 2 3 14h7l-1 8 10-12h-7l1-8z");
-    hubIco.setAttribute("transform", "translate(" + (hub.x - 12) + "," + (hub.y - 12) + ")");
     hubIco.setAttribute("fill", "none"); hubIco.setAttribute("stroke", cssVar("--brand-deep"));
     hubIco.setAttribute("stroke-width", "2"); hubIco.setAttribute("stroke-linejoin", "round"); hubIco.setAttribute("stroke-linecap", "round");
     svg.appendChild(hubIco);
 
     // Nodes (circle + label + value).
     var nodeEls = {};
-    Object.keys(nodes).forEach(function (k) {
-      var n = nodes[k];
+    KEYS.forEach(function (k) {
       var g = document.createElementNS(NS, "g");
       var c = document.createElementNS(NS, "circle");
-      c.setAttribute("cx", n.x); c.setAttribute("cy", n.y); c.setAttribute("r", "26");
-      c.setAttribute("fill", n.soft); c.setAttribute("stroke", n.color); c.setAttribute("stroke-width", "2");
+      c.setAttribute("fill", META[k].soft); c.setAttribute("stroke", META[k].color); c.setAttribute("stroke-width", "2");
       g.appendChild(c);
       var lbl = document.createElementNS(NS, "text");
-      lbl.setAttribute("x", n.x); lbl.setAttribute("y", n.y - 3);
-      lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-size", "10.5");
-      lbl.setAttribute("font-weight", "700"); lbl.setAttribute("fill", "#33414F");
-      lbl.setAttribute("font-family", "Inter, sans-serif"); lbl.textContent = n.label;
+      lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-weight", "700");
+      lbl.setAttribute("fill", "#33414F"); lbl.setAttribute("font-family", "Inter, sans-serif");
+      lbl.textContent = META[k].label;
       g.appendChild(lbl);
       var val = document.createElementNS(NS, "text");
-      val.setAttribute("x", n.x); val.setAttribute("y", n.y + 11);
-      val.setAttribute("text-anchor", "middle"); val.setAttribute("font-size", "10");
-      val.setAttribute("font-weight", "600"); val.setAttribute("fill", n.color);
-      val.setAttribute("font-family", "Inter, sans-serif"); val.textContent = "–";
+      val.setAttribute("text-anchor", "middle"); val.setAttribute("font-weight", "600");
+      val.setAttribute("fill", META[k].color); val.setAttribute("font-family", "Inter, sans-serif");
+      val.textContent = "–";
       g.appendChild(val);
       svg.appendChild(g);
-      nodeEls[k] = { val: val };
+      nodeEls[k] = { circle: c, lbl: lbl, val: val };
     });
 
     container.innerHTML = "";
     container.appendChild(svg);
+
+    // applyLayout positions every element for the chosen preset. Called on
+    // build and whenever the container crosses the narrow/wide threshold.
+    var curLayout = null;
+    function applyLayout(L) {
+      svg.setAttribute("viewBox", "0 0 " + L.W + " " + L.H);
+      hubC.setAttribute("cx", L.hub.x); hubC.setAttribute("cy", L.hub.y); hubC.setAttribute("r", L.hubR);
+      hubIco.setAttribute("transform", "translate(" + (L.hub.x - 12) + "," + (L.hub.y - 12) + ")");
+      KEYS.forEach(function (k) {
+        var p = L.pos[k], s = spokes[k], n = nodeEls[k];
+        s.base.setAttribute("x1", p.x); s.base.setAttribute("y1", p.y);
+        s.base.setAttribute("x2", L.hub.x); s.base.setAttribute("y2", L.hub.y);
+        s.flow.setAttribute("x1", p.x); s.flow.setAttribute("y1", p.y);
+        s.flow.setAttribute("x2", L.hub.x); s.flow.setAttribute("y2", L.hub.y);
+        n.circle.setAttribute("cx", p.x); n.circle.setAttribute("cy", p.y); n.circle.setAttribute("r", L.nodeR);
+        n.lbl.setAttribute("x", p.x); n.lbl.setAttribute("y", p.y - L.nodeR * 0.16); n.lbl.setAttribute("font-size", L.lblF);
+        n.val.setAttribute("x", p.x); n.val.setAttribute("y", p.y + L.nodeR * 0.44); n.val.setAttribute("font-size", L.valF);
+      });
+    }
+    function pickLayout() {
+      var w = container.clientWidth || 400;
+      var want = w < 380 ? LAYOUTS.narrow : LAYOUTS.wide;
+      if (want !== curLayout) { curLayout = want; applyLayout(want); }
+      // For the portrait phone layout, size the container to the layout's own
+      // aspect so the SVG fills the width (labels stay full-size) instead of
+      // being letterboxed by a fixed min-height. Wide layout keeps its CSS box.
+      container.style.height = want === LAYOUTS.narrow
+        ? Math.round(w * (want.H / want.W)) + "px" : "";
+    }
+    pickLayout();
+    if (window.ResizeObserver) {
+      new ResizeObserver(pickLayout).observe(container);
+    } else {
+      window.addEventListener("resize", pickLayout);
+    }
 
     // Inject the flow keyframes once.
     if (!document.getElementById("flowKeyframes")) {
