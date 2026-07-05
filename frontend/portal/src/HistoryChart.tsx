@@ -1,47 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import * as echarts from 'echarts';
+import { useState } from 'react';
 import type { History, HistoryBucket } from './api';
 import { chartTheme } from './chartTheme';
+import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
 
-/** Shared echarts lifecycle (init/resize/dispose) for the history charts. */
-function useChart(render: (chart: echarts.ECharts) => void, deps: unknown[]) {
-  const ref = useRef<HTMLDivElement>(null);
-  const chart = useRef<echarts.ECharts | null>(null);
-  const renderRef = useRef(render);
-  renderRef.current = render;
-
-  useEffect(() => {
-    if (!ref.current) return;
-    chart.current = echarts.init(ref.current);
-    const onResize = () => {
-      if (!chart.current) return;
-      chart.current.resize();
-      renderRef.current(chart.current);
-    };
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      chart.current?.dispose();
-      chart.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (chart.current) render(chart.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-
-  return ref;
-}
-
 /** Bucket label: day -> "12:15", week -> "Mi 06:00", month/year -> "15.06.". */
-function timeLabel(iso: string, range: History['range']): string {
+function timeLabel(iso: string, range: History['range'], narrow = false): string {
   const d = new Date(iso);
   if (range === 'day') {
     return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   }
   if (range === 'week') {
+    // A phone-width canvas has no room for "Mi 06:00" pairs - the weekday
+    // alone keeps several ticks readable instead of one lonely label.
+    if (narrow) return d.toLocaleDateString('de-DE', { weekday: 'short' });
     return `${d.toLocaleDateString('de-DE', { weekday: 'short' })} ${d.toLocaleTimeString('de-DE', {
       hour: '2-digit',
       minute: '2-digit',
@@ -91,7 +63,9 @@ export function HistoryEnergyChart({ history }: { history: History }) {
     { label: 'Einspeisung', field: 'gridExportKwh', color: t.charge },
   ];
 
-  const ref = useChart((chart) => {
+  const ref = useEChart((chart, width) => {
+    const narrow = width < 480;
+    const weekNarrow = narrow && history.range === 'week';
     const { buckets, bucketMinutes } = history;
     const times = buckets.map((b) => b.start);
 
@@ -122,9 +96,10 @@ export function HistoryEnergyChart({ history }: { history: History }) {
     chart.setOption(
       {
         textStyle: { fontFamily: t.font, color: t.axis },
-        grid: { top: 22, right: 12, bottom: 26, left: 8, containLabel: true },
+        grid: { top: 22, right: 12, bottom: 8, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
+          confine: true,
           formatter: (params: any[]) => {
             const lines = [`<b>${timeLabel(params[0]?.axisValue, history.range)}${day ? ' Uhr' : ''}</b>`];
             for (const p of params) {
@@ -141,15 +116,24 @@ export function HistoryEnergyChart({ history }: { history: History }) {
           data: times,
           boundaryGap: !day,
           axisLabel: {
-            formatter: (v: string) => timeLabel(v, history.range),
+            // Narrow week view: one weekday label per day (at its first
+            // bucket) - the auto interval over hourly buckets would repeat
+            // weekdays ("Mo Mo Di ...").
+            formatter:
+              weekNarrow
+                ? (v: string) =>
+                    new Date(v).getHours() === 0 ? timeLabel(v, 'week', true) : ''
+                : (v: string) => timeLabel(v, history.range, narrow),
+            interval: weekNarrow ? 0 : 'auto',
             color: t.axis,
             hideOverlap: true,
           },
+          axisTick: { show: !weekNarrow },
           axisLine: { lineStyle: { color: t.axisLine } },
         },
         yAxis: {
           type: 'value',
-          name: day ? 'Leistung (kW)' : 'Energie (kWh)',
+          name: narrow ? unit : day ? 'Leistung (kW)' : 'Energie (kWh)',
           nameTextStyle: { color: t.axis, align: 'left' },
           nameGap: 12,
           splitLine: { lineStyle: { color: t.grid } },
@@ -218,7 +202,8 @@ export function HistoryEnergyChart({ history }: { history: History }) {
  */
 export function HistoryDayChart({ history }: { history: History }) {
   const t = chartTheme();
-  const ref = useChart((chart) => {
+  const ref = useEChart((chart, width) => {
+    const narrow = width < 480;
     const { buckets, plan, bucketMinutes } = history;
     const times = buckets.map((b) => b.start);
     const battery = buckets.map((b) =>
@@ -249,9 +234,10 @@ export function HistoryDayChart({ history }: { history: History }) {
     chart.setOption(
       {
         textStyle: { fontFamily: t.font, color: t.axis },
-        grid: { top: 30, right: 52, bottom: 26, left: 8, containLabel: true },
+        grid: { top: 30, right: narrow ? 16 : 52, bottom: 8, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
+          confine: true,
           formatter: (params: any[]) => {
             const time = new Date(params[0]?.axisValue).toLocaleTimeString('de-DE', {
               hour: '2-digit',
@@ -291,7 +277,7 @@ export function HistoryDayChart({ history }: { history: History }) {
         yAxis: [
           {
             type: 'value',
-            name: 'Leistung (kW)',
+            name: narrow ? 'kW' : 'Leistung (kW)',
             nameTextStyle: { color: t.axis, align: 'left' },
             nameGap: 12,
             min: -Math.ceil(kwMax),
@@ -301,7 +287,7 @@ export function HistoryDayChart({ history }: { history: History }) {
           },
           {
             type: 'value',
-            name: 'Preis (ct/kWh)',
+            name: narrow ? 'ct/kWh' : 'Preis (ct/kWh)',
             nameTextStyle: { color: t.price, align: 'right' },
             nameGap: 12,
             position: 'right',

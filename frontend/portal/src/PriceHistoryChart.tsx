@@ -1,38 +1,6 @@
-import { useEffect, useRef } from 'react';
-import * as echarts from 'echarts';
 import type { PriceHistory } from './api';
 import { chartTheme } from './chartTheme';
-
-/** Shared echarts lifecycle (init/resize/dispose), re-render on resize. */
-function useChart(render: (chart: echarts.ECharts) => void, deps: unknown[]) {
-  const ref = useRef<HTMLDivElement>(null);
-  const chart = useRef<echarts.ECharts | null>(null);
-  const renderRef = useRef(render);
-  renderRef.current = render;
-
-  useEffect(() => {
-    if (!ref.current) return;
-    chart.current = echarts.init(ref.current);
-    const onResize = () => {
-      if (!chart.current) return;
-      chart.current.resize();
-      renderRef.current(chart.current);
-    };
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      chart.current?.dispose();
-      chart.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (chart.current) render(chart.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-
-  return ref;
-}
+import { useEChart } from './useEChart';
 
 /** de-DE EUR/MWh + ct/kWh for a tooltip value. */
 function fmtPrice(v: number | null): string {
@@ -44,12 +12,15 @@ function fmtPrice(v: number | null): string {
 }
 
 /** Axis label per aggregation bucket. */
-function axisLabel(iso: string, bucket: string): string {
+function axisLabel(iso: string, bucket: string, narrow = false): string {
   const d = new Date(iso);
   if (bucket === 'PT15M') {
     return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   }
   if (bucket === 'PT1H') {
+    // A phone-width canvas has no room for "Mi 06:00" pairs - the weekday
+    // alone keeps several ticks readable instead of one lonely label.
+    if (narrow) return d.toLocaleDateString('de-DE', { weekday: 'short' });
     return `${d.toLocaleDateString('de-DE', { weekday: 'short' })} ${d.toLocaleTimeString('de-DE', {
       hour: '2-digit',
       minute: '2-digit',
@@ -80,11 +51,13 @@ function tooltipHead(iso: string, bucket: string): string {
  * native); tooltips also show ct/kWh.
  */
 export function PriceHistoryChart({ history }: { history: PriceHistory }) {
-  const ref = useChart(
-    (chart) => {
+  const ref = useEChart(
+    (chart, width) => {
       const t = chartTheme();
+      const narrow = width < 480;
       const { buckets, bucket } = history;
       const isDay = bucket === 'PT15M';
+      const weekNarrow = narrow && bucket === 'PT1H';
       const times = buckets.map((b) => b.ts);
       const avg = buckets.map((b) => (b.avgEurMwh == null ? null : Number(b.avgEurMwh)));
 
@@ -105,9 +78,10 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
         chart.setOption(
           {
             textStyle: { fontFamily: t.font, color: t.axis },
-            grid: { top: 28, right: 12, bottom: 28, left: 8, containLabel: true },
+            grid: { top: 28, right: 12, bottom: 8, left: 8, containLabel: true },
             tooltip: {
               trigger: 'axis',
+              confine: true,
               formatter: (params: any[]) => {
                 const p = params[0];
                 if (!p) return '';
@@ -126,7 +100,11 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
             xAxis: {
               type: 'category',
               data: times,
-              axisLabel: { formatter: (v: string) => axisLabel(v, bucket), color: t.axis },
+              axisLabel: {
+              formatter: (v: string) => axisLabel(v, bucket, narrow),
+              color: t.axis,
+              hideOverlap: true,
+            },
               axisLine: { lineStyle: { color: t.axisLine } },
             },
             yAxis: {
@@ -170,9 +148,10 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
-          grid: { top: 28, right: 12, bottom: 28, left: 8, containLabel: true },
+          grid: { top: 28, right: 12, bottom: 8, left: 8, containLabel: true },
           tooltip: {
             trigger: 'axis',
+            confine: true,
             formatter: (params: any[]) => {
               const idx = params[0]?.dataIndex;
               const b = buckets[idx];
@@ -193,7 +172,20 @@ export function PriceHistoryChart({ history }: { history: PriceHistory }) {
             type: 'category',
             data: times,
             boundaryGap: false,
-            axisLabel: { formatter: (v: string) => axisLabel(v, bucket), color: t.axis },
+            axisLabel: {
+              // Narrow week view: one weekday label per day (at its first
+              // bucket) - the auto interval over hourly buckets would repeat
+              // weekdays ("Mo Mo Di ...").
+              formatter:
+                weekNarrow
+                  ? (v: string) =>
+                      new Date(v).getHours() === 0 ? axisLabel(v, bucket, true) : ''
+                  : (v: string) => axisLabel(v, bucket, narrow),
+              interval: weekNarrow ? 0 : 'auto',
+              color: t.axis,
+              hideOverlap: true,
+            },
+            axisTick: { show: !weekNarrow },
             axisLine: { lineStyle: { color: t.axisLine } },
           },
           yAxis: {

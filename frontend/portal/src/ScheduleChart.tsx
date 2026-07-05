@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import * as echarts from 'echarts';
 import type { SchedulePlan } from './api';
 import { chartTheme } from './chartTheme';
+import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
 
 /**
@@ -43,28 +42,10 @@ function eur(v: number): string {
 }
 
 export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const chart = useRef<echarts.ECharts | null>(null);
-  const [rev, setRev] = useState(0);
   const t = chartTheme();
 
-  useEffect(() => {
-    if (!ref.current) return;
-    chart.current = echarts.init(ref.current);
-    const onResize = () => {
-      chart.current?.resize();
-      setRev((r) => r + 1);
-    };
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      chart.current?.dispose();
-      chart.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!chart.current) return;
+  const ref = useEChart((chart, width) => {
+    const narrow = width < 480;
     const slots = plan.slots;
     const times = slots.map((s) => s.start);
     const battery = slots.map((s) => (s.batteryKw == null ? null : Number(s.batteryKw)));
@@ -104,12 +85,13 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
         label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop' },
       });
 
-    chart.current.setOption(
+    chart.setOption(
       {
         textStyle: { fontFamily: t.font, color: t.axis },
-        grid: { top: 30, right: 52, bottom: 26, left: 8, containLabel: true },
+        grid: { top: 30, right: narrow ? 16 : 52, bottom: 8, left: 8, containLabel: true },
         tooltip: {
           trigger: 'axis',
+          confine: true,
           formatter: (params: any[]) => {
             const time = new Date(params[0]?.axisValue).toLocaleString('de-DE', {
               weekday: 'short',
@@ -157,7 +139,7 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
         yAxis: [
           {
             type: 'value',
-            name: 'Leistung (kW)',
+            name: narrow ? 'kW' : 'Leistung (kW)',
             nameTextStyle: { color: t.axis, align: 'left' },
             nameGap: 12,
             min: -Math.ceil(kwMax),
@@ -167,7 +149,7 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
           },
           {
             type: 'value',
-            name: 'Preis (ct/kWh)',
+            name: narrow ? 'ct/kWh' : 'Preis (ct/kWh)',
             nameTextStyle: { color: t.price, align: 'right' },
             nameGap: 12,
             position: 'right',
@@ -228,7 +210,7 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
       },
       true,
     );
-  }, [plan, rev, t]);
+  }, [plan, t]);
 
   // Insight: charge cheap, discharge expensive, and today's saving.
   const chargeCt = weightedCt(plan.slots, (kw) => Math.max(kw, 0));

@@ -145,6 +145,7 @@ a:focus-visible,
   align-items: center;
   gap: var(--vp-space-2);
   min-width: 0;
+  overflow: hidden;
 }
 .vp-topbar .crumbs .here {
   font-family: var(--vp-font-heading);
@@ -153,6 +154,11 @@ a:focus-visible,
   letter-spacing: var(--vp-tracking-tight);
   white-space: nowrap;
   color: var(--vp-text-dark);
+  /* Long page titles (Prognosequalität) must never run under the user menu
+     on a phone - truncate instead of colliding. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .vp-topbar .spacer {
   flex: 1;
@@ -1040,6 +1046,19 @@ button.vp-cl-item.is-off .vp-cl-label {
   .vp-period-nav .step {
     min-width: 44px;
     min-height: 44px;
+  }
+}
+/* Phone: the stepper takes the full row and the label shrinks-to-fit instead
+   of forcing 170px and pushing the "Heute" button past the viewport edge. */
+@media (max-width: 720px) {
+  .vp-period-nav {
+    width: 100%;
+  }
+  .vp-period-nav .label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 .vp-period-nav .step:hover:not(:disabled) {
