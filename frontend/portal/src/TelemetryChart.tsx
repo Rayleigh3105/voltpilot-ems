@@ -26,7 +26,14 @@ function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
+export function TelemetryChart({
+  points,
+  windowLabel = 'in den letzten 24 Stunden',
+}: {
+  points: TelemetryPoint[];
+  /** Range phrase for the takeaway line, e.g. "in der letzten Stunde". */
+  windowLabel?: string;
+}) {
   const t = chartTheme();
 
   const ref = useEChart(
@@ -157,11 +164,12 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
     return v != null && v > (best?.kw ?? 0) ? { kw: v, ts: p.ts } : best;
   }, null);
   const loads = points.map((p) => p.loadKw).filter((v): v is number => v != null);
+  const cap = windowLabel.charAt(0).toUpperCase() + windowLabel.slice(1);
   if (pvPeak && pvPeak.kw > 0.05) {
-    insight = `In den letzten 24 Stunden erzeugte Ihre Anlage in der Spitze ${fmtNum(pvPeak.kw, 'kW')} (${timeLabel(new Date(pvPeak.ts).getTime())} Uhr).`;
+    insight = `${cap} erzeugte Ihre Anlage in der Spitze ${fmtNum(pvPeak.kw, 'kW')} (${timeLabel(new Date(pvPeak.ts).getTime())} Uhr).`;
   } else if (loads.length > 0) {
     const avg = loads.reduce((a, b) => a + b, 0) / loads.length;
-    insight = `In den letzten 24 Stunden lag Ihr Verbrauch im Schnitt bei ${fmtNum(avg, 'kW')}.`;
+    insight = `${cap} lag Ihr Verbrauch im Schnitt bei ${fmtNum(avg, 'kW')}.`;
   }
 
   return (

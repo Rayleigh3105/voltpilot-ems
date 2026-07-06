@@ -19,14 +19,13 @@ import {
 } from '../api';
 import { currentUser } from '../auth';
 import { ctPerKwh, eurAmount, fmtNum, fmtRelative, zoneLabel } from '../format';
-import { sanitizeSoc } from '../plausible';
 import type { PageId } from '../nav';
 import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
-import { InfoTip } from '../components/InfoTip';
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, ErrorState, Skeleton, TextSkeleton } from '../components/States';
+import { LiveHero } from '../components/LiveHero';
 import { TelemetryChart } from '../TelemetryChart';
 import { PriceChart } from '../PriceChart';
 
@@ -34,6 +33,24 @@ import { PriceChart } from '../PriceChart';
 const POLL_MS = 30_000;
 /** Re-render cadence of the "Stand vor X" freshness chip. */
 const TICK_MS = 5_000;
+
+/** Verlauf window toggle: fetch only the selected window (F6 - the API
+ *  downsamples windows > 3h server-side to keep them complete AND current). */
+type LiveWindow = '1h' | '3h' | 'today';
+const LIVE_WINDOWS: { id: LiveWindow; label: string; insight: string }[] = [
+  { id: '1h', label: '1 Std', insight: 'in der letzten Stunde' },
+  { id: '3h', label: '3 Std', insight: 'in den letzten 3 Stunden' },
+  { id: 'today', label: 'Heute', insight: 'heute' },
+];
+
+/** Start of the fetched telemetry window: now-1h / now-3h / local midnight. */
+function windowStart(win: LiveWindow, now: Date): Date {
+  const from = new Date(now);
+  if (win === '1h') from.setHours(from.getHours() - 1);
+  else if (win === '3h') from.setHours(from.getHours() - 3);
+  else from.setHours(0, 0, 0, 0);
+  return from;
+}
 
 /**
  * A widget whose data failed to load: a distinct error card with a retry, NOT
@@ -84,55 +101,99 @@ export function UebersichtPage({
   });
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingTelemetry, setLoadingTelemetry] = useState(false);
+  const [liveWindow, setLiveWindow] = useState<LiveWindow>('3h');
+  // The status layer (sentence/tiles/flow) always shows; the Verlauf chart is
+  // secondary and collapses behind a toggle on phones (report direction B).
+  const [isPhone, setIsPhone] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches,
+  );
+  const [chartOpen, setChartOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 720px)');
+    const on = () => setIsPhone(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [deviceDrawer, setDeviceDrawer] = useState(false);
 
+  // Secondary widgets (prices/weather/schedule) - independent of the live
+  // window, so a window toggle never re-flashes their skeletons.
   useEffect(() => {
     if (!site) {
-      setTelemetry([]);
       setPrices(null);
       setWeather(null);
       setSchedule(null);
-      setFailed({ telemetry: false, prices: false, weather: false, schedule: false });
+      setFailed((f) => ({ ...f, prices: false, weather: false, schedule: false }));
       return;
     }
     let active = true;
     setLoading(true);
-    Promise.allSettled([
-      api.telemetry(site.id),
-      api.prices(site.id),
-      api.weather(site.id),
-      api.schedule(site.id),
-    ]).then(([t, p, w, s]) => {
-      if (!active) return;
-      if (t.status === 'fulfilled') setTelemetry(t.value);
-      if (p.status === 'fulfilled') setPrices(p.value);
-      if (w.status === 'fulfilled') setWeather(w.value);
-      if (s.status === 'fulfilled') setSchedule(s.value);
-      setFailed({
-        telemetry: t.status === 'rejected',
-        prices: p.status === 'rejected',
-        weather: w.status === 'rejected',
-        schedule: s.status === 'rejected',
-      });
-      setLoading(false);
-    });
+    Promise.allSettled([api.prices(site.id), api.weather(site.id), api.schedule(site.id)]).then(
+      ([p, w, s]) => {
+        if (!active) return;
+        if (p.status === 'fulfilled') setPrices(p.value);
+        if (w.status === 'fulfilled') setWeather(w.value);
+        if (s.status === 'fulfilled') setSchedule(s.value);
+        setFailed((f) => ({
+          ...f,
+          prices: p.status === 'rejected',
+          weather: w.status === 'rejected',
+          schedule: s.status === 'rejected',
+        }));
+        setLoading(false);
+      },
+    );
     return () => {
       active = false;
     };
   }, [site?.id, reloadKey]);
+
+  // Live telemetry - refetched on the selected window (F6: only that window,
+  // downsampled server-side beyond 3 h so it stays complete and current).
+  useEffect(() => {
+    if (!site) {
+      setTelemetry([]);
+      setFailed((f) => ({ ...f, telemetry: false }));
+      return;
+    }
+    let active = true;
+    setLoadingTelemetry(true);
+    const to = new Date();
+    api
+      .telemetry(site.id, windowStart(liveWindow, to).toISOString(), to.toISOString())
+      .then(
+        (t) => {
+          if (!active) return;
+          setTelemetry(t);
+          setFailed((f) => ({ ...f, telemetry: false }));
+          setLoadingTelemetry(false);
+        },
+        () => {
+          if (!active) return;
+          setFailed((f) => ({ ...f, telemetry: true }));
+          setLoadingTelemetry(false);
+        },
+      );
+    return () => {
+      active = false;
+    };
+  }, [site?.id, reloadKey, liveWindow]);
 
   const retry = () => setReloadKey((k) => k + 1);
 
   // "Live-Daten" must be live (F4): poll the telemetry every 30 s in the
   // background - silent on failure, the card keeps its last good values - and
   // tick a clock every 5 s so the freshness chip counts honestly. One stable
-  // interval reads the latest site via a ref (the GeraetePage pattern).
+  // interval reads the latest site + window via refs (the GeraetePage pattern).
   const [now, setNow] = useState(() => new Date());
   const pollRef = useRef<() => void>(() => {});
   pollRef.current = () => {
     if (!site) return;
-    api.telemetry(site.id).then(
+    const to = new Date();
+    api.telemetry(site.id, windowStart(liveWindow, to).toISOString(), to.toISOString()).then(
       (t) => setTelemetry(t),
       () => {}, // background poll: fail silently, keep the last good data
     );
@@ -171,33 +232,12 @@ export function UebersichtPage({
   const latest = telemetry.length ? telemetry[telemetry.length - 1] : null;
   // Honest freshness for the Live-Daten card: green + "Stand vor X" while the
   // newest sample is inside the 5-min liveness window (deviceLiveStatus
-  // convention), grey + "keine aktuellen Daten" beyond it. The tiles keep
-  // their last good values but dim (the edge dashboard's .stale precedent).
+  // convention), grey + "keine aktuellen Daten" beyond it. The status hero
+  // keeps its last good values but dims (the edge dashboard's .stale precedent).
   const telemetryFresh =
     latest != null && now.getTime() - new Date(latest.ts).getTime() <= ONLINE_WINDOW_MS;
-  // Direction words instead of signs (F1): consumers read "Netzbezug" /
-  // "Einspeisung ins Netz", never a signed kW. Thresholds/wording mirror the
-  // edge dashboard's renderKpis (0.05 kW deadband).
-  const gridKw = latest?.powerKw ?? null;
-  const gridLabel =
-    gridKw == null
-      ? 'Netzleistung'
-      : gridKw > 0.05
-        ? 'Netzbezug'
-        : gridKw < -0.05
-          ? 'Einspeisung ins Netz'
-          : 'Netz ausgeglichen';
-  // Batterie-Ladestand: never render an implausible SoC (a bad row already in
-  // the DB, or an older edge build publishing raw reads) - fall back to the
-  // newest PLAUSIBLE reading, and say how old it is when it lags the live data
-  // beyond the 5-min liveness window (the deviceLiveStatus convention).
-  const latestSocPoint =
-    [...telemetry].reverse().find((p) => sanitizeSoc(p.socPct) != null) ?? null;
-  const socStale =
-    latestSocPoint != null &&
-    latest != null &&
-    new Date(latest.ts).getTime() - new Date(latestSocPoint.ts).getTime() > 5 * 60 * 1000;
   const weatherNow = weather?.points?.[0] ?? null;
+  const activeWindow = LIVE_WINDOWS.find((w) => w.id === liveWindow) ?? LIVE_WINDOWS[1];
   const allFailed =
     site != null && failed.telemetry && failed.prices && failed.weather && failed.schedule;
 
@@ -344,7 +384,7 @@ export function UebersichtPage({
                 <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
               </span>
             </div>
-            {loading && telemetry.length === 0 && !failed.telemetry ? (
+            {loadingTelemetry && telemetry.length === 0 && !failed.telemetry ? (
               <ChartCardSkeleton />
             ) : failed.telemetry ? (
               <WidgetError
@@ -353,49 +393,53 @@ export function UebersichtPage({
               />
             ) : telemetry.length === 0 ? (
               <p className="vp-muted">
-                Noch keine Messwerte in den letzten 24 Stunden. Sobald Ihr Gerät sendet,
-                erscheinen die Live-Daten hier.
+                Für den gewählten Zeitraum liegen noch keine Messwerte vor. Sobald Ihr Gerät
+                sendet, erscheinen die Live-Daten hier.
               </p>
             ) : (
               <>
-                <div
-                  className={`vp-grid vp-grid-stats vp-grid-stats-4${telemetryFresh ? '' : ' vp-stale'}`}
-                  style={{ marginBottom: 'var(--vp-space-5)' }}
-                >
-                  <Stat value={fmtNum(latest?.pvPowerKw, 'kW')} label="PV-Erzeugung" />
-                  <Stat value={fmtNum(latest?.loadKw, 'kW')} label="Verbrauch" />
-                  <Stat
-                    value={fmtNum(gridKw == null ? null : Math.abs(gridKw), 'kW')}
-                    label={
-                      <>
-                        {gridLabel}{' '}
-                        <InfoTip label="Was bedeutet dieser Wert?">
-                          Leistung an Ihrem Netzanschluss: Netzbezug = Sie beziehen gerade Strom
-                          aus dem Netz, Einspeisung = Ihr Überschuss fließt ins Netz.
-                        </InfoTip>
-                      </>
-                    }
-                  />
-                  <Stat
-                    value={fmtNum(sanitizeSoc(latestSocPoint?.socPct), '%')}
-                    label={
-                      <>
-                        Batterie-Ladestand{' '}
-                        <InfoTip label="Was bedeutet Batterie-Ladestand?">
-                          Ladezustand der Batterie (SoC) in Prozent - 100 % bedeutet voll
-                          geladen, 0 % leer.
-                        </InfoTip>
-                        {socStale && latestSocPoint && (
-                          <> · Stand {fmtRelative(latestSocPoint.ts, now)}</>
-                        )}
-                      </>
-                    }
-                  />
+                {/* Status-first hero: German status sentence + verdict tiles +
+                    energy-flow diagram (the edge dashboard's mental model). */}
+                <LiveHero points={telemetry} fresh={telemetryFresh} />
+
+                {/* Verlauf: the history chart, secondary. Window toggle fetches
+                    only the selected window; collapses behind a toggle on phones. */}
+                <div className="vp-live-verlauf-head" style={{ marginTop: 'var(--vp-space-5)' }}>
+                  <h3>Verlauf</h3>
+                  <span style={{ display: 'flex', gap: 'var(--vp-space-2)', alignItems: 'center' }}>
+                    {isPhone && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setChartOpen((o) => !o)}
+                        aria-expanded={chartOpen}
+                      >
+                        {chartOpen ? 'Ausblenden' : 'Anzeigen'}
+                      </Button>
+                    )}
+                    <div className="vp-seg" role="tablist" aria-label="Zeitraum">
+                      {LIVE_WINDOWS.map((w) => (
+                        <button
+                          key={w.id}
+                          role="tab"
+                          aria-selected={liveWindow === w.id}
+                          className={liveWindow === w.id ? 'active' : ''}
+                          onClick={() => setLiveWindow(w.id)}
+                        >
+                          {w.label}
+                        </button>
+                      ))}
+                    </div>
+                  </span>
                 </div>
-                <ChartSubtitle>
-                  Der Verlauf zeigt die Messwerte Ihrer Geräte aus den letzten 24 Stunden.
-                </ChartSubtitle>
-                <TelemetryChart points={telemetry} />
+                {(!isPhone || chartOpen) && (
+                  <>
+                    <ChartSubtitle>
+                      Der Verlauf zeigt die Messwerte Ihrer Geräte {activeWindow.insight}.
+                    </ChartSubtitle>
+                    <TelemetryChart points={telemetry} windowLabel={activeWindow.insight} />
+                  </>
+                )}
               </>
             )}
           </Card>

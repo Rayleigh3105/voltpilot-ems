@@ -354,6 +354,206 @@ a:focus-visible,
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Live-Daten status hero (report direction B): a status-first layer that
+   mirrors the edge device's :8484 dashboard - one German status sentence, four
+   verdict tiles (Solar/Batterie/Haus/Netz) and an animated energy-flow diagram.
+   The 4-hue flow palette is lifted from the edge dashboard (dashboard.css) so
+   the customer sees the same picture at home and in the portal.
+   --------------------------------------------------------------------------- */
+:root {
+  --vp-flow-pv: #f59e0b;
+  --vp-flow-pv-soft: #fef3e2;
+  --vp-flow-load: #8b5cf6;
+  --vp-flow-load-soft: #f1ecfd;
+  --vp-flow-grid: #0ea5a3;
+  --vp-flow-grid-soft: #e2f6f5;
+  --vp-flow-batt: #16a34a;
+  --vp-flow-batt-soft: #e7f6ec;
+  --vp-flow-base: #e3e9f1;
+  --vp-flow-ink: #33414f;
+}
+
+.vp-live-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-5);
+}
+
+/* The one plain-German answer above the tiles. Live = ink, stale = honest grey. */
+.vp-status-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  font-size: 1.05rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--vp-navy-2, #2c5282);
+}
+.vp-status-line .vp-status-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 0.45rem;
+  background: var(--vp-flow-batt);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--vp-flow-batt) 22%, transparent);
+}
+.vp-status-line.stale {
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 400;
+}
+.vp-status-line.stale .vp-status-dot {
+  background: var(--vp-text-muted, #9aa5b1);
+  box-shadow: none;
+}
+
+/* Verdict tiles: 2x2 always on phone, 4x1 from 900px inside the card. */
+.vp-verdict-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-gap);
+}
+@media (min-width: 900px) {
+  .vp-verdict-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.vp-verdict {
+  --accent: var(--vp-flow-grid);
+  --accent-soft: var(--vp-flow-grid-soft);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-1);
+  padding: var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: #fff;
+  min-width: 0;
+}
+.vp-verdict.pv {
+  --accent: var(--vp-flow-pv);
+  --accent-soft: var(--vp-flow-pv-soft);
+}
+.vp-verdict.batt {
+  --accent: var(--vp-flow-batt);
+  --accent-soft: var(--vp-flow-batt-soft);
+}
+.vp-verdict.load {
+  --accent: var(--vp-flow-load);
+  --accent-soft: var(--vp-flow-load-soft);
+}
+.vp-verdict.grid {
+  --accent: var(--vp-flow-grid);
+  --accent-soft: var(--vp-flow-grid-soft);
+}
+.vp-verdict-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.vp-verdict-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+.vp-verdict-val {
+  font-family: var(--vp-font-display, inherit);
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--vp-stat-ink, #1a2b3c);
+  white-space: nowrap;
+}
+.vp-verdict-state {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  min-height: 1.2em;
+}
+.vp-verdict-state.muted {
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 500;
+}
+.vp-verdict-sub {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-verdict-soc {
+  margin-top: var(--vp-space-1);
+  height: 6px;
+  border-radius: 999px;
+  background: var(--vp-flow-base);
+  overflow: hidden;
+}
+.vp-verdict-soc > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #34c77b, var(--vp-flow-batt));
+  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Energy-flow diagram wrapper: centered, fills its column width. */
+.vp-flow-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.vp-flow-wrap svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.vp-flow-line {
+  stroke-dasharray: 2 10;
+  stroke-linecap: round;
+}
+@keyframes vp-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.vp-flow-on {
+  animation: vp-flow 0.9s linear infinite;
+}
+.vp-flow-rev {
+  animation: vp-flow 0.9s linear infinite reverse;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-flow-on,
+  .vp-flow-rev {
+    animation: none;
+  }
+}
+
+/* Verlauf window toggle (1 Std / 3 Std / Heute) - reuses the .vp-seg look. */
+.vp-live-verlauf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-space-2);
+}
+.vp-live-verlauf-head h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
 /* Tables (list-in-card pattern) */
 .vp-table {
   width: 100%;
