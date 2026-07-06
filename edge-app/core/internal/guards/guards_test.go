@@ -123,3 +123,21 @@ func TestSelfConsumption(t *testing.T) {
 		t.Errorf("unknown pv: got %v, want 0", got)
 	}
 }
+
+// TestSocPlausible pins the SAME vectors as the canonical Deye decoder gate's
+// test (edge-app/nodered/deye/deye-decode.test.js "socPlausible accepts (0,100]
+// and rejects ..."), so the Go and JS implementations cannot drift apart.
+func TestSocPlausible(t *testing.T) {
+	accept := []float64{57, 0.5, 100, 8}
+	for _, v := range accept {
+		if !SocPlausible(v) {
+			t.Errorf("SocPlausible(%v) = false, want true", v)
+		}
+	}
+	reject := []float64{0, -1, 100.1, 1250, 1270, math.NaN(), math.Inf(1), math.Inf(-1)}
+	for _, v := range reject {
+		if SocPlausible(v) {
+			t.Errorf("SocPlausible(%v) = true, want false", v)
+		}
+	}
+}

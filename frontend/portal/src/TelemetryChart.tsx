@@ -1,5 +1,6 @@
 import type { TelemetryPoint } from './api';
 import { chartTheme } from './chartTheme';
+import { sanitizeSoc } from './plausible';
 import { useEChart } from './useEChart';
 
 /**
@@ -8,15 +9,11 @@ import { useEChart } from './useEChart';
  * tokens (chartTheme): solar orange, home blue, action ink, battery purple.
  * Width-aware: on narrow containers the legend tightens and axis chrome slims
  * down so nothing collides on a phone.
+ *
+ * An implausible SoC row maps to null via the shared sanitizeSoc (plausible.ts)
+ * so the line shows a GAP (connectNulls stays false) instead of clipping to the
+ * axis ceiling/floor. kW series carry any real value.
  */
-// SoC is physically a 0..100 % reading. The edge decoder now drops degraded
-// Solarman reads at the source, but the chart must not render a false spike from
-// any bad row already persisted in the DB: an out-of-range or non-finite SoC is
-// mapped to null so the line shows a GAP (connectNulls stays false) instead of
-// clipping to the axis ceiling/floor. kW series carry any real value.
-function sanitizeSoc(v: number | null): number | null {
-  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
-}
 
 export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
   const ref = useEChart(

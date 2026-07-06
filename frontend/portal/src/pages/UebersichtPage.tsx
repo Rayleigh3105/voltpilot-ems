@@ -17,7 +17,8 @@ import {
   type WeatherForecast,
 } from '../api';
 import { currentUser } from '../auth';
-import { ctPerKwh, eurAmount, fmtNum, zoneLabel } from '../format';
+import { ctPerKwh, eurAmount, fmtNum, fmtRelative, zoneLabel } from '../format';
+import { sanitizeSoc } from '../plausible';
 import type { PageId } from '../nav';
 import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
@@ -139,6 +140,16 @@ export function UebersichtPage({
 
   const online = devices.filter((d) => deviceLiveStatus(d) === 'online').length;
   const latest = telemetry.length ? telemetry[telemetry.length - 1] : null;
+  // Batterie-Ladestand: never render an implausible SoC (a bad row already in
+  // the DB, or an older edge build publishing raw reads) - fall back to the
+  // newest PLAUSIBLE reading, and say how old it is when it lags the live data
+  // beyond the 5-min liveness window (the deviceLiveStatus convention).
+  const latestSocPoint =
+    [...telemetry].reverse().find((p) => sanitizeSoc(p.socPct) != null) ?? null;
+  const socStale =
+    latestSocPoint != null &&
+    latest != null &&
+    new Date(latest.ts).getTime() - new Date(latestSocPoint.ts).getTime() > 5 * 60 * 1000;
   const now = weather?.points?.[0] ?? null;
   const allFailed =
     site != null && failed.telemetry && failed.prices && failed.weather && failed.schedule;
@@ -311,7 +322,7 @@ export function UebersichtPage({
                     }
                   />
                   <Stat
-                    value={fmtNum(latest?.socPct, '%')}
+                    value={fmtNum(sanitizeSoc(latestSocPoint?.socPct), '%')}
                     label={
                       <>
                         Batterie-Ladestand{' '}
@@ -319,6 +330,9 @@ export function UebersichtPage({
                           Ladezustand der Batterie (SoC) in Prozent - 100 % bedeutet voll
                           geladen, 0 % leer.
                         </InfoTip>
+                        {socStale && latestSocPoint && (
+                          <> · Stand {fmtRelative(latestSocPoint.ts)}</>
+                        )}
                       </>
                     }
                   />

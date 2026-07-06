@@ -540,6 +540,17 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		slog.Warn("local telemetry carried no known measurement; skipped")
 		return
 	}
+	// SoC plausibility gate (drop-don't-fabricate), the same policy as the Deye
+	// decoder's socPlausible(): an out-of-band SoC marks the WHOLE read as
+	// untrustworthy (degraded logger answer / misaligned frame), so nothing may
+	// consume it - not the dashboard tiles and live charts, not the cloud
+	// publish, not the setpoint guards. Every display keeps its last good value,
+	// and the existing freshness UI turns honest on its own ("keine aktuellen
+	// Daten") because LastTelemetry only advances on kept samples.
+	if soc, ok := measurements["soc_pct"]; ok && !guards.SocPlausible(soc) {
+		slog.Warn("implausible soc_pct reading; sample dropped", "soc_pct", soc)
+		return
+	}
 
 	a.mu.Lock()
 	pick := func(k string) float64 {
