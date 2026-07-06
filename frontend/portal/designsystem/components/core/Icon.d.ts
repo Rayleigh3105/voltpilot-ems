@@ -24,6 +24,7 @@ export type IconName =
   | 'refresh-cw'
   | 'chevron-left'
   | 'chevron-right'
+  | 'chevron-down'
   | 'more-horizontal'
   | 'arrow-up'
   | 'arrow-down'

@@ -1153,6 +1153,80 @@ button.vp-cl-item.is-off .vp-cl-label {
   border-radius: var(--vp-radius-sm);
   padding: var(--vp-space-3) var(--vp-space-4);
 }
+/* Standort-Karte mit verschiebbarem Pin (LocationMap) */
+.vp-map-field {
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-map {
+  position: relative;
+  height: clamp(220px, 40vw, 300px);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  overflow: hidden;
+  z-index: 0;
+}
+.vp-map .leaflet-container {
+  height: 100%;
+  width: 100%;
+  font-family: var(--vp-font-body);
+  background: var(--vp-paleblue-start);
+}
+.vp-map-hint {
+  position: absolute;
+  left: 50%;
+  bottom: var(--vp-space-3);
+  transform: translateX(-50%);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  max-width: calc(100% - var(--vp-space-4));
+  padding: var(--vp-space-2) var(--vp-space-3);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-pill, 999px);
+  box-shadow: 0 2px 8px rgba(30, 58, 95, 0.12);
+  pointer-events: none;
+  text-align: center;
+}
+.vp-map-pin-icon {
+  color: var(--vp-action);
+  filter: drop-shadow(0 2px 3px rgba(30, 58, 95, 0.35));
+  cursor: grab;
+}
+.vp-map-pin-icon:active {
+  cursor: grabbing;
+}
+.vp-map-pin-icon svg {
+  fill: currentColor;
+}
+.vp-map-coords {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+}
+.vp-map-manual-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-1, 0.25rem);
+  font-size: var(--vp-text-sm);
+  align-self: flex-start;
+}
+.vp-map-manual {
+  display: grid;
+  gap: var(--vp-space-3);
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 520px) {
+  .vp-map-manual {
+    grid-template-columns: 1fr;
+  }
+}
 .vp-spinner {
   width: 44px;
   height: 44px;

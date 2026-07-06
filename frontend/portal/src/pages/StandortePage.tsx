@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, zoneLabel } from '../format';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
+import { LocationMap } from '../components/LocationMap';
 import { DangerZone } from '../components/DangerZone';
 import { DeviceStatusBadge } from '../components/DeviceDrawers';
 import { MastrDrawer } from '../components/MastrDrawer';
@@ -441,36 +442,21 @@ function SiteEditForm({
 }) {
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
-  const [latitude, setLatitude] = useState(site.latitude != null ? String(site.latitude) : '');
-  const [longitude, setLongitude] = useState(site.longitude != null ? String(site.longitude) : '');
+  const [lat, setLat] = useState<number | null>(site.latitude ?? null);
+  const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [latError, setLatError] = useState<string | null>(null);
-  const [lonError, setLonError] = useState<string | null>(null);
-
-  function parseCoord(v: string): number | null | undefined {
-    if (!v.trim()) return undefined;
-    const n = Number(v.replace(',', '.'));
-    return Number.isFinite(n) ? n : NaN;
-  }
 
   async function save() {
     if (!name.trim()) return;
-    const lat = parseCoord(latitude);
-    const lon = parseCoord(longitude);
-    const latBad = Number.isNaN(lat) || (lat != null && (lat < -90 || lat > 90));
-    const lonBad = Number.isNaN(lon) || (lon != null && (lon < -180 || lon > 180));
-    setLatError(latBad ? 'Bitte eine Zahl zwischen -90 und 90 eingeben, z. B. 52,52 - oder leer lassen.' : null);
-    setLonError(lonBad ? 'Bitte eine Zahl zwischen -180 und 180 eingeben, z. B. 13,405 - oder leer lassen.' : null);
-    if (latBad || lonBad) return;
     setBusy(true);
     setError(null);
     try {
       const updated = await api.updateSite(site.id, {
         name: name.trim(),
         biddingZone,
-        latitude: lat ?? null,
-        longitude: lon ?? null,
+        latitude: lat,
+        longitude: lon,
       });
       onSaved(updated);
     } catch (e) {
@@ -507,29 +493,20 @@ function SiteEditForm({
             <option value="CH">CH (Schweiz)</option>
           </select>
         </div>
-        <Input
-          label="Breitengrad"
-          placeholder="z. B. 52,52"
-          inputMode="decimal"
-          value={latitude}
-          error={latError}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setLatitude(e.target.value);
-            setLatError(null);
-          }}
-        />
-        <Input
-          label="Längengrad"
-          placeholder="z. B. 13,405"
-          inputMode="decimal"
-          value={longitude}
-          error={lonError}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setLongitude(e.target.value);
-            setLonError(null);
-          }}
-          hint="Koordinaten sind optional, aber nötig für die Wettervorhersage."
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
+          <LocationMap
+            lat={lat}
+            lon={lon}
+            onChange={(la, lo) => {
+              setLat(la);
+              setLon(lo);
+            }}
+          />
+          <p className="vp-note" style={{ margin: 0 }}>
+            Verschieben Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
+          </p>
+        </div>
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
       <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>

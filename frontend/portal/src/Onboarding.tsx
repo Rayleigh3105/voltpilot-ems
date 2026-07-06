@@ -4,6 +4,7 @@ import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
 import { api, ApiError, type Site } from './api';
+import { LocationMap } from './components/LocationMap';
 
 /**
  * Guided first-run onboarding: Standort -> Geraet -> erste Daten.
@@ -213,12 +214,24 @@ export function OnboardingWizard({
 function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
   const [name, setName] = useState('');
   const [place, setPlace] = useState<GeoPlace | null>(null);
+  // Actual coordinates: seeded from the chosen Ort, then fine-tunable by dragging
+  // the pin (which can diverge from the searched town).
+  const [lat, setLat] = useState<number | null>(null);
+  const [lon, setLon] = useState<number | null>(null);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
   const valid = name.trim().length > 0;
+
+  function selectPlace(p: GeoPlace | null) {
+    setPlace(p);
+    if (p) {
+      setLat(p.latitude);
+      setLon(p.longitude);
+    }
+  }
 
   async function submit() {
     if (busy) return;
@@ -235,8 +248,8 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
       const site = await api.createSite({
         name: name.trim(),
         biddingZone: zoneForCountry(place?.countryCode),
-        latitude: place?.latitude ?? null,
-        longitude: place?.longitude ?? null,
+        latitude: lat,
+        longitude: lon,
       });
       onCreated(site);
     } catch (e) {
@@ -270,7 +283,15 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
           onBlur={() => setTouched(true)}
           error={touched && !valid ? 'Bitte geben Sie einen Namen für den Standort ein.' : null}
         />
-        <LocationSearch selected={place} onSelect={setPlace} />
+        <LocationSearch selected={place} onSelect={selectPlace} />
+        <LocationMap
+          lat={lat}
+          lon={lon}
+          onChange={(la, lo) => {
+            setLat(la);
+            setLon(lo);
+          }}
+        />
       </div>
       <Button
         variant="primary"
@@ -282,9 +303,9 @@ function SiteStep({ onCreated }: { onCreated: (site: Site) => void }) {
       >
         {busy ? 'Lege Standort an…' : 'Weiter'}
       </Button>
-      {!place && (
+      {lat == null && (
         <p className="vp-note" style={{ marginTop: 8 }}>
-          Ohne Ortsangabe geht es auch - dann allerdings ohne Wetterprognose.
+          Ohne Standort geht es auch - dann allerdings ohne Wetterprognose.
         </p>
       )}
       {err && <div className="vp-alert vp-alert-err">{err}</div>}

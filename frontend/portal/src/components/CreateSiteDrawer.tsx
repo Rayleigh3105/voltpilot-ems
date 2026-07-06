@@ -5,6 +5,7 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { ApiError, type CreateSiteInput, type Site } from '../api';
+import { LocationMap } from './LocationMap';
 
 /**
  * "Standort anlegen" as a right drawer (the repeatable entity pattern). The
@@ -28,46 +29,29 @@ export function CreateSiteDrawer({
 }) {
   const [name, setName] = useState('');
   const [biddingZone, setBiddingZone] = useState('DE-LU');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
+  const [lat, setLat] = useState<number | null>(null);
+  const [lon, setLon] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [latError, setLatError] = useState<string | null>(null);
-  const [lonError, setLonError] = useState<string | null>(null);
-
-  function parseCoord(v: string): number | null | undefined {
-    if (!v.trim()) return undefined;
-    const n = Number(v.replace(',', '.'));
-    return Number.isFinite(n) ? n : NaN;
-  }
 
   function reset() {
     setName('');
-    setLatitude('');
-    setLongitude('');
+    setLat(null);
+    setLon(null);
     setBiddingZone('DE-LU');
     setError(null);
-    setLatError(null);
-    setLonError(null);
   }
 
   async function submit() {
     if (!name.trim()) return;
-    const lat = parseCoord(latitude);
-    const lon = parseCoord(longitude);
-    const latBad = Number.isNaN(lat) || (lat != null && (lat < -90 || lat > 90));
-    const lonBad = Number.isNaN(lon) || (lon != null && (lon < -180 || lon > 180));
-    setLatError(latBad ? 'Bitte eine Zahl zwischen -90 und 90 eingeben, z. B. 52,52 - oder leer lassen.' : null);
-    setLonError(lonBad ? 'Bitte eine Zahl zwischen -180 und 180 eingeben, z. B. 13,405 - oder leer lassen.' : null);
-    if (latBad || lonBad) return;
     setBusy(true);
     setError(null);
     try {
       const site = await onCreate({
         name: name.trim(),
         biddingZone,
-        latitude: lat ?? null,
-        longitude: lon ?? null,
+        latitude: lat,
+        longitude: lon,
       });
       reset();
       onCreated(site);
@@ -127,29 +111,20 @@ export function CreateSiteDrawer({
             <option value="CH">CH (Schweiz)</option>
           </select>
         </div>
-        <Input
-          label="Breitengrad"
-          placeholder="z. B. 52,52"
-          inputMode="decimal"
-          value={latitude}
-          error={latError}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setLatitude(e.target.value);
-            setLatError(null);
-          }}
-        />
-        <Input
-          label="Längengrad"
-          placeholder="z. B. 13,405"
-          inputMode="decimal"
-          value={longitude}
-          error={lonError}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            setLongitude(e.target.value);
-            setLonError(null);
-          }}
-          hint="Koordinaten sind optional, aber nötig für die Wettervorhersage."
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
+          <LocationMap
+            lat={lat}
+            lon={lon}
+            onChange={(la, lo) => {
+              setLat(la);
+              setLon(lo);
+            }}
+          />
+          <p className="vp-note" style={{ margin: 0 }}>
+            Setzen Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
+          </p>
+        </div>
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
     </Drawer>
