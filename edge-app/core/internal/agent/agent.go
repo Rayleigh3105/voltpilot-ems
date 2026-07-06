@@ -54,6 +54,9 @@ type Agent struct {
 	lastReading guards.Reading
 	lastRawSoc  *float64
 
+	despiker       *guards.Despiker
+	lastDespikeLog time.Time
+
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
 
@@ -166,6 +169,7 @@ func New(cfg config.Config) (*Agent, error) {
 		planStore:    ps,
 		invStore:     is,
 		invCat:       inverter.DefaultCatalog(),
+		despiker:     guards.NewDespiker(),
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
 		lastReading: guards.Reading{
@@ -551,36 +555,69 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		slog.Warn("implausible soc_pct reading; sample dropped", "soc_pct", soc)
 		return
 	}
+	// Despike gate (drop-don't-fabricate), per channel: reject a transient
+	// single-sample excursion that slips through the in-band plausibility gate -
+	// the captain's real symptom of a SoC (or other channel) reading e.g. 2 %
+	// for one sample between two steady 94 % samples. SoC gets a strict rate
+	// bound (it is integrative and cannot step fast); power channels are only
+	// guarded against gross decode-error excursions so normal fast dynamics pass
+	// unfiltered. A dropped channel is removed from THIS sample only; other
+	// channels in the same sample still flow. See guards.Despiker for the
+	// accept-after-confirmation semantics that let a genuinely new level
+	// converge instead of deadlocking on the old one.
+	if drops := a.despiker.Accept(measurements, ts); len(drops) > 0 {
+		a.logDespike(drops)
+		total := a.despiker.DroppedTotal()
+		a.State.Update(func(s *state.Snapshot) { s.DespikedDropped = total })
+		if len(measurements) == 0 {
+			return // every channel in this sample was a spike; nothing to record
+		}
+	}
 
-	a.mu.Lock()
+	// From here on the filtered measurements map is authoritative: a channel the
+	// despiker dropped is gone, so it flows to NO consumer (guard reading, cloud
+	// buffer, status heartbeat, live-chart ring).
 	pick := func(k string) float64 {
 		if v, ok := measurements[k]; ok {
 			return v
 		}
 		return guards.Unknown()
 	}
+	ptr := func(k string) *float64 {
+		if v, ok := measurements[k]; ok {
+			v := v
+			return &v
+		}
+		return nil
+	}
+	a.mu.Lock()
 	a.lastReading = guards.Reading{
 		SocPct:      pick("soc_pct"),
 		PvKw:        pick("pv_power_kw"),
 		LoadKw:      pick("load_kw"),
 		GridLimitKw: pick("grid_limit_kw"),
 	}
-	a.lastRawSoc = m.SocPct
+	// Keep the last-good raw SoC for the status heartbeat when this sample had
+	// no (or a despiked) SoC - mirrors the tile's last-good behaviour rather
+	// than reporting a hole to the cloud.
+	if p := ptr("soc_pct"); p != nil {
+		a.lastRawSoc = p
+	}
 	a.mu.Unlock()
 
 	if _, err := a.buf.Append(ts, measurements); err != nil {
 		slog.Error("telemetry buffer append failed", "err", err)
 		return
 	}
-	// Feed the in-memory live-chart ring (local dashboard only). Uses the raw
-	// pointer values so an absent measurement stays absent on the chart.
+	// Feed the in-memory live-chart ring (local dashboard only). An absent or
+	// despiked measurement stays absent (nil) on the chart, never coerced to 0.
 	a.hist.Add(history.Sample{
 		Ts:          ts,
-		PvKw:        m.PvPowerKw,
-		LoadKw:      m.LoadKw,
-		GridKw:      m.PowerKw,
-		SocPct:      m.SocPct,
-		GridLimitKw: m.GridLimitKw,
+		PvKw:        ptr("pv_power_kw"),
+		LoadKw:      ptr("load_kw"),
+		GridKw:      ptr("power_kw"),
+		SocPct:      ptr("soc_pct"),
+		GridLimitKw: ptr("grid_limit_kw"),
 	})
 	a.State.Update(func(s *state.Snapshot) {
 		s.LastTelemetry = ts
@@ -601,6 +638,30 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	})
 	a.kick()
 }
+
+// logDespike records dropped spike samples for field diagnosis, rate-limited to
+// at most one line per despikeLogInterval so a persistently spiking sensor does
+// not flood the log. The running total is always available in the state
+// snapshot (DespikedDropped).
+func (a *Agent) logDespike(drops []guards.Drop) {
+	a.mu.Lock()
+	now := time.Now()
+	quiet := now.Sub(a.lastDespikeLog) < despikeLogInterval
+	if !quiet {
+		a.lastDespikeLog = now
+	}
+	a.mu.Unlock()
+	if quiet {
+		return
+	}
+	for _, d := range drops {
+		slog.Debug("despiked telemetry channel; sample value dropped",
+			"channel", d.Channel, "value", d.Value, "dropped_total", a.despiker.DroppedTotal())
+	}
+}
+
+// despikeLogInterval rate-limits the despike debug log.
+const despikeLogInterval = 30 * time.Second
 
 // onLocalStatus tracks the inverter link state Layer 1 reports.
 func (a *Agent) onLocalStatus(_ string, payload []byte) {

@@ -56,6 +56,11 @@ type Snapshot struct {
 	LoadKw      float64 `json:"load_kw"`
 	GridLimitKw float64 `json:"grid_limit_kw"`
 
+	// DespikedDropped is the running count of transient garbage samples the
+	// despike gate has rejected (drop-don't-fabricate). Exposed for field
+	// diagnosis - a steadily climbing count points at a flaky Layer-1 read.
+	DespikedDropped int `json:"despiked_dropped"`
+
 	StartedAt time.Time `json:"started_at"`
 	Version   string    `json:"version"`
 }
