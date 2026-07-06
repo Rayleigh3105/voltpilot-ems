@@ -136,3 +136,18 @@ func (r *Ring) Len() int {
 	defer r.mu.RUnlock()
 	return len(r.buf)
 }
+
+// PurgeThrough drops every sample observed at or before t - the local-chart
+// half of a data purge ("Datenaufzeichnungen löschen"). Samples recorded after
+// the purge instant stay, so a live dashboard simply continues from there.
+func (r *Ring) PurgeThrough(t time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	kept := r.buf[:0]
+	for _, s := range r.buf {
+		if s.Ts.After(t) {
+			kept = append(kept, s)
+		}
+	}
+	r.buf = kept
+}

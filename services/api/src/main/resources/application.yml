@@ -99,6 +99,14 @@ voltpilot:
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}
+  # Device-initiated data purge (docs/contracts/mqtt-data-purge.schema.json):
+  # subscribe ems/+/+/+/status for purge_request messages published by the edge
+  # ("Datenaufzeichnungen löschen" on its local web app) and run the same purge
+  # the portal endpoint uses. Reuses the provisioning broker settings above.
+  # Off by default so unit tests and broker-less setups are unaffected; compose
+  # turns it on.
+  purge:
+    mqtt-listener-enabled: ${VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED:false}
   # First-boot device enrollment over HTTPS: a fresh edge device uploads a CSR
   # for its reference and polls for its mTLS certificate; once the ref is
   # claimed, the api signs the CSR with the device CA (ca-dir = the working dir

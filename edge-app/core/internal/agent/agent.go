@@ -193,6 +193,9 @@ func New(cfg config.Config) (*Agent, error) {
 	} else if err != nil {
 		slog.Warn("stored inverter selection unreadable; starting without", "err", err)
 	}
+	// A purge requested before a restart and not yet confirmed by the cloud is
+	// restored and re-sent once connected.
+	a.restorePendingPurge()
 	return a, nil
 }
 
@@ -430,6 +433,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		DevURL:      a.Cfg.DevCloudURL,
 		DevInsecure: a.Cfg.DevInsecure,
 		OnSchedule:  a.onSchedule,
+		OnCommand:   a.onPurgeCommand,
 		OnConnect: func(connected bool) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected
@@ -444,6 +448,9 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 			})
 			if connected {
 				a.kick()
+				// A purge requested while the device was offline is queued on
+				// disk; (re-)send it now that the cloud is reachable again.
+				a.trySendPurgeRequest()
 			} else {
 				// A drifted identity is rejected by the broker as a connection
 				// failure; re-check the identity promptly instead of waiting for

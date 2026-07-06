@@ -242,6 +242,50 @@
       </div>
     </section>
 
+    <!-- Data purge (guarded destructive action) -->
+    <div class="section-title">Daten &amp; Datenschutz</div>
+    <section class="card purge-card" id="purgeCard">
+      <div class="purge-head">
+        <span class="purge-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </span>
+        <div>
+          <h3>Datenaufzeichnungen löschen</h3>
+          <p>Löscht alle bisher aufgezeichneten Messdaten dieses Geräts - hier auf dem
+          Gerät und im VoltPilot-Portal. Das Gerät bleibt verbunden und zeichnet ab
+          sofort wieder neu auf.</p>
+        </div>
+      </div>
+
+      <!-- Purge progress/confirmation state (from /api/state data_purge) -->
+      <div class="purge-status" id="purgeStatus" hidden>
+        <span class="ss-dot" aria-hidden="true"></span><span id="purgeStatusText"></span>
+      </div>
+
+      <button class="purge-open" id="purgeOpenBtn" type="button">
+        Datenaufzeichnungen löschen…
+      </button>
+
+      <div class="purge-confirm" id="purgeConfirm" hidden>
+        <p class="purge-confirm-title">Das wird gelöscht - endgültig:</p>
+        <ul>
+          <li>Alle Messwerte auf diesem Gerät (Live-Verlauf und Zwischenspeicher)</li>
+          <li>Alle im VoltPilot-Portal gespeicherten Messdaten dieses Geräts - auch aus Historie und Statistiken</li>
+        </ul>
+        <p class="purge-confirm-note">Das Gerät bleibt verbunden; neue Messwerte werden
+        sofort wieder aufgezeichnet. Ist die Cloud gerade nicht erreichbar, holt das
+        Gerät die Löschung dort automatisch nach, sobald es wieder verbunden ist.</p>
+        <label class="purge-type-label" for="purgeTypeInput">Zur Bestätigung <strong>LÖSCHEN</strong> eintippen</label>
+        <input class="purge-type-input" id="purgeTypeInput" type="text"
+               autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="LÖSCHEN">
+        <div class="purge-actions">
+          <button class="purge-cancel" id="purgeCancelBtn" type="button">Abbrechen</button>
+          <button class="purge-go" id="purgeGoBtn" type="button" disabled>Endgültig löschen</button>
+        </div>
+        <p class="pairing-error" id="purgeError" hidden></p>
+      </div>
+    </section>
+
     <footer class="foot">
       Lokale Geräteansicht - nur lesend. Die Anlagensteuerung erfolgt über das VoltPilot-Portal.<br>
       Alle Daten bleiben auf diesem Gerät und werden verschlüsselt an VoltPilot übertragen.

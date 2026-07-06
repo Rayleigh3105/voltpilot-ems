@@ -37,4 +37,14 @@ public final class ProvisioningTopics {
             java.util.UUID deviceId) {
         return "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/schedule";
     }
+
+    /**
+     * The ad-hoc Cloud -> Edge command topic of a claimed device (down-only in
+     * the broker ACL, like schedule/config). Used for the retained
+     * {@code purge_data} command (docs/contracts/mqtt-data-purge.schema.json).
+     */
+    public static String commandTopic(java.util.UUID tenantId, java.util.UUID siteId,
+            java.util.UUID deviceId) {
+        return "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/command";
+    }
 }

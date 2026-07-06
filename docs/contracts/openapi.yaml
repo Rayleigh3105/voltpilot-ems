@@ -326,6 +326,33 @@ paths:
         "204": { description: Device unclaimed; its telemetry deleted. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Device not found for this tenant. }
+  /api/v1/devices/{deviceId}/purge-data:
+    post:
+      tags: [devices]
+      summary: Purge ALL recorded data of a device WITHOUT unclaiming it.
+      description: >
+        "Datenaufzeichnungen löschen": irreversibly deletes every recorded
+        timeseries datapoint of this device - raw telemetry plus the site's
+        derived rollups, which are rebuilt from the remaining devices - while
+        the device itself stays claimed and fully operational (enrollment,
+        certificates, config and the retained schedule are untouched). A purge
+        watermark (`purgedBefore`) is stamped on the device: the ingest path
+        refuses any sample OBSERVED at or before it, so a store-and-forward
+        edge replaying old buffered samples can never resurrect the deleted
+        history. The device is additionally told to wipe its local buffers via
+        a retained MQTT `purge_data` command (contract:
+        mqtt-data-purge.schema.json) - delivered on reconnect if it is offline.
+        New data recorded after the purge flows and charts normally.
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Purge completed (cloud data is gone).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DevicePurgeResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Device not found for this tenant. }
   /api/v1/devices/claim:
     post:
       tags: [devices]
@@ -1244,6 +1271,27 @@ components:
             When the device was claimed. The portal escalates the "wartet auf
             erste Daten" copy to troubleshooting guidance once the wait since
             claiming exceeds a threshold.
+    DevicePurgeResult:
+      type: object
+      properties:
+        deviceId: { type: string, format: uuid }
+        purgedRows:
+          type: integer
+          format: int64
+          description: Raw telemetry rows removed (the derived rollups are rebuilt, not counted).
+        purgedBefore:
+          type: string
+          format: date-time
+          description: >
+            The purge watermark. Samples observed at or before this instant are
+            refused by the ingest path from now on; new data flows normally.
+        deviceNotified:
+          type: boolean
+          description: >
+            Whether the retained purge_data command reached the broker. When
+            false (broker outage), the cloud data is still gone and replays are
+            blocked; the device's local buffer is wiped once the command can be
+            delivered.
     ProvisionDeviceRequest:
       type: object
       required: [externalRef]

@@ -44,3 +44,21 @@ DROP POLICY IF EXISTS telemetry_isolation ON telemetry;
 CREATE POLICY telemetry_isolation ON telemetry
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+-- Minimal device table for the purge-watermark guard (api migrations V1 +
+-- V20260706000000): the writer refuses samples observed at or before
+-- device.data_purged_before. Same RLS pattern as telemetry.
+CREATE TABLE IF NOT EXISTS device (
+    id                 UUID PRIMARY KEY,
+    tenant_id          UUID NOT NULL,
+    data_purged_before TIMESTAMPTZ
+);
+
+GRANT SELECT ON device TO voltpilot_app;
+
+ALTER TABLE device ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS device_isolation ON device;
+CREATE POLICY device_isolation ON device
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);

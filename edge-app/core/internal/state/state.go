@@ -47,6 +47,10 @@ type Snapshot struct {
 	// nil until one is chosen in the local web app.
 	Inverter *InverterInfo `json:"inverter,omitempty"`
 
+	// DataPurge tracks a data purge ("Datenaufzeichnungen löschen") triggered
+	// on this device: nil when none is in flight or everything is confirmed.
+	DataPurge *DataPurgeInfo `json:"data_purge,omitempty"`
+
 	SocPct      float64 `json:"soc_pct"`
 	PvKw        float64 `json:"pv_kw"`
 	LoadKw      float64 `json:"load_kw"`
@@ -54,6 +58,18 @@ type Snapshot struct {
 
 	StartedAt time.Time `json:"started_at"`
 	Version   string    `json:"version"`
+}
+
+// DataPurgeInfo is the UI-facing state of a device-triggered data purge.
+// The local wipe always happens immediately; CloudState tracks the cloud half:
+//
+//	"ausstehend"  - request not yet sent (device offline); re-sent on connect
+//	"angefordert" - request published, waiting for the cloud's confirmation
+//	"bestaetigt"  - the cloud's purge_data command arrived (then cleared soon after)
+type DataPurgeInfo struct {
+	RequestedAt time.Time `json:"requested_at"`
+	CloudState  string    `json:"cloud_state"`
+	ConfirmedAt time.Time `json:"confirmed_at,omitzero"`
 }
 
 // InverterInfo is the UI-facing summary of the selected inverter.

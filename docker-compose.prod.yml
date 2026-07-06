@@ -358,6 +358,16 @@ services:
       VOLTPILOT_BROKER_AUTHZ_RELOAD_API_URL: http://emqx:18083/api/v5
       VOLTPILOT_BROKER_AUTHZ_RELOAD_USERNAME: ${EMQX_DASHBOARD_USER:-admin}
       VOLTPILOT_BROKER_AUTHZ_RELOAD_PASSWORD: ${EMQX_DASHBOARD_PASSWORD:?set EMQX_DASHBOARD_PASSWORD in .env}
+      # --- Device data purge ("Datenaufzeichnungen löschen") ------------------
+      # The api talks to the broker over the compose-internal plain listener
+      # (like ingest): on-claim provisioning configs, the retained purge_data
+      # command after a purge, and the purge_request listener that lets the
+      # device trigger the same purge from its local web app
+      # (docs/contracts/mqtt-data-purge.schema.json). All best-effort - a broker
+      # outage never fails an api request.
+      VOLTPILOT_PROVISIONING_ENABLED: "true"
+      MQTT_BROKER_URL: tcp://emqx:1883
+      VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED: "true"
     volumes:
       # Device-CA working dir (created by tools/pki/voltpilot-ca.sh init-ca in
       # this clone). READ-WRITE on purpose: issuance advances the CA's

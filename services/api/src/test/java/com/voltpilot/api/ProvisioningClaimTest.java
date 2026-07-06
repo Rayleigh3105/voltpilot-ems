@@ -91,6 +91,9 @@ class ProvisioningClaimTest {
         registry.add("voltpilot.provisioning.enabled", () -> "true");
         registry.add("voltpilot.provisioning.broker-url",
                 () -> "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883));
+        // Device-initiated data purge: the listener consumes purge_request
+        // messages from the status topic (docs/contracts/mqtt-data-purge.schema.json).
+        registry.add("voltpilot.purge.mqtt-listener-enabled", () -> "true");
     }
 
     @LocalServerPort
@@ -251,6 +254,113 @@ class ProvisioningClaimTest {
         assertThat(mapper.readTree(replayed).get("device_id").asText()).isEqualTo(secondDeviceId);
     }
 
+    /**
+     * Portal-triggered data purge, MQTT side (contract:
+     * docs/contracts/mqtt-data-purge.schema.json): the purge publishes the
+     * RETAINED {@code purge_data} command on the device's command topic, so
+     * even a device that was OFFLINE during the purge receives it on its next
+     * connect and wipes its local buffers before replaying anything.
+     */
+    @Test
+    void purgePublishesRetainedPurgeCommandThatAnOfflineDeviceReceivesOnReconnect() throws Exception {
+        String ref = "purge-cmd-" + UUID.randomUUID().toString().substring(0, 8);
+        HttpHeaders headers = bearer(token("demo", "demo"));
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", ref), headers),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        String deviceId = (String) claim.getBody().get("id");
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
+                + "('2026-01-05T10:00:00Z', '" + TENANT_A + "', '" + BERLIN_SITE + "', '" + deviceId + "', 2.0)");
+
+        // Purge while NO device is connected (the offline case).
+        ResponseEntity<Map<String, Object>> purge = rest.exchange(
+                url("/api/v1/devices/" + deviceId + "/purge-data"),
+                org.springframework.http.HttpMethod.POST, new HttpEntity<>(headers),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(purge.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(purge.getBody()).containsEntry("deviceNotified", true);
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isZero();
+
+        // A device connecting AFTER the purge receives the retained command.
+        String topic = "ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/command";
+        MqttClient device = new MqttClient(
+                "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883),
+                "device-" + ref, new MemoryPersistence());
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(true);
+        device.connect(options);
+        BlockingQueue<String> commands = new ArrayBlockingQueue<>(4);
+        device.subscribe(topic, 1, (t, msg) -> commands.add(new String(msg.getPayload())));
+        String command = commands.poll(15, TimeUnit.SECONDS);
+        assertThat(command).as("retained purge command on reconnect").isNotNull();
+        JsonNode node = mapper.readTree(command);
+        assertThat(node.get("type").asText()).isEqualTo("purge_data");
+        assertThat(node.get("device_id").asText()).isEqualTo(deviceId);
+        assertThat(node.get("purged_before").asText()).isNotEmpty();
+        device.disconnect();
+    }
+
+    /**
+     * Device-initiated data purge ("Datenaufzeichnungen löschen" on the edge's
+     * local web app): the device publishes a {@code purge_request} on its OWN
+     * status topic; the api's listener runs the exact same purge - telemetry
+     * gone, watermark stamped, retained purge command back as confirmation. A
+     * request whose payload identity does not match the topic is ignored.
+     */
+    @Test
+    void deviceInitiatedPurgeRequestPurgesItsOwnDataOnly() throws Exception {
+        String ref = "purge-req-" + UUID.randomUUID().toString().substring(0, 8);
+        HttpHeaders headers = bearer(token("demo", "demo"));
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", ref), headers),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        String deviceId = (String) claim.getBody().get("id");
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
+                + "('2026-01-06T10:00:00Z', '" + TENANT_A + "', '" + BERLIN_SITE + "', '" + deviceId + "', 2.0), "
+                + "('2026-01-06T10:15:00Z', '" + TENANT_A + "', '" + BERLIN_SITE + "', '" + deviceId + "', 3.0)");
+
+        MqttClient device = new MqttClient(
+                "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883),
+                "device-" + ref, new MemoryPersistence());
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(true);
+        device.connect(options);
+        BlockingQueue<String> commands = new ArrayBlockingQueue<>(4);
+        device.subscribe("ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/command", 1,
+                (t, msg) -> commands.add(new String(msg.getPayload())));
+
+        // A spoofed request (payload identity != topic identity) is ignored.
+        String statusTopic = "ems/" + TENANT_A + "/" + BERLIN_SITE + "/" + deviceId + "/status";
+        String spoofed = "{\"schema_version\":\"1.0\",\"type\":\"purge_request\","
+                + "\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + BERLIN_SITE + "\","
+                + "\"device_id\":\"" + UUID.randomUUID() + "\"}";
+        device.publish(statusTopic, spoofed.getBytes(), 1, false);
+
+        // The legitimate request (a regular heartbeat alongside proves the
+        // type-less status messages are ignored cheaply).
+        device.publish(statusTopic, ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT_A
+                + "\",\"site_id\":\"" + BERLIN_SITE + "\",\"device_id\":\"" + deviceId
+                + "\",\"online\":true}").getBytes(), 1, false);
+        String request = "{\"schema_version\":\"1.0\",\"type\":\"purge_request\","
+                + "\"tenant_id\":\"" + TENANT_A + "\",\"site_id\":\"" + BERLIN_SITE + "\","
+                + "\"device_id\":\"" + deviceId + "\",\"ts\":\"2026-01-06T11:00:00Z\"}";
+        device.publish(statusTopic, request.getBytes(), 1, false);
+
+        // The purge ran: telemetry gone, watermark stamped, confirmation command
+        // received by the (still subscribed) device.
+        String command = commands.poll(20, TimeUnit.SECONDS);
+        assertThat(command).as("purge confirmation command").isNotNull();
+        JsonNode node = mapper.readTree(command);
+        assertThat(node.get("type").asText()).isEqualTo("purge_data");
+        assertThat(node.get("device_id").asText()).isEqualTo(deviceId);
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId
+                + "' AND data_purged_before IS NOT NULL")).isEqualTo(1);
+        device.disconnect();
+    }
+
     /** Fresh subscriber: the retained config payload, or null if none arrives. */
     private String pollRetainedConfig(String ref, int timeoutSeconds) throws Exception {
         MqttClient probe = new MqttClient(
@@ -270,6 +380,30 @@ class ProvisioningClaimTest {
     }
 
     // ---- helpers ------------------------------------------------------------
+
+    /** Run a statement as the Postgres superuser (bypasses RLS) to seed rows. */
+    private static void exec(String sql) {
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement()) {
+            st.execute(sql);
+        } catch (Exception e) {
+            throw new IllegalStateException("seed failed: " + sql, e);
+        }
+    }
+
+    /** Scalar count query as the Postgres superuser (sees all tenants' rows). */
+    private static long queryLong(String sql) {
+        try (java.sql.Connection c = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
 
     private String url(String path) {
         return "http://localhost:" + port + path;

@@ -96,6 +96,8 @@ public class ProvisioningPublisher {
                 c.publish(ProvisioningTopics.configTopic(externalRef), new byte[0], 1, true);
                 c.publish(ProvisioningTopics.scheduleTopic(tenantId, siteId, deviceId),
                         new byte[0], 1, true);
+                c.publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
+                        new byte[0], 1, true);
             }
             log.info("Cleared retained provisioning config + schedule for ref '{}' (device {})",
                     externalRef, deviceId);
@@ -105,6 +107,43 @@ public class ProvisioningPublisher {
                     externalRef, deviceId, e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Publish the RETAINED {@code purge_data} command after a data purge
+     * (contract: docs/contracts/mqtt-data-purge.schema.json). Retained on the
+     * device's command topic, so an OFFLINE device receives it the moment it
+     * reconnects and wipes its local buffers before replaying anything old.
+     * Best-effort like every broker interaction here - the cloud purge itself
+     * has already committed, and the writer's watermark guard keeps replayed
+     * old samples out even if this publish never arrives.
+     */
+    public boolean publishPurgeCommand(UUID tenantId, UUID siteId, UUID deviceId,
+            java.time.Instant purgedBefore) {
+        String payload = purgeCommandPayload(tenantId, siteId, deviceId, purgedBefore);
+        try {
+            synchronized (lock) {
+                connected().publish(ProvisioningTopics.commandTopic(tenantId, siteId, deviceId),
+                        payload.getBytes(StandardCharsets.UTF_8), 1, true);
+            }
+            log.info("Published retained purge_data command for device {} (purged_before {})",
+                    deviceId, purgedBefore);
+            return true;
+        } catch (Exception e) {
+            log.warn("Could not publish purge_data command for device {}: {} - cloud data is "
+                    + "already purged and the writer watermark blocks replays; the device's "
+                    + "local buffer is cleaned up on its next purge command delivery",
+                    deviceId, e.getMessage());
+            return false;
+        }
+    }
+
+    static String purgeCommandPayload(UUID tenantId, UUID siteId, UUID deviceId,
+            java.time.Instant purgedBefore) {
+        // Shape per docs/contracts/mqtt-data-purge.schema.json ($defs/command).
+        return "{\"schema_version\":\"1.0\",\"type\":\"purge_data\",\"tenant_id\":\"" + tenantId
+                + "\",\"site_id\":\"" + siteId + "\",\"device_id\":\"" + deviceId
+                + "\",\"purged_before\":\"" + purgedBefore + "\"}";
     }
 
     static String configPayload(String ref, UUID tenantId, UUID siteId, UUID deviceId) {

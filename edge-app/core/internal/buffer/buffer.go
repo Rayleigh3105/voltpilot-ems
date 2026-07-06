@@ -359,6 +359,92 @@ func (b *Buffer) DataLoss() bool {
 	return b.lostData
 }
 
+// PurgeThrough drops every buffered entry observed AT or BEFORE t - the
+// device-local half of a data purge ("Datenaufzeichnungen löschen", contract
+// docs/contracts/mqtt-data-purge.schema.json): after the cloud deleted the
+// device's history, replaying old buffered samples must not resurrect it.
+// Entries observed AFTER t (recorded after the purge instant) survive with
+// their original sequence numbers and replay normally; already-acked entries
+// are discarded outright (they only await eviction anyway). The sequence
+// counter keeps counting monotonically. Returns how many un-published entries
+// were dropped. Idempotent - purging an empty buffer is a no-op.
+func (b *Buffer) PurgeThrough(t time.Time) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	// Collect the un-acked survivors (observed after t), oldest-first.
+	var survivors []Entry
+	dropped := 0
+	for _, n := range b.segments {
+		if n < b.readSeg {
+			continue
+		}
+		entries, err := readSegment(b.segPath(n))
+		if err != nil {
+			return 0, err
+		}
+		if n == b.readSeg && b.readIdx <= len(entries) {
+			entries = entries[b.readIdx:]
+		}
+		for _, e := range entries {
+			if e.Ts.After(t) {
+				survivors = append(survivors, e)
+			} else {
+				dropped++
+			}
+		}
+	}
+
+	// Wipe the ring and rebuild it from the survivors alone.
+	if b.writer != nil {
+		b.writer.Close()
+		b.writer = nil
+	}
+	for _, n := range b.segments {
+		if err := os.Remove(b.segPath(n)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return 0, err
+		}
+	}
+	b.segments = []int{0}
+	b.tailN = 0
+	b.readSeg = 0
+	b.readIdx = 0
+	b.cacheSeg = -1
+	b.cacheEntries = nil
+	b.lostData = false
+	if len(survivors) > 0 {
+		f, err := os.OpenFile(b.segPath(0), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		if err != nil {
+			return 0, err
+		}
+		w := bufio.NewWriter(f)
+		for _, e := range survivors {
+			raw, err := json.Marshal(e)
+			if err != nil {
+				f.Close()
+				return 0, err
+			}
+			if _, err := w.Write(append(raw, '\n')); err != nil {
+				f.Close()
+				return 0, err
+			}
+		}
+		if err := w.Flush(); err != nil {
+			f.Close()
+			return 0, err
+		}
+		if err := f.Close(); err != nil {
+			return 0, err
+		}
+		b.tailN = len(survivors)
+	}
+	if err := b.saveCursorLocked(); err != nil {
+		return 0, err
+	}
+	slog.Info("buffer purged", "dropped", dropped, "kept", len(survivors), "through", t.UTC())
+	return dropped, nil
+}
+
 func readSegment(path string) ([]Entry, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {

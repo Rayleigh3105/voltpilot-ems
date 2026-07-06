@@ -297,6 +297,9 @@ services:
       # healthy without the broker; the ingest resolver answers hello retries.
       VOLTPILOT_PROVISIONING_ENABLED: "true"
       MQTT_BROKER_URL: tcp://emqx:1883
+      # Device-initiated data purge: consume purge_request messages from the
+      # status topic (docs/contracts/mqtt-data-purge.schema.json).
+      VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED: "true"
     ports:
       - "${API_PORT:-8090}:8090"
     healthcheck:

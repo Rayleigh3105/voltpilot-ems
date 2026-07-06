@@ -89,6 +89,20 @@ public class DeviceRepository {
         return jdbc.update("DELETE FROM device WHERE id = ?", deviceId) > 0;
     }
 
+    /**
+     * Stamp the purge watermark (migration V20260706000000): the timescale-writer
+     * refuses telemetry whose OBSERVATION time is at or before this instant, so
+     * replayed old samples can never resurrect purged history. Deliberately its
+     * own auto-committed statement, run BEFORE the series delete transaction:
+     * once committed, nothing older than the watermark can be written anymore,
+     * and the delete then sweeps whatever raced in. False when RLS hides the
+     * device (=> 404).
+     */
+    public boolean setDataPurgedBefore(UUID deviceId, java.time.Instant purgedBefore) {
+        return jdbc.update("UPDATE device SET data_purged_before = ? WHERE id = ?",
+                java.sql.Timestamp.from(purgedBefore), deviceId) > 0;
+    }
+
     /** Devices at a site (for the site-delete guard/preview), RLS-scoped. */
     public int countForSite(UUID siteId) {
         Integer count = jdbc.queryForObject(

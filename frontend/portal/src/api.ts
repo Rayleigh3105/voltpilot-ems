@@ -242,6 +242,21 @@ export interface UpdateDeviceInput {
   name?: string | null;
 }
 
+/** Outcome of a device data purge ("Datenaufzeichnungen löschen"). */
+export interface DevicePurgeResult {
+  deviceId: string;
+  /** Raw datapoints removed (derived aggregates are rebuilt, not counted). */
+  purgedRows: number;
+  /** The purge watermark; older replayed samples are refused from now on. */
+  purgedBefore: string;
+  /**
+   * Whether the purge command reached the device's message channel. False on
+   * a broker outage: the cloud data is still gone, the device's local buffer
+   * is cleaned up once the command can be delivered.
+   */
+  deviceNotified: boolean;
+}
+
 /** What deleting a site would remove - drives the confirm dialog. */
 export interface SiteDeletionPreview {
   deviceCount: number;
@@ -477,6 +492,13 @@ export const api = {
   /** Unclaim: deletes the device and its telemetry; the ref becomes claimable again. */
   deleteDevice: (deviceId: string) =>
     request<void>(`/api/v1/devices/${deviceId}`, { method: 'DELETE' }),
+  /**
+   * Purge all recorded data of a device WITHOUT unclaiming it: telemetry and
+   * derived aggregates are gone, the device stays connected, new data flows
+   * normally. Irreversible.
+   */
+  purgeDeviceData: (deviceId: string) =>
+    request<DevicePurgeResult>(`/api/v1/devices/${deviceId}/purge-data`, { method: 'POST' }),
   telemetry: (siteId: string, from?: string, to?: string) => {
     const q = new URLSearchParams();
     if (from) q.set('from', from);

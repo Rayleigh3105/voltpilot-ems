@@ -56,13 +56,23 @@ public class TelemetryWriteRepository {
         // omitted ingested_at.
         Timestamp receivedAt = Timestamp.from(
                 event.ingested_at() != null ? event.ingested_at() : event.observed_at());
+        // Purge watermark guard (api migration V20260706000000): after a device
+        // data purge ("Datenaufzeichnungen löschen"), any sample whose
+        // OBSERVATION time is at or before device.data_purged_before is
+        // refused - a store-and-forward edge replaying its old buffer after the
+        // purge must never resurrect deleted history. New samples (observed
+        // after the purge) insert normally. The device row is same-tenant, so
+        // the RLS-scoped SELECT sees it; a telemetry row without a device row
+        // (dev seeds, integrations) stays insertable.
         int rows = jdbc.update(
                 "INSERT INTO telemetry "
                         + "(time, received_at, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, "
                         + " load_kw, grid_limit_kw, payload) "
                         + "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb "
                         + "WHERE NOT EXISTS ("
-                        + "  SELECT 1 FROM telemetry WHERE device_id = ? AND time = ?)",
+                        + "  SELECT 1 FROM telemetry WHERE device_id = ? AND time = ?) "
+                        + "AND NOT EXISTS ("
+                        + "  SELECT 1 FROM device WHERE id = ? AND data_purged_before >= ?)",
                 Timestamp.from(event.observed_at()),
                 receivedAt,
                 event.tenant_id(),
@@ -74,6 +84,8 @@ public class TelemetryWriteRepository {
                 decimal(m, "load_kw"),
                 decimal(m, "grid_limit_kw"),
                 rawJson,
+                event.device_id(),
+                Timestamp.from(event.observed_at()),
                 event.device_id(),
                 Timestamp.from(event.observed_at()));
         return rows > 0;

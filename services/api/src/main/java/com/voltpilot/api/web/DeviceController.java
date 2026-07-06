@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
+import com.voltpilot.api.purge.DevicePurgeService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
 import com.voltpilot.api.repo.SeriesRepository;
@@ -48,17 +49,20 @@ public class DeviceController {
     private final SiteRepository sites;
     private final SeriesRepository series;
     private final ProvisionedDeviceRepository provisioned;
+    private final DevicePurgeService purge;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final ObjectProvider<EnrollmentService> enrollment;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, ProvisionedDeviceRepository provisioned,
+            DevicePurgeService purge,
             ObjectProvider<ProvisioningPublisher> provisioning,
             ObjectProvider<EnrollmentService> enrollment) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
         this.provisioned = provisioned;
+        this.purge = purge;
         this.provisioning = provisioning;
         this.enrollment = enrollment;
     }
@@ -148,6 +152,24 @@ public class DeviceController {
     }
 
     /**
+     * Purge ALL recorded data of a device ("Datenaufzeichnungen löschen")
+     * WITHOUT unclaiming it: raw telemetry goes, the site's rollups are rebuilt
+     * without it, the writer refuses replayed old samples via the purge
+     * watermark, and the device is told (retained {@code purge_data} command)
+     * to wipe its local buffers. Claim/enrollment/config stay intact; new data
+     * flows and charts normally afterwards. RLS makes a foreign device a 404.
+     * Full design: {@link DevicePurgeService}.
+     */
+    @PostMapping("/{deviceId}/purge-data")
+    public com.voltpilot.api.web.dto.DevicePurgeResultDto purgeData(@PathVariable UUID deviceId) {
+        DeviceDto device = devices.findById(deviceId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
+        DevicePurgeService.Result r = purge.purge(device);
+        return new com.voltpilot.api.web.dto.DevicePurgeResultDto(
+                r.deviceId(), r.purgedRows(), r.purgedBefore(), r.deviceNotified());
+    }
+
+    /**
      * Unclaim (delete) a device: removes the device row AND its telemetry, and
      * cleans the broker - the retained {@code provision/{ref}/config} and the
      * retained schedule topic are cleared (best-effort, like the on-claim
@@ -161,7 +183,7 @@ public class DeviceController {
         UUID tenantId = TenantContext.get();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
-        series.deleteForDevice(deviceId);
+        series.purgeDeviceRecordings(deviceId, device.siteId());
         if (!devices.delete(deviceId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }

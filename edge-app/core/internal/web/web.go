@@ -33,6 +33,13 @@ type InverterController interface {
 	SetInverter(inverter.SelectionRequest) (inverter.Selection, error)
 }
 
+// PurgeController backs the "Datenaufzeichnungen löschen" action: wipe the
+// device-local recordings and request the cloud-side purge (queued while
+// offline). The agent implements it.
+type PurgeController interface {
+	PurgeRecordedData() (state.DataPurgeInfo, error)
+}
+
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
 // its own clock drifts from the edge device's, plus the derived onboarding-gate
@@ -104,8 +111,9 @@ func envelope(st *state.Store) stateEnvelope {
 
 // Handler builds the HTTP mux: the single-page UI, the state JSON it polls, the
 // live telemetry history + stream (for the dashboard charts), the
-// inverter-selection API, and the health endpoint.
-func Handler(st *state.Store, inv InverterController, hist *history.Ring) http.Handler {
+// inverter-selection API, the data-purge action, and the health endpoint.
+func Handler(st *state.Store, inv InverterController, purge PurgeController,
+	hist *history.Ring) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -223,6 +231,20 @@ func Handler(st *state.Store, inv InverterController, hist *history.Ring) http.H
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"selection": sel})
+	})
+
+	// POST /api/purge-data - "Datenaufzeichnungen löschen": wipe the device's
+	// local recordings immediately and request the cloud-side purge (queued and
+	// re-sent on connect while the device is offline). The UI guards this
+	// behind an explicit typed confirmation; the endpoint itself is idempotent.
+	mux.HandleFunc("POST /api/purge-data", func(w http.ResponseWriter, r *http.Request) {
+		info, err := purge.PurgeRecordedData()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError,
+				map[string]any{"error": "Die Aufzeichnungen konnten nicht gelöscht werden. Bitte versuchen Sie es erneut."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"data_purge": info})
 	})
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {

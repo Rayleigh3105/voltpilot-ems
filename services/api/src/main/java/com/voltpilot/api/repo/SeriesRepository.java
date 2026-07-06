@@ -5,6 +5,7 @@ import java.sql.Timestamp;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Series-data cleanup for entity deletion. The timeseries hypertables carry no
@@ -58,8 +59,64 @@ public class SeriesRepository {
         }
     }
 
-    /** Remove a device's telemetry (unclaim deletes the device's recorded data). */
-    public void deleteForDevice(UUID deviceId) {
-        jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId);
+    /**
+     * Purge ALL recorded data of one device ("Datenaufzeichnungen löschen"):
+     * delete its raw telemetry and recompute the site's rollup hypertables from
+     * the remaining raw rows, all in ONE transaction so a crash can never leave
+     * the rollups showing data whose raw rows are already gone. Rollups
+     * aggregate per SITE across its devices (migration V20260701030000), so a
+     * site-scoped rebuild is the only way one device's contribution truly
+     * disappears. Runs through the RLS-scoped app datasource: the deletes are
+     * transparently limited to the caller's tenant, and the rollup re-inserts
+     * pass the same WITH CHECK. Unclaim reuses this so a removed device's data
+     * never lingers in the Historie week/month/year buckets either.
+     *
+     * @return the number of raw telemetry rows removed
+     */
+    @Transactional
+    public long purgeDeviceRecordings(UUID deviceId, UUID siteId) {
+        long purged = jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId);
+        recomputeRollupsForSite(siteId);
+        return purged;
+    }
+
+    /**
+     * Rebuild a site's rollups from its raw telemetry - delete, then re-insert
+     * with the SAME aggregate expressions as {@code refresh_telemetry_rollups}
+     * (migration V20260701030000), just site-scoped. Buckets whose raw rows are
+     * all gone simply do not reappear (an upsert could never empty them, which
+     * is why this is a full site rebuild and not a refresh call).
+     */
+    private void recomputeRollupsForSite(UUID siteId) {
+        for (String table : new String[] {
+                "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d"}) {
+            jdbc.update("DELETE FROM " + table + " WHERE site_id = ?", siteId);
+        }
+        jdbc.update(
+                "INSERT INTO telemetry_rollup_15m "
+                        + "SELECT time_bucket('15 minutes', time) AS bucket, tenant_id, site_id, "
+                        + "  avg(pv_power_kw) * 0.25, avg(load_kw) * 0.25, "
+                        + "  avg(greatest(power_kw, 0)) * 0.25, avg(greatest(-power_kw, 0)) * 0.25, "
+                        + "  avg(greatest(power_kw - load_kw + pv_power_kw, 0)) * 0.25, "
+                        + "  avg(greatest(-(power_kw - load_kw + pv_power_kw), 0)) * 0.25, "
+                        + "  min(soc_pct), max(soc_pct), last(soc_pct, time), count(*) "
+                        + "FROM telemetry WHERE site_id = ? GROUP BY 1, 2, 3",
+                siteId);
+        jdbc.update(
+                "INSERT INTO telemetry_rollup_1h "
+                        + "SELECT time_bucket('1 hour', bucket), tenant_id, site_id, "
+                        + "  sum(pv_kwh), sum(load_kwh), sum(grid_import_kwh), sum(grid_export_kwh), "
+                        + "  sum(battery_charge_kwh), sum(battery_discharge_kwh), "
+                        + "  min(soc_min_pct), max(soc_max_pct), last(soc_last_pct, bucket), sum(n_samples) "
+                        + "FROM telemetry_rollup_15m WHERE site_id = ? GROUP BY 1, 2, 3",
+                siteId);
+        jdbc.update(
+                "INSERT INTO telemetry_rollup_1d "
+                        + "SELECT time_bucket('1 day', bucket, 'Europe/Berlin'), tenant_id, site_id, "
+                        + "  sum(pv_kwh), sum(load_kwh), sum(grid_import_kwh), sum(grid_export_kwh), "
+                        + "  sum(battery_charge_kwh), sum(battery_discharge_kwh), "
+                        + "  min(soc_min_pct), max(soc_max_pct), last(soc_last_pct, bucket), sum(n_samples) "
+                        + "FROM telemetry_rollup_1h WHERE site_id = ? GROUP BY 1, 2, 3",
+                siteId);
     }
 }

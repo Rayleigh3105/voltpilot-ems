@@ -339,6 +339,70 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .chart-empty div { max-width: 300px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
+/* ---------- Data purge (guarded destructive action) ---------- */
+.purge-card { border: 1px solid #F1CDCD; }
+.purge-head { display: flex; gap: 14px; align-items: flex-start; }
+.purge-ico {
+  width: 38px; height: 38px; border-radius: 10px; flex: none;
+  display: grid; place-items: center;
+  background: var(--err-soft); color: var(--err);
+}
+.purge-ico svg { width: 20px; height: 20px; }
+.purge-head h3 { margin: 2px 0 6px; font-size: 15.5px; }
+.purge-head p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; max-width: 640px; }
+.purge-open {
+  margin-top: 14px;
+  appearance: none; cursor: pointer;
+  background: #fff; color: var(--err);
+  border: 1px solid #EBB6B6; border-radius: 10px;
+  padding: 10px 16px; font: 600 13.5px Inter, system-ui, sans-serif;
+}
+.purge-open:hover { background: var(--err-soft); }
+.purge-status {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; padding: 10px 14px; border-radius: 10px;
+  font-size: 13.5px; line-height: 1.5;
+}
+.purge-status .ss-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.purge-status.ok { background: var(--ok-soft); color: #14532D; }
+.purge-status.wait { background: var(--warn-soft); color: #7C4A03; }
+.purge-confirm {
+  margin-top: 14px; border: 1px solid #EBB6B6; border-radius: 12px;
+  padding: 16px; background: #FFFBFB;
+}
+.purge-confirm-title { margin: 0 0 8px; color: var(--err); font-weight: 700; font-size: 13.5px; }
+.purge-confirm ul { margin: 0 0 10px; padding-left: 20px; color: var(--ink-2); font-size: 13.5px; line-height: 1.6; }
+.purge-confirm-note { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.purge-type-label { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 6px; }
+.purge-type-input {
+  width: 100%; max-width: 260px; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; font: 600 14px Inter, system-ui, sans-serif;
+  letter-spacing: .04em; color: var(--ink);
+}
+.purge-type-input::placeholder { color: #B4C0CF; font-weight: 500; }
+.purge-type-input:focus { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
+.purge-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.purge-cancel {
+  appearance: none; cursor: pointer;
+  background: #fff; color: var(--ink-2);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 16px; font: 600 13.5px Inter, system-ui, sans-serif;
+}
+.purge-cancel:hover { background: var(--bg-2); }
+.purge-go {
+  appearance: none; cursor: pointer;
+  background: var(--err); color: #fff;
+  border: 1px solid var(--err); border-radius: 10px;
+  padding: 10px 16px; font: 600 13.5px Inter, system-ui, sans-serif;
+}
+.purge-go:hover:not(:disabled) { filter: brightness(1.06); }
+.purge-go:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 560px) {
+  .purge-open, .purge-cancel, .purge-go { width: 100%; text-align: center; }
+  .purge-type-input { max-width: none; }
+}
+
 .foot { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 30px; line-height: 1.6; }
 .foot a { color: var(--brand-deep); text-decoration: none; }
 

@@ -369,8 +369,77 @@
     renderInverterCta(s);
     renderKpis(s);
     renderStatus(s);
+    renderPurge(s);
     renderFlow();
   }
+
+  // ---------- data purge ("Datenaufzeichnungen löschen") ----------
+  // Guarded destructive action: expand -> read the consequences -> type
+  // LÖSCHEN -> confirm. The cloud half is tracked via s.data_purge
+  // (ausstehend -> angefordert -> bestaetigt, see the contract).
+  function renderPurge(s) {
+    var box = $("purgeStatus"), txt = $("purgeStatusText");
+    var dp = s.data_purge;
+    if (!dp) { box.hidden = true; return; }
+    box.hidden = false;
+    if (dp.cloud_state === "bestaetigt") {
+      box.className = "purge-status ok";
+      txt.textContent = "Löschung abgeschlossen - Gerät und Portal sind bereinigt. Neue Messwerte werden wieder aufgezeichnet.";
+    } else if (dp.cloud_state === "angefordert") {
+      box.className = "purge-status wait";
+      txt.textContent = "Auf dem Gerät gelöscht. Die Löschung im Portal wurde angefordert und wird gleich bestätigt…";
+    } else {
+      box.className = "purge-status wait";
+      txt.textContent = "Auf dem Gerät gelöscht. Die Löschung im Portal wird nachgeholt, sobald das Gerät wieder mit der Cloud verbunden ist.";
+    }
+  }
+
+  function purgeConfirmOpen(open) {
+    $("purgeConfirm").hidden = !open;
+    $("purgeOpenBtn").hidden = open;
+    $("purgeError").hidden = true;
+    var input = $("purgeTypeInput");
+    input.value = "";
+    $("purgeGoBtn").disabled = true;
+    if (open) input.focus();
+  }
+
+  $("purgeOpenBtn").addEventListener("click", function () { purgeConfirmOpen(true); });
+  $("purgeCancelBtn").addEventListener("click", function () { purgeConfirmOpen(false); });
+  $("purgeTypeInput").addEventListener("input", function () {
+    $("purgeGoBtn").disabled = this.value.trim().toUpperCase() !== "LÖSCHEN";
+  });
+
+  $("purgeGoBtn").addEventListener("click", function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = "Wird gelöscht…";
+    fetch("/api/purge-data", { method: "POST" })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.body && res.body.error);
+        purgeConfirmOpen(false);
+        // Drop the local chart data right away; the state stream carries the
+        // cloud progress (renderPurge).
+        pts = [];
+        redrawCharts();
+        if (lastState) {
+          lastState.data_purge = res.body.data_purge;
+          renderPurge(lastState);
+          renderKpis(lastState);
+          renderFlow();
+        }
+      })
+      .catch(function (e) {
+        var err = $("purgeError");
+        err.hidden = false;
+        err.textContent = (e && e.message) ||
+          "Die Aufzeichnungen konnten nicht gelöscht werden. Bitte versuchen Sie es erneut.";
+      })
+      .then(function () {
+        btn.textContent = "Endgültig löschen";
+      });
+  });
 
   // Prominent CTA while no inverter is configured: without it the Node-RED
   // read flow is idle and NO telemetry ever reaches the device (M1). During

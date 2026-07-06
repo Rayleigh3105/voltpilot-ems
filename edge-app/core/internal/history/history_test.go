@@ -75,3 +75,25 @@ func TestRingEvictsOldestAndWindows(t *testing.T) {
 		t.Fatalf("since order/values: %v %v", got[0].PvKw, got[1].PvKw)
 	}
 }
+
+func TestPurgeThroughDropsOldSamplesKeepsNew(t *testing.T) {
+	r := New(10)
+	base := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 6; i++ {
+		r.Add(Sample{Ts: base.Add(time.Duration(i) * time.Minute)})
+	}
+	r.PurgeThrough(base.Add(3 * time.Minute)) // drops minutes 0..3
+	if r.Len() != 2 {
+		t.Fatalf("len = %d, want 2", r.Len())
+	}
+	got := r.Since(time.Time{})
+	if !got[0].Ts.Equal(base.Add(4*time.Minute)) || !got[1].Ts.Equal(base.Add(5*time.Minute)) {
+		t.Fatalf("survivors wrong: %v", got)
+	}
+	// Idempotent + empty-safe.
+	r.PurgeThrough(base.Add(time.Hour))
+	if r.Len() != 0 {
+		t.Fatalf("len after full purge = %d", r.Len())
+	}
+	r.PurgeThrough(base)
+}

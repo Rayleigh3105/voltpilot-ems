@@ -135,6 +135,75 @@ class WriterPipeTest {
         assertThat(rlsVisibleCount(TENANT_B)).isEqualTo(0);
     }
 
+    /**
+     * Purge-watermark guard (api migration V20260706000000): after a device
+     * data purge, a replayed sample observed AT or BEFORE
+     * {@code device.data_purged_before} is refused - deleted history can never
+     * be resurrected by a store-and-forward edge - while a sample observed
+     * AFTER the watermark inserts normally.
+     */
+    @Test
+    void purgeWatermarkRefusesReplayedOldSamplesButAcceptsNewOnes() throws Exception {
+        createTopic();
+        String purgedDevice = UUID.randomUUID().toString();
+        String watermark = "2026-07-02T12:00:00.000Z";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device (id, tenant_id, data_purged_before) VALUES ('"
+                    + purgedDevice + "', '" + TENANT_A + "', '" + watermark + "')");
+        }
+
+        String beforeTs = "2026-07-02T11:59:59.000Z"; // replayed pre-purge sample
+        String atTs = watermark;                       // exactly the watermark: refused too
+        String afterTs = "2026-07-02T12:00:01.000Z";   // new post-purge sample
+        try (KafkaProducer<String, String> producer = producer()) {
+            String key = TENANT_A + ":" + SITE;
+            for (String ts : new String[] {beforeTs, atTs, afterTs}) {
+                producer.send(new ProducerRecord<>(RAW_TOPIC, key,
+                        eventFor(TENANT_A, purgedDevice, ts))).get();
+            }
+            producer.flush();
+        }
+
+        // Per-site partition ordering: once the AFTER row is visible, the two
+        // older events have already been processed (and refused).
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        while (System.nanoTime() < deadline && rowsForDevice(purgedDevice) < 1) {
+            Thread.sleep(500);
+        }
+        assertThat(rowsForDevice(purgedDevice)).isEqualTo(1);
+        try (Connection c = admin();
+                Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(
+                        "SELECT time FROM telemetry WHERE device_id = '" + purgedDevice + "'")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getTimestamp("time").toInstant()).isEqualTo(Instant.parse(afterTs));
+        }
+    }
+
+    private static String eventFor(String tenant, String device, String observedAt) {
+        return "{"
+                + "\"schema_version\":\"1.0\","
+                + "\"event_id\":\"" + UUID.randomUUID() + "\","
+                + "\"tenant_id\":\"" + tenant + "\","
+                + "\"site_id\":\"" + SITE + "\","
+                + "\"device_id\":\"" + device + "\","
+                + "\"observed_at\":\"" + observedAt + "\","
+                + "\"ingested_at\":\"2026-07-02T13:00:00.000Z\","
+                + "\"source_topic\":\"ems/" + tenant + "/" + SITE + "/" + device + "/telemetry\","
+                + "\"measurements\":{\"power_kw\":1.0}"
+                + "}";
+    }
+
+    private long rowsForDevice(String device) throws Exception {
+        try (Connection c = admin();
+                Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(
+                        "SELECT count(*) FROM telemetry WHERE device_id = '" + device + "'")) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
     private void createTopic() throws Exception {
         try (Admin admin = Admin.create(Map.of("bootstrap.servers", REDPANDA.getBootstrapServers()))) {
             admin.createTopics(List.of(new NewTopic(RAW_TOPIC, 3, (short) 1))).all().get();
@@ -169,12 +238,8 @@ class WriterPipeTest {
     }
 
     private long totalRows() throws Exception {
-        try (Connection c = admin();
-                Statement st = c.createStatement();
-                ResultSet rs = st.executeQuery("SELECT count(*) FROM telemetry")) {
-            rs.next();
-            return rs.getLong(1);
-        }
+        // Scoped to this test's device so the two tests stay order-independent.
+        return rowsForDevice(DEVICE);
     }
 
     private long rlsVisibleCount(String tenant) throws Exception {
@@ -184,7 +249,8 @@ class WriterPipeTest {
         try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(), p);
                 Statement st = c.createStatement()) {
             st.execute("SELECT set_config('app.tenant_id', '" + tenant + "', false)");
-            try (ResultSet rs = st.executeQuery("SELECT count(*) FROM telemetry")) {
+            try (ResultSet rs = st.executeQuery(
+                    "SELECT count(*) FROM telemetry WHERE device_id = '" + DEVICE + "'")) {
                 rs.next();
                 return rs.getLong(1);
             }

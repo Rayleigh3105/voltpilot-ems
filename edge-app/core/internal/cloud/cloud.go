@@ -29,6 +29,7 @@ type Link struct {
 	identity enroll.Identity
 
 	onSchedule func(payload []byte)
+	onCommand  func(payload []byte)
 	onConnect  func(connected bool)
 }
 
@@ -44,6 +45,9 @@ type Options struct {
 	DevInsecure bool
 	// OnSchedule receives every (retained) schedule payload.
 	OnSchedule func(payload []byte)
+	// OnCommand receives every (retained) ad-hoc command payload, e.g. the
+	// purge_data command (docs/contracts/mqtt-data-purge.schema.json).
+	OnCommand func(payload []byte)
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -59,7 +63,8 @@ func (o Options) brokerURL() string {
 
 // New builds (but does not connect) the link.
 func New(o Options) (*Link, error) {
-	l := &Link{identity: o.Identity, onSchedule: o.OnSchedule, onConnect: o.OnConnect}
+	l := &Link{identity: o.Identity, onSchedule: o.OnSchedule, onCommand: o.OnCommand,
+		onConnect: o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -98,6 +103,17 @@ func New(o Options) (*Link, error) {
 			}
 		}); tok.Wait() && tok.Error() != nil {
 			slog.Error("schedule subscribe failed", "topic", topic, "err", tok.Error())
+		}
+		// Ad-hoc cloud commands, e.g. the retained purge_data command. Retained
+		// delivery means a device that was OFFLINE during a purge wipes its
+		// buffers right here on reconnect, BEFORE the publisher drains anything.
+		cmdTopic := l.topic("command")
+		if tok := c.Subscribe(cmdTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+			if l.onCommand != nil && len(msg.Payload()) > 0 {
+				l.onCommand(msg.Payload())
+			}
+		}); tok.Wait() && tok.Error() != nil {
+			slog.Error("command subscribe failed", "topic", cmdTopic, "err", tok.Error())
 		}
 		if l.onConnect != nil {
 			l.onConnect(true)
@@ -195,6 +211,31 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64) error {
 	tok := l.client.Publish(l.topic("status"), 1, false, raw)
 	if !tok.WaitTimeout(10 * time.Second) {
 		return fmt.Errorf("status publish timed out")
+	}
+	return tok.Error()
+}
+
+// PublishPurgeRequest asks the cloud to purge THIS device's recorded data
+// (contract: docs/contracts/mqtt-data-purge.schema.json). Published on the
+// device's own status topic - the broker ACL only permits a device its own
+// path, which is exactly the authorization the cloud relies on. requestedAt is
+// when the customer triggered the purge on the device.
+func (l *Link) PublishPurgeRequest(requestedAt time.Time) error {
+	payload := map[string]any{
+		"schema_version": "1.0",
+		"type":           "purge_request",
+		"tenant_id":      l.identity.TenantID,
+		"site_id":        l.identity.SiteID,
+		"device_id":      l.identity.DeviceID,
+		"ts":             requestedAt.UTC().Format(time.RFC3339Nano),
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	tok := l.client.Publish(l.topic("status"), 1, false, raw)
+	if !tok.WaitTimeout(10 * time.Second) {
+		return fmt.Errorf("purge request publish timed out")
 	}
 	return tok.Error()
 }

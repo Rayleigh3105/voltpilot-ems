@@ -259,3 +259,102 @@ func TestEvictionDropsUnreadableOldestSegment(t *testing.T) {
 		}
 	}
 }
+
+func TestPurgeThroughDropsOldKeepsNewAndSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	b := openT(t, dir, 48*time.Hour)
+	base := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	// Ten entries; ack the first two (already published), leave eight pending.
+	for i := 0; i < 10; i++ {
+		if _, err := b.Append(base.Add(time.Duration(i)*time.Minute), map[string]float64{"power_kw": float64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if _, ok := b.Next(); !ok {
+			t.Fatal("expected entry")
+		}
+		if err := b.Ack(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Purge through minute 6: pending entries 2..6 drop, 7..9 survive.
+	dropped, err := b.PurgeThrough(base.Add(6 * time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped != 5 {
+		t.Fatalf("dropped = %d, want 5", dropped)
+	}
+	if got := b.Pending(); got != 3 {
+		t.Fatalf("pending = %d, want 3", got)
+	}
+	// Survivors replay in order with their ORIGINAL timestamps + sequence.
+	for i := 7; i < 10; i++ {
+		e, ok := b.Next()
+		if !ok {
+			t.Fatalf("survivor %d missing", i)
+		}
+		if !e.Ts.Equal(base.Add(time.Duration(i) * time.Minute)) {
+			t.Errorf("survivor %d: ts %v", i, e.Ts)
+		}
+		if e.Seq != int64(i) {
+			t.Errorf("survivor %d: seq %d", i, e.Seq)
+		}
+		if err := b.Ack(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The sequence counter keeps counting monotonically after a purge, and the
+	// purged state survives a restart (nothing purged reappears).
+	if _, err := b.Append(base.Add(time.Hour), map[string]float64{"power_kw": 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b2 := openT(t, dir, 48*time.Hour)
+	if got := b2.Pending(); got != 1 {
+		t.Fatalf("pending after restart = %d, want 1", got)
+	}
+	e, ok := b2.Next()
+	if !ok || e.Seq != 10 {
+		t.Fatalf("post-purge entry: ok=%v seq=%d, want seq 10", ok, e.Seq)
+	}
+}
+
+func TestPurgeThroughEverythingLeavesCleanEmptyBuffer(t *testing.T) {
+	b := openT(t, t.TempDir(), 48*time.Hour)
+	now := time.Now().UTC()
+	for i := 0; i < 700; i++ { // spans multiple segments (rotation at 512)
+		if _, err := b.Append(now.Add(-time.Duration(700-i)*time.Second), map[string]float64{"power_kw": 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dropped, err := b.PurgeThrough(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped != 700 {
+		t.Fatalf("dropped = %d, want 700", dropped)
+	}
+	if got := b.Pending(); got != 0 {
+		t.Fatalf("pending = %d, want 0", got)
+	}
+	if _, ok := b.Next(); ok {
+		t.Fatal("purged buffer must be empty")
+	}
+	// Idempotent: purging again is a harmless no-op.
+	if again, err := b.PurgeThrough(now); err != nil || again != 0 {
+		t.Fatalf("second purge: dropped=%d err=%v", again, err)
+	}
+	// And the buffer still accepts + replays new data normally.
+	if _, err := b.Append(now.Add(time.Second), map[string]float64{"power_kw": 2}); err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := b.Next(); !ok || e.Measurements["power_kw"] != 2 {
+		t.Fatalf("new entry after purge: ok=%v e=%+v", ok, e)
+	}
+}

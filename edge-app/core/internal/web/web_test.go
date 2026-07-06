@@ -41,6 +41,23 @@ func (f *fakeInverter) SetInverter(req inverter.SelectionRequest) (inverter.Sele
 	return sel, nil
 }
 
+// fakePurge is an in-memory PurgeController for the HTTP-layer test.
+type fakePurge struct {
+	calls int
+	err   error
+}
+
+func (f *fakePurge) PurgeRecordedData() (state.DataPurgeInfo, error) {
+	f.calls++
+	if f.err != nil {
+		return state.DataPurgeInfo{}, f.err
+	}
+	return state.DataPurgeInfo{
+		RequestedAt: time.Unix(1751791234, 0).UTC(),
+		CloudState:  "angefordert",
+	}, nil
+}
+
 func newServer(t *testing.T) (*httptest.Server, *fakeInverter) {
 	t.Helper()
 	srv, fi, _ := newServerWithHistory(t)
@@ -51,7 +68,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 	t.Helper()
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, h))
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, h))
 	t.Cleanup(srv.Close)
 	return srv, fi, h
 }
@@ -178,7 +195,7 @@ func TestStateEnvelopeCarriesServerClock(t *testing.T) {
 		s.Inverter = configuredInverter()
 		s.LastTelemetry = time.Now().UTC()
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
@@ -248,7 +265,7 @@ func TestHistoryReturnsRecentSamplesWithDerivedBattery(t *testing.T) {
 func TestStateExposesBufferDataLoss(t *testing.T) {
 	st := state.New("edge-test", "test")
 	st.Update(func(s *state.Snapshot) { s.BufferDataLoss = true; s.BufferPending = 7 })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -303,7 +320,7 @@ func configuredInverter() *state.InverterInfo {
 func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 	// (a) No inverter configured -> step "inverter", locked, no reference.
 	st := state.New("edge-gate", "test")
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -340,7 +357,7 @@ func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 func TestOnboardingGateDoneOncePaired(t *testing.T) {
 	st := state.New("edge-paired", "test")
 	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -386,4 +403,57 @@ func waitForLine(sc *bufio.Scanner, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
+	fp := &fakePurge{}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, history.New(10)))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if fp.calls != 1 {
+		t.Fatalf("purge calls = %d", fp.calls)
+	}
+	var body struct {
+		DataPurge struct {
+			CloudState string `json:"cloud_state"`
+		} `json:"data_purge"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.DataPurge.CloudState != "angefordert" {
+		t.Fatalf("cloud_state = %q", body.DataPurge.CloudState)
+	}
+}
+
+func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
+	fp := &fakePurge{err: context.DeadlineExceeded}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, history.New(10)))
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status %d, want 500", resp.StatusCode)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Error == "" {
+		t.Fatal("expected a German error message")
+	}
 }

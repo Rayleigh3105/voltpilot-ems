@@ -5,7 +5,15 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { api, ApiError, deviceLiveStatus, deviceWaitedTooLong, type Device, type Site } from '../api';
+import {
+  api,
+  ApiError,
+  deviceLiveStatus,
+  deviceWaitedTooLong,
+  type Device,
+  type DevicePurgeResult,
+  type Site,
+} from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
 import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../Onboarding';
@@ -251,10 +259,15 @@ export function DeviceDetailDrawer({
   const [editing, setEditing] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
+  const [purgeError, setPurgeError] = useState<string | null>(null);
+  const [purgeDone, setPurgeDone] = useState<DevicePurgeResult | null>(null);
 
   useEffect(() => {
     setEditing(false);
     setDeleteError(null);
+    setPurgeError(null);
+    setPurgeDone(null);
   }, [device?.id]);
 
   if (!device) return null;
@@ -273,6 +286,22 @@ export function DeviceDetailDrawer({
       setDeleteError('Das Gerät konnte nicht entfernt werden. Bitte versuchen Sie es erneut.');
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  async function purgeData(d: Device) {
+    setPurgeBusy(true);
+    setPurgeError(null);
+    try {
+      const result = await api.purgeDeviceData(d.id);
+      setPurgeDone(result);
+      onChanged();
+    } catch {
+      setPurgeError(
+        'Die Datenaufzeichnungen konnten nicht gelöscht werden. Bitte versuchen Sie es erneut.'
+      );
+    } finally {
+      setPurgeBusy(false);
     }
   }
 
@@ -390,6 +419,34 @@ export function DeviceDetailDrawer({
               Seit über 5 Minuten keine Daten. Prüfen Sie Stromversorgung und
               Netzwerk des Geräts; nach dem Neustart konfiguriert es sich automatisch neu.
             </div>
+          )}
+
+          {purgeDone ? (
+            <div className="vp-alert vp-alert-ok" style={{ marginTop: 'var(--vp-space-5)' }}>
+              <b>Datenaufzeichnungen gelöscht.</b> Alle bisherigen Messdaten dieses
+              Geräts wurden unwiderruflich entfernt
+              {purgeDone.purgedRows > 0 ? ` (${purgeDone.purgedRows.toLocaleString('de-DE')} Datenpunkte)` : ''}.
+              {' '}
+              {purgeDone.deviceNotified
+                ? 'Das Gerät leert seinen lokalen Zwischenspeicher automatisch - sofort, oder sobald es das nächste Mal online ist.'
+                : 'Das Gerät wird benachrichtigt, sobald die Verbindung zur Geräte-Cloud wieder steht; ältere Messwerte werden bis dahin nicht mehr angenommen.'}
+              {' '}Neue Messwerte werden ab jetzt wieder normal aufgezeichnet.
+            </div>
+          ) : (
+            <DangerZone
+              actionLabel="Datenaufzeichnungen löschen"
+              description="Löscht alle bisher aufgezeichneten Messdaten dieses Geräts unwiderruflich. Das Gerät bleibt verbunden und zeichnet ab sofort wieder neu auf."
+              consequences={[
+                `Alle Messdaten von „${device.name || device.externalRef}" werden endgültig gelöscht - auch aus Verlauf, Historie und Statistiken`,
+                'Auch der lokale Zwischenspeicher auf dem Gerät wird geleert; ist das Gerät gerade offline, passiert das automatisch beim nächsten Verbinden',
+                'Das Gerät selbst bleibt verbunden und funktioniert unverändert weiter - neue Messwerte laufen normal ein',
+              ]}
+              confirmLabel="Datenaufzeichnungen endgültig löschen"
+              typeToConfirm={device.name || device.externalRef}
+              busy={purgeBusy}
+              error={purgeError}
+              onConfirm={() => void purgeData(device)}
+            />
           )}
 
           <DangerZone

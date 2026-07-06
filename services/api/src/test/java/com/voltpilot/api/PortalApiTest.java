@@ -623,6 +623,96 @@ class PortalApiTest {
         assertThat(reclaimed.getBody().get("id")).isNotEqualTo(deviceId);
     }
 
+    /**
+     * "Datenaufzeichnungen löschen": the purge deletes ALL recorded data of ONE
+     * device - raw telemetry gone, the site's rollups rebuilt so only the
+     * OTHER device's contribution remains - while the device itself stays
+     * claimed and operational, a purge watermark is stamped, authorization
+     * follows RLS (foreign tenant = 404), and new data recorded afterwards
+     * flows normally.
+     */
+    @Test
+    void purgeDeviceDataDeletesRecordingsRebuildsRollupsAndKeepsDeviceClaimed() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String purged = claimDevice(demo, "edge-purge-01");
+        String kept = claimDevice(demo, "edge-purge-02");
+
+        // Far-past observations (before the rollup job's trailing 7-day window,
+        // so nothing re-aggregates behind the test's back). 10:00 bucket carries
+        // BOTH devices; 10:15 carries ONLY the to-be-purged one.
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, load_kw, pv_power_kw) VALUES "
+                + "('2026-01-05T10:00:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + purged + "', 2.0, 2.0, 0), "
+                + "('2026-01-05T10:16:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + purged + "', 4.0, 4.0, 0), "
+                + "('2026-01-05T10:01:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + kept + "', 1.0, 1.0, 0)");
+        exec("CALL refresh_telemetry_rollups('2026-01-05T00:00:00Z')");
+        assertThat(queryLong("SELECT n_samples FROM telemetry_rollup_15m WHERE site_id = '"
+                + BERLIN_SITE + "' AND bucket = '2026-01-05T10:00:00Z'")).isEqualTo(2);
+        assertThat(queryLong("SELECT count(*) FROM telemetry_rollup_15m WHERE site_id = '"
+                + BERLIN_SITE + "' AND bucket = '2026-01-05T10:15:00Z'")).isEqualTo(1);
+
+        // Authorization: another tenant cannot purge it (RLS => 404).
+        assertThat(rest.exchange(url("/api/v1/devices/" + purged + "/purge-data"), HttpMethod.POST,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + purged + "'"))
+                .isEqualTo(2);
+
+        // The owner purges: raw telemetry of THIS device is gone, the other
+        // device's rows stay, and the watermark is stamped.
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/devices/" + purged + "/purge-data"), HttpMethod.POST,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) res.getBody().get("purgedRows")).longValue()).isEqualTo(2);
+        // No broker configured in this test slice -> the command could not go out.
+        assertThat(res.getBody()).containsEntry("deviceNotified", false);
+        assertThat(res.getBody().get("purgedBefore")).isNotNull();
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + purged + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + kept + "'")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + purged
+                + "' AND data_purged_before IS NOT NULL")).isEqualTo(1);
+
+        // Rollups rebuilt: the shared bucket now reflects ONLY the kept device,
+        // and the purged-device-only bucket disappeared entirely (all tiers).
+        assertThat(queryLong("SELECT n_samples FROM telemetry_rollup_15m WHERE site_id = '"
+                + BERLIN_SITE + "' AND bucket = '2026-01-05T10:00:00Z'")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM telemetry_rollup_15m WHERE site_id = '"
+                + BERLIN_SITE + "' AND bucket = '2026-01-05T10:15:00Z'")).isZero();
+        assertThat(queryLong("SELECT coalesce(sum(n_samples), 0) FROM telemetry_rollup_1h "
+                + "WHERE site_id = '" + BERLIN_SITE + "' AND bucket = '2026-01-05T10:00:00Z'"))
+                .isEqualTo(1);
+
+        // The device is NOT unclaimed: still listed, still updatable, and new
+        // data recorded after the purge is visible again.
+        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(devices.getBody()).extracting(d -> d.get("id")).contains(purged);
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) VALUES "
+                + "(now(), '" + tenantA + "', '" + BERLIN_SITE + "', '" + purged + "', 1.5)");
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + purged + "'"))
+                .isEqualTo(1);
+
+        // Idempotent: purging again removes the one new row and just advances
+        // the watermark - never an error.
+        ResponseEntity<Map<String, Object>> again = rest.exchange(
+                url("/api/v1/devices/" + purged + "/purge-data"), HttpMethod.POST,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) again.getBody().get("purgedRows")).longValue()).isEqualTo(1);
+    }
+
+    private String claimDevice(String token, String externalRef) {
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", externalRef),
+                        bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isIn(HttpStatus.CREATED, HttpStatus.OK);
+        return (String) claim.getBody().get("id");
+    }
+
     // ---- data feeds: day-ahead prices + weather -----------------------------
 
     @Test
