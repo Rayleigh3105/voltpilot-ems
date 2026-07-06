@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -455,5 +456,53 @@ func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Error == "" {
 		t.Fatal("expected a German error message")
+	}
+}
+
+// The inverter page's model picker is a custom listbox built by inverter.js
+// against fixed element ids; this pins the embedded page structure + assets so
+// a static/ edit that forgets the //go:embed rebuild contract (or renames a
+// mount point) fails here instead of silently shipping a broken picker.
+func TestInverterPageServesModelPickerStructure(t *testing.T) {
+	srv, _ := newServer(t)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	page := get("/inverter.html")
+	for _, want := range []string{
+		`id="modelSearch"`, `id="modelList"`, `role="listbox"`,
+		`id="modelEmpty"`, `id="modelChosen"`,
+		`href="dashboard.css"`, `href="inverter.css"`, `src="inverter.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("inverter.html: missing %s", want)
+		}
+	}
+	if strings.Contains(page, "app.css") {
+		t.Error("inverter.html: still references the retired app.css")
+	}
+
+	css := get("/inverter.css")
+	if !strings.Contains(css, ".picker-opt") {
+		t.Error("inverter.css: missing model picker styles")
+	}
+	js := get("/inverter.js")
+	if !strings.Contains(js, "modelList") {
+		t.Error("inverter.js: does not drive the modelList listbox")
 	}
 }

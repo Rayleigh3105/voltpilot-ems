@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VoltPilot Edge – Wechselrichter</title>
-  <link rel="stylesheet" href="app.css">
+  <meta name="theme-color" content="#5A8DE8">
+  <title>VoltPilot Edge · Wechselrichter</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="inverter.css">
 </head>
 <body>
   <header class="topbar">
@@ -14,31 +16,43 @@
       </span>
       <span>VoltPilot&nbsp;Edge<small>Lokaler Energiemonitor</small></span>
     </div>
-    <nav class="topnav">
-      <a class="topnav-link" href="index.html">← Übersicht</a>
-    </nav>
+    <div class="topbar-right">
+      <a class="link-btn" href="index.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+        <span>Übersicht</span>
+      </a>
+    </div>
   </header>
 
-  <main>
-    <section class="card">
-      <h1 class="page-title">Wechselrichter einrichten</h1>
-      <p class="page-lead">
-        Wählen Sie Ihren Wechselrichter aus. Die Anbindung erfolgt automatisch –
-        Sie müssen nur Marke, Typ und die Verbindungsdaten Ihres Geräts angeben.
-        VoltPilot liest die Anlage danach nur aus; gesteuert wird nichts.
-      </p>
+  <main class="inv-main">
+    <section class="card inv-head-card">
+      <div class="pairing-head">
+        <span class="pairing-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+        <div>
+          <h1 class="inv-title">Wechselrichter einrichten</h1>
+          <p class="inv-lead">
+            Marke und Modell auswählen, Verbindungsdaten angeben – alles Weitere
+            passiert automatisch. VoltPilot liest die Anlage nur aus; gesteuert wird nichts.
+          </p>
+        </div>
+      </div>
 
       <div class="current" id="current" hidden>
-        <span class="current-badge" id="currentBadge">konfiguriert</span>
-        <div>
+        <span class="current-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+        <div class="current-text">
           <p class="current-model" id="currentModel">–</p>
           <p class="current-detail" id="currentDetail"></p>
         </div>
+        <span class="current-badge" id="currentBadge">Konfiguriert</span>
       </div>
     </section>
 
-    <section class="card">
-      <form id="form" novalidate>
+    <form id="form" novalidate>
+      <section class="card inv-form-card">
         <div class="field">
           <label for="brand">Marke</label>
           <select id="brand" required></select>
@@ -46,11 +60,36 @@
         </div>
 
         <div class="field">
-          <label for="model">Modell</label>
-          <input type="search" id="modelSearch" placeholder="Modell suchen, z. B. SG04LP3 oder 12K"
-                 autocomplete="off" aria-label="Modell suchen">
-          <select id="model" required size="8"></select>
-          <p class="field-help" id="modelHelp">Wählen Sie Ihr genaues Wechselrichter-Modell.</p>
+          <label id="modelLabel" for="modelSearch">Modell</label>
+          <div class="picker" id="picker">
+            <div class="picker-search" id="pickerSearch">
+              <svg class="picker-search-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <input id="modelSearch" type="text" inputmode="search" autocomplete="off" autocorrect="off"
+                     spellcheck="false" enterkeyhint="go"
+                     role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="modelList"
+                     placeholder="Modell suchen, z. B. 12K oder SG04LP3">
+              <button type="button" class="picker-clear" id="modelClear" aria-label="Suche löschen" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div class="picker-panel">
+              <ul class="picker-list" id="modelList" role="listbox" aria-labelledby="modelLabel"></ul>
+              <div class="picker-empty" id="modelEmpty" hidden>
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/></svg>
+                <p class="picker-empty-title">Kein Modell gefunden</p>
+                <p class="picker-empty-hint" id="modelEmptyHint"></p>
+                <button type="button" class="picker-reset" id="modelReset">Suche zurücksetzen</button>
+              </div>
+            </div>
+            <div class="picker-foot">
+              <span class="picker-count" id="modelCount"></span>
+              <span class="picker-chosen" id="modelChosen" hidden>
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                <span id="modelChosenLabel"></span>
+              </span>
+            </div>
+          </div>
+          <p class="field-help" id="modelHelp">Wählen Sie Ihr genaues Wechselrichter-Modell aus der Liste.</p>
         </div>
 
         <div class="field">
@@ -70,8 +109,8 @@
         <div class="form-actions">
           <button type="submit" class="btn-primary" id="saveBtn">Speichern</button>
         </div>
-      </form>
-    </section>
+      </section>
+    </form>
 
     <footer class="foot">
       Lokale Geräteansicht. Die Auswahl gilt nur für dieses Gerät; die

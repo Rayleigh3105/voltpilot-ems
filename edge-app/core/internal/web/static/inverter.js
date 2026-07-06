@@ -7,6 +7,13 @@
 // model is pickable on its own, no grouping into families). The form POSTs
 // {brand, model, connection}; the core resolves the model to its correct
 // register map + scaling server-side.
+//
+// The model picker is a custom searchable listbox (combobox + listbox ARIA
+// pattern): type-to-filter with match highlighting, arrow-key navigation with
+// Enter/Escape, grouped by the brand's register-map families (labels straight
+// from the catalog's brand.families - still fully data-driven), an explicit
+// selected state and an empty state. A brand with a handful of models skips
+// the search row entirely.
 (function () {
   "use strict";
 
@@ -14,6 +21,14 @@
 
   var catalog = null;      // {schema_version, brands:[...]}
   var selection = null;    // current selection or null
+
+  var chosenModel = null;  // picked model id for the current brand (or null)
+  var visible = [];        // models currently rendered, in list order (keyboard nav)
+  var activeIdx = -1;      // keyboard cursor into `visible`
+
+  // Brands with at most this many models get no search row - a filter over a
+  // three-entry list is noise, not help.
+  var SEARCH_THRESHOLD = 6;
 
   function brandById(id) {
     if (!catalog) return null;
@@ -45,42 +60,225 @@
     });
   }
 
-  // modelOptionLabel builds the visible label for one model row.
-  function modelOptionLabel(m) {
-    return m.note ? m.label + " – " + m.note : m.label;
+  /* ---------------- model picker ---------------- */
+
+  function optId(modelId) { return "mopt-" + modelId; }
+
+  // tokens splits the search query into lowercase terms; a model matches when
+  // EVERY term occurs somewhere in its label, note or id.
+  function tokens(q) {
+    return q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   }
 
-  // cssEscape - minimal attribute-selector escaping for model ids (which may
-  // contain '.'), so querySelector('option[value="..."]') is safe.
-  function cssEscape(s) {
-    return String(s).replace(/["\\]/g, "\\$&");
-  }
-
-  // renderModels fills the model dropdown for the chosen brand, honoring the
-  // current search filter. The filter narrows a long per-model list without ever
-  // hiding the currently-selected model; a single model just auto-selects.
-  function renderModels(brand) {
-    var sel = $("model");
-    var q = ($("modelSearch").value || "").trim().toLowerCase();
-    var want = (selection && selection.brand === brand.id && selection.model) ? selection.model : sel.value;
-    sel.innerHTML = "";
-    var models = brand.models || [];
-    var shown = 0;
-    models.forEach(function (m) {
-      var hay = (m.label + " " + (m.note || "") + " " + m.id).toLowerCase();
-      if (q && hay.indexOf(q) === -1 && m.id !== want) return;
-      sel.appendChild(el("option", { value: m.id }, modelOptionLabel(m)));
-      shown++;
-    });
-    if (want && sel.querySelector('option[value="' + cssEscape(want) + '"]')) {
-      sel.value = want;
-    } else if (sel.options.length) {
-      sel.selectedIndex = 0;
+  function matches(m, terms) {
+    var hay = (m.label + " " + (m.note || "") + " " + m.id).toLowerCase();
+    for (var i = 0; i < terms.length; i++) {
+      if (hay.indexOf(terms[i]) === -1) return false;
     }
-    $("modelHelp").textContent = shown === 0
-      ? "Kein Modell gefunden – Suche anpassen."
-      : "Wählen Sie Ihr genaues Wechselrichter-Modell.";
+    return true;
   }
+
+  // markText renders `text` with every occurrence of every term wrapped in
+  // <mark>. Ranges are collected first and merged so overlapping terms never
+  // produce nested or broken tags.
+  function markText(node, text, terms) {
+    var ranges = [];
+    var low = text.toLowerCase();
+    terms.forEach(function (t) {
+      var from = 0, at;
+      while ((at = low.indexOf(t, from)) !== -1) {
+        ranges.push([at, at + t.length]);
+        from = at + t.length;
+      }
+    });
+    if (!ranges.length) { node.textContent = text; return; }
+    ranges.sort(function (a, b) { return a[0] - b[0]; });
+    var merged = [ranges[0]];
+    for (var i = 1; i < ranges.length; i++) {
+      var last = merged[merged.length - 1];
+      if (ranges[i][0] <= last[1]) { last[1] = Math.max(last[1], ranges[i][1]); }
+      else { merged.push(ranges[i]); }
+    }
+    var pos = 0;
+    merged.forEach(function (r) {
+      if (r[0] > pos) node.appendChild(document.createTextNode(text.slice(pos, r[0])));
+      node.appendChild(el("mark", null, text.slice(r[0], r[1])));
+      pos = r[1];
+    });
+    if (pos < text.length) node.appendChild(document.createTextNode(text.slice(pos)));
+  }
+
+  function buildOption(m, terms) {
+    var li = el("li", {
+      id: optId(m.id),
+      class: "picker-opt",
+      role: "option",
+      "aria-selected": m.id === chosenModel ? "true" : "false"
+    });
+    li.dataset.model = m.id;
+
+    var check = el("span", { class: "picker-opt-check", "aria-hidden": "true" });
+    check.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2"' +
+      ' stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    li.appendChild(check);
+
+    var text = el("span", { class: "picker-opt-text" });
+    var label = el("span", { class: "picker-opt-label" });
+    markText(label, m.label, terms);
+    text.appendChild(label);
+    if (m.note) {
+      var note = el("span", { class: "picker-opt-note" });
+      markText(note, m.note, terms);
+      text.appendChild(note);
+    }
+    li.appendChild(text);
+
+    li.addEventListener("click", function () { chooseModel(m.id); });
+    return li;
+  }
+
+  // renderModels fills the picker list for the chosen brand, honoring the
+  // current search filter: grouped by the brand's families (when it has more
+  // than one), matches highlighted, empty state when nothing fits.
+  function renderModels(brand) {
+    var list = $("modelList");
+    var q = $("modelSearch").value || "";
+    var terms = tokens(q);
+    var models = brand.models || [];
+
+    list.innerHTML = "";
+    visible = [];
+
+    // Family id -> label, in catalog order; used as group headers only when
+    // the brand's models actually span more than one family.
+    var families = brand.families || [];
+    var famOf = {};
+    models.forEach(function (m) { famOf[m.family || ""] = true; });
+    var grouped = Object.keys(famOf).length > 1;
+
+    var appendModel = function (m) {
+      list.appendChild(buildOption(m, terms));
+      visible.push(m);
+    };
+
+    if (grouped) {
+      var seen = {};
+      families.forEach(function (f) {
+        var members = models.filter(function (m) { return m.family === f.id && matches(m, terms); });
+        if (!members.length) return;
+        seen[f.id] = true;
+        list.appendChild(el("li", { class: "picker-group", role: "presentation" }, f.label));
+        members.forEach(appendModel);
+      });
+      // Models whose family has no catalog entry still render (trailing, ungrouped).
+      models.forEach(function (m) {
+        if (!seen[m.family] && matches(m, terms)) appendModel(m);
+      });
+    } else {
+      models.filter(function (m) { return matches(m, terms); }).forEach(appendModel);
+    }
+
+    // Empty state + count
+    var empty = $("modelEmpty");
+    empty.hidden = visible.length > 0;
+    list.hidden = visible.length === 0;
+    if (!visible.length) {
+      $("modelEmptyHint").textContent =
+        "Keine Übereinstimmung für „" + q.trim() + "“. " +
+        "Oft reicht ein Teil des Namens, z. B. nur „12K“.";
+    }
+    $("modelCount").textContent = terms.length
+      ? visible.length + " von " + models.length + (models.length === 1 ? " Modell" : " Modellen")
+      : models.length + (models.length === 1 ? " Modell" : " Modelle");
+
+    // Keyboard cursor: while filtering start on the first match, otherwise none.
+    setActive(terms.length && visible.length ? 0 : -1, false);
+
+    renderChosen(brand);
+  }
+
+  // renderChosen paints the persistent "which model is picked" summary in the
+  // picker footer - visible even when the picked row is filtered out of view.
+  function renderChosen(brand) {
+    var box = $("modelChosen");
+    var m = null;
+    (brand.models || []).forEach(function (x) { if (x.id === chosenModel) m = x; });
+    if (!m) { box.hidden = true; return; }
+    box.hidden = false;
+    $("modelChosenLabel").textContent = m.label;
+  }
+
+  function setActive(idx, scroll) {
+    var list = $("modelList");
+    var prev = list.querySelector(".picker-opt.active");
+    if (prev) prev.classList.remove("active");
+    activeIdx = idx;
+    var input = $("modelSearch");
+    if (idx < 0 || idx >= visible.length) {
+      input.removeAttribute("aria-activedescendant");
+      return;
+    }
+    var li = document.getElementById(optId(visible[idx].id));
+    if (!li) return;
+    li.classList.add("active");
+    input.setAttribute("aria-activedescendant", li.id);
+    if (scroll) li.scrollIntoView({ block: "nearest" });
+  }
+
+  function chooseModel(id) {
+    chosenModel = id;
+    $("picker").classList.remove("invalid");
+    var list = $("modelList");
+    list.querySelectorAll(".picker-opt").forEach(function (li) {
+      li.setAttribute("aria-selected", li.dataset.model === id ? "true" : "false");
+    });
+    var brand = brandById($("brand").value);
+    if (brand) renderChosen(brand);
+  }
+
+  // scrollChosenIntoView centers the picked row after a (re)render, so an
+  // existing configuration is immediately visible when the page opens. Only
+  // the picker panel scrolls - scrollIntoView would also scroll the PAGE and
+  // dump a fresh visitor mid-form.
+  function scrollChosenIntoView() {
+    if (!chosenModel) return;
+    var li = document.getElementById(optId(chosenModel));
+    var panel = document.querySelector(".picker-panel");
+    if (!li || !panel) return;
+    panel.scrollTop += (li.getBoundingClientRect().top - panel.getBoundingClientRect().top)
+      - (panel.clientHeight - li.offsetHeight) / 2;
+  }
+
+  function onSearchKeydown(e) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (visible.length) setActive(Math.min(activeIdx + 1, visible.length - 1), true);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (visible.length) setActive(Math.max(activeIdx - 1, 0), true);
+    } else if (e.key === "Enter") {
+      // Enter picks, never submits the form from inside the search box.
+      e.preventDefault();
+      if (activeIdx >= 0 && activeIdx < visible.length) chooseModel(visible[activeIdx].id);
+      else if (visible.length === 1) chooseModel(visible[0].id);
+    } else if (e.key === "Escape") {
+      var input = $("modelSearch");
+      if (input.value) {
+        e.preventDefault();
+        clearSearch();
+      }
+    }
+  }
+
+  function clearSearch() {
+    $("modelSearch").value = "";
+    $("modelClear").hidden = true;
+    var brand = brandById($("brand").value);
+    if (brand) renderModels(brand);
+    $("modelSearch").focus();
+  }
+
+  /* ---------------- connection fields ---------------- */
 
   // renderFields builds the connection inputs for the chosen brand, prefilled
   // from the current selection (or the field defaults) where available.
@@ -135,8 +333,23 @@
     if (!brand) return;
     $("brandHelp").textContent = brand.note || "";
     $("comm").textContent = brand.comm_label || commLabel(brand.communication);
+
+    var models = brand.models || [];
+    // Preselect the persisted choice for this brand; a single-model brand
+    // auto-selects. A long list starts unselected on purpose - the customer
+    // must consciously pick the exact model (it decides the register map).
+    chosenModel = null;
+    if (selection && selection.brand === brand.id && selection.model) {
+      models.forEach(function (m) { if (m.id === selection.model) chosenModel = m.id; });
+    }
+    if (!chosenModel && models.length === 1) chosenModel = models[0].id;
+
+    $("pickerSearch").hidden = models.length <= SEARCH_THRESHOLD;
     $("modelSearch").value = "";
+    $("modelClear").hidden = true;
+    $("picker").classList.remove("invalid");
     renderModels(brand);
+    scrollChosenIntoView();
     renderFields(brand);
   }
 
@@ -157,7 +370,7 @@
         if (input.value.trim() !== "") conn[key] = input.value.trim();
       }
     });
-    return { brand: $("brand").value, model: $("model").value, connection: conn };
+    return { brand: $("brand").value, model: chosenModel, connection: conn };
   }
 
   function showCurrent() {
@@ -196,9 +409,12 @@
     e.preventDefault();
     $("formError").hidden = true;
     $("formOk").hidden = true;
-    if (!$("model").value) {
+    if (!chosenModel) {
       $("formError").hidden = false;
-      $("formError").textContent = "Bitte wählen Sie ein Modell.";
+      $("formError").textContent = "Bitte wählen Sie Ihr Modell aus der Liste.";
+      $("picker").classList.add("invalid");
+      $("picker").scrollIntoView({ block: "center", behavior: "smooth" });
+      $("modelSearch").focus({ preventScroll: true });
       return;
     }
     var btn = $("saveBtn");
@@ -233,9 +449,13 @@
 
   $("brand").addEventListener("change", function () { onBrandChange(); });
   $("modelSearch").addEventListener("input", function () {
+    $("modelClear").hidden = $("modelSearch").value === "";
     var brand = brandById($("brand").value);
     if (brand) renderModels(brand);
   });
+  $("modelSearch").addEventListener("keydown", onSearchKeydown);
+  $("modelClear").addEventListener("click", clearSearch);
+  $("modelReset").addEventListener("click", clearSearch);
   $("form").addEventListener("submit", submit);
 
   load();
