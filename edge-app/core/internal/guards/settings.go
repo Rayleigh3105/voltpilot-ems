@@ -123,12 +123,19 @@ var presetTable = map[string]map[string]ChannelSetting{
 		"load_kw":       {Enabled: true, MaxRatePerSec: 15.0, Margin: 15.0},
 		"grid_limit_kw": {Enabled: true, MaxRatePerSec: 10.0, Margin: 15.0},
 	},
+	// Streng is the tight opt-in. Its power numbers are sized so a genuine ~10 s
+	// sample cadence still catches a tens-of-kW single-sample step: allowed change
+	// = margin + rate*elapsed = 5 + 1*10 = 15 kW at 10 s, so the captain's ~4 kW ->
+	// ~26 kW spike (a 22 kW jump) is caught. accept-after-confirmation still lets a
+	// genuinely sustained step converge (it is adopted after confirmCount samples),
+	// so real dynamics are delayed at most, never lost. (The rate term scales with
+	// the real gap, so at a faster cadence the bound is proportionally tighter.)
 	PresetStrict: {
 		"soc_pct":       {Enabled: true, MaxRatePerSec: 0.5, Margin: 3.0},
-		"power_kw":      {Enabled: true, MaxRatePerSec: 5.0, Margin: 5.0},
-		"pv_power_kw":   {Enabled: true, MaxRatePerSec: 5.0, Margin: 5.0},
-		"load_kw":       {Enabled: true, MaxRatePerSec: 5.0, Margin: 5.0},
-		"grid_limit_kw": {Enabled: true, MaxRatePerSec: 5.0, Margin: 8.0},
+		"power_kw":      {Enabled: true, MaxRatePerSec: 1.0, Margin: 5.0},
+		"pv_power_kw":   {Enabled: true, MaxRatePerSec: 1.0, Margin: 5.0},
+		"load_kw":       {Enabled: true, MaxRatePerSec: 1.0, Margin: 5.0},
+		"grid_limit_kw": {Enabled: true, MaxRatePerSec: 1.0, Margin: 5.0},
 	},
 }
 

@@ -179,7 +179,7 @@ func TestDespikeStrictCatchesWhatDefaultLetsThrough(t *testing.T) {
 	t0 := time.Unix(1_700_000_000, 0)
 	step := 5 * time.Second
 	// A 45 kW spike over 5 s and back. Normal allows margin 15 + 15 kW/s*5 = 90 kW,
-	// so 45 passes; Streng allows 5 + 5*5 = 30 kW, so 45 is caught.
+	// so 45 passes; Streng allows 5 + 1*5 = 10 kW, so 45 is caught.
 	spikeAndReturn := func(d *Despiker) (spikeKept, returnKept bool) {
 		feed(d, "load_kw", 5, t0)
 		spikeKept = feed(d, "load_kw", 50, t0.Add(step))
@@ -198,6 +198,42 @@ func TestDespikeStrictCatchesWhatDefaultLetsThrough(t *testing.T) {
 	}
 	if got := strict.DroppedTotal(); got != 1 {
 		t.Fatalf("strict dropped total = %d, want 1", got)
+	}
+}
+
+// TestStrengCatchesCaptains26kwStepAt10sCadence is the captain's exact
+// reproduction on the RATE gate alone (no envelope): an otherwise ~4 kW grid
+// series with one ~26 kW single-sample spike, at a real ~10 s cadence. Before
+// the preset was tightened, Streng allowed margin 5 + 5 kW/s*10 s = 55 kW, so the
+// 22 kW jump passed and (via the derived battery = grid - load + pv) snapped the
+// chart. Streng now allows 5 + 1*10 = 15 kW, so the spike is caught and held-last.
+func TestStrengCatchesCaptains26kwStepAt10sCadence(t *testing.T) {
+	d := NewDespikerWithSettings(PresetSettings(PresetStrict))
+	t0 := time.Unix(1_700_000_000, 0)
+	step := 10 * time.Second
+
+	feed(d, "power_kw", 4, t0)
+	m := map[string]float64{"power_kw": 26}
+	drops := d.Accept(m, t0.Add(step))
+	if len(drops) != 1 || m["power_kw"] != 4 {
+		t.Fatalf("Streng must catch the 26 kW single-sample grid spike at 10 s and hold to 4, got drops=%+v m=%v", drops, m["power_kw"])
+	}
+	if !feed(d, "power_kw", 4.2, t0.Add(2*step)) {
+		t.Fatal("the return to ~4 kW must be accepted")
+	}
+}
+
+// TestAusPassesCaptains26kwStep: the same spike passes untouched at "Aus" (the
+// operator explicitly disabled the filter). The rate gate never fires.
+func TestAusPassesCaptains26kwStep(t *testing.T) {
+	d := NewDespikerWithSettings(PresetSettings(PresetOff))
+	t0 := time.Unix(1_700_000_000, 0)
+	feed(d, "power_kw", 4, t0)
+	if !feed(d, "power_kw", 26, t0.Add(10*time.Second)) {
+		t.Fatal("Aus must pass the 26 kW spike untouched (filter disabled)")
+	}
+	if got := d.DroppedTotal(); got != 0 {
+		t.Fatalf("dropped total = %d, want 0 with the gate off", got)
 	}
 }
 

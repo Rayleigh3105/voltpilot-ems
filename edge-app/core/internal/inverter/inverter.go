@@ -98,6 +98,14 @@ type Model struct {
 	Label  string `json:"label"`  // product name, e.g. "SUN-12K-SG04LP3"
 	Family string `json:"family"` // the register-map Family this model reads with
 	Note   string `json:"note,omitempty"`
+	// RatedKw is the inverter's nameplate AC power in kW (0 = unknown). It is the
+	// authoritative physical bound the edge derives a per-channel plausibility
+	// envelope from (guards.Envelope): a 12 kW inverter can neither generate nor
+	// move ~26 kW, so a beyond-rating reading is garbage regardless of the
+	// operator's despike sensitivity preset. Only PV and battery charge/discharge
+	// are inverter-bounded; pure grid import follows the house connection, not the
+	// inverter (see guards.Envelope).
+	RatedKw float64 `json:"rated_kw,omitempty"`
 }
 
 // Brand groups a manufacturer with its fixed communication method, the concrete
@@ -179,49 +187,49 @@ func deyeFamilies() []Family {
 // ha-solarman's supported Deye lines (deye_sg04lp3 / deye_hybrid / deye_string /
 // deye_2mppt+deye_4mppt); adding a model is a one-line edit here, no code change.
 func deyeModels() []Model {
-	m := func(id, label, family, note string) Model {
-		return Model{ID: id, Label: label, Family: family, Note: note}
+	m := func(id, label, family string, ratedKw float64, note string) Model {
+		return Model{ID: id, Label: label, Family: family, RatedKw: ratedKw, Note: note}
 	}
 	return []Model{
 		// --- 3-phase hybrid, LOW-VOLTAGE battery (SG04LP3, 2 MPPT) --------------
-		m("sun-5k-sg04lp3", "SUN-5K-SG04LP3-EU", FamHybrid3p, "5 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
-		m("sun-6k-sg04lp3", "SUN-6K-SG04LP3-EU", FamHybrid3p, "6 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
-		m("sun-8k-sg04lp3", "SUN-8K-SG04LP3-EU", FamHybrid3p, "8 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
-		m("sun-10k-sg04lp3", "SUN-10K-SG04LP3-EU", FamHybrid3p, "10 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
-		m("sun-12k-sg04lp3", "SUN-12K-SG04LP3-EU", FamHybrid3p, "12 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-5k-sg04lp3", "SUN-5K-SG04LP3-EU", FamHybrid3p, 5, "5 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-6k-sg04lp3", "SUN-6K-SG04LP3-EU", FamHybrid3p, 6, "6 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-8k-sg04lp3", "SUN-8K-SG04LP3-EU", FamHybrid3p, 8, "8 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-10k-sg04lp3", "SUN-10K-SG04LP3-EU", FamHybrid3p, 10, "10 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-12k-sg04lp3", "SUN-12K-SG04LP3-EU", FamHybrid3p, 12, "12 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
 		// --- 3-phase hybrid, HIGH-VOLTAGE battery (SG01HP3, 3-4 MPPT) -----------
-		m("sun-29.9k-sg01hp3", "SUN-29.9K-SG01HP3-EU", FamHybrid3p, "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-30k-sg01hp3", "SUN-30K-SG01HP3-EU", FamHybrid3p, "30 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-35k-sg01hp3", "SUN-35K-SG01HP3-EU", FamHybrid3p, "35 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-40k-sg01hp3", "SUN-40K-SG01HP3-EU", FamHybrid3p, "40 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
-		m("sun-50k-sg01hp3", "SUN-50K-SG01HP3-EU", FamHybrid3p, "50 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-29.9k-sg01hp3", "SUN-29.9K-SG01HP3-EU", FamHybrid3p, 29.9, "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-30k-sg01hp3", "SUN-30K-SG01HP3-EU", FamHybrid3p, 30, "30 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-35k-sg01hp3", "SUN-35K-SG01HP3-EU", FamHybrid3p, 35, "35 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-40k-sg01hp3", "SUN-40K-SG01HP3-EU", FamHybrid3p, 40, "40 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-50k-sg01hp3", "SUN-50K-SG01HP3-EU", FamHybrid3p, 50, "50 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
 		// --- single-phase hybrid (SG03LP1) -------------------------------------
-		m("sun-3.6k-sg03lp1", "SUN-3.6K-SG03LP1-EU", FamHybrid1p, "3,6 kW · Hybrid · 1-phasig"),
-		m("sun-5k-sg03lp1", "SUN-5K-SG03LP1-EU", FamHybrid1p, "5 kW · Hybrid · 1-phasig"),
-		m("sun-6k-sg03lp1", "SUN-6K-SG03LP1-EU", FamHybrid1p, "6 kW · Hybrid · 1-phasig"),
-		m("sun-7.6k-sg03lp1", "SUN-7.6K-SG03LP1-EU", FamHybrid1p, "7,6 kW · Hybrid · 1-phasig"),
-		m("sun-8k-sg03lp1", "SUN-8K-SG03LP1-EU", FamHybrid1p, "8 kW · Hybrid · 1-phasig"),
+		m("sun-3.6k-sg03lp1", "SUN-3.6K-SG03LP1-EU", FamHybrid1p, 3.6, "3,6 kW · Hybrid · 1-phasig"),
+		m("sun-5k-sg03lp1", "SUN-5K-SG03LP1-EU", FamHybrid1p, 5, "5 kW · Hybrid · 1-phasig"),
+		m("sun-6k-sg03lp1", "SUN-6K-SG03LP1-EU", FamHybrid1p, 6, "6 kW · Hybrid · 1-phasig"),
+		m("sun-7.6k-sg03lp1", "SUN-7.6K-SG03LP1-EU", FamHybrid1p, 7.6, "7,6 kW · Hybrid · 1-phasig"),
+		m("sun-8k-sg03lp1", "SUN-8K-SG03LP1-EU", FamHybrid1p, 8, "8 kW · Hybrid · 1-phasig"),
 		// --- string grid-tie, no battery (G03 / G04) ---------------------------
-		m("sun-4k-g03", "SUN-4K-G03", FamString, "4 kW · String · nur Erzeugung"),
-		m("sun-5k-g03", "SUN-5K-G03", FamString, "5 kW · String · nur Erzeugung"),
-		m("sun-6k-g03", "SUN-6K-G03", FamString, "6 kW · String · nur Erzeugung"),
-		m("sun-7k-g03", "SUN-7K-G03", FamString, "7 kW · String · nur Erzeugung"),
-		m("sun-8k-g03", "SUN-8K-G03", FamString, "8 kW · String · nur Erzeugung"),
-		m("sun-10k-g03", "SUN-10K-G03", FamString, "10 kW · String · nur Erzeugung"),
-		m("sun-12k-g03", "SUN-12K-G03", FamString, "12 kW · String · nur Erzeugung"),
-		m("sun-15k-g04", "SUN-15K-G04", FamString, "15 kW · String · 3-phasig · nur Erzeugung"),
-		m("sun-20k-g04", "SUN-20K-G04", FamString, "20 kW · String · 3-phasig · nur Erzeugung"),
-		m("sun-25k-g04", "SUN-25K-G04", FamString, "25 kW · String · 3-phasig · nur Erzeugung"),
-		m("sun-30k-g04", "SUN-30K-G04", FamString, "30 kW · String · 3-phasig · nur Erzeugung"),
-		m("sun-33k-g04", "SUN-33K-G04", FamString, "33 kW · String · 3-phasig · nur Erzeugung"),
-		m("sun-50k-g04", "SUN-50K-G04", FamString, "50 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-4k-g03", "SUN-4K-G03", FamString, 4, "4 kW · String · nur Erzeugung"),
+		m("sun-5k-g03", "SUN-5K-G03", FamString, 5, "5 kW · String · nur Erzeugung"),
+		m("sun-6k-g03", "SUN-6K-G03", FamString, 6, "6 kW · String · nur Erzeugung"),
+		m("sun-7k-g03", "SUN-7K-G03", FamString, 7, "7 kW · String · nur Erzeugung"),
+		m("sun-8k-g03", "SUN-8K-G03", FamString, 8, "8 kW · String · nur Erzeugung"),
+		m("sun-10k-g03", "SUN-10K-G03", FamString, 10, "10 kW · String · nur Erzeugung"),
+		m("sun-12k-g03", "SUN-12K-G03", FamString, 12, "12 kW · String · nur Erzeugung"),
+		m("sun-15k-g04", "SUN-15K-G04", FamString, 15, "15 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-20k-g04", "SUN-20K-G04", FamString, 20, "20 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-25k-g04", "SUN-25K-G04", FamString, 25, "25 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-30k-g04", "SUN-30K-G04", FamString, 30, "30 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-33k-g04", "SUN-33K-G04", FamString, 33, "33 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-50k-g04", "SUN-50K-G04", FamString, 50, "50 kW · String · 3-phasig · nur Erzeugung"),
 		// --- micro-inverter, no battery (SUN*G3) -------------------------------
-		m("sun600g3", "SUN600G3-EU-230", FamMicro, "600 W · Mikro · 2 MPPT · nur Erzeugung"),
-		m("sun800g3", "SUN800G3-EU-230", FamMicro, "800 W · Mikro · 2 MPPT · nur Erzeugung"),
-		m("sun1000g3", "SUN1000G3-EU-230", FamMicro, "1000 W · Mikro · 2 MPPT · nur Erzeugung"),
-		m("sun1300g3", "SUN1300G3-EU-230", FamMicro, "1300 W · Mikro · 4 MPPT · nur Erzeugung"),
-		m("sun1600g3", "SUN1600G3-EU-230", FamMicro, "1600 W · Mikro · 4 MPPT · nur Erzeugung"),
-		m("sun2000g3", "SUN2000G3-EU-230", FamMicro, "2000 W · Mikro · 4 MPPT · nur Erzeugung"),
+		m("sun600g3", "SUN600G3-EU-230", FamMicro, 0.6, "600 W · Mikro · 2 MPPT · nur Erzeugung"),
+		m("sun800g3", "SUN800G3-EU-230", FamMicro, 0.8, "800 W · Mikro · 2 MPPT · nur Erzeugung"),
+		m("sun1000g3", "SUN1000G3-EU-230", FamMicro, 1.0, "1000 W · Mikro · 2 MPPT · nur Erzeugung"),
+		m("sun1300g3", "SUN1300G3-EU-230", FamMicro, 1.3, "1300 W · Mikro · 4 MPPT · nur Erzeugung"),
+		m("sun1600g3", "SUN1600G3-EU-230", FamMicro, 1.6, "1600 W · Mikro · 4 MPPT · nur Erzeugung"),
+		m("sun2000g3", "SUN2000G3-EU-230", FamMicro, 2.0, "2000 W · Mikro · 4 MPPT · nur Erzeugung"),
 	}
 }
 
@@ -283,6 +291,35 @@ func (b Brand) model(id string) (Model, bool) {
 		}
 	}
 	return Model{}, false
+}
+
+// RatedKw returns the nameplate AC power (kW) of the given brand+model, ok=false
+// when the model is unknown or has no rating (e.g. the generic SunSpec entry).
+// The physical-envelope guard (guards.Envelope) uses this to bound PV and
+// battery power regardless of the operator's despike preset.
+func (c Catalog) RatedKw(brandID, modelID string) (float64, bool) {
+	b, ok := c.brand(strings.TrimSpace(brandID))
+	if !ok {
+		return 0, false
+	}
+	m, ok := b.model(strings.TrimSpace(modelID))
+	if !ok || m.RatedKw <= 0 {
+		return 0, false
+	}
+	return m.RatedKw, true
+}
+
+// FamilyHasBattery reports whether a register-map family models a battery
+// (hybrids do; string/micro grid-tie inverters do not). Only battery families
+// have a physically-bounded battery charge/discharge, so the envelope's
+// derived-battery consistency check applies to them alone.
+func FamilyHasBattery(family string) bool {
+	switch family {
+	case FamHybrid1p, FamHybrid3p:
+		return true
+	default:
+		return false
+	}
 }
 
 // --- Selection: the persisted + published choice. ---

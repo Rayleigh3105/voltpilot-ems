@@ -93,6 +93,41 @@ func TestModelDeterminesRegisterMapNotPhaseGrouping(t *testing.T) {
 	}
 }
 
+// TestRatedKwAndBatteryLookup: every Deye model carries a positive nameplate
+// rating (the physical-envelope guard depends on it), the generic SunSpec entry
+// has none, and battery families are correctly classified.
+func TestRatedKwAndBatteryLookup(t *testing.T) {
+	cat := DefaultCatalog()
+	for _, b := range cat.Brands {
+		for _, m := range b.Models {
+			rated, ok := cat.RatedKw(b.ID, m.ID)
+			if b.ID == BrandDeye {
+				if !ok || rated <= 0 {
+					t.Errorf("Deye model %q must have a positive rating, got %v ok=%v", m.ID, rated, ok)
+				}
+			}
+		}
+	}
+	// The captain's 12 kW hybrid is a battery family with rating 12.
+	if rated, ok := cat.RatedKw(BrandDeye, "sun-12k-sg04lp3"); !ok || rated != 12 {
+		t.Fatalf("SUN-12K-SG04LP3 rating = %v ok=%v, want 12", rated, ok)
+	}
+	if !FamilyHasBattery(FamHybrid3p) || !FamilyHasBattery(FamHybrid1p) {
+		t.Fatal("hybrid families must be battery families")
+	}
+	if FamilyHasBattery(FamString) || FamilyHasBattery(FamMicro) || FamilyHasBattery(FamSunSpec) {
+		t.Fatal("string/micro/sunspec families must not be battery families")
+	}
+	// The generic SunSpec model has no rating -> envelope inactive.
+	if _, ok := cat.RatedKw(BrandGenericModbus, FamSunSpec); ok {
+		t.Fatal("generic SunSpec must have no known rating")
+	}
+	// An unknown brand/model yields no rating.
+	if _, ok := cat.RatedKw("nope", "nope"); ok {
+		t.Fatal("unknown brand/model must have no rating")
+	}
+}
+
 func TestEveryModelResolvesToAKnownRegisterFamily(t *testing.T) {
 	cat := DefaultCatalog()
 	for _, b := range cat.Brands {

@@ -55,6 +55,7 @@ type Agent struct {
 	lastRawSoc  *float64
 
 	despiker       *guards.Despiker
+	envelope       *guards.Envelope
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 
@@ -183,6 +184,7 @@ func New(cfg config.Config) (*Agent, error) {
 		invStore:     is,
 		invCat:       inverter.DefaultCatalog(),
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
+		envelope:     guards.NewEnvelope(),
 		despikeStore: ds,
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
@@ -207,6 +209,7 @@ func New(cfg config.Config) (*Agent, error) {
 	if sel, ok, err := is.Load(); err == nil && ok {
 		a.inv = &sel
 		a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
+		a.applyEnvelope(&sel)
 		slog.Info("loaded inverter selection from disk", "brand", sel.Brand, "family", sel.Family)
 	} else if err != nil {
 		slog.Warn("stored inverter selection unreadable; starting without", "err", err)
@@ -582,9 +585,18 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// the device (guards.DespikeSettings). See guards.Despiker for the
 	// accept-after-confirmation semantics that let a genuinely new level converge
 	// instead of holding the old one forever.
-	if drops := a.despiker.Accept(measurements, ts); len(drops) > 0 {
+	drops := a.despiker.Accept(measurements, ts)
+	// Physical-envelope gate (preset-INDEPENDENT): the configured inverter model
+	// bounds PV and the DERIVED battery (grid - load + pv). This catches what the
+	// rate gate leaves through at a slow cadence - the captain's ~26 kW single
+	// sample on a 12 kW inverter, whose UNBALANCED grid spike snaps the derived
+	// battery curve to an impossible value. The offending measured channel is held
+	// to its last in-envelope value (hold-last), so all four lines - including the
+	// derived battery - stay continuous. Inactive when no inverter/rating is known.
+	drops = append(drops, a.envelope.Accept(measurements)...)
+	if len(drops) > 0 {
 		a.logDespike(drops)
-		total := a.despiker.DroppedTotal()
+		total := a.despiker.DroppedTotal() + a.envelope.DroppedTotal()
 		a.State.Update(func(s *state.Snapshot) { s.DespikedDropped = total })
 	}
 
@@ -889,10 +901,29 @@ func (a *Agent) SetInverter(req inverter.SelectionRequest) (inverter.Selection, 
 	a.inv = &sel
 	a.invMu.Unlock()
 	a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
+	a.applyEnvelope(&sel)
 	a.publishInverterConfig()
 	slog.Info("inverter selection updated", "brand", sel.Brand, "family", sel.Family,
 		"communication", sel.Communication)
 	return sel, nil
+}
+
+// applyEnvelope (re)configures the physical-plausibility envelope from the
+// selected inverter model: the model's nameplate rating bounds PV and (for
+// battery families) the derived battery charge/discharge, enforced regardless of
+// the operator's despike preset. An unknown model / no rating leaves the
+// envelope inactive (bounds 0), so a device without a known rating is unaffected.
+func (a *Agent) applyEnvelope(sel *inverter.Selection) {
+	if a.envelope == nil || sel == nil {
+		return
+	}
+	var maxPv, maxBatt float64
+	if rated, ok := a.invCat.RatedKw(sel.Brand, sel.Model); ok {
+		maxPv, maxBatt = guards.EnvelopeFor(rated, inverter.FamilyHasBattery(sel.Family))
+	}
+	a.envelope.SetBounds(maxPv, maxBatt)
+	slog.Info("physical envelope configured", "model", sel.Model, "family", sel.Family,
+		"max_pv_kw", maxPv, "max_battery_kw", maxBatt)
 }
 
 // publishInverterConfig publishes the current selection retained on the local
@@ -912,9 +943,16 @@ func (a *Agent) publishInverterConfig() {
 // --- Despike settings (the local web app's Ausreißer-Filter surface) ---
 
 // GetDespike returns the current despike settings, per-channel drop counters and
-// the channel metadata (labels/units/help) for the settings page.
+// the channel metadata (labels/units/help) for the settings page. The envelope's
+// per-channel rejections are folded into the same counters so the operator sees
+// the total "N gefiltert" per channel (the envelope is not preset-configurable,
+// so it adds no knobs - only visible drops).
 func (a *Agent) GetDespike() guards.DespikeStatus {
-	return a.despiker.Status()
+	st := a.despiker.Status()
+	for ch, n := range a.envelope.DroppedByChannel() {
+		st.Counters[ch] += n
+	}
+	return st
 }
 
 // SetDespike validates a settings request, persists it, and applies it live to
