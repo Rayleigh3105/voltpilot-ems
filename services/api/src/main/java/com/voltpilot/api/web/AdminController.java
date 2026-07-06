@@ -183,7 +183,8 @@ public class AdminController {
             @Valid @RequestBody CreateSiteRequest request) {
         requireTenant(tenantId);
         SiteDto created = sites.create(tenantId, request.name().trim(),
-                request.biddingZoneOrDefault(), request.latitude(), request.longitude());
+                request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
+                request.plantKindOrDefault());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

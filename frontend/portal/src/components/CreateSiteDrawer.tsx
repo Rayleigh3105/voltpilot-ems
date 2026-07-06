@@ -4,7 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { ApiError, type CreateSiteInput, type Site } from '../api';
+import { ApiError, type CreateSiteInput, type PlantKind, type Site } from '../api';
 import { LocationMap } from './LocationMap';
 
 /**
@@ -29,6 +29,7 @@ export function CreateSiteDrawer({
 }) {
   const [name, setName] = useState('');
   const [biddingZone, setBiddingZone] = useState('DE-LU');
+  const [plantKind, setPlantKind] = useState<PlantKind>('eigenverbrauch');
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,6 +40,7 @@ export function CreateSiteDrawer({
     setLat(null);
     setLon(null);
     setBiddingZone('DE-LU');
+    setPlantKind('eigenverbrauch');
     setError(null);
   }
 
@@ -52,6 +54,7 @@ export function CreateSiteDrawer({
         biddingZone,
         latitude: lat,
         longitude: lon,
+        plantKind,
       });
       reset();
       onCreated(site);
@@ -110,6 +113,24 @@ export function CreateSiteDrawer({
             <option value="AT">AT (Österreich)</option>
             <option value="CH">CH (Schweiz)</option>
           </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="site-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Anlagentyp
+          </label>
+          <select
+            id="site-plant-kind"
+            className="vp-select"
+            value={plantKind}
+            onChange={(e) => setPlantKind(e.target.value as PlantKind)}
+          >
+            <option value="eigenverbrauch">Eigenverbrauch (Haushalt/Gewerbe)</option>
+            <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
+          </select>
+          <p className="vp-note" style={{ margin: 0 }}>
+            Bestimmt, wie Ihr Vorteil erzählt wird: „gespart" beim Eigenverbrauch,
+            „mehr verdient" bei der Direktvermarktung.
+          </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>

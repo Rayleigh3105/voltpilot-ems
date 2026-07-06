@@ -115,7 +115,8 @@ public class SiteController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
         SiteDto created = sites.create(tenantId, request.name().trim(),
-                request.biddingZoneOrDefault(), request.latitude(), request.longitude());
+                request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
+                request.plantKindOrDefault());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -129,7 +130,8 @@ public class SiteController {
     public SiteDto updateSite(@PathVariable UUID siteId,
             @Valid @RequestBody UpdateSiteRequest request) {
         SiteDto updated = sites.update(siteId, request.name().trim(),
-                request.biddingZoneOrDefault(), request.latitude(), request.longitude());
+                request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
+                request.plantKindOrDefault());
         if (updated == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }

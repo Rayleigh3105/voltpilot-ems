@@ -67,13 +67,15 @@ class RlsIsolationTest {
 
     @Test
     void tenantSeesOnlyItsOwnSites() throws Exception {
-        assertThat(sitesForTenant(TENANT_A)).containsExactly("Demo Site Berlin");
+        // Tenant A is the dev-seeded multi-site fleet (V100 + V20260706020000).
+        assertThat(sitesForTenant(TENANT_A)).containsExactlyInAnyOrder(
+                "Demo Site Berlin", "Solarpark Dachau", "Hof Lindenberg");
         assertThat(sitesForTenant(TENANT_B)).containsExactly("Nordwind Hamburg");
     }
 
     @Test
     void tenantSeesOnlyItsOwnDevicesAndTelemetry() throws Exception {
-        assertThat(scalar(TENANT_A, "SELECT count(*) FROM device")).isEqualTo(1L);
+        assertThat(scalar(TENANT_A, "SELECT count(*) FROM device")).isEqualTo(3L);
         assertThat(scalar(TENANT_A, "SELECT count(DISTINCT tenant_id) FROM telemetry")).isEqualTo(1L);
         assertThat(scalar(TENANT_B, "SELECT count(*) FROM device")).isEqualTo(1L);
         assertThat(scalar(TENANT_B, "SELECT count(DISTINCT tenant_id) FROM telemetry")).isEqualTo(1L);

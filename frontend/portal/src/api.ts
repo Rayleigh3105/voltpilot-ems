@@ -2,12 +2,20 @@ import { AuthRedirectError, freshToken } from './auth';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
+/**
+ * Anlagentyp of a site: steers the money wording ("mehr verdient" for
+ * Direktvermarktung - spot revenue is literal income - vs. "gespart" for
+ * Eigenverbrauch - avoided cost).
+ */
+export type PlantKind = 'direktvermarktung' | 'eigenverbrauch';
+
 export interface Site {
   id: string;
   name: string;
   biddingZone: string;
   latitude: number | null;
   longitude: number | null;
+  plantKind: PlantKind;
 }
 
 export interface CreateSiteInput {
@@ -15,6 +23,8 @@ export interface CreateSiteInput {
   biddingZone?: string;
   latitude?: number | null;
   longitude?: number | null;
+  /** Defaults to 'eigenverbrauch' server-side. */
+  plantKind?: PlantKind;
 }
 
 export interface PricePoint {
@@ -366,6 +376,61 @@ export interface TelemetryPoint {
   gridLimitKw: number | null;
 }
 
+// ---- Fleet overview (GET /api/v1/overview) ---------------------------------
+
+/** Newest telemetry observation of a site (the fleet card's live snapshot). */
+export interface OverviewLive {
+  ts: string;
+  pvKw: number | null;
+  loadKw: number | null;
+  /** + = Bezug (import), - = Einspeisung (export). */
+  gridKw: number | null;
+  socPct: number | null;
+}
+
+/**
+ * One site of the fleet overview. Liveness counts derive from each device's
+ * newest telemetry ARRIVAL server-side (the store-and-forward rule) with the
+ * same 5-minute window as {@link deviceLiveStatus}.
+ */
+export interface OverviewSite {
+  id: string;
+  name: string;
+  plantKind: PlantKind;
+  deviceCount: number;
+  onlineCount: number;
+  /** Devices that never sent data ("wartet auf erste Daten"). */
+  waitingCount: number;
+  /** Worst device status (stale beats waiting beats online); null = no devices. */
+  worstStatus: DeviceLiveStatus | null;
+  lastSeenAt: string | null;
+  live: OverviewLive | null;
+  /** Ex-ante optimizer savings for today (Berlin day); null = no plan today. */
+  plannedSavingsTodayEur: number | null;
+}
+
+export interface OverviewTotals {
+  sites: number;
+  devices: number;
+  online: number;
+  /** Null when NO site has a plan today (never a misleading zero). */
+  plannedSavingsTodayEur: number | null;
+  /** Sites whose live snapshot is inside the 5-min freshness window. */
+  liveSitesCovered: number;
+}
+
+/** One Europe/Berlin day of fleet-wide ex-ante savings (hero mini chart). */
+export interface OverviewDailySavings {
+  day: string;
+  savingsEur: number;
+}
+
+export interface Overview {
+  sites: OverviewSite[];
+  totals: OverviewTotals;
+  dailySavings: OverviewDailySavings[];
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -462,6 +527,8 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
 }
 
 export const api = {
+  /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
+  overview: () => request<Overview>('/api/v1/overview'),
   listSites: () => request<Site[]>('/api/v1/sites'),
   createSite: (input: CreateSiteInput) =>
     request<Site>('/api/v1/sites', {

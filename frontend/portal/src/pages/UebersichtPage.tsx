@@ -11,6 +11,7 @@ import {
   deviceLiveStatus,
   ONLINE_WINDOW_MS,
   type Device,
+  type Overview,
   type PriceSeries,
   type SchedulePlan,
   type Site,
@@ -26,6 +27,7 @@ import { AddDeviceDrawer } from '../components/DeviceDrawers';
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, ErrorState, Skeleton, TextSkeleton } from '../components/States';
 import { LiveHero } from '../components/LiveHero';
+import { FleetHero, FleetSiteCard, FleetStatusCard } from '../components/FleetOverview';
 import { TelemetryChart } from '../TelemetryChart';
 import { PriceChart } from '../PriceChart';
 
@@ -61,20 +63,7 @@ function WidgetError({ message, onRetry }: { message: string; onRetry: () => voi
   return <ErrorState message={message} onRetry={onRetry} />;
 }
 
-/**
- * The Übersicht landing: money-first KPI hero row (savings + price lead),
- * live telemetry as the primary widget, prices + weather secondary, and the
- * quick site list. Per the redesign report section 4 + captain decisions.
- */
-export function UebersichtPage({
-  sites,
-  devices,
-  selectedSite,
-  onSelectSite,
-  onNavigate,
-  onReload,
-  isAdmin = false,
-}: {
+interface UebersichtProps {
   sites: Site[];
   devices: Device[];
   selectedSite: string | null;
@@ -82,7 +71,187 @@ export function UebersichtPage({
   onNavigate: (page: PageId) => void;
   onReload: (selectSiteId?: string) => void;
   isAdmin?: boolean;
-}) {
+}
+
+/**
+ * The ADAPTIVE Übersicht landing (captain decision: one landing, no new nav
+ * item): customers with several sites get the fleet mode - money hero, fleet
+ * status sentence, per-site cards - and drill into today's single-site view by
+ * tapping a card ("‹ Alle Standorte" leads back). Single-site customers see
+ * the unchanged single-site layout.
+ */
+export function UebersichtPage(props: UebersichtProps) {
+  const multiSite = props.sites.length > 1;
+  const [drill, setDrill] = useState(false);
+  if (!multiSite) return <SingleSiteUebersicht {...props} />;
+  if (drill) {
+    return <SingleSiteUebersicht {...props} onBackToFleet={() => setDrill(false)} />;
+  }
+  return (
+    <FleetUebersicht
+      {...props}
+      onOpenSite={(id) => {
+        props.onSelectSite(id);
+        setDrill(true);
+      }}
+    />
+  );
+}
+
+/**
+ * Fleet mode: one tenant-wide overview request (30 s background poll like the
+ * single-site widgets) renders the hero + status sentence + site cards. No
+ * Ø-Preis KPI here (captain decision - meaningless across bidding zones);
+ * price detail lives in the drill-down and on the Marktpreise page.
+ */
+function FleetUebersicht({
+  onOpenSite,
+  onReload,
+  sites,
+}: UebersichtProps & { onOpenSite: (id: string) => void }) {
+  const user = currentUser();
+  const firstName = (user.name || '').split(/\s+/)[0] || user.name;
+
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [now, setNow] = useState(() => new Date());
+  const [siteDrawer, setSiteDrawer] = useState(false);
+  const [deviceDrawer, setDeviceDrawer] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api.overview().then(
+      (o) => {
+        if (!active) return;
+        setOverview(o);
+        setFailed(false);
+      },
+      () => {
+        if (active) setFailed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [reloadKey]);
+
+  // Freshness tick (5 s) + silent background poll (30 s) - the page keeps its
+  // last good data on a poll failure, exactly like the single-site widgets.
+  useEffect(() => {
+    let ticks = 0;
+    const timer = setInterval(() => {
+      setNow(new Date());
+      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) {
+        api.overview().then(
+          (o) => setOverview(o),
+          () => {},
+        );
+      }
+    }, TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <>
+      <div className="vp-page-head">
+        <div className="titles">
+          <h1>Guten Tag, {firstName}</h1>
+          <p>Alle Ihre Standorte auf einen Blick.</p>
+        </div>
+        <div className="actions">
+          <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
+            Standort
+          </Button>
+          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDeviceDrawer(true)}>
+            Gerät hinzufügen
+          </Button>
+        </div>
+      </div>
+
+      {overview == null && failed ? (
+        <Card padding="lg" radius="lg">
+          <ErrorState
+            message="Die Übersicht konnte gerade nicht geladen werden. Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+            onRetry={() => setReloadKey((k) => k + 1)}
+          />
+        </Card>
+      ) : overview == null ? (
+        <>
+          <div className="vp-fleet-top">
+            <Skeleton height={240} radius="var(--vp-radius-lg)" />
+            <Skeleton height={120} radius="var(--vp-radius-lg)" />
+          </div>
+          <section className="vp-section">
+            <div className="vp-grid vp-fleet-grid">
+              <Skeleton height={190} radius="var(--vp-radius-lg)" />
+              <Skeleton height={190} radius="var(--vp-radius-lg)" />
+              <Skeleton height={190} radius="var(--vp-radius-lg)" />
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
+          <div className="vp-fleet-top">
+            <FleetHero overview={overview} now={now} />
+            <FleetStatusCard overview={overview} now={now} />
+          </div>
+
+          <section className="vp-section" aria-label="Meine Standorte">
+            <div className="vp-section-head">
+              <IconTile category="home" size={40}>
+                <Icon name="map-pin" size={20} />
+              </IconTile>
+              <h2>Meine Standorte</h2>
+              <Badge variant="tint">{overview.sites.length}</Badge>
+            </div>
+            <div className="vp-grid vp-fleet-grid">
+              {overview.sites.map((s) => (
+                <FleetSiteCard key={s.id} site={s} now={now} onOpen={() => onOpenSite(s.id)} />
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      <CreateSiteDrawer
+        open={siteDrawer}
+        onClose={() => setSiteDrawer(false)}
+        onCreate={(input) => api.createSite(input)}
+        onCreated={(s) => {
+          onReload(s.id);
+          setReloadKey((k) => k + 1);
+        }}
+      />
+      <AddDeviceDrawer
+        open={deviceDrawer}
+        onClose={() => setDeviceDrawer(false)}
+        sites={sites}
+        onClaimed={() => {
+          onReload();
+          setReloadKey((k) => k + 1);
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * The single-site Übersicht body: money-first KPI hero row (savings + price
+ * lead), live telemetry as the primary widget, prices + weather secondary, and
+ * the quick site list. Unchanged for single-site customers; in fleet mode it
+ * is the drill-down target and carries the "‹ Alle Standorte" back affordance.
+ */
+function SingleSiteUebersicht({
+  sites,
+  devices,
+  selectedSite,
+  onSelectSite,
+  onNavigate,
+  onReload,
+  isAdmin = false,
+  onBackToFleet,
+}: UebersichtProps & { onBackToFleet?: () => void }) {
   const user = currentUser();
   const site = sites.find((s) => s.id === selectedSite) ?? null;
 
@@ -287,10 +456,20 @@ export function UebersichtPage({
 
   return (
     <>
+      {onBackToFleet && (
+        <button type="button" className="vp-fleet-back" onClick={onBackToFleet}>
+          <Icon name="chevron-left" size={18} />
+          Alle Standorte
+        </button>
+      )}
       <div className="vp-page-head">
         <div className="titles">
-          <h1>Guten Tag, {firstName}</h1>
-          <p>Alles Wichtige zu Ihren Standorten und Geräten auf einen Blick.</p>
+          <h1>{onBackToFleet ? site?.name ?? 'Standort' : `Guten Tag, ${firstName}`}</h1>
+          <p>
+            {onBackToFleet
+              ? 'Live-Daten, Preise, Wetter und Fahrplan dieses Standorts.'
+              : 'Alles Wichtige zu Ihren Standorten und Geräten auf einen Blick.'}
+          </p>
         </div>
         <div className="actions">
           <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>

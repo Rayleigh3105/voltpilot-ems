@@ -113,8 +113,12 @@ class PortalApiTest {
 
     @Test
     void eachTenantSeesOnlyItsOwnSites() {
+        // Tenant A is the dev-seeded multi-site fleet; other tests may add more
+        // sites at runtime, so assert the seed is present and nothing foreign is.
         List<Map<String, Object>> tenantA = sites(token("demo", "demo"));
-        assertThat(tenantA).extracting(s -> s.get("name")).containsExactly("Demo Site Berlin");
+        assertThat(tenantA).extracting(s -> s.get("name"))
+                .contains("Demo Site Berlin", "Solarpark Dachau", "Hof Lindenberg")
+                .doesNotContain("Nordwind Hamburg");
 
         List<Map<String, Object>> tenantB = sites(token("demo2", "demo2"));
         assertThat(tenantB).extracting(s -> s.get("name")).containsExactly("Nordwind Hamburg");
@@ -1239,6 +1243,173 @@ class PortalApiTest {
         Object v = obj.get(key);
         assertThat(v).as(key).isNotNull();
         return ((Number) v).doubleValue();
+    }
+
+    // ---- fleet overview ------------------------------------------------------
+
+    /**
+     * The tenant-wide fleet overview: per-site device liveness (from telemetry
+     * ARRIVAL, the store-and-forward rule), the newest live snapshot, and
+     * today's planned savings computed server-side over the Europe/Berlin day
+     * with the latest-run-per-slot de-duplication - proven with a hand-computed
+     * seed. RLS-scoped: tenant B's overview never contains tenant A's sites.
+     */
+    @Test
+    void overviewAggregatesFleetTenantScopedWithBerlinDaySavings() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        // A fresh Direktvermarktungs-site with three devices in the three
+        // liveness states: online (fresh arrival), stale (old arrival), waiting
+        // (never sent). Fresh site => no interference from other tests' seeds.
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Overview Werk Nord",
+                        "plantKind", "direktvermarktung"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody()).containsEntry("plantKind", "direktvermarktung");
+        String siteId = (String) created.getBody().get("id");
+
+        String onlineDev = claimDeviceInto(demo, siteId, "overview-inv-online");
+        String staleDev = claimDeviceInto(demo, siteId, "overview-inv-stale");
+        claimDeviceInto(demo, siteId, "overview-inv-waiting");
+
+        // Online device: an old observation first, then the newest one - the
+        // live snapshot must be the NEWEST row (3.2/1.1/-0.9/76). Arrivals
+        // (received_at) default to now() => the device is online.
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, soc_pct, "
+                + "pv_power_kw, load_kw) VALUES "
+                + "(now() - interval '1 hour', '" + tenantA + "', '" + siteId + "', '" + onlineDev
+                + "', 9.9, 10.0, 9.9, 9.9), "
+                + "(now(), '" + tenantA + "', '" + siteId + "', '" + onlineDev
+                + "', -0.9, 76.0, 3.2, 1.1)");
+        // Stale device: last arrival an hour ago (received_at set explicitly).
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, received_at) "
+                + "VALUES (now() - interval '2 hours', '" + tenantA + "', '" + siteId + "', '"
+                + staleDev + "', 1.0, now() - interval '1 hour')");
+
+        // Hand-computed savings seed for today's Europe/Berlin window: one slot
+        // planned by TWO runs (only the newer counts: 0.10 - 0.02 = 0.08), a
+        // second slot (0.05 - 0.03 = 0.02), and a slot BEFORE Berlin midnight
+        // that must be excluded => plannedSavingsTodayEur = 0.10 exactly.
+        com.voltpilot.api.history.HistoryRange.Window today =
+                com.voltpilot.api.history.HistoryRange.DAY.window(
+                        java.time.LocalDate.now(com.voltpilot.api.history.HistoryRange.ZONE));
+        String slot1 = "'" + today.from().plus(10, java.time.temporal.ChronoUnit.HOURS) + "'";
+        String slot2 = "'" + today.from().plus(615, java.time.temporal.ChronoUnit.MINUTES) + "'";
+        String yesterdaySlot = "'" + today.from().minus(15, java.time.temporal.ChronoUnit.MINUTES) + "'";
+        exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                + "battery_kw, cost_eur, baseline_cost_eur) VALUES "
+                + "(" + slot1 + ", '" + tenantA + "', '" + siteId + "', '" + onlineDev + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000001', now() - interval '2 hours', 1, 0.50, 1.00), "
+                + "(" + slot1 + ", '" + tenantA + "', '" + siteId + "', '" + onlineDev + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000002', now() - interval '1 hour', 1, 0.02, 0.10), "
+                + "(" + slot2 + ", '" + tenantA + "', '" + siteId + "', '" + onlineDev + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000002', now() - interval '1 hour', 1, 0.03, 0.05), "
+                + "(" + yesterdaySlot + ", '" + tenantA + "', '" + siteId + "', '" + onlineDev + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000003', now() - interval '26 hours', 1, 0.00, 100.00)");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+
+        Map<String, Object> site = list(body, "sites").stream()
+                .filter(x -> siteId.equals(x.get("id"))).findFirst().orElseThrow();
+        assertThat(site).containsEntry("name", "Overview Werk Nord")
+                .containsEntry("plantKind", "direktvermarktung")
+                .containsEntry("deviceCount", 3)
+                .containsEntry("onlineCount", 1)
+                .containsEntry("waitingCount", 1)
+                // stale beats waiting beats online.
+                .containsEntry("worstStatus", "stale");
+        assertThat(site.get("lastSeenAt")).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> live = (Map<String, Object>) site.get("live");
+        assertThat(live).as("live snapshot").isNotNull();
+        assertThat(num(live, "pvKw")).isEqualTo(3.2);
+        assertThat(num(live, "loadKw")).isEqualTo(1.1);
+        assertThat(num(live, "gridKw")).isEqualTo(-0.9);
+        assertThat(num(live, "socPct")).isEqualTo(76.0);
+        assertThat(num(site, "plannedSavingsTodayEur"))
+                .isCloseTo(0.10, org.assertj.core.data.Offset.offset(1e-9));
+
+        // Totals: consistent with the site list (other tests may add sites, so
+        // assert the relations, not absolute fleet numbers).
+        Map<String, Object> totals = map(body, "totals");
+        assertThat(((Number) totals.get("sites")).intValue())
+                .isEqualTo(list(body, "sites").size());
+        assertThat(((Number) totals.get("devices")).intValue()).isGreaterThanOrEqualTo(3);
+        assertThat(((Number) totals.get("online")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(((Number) totals.get("liveSitesCovered")).intValue()).isGreaterThanOrEqualTo(1);
+        assertThat(num(totals, "plannedSavingsTodayEur")).isGreaterThanOrEqualTo(0.10);
+
+        // The 14-day series carries today's Berlin day (my seed contributes).
+        java.time.LocalDate todayBerlin =
+                java.time.LocalDate.now(com.voltpilot.api.history.HistoryRange.ZONE);
+        List<Map<String, Object>> daily = list(body, "dailySavings");
+        Map<String, Object> todayEntry = daily.stream()
+                .filter(x -> todayBerlin.toString().equals(x.get("day"))).findFirst().orElseThrow();
+        assertThat(num(todayEntry, "savingsEur")).isGreaterThanOrEqualTo(0.10);
+        // Yesterday's 100.00 landed in yesterday's bucket, never in today's.
+        assertThat(num(todayEntry, "savingsEur")).isLessThan(50.0);
+
+        // RLS: tenant B's overview never contains tenant A's sites or savings.
+        ResponseEntity<Map<String, Object>> other = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(other.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> otherSites = list(other.getBody(), "sites");
+        assertThat(otherSites).extracting(x -> x.get("id")).doesNotContain(siteId);
+        assertThat(otherSites).extracting(x -> x.get("name"))
+                .contains("Nordwind Hamburg").doesNotContain("Overview Werk Nord");
+        assertThat(((Number) map(other.getBody(), "totals").get("sites")).intValue())
+                .isEqualTo(otherSites.size());
+    }
+
+    /** plant_kind: defaults to eigenverbrauch, editable through the site paths. */
+    @Test
+    void sitePlantKindDefaultsAndIsEditableViaSitePaths() {
+        String demo = token("demo", "demo");
+
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Anlagentyp Test"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody()).containsEntry("plantKind", "eigenverbrauch");
+        String siteId = (String) created.getBody().get("id");
+
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Anlagentyp Test",
+                        "plantKind", "direktvermarktung"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(updated.getBody()).containsEntry("plantKind", "direktvermarktung");
+
+        // The list reflects it; an unknown kind is refused by validation.
+        assertThat(sites(demo).stream().filter(x -> siteId.equals(x.get("id"))).findFirst()
+                .orElseThrow()).containsEntry("plantKind", "direktvermarktung");
+        ResponseEntity<String> invalid = rest.exchange(
+                url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Anlagentyp Test", "plantKind", "foo"),
+                        bearer(demo)),
+                String.class);
+        assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    private String claimDeviceInto(String token, String siteId, String externalRef) {
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", externalRef),
+                        bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isIn(HttpStatus.CREATED, HttpStatus.OK);
+        return (String) claim.getBody().get("id");
     }
 
     // ---- helpers ------------------------------------------------------------

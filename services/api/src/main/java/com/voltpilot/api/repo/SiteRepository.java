@@ -15,6 +15,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class SiteRepository {
 
+    private static final String COLUMNS = "id, name, bidding_zone, latitude, longitude, plant_kind";
+
     private final JdbcTemplate jdbc;
 
     public SiteRepository(JdbcTemplate jdbc) {
@@ -23,14 +25,14 @@ public class SiteRepository {
 
     public List<SiteDto> findAll() {
         return jdbc.query(
-                "SELECT id, name, bidding_zone, latitude, longitude FROM site ORDER BY name",
+                "SELECT " + COLUMNS + " FROM site ORDER BY name",
                 SiteRepository::mapSite);
     }
 
     /** The site for the current tenant, or {@code null} when RLS hides it (=> 404). */
     public SiteDto findById(UUID siteId) {
         List<SiteDto> found = jdbc.query(
-                "SELECT id, name, bidding_zone, latitude, longitude FROM site WHERE id = ?",
+                "SELECT " + COLUMNS + " FROM site WHERE id = ?",
                 SiteRepository::mapSite, siteId);
         return found.isEmpty() ? null : found.get(0);
     }
@@ -44,12 +46,12 @@ public class SiteRepository {
      * never create a site for another tenant even with a crafted request.
      */
     public SiteDto create(UUID tenantId, String name, String biddingZone,
-            BigDecimal latitude, BigDecimal longitude) {
+            BigDecimal latitude, BigDecimal longitude, String plantKind) {
         return jdbc.queryForObject(
-                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude) "
-                        + "VALUES (?, ?, ?, ?, ?) "
-                        + "RETURNING id, name, bidding_zone, latitude, longitude",
-                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude);
+                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind) "
+                        + "VALUES (?, ?, ?, ?, ?, ?) "
+                        + "RETURNING " + COLUMNS,
+                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind);
     }
 
     /**
@@ -58,12 +60,12 @@ public class SiteRepository {
      * another tenant, so the update can never cross a tenant boundary.
      */
     public SiteDto update(UUID siteId, String name, String biddingZone,
-            BigDecimal latitude, BigDecimal longitude) {
+            BigDecimal latitude, BigDecimal longitude, String plantKind) {
         List<SiteDto> updated = jdbc.query(
-                "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ? "
+                "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ?, plant_kind = ? "
                         + "WHERE id = ? "
-                        + "RETURNING id, name, bidding_zone, latitude, longitude",
-                SiteRepository::mapSite, name, biddingZone, latitude, longitude, siteId);
+                        + "RETURNING " + COLUMNS,
+                SiteRepository::mapSite, name, biddingZone, latitude, longitude, plantKind, siteId);
         return updated.isEmpty() ? null : updated.get(0);
     }
 
@@ -83,12 +85,13 @@ public class SiteRepository {
         return count != null && count > 0;
     }
 
-    private static SiteDto mapSite(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    static SiteDto mapSite(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         return new SiteDto(
                 rs.getObject("id", UUID.class),
                 rs.getString("name"),
                 rs.getString("bidding_zone"),
                 rs.getBigDecimal("latitude"),
-                rs.getBigDecimal("longitude"));
+                rs.getBigDecimal("longitude"),
+                rs.getString("plant_kind"));
     }
 }

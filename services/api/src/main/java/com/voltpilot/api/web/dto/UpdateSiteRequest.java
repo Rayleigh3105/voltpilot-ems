@@ -7,11 +7,12 @@ import jakarta.validation.constraints.Pattern;
 import java.math.BigDecimal;
 
 /**
- * Request to update a site (Standort): name, bidding zone and coordinates -
- * the same fields and validation as {@link CreateSiteRequest}. The tenant is
- * never part of the body; the row is addressed through RLS, so a customer can
- * only ever update their own sites (admins reach any tenant's sites via the
- * tenant switcher, i.e. the same RLS-scoped path with an overridden context).
+ * Request to update a site (Standort): name, bidding zone, coordinates and
+ * plant kind - the same fields and validation as {@link CreateSiteRequest}. The
+ * tenant is never part of the body; the row is addressed through RLS, so a
+ * customer can only ever update their own sites (admins reach any tenant's
+ * sites via the tenant switcher, i.e. the same RLS-scoped path with an
+ * overridden context).
  */
 public record UpdateSiteRequest(
         @NotBlank String name,
@@ -22,9 +23,16 @@ public record UpdateSiteRequest(
                 BigDecimal latitude,
         @DecimalMin(value = "-180", message = "longitude must be between -180 and 180")
         @DecimalMax(value = "180", message = "longitude must be between -180 and 180")
-                BigDecimal longitude) {
+                BigDecimal longitude,
+        @Pattern(regexp = "direktvermarktung|eigenverbrauch",
+                message = "plantKind must be one of direktvermarktung, eigenverbrauch")
+                String plantKind) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;
+    }
+
+    public String plantKindOrDefault() {
+        return plantKind == null || plantKind.isBlank() ? "eigenverbrauch" : plantKind;
     }
 }

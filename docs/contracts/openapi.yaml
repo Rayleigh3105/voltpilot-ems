@@ -183,6 +183,27 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/EnrollmentPending" }
         "429": { description: Rate limit. Back off >= 5 min. }
+  /api/v1/overview:
+    get:
+      tags: [sites]
+      summary: Tenant-wide fleet overview for the adaptive Uebersicht.
+      description: >
+        One aggregate for the portal's fleet mode (customers with several
+        sites): per site the device status (liveness from each device's newest
+        telemetry ARRIVAL, the store-and-forward rule), the newest live
+        telemetry snapshot, and today's planned battery savings (ex-ante, from
+        the persisted optimizer plans, Europe/Berlin day, latest run per slot);
+        plus fleet totals and the fleet-wide per-day savings of the last 14
+        Berlin days for the hero mini chart. RLS-scoped: the fleet is exactly
+        the caller's tenant. Admins read another tenant's fleet via the
+        X-Tenant-Id switcher.
+      responses:
+        "200":
+          description: The caller's fleet overview.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Overview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/sites:
     get:
       tags: [sites]
@@ -1122,6 +1143,13 @@ components:
           nullable: true
           description: WGS84 longitude.
           example: 13.405
+        plantKind:
+          type: string
+          enum: [direktvermarktung, eigenverbrauch]
+          description: >
+            Anlagentyp: steers the portal's money wording per site
+            ("mehr verdient" for Direktvermarktung vs. "gespart" for
+            Eigenverbrauch). Defaults to eigenverbrauch.
     SiteAsset:
       type: object
       description: One asset row incl. registry provenance; null = not set.
@@ -1191,6 +1219,80 @@ components:
             maxChargeKw: { type: number, nullable: true }
             maxDischargeKw: { type: number, nullable: true }
             commissionedOn: { type: string, format: date, nullable: true }
+    Overview:
+      type: object
+      description: Tenant-wide fleet overview (see GET /api/v1/overview).
+      properties:
+        sites:
+          type: array
+          items: { $ref: "#/components/schemas/OverviewSite" }
+        totals: { $ref: "#/components/schemas/OverviewTotals" }
+        dailySavings:
+          type: array
+          description: >
+            Fleet-wide ex-ante savings per Europe/Berlin day, last 14 days
+            incl. today; days without any plan are absent.
+          items:
+            type: object
+            properties:
+              day: { type: string, format: date }
+              savingsEur: { type: number }
+    OverviewSite:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
+        deviceCount: { type: integer }
+        onlineCount:
+          type: integer
+          description: Devices whose newest telemetry ARRIVED within 5 minutes.
+        waitingCount:
+          type: integer
+          description: Devices that never sent data ("wartet auf erste Daten").
+        worstStatus:
+          type: string
+          nullable: true
+          enum: [online, stale, waiting]
+          description: >
+            Worst device status of the site (stale beats waiting beats online);
+            null for a site without devices.
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Newest telemetry arrival over the site's devices.
+        live:
+          nullable: true
+          description: The site's newest telemetry observation; null when none.
+          allOf: [{ $ref: "#/components/schemas/OverviewLive" }]
+        plannedSavingsTodayEur:
+          type: number
+          nullable: true
+          description: >
+            Ex-ante optimizer savings for today (Europe/Berlin), latest run per
+            15-min slot; null when no plan covers today.
+    OverviewLive:
+      type: object
+      properties:
+        ts: { type: string, format: date-time, description: Observation time. }
+        pvKw: { type: number, nullable: true }
+        loadKw: { type: number, nullable: true }
+        gridKw: { type: number, nullable: true, description: "+ import / - export" }
+        socPct: { type: number, nullable: true }
+    OverviewTotals:
+      type: object
+      properties:
+        sites: { type: integer }
+        devices: { type: integer }
+        online: { type: integer }
+        plannedSavingsTodayEur:
+          type: number
+          nullable: true
+          description: Sum over the sites' non-null values; null when none has a plan.
+        liveSitesCovered:
+          type: integer
+          description: Sites whose live snapshot is inside the 5-min freshness window.
     CreateSiteRequest:
       type: object
       required: [name]
@@ -1212,6 +1314,10 @@ components:
           minimum: -180
           maximum: 180
           description: Optional WGS84 longitude.
+        plantKind:
+          type: string
+          enum: [direktvermarktung, eigenverbrauch]
+          description: "Anlagentyp; defaults to 'eigenverbrauch'."
     UpdateSiteRequest:
       type: object
       required: [name]
@@ -1224,6 +1330,7 @@ components:
           description: "Day-ahead bidding zone; defaults to 'DE-LU'."
         latitude: { type: number, nullable: true, minimum: -90, maximum: 90 }
         longitude: { type: number, nullable: true, minimum: -180, maximum: 180 }
+        plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
     SiteDeletionPreview:
       type: object
       description: What deleting a site would remove (drives the confirm dialog).

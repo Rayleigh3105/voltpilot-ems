@@ -1516,3 +1516,304 @@ button.vp-cl-item.is-off .vp-cl-label {
     font-weight: 600;
   }
 }
+
+/* =============================================================================
+   Fleet overview (adaptive Übersicht, multi-site customers)
+   Money hero on the brand gradient + fleet status sentence + per-site cards.
+   Mobile-first: one column; hero + status go side by side from 1024px.
+   ========================================================================== */
+
+.vp-fleet-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-1);
+  margin-bottom: var(--vp-space-3);
+  padding: 6px 12px 6px 6px;
+  border: none;
+  border-radius: var(--vp-radius-pill);
+  background: transparent;
+  color: var(--vp-action);
+  font-family: var(--vp-font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vp-fleet-back:hover {
+  background: var(--vp-tint, #eef3ff);
+}
+
+.vp-fleet-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-gap);
+  align-items: stretch;
+}
+@media (min-width: 1024px) {
+  .vp-fleet-top {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
+/* --- Money hero: the most important number is also the most beautiful. ----- */
+.vp-fleet-hero {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--vp-space-6);
+  border-radius: var(--vp-radius-lg);
+  background: var(--vp-grad-hero);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(90, 141, 232, 0.35);
+}
+.vp-fleet-hero-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+}
+.vp-fleet-hero-value {
+  margin-top: var(--vp-space-2);
+  font-family: var(--vp-font-heading);
+  font-weight: 800;
+  font-size: clamp(2.2rem, 6vw, 2.9rem);
+  letter-spacing: -1px;
+  line-height: 1.05;
+  color: #fff;
+  text-shadow: 0 1px 8px rgba(30, 58, 95, 0.25);
+  font-variant-numeric: tabular-nums;
+}
+.vp-fleet-hero-sub {
+  margin-top: var(--vp-space-1);
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+.vp-fleet-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 38px;
+  margin-top: var(--vp-space-4);
+}
+.vp-fleet-spark i {
+  flex: 1;
+  min-height: 3px;
+  border-radius: 2px 2px 0 0;
+  background: rgba(255, 255, 255, 0.38);
+}
+.vp-fleet-spark i.hi {
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.6);
+}
+.vp-fleet-spark-cap {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-1);
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+.vp-fleet-hero-fine {
+  display: flex;
+  gap: var(--vp-space-2);
+  margin: var(--vp-space-4) 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.82);
+}
+.vp-fleet-fine-ico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* --- Fleet status sentence: green calm, amber names the silent device. ----- */
+.vp-fleet-status {
+  display: flex;
+  align-items: center;
+}
+.vp-fleet-sentence {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--vp-navy-2, #2c5282);
+}
+.vp-fleet-sentence.tone-off {
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 400;
+}
+.vp-fleet-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 0.42rem;
+  background: var(--vp-flow-batt);
+}
+.vp-fleet-sentence .vp-fleet-dot,
+.vp-fleet-dot.tone-ok {
+  background: var(--vp-flow-batt);
+  animation: vp-fleet-pulse-ok 2.4s infinite;
+}
+.vp-fleet-sentence.tone-warn .vp-fleet-dot,
+.vp-fleet-dot.tone-warn {
+  background: #f59e0b;
+  animation: vp-fleet-pulse-warn 2.4s infinite;
+}
+.vp-fleet-sentence.tone-off .vp-fleet-dot,
+.vp-fleet-dot.tone-off {
+  background: var(--vp-gray, #ced4da);
+  animation: none;
+}
+@keyframes vp-fleet-pulse-ok {
+  0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(76, 175, 80, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+}
+@keyframes vp-fleet-pulse-warn {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-fleet-dot {
+    animation: none !important;
+    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.18);
+  }
+}
+
+/* --- Site cards: 1-up phone, 2-up tablet, 3-up desktop. -------------------- */
+.vp-fleet-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 720px) {
+  .vp-fleet-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1200px) {
+  .vp-fleet-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.vp-fleet-site {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+.vp-fleet-site-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-fleet-site-name {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-family: var(--vp-font-heading);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--vp-text-dark);
+  min-width: 0;
+}
+.vp-fleet-site-name .vp-fleet-dot {
+  margin-top: 0;
+}
+.vp-fleet-site-count {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-fleet-site-body {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-ftiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-space-2);
+}
+.vp-ftile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-bg-light, #f8f9fa);
+  min-width: 0;
+}
+.vp-ftile-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-ftile-ic {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+/* Same channel hues as the verdict tiles / energy flow (--vp-flow-*). */
+.vp-ftile.pv .vp-ftile-ic { background: var(--vp-flow-pv); }
+.vp-ftile.batt .vp-ftile-ic { background: var(--vp-flow-batt); }
+.vp-ftile.load .vp-ftile-ic { background: var(--vp-flow-load); }
+.vp-ftile.grid .vp-ftile-ic { background: var(--vp-flow-grid); }
+.vp-ftile-val {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--vp-text-dark);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-ftile-soc {
+  display: block;
+  height: 4px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: var(--vp-border, #e9ecef);
+  overflow: hidden;
+}
+.vp-ftile-soc span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #34c77b, var(--vp-flow-batt));
+  transition: width 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.vp-fleet-site-earn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--vp-space-3);
+  margin-top: auto;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2e7d32;
+}
+.vp-fleet-site-earn.muted {
+  color: var(--vp-text-muted, #6c757d);
+  font-weight: 500;
+}
+.vp-fleet-chev {
+  color: var(--vp-gray, #ced4da);
+  font-size: 1.1rem;
+  line-height: 1;
+}

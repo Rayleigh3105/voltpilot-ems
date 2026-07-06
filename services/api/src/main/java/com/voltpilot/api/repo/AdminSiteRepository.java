@@ -22,6 +22,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AdminSiteRepository {
 
+    private static final String COLUMNS = "id, name, bidding_zone, latitude, longitude, plant_kind";
+
     private final JdbcTemplate jdbc;
 
     public AdminSiteRepository(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbcTemplate) {
@@ -30,26 +32,16 @@ public class AdminSiteRepository {
 
     public List<SiteDto> findByTenant(UUID tenantId) {
         return jdbc.query(
-                "SELECT id, name, bidding_zone, latitude, longitude FROM site "
-                        + "WHERE tenant_id = ? ORDER BY name",
-                AdminSiteRepository::map, tenantId);
+                "SELECT " + COLUMNS + " FROM site WHERE tenant_id = ? ORDER BY name",
+                SiteRepository::mapSite, tenantId);
     }
 
     public SiteDto create(UUID tenantId, String name, String biddingZone,
-            BigDecimal latitude, BigDecimal longitude) {
+            BigDecimal latitude, BigDecimal longitude, String plantKind) {
         return jdbc.queryForObject(
-                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude) "
-                        + "VALUES (?, ?, ?, ?, ?) "
-                        + "RETURNING id, name, bidding_zone, latitude, longitude",
-                AdminSiteRepository::map, tenantId, name, biddingZone, latitude, longitude);
-    }
-
-    private static SiteDto map(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
-        return new SiteDto(
-                rs.getObject("id", UUID.class),
-                rs.getString("name"),
-                rs.getString("bidding_zone"),
-                rs.getBigDecimal("latitude"),
-                rs.getBigDecimal("longitude"));
+                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind) "
+                        + "VALUES (?, ?, ?, ?, ?, ?) "
+                        + "RETURNING " + COLUMNS,
+                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind);
     }
 }

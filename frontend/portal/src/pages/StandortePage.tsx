@@ -10,11 +10,12 @@ import {
   api,
   ApiError,
   type Device,
+  type PlantKind,
   type Site,
   type SiteAsset,
   type SiteDeletionPreview,
 } from '../api';
-import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, zoneLabel } from '../format';
+import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { LocationMap } from '../components/LocationMap';
 import { DangerZone } from '../components/DangerZone';
@@ -234,6 +235,7 @@ export function StandortePage({
         >
           <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
             <Badge variant="tint">{zoneLabel(detail.biddingZone)}</Badge>
+            <Badge variant="tint">{plantKindLabel(detail.plantKind)}</Badge>
             {linkedAssets.length > 0 && (
               <Badge variant="ok" dot>
                 MaStR verknüpft
@@ -442,6 +444,7 @@ function SiteEditForm({
 }) {
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
+  const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [busy, setBusy] = useState(false);
@@ -457,6 +460,7 @@ function SiteEditForm({
         biddingZone,
         latitude: lat,
         longitude: lon,
+        plantKind,
       });
       onSaved(updated);
     } catch (e) {
@@ -491,6 +495,20 @@ function SiteEditForm({
             <option value="DE-LU">DE-LU (Deutschland/Luxemburg)</option>
             <option value="AT">AT (Österreich)</option>
             <option value="CH">CH (Schweiz)</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="edit-site-plant-kind" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Anlagentyp
+          </label>
+          <select
+            id="edit-site-plant-kind"
+            className="vp-select"
+            value={plantKind}
+            onChange={(e) => setPlantKind(e.target.value as PlantKind)}
+          >
+            <option value="eigenverbrauch">Eigenverbrauch (Haushalt/Gewerbe)</option>
+            <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
           </select>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

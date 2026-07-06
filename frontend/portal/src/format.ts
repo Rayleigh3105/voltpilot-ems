@@ -77,6 +77,13 @@ export function zoneLabel(zone: string | null | undefined): string {
   return map[zone] ?? zone;
 }
 
+/** German label for a site's Anlagentyp (backend enum values stay lowercase). */
+export function plantKindLabel(kind: string | null | undefined): string {
+  if (kind === 'direktvermarktung') return 'Direktvermarktung';
+  if (kind === 'eigenverbrauch') return 'Eigenverbrauch';
+  return kind ?? '';
+}
+
 /** German decimal number + unit, joined with a non-breaking space. */
 export function fmtNum(v: number | null | undefined, unit: string, digits = 1): string {
   if (v == null) return '-';

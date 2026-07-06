@@ -18,6 +18,9 @@ import java.math.BigDecimal;
  * see services/market-data/zones.py). {@code latitude}/{@code longitude} are
  * optional WGS84 coordinates that tie the site to its weather forecast; when
  * omitted the weather widget simply stays empty until they are set.
+ * {@code plantKind} defaults to {@code eigenverbrauch} (avoided cost - the safe
+ * money story); {@code direktvermarktung} switches the portal wording to real
+ * market revenue ("mehr verdient").
  */
 public record CreateSiteRequest(
         @NotBlank String name,
@@ -28,9 +31,16 @@ public record CreateSiteRequest(
                 BigDecimal latitude,
         @DecimalMin(value = "-180", message = "longitude must be between -180 and 180")
         @DecimalMax(value = "180", message = "longitude must be between -180 and 180")
-                BigDecimal longitude) {
+                BigDecimal longitude,
+        @Pattern(regexp = "direktvermarktung|eigenverbrauch",
+                message = "plantKind must be one of direktvermarktung, eigenverbrauch")
+                String plantKind) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;
+    }
+
+    public String plantKindOrDefault() {
+        return plantKind == null || plantKind.isBlank() ? "eigenverbrauch" : plantKind;
     }
 }
