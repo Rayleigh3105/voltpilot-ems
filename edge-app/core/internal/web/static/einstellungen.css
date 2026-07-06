@@ -1,0 +1,105 @@
+/* VoltPilot Edge - Einstellungen (Ausreißer-Filter) page.
+   Builds ON TOP of dashboard.css + inverter.css (same tokens, cards, buttons,
+   .field* form styles). Only the preset segmented control, the expander and the
+   per-channel rows are added here. Self-contained; no CDN, works offline. */
+
+.set-card { padding: 22px; margin-bottom: 16px; }
+.set-card-head { margin-bottom: 14px; }
+.set-title { margin: 0; font-size: 16px; font-weight: 750; letter-spacing: -.01em; }
+.set-desc { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+/* ---------------- Preset segmented control ---------------- */
+.seg {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 5px;
+}
+.seg-btn {
+  min-height: 44px; padding: 9px 8px; border: 1px solid transparent; border-radius: 9px;
+  background: transparent; color: var(--ink-2);
+  font-family: inherit; font-size: 14px; font-weight: 650; cursor: pointer;
+  transition: background .12s, color .12s, box-shadow .12s;
+}
+.seg-btn:hover:not([aria-pressed="true"]):not(:disabled) { background: #fff; }
+.seg-btn[aria-pressed="true"] {
+  background: #fff; color: var(--brand-deep);
+  border-color: #C9DAF8; box-shadow: var(--shadow-sm);
+}
+.seg-btn:focus-visible { outline: 2px solid var(--brand-deep); outline-offset: 1px; }
+.seg-btn:disabled { opacity: .6; cursor: default; }
+
+.set-preset-note { margin: 12px 2px 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+.set-flash { margin-top: 14px; margin-bottom: 0; }
+
+/* ---------------- Expander ---------------- */
+.set-expander {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  width: 100%; padding: 2px; border: 0; background: transparent; cursor: pointer;
+  text-align: left; color: var(--ink); font-family: inherit;
+}
+.set-expander-text { display: block; min-width: 0; }
+.set-expander-chevron { width: 20px; height: 20px; flex: none; color: var(--muted); transition: transform .18s; }
+.set-expander[aria-expanded="true"] .set-expander-chevron { transform: rotate(180deg); }
+
+/* ---------------- Per-channel rows ---------------- */
+.chan-list { margin-top: 18px; display: grid; gap: 12px; }
+.chan-card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 15px 16px;
+  background: var(--surface);
+}
+.chan-card.off { background: var(--bg-2); }
+.chan-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.chan-toggle {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 15px; font-weight: 700; color: var(--ink); cursor: pointer; min-height: 32px; min-width: 0;
+}
+.chan-toggle input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: var(--brand-deep); }
+.chan-card.off .chan-name { color: var(--muted); }
+.chan-counter {
+  flex: none; font-size: 12px; font-weight: 650; color: var(--muted);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 10px; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.chan-counter.has { color: var(--warn); background: var(--warn-soft); border-color: #F3E2C4; }
+
+.chan-help { margin: 8px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+.chan-inputs {
+  margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+}
+.field-inline { min-width: 0; }
+.field-inline > label { display: block; font-size: 12.5px; font-weight: 700; margin-bottom: 6px; color: var(--ink-2); }
+.input-unit { display: flex; align-items: center; gap: 8px; }
+.input-unit input[type="number"] {
+  width: 100%; min-width: 0; font-size: 15px; font-family: inherit;
+  padding: 10px 12px; min-height: 44px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.input-unit input[type="number"]:focus {
+  outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(90, 141, 232, .22);
+}
+.input-unit input[type="number"]:disabled { background: var(--bg-2); color: var(--muted); }
+.input-unit .unit { flex: none; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+
+/* ---------------- Actions ---------------- */
+.set-actions { margin-top: 18px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.btn-ghost {
+  padding: 11px 16px; min-height: 46px; border: 1px solid var(--line); border-radius: 11px;
+  background: var(--surface); color: var(--ink-2);
+  font-family: inherit; font-size: 14px; font-weight: 650; cursor: pointer;
+}
+.btn-ghost:hover:not(:disabled) { background: var(--bg-2); }
+.btn-ghost:disabled { opacity: .6; cursor: default; }
+
+/* ---------------- Responsive ---------------- */
+@media (max-width: 640px) {
+  .topbar { flex-wrap: nowrap; }
+  .topbar-right { width: auto; }
+  .set-card { padding: 18px; }
+  .seg { grid-template-columns: repeat(2, 1fr); }
+  .chan-inputs { grid-template-columns: 1fr; }
+  .set-actions { flex-direction: column-reverse; align-items: stretch; }
+  .btn-ghost, .set-actions .btn-primary { width: 100%; }
+}

@@ -11,12 +11,40 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
 func ptr(v float64) *float64 { return &v }
+
+// fakeDespike is an in-memory DespikeController for the HTTP-layer test; it runs
+// the real validation/normalization so the endpoint behavior is exercised.
+type fakeDespike struct {
+	cfg guards.DespikeSettings
+}
+
+func (f *fakeDespike) current() guards.DespikeSettings {
+	if f.cfg.Channels == nil {
+		return guards.DefaultSettings()
+	}
+	return f.cfg
+}
+
+func (f *fakeDespike) GetDespike() guards.DespikeStatus {
+	d := guards.NewDespikerWithSettings(f.current())
+	return d.Status()
+}
+
+func (f *fakeDespike) SetDespike(req guards.DespikeSettings) (guards.DespikeStatus, error) {
+	cfg, err := req.Normalize()
+	if err != nil {
+		return guards.DespikeStatus{}, err
+	}
+	f.cfg = cfg
+	return f.GetDespike(), nil
+}
 
 // fakeInverter is an in-memory InverterController for the HTTP-layer test.
 type fakeInverter struct {
@@ -69,7 +97,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 	t.Helper()
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, h))
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h))
 	t.Cleanup(srv.Close)
 	return srv, fi, h
 }
@@ -196,7 +224,7 @@ func TestStateEnvelopeCarriesServerClock(t *testing.T) {
 		s.Inverter = configuredInverter()
 		s.LastTelemetry = time.Now().UTC()
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
@@ -266,7 +294,7 @@ func TestHistoryReturnsRecentSamplesWithDerivedBattery(t *testing.T) {
 func TestStateExposesBufferDataLoss(t *testing.T) {
 	st := state.New("edge-test", "test")
 	st.Update(func(s *state.Snapshot) { s.BufferDataLoss = true; s.BufferPending = 7 })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -321,7 +349,7 @@ func configuredInverter() *state.InverterInfo {
 func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 	// (a) No inverter configured -> step "inverter", locked, no reference.
 	st := state.New("edge-gate", "test")
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -358,7 +386,7 @@ func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 func TestOnboardingGateDoneOncePaired(t *testing.T) {
 	st := state.New("edge-paired", "test")
 	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -409,7 +437,7 @@ func waitForLine(sc *bufio.Scanner, want string) bool {
 func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 	fp := &fakePurge{}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, history.New(10)))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10)))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -439,7 +467,7 @@ func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
 	fp := &fakePurge{err: context.DeadlineExceeded}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, history.New(10)))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10)))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -456,6 +484,101 @@ func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&body)
 	if body.Error == "" {
 		t.Fatal("expected a German error message")
+	}
+}
+
+// The despike settings endpoint returns the current filter config, the channel
+// metadata (so the UI is data-driven) and per-channel counters.
+func TestGetDespikeReturnsSettingsAndMetadata(t *testing.T) {
+	srv, _ := newServer(t)
+	resp, err := http.Get(srv.URL + "/api/despike")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var body guards.DespikeStatus
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Settings.Preset != guards.PresetNormal {
+		t.Fatalf("default preset = %q, want %q", body.Settings.Preset, guards.PresetNormal)
+	}
+	if len(body.Channels) != len(guards.GatedChannels) {
+		t.Fatalf("expected %d channel metas, got %d", len(guards.GatedChannels), len(body.Channels))
+	}
+	if len(body.Presets) == 0 {
+		t.Fatal("expected the preset list for the UI")
+	}
+}
+
+// A preset POST is applied and reflected on the next GET (live apply through
+// the controller).
+func TestPostDespikePresetApplies(t *testing.T) {
+	srv, _ := newServer(t)
+	resp, err := http.Post(srv.URL+"/api/despike", "application/json",
+		strings.NewReader(`{"preset":"streng"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var body guards.DespikeStatus
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Settings.Preset != guards.PresetStrict {
+		t.Fatalf("preset not applied: %q", body.Settings.Preset)
+	}
+
+	// GET now reflects the applied preset.
+	g, err := http.Get(srv.URL + "/api/despike")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Body.Close()
+	var got guards.DespikeStatus
+	_ = json.NewDecoder(g.Body).Decode(&got)
+	if got.Settings.Preset != guards.PresetStrict {
+		t.Fatalf("applied preset not persisted in controller: %q", got.Settings.Preset)
+	}
+}
+
+// A nonsensical custom value is rejected with a 400 + German message.
+func TestPostDespikeValidationReturns400(t *testing.T) {
+	srv, _ := newServer(t)
+	// A negative rate is nonsense.
+	req := `{"preset":"benutzerdefiniert","channels":{"soc_pct":{"enabled":true,"max_rate_per_sec":-1,"margin":5}}}`
+	resp, err := http.Post(srv.URL+"/api/despike", "application/json", strings.NewReader(req))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", resp.StatusCode)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Error == "" {
+		t.Fatal("expected a German error message")
+	}
+}
+
+func TestPostDespikeMalformedBodyReturns400(t *testing.T) {
+	srv, _ := newServer(t)
+	resp, err := http.Post(srv.URL+"/api/despike", "application/json", strings.NewReader("{nope"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", resp.StatusCode)
 	}
 }
 
@@ -504,5 +627,52 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	js := get("/inverter.js")
 	if !strings.Contains(js, "modelList") {
 		t.Error("inverter.js: does not drive the modelList listbox")
+	}
+}
+
+// The settings page (Ausreißer-Filter) is built by einstellungen.js against
+// fixed element ids; this pins the embedded page + assets so a static/ edit that
+// forgets the //go:embed rebuild contract fails here instead of shipping broken.
+func TestSettingsPageServesStructure(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	page := get("/einstellungen.html")
+	for _, want := range []string{
+		`id="presetSeg"`, `id="chanList"`, `id="expertToggle"`, `id="saveBtn"`,
+		`href="dashboard.css"`, `href="einstellungen.css"`, `src="einstellungen.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("einstellungen.html: missing %s", want)
+		}
+	}
+	if !strings.Contains(get("/einstellungen.css"), ".seg-btn") {
+		t.Error("einstellungen.css: missing preset segmented control styles")
+	}
+	if !strings.Contains(get("/einstellungen.js"), "/api/despike") {
+		t.Error("einstellungen.js: does not call the despike API")
+	}
+
+	// The dashboard + inverter pages link to the settings page.
+	if !strings.Contains(get("/index.html"), `href="einstellungen.html"`) {
+		t.Error("index.html: missing the Einstellungen link")
+	}
+	if !strings.Contains(get("/inverter.html"), `href="einstellungen.html"`) {
+		t.Error("inverter.html: missing the Einstellungen link")
 	}
 }

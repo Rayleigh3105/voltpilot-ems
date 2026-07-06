@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -38,6 +39,14 @@ type InverterController interface {
 // offline). The agent implements it.
 type PurgeController interface {
 	PurgeRecordedData() (state.DataPurgeInfo, error)
+}
+
+// DespikeController backs the "Ausreißer-Filter" settings surface: read the
+// current per-channel filter configuration + drop counters, and apply a new
+// one (which the core persists + applies live). The agent implements it.
+type DespikeController interface {
+	GetDespike() guards.DespikeStatus
+	SetDespike(guards.DespikeSettings) (guards.DespikeStatus, error)
 }
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
@@ -113,7 +122,7 @@ func envelope(st *state.Store) stateEnvelope {
 // live telemetry history + stream (for the dashboard charts), the
 // inverter-selection API, the data-purge action, and the health endpoint.
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
-	hist *history.Ring) http.Handler {
+	despike DespikeController, hist *history.Ring) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -231,6 +240,37 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"selection": sel})
+	})
+
+	// GET /api/despike - the "Ausreißer-Filter" configuration: the current
+	// per-channel settings, the running drop counters and the channel/preset
+	// metadata (labels/units/help) so the settings page is fully data-driven.
+	mux.HandleFunc("GET /api/despike", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, despike.GetDespike())
+	})
+
+	// POST /api/despike - apply a new filter configuration (a named preset, or a
+	// custom per-channel set). Validation failures return 400 with a German
+	// message the UI shows inline; on success the new configuration is persisted
+	// and applied live (no restart), and the updated status is returned.
+	mux.HandleFunc("POST /api/despike", func(w http.ResponseWriter, r *http.Request) {
+		var req guards.DespikeSettings
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		status, err := despike.SetDespike(req)
+		if err != nil {
+			var ve *guards.SettingsValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Einstellungen konnten nicht gespeichert werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, status)
 	})
 
 	// POST /api/purge-data - "Datenaufzeichnungen löschen": wipe the device's

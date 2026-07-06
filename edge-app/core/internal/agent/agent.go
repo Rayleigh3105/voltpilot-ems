@@ -55,6 +55,7 @@ type Agent struct {
 	lastRawSoc  *float64
 
 	despiker       *guards.Despiker
+	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 
 	invMu sync.Mutex
@@ -161,6 +162,18 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	ds, err := guards.NewSettingsStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	// Restore the operator's despike (Ausreißer-Filter) settings, or fall back
+	// to the safe defaults. A corrupt file must not stop the agent booting.
+	despikeCfg := guards.DefaultSettings()
+	if loaded, ok, err := ds.Load(); err == nil && ok {
+		despikeCfg = loaded
+	} else if err != nil {
+		slog.Warn("stored despike settings unreadable; using defaults", "err", err)
+	}
 	a := &Agent{
 		Cfg:          cfg,
 		State:        state.New(ref, Version),
@@ -169,7 +182,8 @@ func New(cfg config.Config) (*Agent, error) {
 		planStore:    ps,
 		invStore:     is,
 		invCat:       inverter.DefaultCatalog(),
-		despiker:     guards.NewDespiker(),
+		despiker:     guards.NewDespikerWithSettings(despikeCfg),
+		despikeStore: ds,
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
 		lastReading: guards.Reading{
@@ -555,28 +569,29 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		slog.Warn("implausible soc_pct reading; sample dropped", "soc_pct", soc)
 		return
 	}
-	// Despike gate (drop-don't-fabricate), per channel: reject a transient
-	// single-sample excursion that slips through the in-band plausibility gate -
-	// the captain's real symptom of a SoC (or other channel) reading e.g. 2 %
-	// for one sample between two steady 94 % samples. SoC gets a strict rate
-	// bound (it is integrative and cannot step fast); power channels are only
-	// guarded against gross decode-error excursions so normal fast dynamics pass
-	// unfiltered. A dropped channel is removed from THIS sample only; other
-	// channels in the same sample still flow. See guards.Despiker for the
-	// accept-after-confirmation semantics that let a genuinely new level
-	// converge instead of deadlocking on the old one.
+	// Despike gate (operator-configurable, per channel): reject a transient
+	// in-band excursion that slips through the plausibility gate - the captain's
+	// real symptom of a SoC (or other channel) reading e.g. 2 % for one sample
+	// between two steady 94 % samples, or a power channel briefly reading an
+	// impossible value and reverting. A rejected channel is REPLACED with its
+	// last accepted value (hold-last), so every recorded series stays a
+	// continuous line with no gaps (the captain's explicit requirement); other
+	// channels in the same sample are unaffected. SoC uses a strict rate bound
+	// (integrative, cannot step fast); power channels use a generous bound so
+	// normal fast dynamics pass unfiltered. Thresholds are set by the operator on
+	// the device (guards.DespikeSettings). See guards.Despiker for the
+	// accept-after-confirmation semantics that let a genuinely new level converge
+	// instead of holding the old one forever.
 	if drops := a.despiker.Accept(measurements, ts); len(drops) > 0 {
 		a.logDespike(drops)
 		total := a.despiker.DroppedTotal()
 		a.State.Update(func(s *state.Snapshot) { s.DespikedDropped = total })
-		if len(measurements) == 0 {
-			return // every channel in this sample was a spike; nothing to record
-		}
 	}
 
-	// From here on the filtered measurements map is authoritative: a channel the
-	// despiker dropped is gone, so it flows to NO consumer (guard reading, cloud
-	// buffer, status heartbeat, live-chart ring).
+	// From here on the (hold-last-filtered) measurements map is authoritative: a
+	// channel the despiker rejected now carries its last accepted value, so every
+	// consumer (guard reading, cloud buffer, status heartbeat, live-chart ring)
+	// sees a continuous series.
 	pick := func(k string) float64 {
 		if v, ok := measurements[k]; ok {
 			return v
@@ -609,8 +624,10 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		slog.Error("telemetry buffer append failed", "err", err)
 		return
 	}
-	// Feed the in-memory live-chart ring (local dashboard only). An absent or
-	// despiked measurement stays absent (nil) on the chart, never coerced to 0.
+	// Feed the in-memory live-chart ring (local dashboard only). An absent
+	// measurement stays absent (nil) on the chart, never coerced to 0; a despiked
+	// one already carries its last-good value (hold-last), so the line is
+	// continuous.
 	a.hist.Add(history.Sample{
 		Ts:          ts,
 		PvKw:        ptr("pv_power_kw"),
@@ -655,8 +672,9 @@ func (a *Agent) logDespike(drops []guards.Drop) {
 		return
 	}
 	for _, d := range drops {
-		slog.Debug("despiked telemetry channel; sample value dropped",
-			"channel", d.Channel, "value", d.Value, "dropped_total", a.despiker.DroppedTotal())
+		slog.Debug("despiked telemetry channel; last-good value held",
+			"channel", d.Channel, "value", d.Value, "held", d.Held,
+			"dropped_total", a.despiker.DroppedTotal())
 	}
 }
 
@@ -889,6 +907,30 @@ func (a *Agent) publishInverterConfig() {
 	if err := a.Bus.Publish(localbus.TopicInverterConfig, sel.BusPayload(), true); err != nil {
 		slog.Error("inverter config publish failed", "err", err)
 	}
+}
+
+// --- Despike settings (the local web app's Ausreißer-Filter surface) ---
+
+// GetDespike returns the current despike settings, per-channel drop counters and
+// the channel metadata (labels/units/help) for the settings page.
+func (a *Agent) GetDespike() guards.DespikeStatus {
+	return a.despiker.Status()
+}
+
+// SetDespike validates a settings request, persists it, and applies it live to
+// the running despiker (no restart). A bad request returns a
+// *guards.SettingsValidationError (the web layer maps it to HTTP 400).
+func (a *Agent) SetDespike(req guards.DespikeSettings) (guards.DespikeStatus, error) {
+	cfg, err := req.Normalize()
+	if err != nil {
+		return guards.DespikeStatus{}, err
+	}
+	if err := a.despikeStore.Save(cfg); err != nil {
+		return guards.DespikeStatus{}, fmt.Errorf("filter settings not persisted: %w", err)
+	}
+	a.despiker.Reconfigure(cfg)
+	slog.Info("despike settings updated", "preset", cfg.Preset)
+	return a.GetDespike(), nil
 }
 
 // inverterInfo projects a selection onto the UI-facing snapshot summary.
