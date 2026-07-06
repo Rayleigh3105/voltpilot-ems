@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -9,6 +9,7 @@ import { KpiCard } from '../../designsystem/components/shell/KpiCard';
 import {
   api,
   deviceLiveStatus,
+  ONLINE_WINDOW_MS,
   type Device,
   type PriceSeries,
   type SchedulePlan,
@@ -24,9 +25,15 @@ import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
 import { InfoTip } from '../components/InfoTip';
+import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, ErrorState, Skeleton, TextSkeleton } from '../components/States';
 import { TelemetryChart } from '../TelemetryChart';
 import { PriceChart } from '../PriceChart';
+
+/** Background refresh cadence of the Live-Daten widget (GeraetePage pattern). */
+const POLL_MS = 30_000;
+/** Re-render cadence of the "Stand vor X" freshness chip. */
+const TICK_MS = 5_000;
 
 /**
  * A widget whose data failed to load: a distinct error card with a retry, NOT
@@ -117,6 +124,28 @@ export function UebersichtPage({
 
   const retry = () => setReloadKey((k) => k + 1);
 
+  // "Live-Daten" must be live (F4): poll the telemetry every 30 s in the
+  // background - silent on failure, the card keeps its last good values - and
+  // tick a clock every 5 s so the freshness chip counts honestly. One stable
+  // interval reads the latest site via a ref (the GeraetePage pattern).
+  const [now, setNow] = useState(() => new Date());
+  const pollRef = useRef<() => void>(() => {});
+  pollRef.current = () => {
+    if (!site) return;
+    api.telemetry(site.id).then(
+      (t) => setTelemetry(t),
+      () => {}, // background poll: fail silently, keep the last good data
+    );
+  };
+  useEffect(() => {
+    let ticks = 0;
+    const timer = setInterval(() => {
+      setNow(new Date());
+      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) pollRef.current();
+    }, TICK_MS);
+    return () => clearInterval(timer);
+  }, []);
+
   // --- KPI derivations (money first) ---------------------------------------
   const today = new Date();
   const todaySlots = (schedule?.slots ?? []).filter(
@@ -140,6 +169,24 @@ export function UebersichtPage({
 
   const online = devices.filter((d) => deviceLiveStatus(d) === 'online').length;
   const latest = telemetry.length ? telemetry[telemetry.length - 1] : null;
+  // Honest freshness for the Live-Daten card: green + "Stand vor X" while the
+  // newest sample is inside the 5-min liveness window (deviceLiveStatus
+  // convention), grey + "keine aktuellen Daten" beyond it. The tiles keep
+  // their last good values but dim (the edge dashboard's .stale precedent).
+  const telemetryFresh =
+    latest != null && now.getTime() - new Date(latest.ts).getTime() <= ONLINE_WINDOW_MS;
+  // Direction words instead of signs (F1): consumers read "Netzbezug" /
+  // "Einspeisung ins Netz", never a signed kW. Thresholds/wording mirror the
+  // edge dashboard's renderKpis (0.05 kW deadband).
+  const gridKw = latest?.powerKw ?? null;
+  const gridLabel =
+    gridKw == null
+      ? 'Netzleistung'
+      : gridKw > 0.05
+        ? 'Netzbezug'
+        : gridKw < -0.05
+          ? 'Einspeisung ins Netz'
+          : 'Netz ausgeglichen';
   // Batterie-Ladestand: never render an implausible SoC (a bad row already in
   // the DB, or an older edge build publishing raw reads) - fall back to the
   // newest PLAUSIBLE reading, and say how old it is when it lags the live data
@@ -150,7 +197,7 @@ export function UebersichtPage({
     latestSocPoint != null &&
     latest != null &&
     new Date(latest.ts).getTime() - new Date(latestSocPoint.ts).getTime() > 5 * 60 * 1000;
-  const now = weather?.points?.[0] ?? null;
+  const weatherNow = weather?.points?.[0] ?? null;
   const allFailed =
     site != null && failed.telemetry && failed.prices && failed.weather && failed.schedule;
 
@@ -288,6 +335,11 @@ export function UebersichtPage({
               </IconTile>
               <h2>Live-Daten</h2>
               {site && <Badge variant="tint">{site.name}</Badge>}
+              {latest && (
+                <Badge variant={telemetryFresh ? 'ok' : 'off'} dot>
+                  {telemetryFresh ? `Stand ${fmtRelative(latest.ts, now)}` : 'keine aktuellen Daten'}
+                </Badge>
+              )}
               <span className="actions">
                 <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
               </span>
@@ -306,17 +358,20 @@ export function UebersichtPage({
               </p>
             ) : (
               <>
-                <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
+                <div
+                  className={`vp-grid vp-grid-stats vp-grid-stats-4${telemetryFresh ? '' : ' vp-stale'}`}
+                  style={{ marginBottom: 'var(--vp-space-5)' }}
+                >
                   <Stat value={fmtNum(latest?.pvPowerKw, 'kW')} label="PV-Erzeugung" />
                   <Stat value={fmtNum(latest?.loadKw, 'kW')} label="Verbrauch" />
                   <Stat
-                    value={fmtNum(latest?.powerKw, 'kW')}
+                    value={fmtNum(gridKw == null ? null : Math.abs(gridKw), 'kW')}
                     label={
                       <>
-                        Netzleistung{' '}
-                        <InfoTip label="Was bedeutet Netzleistung?">
-                          Leistung an Ihrem Netzanschluss: positiv = Sie beziehen Strom aus dem
-                          Netz, negativ = Sie speisen ein.
+                        {gridLabel}{' '}
+                        <InfoTip label="Was bedeutet dieser Wert?">
+                          Leistung an Ihrem Netzanschluss: Netzbezug = Sie beziehen gerade Strom
+                          aus dem Netz, Einspeisung = Ihr Überschuss fließt ins Netz.
                         </InfoTip>
                       </>
                     }
@@ -331,16 +386,16 @@ export function UebersichtPage({
                           geladen, 0 % leer.
                         </InfoTip>
                         {socStale && latestSocPoint && (
-                          <> · Stand {fmtRelative(latestSocPoint.ts)}</>
+                          <> · Stand {fmtRelative(latestSocPoint.ts, now)}</>
                         )}
                       </>
                     }
                   />
                 </div>
+                <ChartSubtitle>
+                  Der Verlauf zeigt die Messwerte Ihrer Geräte aus den letzten 24 Stunden.
+                </ChartSubtitle>
                 <TelemetryChart points={telemetry} />
-                <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-                  Messwerte Ihrer Geräte aus den letzten 24 Stunden.
-                </p>
               </>
             )}
           </Card>
@@ -397,11 +452,11 @@ export function UebersichtPage({
                   message="Die Wettervorhersage konnte nicht geladen werden."
                   onRetry={retry}
                 />
-              ) : now ? (
+              ) : weatherNow ? (
                 <div style={{ display: 'flex', gap: 'var(--vp-space-5)', flexWrap: 'wrap' }}>
-                  <Stat value={fmtNum(now.temperatureC, '°C')} label="Temperatur" />
-                  <Stat value={fmtNum(now.cloudCoverPct, '%', 0)} label="Bewölkung" />
-                  <Stat value={fmtNum(now.ghiWM2, 'W/m²', 0)} label="Einstrahlung" />
+                  <Stat value={fmtNum(weatherNow.temperatureC, '°C')} label="Temperatur" />
+                  <Stat value={fmtNum(weatherNow.cloudCoverPct, '%', 0)} label="Bewölkung" />
+                  <Stat value={fmtNum(weatherNow.ghiWM2, 'W/m²', 0)} label="Einstrahlung" />
                 </div>
               ) : (
                 <p className="vp-muted">Noch keine Vorhersage für diesen Standort.</p>

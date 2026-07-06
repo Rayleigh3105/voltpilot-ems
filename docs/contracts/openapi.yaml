@@ -401,7 +401,12 @@ paths:
         - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
       responses:
         "200":
-          description: Telemetry points (tenant-scoped via RLS). `from`/`to` default to the last 24h.
+          description: >
+            Telemetry points (tenant-scoped via RLS). `from`/`to` default to the
+            last 24h. Windows longer than 3h are downsampled server-side to
+            1-minute averages so the series stays complete AND current for chatty
+            devices; when the row cap would bite, the oldest points are dropped,
+            never the newest.
           content:
             application/json:
               schema:

@@ -5,8 +5,9 @@ import { useEChart } from './useEChart';
 /**
  * Day-ahead spot prices as 15-min bars for today + tomorrow. Bars are colour-
  * graded low -> high (design-system green -> solar orange -> red) via a visualMap,
- * and a dashed marker separates today from tomorrow at local midnight. Prices are
- * EUR/MWh (API native); the tooltip also shows ct/kWh (= EUR/MWh / 10).
+ * and a dashed marker separates today from tomorrow at local midnight. The API
+ * delivers EUR/MWh; this customer surface renders ct/kWh (the unit on the bill,
+ * portal convention) - EUR/MWh stays on the Marktpreise analytics page only.
  */
 export function PriceChart({ series }: { series: PriceSeries }) {
   const ref = useEChart(
@@ -18,7 +19,8 @@ export function PriceChart({ series }: { series: PriceSeries }) {
       startOfToday.setHours(0, 0, 0, 0);
       const pts = series.points.filter((p) => new Date(p.ts) >= startOfToday);
       const times = pts.map((p) => p.ts);
-      const values = pts.map((p) => (p.priceEurMwh == null ? null : Number(p.priceEurMwh)));
+      // ct/kWh = EUR/MWh / 10.
+      const values = pts.map((p) => (p.priceEurMwh == null ? null : Number(p.priceEurMwh) / 10));
       const nums = values.filter((v): v is number => v != null);
       const min = nums.length ? Math.min(...nums) : 0;
       const max = nums.length ? Math.max(...nums) : 100;
@@ -41,7 +43,7 @@ export function PriceChart({ series }: { series: PriceSeries }) {
             valueFormatter: (v: number | null) =>
               v == null
                 ? '-'
-                : `${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} EUR/MWh (${(v / 10).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh)`,
+                : `${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ct/kWh`,
           },
           visualMap: {
             show: false,
@@ -63,7 +65,7 @@ export function PriceChart({ series }: { series: PriceSeries }) {
           },
           yAxis: {
             type: 'value',
-            name: 'EUR/MWh',
+            name: 'ct/kWh',
             splitLine: { lineStyle: { color: t.grid } },
             axisLabel: { color: t.axis },
           },

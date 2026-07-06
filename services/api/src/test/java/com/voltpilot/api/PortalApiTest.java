@@ -400,6 +400,70 @@ class PortalApiTest {
 
     // ---- site creation (customer self-service, tenant-bound) ----------------
 
+    /**
+     * Regression for the "Live-Daten frozen in the past" bug (F6): the 24h
+     * telemetry query used {@code ORDER BY time ASC LIMIT 5000}, so once a site
+     * exceeded 5000 samples per day the NEWEST rows were truncated away and the
+     * live view drifted hours into the past. The returned window must be
+     * complete (reaches the oldest sample) AND current (reaches the newest
+     * sample), downsampled server-side when the raw count would exceed the cap.
+     */
+    @Test
+    void telemetryWindowStaysCompleteAndCurrentWhenRawCountExceedsTheLimit() {
+        String demo = token("demo", "demo");
+
+        // Own site + device so the chatty seed never interferes with the
+        // dev-seeded Berlin telemetry other tests read.
+        ResponseEntity<Map<String, Object>> siteRes = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Chatty Site"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(siteRes.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String siteId = (String) siteRes.getBody().get("id");
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-chatty-01"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String deviceId = (String) claimed.getBody().get("id");
+
+        // ~6400 samples over the last 23h (13 s cadence) - well over MAX_POINTS 5000.
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, pv_power_kw, load_kw, payload) "
+                + "SELECT g, '00000000-0000-0000-0000-000000000001', '" + siteId + "', '" + deviceId + "', "
+                + "1.0, 0.5, 1.5, jsonb_build_object('source', 'test') "
+                + "FROM generate_series(now() - interval '23 hours', now() - interval '30 seconds', "
+                + "interval '13 seconds') g");
+
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/telemetry"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> points = res.getBody();
+        assertThat(points).isNotEmpty();
+        assertThat(points.size()).isLessThanOrEqualTo(5000);
+
+        java.time.Instant first = java.time.Instant.parse((String) points.get(0).get("ts"));
+        java.time.Instant last = java.time.Instant.parse((String) points.get(points.size() - 1).get("ts"));
+        // CURRENT: the newest sample (~30 s old) is represented (1-min-bucket tolerance).
+        // The old ASC LIMIT cut here: the last returned point was hours old.
+        assertThat(last).isAfter(java.time.Instant.now().minusSeconds(150));
+        // COMPLETE: the window still reaches back to the oldest sample.
+        assertThat(first).isBefore(java.time.Instant.now().minus(22, java.time.temporal.ChronoUnit.HOURS));
+        // Ascending presentation order, values carried through the aggregation.
+        assertThat(first).isBefore(last);
+        assertThat(((Number) points.get(points.size() - 1).get("pvPowerKw")).doubleValue())
+                .isEqualTo(0.5);
+
+        // Clean up (unclaim deletes the telemetry too) so the extra site never
+        // leaks into the other tests' exact site-list assertions.
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), Void.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), Void.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
     @Test
     void customerCreatesSiteForOwnTenantAndSeesItInClaimDropdown() {
         String demo = token("demo", "demo");

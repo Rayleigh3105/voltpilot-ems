@@ -322,6 +322,24 @@ a:focus-visible,
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
   gap: var(--vp-gap-lg);
 }
+/* Exactly-four stat tiles (Live-Daten card): explicit 2x2 on narrow screens,
+   4x1 on wide, so the 4th tile never wraps alone and phones never stack
+   one-per-row (F8). */
+.vp-grid-stats-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 1200px) {
+  .vp-grid-stats-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+/* Keep-last-good-but-dim: values older than the liveness window stay visible
+   but visibly grey out (the edge dashboard's .stale precedent). */
+.vp-stale {
+  opacity: 0.55;
+  filter: grayscale(0.35);
+  transition: opacity 0.3s ease;
+}
 
 /* Übersicht hero split: wide live-telemetry + narrow market/weather column */
 .vp-hero-split {
