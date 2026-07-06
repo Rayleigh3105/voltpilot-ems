@@ -1092,10 +1092,13 @@ class PortalApiTest {
         rows.setLength(rows.length() - 1);
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, load_kw) "
                 + "VALUES " + rows);
+        // DO UPDATE, not DO NOTHING: the dev earnings seed (V20260706030000)
+        // rolls a 32-day DE-LU price window that can cover this fixed date -
+        // the test's hand-computed expectations must own these two slots.
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
                 + "('2026-06-15T10:00:00Z', 'DE-LU', 'PT15M', 100.0, 'EUR', 'energy-charts'), "
                 + "('2026-06-15T11:00:00Z', 'DE-LU', 'PT15M', 200.0, 'EUR', 'energy-charts') "
-                + "ON CONFLICT DO NOTHING");
+                + "ON CONFLICT (bidding_zone, resolution, ts) DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         // Two MPC runs plan the 10:00Z slot; the later one supersedes the earlier.
         exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
                 + "battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur) VALUES "
@@ -1400,6 +1403,184 @@ class PortalApiTest {
                         bearer(demo)),
                 String.class);
         assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    // ---- realized earnings ---------------------------------------------------
+
+    /**
+     * The realized-earnings engine ({@code GET /api/v1/earnings}) on a
+     * hand-computed seed: two computable sites in two bidding zones (PT15M
+     * price preferred over a coexisting PT60M row, PT60M fallback for an hour
+     * without 15-min rows, an unpriced gap slot), a generation-only site
+     * (missing_channels), a priceless site (no_prices), a fresh site (no_data),
+     * the algebraic identity saved == (discharge - charge) * price/1000, the
+     * per-site 14-day dailySaved series, range=all starting at the first
+     * covered date, RLS isolation, and the 400 on a bad range.
+     *
+     * <p>Seed lives on 2026-04-14 (Berlin day = [2026-04-13T22:00Z,
+     * 2026-04-14T22:00Z)) in the AT/CH zones - far from every other test's
+     * price/rollup seeds and from the dev seed's DE-LU rows.
+     */
+    @Test
+    void earningsComputesRealizedSavingsPerSiteWithHonestDegradation() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String dv = createSite(demo, "Earnings Werk Süd", "AT", "direktvermarktung");
+        String ev = createSite(demo, "Earnings Haus West", "CH", "eigenverbrauch");
+        String genOnly = createSite(demo, "Earnings Nur-Erzeugung", "CH", "eigenverbrauch");
+        String noPrices = createSite(demo, "Earnings Ohne Preise", "CH", "eigenverbrauch");
+        String fresh = createSite(demo, "Earnings Frisch", "CH", "eigenverbrauch");
+
+        // Prices: AT 10:00Z has BOTH a PT15M (100) and a decoy PT60M (999) row -
+        // the finer resolution must win; AT 11:00Z has only a PT60M row (200) -
+        // the fallback; 12:00Z has no AT price at all - the gap. CH 10:00Z = 80.
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-04-14T10:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-04-14T10:00:00Z', 'AT', 'PT60M', 999.0, 'EUR', 'test'), "
+                + "('2026-04-14T11:00:00Z', 'AT', 'PT60M', 200.0, 'EUR', 'test'), "
+                + "('2026-04-14T10:00:00Z', 'CH', 'PT15M', 80.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        // Rollup buckets, all consistent with the power balance
+        // (import - export == load - pv + charge - discharge):
+        // DV b1 10:00Z (price 100): load 1.0, pv 0.25, imp 0.5 -> discharge 0.25
+        //   baseline (1.0-0.25)*0.1 = 0.075 | actual 0.5*0.1 = 0.05 | saved 0.025
+        // DV b2 11:30Z (PT60M 200): load 0.5, pv 1.5, charge 0.25 -> exp 0.75
+        //   baseline -1.0*0.2 = -0.20 | actual -0.75*0.2 = -0.15 | saved -0.05
+        //   (charging at a high price debits VoltPilot - self-honest)
+        // DV b3 12:00Z: measured but unpriced -> counted, not covered.
+        // EV b4 10:00Z (CH 80): load 2.0, pv 0.5, discharge 0.5 -> imp 1.0
+        //   baseline 1.5*0.08 = 0.12 | actual 1.0*0.08 = 0.08 | saved 0.04
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                + "('2026-04-14T10:00:00Z', '" + tenantA + "', '" + dv + "', 0.25, 1.0, 0.5, 0.0, 0.0, 0.25, 90), "
+                + "('2026-04-14T11:30:00Z', '" + tenantA + "', '" + dv + "', 1.5, 0.5, 0.0, 0.75, 0.25, 0.0, 90), "
+                + "('2026-04-14T12:00:00Z', '" + tenantA + "', '" + dv + "', 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 90), "
+                + "('2026-04-14T10:00:00Z', '" + tenantA + "', '" + ev + "', 0.5, 2.0, 1.0, 0.0, 0.0, 0.5, 90), "
+                // generation-only: PV present, load/grid channels absent
+                + "('2026-04-14T10:00:00Z', '" + tenantA + "', '" + genOnly + "', 1.0, NULL, NULL, NULL, NULL, NULL, 90), "
+                // full channels but no CH price at 12:00Z
+                + "('2026-04-14T12:00:00Z', '" + tenantA + "', '" + noPrices + "', 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 90) "
+                + "ON CONFLICT DO NOTHING");
+
+        // A recent covered slot for the EV site feeds the 14-day dailySaved
+        // series: 15-min bucket two hours ago, CH price 150, discharge 0.4
+        // => saved 0.4 * 150/1000 = 0.06 on that bucket's Berlin day.
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), 'CH', 'PT15M', 150.0, 'EUR', 'test' "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) "
+                + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), '" + tenantA + "', '"
+                + ev + "', 0.0, 1.0, 0.6, 0.0, 0.0, 0.4, 90 ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-04-14"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        assertThat(body).containsEntry("range", "day")
+                // Berlin-local day window (CEST in April).
+                .containsEntry("from", "2026-04-13T22:00:00Z")
+                .containsEntry("to", "2026-04-14T22:00:00Z");
+
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+        Map<String, Object> dvSite = siteRow(body, dv);
+        assertThat(dvSite).containsEntry("plantKind", "direktvermarktung")
+                .containsEntry("coveredSlots", 2)
+                .containsEntry("firstCoveredDate", "2026-04-14")
+                .containsEntry("reason", null);
+        assertThat(num(dvSite, "baselineEur")).isCloseTo(-0.125, eps);
+        assertThat(num(dvSite, "actualEur")).isCloseTo(-0.10, eps);
+        // The algebraic identity: saved == (discharge - charge) * price/1000
+        // over the seed = 0.25*100/1000 + (0.0-0.25)*200/1000 = -0.025, and it
+        // equals baseline - actual (round-trip losses debit VoltPilot).
+        assertThat(num(dvSite, "savedEur")).isCloseTo(-0.025, eps);
+        assertThat(num(dvSite, "savedEur"))
+                .isCloseTo(num(dvSite, "baselineEur") - num(dvSite, "actualEur"), eps);
+        // Nothing recent for the DV site -> empty dailySaved, never fake zeros.
+        assertThat(list(dvSite, "dailySaved")).isEmpty();
+
+        Map<String, Object> evSite = siteRow(body, ev);
+        assertThat(num(evSite, "baselineEur")).isCloseTo(0.12, eps);
+        assertThat(num(evSite, "actualEur")).isCloseTo(0.08, eps);
+        assertThat(num(evSite, "savedEur")).isCloseTo(0.04, eps);
+        // The recent slot shows up in the 14-day series on its Berlin day.
+        java.time.Instant recentBucket = java.time.Instant.ofEpochSecond(
+                java.time.Instant.now().minus(2, java.time.temporal.ChronoUnit.HOURS)
+                        .getEpochSecond() / 900 * 900);
+        String recentDay = recentBucket.atZone(com.voltpilot.api.history.HistoryRange.ZONE)
+                .toLocalDate().toString();
+        List<Map<String, Object>> evDaily = list(evSite, "dailySaved");
+        Map<String, Object> todayEntry = evDaily.stream()
+                .filter(x -> recentDay.equals(x.get("day"))).findFirst().orElseThrow();
+        assertThat(num(todayEntry, "savedEur")).isCloseTo(0.06, eps);
+
+        // Honest degradation, machine-readable.
+        assertThat(siteRow(body, genOnly)).containsEntry("savedEur", null)
+                .containsEntry("reason", "missing_channels");
+        assertThat(siteRow(body, noPrices)).containsEntry("savedEur", null)
+                .containsEntry("reason", "no_prices");
+        assertThat(siteRow(body, fresh)).containsEntry("savedEur", null)
+                .containsEntry("reason", "no_data");
+
+        // Totals over the computable sites of THIS Berlin day.
+        Map<String, Object> totals = map(body, "totals");
+        assertThat(num(totals, "baselineEur")).isCloseTo(-0.005, eps);
+        assertThat(num(totals, "actualEur")).isCloseTo(-0.02, eps);
+        assertThat(num(totals, "savedEur")).isCloseTo(0.015, eps);
+        assertThat(totals).containsEntry("coveredSlots", 3)
+                .containsEntry("firstCoveredDate", "2026-04-14");
+
+        // range=all honestly starts at the fleet's first covered slot.
+        ResponseEntity<Map<String, Object>> all = rest.exchange(
+                url("/api/v1/earnings?range=all"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(all.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(map(all.getBody(), "totals"))
+                .containsEntry("firstCoveredDate", "2026-04-14");
+        assertThat(all.getBody()).containsEntry("from", "2026-04-13T22:00:00Z");
+        // The all-range DV aggregate still carries the April slots.
+        assertThat(num(siteRow(all.getBody(), dv), "savedEur")).isCloseTo(-0.025, eps);
+
+        // Default range is month (captain decision).
+        ResponseEntity<Map<String, Object>> dflt = rest.exchange(
+                url("/api/v1/earnings"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(dflt.getBody()).containsEntry("range", "month");
+
+        // RLS: tenant B's earnings never contain tenant A's sites.
+        ResponseEntity<Map<String, Object>> other = rest.exchange(
+                url("/api/v1/earnings?range=all"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(other.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
+                .doesNotContain(dv, ev, genOnly, noPrices, fresh);
+
+        // week is deliberately not offered here; garbage is refused too.
+        for (String bad : new String[] {"week", "decade"}) {
+            ResponseEntity<String> refused = rest.exchange(
+                    url("/api/v1/earnings?range=" + bad), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)), String.class);
+            assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private String createSite(String token, String name, String zone, String plantKind) {
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", name, "biddingZone", zone,
+                        "plantKind", plantKind), bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return (String) created.getBody().get("id");
+    }
+
+    private static Map<String, Object> siteRow(Map<String, Object> body, String siteId) {
+        return list(body, "sites").stream()
+                .filter(x -> siteId.equals(x.get("id"))).findFirst().orElseThrow();
     }
 
     private String claimDeviceInto(String token, String siteId, String externalRef) {

@@ -14,7 +14,7 @@
  * turns it amber and names it ("1 Gerät ... meldet sich nicht") - calm and
  * concrete, never alarm-red.
  */
-import type { OverviewSite, PlantKind } from './api';
+import type { EarningsDaily, EarningsRange, EarningsReason, EarningsSite, OverviewSite, PlantKind } from './api';
 import { ONLINE_WINDOW_MS } from './api';
 import { eurAmount, fmtNum } from './format';
 import { DEADBAND_KW } from './live';
@@ -35,43 +35,203 @@ export function fleetHeadline(kind: FleetKind): string {
   return kind === 'direktvermarktung' ? 'Ihr VoltPilot-Mehrerlös' : 'Ihr VoltPilot-Vorteil';
 }
 
-/**
- * Hero subline under the big number - honestly labelled "geplant" (Phase 1
- * shows the plan's claim; measured numbers come with the earnings engine).
- */
-export function fleetSubline(kind: FleetKind): string {
-  switch (kind) {
-    case 'direktvermarktung':
-      return 'heute laut Fahrplan mehr verdient';
-    case 'eigenverbrauch':
-      return 'heute laut Fahrplan gespart';
+// ---- Realized earnings wording (Phase 2: the hero shows MEASURED money) ------
+
+/** The date of a moment as a Europe/Berlin ISO day string. */
+export function berlinDay(at: Date): string {
+  return at.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+}
+
+/** German period phrase: "heute" / "im Juli" / "im Jahr 2026" / "seit ...". */
+export function rangePhrase(
+  range: EarningsRange,
+  now: Date,
+  firstCoveredDate: string | null,
+): string {
+  switch (range) {
+    case 'day':
+      return 'heute';
+    case 'month':
+      return `im ${now.toLocaleDateString('de-DE', { month: 'long', timeZone: 'Europe/Berlin' })}`;
+    case 'year':
+      return `im Jahr ${berlinDay(now).slice(0, 4)}`;
     default:
-      return 'heute laut Fahrplan, alle Standorte zusammen';
+      return firstCoveredDate ? `seit dem ${fmtDayLong(firstCoveredDate)}` : 'insgesamt';
   }
 }
 
-/** Hero fine print - plain German, says what the number is and is not. */
-export function fleetFinePrint(kind: FleetKind): string {
-  // "mehr herausholen" also covers the mixed fleet - it reads right for both
-  // avoided cost and market revenue; only-EV keeps the familiar "sparen".
-  const verb = kind === 'eigenverbrauch' ? 'sparen' : 'mehr herausholen';
-  return (
-    `Geplanter Wert: So viel will VoltPilot heute mit Ihren Speichern ${verb} - ` +
-    'berechnet aus Fahrplan und Börsenstrompreisen, im Vergleich zu einem Betrieb ' +
-    'ohne Speicher. Gemessene Zahlen folgen in Kürze.'
-  );
+/** "20. Juni 2026" from an ISO day string (no timezone surprises). */
+function fmtDayLong(isoDay: string): string {
+  return new Date(`${isoDay}T12:00:00`).toLocaleDateString('de-DE', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 /**
- * The per-site money teaser on a fleet card, in the SITE's own wording.
- * Null when the site has no plan today - the card then stays silent about
- * money instead of showing a fake zero.
+ * Hero subline under the measured number: the period phrase plus the fleet's
+ * verb - only-DV "mehr verdient", only-EV "gespart", mixed the neutral
+ * "herausgeholt" with the alle-Standorte hint.
  */
-export function siteEarnText(kind: PlantKind, savingsEur: number | null): string | null {
-  if (savingsEur == null) return null;
-  const signed = `${savingsEur >= 0 ? '+' : ''}${eurAmount(savingsEur)}`;
+export function realizedSubline(
+  kind: FleetKind,
+  range: EarningsRange,
+  now: Date,
+  firstCoveredDate: string | null,
+): string {
+  const phrase = rangePhrase(range, now, firstCoveredDate);
+  switch (kind) {
+    case 'direktvermarktung':
+      return `${phrase} mehr verdient`;
+    case 'eigenverbrauch':
+      return `${phrase} gespart`;
+    default:
+      return `${phrase} herausgeholt, alle Standorte zusammen`;
+  }
+}
+
+/**
+ * The hero's two-number proof line, sign-honest and free of minus signs. The
+ * backend values are signed COSTS (negative = revenue):
+ *
+ * - both revenue (net export): "Erlös mit VoltPilot X / Ungeregelt wären es Y"
+ * - both costs: "Stromkosten mit VoltPilot X / Ohne Speicher wären es Y"
+ *   (Direktvermarktung/mixed say "Ungeregelt" - their counterfactual is the
+ *   unregulated plant, not a missing battery)
+ * - MIXED signs (earned with VoltPilot, would have paid without - or the
+ *   reverse): neither single framing works without a confusing negative
+ *   number, so each row says its own verb ("Mit VoltPilot verdient 12,89 € /
+ *   Ohne Speicher hätten Sie gezahlt 12,89 €").
+ *
+ * Amounts are always absolute; the labels carry the direction.
+ */
+export interface ProofLine {
+  mitLabel: string;
+  ohneLabel: string;
+  mitEur: number;
+  ohneEur: number;
+}
+
+export function proofLine(kind: FleetKind, baselineEur: number, actualEur: number): ProofLine {
+  // "Ohne Speicher" is the honest counterfactual name for a household;
+  // marketed/mixed fleets compare against the unregulated plant.
+  const counter = kind === 'eigenverbrauch' ? 'Ohne Speicher' : 'Ungeregelt';
+  const mitRevenue = actualEur <= 0;
+  const ohneRevenue = baselineEur <= 0;
+  if (mitRevenue && ohneRevenue) {
+    return {
+      mitLabel: 'Erlös mit VoltPilot',
+      ohneLabel: 'Ungeregelt wären es',
+      mitEur: -actualEur,
+      ohneEur: -baselineEur,
+    };
+  }
+  if (!mitRevenue && !ohneRevenue) {
+    return {
+      mitLabel: 'Stromkosten mit VoltPilot',
+      ohneLabel: `${counter} wären es`,
+      mitEur: actualEur,
+      ohneEur: baselineEur,
+    };
+  }
+  return {
+    mitLabel: mitRevenue ? 'Mit VoltPilot verdient' : 'Mit VoltPilot gezahlt',
+    ohneLabel: ohneRevenue
+      ? `${counter} hätten Sie verdient`
+      : `${counter} hätten Sie gezahlt`,
+    mitEur: Math.abs(actualEur),
+    ohneEur: Math.abs(baselineEur),
+  };
+}
+
+/**
+ * Hero fine print for the measured number - plain German, says what the number
+ * is (measured values x exchange prices vs. the unregulated plant), mentions
+ * the Marktprämie for fleets with Direktvermarktung (the amount is deliberately
+ * NOT in the numbers), and dates a "Gesamt" view honestly.
+ */
+export function realizedFinePrint(
+  kind: FleetKind,
+  range: EarningsRange,
+  firstCoveredDate: string | null,
+): string {
+  let text =
+    'Berechnet aus Ihren gemessenen Werten und den Börsenstrompreisen - im Vergleich ' +
+    'zur ungeregelten Anlage: gleiche Sonne, gleicher Verbrauch, Speicher ungenutzt.';
+  if (kind !== 'eigenverbrauch') {
+    text += ' Bei Direktvermarktung zzgl. Marktprämie.';
+  }
+  if (range === 'all' && firstCoveredDate) {
+    text += ` Messwerte liegen seit dem ${fmtDayLong(firstCoveredDate)} vor.`;
+  }
+  return text;
+}
+
+/**
+ * The per-site money teaser on a fleet card, in the SITE's own wording - now
+ * the MEASURED value for today. Null when nothing is computable today (e.g.
+ * the rollups still trail live data) - the card then stays silent about money
+ * instead of showing a fake zero.
+ */
+export function siteEarnText(kind: PlantKind, savedTodayEur: number | null): string | null {
+  if (savedTodayEur == null) return null;
+  // A value that ROUNDS to zero must render "+0,00 €", never "-0,00 €".
+  const value = Math.abs(savedTodayEur) < 0.005 ? 0 : savedTodayEur;
+  const signed = `${value >= 0 ? '+' : ''}${eurAmount(value)}`;
   const verb = kind === 'direktvermarktung' ? 'mehr verdient' : 'gespart';
-  return `Heute ${signed} ${verb} (geplant)`;
+  return `Heute ${signed} ${verb}`;
+}
+
+/** The realized savings of one Berlin day, from a site's 14-day series. */
+export function savedOnDay(dailySaved: EarningsDaily[], day: string): number | null {
+  const entry = dailySaved.find((d) => d.day === day);
+  return entry ? entry.savedEur : null;
+}
+
+/**
+ * The hero spark's fixed 14-day axis (oldest first, ending today Berlin): every
+ * day gets a slot so two days of history render as two day-wide bars, not two
+ * half-width blocks; days without a computable value carry null (empty slot,
+ * never a fake zero bar).
+ */
+export function sparkDays(
+  dailySaved: EarningsDaily[],
+  now: Date,
+  days = 14,
+): { day: string; savedEur: number | null }[] {
+  const byDay = new Map(dailySaved.map((d) => [d.day, d.savedEur]));
+  const result: { day: string; savedEur: number | null }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const day = berlinDay(new Date(now.getTime() - i * 24 * 60 * 60 * 1000));
+    result.push({ day, savedEur: byDay.get(day) ?? null });
+  }
+  return result;
+}
+
+/** Merge the sites' per-day series into one fleet-wide series (sorted by day). */
+export function fleetDailySaved(sites: EarningsSite[]): EarningsDaily[] {
+  const byDay = new Map<string, number>();
+  for (const s of sites) {
+    for (const d of s.dailySaved) {
+      byDay.set(d.day, (byDay.get(d.day) ?? 0) + d.savedEur);
+    }
+  }
+  return [...byDay.entries()]
+    .map(([day, savedEur]) => ({ day, savedEur }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+}
+
+/** Card copy for a site whose earnings are not computable, plus the why. */
+export function notComputableHint(reason: EarningsReason): string {
+  switch (reason) {
+    case 'missing_channels':
+      return 'Das Gerät liefert nicht alle benötigten Messwerte (z. B. reine Erzeugungsmessung).';
+    case 'no_prices':
+      return 'Für den Zeitraum liegen noch keine Börsenpreise vor.';
+    default:
+      return 'Für den Zeitraum liegen noch keine Messwerte vor.';
+  }
 }
 
 // ---- Fleet status sentence ---------------------------------------------------

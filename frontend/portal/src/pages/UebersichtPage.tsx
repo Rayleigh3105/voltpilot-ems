@@ -5,21 +5,22 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Stat } from '../../designsystem/components/core/Stat';
-import { KpiCard } from '../../designsystem/components/shell/KpiCard';
 import {
   api,
   deviceLiveStatus,
   ONLINE_WINDOW_MS,
   type Device,
+  type Earnings,
+  type EarningsRange,
   type Overview,
   type PriceSeries,
-  type SchedulePlan,
   type Site,
   type TelemetryPoint,
   type WeatherForecast,
 } from '../api';
 import { currentUser } from '../auth';
-import { ctPerKwh, eurAmount, fmtNum, fmtRelative, zoneLabel } from '../format';
+import { ctPerKwh, fmtNum, fmtRelative, zoneLabel } from '../format';
+import { fleetDailySaved, fleetKind, notComputableHint } from '../fleet';
 import type { PageId } from '../nav';
 import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
@@ -27,7 +28,7 @@ import { AddDeviceDrawer } from '../components/DeviceDrawers';
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, ErrorState, Skeleton, TextSkeleton } from '../components/States';
 import { LiveHero } from '../components/LiveHero';
-import { FleetHero, FleetSiteCard, FleetStatusCard } from '../components/FleetOverview';
+import { EarningsHero, FleetSiteCard, FleetStatusCard } from '../components/FleetOverview';
 import { TelemetryChart } from '../TelemetryChart';
 import { PriceChart } from '../PriceChart';
 
@@ -114,6 +115,10 @@ function FleetUebersicht({
 
   const [overview, setOverview] = useState<Overview | null>(null);
   const [failed, setFailed] = useState(false);
+  const [earnings, setEarnings] = useState<Earnings | null>(null);
+  const [earnFailed, setEarnFailed] = useState(false);
+  // Realized-earnings hero period; Monat is the default (captain decision).
+  const [range, setRange] = useState<EarningsRange>('month');
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
@@ -136,8 +141,29 @@ function FleetUebersicht({
     };
   }, [reloadKey]);
 
+  // The measured money numbers - refetched when the hero period changes; the
+  // hero keeps the previous numbers until the new ones arrive (no flash).
+  useEffect(() => {
+    let active = true;
+    api.earnings(range).then(
+      (e) => {
+        if (!active) return;
+        setEarnings(e);
+        setEarnFailed(false);
+      },
+      () => {
+        if (active) setEarnFailed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [reloadKey, range]);
+
   // Freshness tick (5 s) + silent background poll (30 s) - the page keeps its
   // last good data on a poll failure, exactly like the single-site widgets.
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
   useEffect(() => {
     let ticks = 0;
     const timer = setInterval(() => {
@@ -147,10 +173,16 @@ function FleetUebersicht({
           (o) => setOverview(o),
           () => {},
         );
+        api.earnings(rangeRef.current).then(
+          (e) => setEarnings(e),
+          () => {},
+        );
       }
     }, TICK_MS);
     return () => clearInterval(timer);
   }, []);
+
+  const earningsBySite = new Map((earnings?.sites ?? []).map((s) => [s.id, s]));
 
   return (
     <>
@@ -193,7 +225,20 @@ function FleetUebersicht({
       ) : (
         <>
           <div className="vp-fleet-top">
-            <FleetHero overview={overview} now={now} />
+            {earnings == null && !earnFailed ? (
+              <Skeleton height={300} radius="var(--vp-radius-lg)" />
+            ) : (
+              <EarningsHero
+                kind={fleetKind(overview.sites.map((s) => s.plantKind))}
+                money={earnings ? earnings.totals : null}
+                dailySaved={earnings ? fleetDailySaved(earnings.sites) : []}
+                range={range}
+                dataRange={earnings?.range}
+                onRange={setRange}
+                now={now}
+                unavailable={earnFailed}
+              />
+            )}
             <FleetStatusCard overview={overview} now={now} />
           </div>
 
@@ -207,7 +252,13 @@ function FleetUebersicht({
             </div>
             <div className="vp-grid vp-fleet-grid">
               {overview.sites.map((s) => (
-                <FleetSiteCard key={s.id} site={s} now={now} onOpen={() => onOpenSite(s.id)} />
+                <FleetSiteCard
+                  key={s.id}
+                  site={s}
+                  earnings={earningsBySite.get(s.id) ?? null}
+                  now={now}
+                  onOpen={() => onOpenSite(s.id)}
+                />
               ))}
             </div>
           </section>
@@ -258,7 +309,12 @@ function SingleSiteUebersicht({
   const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([]);
   const [prices, setPrices] = useState<PriceSeries | null>(null);
   const [weather, setWeather] = useState<WeatherForecast | null>(null);
-  const [schedule, setSchedule] = useState<SchedulePlan | null>(null);
+  // Realized earnings for the hero (captain decision 6: single-site customers
+  // get the same measured hero; in fleet mode the drill-down shows it
+  // site-scoped). The planned number lives on the Fahrplan page only.
+  const [earnings, setEarnings] = useState<Earnings | null>(null);
+  const [earnFailed, setEarnFailed] = useState(false);
+  const [range, setRange] = useState<EarningsRange>('month');
   // Per-widget load failure flags: an outage must render a distinct
   // "konnte nicht geladen werden" card, NOT the benign "waiting for data /
   // no prices" empty state (M2). Each is set when its endpoint rejects.
@@ -266,7 +322,6 @@ function SingleSiteUebersicht({
     telemetry: false,
     prices: false,
     weather: false,
-    schedule: false,
   });
   const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -288,29 +343,26 @@ function SingleSiteUebersicht({
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [deviceDrawer, setDeviceDrawer] = useState(false);
 
-  // Secondary widgets (prices/weather/schedule) - independent of the live
-  // window, so a window toggle never re-flashes their skeletons.
+  // Secondary widgets (prices/weather) - independent of the live window, so a
+  // window toggle never re-flashes their skeletons.
   useEffect(() => {
     if (!site) {
       setPrices(null);
       setWeather(null);
-      setSchedule(null);
-      setFailed((f) => ({ ...f, prices: false, weather: false, schedule: false }));
+      setFailed((f) => ({ ...f, prices: false, weather: false }));
       return;
     }
     let active = true;
     setLoading(true);
-    Promise.allSettled([api.prices(site.id), api.weather(site.id), api.schedule(site.id)]).then(
-      ([p, w, s]) => {
+    Promise.allSettled([api.prices(site.id), api.weather(site.id)]).then(
+      ([p, w]) => {
         if (!active) return;
         if (p.status === 'fulfilled') setPrices(p.value);
         if (w.status === 'fulfilled') setWeather(w.value);
-        if (s.status === 'fulfilled') setSchedule(s.value);
         setFailed((f) => ({
           ...f,
           prices: p.status === 'rejected',
           weather: w.status === 'rejected',
-          schedule: s.status === 'rejected',
         }));
         setLoading(false);
       },
@@ -319,6 +371,25 @@ function SingleSiteUebersicht({
       active = false;
     };
   }, [site?.id, reloadKey]);
+
+  // The measured money hero - tenant-wide response, rendered site-scoped.
+  useEffect(() => {
+    if (sites.length === 0) return;
+    let active = true;
+    api.earnings(range).then(
+      (e) => {
+        if (!active) return;
+        setEarnings(e);
+        setEarnFailed(false);
+      },
+      () => {
+        if (active) setEarnFailed(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [sites.length === 0, reloadKey, range]);
 
   // Live telemetry - refetched on the selected window (F6: only that window,
   // downsampled server-side beyond 3 h so it stays complete and current).
@@ -376,18 +447,9 @@ function SingleSiteUebersicht({
     return () => clearInterval(timer);
   }, []);
 
-  // --- KPI derivations (money first) ---------------------------------------
+  // --- Hero derivations (money first, measured) -----------------------------
   const today = new Date();
-  const todaySlots = (schedule?.slots ?? []).filter(
-    (s) => new Date(s.start).toDateString() === today.toDateString(),
-  );
-  // Distinguish "no plan exists yet" from a genuine 0,00 € (D1): a brand-new
-  // customer must not read the headline as "you saved nothing today".
-  const hasTodayPlan = todaySlots.length > 0;
-  const savingsToday = todaySlots.reduce(
-    (sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)),
-    0,
-  );
+  const siteEarnings = earnings?.sites.find((x) => x.id === site?.id) ?? null;
 
   const todayPrices = (prices?.points ?? [])
     .filter((p) => new Date(p.ts).toDateString() === today.toDateString())
@@ -408,7 +470,7 @@ function SingleSiteUebersicht({
   const weatherNow = weather?.points?.[0] ?? null;
   const activeWindow = LIVE_WINDOWS.find((w) => w.id === liveWindow) ?? LIVE_WINDOWS[1];
   const allFailed =
-    site != null && failed.telemetry && failed.prices && failed.weather && failed.schedule;
+    site != null && failed.telemetry && failed.prices && failed.weather && earnFailed;
 
   const firstName = (user.name || '').split(/\s+/)[0] || user.name;
 
@@ -496,38 +558,32 @@ function SingleSiteUebersicht({
         </div>
       )}
 
-      {/* Money-first hero: ONE calm money number leads, the day's price second.
-          Counts are demoted to the compact strip below (report P3). */}
-      <section className="vp-kpis vp-kpis-hero" aria-label="Kennzahlen">
-        <KpiCard
-          icon={<Icon name="euro" size={20} />}
-          category="battery"
-          value={failed.schedule || !hasTodayPlan ? '—' : eurAmount(savingsToday)}
-          label={
-            failed.schedule
-              ? 'Ersparnis gerade nicht verfügbar'
-              : hasTodayPlan
-                ? 'Heute geplant gespart'
-                : 'Noch kein Fahrplan'
-          }
-          title={
-            failed.schedule
-              ? 'Der Fahrplan konnte nicht geladen werden - die Ersparnis ist gerade nicht verfügbar.'
-              : hasTodayPlan
-                ? 'Projizierte Ersparnis des Batterie-Fahrplans heute gegenüber einem Betrieb ohne Speicher'
-                : 'Für heute liegt noch kein Batterie-Fahrplan vor - sobald einer erstellt wird, erscheint hier Ihre geplante Ersparnis.'
-          }
-        />
-        <KpiCard
-          icon={<Icon name="trending-up" size={20} />}
-          category="dynamic"
-          value={failed.prices || avgPriceToday == null ? '—' : ctPerKwh(avgPriceToday)}
-          label="Ø Strompreis heute"
-          title="Durchschnittlicher Börsen-Strompreis heute in Cent pro Kilowattstunde"
-        />
-      </section>
+      {/* Money-first hero: the MEASURED "mit VoltPilot vs. ungeregelt" number
+          leads (Phase 2 of the fleet overview - same hero as the fleet mode,
+          scoped to this site). The planned number lives on the Fahrplan page. */}
+      {site &&
+        (earnings == null && !earnFailed ? (
+          <Skeleton height={300} radius="var(--vp-radius-lg)" />
+        ) : (
+          <EarningsHero
+            kind={fleetKind([site.plantKind])}
+            money={siteEarnings}
+            dailySaved={siteEarnings?.dailySaved ?? []}
+            range={range}
+            dataRange={earnings?.range}
+            onRange={setRange}
+            now={now}
+            unavailable={earnFailed}
+            emptyHint={
+              siteEarnings?.reason
+                ? notComputableHint(siteEarnings.reason)
+                : undefined
+            }
+          />
+        ))}
 
-      {/* Bestand: counts demoted to a calm secondary strip. */}
+      {/* Bestand: counts demoted to a calm secondary strip; the day's Ø price
+          keeps a quiet home here since the hero leads with measured money. */}
       <div className="vp-count-strip" role="group" aria-label="Bestand">
         <span className="vp-count-item">
           <Icon name="map-pin" size={16} />
@@ -542,6 +598,12 @@ function SingleSiteUebersicht({
             {online}/{devices.length} online
           </Badge>
         </span>
+        {!failed.prices && avgPriceToday != null && (
+          <span className="vp-count-item">
+            <Icon name="trending-up" size={16} />
+            <strong>{ctPerKwh(avgPriceToday)}</strong> Ø Börsenpreis heute
+          </span>
+        )}
       </div>
 
       {/* Hero split: live telemetry primary, prices + weather secondary. */}

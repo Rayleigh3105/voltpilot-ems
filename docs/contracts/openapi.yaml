@@ -204,6 +204,40 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Overview" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/earnings:
+    get:
+      tags: [sites]
+      summary: Realized earnings - measured "mit VoltPilot vs. ungeregelte Anlage".
+      description: >
+        The measured money numbers behind the portal hero (fleet AND
+        single-site), computed per 15-min slot from the telemetry rollups
+        valued at the slot's day-ahead price in each site's own bidding zone
+        (PT15M rows preferred, PT60M fallback): baseline = (load_kwh - pv_kwh)
+        * price/1000 (the UNREGULATED plant - same generation and consumption,
+        fed in immediately, battery idle), actual = (grid_import_kwh -
+        grid_export_kwh) * price/1000, saved = baseline - actual. Both are
+        signed COSTS (negative = revenue); with symmetric spot pricing, saved
+        equals the battery's dispatch valued at spot, so round-trip losses
+        debit VoltPilot automatically. Windows are Europe/Berlin calendar
+        periods containing `at`; range=all starts at the fleet's first covered
+        slot and the response's `from` says so. RLS-scoped like every customer
+        endpoint; admins use the X-Tenant-Id switcher.
+      parameters:
+        - name: range
+          in: query
+          schema: { type: string, enum: [day, month, year, all], default: month }
+        - name: at
+          in: query
+          description: The date whose period to report (default today, Europe/Berlin).
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: The caller's realized earnings.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Earnings" }
+        "400": { description: Unknown range. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/sites:
     get:
       tags: [sites]
@@ -1293,6 +1327,85 @@ components:
         liveSitesCovered:
           type: integer
           description: Sites whose live snapshot is inside the 5-min freshness window.
+    Earnings:
+      type: object
+      description: Realized earnings (see GET /api/v1/earnings).
+      properties:
+        range: { type: string, enum: [day, month, year, all] }
+        from:
+          type: string
+          format: date-time
+          description: >
+            Window start. For range=all this is the fleet's first covered
+            Berlin day - the honest "seit ..." of a Gesamt view.
+        to: { type: string, format: date-time }
+        sites:
+          type: array
+          items: { $ref: "#/components/schemas/EarningsSite" }
+        totals: { $ref: "#/components/schemas/EarningsTotals" }
+    EarningsSite:
+      type: object
+      description: >
+        One site's realized earnings over the window. Money values are null
+        when no slot is computable; `reason` then says why. Partial coverage
+        is not an error - `coveredSlots` counts the slots in the sums.
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
+        baselineEur:
+          type: number
+          nullable: true
+          description: Signed cost of the unregulated plant (negative = revenue).
+        actualEur:
+          type: number
+          nullable: true
+          description: Signed measured cost with VoltPilot (negative = revenue).
+        savedEur:
+          type: number
+          nullable: true
+          description: baseline - actual; negative when the battery ran at a loss.
+        coveredSlots: { type: integer }
+        firstCoveredDate:
+          type: string
+          format: date
+          nullable: true
+          description: Europe/Berlin day of the first covered slot in the window.
+        reason:
+          type: string
+          nullable: true
+          enum: [no_data, missing_channels, no_prices]
+          description: >
+            Why nothing is computable (only set when savedEur is null):
+            no_data = no measurements in the window; missing_channels =
+            measurements lack the load/PV/grid channels (generation-only
+            inverters); no_prices = no day-ahead price covers the slots yet.
+        dailySaved:
+          type: array
+          description: >
+            Realized savings per Europe/Berlin day, last 14 days incl. today,
+            independent of `range` (spark bars + "Heute" teaser). Days without
+            a computable slot are absent.
+          items:
+            type: object
+            properties:
+              day: { type: string, format: date }
+              savedEur: { type: number }
+    EarningsTotals:
+      type: object
+      description: >
+        Fleet totals over the computable sites; null money values when no site
+        has a computable slot (never a fake zero).
+      properties:
+        baselineEur: { type: number, nullable: true }
+        actualEur: { type: number, nullable: true }
+        savedEur: { type: number, nullable: true }
+        coveredSlots: { type: integer }
+        firstCoveredDate:
+          type: string
+          format: date
+          nullable: true
+          description: Earliest covered Berlin day across the fleet.
     CreateSiteRequest:
       type: object
       required: [name]

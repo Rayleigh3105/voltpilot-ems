@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import type { OverviewSite } from './api';
+import type { EarningsSite, OverviewSite } from './api';
 import {
+  berlinDay,
   composeFleetSentence,
-  fleetFinePrint,
+  fleetDailySaved,
   fleetHeadline,
   fleetKind,
   fleetPvKw,
-  fleetSubline,
+  notComputableHint,
+  proofLine,
+  rangePhrase,
+  realizedFinePrint,
+  realizedSubline,
+  savedOnDay,
   siteEarnText,
   siteLiveFresh,
+  sparkDays,
 } from './fleet';
 
 const NOW = new Date('2026-07-06T12:00:00Z');
@@ -32,51 +39,203 @@ function site(over: Partial<OverviewSite>): OverviewSite {
 describe('fleetKind + wording', () => {
   it('only Direktvermarktung speaks revenue', () => {
     expect(fleetKind(['direktvermarktung', 'direktvermarktung'])).toBe('direktvermarktung');
-    expect(fleetHeadline('direktvermarktung')).toBe('Ihr VoltPilot-Mehrerlös');
-    expect(fleetSubline('direktvermarktung')).toBe('heute laut Fahrplan mehr verdient');
+    expect(fleetHeadline('direktvermarktung')).toBe('Ihr VoltPilot-Mehrerl\u00f6s');
+    expect(realizedSubline('direktvermarktung', 'day', NOW, null)).toBe('heute mehr verdient');
   });
 
   it('only Eigenverbrauch speaks avoided cost', () => {
     expect(fleetKind(['eigenverbrauch'])).toBe('eigenverbrauch');
     expect(fleetHeadline('eigenverbrauch')).toBe('Ihr VoltPilot-Vorteil');
-    expect(fleetSubline('eigenverbrauch')).toBe('heute laut Fahrplan gespart');
+    expect(realizedSubline('eigenverbrauch', 'day', NOW, null)).toBe('heute gespart');
   });
 
-  it('a mixed fleet gets the neutral headline', () => {
+  it('a mixed fleet gets the neutral headline and verb', () => {
     expect(fleetKind(['direktvermarktung', 'eigenverbrauch'])).toBe('gemischt');
     expect(fleetHeadline('gemischt')).toBe('Ihr VoltPilot-Vorteil');
-    expect(fleetSubline('gemischt')).toContain('alle Standorte');
+    expect(realizedSubline('gemischt', 'day', NOW, null)).toBe(
+      'heute herausgeholt, alle Standorte zusammen',
+    );
   });
 
   it('an empty list counts as gemischt-neutral', () => {
     expect(fleetKind([])).toBe('gemischt');
   });
+});
 
-  it('fine print is honest about the planned nature', () => {
-    expect(fleetFinePrint('eigenverbrauch')).toContain('Geplanter Wert');
-    expect(fleetFinePrint('eigenverbrauch')).toContain('sparen');
-    expect(fleetFinePrint('direktvermarktung')).toContain('mehr herausholen');
-    // Mixed fleet reads right for both stories.
-    expect(fleetFinePrint('gemischt')).toContain('mehr herausholen');
+describe('rangePhrase (hero period wording)', () => {
+  it('names the Berlin month and year', () => {
+    expect(rangePhrase('day', NOW, null)).toBe('heute');
+    expect(rangePhrase('month', NOW, null)).toBe('im Juli');
+    expect(rangePhrase('year', NOW, null)).toBe('im Jahr 2026');
+  });
+
+  it('dates a Gesamt view at the first covered day', () => {
+    expect(rangePhrase('all', NOW, '2026-06-20')).toBe('seit dem 20. Juni 2026');
+    expect(rangePhrase('all', NOW, null)).toBe('insgesamt');
+  });
+
+  it('composes the subline: "im Juli gespart"', () => {
+    expect(realizedSubline('eigenverbrauch', 'month', NOW, null)).toBe('im Juli gespart');
+    expect(realizedSubline('direktvermarktung', 'all', NOW, '2026-06-20')).toBe(
+      'seit dem 20. Juni 2026 mehr verdient',
+    );
   });
 });
 
-describe('siteEarnText (per-site wording)', () => {
-  it('uses the SITE kind, German amount, and the honest (geplant) tag', () => {
-    expect(siteEarnText('eigenverbrauch', 1.1)).toBe('Heute +1,10\u00a0€ gespart (geplant)');
-    expect(siteEarnText('direktvermarktung', 0.85)).toBe(
-      'Heute +0,85\u00a0€ mehr verdient (geplant)',
-    );
+describe('proofLine (sign-honest two-number framing)', () => {
+  it('Direktvermarktung reads revenue: Erl\u00f6s = -actual', () => {
+    // actual -474.38 \u20ac cost = 474.38 \u20ac revenue; baseline -436 \u20ac = 436 \u20ac.
+    const p = proofLine('direktvermarktung', -436.0, -474.38);
+    expect(p.mitLabel).toBe('Erl\u00f6s mit VoltPilot');
+    expect(p.ohneLabel).toBe('Ungeregelt w\u00e4ren es');
+    expect(p.mitEur).toBeCloseTo(474.38);
+    expect(p.ohneEur).toBeCloseTo(436.0);
   });
 
-  it('is silent (null) without a plan - never a fake zero', () => {
+  it('Eigenverbrauch reads costs as they are', () => {
+    const p = proofLine('eigenverbrauch', 150.52, 112.1);
+    expect(p.mitLabel).toBe('Stromkosten mit VoltPilot');
+    expect(p.ohneLabel).toBe('Ohne Speicher w\u00e4ren es');
+    expect(p.mitEur).toBeCloseTo(112.1);
+    expect(p.ohneEur).toBeCloseTo(150.52);
+  });
+
+  it('flips a net-export Eigenverbrauch period to revenue framing (no negative costs)', () => {
+    const p = proofLine('eigenverbrauch', -5.0, -8.0);
+    expect(p.mitLabel).toBe('Erl\u00f6s mit VoltPilot');
+    expect(p.mitEur).toBeCloseTo(8.0);
+    expect(p.ohneEur).toBeCloseTo(5.0);
+  });
+
+  it('a mixed fleet with net costs keeps cost framing (Ungeregelt counterfactual)', () => {
+    const p = proofLine('gemischt', 100.0, 80.0);
+    expect(p.mitLabel).toBe('Stromkosten mit VoltPilot');
+    expect(p.ohneLabel).toBe('Ungeregelt w\u00e4ren es');
+  });
+
+  it('MIXED signs get per-row verbs and absolute amounts - never a minus sign', () => {
+    // Earned 12,89 \u20ac with VoltPilot; would have PAID 12,89 \u20ac without.
+    const p = proofLine('eigenverbrauch', 12.89, -12.89);
+    expect(p.mitLabel).toBe('Mit VoltPilot verdient');
+    expect(p.ohneLabel).toBe('Ohne Speicher h\u00e4tten Sie gezahlt');
+    expect(p.mitEur).toBeCloseTo(12.89);
+    expect(p.ohneEur).toBeCloseTo(12.89);
+
+    // The reverse mix on a marketed plant reads "Ungeregelt".
+    const q = proofLine('direktvermarktung', -5.0, 2.0);
+    expect(q.mitLabel).toBe('Mit VoltPilot gezahlt');
+    expect(q.ohneLabel).toBe('Ungeregelt h\u00e4tten Sie verdient');
+    expect(q.mitEur).toBeCloseTo(2.0);
+    expect(q.ohneEur).toBeCloseTo(5.0);
+  });
+});
+
+describe('realizedFinePrint', () => {
+  it('says measured x B\u00f6rsenpreise vs. unregulated plant', () => {
+    const t = realizedFinePrint('eigenverbrauch', 'month', null);
+    expect(t).toContain('gemessenen Werten');
+    expect(t).toContain('B\u00f6rsenstrompreisen');
+    expect(t).toContain('ungeregelten Anlage');
+    expect(t).not.toContain('Marktpr\u00e4mie');
+  });
+
+  it('mentions the Marktpr\u00e4mie for DV and mixed fleets (amount stays out)', () => {
+    expect(realizedFinePrint('direktvermarktung', 'month', null)).toContain(
+      'zzgl. Marktpr\u00e4mie',
+    );
+    expect(realizedFinePrint('gemischt', 'month', null)).toContain('zzgl. Marktpr\u00e4mie');
+  });
+
+  it('dates a Gesamt view honestly', () => {
+    expect(realizedFinePrint('eigenverbrauch', 'all', '2026-06-20')).toContain(
+      'seit dem 20. Juni 2026',
+    );
+  });
+});
+
+describe('siteEarnText (per-site wording, measured)', () => {
+  it('uses the SITE kind and a German amount', () => {
+    expect(siteEarnText('eigenverbrauch', 1.1)).toBe('Heute +1,10\u00a0\u20ac gespart');
+    expect(siteEarnText('direktvermarktung', 0.85)).toBe('Heute +0,85\u00a0\u20ac mehr verdient');
+  });
+
+  it('is silent (null) without a computable value - never a fake zero', () => {
     expect(siteEarnText('eigenverbrauch', null)).toBeNull();
   });
 
-  it('keeps a negative planned value honest', () => {
-    expect(siteEarnText('direktvermarktung', -0.2)).toBe(
-      'Heute -0,20\u00a0€ mehr verdient (geplant)',
+  it('keeps a negative measured value honest (losses debit VoltPilot)', () => {
+    expect(siteEarnText('direktvermarktung', -0.2)).toBe('Heute -0,20\u00a0\u20ac mehr verdient');
+  });
+
+  it('never renders a negative zero', () => {
+    expect(siteEarnText('eigenverbrauch', -0.0001)).toBe('Heute +0,00\u00a0\u20ac gespart');
+  });
+});
+
+describe('daily saved helpers', () => {
+  const earnSite = (id: string, dailySaved: { day: string; savedEur: number }[]): EarningsSite => ({
+    id,
+    name: id,
+    plantKind: 'eigenverbrauch',
+    baselineEur: null,
+    actualEur: null,
+    savedEur: null,
+    coveredSlots: 0,
+    firstCoveredDate: null,
+    reason: null,
+    dailySaved,
+  });
+
+  it('savedOnDay picks the exact Berlin day, else null', () => {
+    const daily = [
+      { day: '2026-07-05', savedEur: 0.4 },
+      { day: '2026-07-06', savedEur: 1.2 },
+    ];
+    expect(savedOnDay(daily, '2026-07-06')).toBe(1.2);
+    expect(savedOnDay(daily, '2026-07-04')).toBeNull();
+  });
+
+  it('berlinDay converts an instant to the Berlin calendar day', () => {
+    // 23:30 UTC on July 5 is already July 6 in Berlin (CEST).
+    expect(berlinDay(new Date('2026-07-05T23:30:00Z'))).toBe('2026-07-06');
+  });
+
+  it('fleetDailySaved merges the sites per day, sorted', () => {
+    const merged = fleetDailySaved([
+      earnSite('a', [
+        { day: '2026-07-06', savedEur: 1.0 },
+        { day: '2026-07-05', savedEur: 0.5 },
+      ]),
+      earnSite('b', [{ day: '2026-07-06', savedEur: 0.25 }]),
+    ]);
+    expect(merged).toEqual([
+      { day: '2026-07-05', savedEur: 0.5 },
+      { day: '2026-07-06', savedEur: 1.25 },
+    ]);
+  });
+});
+
+describe('sparkDays (fixed 14-day axis)', () => {
+  it('pads missing days with null slots, oldest first, ending today (Berlin)', () => {
+    const days = sparkDays(
+      [
+        { day: '2026-07-05', savedEur: 0.4 },
+        { day: '2026-07-06', savedEur: 1.2 },
+      ],
+      NOW,
     );
+    expect(days).toHaveLength(14);
+    expect(days[0]).toEqual({ day: '2026-06-23', savedEur: null });
+    expect(days[12]).toEqual({ day: '2026-07-05', savedEur: 0.4 });
+    expect(days[13]).toEqual({ day: '2026-07-06', savedEur: 1.2 });
+  });
+});
+
+describe('notComputableHint', () => {
+  it('explains each reason in plain German', () => {
+    expect(notComputableHint('missing_channels')).toContain('Messwerte');
+    expect(notComputableHint('no_prices')).toContain('B\u00f6rsenpreise');
+    expect(notComputableHint('no_data')).toContain('Messwerte');
   });
 });
 

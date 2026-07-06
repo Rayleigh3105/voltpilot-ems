@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { Overview, OverviewSite } from '../api';
+import type { EarningsDaily, EarningsRange, EarningsSite, Overview, OverviewSite } from '../api';
 import {
+  berlinDay,
   composeFleetSentence,
-  fleetFinePrint,
   fleetHeadline,
-  fleetKind,
-  fleetSubline,
+  notComputableHint,
+  proofLine,
+  realizedFinePrint,
+  realizedSubline,
+  savedOnDay,
   siteEarnText,
   siteLiveFresh,
+  sparkDays,
   type FleetKind,
 } from '../fleet';
 import { eurAmount, fmtNum, fmtRelative } from '../format';
@@ -17,10 +21,10 @@ import { batteryState, deriveBatteryKw, gridState } from '../live';
 import { sanitizeSoc } from '../plausible';
 
 /**
- * Presentational pieces of the fleet-mode Übersicht (multi-site customers):
- * the money hero on the brand gradient, the fleet status sentence, and the
- * per-site cards. All wording/derivation lives in the pure `fleet.ts` and
- * `live.ts`; these components only render it.
+ * Presentational pieces of the adaptive Übersicht: the realized-money hero on
+ * the brand gradient (fleet AND single-site since Phase 2), the fleet status
+ * sentence, and the per-site cards. All wording/derivation lives in the pure
+ * `fleet.ts` and `live.ts`; these components only render it.
  */
 
 /**
@@ -64,59 +68,134 @@ function useCountUp(target: number | null, ms = 800): number | null {
   return value;
 }
 
-/** Today's date in the platform timezone (Berlin) as an ISO day string. */
-function berlinToday(now: Date): string {
-  return now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+const RANGES: { id: EarningsRange; label: string }[] = [
+  { id: 'day', label: 'Heute' },
+  { id: 'month', label: 'Monat' },
+  { id: 'year', label: 'Jahr' },
+  { id: 'all', label: 'Gesamt' },
+];
+
+/** The money numbers the hero renders (fleet totals or one site's row). */
+export interface HeroMoney {
+  baselineEur: number | null;
+  actualEur: number | null;
+  savedEur: number | null;
+  firstCoveredDate: string | null;
 }
 
 /**
- * The money hero on the brand gradient: today's PLANNED savings/extra revenue,
- * honestly labelled, with the 14-day mini bar chart (per-day ex-ante savings)
- * and a plain-German fine-print line. No plan today => an honest "-", never a
- * fake zero.
+ * The realized-money hero on the brand gradient: the MEASURED saved/earned
+ * number for the selected Berlin period, the two-number proof line ("Erlös mit
+ * VoltPilot / Ungeregelt wären es" resp. cost framing - sign-honest via
+ * proofLine), the Heute/Monat/Jahr/Gesamt switch (default Monat, captain
+ * decision), realized 14-day spark bars, and the plain-German fine print.
+ * Nothing computable => an honest "-" with the why, never a fake zero.
  */
-export function FleetHero({ overview, now }: { overview: Overview; now: Date }) {
-  const kind: FleetKind = fleetKind(overview.sites.map((s) => s.plantKind));
-  const savings = overview.totals.plannedSavingsTodayEur;
-  const animated = useCountUp(savings);
+export function EarningsHero({
+  kind,
+  money,
+  dailySaved,
+  range,
+  dataRange,
+  onRange,
+  now,
+  unavailable = false,
+  emptyHint,
+}: {
+  kind: FleetKind;
+  money: HeroMoney | null;
+  dailySaved: EarningsDaily[];
+  range: EarningsRange;
+  /** The range the DATA belongs to (the response's range): while a switch is
+   *  in flight the hero keeps the previous numbers, so the wording must keep
+   *  describing them - the seg alone reflects the new selection. */
+  dataRange?: EarningsRange;
+  onRange: (r: EarningsRange) => void;
+  now: Date;
+  /** True when the earnings request itself failed (outage, not "no data"). */
+  unavailable?: boolean;
+  /** Reason-specific hint when nothing is computable (site drill-down). */
+  emptyHint?: string;
+}) {
+  const worded = dataRange ?? range;
+  const saved = money?.savedEur ?? null;
+  const animated = useCountUp(saved);
 
-  const days = overview.dailySavings;
-  const today = berlinToday(now);
-  const todayEntry = days.find((d) => d.day === today);
-  const maxDay = days.reduce((m, d) => Math.max(m, d.savingsEur), 0);
+  const today = berlinDay(now);
+  const todayEntry = dailySaved.find((d) => d.day === today);
+  const spark = sparkDays(dailySaved, now);
+  const maxDay = dailySaved.reduce((m, d) => Math.max(m, d.savedEur), 0);
+  const proof =
+    money != null && money.baselineEur != null && money.actualEur != null
+      ? proofLine(kind, money.baselineEur, money.actualEur)
+      : null;
 
   return (
-    <section className="vp-fleet-hero" aria-label="Ihr VoltPilot-Vorteil heute">
+    <section className="vp-fleet-hero" aria-label={fleetHeadline(kind)}>
       <span className="vp-fleet-hero-label">{fleetHeadline(kind)}</span>
-      {savings == null ? (
+      {saved == null ? (
         <>
           <span className="vp-fleet-hero-value">–</span>
           <span className="vp-fleet-hero-sub">
-            Für heute liegt noch kein Fahrplan vor. Sobald VoltPilot Ihre Speicher plant,
-            erscheint hier Ihr Tageswert.
+            {unavailable
+              ? 'Der Wert ist gerade nicht verfügbar. Bitte versuchen Sie es später erneut.'
+              : emptyHint ??
+                'Für diesen Zeitraum liegen noch keine berechenbaren Messwerte vor. Sobald Ihre Anlage misst und Börsenpreise vorliegen, erscheint hier Ihr Wert.'}
           </span>
         </>
       ) : (
         <>
           <span className="vp-fleet-hero-value">
             {animated != null && animated >= 0 ? '+' : ''}
-            {eurAmount(animated ?? savings)}
+            {eurAmount(animated ?? saved)}
           </span>
-          <span className="vp-fleet-hero-sub">{fleetSubline(kind)}</span>
+          <span className="vp-fleet-hero-sub">
+            {realizedSubline(kind, worded, now, money?.firstCoveredDate ?? null)}
+          </span>
         </>
       )}
 
-      {days.length > 1 && (
+      {proof && (
+        <div className="vp-fleet-hero-proof">
+          <div>
+            <span>{proof.mitLabel}</span>
+            <span className="v">{eurAmount(proof.mitEur)}</span>
+          </div>
+          <div>
+            <span>{proof.ohneLabel}</span>
+            <span className="v">{eurAmount(proof.ohneEur)}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="vp-fleet-seg" role="tablist" aria-label="Zeitraum">
+        {RANGES.map((r) => (
+          <button
+            key={r.id}
+            role="tab"
+            aria-selected={range === r.id}
+            className={range === r.id ? 'active' : ''}
+            onClick={() => onRange(r.id)}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      {dailySaved.length > 1 && (
         <>
           <div className="vp-fleet-spark" role="img" aria-label="Tageswerte der letzten 14 Tage">
-            {days.map((d) => (
+            {spark.map((d) => (
               <i
                 key={d.day}
-                className={d.day === today ? 'hi' : undefined}
+                className={d.day === today && d.savedEur != null ? 'hi' : undefined}
                 style={{
-                  height: `${maxDay > 0 ? Math.max(8, Math.round((Math.max(0, d.savingsEur) / maxDay) * 100)) : 8}%`,
+                  height:
+                    d.savedEur == null
+                      ? '3px'
+                      : `${maxDay > 0 ? Math.max(8, Math.round((Math.max(0, d.savedEur) / maxDay) * 100)) : 8}%`,
                 }}
-                title={`${d.day}: ${eurAmount(d.savingsEur)}`}
+                title={d.savedEur == null ? d.day : `${d.day}: ${eurAmount(d.savedEur)}`}
               />
             ))}
           </div>
@@ -124,8 +203,8 @@ export function FleetHero({ overview, now }: { overview: Overview; now: Date }) 
             <span>Tageswerte, letzte 14 Tage</span>
             {todayEntry && (
               <span>
-                heute: {todayEntry.savingsEur >= 0 ? '+' : ''}
-                {eurAmount(todayEntry.savingsEur)}
+                heute: {todayEntry.savedEur >= 0 ? '+' : ''}
+                {eurAmount(todayEntry.savedEur)}
               </span>
             )}
           </div>
@@ -136,7 +215,7 @@ export function FleetHero({ overview, now }: { overview: Overview; now: Date }) 
         <span className="vp-fleet-fine-ico" aria-hidden="true">
           <Icon name="info" size={13} />
         </span>
-        {fleetFinePrint(kind)}
+        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null)}
       </p>
     </section>
   );
@@ -182,21 +261,31 @@ function FleetTile({
 /**
  * One site of the fleet: pulsing status dot (worst device status), the four
  * verdict tiles with direction words (never signed numbers), the SoC bar, and
- * the per-site money teaser in the site's OWN wording. A site without fresh
- * data degrades honestly ("Keine aktuellen Daten · zuletzt vor X") - stale
- * numbers never render as live.
+ * the per-site money teaser - since Phase 2 the MEASURED "Heute +X €" in the
+ * site's own wording (it is history, so it shows even while the live snapshot
+ * is stale); a structurally non-computable site says so honestly. A site
+ * without fresh data degrades honestly ("Keine aktuellen Daten · zuletzt vor
+ * X") - stale numbers never render as live.
  */
 export function FleetSiteCard({
   site,
+  earnings,
   now,
   onOpen,
 }: {
   site: OverviewSite;
+  earnings: EarningsSite | null;
   now: Date;
   onOpen: () => void;
 }) {
   const fresh = siteLiveFresh(site, now);
-  const earn = siteEarnText(site.plantKind, site.plannedSavingsTodayEur);
+  const reason = earnings?.reason ?? null;
+  const earn = earnings
+    ? siteEarnText(site.plantKind, savedOnDay(earnings.dailySaved, berlinDay(now)))
+    : null;
+  // "nicht berechenbar" only for structural reasons; a site that simply has no
+  // measurements yet keeps the calmer onboarding/prüfen copy below.
+  const notComputable = reason != null && reason !== 'no_data';
   const dotTone =
     site.worstStatus === 'online' ? 'ok' : site.worstStatus === 'stale' ? 'warn' : 'off';
 
@@ -271,15 +360,17 @@ export function FleetSiteCard({
         </p>
       )}
 
-      <div className={`vp-fleet-site-earn${fresh && earn ? '' : ' muted'}`}>
+      <div
+        className={`vp-fleet-site-earn${earn && !notComputable ? '' : ' muted'}`}
+        title={notComputable && reason ? notComputableHint(reason) : undefined}
+      >
         <span>
-          {fresh && earn
-            ? earn
-            : site.deviceCount === 0
-              ? 'Gerät hinzufügen'
-              : fresh
-                ? 'Details ansehen'
-                : 'Standort prüfen'}
+          {site.deviceCount === 0
+            ? 'Gerät hinzufügen'
+            : notComputable
+              ? 'Für diesen Standort nicht berechenbar'
+              : earn ??
+                (fresh ? 'Details ansehen' : 'Standort prüfen')}
         </span>
         <span className="vp-fleet-chev" aria-hidden="true">
           ›

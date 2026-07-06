@@ -431,6 +431,62 @@ export interface Overview {
   dailySavings: OverviewDailySavings[];
 }
 
+// ---- Realized earnings (GET /api/v1/earnings) -------------------------------
+
+export type EarningsRange = 'day' | 'month' | 'year' | 'all';
+
+/**
+ * Why a site has nothing computable: no_data = no measurements in the window;
+ * missing_channels = the device does not report the load/PV/grid channels the
+ * math needs (generation-only inverters); no_prices = no day-ahead price
+ * covers the measured slots yet.
+ */
+export type EarningsReason = 'no_data' | 'missing_channels' | 'no_prices';
+
+/** One Europe/Berlin day of realized savings. */
+export interface EarningsDaily {
+  day: string;
+  savedEur: number;
+}
+
+/**
+ * One site's MEASURED earnings over the window: baseline = the unregulated
+ * plant (same sun, same consumption, battery idle), actual = what really
+ * happened at the meter, saved = baseline - actual. All are signed COSTS
+ * (negative = revenue); null when nothing is computable ({@link EarningsReason}).
+ * `dailySaved` is the last 14 Berlin days regardless of range (spark bars +
+ * "Heute" teaser).
+ */
+export interface EarningsSite {
+  id: string;
+  name: string;
+  plantKind: PlantKind;
+  baselineEur: number | null;
+  actualEur: number | null;
+  savedEur: number | null;
+  coveredSlots: number;
+  firstCoveredDate: string | null;
+  reason: EarningsReason | null;
+  dailySaved: EarningsDaily[];
+}
+
+export interface EarningsTotals {
+  baselineEur: number | null;
+  actualEur: number | null;
+  savedEur: number | null;
+  coveredSlots: number;
+  /** Earliest covered Berlin day - the honest start of a "Gesamt" range. */
+  firstCoveredDate: string | null;
+}
+
+export interface Earnings {
+  range: EarningsRange;
+  from: string;
+  to: string;
+  sites: EarningsSite[];
+  totals: EarningsTotals;
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -529,6 +585,9 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
 export const api = {
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
+  /** Realized earnings (measured, per site + totals) for a Berlin period. */
+  earnings: (range: EarningsRange = 'month') =>
+    request<Earnings>(`/api/v1/earnings?range=${range}`),
   listSites: () => request<Site[]>('/api/v1/sites'),
   createSite: (input: CreateSiteInput) =>
     request<Site>('/api/v1/sites', {
