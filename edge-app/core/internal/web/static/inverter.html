@@ -46,9 +46,11 @@
         </div>
 
         <div class="field">
-          <label for="family">Modell / Typ</label>
-          <select id="family" required></select>
-          <p class="field-help" id="familyHelp"></p>
+          <label for="model">Modell</label>
+          <input type="search" id="modelSearch" placeholder="Modell suchen, z. B. SG04LP3 oder 12K"
+                 autocomplete="off" aria-label="Modell suchen">
+          <select id="model" required size="8"></select>
+          <p class="field-help" id="modelHelp">Wählen Sie Ihr genaues Wechselrichter-Modell.</p>
         </div>
 
         <div class="field">

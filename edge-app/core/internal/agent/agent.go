@@ -820,6 +820,7 @@ func inverterInfo(sel *inverter.Selection) *state.InverterInfo {
 	return &state.InverterInfo{
 		Brand:         sel.Brand,
 		Label:         sel.Label,
+		Model:         sel.Model,
 		Family:        sel.Family,
 		Communication: sel.Communication,
 		Host:          sel.Connection.IP,

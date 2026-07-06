@@ -215,6 +215,68 @@ test('hybrid_3p BM3: absent PV4 (0x02A3=0) does not corrupt the PV sum', () => {
   assert.strictEqual(reading.pv_power_kw, 10);
 });
 
+// --- SoC plausibility gate: drop degraded/unanswered reads, never fabricate --
+// Regression for the "SoC time series spikes 0/100" bug on the Deye 12k LV: a
+// Solarman logger that cannot reach the inverter still returns a well-framed,
+// CRC-valid response - typically an all-zero register block (night-time empty
+// answer) or an out-of-range value on a misaligned frame. Decoding those as
+// soc_pct=0 / soc_pct>100 injected the spikes. A battery family with an
+// implausible SoC must now DROP the whole reading (return null): no sample,
+// never a 0.
+
+test('hybrid_3p: an all-zero (unanswered) frame is dropped, not published as soc 0', () => {
+  const b = block(0x024c, 0x58, {}); // every register 0 - the classic empty answer
+  assert.strictEqual(D.decode([b], { family: 'hybrid_3p' }), null, 'all-zero read -> no sample');
+});
+
+test('hybrid_1p: an all-zero (unanswered) frame is dropped, not published as soc 0', () => {
+  const b = block(0x00a9, 0x16, {});
+  assert.strictEqual(D.decode([b], { family: 'hybrid_1p' }), null, 'all-zero read -> no sample');
+});
+
+test('hybrid_3p: an out-of-range SoC (garbage/misaligned frame) is dropped', () => {
+  // SoC register reads 1250 (a temperature/voltage-like value) with otherwise
+  // plausible power fields - a misaligned/garbage frame. Must drop, not clip.
+  const b = block(0x024c, 0x58, { 0x024c: 1250, 0x028d: 3000, 0x02a0: 2000 });
+  assert.strictEqual(D.decode([b], { family: 'hybrid_3p' }), null, 'soc>100 -> no sample');
+});
+
+test('hybrid_3p: an exact-0 SoC with real power fields is still dropped (0 = empty-answer signature)', () => {
+  const b = block(0x024c, 0x58, { 0x024c: 0, 0x028d: 3000, 0x02a0: 4000 });
+  assert.strictEqual(D.decode([b], { family: 'hybrid_3p' }), null);
+});
+
+test('hybrid_3p: a plausible LOW SoC (above the BMS floor) is kept', () => {
+  const b = block(0x024c, 0x58, { 0x024c: 8, 0x028d: 2000 }); // 8 % - real, above 0
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.soc_pct, 8, 'a genuine low SoC survives the gate');
+  assert.strictEqual(reading.load_kw, 2);
+});
+
+test('hybrid_3p: a full-battery 100 % SoC is kept (inclusive upper bound)', () => {
+  const b = block(0x024c, 0x58, { 0x024c: 100, 0x028d: 500 });
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.soc_pct, 100);
+});
+
+test('string/micro: a 0-generation (night) reading is NOT dropped - no battery, no SoC gate', () => {
+  const s = block(0x0050, 0x0002, {}); // string AC output 0
+  assert.deepStrictEqual(D.decode([s], { family: 'string' }).reading, { pv_power_kw: 0 });
+  const m = block(0x0056, 0x0002, {}); // micro AC output 0
+  assert.deepStrictEqual(D.decode([m], { family: 'micro' }).reading, { pv_power_kw: 0 });
+});
+
+test('socPlausible accepts (0,100] and rejects 0, negatives, >100 and non-numbers', () => {
+  assert.strictEqual(D.socPlausible(57), true);
+  assert.strictEqual(D.socPlausible(0.5), true);
+  assert.strictEqual(D.socPlausible(100), true);
+  assert.strictEqual(D.socPlausible(0), false);
+  assert.strictEqual(D.socPlausible(-1), false);
+  assert.strictEqual(D.socPlausible(101), false);
+  assert.strictEqual(D.socPlausible(undefined), false);
+  assert.strictEqual(D.socPlausible(NaN), false);
+});
+
 // --- end-to-end through a synthetic tool response ----------------------------
 
 test('full path: buildOk -> parseOk -> decode reproduces the reading', () => {

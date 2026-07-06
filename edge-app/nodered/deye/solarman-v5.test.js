@@ -220,6 +220,40 @@ test('hybrid_1p: a synthetic V5 read decodes through deye-decode to a reading', 
   assert.strictEqual(batt_kw, -1.2);
 });
 
+// Regression for the Deye 12k LV "SoC spikes 0/100" bug, end to end through the
+// real V5 transport: a logger that could not reach the inverter returns a
+// well-framed, CRC-valid response whose SG04LP3 register block is all zeros (the
+// night-time empty answer). The transport accepts the frame (framing is valid);
+// the decoder must then DROP it (return null) so no soc_pct=0 sample is
+// published. Before the fix this produced a full all-zero reading incl. soc 0.
+test('hybrid_3p: a CRC-valid but all-zero (unanswered) V5 read decodes to a dropped sample', () => {
+  const start = 0x024c;
+  const count = 0x58;
+  const regs = new Array(count).fill(0); // SG04LP3 LV block, every register 0
+  const frame = makeResponseFrame(regs, { loggerSerial: 2985159064 });
+  const block = S.registerBlock(start, frame, { expectLoggerSerial: 2985159064 });
+  assert.strictEqual(block.regs.length, count, 'transport still parses the frame');
+  assert.strictEqual(D.decode([block], { family: 'hybrid_3p' }), null, 'decode drops the empty read');
+});
+
+// A genuine SG04LP3 LV read (the captain's 12k) still decodes normally: SoC 57 %
+// with plausible power fields - proving the gate does not reject real data.
+test('hybrid_3p SG04LP3 LV: a real 57 % SoC read survives the V5 round trip', () => {
+  const start = 0x024c;
+  const count = 0x58;
+  const regs = new Array(count).fill(0);
+  regs[0x024c - start] = 57; // SoC 57 %
+  regs[0x028d - start] = 2400; // load 2.4 kW
+  regs[0x0271 - start] = 900; // grid import 0.9 kW
+  regs[0x024e - start] = -1500 & 0xffff; // battery discharging (night)
+  const frame = makeResponseFrame(regs, { loggerSerial: 2985159064 });
+  const block = S.registerBlock(start, frame);
+  const { reading } = D.decode([block], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.soc_pct, 57);
+  assert.strictEqual(reading.load_kw, 2.4);
+  assert.strictEqual(reading.power_kw, 0.9);
+});
+
 test('string family: AC-output 32-bit low-word-first survives the V5 round trip', () => {
   const start = 0x0050;
   const count = 0x02;

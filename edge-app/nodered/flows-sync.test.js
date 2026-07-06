@@ -19,6 +19,7 @@ const path = require('node:path');
 
 const routing = require('./inverter-routing');
 const modbusTcp = require('./modbus-tcp');
+const deyeDecode = require('./deye/deye-decode');
 
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
@@ -91,6 +92,49 @@ test('flow router routes to idle (output 3) with no selection', () => {
   assert.strictEqual(ret[0], null);
   assert.strictEqual(ret[1], null);
   assert.ok(ret[2] && ret[2].idle);
+});
+
+// The "Deye-Register -> Messwerte" node carries a synced copy of deye-decode.js
+// (the generator preserves it verbatim, so nothing else guards the sync). These
+// assert the inline body matches the module - crucially incl. the SoC
+// plausibility gate that drops degraded/unanswered reads (the 0/100-spike fix).
+function runDeyeDecode(cfg, blocks) {
+  return runFunctionNode(byId['auto-deye-decode'].func, {
+    msg: { deye: { cfg, blocks } },
+  });
+}
+
+test('flow Deye decoder matches deye-decode.decode() for a real hybrid_3p read', () => {
+  const cfg = { family: 'hybrid_3p', power_scale: 1 };
+  const regs = new Array(0x58).fill(0);
+  regs[0x024c - 0x024c] = 57; // SoC 57 %
+  regs[0x028d - 0x024c] = 2400; // load 2.4 kW
+  regs[0x0271 - 0x024c] = 900; // grid 0.9 kW
+  const blocks = [{ start: 0x024c, regs }];
+  const { ret } = runDeyeDecode(cfg, blocks);
+  const flowReading = ret[0].payload;
+  delete flowReading.ts; // the flow stamps a live ts
+  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  assert.strictEqual(flowReading.soc_pct, 57);
+});
+
+test('flow Deye decoder DROPS an all-zero (unanswered) hybrid_3p read, like the module', () => {
+  const cfg = { family: 'hybrid_3p' };
+  const blocks = [{ start: 0x024c, regs: new Array(0x58).fill(0) }];
+  const { ret } = runDeyeDecode(cfg, blocks);
+  assert.strictEqual(ret, null, 'flow node returns null -> no telemetry published');
+  assert.strictEqual(deyeDecode.decode(blocks, cfg), null, 'module agrees');
+});
+
+test('flow Deye decoder DROPS an out-of-range SoC hybrid_3p read, like the module', () => {
+  const cfg = { family: 'hybrid_3p' };
+  const regs = new Array(0x58).fill(0);
+  regs[0] = 1250; // garbage SoC
+  regs[0x028d - 0x024c] = 3000;
+  const blocks = [{ start: 0x024c, regs }];
+  const { ret } = runDeyeDecode(cfg, blocks);
+  assert.strictEqual(ret, null);
+  assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
 });
 
 test('flow modbus decoder matches modbus-tcp.decodeProfile() (sunspec)', () => {

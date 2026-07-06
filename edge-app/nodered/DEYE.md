@@ -166,6 +166,15 @@ Die **fünf** ha-solarman-Deye-Definitionen fallen auf **vier** unterschiedliche
 
 ### Modell → Familie (Auswahlhilfe)
 
+> **Auswahl im Portal = einzelnes Modell (keine Familien-Gruppierung).** Im
+> Edge-App-Webportal wählt der Kunde sein **genaues Modell** (z. B.
+> `SUN-12K-SG04LP3-EU`); der Core löst es serverseitig auf die richtige Familie
+> (Registerkarte) auf und veröffentlicht **beides** in `edge/inverter/config`
+> (`model` + `family`). Node-RED routet weiterhin auf `family` - ein 12k-LV kann
+> also nie mit einer HV-Karte gelesen werden. Die folgende Tabelle bleibt die
+> maßgebliche **Modell → Familie**-Zuordnung (Pflege-Referenz); die vollständige
+> Auswahlliste steht in `core/internal/inverter/inverter.go` (`deyeModels()`).
+
 | Deye-Modelle (Beispiele) | ha-solarman-Definition | Familie | Telemetrie |
 |---|---|---|---|
 | **String / netzgekoppelt**, 1-2 MPPT, ohne Speicher: `SUN-4/5/6/8/10/12K-G03`, 3-phasige `-G04`-String | `deye_string.yaml` | **`string`** | `pv_power_kw` (= AC-Ausgang) |
@@ -227,6 +236,17 @@ Deckt zwei Baureihen mit **derselben** high-map ab:
 Ein Leseblock: `-xmb 024C0058` (0x024C..0x02A3, 88 Register - deckt SoC bis PV4 ab, unter dem 125-Register-Limit).
 
 Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein nicht bestücktes PV3/PV4 liest `0` und stört die Summe nicht.
+
+> **SoC-Plausibilität (drop-don't-fabricate).** Ein Solarman-Logger, der den
+> Wechselrichter gerade **nicht** erreicht (typisch nachts), antwortet trotzdem
+> mit einem **gültigen (CRC-ok) Rahmen** - meist ein Null-Block oder, bei einem
+> verschobenen Frame, ein völlig überzogener Wert. Früher wurde daraus
+> `soc_pct = 0` bzw. `soc_pct > 100` und die SoC-Zeitreihe zeigte 0/100-Spikes
+> über der echten Kurve. Der Decoder (`deye/deye-decode.js`) **verwirft** bei
+> Hybrid-Familien einen Messwert mit unplausibler SoC (nicht im Bereich `(0,100]`
+> - ein echtes BMS meldet nie exakt 0) **vollständig**: es wird **kein Sample**
+> veröffentlicht (nie eine 0), die Lücke zeigt der Chart als Unterbrechung.
+> String/Micro haben keinen SoC und sind nicht betroffen (0 kW nachts ist echt).
 
 > **Adressen sind autoritativ** aus StephanJoubert/home_assistant_solarman (`deye_sg04lp3.yaml`, das die SG01HP3-Nutzer laut Repo-Issue #444 ebenfalls verwenden) plus dem Deye-Modbus-Manual für PV3/PV4 (674/675).
 >

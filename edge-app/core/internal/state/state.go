@@ -60,6 +60,7 @@ type Snapshot struct {
 type InverterInfo struct {
 	Brand         string `json:"brand"`
 	Label         string `json:"label"`
+	Model         string `json:"model,omitempty"`
 	Family        string `json:"family"`
 	Communication string `json:"communication"`
 	Host          string `json:"host"`

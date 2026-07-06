@@ -77,21 +77,39 @@ type Field struct {
 	Options  []Opt  `json:"options,omitempty"`
 }
 
-// Family is one model family / profile within a brand.
+// Family is one register-map / decode profile within a brand. It is the INTERNAL
+// mechanism the Node-RED read adapter self-wires from (the config `family`
+// field, see edge/inverter/config): it selects the register map + scaling +
+// capabilities in nodered/deye/deye-decode.js. Families are exposed for
+// reference/traceability; the UI selects a Model (below), never a family.
 type Family struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 	Note  string `json:"note,omitempty"`
 }
 
-// Brand groups a manufacturer with its fixed communication method, the model
-// families it offers, and the connection fields that method needs.
+// Model is one concrete inverter product the UI offers for individual selection
+// (the captain's rule: every model is pickable on its own, NO grouping into
+// families). Each model maps to exactly one register-map Family, so the customer
+// picks e.g. "SUN-12K-SG04LP3" and the edge internally reads it with the correct
+// map/scaling - a 12k LV can never be read with an HV profile.
+type Model struct {
+	ID     string `json:"id"`     // stable selection id, e.g. "sun-12k-sg04lp3"
+	Label  string `json:"label"`  // product name, e.g. "SUN-12K-SG04LP3"
+	Family string `json:"family"` // the register-map Family this model reads with
+	Note   string `json:"note,omitempty"`
+}
+
+// Brand groups a manufacturer with its fixed communication method, the concrete
+// models it offers (the UI selection unit), the register-map families those
+// models resolve to, and the connection fields that method needs.
 type Brand struct {
 	ID            string   `json:"id"`
 	Label         string   `json:"label"`
 	Communication string   `json:"communication"`
 	CommLabel     string   `json:"comm_label"`
 	Note          string   `json:"note,omitempty"`
+	Models        []Model  `json:"models"`
 	Families      []Family `json:"families"`
 	Fields        []Field  `json:"fields"`
 }
@@ -134,6 +152,79 @@ func modbusFields() []Field {
 	}
 }
 
+// Register-map family ids (the INTERNAL decode profiles in
+// nodered/deye/deye-decode.js). Every selectable Deye Model resolves to one of
+// these; the generic-Modbus brand uses "sunspec".
+const (
+	FamHybrid3p = "hybrid_3p" // SG04LP3 LV + SG01HP3 HV high map (battery, 2-4 MPPT)
+	FamHybrid1p = "hybrid_1p" // SG03LP1 single-phase low map (battery)
+	FamString   = "string"    // G03/G04 grid-tie AC output (no battery)
+	FamMicro    = "micro"     // SUN*G3 micro AC output (no battery)
+	FamSunSpec  = "sunspec"   // generic Modbus/SunSpec profile
+)
+
+// deyeFamilies is the register-map reference list (what each Model decodes with).
+func deyeFamilies() []Family {
+	return []Family{
+		{ID: FamHybrid3p, Label: "Hybrid, 3-phasig", Note: "SUN-*-SG04LP3 (LV) oder SG01HP3 (HV)"},
+		{ID: FamHybrid1p, Label: "Hybrid, 1-phasig", Note: "SUN-*-SG03LP1"},
+		{ID: FamString, Label: "String-Wechselrichter", Note: "SUN-*-G03/G04 (nur Erzeugung)"},
+		{ID: FamMicro, Label: "Micro-Wechselrichter", Note: "SUN600..2000G3 (nur Erzeugung)"},
+	}
+}
+
+// deyeModels is the COMPLETE per-model list the UI offers for individual
+// selection (no grouping into families - the captain's explicit requirement).
+// Each entry maps to its correct register-map Family. Model coverage follows
+// ha-solarman's supported Deye lines (deye_sg04lp3 / deye_hybrid / deye_string /
+// deye_2mppt+deye_4mppt); adding a model is a one-line edit here, no code change.
+func deyeModels() []Model {
+	m := func(id, label, family, note string) Model {
+		return Model{ID: id, Label: label, Family: family, Note: note}
+	}
+	return []Model{
+		// --- 3-phase hybrid, LOW-VOLTAGE battery (SG04LP3, 2 MPPT) --------------
+		m("sun-5k-sg04lp3", "SUN-5K-SG04LP3-EU", FamHybrid3p, "5 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-6k-sg04lp3", "SUN-6K-SG04LP3-EU", FamHybrid3p, "6 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-8k-sg04lp3", "SUN-8K-SG04LP3-EU", FamHybrid3p, "8 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-10k-sg04lp3", "SUN-10K-SG04LP3-EU", FamHybrid3p, "10 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		m("sun-12k-sg04lp3", "SUN-12K-SG04LP3-EU", FamHybrid3p, "12 kW · Hybrid · 3-phasig · Niedervolt-Speicher (LV)"),
+		// --- 3-phase hybrid, HIGH-VOLTAGE battery (SG01HP3, 3-4 MPPT) -----------
+		m("sun-29.9k-sg01hp3", "SUN-29.9K-SG01HP3-EU", FamHybrid3p, "29,9 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-30k-sg01hp3", "SUN-30K-SG01HP3-EU", FamHybrid3p, "30 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-35k-sg01hp3", "SUN-35K-SG01HP3-EU", FamHybrid3p, "35 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-40k-sg01hp3", "SUN-40K-SG01HP3-EU", FamHybrid3p, "40 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		m("sun-50k-sg01hp3", "SUN-50K-SG01HP3-EU", FamHybrid3p, "50 kW · Hybrid · 3-phasig · Hochvolt-Speicher (HV)"),
+		// --- single-phase hybrid (SG03LP1) -------------------------------------
+		m("sun-3.6k-sg03lp1", "SUN-3.6K-SG03LP1-EU", FamHybrid1p, "3,6 kW · Hybrid · 1-phasig"),
+		m("sun-5k-sg03lp1", "SUN-5K-SG03LP1-EU", FamHybrid1p, "5 kW · Hybrid · 1-phasig"),
+		m("sun-6k-sg03lp1", "SUN-6K-SG03LP1-EU", FamHybrid1p, "6 kW · Hybrid · 1-phasig"),
+		m("sun-7.6k-sg03lp1", "SUN-7.6K-SG03LP1-EU", FamHybrid1p, "7,6 kW · Hybrid · 1-phasig"),
+		m("sun-8k-sg03lp1", "SUN-8K-SG03LP1-EU", FamHybrid1p, "8 kW · Hybrid · 1-phasig"),
+		// --- string grid-tie, no battery (G03 / G04) ---------------------------
+		m("sun-4k-g03", "SUN-4K-G03", FamString, "4 kW · String · nur Erzeugung"),
+		m("sun-5k-g03", "SUN-5K-G03", FamString, "5 kW · String · nur Erzeugung"),
+		m("sun-6k-g03", "SUN-6K-G03", FamString, "6 kW · String · nur Erzeugung"),
+		m("sun-7k-g03", "SUN-7K-G03", FamString, "7 kW · String · nur Erzeugung"),
+		m("sun-8k-g03", "SUN-8K-G03", FamString, "8 kW · String · nur Erzeugung"),
+		m("sun-10k-g03", "SUN-10K-G03", FamString, "10 kW · String · nur Erzeugung"),
+		m("sun-12k-g03", "SUN-12K-G03", FamString, "12 kW · String · nur Erzeugung"),
+		m("sun-15k-g04", "SUN-15K-G04", FamString, "15 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-20k-g04", "SUN-20K-G04", FamString, "20 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-25k-g04", "SUN-25K-G04", FamString, "25 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-30k-g04", "SUN-30K-G04", FamString, "30 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-33k-g04", "SUN-33K-G04", FamString, "33 kW · String · 3-phasig · nur Erzeugung"),
+		m("sun-50k-g04", "SUN-50K-G04", FamString, "50 kW · String · 3-phasig · nur Erzeugung"),
+		// --- micro-inverter, no battery (SUN*G3) -------------------------------
+		m("sun600g3", "SUN600G3-EU-230", FamMicro, "600 W · Mikro · 2 MPPT · nur Erzeugung"),
+		m("sun800g3", "SUN800G3-EU-230", FamMicro, "800 W · Mikro · 2 MPPT · nur Erzeugung"),
+		m("sun1000g3", "SUN1000G3-EU-230", FamMicro, "1000 W · Mikro · 2 MPPT · nur Erzeugung"),
+		m("sun1300g3", "SUN1300G3-EU-230", FamMicro, "1300 W · Mikro · 4 MPPT · nur Erzeugung"),
+		m("sun1600g3", "SUN1600G3-EU-230", FamMicro, "1600 W · Mikro · 4 MPPT · nur Erzeugung"),
+		m("sun2000g3", "SUN2000G3-EU-230", FamMicro, "2000 W · Mikro · 4 MPPT · nur Erzeugung"),
+	}
+}
+
 // DefaultCatalog returns the built-in option tree.
 func DefaultCatalog() Catalog {
 	return Catalog{
@@ -144,14 +235,10 @@ func DefaultCatalog() Catalog {
 				Label:         "Deye",
 				Communication: CommSolarmanV5,
 				CommLabel:     "Solarman-V5 (WiFi-Datenlogger, TCP 8899)",
-				Note:          "Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen.",
-				Families: []Family{
-					{ID: "hybrid_3p", Label: "Hybrid, 3-phasig", Note: "SUN-*-SG04LP3 (LV) oder SG01HP3 (HV)"},
-					{ID: "hybrid_1p", Label: "Hybrid, 1-phasig", Note: "SUN-*-SG03LP1"},
-					{ID: "string", Label: "String-Wechselrichter", Note: "SUN-*-G03/G04 (nur Erzeugung)"},
-					{ID: "micro", Label: "Micro-Wechselrichter", Note: "SUN600..2000G3 (nur Erzeugung)"},
-				},
-				Fields: solarmanFields(),
+				Note:          "Deye-Wechselrichter werden über ihren WiFi-Datenlogger ausgelesen. Wählen Sie Ihr genaues Modell.",
+				Models:        deyeModels(),
+				Families:      deyeFamilies(),
+				Fields:        solarmanFields(),
 			},
 			{
 				ID:            BrandGenericModbus,
@@ -159,8 +246,11 @@ func DefaultCatalog() Catalog {
 				Communication: CommModbusTCP,
 				CommLabel:     "Modbus TCP (TCP 502)",
 				Note:          "Für alle Wechselrichter mit SunSpec-/Modbus-TCP-Schnittstelle.",
+				Models: []Model{
+					{ID: FamSunSpec, Label: "SunSpec (Standard)", Family: FamSunSpec, Note: "SunSpec-konformes Modbus-Registermodell"},
+				},
 				Families: []Family{
-					{ID: "sunspec", Label: "SunSpec (Standard)", Note: "SunSpec-konformes Modbus-Registermodell"},
+					{ID: FamSunSpec, Label: "SunSpec (Standard)", Note: "SunSpec-konformes Modbus-Registermodell"},
 				},
 				Fields: modbusFields(),
 			},
@@ -186,6 +276,15 @@ func (b Brand) family(id string) (Family, bool) {
 	return Family{}, false
 }
 
+func (b Brand) model(id string) (Model, bool) {
+	for _, m := range b.Models {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return Model{}, false
+}
+
 // --- Selection: the persisted + published choice. ---
 
 // Connection holds the transport parameters. Only the fields relevant to the
@@ -205,19 +304,29 @@ type Connection struct {
 	Profile string `json:"profile,omitempty"`
 }
 
-// SelectionRequest is what the web form POSTs: the client picks brand + family
-// and fills the connection params. Communication and label are DERIVED from the
-// catalog server-side, so a client can never send an inconsistent transport.
+// SelectionRequest is what the web form POSTs: the client picks brand + the
+// concrete model and fills the connection params. Communication, register-map
+// family and label are DERIVED from the catalog server-side, so a client can
+// never send an inconsistent transport or read a model with the wrong map.
+//
+// `Model` is the primary selector. `Family` is accepted as a backward-compatible
+// fallback (a register-map family given directly, e.g. by an older client or an
+// integration) when Model is empty.
 type SelectionRequest struct {
 	Brand      string     `json:"brand"`
-	Family     string     `json:"family"`
+	Model      string     `json:"model"`
+	Family     string     `json:"family,omitempty"`
 	Connection Connection `json:"connection"`
 }
 
-// Selection is the validated, normalized choice.
+// Selection is the validated, normalized choice. `Family` stays the internal
+// register-map key the Node-RED adapter self-wires from (unchanged contract);
+// `Model` is the concrete product the customer picked (empty for a legacy
+// family-only request).
 type Selection struct {
 	Brand         string     `json:"brand"`
 	Label         string     `json:"label"`
+	Model         string     `json:"model,omitempty"`
 	Family        string     `json:"family"`
 	Communication string     `json:"communication"`
 	Connection    Connection `json:"connection"`
@@ -232,9 +341,27 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	if !ok {
 		return Selection{}, invalid("Unbekannte Marke.")
 	}
-	fam, ok := b.family(strings.TrimSpace(req.Family))
-	if !ok {
-		return Selection{}, invalid("Bitte wählen Sie einen gültigen Typ für %s.", b.Label)
+
+	// Resolve the concrete model -> its register-map family + label. Model is the
+	// primary selector; a bare Family is accepted for backward compatibility.
+	var modelID, registerFamily, typeLabel string
+	if m := strings.TrimSpace(req.Model); m != "" {
+		mod, ok := b.model(m)
+		if !ok {
+			return Selection{}, invalid("Bitte wählen Sie ein gültiges Modell für %s.", b.Label)
+		}
+		modelID = mod.ID
+		registerFamily = mod.Family
+		typeLabel = mod.Label
+	} else if fID := strings.TrimSpace(req.Family); fID != "" {
+		fam, ok := b.family(fID)
+		if !ok {
+			return Selection{}, invalid("Bitte wählen Sie einen gültigen Typ für %s.", b.Label)
+		}
+		registerFamily = fam.ID
+		typeLabel = fam.Label
+	} else {
+		return Selection{}, invalid("Bitte wählen Sie ein Modell für %s.", b.Label)
 	}
 
 	conn := req.Connection
@@ -251,8 +378,9 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 
 	sel := Selection{
 		Brand:         b.ID,
-		Label:         b.Label + " · " + fam.Label,
-		Family:        fam.ID,
+		Label:         b.Label + " · " + typeLabel,
+		Model:         modelID,
+		Family:        registerFamily,
 		Communication: b.Communication,
 		UpdatedAt:     now.UTC(),
 	}
@@ -290,7 +418,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.UnitID < 1 || conn.UnitID > 247 {
 			return Selection{}, invalid("Die Modbus-Unit-ID muss zwischen 1 und 247 liegen.")
 		}
-		conn.Profile = fam.ID // the family IS the Modbus/SunSpec profile
+		conn.Profile = registerFamily // the register-map family IS the Modbus/SunSpec profile
 		// solarman-only fields are not part of this transport.
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 	default:
@@ -323,10 +451,13 @@ func (s Selection) BusPayload() []byte {
 		"schema_version": SchemaVersion,
 		"brand":          s.Brand,
 		"label":          s.Label,
-		"family":         s.Family,
-		"communication":  s.Communication,
-		"connection":     conn,
-		"updated_at":     s.UpdatedAt.UTC().Format(time.RFC3339),
+		// `model` is the concrete product (additive, forward-compatible); `family`
+		// stays the register-map key the Node-RED adapter routes on (unchanged).
+		"model":         s.Model,
+		"family":        s.Family,
+		"communication": s.Communication,
+		"connection":    conn,
+		"updated_at":    s.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	raw, _ := json.Marshal(payload)
 	return raw

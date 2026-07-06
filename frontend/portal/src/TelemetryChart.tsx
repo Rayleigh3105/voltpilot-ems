@@ -9,6 +9,15 @@ import { useEChart } from './useEChart';
  * Width-aware: on narrow containers the legend tightens and axis chrome slims
  * down so nothing collides on a phone.
  */
+// SoC is physically a 0..100 % reading. The edge decoder now drops degraded
+// Solarman reads at the source, but the chart must not render a false spike from
+// any bad row already persisted in the DB: an out-of-range or non-finite SoC is
+// mapped to null so the line shows a GAP (connectNulls stays false) instead of
+// clipping to the axis ceiling/floor. kW series carry any real value.
+function sanitizeSoc(v: number | null): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+}
+
 export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
   const ref = useEChart(
     (chart, width) => {
@@ -20,11 +29,15 @@ export function TelemetryChart({ points }: { points: TelemetryPoint[] }) {
         type: 'line' as const,
         smooth: true,
         showSymbol: false,
+        connectNulls: false,
         yAxisIndex: axis,
         lineStyle: { width: 2.5, color },
         itemStyle: { color },
         areaStyle: axis === 0 ? { opacity: 0.06, color } : undefined,
-        data: points.map((p) => p[key] as number | null),
+        data: points.map((p) => {
+          const raw = p[key] as number | null;
+          return key === 'socPct' ? sanitizeSoc(raw) : raw;
+        }),
       });
 
       chart.setOption(

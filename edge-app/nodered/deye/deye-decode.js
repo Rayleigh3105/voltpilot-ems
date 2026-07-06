@@ -153,6 +153,26 @@ const round3 = (x) => Math.round(x * 1000) / 1000;
 const round1 = (x) => Math.round(x * 10) / 10;
 const h4 = (n) => (n & 0xffff).toString(16).padStart(4, '0').toUpperCase();
 
+// --- SoC plausibility gate (drop-don't-fabricate) ----------------------------
+// A battery State-of-Charge is physically a 0..100 % reading, and a real BMS
+// never reports an exact 0 (it cuts off well above empty). A Solarman logger
+// that could NOT actually reach the inverter still answers with a well-framed,
+// CRC-valid response - typically an all-zero register block (the classic
+// night-time "empty answer") or, on a misaligned frame, a wildly out-of-range
+// value. Decoding those verbatim published soc_pct = 0 (spikes to the axis
+// floor) or soc_pct > 100 (clipped to the axis ceiling by the portal chart) and
+// corrupted the SoC time series while the true stepped curve was still faintly
+// underneath. So for a battery family an implausible SoC means the whole read is
+// untrustworthy: the decoder drops it (returns null) and NO sample is published
+// - never a fabricated 0 - and the chart simply shows a gap until the next good
+// read. Non-battery families (string/micro) have no SoC and are unaffected: a
+// genuine 0 kW at night is a real, kept reading.
+const SOC_PCT_MIN = 0; // exclusive: an exact 0 is the empty-answer signature, not a real SoC
+const SOC_PCT_MAX = 100; // inclusive: a percentage
+function socPlausible(pct) {
+  return typeof pct === 'number' && isFinite(pct) && pct > SOC_PCT_MIN && pct <= SOC_PCT_MAX;
+}
+
 /**
  * parseOk - extract the register array from a `deye -xmb` response string.
  * Returns an array of unsigned 16-bit register words (index 0 = first register
@@ -233,6 +253,16 @@ function decode(blocks, config) {
   const reading = {};
   let batt_kw;
 
+  // Battery-family SoC plausibility gate FIRST: an unreadable or out-of-band SoC
+  // marks a degraded/unanswered logger read, so drop the entire sample rather
+  // than fabricate a 0/garbage value (see socPlausible above).
+  let socPct;
+  if (fam.hasBattery && f.soc) {
+    const s = fieldValue(blocks, f.soc);
+    if (!socPlausible(s)) return null;
+    socPct = round1(s);
+  }
+
   if (f.pv) {
     const w = fieldValue(blocks, f.pv);
     if (w !== undefined) reading.pv_power_kw = toKw(w);
@@ -248,10 +278,7 @@ function decode(blocks, config) {
       reading.power_kw = toKw(w);
     }
   }
-  if (fam.hasBattery && f.soc) {
-    const s = fieldValue(blocks, f.soc);
-    if (s !== undefined) reading.soc_pct = round1(s);
-  }
+  if (socPct !== undefined) reading.soc_pct = socPct;
   if (fam.hasBattery && f.batt) {
     let w = fieldValue(blocks, f.batt);
     if (w !== undefined) {
@@ -316,6 +343,7 @@ module.exports = {
   readCmd,
   powerLimitCmd,
   detectHybridFamily,
+  socPlausible,
   // low-level helpers exported for the tests
   _helpers: { u16, s16, round3, round1, h4 },
 };

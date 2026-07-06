@@ -29,14 +29,22 @@ The core (re-)publishes it at boot and on every change.
 ```jsonc
 {
   "schema_version": "1.0",
-  "brand": "deye",                       // "deye" | "generic_modbus"
-  "label": "Deye · Hybrid, 3-phasig",    // human label (brand · family)
-  "family": "hybrid_3p",                 // per-brand family / profile id
-  "communication": "solarman_v5",        // "solarman_v5" | "modbus_tcp"
+  "brand": "deye",                          // "deye" | "generic_modbus"
+  "label": "Deye · SUN-12K-SG04LP3-EU",     // human label (brand · model)
+  "model": "sun-12k-sg04lp3",               // the concrete model the customer picked
+  "family": "hybrid_3p",                    // register-map / profile id (Node-RED routes on THIS)
+  "communication": "solarman_v5",           // "solarman_v5" | "modbus_tcp"
   "connection": { /* per communication, see below */ },
-  "updated_at": "2026-07-03T12:00:00Z"   // RFC 3339, when the choice was saved
+  "updated_at": "2026-07-03T12:00:00Z"      // RFC 3339, when the choice was saved
 }
 ```
+
+The customer selects an **individual inverter model** in the UI (no grouping
+into families). `model` is that concrete choice; `family` is the register map it
+resolves to and stays the field the Node-RED adapter routes on - so a
+`SUN-12K-SG04LP3` (LV) can never be read with an HV profile. `model` is
+**additive**: `schema_version` stays `"1.0"` and a consumer that only knows
+`family` keeps working (unknown fields are ignored per the contract).
 
 The **communication method is fixed per brand** (the captain's rule): a Deye is
 always read through its WiFi datalogger via **Solarman-V5** (TCP 8899); every
@@ -60,7 +68,9 @@ inconsistent transport can't be requested.
 ```
 
 `family` selects the Deye register map (see [`nodered/DEYE.md`](nodered/DEYE.md)):
-`string` · `hybrid_1p` · `hybrid_3p` · `micro`.
+`string` · `hybrid_1p` · `hybrid_3p` · `micro`. The customer never picks this
+directly - it is derived from the chosen `model` (e.g. every `SUN-*-SG04LP3` LV
+and `SUN-*-SG01HP3` HV model resolves to `hybrid_3p`).
 
 > **`serial` is the DATALOGGER serial** (from the AP SSID `AP_<serial>` or the
 > logger status page), not the inverter serial - the #1 config mistake. The UI
@@ -84,24 +94,30 @@ decoded by the `PROFILES` map in `nodered/modbus-tcp.js`, additive per profile).
 ## Catalog (what the UI offers)
 
 The UI form is fully data-driven from `GET /api/inverter` → `catalog`, so adding
-a brand/family/field is additive (edit `DefaultCatalog()` in
-`core/internal/inverter/inverter.go`) and needs no front-end change.
+a brand/model/field is additive (edit `DefaultCatalog()` in
+`core/internal/inverter/inverter.go`) and needs no front-end change. Each brand
+exposes a per-model list (`models`, the UI selection unit) plus its register-map
+`families` (reference; each model carries the `family` it resolves to):
 
-| brand | communication | families |
-|---|---|---|
-| `deye` | `solarman_v5` | `hybrid_3p`, `hybrid_1p`, `string`, `micro` |
-| `generic_modbus` | `modbus_tcp` | `sunspec` |
+| brand | communication | models (selection unit) | register-map families |
+|---|---|---|---|
+| `deye` | `solarman_v5` | every `SUN-*` model individually (SG04LP3 LV incl. 12K, SG01HP3 HV, SG03LP1 1-phase, G03/G04 string, SUN*G3 micro) | `hybrid_3p`, `hybrid_1p`, `string`, `micro` |
+| `generic_modbus` | `modbus_tcp` | `sunspec` | `sunspec` |
+
+Each `models[]` entry is `{id, label, family, note}` - `family` is the register
+map that model reads with. The UI may sort/search the list, but the selection
+unit is the individual model.
 
 ## HTTP API (backs the UI)
 
 | Method | Path | Body / Response |
 |---|---|---|
 | `GET` | `/api/inverter` | `{ "catalog": Catalog, "selection": Selection\|null }` |
-| `POST` | `/api/inverter` | body `{brand, family, connection}`; `200 {selection}` on success, `400 {error}` (German message) on a validation failure |
+| `POST` | `/api/inverter` | body `{brand, model, connection}` (a bare `family` is accepted as a backward-compatible fallback when `model` is omitted); `200 {selection}` on success, `400 {error}` (German message) on a validation failure |
 
 The current selection also appears on `GET /api/state` under `inverter`
-(`{brand,label,family,communication,host,configured}`) so the dashboard can show
-the configured model.
+(`{brand,label,model,family,communication,host,configured}`) so the dashboard can
+show the configured model.
 
 ## Node-RED consumer (IMPLEMENTED)
 

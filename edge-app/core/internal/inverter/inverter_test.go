@@ -47,6 +47,115 @@ func TestNormalizeDeyeSolarmanDefaultsAndDerivation(t *testing.T) {
 	}
 }
 
+func TestNormalizePerModelSelection(t *testing.T) {
+	cat := DefaultCatalog()
+	// The captain's plant: a 12 kW LV hybrid, selected by its exact model.
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye,
+		Model: "sun-12k-sg04lp3",
+		Connection: Connection{
+			IP:     "192.168.0.28",
+			Serial: "2985159064",
+		},
+	}, now)
+	if err != nil {
+		t.Fatalf("valid per-model selection rejected: %v", err)
+	}
+	if sel.Model != "sun-12k-sg04lp3" {
+		t.Errorf("model not carried: %q", sel.Model)
+	}
+	if sel.Family != FamHybrid3p {
+		t.Errorf("12k LV must resolve to the hybrid_3p register map, got %q", sel.Family)
+	}
+	if sel.Label != "Deye · SUN-12K-SG04LP3-EU" {
+		t.Errorf("label should name the concrete model: %q", sel.Label)
+	}
+}
+
+func TestModelDeterminesRegisterMapNotPhaseGrouping(t *testing.T) {
+	cat := DefaultCatalog()
+	cases := map[string]string{
+		"sun-12k-sg04lp3":  FamHybrid3p, // LV 3-phase hybrid (captain)
+		"sun-50k-sg01hp3":  FamHybrid3p, // HV 3-phase hybrid (same high map)
+		"sun-3.6k-sg03lp1": FamHybrid1p, // single-phase hybrid
+		"sun-8k-g03":       FamString,   // string grid-tie
+		"sun600g3":         FamMicro,    // micro
+	}
+	for model, wantFam := range cases {
+		conn := Connection{IP: "1.2.3.4", Serial: "s"}
+		sel, err := cat.Normalize(SelectionRequest{Brand: BrandDeye, Model: model, Connection: conn}, now)
+		if err != nil {
+			t.Fatalf("model %s rejected: %v", model, err)
+		}
+		if sel.Family != wantFam {
+			t.Errorf("model %s -> family %q, want %q", model, sel.Family, wantFam)
+		}
+	}
+}
+
+func TestEveryModelResolvesToAKnownRegisterFamily(t *testing.T) {
+	cat := DefaultCatalog()
+	for _, b := range cat.Brands {
+		if len(b.Models) == 0 {
+			t.Errorf("brand %s exposes no selectable models", b.ID)
+		}
+		seen := map[string]bool{}
+		for _, m := range b.Models {
+			if m.ID == "" || m.Label == "" || m.Family == "" {
+				t.Errorf("brand %s model %+v has an empty id/label/family", b.ID, m)
+			}
+			if seen[m.ID] {
+				t.Errorf("brand %s has a duplicate model id %q", b.ID, m.ID)
+			}
+			seen[m.ID] = true
+			if _, ok := b.family(m.Family); !ok {
+				t.Errorf("brand %s model %q maps to unknown register family %q", b.ID, m.ID, m.Family)
+			}
+		}
+	}
+}
+
+func TestNormalizeRejectsUnknownAndMissingModel(t *testing.T) {
+	cat := DefaultCatalog()
+	if _, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-999k-imaginary",
+		Connection: Connection{IP: "1.2.3.4", Serial: "s"},
+	}, now); err == nil {
+		t.Fatal("unknown model must be rejected")
+	}
+	if _, err := cat.Normalize(SelectionRequest{
+		Brand:      BrandDeye,
+		Connection: Connection{IP: "1.2.3.4", Serial: "s"},
+	}, now); err == nil {
+		t.Fatal("a request with neither model nor family must be rejected")
+	}
+}
+
+func TestBusPayloadCarriesModelAndFamily(t *testing.T) {
+	cat := DefaultCatalog()
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-12k-sg04lp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064"},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
+		t.Fatal(err)
+	}
+	// `model` is additive; `family` stays the Node-RED routing key (unchanged).
+	if m["model"] != "sun-12k-sg04lp3" {
+		t.Errorf("payload model: %v", m["model"])
+	}
+	if m["family"] != FamHybrid3p {
+		t.Errorf("payload family (routing key) must stay the register map: %v", m["family"])
+	}
+	if m["schema_version"] != SchemaVersion {
+		t.Errorf("schema version unchanged (additive change): %v", m["schema_version"])
+	}
+}
+
 func TestNormalizeSolarmanRequiresSerial(t *testing.T) {
 	cat := DefaultCatalog()
 	_, err := cat.Normalize(SelectionRequest{

@@ -120,6 +120,23 @@ func TestPostInverterRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPostInverterByModel(t *testing.T) {
+	srv, fi := newServer(t)
+	// The customer picks their exact model in the UI (no family grouping).
+	req := `{"brand":"deye","model":"sun-12k-sg04lp3","connection":{"ip":"192.168.0.28","serial":"2985159064"}}`
+	resp, err := http.Post(srv.URL+"/api/inverter", "application/json", strings.NewReader(req))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if fi.sel == nil || fi.sel.Model != "sun-12k-sg04lp3" || fi.sel.Family != inverter.FamHybrid3p {
+		t.Fatalf("model selection not resolved to its register map: %+v", fi.sel)
+	}
+}
+
 func TestPostInverterValidationReturns400(t *testing.T) {
 	srv, _ := newServer(t)
 	// Deye without a serial is a validation error.

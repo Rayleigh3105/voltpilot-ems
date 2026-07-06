@@ -1,7 +1,12 @@
 // VoltPilot Edge - inverter selection screen. Catalog-driven: the brand list,
-// the families and the connection fields all come from GET /api/inverter, so
-// new brands/fields need no change here. POST /api/inverter applies a choice;
-// the core persists it and re-publishes it retained on the local bus.
+// the per-model list and the connection fields all come from GET /api/inverter,
+// so new brands/models/fields need no change here. POST /api/inverter applies a
+// choice; the core persists it and re-publishes it retained on the local bus.
+//
+// The selection unit is the INDIVIDUAL model (the captain's rule: every Deye
+// model is pickable on its own, no grouping into families). The form POSTs
+// {brand, model, connection}; the core resolves the model to its correct
+// register map + scaling server-side.
 (function () {
   "use strict";
 
@@ -40,14 +45,41 @@
     });
   }
 
-  // renderFamilies fills the family dropdown for the chosen brand.
-  function renderFamilies(brand) {
-    var sel = $("family");
+  // modelOptionLabel builds the visible label for one model row.
+  function modelOptionLabel(m) {
+    return m.note ? m.label + " – " + m.note : m.label;
+  }
+
+  // cssEscape - minimal attribute-selector escaping for model ids (which may
+  // contain '.'), so querySelector('option[value="..."]') is safe.
+  function cssEscape(s) {
+    return String(s).replace(/["\\]/g, "\\$&");
+  }
+
+  // renderModels fills the model dropdown for the chosen brand, honoring the
+  // current search filter. The filter narrows a long per-model list without ever
+  // hiding the currently-selected model; a single model just auto-selects.
+  function renderModels(brand) {
+    var sel = $("model");
+    var q = ($("modelSearch").value || "").trim().toLowerCase();
+    var want = (selection && selection.brand === brand.id && selection.model) ? selection.model : sel.value;
     sel.innerHTML = "";
-    brand.families.forEach(function (f) {
-      var label = f.note ? f.label + " – " + f.note : f.label;
-      sel.appendChild(el("option", { value: f.id }, label));
+    var models = brand.models || [];
+    var shown = 0;
+    models.forEach(function (m) {
+      var hay = (m.label + " " + (m.note || "") + " " + m.id).toLowerCase();
+      if (q && hay.indexOf(q) === -1 && m.id !== want) return;
+      sel.appendChild(el("option", { value: m.id }, modelOptionLabel(m)));
+      shown++;
     });
+    if (want && sel.querySelector('option[value="' + cssEscape(want) + '"]')) {
+      sel.value = want;
+    } else if (sel.options.length) {
+      sel.selectedIndex = 0;
+    }
+    $("modelHelp").textContent = shown === 0
+      ? "Kein Modell gefunden – Suche anpassen."
+      : "Wählen Sie Ihr genaues Wechselrichter-Modell.";
   }
 
   // renderFields builds the connection inputs for the chosen brand, prefilled
@@ -97,29 +129,15 @@
     });
   }
 
-  // onBrandChange re-renders the family/comm/fields when the brand changes.
+  // onBrandChange re-renders the model list/comm/fields when the brand changes.
   function onBrandChange() {
     var brand = brandById($("brand").value);
     if (!brand) return;
     $("brandHelp").textContent = brand.note || "";
     $("comm").textContent = brand.comm_label || commLabel(brand.communication);
-    renderFamilies(brand);
-    // Restore the family if the current selection is for this brand.
-    if (selection && selection.brand === brand.id && selection.family) {
-      $("family").value = selection.family;
-    }
-    onFamilyChange();
+    $("modelSearch").value = "";
+    renderModels(brand);
     renderFields(brand);
-  }
-
-  function onFamilyChange() {
-    var brand = brandById($("brand").value);
-    if (!brand) return;
-    var fam = null;
-    for (var i = 0; i < brand.families.length; i++) {
-      if (brand.families[i].id === $("family").value) { fam = brand.families[i]; break; }
-    }
-    $("familyHelp").textContent = fam && fam.note ? fam.note : "";
   }
 
   // collect builds the SelectionRequest from the form inputs.
@@ -139,7 +157,7 @@
         if (input.value.trim() !== "") conn[key] = input.value.trim();
       }
     });
-    return { brand: $("brand").value, family: $("family").value, connection: conn };
+    return { brand: $("brand").value, model: $("model").value, connection: conn };
   }
 
   function showCurrent() {
@@ -178,6 +196,11 @@
     e.preventDefault();
     $("formError").hidden = true;
     $("formOk").hidden = true;
+    if (!$("model").value) {
+      $("formError").hidden = false;
+      $("formError").textContent = "Bitte wählen Sie ein Modell.";
+      return;
+    }
     var btn = $("saveBtn");
     btn.disabled = true;
     btn.textContent = "Speichern…";
@@ -209,7 +232,10 @@
   }
 
   $("brand").addEventListener("change", function () { onBrandChange(); });
-  $("family").addEventListener("change", function () { onFamilyChange(); });
+  $("modelSearch").addEventListener("input", function () {
+    var brand = brandById($("brand").value);
+    if (brand) renderModels(brand);
+  });
   $("form").addEventListener("submit", submit);
 
   load();
