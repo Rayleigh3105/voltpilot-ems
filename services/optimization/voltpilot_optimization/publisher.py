@@ -41,14 +41,22 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
         "generated_at": _rfc3339(plan.generated_at),
         "horizon_slots": len(plan.slots),
         "slot_minutes": plan.slot_minutes,
-        "slots": [
-            {
-                "start": _rfc3339(slot.start),
-                "battery_setpoint_kw": round(slot.battery_kw, 3),
-            }
-            for slot in plan.slots
-        ],
+        "slots": [_slot_payload(slot) for slot in plan.slots],
     }
+
+
+def _slot_payload(slot) -> dict:
+    payload = {
+        "start": _rfc3339(slot.start),
+        "battery_setpoint_kw": round(slot.battery_kw, 3),
+    }
+    # OPTIONAL per the contract: present only when the plan curtails, so
+    # non-curtailing plans publish byte-identical payloads to before Phase 3
+    # (and an edge without curtailment support has nothing to ignore).
+    limit = slot.pv_limit_kw
+    if limit is not None:
+        payload["pv_limit_kw"] = round(limit, 3)
+    return payload
 
 
 def _rfc3339(dt) -> str:

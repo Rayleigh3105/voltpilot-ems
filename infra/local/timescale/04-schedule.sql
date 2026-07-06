@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS schedule (
     price_eur_mwh     NUMERIC(12, 4),           -- day-ahead price of the slot
     cost_eur          NUMERIC(12, 6),           -- projected slot cost WITH the plan
     baseline_cost_eur NUMERIC(12, 6),           -- projected slot cost with the battery idle
+    curtail_kw        NUMERIC(12, 4),           -- planned PV curtailment (V20260706040000)
     PRIMARY KEY (site_id, generated_at, time)
 );
 

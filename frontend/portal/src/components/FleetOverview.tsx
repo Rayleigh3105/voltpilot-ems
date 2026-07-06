@@ -101,6 +101,7 @@ export function EarningsHero({
   now,
   unavailable = false,
   emptyHint,
+  premium = false,
 }: {
   kind: FleetKind;
   money: HeroMoney | null;
@@ -116,6 +117,8 @@ export function EarningsHero({
   unavailable?: boolean;
   /** Reason-specific hint when nothing is computable (site drill-down). */
   emptyHint?: string;
+  /** True when a configured Marktprämie is INCLUDED in the numbers shown. */
+  premium?: boolean;
 }) {
   const worded = dataRange ?? range;
   const saved = money?.savedEur ?? null;
@@ -215,7 +218,7 @@ export function EarningsHero({
         <span className="vp-fleet-fine-ico" aria-hidden="true">
           <Icon name="info" size={13} />
         </span>
-        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null)}
+        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null, premium)}
       </p>
     </section>
   );

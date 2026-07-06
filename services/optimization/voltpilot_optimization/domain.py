@@ -140,6 +140,18 @@ class PlanSlot:
     price_eur_mwh: float
     cost_eur: float  # projected slot cost with the plan
     baseline_cost_eur: float  # projected slot cost with the battery idle
+    # Planned PV curtailment (kW discarded, 0 <= curtail_kw <= pv_kw). Non-zero
+    # only when feeding in would COST money (negative prices) - see solver.py.
+    curtail_kw: float = 0.0
+
+    @property
+    def pv_limit_kw(self) -> float | None:
+        """The inverter PV active-power cap implementing the curtailment
+        (pv_kw - curtail_kw, never negative), or None when nothing is
+        curtailed - the published schedule omits the field then."""
+        if self.curtail_kw <= 0.0:
+            return None
+        return max(self.pv_kw - self.curtail_kw, 0.0)
 
 
 @dataclass(frozen=True)

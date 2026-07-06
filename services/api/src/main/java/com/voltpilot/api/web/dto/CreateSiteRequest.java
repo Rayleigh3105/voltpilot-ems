@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.math.BigDecimal;
@@ -20,7 +21,9 @@ import java.math.BigDecimal;
  * omitted the weather widget simply stays empty until they are set.
  * {@code plantKind} defaults to {@code eigenverbrauch} (avoided cost - the safe
  * money story); {@code direktvermarktung} switches the portal wording to real
- * market revenue ("mehr verdient").
+ * market revenue ("mehr verdient"). {@code marktpraemieCtKwh} is the optional
+ * Marktprämie (ct/kWh) from the customer's Direktvermarktungsvertrag - null =
+ * not configured; only meaningful for {@code direktvermarktung} sites.
  */
 public record CreateSiteRequest(
         @NotBlank String name,
@@ -34,7 +37,11 @@ public record CreateSiteRequest(
                 BigDecimal longitude,
         @Pattern(regexp = "direktvermarktung|eigenverbrauch",
                 message = "plantKind must be one of direktvermarktung, eigenverbrauch")
-                String plantKind) {
+                String plantKind,
+        @DecimalMin(value = "0", message = "marktpraemieCtKwh must not be negative")
+        @Digits(integer = 5, fraction = 3,
+                message = "marktpraemieCtKwh must have at most 3 decimal places")
+                BigDecimal marktpraemieCtKwh) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;

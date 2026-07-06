@@ -15,6 +15,7 @@ import {
   type SiteAsset,
   type SiteDeletionPreview,
 } from '../api';
+import { parsePremiumInput, premiumInputText } from '../fleet';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { LocationMap } from '../components/LocationMap';
@@ -236,6 +237,9 @@ export function StandortePage({
           <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
             <Badge variant="tint">{zoneLabel(detail.biddingZone)}</Badge>
             <Badge variant="tint">{plantKindLabel(detail.plantKind)}</Badge>
+            {detail.plantKind === 'direktvermarktung' && detail.marktpraemieCtKwh != null && (
+              <Badge variant="tint">Marktprämie {fmtNum(detail.marktpraemieCtKwh, 'ct/kWh', 2)}</Badge>
+            )}
             {linkedAssets.length > 0 && (
               <Badge variant="ok" dot>
                 MaStR verknüpft
@@ -445,6 +449,7 @@ function SiteEditForm({
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
+  const [praemie, setPraemie] = useState(premiumInputText(site.marktpraemieCtKwh ?? null));
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [busy, setBusy] = useState(false);
@@ -452,6 +457,11 @@ function SiteEditForm({
 
   async function save() {
     if (!name.trim()) return;
+    const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
+    if (praemieValue === undefined) {
+      setError('Bitte geben Sie die Marktprämie als Zahl in ct/kWh an, z. B. 0,60.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -461,6 +471,7 @@ function SiteEditForm({
         latitude: lat,
         longitude: lon,
         plantKind,
+        marktpraemieCtKwh: praemieValue,
       });
       onSaved(updated);
     } catch (e) {
@@ -511,6 +522,22 @@ function SiteEditForm({
             <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
           </select>
         </div>
+        {plantKind === 'direktvermarktung' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <Input
+              label="Marktprämie (ct/kWh)"
+              placeholder="z. B. 0,60"
+              inputMode="decimal"
+              value={praemie}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
+            />
+            <p className="vp-note" style={{ margin: 0 }}>
+              Steht in Ihrem Direktvermarktungsvertrag. Optional - wenn angegeben,
+              rechnen wir sie in Ihren Mehrerlös ein; bei negativen Börsenpreisen
+              entfällt sie.
+            </p>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap

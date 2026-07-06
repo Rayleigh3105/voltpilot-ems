@@ -20,7 +20,7 @@ import {
 } from '../api';
 import { currentUser } from '../auth';
 import { ctPerKwh, fmtNum, fmtRelative, zoneLabel } from '../format';
-import { fleetDailySaved, fleetKind, notComputableHint } from '../fleet';
+import { fleetDailySaved, fleetKind, notComputableHint, premiumIncluded } from '../fleet';
 import type { PageId } from '../nav';
 import { SitePicker } from '../components/SitePicker';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
@@ -237,6 +237,7 @@ function FleetUebersicht({
                 onRange={setRange}
                 now={now}
                 unavailable={earnFailed}
+                premium={earnings ? premiumIncluded(earnings.sites) : false}
               />
             )}
             <FleetStatusCard overview={overview} now={now} />
@@ -574,6 +575,7 @@ function SingleSiteUebersicht({
             onRange={setRange}
             now={now}
             unavailable={earnFailed}
+            premium={siteEarnings ? premiumIncluded([siteEarnings]) : false}
             emptyHint={
               siteEarnings?.reason
                 ? notComputableHint(siteEarnings.reason)

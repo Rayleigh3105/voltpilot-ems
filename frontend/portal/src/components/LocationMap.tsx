@@ -91,8 +91,12 @@ export function LocationMap({
     });
     mapRef.current = map;
     // Leaflet needs a size recalculation once the container has laid out
-    // (drawers/onboarding cards animate in).
-    setTimeout(() => map.invalidateSize(), 0);
+    // (drawers/onboarding cards animate in). Guard against the map having
+    // been removed before the timeout fires (drawer closed within the same
+    // tick) - invalidateSize on a removed map throws inside Leaflet.
+    setTimeout(() => {
+      if (mapRef.current === map) map.invalidateSize();
+    }, 0);
     return () => {
       map.remove();
       mapRef.current = null;

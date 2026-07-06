@@ -46,11 +46,18 @@ public record EarningsDto(
      * Europe/Berlin day over the last 14 days (independent of {@code range}) -
      * the hero's spark bars and the site card's "Heute +X €" teaser, without a
      * second request. Days without a computable slot are absent, never zero.
+     *
+     * <p>{@code marktpraemieCtKwh} echoes the site's configured Marktprämie
+     * (null = none): when non-null on a Direktvermarktung site, the money
+     * numbers INCLUDE the premium (suspended in negative-price slots - see
+     * EarningsRepository), and the portal's fine print says so instead of the
+     * generic "zzgl. Marktprämie".
      */
     public record EarningsSiteDto(
             UUID id,
             String name,
             String plantKind,
+            BigDecimal marktpraemieCtKwh,
             BigDecimal baselineEur,
             BigDecimal actualEur,
             BigDecimal savedEur,

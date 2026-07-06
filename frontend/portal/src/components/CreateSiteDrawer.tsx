@@ -5,6 +5,7 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { ApiError, type CreateSiteInput, type PlantKind, type Site } from '../api';
+import { parsePremiumInput } from '../fleet';
 import { LocationMap } from './LocationMap';
 
 /**
@@ -30,6 +31,7 @@ export function CreateSiteDrawer({
   const [name, setName] = useState('');
   const [biddingZone, setBiddingZone] = useState('DE-LU');
   const [plantKind, setPlantKind] = useState<PlantKind>('eigenverbrauch');
+  const [praemie, setPraemie] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -41,11 +43,17 @@ export function CreateSiteDrawer({
     setLon(null);
     setBiddingZone('DE-LU');
     setPlantKind('eigenverbrauch');
+    setPraemie('');
     setError(null);
   }
 
   async function submit() {
     if (!name.trim()) return;
+    const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
+    if (praemieValue === undefined) {
+      setError('Bitte geben Sie die Marktprämie als Zahl in ct/kWh an, z. B. 0,60.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -55,6 +63,7 @@ export function CreateSiteDrawer({
         latitude: lat,
         longitude: lon,
         plantKind,
+        marktpraemieCtKwh: praemieValue,
       });
       reset();
       onCreated(site);
@@ -132,6 +141,22 @@ export function CreateSiteDrawer({
             „mehr verdient" bei der Direktvermarktung.
           </p>
         </div>
+        {plantKind === 'direktvermarktung' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <Input
+              label="Marktprämie (ct/kWh)"
+              placeholder="z. B. 0,60"
+              inputMode="decimal"
+              value={praemie}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
+            />
+            <p className="vp-note" style={{ margin: 0 }}>
+              Steht in Ihrem Direktvermarktungsvertrag. Optional - wenn angegeben,
+              rechnen wir sie in Ihren Mehrerlös ein; bei negativen Börsenpreisen
+              entfällt sie.
+            </p>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap

@@ -12,7 +12,7 @@ The flows are generated for readability but committed as plain Node-RED JSON; op
 2. **Publish** - builds the binding telemetry payload (`docs/contracts/mqtt-telemetry.schema.json`) and publishes it to EMQX at **QoS1** on `ems/{tenant_id}/{site_id}/{device_id}/telemetry`, plus a light heartbeat on `.../status`. Plain TCP in dev; structured so mTLS can be enabled later (see below).
 3. **Schedule-Exec** - subscribes to the **retained** `.../schedule` topic, caches it, and every tick writes the setpoint of the 15-min slot covering *now* to the inverter (via Guards).
 4. **Default-Watchdog** - when the schedule is missing/stale (or the connection is lost), falls back to a deliberately simple **self-consumption default**: battery follows `PV - load` (charge surplus, discharge to cover deficit). No price/time-window logic.
-5. **Guards** - local plausibility / limit checks before **any** write: clamp charge/discharge power, enforce SoC bounds, and keep the commanded battery power inside the observed §14a envelope. Then writes the battery setpoint register (FC6, addr 40).
+5. **Guards** - local plausibility / limit checks before **any** write: clamp charge/discharge power, enforce SoC bounds, and keep the commanded battery power inside the observed §14a envelope. Then writes the battery setpoint register (FC6, addr 40) and the PV-limit register (FC6, addr 42; 0xFFFF = no limit - see the schedule section).
 
 Schedule-Exec and Default-Watchdog are mutually exclusive on schedule freshness (20-min staleness window), so exactly one drives the setpoint at a time.
 
@@ -77,13 +77,15 @@ The schedule contract is **frozen** in [`docs/contracts/mqtt-schedule.schema.jso
   "horizon_slots": 96,
   "slot_minutes": 15,
   "slots": [
-    { "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": -25.0 },
+    { "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": -25.0, "pv_limit_kw": 4.5 },
     { "start": "2026-07-01T09:15:00Z", "battery_setpoint_kw": 30.0 }
   ]
 }
 ```
 
 `battery_setpoint_kw`: **+ = charge, - = discharge**. The edge picks the slot whose `[start, start+slot_minutes)` contains *now*. The plan is advisory: Guards clamp every setpoint, and a missing/stale schedule (20-min window) hands control to the Default-Watchdog's self-consumption fallback - see the contract's `x-failsafe`.
+
+`pv_limit_kw` (OPTIONAL, negative-price curtailment): a cap on PV active power for the slot, written to the sim's register 42 (uint16 0.01 kW; the 0xFFFF sentinel clears it). Guards clamp it to `>= 0` - it can only ever REDUCE feed-in, never command production, and it does not touch the battery limits. Absent field, stale schedule, or the watchdog fallback all clear the cap (free-run), so a curtailment never outlives its schedule.
 
 ## Test end-to-end
 

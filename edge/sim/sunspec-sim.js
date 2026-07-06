@@ -30,6 +30,13 @@
  *  -----+---------------------+-------------------------+-------------------------
  *   40  | batt_setpoint       | int16, 0.01 kW, +charge | control model 124 (WChaGra)
  *   41  | setpoint_enable     | uint16, 1 = EMS control | control model 123 conn
+ *   42  | pv_limit            | uint16, 0.01 kW,        | control model 123 WMaxLim
+ *        |                     | 0xFFFF = no limit       | (PV curtailment cap)
+ *
+ * pv_limit caps the simulated PV output (negative-price curtailment from the
+ * schedule contract's optional pv_limit_kw). It can only ever REDUCE
+ * generation - the model takes min(diurnal PV, limit) and a limit above the
+ * current output changes nothing. 0xFFFF (the power-on default) disables it.
  *
  * grid_limit_kw (the value the contract carries) is derived by the edge as
  * wmax_lim_pct/100 * grid_conn_nameplate. §14a is enforced by the grid
@@ -56,17 +63,21 @@ const LOAD_BASE_KW = parseFloat(process.env.SIM_LOAD_BASE_KW || '8');
 const R = {
   GRID: 0, PV: 1, LOAD: 2, BATT: 3, SOC: 4, WMAXLIM: 5, GRIDCONN: 6,
   EIMP_HI: 7, EIMP_LO: 8,
-  SETPOINT: 40, ENABLE: 41,
+  SETPOINT: 40, ENABLE: 41, PVLIMIT: 42,
 };
+
+const NO_PV_LIMIT = 0xffff; // pv_limit sentinel: inverter free-runs
 
 const NUM_REGS = 64;
 const regs = new Uint16Array(NUM_REGS);
+regs[R.PVLIMIT] = NO_PV_LIMIT;
 
 // Mutable model state.
 let soc = parseFloat(process.env.SIM_SOC_START || '55'); // percent
 let energyImportWh = 0;
 let commandedKw = 0;   // last battery setpoint written by the edge
 let enabled = 0;       // 1 once the edge asserts control
+let pvLimitKw = null;  // active PV cap in kW, null = no limit
 
 const toU16 = (v) => v & 0xffff;
 const s16ToKw = (raw) => (raw > 32767 ? raw - 65536 : raw) / 100;
@@ -76,7 +87,10 @@ function tick() {
   const t = Date.now() / 1000;
 
   // PV: ~2 min diurnal cycle so a short test sees generation come and go.
-  const pv = Math.max(0, PV_PEAK_KW * Math.sin((2 * Math.PI * (t % 120)) / 120));
+  // The PV limit register can only ever CAP the output (curtailment), never
+  // raise it - min() guarantees generation stays physical.
+  let pv = Math.max(0, PV_PEAK_KW * Math.sin((2 * Math.PI * (t % 120)) / 120));
+  if (pvLimitKw != null) pv = Math.min(pv, pvLimitKw);
   // Load: base +/- a small swing.
   const load = LOAD_BASE_KW + 2 * Math.sin((2 * Math.PI * (t % 40)) / 40);
 
@@ -127,6 +141,13 @@ const vector = {
     } else if (addr === R.ENABLE) {
       enabled = regs[addr];
       console.log(`[sim] EMS control ${enabled ? 'ENABLED' : 'disabled'} (reg[${R.ENABLE}]=${enabled})`);
+    } else if (addr === R.PVLIMIT) {
+      pvLimitKw = regs[addr] === NO_PV_LIMIT ? null : regs[addr] / 100;
+      console.log(
+        pvLimitKw == null
+          ? `[sim] PV limit CLEARED (reg[${R.PVLIMIT}]=0xFFFF) - inverter free-runs`
+          : `[sim] PV limit write: cap = ${pvLimitKw.toFixed(2)} kW (reg[${R.PVLIMIT}]=${regs[addr]}) - curtailment active`
+      );
     }
   },
 };

@@ -1568,11 +1568,155 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * The Marktprämie in the earnings math (Phase 3, captain decision #3): a
+     * configured {@code marktpraemieCtKwh} on a Direktvermarktung site credits
+     * the premium on exported energy on BOTH sides - the metered export on the
+     * actual side, the immediate-feed-in surplus {@code max(pv - load, 0)} on
+     * the baseline side - and is EXCLUDED in negative-price slots (the
+     * simplified §51-EEG rule). An identical site WITHOUT a premium (and an
+     * Eigenverbrauch site WITH one - the premium is Direktvermarktung-only)
+     * must produce the exact Phase-2 spot numbers, hand-computed. Plus: the
+     * field round-trips through site create/list and is echoed on the
+     * earnings row, negative values are refused, and RLS hides it all from
+     * another tenant.
+     *
+     * <p>Seed lives on 2026-04-21 (Berlin day = [2026-04-20T22:00Z,
+     * 2026-04-21T22:00Z)) in the AT zone - far from every other seed.
+     */
+    @Test
+    void earningsIncludeMarktpraemieExceptInNegativePriceSlotsOnBothSides() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String prem = createSite(demo, "Prämie Werk", "AT", "direktvermarktung", "8.0");
+        String plain = createSite(demo, "Prämie Ohne", "AT", "direktvermarktung", null);
+        String evPrem = createSite(demo, "Prämie Haus", "AT", "eigenverbrauch", "8.0");
+
+        // The configured premium round-trips through create + list.
+        Map<String, Object> premRow = sites(demo).stream()
+                .filter(x -> prem.equals(x.get("id"))).findFirst().orElseThrow();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+        assertThat(num(premRow, "marktpraemieCtKwh")).isCloseTo(8.0, eps);
+        assertThat(sites(demo).stream().filter(x -> plain.equals(x.get("id")))
+                .findFirst().orElseThrow().get("marktpraemieCtKwh")).isNull();
+
+        // One positive (100) and one negative (-50) 15-min price slot.
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-04-21T10:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-04-21T10:15:00Z', 'AT', 'PT15M', -50.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        // Identical rollups for all three sites.
+        // b1 10:00Z (price 100, battery idle, sub-slot interleaving: imp 0.25
+        //   AND exp 1.25, so metered export exceeds the baseline surplus 1.0):
+        //   spot: baseline (1.0-2.0)*0.1 = -0.10 | actual (0.25-1.25)*0.1 = -0.10
+        //   premium 0.08 EUR/kWh: baseline -= 1.0*0.08 | actual -= 1.25*0.08
+        // b2 10:15Z (price -50, charge 0.5 -> exp 1.0): premium SUSPENDED.
+        //   spot: baseline (0.5-2.0)*-0.05 = 0.075 | actual (0-1.0)*-0.05 = 0.05
+        for (String siteId : new String[] {prem, plain, evPrem}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "('2026-04-21T10:00:00Z', '" + tenantA + "', '" + siteId + "', 2.0, 1.0, 0.25, 1.25, 0.0, 0.0, 90), "
+                    + "('2026-04-21T10:15:00Z', '" + tenantA + "', '" + siteId + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-04-21"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+
+        // Premium site: b1 both sides get their premium, b2 none.
+        Map<String, Object> premSite = siteRow(body, prem);
+        assertThat(num(premSite, "marktpraemieCtKwh")).isCloseTo(8.0, eps);
+        assertThat(num(premSite, "baselineEur")).isCloseTo(-0.10 - 0.08 + 0.075, eps);
+        assertThat(num(premSite, "actualEur")).isCloseTo(-0.10 - 0.10 + 0.05, eps);
+        assertThat(num(premSite, "savedEur")).isCloseTo(0.045, eps);
+
+        // Unconfigured premium: byte-identical Phase-2 spot numbers.
+        Map<String, Object> plainSite = siteRow(body, plain);
+        assertThat(plainSite.get("marktpraemieCtKwh")).isNull();
+        assertThat(num(plainSite, "baselineEur")).isCloseTo(-0.025, eps);
+        assertThat(num(plainSite, "actualEur")).isCloseTo(-0.05, eps);
+        assertThat(num(plainSite, "savedEur")).isCloseTo(0.025, eps);
+
+        // Eigenverbrauch never earns the premium, configured or not.
+        Map<String, Object> evSite = siteRow(body, evPrem);
+        assertThat(num(evSite, "baselineEur")).isCloseTo(-0.025, eps);
+        assertThat(num(evSite, "savedEur")).isCloseTo(0.025, eps);
+
+        // A recent covered slot proves the premium delta reaches dailySaved:
+        // positive price, same b1 shape -> prem saved = actual premium 0.10
+        // minus baseline premium 0.08 = 0.02; plain saved = spot 0.0.
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), 'AT', 'PT15M', 100.0, 'EUR', 'test' "
+                + "ON CONFLICT DO NOTHING");
+        for (String siteId : new String[] {prem, plain}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) "
+                    + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), '" + tenantA + "', '"
+                    + siteId + "', 2.0, 1.0, 0.25, 1.25, 0.0, 0.0, 90 ON CONFLICT DO NOTHING");
+        }
+        java.time.Instant recentBucket = java.time.Instant.ofEpochSecond(
+                java.time.Instant.now().minus(2, java.time.temporal.ChronoUnit.HOURS)
+                        .getEpochSecond() / 900 * 900);
+        String recentDay = recentBucket.atZone(com.voltpilot.api.history.HistoryRange.ZONE)
+                .toLocalDate().toString();
+        Map<String, Object> refreshed = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-04-21"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        Map<String, Object> premDaily = list(siteRow(refreshed, prem), "dailySaved").stream()
+                .filter(x -> recentDay.equals(x.get("day"))).findFirst().orElseThrow();
+        assertThat(num(premDaily, "savedEur")).isCloseTo(0.02, eps);
+        Map<String, Object> plainDaily = list(siteRow(refreshed, plain), "dailySaved").stream()
+                .filter(x -> recentDay.equals(x.get("day"))).findFirst().orElseThrow();
+        assertThat(num(plainDaily, "savedEur")).isCloseTo(0.0, eps);
+
+        // A negative premium is refused by validation.
+        ResponseEntity<String> invalid = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Prämie Negativ", "biddingZone", "AT",
+                        "plantKind", "direktvermarktung", "marktpraemieCtKwh", -1.0),
+                        bearer(demo)),
+                String.class);
+        assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // The premium is editable via the normal site update path.
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/sites/" + plain), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Prämie Ohne", "biddingZone", "AT",
+                        "plantKind", "direktvermarktung", "marktpraemieCtKwh", 1.25),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(num(updated.getBody(), "marktpraemieCtKwh")).isCloseTo(1.25, eps);
+
+        // RLS: tenant B sees neither the sites nor their premium earnings.
+        ResponseEntity<Map<String, Object>> other = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-04-21"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
+                .doesNotContain(prem, plain, evPrem);
+    }
+
     private String createSite(String token, String name, String zone, String plantKind) {
+        return createSite(token, name, zone, plantKind, null);
+    }
+
+    private String createSite(String token, String name, String zone, String plantKind,
+            String marktpraemieCtKwh) {
+        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+                "name", name, "biddingZone", zone, "plantKind", plantKind));
+        if (marktpraemieCtKwh != null) {
+            payload.put("marktpraemieCtKwh", new java.math.BigDecimal(marktpraemieCtKwh));
+        }
         ResponseEntity<Map<String, Object>> created = rest.exchange(
                 url("/api/v1/sites"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("name", name, "biddingZone", zone,
-                        "plantKind", plantKind), bearer(token)),
+                new HttpEntity<>(payload, bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return (String) created.getBody().get("id");

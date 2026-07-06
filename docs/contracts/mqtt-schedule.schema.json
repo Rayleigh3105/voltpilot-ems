@@ -63,6 +63,11 @@
           "battery_setpoint_kw": {
             "type": "number",
             "description": "Target mean battery power over the slot. Signed: positive = charge, negative = discharge. Advisory - the edge Guards clamp it."
+          },
+          "pv_limit_kw": {
+            "type": "number",
+            "minimum": 0,
+            "description": "OPTIONAL (added 2026-07, Phase 3 negative-price curtailment; ADDITIVE - schema_version stays 1.0 and an edge that ignores unknown optional fields keeps working unchanged). Maximum PV active power over the slot, kW, >= 0: the inverter feed-in cap implementing planned curtailment (the optimizer sets it to forecast PV minus planned curtailment, so it also caps forecast overshoot). Absent = no curtailment, the inverter free-runs - an edge MUST treat absent/unknown as 'no limit' and MUST clear any previously applied limit when the field is absent, when the schedule goes stale (x-failsafe), or on fallback. SAFETY: this field can only ever REDUCE generation - never a negative value, never a command to produce, and it MUST NOT affect battery safety caps; the edge Guards re-clamp it to [0, inf) before any register write."
           }
         }
       }

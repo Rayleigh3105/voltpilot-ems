@@ -59,8 +59,8 @@ _UPSERT_SQL = """
 INSERT INTO schedule
     (time, tenant_id, site_id, device_id, plan_id, generated_at,
      battery_kw, grid_kw, soc_pct, load_kw, pv_kw,
-     price_eur_mwh, cost_eur, baseline_cost_eur)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+     price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -72,7 +72,8 @@ DO UPDATE SET
     pv_kw             = EXCLUDED.pv_kw,
     price_eur_mwh     = EXCLUDED.price_eur_mwh,
     cost_eur          = EXCLUDED.cost_eur,
-    baseline_cost_eur = EXCLUDED.baseline_cost_eur;
+    baseline_cost_eur = EXCLUDED.baseline_cost_eur,
+    curtail_kw        = EXCLUDED.curtail_kw;
 """
 
 
@@ -105,6 +106,7 @@ class TimescaleScheduleRepository:
                 slot.price_eur_mwh,
                 slot.cost_eur,
                 slot.baseline_cost_eur,
+                slot.curtail_kw,
             )
             for slot in plan.slots
         ]

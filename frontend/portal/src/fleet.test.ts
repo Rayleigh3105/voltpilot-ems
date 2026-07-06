@@ -8,6 +8,9 @@ import {
   fleetKind,
   fleetPvKw,
   notComputableHint,
+  parsePremiumInput,
+  premiumIncluded,
+  premiumInputText,
   proofLine,
   rangePhrase,
   realizedFinePrint,
@@ -150,6 +153,67 @@ describe('realizedFinePrint', () => {
     expect(realizedFinePrint('eigenverbrauch', 'all', '2026-06-20')).toContain(
       'seit dem 20. Juni 2026',
     );
+  });
+
+  it('a configured premium flips to "inkl." with the negative-price caveat', () => {
+    const t = realizedFinePrint('direktvermarktung', 'month', null, true);
+    expect(t).toContain('Inkl. Marktprämie');
+    expect(t).toContain('entfällt bei negativen Preisen');
+    expect(t).not.toContain('zzgl. Marktprämie');
+    // Mixed fleets with a premium-configured DV site say it too.
+    expect(realizedFinePrint('gemischt', 'month', null, true)).toContain('Inkl. Marktprämie');
+    // Eigenverbrauch never mentions the premium, configured or not.
+    expect(realizedFinePrint('eigenverbrauch', 'month', null, true)).not.toContain(
+      'Marktprämie',
+    );
+  });
+});
+
+describe('premiumIncluded (do the numbers contain a Marktprämie?)', () => {
+  it('true only when a DV site has one configured', () => {
+    expect(premiumIncluded([{ plantKind: 'direktvermarktung', marktpraemieCtKwh: 0.6 }])).toBe(
+      true,
+    );
+    expect(premiumIncluded([{ plantKind: 'direktvermarktung', marktpraemieCtKwh: null }])).toBe(
+      false,
+    );
+    // A stale premium on an Eigenverbrauch site is inert (backend gates on
+    // the plant kind), so the fine print must not claim it is included.
+    expect(premiumIncluded([{ plantKind: 'eigenverbrauch', marktpraemieCtKwh: 0.6 }])).toBe(
+      false,
+    );
+    expect(
+      premiumIncluded([
+        { plantKind: 'eigenverbrauch', marktpraemieCtKwh: null },
+        { plantKind: 'direktvermarktung', marktpraemieCtKwh: 1.2 },
+      ]),
+    ).toBe(true);
+  });
+});
+
+describe('parsePremiumInput / premiumInputText (Marktprämie form field)', () => {
+  it('accepts German comma and dot decimals', () => {
+    expect(parsePremiumInput('0,60')).toBe(0.6);
+    expect(parsePremiumInput('0.6')).toBe(0.6);
+    expect(parsePremiumInput(' 1 ')).toBe(1);
+    expect(parsePremiumInput('0')).toBe(0);
+  });
+
+  it('empty means not configured (null)', () => {
+    expect(parsePremiumInput('')).toBeNull();
+    expect(parsePremiumInput('   ')).toBeNull();
+  });
+
+  it('rejects garbage and negative values (undefined = form error)', () => {
+    expect(parsePremiumInput('abc')).toBeUndefined();
+    expect(parsePremiumInput('-0,5')).toBeUndefined();
+    expect(parsePremiumInput('1,2,3')).toBeUndefined();
+  });
+
+  it('round-trips the stored value back into German form text', () => {
+    expect(premiumInputText(0.6)).toBe('0,6');
+    expect(premiumInputText(null)).toBe('');
+    expect(parsePremiumInput(premiumInputText(1.25))).toBe(1.25);
   });
 });
 

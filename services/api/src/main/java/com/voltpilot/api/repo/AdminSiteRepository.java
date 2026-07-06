@@ -22,7 +22,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AdminSiteRepository {
 
-    private static final String COLUMNS = "id, name, bidding_zone, latitude, longitude, plant_kind";
+    private static final String COLUMNS =
+            "id, name, bidding_zone, latitude, longitude, plant_kind, marktpraemie_ct_kwh";
 
     private final JdbcTemplate jdbc;
 
@@ -37,11 +38,14 @@ public class AdminSiteRepository {
     }
 
     public SiteDto create(UUID tenantId, String name, String biddingZone,
-            BigDecimal latitude, BigDecimal longitude, String plantKind) {
+            BigDecimal latitude, BigDecimal longitude, String plantKind,
+            BigDecimal marktpraemieCtKwh) {
         return jdbc.queryForObject(
-                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind) "
-                        + "VALUES (?, ?, ?, ?, ?, ?) "
+                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind,"
+                        + " marktpraemie_ct_kwh) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?) "
                         + "RETURNING " + COLUMNS,
-                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind);
+                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind,
+                marktpraemieCtKwh);
     }
 }

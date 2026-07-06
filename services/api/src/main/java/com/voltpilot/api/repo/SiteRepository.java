@@ -15,7 +15,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class SiteRepository {
 
-    private static final String COLUMNS = "id, name, bidding_zone, latitude, longitude, plant_kind";
+    private static final String COLUMNS =
+            "id, name, bidding_zone, latitude, longitude, plant_kind, marktpraemie_ct_kwh";
 
     private final JdbcTemplate jdbc;
 
@@ -46,12 +47,15 @@ public class SiteRepository {
      * never create a site for another tenant even with a crafted request.
      */
     public SiteDto create(UUID tenantId, String name, String biddingZone,
-            BigDecimal latitude, BigDecimal longitude, String plantKind) {
+            BigDecimal latitude, BigDecimal longitude, String plantKind,
+            BigDecimal marktpraemieCtKwh) {
         return jdbc.queryForObject(
-                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind) "
-                        + "VALUES (?, ?, ?, ?, ?, ?) "
+                "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind,"
+                        + " marktpraemie_ct_kwh) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?) "
                         + "RETURNING " + COLUMNS,
-                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind);
+                SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind,
+                marktpraemieCtKwh);
     }
 
     /**
@@ -60,12 +64,15 @@ public class SiteRepository {
      * another tenant, so the update can never cross a tenant boundary.
      */
     public SiteDto update(UUID siteId, String name, String biddingZone,
-            BigDecimal latitude, BigDecimal longitude, String plantKind) {
+            BigDecimal latitude, BigDecimal longitude, String plantKind,
+            BigDecimal marktpraemieCtKwh) {
         List<SiteDto> updated = jdbc.query(
-                "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ?, plant_kind = ? "
+                "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ?, plant_kind = ?,"
+                        + " marktpraemie_ct_kwh = ? "
                         + "WHERE id = ? "
                         + "RETURNING " + COLUMNS,
-                SiteRepository::mapSite, name, biddingZone, latitude, longitude, plantKind, siteId);
+                SiteRepository::mapSite, name, biddingZone, latitude, longitude, plantKind,
+                marktpraemieCtKwh, siteId);
         return updated.isEmpty() ? null : updated.get(0);
     }
 
@@ -92,6 +99,7 @@ public class SiteRepository {
                 rs.getString("bidding_zone"),
                 rs.getBigDecimal("latitude"),
                 rs.getBigDecimal("longitude"),
-                rs.getString("plant_kind"));
+                rs.getString("plant_kind"),
+                rs.getBigDecimal("marktpraemie_ct_kwh"));
     }
 }

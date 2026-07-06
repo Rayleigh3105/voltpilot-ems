@@ -121,6 +121,7 @@ public class EarningsController {
                     site.id(),
                     site.name(),
                     site.plantKind(),
+                    site.marktpraemieCtKwh(),
                     baseline,
                     actual,
                     saved,

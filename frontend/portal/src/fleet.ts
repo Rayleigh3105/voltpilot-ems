@@ -147,25 +147,64 @@ export function proofLine(kind: FleetKind, baselineEur: number, actualEur: numbe
 
 /**
  * Hero fine print for the measured number - plain German, says what the number
- * is (measured values x exchange prices vs. the unregulated plant), mentions
- * the Marktprämie for fleets with Direktvermarktung (the amount is deliberately
- * NOT in the numbers), and dates a "Gesamt" view honestly.
+ * is (measured values x exchange prices vs. the unregulated plant), handles
+ * the Marktprämie for fleets with Direktvermarktung, and dates a "Gesamt" view
+ * honestly.
+ *
+ * Marktprämie wording (Phase 3): when a premium is CONFIGURED
+ * (`premiumIncluded`), the numbers include it, so the fine print says so -
+ * "inkl. Marktprämie, entfällt bei negativen Preisen" (the simplified §51-EEG
+ * rule the backend applies). Without a configured premium the generic
+ * "zzgl. Marktprämie" stays (the amount is then deliberately NOT in the
+ * numbers).
  */
 export function realizedFinePrint(
   kind: FleetKind,
   range: EarningsRange,
   firstCoveredDate: string | null,
+  premiumIncluded = false,
 ): string {
   let text =
     'Berechnet aus Ihren gemessenen Werten und den Börsenstrompreisen - im Vergleich ' +
     'zur ungeregelten Anlage: gleiche Sonne, gleicher Verbrauch, Speicher ungenutzt.';
   if (kind !== 'eigenverbrauch') {
-    text += ' Bei Direktvermarktung zzgl. Marktprämie.';
+    text += premiumIncluded
+      ? ' Inkl. Marktprämie, entfällt bei negativen Preisen.'
+      : ' Bei Direktvermarktung zzgl. Marktprämie.';
   }
   if (range === 'all' && firstCoveredDate) {
     text += ` Messwerte liegen seit dem ${fmtDayLong(firstCoveredDate)} vor.`;
   }
   return text;
+}
+
+/**
+ * Whether the earnings numbers of these sites include a Marktprämie: true
+ * when any Direktvermarktung site has one configured (the backend then
+ * credits it in the money values it returns).
+ */
+export function premiumIncluded(sites: Pick<EarningsSite, 'plantKind' | 'marktpraemieCtKwh'>[]): boolean {
+  return sites.some(
+    (s) => s.plantKind === 'direktvermarktung' && s.marktpraemieCtKwh != null,
+  );
+}
+
+/**
+ * Parse the Marktprämie form input into ct/kWh: German comma or dot decimals
+ * ("0,6" / "0.6"), empty = null (not configured), anything invalid or
+ * negative = undefined (the form shows a German error and blocks the submit -
+ * a premium can never be negative).
+ */
+export function parsePremiumInput(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed.replace(',', '.'));
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** The stored premium as form text (German comma), '' when not configured. */
+export function premiumInputText(marktpraemieCtKwh: number | null): string {
+  return marktpraemieCtKwh == null ? '' : String(marktpraemieCtKwh).replace('.', ',');
 }
 
 /**

@@ -9,7 +9,10 @@ import java.util.UUID;
  * weather forecast; they are null for sites that have no coordinates set yet.
  * {@code plantKind} ({@code direktvermarktung} | {@code eigenverbrauch}, migration
  * V20260706010000) steers the portal's money wording per site ("mehr verdient"
- * vs. "gespart").
+ * vs. "gespart"). {@code marktpraemieCtKwh} (migration V20260706040000) is the
+ * OPTIONAL Marktprämie from the site's Direktvermarktungsvertrag; null = not
+ * configured, only relevant for {@code plantKind = direktvermarktung} - when set,
+ * the realized earnings include it (except in negative-price slots).
  */
 public record SiteDto(
         UUID id,
@@ -17,5 +20,6 @@ public record SiteDto(
         String biddingZone,
         BigDecimal latitude,
         BigDecimal longitude,
-        String plantKind) {
+        String plantKind,
+        BigDecimal marktpraemieCtKwh) {
 }

@@ -16,6 +16,12 @@ export interface Site {
   latitude: number | null;
   longitude: number | null;
   plantKind: PlantKind;
+  /**
+   * Marktprämie (ct/kWh) from the site's Direktvermarktungsvertrag; null =
+   * not configured. Only relevant for plantKind 'direktvermarktung' - when
+   * set, the earnings numbers include it (except in negative-price slots).
+   */
+  marktpraemieCtKwh: number | null;
 }
 
 export interface CreateSiteInput {
@@ -25,6 +31,8 @@ export interface CreateSiteInput {
   longitude?: number | null;
   /** Defaults to 'eigenverbrauch' server-side. */
   plantKind?: PlantKind;
+  /** Marktprämie in ct/kWh (>= 0); omit/null = not configured. */
+  marktpraemieCtKwh?: number | null;
 }
 
 export interface PricePoint {
@@ -461,6 +469,11 @@ export interface EarningsSite {
   id: string;
   name: string;
   plantKind: PlantKind;
+  /**
+   * The site's configured Marktprämie (ct/kWh), echoed so the fine print can
+   * say the numbers INCLUDE it; null = none (pure spot numbers).
+   */
+  marktpraemieCtKwh: number | null;
   baselineEur: number | null;
   actualEur: number | null;
   savedEur: number | null;

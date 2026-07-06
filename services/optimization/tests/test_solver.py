@@ -74,8 +74,22 @@ def test_model_builds_without_solver():
     model = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
     # 96 slots: dynamics + 2 gates + 2 grid caps per slot, 1 terminal condition.
     assert model.nconstraints() == 96 * 5 + 1
-    # charge/discharge/binary per slot + 97 SoC nodes.
-    assert model.nvariables() == 96 * 3 + 97
+    # charge/discharge/binary/curtail per slot + 97 SoC nodes.
+    assert model.nvariables() == 96 * 4 + 97
+
+
+def test_curtailment_exists_in_both_builds_and_is_bounded_by_pv():
+    # The curtailment variable must be present with and without the §14a
+    # constraint (the infeasible-cap fallback rebuilds without it), and its
+    # bounds must pin [0, pv] - a curtailment can only ever REDUCE feed-in.
+    pv = [0.0] * 48 + [6.0] * 48
+    for enforce in (True, False):
+        model = build_model(
+            make_input([50.0] * 96, pv=pv, grid_limit_kw=30.0),
+            enforce_grid_limit=enforce,
+        )
+        assert model.curtail[0].bounds == (0.0, 0.0)
+        assert model.curtail[95].bounds == (0.0, 6.0)
 
 
 # ---- everything below needs the HiGHS wheel ---------------------------------
@@ -193,6 +207,93 @@ def test_no_simultaneous_charge_and_discharge_even_at_negative_prices():
 def test_terminal_soc_never_below_initial():
     plan = solve(make_input(arbitrage_prices(), soc0_kwh=8.0))
     assert plan.slots[-1].soc_kwh >= plan.battery.clamp_soc_kwh(8.0) - 1e-6
+
+
+# ---- Negative-price curtailment (Phase 3) -----------------------------------
+# The tests assert the ECONOMIC property (curtail exactly when feeding in would
+# cost money), never a hard-coded price condition - the model has none.
+
+
+@needs_highs
+def test_full_battery_at_negative_prices_curtails_instead_of_paying_to_export():
+    # Battery already full (soc0 = soc_max), PV surplus, deeply negative
+    # prices: without curtailment the plant is forced to export and PAYS for
+    # it. The optimal plan discards the surplus instead - and because import
+    # is symmetrically priced, being paid to consume beats using own PV, so
+    # the full PV output is curtailed in every slot. (The battery may still
+    # cycle: at negative prices the paid import more than covers the
+    # round-trip loss - real spot-exposed battery behavior, not a bug - so
+    # grid power varies with the dispatch; PV feed-in is what must be gone.)
+    plan = solve(
+        make_input([-50.0] * 96, load=2.0, pv=6.0, soc0_kwh=BATTERY.soc_max_kwh)
+    )
+    for slot in plan.slots:
+        assert slot.curtail_kw == pytest.approx(6.0, abs=1e-3)
+        # Safety invariant: curtailment never exceeds the PV forecast.
+        assert 0.0 <= slot.curtail_kw <= slot.pv_kw + 1e-9
+        # Any export left is battery dispatch, never PV: export never exceeds
+        # what the battery can discharge on top of the (fully curtailed) load.
+        assert slot.grid_kw >= 2.0 - BATTERY.max_discharge_kw - 1e-6
+    # The savings vs. the uncurtailed baseline (which exports 4 kW at -50) are
+    # real money: baseline pays, the plan earns.
+    assert plan.savings_eur > 0.5
+    assert plan.cost_eur < plan.baseline_cost_eur
+
+
+@needs_highs
+def test_no_curtailment_at_positive_prices():
+    # Identical situation but positive prices: discarding PV would burn
+    # revenue, so no slot may curtail.
+    plan = solve(
+        make_input([50.0] * 96, load=2.0, pv=6.0, soc0_kwh=BATTERY.soc_max_kwh)
+    )
+    assert all(s.curtail_kw < 1e-6 for s in plan.slots)
+
+
+@needs_highs
+def test_curtailment_engages_exactly_in_the_negative_half():
+    # Mixed curve, full battery throughout: the economics alone must pick the
+    # negative half for curtailment and leave the positive half untouched.
+    n = 96
+    prices = [-30.0] * (n // 2) + [30.0] * (n - n // 2)
+    plan = solve(make_input(prices, load=1.0, pv=5.0, soc0_kwh=BATTERY.soc_max_kwh))
+    negative = plan.slots[: n // 2]
+    positive = plan.slots[n // 2 :]
+    assert all(s.curtail_kw > 1.0 for s in negative)
+    assert all(s.curtail_kw < 1e-6 for s in positive)
+
+
+@needs_highs
+def test_curtailment_makes_a_tight_export_cap_feasible_but_stays_minimal():
+    # §14a interplay: 20 kW PV against a 6 kW export limit and a full battery
+    # was INFEASIBLE before curtailment existed. With it the plan becomes
+    # feasible - and at POSITIVE prices it curtails only the minimum needed to
+    # honor the cap (every exportable kW earns money), keeping export at the
+    # limit.
+    plan = solve(
+        make_input(
+            [80.0] * 96,
+            load=0.0,
+            pv=20.0,
+            soc0_kwh=BATTERY.soc_max_kwh,
+            grid_limit_kw=6.0,
+        )
+    )
+    for slot in plan.slots:
+        assert slot.grid_kw == pytest.approx(-6.0, abs=1e-3)
+        assert slot.curtail_kw == pytest.approx(14.0, abs=1e-3)
+
+
+@needs_highs
+def test_fallback_build_curtails_too():
+    # The infeasible-cap fallback (optimize_ignoring_grid_limit) must carry the
+    # same curtailment capability as the primary build.
+    from voltpilot_optimization.solver import optimize_ignoring_grid_limit
+    from uuid import uuid4 as _uuid4
+
+    inp = make_input([-50.0] * 96, load=2.0, pv=6.0, soc0_kwh=BATTERY.soc_max_kwh)
+    plan = optimize_ignoring_grid_limit(inp, plan_id=_uuid4(), generated_at=T0)
+    assert all(s.curtail_kw == pytest.approx(6.0, abs=1e-3) for s in plan.slots)
 
 
 @needs_highs

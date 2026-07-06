@@ -94,6 +94,77 @@ def test_payload_carries_what_the_edge_flow_consumes():
     assert first["start"].endswith("Z")
 
 
+def make_curtailing_plan() -> SchedulePlan:
+    """A plan whose first slot curtails 4 kW of 6 kW PV (negative price)."""
+    plan = make_plan(slots=2)
+    curtailed = PlanSlot(
+        start=T0,
+        battery_kw=0.0,
+        grid_kw=1.0,
+        soc_kwh=9.5,
+        load_kw=3.0,
+        pv_kw=6.0,
+        price_eur_mwh=-45.0,
+        cost_eur=-0.01125,
+        baseline_cost_eur=0.03375,
+        curtail_kw=4.0,
+    )
+    return SchedulePlan(
+        plan_id=plan.plan_id,
+        tenant_id=plan.tenant_id,
+        site_id=plan.site_id,
+        device_id=plan.device_id,
+        generated_at=plan.generated_at,
+        battery=plan.battery,
+        slots=[curtailed, plan.slots[1]],
+    )
+
+
+def test_curtailing_payload_validates_and_carries_the_optional_pv_limit():
+    # Phase-3 curtailment: a curtailing slot publishes pv_limit_kw (the
+    # inverter cap = pv - curtail, never negative); a non-curtailing slot
+    # OMITS the field so pre-Phase-3 payloads stay byte-identical.
+    payload = build_schedule_payload(make_curtailing_plan())
+    validator = load_validator()
+    errors = list(validator.iter_errors(payload))
+    assert errors == [], [e.message for e in errors]
+
+    first, second = payload["slots"]
+    assert first["pv_limit_kw"] == 2.0
+    assert first["pv_limit_kw"] >= 0
+    assert "pv_limit_kw" not in second
+
+
+def test_pv_limit_is_never_negative_even_when_curtailment_equals_pv():
+    plan = make_curtailing_plan()
+    full = PlanSlot(
+        start=T0,
+        battery_kw=0.0,
+        grid_kw=3.0,
+        soc_kwh=9.5,
+        load_kw=3.0,
+        pv_kw=6.0,
+        price_eur_mwh=-45.0,
+        cost_eur=-0.03375,
+        baseline_cost_eur=0.03375,
+        curtail_kw=6.0,
+    )
+    payload = build_schedule_payload(
+        SchedulePlan(
+            plan_id=plan.plan_id,
+            tenant_id=plan.tenant_id,
+            site_id=plan.site_id,
+            device_id=plan.device_id,
+            generated_at=plan.generated_at,
+            battery=plan.battery,
+            slots=[full],
+        )
+    )
+    assert payload["slots"][0]["pv_limit_kw"] == 0.0
+    errors = list(load_validator().iter_errors(payload))
+    assert errors == []
+
+
 def test_topic_matches_the_convention():
     assert schedule_topic(make_plan()) == f"ems/{TENANT}/{SITE}/{DEVICE}/schedule"
 
