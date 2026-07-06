@@ -102,8 +102,9 @@ body#keycloak-bg {
 #kc-header-wrapper::before {
   content: '';
   display: block;
-  width: 200px;
-  height: 80px; /* Logo-Seitenverhaeltnis 2.5:1 */
+  width: 260px;
+  height: 104px; /* Logo-Seitenverhaeltnis 2.5:1 */
+  max-width: 80%;
   margin: 0 auto;
   background-image: url('../img/voltpilot-logo.png');
   background-size: contain;

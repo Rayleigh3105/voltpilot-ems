@@ -72,15 +72,15 @@ body {
   backdrop-filter: saturate(160%) blur(12px);
   border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 750; font-size: 16.5px; letter-spacing: -.01em; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 750; font-size: 19px; letter-spacing: -.01em; min-width: 0; }
 .brand-mark {
-  width: 30px; height: 30px; display: grid; place-items: center;
-  border-radius: 9px; color: #fff;
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border-radius: 11px; color: #fff;
   background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
-  box-shadow: 0 2px 8px rgba(62,114,206,.35);
+  box-shadow: 0 2px 10px rgba(62,114,206,.35);
 }
-.brand-mark svg { width: 17px; height: 17px; }
-.brand small { display: block; font-weight: 500; font-size: 11px; color: var(--muted); letter-spacing: .02em; margin-top: -2px; }
+.brand-mark svg { width: 23px; height: 23px; }
+.brand small { display: block; font-weight: 500; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; margin-top: -1px; }
 
 .topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .link-btn {
@@ -425,8 +425,10 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
   main { padding: 18px 14px 46px; }
 
   .topbar { flex-wrap: wrap; padding: 10px 14px; gap: 8px 10px; }
-  .brand { font-size: 15.5px; }
+  .brand { font-size: 17px; gap: 10px; }
   .brand small { display: none; }
+  .brand-mark { width: 34px; height: 34px; border-radius: 10px; }
+  .brand-mark svg { width: 20px; height: 20px; }
   .topbar-right { width: 100%; justify-content: space-between; gap: 8px; }
   .pill { flex: 0 1 auto; min-width: 0; }
   .pill span:not(.dot) { overflow: hidden; text-overflow: ellipsis; }
