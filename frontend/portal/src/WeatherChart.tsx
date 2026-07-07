@@ -1,11 +1,15 @@
 import type { WeatherPoint } from './api';
 import { chartTheme } from './chartTheme';
 import { useEChart } from './useEChart';
+import { axisHourLabel, nowMarkerIndex, tooltipHeader } from './weather';
 
 /**
  * Hourly weather forecast: temperature (line, left °C), cloud cover (grey area,
  * right %) and shortwave/GHI irradiance (solar-orange area, offset right W/m² -
  * the PV-relevant channel). Palette from the shared design-system chart tokens.
+ * A "Jetzt"-marker + shaded past make now unmistakable (same idiom as the
+ * Fahrplan/Historie charts); all times render as German LOCAL time - the raw
+ * UTC ISO timestamps from the API never reach the user (weather.ts).
  * Width-aware: three y-axes do not fit a phone, so below 520px the cloud and
  * irradiance axes hide (their values stay in the tooltip) and the legend gets
  * room to wrap.
@@ -19,6 +23,15 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
       const num = (key: keyof WeatherPoint) =>
         points.map((p) => (p[key] == null ? null : Number(p[key])));
 
+      const unitBySeries: Record<string, string> = {
+        Temperatur: '°C',
+        Wolken: '%',
+        Einstrahlung: 'W/m²',
+      };
+
+      // "Jetzt": the last hour at/before now (the elapsed part is shaded).
+      const nowIdx = nowMarkerIndex(points, Date.now());
+
       chart.setOption(
         {
           textStyle: { fontFamily: t.font, color: t.axis },
@@ -26,8 +39,15 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
           tooltip: {
             trigger: 'axis',
             confine: true,
-            valueFormatter: (v: unknown) =>
-              v == null ? '-' : Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 }),
+            formatter: (params: any[]) => {
+              const lines = [`<b>${tooltipHeader(params[0]?.axisValue)}</b>`];
+              for (const p of params) {
+                if (p.value == null) continue;
+                const v = Number(p.value).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+                lines.push(`${p.marker} ${p.seriesName}: ${v} ${unitBySeries[p.seriesName] ?? ''}`);
+              }
+              return lines.join('<br/>');
+            },
           },
           legend: {
             top: 8,
@@ -41,8 +61,7 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
             data: time,
             boundaryGap: false,
             axisLabel: {
-              formatter: (v: string) =>
-                new Date(v).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit' }),
+              formatter: (v: string) => axisHourLabel(v),
               color: t.axis,
               hideOverlap: true,
             },
@@ -84,6 +103,37 @@ export function WeatherChart({ points }: { points: WeatherPoint[] }) {
               lineStyle: { width: 2.5, color: t.temp },
               itemStyle: { color: t.temp },
               data: num('temperatureC'),
+              // Shade the already-elapsed hours and mark "Jetzt" (idiom shared
+              // with ScheduleChart/HistoryChart).
+              markArea:
+                nowIdx > 0
+                  ? {
+                      silent: true,
+                      itemStyle: { color: t.axis, opacity: 0.08 },
+                      data: [[{ xAxis: 0 }, { xAxis: nowIdx }]],
+                    }
+                  : undefined,
+              markLine:
+                nowIdx >= 0 && nowIdx < points.length - 1
+                  ? {
+                      silent: true,
+                      symbol: 'none',
+                      data: [
+                        {
+                          xAxis: nowIdx,
+                          lineStyle: { color: t.price, type: 'solid', width: 2 },
+                          // rotate: 0 pins the label horizontal (an hourly axis
+                          // otherwise renders it rotated along the line).
+                          label: {
+                            formatter: 'Jetzt',
+                            color: t.price,
+                            position: 'insideStartTop',
+                            rotate: 0,
+                          },
+                        },
+                      ],
+                    }
+                  : undefined,
             },
             {
               name: 'Wolken',

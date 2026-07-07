@@ -72,6 +72,24 @@ def test_parse_makes_times_utc_aware():
     assert all(p.timestamp.tzinfo is not None for p in fc.points)
 
 
+def test_hourly_times_are_utc_never_local():
+    """Timezone-semantics pin (portal "shifted by 2h" investigation, 2026-07-06).
+
+    The request always sends ``timezone=UTC`` (see the request test below), so
+    the naive ``hourly.time`` strings are UTC wall-clock: a "...T00:00" entry is
+    midnight UTC = 02:00 Europe/Berlin in July, NOT local midnight. Stored rows
+    are therefore unambiguous UTC; any local-time rendering happens in the
+    portal. A live cross-check against Open-Meteo's timezone=Europe/Berlin
+    series confirmed every hour aligns at the expected +2h offset.
+    """
+    from zoneinfo import ZoneInfo
+
+    fc = parse_forecast_response(_fixture(), TENANT, SITE, RUN_AT)
+    first = fc.points[0].timestamp
+    assert first == datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc)
+    assert first.astimezone(ZoneInfo("Europe/Berlin")).hour == 2
+
+
 def test_missing_hourly_block_raises():
     with pytest.raises(WeatherSourceError):
         parse_forecast_response(json.dumps({"latitude": 1.0}), TENANT, SITE, RUN_AT)

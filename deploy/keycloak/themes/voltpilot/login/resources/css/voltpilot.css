@@ -224,3 +224,15 @@ input.pf-m-error {
 .pf-v5-c-alert.pf-m-danger {
   --pf-v5-c-alert--m-danger__icon--Color: #c62828;
 }
+
+/* --- "Konto erstellen"-Link (js/register-link.js haengt ihn unter das Formular;
+       die Registrierung ist ein PORTAL-Formular, Route #register) ------------- */
+#vp-register-link {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #6c757d; /* text-gray */
+}
+#vp-register-link a {
+  font-weight: 600;
+}

@@ -22,6 +22,7 @@ import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
+import { hoursAhead, nextHourIndex } from '../weather';
 import { ScheduleChart } from '../ScheduleChart';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
@@ -358,7 +359,13 @@ export function WetterPage(props: {
   const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
 
   const points = forecast?.points ?? [];
-  const now = points[0] ?? null;
+  // The run's series starts at 00:00 UTC (hours already in the past) - the hero
+  // must pick the UPCOMING hour, never points[0] (the real "temperatures do not
+  // match the chart" bug; see weather.ts).
+  const nowMs = Date.now();
+  const nextIdx = nextHourIndex(points, nowMs);
+  const now = nextIdx >= 0 ? points[nextIdx] : null;
+  const horizon = hoursAhead(points, nowMs);
   const peakGhi = points.reduce<number | null>(
     (m, p) => (p.ghiWM2 != null && (m == null || p.ghiWM2 > m) ? p.ghiWM2 : m),
     null,
@@ -396,7 +403,7 @@ export function WetterPage(props: {
               <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
               <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
               <Stat value={fmtNum(peakGhi, '', 0)} label="Max. Einstrahlung (W/m²)" />
-              <Stat value={fmtNum(points.length, 'h', 0)} label="Vorhersagehorizont" />
+              <Stat value={fmtNum(horizon, 'h', 0)} label="Vorhersagehorizont" />
             </div>
             <WeatherChart points={points} />
             <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>

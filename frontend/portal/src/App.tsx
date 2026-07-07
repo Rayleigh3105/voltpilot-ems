@@ -24,12 +24,26 @@ export default function App({
   initialAuth,
   authError = false,
   sessionExpired = false,
+  redirecting = false,
+  initialView = 'login',
 }: {
   initialAuth: boolean;
   authError?: boolean;
   sessionExpired?: boolean;
+  /** True while main.tsx is navigating to the Keycloak login (no pre-step). */
+  redirecting?: boolean;
+  /** 'register' when the visitor deep-linked the portal's #register route. */
+  initialView?: 'login' | 'register';
 }) {
-  if (!initialAuth) return <LoginScreen authError={authError} sessionExpired={sessionExpired} />;
+  if (!initialAuth)
+    return (
+      <LoginScreen
+        authError={authError}
+        sessionExpired={sessionExpired}
+        redirecting={redirecting}
+        initialView={initialView}
+      />
+    );
   // ONE app for both roles (unified shell): a Portal-Admin gets the same
   // customer pages via the tenant switcher plus the additive "Plattform" nav
   // group. The backend enforces the role split (403 / header-gated tenant
@@ -40,11 +54,37 @@ export default function App({
 function LoginScreen({
   authError,
   sessionExpired = false,
+  redirecting = false,
+  initialView = 'login',
 }: {
   authError: boolean;
   sessionExpired?: boolean;
+  redirecting?: boolean;
+  initialView?: 'login' | 'register';
 }) {
-  const [view, setView] = useState<'login' | 'register'>('login');
+  const [view, setViewState] = useState<'login' | 'register'>(initialView);
+  // Keep the URL in sync so a reload on the register form stays on the form
+  // (main.tsx only auto-redirects to Keycloak OFF the #register route).
+  function setView(v: 'login' | 'register') {
+    setViewState(v);
+    window.location.hash = v === 'register' ? '#register' : '';
+  }
+  if (redirecting) {
+    // The Keycloak redirect is already underway (no pre-step). The card is
+    // only a fallback if the navigation is interrupted.
+    return (
+      <div className="vp-login">
+        <Card padding="lg" radius="lg" className="vp-login-card">
+          <img src={logoUrl} alt="VoltPilot" />
+          <h1>VoltPilot EMS</h1>
+          <p>Sie werden zur Anmeldung weitergeleitet …</p>
+          <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
+            Zur Anmeldung
+          </Button>
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="vp-login">
       <Card padding="lg" radius="lg" className="vp-login-card">
@@ -90,7 +130,9 @@ function LoginScreen({
             </p>
           </>
         ) : (
-          <RegisterForm onBack={() => setView('login')} />
+          // "Zur Anmeldung" goes straight to the Keycloak login (there is no
+          // in-portal login pre-step anymore).
+          <RegisterForm onBack={() => login()} />
         )}
         {sessionExpired && !authError && view === 'login' && (
           <div className="vp-alert vp-alert-err">

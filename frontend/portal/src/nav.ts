@@ -51,6 +51,17 @@ export function pageLabel(id: PageId): string {
   return [...MAIN_PAGES, ...PLATFORM_PAGES].find((p) => p.id === id)?.label ?? id;
 }
 
+/**
+ * The self-registration route (`#register` / `#/register`): the "Konto
+ * erstellen" form lives in the PORTAL (custom form + seamless auto-login), not
+ * in Keycloak - this route must render WITHOUT the automatic login redirect,
+ * and the Keycloak login page links back to it.
+ */
+export function isRegisterRoute(): boolean {
+  const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
+  return raw === 'register';
+}
+
 export function pageFromHash(): PageId {
   const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
   return (ALL_IDS.has(raw) ? raw : 'uebersicht') as PageId;
