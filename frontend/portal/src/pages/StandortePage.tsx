@@ -15,7 +15,7 @@ import {
   type SiteAsset,
   type SiteDeletionPreview,
 } from '../api';
-import { parsePremiumInput, premiumInputText } from '../fleet';
+import { BATTERY_NO_DEVICE_WARNING, parsePremiumInput, premiumInputText } from '../fleet';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { LocationMap } from '../components/LocationMap';
@@ -130,7 +130,11 @@ export function StandortePage({
 
   const linkedAssets = (assets ?? []).filter((a) => a.registry != null);
   const pvAsset = linkedAssets.find((a) => a.type === 'pv');
-  const batteryAsset = linkedAssets.find((a) => a.type === 'battery');
+  // The battery is sourced from ALL assets (not just registry-linked): a plant
+  // not in the MaStR keeps its battery by hand, and its control-path warning
+  // must show regardless of provenance.
+  const batteryAsset = (assets ?? []).find((a) => a.type === 'battery') ?? null;
+  const siteDevices = detail ? devices.filter((d) => d.siteId === detail.id) : [];
   const lastFetched = linkedAssets
     .map((a) => a.registryFetchedAt)
     .filter((t): t is string => t != null)
@@ -338,23 +342,6 @@ export function StandortePage({
                       </tr>
                     </>
                   )}
-                  {batteryAsset && (
-                    <>
-                      <tr>
-                        <th scope="row">Speicher</th>
-                        <td>
-                          {batteryAsset.capacityKwh != null ? fmtNum(batteryAsset.capacityKwh, 'kWh', 1) : '-'}
-                          {batteryAsset.maxDischargeKw != null
-                            ? ` · ${fmtNum(batteryAsset.maxDischargeKw, 'kW', 2)}`
-                            : ''}
-                        </td>
-                      </tr>
-                      <tr>
-                        <th scope="row">MaStR-Nummer Speicher</th>
-                        <td className="vp-mono">{batteryAsset.registryUnitId}</td>
-                      </tr>
-                    </>
-                  )}
                   {lastFetched && (
                     <tr>
                       <th scope="row">Zuletzt abgerufen</th>
@@ -372,6 +359,15 @@ export function StandortePage({
                 Neu aus dem Register abrufen
               </Button>
             </>
+          )}
+
+          {assets !== null && !assetsError && (
+            <BatteryControlSection
+              siteId={detail.id}
+              battery={batteryAsset}
+              devices={siteDevices}
+              onSaved={(a) => setAssets(a)}
+            />
           )}
 
           <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
@@ -591,4 +587,275 @@ export function SiteEditForm({
       </div>
     </div>
   );
+}
+
+/**
+ * "Speicher & Steuerung": the battery master data (the optimizer's inputs) and
+ * the controlling-device link, editable by hand - the inverter-centric surface
+ * the captain asked for ("Ihr Wechselrichter steuert diesen Speicher"). It is
+ * also the only place a plant NOT in the Marktstammdatenregister can maintain
+ * its battery at all. When the battery has no controlling device it shows the
+ * plain-German warning that the plan cannot be executed, and offers the fix.
+ */
+export function BatteryControlSection({
+  siteId,
+  battery,
+  devices,
+  onSaved,
+}: {
+  siteId: string;
+  battery: SiteAsset | null;
+  devices: Device[];
+  onSaved: (assets: SiteAsset[]) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [siteId]);
+
+  const controllingDevice = battery?.deviceId
+    ? devices.find((d) => d.id === battery.deviceId)
+    : null;
+  const needsDevice = battery != null && battery.deviceId == null;
+
+  return (
+    <>
+      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
+        <h2 style={{ fontSize: '1.05rem' }}>Speicher &amp; Steuerung</h2>
+      </div>
+
+      {needsDevice && !editing && (
+        <div className="vp-alert vp-alert-warn" style={{ marginTop: 0 }}>
+          {BATTERY_NO_DEVICE_WARNING}
+        </div>
+      )}
+
+      {editing ? (
+        <BatteryEditForm
+          siteId={siteId}
+          battery={battery}
+          devices={devices}
+          onCancel={() => setEditing(false)}
+          onSaved={(a) => {
+            setEditing(false);
+            onSaved(a);
+          }}
+        />
+      ) : battery == null ? (
+        <>
+          <p className="vp-muted">
+            Kein Speicher hinterlegt. Tragen Sie die Speicherdaten ein, damit der
+            Fahrplan Ihren Speicher optimal lädt und entlädt.
+          </p>
+          <Button
+            variant="outline"
+            iconLeft={<Icon name="battery" size={16} />}
+            onClick={() => setEditing(true)}
+            style={{ marginBottom: 'var(--vp-space-5)' }}
+          >
+            Speicher hinzufügen
+          </Button>
+        </>
+      ) : (
+        <>
+          <p className="vp-note" style={{ marginTop: 0 }}>
+            Ihr Wechselrichter steuert diesen Speicher - er führt den Fahrplan aus.
+          </p>
+          <table className="vp-table" style={{ marginBottom: 'var(--vp-space-3)' }}>
+            <tbody>
+              <tr>
+                <th scope="row">Kapazität</th>
+                <td>{battery.capacityKwh != null ? fmtNum(battery.capacityKwh, 'kWh', 1) : '-'}</td>
+              </tr>
+              <tr>
+                <th scope="row">Lade-/Entladeleistung</th>
+                <td>
+                  {battery.maxChargeKw != null ? fmtNum(battery.maxChargeKw, 'kW', 2) : '-'}
+                  {' / '}
+                  {battery.maxDischargeKw != null ? fmtNum(battery.maxDischargeKw, 'kW', 2) : '-'}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Wirkungsgrad</th>
+                <td>
+                  {battery.roundtripEfficiencyPct != null
+                    ? fmtNum(battery.roundtripEfficiencyPct, '%', 0)
+                    : 'Standard (92 %)'}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Steuerndes Gerät</th>
+                <td>
+                  {controllingDevice ? (
+                    controllingDevice.name || controllingDevice.externalRef
+                  ) : (
+                    <span className="vp-muted">nicht zugeordnet</span>
+                  )}
+                </td>
+              </tr>
+              {battery.registryUnitId && (
+                <tr>
+                  <th scope="row">MaStR-Nummer Speicher</th>
+                  <td className="vp-mono">{battery.registryUnitId}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <Button
+            variant="ghost"
+            size="sm"
+            iconLeft={<Icon name="pencil" size={16} />}
+            onClick={() => setEditing(true)}
+            style={{ marginBottom: 'var(--vp-space-5)' }}
+          >
+            Speicher bearbeiten
+          </Button>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * Inline editor for the battery params + controlling device. Numbers accept
+ * German comma decimals; the device select offers "Automatisch" (auto-link the
+ * site's single device) plus every device at the site so a multi-device plant
+ * can pick the inverter that controls the battery.
+ */
+function BatteryEditForm({
+  siteId,
+  battery,
+  devices,
+  onCancel,
+  onSaved,
+}: {
+  siteId: string;
+  battery: SiteAsset | null;
+  devices: Device[];
+  onCancel: () => void;
+  onSaved: (assets: SiteAsset[]) => void;
+}) {
+  const [capacity, setCapacity] = useState(numText(battery?.capacityKwh));
+  const [maxCharge, setMaxCharge] = useState(numText(battery?.maxChargeKw));
+  const [maxDischarge, setMaxDischarge] = useState(numText(battery?.maxDischargeKw));
+  const [efficiency, setEfficiency] = useState(numText(battery?.roundtripEfficiencyPct));
+  const [deviceId, setDeviceId] = useState(battery?.deviceId ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const cap = parseNum(capacity);
+    const chg = parseNum(maxCharge);
+    const dis = parseNum(maxDischarge);
+    const eff = efficiency.trim() === '' ? null : parseNum(efficiency);
+    if (cap == null || cap <= 0 || chg == null || chg <= 0 || dis == null || dis <= 0) {
+      setError('Bitte geben Sie Kapazität, Lade- und Entladeleistung als positive Zahlen an.');
+      return;
+    }
+    if (eff !== null && (eff == null || eff <= 0 || eff > 100)) {
+      setError('Der Wirkungsgrad muss zwischen 1 und 100 % liegen.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const assets = await api.saveBattery(siteId, {
+        capacityKwh: cap,
+        maxChargeKw: chg,
+        maxDischargeKw: dis,
+        roundtripEfficiencyPct: eff,
+        deviceId: deviceId || null,
+      });
+      onSaved(assets);
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 400
+          ? 'Ungültige Eingabe. Bitte prüfen Sie die Werte.'
+          : 'Die Speicherdaten konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 'var(--vp-space-5)' }}>
+      <div className="vp-form-stack">
+        <Input
+          label="Kapazität (kWh) *"
+          placeholder="z. B. 10"
+          inputMode="decimal"
+          value={capacity}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCapacity(e.target.value)}
+        />
+        <Input
+          label="Max. Ladeleistung (kW) *"
+          placeholder="z. B. 5"
+          inputMode="decimal"
+          value={maxCharge}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxCharge(e.target.value)}
+        />
+        <Input
+          label="Max. Entladeleistung (kW) *"
+          placeholder="z. B. 5"
+          inputMode="decimal"
+          value={maxDischarge}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxDischarge(e.target.value)}
+        />
+        <Input
+          label="Wirkungsgrad (%)"
+          placeholder="Standard 92"
+          inputMode="decimal"
+          value={efficiency}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEfficiency(e.target.value)}
+          hint="Round-Trip-Wirkungsgrad. Leer lassen für den Standardwert (92 %)."
+        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="battery-device" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Steuerndes Gerät
+          </label>
+          <select
+            id="battery-device"
+            className="vp-select"
+            value={deviceId}
+            onChange={(e) => setDeviceId(e.target.value)}
+          >
+            <option value="">Automatisch (einziges Gerät des Standorts)</option>
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name || d.externalRef}
+              </option>
+            ))}
+          </select>
+          <p className="vp-note" style={{ margin: 0 }}>
+            Der Wechselrichter, der den Speicher steuert und den Fahrplan ausführt.
+            Bei nur einem Gerät genügt „Automatisch“.
+          </p>
+        </div>
+      </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Abbrechen
+        </Button>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+          {busy ? 'Wird gespeichert…' : 'Speicher speichern'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** German decimal text for a form field (empty for null). */
+function numText(value: number | null | undefined): string {
+  return value == null ? '' : String(value).replace('.', ',');
+}
+
+/** Parse a German-or-plain decimal; null when not a finite number. */
+function parseNum(text: string): number | null {
+  const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
+  if (normalized === '') return null;
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
 }

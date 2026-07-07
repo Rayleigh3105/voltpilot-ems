@@ -330,9 +330,16 @@ export function deviceWaitedTooLong(d: Device, now: Date = new Date()): boolean 
 export interface SiteAsset {
   id: string;
   type: string;
+  /**
+   * The device that controls this asset. A battery with a null deviceId has no
+   * control path - the optimizer plans it but can never publish the plan to the
+   * edge, so the portal warns and offers the link editor.
+   */
+  deviceId: string | null;
   capacityKwh: number | null;
   maxChargeKw: number | null;
   maxDischargeKw: number | null;
+  roundtripEfficiencyPct: number | null;
   pvCapacityKwp: number | null;
   moduleCount: number | null;
   azimuthDeg: number | null;
@@ -369,6 +376,16 @@ export interface MastrPreview {
   ort: string | null;
   linkedUnitNumber: string | null;
   warnings: string[];
+}
+
+/** Manual battery master data + optional controlling-device link. */
+export interface SaveBatteryInput {
+  capacityKwh: number;
+  maxChargeKw: number;
+  maxDischargeKw: number;
+  roundtripEfficiencyPct?: number | null;
+  /** The controlling device; omit to auto-link the site's single device. */
+  deviceId?: string | null;
 }
 
 export interface MastrApplyInput {
@@ -421,6 +438,11 @@ export interface OverviewSite {
   plantKind: PlantKind;
   /** Per-site grid-charging switch (the mode badge on the site card). */
   netzladenErlaubt: boolean;
+  /**
+   * The site has a battery asset with no controlling device: the optimizer
+   * plans it but cannot publish the plan to the edge. The portal warns.
+   */
+  batteryWithoutDevice: boolean;
   deviceCount: number;
   onlineCount: number;
   /** Devices that never sent data ("wartet auf erste Daten"). */
@@ -680,6 +702,17 @@ export const api = {
     return request<TelemetryPoint[]>(`/api/v1/sites/${siteId}/telemetry${qs ? `?${qs}` : ''}`);
   },
   siteAssets: (siteId: string) => request<SiteAsset[]>(`/api/v1/sites/${siteId}/assets`),
+  /**
+   * Save the site's battery master data by hand and maintain its controlling
+   * device link ("Ihr Wechselrichter steuert diesen Speicher"). Omit deviceId
+   * to auto-link the site's single device; pass it to pick on a multi-device
+   * site. Returns the site's assets after the save.
+   */
+  saveBattery: (siteId: string, input: SaveBatteryInput) =>
+    request<SiteAsset[]>(`/api/v1/sites/${siteId}/battery`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   mastrLookup: (siteId: string, einheitNummer: string) =>
     request<MastrPreview>(`/api/v1/sites/${siteId}/mastr-lookup`, {
       method: 'POST',

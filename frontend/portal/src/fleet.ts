@@ -319,6 +319,19 @@ export function netzladenBadge(netzladenErlaubt: boolean): NetzladenBadge {
     : { label: 'Nur Solarladen (EEG)', kind: 'eeg' };
 }
 
+/**
+ * Plain-German warning shown when a site has a battery with no controlling
+ * device: the optimizer plans it, but the plan can never reach the edge, so the
+ * battery is not actually steered. Points the owner at the fix. Customer-facing
+ * copy, so it names no internals (broker/optimizer/topics).
+ */
+export const BATTERY_NO_DEVICE_WARNING =
+  'Ihr Speicher ist keinem Gerät zugeordnet - der Fahrplan kann nicht ausgeführt werden. ' +
+  'Ordnen Sie den Speicher unter „Standorte“ dem steuernden Wechselrichter zu.';
+
+/** Short badge variant of the same warning (fleet site card). */
+export const BATTERY_NO_DEVICE_SHORT = 'Speicher ohne Gerät';
+
 // ---- Fleet status sentence ---------------------------------------------------
 
 export interface FleetSentence {

@@ -1813,6 +1813,144 @@ class PortalApiTest {
         assertThat(map(other.getBody(), "totals")).containsEntry("arbitrageEur", null);
     }
 
+    // ---- battery-asset <-> device auto-link ---------------------------------
+
+    @Test
+    void batteryAssetAutoLinksToTheSitesSingleDeviceAndNeverGuessesOnMultiDeviceSites() {
+        String demo = token("demo", "demo");
+
+        // (1) ON WRITE, single device: claim the one device, then save the
+        // battery by hand (no deviceId) -> it auto-links to that device.
+        String s1 = createSite(demo, "Autolink Eins", "DE-LU", "eigenverbrauch");
+        String d1 = claimDeviceInto(demo, s1, "autolink-inv-1");
+        saveBattery(demo, s1, Map.of("capacityKwh", 10, "maxChargeKw", 5, "maxDischargeKw", 5));
+        assertThat(batteryDeviceId(demo, s1)).isEqualTo(d1);
+
+        // (2) ON CLAIM, battery first: save the battery before any device (stays
+        // unlinked), then claiming the single device links it.
+        String s2 = createSite(demo, "Autolink Zwei", "DE-LU", "eigenverbrauch");
+        saveBattery(demo, s2, Map.of("capacityKwh", 12, "maxChargeKw", 6, "maxDischargeKw", 6));
+        assertThat(batteryDeviceId(demo, s2)).isNull();
+        String d2 = claimDeviceInto(demo, s2, "autolink-inv-2");
+        assertThat(batteryDeviceId(demo, s2)).isEqualTo(d2);
+
+        // (3) MULTI-DEVICE: never guess. Two devices, then a battery save with no
+        // explicit choice leaves it unlinked; the overview flags it.
+        String s3 = createSite(demo, "Autolink Drei", "DE-LU", "eigenverbrauch");
+        claimDeviceInto(demo, s3, "autolink-inv-3a");
+        String d3b = claimDeviceInto(demo, s3, "autolink-inv-3b");
+        saveBattery(demo, s3, Map.of("capacityKwh", 20, "maxChargeKw", 10, "maxDischargeKw", 10));
+        assertThat(batteryDeviceId(demo, s3)).isNull();
+        assertThat(overviewSite(demo, s3)).containsEntry("batteryWithoutDevice", true);
+        assertThat(overviewSite(demo, s1)).containsEntry("batteryWithoutDevice", false);
+
+        // The owner then picks the controlling device explicitly -> linked, and
+        // the warning clears. Round-trip efficiency persists too.
+        List<Map<String, Object>> after = saveBattery(demo, s3, Map.of(
+                "capacityKwh", 20, "maxChargeKw", 10, "maxDischargeKw", 10,
+                "roundtripEfficiencyPct", 90, "deviceId", d3b));
+        assertThat(batteryDeviceId(demo, s3)).isEqualTo(d3b);
+        assertThat(overviewSite(demo, s3)).containsEntry("batteryWithoutDevice", false);
+        Map<String, Object> battery = after.stream()
+                .filter(a -> "battery".equals(a.get("type"))).findFirst().orElseThrow();
+        assertThat(num(battery, "roundtripEfficiencyPct")).isEqualTo(90.0);
+    }
+
+    @Test
+    void batteryEditorIsTenantScopedAndValidatesTheChosenDevice() {
+        String demo = token("demo", "demo");
+        Map<String, Object> params = Map.of("capacityKwh", 8, "maxChargeKw", 4, "maxDischargeKw", 4);
+
+        // Foreign site (tenant B's Hamburg) is invisible under RLS -> 404.
+        assertThat(rest.exchange(url("/api/v1/sites/" + HAMBURG_SITE + "/battery"),
+                HttpMethod.PUT, new HttpEntity<>(params, bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // A device that belongs to ANOTHER of the caller's sites cannot be linked
+        // here -> 404 (device not at this site), and the battery stays unlinked.
+        String siteA = createSite(demo, "Editor Site A", "DE-LU", "eigenverbrauch");
+        String siteB = createSite(demo, "Editor Site B", "DE-LU", "eigenverbrauch");
+        String deviceAtB = claimDeviceInto(demo, siteB, "editor-inv-b");
+        Map<String, Object> wrongDevice = new java.util.HashMap<>(params);
+        wrongDevice.put("deviceId", deviceAtB);
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteA + "/battery"),
+                HttpMethod.PUT, new HttpEntity<>(wrongDevice, bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(batteryDeviceId(demo, siteA)).isNull();
+
+        // Missing required values -> 400.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteA + "/battery"),
+                HttpMethod.PUT, new HttpEntity<>(Map.of("capacityKwh", 8), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void backfillLinksSingleDeviceSitesButLeavesMultiDeviceSitesUnlinked() {
+        // Seed pre-hook rows directly (superuser, bypassing RLS + the auto-link
+        // hooks) to prove the migration's backfill rule in isolation.
+        String tenant = "00000000-0000-0000-0000-000000000001";
+        String oneSite = "aaaaaaa1-0000-0000-0000-000000000001";
+        String oneDevice = "aaaaaaa1-0000-0000-0000-0000000000d1";
+        String oneBattery = "aaaaaaa1-0000-0000-0000-0000000000b1";
+        String twoSite = "aaaaaaa2-0000-0000-0000-000000000002";
+        String twoBattery = "aaaaaaa2-0000-0000-0000-0000000000b2";
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES "
+                + "('" + oneSite + "', '" + tenant + "', 'Backfill One', 'DE-LU'), "
+                + "('" + twoSite + "', '" + tenant + "', 'Backfill Two', 'DE-LU')");
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind, status) VALUES "
+                + "('" + oneDevice + "', '" + tenant + "', '" + oneSite + "', 'backfill-one', 'inverter', 'claimed'), "
+                + "('aaaaaaa2-0000-0000-0000-0000000000d1', '" + tenant + "', '" + twoSite + "', 'backfill-two-a', 'inverter', 'claimed'), "
+                + "('aaaaaaa2-0000-0000-0000-0000000000d2', '" + tenant + "', '" + twoSite + "', 'backfill-two-b', 'inverter', 'claimed')");
+        exec("INSERT INTO asset (id, tenant_id, site_id, type, capacity_kwh, max_charge_kw, max_discharge_kw) VALUES "
+                + "('" + oneBattery + "', '" + tenant + "', '" + oneSite + "', 'battery', 10, 5, 5), "
+                + "('" + twoBattery + "', '" + tenant + "', '" + twoSite + "', 'battery', 10, 5, 5)");
+
+        // Run the migration's exact backfill statement.
+        exec("UPDATE asset a SET device_id = single.device_id "
+                + "FROM (SELECT site_id, (array_agg(id))[1] AS device_id FROM device GROUP BY site_id "
+                + "  HAVING count(*) = 1) single "
+                + "WHERE a.site_id = single.site_id AND a.type = 'battery' AND a.device_id IS NULL");
+
+        // The one-device site's battery is now linked; the two-device site's is not.
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE id = '" + oneBattery
+                + "' AND device_id = '" + oneDevice + "'")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE id = '" + twoBattery
+                + "' AND device_id IS NULL")).isEqualTo(1);
+    }
+
+    /** PUT /battery for a site as the given user, returning the asset list. */
+    private List<Map<String, Object>> saveBattery(String token, String siteId, Map<String, Object> body) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/battery"), HttpMethod.PUT,
+                new HttpEntity<>(body, bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    /** The site's battery-asset device_id via GET /assets (null when unlinked). */
+    private String batteryDeviceId(String token, String siteId) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/assets"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody().stream()
+                .filter(a -> "battery".equals(a.get("type"))).findFirst()
+                .map(a -> (String) a.get("deviceId")).orElse(null);
+    }
+
+    /** The site's row from GET /overview. */
+    private Map<String, Object> overviewSite(String token, String siteId) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return list(res.getBody(), "sites").stream()
+                .filter(x -> siteId.equals(x.get("id"))).findFirst().orElseThrow();
+    }
+
     private String createSite(String token, String name, String zone, String plantKind) {
         return createSite(token, name, zone, plantKind, null);
     }

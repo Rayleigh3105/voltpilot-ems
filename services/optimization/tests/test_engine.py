@@ -131,6 +131,47 @@ def test_plan_carries_positive_savings_and_projected_economics(wired):
     assert len([p for p in repository.plans if p.site_id == plan.site_id]) == 1
 
 
+def test_autolink_makes_a_previously_unpublished_site_publish(monkeypatch):
+    """The publish path keys off asset.device_id, so the api's auto-link is what
+    heals a site: the SAME site is not published while its battery is unlinked
+    (device_id None), then published once linked (device_id set) - no optimizer
+    change needed, just the DB link the api now maintains."""
+    site_id, tenant_id = uuid4(), uuid4()
+
+    def site(device):
+        return BatterySite(
+            tenant_id=tenant_id,
+            site_id=site_id,
+            device_id=uuid4() if device else None,
+            bidding_zone="DE-LU",
+            battery=BATTERY,
+            netzladen_erlaubt=True,
+        )
+
+    monkeypatch.setattr(
+        engine, "gather_inputs",
+        lambda dsn, s, now, horizon_slots: synthetic_inputs(s, now),
+    )
+
+    # Before the auto-link: battery unlinked -> plan persisted, nothing published.
+    unlinked = site(device=False)
+    monkeypatch.setattr(engine, "load_battery_sites", lambda dsn: [unlinked])
+    repo = InMemoryScheduleRepository()
+    pub = RecordingSchedulePublisher()
+    engine.run_cycle("dsn://ignored", repo, pub, now=NOW)
+    assert len(repo.plans) == 1
+    assert pub.published == []
+
+    # After the api auto-links the device: the very same site now publishes.
+    linked = site(device=True)
+    monkeypatch.setattr(engine, "load_battery_sites", lambda dsn: [linked])
+    pub2 = RecordingSchedulePublisher()
+    engine.run_cycle("dsn://ignored", InMemoryScheduleRepository(), pub2, now=NOW)
+    assert len(pub2.published) == 1
+    topic, _payload = pub2.published[0]
+    assert topic == f"ems/{tenant_id}/{site_id}/{linked.device_id}/schedule"
+
+
 def test_skip_site_does_not_sink_the_cycle(monkeypatch):
     good, bad = make_site(), make_site()
 

@@ -725,6 +725,54 @@ paths:
         "400": { description: Neither pv nor storage present, or values out of range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/battery:
+    put:
+      tags: [registry]
+      summary: Maintain the site's battery master data and its controlling device.
+      description: >
+        Create or update the site's `battery` asset from customer-entered values
+        (capacity/charge/discharge power and optional round-trip efficiency) -
+        the manual path for plants not in the Marktstammdatenregister. The
+        battery is controlled by the inverter, which is the edge device, so the
+        request also maintains the device link: pass `deviceId` to pick the
+        controlling device explicitly (validated to belong to this site), or omit
+        it to auto-link the site's single device (the self-maintaining rule). A
+        multi-device site with no explicit choice is left unlinked and the portal
+        warns that the plan cannot be executed. Manual values leave the registry
+        provenance untouched (a MaStR-linked battery keeps its provenance).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capacityKwh, maxChargeKw, maxDischargeKw]
+              properties:
+                capacityKwh: { type: number, description: Usable battery capacity (kWh), > 0. }
+                maxChargeKw: { type: number, description: Max charge power (kW), > 0. }
+                maxDischargeKw: { type: number, description: Max discharge power (kW), > 0. }
+                roundtripEfficiencyPct:
+                  type: number
+                  nullable: true
+                  description: Round-trip efficiency in percent (1-100); platform default 92 when omitted.
+                deviceId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: The controlling device; omit to auto-link the site's single device.
+      responses:
+        "200":
+          description: The site's asset rows after the save.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteAsset" }
+        "400": { description: Missing/invalid battery values. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS), or the chosen device is not at this site. }
   /api/v1/sites/{siteId}/kpis:
     get:
       tags: [kpis]
@@ -1210,9 +1258,18 @@ components:
       properties:
         id: { type: string, format: uuid }
         type: { type: string, example: battery, description: "'battery' | 'pv' (more later)" }
+        deviceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            The device that controls this asset. A battery with a null deviceId
+            has no control path - the optimizer plans it but cannot publish the
+            plan to the edge, so the portal warns.
         capacityKwh: { type: number, nullable: true }
         maxChargeKw: { type: number, nullable: true }
         maxDischargeKw: { type: number, nullable: true }
+        roundtripEfficiencyPct: { type: number, nullable: true, description: Round-trip efficiency percent; platform default 92. }
         pvCapacityKwp: { type: number, nullable: true }
         moduleCount: { type: integer, nullable: true }
         azimuthDeg: { type: number, nullable: true, description: Clockwise from North; 180 = South. }
@@ -1300,6 +1357,12 @@ components:
         netzladenErlaubt:
           type: boolean
           description: Per-site grid-charging switch (see Site.netzladenErlaubt).
+        batteryWithoutDevice:
+          type: boolean
+          description: >
+            The site has a battery asset with no controlling device: the
+            optimizer plans it but cannot publish the plan to the edge. The
+            portal warns and links to the fix.
         deviceCount: { type: integer }
         onlineCount:
           type: integer

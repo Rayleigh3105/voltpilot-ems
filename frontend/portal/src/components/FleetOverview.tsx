@@ -4,6 +4,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import type { EarningsDaily, EarningsRange, EarningsSite, Overview, OverviewSite } from '../api';
 import {
   arbitrageLine,
+  BATTERY_NO_DEVICE_SHORT,
   berlinDay,
   composeFleetSentence,
   fleetHeadline,
@@ -346,6 +347,12 @@ export function FleetSiteCard({
 
       <div className="vp-fleet-site-mode">
         <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
+        {site.batteryWithoutDevice && (
+          <span className="vp-fleet-batt-warn" title={BATTERY_NO_DEVICE_SHORT}>
+            <Icon name="alert-triangle" size={13} />
+            {BATTERY_NO_DEVICE_SHORT}
+          </span>
+        )}
       </div>
 
       {site.deviceCount === 0 ? (

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { SiteEditForm } from './StandortePage';
-import { api, type Site } from '../api';
+import { BatteryControlSection, SiteEditForm } from './StandortePage';
+import { api, type Device, type Site, type SiteAsset } from '../api';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
 // mock it like LocationMap.test.tsx does; the map itself is not under test.
@@ -72,5 +72,102 @@ describe('SiteEditForm (netzladen switch, captain revision 2026-07-07)', () => {
       expect.objectContaining({ netzladenErlaubt: true }),
     );
     updateSite.mockRestore();
+  });
+});
+
+function battery(over: Partial<SiteAsset> = {}): SiteAsset {
+  return {
+    id: 'a-batt',
+    type: 'battery',
+    deviceId: null,
+    capacityKwh: 10,
+    maxChargeKw: 5,
+    maxDischargeKw: 5,
+    roundtripEfficiencyPct: null,
+    pvCapacityKwp: null,
+    moduleCount: null,
+    azimuthDeg: null,
+    tiltDeg: null,
+    commissionedOn: null,
+    registry: null,
+    registryUnitId: null,
+    registryFetchedAt: null,
+    ...over,
+  };
+}
+
+function device(over: Partial<Device> = {}): Device {
+  return {
+    id: 'd-1',
+    siteId: 's-1',
+    externalRef: 'edge-abcdefj',
+    kind: 'inverter',
+    name: null,
+    status: 'claimed',
+    lastSeenAt: null,
+    createdAt: null,
+    ...over,
+  };
+}
+
+describe('BatteryControlSection (battery <-> device control path)', () => {
+  it('warns when the battery has no controlling device', () => {
+    render(
+      <BatteryControlSection
+        siteId="s-1"
+        battery={battery({ deviceId: null })}
+        devices={[device()]}
+        onSaved={() => {}}
+      />,
+    );
+    expect(screen.getByText(/keinem Gerät zugeordnet/)).toBeInTheDocument();
+    expect(screen.getByText(/nicht zugeordnet/)).toBeInTheDocument();
+  });
+
+  it('shows the controlling device and no warning when linked', () => {
+    render(
+      <BatteryControlSection
+        siteId="s-1"
+        battery={battery({ deviceId: 'd-1' })}
+        devices={[device({ id: 'd-1', name: 'Wechselrichter Garage' })]}
+        onSaved={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/keinem Gerät zugeordnet/)).not.toBeInTheDocument();
+    expect(screen.getByText('Wechselrichter Garage')).toBeInTheDocument();
+  });
+
+  it('offers to add a battery when none exists yet', () => {
+    render(
+      <BatteryControlSection siteId="s-1" battery={null} devices={[]} onSaved={() => {}} />,
+    );
+    expect(screen.getByRole('button', { name: /Speicher hinzufügen/ })).toBeInTheDocument();
+  });
+
+  it('saves parsed params + the chosen controlling device', async () => {
+    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
+    const onSaved = vi.fn();
+    render(
+      <BatteryControlSection
+        siteId="s-1"
+        battery={battery({ deviceId: null })}
+        devices={[device({ id: 'd-1', name: 'WR Nord' }), device({ id: 'd-2', name: 'WR Süd' })]}
+        onSaved={onSaved}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Speicher bearbeiten/ }));
+    // German comma decimal is accepted.
+    fireEvent.change(screen.getByLabelText('Kapazität (kWh) *'), { target: { value: '12,5' } });
+    fireEvent.change(screen.getByLabelText('Steuerndes Gerät'), { target: { value: 'd-2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(saveBattery).toHaveBeenCalledWith('s-1', {
+      capacityKwh: 12.5,
+      maxChargeKw: 5,
+      maxDischargeKw: 5,
+      roundtripEfficiencyPct: null,
+      deviceId: 'd-2',
+    });
+    saveBattery.mockRestore();
   });
 });

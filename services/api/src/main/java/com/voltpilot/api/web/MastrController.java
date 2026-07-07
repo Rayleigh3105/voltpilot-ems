@@ -88,6 +88,10 @@ public class MastrController {
         }
         if (request.storage() != null) {
             assets.applyBattery(tenantId, siteId, request.storage(), "mastr", fetchedAt);
+            // A newly-created battery asset has NO control path yet; link it to
+            // the site's single device so the optimizer can publish the plan
+            // (the self-maintaining rule, see AssetRepository.autoLinkBatteryDevice).
+            assets.autoLinkBatteryDevice(siteId);
         }
         return assets.findForSite(siteId);
     }

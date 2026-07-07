@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import com.voltpilot.api.web.dto.MastrApplyRequest;
 import com.voltpilot.api.web.dto.SiteAssetDto;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -22,9 +23,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class AssetRepository {
 
-    private static final String COLUMNS = "id, type, capacity_kwh, max_charge_kw, "
-            + "max_discharge_kw, pv_capacity_kwp, module_count, azimuth_deg, tilt_deg, "
-            + "commissioned_on, registry, registry_unit_id, registry_fetched_at";
+    private static final String COLUMNS = "id, type, device_id, capacity_kwh, max_charge_kw, "
+            + "max_discharge_kw, roundtrip_efficiency_pct, pv_capacity_kwp, module_count, "
+            + "azimuth_deg, tilt_deg, commissioned_on, registry, registry_unit_id, "
+            + "registry_fetched_at";
 
     private final JdbcTemplate jdbc;
 
@@ -87,15 +89,80 @@ public class AssetRepository {
                 st.commissionedOn(), registry, st.mastrNummer(), Timestamp.from(fetchedAt));
     }
 
+    /**
+     * Create-or-update the site's battery asset from customer-entered values (the
+     * manual, non-MaStR path - the only way to maintain a plant that is not in
+     * the registry). Same atomic upsert on {@code (site_id, type)} as {@link
+     * #applyBattery}, but it writes {@code roundtrip_efficiency_pct} too and
+     * leaves the registry provenance columns untouched: a manually-maintained
+     * battery keeps a NULL registry, a MaStR one keeps its 'mastr' provenance.
+     * The device link is maintained separately ({@link #linkBatteryDevice} /
+     * {@link #autoLinkBatteryDevice}).
+     */
+    public void saveBattery(UUID tenantId, UUID siteId, BigDecimal capacityKwh,
+            BigDecimal maxChargeKw, BigDecimal maxDischargeKw, BigDecimal roundtripEfficiencyPct) {
+        jdbc.update(
+                "INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                        + "max_discharge_kw, roundtrip_efficiency_pct) "
+                        + "VALUES (?, ?, 'battery', ?, ?, ?, ?) "
+                        + "ON CONFLICT (site_id, type) DO UPDATE SET "
+                        + "capacity_kwh = EXCLUDED.capacity_kwh, "
+                        + "max_charge_kw = EXCLUDED.max_charge_kw, "
+                        + "max_discharge_kw = EXCLUDED.max_discharge_kw, "
+                        + "roundtrip_efficiency_pct = EXCLUDED.roundtrip_efficiency_pct",
+                tenantId, siteId, capacityKwh, maxChargeKw, maxDischargeKw, roundtripEfficiencyPct);
+    }
+
+    /**
+     * Explicitly link the site's battery asset to a device the caller chose (the
+     * multi-device case, where the auto-link deliberately doesn't guess). RLS
+     * scopes both the asset and - since the device id is validated to belong to
+     * the site by the caller - the write to the caller's tenant. Returns true if
+     * a battery row was updated.
+     */
+    public boolean linkBatteryDevice(UUID siteId, UUID deviceId) {
+        return jdbc.update(
+                "UPDATE asset SET device_id = ? WHERE site_id = ? AND type = 'battery'",
+                deviceId, siteId) > 0;
+    }
+
+    /**
+     * Self-maintaining battery-asset <-> device link (the core of this feature).
+     * When the site has EXACTLY ONE device and its battery asset is still
+     * unlinked, link them - the battery is controlled by the inverter, which is
+     * that one device. A site with several devices is left alone on purpose (we
+     * never guess which inverter controls the battery; the owner picks in the
+     * portal), and an already-linked battery is never re-pointed. RLS-scoped, so
+     * it only ever touches the caller's tenant. Returns true if a link was made.
+     *
+     * <p>Called after a device claim (a claim may make a site single-device) and
+     * after a battery asset write (MaStR-apply or the manual editor), so a fresh
+     * plant converges without any manual step. The one-time catch-up for rows
+     * that predate the hooks is migration V20260707010000.
+     */
+    public boolean autoLinkBatteryDevice(UUID siteId) {
+        // (array_agg(id))[1] picks the site's one device (HAVING count = 1 makes
+        // it unambiguous); Postgres has no max(uuid) to select it directly.
+        return jdbc.update(
+                "UPDATE asset SET device_id = single.device_id "
+                        + "FROM (SELECT (array_agg(id))[1] AS device_id FROM device WHERE site_id = ? "
+                        + "  HAVING count(*) = 1) single "
+                        + "WHERE asset.site_id = ? AND asset.type = 'battery' "
+                        + "  AND asset.device_id IS NULL",
+                siteId, siteId) > 0;
+    }
+
     private static SiteAssetDto mapAsset(ResultSet rs, int rowNum) throws SQLException {
         Timestamp fetched = rs.getTimestamp("registry_fetched_at");
         java.sql.Date commissioned = rs.getDate("commissioned_on");
         return new SiteAssetDto(
                 rs.getObject("id", UUID.class),
                 rs.getString("type"),
+                rs.getObject("device_id", UUID.class),
                 rs.getBigDecimal("capacity_kwh"),
                 rs.getBigDecimal("max_charge_kw"),
                 rs.getBigDecimal("max_discharge_kw"),
+                rs.getBigDecimal("roundtrip_efficiency_pct"),
                 rs.getBigDecimal("pv_capacity_kwp"),
                 rs.getObject("module_count", Integer.class),
                 rs.getBigDecimal("azimuth_deg"),

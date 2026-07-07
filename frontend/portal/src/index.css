@@ -1820,6 +1820,23 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-fleet-site-mode {
   margin-top: calc(-1 * var(--vp-space-2));
   min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+.vp-fleet-batt-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 999px;
+  padding: 2px 8px;
+  line-height: 1.2;
 }
 .vp-fleet-site-body {
   margin: 0;

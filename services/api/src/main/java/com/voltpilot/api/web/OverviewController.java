@@ -65,6 +65,7 @@ public class OverviewController {
         Map<UUID, OverviewRepository.LiveRow> livePerSite = overview.latestLivePerSite();
         Map<UUID, BigDecimal> savingsPerSite =
                 overview.savingsPerSite(todayWindow.from(), todayWindow.to());
+        java.util.Set<UUID> unlinkedBattery = overview.sitesWithUnlinkedBattery();
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -98,6 +99,7 @@ public class OverviewController {
                     site.name(),
                     site.plantKind(),
                     site.netzladenErlaubt(),
+                    unlinkedBattery.contains(site.id()),
                     deviceCount,
                     onlineCount,
                     waitingCount,

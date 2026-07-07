@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.purge.DevicePurgeService;
+import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
 import com.voltpilot.api.repo.SeriesRepository;
@@ -48,19 +49,22 @@ public class DeviceController {
     private final DeviceRepository devices;
     private final SiteRepository sites;
     private final SeriesRepository series;
+    private final AssetRepository assets;
     private final ProvisionedDeviceRepository provisioned;
     private final DevicePurgeService purge;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final ObjectProvider<EnrollmentService> enrollment;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
-            SeriesRepository series, ProvisionedDeviceRepository provisioned,
+            SeriesRepository series, AssetRepository assets,
+            ProvisionedDeviceRepository provisioned,
             DevicePurgeService purge,
             ObjectProvider<ProvisioningPublisher> provisioning,
             ObjectProvider<EnrollmentService> enrollment) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
+        this.assets = assets;
         this.provisioned = provisioned;
         this.purge = purge;
         this.provisioning = provisioning;
@@ -114,6 +118,16 @@ public class DeviceController {
         }
         try {
             DeviceDto claimed = devices.claim(tenantId, request.siteId(), externalRef, kind);
+            // Self-maintaining control path: if this claim leaves the site with
+            // exactly one device and its battery asset is still unlinked, link
+            // them - the battery is controlled by the inverter (this device), so
+            // the optimizer can now publish the plan instead of only persisting
+            // it. A multi-device site is left alone (the owner picks). Best-effort
+            // and idempotent; a claim must never fail on the link bookkeeping.
+            if (assets.autoLinkBatteryDevice(claimed.siteId())) {
+                log.info("Auto-linked device {} (ref '{}') to the battery asset of site {}",
+                        claimed.id(), claimed.externalRef(), claimed.siteId());
+            }
             // Zero-touch onboarding: hand the waiting device its identity via the
             // retained provision/{ref}/config (best-effort; see ProvisioningPublisher).
             // The claim still succeeds if the broker is down, but a discarded

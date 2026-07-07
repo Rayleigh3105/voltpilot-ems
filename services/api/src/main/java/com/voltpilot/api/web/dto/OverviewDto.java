@@ -38,12 +38,17 @@ public record OverviewDto(
      *
      * <p>{@code netzladenErlaubt} is the per-site grid-charging switch (badge
      * "Netzladen aktiv" vs. "Nur Solarladen (EEG)" on the fleet site card).
+     *
+     * <p>{@code batteryWithoutDevice} = the site has a battery asset with NO
+     * controlling device: the optimizer plans it but can never publish the plan
+     * to the edge. The portal shows a plain-German warning linking to the fix.
      */
     public record OverviewSiteDto(
             UUID id,
             String name,
             String plantKind,
             boolean netzladenErlaubt,
+            boolean batteryWithoutDevice,
             int deviceCount,
             int onlineCount,
             int waitingCount,

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { EarningsSite, OverviewSite } from './api';
 import {
   arbitrageLine,
+  BATTERY_NO_DEVICE_SHORT,
+  BATTERY_NO_DEVICE_WARNING,
   netzladenBadge,
   berlinDay,
   composeFleetSentence,
@@ -33,6 +35,7 @@ function site(over: Partial<OverviewSite>): OverviewSite {
     name: 'Berlin',
     plantKind: 'eigenverbrauch',
     netzladenErlaubt: false,
+    batteryWithoutDevice: false,
     deviceCount: 1,
     onlineCount: 1,
     waitingCount: 0,
@@ -284,6 +287,16 @@ describe('netzladenBadge (grid-charging mode)', () => {
 
   it('admin-enabled grid charging reads "Netzladen aktiv" in cyan', () => {
     expect(netzladenBadge(true)).toEqual({ label: 'Netzladen aktiv', kind: 'netzladen' });
+  });
+});
+
+describe('battery-without-device warning copy', () => {
+  it('names the problem and the fix without internal jargon', () => {
+    expect(BATTERY_NO_DEVICE_WARNING).toContain('keinem Gerät zugeordnet');
+    expect(BATTERY_NO_DEVICE_WARNING).toContain('Fahrplan kann nicht ausgeführt werden');
+    // Customer-facing: no internal vocabulary leaks.
+    expect(BATTERY_NO_DEVICE_WARNING).not.toMatch(/optimizer|broker|MQTT|device_id/i);
+    expect(BATTERY_NO_DEVICE_SHORT).toBe('Speicher ohne Gerät');
   });
 });
 

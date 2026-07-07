@@ -15,6 +15,7 @@ import {
 import { currentUser } from '../auth';
 import { ctPerKwh, fmtNum, fmtRelative } from '../format';
 import {
+  BATTERY_NO_DEVICE_WARNING,
   composeSiteSentence,
   fleetDailySaved,
   fleetKind,
@@ -509,6 +510,20 @@ function SingleSiteUebersicht({
                 <span className="vp-fleet-dot" aria-hidden="true" />
                 <span>{sentence.text}</span>
               </p>
+              {ovSite.batteryWithoutDevice && (
+                <div className="vp-alert vp-alert-warn" style={{ marginTop: 0 }}>
+                  {BATTERY_NO_DEVICE_WARNING}{' '}
+                  <a
+                    href="#/standorte"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onNavigate('standorte');
+                    }}
+                  >
+                    Zum Standort →
+                  </a>
+                </div>
+              )}
               <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
               <div className="vp-site-status-foot">
                 <span className="vp-note">

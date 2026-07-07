@@ -18,6 +18,7 @@ export type IconName =
   | 'x'
   | 'menu'
   | 'check'
+  | 'alert-triangle'
   | 'info'
   | 'pencil'
   | 'trash'

@@ -51,6 +51,22 @@ public class OverviewRepository {
     }
 
     /**
+     * Site ids that own a battery asset with NO controlling device (device_id
+     * NULL). Such a battery gets a plan but no publish, so the edge never
+     * receives a Fahrplan - the portal warns and links to the fix. RLS-scoped,
+     * so it only ever reports the caller's own sites.
+     */
+    public java.util.Set<UUID> sitesWithUnlinkedBattery() {
+        java.util.Set<UUID> ids = new java.util.HashSet<>();
+        jdbc.query(
+                "SELECT DISTINCT site_id FROM asset WHERE type = 'battery' AND device_id IS NULL",
+                rs -> {
+                    ids.add(rs.getObject("site_id", UUID.class));
+                });
+        return ids;
+    }
+
+    /**
      * Device count / online count / never-seen count / newest arrival per site.
      * Liveness derives from {@code max(received_at)} per device - the ARRIVAL
      * time, never the observation time: a store-and-forward edge replays old
