@@ -24,7 +24,22 @@
 -- never touches buckets that have no raw samples - so this seed and the job
 -- coexist without fighting. Deterministic values; every insert is guarded
 -- (ON CONFLICT DO NOTHING) so re-running is a no-op.
+--
+-- EXISTENCE-GUARDED like V20260706020000 (same outage class): the whole seed
+-- no-ops when the demo tenant row is absent. The price block is deliberately
+-- inside the guard too - the fake dev prices exist ONLY to make the demo fleet
+-- earn, and on a real deployment without the demo tenant they would silently
+-- pollute 32 back-days of `day_ahead_prices` that real tenants' earnings math
+-- reads. Checksum note: see the V20260706020000 header.
 -- =============================================================================
+
+DO $earnings_seed$
+BEGIN
+IF NOT EXISTS (SELECT 1 FROM tenant
+               WHERE id = '00000000-0000-0000-0000-000000000001') THEN
+    RAISE NOTICE 'dev earnings seed skipped: demo tenant absent';
+    RETURN;
+END IF;
 
 -- ---- 1. Day-ahead prices: PT15M, evening peak / midday trough ----------------
 INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source)
@@ -119,3 +134,5 @@ WHERE bucket >= date_trunc('hour', now() - interval '31 days')
                   '00000000-0000-0000-0000-000000000022')
 GROUP BY 1, 2, 3
 ON CONFLICT (site_id, bucket) DO NOTHING;
+
+END $earnings_seed$;

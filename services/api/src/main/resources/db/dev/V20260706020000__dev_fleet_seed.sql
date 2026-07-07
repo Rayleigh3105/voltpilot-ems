@@ -18,7 +18,24 @@
 -- Date-versioned (NOT an edit of V100 - editing an applied migration breaks
 -- Flyway checksums) and > V20260706010000 so `site.plant_kind` exists.
 -- Deterministic UUIDs; every insert is guarded so re-running is a no-op.
+--
+-- EXISTENCE-GUARDED (hotfix for a real outage): the whole seed no-ops when the
+-- demo tenant row is absent. A deployment running the `local` profile where
+-- the demo tenant was offboarded (or never seeded) otherwise dies at startup:
+-- the site insert violates site_tenant_id_fkey (SQLSTATE 23503) and Flyway
+-- aborts. Note this edit changed the migration's checksum: safe on any DB
+-- where the migration previously FAILED (Flyway rolled it back and, verified
+-- on Postgres, recorded no history row); an already-seeded dev volume needs
+-- `flyway repair` or a fresh volume (`down -v`).
 -- =============================================================================
+
+DO $fleet_seed$
+BEGIN
+IF NOT EXISTS (SELECT 1 FROM tenant
+               WHERE id = '00000000-0000-0000-0000-000000000001') THEN
+    RAISE NOTICE 'dev fleet seed skipped: demo tenant absent';
+    RETURN;
+END IF;
 
 -- ---- Solarpark Dachau (Direktvermarktung, ~80 kW class) ----------------------
 INSERT INTO site (id, tenant_id, name, bidding_zone, latitude, longitude, plant_kind) VALUES
@@ -134,3 +151,5 @@ CROSS JOIN LATERAL (
              - make_interval(days => d.off)) AT TIME ZONE 'Europe/Berlin') AS day_start
 ) AS ds
 WHERE NOT EXISTS (SELECT 1 FROM schedule sch WHERE sch.site_id = s.site_id);
+
+END $fleet_seed$;
