@@ -19,6 +19,7 @@ import {
 import { eurAmount, fmtNum, fmtRelative } from '../format';
 import { batteryState, deriveBatteryKw, gridState } from '../live';
 import { sanitizeSoc } from '../plausible';
+import { NetzladenBadge } from './NetzladenBadge';
 
 /**
  * Presentational pieces of the adaptive Übersicht: the realized-money hero on
@@ -332,6 +333,10 @@ export function FleetSiteCard({
         <span className="vp-fleet-site-count">
           {site.deviceCount === 1 ? '1 Gerät' : `${site.deviceCount} Geräte`}
         </span>
+      </div>
+
+      <div className="vp-fleet-site-mode">
+        <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
       </div>
 
       {site.deviceCount === 0 ? (

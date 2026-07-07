@@ -24,6 +24,13 @@ import java.math.BigDecimal;
  * market revenue ("mehr verdient"). {@code marktpraemieCtKwh} is the optional
  * Marktprämie (ct/kWh) from the customer's Direktvermarktungsvertrag - null =
  * not configured; only meaningful for {@code direktvermarktung} sites.
+ *
+ * <p>{@code netzladenErlaubt} (the per-site grid-charging switch, ADMIN-ONLY):
+ * customers may not send it at all - the customer endpoint rejects a non-null
+ * value with 403 (server-side enforcement, never just UI hiding), and an
+ * omitted field leaves the DB default FALSE ("Nur Solarladen (EEG)"). The
+ * platform-admin paths (and admins on the customer paths via the tenant
+ * switcher) may set it.
  */
 public record CreateSiteRequest(
         @NotBlank String name,
@@ -41,7 +48,8 @@ public record CreateSiteRequest(
         @DecimalMin(value = "0", message = "marktpraemieCtKwh must not be negative")
         @Digits(integer = 5, fraction = 3,
                 message = "marktpraemieCtKwh must have at most 3 decimal places")
-                BigDecimal marktpraemieCtKwh) {
+                BigDecimal marktpraemieCtKwh,
+        Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;

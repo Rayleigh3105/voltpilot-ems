@@ -21,6 +21,7 @@ import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { LocationMap } from '../components/LocationMap';
 import { DangerZone } from '../components/DangerZone';
 import { DeviceStatusBadge } from '../components/DeviceDrawers';
+import { NetzladenBadge } from '../components/NetzladenBadge';
 import { MastrDrawer } from '../components/MastrDrawer';
 import { ErrorState, TextSkeleton } from '../components/States';
 
@@ -216,6 +217,7 @@ export function StandortePage({
         onClose={() => setAddOpen(false)}
         onCreate={(input) => api.createSite(input)}
         onCreated={(s) => onReload(s.id)}
+        admin={isAdmin}
       />
 
       {detail && (
@@ -237,6 +239,7 @@ export function StandortePage({
           <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
             <Badge variant="tint">{zoneLabel(detail.biddingZone)}</Badge>
             <Badge variant="tint">{plantKindLabel(detail.plantKind)}</Badge>
+            <NetzladenBadge erlaubt={detail.netzladenErlaubt} />
             {detail.plantKind === 'direktvermarktung' && detail.marktpraemieCtKwh != null && (
               <Badge variant="tint">Marktprämie {fmtNum(detail.marktpraemieCtKwh, 'ct/kWh', 2)}</Badge>
             )}
@@ -266,6 +269,7 @@ export function StandortePage({
           {editing && (
             <SiteEditForm
               site={detail}
+              isAdmin={isAdmin}
               onCancel={() => setEditing(false)}
               onSaved={(updated) => {
                 setDetail(updated);
@@ -436,19 +440,26 @@ export function StandortePage({
 /**
  * Inline edit form of the site detail drawer: name, bidding zone and
  * coordinates - the same fields and client-side checks as CreateSiteDrawer.
+ * The grid-charging switch ("Netzladen des Speichers") renders ONLY for
+ * Portal-Admins and is the only place it can be changed; customers get a
+ * read-only line - the backend rejects a customer request carrying the field
+ * anyway (server-side enforcement), the UI split just mirrors that rule.
  */
 function SiteEditForm({
   site,
+  isAdmin = false,
   onCancel,
   onSaved,
 }: {
   site: Site;
+  isAdmin?: boolean;
   onCancel: () => void;
   onSaved: (updated: Site) => void;
 }) {
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
+  const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
   const [praemie, setPraemie] = useState(premiumInputText(site.marktpraemieCtKwh ?? null));
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
@@ -472,6 +483,9 @@ function SiteEditForm({
         longitude: lon,
         plantKind,
         marktpraemieCtKwh: praemieValue,
+        // ADMIN-ONLY: a customer request carrying the field is rejected with
+        // 403 server-side, so the customer form must omit it entirely.
+        ...(isAdmin ? { netzladenErlaubt: netzladen } : {}),
       });
       onSaved(updated);
     } catch (e) {
@@ -535,6 +549,36 @@ function SiteEditForm({
               Steht in Ihrem Direktvermarktungsvertrag. Optional - wenn angegeben,
               rechnen wir sie in Ihren Mehrerlös ein; bei negativen Börsenpreisen
               entfällt sie.
+            </p>
+          </div>
+        )}
+        {isAdmin ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <label htmlFor="edit-site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+              Netzladen des Speichers
+            </label>
+            <select
+              id="edit-site-netzladen"
+              className="vp-select"
+              value={netzladen ? 'erlaubt' : 'verboten'}
+              onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
+            >
+              <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
+              <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
+            </select>
+            <p className="vp-note" style={{ margin: 0 }}>
+              EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
+              (Ausschließlichkeitsprinzip). Nur freischalten, wenn die Anlage keine
+              EEG-Vergütung bezieht.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Netzladen des Speichers</span>
+            <div><NetzladenBadge erlaubt={site.netzladenErlaubt} /></div>
+            <p className="vp-note" style={{ margin: 0 }}>
+              Rechtliche Eigenschaft der Anlage - Änderung nur durch den Betreiber
+              (Portal-Admin).
             </p>
           </div>
         )}

@@ -1,14 +1,18 @@
 import type { SchedulePlan } from './api';
 import { chartTheme } from './chartTheme';
+import { chargeKind, hasGridCharge } from './schedule';
 import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
 
 /**
  * The optimizer plan for the day, made obvious at a glance: planned battery
- * power as signed bars (grün = laden, rot = entladen; left axis, kW) directly
- * over the day-ahead price (stepped line, right axis, ct/kWh) so WHY the plan
- * charges/discharges is visible, plus the planned Ladestand (SoC) as a dashed
- * line. A "Jetzt"-marker and a shaded past region separate what already
+ * power as signed bars (grün = Laden aus Solarstrom, türkis = Laden aus dem
+ * Netz, rot = Entladen; left axis, kW) directly over the day-ahead price
+ * (stepped line, right axis, ct/kWh) so WHY the plan charges/discharges is
+ * visible, plus the planned Ladestand (SoC) as a dashed line. Grid-charge
+ * slots are DERIVED per slot (charging while net-importing, see schedule.ts);
+ * on an EEG site ("Nur Solarladen") the türkis color can never appear - the
+ * chart itself is the proof that only solar is stored. A "Jetzt"-marker and a shaded past region separate what already
  * happened from what is still planned; a dashed line splits today from morgen.
  * The colour swatches + one-line takeaway below the canvas explain the diagram
  * in plain German (captain: the diagrams should be understandable instantly).
@@ -105,7 +109,18 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
               const v = Number(p.value);
               if (p.seriesName === 'Batterie') {
                 batV = v;
-                const label = v > 0.05 ? 'lädt' : v < -0.05 ? 'entlädt' : 'hält';
+                const kind = chargeKind(
+                  slots[p.dataIndex]?.batteryKw ?? null,
+                  slots[p.dataIndex]?.gridKw ?? null,
+                );
+                const label =
+                  kind === 'netzladen'
+                    ? 'lädt aus dem Netz'
+                    : kind === 'solarladen'
+                      ? 'lädt Solarstrom'
+                      : kind === 'entladen'
+                        ? 'entlädt'
+                        : 'hält';
                 const amt =
                   Math.abs(v) < 0.05
                     ? ''
@@ -118,8 +133,18 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
               }
             }
             if (batV != null && Math.abs(batV) > 0.05) {
+              const kind = chargeKind(
+                slots[params[0]?.dataIndex]?.batteryKw ?? null,
+                slots[params[0]?.dataIndex]?.gridKw ?? null,
+              );
               lines.push(
-                `<span style="color:${t.axis}">${batV > 0 ? 'Speichert günstigen Strom' : 'Deckt den Verbrauch aus dem Speicher'}</span>`,
+                `<span style="color:${t.axis}">${
+                  batV > 0
+                    ? kind === 'netzladen'
+                      ? 'Speichert günstigen Strom aus dem Netz'
+                      : 'Speichert eigenen Solarstrom'
+                    : 'Deckt den Verbrauch aus dem Speicher'
+                }</span>`,
               );
             }
             return lines.join('<br/>');
@@ -169,7 +194,13 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
             z: 3,
             itemStyle: {
               borderRadius: 2,
-              color: (p: any) => (Number(p.value) >= 0 ? t.charge : t.discharge),
+              color: (p: any) => {
+                const slot = slots[p.dataIndex];
+                if (slot && chargeKind(slot.batteryKw, slot.gridKw) === 'netzladen') {
+                  return t.gridCharge;
+                }
+                return Number(p.value) >= 0 ? t.charge : t.discharge;
+              },
             },
             // Shade the already-elapsed part of the day, and mark today|morgen + jetzt.
             markArea:
@@ -220,8 +251,15 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
     .filter((s) => new Date(s.start).toDateString() === today)
     .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
 
+  // The türkis entry appears only when the plan actually charges from the
+  // grid: on an EEG site ("Nur Solarladen") the color never occurs, and the
+  // legend must not advertise it - no türkis = provably no Netzstrom stored.
+  const gridCharging = hasGridCharge(plan.slots);
   const legend: LegendItem[] = [
-    { color: t.charge, label: 'Laden (günstiger Strom)', unit: 'kW', shape: 'bar' },
+    { color: t.charge, label: 'Laden aus Solarstrom', unit: 'kW', shape: 'bar' },
+    ...(gridCharging
+      ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar' } as LegendItem]
+      : []),
     { color: t.discharge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar' },
     { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line' },
     { color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed' },
@@ -233,7 +271,8 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
       <div ref={ref} className="vp-chart tall" />
       {chargeCt != null && dischargeCt != null && (
         <ChartInsight>
-          Der Speicher <strong>lädt günstig</strong> (Ø {ct(chargeCt)}) und{' '}
+          Der Speicher <strong>lädt günstig</strong>
+          {gridCharging ? ' - auch aus dem Netz (türkis)' : ''} (Ø {ct(chargeCt)}) und{' '}
           <strong>entlädt teuer</strong> (Ø {ct(dischargeCt)}), um den Abendverbrauch zu decken -{' '}
           {savingsToday > 0.005 ? (
             <>

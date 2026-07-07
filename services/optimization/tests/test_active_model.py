@@ -107,6 +107,7 @@ def _site() -> BatterySite:
             max_discharge_kw=5.0,
             roundtrip_efficiency=0.92,
         ),
+        netzladen_erlaubt=True,
     )
 
 

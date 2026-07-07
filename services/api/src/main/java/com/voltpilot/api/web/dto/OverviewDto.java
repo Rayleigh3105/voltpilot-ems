@@ -35,11 +35,15 @@ public record OverviewDto(
      * is the ex-ante optimizer number for today's Europe/Berlin day (latest run
      * per 15-min slot, the HistoryRepository.savings semantics); {@code null}
      * when no plan covers today - never a misleading zero.
+     *
+     * <p>{@code netzladenErlaubt} is the per-site grid-charging switch (badge
+     * "Netzladen aktiv" vs. "Nur Solarladen (EEG)" on the fleet site card).
      */
     public record OverviewSiteDto(
             UUID id,
             String name,
             String plantKind,
+            boolean netzladenErlaubt,
             int deviceCount,
             int onlineCount,
             int waitingCount,

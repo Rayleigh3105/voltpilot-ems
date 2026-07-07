@@ -75,6 +75,7 @@
   --vp-chart-price:     #2F6BD6;  /* price + net reference line (= action) */
   --vp-chart-soc:       #9C27B0;  /* battery SoC (= battery) */
   --vp-chart-charge:    #2E9E5B;  /* charge / feed-in green */
+  --vp-chart-gridcharge:#00ACC1;  /* battery charge FROM THE GRID (Netzladen) cyan */
   --vp-chart-discharge: #E53935;  /* discharge / grid draw red */
   --vp-chart-plan:      #1E3A5F;  /* plan overlay (= navy) */
   --vp-chart-cloud:     #90A4AE;  /* cloud cover grey */

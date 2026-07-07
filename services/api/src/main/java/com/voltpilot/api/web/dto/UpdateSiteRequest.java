@@ -14,6 +14,12 @@ import java.math.BigDecimal;
  * customer can only ever update their own sites (admins reach any tenant's
  * sites via the tenant switcher, i.e. the same RLS-scoped path with an
  * overridden context).
+ *
+ * <p>{@code netzladenErlaubt} (the per-site grid-charging switch, ADMIN-ONLY):
+ * a non-null value from a non-admin caller is rejected with 403 (server-side
+ * enforcement); null leaves the stored value untouched, so customer edits can
+ * never flip the flag. Admins send it from the site form (also through the
+ * tenant switcher).
  */
 public record UpdateSiteRequest(
         @NotBlank String name,
@@ -31,7 +37,8 @@ public record UpdateSiteRequest(
         @DecimalMin(value = "0", message = "marktpraemieCtKwh must not be negative")
         @Digits(integer = 5, fraction = 3,
                 message = "marktpraemieCtKwh must have at most 3 decimal places")
-                BigDecimal marktpraemieCtKwh) {
+                BigDecimal marktpraemieCtKwh,
+        Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;

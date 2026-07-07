@@ -516,6 +516,96 @@ class AdminApiTest {
         assertThat(remaining.getBody()).extracting(s -> s.get("name")).doesNotContain("Werk Neu");
     }
 
+    /**
+     * The per-site grid-charging switch (netzladen_erlaubt) is ADMIN-ONLY and
+     * enforced SERVER-SIDE (captain decision 2026-07-07): a customer request
+     * carrying the field is rejected with 403 on create AND update - the flag
+     * can never be flipped from a customer session, no matter what the UI
+     * hides. Admins set it on the admin create path and flip it through the
+     * customer PUT via the tenant switcher; a customer edit WITHOUT the field
+     * keeps the admin-set value, and the overview echoes the flag per site.
+     */
+    @Test
+    void netzladenSwitchIsAdminOnlyEnforcedServerSide() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Netzlader GmbH", "CI").get("id");
+        createUser(admin, tenantId, "netzlader-operator", "op@netzlader.example", "netz-pw-123");
+        String customer = token("netzlader-operator", "netz-pw-123");
+
+        // Admin path accepts the flag; an omitted flag defaults to FALSE (EEG).
+        ResponseEntity<Map<String, Object>> merchant = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Speicherpark", "netzladenErlaubt", true),
+                        bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(merchant.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(merchant.getBody()).containsEntry("netzladenErlaubt", true);
+        String merchantId = (String) merchant.getBody().get("id");
+
+        ResponseEntity<Map<String, Object>> eeg = rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Hof Sonnenfeld"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(eeg.getBody()).containsEntry("netzladenErlaubt", false);
+        String eegId = (String) eeg.getBody().get("id");
+
+        // Customer sees the flag read-only (site list + overview)...
+        ResponseEntity<List<Map<String, Object>>> visible = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(visible.getBody()).extracting(x -> x.get("netzladenErlaubt"))
+                .containsExactlyInAnyOrder(true, false);
+        ResponseEntity<Map<String, Object>> overview = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        assertThat((List<Map<String, Object>>) overview.getBody().get("sites"))
+                .extracting(x -> x.get("netzladenErlaubt"))
+                .containsExactlyInAnyOrder(true, false);
+
+        // ...but may not SEND it: create and update carrying the field -> 403,
+        // and the stored value stays untouched.
+        assertThat(rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Schummelwerk", "netzladenErlaubt", true),
+                        bearer(customer)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(url("/api/v1/sites/" + eegId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Hof Sonnenfeld", "netzladenErlaubt", true),
+                        bearer(customer)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        // Even sending the CURRENT value is refused - only admins carry the field.
+        assertThat(rest.exchange(url("/api/v1/sites/" + eegId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Hof Sonnenfeld", "netzladenErlaubt", false),
+                        bearer(customer)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        // A normal customer edit (no flag in the body) keeps the admin-set value.
+        ResponseEntity<Map<String, Object>> renamed = rest.exchange(
+                url("/api/v1/sites/" + merchantId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Speicherpark Nord"), bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(renamed.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(renamed.getBody()).containsEntry("netzladenErlaubt", true);
+
+        // The EEG site is provably untouched by the refused attempts.
+        ResponseEntity<List<Map<String, Object>>> after = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(after.getBody().stream()
+                .filter(x -> eegId.equals(x.get("id"))).findFirst().orElseThrow())
+                .containsEntry("netzladenErlaubt", false);
+
+        // The admin flips it through the CUSTOMER endpoint via the tenant
+        // switcher (the standard any-tenant edit path) - role check is on the
+        // token, so the same route that refused the customer accepts the admin.
+        ResponseEntity<Map<String, Object>> flipped = rest.exchange(
+                url("/api/v1/sites/" + eegId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Hof Sonnenfeld", "netzladenErlaubt", true),
+                        withTenant(bearer(admin), tenantId)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(flipped.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(flipped.getBody()).containsEntry("netzladenErlaubt", true);
+    }
+
     @Test
     void tenantOffboardingIsTypeToConfirmAndCascadesDataAndKeycloakUsers() {
         String admin = token("admin", "admin");

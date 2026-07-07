@@ -24,6 +24,7 @@ import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
 import { hoursAhead, nextHourIndex } from '../weather';
 import { ScheduleChart } from '../ScheduleChart';
+import { hasGridCharge } from '../schedule';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
 function useSiteData<T>(
@@ -500,7 +501,8 @@ export function FahrplanPage(props: {
         </div>
         {!loading && !err && slots.length > 0 && (
           <ChartSubtitle>
-            So plant Ihr Speicher den Tag: die Balken zeigen, wann er lädt (grün) oder
+            So plant Ihr Speicher den Tag: die Balken zeigen, wann er lädt (grün = eigener
+            Solarstrom{hasGridCharge(slots) ? ', türkis = günstig aus dem Netz' : ''}) oder
             entlädt (rot), die blaue Linie den Börsen-Strompreis dahinter. Kein Balken heißt:
             der Speicher hält. Alles links vom „Jetzt“ ist bereits vergangen.
           </ChartSubtitle>

@@ -18,6 +18,9 @@ Formulation (per slot t, dt = 0.25 h):
                soc_min <= soc_t <= soc_max
                |grid_t| <= grid_limit                              (observed §14a, hard cap)
                soc_T >= soc_0                                      (terminal condition)
+    and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
+               charge_t <= max(pv_t - load_t, 0)                   (charge from PV surplus only)
+               grid_t   <= M_t * (1 - is_charging_t)               (never import while charging)
 
 Design decisions, deliberately:
 
@@ -59,6 +62,31 @@ Design decisions, deliberately:
   wear tie-break is the same epsilon scale (~0.008 EUR/MWh equivalent), so
   real arbitrage is never distorted - it only breaks exact ties toward the
   battery-friendly plan.
+
+- **The per-site grid-charging switch (``netzladen_erlaubt``, captain decision
+  2026-07-07)** is exactly ONE conditional pair of constraints - merchant mode
+  (``True``) builds the identical model as before, so the two modes share every
+  other rule (prices, forecasts, §14a, efficiency, curtailment, tie-breaks)
+  and merchant plans are regression-identical to the pre-switch optimizer.
+  EEG mode (``False``, the DB default) enforces the Ausschliesslichkeitsprinzip:
+  the battery charges ONLY from the site's own PV surplus, never from the grid.
+  Two constraints, deliberately:
+
+  1. ``charge_t <= max(pv_t - load_t, 0)`` - the headline rule on the forecast
+     PV surplus (parameter-only, keeps the LP relaxation tight).
+  2. ``grid_t <= M_t * (1 - is_charging_t)`` - no net import while charging.
+     This closes the CURTAILMENT loophole the first rule alone leaves open: at
+     negative prices the model could otherwise curtail the PV fully AND charge
+     "from PV" per rule 1 - the balance then imports the charge power from the
+     grid (paid import replacing the discarded PV), which is precisely the
+     Graustrom the EEG mode must exclude. With rule 2, a charging slot can
+     never be a net-importing slot, so charge <= pv - curtail - load holds and
+     the stored energy is provably solar. ``M_t = max(load_t, 0) + max_charge``
+     bounds the import of a non-charging slot (load fully imported at full
+     curtailment), so the big-M never binds when the battery is not charging.
+     Curtailment itself stays unrestricted - it limits FEED-IN, not charge
+     availability, and full curtailment while importing the LOAD is still a
+     legitimate (and EEG-clean) negative-price play.
 
 The solver toolchain is Pyomo + HiGHS via ``highspy`` (the repo-wide choice,
 see AGENTS.md); ``highspy`` stays a lazy import behind the optional ``solver``
@@ -156,6 +184,26 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         rule=lambda model, t: model.discharge[t]
         <= p.max_discharge_kw * (1 - model.is_charging[t]),
     )
+    if not inp.netzladen_erlaubt:
+        # EEG mode (site.netzladen_erlaubt = false): the battery charges ONLY
+        # from the site's own PV surplus (Ausschliesslichkeitsprinzip). Present
+        # in BOTH builds - the infeasible-§14a fallback must stay EEG-clean.
+        # (1) The headline rule on the forecast surplus.
+        m.solar_only_charge = Constraint(
+            m.T,
+            rule=lambda model, t: model.charge[t]
+            <= max(inp.pv_kw[t] - inp.load_kw[t], 0.0),
+        )
+        # (2) Never a net-importing slot while charging - closes the
+        # curtailment loophole (see the module docstring): without it the model
+        # could curtail PV fully and cover the "solar" charge with paid grid
+        # import at negative prices. M_t bounds any non-charging slot's import.
+        m.no_import_while_charging = Constraint(
+            m.T,
+            rule=lambda model, t: _grid(model, t)
+            <= (max(inp.load_kw[t], 0.0) + p.max_charge_kw)
+            * (1 - model.is_charging[t]),
+        )
     if enforce_grid_limit and inp.grid_limit_kw is not None:
         m.grid_import_cap = Constraint(
             m.T, rule=lambda model, t: _grid(model, t) <= inp.grid_limit_kw

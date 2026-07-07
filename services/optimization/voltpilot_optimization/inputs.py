@@ -84,13 +84,19 @@ class SkipSite(Exception):
 
 @dataclass(frozen=True)
 class BatterySite:
-    """A site that owns a battery asset (one optimizer subject)."""
+    """A site that owns a battery asset (one optimizer subject).
+
+    ``netzladen_erlaubt`` is the per-site grid-charging switch
+    (``site.netzladen_erlaubt``, DB default FALSE): False = EEG mode, the
+    battery charges only from PV surplus; True = merchant mode (arbitrage).
+    """
 
     tenant_id: UUID
     site_id: UUID
     device_id: UUID | None
     bidding_zone: str
     battery: BatteryParams
+    netzladen_erlaubt: bool
 
 
 def load_battery_sites(dsn: str) -> list[BatterySite]:
@@ -103,7 +109,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             """
             SELECT a.tenant_id, a.site_id, a.device_id, s.bidding_zone,
                    a.capacity_kwh, a.max_charge_kw, a.max_discharge_kw,
-                   a.roundtrip_efficiency_pct
+                   a.roundtrip_efficiency_pct, s.netzladen_erlaubt
             FROM asset a
             JOIN site s ON s.id = a.site_id
             WHERE a.type = 'battery'
@@ -111,7 +117,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             """
         )
         for row in cur.fetchall():
-            (tenant_id, site_id, device_id, zone, cap, chg, dis, eff) = row
+            (tenant_id, site_id, device_id, zone, cap, chg, dis, eff, netzladen) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
                     "site.skipped_missing_params",
@@ -132,6 +138,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                             float(eff) / 100.0 if eff is not None else 0.92
                         ),
                     ),
+                    netzladen_erlaubt=bool(netzladen),
                 )
             )
     return sites
@@ -184,6 +191,7 @@ def gather_inputs(
         load_kw=load_kw,
         pv_kw=pv_kw,
         initial_soc_kwh=float(soc_pct) / 100.0 * site.battery.capacity_kwh,
+        netzladen_erlaubt=site.netzladen_erlaubt,
         grid_limit_kw=float(grid_limit) if grid_limit is not None else None,
     )
 

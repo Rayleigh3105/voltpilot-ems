@@ -184,7 +184,8 @@ public class AdminController {
         requireTenant(tenantId);
         SiteDto created = sites.create(tenantId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
-                request.plantKindOrDefault(), request.marktpraemieCtKwh());
+                request.plantKindOrDefault(), request.marktpraemieCtKwh(),
+                request.netzladenErlaubt());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

@@ -40,6 +40,9 @@ def make_site(device=True) -> BatterySite:
         device_id=uuid4() if device else None,
         bidding_zone="DE-LU",
         battery=BATTERY,
+        # Merchant mode: engine orchestration is mode-agnostic; the untouched
+        # assertions double as the merchant-regression proof (see test_solver).
+        netzladen_erlaubt=True,
     )
 
 
@@ -57,6 +60,7 @@ def synthetic_inputs(site: BatterySite, now: datetime) -> OptimizationInput:
         load_kw=[4.0] * n,
         pv_kw=[0.0] * n,
         initial_soc_kwh=5.0,
+        netzladen_erlaubt=True,
         grid_limit_kw=35.0,
     )
 
@@ -160,6 +164,7 @@ def test_infeasible_grid_limit_degrades_to_unconstrained_plan(monkeypatch):
             load_kw=[50.0] * inp.slots,
             pv_kw=inp.pv_kw,
             initial_soc_kwh=inp.initial_soc_kwh,
+            netzladen_erlaubt=inp.netzladen_erlaubt,
             grid_limit_kw=1.0,
         )
 

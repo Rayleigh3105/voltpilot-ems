@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EarningsSite, OverviewSite } from './api';
 import {
+  netzladenBadge,
   berlinDay,
   composeFleetSentence,
   fleetDailySaved,
@@ -30,6 +31,7 @@ function site(over: Partial<OverviewSite>): OverviewSite {
     id: 's1',
     name: 'Berlin',
     plantKind: 'eigenverbrauch',
+    netzladenErlaubt: false,
     deviceCount: 1,
     onlineCount: 1,
     waitingCount: 0,
@@ -235,6 +237,16 @@ describe('siteEarnText (per-site wording, measured)', () => {
 
   it('never renders a negative zero', () => {
     expect(siteEarnText('eigenverbrauch', -0.0001)).toBe('Heute +0,00\u00a0\u20ac gespart');
+  });
+});
+
+describe('netzladenBadge (grid-charging mode)', () => {
+  it('EEG default reads "Nur Solarladen (EEG)" in green', () => {
+    expect(netzladenBadge(false)).toEqual({ label: 'Nur Solarladen (EEG)', kind: 'eeg' });
+  });
+
+  it('admin-enabled grid charging reads "Netzladen aktiv" in cyan', () => {
+    expect(netzladenBadge(true)).toEqual({ label: 'Netzladen aktiv', kind: 'netzladen' });
   });
 });
 

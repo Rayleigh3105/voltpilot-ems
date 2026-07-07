@@ -97,6 +97,7 @@ public class OverviewController {
                     site.id(),
                     site.name(),
                     site.plantKind(),
+                    site.netzladenErlaubt(),
                     deviceCount,
                     onlineCount,
                     waitingCount,

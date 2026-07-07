@@ -274,6 +274,26 @@ export function notComputableHint(reason: EarningsReason): string {
   }
 }
 
+// ---- Grid-charging mode badge (netzladen_erlaubt) -----------------------------
+
+/**
+ * The plain-German mode badge of the per-site grid-charging switch: an EEG
+ * site (netzladenErlaubt = false, the default) charges its battery only from
+ * its own solar surplus - "Nur Solarladen (EEG)", green; a merchant site may
+ * also charge from the grid - "Netzladen aktiv", cyan. The kind maps onto the
+ * NetzladenBadge component's colorway.
+ */
+export interface NetzladenBadge {
+  label: string;
+  kind: 'eeg' | 'netzladen';
+}
+
+export function netzladenBadge(netzladenErlaubt: boolean): NetzladenBadge {
+  return netzladenErlaubt
+    ? { label: 'Netzladen aktiv', kind: 'netzladen' }
+    : { label: 'Nur Solarladen (EEG)', kind: 'eeg' };
+}
+
 // ---- Fleet status sentence ---------------------------------------------------
 
 export interface FleetSentence {

@@ -1807,6 +1807,11 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-size: 0.8rem;
   color: var(--vp-text-muted, #6c757d);
 }
+/* Grid-charging mode badge row (Nur Solarladen (EEG) / Netzladen aktiv). */
+.vp-fleet-site-mode {
+  margin-top: calc(-1 * var(--vp-space-2));
+  min-width: 0;
+}
 .vp-fleet-site-body {
   margin: 0;
   font-size: 0.92rem;

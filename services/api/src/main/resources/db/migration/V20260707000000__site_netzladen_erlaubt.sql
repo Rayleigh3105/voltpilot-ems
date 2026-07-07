@@ -1,0 +1,21 @@
+-- =============================================================================
+-- V20260707000000 - site.netzladen_erlaubt (per-site grid-charging switch).
+-- -----------------------------------------------------------------------------
+-- Captain decisions 2026-07-07: EEG-funded plants must never charge their
+-- battery from the grid (Ausschliesslichkeitsprinzip), so the optimizer's grid
+-- arbitrage becomes an OPT-IN per site. Default FALSE ("Nur Solarladen (EEG)")
+-- keeps every existing plant compliant until a Portal-Admin explicitly enables
+-- merchant mode ("Netzladen aktiv") - flipping the flag is a legal property of
+-- the plant and therefore ADMIN-ONLY, enforced server-side in SiteController
+-- (the customer create/update paths reject the field), never just UI hiding.
+--
+-- The optimizer (services/optimization inputs.py) reads the flag per site and
+-- adds the EEG constraint pair when it is false; the portal shows the mode as
+-- a badge and colors grid-charge slots in the Fahrplan chart.
+--
+-- Pure additive ALTER (the plant_kind precedent V20260706010000): layers over
+-- any existing volume, no infra bootstrap mirror needed. The existing site RLS
+-- policy + grants (V2) cover the new column.
+-- =============================================================================
+
+ALTER TABLE site ADD COLUMN IF NOT EXISTS netzladen_erlaubt BOOLEAN NOT NULL DEFAULT FALSE;

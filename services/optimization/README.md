@@ -22,13 +22,14 @@ flowchart LR
         BAT["Battery params (asset row)<br/>capacity_kwh, max_charge_kw, max_discharge_kw,<br/>roundtrip_efficiency_pct (default 92 %),<br/>usable SoC band 5-95 % (platform default)"]
         SOC["Start SoC<br/>latest telemetry soc_pct (default 50 %),<br/>clamped into the usable band"]
         LIMIT["Observed §14a envelope<br/>latest telemetry grid_limit_kw<br/>absent → unconstrained"]
+        NETZ["Grid-charging switch<br/>site.netzladen_erlaubt (DB default: verboten)<br/>false → EEG mode: charge from PV surplus only"]
         FB -. "only when the active model<br/>has no covering run" .-> LOAD
         FB -.-> PV
     end
 
     subgraph MILP["MILP core (solver.py, Pyomo + HiGHS)"]
         OBJ["Objective: minimize spot cost<br/>Σ price_t × grid_t × dt<br/>grid_t = load − pv + curtail + charge − discharge<br/>import and export priced symmetrically (Direktvermarktung MVP)"]
-        CON["Constraints<br/>• SoC dynamics with sqrt-split round-trip efficiency<br/>• SoC bounds 5-95 %<br/>• charge/discharge power caps<br/>• binaries: never charge AND discharge in one slot<br/>• curtailment 0 ≤ curtail_t ≤ pv_t (only ever a reduction)<br/>• |grid_t| ≤ grid_limit_kw (hard, import AND export)<br/>• terminal SoC_end ≥ SoC_start (no savings by dumping)<br/>• two ε tie-breaks: prefer NOT curtailing,<br/>prefer an IDLE battery when cycling moves no money"]
+        CON["Constraints<br/>• SoC dynamics with sqrt-split round-trip efficiency<br/>• SoC bounds 5-95 %<br/>• charge/discharge power caps<br/>• binaries: never charge AND discharge in one slot<br/>• curtailment 0 ≤ curtail_t ≤ pv_t (only ever a reduction)<br/>• |grid_t| ≤ grid_limit_kw (hard, import AND export)<br/>• terminal SoC_end ≥ SoC_start (no savings by dumping)<br/>• two ε tie-breaks: prefer NOT curtailing,<br/>prefer an IDLE battery when cycling moves no money<br/>• EEG mode only: charge_t ≤ max(pv_t − load_t, 0)<br/>and never net-import while charging"]
         OBJ --- CON
     end
 
@@ -45,6 +46,7 @@ flowchart LR
     BAT --> CON
     SOC --> CON
     LIMIT --> CON
+    NETZ --> CON
     MILP --> DB
     MILP --> MQTT
     DB --> PORTAL
@@ -72,26 +74,30 @@ An infeasible §14a cap (the envelope is tighter than the site's residual load e
 | Expensive hours | Discharge into load or export (up to `max_discharge_kw`, down to 5 % SoC) | Every discharged kWh replaces an import or earns export revenue at the same spot price. |
 | Price spread below the round-trip losses | Battery stays idle | The efficiency terms eat the margin; the wear tie-break settles the exact tie toward idle. |
 | Negative prices, surplus PV, battery full (or not worth storing) | Curtail PV feed-in; the published slot carries `pv_limit_kw` as an inverter cap | Feeding in costs money at a negative price. There is NO hard-coded price condition - under symmetric pricing the economics curtail exactly in the negative slots and never at positive prices. |
-| Negative prices, battery has headroom | May charge - even from the grid, even paying round-trip losses | You are PAID to consume; paid import that covers the round-trip loss is genuinely profitable under symmetric spot pricing. Not a bug (the solver tests pin this). |
+| Negative prices, battery has headroom | May charge - with `netzladen_erlaubt` even from the grid, even paying round-trip losses | You are PAID to consume; paid import that covers the round-trip loss is genuinely profitable under symmetric spot pricing. Not a bug (the solver tests pin this). EEG sites still charge only their own PV surplus. |
 | §14a `grid_limit_kw` observed in telemetry | Every slot's net import AND export clamped to the envelope | Hard constraint in the model; the edge guards re-clamp on execution anyway. |
 | §14a cap infeasible | Replan without the grid constraint, plan still ships | Advisory plan beats none; the physical limit is enforced by the grid operator + edge guards regardless. |
 | Flat price curve | Battery idle, zero savings | Terminal condition `SoC_end ≥ SoC_start` plus the tie-breaks make idle the exact optimum. |
+| EEG site (`netzladen_erlaubt = false`, the default) | Battery charges ONLY from the site's own PV surplus - a cheap or even negative-price night with no sun leaves it idle | Ausschließlichkeitsprinzip: grid power in an EEG plant's storage risks the EEG remuneration. See the switch section below. |
 | Fewer than 4 h of priced slots (16 slots) | Site skipped this cycle | Prices are the binding input; the site is retried next cycle once the market-data collector caught up. |
 | Active forecast model has no run covering the horizon | Persistence fallback over the last 3 days of telemetry | Never fails: with no telemetry at all it degrades to zeros, i.e. a pure price-arbitrage plan. |
 | Battery asset not claimed to a device | Plan persisted, nothing published | There is no schedule topic without a device; the portal still shows the Fahrplan. |
 
-### Known gap: grid charging is unconstrained (EEG plants)
+### Per-site grid-charging switch (`site.netzladen_erlaubt`)
 
-> **⚠️ The model currently has NO constraint against charging the battery from the grid.**
-> `charge_t` is bounded only by the power cap, the SoC band and the charge/discharge exclusivity - nothing ties it to PV surplus.
-> With a big enough intra-day spread (high price × round-trip efficiency > low price) the optimizer WILL import cheap and export dear, for EVERY site - that is exactly what maximizes savings under symmetric spot pricing.
->
-> For EEG-funded plants this violates the **Ausschließlichkeitsprinzip**: an EEG plant's storage must not be charged from the grid ("kein Graustrom" in the battery), or the plant risks its EEG remuneration.
-> The planned follow-up (pending the captain's design discussion, deliberately NOT built yet) is a per-site grid-charging switch: EEG mode adds one extra constraint, `charge_t ≤ PV surplus`, everything else stays identical.
+The former "grid charging is unconstrained" known gap is CLOSED (captain decisions 2026-07-07): every site carries the boolean `netzladen_erlaubt`, **default FALSE** - no existing plant is accidentally non-compliant, and only a Portal-Admin may flip it (enforced server-side in `services/api`).
+
+- **Merchant mode (`true`):** the exact model described above - grid arbitrage allowed. Deliberately regression-identical to the pre-switch optimizer (the untouched solver tests pin it; `test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds` pins the model structure).
+- **EEG mode (`false`):** the Ausschließlichkeitsprinzip as two extra constraints, present in the primary AND the infeasible-§14a fallback build:
+  1. `charge_t ≤ max(pv_t − load_t, 0)` - charge only from the forecast PV surplus.
+  2. `grid_t ≤ M_t × (1 − is_charging_t)` - never a net-importing slot while charging. This closes the curtailment loophole: without it the model could curtail the PV fully at negative prices and cover the "solar" charge with paid grid import (Graustrom). Curtailment itself stays available - it limits feed-in, not charge availability.
+
+Everything else (prices, forecasts, §14a, efficiency, curtailment, tie-breaks, persistence, publishing) is shared between the modes - one optimizer, one conditional constraint pair, never two code paths.
+The portal derives the visible proof from the persisted plan: a slot that charges while net-importing is a grid-charge slot (own color in the Fahrplan chart); on an EEG site that color can never appear.
 
 ## What one cycle does (per site with a battery asset)
 
-1. **Gather** (`inputs.py`): battery params from `asset` (+ `site.bidding_zone`), day-ahead prices from `day_ahead_prices` (written by `services/market-data`), load/PV forecasts from the `forecast` hypertable - reading ONLY the ACTIVE model's rows (`VOLTPILOT_ACTIVE_LOAD_MODEL`/`VOLTPILOT_ACTIVE_PV_MODEL`, defaults = the baselines; shadow challengers never reach a plan - see `docs/forecasting.md`) and falling back to the persistence baseline over recent telemetry when no stored run covers the horizon (REUSING `voltpilot_forecast`, see `fallback.py`), current SoC + observed `grid_limit_kw` from latest telemetry.
+1. **Gather** (`inputs.py`): battery params from `asset` (+ `site.bidding_zone`), day-ahead prices from `day_ahead_prices` (written by `services/market-data`), load/PV forecasts from the `forecast` hypertable - reading ONLY the ACTIVE model's rows (`VOLTPILOT_ACTIVE_LOAD_MODEL`/`VOLTPILOT_ACTIVE_PV_MODEL`, defaults = the baselines; shadow challengers never reach a plan - see `docs/forecasting.md`) and falling back to the persistence baseline over recent telemetry when no stored run covers the horizon (REUSING `voltpilot_forecast`, see `fallback.py`), current SoC + observed `grid_limit_kw` from latest telemetry, and the site's `netzladen_erlaubt` grid-charging switch.
 2. **Solve** (`solver.py`): cost minimization at the day-ahead spot price (symmetric for import/export - the Direktvermarktung MVP assumption). Binaries exclude the simultaneous-charge-discharge artifact (an LP would burn energy through the round trip at NEGATIVE prices, which DE-LU regularly has). Terminal condition `soc_end >= soc_start` so a plan cannot "earn" savings by dumping the battery. **PV curtailment is a decision variable** (`0 <= curtail_t <= pv_t` - only ever a reduction of feed-in): with a full battery at negative prices the plan discards surplus instead of paying to export; no price condition is hard-coded - the economics curtail exactly when feeding in would cost money (see the module docstring, incl. the two epsilon tie-breaks that keep degenerate optima deterministic and the battery idle when cycling moves no money). An infeasible §14a cap degrades to a plan without the grid constraint (the physical limit is enforced by the grid operator + edge guards regardless); a tight EXPORT cap that used to be infeasible now resolves via minimal curtailment.
 3. **Persist** (`persistence.py`): the full plan - battery/grid power, SoC trajectory, forecast inputs used, projected cost vs. the no-battery baseline per slot, planned `curtail_kw` - upserted idempotently into the `schedule` hypertable (schema owned by the api migrations `V20260701020000` + `V20260706040000`, RLS-scoped for the portal read). This is the ML groundwork: plan-vs-actual against `telemetry` is a plain join.
 4. **Publish** (`publisher.py`): retained QoS1 to `ems/{tenant}/{site}/{device}/schedule` per the **frozen contract** [`docs/contracts/mqtt-schedule.schema.json`](../../docs/contracts/mqtt-schedule.schema.json); curtailing slots additionally carry the OPTIONAL `pv_limit_kw` inverter cap (= `pv - curtail`, omitted when not curtailing - an additive contract extension, `schema_version` stays 1.0). The headline number - projected EUR savings vs. leaving the battery idle - is what the portal shows.
@@ -114,4 +120,4 @@ In compose the service runs under the **`optimize` profile** (`docker compose --
 
 ## Status
 
-**Built:** the full loop above, verified by offline tests (economic behavior on synthetic curves, constraint compliance, contract conformance, engine orchestration). **Future work:** the per-site EEG grid-charging switch (see the known-gap callout above), peak-shaving / capacity tariffs, multi-battery sites, dynamic supplier tariffs, feed-in spreads, plan-vs-actual KPIs from the persisted schedules.
+**Built:** the full loop above, verified by offline tests (economic behavior on synthetic curves, constraint compliance, contract conformance, engine orchestration). **Built too:** the per-site grid-charging switch (see its section above). **Future work:** peak-shaving / capacity tariffs, multi-battery sites, dynamic supplier tariffs, feed-in spreads, plan-vs-actual KPIs from the persisted schedules.

@@ -13,6 +13,11 @@ import java.util.UUID;
  * OPTIONAL Marktprämie from the site's Direktvermarktungsvertrag; null = not
  * configured, only relevant for {@code plantKind = direktvermarktung} - when set,
  * the realized earnings include it (except in negative-price slots).
+ * {@code netzladenErlaubt} (migration V20260707000000) is the per-site
+ * grid-charging switch: {@code false} (the default) = "Nur Solarladen (EEG)",
+ * the optimizer charges the battery only from PV surplus; {@code true} =
+ * "Netzladen aktiv", grid arbitrage allowed. Editing it is ADMIN-ONLY,
+ * enforced server-side (see SiteController).
  */
 public record SiteDto(
         UUID id,
@@ -21,5 +26,6 @@ public record SiteDto(
         BigDecimal latitude,
         BigDecimal longitude,
         String plantKind,
-        BigDecimal marktpraemieCtKwh) {
+        BigDecimal marktpraemieCtKwh,
+        boolean netzladenErlaubt) {
 }

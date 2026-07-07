@@ -22,6 +22,13 @@ export interface Site {
    * set, the earnings numbers include it (except in negative-price slots).
    */
   marktpraemieCtKwh: number | null;
+  /**
+   * Per-site grid-charging switch: false (default) = "Nur Solarladen (EEG)"
+   * (the optimizer charges the battery only from PV surplus), true =
+   * "Netzladen aktiv" (grid arbitrage). ADMIN-ONLY to change, enforced
+   * server-side - customers see it as a read-only badge.
+   */
+  netzladenErlaubt: boolean;
 }
 
 export interface CreateSiteInput {
@@ -33,6 +40,12 @@ export interface CreateSiteInput {
   plantKind?: PlantKind;
   /** Marktprämie in ct/kWh (>= 0); omit/null = not configured. */
   marktpraemieCtKwh?: number | null;
+  /**
+   * ADMIN-ONLY: a non-admin request carrying this field is rejected with 403
+   * server-side. Customer forms must OMIT it entirely (undefined), never send
+   * the current value back.
+   */
+  netzladenErlaubt?: boolean;
 }
 
 export interface PricePoint {
@@ -405,6 +418,8 @@ export interface OverviewSite {
   id: string;
   name: string;
   plantKind: PlantKind;
+  /** Per-site grid-charging switch (the mode badge on the site card). */
+  netzladenErlaubt: boolean;
   deviceCount: number;
   onlineCount: number;
   /** Devices that never sent data ("wartet auf erste Daten"). */

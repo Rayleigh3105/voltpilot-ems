@@ -86,6 +86,14 @@ class OptimizationInput:
     observed §14a envelope applied as a hard cap on net import AND export;
     ``None`` means unconstrained. ``initial_soc_kwh`` is the battery state at
     the start of the first slot.
+
+    ``netzladen_erlaubt`` mirrors ``site.netzladen_erlaubt`` (the per-site
+    grid-charging switch, captain decision 2026-07-07): ``True`` = merchant
+    mode, the battery may charge from the grid (price arbitrage); ``False`` =
+    EEG mode, the battery charges ONLY from the site's own PV surplus - the
+    Ausschliesslichkeitsprinzip for EEG-funded plants. The field is REQUIRED
+    (no default) on purpose: every caller must decide, so a forgotten wire-up
+    can never silently put an EEG plant into grid arbitrage.
     """
 
     tenant_id: UUID
@@ -97,6 +105,7 @@ class OptimizationInput:
     load_kw: list[float]
     pv_kw: list[float]
     initial_soc_kwh: float
+    netzladen_erlaubt: bool
     grid_limit_kw: float | None = None
     slot_minutes: int = SLOT_MINUTES
 

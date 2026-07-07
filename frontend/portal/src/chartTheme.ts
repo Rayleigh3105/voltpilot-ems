@@ -31,6 +31,8 @@ export interface ChartTheme {
   soc: string;
   /** Charge / feed-in (positive). */
   charge: string;
+  /** Battery charge FROM THE GRID (Netzladen slots in the Fahrplan). */
+  gridCharge: string;
   /** Discharge / grid draw (negative). */
   discharge: string;
   /** Plan overlay. */
@@ -62,6 +64,7 @@ export function chartTheme(): ChartTheme {
     price: read('--vp-chart-price', '#2F6BD6'),
     soc: read('--vp-chart-soc', '#9C27B0'),
     charge: read('--vp-chart-charge', '#2E9E5B'),
+    gridCharge: read('--vp-chart-gridcharge', '#00ACC1'),
     discharge: read('--vp-chart-discharge', '#E53935'),
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),

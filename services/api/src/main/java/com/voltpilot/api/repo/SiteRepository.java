@@ -16,7 +16,8 @@ import org.springframework.stereotype.Repository;
 public class SiteRepository {
 
     private static final String COLUMNS =
-            "id, name, bidding_zone, latitude, longitude, plant_kind, marktpraemie_ct_kwh";
+            "id, name, bidding_zone, latitude, longitude, plant_kind, marktpraemie_ct_kwh,"
+                    + " netzladen_erlaubt";
 
     private final JdbcTemplate jdbc;
 
@@ -48,14 +49,14 @@ public class SiteRepository {
      */
     public SiteDto create(UUID tenantId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
-            BigDecimal marktpraemieCtKwh) {
+            BigDecimal marktpraemieCtKwh, Boolean netzladenErlaubt) {
         return jdbc.queryForObject(
                 "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind,"
-                        + " marktpraemie_ct_kwh) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        + " marktpraemie_ct_kwh, netzladen_erlaubt) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, FALSE)) "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind,
-                marktpraemieCtKwh);
+                marktpraemieCtKwh, netzladenErlaubt);
     }
 
     /**
@@ -65,14 +66,17 @@ public class SiteRepository {
      */
     public SiteDto update(UUID siteId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
-            BigDecimal marktpraemieCtKwh) {
+            BigDecimal marktpraemieCtKwh, Boolean netzladenErlaubt) {
+        // netzladen_erlaubt: null = keep the stored value (customer edits never
+        // carry it - the controller rejects a non-admin non-null value anyway).
         List<SiteDto> updated = jdbc.query(
                 "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ?, plant_kind = ?,"
-                        + " marktpraemie_ct_kwh = ? "
+                        + " marktpraemie_ct_kwh = ?,"
+                        + " netzladen_erlaubt = COALESCE(?, netzladen_erlaubt) "
                         + "WHERE id = ? "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, name, biddingZone, latitude, longitude, plantKind,
-                marktpraemieCtKwh, siteId);
+                marktpraemieCtKwh, netzladenErlaubt, siteId);
         return updated.isEmpty() ? null : updated.get(0);
     }
 
@@ -100,6 +104,7 @@ public class SiteRepository {
                 rs.getBigDecimal("latitude"),
                 rs.getBigDecimal("longitude"),
                 rs.getString("plant_kind"),
-                rs.getBigDecimal("marktpraemie_ct_kwh"));
+                rs.getBigDecimal("marktpraemie_ct_kwh"),
+                rs.getBoolean("netzladen_erlaubt"));
     }
 }
