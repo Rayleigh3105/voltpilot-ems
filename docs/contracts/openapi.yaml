@@ -1201,9 +1201,9 @@ components:
             Per-site grid-charging switch (default false). false = "Nur
             Solarladen (EEG)": the optimizer charges the battery ONLY from
             the site's own PV surplus (Ausschließlichkeitsprinzip). true =
-            "Netzladen aktiv": grid arbitrage allowed. Changing it is a
-            legal property of the plant and ADMIN-ONLY, enforced
-            server-side.
+            "Netzladen aktiv": grid arbitrage allowed. Editable by the site
+            owner and by Portal-Admins (the portal form carries the
+            Ausschließlichkeitsprinzip warning).
     SiteAsset:
       type: object
       description: One asset row incl. registry provenance; null = not set.
@@ -1515,9 +1515,9 @@ components:
           type: boolean
           nullable: true
           description: >
-            ADMIN-ONLY grid-charging switch: a non-null value from a
-            non-admin caller is rejected with 403 (server-side); omitted =
-            the safe default false ("Nur Solarladen (EEG)").
+            Grid-charging switch, settable by the site owner and by
+            Portal-Admins; omitted = the safe default false ("Nur
+            Solarladen (EEG)").
     UpdateSiteRequest:
       type: object
       required: [name]
@@ -1536,9 +1536,9 @@ components:
           type: boolean
           nullable: true
           description: >
-            ADMIN-ONLY grid-charging switch: a non-null value from a
-            non-admin caller is rejected with 403 (server-side); null keeps
-            the stored value, so customer edits can never flip it.
+            Grid-charging switch, settable by the site owner and by
+            Portal-Admins; null keeps the stored value (a form that omits
+            the field never flips it).
     SiteDeletionPreview:
       type: object
       description: What deleting a site would remove (drives the confirm dialog).

@@ -16,8 +16,9 @@ import java.util.UUID;
  * {@code netzladenErlaubt} (migration V20260707000000) is the per-site
  * grid-charging switch: {@code false} (the default) = "Nur Solarladen (EEG)",
  * the optimizer charges the battery only from PV surplus; {@code true} =
- * "Netzladen aktiv", grid arbitrage allowed. Editing it is ADMIN-ONLY,
- * enforced server-side (see SiteController).
+ * "Netzladen aktiv", grid arbitrage allowed. Editable by the site owner and
+ * by Portal-Admins (captain revision 2026-07-07 of decision 3); the portal
+ * form carries the Ausschließlichkeitsprinzip warning.
  */
 public record SiteDto(
         UUID id,

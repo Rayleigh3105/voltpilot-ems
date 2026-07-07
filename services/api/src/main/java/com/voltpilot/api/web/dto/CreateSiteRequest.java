@@ -25,12 +25,12 @@ import java.math.BigDecimal;
  * Marktprämie (ct/kWh) from the customer's Direktvermarktungsvertrag - null =
  * not configured; only meaningful for {@code direktvermarktung} sites.
  *
- * <p>{@code netzladenErlaubt} (the per-site grid-charging switch, ADMIN-ONLY):
- * customers may not send it at all - the customer endpoint rejects a non-null
- * value with 403 (server-side enforcement, never just UI hiding), and an
- * omitted field leaves the DB default FALSE ("Nur Solarladen (EEG)"). The
- * platform-admin paths (and admins on the customer paths via the tenant
- * switcher) may set it.
+ * <p>{@code netzladenErlaubt} (the per-site grid-charging switch): the SITE
+ * OWNER may set it too (captain revision 2026-07-07 of decision 3 - not only
+ * the Portal-Admin), since RLS already scopes which sites a customer reaches;
+ * the portal form carries the Ausschließlichkeitsprinzip warning so nobody
+ * flips it uninformed. An omitted field leaves the DB default FALSE
+ * ("Nur Solarladen (EEG)").
  */
 public record CreateSiteRequest(
         @NotBlank String name,

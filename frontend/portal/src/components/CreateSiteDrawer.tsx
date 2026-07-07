@@ -20,7 +20,6 @@ export function CreateSiteDrawer({
   onCreate,
   onCreated,
   contextNote,
-  admin = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -28,13 +27,6 @@ export function CreateSiteDrawer({
   onCreated: (site: Site) => void;
   /** Optional context line, e.g. which tenant the site is created for. */
   contextNote?: string;
-  /**
-   * Portal-Admin surface: shows the ADMIN-ONLY grid-charging switch
-   * ("Netzladen des Speichers"). Customer creates omit the field entirely -
-   * the backend rejects it from non-admins (server-side enforcement) and
-   * defaults new sites to the compliant "Nur Solarladen (EEG)".
-   */
-  admin?: boolean;
 }) {
   const [name, setName] = useState('');
   const [biddingZone, setBiddingZone] = useState('DE-LU');
@@ -74,7 +66,7 @@ export function CreateSiteDrawer({
         longitude: lon,
         plantKind,
         marktpraemieCtKwh: praemieValue,
-        ...(admin ? { netzladenErlaubt: netzladen } : {}),
+        netzladenErlaubt: netzladen,
       });
       reset();
       onCreated(site);
@@ -168,27 +160,25 @@ export function CreateSiteDrawer({
             </p>
           </div>
         )}
-        {admin && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label htmlFor="site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              Netzladen des Speichers
-            </label>
-            <select
-              id="site-netzladen"
-              className="vp-select"
-              value={netzladen ? 'erlaubt' : 'verboten'}
-              onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
-            >
-              <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
-              <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
-            </select>
-            <p className="vp-note" style={{ margin: 0 }}>
-              EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
-              (Ausschließlichkeitsprinzip). Nur freischalten, wenn die Anlage keine
-              EEG-Vergütung bezieht.
-            </p>
-          </div>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Netzladen des Speichers
+          </label>
+          <select
+            id="site-netzladen"
+            className="vp-select"
+            value={netzladen ? 'erlaubt' : 'verboten'}
+            onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
+          >
+            <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
+            <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
+          </select>
+          <p className="vp-note" style={{ margin: 0 }}>
+            EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
+            (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
+            EEG-Vergütung bezieht.
+          </p>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap

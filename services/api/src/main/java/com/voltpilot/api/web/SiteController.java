@@ -34,8 +34,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -116,7 +114,6 @@ public class SiteController {
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
-        requireAdminForNetzladen(request.netzladenErlaubt());
         SiteDto created = sites.create(tenantId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
                 request.plantKindOrDefault(), request.marktpraemieCtKwh(),
@@ -133,7 +130,6 @@ public class SiteController {
     @PutMapping("/{siteId}")
     public SiteDto updateSite(@PathVariable UUID siteId,
             @Valid @RequestBody UpdateSiteRequest request) {
-        requireAdminForNetzladen(request.netzladenErlaubt());
         SiteDto updated = sites.update(siteId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
                 request.plantKindOrDefault(), request.marktpraemieCtKwh(),
@@ -142,30 +138,6 @@ public class SiteController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
         return updated;
-    }
-
-    /**
-     * The per-site grid-charging switch ({@code netzladen_erlaubt}) is a LEGAL
-     * property of the plant: an EEG-funded plant charging its battery from the
-     * grid violates the Ausschließlichkeitsprinzip and risks its remuneration.
-     * Only a Portal-Admin may set or change it (captain decision 2026-07-07),
-     * and the rule is enforced HERE, server-side - a customer request carrying
-     * the field is rejected outright (403), never silently honored, no matter
-     * what the UI hides. Admins reach this path through the tenant switcher;
-     * their role check is on the TOKEN ({@code ROLE_platform-admin}), so the
-     * {@code X-Tenant-Id} header cannot widen a customer's rights.
-     */
-    private static void requireAdminForNetzladen(Boolean netzladenErlaubt) {
-        if (netzladenErlaubt == null) {
-            return;
-        }
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean admin = auth != null && auth.getAuthorities().stream()
-                .anyMatch(a -> "ROLE_platform-admin".equals(a.getAuthority()));
-        if (!admin) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Netzladen darf nur ein Portal-Admin ändern");
-        }
     }
 
     /**

@@ -67,8 +67,8 @@ public class SiteRepository {
     public SiteDto update(UUID siteId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
             BigDecimal marktpraemieCtKwh, Boolean netzladenErlaubt) {
-        // netzladen_erlaubt: null = keep the stored value (customer edits never
-        // carry it - the controller rejects a non-admin non-null value anyway).
+        // netzladen_erlaubt: null = keep the stored value, so a caller that
+        // omits the field never flips the flag by accident.
         List<SiteDto> updated = jdbc.query(
                 "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ?, plant_kind = ?,"
                         + " marktpraemie_ct_kwh = ?,"

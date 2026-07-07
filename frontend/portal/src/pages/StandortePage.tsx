@@ -217,7 +217,6 @@ export function StandortePage({
         onClose={() => setAddOpen(false)}
         onCreate={(input) => api.createSite(input)}
         onCreated={(s) => onReload(s.id)}
-        admin={isAdmin}
       />
 
       {detail && (
@@ -269,7 +268,6 @@ export function StandortePage({
           {editing && (
             <SiteEditForm
               site={detail}
-              isAdmin={isAdmin}
               onCancel={() => setEditing(false)}
               onSaved={(updated) => {
                 setDetail(updated);
@@ -440,19 +438,17 @@ export function StandortePage({
 /**
  * Inline edit form of the site detail drawer: name, bidding zone and
  * coordinates - the same fields and client-side checks as CreateSiteDrawer.
- * The grid-charging switch ("Netzladen des Speichers") renders ONLY for
- * Portal-Admins and is the only place it can be changed; customers get a
- * read-only line - the backend rejects a customer request carrying the field
- * anyway (server-side enforcement), the UI split just mirrors that rule.
+ * The grid-charging switch ("Netzladen des Speichers") is editable by the
+ * site owner too (captain revision 2026-07-07 of decision 3 - not only the
+ * Portal-Admin); the Ausschließlichkeitsprinzip warning stays so nobody
+ * flips it uninformed.
  */
-function SiteEditForm({
+export function SiteEditForm({
   site,
-  isAdmin = false,
   onCancel,
   onSaved,
 }: {
   site: Site;
-  isAdmin?: boolean;
   onCancel: () => void;
   onSaved: (updated: Site) => void;
 }) {
@@ -483,9 +479,7 @@ function SiteEditForm({
         longitude: lon,
         plantKind,
         marktpraemieCtKwh: praemieValue,
-        // ADMIN-ONLY: a customer request carrying the field is rejected with
-        // 403 server-side, so the customer form must omit it entirely.
-        ...(isAdmin ? { netzladenErlaubt: netzladen } : {}),
+        netzladenErlaubt: netzladen,
       });
       onSaved(updated);
     } catch (e) {
@@ -552,36 +546,25 @@ function SiteEditForm({
             </p>
           </div>
         )}
-        {isAdmin ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <label htmlFor="edit-site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-              Netzladen des Speichers
-            </label>
-            <select
-              id="edit-site-netzladen"
-              className="vp-select"
-              value={netzladen ? 'erlaubt' : 'verboten'}
-              onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
-            >
-              <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
-              <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
-            </select>
-            <p className="vp-note" style={{ margin: 0 }}>
-              EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
-              (Ausschließlichkeitsprinzip). Nur freischalten, wenn die Anlage keine
-              EEG-Vergütung bezieht.
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Netzladen des Speichers</span>
-            <div><NetzladenBadge erlaubt={site.netzladenErlaubt} /></div>
-            <p className="vp-note" style={{ margin: 0 }}>
-              Rechtliche Eigenschaft der Anlage - Änderung nur durch den Betreiber
-              (Portal-Admin).
-            </p>
-          </div>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="edit-site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Netzladen des Speichers
+          </label>
+          <select
+            id="edit-site-netzladen"
+            className="vp-select"
+            value={netzladen ? 'erlaubt' : 'verboten'}
+            onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
+          >
+            <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
+            <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
+          </select>
+          <p className="vp-note" style={{ margin: 0 }}>
+            EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
+            (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
+            EEG-Vergütung bezieht.
+          </p>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap

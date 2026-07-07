@@ -530,7 +530,6 @@ function TenantDetailDrawer({
         onCreate={(input) => adminApi.createSite(tenant.id, input)}
         onCreated={() => void reload()}
         contextNote={`Wird für den Mandanten ${tenant.name} (${tenant.id.slice(0, 8)}) angelegt. Der Kunde sieht ihn sofort in seinem Portal.`}
-        admin
       />
     </>
   );

@@ -15,11 +15,12 @@ import java.math.BigDecimal;
  * sites via the tenant switcher, i.e. the same RLS-scoped path with an
  * overridden context).
  *
- * <p>{@code netzladenErlaubt} (the per-site grid-charging switch, ADMIN-ONLY):
- * a non-null value from a non-admin caller is rejected with 403 (server-side
- * enforcement); null leaves the stored value untouched, so customer edits can
- * never flip the flag. Admins send it from the site form (also through the
- * tenant switcher).
+ * <p>{@code netzladenErlaubt} (the per-site grid-charging switch): the SITE
+ * OWNER may flip it too (captain revision 2026-07-07 of decision 3 - not only
+ * the Portal-Admin); RLS already scopes which sites the caller reaches, and
+ * the portal form carries the Ausschließlichkeitsprinzip warning. Null leaves
+ * the stored value untouched (a form that omits the field never flips the
+ * flag). Admins keep working through the tenant switcher.
  */
 public record UpdateSiteRequest(
         @NotBlank String name,

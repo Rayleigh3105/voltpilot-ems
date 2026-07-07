@@ -25,8 +25,9 @@ export interface Site {
   /**
    * Per-site grid-charging switch: false (default) = "Nur Solarladen (EEG)"
    * (the optimizer charges the battery only from PV surplus), true =
-   * "Netzladen aktiv" (grid arbitrage). ADMIN-ONLY to change, enforced
-   * server-side - customers see it as a read-only badge.
+   * "Netzladen aktiv" (grid arbitrage). Editable by the site owner and by
+   * Portal-Admins (captain revision 2026-07-07); the form carries the
+   * Ausschließlichkeitsprinzip warning.
    */
   netzladenErlaubt: boolean;
 }
@@ -41,9 +42,9 @@ export interface CreateSiteInput {
   /** Marktprämie in ct/kWh (>= 0); omit/null = not configured. */
   marktpraemieCtKwh?: number | null;
   /**
-   * ADMIN-ONLY: a non-admin request carrying this field is rejected with 403
-   * server-side. Customer forms must OMIT it entirely (undefined), never send
-   * the current value back.
+   * Grid-charging switch, settable by the site owner and by Portal-Admins.
+   * Omitted = the safe default false on create / keep the stored value on
+   * update.
    */
   netzladenErlaubt?: boolean;
 }
