@@ -86,7 +86,7 @@ function PageFrame({
       {sites.length === 0 ? (
         <Card padding="lg" radius="lg">
           <p className="vp-muted">
-            Noch kein Standort - legen Sie zuerst unter „Standorte“ einen an.
+            Noch keine Anlage - legen Sie zuerst unter „Meine Anlage“ eine an.
           </p>
         </Card>
       ) : !sites.some((s) => s.id === selectedSite) ? (
@@ -351,12 +351,8 @@ export function MarktpreisePage(props: {
 
 // ---------------------------------------------------------------------------
 
-export function WetterPage(props: {
-  sites: Site[];
-  selectedSite: string | null;
-  onSelectSite: (id: string) => void;
-}) {
-  const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
+/** The Wetter subpage of one Anlage: the forecast feeding its PV-Prognose. */
+export function WetterSection({ site }: { site: Site }) {
   const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
 
   const points = forecast?.points ?? [];
@@ -373,59 +369,50 @@ export function WetterPage(props: {
   );
 
   return (
-    <PageFrame
-      title="Wetter"
-      subtitle={`Wettervorhersage${site ? ` für ${site.name}` : ''} - Grundlage der PV-Prognose.`}
-      {...props}
-    >
-      <Card padding="lg" radius="lg">
-        <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-          <IconTile category="solar" size={40}>
-            <Icon name="sun" size={20} />
-          </IconTile>
-          <h2>Vorhersage {site?.name ?? ''}</h2>
-        </div>
-        {loading && <ChartCardSkeleton />}
-        {err && (
-          <ErrorState
-            message={`Die Wettervorhersage konnte nicht geladen werden (${err}).`}
-            onRetry={reload}
-          />
-        )}
-        {!loading && !err && points.length === 0 && (
-          <p className="vp-muted">
-            Noch keine Vorhersage. Sie wird automatisch geladen - der Standort benötigt
-            dafür Koordinaten (unter „Standorte“ ergänzbar).
+    <Card padding="lg" radius="lg">
+      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
+        <IconTile category="solar" size={40}>
+          <Icon name="sun" size={20} />
+        </IconTile>
+        <h2>Vorhersage {site.name}</h2>
+      </div>
+      {loading && <ChartCardSkeleton />}
+      {err && (
+        <ErrorState
+          message={`Die Wettervorhersage konnte nicht geladen werden (${err}).`}
+          onRetry={reload}
+        />
+      )}
+      {!loading && !err && points.length === 0 && (
+        <p className="vp-muted">
+          Noch keine Vorhersage. Sie wird automatisch geladen - die Anlage benötigt
+          dafür einen Standort auf der Karte (auf der Anlagen-Seite unter
+          „Standort &amp; Einstellungen“ ergänzbar).
+        </p>
+      )}
+      {!loading && !err && points.length > 0 && (
+        <>
+          <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
+            <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
+            <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
+            <Stat value={fmtNum(peakGhi, '', 0)} label="Max. Einstrahlung (W/m²)" />
+            <Stat value={fmtNum(horizon, 'h', 0)} label="Vorhersagehorizont" />
+          </div>
+          <WeatherChart points={points} />
+          <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+            Quelle: Open-Meteo, stündlich aktualisiert. Die Einstrahlung (GHI) fließt in
+            die PV-Prognose Ihrer Anlage ein.
           </p>
-        )}
-        {!loading && !err && points.length > 0 && (
-          <>
-            <div className="vp-grid vp-grid-stats" style={{ marginBottom: 'var(--vp-space-5)' }}>
-              <Stat value={fmtNum(now?.temperatureC, '°C')} label="Temperatur (nächste Stunde)" />
-              <Stat value={fmtNum(now?.cloudCoverPct, '%', 0)} label="Bewölkung" />
-              <Stat value={fmtNum(peakGhi, '', 0)} label="Max. Einstrahlung (W/m²)" />
-              <Stat value={fmtNum(horizon, 'h', 0)} label="Vorhersagehorizont" />
-            </div>
-            <WeatherChart points={points} />
-            <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
-              Quelle: Open-Meteo, stündlich aktualisiert. Die Einstrahlung (GHI) fließt in
-              die PV-Prognose Ihres Standorts ein.
-            </p>
-          </>
-        )}
-      </Card>
-    </PageFrame>
+        </>
+      )}
+    </Card>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-export function FahrplanPage(props: {
-  sites: Site[];
-  selectedSite: string | null;
-  onSelectSite: (id: string) => void;
-}) {
-  const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
+/** The Fahrplan subpage of one Anlage: KPIs + the full ScheduleChart. */
+export function FahrplanSection({ site }: { site: Site }) {
   const { data: plan, loading, err, reload } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
 
   const slots = plan?.slots ?? [];
@@ -450,11 +437,7 @@ export function FahrplanPage(props: {
     : null;
 
   return (
-    <PageFrame
-      title="Fahrplan"
-      subtitle={`Kostenoptimaler Batterie-Fahrplan${site ? ` für ${site.name}` : ''} aus Börsenpreisen und Prognosen.`}
-      {...props}
-    >
+    <>
       {/* Money-first headline: today's planned saving leads (captain: Geld führt). */}
       {!loading && !err && slots.length > 0 && (
         <section className="vp-kpis" aria-label="Fahrplan-Kennzahlen" style={{ marginBottom: 'var(--vp-space-5)' }}>
@@ -487,7 +470,7 @@ export function FahrplanPage(props: {
           <IconTile category="battery" size={40}>
             <Icon name="battery-charging" size={20} />
           </IconTile>
-          <h2>Batterie-Fahrplan {site?.name ?? ''}</h2>
+          <h2>Batterie-Fahrplan {site.name}</h2>
           <InfoTip title="Wie der Fahrplan berechnet wird">
             Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet -
             für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell
@@ -533,6 +516,6 @@ export function FahrplanPage(props: {
           </>
         )}
       </Card>
-    </PageFrame>
+    </>
   );
 }

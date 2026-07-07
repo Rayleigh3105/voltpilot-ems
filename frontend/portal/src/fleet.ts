@@ -88,7 +88,7 @@ export function realizedSubline(
     case 'eigenverbrauch':
       return `${phrase} gespart`;
     default:
-      return `${phrase} herausgeholt, alle Standorte zusammen`;
+      return `${phrase} herausgeholt, alle Anlagen zusammen`;
   }
 }
 
@@ -327,7 +327,7 @@ export function netzladenBadge(netzladenErlaubt: boolean): NetzladenBadge {
  */
 export const BATTERY_NO_DEVICE_WARNING =
   'Ihr Speicher ist keinem Gerät zugeordnet - der Fahrplan kann nicht ausgeführt werden. ' +
-  'Ordnen Sie den Speicher unter „Standorte“ dem steuernden Wechselrichter zu.';
+  'Ordnen Sie den Speicher im Bereich „Technik“ Ihrer Anlage dem steuernden Wechselrichter zu.';
 
 /** Short badge variant of the same warning (fleet site card). */
 export const BATTERY_NO_DEVICE_SHORT = 'Speicher ohne Gerät';

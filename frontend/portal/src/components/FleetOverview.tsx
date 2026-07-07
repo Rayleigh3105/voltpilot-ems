@@ -333,7 +333,7 @@ export function FleetSiteCard({
           onOpen();
         }
       }}
-      aria-label={`Standort ${site.name} öffnen`}
+      aria-label={`Anlage ${site.name} öffnen`}
     >
       <div className="vp-fleet-site-head">
         <span className="vp-fleet-site-name">
@@ -392,9 +392,9 @@ export function FleetSiteCard({
           {site.deviceCount === 0
             ? 'Gerät hinzufügen'
             : notComputable
-              ? 'Für diesen Standort nicht berechenbar'
+              ? 'Für diese Anlage nicht berechenbar'
               : earn ??
-                (fresh ? 'Details ansehen' : 'Standort prüfen')}
+                (fresh ? 'Details ansehen' : 'Anlage prüfen')}
         </span>
         <span className="vp-fleet-chev" aria-hidden="true">
           ›

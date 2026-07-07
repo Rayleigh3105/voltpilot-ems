@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BatteryControlSection, SiteEditForm } from './StandortePage';
+import { BatteryControlSection, SiteEditForm } from './AnlageTechnik';
 import { api, type Device, type Site, type SiteAsset } from '../api';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -

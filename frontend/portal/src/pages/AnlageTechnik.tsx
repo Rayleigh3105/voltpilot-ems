@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
-import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { Drawer } from '../../designsystem/components/shell/Drawer';
 import {
   api,
   ApiError,
@@ -17,67 +14,71 @@ import {
 } from '../api';
 import { BATTERY_NO_DEVICE_WARNING, parsePremiumInput, premiumInputText } from '../fleet';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
-import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { LocationMap } from '../components/LocationMap';
 import { DangerZone } from '../components/DangerZone';
-import { DeviceStatusBadge } from '../components/DeviceDrawers';
+import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { MastrDrawer } from '../components/MastrDrawer';
 import { ErrorState, TextSkeleton } from '../components/States';
 
 /**
- * Standorte: the repeatable entity pattern - list-in-card, "＋ anlegen" opens
- * the add drawer, a row click opens the detail drawer (site facts + Anlage +
- * devices). The Anlage section is the optional MaStR link step.
+ * The Technik section of the Anlagen-Seite: everything that used to live in
+ * the Standorte and Geräte detail drawers, now ON the Anlage - Wechselrichter
+ * (status + reference, detail drawer), Speicher (params + editor incl. the
+ * controlling-device picker), the MaStR registry link, and the Stammdaten
+ * ("Standort" survives only as the address inside this section) with edit
+ * form and the guarded delete.
  */
-export function StandortePage({
-  sites,
+export function TechnikSection({
+  site,
   devices,
+  sites,
   onReload,
-  isAdmin = false,
+  onSiteSaved,
+  onSiteDeleted,
 }: {
-  sites: Site[];
+  site: Site;
+  /** All devices of the tenant; the section filters to this site's. */
   devices: Device[];
+  /** For the device drawers (site picker inside the claim form). */
+  sites: Site[];
   onReload: (selectSiteId?: string) => void;
-  isAdmin?: boolean;
+  onSiteSaved: (updated: Site) => void;
+  onSiteDeleted: () => void;
 }) {
-  const [addOpen, setAddOpen] = useState(false);
-  const [detail, setDetail] = useState<Site | null>(null);
-  const [mastrOpen, setMastrOpen] = useState(false);
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [assetsError, setAssetsError] = useState(false);
   const [assetsReloadKey, setAssetsReloadKey] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [mastrOpen, setMastrOpen] = useState(false);
   const [preview, setPreview] = useState<SiteDeletionPreview | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deviceDetailId, setDeviceDetailId] = useState<string | null>(null);
+  const [addDeviceOpen, setAddDeviceOpen] = useState(false);
 
-  const deviceCount = (siteId: string) => devices.filter((d) => d.siteId === siteId).length;
+  const siteDevices = devices.filter((d) => d.siteId === site.id);
+  const deviceDetail = siteDevices.find((d) => d.id === deviceDetailId) ?? null;
 
   useEffect(() => {
     setEditing(false);
     setPreview(null);
     setDeleteError(null);
-    if (!detail) {
-      setAssets(null);
-      setAssetsError(false);
-      return;
-    }
     let cancelled = false;
     setAssets(null);
     setAssetsError(false);
     api
-      .siteAssets(detail.id)
+      .siteAssets(site.id)
       .then((a) => {
         if (!cancelled) setAssets(a);
       })
       .catch(() => {
-        // Distinguish "couldn't load" from "you have none" (D3): a backend/RLS
-        // failure must not masquerade as an empty Anlage section.
+        // Distinguish "couldn't load" from "you have none": a backend/RLS
+        // failure must not masquerade as an empty Anlagendaten section.
         if (!cancelled) setAssetsError(true);
       });
     api
-      .siteDeletionPreview(detail.id)
+      .siteDeletionPreview(site.id)
       .then((p) => {
         if (!cancelled) setPreview(p);
       })
@@ -87,21 +88,20 @@ export function StandortePage({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail?.id, assetsReloadKey]);
+  }, [site.id, assetsReloadKey]);
 
-  async function deleteSite(site: Site) {
+  async function deleteSite() {
     setDeleteBusy(true);
     setDeleteError(null);
     try {
       await api.deleteSite(site.id);
-      setDetail(null);
+      onSiteDeleted();
       onReload();
     } catch (e) {
       setDeleteError(
         e instanceof ApiError && e.status === 409
-          ? 'Der Standort hat noch Geräte. Bitte entfernen Sie zuerst alle Geräte dieses Standorts.'
-          : 'Der Standort konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.',
+          ? 'Die Anlage hat noch Geräte. Bitte entfernen Sie zuerst alle Geräte dieser Anlage.'
+          : 'Die Anlage konnte nicht gelöscht werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
       setDeleteBusy(false);
@@ -110,20 +110,20 @@ export function StandortePage({
 
   const fmtDay = (iso: string) => new Date(iso).toLocaleDateString('de-DE');
 
-  function deleteConsequences(site: Site): string[] {
-    const items = [`Der Standort „${site.name}" mit allen Anlagendaten`];
+  function deleteConsequences(): string[] {
+    const items = [`Die Anlage „${site.name}" mit allen Daten`];
     if (preview && preview.telemetryCount > 0 && preview.telemetryFrom && preview.telemetryTo) {
       items.push(
         `Alle Messdaten (${fmtNum(preview.telemetryCount, '', 0)} Messpunkte vom ${fmtDay(preview.telemetryFrom)} bis ${fmtDay(preview.telemetryTo)})`,
       );
     } else {
-      items.push('Alle aufgezeichneten Messdaten dieses Standorts');
+      items.push('Alle aufgezeichneten Messdaten dieser Anlage');
     }
     if (preview && (preview.forecastCount > 0 || preview.scheduleCount > 0)) {
-      items.push('Alle Prognosen und Fahrpläne dieses Standorts');
+      items.push('Alle Prognosen und Fahrpläne dieser Anlage');
     }
     if (preview && preview.weatherCount > 0) {
-      items.push('Die gespeicherten Wetterdaten dieses Standorts');
+      items.push('Die gespeicherten Wetterdaten dieser Anlage');
     }
     return items;
   }
@@ -134,7 +134,6 @@ export function StandortePage({
   // not in the MaStR keeps its battery by hand, and its control-path warning
   // must show regardless of provenance.
   const batteryAsset = (assets ?? []).find((a) => a.type === 'battery') ?? null;
-  const siteDevices = detail ? devices.filter((d) => d.siteId === detail.id) : [];
   const lastFetched = linkedAssets
     .map((a) => a.registryFetchedAt)
     .filter((t): t is string => t != null)
@@ -143,163 +142,85 @@ export function StandortePage({
 
   return (
     <>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>Standorte</h1>
-          <p>Ihre Standorte mit Gebotszone, Koordinaten und Geräten.</p>
-        </div>
-        <div className="actions">
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
-            Standort anlegen
-          </Button>
-        </div>
+      {/* Wechselrichter: the Anlage's device(s), status-first. */}
+      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
+        <h3 className="vp-tech-h">Wechselrichter</h3>
       </div>
-
-      {sites.length === 0 ? (
-        <Card padding="lg" radius="lg">
-          <div className="vp-empty">
-            <IconTile category="home" size={48} style={{ margin: '0 auto var(--vp-space-4)' }}>
-              <Icon name="map-pin" size={24} />
-            </IconTile>
-            <h3>{isAdmin ? 'Dieser Mandant hat noch keine Standorte' : 'Noch kein Standort'}</h3>
-            <p>
-              {isAdmin
-                ? 'Sobald für diesen Mandanten ein Standort angelegt ist, erscheint er hier. Sie können im Namen des Mandanten einen Standort anlegen.'
-                : 'Legen Sie Ihren ersten Standort an - danach können Sie ihm Geräte zuordnen.'}
-            </p>
-            <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
-              {isAdmin ? 'Standort anlegen' : 'Ersten Standort anlegen'}
-            </Button>
-          </div>
-        </Card>
+      {siteDevices.length === 0 ? (
+        <>
+          <p className="vp-muted">
+            Noch kein Gerät verbunden. Fügen Sie Ihr Gerät mit seiner Geräte-ID hinzu -
+            es verbindet sich selbst, sobald es eingeschaltet ist.
+          </p>
+          <Button
+            variant="outline"
+            iconLeft={<Icon name="plus" size={16} />}
+            onClick={() => setAddDeviceOpen(true)}
+            style={{ marginBottom: 'var(--vp-space-5)' }}
+          >
+            Gerät hinzufügen
+          </Button>
+        </>
       ) : (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="vp-table responsive">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Gebotszone</th>
-                <th>Koordinaten</th>
-                <th>Geräte</th>
-                <th aria-label="Aktionen" />
+        <table className="vp-table" style={{ marginBottom: 'var(--vp-space-5)' }}>
+          <tbody>
+            {siteDevices.map((d) => (
+              <tr key={d.id} className="clickable" onClick={() => setDeviceDetailId(d.id)}>
+                <td>
+                  {d.name ? (
+                    <>
+                      <b>{d.name}</b>
+                      <div className="vp-note vp-mono">{d.externalRef}</div>
+                    </>
+                  ) : (
+                    <span className="vp-mono">{d.externalRef}</span>
+                  )}
+                  <div className="vp-note">{deviceKindLabel(d.kind)}</div>
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  <DeviceStatusBadge device={d} />
+                  <div className="vp-note">{fmtRelative(d.lastSeenAt)}</div>
+                </td>
+                <td style={{ width: 1 }}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      setDeviceDetailId(d.id);
+                    }}
+                  >
+                    Details
+                  </Button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {sites.map((s) => (
-                <tr key={s.id} className="clickable" onClick={() => setDetail(s)}>
-                  <td data-label="Name">
-                    <b>{s.name}</b>
-                  </td>
-                  <td data-label="Gebotszone">
-                    <Badge variant="tint">{zoneLabel(s.biddingZone)}</Badge>
-                  </td>
-                  <td data-label="Koordinaten">
-                    {fmtCoords(s.latitude, s.longitude) ?? <span className="vp-muted">-</span>}
-                  </td>
-                  <td data-label="Geräte">{deviceCount(s.id)}</td>
-                  <td data-label="">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        setDetail(s);
-                      }}
-                    >
-                      Details
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+            ))}
+          </tbody>
+        </table>
       )}
 
-      <CreateSiteDrawer
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onCreate={(input) => api.createSite(input)}
-        onCreated={(s) => onReload(s.id)}
-      />
+      {/* Speicher & Steuerung (params, editor, controlling device). */}
+      {assetsError ? (
+        <ErrorState
+          message="Die Anlagendaten konnten nicht geladen werden."
+          onRetry={() => setAssetsReloadKey((k) => k + 1)}
+        />
+      ) : assets === null ? (
+        <TextSkeleton lines={3} />
+      ) : (
+        <>
+          <BatteryControlSection
+            siteId={site.id}
+            battery={batteryAsset}
+            devices={siteDevices}
+            onSaved={(a) => setAssets(a)}
+          />
 
-      {detail && (
-        <Drawer
-          open
-          onClose={() => setDetail(null)}
-          title={detail.name}
-          icon={
-            <IconTile category="home" size={40}>
-              <Icon name="map-pin" size={20} />
-            </IconTile>
-          }
-          footer={
-            <Button variant="ghost" onClick={() => setDetail(null)}>
-              Schließen
-            </Button>
-          }
-        >
-          <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
-            <Badge variant="tint">{zoneLabel(detail.biddingZone)}</Badge>
-            <Badge variant="tint">{plantKindLabel(detail.plantKind)}</Badge>
-            <NetzladenBadge erlaubt={detail.netzladenErlaubt} />
-            {detail.plantKind === 'direktvermarktung' && detail.marktpraemieCtKwh != null && (
-              <Badge variant="tint">Marktprämie {fmtNum(detail.marktpraemieCtKwh, 'ct/kWh', 2)}</Badge>
-            )}
-            {linkedAssets.length > 0 && (
-              <Badge variant="ok" dot>
-                MaStR verknüpft
-              </Badge>
-            )}
-            {fmtCoords(detail.latitude, detail.longitude) && (
-              <span className="vp-note" style={{ alignSelf: 'center' }}>
-                {fmtCoords(detail.latitude, detail.longitude)}
-              </span>
-            )}
-            {!editing && (
-              <Button
-                variant="ghost"
-                size="sm"
-                iconLeft={<Icon name="pencil" size={16} />}
-                onClick={() => setEditing(true)}
-                style={{ marginLeft: 'auto' }}
-              >
-                Bearbeiten
-              </Button>
-            )}
-          </div>
-
-          {editing && (
-            <SiteEditForm
-              site={detail}
-              onCancel={() => setEditing(false)}
-              onSaved={(updated) => {
-                setDetail(updated);
-                setEditing(false);
-                onReload(updated.id);
-              }}
-            />
-          )}
-
-          {!editing && detail.latitude == null && (
-            <div className="vp-alert vp-alert-info" style={{ marginTop: 0, marginBottom: 'var(--vp-space-4)' }}>
-              Ohne Koordinaten gibt es keine Wettervorhersage für diesen Standort.
-            </div>
-          )}
-
-          {!editing && (
-          <>
+          {/* Anlagendaten (Marktstammdatenregister). */}
           <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-            <h2 style={{ fontSize: '1.05rem' }}>Anlage</h2>
+            <h3 className="vp-tech-h">Anlagendaten (Marktstammdatenregister)</h3>
           </div>
-          {assetsError ? (
-            <ErrorState
-              message="Die Anlagendaten konnten nicht geladen werden."
-              onRetry={() => setAssetsReloadKey((k) => k + 1)}
-            />
-          ) : assets === null ? (
-            <TextSkeleton lines={2} />
-          ) : linkedAssets.length === 0 ? (
+          {linkedAssets.length === 0 ? (
             <>
               <p className="vp-muted">
                 Optional: Verknüpfen Sie Ihre PV-Anlage (und ggf. den Speicher) mit dem
@@ -360,79 +281,124 @@ export function StandortePage({
               </Button>
             </>
           )}
-
-          {assets !== null && !assetsError && (
-            <BatteryControlSection
-              siteId={detail.id}
-              battery={batteryAsset}
-              devices={siteDevices}
-              onSaved={(a) => setAssets(a)}
-            />
-          )}
-
-          <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-            <h2 style={{ fontSize: '1.05rem' }}>Geräte an diesem Standort</h2>
-          </div>
-          {deviceCount(detail.id) === 0 ? (
-            <p className="vp-muted">Noch keine Geräte. Fügen Sie unter „Geräte“ eines per Edge-Referenz hinzu.</p>
-          ) : (
-            <table className="vp-table">
-              <thead>
-                <tr>
-                  <th>Referenz</th>
-                  <th>Typ</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {devices
-                  .filter((d) => d.siteId === detail.id)
-                  .map((d) => (
-                    <tr key={d.id}>
-                      <td className="vp-mono">{d.externalRef}</td>
-                      <td>{deviceKindLabel(d.kind)}</td>
-                      <td>
-                        <DeviceStatusBadge device={d} />
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          )}
-
-          <DangerZone
-            actionLabel="Standort löschen"
-            description="Ein gelöschter Standort kann nicht wiederhergestellt werden."
-            consequences={deleteConsequences(detail)}
-            confirmLabel="Standort endgültig löschen"
-            disabledReason={
-              deviceCount(detail.id) > 0
-                ? `Der Standort kann nicht gelöscht werden, solange ihm Geräte zugeordnet sind (${deviceCount(detail.id)} Gerät${deviceCount(detail.id) === 1 ? '' : 'e'}). Entfernen Sie zuerst die Geräte unter „Geräte".`
-                : null
-            }
-            busy={deleteBusy}
-            error={deleteError}
-            onConfirm={() => void deleteSite(detail)}
-          />
-          </>
-          )}
-        </Drawer>
+        </>
       )}
 
-      {detail && (
-        <MastrDrawer
-          site={detail}
-          open={mastrOpen}
-          onClose={() => setMastrOpen(false)}
-          onApplied={(a) => setAssets(a)}
+      {/* Stammdaten: Anlagentyp, Netzladen, Marktprämie und der Standort
+          (die Adresse der Anlage) - editierbar wie bisher. */}
+      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
+        <h3 className="vp-tech-h">Standort &amp; Einstellungen</h3>
+        {!editing && (
+          <Button
+            variant="ghost"
+            size="sm"
+            iconLeft={<Icon name="pencil" size={16} />}
+            onClick={() => setEditing(true)}
+            style={{ marginLeft: 'auto' }}
+          >
+            Bearbeiten
+          </Button>
+        )}
+      </div>
+      {editing ? (
+        <SiteEditForm
+          site={site}
+          onCancel={() => setEditing(false)}
+          onSaved={(updated) => {
+            setEditing(false);
+            onSiteSaved(updated);
+            onReload(updated.id);
+          }}
         />
+      ) : (
+        <>
+          <table className="vp-table" style={{ marginBottom: 'var(--vp-space-4)' }}>
+            <tbody>
+              <tr>
+                <th scope="row">Standort</th>
+                <td>
+                  {fmtCoords(site.latitude, site.longitude) ?? (
+                    <span className="vp-muted">noch nicht hinterlegt</span>
+                  )}
+                  {' · '}
+                  {zoneLabel(site.biddingZone)}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Anlagentyp</th>
+                <td>{plantKindLabel(site.plantKind)}</td>
+              </tr>
+              <tr>
+                <th scope="row">Netzladen</th>
+                <td>
+                  <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
+                </td>
+              </tr>
+              {site.plantKind === 'direktvermarktung' && site.marktpraemieCtKwh != null && (
+                <tr>
+                  <th scope="row">Marktprämie</th>
+                  <td>{fmtNum(site.marktpraemieCtKwh, 'ct/kWh', 2)}</td>
+                </tr>
+              )}
+              {linkedAssets.length > 0 && (
+                <tr>
+                  <th scope="row">Register</th>
+                  <td>
+                    <Badge variant="ok" dot>
+                      MaStR verknüpft
+                    </Badge>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          {site.latitude == null && (
+            <div className="vp-alert vp-alert-info" style={{ marginTop: 0, marginBottom: 'var(--vp-space-4)' }}>
+              Ohne Standort auf der Karte gibt es keine Wettervorhersage für diese Anlage.
+            </div>
+          )}
+        </>
       )}
+
+      <DangerZone
+        actionLabel="Anlage löschen"
+        description="Eine gelöschte Anlage kann nicht wiederhergestellt werden."
+        consequences={deleteConsequences()}
+        confirmLabel="Anlage endgültig löschen"
+        disabledReason={
+          siteDevices.length > 0
+            ? `Die Anlage kann nicht gelöscht werden, solange ihr Geräte zugeordnet sind (${siteDevices.length} Gerät${siteDevices.length === 1 ? '' : 'e'}). Entfernen Sie zuerst das Gerät oben unter „Wechselrichter".`
+            : null
+        }
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={() => void deleteSite()}
+      />
+
+      <MastrDrawer
+        site={site}
+        open={mastrOpen}
+        onClose={() => setMastrOpen(false)}
+        onApplied={(a) => setAssets(a)}
+      />
+      <AddDeviceDrawer
+        open={addDeviceOpen}
+        onClose={() => setAddDeviceOpen(false)}
+        sites={sites}
+        onClaimed={() => onReload(site.id)}
+      />
+      <DeviceDetailDrawer
+        device={deviceDetail}
+        sites={sites}
+        onClose={() => setDeviceDetailId(null)}
+        onChanged={() => onReload(site.id)}
+      />
     </>
   );
 }
 
 /**
- * Inline edit form of the site detail drawer: name, bidding zone and
+ * Inline edit form of the Anlage's Stammdaten: name, bidding zone and
  * coordinates - the same fields and client-side checks as CreateSiteDrawer.
  * The grid-charging switch ("Netzladen des Speichers") is editable by the
  * site owner too (captain revision 2026-07-07 of decision 3 - not only the
@@ -622,7 +588,7 @@ export function BatteryControlSection({
   return (
     <>
       <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-        <h2 style={{ fontSize: '1.05rem' }}>Speicher &amp; Steuerung</h2>
+        <h3 className="vp-tech-h">Speicher &amp; Steuerung</h3>
       </div>
 
       {needsDevice && !editing && (
@@ -821,7 +787,7 @@ function BatteryEditForm({
             value={deviceId}
             onChange={(e) => setDeviceId(e.target.value)}
           >
-            <option value="">Automatisch (einziges Gerät des Standorts)</option>
+            <option value="">Automatisch (einziges Gerät der Anlage)</option>
             {devices.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name || d.externalRef}

@@ -145,7 +145,7 @@ export function PrognosePage(props: {
       {props.sites.length === 0 ? (
         <Card padding="lg" radius="lg">
           <p className="vp-muted">
-            Noch kein Standort - legen Sie zuerst unter „Standorte“ einen an.
+            Noch keine Anlage - legen Sie zuerst unter „Meine Anlage“ eine an.
           </p>
         </Card>
       ) : (

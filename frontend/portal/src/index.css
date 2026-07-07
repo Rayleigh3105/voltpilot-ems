@@ -1923,3 +1923,100 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-size: 1.1rem;
   line-height: 1;
 }
+
+/* =============================================================================
+   Anlagen-Seite (#/anlage/{siteId}): one scrollable story per Anlage.
+   Kopf (name + status dot + one sentence + badges), then Geld/Jetzt in the
+   fleet hero split, the Fahrplan mini preview, Technik and the Mehr links.
+   ========================================================================== */
+
+.vp-anlage-head {
+  align-items: flex-start;
+}
+.vp-anlage-head h1 {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-anlage-head h1 .vp-fleet-dot {
+  margin-top: 0;
+}
+.vp-anlage-sentence {
+  margin: 4px 0 0;
+  font-size: 0.95rem;
+  color: var(--vp-navy-2, #2c5282);
+}
+.vp-anlage-sentence.tone-off {
+  color: var(--vp-text-muted, #6c757d);
+}
+.vp-anlage-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+  align-items: center;
+}
+
+/* Tiny uppercase card label ("Jetzt gerade", "Fahrplan · heute"). */
+.vp-card-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* Fahrplan mini preview: 24 hourly bars around a center line - charge grows
+   up (green, cyan when grid-fed), discharge hangs down (red), idle is a thin
+   neutral tick. Colors = the chart tokens, so preview and full chart agree. */
+.vp-plan-mini {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 56px;
+  margin-top: var(--vp-space-3);
+}
+.vp-plan-mini i {
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 2px;
+  align-self: center;
+  height: 4px;
+  background: var(--vp-border, #e9ecef);
+}
+.vp-plan-mini i.ch {
+  align-self: flex-start;
+  background: var(--vp-chart-charge, #2e9e5b);
+}
+.vp-plan-mini i.grid {
+  align-self: flex-start;
+  background: var(--vp-chart-gridcharge, #00acc1);
+}
+.vp-plan-mini i.dis {
+  align-self: flex-end;
+  background: var(--vp-chart-discharge, #e53935);
+}
+.vp-plan-mini-text {
+  margin: var(--vp-space-3) 0 0;
+  font-size: 0.95rem;
+  color: var(--vp-text-dark);
+}
+.vp-plan-mini-text b {
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+/* The Anlagen-Seite's "Mehr" row has exactly two link cards - let them share
+   the row instead of huddling in the 4-up grid's left half. */
+.vp-detail-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* Technik sub-headings: calmer than section h2, clearly above table rows. */
+.vp-tech-h {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--vp-text-dark);
+}

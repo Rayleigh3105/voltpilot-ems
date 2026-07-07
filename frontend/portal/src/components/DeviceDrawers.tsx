@@ -230,7 +230,7 @@ export function AddDeviceDrawer({
           </div>
           {sites.length === 0 && (
             <div className="vp-alert vp-alert-info">
-              Sie haben noch keinen Standort - legen Sie zuerst unter „Standorte“ einen an.
+              Sie haben noch keine Anlage - legen Sie zuerst unter „Meine Anlage“ eine an.
             </div>
           )}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}

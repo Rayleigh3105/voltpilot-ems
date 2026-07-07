@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { chargeKind, hasGridCharge, SLOT_DEADBAND_KW } from './schedule';
+import {
+  chargeKind,
+  daypart,
+  hasGridCharge,
+  planHourBars,
+  planSentence,
+  savingsTodayEur,
+  SLOT_DEADBAND_KW,
+  todaySlots,
+} from './schedule';
 
 /**
  * Fahrplan slot-kind derivation: a charging slot that net-imports is a
@@ -56,5 +65,158 @@ describe('hasGridCharge (legend gate)', () => {
         { batteryKw: 0, gridKw: 2.0 },
       ]),
     ).toBe(false);
+  });
+});
+
+// ---- Anlagen-Seite mini preview -------------------------------------------
+
+/** A local 2026-07-07; slots are built in local time like the plan renders. */
+const NOW = new Date(2026, 6, 7, 9, 30);
+
+/** One 15-min slot starting at local hour:minute of NOW's day (or day+1). */
+function slot(
+  hour: number,
+  minute: number,
+  batteryKw: number | null,
+  gridKw: number | null = null,
+  dayOffset = 0,
+): { start: string; batteryKw: number | null; gridKw: number | null } {
+  return {
+    start: new Date(2026, 6, 7 + dayOffset, hour, minute).toISOString(),
+    batteryKw,
+    gridKw,
+  };
+}
+
+/** hours -> four 15-min slots each, constant power. */
+function hours(
+  fromH: number,
+  toH: number,
+  batteryKw: number,
+  gridKw: number | null = null,
+): ReturnType<typeof slot>[] {
+  const out: ReturnType<typeof slot>[] = [];
+  for (let h = fromH; h < toH; h++) {
+    for (const m of [0, 15, 30, 45]) out.push(slot(h, m, batteryKw, gridKw));
+  }
+  return out;
+}
+
+describe('todaySlots / savingsTodayEur', () => {
+  it('keeps only the local calendar day and prices only covered slots', () => {
+    const slots = [
+      { ...slot(10, 0, 2), costEur: -0.1, baselineCostEur: 0.2 },
+      { ...slot(11, 0, 2), costEur: null, baselineCostEur: null },
+      { ...slot(10, 0, 2, null, 1), costEur: -5, baselineCostEur: 5 }, // tomorrow
+    ];
+    expect(todaySlots(slots, NOW)).toHaveLength(2);
+    expect(savingsTodayEur(slots, NOW)).toBeCloseTo(0.3, 10);
+  });
+
+  it('is null (never a fake zero) when no slot of today carries costs', () => {
+    expect(savingsTodayEur([], NOW)).toBeNull();
+    expect(
+      savingsTodayEur([{ ...slot(10, 0, 2), costEur: null, baselineCostEur: null }], NOW),
+    ).toBeNull();
+  });
+});
+
+describe('planSentence', () => {
+  it('composes the captain mockup sentence: charge at noon, sell in the evening', () => {
+    const slots = [...hours(11, 14, 4, -3), ...hours(17, 20, -5, -5)];
+    expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
+      'Mittags laden, abends verkaufen (17–20 Uhr).',
+    );
+  });
+
+  it('says "nutzen" instead of "verkaufen" for Eigenverbrauch plants', () => {
+    const slots = [...hours(11, 14, 4, -3), ...hours(18, 21, -5, 0)];
+    expect(planSentence(slots, 'eigenverbrauch', NOW)).toBe(
+      'Mittags laden, abends nutzen (18–21 Uhr).',
+    );
+  });
+
+  it('calls a mostly grid-fed charge window "günstig laden"', () => {
+    const slots = [...hours(2, 4, 6, 7), ...hours(18, 20, -5, -5)];
+    expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
+      'Nachts günstig laden, abends verkaufen (18–20 Uhr).',
+    );
+  });
+
+  it('handles charge-only and discharge-only days', () => {
+    expect(planSentence(hours(11, 14, 4, -3), 'eigenverbrauch', NOW)).toBe(
+      'Mittags laden (11–14 Uhr).',
+    );
+    expect(planSentence(hours(17, 20, -5, -5), 'direktvermarktung', NOW)).toBe(
+      'Abends verkaufen (17–20 Uhr).',
+    );
+  });
+
+  it('picks the DOMINANT window by energy, not the first one', () => {
+    const slots = [
+      ...hours(7, 8, -1, 0), // small morning discharge
+      ...hours(11, 13, 4, -3),
+      ...hours(17, 20, -5, -5), // the big evening one
+    ];
+    expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
+      'Mittags laden, abends verkaufen (17–20 Uhr).',
+    );
+  });
+
+  it('bridges a short idle dip inside one window', () => {
+    const slots = [
+      ...hours(17, 18, -5, -5),
+      slot(18, 0, 0),
+      slot(18, 15, 0),
+      slot(18, 30, -5, -5),
+      slot(18, 45, -5, -5),
+      ...hours(19, 20, -5, -5),
+    ];
+    expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
+      'Abends verkaufen (17–20 Uhr).',
+    );
+  });
+
+  it('is null without today slots and calm on an all-idle day', () => {
+    expect(planSentence([], 'eigenverbrauch', NOW)).toBeNull();
+    expect(planSentence([slot(10, 0, 2, null, 1)], 'eigenverbrauch', NOW)).toBeNull();
+    expect(planSentence(hours(8, 20, 0, 1), 'eigenverbrauch', NOW)).toBe(
+      'Der Speicher hält heute seine Ladung.',
+    );
+  });
+});
+
+describe('planHourBars', () => {
+  it('condenses today to 24 hourly bars with the dominant direction', () => {
+    const bars = planHourBars([...hours(11, 12, 4, -3), ...hours(18, 19, -5, 2)], NOW);
+    expect(bars).toHaveLength(24);
+    expect(bars[11]).toEqual({ hour: 11, kind: 'solarladen', kw: 4 });
+    expect(bars[18]).toEqual({ hour: 18, kind: 'entladen', kw: 5 });
+    // Hours without plan data stay null, planned-idle hours are 0.
+    expect(bars[0].kw).toBeNull();
+  });
+
+  it('marks an hour cyan when most of its charge energy net-imports', () => {
+    const bars = planHourBars(
+      [slot(3, 0, 6, 7), slot(3, 15, 6, 7), slot(3, 30, 6, 7), slot(3, 45, 1, -1)],
+      NOW,
+    );
+    expect(bars[3].kind).toBe('netzladen');
+  });
+
+  it('renders a planned-idle hour as ruhe with kw 0', () => {
+    const bars = planHourBars(hours(9, 10, 0, 1), NOW);
+    expect(bars[9]).toEqual({ hour: 9, kind: 'ruhe', kw: 0 });
+  });
+});
+
+describe('daypart', () => {
+  it('maps local hours onto German dayparts', () => {
+    expect(daypart(3)).toBe('nachts');
+    expect(daypart(23.5)).toBe('nachts');
+    expect(daypart(8)).toBe('morgens');
+    expect(daypart(12.5)).toBe('mittags');
+    expect(daypart(16)).toBe('nachmittags');
+    expect(daypart(19)).toBe('abends');
   });
 });

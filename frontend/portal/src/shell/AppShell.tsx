@@ -6,7 +6,7 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 import logoUrl from '../../designsystem/assets/voltpilot-logo.png';
 import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
-import { MAIN_PAGES, PLATFORM_PAGES, pageLabel, type PageId } from '../nav';
+import { anlagenLabel, MAIN_PAGES, PLATFORM_PAGES, pageLabel, type PageId } from '../nav';
 
 /**
  * The unified dashboard shell: left sidebar (primary navigation, identical for
@@ -80,14 +80,14 @@ export function AppShell({
           <NavItem
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}
-            label={p.label}
+            label={p.id === 'anlagen' ? anlagenLabel(counts.sites) : p.label}
             active={page === p.id}
             count={
-              p.id === 'standorte' && counts.sites != null
+              // "Meine Anlagen" carries the fleet size; a single Anlage needs
+              // no number - it IS the page.
+              p.id === 'anlagen' && counts.sites != null && counts.sites > 1
                 ? counts.sites
-                : p.id === 'geraete' && counts.devices != null
-                  ? counts.devices
-                  : null
+                : null
             }
             onClick={() => navigate(p.id)}
           />
@@ -135,7 +135,7 @@ export function AppShell({
             <Icon name={mobileNav ? 'x' : 'menu'} size={22} />
           </button>
           <div className="crumbs">
-            <span className="here">{pageLabel(page)}</span>
+            <span className="here">{pageLabel(page, counts.sites)}</span>
           </div>
           <div className="spacer" />
 

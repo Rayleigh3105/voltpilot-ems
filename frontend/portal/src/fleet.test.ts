@@ -64,7 +64,7 @@ describe('fleetKind + wording', () => {
     expect(fleetKind(['direktvermarktung', 'eigenverbrauch'])).toBe('gemischt');
     expect(fleetHeadline('gemischt')).toBe('Ihr VoltPilot-Vorteil');
     expect(realizedSubline('gemischt', 'day', NOW, null)).toBe(
-      'heute herausgeholt, alle Standorte zusammen',
+      'heute herausgeholt, alle Anlagen zusammen',
     );
   });
 

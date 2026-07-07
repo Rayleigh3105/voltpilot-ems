@@ -8,14 +8,18 @@ import { isPlatformAdmin, login, loginWithCredentials } from './auth';
 import { api, ApiError, register, setTenantOverride, type Device, type Site } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import { AppShell } from './shell/AppShell';
-import { hashForPage, pageFromHash, PLATFORM_PAGES, type PageId } from './nav';
+import {
+  hashForRoute,
+  pageRoute,
+  PLATFORM_PAGES,
+  routeFromHash,
+  type PageId,
+  type Route,
+} from './nav';
 import { OnboardingWizard } from './Onboarding';
 import { UebersichtPage } from './pages/UebersichtPage';
-import { LiveDatenPage } from './pages/LiveDatenPage';
-import { StandortePage } from './pages/StandortePage';
-import { GeraetePage } from './pages/GeraetePage';
-import { FahrplanPage, MarktpreisePage, WetterPage } from './pages/DataPages';
-import { HistoriePage } from './pages/HistoriePage';
+import { AnlagenPage } from './pages/AnlagenPage';
+import { MarktpreisePage } from './pages/DataPages';
 import { PrognosePage } from './pages/PrognosePage';
 import { MandantenPage } from './pages/admin/MandantenPage';
 import { BenutzerPage } from './pages/admin/BenutzerPage';
@@ -341,10 +345,11 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
 
 function UnifiedPortal() {
   const isAdmin = useMemo(() => isPlatformAdmin(), []);
-  const [page, setPage] = useState<PageId>(() => {
-    const p = pageFromHash();
-    return !isAdmin && PLATFORM_PAGES.some((d) => d.id === p) ? 'uebersicht' : p;
+  const [route, setRoute] = useState<Route>(() => {
+    const r = routeFromHash();
+    return !isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r;
   });
+  const page = route.page;
 
   // Admin tenant context (the switcher). Customers never have an override -
   // their tenant comes from the JWT and the backend ignores the header anyway.
@@ -363,10 +368,13 @@ function UnifiedPortal() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   const navigate = useCallback(
-    (p: PageId) => {
-      if (!isAdmin && PLATFORM_PAGES.some((d) => d.id === p)) p = 'uebersicht';
-      window.location.hash = hashForPage(p);
-      setPage(p);
+    (target: Route | PageId) => {
+      let r: Route = typeof target === 'string' ? pageRoute(target) : target;
+      if (!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page)) r = pageRoute('uebersicht');
+      window.location.hash = hashForRoute(r);
+      setRoute(r);
+      // A page switch is a navigation, not a scroll continuation.
+      window.scrollTo({ top: 0 });
     },
     [isAdmin],
   );
@@ -374,8 +382,8 @@ function UnifiedPortal() {
   // Hash routing: back/forward + direct edits.
   useEffect(() => {
     const onHash = () => {
-      const p = pageFromHash();
-      setPage(!isAdmin && PLATFORM_PAGES.some((d) => d.id === p) ? 'uebersicht' : p);
+      const r = routeFromHash();
+      setRoute(!isAdmin && PLATFORM_PAGES.some((d) => d.id === r.page) ? pageRoute('uebersicht') : r);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
@@ -456,6 +464,28 @@ function UnifiedPortal() {
     void reload();
   }, [reload, tenantId]);
 
+  // Single-Anlage customers land on "Meine Anlage" (captain IA): the plain
+  // default landing (no explicit hash) forwards ONCE to the Anlagen entry so
+  // the nav highlights their one page. Deep links and admins are untouched.
+  const bootRedirected = useRef(false);
+  const initialHash = useRef(window.location.hash);
+  useEffect(() => {
+    if (bootRedirected.current || isAdmin || !loaded || error != null) return;
+    const wasDefault = ['', '#', '#/'].includes(initialHash.current);
+    if (wasDefault && route.page === 'uebersicht' && sites.length === 1) {
+      bootRedirected.current = true;
+      // replace() instead of navigate(): no history entry, Back leaves the app.
+      window.location.replace(hashForRoute(pageRoute('anlagen')));
+      setRoute(pageRoute('anlagen'));
+    }
+  }, [isAdmin, loaded, error, sites, route.page]);
+
+  // An Anlage opened by route is also the context of the site-scoped pages
+  // (Marktpreise, Prognosequalität) - switching there stays on "their" site.
+  useEffect(() => {
+    if (route.page === 'anlagen' && route.siteId) setSelectedSite(route.siteId);
+  }, [route]);
+
   const changeTenant = (id: string | null) => {
     setTenantId(id);
     setSelectedSite(null);
@@ -529,48 +559,41 @@ function UnifiedPortal() {
         <OnboardingWizard sites={sites} onDone={finishOnboarding} onSkip={finishOnboarding} />
       ) : (
         <>
-          {page === 'uebersicht' && !isAdmin && loaded && !error && devices.length === 0 && (
-            // The customer skipped the guided setup ("Später einrichten"):
-            // keep one clear way back in, instead of a dead-end dashboard.
-            <Card padding="lg" radius="lg" accent="primary" className="vp-resume-banner">
-              <div style={{ flex: '1 1 360px', minWidth: 0 }}>
-                <h4 style={{ marginBottom: 4 }}>Ihre Anlage ist noch nicht verbunden</h4>
-                <p className="vp-muted" style={{ margin: 0 }}>
-                  In wenigen Minuten startklar: Standort anlegen, Gerät verbinden -
-                  wir führen Sie Schritt für Schritt durch.
-                </p>
-              </div>
-              <Button variant="primary" onClick={() => setOnboardingDismissed(false)}>
-                Einrichtung fortsetzen
-              </Button>
-            </Card>
-          )}
+          {(page === 'uebersicht' || page === 'anlagen') &&
+            !isAdmin &&
+            loaded &&
+            !error &&
+            devices.length === 0 && (
+              // The customer skipped the guided setup ("Später einrichten"):
+              // keep one clear way back in, instead of a dead-end dashboard.
+              <Card padding="lg" radius="lg" accent="primary" className="vp-resume-banner">
+                <div style={{ flex: '1 1 360px', minWidth: 0 }}>
+                  <h4 style={{ marginBottom: 4 }}>Ihre Anlage ist noch nicht verbunden</h4>
+                  <p className="vp-muted" style={{ margin: 0 }}>
+                    In wenigen Minuten startklar: Anlage anlegen, Gerät verbinden -
+                    wir führen Sie Schritt für Schritt durch.
+                  </p>
+                </div>
+                <Button variant="primary" onClick={() => setOnboardingDismissed(false)}>
+                  Einrichtung fortsetzen
+                </Button>
+              </Card>
+            )}
           {page === 'uebersicht' && (
             <UebersichtPage {...customerProps} onNavigate={navigate} isAdmin={isAdmin} />
           )}
-          {page === 'live' && (
-            <LiveDatenPage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
-          )}
-          {page === 'standorte' && <StandortePage {...customerProps} isAdmin={isAdmin} />}
-          {page === 'geraete' && (
-            <GeraetePage
+          {page === 'anlagen' && (
+            <AnlagenPage
               sites={sites}
               devices={devices}
-              onReload={() => void reload()}
-              onPoll={() => void reload(undefined, { background: true })}
+              route={route}
+              onNavigate={navigate}
+              onReload={(selectSiteId?: string) => void reload(selectSiteId)}
+              isAdmin={isAdmin}
             />
           )}
           {page === 'marktpreise' && (
             <MarktpreisePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
-          )}
-          {page === 'wetter' && (
-            <WetterPage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
-          )}
-          {page === 'fahrplan' && (
-            <FahrplanPage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
-          )}
-          {page === 'historie' && (
-            <HistoriePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
           )}
           {page === 'prognose' && (
             <PrognosePage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
