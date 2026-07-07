@@ -14,10 +14,11 @@
  * turns it amber and names it ("1 Gerät ... meldet sich nicht") - calm and
  * concrete, never alarm-red.
  */
-import type { EarningsDaily, EarningsRange, EarningsReason, EarningsSite, OverviewSite, PlantKind } from './api';
+import type { EarningsDaily, EarningsRange, EarningsReason, EarningsSite, OverviewLive, OverviewSite, PlantKind } from './api';
 import { ONLINE_WINDOW_MS } from './api';
 import { eurAmount, fmtNum } from './format';
-import { DEADBAND_KW } from './live';
+import { composeStatusSentence, DEADBAND_KW, deriveBatteryKw, type LiveSnapshot } from './live';
+import { sanitizeSoc } from './plausible';
 
 /** The fleet's overall plant-kind composition. */
 export type FleetKind = PlantKind | 'gemischt';
@@ -364,4 +365,82 @@ function listNames(names: string[]): string {
 export function siteLiveFresh(site: OverviewSite, now: Date = new Date()): boolean {
   if (site.onlineCount === 0 || !site.live) return false;
   return now.getTime() - new Date(site.live.ts).getTime() <= ONLINE_WINDOW_MS;
+}
+
+// ---- Single-site status (the simplified single-site Übersicht) ----------------
+
+/**
+ * A site's overview snapshot as the live.ts LiveSnapshot the EnergyFlow
+ * diagram renders: battery derived from the power balance, SoC sanitized -
+ * exactly the fleet-card conventions. No live row = all-absent (the diagram
+ * then shows a calm grey picture, never fake zeros).
+ */
+export function siteSnapshot(live: OverviewLive | null): LiveSnapshot {
+  if (!live) {
+    return { pvKw: null, loadKw: null, gridKw: null, battKw: null, socPct: null, socAt: null };
+  }
+  const socPct = sanitizeSoc(live.socPct);
+  return {
+    pvKw: live.pvKw,
+    loadKw: live.loadKw,
+    gridKw: live.gridKw,
+    battKw: deriveBatteryKw(live.pvKw, live.loadKw, live.gridKw),
+    socPct,
+    socAt: socPct == null ? null : live.ts,
+  };
+}
+
+/**
+ * The ONE plain-German sentence of the single-site Übersicht (single-site
+ * customers and the fleet drill-down) - the fleet sentence's singular sibling.
+ * Device health leads: a silent device turns the sentence amber and says what
+ * to check; a device still waiting for first data gets the calm onboarding
+ * note. When everything reports, "Alles läuft." plus the live energy sentence
+ * from live.ts; an online device whose newest OBSERVATION is old (a
+ * store-and-forward edge replaying its buffer) stays green but says the values
+ * are still in transit - stale numbers never read as live.
+ */
+export function composeSiteSentence(site: OverviewSite, now: Date = new Date()): FleetSentence {
+  const devices = site.deviceCount;
+  if (devices === 0) {
+    return { tone: 'off', text: 'Hier ist noch kein Gerät verbunden.' };
+  }
+  const online = site.onlineCount;
+  const waiting = site.waitingCount;
+  const stale = devices - online - waiting;
+  if (stale > 0) {
+    const lead =
+      devices === 1
+        ? 'Ihr Gerät meldet sich nicht.'
+        : stale === 1
+          ? `1 von ${devices} Geräten meldet sich nicht.`
+          : `${stale} von ${devices} Geräten melden sich nicht.`;
+    return {
+      tone: 'warn',
+      text: `${lead} Bitte prüfen Sie, ob das Gerät mit Strom und Internet verbunden ist.`,
+    };
+  }
+  if (waiting > 0) {
+    return {
+      tone: 'warn',
+      text:
+        devices === 1
+          ? 'Ihr Gerät ist verbunden und wartet auf die ersten Daten.'
+          : waiting === 1
+            ? `1 von ${devices} Geräten wartet auf die ersten Daten.`
+            : `${waiting} von ${devices} Geräten warten auf die ersten Daten.`,
+    };
+  }
+  if (!siteLiveFresh(site, now)) {
+    const onlinePart =
+      devices === 1 ? 'Ihr Gerät ist online' : `${online} von ${devices} Geräten online`;
+    return {
+      tone: 'ok',
+      text: `Alles läuft. ${onlinePart} - die neuesten Messwerte werden gerade übertragen.`,
+    };
+  }
+  return {
+    tone: 'ok',
+    text: `Alles läuft. ${composeStatusSentence(siteSnapshot(site.live), true).text}`,
+  };
 }

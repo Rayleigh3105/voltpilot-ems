@@ -8,6 +8,7 @@ import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
   | 'uebersicht'
+  | 'live'
   | 'standorte'
   | 'geraete'
   | 'marktpreise'
@@ -30,6 +31,7 @@ export interface PageDef {
 
 export const MAIN_PAGES: PageDef[] = [
   { id: 'uebersicht', label: 'Übersicht', icon: 'dashboard' },
+  { id: 'live', label: 'Live-Daten', icon: 'activity' },
   { id: 'standorte', label: 'Standorte', icon: 'map-pin' },
   { id: 'geraete', label: 'Geräte', icon: 'zap' },
   { id: 'marktpreise', label: 'Marktpreise', icon: 'euro' },

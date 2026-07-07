@@ -16,8 +16,10 @@ import {
   realizedFinePrint,
   realizedSubline,
   savedOnDay,
+  composeSiteSentence,
   siteEarnText,
   siteLiveFresh,
+  siteSnapshot,
   sparkDays,
 } from './fleet';
 
@@ -401,5 +403,92 @@ describe('siteLiveFresh', () => {
     ).toBe(false);
     expect(siteLiveFresh(site({ onlineCount: 0 }), NOW)).toBe(false);
     expect(siteLiveFresh(site({ live: null }), NOW)).toBe(false);
+  });
+});
+
+describe('siteSnapshot (overview row -> EnergyFlow snapshot)', () => {
+  it('derives the battery from the power balance and sanitizes the SoC', () => {
+    const snap = siteSnapshot({ ts: NOW.toISOString(), pvKw: 3.2, loadKw: 1.1, gridKw: -0.9, socPct: 76 });
+    expect(snap.pvKw).toBe(3.2);
+    expect(snap.loadKw).toBe(1.1);
+    expect(snap.gridKw).toBe(-0.9);
+    // battery = grid - load + pv = -0.9 - 1.1 + 3.2
+    expect(snap.battKw).toBeCloseTo(1.2, 10);
+    expect(snap.socPct).toBe(76);
+    expect(snap.socAt).toBe(NOW.toISOString());
+  });
+
+  it('keeps absent channels absent and drops an implausible SoC (never fake zeros)', () => {
+    const snap = siteSnapshot({ ts: NOW.toISOString(), pvKw: 3.2, loadKw: null, gridKw: -0.9, socPct: 1270 });
+    expect(snap.loadKw).toBeNull();
+    expect(snap.battKw).toBeNull();
+    expect(snap.socPct).toBeNull();
+    expect(snap.socAt).toBeNull();
+  });
+
+  it('a missing live row is the all-absent snapshot', () => {
+    const snap = siteSnapshot(null);
+    expect(snap).toEqual({ pvKw: null, loadKw: null, gridKw: null, battKw: null, socPct: null, socAt: null });
+  });
+});
+
+describe('composeSiteSentence (single-site Übersicht)', () => {
+  it('is green with the live energy sentence when everything reports fresh', () => {
+    const s = composeSiteSentence(site({}), NOW);
+    expect(s.tone).toBe('ok');
+    expect(s.text).toBe(
+      'Alles läuft. Ihre Anlage erzeugt gerade 3,2 kW. Die Batterie lädt (76 %). 0,9 kW fließen ins Netz.',
+    );
+  });
+
+  it('stays green but says values are in transit when online with an old observation (replay)', () => {
+    const oldTs = new Date(NOW.getTime() - 60 * 60 * 1000).toISOString();
+    const s = composeSiteSentence(
+      site({ live: { ts: oldTs, pvKw: 1, loadKw: 1, gridKw: 0, socPct: 50 } }),
+      NOW,
+    );
+    expect(s.tone).toBe('ok');
+    expect(s.text).toBe('Alles läuft. Ihr Gerät ist online - die neuesten Messwerte werden gerade übertragen.');
+  });
+
+  it('speaks plural for several online devices without fresh values', () => {
+    const s = composeSiteSentence(site({ deviceCount: 3, onlineCount: 3, live: null }), NOW);
+    expect(s.text).toBe('Alles läuft. 3 von 3 Geräten online - die neuesten Messwerte werden gerade übertragen.');
+  });
+
+  it('one silent device turns the sentence amber with what to check', () => {
+    const s = composeSiteSentence(site({ onlineCount: 0, worstStatus: 'stale' }), NOW);
+    expect(s.tone).toBe('warn');
+    expect(s.text).toBe(
+      'Ihr Gerät meldet sich nicht. Bitte prüfen Sie, ob das Gerät mit Strom und Internet verbunden ist.',
+    );
+  });
+
+  it('counts silent devices among several', () => {
+    const one = composeSiteSentence(site({ deviceCount: 3, onlineCount: 2, worstStatus: 'stale' }), NOW);
+    expect(one.tone).toBe('warn');
+    expect(one.text).toContain('1 von 3 Geräten meldet sich nicht.');
+    const two = composeSiteSentence(site({ deviceCount: 3, onlineCount: 1, worstStatus: 'stale' }), NOW);
+    expect(two.text).toContain('2 von 3 Geräten melden sich nicht.');
+  });
+
+  it('a waiting device gets the calm onboarding wording (silent beats waiting)', () => {
+    const s = composeSiteSentence(
+      site({ deviceCount: 1, onlineCount: 0, waitingCount: 1, worstStatus: 'waiting', live: null }),
+      NOW,
+    );
+    expect(s.tone).toBe('warn');
+    expect(s.text).toBe('Ihr Gerät ist verbunden und wartet auf die ersten Daten.');
+    const mixed = composeSiteSentence(
+      site({ deviceCount: 2, onlineCount: 0, waitingCount: 1, worstStatus: 'stale' }),
+      NOW,
+    );
+    expect(mixed.text).toContain('meldet sich nicht');
+  });
+
+  it('no devices is the muted empty tone', () => {
+    const s = composeSiteSentence(site({ deviceCount: 0, onlineCount: 0, worstStatus: null, live: null }), NOW);
+    expect(s.tone).toBe('off');
+    expect(s.text).toBe('Hier ist noch kein Gerät verbunden.');
   });
 });

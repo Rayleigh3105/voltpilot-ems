@@ -1,6 +1,6 @@
 /**
  * One shared chart palette + type token set for every ECharts surface in the
- * portal (TelemetryChart, ScheduleChart, PriceChart, HistoryChart, WeatherChart,
+ * portal (TelemetryChart, ScheduleChart, HistoryChart, WeatherChart,
  * PriceHistoryChart, ForecastQualityChart). ECharts renders to canvas and can't
  * resolve CSS var() at paint time, so we read the design-system `--vp-chart-*`
  * tokens (tokens/colors.css) from :root once, memoise them, and fall back to the

@@ -1,68 +1,40 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
-import { Icon } from '../../designsystem/components/core/Icon';
-import { IconTile } from '../../designsystem/components/core/IconTile';
-import { Stat } from '../../designsystem/components/core/Stat';
+import { Icon, type IconName } from '../../designsystem/components/core/Icon';
+import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
 import {
   api,
-  deviceLiveStatus,
-  ONLINE_WINDOW_MS,
   type Device,
   type Earnings,
   type EarningsRange,
   type Overview,
-  type PriceSeries,
   type Site,
-  type TelemetryPoint,
-  type WeatherForecast,
 } from '../api';
 import { currentUser } from '../auth';
-import { ctPerKwh, fmtNum, fmtRelative, zoneLabel } from '../format';
-import { fleetDailySaved, fleetKind, notComputableHint, premiumIncluded } from '../fleet';
+import { ctPerKwh, fmtNum, fmtRelative } from '../format';
+import {
+  composeSiteSentence,
+  fleetDailySaved,
+  fleetKind,
+  notComputableHint,
+  premiumIncluded,
+  siteLiveFresh,
+  siteSnapshot,
+} from '../fleet';
 import type { PageId } from '../nav';
-import { SitePicker } from '../components/SitePicker';
+import { nextHourIndex } from '../weather';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
-import { ChartSubtitle } from '../components/ChartExplain';
-import { ChartCardSkeleton, ErrorState, Skeleton, TextSkeleton } from '../components/States';
-import { LiveHero } from '../components/LiveHero';
+import { ErrorState, Skeleton } from '../components/States';
+import { EnergyFlow } from '../components/EnergyFlow';
 import { EarningsHero, FleetSiteCard, FleetStatusCard } from '../components/FleetOverview';
-import { TelemetryChart } from '../TelemetryChart';
-import { PriceChart } from '../PriceChart';
 
-/** Background refresh cadence of the Live-Daten widget (GeraetePage pattern). */
+/** Background refresh cadence of the live widgets (GeraetePage pattern). */
 const POLL_MS = 30_000;
-/** Re-render cadence of the "Stand vor X" freshness chip. */
+/** Re-render cadence of the "Stand vor X" freshness note. */
 const TICK_MS = 5_000;
-
-/** Verlauf window toggle: fetch only the selected window (F6 - the API
- *  downsamples windows > 3h server-side to keep them complete AND current). */
-type LiveWindow = '1h' | '3h' | 'today';
-const LIVE_WINDOWS: { id: LiveWindow; label: string; insight: string }[] = [
-  { id: '1h', label: '1 Std', insight: 'in der letzten Stunde' },
-  { id: '3h', label: '3 Std', insight: 'in den letzten 3 Stunden' },
-  { id: 'today', label: 'Heute', insight: 'heute' },
-];
-
-/** Start of the fetched telemetry window: now-1h / now-3h / local midnight. */
-function windowStart(win: LiveWindow, now: Date): Date {
-  const from = new Date(now);
-  if (win === '1h') from.setHours(from.getHours() - 1);
-  else if (win === '3h') from.setHours(from.getHours() - 3);
-  else from.setHours(0, 0, 0, 0);
-  return from;
-}
-
-/**
- * A widget whose data failed to load: a distinct error card with a retry, NOT
- * the benign "waiting for data / no prices" empty copy (M2). Keeps the outage
- * honest instead of reassuring.
- */
-function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <ErrorState message={message} onRetry={onRetry} />;
-}
 
 interface UebersichtProps {
   sites: Site[];
@@ -289,16 +261,20 @@ function FleetUebersicht({
 }
 
 /**
- * The single-site Übersicht body: money-first KPI hero row (savings + price
- * lead), live telemetry as the primary widget, prices + weather secondary, and
- * the quick site list. Unchanged for single-site customers; in fleet mode it
- * is the drill-down target and carries the "‹ Alle Standorte" back affordance.
+ * The simplified single-site Übersicht (single-site customers and the fleet
+ * drill-down target). Three calm blocks answer, in order: (1) how much money
+ * VoltPilot made me - the measured EarningsHero, unchanged; (2) is everything
+ * running - ONE plain-German status sentence plus the energy-flow diagram as
+ * the single centerpiece; (3) where is the detail - link cards to Fahrplan /
+ * Historie / Marktpreise / Wetter, with the Live-Daten link in the status
+ * card. The depth itself (Verlauf chart, price chart, weather panel, site
+ * list) lives on those pages, so a phone fits this screen with gentle
+ * scrolling. In fleet mode this is the drill-down target and carries the
+ * "‹ Alle Standorte" back affordance.
  */
 function SingleSiteUebersicht({
   sites,
-  devices,
   selectedSite,
-  onSelectSite,
   onNavigate,
   onReload,
   isAdmin = false,
@@ -307,73 +283,48 @@ function SingleSiteUebersicht({
   const user = currentUser();
   const site = sites.find((s) => s.id === selectedSite) ?? null;
 
-  const [telemetry, setTelemetry] = useState<TelemetryPoint[]>([]);
-  const [prices, setPrices] = useState<PriceSeries | null>(null);
-  const [weather, setWeather] = useState<WeatherForecast | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [overviewFailed, setOverviewFailed] = useState(false);
   // Realized earnings for the hero (captain decision 6: single-site customers
   // get the same measured hero; in fleet mode the drill-down shows it
   // site-scoped). The planned number lives on the Fahrplan page only.
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [earnFailed, setEarnFailed] = useState(false);
   const [range, setRange] = useState<EarningsRange>('month');
-  // Per-widget load failure flags: an outage must render a distinct
-  // "konnte nicht geladen werden" card, NOT the benign "waiting for data /
-  // no prices" empty state (M2). Each is set when its endpoint rejects.
-  const [failed, setFailed] = useState({
-    telemetry: false,
-    prices: false,
-    weather: false,
-  });
+  // Teaser lines of the detail cards, loaded silently: a failure just keeps
+  // the static copy - the links always work, so no error state is needed.
+  const [avgPriceToday, setAvgPriceToday] = useState<number | null>(null);
+  const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [loadingTelemetry, setLoadingTelemetry] = useState(false);
-  const [liveWindow, setLiveWindow] = useState<LiveWindow>('3h');
-  // The status layer (sentence/tiles/flow) always shows; the Verlauf chart is
-  // secondary and collapses behind a toggle on phones (report direction B).
-  const [isPhone, setIsPhone] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches,
-  );
-  const [chartOpen, setChartOpen] = useState(false);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mq = window.matchMedia('(max-width: 720px)');
-    const on = () => setIsPhone(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
+  const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
   const [deviceDrawer, setDeviceDrawer] = useState(false);
 
-  // Secondary widgets (prices/weather) - independent of the live window, so a
-  // window toggle never re-flashes their skeletons.
+  // The status card's data: the site's overview row (device health + newest
+  // live snapshot) - the same source the fleet cards render from.
   useEffect(() => {
-    if (!site) {
-      setPrices(null);
-      setWeather(null);
-      setFailed((f) => ({ ...f, prices: false, weather: false }));
-      return;
-    }
+    if (sites.length === 0) return;
     let active = true;
-    setLoading(true);
-    Promise.allSettled([api.prices(site.id), api.weather(site.id)]).then(
-      ([p, w]) => {
+    api.overview().then(
+      (o) => {
         if (!active) return;
-        if (p.status === 'fulfilled') setPrices(p.value);
-        if (w.status === 'fulfilled') setWeather(w.value);
-        setFailed((f) => ({
-          ...f,
-          prices: p.status === 'rejected',
-          weather: w.status === 'rejected',
-        }));
-        setLoading(false);
+        setOverview(o);
+        setOverviewFailed(false);
+      },
+      () => {
+        if (active) setOverviewFailed(true);
       },
     );
     return () => {
       active = false;
     };
-  }, [site?.id, reloadKey]);
+    // `sites` identity only changes on explicit App reloads (site created /
+    // device claimed), so refetching on it keeps a brand-new site's status
+    // current without waiting for the 30 s poll.
+  }, [sites, reloadKey]);
 
-  // The measured money hero - tenant-wide response, rendered site-scoped.
+  // The measured money hero - tenant-wide response, rendered site-scoped; the
+  // hero keeps the previous numbers while a period switch is in flight.
   useEffect(() => {
     if (sites.length === 0) return;
     let active = true;
@@ -390,90 +341,71 @@ function SingleSiteUebersicht({
     return () => {
       active = false;
     };
-  }, [sites.length === 0, reloadKey, range]);
+  }, [sites, reloadKey, range]);
 
-  // Live telemetry - refetched on the selected window (F6: only that window,
-  // downsampled server-side beyond 3 h so it stays complete and current).
+  // Detail-card teaser lines (Ø price today, next-hour temperature).
   useEffect(() => {
     if (!site) {
-      setTelemetry([]);
-      setFailed((f) => ({ ...f, telemetry: false }));
+      setAvgPriceToday(null);
+      setNextHourTempC(null);
       return;
     }
     let active = true;
-    setLoadingTelemetry(true);
-    const to = new Date();
-    api
-      .telemetry(site.id, windowStart(liveWindow, to).toISOString(), to.toISOString())
-      .then(
-        (t) => {
-          if (!active) return;
-          setTelemetry(t);
-          setFailed((f) => ({ ...f, telemetry: false }));
-          setLoadingTelemetry(false);
-        },
-        () => {
-          if (!active) return;
-          setFailed((f) => ({ ...f, telemetry: true }));
-          setLoadingTelemetry(false);
-        },
-      );
+    const today = new Date().toDateString();
+    api.prices(site.id).then(
+      (p) => {
+        if (!active) return;
+        const values = p.points
+          .filter((x) => new Date(x.ts).toDateString() === today)
+          .map((x) => x.priceEurMwh)
+          .filter((v): v is number => v != null);
+        setAvgPriceToday(
+          values.length ? values.reduce((a, b) => a + b, 0) / values.length : null,
+        );
+      },
+      () => {},
+    );
+    api.weather(site.id).then(
+      (w) => {
+        if (!active) return;
+        const idx = nextHourIndex(w.points, Date.now());
+        setNextHourTempC(idx >= 0 ? (w.points[idx].temperatureC ?? null) : null);
+      },
+      () => {},
+    );
     return () => {
       active = false;
     };
-  }, [site?.id, reloadKey, liveWindow]);
+  }, [site?.id, reloadKey]);
 
-  const retry = () => setReloadKey((k) => k + 1);
-
-  // "Live-Daten" must be live (F4): poll the telemetry every 30 s in the
-  // background - silent on failure, the card keeps its last good values - and
-  // tick a clock every 5 s so the freshness chip counts honestly. One stable
-  // interval reads the latest site + window via refs (the GeraetePage pattern).
-  const [now, setNow] = useState(() => new Date());
-  const pollRef = useRef<() => void>(() => {});
-  pollRef.current = () => {
-    if (!site) return;
-    const to = new Date();
-    api.telemetry(site.id, windowStart(liveWindow, to).toISOString(), to.toISOString()).then(
-      (t) => setTelemetry(t),
-      () => {}, // background poll: fail silently, keep the last good data
-    );
-  };
+  // Freshness tick (5 s) + silent 30 s background poll (the fleet-mode
+  // pattern) - the page keeps its last good data on a poll failure.
+  const rangeRef = useRef(range);
+  rangeRef.current = range;
   useEffect(() => {
     let ticks = 0;
     const timer = setInterval(() => {
       setNow(new Date());
-      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) pollRef.current();
+      if (++ticks % Math.round(POLL_MS / TICK_MS) === 0) {
+        api.overview().then(
+          (o) => setOverview(o),
+          () => {},
+        );
+        api.earnings(rangeRef.current).then(
+          (e) => setEarnings(e),
+          () => {},
+        );
+      }
     }, TICK_MS);
     return () => clearInterval(timer);
   }, []);
 
-  // --- Hero derivations (money first, measured) -----------------------------
-  const today = new Date();
-  const siteEarnings = earnings?.sites.find((x) => x.id === site?.id) ?? null;
-
-  const todayPrices = (prices?.points ?? [])
-    .filter((p) => new Date(p.ts).toDateString() === today.toDateString())
-    .map((p) => p.priceEurMwh)
-    .filter((v): v is number => v != null);
-  const avgPriceToday = todayPrices.length
-    ? todayPrices.reduce((a, b) => a + b, 0) / todayPrices.length
-    : null;
-
-  const online = devices.filter((d) => deviceLiveStatus(d) === 'online').length;
-  const latest = telemetry.length ? telemetry[telemetry.length - 1] : null;
-  // Honest freshness for the Live-Daten card: green + "Stand vor X" while the
-  // newest sample is inside the 5-min liveness window (deviceLiveStatus
-  // convention), grey + "keine aktuellen Daten" beyond it. The status hero
-  // keeps its last good values but dims (the edge dashboard's .stale precedent).
-  const telemetryFresh =
-    latest != null && now.getTime() - new Date(latest.ts).getTime() <= ONLINE_WINDOW_MS;
-  const weatherNow = weather?.points?.[0] ?? null;
-  const activeWindow = LIVE_WINDOWS.find((w) => w.id === liveWindow) ?? LIVE_WINDOWS[1];
-  const allFailed =
-    site != null && failed.telemetry && failed.prices && failed.weather && earnFailed;
-
+  const retry = () => setReloadKey((k) => k + 1);
   const firstName = (user.name || '').split(/\s+/)[0] || user.name;
+  const siteEarnings = earnings?.sites.find((x) => x.id === site?.id) ?? null;
+  const ovSite = overview?.sites.find((x) => x.id === site?.id) ?? null;
+  const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;
+  const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
 
   if (sites.length === 0) {
     // Empty-state: for a customer this is the onboarding entry (never a
@@ -530,44 +462,25 @@ function SingleSiteUebersicht({
           <h1>{onBackToFleet ? site?.name ?? 'Standort' : `Guten Tag, ${firstName}`}</h1>
           <p>
             {onBackToFleet
-              ? 'Live-Daten, Preise, Wetter und Fahrplan dieses Standorts.'
-              : 'Alles Wichtige zu Ihren Standorten und Geräten auf einen Blick.'}
+              ? 'Alles Wichtige zu diesem Standort auf einen Blick.'
+              : 'Ihre Anlage auf einen Blick.'}
           </p>
         </div>
         <div className="actions">
-          <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
-            Standort
-          </Button>
           <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDeviceDrawer(true)}>
             Gerät hinzufügen
           </Button>
         </div>
       </div>
 
-      {allFailed && (
-        <div
-          className="vp-alert vp-alert-err"
-          style={{ display: 'flex', alignItems: 'center', gap: 'var(--vp-space-3)', flexWrap: 'wrap' }}
-        >
-          <span style={{ flex: '1 1 320px' }}>
-            Die Daten dieses Standorts konnten gerade nicht geladen werden. Bitte prüfen Sie
-            Ihre Verbindung und versuchen Sie es erneut.
-          </span>
-          <Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={retry}>
-            Erneut versuchen
-          </Button>
-        </div>
-      )}
-
-      {/* Money-first hero: the MEASURED "mit VoltPilot vs. ungeregelt" number
-          leads (Phase 2 of the fleet overview - same hero as the fleet mode,
-          scoped to this site). The planned number lives on the Fahrplan page. */}
-      {site &&
-        (earnings == null && !earnFailed ? (
+      {/* Money first + is-everything-running: the fleet mode's hero/status
+          split, so both Übersicht modes feel like one product. */}
+      <div className="vp-fleet-top">
+        {earnings == null && !earnFailed ? (
           <Skeleton height={300} radius="var(--vp-radius-lg)" />
         ) : (
           <EarningsHero
-            kind={fleetKind([site.plantKind])}
+            kind={fleetKind(site ? [site.plantKind] : [])}
             money={siteEarnings}
             dailySaved={siteEarnings?.dailySaved ?? []}
             range={range}
@@ -577,237 +490,87 @@ function SingleSiteUebersicht({
             unavailable={earnFailed}
             premium={siteEarnings ? premiumIncluded([siteEarnings]) : false}
             emptyHint={
-              siteEarnings?.reason
-                ? notComputableHint(siteEarnings.reason)
-                : undefined
+              siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined
             }
           />
-        ))}
-
-      {/* Bestand: counts demoted to a calm secondary strip; the day's Ø price
-          keeps a quiet home here since the hero leads with measured money. */}
-      <div className="vp-count-strip" role="group" aria-label="Bestand">
-        <span className="vp-count-item">
-          <Icon name="map-pin" size={16} />
-          <strong>{sites.length}</strong> Standorte
-        </span>
-        <span className="vp-count-item">
-          <Icon name="zap" size={16} />
-          <strong>{devices.length}</strong> Geräte
-        </span>
-        <span className="vp-count-item">
-          <Badge variant={online > 0 ? 'ok' : 'off'} dot>
-            {online}/{devices.length} online
-          </Badge>
-        </span>
-        {!failed.prices && avgPriceToday != null && (
-          <span className="vp-count-item">
-            <Icon name="trending-up" size={16} />
-            <strong>{ctPerKwh(avgPriceToday)}</strong> Ø Börsenpreis heute
-          </span>
         )}
+
+        <Card padding="lg" radius="lg" className="vp-site-status" style={{ minWidth: 0 }}>
+          {overview == null && overviewFailed ? (
+            <ErrorState
+              message="Der Status Ihrer Anlage konnte gerade nicht geladen werden."
+              onRetry={retry}
+            />
+          ) : ovSite == null || sentence == null ? (
+            <Skeleton height={280} radius="var(--vp-radius-md)" />
+          ) : (
+            <>
+              <p className={`vp-fleet-sentence tone-${sentence.tone}`}>
+                <span className="vp-fleet-dot" aria-hidden="true" />
+                <span>{sentence.text}</span>
+              </p>
+              <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
+              <div className="vp-site-status-foot">
+                <span className="vp-note">
+                  {ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : ''}
+                </span>
+                <a
+                  href="#/live"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onNavigate('live');
+                  }}
+                >
+                  Live-Daten im Detail →
+                </a>
+              </div>
+            </>
+          )}
+        </Card>
       </div>
 
-      {/* Hero split: live telemetry primary, prices + weather secondary. */}
-      <section className="vp-section">
-        <div className="vp-hero-split">
-          <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-            <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-              <IconTile category="dynamic" size={40}>
-                <Icon name="activity" size={20} />
-              </IconTile>
-              <h2>Live-Daten</h2>
-              {site && <Badge variant="tint">{site.name}</Badge>}
-              {latest && (
-                <Badge variant={telemetryFresh ? 'ok' : 'off'} dot>
-                  {telemetryFresh ? `Stand ${fmtRelative(latest.ts, now)}` : 'keine aktuellen Daten'}
-                </Badge>
-              )}
-              <span className="actions">
-                <SitePicker sites={sites} value={selectedSite} onChange={onSelectSite} />
-              </span>
-            </div>
-            {loadingTelemetry && telemetry.length === 0 && !failed.telemetry ? (
-              <ChartCardSkeleton />
-            ) : failed.telemetry ? (
-              <WidgetError
-                message="Die Live-Daten konnten nicht geladen werden."
-                onRetry={retry}
-              />
-            ) : telemetry.length === 0 ? (
-              <p className="vp-muted">
-                Für den gewählten Zeitraum liegen noch keine Messwerte vor. Sobald Ihr Gerät
-                sendet, erscheinen die Live-Daten hier.
-              </p>
-            ) : (
-              <>
-                {/* Status-first hero: German status sentence + verdict tiles +
-                    energy-flow diagram (the edge dashboard's mental model). */}
-                <LiveHero points={telemetry} fresh={telemetryFresh} />
-
-                {/* Verlauf: the history chart, secondary. Window toggle fetches
-                    only the selected window; collapses behind a toggle on phones. */}
-                <div className="vp-live-verlauf-head" style={{ marginTop: 'var(--vp-space-5)' }}>
-                  <h3>Verlauf</h3>
-                  <span style={{ display: 'flex', gap: 'var(--vp-space-2)', alignItems: 'center' }}>
-                    {isPhone && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setChartOpen((o) => !o)}
-                        aria-expanded={chartOpen}
-                      >
-                        {chartOpen ? 'Ausblenden' : 'Anzeigen'}
-                      </Button>
-                    )}
-                    <div className="vp-seg" role="tablist" aria-label="Zeitraum">
-                      {LIVE_WINDOWS.map((w) => (
-                        <button
-                          key={w.id}
-                          role="tab"
-                          aria-selected={liveWindow === w.id}
-                          className={liveWindow === w.id ? 'active' : ''}
-                          onClick={() => setLiveWindow(w.id)}
-                        >
-                          {w.label}
-                        </button>
-                      ))}
-                    </div>
-                  </span>
-                </div>
-                {(!isPhone || chartOpen) && (
-                  <>
-                    <ChartSubtitle>
-                      Der Verlauf zeigt die Messwerte Ihrer Geräte {activeWindow.insight}.
-                    </ChartSubtitle>
-                    <TelemetryChart points={telemetry} windowLabel={activeWindow.insight} />
-                  </>
-                )}
-              </>
-            )}
-          </Card>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--vp-gap)', minWidth: 0 }}>
-            <Card style={{ minWidth: 0 }}>
-              <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                <IconTile category="dynamic" size={40}>
-                  <Icon name="euro" size={20} />
-                </IconTile>
-                <h2 style={{ fontSize: '1.1rem' }}>Börsen-Strompreise</h2>
-                <span className="actions">
-                  {prices && <Badge variant="tint">{zoneLabel(prices.biddingZone)}</Badge>}
-                </span>
-              </div>
-              {loading && !prices && !failed.prices ? (
-                <Skeleton height={140} radius="var(--vp-radius-md)" />
-              ) : failed.prices ? (
-                <WidgetError
-                  message="Die Börsenpreise konnten nicht geladen werden."
-                  onRetry={retry}
-                />
-              ) : prices && prices.points.length > 0 ? (
-                <>
-                  <PriceChart series={prices} />
-                  <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
-                    <a href="#/marktpreise" onClick={(e) => { e.preventDefault(); onNavigate('marktpreise'); }}>
-                      Alle Marktpreise →
-                    </a>
-                  </p>
-                </>
-              ) : (
-                <p className="vp-muted">
-                  Noch keine Börsenpreise. Sie werden automatisch geladen, sobald die
-                  Strombörse sie veröffentlicht.
-                </p>
-              )}
-            </Card>
-
-            <Card style={{ minWidth: 0 }}>
-              <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                <IconTile category="solar" size={40}>
-                  <Icon name="sun" size={20} />
-                </IconTile>
-                <h2 style={{ fontSize: '1.1rem' }}>Wetter</h2>
-                <span className="actions">
-                  <span className="vp-note">nächste Stunde</span>
-                </span>
-              </div>
-              {loading && !weather && !failed.weather ? (
-                <TextSkeleton lines={2} />
-              ) : failed.weather ? (
-                <WidgetError
-                  message="Die Wettervorhersage konnte nicht geladen werden."
-                  onRetry={retry}
-                />
-              ) : weatherNow ? (
-                <div style={{ display: 'flex', gap: 'var(--vp-space-5)', flexWrap: 'wrap' }}>
-                  <Stat value={fmtNum(weatherNow.temperatureC, '°C')} label="Temperatur" />
-                  <Stat value={fmtNum(weatherNow.cloudCoverPct, '%', 0)} label="Bewölkung" />
-                  <Stat value={fmtNum(weatherNow.ghiWM2, 'W/m²', 0)} label="Einstrahlung" />
-                </div>
-              ) : (
-                <p className="vp-muted">Noch keine Vorhersage für diesen Standort.</p>
-              )}
-              <p className="vp-note" style={{ marginTop: 'var(--vp-space-2)' }}>
-                <a href="#/wetter" onClick={(e) => { e.preventDefault(); onNavigate('wetter'); }}>
-                  Zur Wettervorhersage →
-                </a>
-              </p>
-            </Card>
-          </div>
+      {/* Where the depth lives: one calm link card per detail page. */}
+      <section className="vp-section" aria-label="Mehr zu Ihrer Anlage">
+        <div className="vp-detail-grid">
+          <DetailCard
+            icon="battery-charging"
+            category="battery"
+            title="Fahrplan"
+            line="So plant Ihr Speicher den Tag."
+            onOpen={() => onNavigate('fahrplan')}
+          />
+          <DetailCard
+            icon="history"
+            category="home"
+            title="Historie"
+            line="Ihre Tage im Rückblick."
+            onOpen={() => onNavigate('historie')}
+          />
+          <DetailCard
+            icon="euro"
+            category="dynamic"
+            title="Marktpreise"
+            line={
+              avgPriceToday != null
+                ? `Heute im Schnitt ${ctPerKwh(avgPriceToday)}.`
+                : 'Börsenpreise für heute und morgen.'
+            }
+            onOpen={() => onNavigate('marktpreise')}
+          />
+          <DetailCard
+            icon="sun"
+            category="solar"
+            title="Wetter"
+            line={
+              nextHourTempC != null
+                ? `Nächste Stunde ${fmtNum(nextHourTempC, '°C')}.`
+                : 'Die Vorhersage für Ihren Standort.'
+            }
+            onOpen={() => onNavigate('wetter')}
+          />
         </div>
       </section>
 
-      {/* Quick site list (first rung of the entity pattern). */}
-      <section className="vp-section">
-        <div className="vp-section-head">
-          <IconTile category="home" size={40}>
-            <Icon name="map-pin" size={20} />
-          </IconTile>
-          <h2>Ihre Standorte</h2>
-          <Badge variant="tint">{sites.length}</Badge>
-          <span className="actions">
-            <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
-              Standort anlegen
-            </Button>
-          </span>
-        </div>
-        <div className="vp-grid vp-grid-cards">
-          {sites.map((s) => {
-            const siteDevices = devices.filter((d) => d.siteId === s.id);
-            const siteOnline = siteDevices.filter((d) => deviceLiveStatus(d) === 'online').length;
-            return (
-              <Card
-                key={s.id}
-                interactive
-                accent="primary"
-                className={`vp-selectable ${selectedSite === s.id ? 'vp-selected' : ''}`}
-                style={{ minWidth: 0 }}
-                onClick={() => onSelectSite(s.id)}
-              >
-                <h4 style={{ marginBottom: 'var(--vp-space-2)' }}>{s.name}</h4>
-                <div style={{ display: 'flex', gap: 'var(--vp-space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <Badge variant="tint">{zoneLabel(s.biddingZone)}</Badge>
-                  {siteDevices.length > 0 ? (
-                    <Badge variant={siteOnline > 0 ? 'ok' : 'off'} dot>
-                      {siteOnline}/{siteDevices.length} online
-                    </Badge>
-                  ) : (
-                    <span className="vp-note">keine Geräte</span>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
-      </section>
-
-      <CreateSiteDrawer
-        open={siteDrawer}
-        onClose={() => setSiteDrawer(false)}
-        onCreate={(input) => api.createSite(input)}
-        onCreated={(s) => onReload(s.id)}
-      />
       <AddDeviceDrawer
         open={deviceDrawer}
         onClose={() => setDeviceDrawer(false)}
@@ -815,5 +578,49 @@ function SingleSiteUebersicht({
         onClaimed={() => onReload()}
       />
     </>
+  );
+}
+
+/** One "where is the detail" link card: icon, title, one calm German line. */
+function DetailCard({
+  icon,
+  category,
+  title,
+  line,
+  onOpen,
+}: {
+  icon: IconName;
+  category: IconCategory;
+  title: string;
+  line: string;
+  onOpen: () => void;
+}) {
+  return (
+    <Card
+      interactive
+      className="vp-detail-card"
+      style={{ minWidth: 0 }}
+      onClick={onOpen}
+      role="link"
+      tabIndex={0}
+      onKeyDown={(e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      aria-label={`${title} öffnen`}
+    >
+      <div className="vp-detail-card-head">
+        <IconTile category={category} size={40}>
+          <Icon name={icon} size={20} />
+        </IconTile>
+        <span className="vp-fleet-chev" aria-hidden="true">
+          ›
+        </span>
+      </div>
+      <span className="vp-detail-card-title">{title}</span>
+      <span className="vp-detail-card-line">{line}</span>
+    </Card>
   );
 }

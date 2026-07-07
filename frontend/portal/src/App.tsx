@@ -11,6 +11,7 @@ import { AppShell } from './shell/AppShell';
 import { hashForPage, pageFromHash, PLATFORM_PAGES, type PageId } from './nav';
 import { OnboardingWizard } from './Onboarding';
 import { UebersichtPage } from './pages/UebersichtPage';
+import { LiveDatenPage } from './pages/LiveDatenPage';
 import { StandortePage } from './pages/StandortePage';
 import { GeraetePage } from './pages/GeraetePage';
 import { FahrplanPage, MarktpreisePage, WetterPage } from './pages/DataPages';
@@ -546,6 +547,9 @@ function UnifiedPortal() {
           )}
           {page === 'uebersicht' && (
             <UebersichtPage {...customerProps} onNavigate={navigate} isAdmin={isAdmin} />
+          )}
+          {page === 'live' && (
+            <LiveDatenPage sites={sites} selectedSite={selectedSite} onSelectSite={setSelectedSite} />
           )}
           {page === 'standorte' && <StandortePage {...customerProps} isAdmin={isAdmin} />}
           {page === 'geraete' && (

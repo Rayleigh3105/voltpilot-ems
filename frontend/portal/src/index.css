@@ -281,36 +281,6 @@ a:focus-visible,
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr));
   gap: var(--vp-gap);
 }
-/* Money-first hero: the two money KPIs lead at a calm, roomy width instead of
-   five equal-weight tiles competing for attention. */
-.vp-kpis-hero {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-}
-
-/* Bestand strip: the demoted counts, calm and secondary under the hero. */
-.vp-count-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--vp-space-2) var(--vp-space-6);
-  margin-top: var(--vp-space-4);
-  color: var(--vp-text-muted);
-  font-size: 0.925rem;
-}
-.vp-count-strip .vp-count-item {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--vp-space-2);
-}
-.vp-count-strip .vp-count-item svg {
-  color: var(--vp-text-gray);
-}
-.vp-count-strip strong {
-  color: var(--vp-text-dark);
-  font-weight: 700;
-  font-size: 1.05rem;
-}
-
 /* Generic responsive grids */
 .vp-grid {
   display: grid;
@@ -342,17 +312,68 @@ a:focus-visible,
   transition: opacity 0.3s ease;
 }
 
-/* Übersicht hero split: wide live-telemetry + narrow market/weather column */
-.vp-hero-split {
-  display: grid;
-  gap: var(--vp-gap);
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-  align-items: start;
+/* ---------------------------------------------------------------------------
+   Simplified single-site Übersicht: the status card (one sentence + the
+   energy-flow centerpiece) beside the money hero, and the detail link cards
+   (Fahrplan/Historie/Marktpreise/Wetter) that say where the depth lives.
+   --------------------------------------------------------------------------- */
+.vp-site-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4);
 }
-@media (max-width: 900px) {
-  .vp-hero-split {
-    grid-template-columns: 1fr;
+.vp-site-status .vp-flow-wrap {
+  margin-top: auto;
+}
+.vp-site-status-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--vp-space-3);
+  margin-top: auto;
+}
+.vp-site-status-foot a {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.vp-site-status-foot .vp-note {
+  white-space: nowrap;
+}
+
+/* Detail links: 2x2 on phones/tablet portrait, one calm row of four from 900px. */
+.vp-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-gap);
+}
+@media (min-width: 900px) {
+  .vp-detail-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+}
+.vp-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-detail-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  margin-bottom: var(--vp-space-1);
+}
+.vp-detail-card-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--vp-text-dark);
+}
+.vp-detail-card-line {
+  color: var(--vp-text-muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 /* ---------------------------------------------------------------------------
