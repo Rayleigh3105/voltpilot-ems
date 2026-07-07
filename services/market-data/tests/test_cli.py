@@ -45,3 +45,9 @@ def test_build_source_wires_the_entsoe_adapter():
     assert isinstance(
         _build_source(env, "energy-charts").delegate, EnergyChartsDayAheadPriceSource
     )
+
+
+def test_market_values_subcommand_parses():
+    args = _build_parser().parse_args(["market-values", "--persist"])
+    assert args.command == "market-values"
+    assert args.persist is True

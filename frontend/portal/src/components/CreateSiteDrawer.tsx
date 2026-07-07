@@ -53,7 +53,7 @@ export function CreateSiteDrawer({
     if (!name.trim()) return;
     const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
     if (praemieValue === undefined) {
-      setError('Bitte geben Sie die Marktprämie als Zahl in ct/kWh an, z. B. 0,60.');
+      setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
       return;
     }
     setBusy(true);
@@ -65,7 +65,7 @@ export function CreateSiteDrawer({
         latitude: lat,
         longitude: lon,
         plantKind,
-        marktpraemieCtKwh: praemieValue,
+        anzulegenderWertCtKwh: praemieValue,
         netzladenErlaubt: netzladen,
       });
       reset();
@@ -147,16 +147,17 @@ export function CreateSiteDrawer({
         {plantKind === 'direktvermarktung' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <Input
-              label="Marktprämie (ct/kWh)"
-              placeholder="z. B. 0,60"
+              label="Anzulegender Wert (ct/kWh)"
+              placeholder="z. B. 8,11"
               inputMode="decimal"
               value={praemie}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
             />
             <p className="vp-note" style={{ margin: 0 }}>
-              Steht in Ihrem Direktvermarktungsvertrag. Optional - wenn angegeben,
-              rechnen wir sie in Ihren Mehrerlös ein; bei negativen Börsenpreisen
-              entfällt sie.
+              Steht in Ihrem EEG-Zuschlag bzw. Direktvermarktungsvertrag. Optional -
+              wenn angegeben, rechnen wir Ihre Marktprämie (anzulegender Wert minus
+              Monatsmarktwert Solar) in Ihren Mehrerlös ein; bei negativen
+              Börsenpreisen entfällt sie.
             </p>
           </div>
         )}

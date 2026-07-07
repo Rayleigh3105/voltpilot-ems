@@ -1232,17 +1232,30 @@ components:
             Anlagentyp: steers the portal's money wording per site
             ("mehr verdient" for Direktvermarktung vs. "gespart" for
             Eigenverbrauch). Defaults to eigenverbrauch.
-        marktpraemieCtKwh:
+        anzulegenderWertCtKwh:
           type: number
           nullable: true
           minimum: 0
-          example: 0.6
+          example: 8.11
           description: >
-            Optional Marktprämie (ct/kWh) from the site's
-            Direktvermarktungsvertrag; null = not configured. Only relevant
-            for plantKind = direktvermarktung. When set, GET /earnings
-            includes it on exported energy (suspended in negative-price
-            slots - the simplified §51-EEG rule).
+            Optional anzulegender Wert (ct/kWh) - the plant's fixed EEG
+            reference rate from the EEG award / Direktvermarktungsvertrag;
+            null = not configured. Only relevant for plantKind =
+            direktvermarktung. When set, GET /earnings includes the DYNAMIC
+            monthly Marktprämie max(0, anzulegender Wert - Monatsmarktwert
+            Solar) on exported energy (suspended in negative-price slots -
+            the simplified §51-EEG rule).
+        marktpraemieCtKwh:
+          type: number
+          nullable: true
+          deprecated: true
+          description: >
+            DEPRECATED (2026-07-07): the former manually entered FIXED
+            premium - wrong semantics (the premium is the dynamic monthly
+            difference to the Monatsmarktwert; fixed is the anzulegender
+            Wert). Echoed read-only for one release, no longer accepted on
+            create/update and no longer used in any computation; the column
+            and this property are removed next release.
         netzladenErlaubt:
           type: boolean
           description: >
@@ -1439,14 +1452,36 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
-        marktpraemieCtKwh:
+        anzulegenderWertCtKwh:
           type: number
           nullable: true
           description: >
-            The site's configured Marktprämie (ct/kWh), echoed here so the
-            portal can state the numbers INCLUDE it; null = not configured
-            (numbers are pure spot, the fine print keeps the generic
-            "zzgl. Marktprämie" for Direktvermarktung).
+            The site's configured anzulegender Wert (ct/kWh), echoed here so
+            the portal can state the numbers INCLUDE the dynamic monthly
+            Marktprämie; null = not configured (numbers are pure spot, the
+            fine print keeps the generic "zzgl. Marktprämie" for
+            Direktvermarktung).
+        realizedExportCtKwh:
+          type: number
+          nullable: true
+          description: >
+            Benchmark KPI - the export-weighted spot price (ct/kWh) the
+            site's metered feed-in actually fetched over the window; null
+            when the window has no exported energy.
+        marketValueSolarCtKwh:
+          type: number
+          nullable: true
+          description: >
+            Benchmark KPI - the Monatsmarktwert Solar (ct/kWh) weighted with
+            the SAME exports (a range spanning months compares like with
+            like); null without exported energy or market-value coverage.
+        marketValueProvisional:
+          type: boolean
+          nullable: true
+          description: >
+            True while any month contributing to marketValueSolarCtKwh still
+            carries the provisional (not yet TSO-published) value; the
+            portal labels the number "vorläufig".
         baselineEur:
           type: number
           nullable: true
@@ -1567,13 +1602,15 @@ components:
           type: string
           enum: [direktvermarktung, eigenverbrauch]
           description: "Anlagentyp; defaults to 'eigenverbrauch'."
-        marktpraemieCtKwh:
+        anzulegenderWertCtKwh:
           type: number
           nullable: true
           minimum: 0
           description: >
-            Optional Marktprämie (ct/kWh, >= 0, at most 3 decimals); only
-            meaningful for direktvermarktung sites.
+            Optional anzulegender Wert (ct/kWh, >= 0, at most 3 decimals) -
+            the plant's fixed EEG reference rate; only meaningful for
+            direktvermarktung sites. (The deprecated marktpraemieCtKwh is no
+            longer accepted; old clients sending it are ignored.)
         netzladenErlaubt:
           type: boolean
           nullable: true
@@ -1594,7 +1631,7 @@ components:
         latitude: { type: number, nullable: true, minimum: -90, maximum: 90 }
         longitude: { type: number, nullable: true, minimum: -180, maximum: 180 }
         plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
-        marktpraemieCtKwh: { type: number, nullable: true, minimum: 0 }
+        anzulegenderWertCtKwh: { type: number, nullable: true, minimum: 0 }
         netzladenErlaubt:
           type: boolean
           nullable: true

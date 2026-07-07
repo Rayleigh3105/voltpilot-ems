@@ -21,9 +21,13 @@ import java.math.BigDecimal;
  * omitted the weather widget simply stays empty until they are set.
  * {@code plantKind} defaults to {@code eigenverbrauch} (avoided cost - the safe
  * money story); {@code direktvermarktung} switches the portal wording to real
- * market revenue ("mehr verdient"). {@code marktpraemieCtKwh} is the optional
- * Marktprämie (ct/kWh) from the customer's Direktvermarktungsvertrag - null =
- * not configured; only meaningful for {@code direktvermarktung} sites.
+ * market revenue ("mehr verdient"). {@code anzulegenderWertCtKwh} is the plant's
+ * optional fixed EEG reference rate (anzulegender Wert, ct/kWh - from the EEG
+ * award / Direktvermarktungsvertrag); null = not configured; only meaningful
+ * for {@code direktvermarktung} sites. The dynamic monthly Marktprämie derives
+ * from it (see EarningsRepository) - the deprecated fixed
+ * {@code marktpraemieCtKwh} is NOT accepted here anymore (unknown JSON fields
+ * are ignored, so an old client sending it simply no-ops).
  *
  * <p>{@code netzladenErlaubt} (the per-site grid-charging switch): the SITE
  * OWNER may set it too (captain revision 2026-07-07 of decision 3 - not only
@@ -45,10 +49,10 @@ public record CreateSiteRequest(
         @Pattern(regexp = "direktvermarktung|eigenverbrauch",
                 message = "plantKind must be one of direktvermarktung, eigenverbrauch")
                 String plantKind,
-        @DecimalMin(value = "0", message = "marktpraemieCtKwh must not be negative")
+        @DecimalMin(value = "0", message = "anzulegenderWertCtKwh must not be negative")
         @Digits(integer = 5, fraction = 3,
-                message = "marktpraemieCtKwh must have at most 3 decimal places")
-                BigDecimal marktpraemieCtKwh,
+                message = "anzulegenderWertCtKwh must have at most 3 decimal places")
+                BigDecimal anzulegenderWertCtKwh,
         Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {

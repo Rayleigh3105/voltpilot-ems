@@ -37,33 +37,47 @@ import org.springframework.stereotype.Repository;
  * battery's actual dispatch valued at the actual price. Round-trip losses are
  * automatically debited, so a badly-run battery shows NEGATIVE savings.
  *
- * <p><b>Marktprämie (Phase 3).</b> A Direktvermarktung site with a configured
- * {@code site.marktpraemie_ct_kwh} (migration V20260706040000) additionally
- * earns the premium on every exported kWh - EXCEPT in slots whose day-ahead
- * price is negative, where §51 EEG suspends it. Both sides get the same rule:
+ * <p><b>Marktprämie (dynamic model, captain domain fix 2026-07-07).</b> The
+ * premium of a direct-marketed EEG plant is NOT a fixed ct/kWh: fixed is the
+ * plant's ANZULEGENDER WERT ({@code site.anzulegender_wert_ct_kwh}, migration
+ * V20260707020000 - its EEG reference rate from the award /
+ * Direktvermarktungsvertrag); the premium per exported kWh in month M is the
+ * dynamic difference to that month's published Monatsmarktwert Solar
+ * ({@code monthly_market_value}, fed by services/market-data from
+ * netztransparenz.de, with a clearly-flagged PROVISIONAL value for months not
+ * yet published):
  *
  * <pre>
- *   baseline -= greatest(pv_kwh - load_kwh, 0) * premium   -- immediate feed-in of the surplus
- *   actual   -= grid_export_kwh * premium                  -- the metered feed-in
- *   (premium in EUR/kWh = marktpraemie_ct_kwh / 100; both only when price >= 0)
+ *   premium(M) = greatest(anzulegender_wert - monatsmarktwert_solar(M), 0)  [ct/kWh]
+ *   baseline  -= greatest(pv_kwh - load_kwh, 0) * premium/100  -- immediate feed-in of the surplus
+ *   actual    -= grid_export_kwh * premium/100                 -- the metered feed-in
+ *   (both only when the slot price >= 0; months are Europe/Berlin calendar months)
  * </pre>
  *
- * <p>Crediting the baseline too keeps the DELTA honest: storing PV instead of
- * feeding it in forgoes premium (a real cost of battery operation), and
- * curtailment that avoids negative-price feed-in shows its true value because
- * neither side earns premium in those slots anyway. This is a deliberate
- * SIMPLIFICATION of §51/§51a EEG: the law suspends the premium over negative
- * 4h/1h WINDOWS (rules changed for new plants in 2023/2026); we apply it per
- * 15-min spot slot. Full EEG accounting (including the anzulegender-Wert
- * mechanics behind the premium level) is out of scope - the premium value
- * itself comes from the customer's Direktvermarktungsvertrag. The slot-level
- * baseline export {@code greatest(pv - load, 0)} is likewise an approximation:
- * the rollup cannot see sub-slot import/export interleaving of the
- * counterfactual plant (the same approximation the symmetric-pricing shortcut
- * already makes exact for the SPOT part).
+ * <p>Negative-price slots keep the simplified §51-EEG rule: the law suspends
+ * the premium over negative 4h/1h WINDOWS (rules changed for new plants in
+ * 2023/2026); we apply it per 15-min spot slot. Crediting the baseline too
+ * keeps the DELTA honest: storing PV instead of feeding it in forgoes premium
+ * (a real cost of battery operation), and curtailment that avoids
+ * negative-price feed-in shows its true value because neither side earns
+ * premium in those slots anyway. The slot-level baseline export
+ * {@code greatest(pv - load, 0)} is likewise an approximation: the rollup
+ * cannot see sub-slot import/export interleaving of the counterfactual plant
+ * (the same approximation the symmetric-pricing shortcut already makes exact
+ * for the SPOT part).
  *
- * <p>An unconfigured premium (NULL, the default) contributes exactly 0 to both
- * sides - the Phase-2 numbers are then unchanged.
+ * <p>An unconfigured anzulegender Wert (NULL, the default) contributes exactly
+ * 0 to both sides - the pure-spot numbers are then unchanged. The same holds
+ * for months WITHOUT a market-value row (feed not yet run): no premium is
+ * credited rather than one invented. The DEPRECATED fixed
+ * {@code site.marktpraemie_ct_kwh} (V20260706040000) is no longer read here.
+ *
+ * <p><b>Benchmark KPI (the DV selling point).</b> {@link SiteAggregate} also
+ * carries the export-weighted realized price vs. the export-weighted
+ * Monatsmarktwert over the same slots: "Sie haben X ct/kWh erzielt -
+ * Monatsdurchschnitt Solar: Y ct". Beating Y is exactly what shifting feed-in
+ * out of cheap solar hours delivers, so the two numbers make the value
+ * tangible per range.
  *
  * <p>Every query runs through the RLS-scoped app datasource WITHOUT a tenant
  * predicate - RLS (migration V2) fences the tenant. {@code day_ahead_prices}
@@ -106,19 +120,37 @@ public class EarningsRepository {
     private static final String COVERED = CHANNELS_OK + " AND p.price_eur_mwh IS NOT NULL";
 
     /**
-     * When a slot earns the Marktprämie: the site markets directly AND has a
-     * premium configured AND the slot's price is non-negative (the simplified
-     * §51-EEG rule - see the class Javadoc). NULL premium => never eligible =>
-     * both premium terms are exactly 0 and Phase-2 numbers are unchanged.
+     * Joins a slot's German calendar month to its Monatsmarktwert Solar (the
+     * table is market-wide - no tenant, no RLS - and tiny: twelve rows per
+     * technology per year). Absent month = NULL = no premium for that slot.
+     */
+    private static final String MARKET_VALUE_JOIN =
+            "LEFT JOIN monthly_market_value mv ON mv.technology = 'solar'"
+                    + " AND mv.month = date_trunc('month', r.bucket AT TIME ZONE 'Europe/Berlin')::date ";
+
+    /**
+     * When a slot earns the Marktprämie: the site markets directly AND has an
+     * anzulegender Wert configured AND the month's Monatsmarktwert is known AND
+     * the slot's price is non-negative (the simplified §51-EEG rule - see the
+     * class Javadoc). NULL anzulegender Wert => never eligible => both premium
+     * terms are exactly 0 and the pure-spot numbers are unchanged.
      */
     private static final String PREMIUM_ELIGIBLE =
-            "s.plant_kind = 'direktvermarktung' AND s.marktpraemie_ct_kwh IS NOT NULL"
-                    + " AND p.price_eur_mwh >= 0";
+            "s.plant_kind = 'direktvermarktung' AND s.anzulegender_wert_ct_kwh IS NOT NULL"
+                    + " AND mv.value_ct_kwh IS NOT NULL AND p.price_eur_mwh >= 0";
+
+    /**
+     * The month's dynamic premium in ct/kWh: anzulegender Wert minus
+     * Monatsmarktwert Solar, floored at 0 (a market value above the reference
+     * rate means no premium, never a negative one).
+     */
+    private static final String PREMIUM_RATE_CT =
+            "GREATEST(s.anzulegender_wert_ct_kwh - mv.value_ct_kwh, 0)";
 
     /** Premium EUR earned by the slot's METERED export (the actual side). */
     private static final String ACTUAL_PREMIUM_EUR =
             "(CASE WHEN " + PREMIUM_ELIGIBLE
-                    + " THEN r.grid_export_kwh * s.marktpraemie_ct_kwh / 100 ELSE 0 END)";
+                    + " THEN r.grid_export_kwh * " + PREMIUM_RATE_CT + " / 100 ELSE 0 END)";
 
     /**
      * Premium EUR the UNREGULATED plant would earn: it feeds its PV surplus in
@@ -126,7 +158,7 @@ public class EarningsRepository {
      */
     private static final String BASELINE_PREMIUM_EUR =
             "(CASE WHEN " + PREMIUM_ELIGIBLE
-                    + " THEN GREATEST(r.pv_kwh - r.load_kwh, 0) * s.marktpraemie_ct_kwh / 100"
+                    + " THEN GREATEST(r.pv_kwh - r.load_kwh, 0) * " + PREMIUM_RATE_CT + " / 100"
                     + " ELSE 0 END)";
 
     private final JdbcTemplate jdbc;
@@ -141,6 +173,15 @@ public class EarningsRepository {
      * channels, {@code coveredSlots} those that also found a price - the three
      * tiers let the caller derive an honest non-computability reason. Money
      * sums and {@code firstCovered} span covered slots only.
+     *
+     * <p>The benchmark KPI fields are export-weighted averages over the same
+     * covered slots: {@code realizedExportCtKwh} = the spot price the site's
+     * metered feed-in actually fetched; {@code marketValueSolarCtKwh} = the
+     * Monatsmarktwert Solar weighted with the SAME exports (so a range spanning
+     * months compares like with like); {@code marketValueProvisional} = true
+     * when any contributing month's value is still the provisional
+     * approximation. All three are null when the window has no exported energy
+     * (or no market-value rows) - never a fake zero.
      */
     public record SiteAggregate(
             long bucketCount,
@@ -148,7 +189,10 @@ public class EarningsRepository {
             long coveredSlots,
             BigDecimal baselineEur,
             BigDecimal actualEur,
-            Instant firstCovered) {
+            Instant firstCovered,
+            BigDecimal realizedExportCtKwh,
+            BigDecimal marketValueSolarCtKwh,
+            Boolean marketValueProvisional) {
     }
 
     /** One Europe/Berlin day of realized savings of one site. */
@@ -173,6 +217,13 @@ public class EarningsRepository {
      */
     public Map<UUID, SiteAggregate> aggregate(Instant from, Instant to) {
         Map<UUID, SiteAggregate> result = new HashMap<>();
+        // The benchmark averages weight by EXPORTED energy: realized ct/kWh
+        // over priced covered slots (EUR/MWh / 10 = ct/kWh), the market value
+        // over the covered slots whose month HAS one - separate denominators,
+        // so a missing market-value month degrades the benchmark but never the
+        // realized number.
+        String exportKwh = "sum(r.grid_export_kwh) FILTER (WHERE " + COVERED + ")";
+        String mvFilter = COVERED + " AND mv.value_ct_kwh IS NOT NULL";
         jdbc.query(
                 "SELECT r.site_id,"
                         + " count(*) AS bucket_count,"
@@ -184,21 +235,38 @@ public class EarningsRepository {
                         + " sum((r.grid_import_kwh - r.grid_export_kwh) * p.price_eur_mwh / 1000"
                         + "     - " + ACTUAL_PREMIUM_EUR + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS actual_eur,"
-                        + " min(r.bucket) FILTER (WHERE " + COVERED + ") AS first_covered "
+                        + " min(r.bucket) FILTER (WHERE " + COVERED + ") AS first_covered,"
+                        + " sum(r.grid_export_kwh * p.price_eur_mwh / 10)"
+                        + "   FILTER (WHERE " + COVERED + ")"
+                        + "   / NULLIF(" + exportKwh + ", 0) AS realized_export_ct,"
+                        + " sum(r.grid_export_kwh * mv.value_ct_kwh)"
+                        + "   FILTER (WHERE " + mvFilter + ")"
+                        + "   / NULLIF(sum(r.grid_export_kwh) FILTER (WHERE " + mvFilter + "), 0)"
+                        + "   AS market_value_ct,"
+                        + " bool_or(mv.provisional)"
+                        + "   FILTER (WHERE " + mvFilter + " AND r.grid_export_kwh > 0)"
+                        + "   AS market_value_provisional "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + PRICE_LATERAL
+                        + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? "
                         + "GROUP BY r.site_id",
                 rs -> {
                     Timestamp firstCovered = rs.getTimestamp("first_covered");
+                    BigDecimal marketValueCt = rs.getBigDecimal("market_value_ct");
+                    Object provisional = rs.getObject("market_value_provisional");
                     result.put(rs.getObject("site_id", UUID.class), new SiteAggregate(
                             rs.getLong("bucket_count"),
                             rs.getLong("channel_buckets"),
                             rs.getLong("covered_slots"),
                             rs.getBigDecimal("baseline_eur"),
                             rs.getBigDecimal("actual_eur"),
-                            firstCovered == null ? null : firstCovered.toInstant()));
+                            firstCovered == null ? null : firstCovered.toInstant(),
+                            rs.getBigDecimal("realized_export_ct"),
+                            marketValueCt,
+                            marketValueCt == null ? null
+                                    : provisional != null && (Boolean) provisional));
                 },
                 Timestamp.from(from), Timestamp.from(to));
         return result;
@@ -342,6 +410,7 @@ public class EarningsRepository {
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + PRICE_LATERAL
+                        + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
                         + "GROUP BY 1, 2 ORDER BY 1, 2",
                 rs -> {

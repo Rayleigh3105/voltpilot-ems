@@ -17,11 +17,13 @@ export interface Site {
   longitude: number | null;
   plantKind: PlantKind;
   /**
-   * Marktprämie (ct/kWh) from the site's Direktvermarktungsvertrag; null =
-   * not configured. Only relevant for plantKind 'direktvermarktung' - when
-   * set, the earnings numbers include it (except in negative-price slots).
+   * Anzulegender Wert (ct/kWh) - the plant's fixed EEG reference rate from
+   * the EEG award / Direktvermarktungsvertrag; null = not configured. Only
+   * relevant for plantKind 'direktvermarktung' - when set, the earnings
+   * include the dynamic monthly premium max(0, anzulegender Wert -
+   * Monatsmarktwert Solar), suspended in negative-price slots.
    */
-  marktpraemieCtKwh: number | null;
+  anzulegenderWertCtKwh: number | null;
   /**
    * Per-site grid-charging switch: false (default) = "Nur Solarladen (EEG)"
    * (the optimizer charges the battery only from PV surplus), true =
@@ -39,8 +41,8 @@ export interface CreateSiteInput {
   longitude?: number | null;
   /** Defaults to 'eigenverbrauch' server-side. */
   plantKind?: PlantKind;
-  /** Marktprämie in ct/kWh (>= 0); omit/null = not configured. */
-  marktpraemieCtKwh?: number | null;
+  /** Anzulegender Wert in ct/kWh (>= 0); omit/null = not configured. */
+  anzulegenderWertCtKwh?: number | null;
   /**
    * Grid-charging switch, settable by the site owner and by Portal-Admins.
    * Omitted = the safe default false on create / keep the stored value on
@@ -508,10 +510,21 @@ export interface EarningsSite {
   name: string;
   plantKind: PlantKind;
   /**
-   * The site's configured Marktprämie (ct/kWh), echoed so the fine print can
-   * say the numbers INCLUDE it; null = none (pure spot numbers).
+   * The site's configured anzulegender Wert (ct/kWh), echoed so the fine
+   * print can say the numbers INCLUDE the dynamic monthly premium; null =
+   * none (pure spot numbers).
    */
-  marktpraemieCtKwh: number | null;
+  anzulegenderWertCtKwh: number | null;
+  /**
+   * Benchmark KPI: the export-weighted spot price (ct/kWh) the site's feed-in
+   * actually fetched over the window vs the Monatsmarktwert Solar weighted
+   * with the same exports; `marketValueProvisional` is true while any
+   * contributing month's value is still the provisional (not yet published)
+   * one. Null without exported energy or market-value coverage.
+   */
+  realizedExportCtKwh: number | null;
+  marketValueSolarCtKwh: number | null;
+  marketValueProvisional: boolean | null;
   baselineEur: number | null;
   actualEur: number | null;
   savedEur: number | null;

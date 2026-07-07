@@ -32,6 +32,14 @@ from voltpilot_market_data.energy_charts import (
     EnergyChartsDayAheadPriceSource,
 )
 from voltpilot_market_data.entsoe import EntsoeConfig, EntsoeDayAheadPriceSource
+from voltpilot_market_data.market_value_persistence import (
+    TimescaleMarketValueRepository,
+)
+from voltpilot_market_data.market_value_service import refresh_market_values
+from voltpilot_market_data.netztransparenz import (
+    NetztransparenzConfig,
+    NetztransparenzMarketValueSource,
+)
 from voltpilot_market_data.persistence import (
     DayAheadPriceRepository,
     TimescaleDayAheadPriceRepository,
@@ -129,6 +137,21 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="stop after N refresh cycles (0 = run forever; used by tests)",
     )
+
+    market_values = sub.add_parser(
+        "market-values",
+        help="refresh the published + provisional Monatsmarktwert Solar "
+        "(netztransparenz.de, keyless) - one-shot",
+    )
+    market_values.add_argument(
+        "--persist",
+        action="store_true",
+        help="write into the monthly_market_value table (also enables the "
+        "provisional value, which reads stored day-ahead prices)",
+    )
+    market_values.add_argument(
+        "--log-level", default="INFO", help="logging level (default INFO)"
+    )
     return parser
 
 
@@ -143,6 +166,45 @@ def _configure_logging(level: str) -> None:
 
 def _repository_for(env: dict[str, str], persist: bool) -> DayAheadPriceRepository | None:
     return TimescaleDayAheadPriceRepository(_dsn_from_env(env)) if persist else None
+
+
+def _refresh_market_values_once(env: dict[str, str], persist: bool) -> str:
+    """Fetch/compute the Monatsmarktwert Solar; persist when asked.
+
+    Without ``--persist`` the published values are fetched and printed only
+    (no DB -> no provisional value, which needs the stored price curve).
+    """
+    source = NetztransparenzMarketValueSource(NetztransparenzConfig.from_env(env))
+    if not persist:
+        today = _today_utc()
+        published = [
+            v
+            for year in (today.year - 1, today.year)
+            for v in source.fetch_monthly_market_values(year)
+        ]
+        newest = published[-1] if published else None
+        return (
+            "voltpilot-market-data: MW Solar "
+            f"{len(published)} published months"
+            + (
+                f", newest {newest.month.isoformat()} = "
+                f"{newest.value_ct_kwh:.3f} ct/kWh"
+                if newest
+                else ""
+            )
+        )
+    dsn = _dsn_from_env(env)
+    result = refresh_market_values(
+        source,
+        TimescaleMarketValueRepository(dsn),
+        TimescaleDayAheadPriceRepository(dsn),
+    )
+    provisional = ", ".join(m.isoformat() for m in result.provisional_months) or "-"
+    return (
+        "voltpilot-market-data: MW Solar refreshed - "
+        f"{result.published_rows} published rows, "
+        f"{result.provisional_rows} provisional rows ({provisional})"
+    )
 
 
 def _fetch_one(source, zone: str, day: date, repository) -> str:
@@ -173,6 +235,10 @@ def main(argv: list[str] | None = None) -> int:
         print(_fetch_one(source, args.zone, day, repository))
         return 0
 
+    if args.command == "market-values":
+        print(_refresh_market_values_once(env, args.persist))
+        return 0
+
     if args.command == "serve":
         source = _build_source(env, args.source)
         repository = _repository_for(env, args.persist)
@@ -196,6 +262,18 @@ def main(argv: list[str] | None = None) -> int:
                     logging.getLogger("voltpilot.market_data").warning(
                         "serve.fetch_failed",
                         extra={"context": {"day": day.isoformat(), "error": str(exc)}},
+                    )
+            if args.persist:
+                # Monthly data, but refreshing each cycle is one cheap request
+                # and keeps the CURRENT month's provisional value tracking the
+                # freshly fetched prices; the official value replaces it the
+                # cycle after the TSOs publish.
+                try:
+                    print(_refresh_market_values_once(env, True))
+                except Exception as exc:  # keep the loop alive
+                    logging.getLogger("voltpilot.market_data").warning(
+                        "serve.market_values_failed",
+                        extra={"context": {"error": str(exc)}},
                     )
             cycle += 1
             if args.max_cycles and cycle >= args.max_cycles:

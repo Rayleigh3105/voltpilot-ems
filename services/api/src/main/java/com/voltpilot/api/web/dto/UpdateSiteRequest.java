@@ -35,10 +35,10 @@ public record UpdateSiteRequest(
         @Pattern(regexp = "direktvermarktung|eigenverbrauch",
                 message = "plantKind must be one of direktvermarktung, eigenverbrauch")
                 String plantKind,
-        @DecimalMin(value = "0", message = "marktpraemieCtKwh must not be negative")
+        @DecimalMin(value = "0", message = "anzulegenderWertCtKwh must not be negative")
         @Digits(integer = 5, fraction = 3,
-                message = "marktpraemieCtKwh must have at most 3 decimal places")
-                BigDecimal marktpraemieCtKwh,
+                message = "anzulegenderWertCtKwh must have at most 3 decimal places")
+                BigDecimal anzulegenderWertCtKwh,
         Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {

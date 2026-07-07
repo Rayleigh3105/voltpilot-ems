@@ -334,10 +334,10 @@ export function TechnikSection({
                   <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
                 </td>
               </tr>
-              {site.plantKind === 'direktvermarktung' && site.marktpraemieCtKwh != null && (
+              {site.plantKind === 'direktvermarktung' && site.anzulegenderWertCtKwh != null && (
                 <tr>
-                  <th scope="row">Marktprämie</th>
-                  <td>{fmtNum(site.marktpraemieCtKwh, 'ct/kWh', 2)}</td>
+                  <th scope="row">Anzulegender Wert</th>
+                  <td>{fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)}</td>
                 </tr>
               )}
               {linkedAssets.length > 0 && (
@@ -418,7 +418,7 @@ export function SiteEditForm({
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
   const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
-  const [praemie, setPraemie] = useState(premiumInputText(site.marktpraemieCtKwh ?? null));
+  const [praemie, setPraemie] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [busy, setBusy] = useState(false);
@@ -428,7 +428,7 @@ export function SiteEditForm({
     if (!name.trim()) return;
     const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
     if (praemieValue === undefined) {
-      setError('Bitte geben Sie die Marktprämie als Zahl in ct/kWh an, z. B. 0,60.');
+      setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
       return;
     }
     setBusy(true);
@@ -440,7 +440,7 @@ export function SiteEditForm({
         latitude: lat,
         longitude: lon,
         plantKind,
-        marktpraemieCtKwh: praemieValue,
+        anzulegenderWertCtKwh: praemieValue,
         netzladenErlaubt: netzladen,
       });
       onSaved(updated);
@@ -495,16 +495,17 @@ export function SiteEditForm({
         {plantKind === 'direktvermarktung' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <Input
-              label="Marktprämie (ct/kWh)"
-              placeholder="z. B. 0,60"
+              label="Anzulegender Wert (ct/kWh)"
+              placeholder="z. B. 8,11"
               inputMode="decimal"
               value={praemie}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
             />
             <p className="vp-note" style={{ margin: 0 }}>
-              Steht in Ihrem Direktvermarktungsvertrag. Optional - wenn angegeben,
-              rechnen wir sie in Ihren Mehrerlös ein; bei negativen Börsenpreisen
-              entfällt sie.
+              Steht in Ihrem EEG-Zuschlag bzw. Direktvermarktungsvertrag. Optional -
+              wenn angegeben, rechnen wir Ihre Marktprämie (anzulegender Wert minus
+              Monatsmarktwert Solar) in Ihren Mehrerlös ein; bei negativen
+              Börsenpreisen entfällt sie.
             </p>
           </div>
         )}

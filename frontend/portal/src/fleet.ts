@@ -152,12 +152,13 @@ export function proofLine(kind: FleetKind, baselineEur: number, actualEur: numbe
  * the Marktprämie for fleets with Direktvermarktung, and dates a "Gesamt" view
  * honestly.
  *
- * Marktprämie wording (Phase 3): when a premium is CONFIGURED
- * (`premiumIncluded`), the numbers include it, so the fine print says so -
- * "inkl. Marktprämie, entfällt bei negativen Preisen" (the simplified §51-EEG
- * rule the backend applies). Without a configured premium the generic
- * "zzgl. Marktprämie" stays (the amount is then deliberately NOT in the
- * numbers).
+ * Marktprämie wording (dynamic model, 2026-07-07): when an anzulegender Wert
+ * is CONFIGURED (`premiumIncluded`), the numbers include the dynamic monthly
+ * premium, so the fine print says so - with the two numbers behind it when the
+ * hero is site-scoped (`detail`): "Inkl. Marktprämie: anzulegender Wert X ct -
+ * Monatsmarktwert Solar Y ct (vorläufig)". Without a configured value the
+ * generic "zzgl. Marktprämie" stays (the amount is then deliberately NOT in
+ * the numbers).
  */
 export function realizedFinePrint(
   kind: FleetKind,
@@ -165,14 +166,22 @@ export function realizedFinePrint(
   firstCoveredDate: string | null,
   premiumIncluded = false,
   arbitrageShown = false,
+  detail: PremiumDetail | null = null,
 ): string {
   let text =
     'Berechnet aus Ihren gemessenen Werten und den Börsenstrompreisen - im Vergleich ' +
     'zur ungeregelten Anlage: gleiche Sonne, gleicher Verbrauch, Speicher ungenutzt.';
   if (kind !== 'eigenverbrauch') {
-    text += premiumIncluded
-      ? ' Inkl. Marktprämie, entfällt bei negativen Preisen.'
-      : ' Bei Direktvermarktung zzgl. Marktprämie.';
+    if (premiumIncluded && detail) {
+      text +=
+        ` Inkl. Marktprämie: anzulegender Wert ${ctAmount(detail.anzulegenderWertCtKwh)} ct` +
+        ` − Monatsmarktwert Solar ${ctAmount(detail.marketValueSolarCtKwh)} ct` +
+        `${detail.provisional ? ' (vorläufig)' : ''}, entfällt bei negativen Preisen.`;
+    } else if (premiumIncluded) {
+      text += ' Inkl. Marktprämie, entfällt bei negativen Preisen.';
+    } else {
+      text += ' Bei Direktvermarktung zzgl. Marktprämie.';
+    }
   }
   if (arbitrageShown) {
     // The one-sentence attribution promise behind the "davon durch Netzladen"
@@ -206,20 +215,86 @@ export function arbitrageLine(arbitrageEur: number | null): string | null {
 
 /**
  * Whether the earnings numbers of these sites include a Marktprämie: true
- * when any Direktvermarktung site has one configured (the backend then
- * credits it in the money values it returns).
+ * when any Direktvermarktung site has an anzulegender Wert configured (the
+ * backend then credits the dynamic monthly premium in the money values it
+ * returns).
  */
-export function premiumIncluded(sites: Pick<EarningsSite, 'plantKind' | 'marktpraemieCtKwh'>[]): boolean {
+export function premiumIncluded(
+  sites: Pick<EarningsSite, 'plantKind' | 'anzulegenderWertCtKwh'>[],
+): boolean {
   return sites.some(
-    (s) => s.plantKind === 'direktvermarktung' && s.marktpraemieCtKwh != null,
+    (s) => s.plantKind === 'direktvermarktung' && s.anzulegenderWertCtKwh != null,
   );
 }
 
+/** The two numbers behind the site-scoped premium fine print. */
+export interface PremiumDetail {
+  anzulegenderWertCtKwh: number;
+  marketValueSolarCtKwh: number;
+  /** True while any contributing month's market value is still provisional. */
+  provisional: boolean;
+}
+
 /**
- * Parse the Marktprämie form input into ct/kWh: German comma or dot decimals
- * ("0,6" / "0.6"), empty = null (not configured), anything invalid or
- * negative = undefined (the form shows a German error and blocks the submit -
- * a premium can never be negative).
+ * The premium fine-print detail for the rendered sites: only when EXACTLY ONE
+ * Direktvermarktung site with an anzulegender Wert is shown (the site-scoped
+ * hero, or a fleet with a single DV plant) AND its window has a market-value
+ * benchmark - a multi-DV fleet mixes reference rates, so it keeps the generic
+ * wording rather than an averaged pseudo-number.
+ */
+export function premiumDetail(
+  sites: Pick<
+    EarningsSite,
+    'plantKind' | 'anzulegenderWertCtKwh' | 'marketValueSolarCtKwh' | 'marketValueProvisional'
+  >[],
+): PremiumDetail | null {
+  const dv = sites.filter(
+    (s) => s.plantKind === 'direktvermarktung' && s.anzulegenderWertCtKwh != null,
+  );
+  if (dv.length !== 1 || dv[0].marketValueSolarCtKwh == null) return null;
+  return {
+    anzulegenderWertCtKwh: dv[0].anzulegenderWertCtKwh as number,
+    marketValueSolarCtKwh: dv[0].marketValueSolarCtKwh,
+    provisional: dv[0].marketValueProvisional === true,
+  };
+}
+
+/**
+ * The benchmark KPI line of a Direktvermarktung site (the DV selling point):
+ * the export-weighted price the plant's feed-in actually fetched vs the
+ * Monatsmarktwert Solar over the same window. Beating the market average is
+ * exactly what shifting feed-in out of cheap solar hours delivers. Null for
+ * Eigenverbrauch sites and windows without exported energy or market-value
+ * coverage - never a made-up comparison.
+ */
+export function marktwertBenchmark(
+  site: Pick<
+    EarningsSite,
+    'plantKind' | 'realizedExportCtKwh' | 'marketValueSolarCtKwh' | 'marketValueProvisional'
+  >,
+): string | null {
+  if (site.plantKind !== 'direktvermarktung') return null;
+  if (site.realizedExportCtKwh == null || site.marketValueSolarCtKwh == null) return null;
+  const provisional = site.marketValueProvisional === true ? ' (vorläufig)' : '';
+  return (
+    `Sie haben ${ctAmount(site.realizedExportCtKwh)} ct/kWh für Ihren eingespeisten Strom erzielt` +
+    ` − Monatsdurchschnitt Solar: ${ctAmount(site.marketValueSolarCtKwh)} ct${provisional}.`
+  );
+}
+
+/** ct/kWh for user copy: German comma, one decimal ("8,1"). */
+function ctAmount(value: number): string {
+  return value.toLocaleString('de-DE', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
+/**
+ * Parse the anzulegender-Wert form input into ct/kWh: German comma or dot
+ * decimals ("8,11" / "8.11"), empty = null (not configured), anything invalid
+ * or negative = undefined (the form shows a German error and blocks the
+ * submit - a reference rate can never be negative).
  */
 export function parsePremiumInput(text: string): number | null | undefined {
   const trimmed = text.trim();
@@ -228,9 +303,9 @@ export function parsePremiumInput(text: string): number | null | undefined {
   return Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-/** The stored premium as form text (German comma), '' when not configured. */
-export function premiumInputText(marktpraemieCtKwh: number | null): string {
-  return marktpraemieCtKwh == null ? '' : String(marktpraemieCtKwh).replace('.', ',');
+/** The stored anzulegender Wert as form text (German comma), '' when unset. */
+export function premiumInputText(anzulegenderWertCtKwh: number | null): string {
+  return anzulegenderWertCtKwh == null ? '' : String(anzulegenderWertCtKwh).replace('.', ',');
 }
 
 /**

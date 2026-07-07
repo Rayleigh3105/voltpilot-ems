@@ -54,13 +54,13 @@ flowchart LR
 
     subgraph NOTIN["Deliberately NOT plan inputs"]
         PK["site.plant_kind<br/>steers portal money WORDING only"]
-        MP["site.marktpraemie_ct_kwh<br/>credited in realized earnings only"]
+        MP["site.anzulegender_wert_ct_kwh<br/>dynamic Marktprämie, realized earnings only"]
     end
     NOTIN -. "never reach the MILP - consumed only by<br/>GET /earnings + portal copy (services/api)" .-> PORTAL
 ```
 
 Two influences people keep asking about are **deliberately absent** from the plan:
-`site.plant_kind` (Direktvermarktung vs. Eigenverbrauch) only changes how the portal *words* the money, and `site.marktpraemie_ct_kwh` only enters the *realized-earnings* math in `services/api` (`EarningsRepository`).
+`site.plant_kind` (Direktvermarktung vs. Eigenverbrauch) only changes how the portal *words* the money, and `site.anzulegender_wert_ct_kwh` (the plant's EEG reference rate; the dynamic monthly Marktprämie derives from it) only enters the *realized-earnings* math in `services/api` (`EarningsRepository`).
 Neither is read by `inputs.py`, so neither can change a single setpoint.
 Under the symmetric-spot-price MVP assumption the cost-minimal dispatch is the same for both plant kinds, which is why the model does not need to know.
 

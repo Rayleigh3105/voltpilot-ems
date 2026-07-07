@@ -23,8 +23,8 @@ import org.springframework.stereotype.Repository;
 public class AdminSiteRepository {
 
     private static final String COLUMNS =
-            "id, name, bidding_zone, latitude, longitude, plant_kind, marktpraemie_ct_kwh,"
-                    + " netzladen_erlaubt";
+            "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
+                    + " marktpraemie_ct_kwh, netzladen_erlaubt";
 
     private final JdbcTemplate jdbc;
 
@@ -40,13 +40,13 @@ public class AdminSiteRepository {
 
     public SiteDto create(UUID tenantId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
-            BigDecimal marktpraemieCtKwh, Boolean netzladenErlaubt) {
+            BigDecimal anzulegenderWertCtKwh, Boolean netzladenErlaubt) {
         return jdbc.queryForObject(
                 "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind,"
-                        + " marktpraemie_ct_kwh, netzladen_erlaubt) "
+                        + " anzulegender_wert_ct_kwh, netzladen_erlaubt) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, FALSE)) "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind,
-                marktpraemieCtKwh, netzladenErlaubt);
+                anzulegenderWertCtKwh, netzladenErlaubt);
     }
 }

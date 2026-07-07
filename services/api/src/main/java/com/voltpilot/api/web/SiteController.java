@@ -116,7 +116,7 @@ public class SiteController {
         }
         SiteDto created = sites.create(tenantId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
-                request.plantKindOrDefault(), request.marktpraemieCtKwh(),
+                request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
                 request.netzladenErlaubt());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -132,7 +132,7 @@ public class SiteController {
             @Valid @RequestBody UpdateSiteRequest request) {
         SiteDto updated = sites.update(siteId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
-                request.plantKindOrDefault(), request.marktpraemieCtKwh(),
+                request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
                 request.netzladenErlaubt());
         if (updated == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");

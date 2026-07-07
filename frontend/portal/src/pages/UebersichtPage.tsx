@@ -13,7 +13,7 @@ import {
   type Site,
 } from '../api';
 import { currentUser } from '../auth';
-import { fleetDailySaved, fleetKind, premiumIncluded } from '../fleet';
+import { fleetDailySaved, fleetKind, premiumDetail, premiumIncluded } from '../fleet';
 import { anlageRoute, type Route } from '../nav';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
@@ -255,6 +255,7 @@ function FleetUebersicht({
                 now={now}
                 unavailable={earnFailed}
                 premium={earnings ? premiumIncluded(earnings.sites) : false}
+                premiumDetail={earnings ? premiumDetail(earnings.sites) : null}
               />
             )}
             <FleetStatusCard overview={overview} now={now} />

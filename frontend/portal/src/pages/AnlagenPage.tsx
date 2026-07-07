@@ -18,6 +18,8 @@ import {
   composeSiteSentence,
   fleetKind,
   notComputableHint,
+  marktwertBenchmark,
+  premiumDetail,
   premiumIncluded,
   siteLiveFresh,
   siteSnapshot,
@@ -479,6 +481,8 @@ export function AnlageSeite({
             now={now}
             unavailable={earnFailed}
             premium={siteEarnings ? premiumIncluded([siteEarnings]) : false}
+            premiumDetail={siteEarnings ? premiumDetail([siteEarnings]) : null}
+            benchmark={siteEarnings ? marktwertBenchmark(siteEarnings) : null}
             emptyHint={
               siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined
             }

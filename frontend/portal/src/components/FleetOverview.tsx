@@ -17,6 +17,7 @@ import {
   siteLiveFresh,
   sparkDays,
   type FleetKind,
+  type PremiumDetail,
 } from '../fleet';
 import { eurAmount, fmtNum, fmtRelative } from '../format';
 import { batteryState, deriveBatteryKw, gridState } from '../live';
@@ -71,6 +72,11 @@ function useCountUp(target: number | null, ms = 800): number | null {
   return value;
 }
 
+/** Near-zero day values render as exactly 0 (never "-0,00 €"). */
+function heuteValue(savedEur: number): number {
+  return Math.abs(savedEur) < 0.005 ? 0 : savedEur;
+}
+
 const RANGES: { id: EarningsRange; label: string }[] = [
   { id: 'day', label: 'Heute' },
   { id: 'month', label: 'Monat' },
@@ -107,6 +113,8 @@ export function EarningsHero({
   unavailable = false,
   emptyHint,
   premium = false,
+  premiumDetail = null,
+  benchmark = null,
 }: {
   kind: FleetKind;
   money: HeroMoney | null;
@@ -124,6 +132,17 @@ export function EarningsHero({
   emptyHint?: string;
   /** True when a configured Marktprämie is INCLUDED in the numbers shown. */
   premium?: boolean;
+  /**
+   * The two numbers behind the premium (site-scoped hero): anzulegender Wert
+   * vs Monatsmarktwert Solar - the fine print then names them instead of the
+   * generic "inkl. Marktprämie" sentence.
+   */
+  premiumDetail?: PremiumDetail | null;
+  /**
+   * The Direktvermarktung benchmark line ("Sie haben X ct/kWh erzielt - ...");
+   * null = no line (Eigenverbrauch, or no exported energy in the window).
+   */
+  benchmark?: string | null;
 }) {
   const worded = dataRange ?? range;
   const saved = money?.savedEur ?? null;
@@ -182,6 +201,8 @@ export function EarningsHero({
 
       {arbitrage && <p className="vp-fleet-hero-arb">{arbitrage}</p>}
 
+      {saved != null && benchmark && <p className="vp-fleet-hero-arb">{benchmark}</p>}
+
       <div className="vp-fleet-seg" role="tablist" aria-label="Zeitraum">
         {RANGES.map((r) => (
           <button
@@ -216,9 +237,11 @@ export function EarningsHero({
           <div className="vp-fleet-spark-cap">
             <span>Tageswerte, letzte 14 Tage</span>
             {todayEntry && (
+              // Clamp near-zero to 0 so a tiny negative never renders the
+              // confusing "-0,00 €".
               <span>
-                heute: {todayEntry.savedEur >= 0 ? '+' : ''}
-                {eurAmount(todayEntry.savedEur)}
+                heute: {heuteValue(todayEntry.savedEur) >= 0 ? '+' : ''}
+                {eurAmount(heuteValue(todayEntry.savedEur))}
               </span>
             )}
           </div>
@@ -229,7 +252,7 @@ export function EarningsHero({
         <span className="vp-fleet-fine-ico" aria-hidden="true">
           <Icon name="info" size={13} />
         </span>
-        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null, premium, arbitrage != null)}
+        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null, premium, arbitrage != null, premiumDetail)}
       </p>
     </section>
   );

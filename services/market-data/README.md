@@ -28,6 +28,27 @@ that is the whole point of the port below (architecture section 13).
 > In compose it runs as the `market-data` service in the `feeds` profile
 > (`docker compose --profile feeds up -d --build market-data`).
 
+> **Monatsmarktwert Solar (netztransparenz.de, also KEYLESS).** The dynamic
+> EEG Marktprämie needs the monthly market value: `netztransparenz.py`
+> implements `MarketValueSource` (`market_value.py`) against the JSON endpoint
+> feeding netztransparenz.de's own Marktwertübersicht chart
+> (`POST .../HighchartService.asmx/GetMarketpremiumData` - no key, no session;
+> the OFFICIAL WebAPI requires a registered OAuth2 client, so it is the
+> documented upgrade path, not the default). Values land in the plain table
+> `monthly_market_value` (`db/migration/V20260707001000`; twelve rows per
+> technology per year, so deliberately NOT a hypertable). For months the TSOs
+> have not published yet (always the running month), a PROVISIONAL value is
+> computed from the stored DE-LU day-ahead prices as a clear-sky solar-shape
+> weighted average (`provisional_solar_market_value` - the approximation and
+> its bias are documented in `market_value.py`) and flagged `provisional`;
+> the official value overwrites it after publication, never the reverse.
+> `serve --persist` refreshes it every cycle; one-shot:
+>
+> ```bash
+> python -m voltpilot_market_data market-values            # print published months
+> python -m voltpilot_market_data market-values --persist  # upsert + provisional
+> ```
+
 ## Design (the anti-corruption layer)
 
 ```

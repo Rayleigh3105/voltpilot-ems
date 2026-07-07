@@ -47,11 +47,21 @@ public record EarningsDto(
      * the hero's spark bars and the site card's "Heute +X €" teaser, without a
      * second request. Days without a computable slot are absent, never zero.
      *
-     * <p>{@code marktpraemieCtKwh} echoes the site's configured Marktprämie
-     * (null = none): when non-null on a Direktvermarktung site, the money
-     * numbers INCLUDE the premium (suspended in negative-price slots - see
-     * EarningsRepository), and the portal's fine print says so instead of the
-     * generic "zzgl. Marktprämie".
+     * <p>{@code anzulegenderWertCtKwh} echoes the site's configured
+     * anzulegender Wert (null = none): when non-null on a Direktvermarktung
+     * site, the money numbers INCLUDE the dynamic monthly Marktprämie
+     * {@code max(0, anzulegender Wert - Monatsmarktwert Solar)} (suspended in
+     * negative-price slots - see EarningsRepository), and the portal's fine
+     * print names both numbers instead of the generic "zzgl. Marktprämie".
+     *
+     * <p>The benchmark KPI (Direktvermarktung sites):
+     * {@code realizedExportCtKwh} is the export-weighted spot price the site's
+     * metered feed-in actually fetched over the window;
+     * {@code marketValueSolarCtKwh} is the Monatsmarktwert Solar weighted with
+     * the same exports; {@code marketValueProvisional} is true while any
+     * contributing month still carries the provisional (not yet TSO-published)
+     * value. Null when the window has no exported energy or no market-value
+     * coverage - never a fake zero.
      *
      * <p>{@code arbitrageEur}/{@code pvShiftEur} split saved for grid-charging
      * sites ({@code netzladen_erlaubt}, the "davon Arbitrage-Gewinn" line):
@@ -67,7 +77,10 @@ public record EarningsDto(
             UUID id,
             String name,
             String plantKind,
-            BigDecimal marktpraemieCtKwh,
+            BigDecimal anzulegenderWertCtKwh,
+            BigDecimal realizedExportCtKwh,
+            BigDecimal marketValueSolarCtKwh,
+            Boolean marketValueProvisional,
             BigDecimal baselineEur,
             BigDecimal actualEur,
             BigDecimal savedEur,

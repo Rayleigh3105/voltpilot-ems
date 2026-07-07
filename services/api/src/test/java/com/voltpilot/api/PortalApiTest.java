@@ -1569,138 +1569,173 @@ class PortalApiTest {
     }
 
     /**
-     * The Marktprämie in the earnings math (Phase 3, captain decision #3): a
-     * configured {@code marktpraemieCtKwh} on a Direktvermarktung site credits
-     * the premium on exported energy on BOTH sides - the metered export on the
-     * actual side, the immediate-feed-in surplus {@code max(pv - load, 0)} on
-     * the baseline side - and is EXCLUDED in negative-price slots (the
-     * simplified §51-EEG rule). An identical site WITHOUT a premium (and an
-     * Eigenverbrauch site WITH one - the premium is Direktvermarktung-only)
-     * must produce the exact Phase-2 spot numbers, hand-computed. Plus: the
-     * field round-trips through site create/list and is echoed on the
-     * earnings row, negative values are refused, and RLS hides it all from
-     * another tenant.
+     * The DYNAMIC Marktprämie (captain domain fix 2026-07-07): fixed is the
+     * plant's ANZULEGENDER WERT; the premium per exported kWh in month M is
+     * {@code max(0, anzulegender Wert - Monatsmarktwert Solar(M))}, credited on
+     * BOTH comparison sides (metered export on the actual side, the
+     * immediate-feed-in surplus {@code max(pv - load, 0)} on the baseline
+     * side), SUSPENDED in negative-price slots (simplified §51-EEG rule).
+     * Hand-computed across a MONTH BOUNDARY with two different monthly premia
+     * (Mar: 8-5 = 3 ct, Apr provisional: 8-7 = 1 ct), a floored month (Feb:
+     * market value 9.5 ABOVE the 8.0 reference -> premium 0, never negative), a
+     * month WITHOUT a market-value row (Jan -> no premium, nothing invented),
+     * a NULL anzulegender Wert (byte-identical pure-spot regression) and an
+     * Eigenverbrauch site with one (inert). Plus the benchmark KPI (realized
+     * export-weighted ct/kWh vs export-weighted Monatsmarktwert incl. the
+     * provisional flag and its separate denominators), field round-trip,
+     * validation, edit path and RLS.
      *
-     * <p>Seed lives on 2026-04-21 (Berlin day = [2026-04-20T22:00Z,
-     * 2026-04-21T22:00Z)) in the AT zone - far from every other seed.
+     * <p>Seed lives on 2026-01-31/02-28/03-31/04-01 in the AT zone - far from
+     * every other seed; the market-value months are OWNED via ON CONFLICT DO
+     * UPDATE (the seedHistoryDay price rule; the dev seed's rows are
+     * now()-relative and never reach early 2026).
      */
     @Test
-    void earningsIncludeMarktpraemieExceptInNegativePriceSlotsOnBothSides() {
+    void earningsUseTheDynamicMonthlyPremiumFromAnzulegenderWertAndMonatsmarktwert() {
         String demo = token("demo", "demo");
         String tenantA = "00000000-0000-0000-0000-000000000001";
 
-        String prem = createSite(demo, "Prämie Werk", "AT", "direktvermarktung", "8.0");
-        String plain = createSite(demo, "Prämie Ohne", "AT", "direktvermarktung", null);
-        String evPrem = createSite(demo, "Prämie Haus", "AT", "eigenverbrauch", "8.0");
+        String aw = createSite(demo, "AW Werk", "AT", "direktvermarktung", "8.0");
+        String plain = createSite(demo, "AW Ohne", "AT", "direktvermarktung", null);
+        String evAw = createSite(demo, "AW Haus", "AT", "eigenverbrauch", "8.0");
 
-        // The configured premium round-trips through create + list.
-        Map<String, Object> premRow = sites(demo).stream()
-                .filter(x -> prem.equals(x.get("id"))).findFirst().orElseThrow();
+        // The configured anzulegender Wert round-trips through create + list.
         org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
-        assertThat(num(premRow, "marktpraemieCtKwh")).isCloseTo(8.0, eps);
+        assertThat(num(sites(demo).stream().filter(x -> aw.equals(x.get("id")))
+                .findFirst().orElseThrow(), "anzulegenderWertCtKwh")).isCloseTo(8.0, eps);
         assertThat(sites(demo).stream().filter(x -> plain.equals(x.get("id")))
-                .findFirst().orElseThrow().get("marktpraemieCtKwh")).isNull();
+                .findFirst().orElseThrow().get("anzulegenderWertCtKwh")).isNull();
 
-        // One positive (100) and one negative (-50) 15-min price slot.
+        // Monatsmarktwerte Solar: Feb ABOVE the reference (premium floored at
+        // 0), Mar 5.0 published (premium 3 ct), Apr 7.0 PROVISIONAL (premium
+        // 1 ct); January deliberately has NO row.
+        exec("INSERT INTO monthly_market_value (month, technology, value_ct_kwh, provisional, source) VALUES "
+                + "('2026-02-01', 'solar', 9.5, FALSE, 'test'), "
+                + "('2026-03-01', 'solar', 5.0, FALSE, 'test'), "
+                + "('2026-04-01', 'solar', 7.0, TRUE, 'test') "
+                + "ON CONFLICT (technology, month) DO UPDATE SET value_ct_kwh = EXCLUDED.value_ct_kwh,"
+                + " provisional = EXCLUDED.provisional, source = EXCLUDED.source");
+
+        // 15-min prices (all noon UTC = Berlin afternoon, months unambiguous).
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
-                + "('2026-04-21T10:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
-                + "('2026-04-21T10:15:00Z', 'AT', 'PT15M', -50.0, 'EUR', 'test') "
+                + "('2026-01-31T12:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-02-28T12:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-03-31T12:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-03-31T12:15:00Z', 'AT', 'PT15M', -50.0, 'EUR', 'test'), "
+                + "('2026-04-01T12:00:00Z', 'AT', 'PT15M', 200.0, 'EUR', 'test') "
                 + "ON CONFLICT DO NOTHING");
 
-        // Identical rollups for all three sites.
-        // b1 10:00Z (price 100, battery idle, sub-slot interleaving: imp 0.25
-        //   AND exp 1.25, so metered export exceeds the baseline surplus 1.0):
-        //   spot: baseline (1.0-2.0)*0.1 = -0.10 | actual (0.25-1.25)*0.1 = -0.10
-        //   premium 0.08 EUR/kWh: baseline -= 1.0*0.08 | actual -= 1.25*0.08
-        // b2 10:15Z (price -50, charge 0.5 -> exp 1.0): premium SUSPENDED.
-        //   spot: baseline (0.5-2.0)*-0.05 = 0.075 | actual (0-1.0)*-0.05 = 0.05
-        for (String siteId : new String[] {prem, plain, evPrem}) {
+        // Export slot shape A (positive price, battery idle, sub-slot
+        // interleaving: imp 0.25 AND exp 1.25, baseline surplus = 1.0):
+        //   spot: baseline (1.0-2.0)*price/1000 | actual (0.25-1.25)*price/1000
+        //   premium rate r ct/kWh: baseline -= 1.0*r/100 | actual -= 1.25*r/100
+        // Slot shape B (negative price -50, charge 0.5 -> exp 1.0): premium
+        //   SUSPENDED. spot: baseline (0.5-2.0)*-0.05 = 0.075 | actual
+        //   (0-1.0)*-0.05 = 0.05.
+        String shapeA = "', 2.0, 1.0, 0.25, 1.25, 0.0, 0.0, 90)";
+        for (String siteId : new String[] {aw, plain, evAw}) {
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                     + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
-                    + "('2026-04-21T10:00:00Z', '" + tenantA + "', '" + siteId + "', 2.0, 1.0, 0.25, 1.25, 0.0, 0.0, 90), "
-                    + "('2026-04-21T10:15:00Z', '" + tenantA + "', '" + siteId + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90) "
+                    + "('2026-02-28T12:00:00Z', '" + tenantA + "', '" + siteId + shapeA + ", "
+                    + "('2026-03-31T12:00:00Z', '" + tenantA + "', '" + siteId + shapeA + ", "
+                    + "('2026-03-31T12:15:00Z', '" + tenantA + "', '" + siteId + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
+                    + "('2026-04-01T12:00:00Z', '" + tenantA + "', '" + siteId + shapeA + " "
                     + "ON CONFLICT DO NOTHING");
         }
-
-        ResponseEntity<Map<String, Object>> res = rest.exchange(
-                url("/api/v1/earnings?range=day&at=2026-04-21"), HttpMethod.GET,
-                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
-        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<String, Object> body = res.getBody();
-
-        // Premium site: b1 both sides get their premium, b2 none.
-        Map<String, Object> premSite = siteRow(body, prem);
-        assertThat(num(premSite, "marktpraemieCtKwh")).isCloseTo(8.0, eps);
-        assertThat(num(premSite, "baselineEur")).isCloseTo(-0.10 - 0.08 + 0.075, eps);
-        assertThat(num(premSite, "actualEur")).isCloseTo(-0.10 - 0.10 + 0.05, eps);
-        assertThat(num(premSite, "savedEur")).isCloseTo(0.045, eps);
-
-        // Unconfigured premium: byte-identical Phase-2 spot numbers.
-        Map<String, Object> plainSite = siteRow(body, plain);
-        assertThat(plainSite.get("marktpraemieCtKwh")).isNull();
-        assertThat(num(plainSite, "baselineEur")).isCloseTo(-0.025, eps);
-        assertThat(num(plainSite, "actualEur")).isCloseTo(-0.05, eps);
-        assertThat(num(plainSite, "savedEur")).isCloseTo(0.025, eps);
-
-        // Eigenverbrauch never earns the premium, configured or not.
-        Map<String, Object> evSite = siteRow(body, evPrem);
-        assertThat(num(evSite, "baselineEur")).isCloseTo(-0.025, eps);
-        assertThat(num(evSite, "savedEur")).isCloseTo(0.025, eps);
-
-        // A recent covered slot proves the premium delta reaches dailySaved:
-        // positive price, same b1 shape -> prem saved = actual premium 0.10
-        // minus baseline premium 0.08 = 0.02; plain saved = spot 0.0.
-        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
-                + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), 'AT', 'PT15M', 100.0, 'EUR', 'test' "
+        // Only the AW site also has a January slot - its month has NO market
+        // value, so no premium may be invented for it.
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                + "('2026-01-31T12:00:00Z', '" + tenantA + "', '" + aw + shapeA + " "
                 + "ON CONFLICT DO NOTHING");
-        for (String siteId : new String[] {prem, plain}) {
-            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
-                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) "
-                    + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), '" + tenantA + "', '"
-                    + siteId + "', 2.0, 1.0, 0.25, 1.25, 0.0, 0.0, 90 ON CONFLICT DO NOTHING");
-        }
-        java.time.Instant recentBucket = java.time.Instant.ofEpochSecond(
-                java.time.Instant.now().minus(2, java.time.temporal.ChronoUnit.HOURS)
-                        .getEpochSecond() / 900 * 900);
-        String recentDay = recentBucket.atZone(com.voltpilot.api.history.HistoryRange.ZONE)
-                .toLocalDate().toString();
-        Map<String, Object> refreshed = rest.exchange(
-                url("/api/v1/earnings?range=day&at=2026-04-21"), HttpMethod.GET,
+
+        // range=all spans the whole seed (these sites exist only in it).
+        Map<String, Object> body = rest.exchange(
+                url("/api/v1/earnings?range=all"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
-        Map<String, Object> premDaily = list(siteRow(refreshed, prem), "dailySaved").stream()
-                .filter(x -> recentDay.equals(x.get("day"))).findFirst().orElseThrow();
-        assertThat(num(premDaily, "savedEur")).isCloseTo(0.02, eps);
-        Map<String, Object> plainDaily = list(siteRow(refreshed, plain), "dailySaved").stream()
-                .filter(x -> recentDay.equals(x.get("day"))).findFirst().orElseThrow();
-        assertThat(num(plainDaily, "savedEur")).isCloseTo(0.0, eps);
 
-        // A negative premium is refused by validation.
+        // AW site, hand-computed:
+        //   Jan (no MW):  base -0.10          | act -0.10
+        //   Feb (r=0):    base -0.10          | act -0.10
+        //   Mar (r=3ct):  base -0.10-0.03     | act -0.10-0.0375
+        //   Mar (neg):    base  0.075         | act  0.05
+        //   Apr (r=1ct):  base -0.20-0.01     | act -0.20-0.0125
+        //   => totals: base -0.465 | act -0.50 | saved 0.035
+        Map<String, Object> awSite = siteRow(body, aw);
+        assertThat(num(awSite, "anzulegenderWertCtKwh")).isCloseTo(8.0, eps);
+        assertThat(num(awSite, "baselineEur")).isCloseTo(-0.465, eps);
+        assertThat(num(awSite, "actualEur")).isCloseTo(-0.50, eps);
+        assertThat(num(awSite, "savedEur")).isCloseTo(0.035, eps);
+        // The premium delta vs the pure-spot twin is exactly the two months'
+        // (actual - baseline) premium: (0.0375-0.03) + (0.0125-0.01) = 0.01.
+
+        // Benchmark KPI: realized = sum(exp*price)/10/sum(exp) over ALL priced
+        // slots = (125+125+125-50+250)/10 / 6.0; market value = sum(exp*mv)/
+        // sum(exp) over slots WHOSE MONTH HAS one (Jan drops out - separate
+        // denominators) = (1.25*9.5 + 1.25*5.0 + 1.0*5.0 + 1.25*7.0) / 4.75;
+        // April is provisional -> flag true.
+        assertThat(num(awSite, "realizedExportCtKwh")).isCloseTo(575.0 / 10 / 6.0, eps);
+        assertThat(num(awSite, "marketValueSolarCtKwh")).isCloseTo(31.875 / 4.75, eps);
+        assertThat(awSite).containsEntry("marketValueProvisional", true);
+
+        // NULL anzulegender Wert: byte-identical pure-spot numbers.
+        //   base: -0.10 -0.10 +0.075 -0.20 = -0.325 | act: -0.35 | saved 0.025
+        Map<String, Object> plainSite = siteRow(body, plain);
+        assertThat(plainSite.get("anzulegenderWertCtKwh")).isNull();
+        assertThat(num(plainSite, "baselineEur")).isCloseTo(-0.325, eps);
+        assertThat(num(plainSite, "actualEur")).isCloseTo(-0.35, eps);
+        assertThat(num(plainSite, "savedEur")).isCloseTo(0.025, eps);
+        // The benchmark is plant-kind-agnostic data; the portal shows it for
+        // Direktvermarktung only.
+        assertThat(num(plainSite, "realizedExportCtKwh")).isCloseTo(450.0 / 10 / 4.75, eps);
+
+        // Eigenverbrauch never earns the premium, configured or not.
+        Map<String, Object> evSite = siteRow(body, evAw);
+        assertThat(num(evSite, "baselineEur")).isCloseTo(-0.325, eps);
+        assertThat(num(evSite, "savedEur")).isCloseTo(0.025, eps);
+
+        // A published-months-only window carries provisional=false and the
+        // day's own weighted numbers: realized = (125-50)/10/2.25, market
+        // value = 5.0 (both slots in March).
+        Map<String, Object> march = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-03-31"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        Map<String, Object> awMarch = siteRow(march, aw);
+        assertThat(num(awMarch, "baselineEur")).isCloseTo(-0.13 + 0.075, eps);
+        assertThat(num(awMarch, "actualEur")).isCloseTo(-0.1375 + 0.05, eps);
+        assertThat(num(awMarch, "savedEur")).isCloseTo(0.0325, eps);
+        assertThat(num(awMarch, "realizedExportCtKwh")).isCloseTo(75.0 / 10 / 2.25, eps);
+        assertThat(num(awMarch, "marketValueSolarCtKwh")).isCloseTo(5.0, eps);
+        assertThat(awMarch).containsEntry("marketValueProvisional", false);
+
+        // A negative anzulegender Wert is refused by validation.
         ResponseEntity<String> invalid = rest.exchange(
                 url("/api/v1/sites"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("name", "Prämie Negativ", "biddingZone", "AT",
-                        "plantKind", "direktvermarktung", "marktpraemieCtKwh", -1.0),
+                new HttpEntity<>(Map.of("name", "AW Negativ", "biddingZone", "AT",
+                        "plantKind", "direktvermarktung", "anzulegenderWertCtKwh", -1.0),
                         bearer(demo)),
                 String.class);
         assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
-        // The premium is editable via the normal site update path.
+        // Editable via the normal site update path.
         ResponseEntity<Map<String, Object>> updated = rest.exchange(
                 url("/api/v1/sites/" + plain), HttpMethod.PUT,
-                new HttpEntity<>(Map.of("name", "Prämie Ohne", "biddingZone", "AT",
-                        "plantKind", "direktvermarktung", "marktpraemieCtKwh", 1.25),
+                new HttpEntity<>(Map.of("name", "AW Ohne", "biddingZone", "AT",
+                        "plantKind", "direktvermarktung", "anzulegenderWertCtKwh", 9.11),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(num(updated.getBody(), "marktpraemieCtKwh")).isCloseTo(1.25, eps);
+        assertThat(num(updated.getBody(), "anzulegenderWertCtKwh")).isCloseTo(9.11, eps);
 
         // RLS: tenant B sees neither the sites nor their premium earnings.
         ResponseEntity<Map<String, Object>> other = rest.exchange(
-                url("/api/v1/earnings?range=day&at=2026-04-21"), HttpMethod.GET,
+                url("/api/v1/earnings?range=all"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))),
                 new ParameterizedTypeReference<>() {});
         assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
-                .doesNotContain(prem, plain, evPrem);
+                .doesNotContain(aw, plain, evAw);
     }
 
     /**
@@ -1956,11 +1991,11 @@ class PortalApiTest {
     }
 
     private String createSite(String token, String name, String zone, String plantKind,
-            String marktpraemieCtKwh) {
+            String anzulegenderWertCtKwh) {
         Map<String, Object> payload = new java.util.HashMap<>(Map.of(
                 "name", name, "biddingZone", zone, "plantKind", plantKind));
-        if (marktpraemieCtKwh != null) {
-            payload.put("marktpraemieCtKwh", new java.math.BigDecimal(marktpraemieCtKwh));
+        if (anzulegenderWertCtKwh != null) {
+            payload.put("anzulegenderWertCtKwh", new java.math.BigDecimal(anzulegenderWertCtKwh));
         }
         ResponseEntity<Map<String, Object>> created = rest.exchange(
                 url("/api/v1/sites"), HttpMethod.POST,

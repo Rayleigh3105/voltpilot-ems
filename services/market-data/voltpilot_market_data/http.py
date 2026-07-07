@@ -27,8 +27,15 @@ class HttpClient(Protocol):
         ...
 
 
+class HttpPostClient(Protocol):
+    """The JSON-POST twin of :class:`HttpClient` (netztransparenz adapter)."""
+
+    def post_json(self, url: str, body: str, timeout: float) -> HttpResponse:
+        ...
+
+
 class RequestsHttpClient:
-    """Default :class:`HttpClient` backed by the ``requests`` library."""
+    """Default :class:`HttpClient`/:class:`HttpPostClient` backed by ``requests``."""
 
     def get(
         self, url: str, params: Mapping[str, str], timeout: float
@@ -36,4 +43,15 @@ class RequestsHttpClient:
         import requests  # lazy: keeps import-time/test-time dependency-free
 
         resp = requests.get(url, params=dict(params), timeout=timeout)
+        return HttpResponse(status_code=resp.status_code, text=resp.text)
+
+    def post_json(self, url: str, body: str, timeout: float) -> HttpResponse:
+        import requests  # lazy: keeps import-time/test-time dependency-free
+
+        resp = requests.post(
+            url,
+            data=body.encode("utf-8"),
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            timeout=timeout,
+        )
         return HttpResponse(status_code=resp.status_code, text=resp.text)

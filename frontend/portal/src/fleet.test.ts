@@ -13,6 +13,8 @@ import {
   fleetPvKw,
   notComputableHint,
   parsePremiumInput,
+  marktwertBenchmark,
+  premiumDetail,
   premiumIncluded,
   premiumInputText,
   proofLine,
@@ -176,6 +178,25 @@ describe('realizedFinePrint', () => {
     );
   });
 
+  it('names anzulegender Wert und Monatsmarktwert when the detail is known', () => {
+    const t = realizedFinePrint('direktvermarktung', 'month', null, true, false, {
+      anzulegenderWertCtKwh: 8.11,
+      marketValueSolarCtKwh: 5.92,
+      provisional: true,
+    });
+    expect(t).toContain('Inkl. Marktprämie: anzulegender Wert 8,1 ct');
+    expect(t).toContain('Monatsmarktwert Solar 5,9 ct (vorläufig)');
+    expect(t).toContain('entfällt bei negativen Preisen');
+    // A published (non-provisional) market value drops the label.
+    expect(
+      realizedFinePrint('direktvermarktung', 'month', null, true, false, {
+        anzulegenderWertCtKwh: 8.11,
+        marketValueSolarCtKwh: 3.16,
+        provisional: false,
+      }),
+    ).not.toContain('vorläufig');
+  });
+
   it('explains the Netzladen attribution in one sentence when the line is shown', () => {
     const t = realizedFinePrint('direktvermarktung', 'month', null, false, true);
     expect(t).toContain('Netzladen-Anteil');
@@ -214,28 +235,122 @@ describe('arbitrageLine ("davon durch Netzladen verdient")', () => {
 });
 
 describe('premiumIncluded (do the numbers contain a Marktprämie?)', () => {
-  it('true only when a DV site has one configured', () => {
-    expect(premiumIncluded([{ plantKind: 'direktvermarktung', marktpraemieCtKwh: 0.6 }])).toBe(
-      true,
-    );
-    expect(premiumIncluded([{ plantKind: 'direktvermarktung', marktpraemieCtKwh: null }])).toBe(
-      false,
-    );
-    // A stale premium on an Eigenverbrauch site is inert (backend gates on
+  it('true only when a DV site has an anzulegender Wert configured', () => {
+    expect(
+      premiumIncluded([{ plantKind: 'direktvermarktung', anzulegenderWertCtKwh: 8.11 }]),
+    ).toBe(true);
+    expect(
+      premiumIncluded([{ plantKind: 'direktvermarktung', anzulegenderWertCtKwh: null }]),
+    ).toBe(false);
+    // A stale value on an Eigenverbrauch site is inert (backend gates on
     // the plant kind), so the fine print must not claim it is included.
-    expect(premiumIncluded([{ plantKind: 'eigenverbrauch', marktpraemieCtKwh: 0.6 }])).toBe(
-      false,
-    );
+    expect(
+      premiumIncluded([{ plantKind: 'eigenverbrauch', anzulegenderWertCtKwh: 8.11 }]),
+    ).toBe(false);
     expect(
       premiumIncluded([
-        { plantKind: 'eigenverbrauch', marktpraemieCtKwh: null },
-        { plantKind: 'direktvermarktung', marktpraemieCtKwh: 1.2 },
+        { plantKind: 'eigenverbrauch', anzulegenderWertCtKwh: null },
+        { plantKind: 'direktvermarktung', anzulegenderWertCtKwh: 7.5 },
       ]),
     ).toBe(true);
   });
 });
 
-describe('parsePremiumInput / premiumInputText (Marktprämie form field)', () => {
+describe('premiumDetail (the two numbers behind the site-scoped fine print)', () => {
+  it('yields the detail for exactly one DV site with value and benchmark', () => {
+    expect(
+      premiumDetail([
+        {
+          plantKind: 'direktvermarktung',
+          anzulegenderWertCtKwh: 8.11,
+          marketValueSolarCtKwh: 5.92,
+          marketValueProvisional: true,
+        },
+        {
+          plantKind: 'eigenverbrauch',
+          anzulegenderWertCtKwh: null,
+          marketValueSolarCtKwh: null,
+          marketValueProvisional: null,
+        },
+      ]),
+    ).toEqual({ anzulegenderWertCtKwh: 8.11, marketValueSolarCtKwh: 5.92, provisional: true });
+  });
+
+  it('stays null without a market value or with several DV plants', () => {
+    expect(
+      premiumDetail([
+        {
+          plantKind: 'direktvermarktung',
+          anzulegenderWertCtKwh: 8.11,
+          marketValueSolarCtKwh: null,
+          marketValueProvisional: null,
+        },
+      ]),
+    ).toBeNull();
+    // Two DV plants = mixed reference rates -> generic wording, no
+    // averaged pseudo-number.
+    expect(
+      premiumDetail([
+        {
+          plantKind: 'direktvermarktung',
+          anzulegenderWertCtKwh: 8.11,
+          marketValueSolarCtKwh: 5.0,
+          marketValueProvisional: false,
+        },
+        {
+          plantKind: 'direktvermarktung',
+          anzulegenderWertCtKwh: 6.5,
+          marketValueSolarCtKwh: 5.0,
+          marketValueProvisional: false,
+        },
+      ]),
+    ).toBeNull();
+  });
+});
+
+describe('marktwertBenchmark (erzielter Marktwert vs Monatsmarktwert Solar)', () => {
+  it('renders the calm comparison line with German decimals', () => {
+    expect(
+      marktwertBenchmark({
+        plantKind: 'direktvermarktung',
+        realizedExportCtKwh: 9.5833,
+        marketValueSolarCtKwh: 6.7105,
+        marketValueProvisional: false,
+      }),
+    ).toBe(
+      'Sie haben 9,6 ct/kWh für Ihren eingespeisten Strom erzielt − Monatsdurchschnitt Solar: 6,7 ct.',
+    );
+  });
+
+  it('labels a provisional month and stays silent when not computable', () => {
+    expect(
+      marktwertBenchmark({
+        plantKind: 'direktvermarktung',
+        realizedExportCtKwh: 8.2,
+        marketValueSolarCtKwh: 5.9,
+        marketValueProvisional: true,
+      }),
+    ).toContain('(vorläufig)');
+    expect(
+      marktwertBenchmark({
+        plantKind: 'eigenverbrauch',
+        realizedExportCtKwh: 8.2,
+        marketValueSolarCtKwh: 5.9,
+        marketValueProvisional: false,
+      }),
+    ).toBeNull();
+    expect(
+      marktwertBenchmark({
+        plantKind: 'direktvermarktung',
+        realizedExportCtKwh: null,
+        marketValueSolarCtKwh: 5.9,
+        marketValueProvisional: false,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('parsePremiumInput / premiumInputText (anzulegender-Wert form field)', () => {
   it('accepts German comma and dot decimals', () => {
     expect(parsePremiumInput('0,60')).toBe(0.6);
     expect(parsePremiumInput('0.6')).toBe(0.6);
@@ -305,7 +420,10 @@ describe('daily saved helpers', () => {
     id,
     name: id,
     plantKind: 'eigenverbrauch',
-    marktpraemieCtKwh: null,
+    anzulegenderWertCtKwh: null,
+    realizedExportCtKwh: null,
+    marketValueSolarCtKwh: null,
+    marketValueProvisional: null,
     baselineEur: null,
     actualEur: null,
     savedEur: null,

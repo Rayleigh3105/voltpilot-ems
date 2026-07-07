@@ -76,3 +76,19 @@ CREATE INDEX IF NOT EXISTS idx_forecast_site_kind_time
     ON forecast (site_id, kind, time DESC);
 CREATE INDEX IF NOT EXISTS idx_forecast_tenant_time
     ON forecast (tenant_id, time DESC);
+
+-- --- monthly_market_value (EEG Monatsmarktwert per technology) -----------------
+-- Mirrors services/market-data/db/migration/V20260707001000 (canonical); the
+-- api's V20260707020000 applies the same DDL idempotently and grants SELECT to
+-- the app role. Market-wide data: no tenant_id, no RLS; deliberately NOT a
+-- hypertable (twelve rows per technology per year). `provisional` marks a
+-- Voltpilot-computed approximation for a month not yet published by the TSOs.
+CREATE TABLE IF NOT EXISTS monthly_market_value (
+    month         DATE           NOT NULL,  -- first day of the German calendar month
+    technology    TEXT           NOT NULL,  -- 'solar' (wind technologies later)
+    value_ct_kwh  NUMERIC(8, 3)  NOT NULL,  -- the TSOs' native unit
+    provisional   BOOLEAN        NOT NULL DEFAULT FALSE,
+    source        TEXT           NOT NULL DEFAULT 'netztransparenz',
+    fetched_at    TIMESTAMPTZ    NOT NULL DEFAULT now(),
+    PRIMARY KEY (technology, month)
+);

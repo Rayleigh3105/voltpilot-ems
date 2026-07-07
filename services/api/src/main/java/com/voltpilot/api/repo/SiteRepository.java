@@ -16,8 +16,8 @@ import org.springframework.stereotype.Repository;
 public class SiteRepository {
 
     private static final String COLUMNS =
-            "id, name, bidding_zone, latitude, longitude, plant_kind, marktpraemie_ct_kwh,"
-                    + " netzladen_erlaubt";
+            "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
+                    + " marktpraemie_ct_kwh, netzladen_erlaubt";
 
     private final JdbcTemplate jdbc;
 
@@ -49,14 +49,14 @@ public class SiteRepository {
      */
     public SiteDto create(UUID tenantId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
-            BigDecimal marktpraemieCtKwh, Boolean netzladenErlaubt) {
+            BigDecimal anzulegenderWertCtKwh, Boolean netzladenErlaubt) {
         return jdbc.queryForObject(
                 "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind,"
-                        + " marktpraemie_ct_kwh, netzladen_erlaubt) "
+                        + " anzulegender_wert_ct_kwh, netzladen_erlaubt) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, FALSE)) "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind,
-                marktpraemieCtKwh, netzladenErlaubt);
+                anzulegenderWertCtKwh, netzladenErlaubt);
     }
 
     /**
@@ -66,17 +66,19 @@ public class SiteRepository {
      */
     public SiteDto update(UUID siteId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
-            BigDecimal marktpraemieCtKwh, Boolean netzladenErlaubt) {
+            BigDecimal anzulegenderWertCtKwh, Boolean netzladenErlaubt) {
         // netzladen_erlaubt: null = keep the stored value, so a caller that
-        // omits the field never flips the flag by accident.
+        // omits the field never flips the flag by accident. The deprecated
+        // marktpraemie_ct_kwh column is deliberately untouched (kept one
+        // release for manual recovery, then dropped).
         List<SiteDto> updated = jdbc.query(
                 "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ?, plant_kind = ?,"
-                        + " marktpraemie_ct_kwh = ?,"
+                        + " anzulegender_wert_ct_kwh = ?,"
                         + " netzladen_erlaubt = COALESCE(?, netzladen_erlaubt) "
                         + "WHERE id = ? "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, name, biddingZone, latitude, longitude, plantKind,
-                marktpraemieCtKwh, netzladenErlaubt, siteId);
+                anzulegenderWertCtKwh, netzladenErlaubt, siteId);
         return updated.isEmpty() ? null : updated.get(0);
     }
 
@@ -104,6 +106,7 @@ public class SiteRepository {
                 rs.getBigDecimal("latitude"),
                 rs.getBigDecimal("longitude"),
                 rs.getString("plant_kind"),
+                rs.getBigDecimal("anzulegender_wert_ct_kwh"),
                 rs.getBigDecimal("marktpraemie_ct_kwh"),
                 rs.getBoolean("netzladen_erlaubt"));
     }
