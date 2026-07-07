@@ -492,6 +492,16 @@ export interface EarningsSite {
   baselineEur: number | null;
   actualEur: number | null;
   savedEur: number | null;
+  /**
+   * The "davon Arbitrage-Gewinn" split for grid-charging sites
+   * (netzladen_erlaubt): arbitrage = what the permission concretely earned
+   * (grid-charged energy's discharge revenue minus its purchase cost,
+   * storage-mix attribution), pvShift = the remainder, so
+   * arbitrageEur + pvShiftEur === savedEur exactly. Both null when the site
+   * may not grid-charge or the window has no grid-charged energy.
+   */
+  arbitrageEur: number | null;
+  pvShiftEur: number | null;
   coveredSlots: number;
   firstCoveredDate: string | null;
   reason: EarningsReason | null;
@@ -502,6 +512,14 @@ export interface EarningsTotals {
   baselineEur: number | null;
   actualEur: number | null;
   savedEur: number | null;
+  /**
+   * Fleet-level arbitrage split: arbitrage sums the grid-charging sites'
+   * attributions, pvShift is the whole fleet's remainder (sites without a
+   * split cannot grid-charge, so their entire saved is PV-shift) - null when
+   * no site grid-charged in the window.
+   */
+  arbitrageEur: number | null;
+  pvShiftEur: number | null;
   coveredSlots: number;
   /** Earliest covered Berlin day - the honest start of a "Gesamt" range. */
   firstCoveredDate: string | null;

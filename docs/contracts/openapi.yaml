@@ -1402,6 +1402,28 @@ components:
           type: number
           nullable: true
           description: baseline - actual; negative when the battery ran at a loss.
+        arbitrageEur:
+          type: number
+          nullable: true
+          description: >
+            The part of savedEur the grid-charging permission concretely
+            earned ("davon Arbitrage-Gewinn"): revenue attributed to
+            grid-charged battery content minus its purchase cost, via a
+            deterministic storage-mix walk over the window's 15-min slots
+            (grid share of a slot's charge = max(0, charge - PV surplus);
+            discharge draws proportionally from the pv/grid content mix;
+            pre-window content counts as solar, losses debit both parts
+            proportionally). Null when the site may not grid-charge
+            (netzladen_erlaubt = false) or the window contains no
+            grid-charged energy - never a fake zero.
+        pvShiftEur:
+          type: number
+          nullable: true
+          description: >
+            The solar time-shifting remainder savedEur - arbitrageEur (incl.
+            any Marktprämie delta - grid-charged energy is never
+            premium-eligible), so arbitrageEur + pvShiftEur == savedEur
+            exactly. Null whenever arbitrageEur is null.
         coveredSlots: { type: integer }
         firstCoveredDate:
           type: string
@@ -1437,6 +1459,20 @@ components:
         baselineEur: { type: number, nullable: true }
         actualEur: { type: number, nullable: true }
         savedEur: { type: number, nullable: true }
+        arbitrageEur:
+          type: number
+          nullable: true
+          description: >
+            Sum of the sites' arbitrage attributions; null when no site
+            grid-charged in the window.
+        pvShiftEur:
+          type: number
+          nullable: true
+          description: >
+            savedEur - arbitrageEur over the WHOLE fleet (sites without a
+            split cannot grid-charge, so their entire saved is PV-shift);
+            arbitrageEur + pvShiftEur == savedEur. Null whenever
+            arbitrageEur is null.
         coveredSlots: { type: integer }
         firstCoveredDate:
           type: string

@@ -156,6 +156,18 @@ public class EarningsRepository {
     }
 
     /**
+     * The grid-charging (arbitrage) attribution of one netzladen-erlaubt site
+     * over a window: {@code arbitrageEur} is the part of the site's saved that
+     * the grid-charging permission concretely earned, {@code gridChargedKwh}
+     * the grid-charged energy that backs it. Only sites with
+     * {@code gridChargedKwh > 0} appear in the result - a range without grid
+     * charging has no defensible arbitrage number, so the split stays absent
+     * (null in the DTO), never a fake zero.
+     */
+    public record ArbitrageSplit(BigDecimal arbitrageEur, BigDecimal gridChargedKwh) {
+    }
+
+    /**
      * The per-site earnings aggregate over {@code [from, to)}. Sites without
      * any rollup bucket in the window are absent from the map.
      */
@@ -189,6 +201,127 @@ public class EarningsRepository {
                             firstCovered == null ? null : firstCovered.toInstant()));
                 },
                 Timestamp.from(from), Timestamp.from(to));
+        return result;
+    }
+
+    /**
+     * The "davon Arbitrage-Gewinn" split (captain pick 2026-07-07): how much of
+     * a grid-charging site's saved the {@code netzladen_erlaubt} permission
+     * concretely earned. Computed with the STORAGE-MIX model - a deterministic
+     * one-pass walk over the site's covered 15-min slots in time order,
+     * carrying the battery's content as two pools (pv-charged vs grid-charged
+     * kWh):
+     *
+     * <pre>
+     *   per slot (charge applied before discharge):
+     *     gridCharge = max(0, charge_kwh - max(pv_kwh - load_kwh, 0))
+     *     pvCharge   = charge_kwh - gridCharge          -&gt; pools grow
+     *     discharge draws PROPORTIONALLY from the current pool mix
+     *   arbitrageEur = sum(gridDrawnDischarge * price/1000)   -- revenue of grid content
+     *                - sum(gridCharge * price/1000)           -- its purchase cost
+     * </pre>
+     *
+     * <p>The PV-shift part is deliberately NOT computed here: the caller takes
+     * it as the remainder {@code saved - arbitrage}, so the two parts reconcile
+     * with the total EXACTLY, by construction (both draw shares and charge
+     * splits partition the slot quantities the saved formula sums).
+     *
+     * <p>Documented assumptions of the attribution (the fine print's one
+     * sentence is the customer-facing version of these):
+     * <ul>
+     * <li><b>Pre-window content counts as solar.</b> The pools start empty at
+     * the window start; discharge exceeding the tracked content is attributed
+     * to the PV side. Conservative: arbitrage is never inflated by energy whose
+     * origin the window cannot see.</li>
+     * <li><b>Round-trip losses debit both pools proportionally.</b> Cumulative
+     * discharge is smaller than cumulative charge, so residual (lost) content
+     * lingers in the pools in proportion to each pool's charging; its purchase
+     * cost was debited at charge time and never earns discharge revenue - each
+     * strategy pays its own losses.</li>
+     * <li><b>Slot granularity.</b> Sub-slot interleaving (charging from PV
+     * early in a quarter hour, from grid late) is invisible to the rollups;
+     * the {@code max(0, charge - surplus)} split is the slot-level best
+     * estimate - the same granularity the saved total already lives at.</li>
+     * <li><b>The Marktprämie stays on the PV side.</b> Grid-charged energy is
+     * never premium-eligible (it is not EEG generation), so the premium delta
+     * inside saved belongs entirely to the remainder; arbitrage is pure spot.</li>
+     * <li><b>The flag is read at query time.</b> Slots that predate a flag
+     * flip are attributed under the CURRENT mode - historical mode tracking is
+     * out of scope (a freshly-permitted site simply has no grid-charged slots
+     * in its past, so this only matters after a permission is REVOKED).</li>
+     * </ul>
+     *
+     * <p>Only covered slots (channels + price) enter the walk - the same
+     * filter the saved total uses, so the parts and the total describe the
+     * same slot set. Sites whose window contains no grid-charged energy are
+     * absent from the map (see {@link ArbitrageSplit}).
+     */
+    public Map<UUID, ArbitrageSplit> arbitrageSplit(Instant from, Instant to) {
+        Map<UUID, ArbitrageSplit> result = new HashMap<>();
+        // One mutable walk state; rows arrive ordered by (site_id, bucket), so
+        // a site change closes the previous site's split.
+        var state = new Object() {
+            UUID site;
+            double pvPool;
+            double gridPool;
+            double arbitrageEur;
+            double gridChargedKwh;
+
+            void finish() {
+                if (site != null && gridChargedKwh > 0) {
+                    result.put(site, new ArbitrageSplit(
+                            BigDecimal.valueOf(arbitrageEur),
+                            BigDecimal.valueOf(gridChargedKwh)));
+                }
+            }
+
+            void reset(UUID next) {
+                site = next;
+                pvPool = 0;
+                gridPool = 0;
+                arbitrageEur = 0;
+                gridChargedKwh = 0;
+            }
+        };
+        jdbc.query(
+                "SELECT r.site_id,"
+                        + " COALESCE(r.battery_charge_kwh, 0) AS charge_kwh,"
+                        + " COALESCE(r.battery_discharge_kwh, 0) AS discharge_kwh,"
+                        + " GREATEST(COALESCE(r.pv_kwh - r.load_kwh, 0), 0) AS pv_surplus_kwh,"
+                        + " p.price_eur_mwh "
+                        + "FROM telemetry_rollup_15m r "
+                        + "JOIN site s ON s.id = r.site_id AND s.netzladen_erlaubt "
+                        + PRICE_LATERAL
+                        + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
+                        + "ORDER BY r.site_id, r.bucket",
+                rs -> {
+                    UUID siteId = rs.getObject("site_id", UUID.class);
+                    if (!siteId.equals(state.site)) {
+                        state.finish();
+                        state.reset(siteId);
+                    }
+                    double charge = rs.getDouble("charge_kwh");
+                    double discharge = rs.getDouble("discharge_kwh");
+                    double surplus = rs.getDouble("pv_surplus_kwh");
+                    double price = rs.getDouble("price_eur_mwh");
+
+                    double gridCharge = Math.max(0, charge - surplus);
+                    state.gridPool += gridCharge;
+                    state.pvPool += charge - gridCharge;
+                    state.gridChargedKwh += gridCharge;
+                    state.arbitrageEur -= gridCharge * price / 1000.0;
+
+                    double content = state.gridPool + state.pvPool;
+                    if (discharge > 0 && content > 0) {
+                        double drawn = Math.min(discharge, content);
+                        double fromGrid = drawn * state.gridPool / content;
+                        state.gridPool = Math.max(0, state.gridPool - fromGrid);
+                        state.pvPool = Math.max(0, state.pvPool - (drawn - fromGrid));
+                        state.arbitrageEur += fromGrid * price / 1000.0;
+                    }
+                },
+                Timestamp.from(from), Timestamp.from(to));
+        state.finish();
         return result;
     }
 

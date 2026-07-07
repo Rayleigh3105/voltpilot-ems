@@ -164,6 +164,7 @@ export function realizedFinePrint(
   range: EarningsRange,
   firstCoveredDate: string | null,
   premiumIncluded = false,
+  arbitrageShown = false,
 ): string {
   let text =
     'Berechnet aus Ihren gemessenen Werten und den Börsenstrompreisen - im Vergleich ' +
@@ -173,10 +174,34 @@ export function realizedFinePrint(
       ? ' Inkl. Marktprämie, entfällt bei negativen Preisen.'
       : ' Bei Direktvermarktung zzgl. Marktprämie.';
   }
+  if (arbitrageShown) {
+    // The one-sentence attribution promise behind the "davon durch Netzladen"
+    // line: what the number is and what it already accounts for.
+    text +=
+      ' Der Netzladen-Anteil ist der Verkaufserlös der aus dem Netz geladenen ' +
+      'Energie abzüglich ihrer Einkaufskosten.';
+  }
   if (range === 'all' && firstCoveredDate) {
     text += ` Messwerte liegen seit dem ${fmtDayLong(firstCoveredDate)} vor.`;
   }
   return text;
+}
+
+/**
+ * The hero's calm "davon durch Netzladen verdient" extra line (captain pick
+ * 2026-07-07): only for fleets/sites where an arbitrage attribution exists
+ * (null = no line - EEG sites and ranges without grid charging stay silent).
+ * Sign-honest: a period where grid charging LOST money (round-trip losses, a
+ * price bet that did not come in) says so plainly instead of pretending a
+ * "Verdienst"; a value rounding to zero renders "+0,00 €", never "-0,00 €".
+ */
+export function arbitrageLine(arbitrageEur: number | null): string | null {
+  if (arbitrageEur == null) return null;
+  const value = Math.abs(arbitrageEur) < 0.005 ? 0 : arbitrageEur;
+  if (value < 0) {
+    return `Netzladen hat in diesem Zeitraum ${eurAmount(-value)} gekostet`;
+  }
+  return `davon durch Netzladen verdient: +${eurAmount(value)}`;
 }
 
 /**

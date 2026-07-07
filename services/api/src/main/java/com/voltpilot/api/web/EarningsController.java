@@ -80,12 +80,14 @@ public class EarningsController {
                 : parsed.window(effectiveAt).to();
 
         Map<UUID, EarningsRepository.SiteAggregate> aggregates = earnings.aggregate(from, to);
+        Map<UUID, EarningsRepository.ArbitrageSplit> splits = earnings.arbitrageSplit(from, to);
         Map<UUID, List<EarningsRepository.DailySaved>> daily = earnings.dailySavedPerSite(
                 HistoryRange.DAY.window(today.minusDays(DAILY_SAVED_DAYS - 1)).from(),
                 HistoryRange.DAY.window(today).to());
 
         BigDecimal totalBaseline = null;
         BigDecimal totalActual = null;
+        BigDecimal totalArbitrage = null;
         long totalCovered = 0;
         LocalDate firstCovered = null;
 
@@ -102,6 +104,13 @@ public class EarningsController {
             LocalDate siteFirst = covered > 0 && agg.firstCovered() != null
                     ? agg.firstCovered().atZone(HistoryRange.ZONE).toLocalDate()
                     : null;
+            // The "davon Arbitrage-Gewinn" split (see EarningsRepository
+            // .arbitrageSplit): present only for netzladen sites whose window
+            // holds grid-charged energy; pvShift is the exact remainder, so
+            // arbitrage + pvShift == saved always reconciles.
+            EarningsRepository.ArbitrageSplit split = splits.get(site.id());
+            BigDecimal arbitrage = split != null && saved != null ? split.arbitrageEur() : null;
+            BigDecimal pvShift = arbitrage != null ? saved.subtract(arbitrage) : null;
 
             if (baseline != null) {
                 totalBaseline = totalBaseline == null ? baseline : totalBaseline.add(baseline);
@@ -110,6 +119,9 @@ public class EarningsController {
                 if (firstCovered == null || (siteFirst != null && siteFirst.isBefore(firstCovered))) {
                     firstCovered = siteFirst;
                 }
+            }
+            if (arbitrage != null) {
+                totalArbitrage = totalArbitrage == null ? arbitrage : totalArbitrage.add(arbitrage);
             }
 
             List<EarningsDailyDto> dailySaved = daily
@@ -125,6 +137,8 @@ public class EarningsController {
                     baseline,
                     actual,
                     saved,
+                    arbitrage,
+                    pvShift,
                     covered,
                     siteFirst,
                     covered > 0 ? null : reason(agg),
@@ -138,6 +152,11 @@ public class EarningsController {
                         : HistoryRange.DAY.window(today).from())
                 : from;
 
+        // Fleet-level split: sites without one cannot grid-charge, so their
+        // whole saved is PV-shift - the remainder keeps arbitrage + pvShift ==
+        // saved at fleet level too. A split site is always covered, so
+        // totalSaved is non-null whenever totalArbitrage is.
+        BigDecimal totalSaved = totalBaseline != null ? totalBaseline.subtract(totalActual) : null;
         return new EarningsDto(
                 normalized,
                 reportedFrom,
@@ -146,7 +165,9 @@ public class EarningsController {
                 new EarningsTotalsDto(
                         totalBaseline,
                         totalActual,
-                        totalBaseline != null ? totalBaseline.subtract(totalActual) : null,
+                        totalSaved,
+                        totalArbitrage,
+                        totalArbitrage != null ? totalSaved.subtract(totalArbitrage) : null,
                         totalCovered,
                         firstCovered));
     }

@@ -3,6 +3,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { EarningsDaily, EarningsRange, EarningsSite, Overview, OverviewSite } from '../api';
 import {
+  arbitrageLine,
   berlinDay,
   composeFleetSentence,
   fleetHeadline,
@@ -81,6 +82,8 @@ export interface HeroMoney {
   baselineEur: number | null;
   actualEur: number | null;
   savedEur: number | null;
+  /** Grid-charging attribution ("davon Arbitrage-Gewinn"); null = no line. */
+  arbitrageEur: number | null;
   firstCoveredDate: string | null;
 }
 
@@ -133,6 +136,10 @@ export function EarningsHero({
     money != null && money.baselineEur != null && money.actualEur != null
       ? proofLine(kind, money.baselineEur, money.actualEur)
       : null;
+  // The calm "davon durch Netzladen verdient" extra line - only when an
+  // arbitrage attribution exists (grid-charging sites with grid-charged
+  // energy in the window; captain pick 2026-07-07).
+  const arbitrage = saved != null ? arbitrageLine(money?.arbitrageEur ?? null) : null;
 
   return (
     <section className="vp-fleet-hero" aria-label={fleetHeadline(kind)}>
@@ -171,6 +178,8 @@ export function EarningsHero({
           </div>
         </div>
       )}
+
+      {arbitrage && <p className="vp-fleet-hero-arb">{arbitrage}</p>}
 
       <div className="vp-fleet-seg" role="tablist" aria-label="Zeitraum">
         {RANGES.map((r) => (
@@ -219,7 +228,7 @@ export function EarningsHero({
         <span className="vp-fleet-fine-ico" aria-hidden="true">
           <Icon name="info" size={13} />
         </span>
-        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null, premium)}
+        {realizedFinePrint(kind, worded, money?.firstCoveredDate ?? null, premium, arbitrage != null)}
       </p>
     </section>
   );

@@ -52,6 +52,16 @@ public record EarningsDto(
      * numbers INCLUDE the premium (suspended in negative-price slots - see
      * EarningsRepository), and the portal's fine print says so instead of the
      * generic "zzgl. Marktprämie".
+     *
+     * <p>{@code arbitrageEur}/{@code pvShiftEur} split saved for grid-charging
+     * sites ({@code netzladen_erlaubt}, the "davon Arbitrage-Gewinn" line):
+     * arbitrage = what the grid-charging permission concretely earned
+     * (grid-charged energy's discharge revenue minus its purchase cost, via the
+     * storage-mix attribution in EarningsRepository.arbitrageSplit), pvShift =
+     * the remainder {@code saved - arbitrage} (solar time-shifting incl. any
+     * Marktprämie delta) - so {@code arbitrageEur + pvShiftEur == savedEur}
+     * exactly. Both are null when the site may not grid-charge OR the window
+     * contains no grid-charged energy - never a fake zero.
      */
     public record EarningsSiteDto(
             UUID id,
@@ -61,6 +71,8 @@ public record EarningsDto(
             BigDecimal baselineEur,
             BigDecimal actualEur,
             BigDecimal savedEur,
+            BigDecimal arbitrageEur,
+            BigDecimal pvShiftEur,
             long coveredSlots,
             LocalDate firstCoveredDate,
             String reason,
@@ -72,11 +84,20 @@ public record EarningsDto(
      * has a computable slot (never a fake zero); {@code firstCoveredDate} is
      * the earliest covered Berlin day across the fleet - the honest start of a
      * "Gesamt" range ("seit ...").
+     *
+     * <p>{@code arbitrageEur} sums the sites' arbitrage attributions (null
+     * when no site grid-charged in the window); {@code pvShiftEur} is then
+     * {@code savedEur - arbitrageEur} over the WHOLE fleet - sites without a
+     * split contribute their entire saved to the PV side (they cannot
+     * grid-charge, so that is exact), keeping the fleet-level reconciliation
+     * {@code arbitrageEur + pvShiftEur == savedEur}.
      */
     public record EarningsTotalsDto(
             BigDecimal baselineEur,
             BigDecimal actualEur,
             BigDecimal savedEur,
+            BigDecimal arbitrageEur,
+            BigDecimal pvShiftEur,
             long coveredSlots,
             LocalDate firstCoveredDate) {
     }

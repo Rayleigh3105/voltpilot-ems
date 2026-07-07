@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EarningsSite, OverviewSite } from './api';
 import {
+  arbitrageLine,
   netzladenBadge,
   berlinDay,
   composeFleetSentence,
@@ -171,6 +172,42 @@ describe('realizedFinePrint', () => {
       'Marktprämie',
     );
   });
+
+  it('explains the Netzladen attribution in one sentence when the line is shown', () => {
+    const t = realizedFinePrint('direktvermarktung', 'month', null, false, true);
+    expect(t).toContain('Netzladen-Anteil');
+    expect(t).toContain('Verkaufserlös der aus dem Netz geladenen Energie');
+    expect(t).toContain('abzüglich ihrer Einkaufskosten');
+    // Without the line the fine print stays silent about Netzladen.
+    expect(realizedFinePrint('direktvermarktung', 'month', null)).not.toContain('Netzladen');
+    expect(realizedFinePrint('eigenverbrauch', 'month', null, false, true)).toContain(
+      'Netzladen-Anteil',
+    );
+  });
+});
+
+describe('arbitrageLine ("davon durch Netzladen verdient")', () => {
+  it('renders the calm extra line for a positive attribution', () => {
+    expect(arbitrageLine(3.4)).toBe(
+      'davon durch Netzladen verdient: +3,40 €',
+    );
+  });
+
+  it('is silent (null) without an attribution - EEG sites and ranges without grid charging', () => {
+    expect(arbitrageLine(null)).toBeNull();
+  });
+
+  it('a losing period says so plainly instead of pretending a Verdienst', () => {
+    expect(arbitrageLine(-0.8)).toBe(
+      'Netzladen hat in diesem Zeitraum 0,80 € gekostet',
+    );
+  });
+
+  it('never renders a negative zero', () => {
+    expect(arbitrageLine(-0.0001)).toBe(
+      'davon durch Netzladen verdient: +0,00 €',
+    );
+  });
 });
 
 describe('premiumIncluded (do the numbers contain a Marktprämie?)', () => {
@@ -255,9 +292,12 @@ describe('daily saved helpers', () => {
     id,
     name: id,
     plantKind: 'eigenverbrauch',
+    marktpraemieCtKwh: null,
     baselineEur: null,
     actualEur: null,
     savedEur: null,
+    arbitrageEur: null,
+    pvShiftEur: null,
     coveredSlots: 0,
     firstCoveredDate: null,
     reason: null,

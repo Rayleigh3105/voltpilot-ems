@@ -1703,6 +1703,116 @@ class PortalApiTest {
                 .doesNotContain(prem, plain, evPrem);
     }
 
+    /**
+     * The "davon Arbitrage-Gewinn" split (captain pick 2026-07-07): a
+     * netzladen-erlaubt site's saved splits into {@code arbitrageEur} (what
+     * the grid-charging permission earned - storage-mix attribution, see
+     * EarningsRepository.arbitrageSplit) and {@code pvShiftEur} (the
+     * remainder), hand-computed over a multi-slot day: pre-window discharge
+     * (attributed to solar - conservative), cheap-night grid charge, noon PV
+     * charge, expensive-evening discharge drawing 50/50 from the mix. The
+     * parts reconcile with the total EXACTLY; an EEG twin with IDENTICAL
+     * measurements gets NO split (the flag gates it); a merchant site that
+     * only solar-charged in the window gets NO split either (no fake zero);
+     * fleet totals reconcile with sites-without-split counting as PV-shift;
+     * RLS hides it all from another tenant.
+     *
+     * <p>Seed lives on 2026-05-12 (Berlin day = [2026-05-11T22:00Z,
+     * 2026-05-12T22:00Z)) in the AT zone - far from every other seed.
+     */
+    @Test
+    void earningsSplitArbitrageFromPvShiftForGridChargingSites() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String merchant = createSite(demo, "Arbitrage Werk", "AT", "direktvermarktung");
+        String eegTwin = createSite(demo, "Arbitrage EEG-Zwilling", "AT", "eigenverbrauch");
+        String solarOnly = createSite(demo, "Arbitrage Nur-Solar", "AT", "eigenverbrauch");
+        // The switch is admin-only via the API (proven in AdminApiTest); the
+        // earnings math only cares about the stored flag, so set it directly.
+        exec("UPDATE site SET netzladen_erlaubt = TRUE WHERE id IN ('"
+                + merchant + "', '" + solarOnly + "')");
+
+        // Four PT15M price slots: cheap night, noon, expensive evening.
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-05-12T01:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-05-12T02:00:00Z', 'AT', 'PT15M', 20.0, 'EUR', 'test'), "
+                + "('2026-05-12T11:00:00Z', 'AT', 'PT15M', 50.0, 'EUR', 'test'), "
+                + "('2026-05-12T18:00:00Z', 'AT', 'PT15M', 200.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        // Merchant walk, hand-computed (power balance holds per slot):
+        // b0 01:00Z (100): dis 0.2 before ANY tracked charge -> pools empty,
+        //   the revenue 0.02 goes to the PV side (pre-window content = solar).
+        // b1 02:00Z (20): pv 0, chg 1.0 -> gridCharge 1.0 @ 20 => arb -0.02.
+        // b2 11:00Z (50): pv 2.0, load 0.5, chg 1.0 <= surplus 1.5 -> pvCharge.
+        // b3 18:00Z (200): dis 1.0 from mix {grid 1.0, pv 1.0} -> 0.5 grid
+        //   => arb += 0.5*0.2 = 0.10.
+        // arbitrage = 0.08; saved = 0.02 - 0.02 - 0.05 + 0.20 = 0.15;
+        // pvShift = 0.07 (= 0.02 pre-window - 0.05 pv charge + 0.10 pv draw).
+        for (String siteId : new String[] {merchant, eegTwin}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "('2026-05-12T01:00:00Z', '" + tenantA + "', '" + siteId + "', 0.0, 0.5, 0.3, 0.0, 0.0, 0.2, 90), "
+                    + "('2026-05-12T02:00:00Z', '" + tenantA + "', '" + siteId + "', 0.0, 0.5, 1.5, 0.0, 1.0, 0.0, 90), "
+                    + "('2026-05-12T11:00:00Z', '" + tenantA + "', '" + siteId + "', 2.0, 0.5, 0.0, 0.5, 1.0, 0.0, 90), "
+                    + "('2026-05-12T18:00:00Z', '" + tenantA + "', '" + siteId + "', 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 90) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+        // The solar-only merchant charges strictly from its PV surplus.
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                + "('2026-05-12T11:00:00Z', '" + tenantA + "', '" + solarOnly + "', 2.0, 0.5, 0.0, 0.5, 1.0, 0.0, 90) "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-05-12"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        Map<String, Object> merchantSite = siteRow(body, merchant);
+        assertThat(merchantSite).containsEntry("coveredSlots", 4);
+        assertThat(num(merchantSite, "savedEur")).isCloseTo(0.15, eps);
+        assertThat(num(merchantSite, "arbitrageEur")).isCloseTo(0.08, eps);
+        assertThat(num(merchantSite, "pvShiftEur")).isCloseTo(0.07, eps);
+        // The reconciliation the split promises: parts sum to the total.
+        assertThat(num(merchantSite, "arbitrageEur") + num(merchantSite, "pvShiftEur"))
+                .isCloseTo(num(merchantSite, "savedEur"), eps);
+
+        // Identical measurements, but the flag is off -> no split, same saved.
+        Map<String, Object> eegSite = siteRow(body, eegTwin);
+        assertThat(num(eegSite, "savedEur")).isCloseTo(0.15, eps);
+        assertThat(eegSite).containsEntry("arbitrageEur", null)
+                .containsEntry("pvShiftEur", null);
+
+        // Permitted but never grid-charged in the window -> no split either.
+        Map<String, Object> solarSite = siteRow(body, solarOnly);
+        assertThat(num(solarSite, "savedEur")).isCloseTo(-0.05, eps);
+        assertThat(solarSite).containsEntry("arbitrageEur", null)
+                .containsEntry("pvShiftEur", null);
+
+        // Fleet totals: arbitrage sums the split sites; pvShift is the whole
+        // fleet's remainder (no-split sites count as PV-shift), so the
+        // fleet-level reconciliation holds too.
+        Map<String, Object> totals = map(body, "totals");
+        assertThat(num(totals, "savedEur")).isCloseTo(0.25, eps);
+        assertThat(num(totals, "arbitrageEur")).isCloseTo(0.08, eps);
+        assertThat(num(totals, "pvShiftEur")).isCloseTo(0.17, eps);
+        assertThat(num(totals, "arbitrageEur") + num(totals, "pvShiftEur"))
+                .isCloseTo(num(totals, "savedEur"), eps);
+
+        // RLS: tenant B sees neither the sites nor their arbitrage.
+        ResponseEntity<Map<String, Object>> other = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-05-12"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
+                .doesNotContain(merchant, eegTwin, solarOnly);
+        assertThat(map(other.getBody(), "totals")).containsEntry("arbitrageEur", null);
+    }
+
     private String createSite(String token, String name, String zone, String plantKind) {
         return createSite(token, name, zone, plantKind, null);
     }
