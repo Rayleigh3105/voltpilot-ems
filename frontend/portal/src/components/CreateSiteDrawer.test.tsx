@@ -70,7 +70,7 @@ describe('CreateSiteDrawer (netzladen switch, captain revision 2026-07-07)', () 
     fireEvent.change(screen.getByLabelText('Netzladen des Speichers'), {
       target: { value: 'erlaubt' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Standort anlegen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
     await waitFor(() => expect(onCreate).toHaveBeenCalled());
     expect(onCreate.mock.calls[0][0]).toMatchObject({
       name: 'Werk Nord',
@@ -84,7 +84,7 @@ describe('CreateSiteDrawer (netzladen switch, captain revision 2026-07-07)', () 
       <CreateSiteDrawer open onClose={() => {}} onCreate={onCreate} onCreated={() => {}} />,
     );
     fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'Hof Sonnenfeld' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Standort anlegen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
     await waitFor(() => expect(onCreate).toHaveBeenCalled());
     expect(onCreate.mock.calls[0][0]).toMatchObject({ netzladenErlaubt: false });
   });

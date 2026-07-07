@@ -15,7 +15,7 @@ import {
 import { currentUser } from '../auth';
 import { fleetDailySaved, fleetKind, premiumDetail, premiumIncluded } from '../fleet';
 import { anlageRoute, type Route } from '../nav';
-import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
+import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { AddDeviceDrawer } from '../components/DeviceDrawers';
 import { ErrorState, Skeleton } from '../components/States';
 import { EarningsHero, FleetSiteCard, FleetStatusCard } from '../components/FleetOverview';
@@ -106,11 +106,10 @@ function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
           </Button>
         </div>
       </Card>
-      <CreateSiteDrawer
+      <AnlageAnlegenDrawer
         open={siteDrawer}
         onClose={() => setSiteDrawer(false)}
-        onCreate={(input) => api.createSite(input)}
-        onCreated={(s) => onReload(s.id)}
+        onChanged={(createdSiteId) => onReload(createdSiteId)}
       />
     </>
   );
@@ -210,7 +209,7 @@ function FleetUebersicht({
         </div>
         <div className="actions">
           <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
-            Anlage
+            Anlage anlegen
           </Button>
           <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDeviceDrawer(true)}>
             Gerät hinzufügen
@@ -284,12 +283,11 @@ function FleetUebersicht({
         </>
       )}
 
-      <CreateSiteDrawer
+      <AnlageAnlegenDrawer
         open={siteDrawer}
         onClose={() => setSiteDrawer(false)}
-        onCreate={(input) => api.createSite(input)}
-        onCreated={(s) => {
-          onReload(s.id);
+        onChanged={(createdSiteId) => {
+          onReload(createdSiteId);
           setReloadKey((k) => k + 1);
         }}
       />

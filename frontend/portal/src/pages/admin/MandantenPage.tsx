@@ -45,7 +45,7 @@ export function MandantenPage({
           <h1>Mandanten</h1>
           <p>
             Kunden (Mandanten) plattformweit verwalten. Zeile öffnen für Benutzer und
-            Standorte - oder oben über den Kontext-Umschalter in die Portal-Ansicht
+            Anlagen - oder oben über den Kontext-Umschalter in die Portal-Ansicht
             eines Mandanten springen.
           </p>
         </div>
@@ -324,7 +324,7 @@ function TenantDetailDrawer({
         <table className="vp-table" style={{ marginTop: 'var(--vp-space-4)' }}>
           <tbody>
             <tr>
-              <th scope="row">Standorte</th>
+              <th scope="row">Anlagen</th>
               <td>{report.deletedSites}</td>
             </tr>
             <tr>
@@ -455,10 +455,10 @@ function TenantDetailDrawer({
         )}
 
         <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-          <h2 style={{ fontSize: '1.05rem' }}>Standorte {sites ? `(${sites.length})` : ''}</h2>
+          <h2 style={{ fontSize: '1.05rem' }}>Anlagen {sites ? `(${sites.length})` : ''}</h2>
           <span className="actions">
             <Button variant="outline" size="sm" iconLeft={<Icon name="plus" size={16} />} onClick={() => setSiteDrawer(true)}>
-              Standort anlegen
+              Anlage anlegen
             </Button>
           </span>
         </div>
@@ -470,7 +470,7 @@ function TenantDetailDrawer({
           <TextSkeleton lines={3} />
         ) : sites.length === 0 ? (
           <p className="vp-muted">
-            Noch keine Standorte - der Kunde kann erst danach Geräte beanspruchen.
+            Noch keine Anlagen - der Kunde kann erst danach Geräte verbinden.
           </p>
         ) : (
           <table className="vp-table">
@@ -496,7 +496,7 @@ function TenantDetailDrawer({
         )}
 
         <div className="vp-alert vp-alert-info" style={{ marginTop: 'var(--vp-space-5)' }}>
-          Über den Kontext-Umschalter oben (oder den Knopf unten) sehen Sie Standorte,
+          Über den Kontext-Umschalter oben (oder den Knopf unten) sehen Sie Anlagen,
           Geräte und Übersicht dieses Mandanten - dieselben Seiten wie der Kunde, nur
           mit gesetztem Mandanten-Kontext.
         </div>
@@ -505,7 +505,7 @@ function TenantDetailDrawer({
           actionLabel="Mandant löschen (Offboarding)"
           description="Offboarding entfernt den Mandanten mit allen Daten und Zugängen - die endgültigste Aktion auf der Plattform."
           consequences={[
-            `Alle Standorte (${sites?.length ?? '…'}) und Geräte des Mandanten`,
+            `Alle Anlagen (${sites?.length ?? '…'}) und Geräte des Mandanten`,
             'Alle Messdaten, Prognosen und Fahrpläne',
             `Alle Benutzerkonten (${users?.length ?? '…'}) - die Personen können sich nicht mehr anmelden`,
             `Der Mandant „${tenant.name}" selbst`,
@@ -529,7 +529,7 @@ function TenantDetailDrawer({
         onClose={() => setSiteDrawer(false)}
         onCreate={(input) => adminApi.createSite(tenant.id, input)}
         onCreated={() => void reload()}
-        contextNote={`Wird für den Mandanten ${tenant.name} (${tenant.id.slice(0, 8)}) angelegt. Der Kunde sieht ihn sofort in seinem Portal.`}
+        contextNote={`Wird für den Mandanten ${tenant.name} (${tenant.id.slice(0, 8)}) angelegt. Der Kunde sieht sie sofort in seinem Portal.`}
       />
     </>
   );

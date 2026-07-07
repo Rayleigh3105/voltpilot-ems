@@ -98,7 +98,7 @@ function LoginScreen({
           <>
             <h1>VoltPilot EMS</h1>
             <p>
-              Ihr Energiemanagement-Portal - Standorte, Geräte, Börsenpreise und
+              Ihr Energiemanagement-Portal - Ihre Anlage, Börsenpreise und
               Batterie-Fahrplan auf einen Blick.
             </p>
             {authError ? (
@@ -224,7 +224,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
         <h1>Ihr Konto ist bereit</h1>
         <p>
           Willkommen bei VoltPilot! Melden Sie sich jetzt mit Ihrer E-Mail-Adresse an -
-          danach legen Sie Ihren Standort an und verbinden Ihr Gerät.
+          danach legen Sie Ihre Anlage an und verbinden Ihr Gerät.
         </p>
         <Button variant="primary" size="lg" fullWidth onClick={() => login(email.trim())}>
           Jetzt anmelden
@@ -242,7 +242,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
       noValidate
     >
       <h1>Konto erstellen</h1>
-      <p>In einer Minute startklar: Konto anlegen, Standort benennen, Gerät verbinden.</p>
+      <p>In einer Minute startklar: Konto anlegen, Anlage benennen, Gerät verbinden.</p>
       <div style={{ display: 'grid', gap: 12, textAlign: 'left' }}>
         <Input
           ref={nameRef}
@@ -632,7 +632,7 @@ function LoadErrorNotice({ onRetry }: { onRetry: () => void }) {
       <div className="vp-empty">
         <h3>Daten konnten nicht geladen werden</h3>
         <p>
-          Ihre Standorte und Geräte ließen sich gerade nicht laden. Das liegt
+          Ihre Anlagen und Geräte ließen sich gerade nicht laden. Das liegt
           meist an einer kurzen Verbindungsstörung. Bitte versuchen Sie es erneut.
         </p>
         <Button variant="primary" iconLeft={<Icon name="refresh-cw" size={18} />} onClick={onRetry}>

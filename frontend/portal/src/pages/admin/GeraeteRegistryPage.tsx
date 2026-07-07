@@ -9,7 +9,7 @@ import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi, type ProvisionedDevice } from '../../admin/adminApi';
 import { ErrorState, TableSkeleton } from '../../components/States';
-import { normalizeDeviceIdInput } from '../../Onboarding';
+import { normalizeDeviceIdInput } from '../../anlageFlow';
 import { deviceKindLabel } from '../../format';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('de-DE');

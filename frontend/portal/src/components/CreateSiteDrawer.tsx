@@ -9,9 +9,10 @@ import { parsePremiumInput } from '../fleet';
 import { LocationMap } from './LocationMap';
 
 /**
- * "Standort anlegen" as a right drawer (the repeatable entity pattern). The
- * actual create call comes in via `onCreate` so the same drawer serves the
- * customer path (POST /api/v1/sites - tenant from the JWT) and the admin path
+ * "Anlage anlegen" as a plain single-form drawer. Since the one-flow
+ * "Anlage anlegen" (components/AnlageFlow.tsx) took over every customer
+ * entry point, this remains ONLY for the admin Mandanten page, whose create
+ * call goes through the cross-tenant admin API via `onCreate`
  * (POST /api/v1/admin/tenants/{id}/sites - tenant from the route).
  */
 export function CreateSiteDrawer({
@@ -83,7 +84,7 @@ export function CreateSiteDrawer({
       setError(
         e instanceof ApiError && e.status === 400
           ? 'Ungültige Eingabe. Bitte prüfen Sie Name und Koordinaten.'
-          : 'Der Standort konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
+          : 'Die Anlage konnte nicht angelegt werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
       setBusy(false);
@@ -94,7 +95,7 @@ export function CreateSiteDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      title="Standort anlegen"
+      title="Anlage anlegen"
       icon={
         <IconTile category="home" size={40}>
           <Icon name="map-pin" size={20} />
@@ -106,7 +107,7 @@ export function CreateSiteDrawer({
             Abbrechen
           </Button>
           <Button variant="primary" onClick={submit} disabled={busy || !name.trim()}>
-            {busy ? 'Wird angelegt…' : 'Standort anlegen'}
+            {busy ? 'Wird angelegt…' : 'Anlage anlegen'}
           </Button>
         </>
       }

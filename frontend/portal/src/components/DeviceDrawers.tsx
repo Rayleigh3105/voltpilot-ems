@@ -16,7 +16,7 @@ import {
 } from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
-import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../Onboarding';
+import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
 export function DeviceStatusBadge({ device }: { device: Device }) {
@@ -44,7 +44,7 @@ export function DeviceStatusBadge({ device }: { device: Device }) {
 
 /**
  * ZERO-TOUCH "Gerät hinzufügen" drawer: the customer enters ONLY the
- * Edge-Referenz and picks the Standort - no IDs, no commands, no connection
+ * Edge-Referenz and picks the Anlage - no IDs, no commands, no connection
  * panel. The cloud provisions the physical device over the MQTT handshake
  * (docs/contracts/mqtt-provisioning.schema.json); the row flips to online as
  * soon as the first telemetry arrives.
@@ -96,7 +96,7 @@ export function AddDeviceDrawer({
           : e instanceof ApiError && e.status === 409
             ? 'Diese Geräte-ID ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Schreibweise - oder kontaktieren Sie unseren Support.'
             : e instanceof ApiError && e.status === 404
-              ? 'Der gewählte Standort wurde nicht gefunden. Bitte laden Sie die Seite neu.'
+              ? 'Die gewählte Anlage wurde nicht gefunden. Bitte laden Sie die Seite neu.'
               : 'Das Gerät konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
@@ -140,7 +140,7 @@ export function AddDeviceDrawer({
       {claimed ? (
         <>
           <div className="vp-alert vp-alert-ok" style={{ marginTop: 0 }}>
-            Gerät <b>{claimed.externalRef}</b> wurde dem Standort{' '}
+            Gerät <b>{claimed.externalRef}</b> wurde der Anlage{' '}
             <b>{siteName(claimed.siteId)}</b> zugeordnet.
           </div>
           <p style={{ margin: 'var(--vp-space-4) 0' }}>
@@ -155,7 +155,7 @@ export function AddDeviceDrawer({
               <div>
                 <b>Gerät registriert</b>
                 <div className="vp-note">
-                  Zugeordnet zu Standort {siteName(claimed.siteId)}.
+                  Zugeordnet zur Anlage {siteName(claimed.siteId)}.
                 </div>
               </div>
             </li>
@@ -212,7 +212,7 @@ export function AddDeviceDrawer({
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <label htmlFor="claim-site" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                Standort
+                Anlage
               </label>
               <select
                 id="claim-site"
@@ -364,7 +364,7 @@ export function DeviceDetailDrawer({
                 <td>{deviceKindLabel(device.kind)}</td>
               </tr>
               <tr>
-                <th scope="row">Standort</th>
+                <th scope="row">Anlage</th>
                 <td>{site?.name ?? device.siteId.slice(0, 8)}</td>
               </tr>
               <tr>
@@ -376,7 +376,7 @@ export function DeviceDetailDrawer({
 
           {status === 'waiting' && !waitedTooLong && (
             <div className="vp-alert vp-alert-info">
-              Das Gerät wurde beansprucht, hat aber noch keine Daten gesendet. Schalten
+              Das Gerät ist mit Ihrem Konto verbunden, hat aber noch keine Daten gesendet. Schalten
               Sie es ein - es konfiguriert sich automatisch über seine Referenz und der
               Status wechselt auf <b>online</b>, sobald Messwerte eintreffen.
             </div>

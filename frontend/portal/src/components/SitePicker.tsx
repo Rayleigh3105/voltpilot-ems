@@ -16,7 +16,7 @@ export function SitePicker({
   return (
     <select
       id={id}
-      aria-label="Standort wählen"
+      aria-label="Anlage wählen"
       className="vp-select"
       style={{ width: 'auto', padding: '0.45rem 0.75rem', fontSize: 'var(--vp-text-sm)' }}
       value={value ?? ''}
