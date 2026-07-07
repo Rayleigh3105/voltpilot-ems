@@ -28,6 +28,10 @@ import java.math.BigDecimal;
  * from it (see EarningsRepository) - the deprecated fixed
  * {@code marktpraemieCtKwh} is NOT accepted here anymore (unknown JSON fields
  * are ignored, so an old client sending it simply no-ops).
+ * {@code strompreisCtKwh} is the customer's optional retail electricity price
+ * (ct/kWh, from their Stromrechnung); null = not configured. When set, the
+ * realized earnings value the site's self-consumed energy in euros; without it
+ * the portal shows self-consumption in kWh only, never a fabricated euro number.
  *
  * <p>{@code netzladenErlaubt} (the per-site grid-charging switch): the SITE
  * OWNER may set it too (captain revision 2026-07-07 of decision 3 - not only
@@ -53,6 +57,10 @@ public record CreateSiteRequest(
         @Digits(integer = 5, fraction = 3,
                 message = "anzulegenderWertCtKwh must have at most 3 decimal places")
                 BigDecimal anzulegenderWertCtKwh,
+        @DecimalMin(value = "0", message = "strompreisCtKwh must not be negative")
+        @Digits(integer = 5, fraction = 3,
+                message = "strompreisCtKwh must have at most 3 decimal places")
+                BigDecimal strompreisCtKwh,
         Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {

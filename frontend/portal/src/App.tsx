@@ -464,21 +464,20 @@ function UnifiedPortal() {
     void reload();
   }, [reload, tenantId]);
 
-  // Single-Anlage customers land on "Meine Anlage" (captain IA): the plain
-  // default landing (no explicit hash) forwards ONCE to the Anlagen entry so
-  // the nav highlights their one page. Deep links and admins are untouched.
-  const bootRedirected = useRef(false);
-  const initialHash = useRef(window.location.hash);
+  // Single-plant merge (captain decision 2, 2026-07-07): a customer with fewer
+  // than two Anlagen has NO "Übersicht" - "Meine Anlage" is their home. So any
+  // landing on Übersicht (the default boot hash, an old bookmark) forwards to
+  // the Anlagen entry, which itself renders that one Anlage. The fleet
+  // Übersicht returns automatically from the second Anlage on. replace() keeps
+  // the history clean (Back leaves the app, never bounces here). Admins are
+  // untouched - they browse tenants and keep the Übersicht.
   useEffect(() => {
-    if (bootRedirected.current || isAdmin || !loaded || error != null) return;
-    const wasDefault = ['', '#', '#/'].includes(initialHash.current);
-    if (wasDefault && route.page === 'uebersicht' && sites.length === 1) {
-      bootRedirected.current = true;
-      // replace() instead of navigate(): no history entry, Back leaves the app.
+    if (isAdmin || !loaded || error != null) return;
+    if (route.page === 'uebersicht' && sites.length < 2) {
       window.location.replace(hashForRoute(pageRoute('anlagen')));
       setRoute(pageRoute('anlagen'));
     }
-  }, [isAdmin, loaded, error, sites, route.page]);
+  }, [isAdmin, loaded, error, sites.length, route.page]);
 
   // An Anlage opened by route is also the context of the site-scoped pages
   // (Marktpreise, Prognosequalität) - switching there stays on "their" site.
@@ -531,6 +530,9 @@ function UnifiedPortal() {
       page={page}
       onNavigate={navigate}
       isAdmin={isAdmin}
+      // Single-plant merge: the "Übersicht" nav item only appears from the
+      // second Anlage on (a single-Anlage customer's home IS "Meine Anlage").
+      showOverview={isAdmin || (loaded && tenantReady && sites.length >= 2)}
       counts={{
         sites: tenantReady ? sites.length : null,
         devices: tenantReady ? devices.length : null,

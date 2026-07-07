@@ -18,6 +18,11 @@ import java.util.UUID;
  * {@code marktpraemieCtKwh} is the DEPRECATED predecessor (a fixed premium -
  * wrong semantics, captain fix 2026-07-07): echoed read-only for one release,
  * no longer accepted on create/update and no longer used anywhere.
+ * {@code strompreisCtKwh} (migration V20260707030000) is the customer's retail
+ * electricity price (ct/kWh, from their Stromrechnung); null = not configured -
+ * then the portal shows self-consumption in kWh only, never a fabricated euro
+ * value. When set, the realized earnings add the Eigenverbrauchs-Wert
+ * (self-consumed kWh x this price) to the Gesamtertrag.
  * {@code netzladenErlaubt} (migration V20260707000000) is the per-site
  * grid-charging switch: {@code false} (the default) = "Nur Solarladen (EEG)",
  * the optimizer charges the battery only from PV surplus; {@code true} =
@@ -34,5 +39,6 @@ public record SiteDto(
         String plantKind,
         BigDecimal anzulegenderWertCtKwh,
         BigDecimal marktpraemieCtKwh,
+        BigDecimal strompreisCtKwh,
         boolean netzladenErlaubt) {
 }

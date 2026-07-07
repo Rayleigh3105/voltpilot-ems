@@ -49,11 +49,12 @@ describe('parseRoute', () => {
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
     expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'historie' });
     expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
-    // ...the entity lists land on the Anlage itself (Technik section).
-    expect(parseRoute('#/standorte')).toEqual(route('anlagen'));
-    expect(parseRoute('#/geraete')).toEqual(route('anlagen'));
+    // ...the entity lists land on the Technik subpage (its content moved there
+    // behind the gear icon in the money-centric v2).
+    expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
+    expect(parseRoute('#/geraete')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
     // Both hash spellings work (the router always accepted #foo and #/foo).
-    expect(parseRoute('#standorte')).toEqual(route('anlagen'));
+    expect(parseRoute('#standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
   });
 
   it('ignores an unknown sub segment instead of breaking the Anlage', () => {

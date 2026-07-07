@@ -433,6 +433,15 @@ describe('daily saved helpers', () => {
     firstCoveredDate: null,
     reason: null,
     dailySaved,
+    strompreisCtKwh: null,
+    einspeiseErloesEur: null,
+    eigenverbrauchsWertEur: null,
+    gesamtertragEur: null,
+    selbstverbrauchKwh: null,
+    eingespeistKwh: null,
+    batterieBewegtKwh: null,
+    series: [],
+    monthlyStrip: [],
   });
 
   it('savedOnDay picks the exact Berlin day, else null', () => {

@@ -33,6 +33,7 @@ export function CreateSiteDrawer({
   const [plantKind, setPlantKind] = useState<PlantKind>('eigenverbrauch');
   const [netzladen, setNetzladen] = useState(false);
   const [praemie, setPraemie] = useState('');
+  const [strompreis, setStrompreis] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +47,7 @@ export function CreateSiteDrawer({
     setPlantKind('eigenverbrauch');
     setNetzladen(false);
     setPraemie('');
+    setStrompreis('');
     setError(null);
   }
 
@@ -54,6 +56,11 @@ export function CreateSiteDrawer({
     const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
     if (praemieValue === undefined) {
       setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
+      return;
+    }
+    const strompreisValue = parsePremiumInput(strompreis);
+    if (strompreisValue === undefined) {
+      setError('Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.');
       return;
     }
     setBusy(true);
@@ -66,6 +73,7 @@ export function CreateSiteDrawer({
         longitude: lon,
         plantKind,
         anzulegenderWertCtKwh: praemieValue,
+        strompreisCtKwh: strompreisValue,
         netzladenErlaubt: netzladen,
       });
       reset();
@@ -161,6 +169,19 @@ export function CreateSiteDrawer({
             </p>
           </div>
         )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <Input
+            label="Ihr Strompreis (ct/kWh)"
+            placeholder="z. B. 32,5"
+            inputMode="decimal"
+            value={strompreis}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStrompreis(e.target.value)}
+          />
+          <p className="vp-note" style={{ margin: 0 }}>
+            Für den Wert Ihres Eigenverbrauchs - siehe Stromrechnung. Optional: ohne
+            Angabe zeigen wir den Eigenverbrauch nur in kWh.
+          </p>
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
             Netzladen des Speichers

@@ -22,6 +22,8 @@ export type IconName =
   | 'info'
   | 'pencil'
   | 'trash'
+  | 'settings'
+  | 'calendar'
   | 'refresh-cw'
   | 'chevron-left'
   | 'chevron-right'

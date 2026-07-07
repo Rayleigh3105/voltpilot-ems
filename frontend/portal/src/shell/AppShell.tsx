@@ -18,6 +18,7 @@ export function AppShell({
   page,
   onNavigate,
   isAdmin,
+  showOverview,
   counts,
   tenants,
   tenantOverride,
@@ -27,6 +28,8 @@ export function AppShell({
   page: PageId;
   onNavigate: (page: PageId) => void;
   isAdmin: boolean;
+  /** Show the "Übersicht" nav item (fleet customers + admins only). */
+  showOverview: boolean;
   counts: { sites: number | null; devices: number | null };
   /** Admin only: tenants for the context switcher. */
   tenants: Tenant[];
@@ -76,7 +79,7 @@ export function AppShell({
         <img src={logoUrl} alt="VoltPilot EMS" />
       </div>
       <nav aria-label="Hauptnavigation">
-        {MAIN_PAGES.map((p) => (
+        {MAIN_PAGES.filter((p) => p.id !== 'uebersicht' || showOverview).map((p) => (
           <NavItem
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}

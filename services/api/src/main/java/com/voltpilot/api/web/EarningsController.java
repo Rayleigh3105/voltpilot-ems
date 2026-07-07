@@ -5,12 +5,15 @@ import com.voltpilot.api.repo.EarningsRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.EarningsDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsDailyDto;
+import com.voltpilot.api.web.dto.EarningsDto.EarningsMonthDto;
+import com.voltpilot.api.web.dto.EarningsDto.EarningsSeriesPointDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsSiteDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsTotalsDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -50,6 +53,9 @@ public class EarningsController {
     /** Days of the realized daily-savings series (spark bars, incl. today). */
     private static final int DAILY_SAVED_DAYS = 14;
 
+    /** Months of the tappable Meine-Anlage strip (incl. the current month). */
+    private static final int MONTH_STRIP_LENGTH = 12;
+
     private final SiteRepository sites;
     private final EarningsRepository earnings;
 
@@ -84,6 +90,28 @@ public class EarningsController {
         Map<UUID, List<EarningsRepository.DailySaved>> daily = earnings.dailySavedPerSite(
                 HistoryRange.DAY.window(today.minusDays(DAILY_SAVED_DAYS - 1)).from(),
                 HistoryRange.DAY.window(today).to());
+
+        // The Ertrag chart series over the SELECTED range: hourly for a day,
+        // daily for a month, monthly for a year / "Gesamt".
+        EarningsRepository.Bucket seriesBucket = all
+                ? EarningsRepository.Bucket.MONTH
+                : switch (parsed) {
+                    case DAY -> EarningsRepository.Bucket.HOUR;
+                    case MONTH -> EarningsRepository.Bucket.DAY;
+                    default -> EarningsRepository.Bucket.MONTH;
+                };
+        Map<UUID, List<EarningsRepository.BucketPoint>> series =
+                earnings.bucketed(from, to, seriesBucket);
+
+        // The tappable 12-month strip is a stable navigator anchored on today,
+        // independent of the selected range/at (the last 12 Berlin months).
+        YearMonth currentMonth = YearMonth.from(today);
+        Instant stripFrom = currentMonth.minusMonths(MONTH_STRIP_LENGTH - 1)
+                .atDay(1).atStartOfDay(HistoryRange.ZONE).toInstant();
+        Instant stripTo = currentMonth.plusMonths(1).atDay(1)
+                .atStartOfDay(HistoryRange.ZONE).toInstant();
+        Map<UUID, List<EarningsRepository.BucketPoint>> strip =
+                earnings.bucketed(stripFrom, stripTo, EarningsRepository.Bucket.MONTH);
 
         BigDecimal totalBaseline = null;
         BigDecimal totalActual = null;
@@ -129,6 +157,28 @@ public class EarningsController {
                     .map(d -> new EarningsDailyDto(d.day(), d.savedEur()))
                     .toList();
 
+            // The money-centric Gesamtertrag = Einspeise-Erlös + (only when a
+            // retail tariff is set) the Eigenverbrauchs-Wert. A NULL strompreis
+            // keeps the self-consumption in kWh only and never fabricates a euro
+            // value, so gesamtertrag falls back to the feed-in revenue alone.
+            BigDecimal strompreis = site.strompreisCtKwh();
+            BigDecimal einspeise = covered > 0 ? agg.einspeiseErloesEur() : null;
+            BigDecimal selbstverbrauchKwh = covered > 0 ? agg.selbstverbrauchKwh() : null;
+            BigDecimal eigenverbrauchsWert = eigenverbrauchsWert(selbstverbrauchKwh, strompreis);
+            BigDecimal gesamtertrag = einspeise == null ? null
+                    : eigenverbrauchsWert == null ? einspeise : einspeise.add(eigenverbrauchsWert);
+
+            List<EarningsSeriesPointDto> siteSeries = series
+                    .getOrDefault(site.id(), List.of()).stream()
+                    .map(p -> new EarningsSeriesPointDto(p.start(), gesamtertragOf(p, strompreis)))
+                    .toList();
+            List<EarningsMonthDto> siteStrip = strip
+                    .getOrDefault(site.id(), List.of()).stream()
+                    .map(p -> new EarningsMonthDto(
+                            p.start().atZone(HistoryRange.ZONE).toLocalDate(),
+                            gesamtertragOf(p, strompreis)))
+                    .toList();
+
             fleet.add(new EarningsSiteDto(
                     site.id(),
                     site.name(),
@@ -145,7 +195,16 @@ public class EarningsController {
                     covered,
                     siteFirst,
                     covered > 0 ? null : reason(agg),
-                    dailySaved));
+                    dailySaved,
+                    strompreis,
+                    einspeise,
+                    eigenverbrauchsWert,
+                    gesamtertrag,
+                    selbstverbrauchKwh,
+                    covered > 0 ? agg.eingespeistKwh() : null,
+                    covered > 0 ? agg.batterieBewegtKwh() : null,
+                    siteSeries,
+                    siteStrip));
         }
 
         // "Gesamt" honestly starts at the first covered slot, not at the epoch.
@@ -188,5 +247,25 @@ public class EarningsController {
             return "no_data";
         }
         return agg.channelBuckets() == 0 ? "missing_channels" : "no_prices";
+    }
+
+    /**
+     * The euro value of self-consumed energy: {@code selbstverbrauchKwh x
+     * strompreis / 100}. Null when either input is null - a site without a
+     * configured retail tariff never gets a fabricated Eigenverbrauchs-Wert.
+     * {@code movePointLeft(2)} divides by 100 exactly (ct/kWh x kWh = ct -> EUR).
+     */
+    private static BigDecimal eigenverbrauchsWert(BigDecimal selbstverbrauchKwh, BigDecimal strompreis) {
+        if (selbstverbrauchKwh == null || strompreis == null) {
+            return null;
+        }
+        return selbstverbrauchKwh.multiply(strompreis).movePointLeft(2);
+    }
+
+    /** One bucket's Gesamtertrag: feed-in revenue + (tariff set) self-consumption value. */
+    private static BigDecimal gesamtertragOf(EarningsRepository.BucketPoint p, BigDecimal strompreis) {
+        BigDecimal einspeise = p.einspeiseErloesEur() == null ? BigDecimal.ZERO : p.einspeiseErloesEur();
+        BigDecimal wert = eigenverbrauchsWert(p.selbstverbrauchKwh(), strompreis);
+        return wert == null ? einspeise : einspeise.add(wert);
     }
 }

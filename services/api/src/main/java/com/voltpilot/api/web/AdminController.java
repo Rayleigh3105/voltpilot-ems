@@ -185,7 +185,7 @@ public class AdminController {
         SiteDto created = sites.create(tenantId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
                 request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
-                request.netzladenErlaubt());
+                request.strompreisCtKwh(), request.netzladenErlaubt());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

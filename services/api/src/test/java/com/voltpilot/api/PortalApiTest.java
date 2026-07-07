@@ -1569,6 +1569,102 @@ class PortalApiTest {
     }
 
     /**
+     * The money-centric "Meine Anlage" v2 aggregates (captain 2026-07-07): per
+     * site the Einspeise-Erlös (metered export x spot + Marktprämie), the
+     * Eigenverbrauchs-kWh, the Eigenverbrauchs-Wert in euros ONLY when a retail
+     * {@code strompreisCtKwh} is set (never fabricated), the Gesamtertrag =
+     * Einspeise-Erlös + Eigenverbrauchs-Wert, the energy sums, the Ertrag chart
+     * series and the 12-month strip. Hand-computed over two current-month CH
+     * slots (midday export+charge, evening import+discharge); one site carries a
+     * 30 ct/kWh tariff, its twin carries none (the honest kWh-only regression).
+     *
+     * <p>Seeded now()-relative INSIDE the current Berlin month (month-start + 10
+     * days) so the month range, the day-bucketed series and the today-anchored
+     * strip all see the same slots regardless of wall-clock, in a fresh CH site
+     * whose rollups never collide with the dev DE-LU seed.
+     */
+    @Test
+    void earningsExposeGesamtertragEnergyAndSeriesForTheMoneyView() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String withTariff = createSiteWithStrompreis(demo, "MV Haus", "CH", "eigenverbrauch", "30");
+        String noTariff = createSite(demo, "MV Ohne", "CH", "eigenverbrauch");
+
+        // Two 15-min slots on the same Berlin day, month-start + 10 days:
+        //   11:00 (CH price 100): pv 2.0, load 0.5, export 1.0, charge 0.5
+        //     -> einspeise 1.0*100/1000 = 0.10 | selbstverbrauch max(0.5-0,0)=0.5
+        //   18:00 (CH price 200): pv 0, load 1.5, import 1.0, discharge 0.5
+        //     -> einspeise 0 | selbstverbrauch max(1.5-1.0,0)=0.5
+        // Totals: einspeise 0.10, selbstverbrauch 1.0 kWh, eingespeist 1.0 kWh,
+        //   batterie bewegt (charge+discharge) 1.0 kWh.
+        //   with tariff 30 ct: eigenverbrauchsWert 1.0*30/100 = 0.30,
+        //   gesamtertrag 0.10 + 0.30 = 0.40. without tariff: gesamtertrag 0.10.
+        String t1 = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '10 days 11 hours') AT TIME ZONE 'Europe/Berlin'";
+        String t2 = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '10 days 18 hours') AT TIME ZONE 'Europe/Berlin'";
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "VALUES (" + t1 + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+        for (String site : new String[] {withTariff, noTariff}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "(" + t1 + ", '" + tenantA + "', '" + site + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
+                    + "(" + t2 + ", '" + tenantA + "', '" + site + "', 0.0, 1.5, 1.0, 0.0, 0.0, 0.5, 90) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        Map<String, Object> withRow = siteRow(body, withTariff);
+        assertThat(num(withRow, "strompreisCtKwh")).isCloseTo(30.0, eps);
+        assertThat(num(withRow, "einspeiseErloesEur")).isCloseTo(0.10, eps);
+        assertThat(num(withRow, "selbstverbrauchKwh")).isCloseTo(1.0, eps);
+        assertThat(num(withRow, "eigenverbrauchsWertEur")).isCloseTo(0.30, eps);
+        assertThat(num(withRow, "gesamtertragEur")).isCloseTo(0.40, eps);
+        // Gesamtertrag reconciles with its parts, exactly.
+        assertThat(num(withRow, "gesamtertragEur"))
+                .isCloseTo(num(withRow, "einspeiseErloesEur")
+                        + num(withRow, "eigenverbrauchsWertEur"), eps);
+        assertThat(num(withRow, "eingespeistKwh")).isCloseTo(1.0, eps);
+        assertThat(num(withRow, "batterieBewegtKwh")).isCloseTo(1.0, eps);
+
+        // The Ertrag series is DAY-bucketed for the month range: one bucket
+        // (both slots on the same day) carrying the day's Gesamtertrag.
+        List<Map<String, Object>> series = list(withRow, "series");
+        assertThat(series).hasSize(1);
+        assertThat(num(series.get(0), "gesamtertragEur")).isCloseTo(0.40, eps);
+        // The 12-month strip carries the current month's Gesamtertrag.
+        List<Map<String, Object>> strip = list(withRow, "monthlyStrip");
+        assertThat(strip).hasSize(1);
+        assertThat(num(strip.get(0), "gesamtertragEur")).isCloseTo(0.40, eps);
+
+        // No tariff => self-consumption stays kWh-only, NEVER a fabricated euro,
+        // and the Gesamtertrag is the feed-in revenue alone.
+        Map<String, Object> withoutRow = siteRow(body, noTariff);
+        assertThat(withoutRow).containsEntry("strompreisCtKwh", null)
+                .containsEntry("eigenverbrauchsWertEur", null);
+        assertThat(num(withoutRow, "selbstverbrauchKwh")).isCloseTo(1.0, eps);
+        assertThat(num(withoutRow, "einspeiseErloesEur")).isCloseTo(0.10, eps);
+        assertThat(num(withoutRow, "gesamtertragEur")).isCloseTo(0.10, eps);
+        assertThat(num(list(withoutRow, "series").get(0), "gesamtertragEur")).isCloseTo(0.10, eps);
+
+        // RLS: tenant B never sees these sites.
+        ResponseEntity<Map<String, Object>> other = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
+                .doesNotContain(withTariff, noTariff);
+    }
+
+    /**
      * The DYNAMIC Marktprämie (captain domain fix 2026-07-07): fixed is the
      * plant's ANZULEGENDER WERT; the premium per exported kWh in month M is
      * {@code max(0, anzulegender Wert - Monatsmarktwert Solar(M))}, credited on
@@ -1997,6 +2093,19 @@ class PortalApiTest {
         if (anzulegenderWertCtKwh != null) {
             payload.put("anzulegenderWertCtKwh", new java.math.BigDecimal(anzulegenderWertCtKwh));
         }
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(payload, bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        return (String) created.getBody().get("id");
+    }
+
+    private String createSiteWithStrompreis(String token, String name, String zone,
+            String plantKind, String strompreisCtKwh) {
+        Map<String, Object> payload = new java.util.HashMap<>(Map.of(
+                "name", name, "biddingZone", zone, "plantKind", plantKind,
+                "strompreisCtKwh", new java.math.BigDecimal(strompreisCtKwh)));
         ResponseEntity<Map<String, Object>> created = rest.exchange(
                 url("/api/v1/sites"), HttpMethod.POST,
                 new HttpEntity<>(payload, bearer(token)),

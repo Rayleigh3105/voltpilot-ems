@@ -25,6 +25,13 @@ export interface Site {
    */
   anzulegenderWertCtKwh: number | null;
   /**
+   * Retail electricity price (ct/kWh) from the customer's Stromrechnung; null =
+   * not configured. When set, the money-centric Meine-Anlage view values the
+   * site's self-consumed energy in euros (Eigenverbrauchs-Wert); without it the
+   * self-consumption shows in kWh only, never a fabricated euro value.
+   */
+  strompreisCtKwh: number | null;
+  /**
    * Per-site grid-charging switch: false (default) = "Nur Solarladen (EEG)"
    * (the optimizer charges the battery only from PV surplus), true =
    * "Netzladen aktiv" (grid arbitrage). Editable by the site owner and by
@@ -43,6 +50,8 @@ export interface CreateSiteInput {
   plantKind?: PlantKind;
   /** Anzulegender Wert in ct/kWh (>= 0); omit/null = not configured. */
   anzulegenderWertCtKwh?: number | null;
+  /** Retail electricity price in ct/kWh (>= 0); omit/null = not configured. */
+  strompreisCtKwh?: number | null;
   /**
    * Grid-charging switch, settable by the site owner and by Portal-Admins.
    * Omitted = the safe default false on create / keep the stored value on
@@ -497,6 +506,18 @@ export interface EarningsDaily {
   savedEur: number;
 }
 
+/** One Ertrag-chart bucket: its Berlin start (ISO) + the Gesamtertrag. */
+export interface EarningsSeriesPoint {
+  start: string;
+  gesamtertragEur: number;
+}
+
+/** One month of the 12-month strip: first day of the Berlin month + Gesamtertrag. */
+export interface EarningsMonth {
+  month: string;
+  gesamtertragEur: number;
+}
+
 /**
  * One site's MEASURED earnings over the window: baseline = the unregulated
  * plant (same sun, same consumption, battery idle), actual = what really
@@ -542,6 +563,28 @@ export interface EarningsSite {
   firstCoveredDate: string | null;
   reason: EarningsReason | null;
   dailySaved: EarningsDaily[];
+  /**
+   * Money-centric "Meine Anlage" view (v2). Gesamtertrag =
+   * einspeiseErloesEur (metered feed-in valued at spot + Marktprämie) +
+   * eigenverbrauchsWertEur (self-consumed kWh x the retail strompreisCtKwh).
+   * eigenverbrauchsWertEur is null when strompreisCtKwh is unset (self-
+   * consumption is then shown as selbstverbrauchKwh only, never a fabricated
+   * euro), and gesamtertragEur then equals einspeiseErloesEur alone. All money
+   * fields are null when nothing is computable (same `reason`). `series` is the
+   * Ertrag chart for the selected range (per Berlin hour for day, day for
+   * month, month for year/all); `monthlyStrip` is the last 12 months
+   * (independent of range) - the tappable strip. Both list only computable
+   * buckets.
+   */
+  strompreisCtKwh: number | null;
+  einspeiseErloesEur: number | null;
+  eigenverbrauchsWertEur: number | null;
+  gesamtertragEur: number | null;
+  selbstverbrauchKwh: number | null;
+  eingespeistKwh: number | null;
+  batterieBewegtKwh: number | null;
+  series: EarningsSeriesPoint[];
+  monthlyStrip: EarningsMonth[];
 }
 
 export interface EarningsTotals {
@@ -667,9 +710,15 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
 export const api = {
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
-  /** Realized earnings (measured, per site + totals) for a Berlin period. */
-  earnings: (range: EarningsRange = 'month') =>
-    request<Earnings>(`/api/v1/earnings?range=${range}`),
+  /**
+   * Realized earnings (measured, per site + totals) for a Berlin period. `at`
+   * (ISO day) picks the period instance - e.g. a past month tapped in the
+   * 12-month strip; omitted = the current period.
+   */
+  earnings: (range: EarningsRange = 'month', at?: string | null) =>
+    request<Earnings>(
+      `/api/v1/earnings?range=${range}${at ? `&at=${at}` : ''}`,
+    ),
   listSites: () => request<Site[]>('/api/v1/sites'),
   createSite: (input: CreateSiteInput) =>
     request<Site>('/api/v1/sites', {

@@ -1256,6 +1256,18 @@ components:
             Wert). Echoed read-only for one release, no longer accepted on
             create/update and no longer used in any computation; the column
             and this property are removed next release.
+        strompreisCtKwh:
+          type: number
+          nullable: true
+          minimum: 0
+          example: 32.5
+          description: >
+            Optional retail electricity price (ct/kWh) from the customer's
+            Stromrechnung; null = not configured. When set, the money-centric
+            "Meine Anlage" view (GET /earnings) values self-consumed energy in
+            euros (Eigenverbrauchs-Wert = self-consumed kWh x this price); when
+            null the self-consumption is shown in kWh only, never a fabricated
+            euro value. Editable by the site owner and by Portal-Admins.
         netzladenErlaubt:
           type: boolean
           description: >
@@ -1548,6 +1560,67 @@ components:
             properties:
               day: { type: string, format: date }
               savedEur: { type: number }
+        strompreisCtKwh:
+          type: number
+          nullable: true
+          description: >
+            The site's configured retail electricity price (ct/kWh), echoed so
+            the money-centric view knows whether it may value self-consumption
+            in euros; null = not configured (self-consumption in kWh only).
+        einspeiseErloesEur:
+          type: number
+          nullable: true
+          description: >
+            Feed-in revenue over the window (metered export valued at spot +
+            Marktprämie); null when nothing is computable.
+        eigenverbrauchsWertEur:
+          type: number
+          nullable: true
+          description: >
+            Value of self-consumed energy = selbstverbrauchKwh x strompreis;
+            null when strompreisCtKwh is unset (never a fabricated euro) or
+            nothing is computable.
+        gesamtertragEur:
+          type: number
+          nullable: true
+          description: >
+            Gesamtertrag = einspeiseErloesEur + eigenverbrauchsWertEur (feed-in
+            revenue alone when strompreis is unset). The money-centric hero's
+            big number; null when nothing is computable.
+        selbstverbrauchKwh:
+          type: number
+          nullable: true
+          description: Self-consumed energy over the window (kWh); null when nothing computable.
+        eingespeistKwh:
+          type: number
+          nullable: true
+          description: Grid-exported energy over the window (kWh).
+        batterieBewegtKwh:
+          type: number
+          nullable: true
+          description: Energy moved through the battery over the window (charged + discharged, kWh).
+        series:
+          type: array
+          description: >
+            Gesamtertrag bucketed over the selected range (per Europe/Berlin
+            hour for day, per day for month, per month for year/all) - the
+            Ertrag chart. Only buckets with a computable slot are listed.
+          items:
+            type: object
+            properties:
+              start: { type: string, format: date-time, description: Berlin bucket start. }
+              gesamtertragEur: { type: number }
+        monthlyStrip:
+          type: array
+          description: >
+            Gesamtertrag per Europe/Berlin month for the last 12 months
+            (independent of `range`) - the tappable month strip. Months without
+            a computable slot are absent.
+          items:
+            type: object
+            properties:
+              month: { type: string, format: date, description: First day of the Berlin month. }
+              gesamtertragEur: { type: number }
     EarningsTotals:
       type: object
       description: >
@@ -1611,6 +1684,15 @@ components:
             the plant's fixed EEG reference rate; only meaningful for
             direktvermarktung sites. (The deprecated marktpraemieCtKwh is no
             longer accepted; old clients sending it are ignored.)
+        strompreisCtKwh:
+          type: number
+          nullable: true
+          minimum: 0
+          description: >
+            Optional retail electricity price (ct/kWh, >= 0, at most 3
+            decimals) from the customer's Stromrechnung; when set, the
+            money-centric view values self-consumption in euros. Omit/null =
+            not configured.
         netzladenErlaubt:
           type: boolean
           nullable: true
@@ -1632,6 +1714,13 @@ components:
         longitude: { type: number, nullable: true, minimum: -180, maximum: 180 }
         plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
         anzulegenderWertCtKwh: { type: number, nullable: true, minimum: 0 }
+        strompreisCtKwh:
+          type: number
+          nullable: true
+          minimum: 0
+          description: >
+            Optional retail electricity price (ct/kWh); null clears it
+            (self-consumption then shown in kWh only), a value sets it.
         netzladenErlaubt:
           type: boolean
           nullable: true

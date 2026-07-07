@@ -24,9 +24,9 @@ export type PageId =
   | 'geraete-registry';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
-export type AnlagenSub = 'live' | 'fahrplan' | 'historie' | 'wetter';
+export type AnlagenSub = 'live' | 'fahrplan' | 'historie' | 'wetter' | 'technik';
 
-const SUBS = new Set<string>(['live', 'fahrplan', 'historie', 'wetter']);
+const SUBS = new Set<string>(['live', 'fahrplan', 'historie', 'wetter', 'technik']);
 
 /**
  * One navigation state. `siteId`/`sub` only carry meaning for page 'anlagen':
@@ -87,8 +87,10 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
   fahrplan: 'fahrplan',
   historie: 'historie',
   wetter: 'wetter',
-  standorte: null,
-  geraete: null,
+  // The former Standorte/Geräte content now lives behind the Technik subpage
+  // (money-centric v2: Technik moved behind the gear icon).
+  standorte: 'technik',
+  geraete: 'technik',
 };
 
 /**

@@ -36,7 +36,7 @@ import { NetzladenBadge } from './NetzladenBadge';
  * on every open. Animates from the previous value on refresh so a background
  * poll never snaps the number. Honors prefers-reduced-motion.
  */
-function useCountUp(target: number | null, ms = 800): number | null {
+export function useCountUp(target: number | null, ms = 800): number | null {
   const [value, setValue] = useState<number | null>(target);
   const fromRef = useRef<number>(0);
   useEffect(() => {

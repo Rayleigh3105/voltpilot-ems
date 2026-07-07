@@ -72,6 +72,21 @@ public record EarningsDto(
      * Marktprämie delta) - so {@code arbitrageEur + pvShiftEur == savedEur}
      * exactly. Both are null when the site may not grid-charge OR the window
      * contains no grid-charged energy - never a fake zero.
+     *
+     * <p><b>Money-centric "Meine Anlage" fields (v2).</b> The Gesamtertrag of
+     * the window = {@code einspeiseErloesEur} (metered feed-in valued at spot +
+     * Marktprämie) + {@code eigenverbrauchsWertEur} (self-consumed kWh valued at
+     * the customer's retail {@code strompreisCtKwh}). {@code strompreisCtKwh}
+     * echoes the site's configured tariff (null = not set); when it is null
+     * {@code eigenverbrauchsWertEur} is null too (self-consumption shown only as
+     * {@code selbstverbrauchKwh}, never a fabricated euro) and
+     * {@code gesamtertragEur} equals {@code einspeiseErloesEur} alone.
+     * {@code eingespeistKwh}/{@code selbstverbrauchKwh}/{@code batterieBewegtKwh}
+     * are the window's energy sums. All are null when nothing is computable
+     * (same {@code reason}). {@code series} is the Ertrag chart (Gesamtertrag per
+     * Europe/Berlin hour for the day range, per day for month, per month for
+     * year/all); {@code monthlyStrip} is the last 12 months' Gesamtertrag (the
+     * tappable month strip) - both list only buckets that had a computable slot.
      */
     public record EarningsSiteDto(
             UUID id,
@@ -89,7 +104,24 @@ public record EarningsDto(
             long coveredSlots,
             LocalDate firstCoveredDate,
             String reason,
-            List<EarningsDailyDto> dailySaved) {
+            List<EarningsDailyDto> dailySaved,
+            BigDecimal strompreisCtKwh,
+            BigDecimal einspeiseErloesEur,
+            BigDecimal eigenverbrauchsWertEur,
+            BigDecimal gesamtertragEur,
+            BigDecimal selbstverbrauchKwh,
+            BigDecimal eingespeistKwh,
+            BigDecimal batterieBewegtKwh,
+            List<EarningsSeriesPointDto> series,
+            List<EarningsMonthDto> monthlyStrip) {
+    }
+
+    /** One bucket of the Ertrag chart: its Berlin start + the Gesamtertrag. */
+    public record EarningsSeriesPointDto(Instant start, BigDecimal gesamtertragEur) {
+    }
+
+    /** One month of the 12-month strip: the first day of the Berlin month + Gesamtertrag. */
+    public record EarningsMonthDto(LocalDate month, BigDecimal gesamtertragEur) {
     }
 
     /**

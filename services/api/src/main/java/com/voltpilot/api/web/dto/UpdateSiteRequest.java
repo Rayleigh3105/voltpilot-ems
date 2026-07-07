@@ -13,7 +13,9 @@ import java.math.BigDecimal;
  * tenant is never part of the body; the row is addressed through RLS, so a
  * customer can only ever update their own sites (admins reach any tenant's
  * sites via the tenant switcher, i.e. the same RLS-scoped path with an
- * overridden context).
+ * overridden context). {@code strompreisCtKwh} is the customer's optional
+ * retail electricity price (ct/kWh); null clears it (self-consumption then
+ * shows in kWh only), a value sets it for the Eigenverbrauchs-Wert.
  *
  * <p>{@code netzladenErlaubt} (the per-site grid-charging switch): the SITE
  * OWNER may flip it too (captain revision 2026-07-07 of decision 3 - not only
@@ -39,6 +41,10 @@ public record UpdateSiteRequest(
         @Digits(integer = 5, fraction = 3,
                 message = "anzulegenderWertCtKwh must have at most 3 decimal places")
                 BigDecimal anzulegenderWertCtKwh,
+        @DecimalMin(value = "0", message = "strompreisCtKwh must not be negative")
+        @Digits(integer = 5, fraction = 3,
+                message = "strompreisCtKwh must have at most 3 decimal places")
+                BigDecimal strompreisCtKwh,
         Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {

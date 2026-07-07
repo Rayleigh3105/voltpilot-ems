@@ -340,6 +340,12 @@ export function TechnikSection({
                   <td>{fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)}</td>
                 </tr>
               )}
+              {site.strompreisCtKwh != null && (
+                <tr>
+                  <th scope="row">Ihr Strompreis</th>
+                  <td>{fmtNum(site.strompreisCtKwh, 'ct/kWh', 2)}</td>
+                </tr>
+              )}
               {linkedAssets.length > 0 && (
                 <tr>
                   <th scope="row">Register</th>
@@ -419,6 +425,7 @@ export function SiteEditForm({
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
   const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
   const [praemie, setPraemie] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
+  const [strompreis, setStrompreis] = useState(premiumInputText(site.strompreisCtKwh ?? null));
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [busy, setBusy] = useState(false);
@@ -431,6 +438,11 @@ export function SiteEditForm({
       setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
       return;
     }
+    const strompreisValue = parsePremiumInput(strompreis);
+    if (strompreisValue === undefined) {
+      setError('Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -441,6 +453,7 @@ export function SiteEditForm({
         longitude: lon,
         plantKind,
         anzulegenderWertCtKwh: praemieValue,
+        strompreisCtKwh: strompreisValue,
         netzladenErlaubt: netzladen,
       });
       onSaved(updated);
@@ -526,6 +539,20 @@ export function SiteEditForm({
             EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
             (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
             EEG-Vergütung bezieht.
+          </p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <Input
+            label="Ihr Strompreis (ct/kWh)"
+            placeholder="z. B. 32,5"
+            inputMode="decimal"
+            value={strompreis}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStrompreis(e.target.value)}
+          />
+          <p className="vp-note" style={{ margin: 0 }}>
+            Für den Wert Ihres Eigenverbrauchs - siehe Stromrechnung. Optional: ohne
+            Angabe zeigen wir den Eigenverbrauch nur in kWh, nie einen erfundenen
+            Euro-Wert.
           </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

@@ -2012,6 +2012,199 @@ button.vp-cl-item.is-off .vp-cl-label {
 .vp-detail-grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+/* ...three cards (Fahrplan/Historie/Wetter) stack on phones, 3-up from tablet. */
+.vp-detail-grid.three {
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .vp-detail-grid.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ============================================================================
+   Money-centric "Meine Anlage" v2 (captain 2026-07-07, Deye-Copilot style):
+   period tabs, 12-month strip, Gesamtertrag hero tiles, energy stats.
+   ========================================================================== */
+
+/* Zeitraum-Tabs on the white page (Heute/Monat/Jahr/Gesamt) - govern the page. */
+.vp-period-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: var(--vp-gap);
+  padding: 4px;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border, #e9ecef);
+  box-shadow: 0 1px 2px rgba(30, 58, 95, 0.05);
+}
+.vp-period-tabs button {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+  border: none;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: transparent;
+  color: var(--vp-text-gray, #6c757d);
+  font-family: var(--vp-font-heading, inherit);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vp-period-tabs button.active {
+  background: var(--vp-grad-hero);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(30, 58, 95, 0.25);
+}
+.vp-period-tabs button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
+  outline-offset: 1px;
+}
+
+/* The tappable 12-month strip - horizontally scrollable so all 12 fit a phone. */
+.vp-mstrip {
+  display: flex;
+  gap: 6px;
+  margin-bottom: var(--vp-gap);
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.vp-mstrip-m {
+  flex: 1 0 auto;
+  min-width: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 6px;
+  border-radius: 10px;
+  background: var(--vp-surface, #fff);
+  border: 1px solid var(--vp-border, #e9ecef);
+  cursor: pointer;
+}
+.vp-mstrip-m .mn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-text-gray, #6c757d);
+}
+.vp-mstrip-m .mv {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2e7d32;
+  font-variant-numeric: tabular-nums;
+}
+.vp-mstrip-m.on {
+  background: var(--vp-paleblue-start, #f0f4ff);
+  border-color: var(--vp-primary-deep, #5a8de8);
+}
+.vp-mstrip-m.on .mn {
+  color: var(--vp-primary-deep, #5a8de8);
+}
+.vp-mstrip-m:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
+  outline-offset: 1px;
+}
+
+/* Gesamtertrag hero (reuses .vp-fleet-hero) + its four money tiles. */
+.vp-money-hero {
+  margin-bottom: var(--vp-gap);
+}
+.vp-money-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: var(--vp-space-4);
+}
+.vp-money-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.vp-money-tile .t {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.82);
+}
+.vp-money-tile .v {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.vp-money-note {
+  margin: var(--vp-space-3) 0 0;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* Energie-Kennzahlen row: eingespeist / selbst verbraucht / Batterie bewegt. */
+.vp-estats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: var(--vp-space-2);
+}
+.vp-estat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+  padding: 10px 8px;
+  border-radius: 12px;
+  background: var(--vp-bg-light, #f8f9fa);
+}
+.vp-estat .t {
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vp-text-gray, #6c757d);
+}
+.vp-estat .v {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--vp-text-dark, #1a1a1a);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Bester Tag: 7. Juli · +48,20 €" under the Ertrag chart. */
+.vp-anlage-best {
+  margin: var(--vp-space-3) 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--vp-text-gray, #6c757d);
+}
+
+/* The gear button in the Anlagen-Seite header (Technik hinterm Zahnrad). */
+.vp-gear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--vp-border, #e9ecef);
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text-gray, #6c757d);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.vp-gear-btn:hover {
+  color: var(--vp-action, #2c5282);
+  border-color: var(--vp-primary, #95b9ff);
+}
+.vp-gear-btn:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
+  outline-offset: 1px;
+}
 
 /* Technik sub-headings: calmer than section h2, clearly above table rows. */
 .vp-tech-h {

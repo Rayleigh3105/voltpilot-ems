@@ -161,6 +161,26 @@ public class EarningsRepository {
                     + " THEN GREATEST(r.pv_kwh - r.load_kwh, 0) * " + PREMIUM_RATE_CT + " / 100"
                     + " ELSE 0 END)";
 
+    /**
+     * Feed-in revenue of a slot (the Einspeise-Erlös): the metered export valued
+     * at spot PLUS the Marktprämie on that export. Positive = money earned; can
+     * be slightly negative in a negative-price hour (feeding in then costs), which
+     * is honest.
+     */
+    private static final String EINSPEISE_ERLOES_EUR =
+            "(r.grid_export_kwh * p.price_eur_mwh / 1000 + " + ACTUAL_PREMIUM_EUR + ")";
+
+    /**
+     * Self-consumed energy of a slot: the part of the load NOT drawn from the
+     * grid (covered by own PV directly or from the battery). Floored at 0.
+     */
+    private static final String SELBSTVERBRAUCH_KWH =
+            "GREATEST(r.load_kwh - r.grid_import_kwh, 0)";
+
+    /** Energy moved through the battery in a slot (charged + discharged). */
+    private static final String BATTERIE_BEWEGT_KWH =
+            "(COALESCE(r.battery_charge_kwh, 0) + COALESCE(r.battery_discharge_kwh, 0))";
+
     private final JdbcTemplate jdbc;
 
     public EarningsRepository(JdbcTemplate jdbc) {
@@ -192,7 +212,25 @@ public class EarningsRepository {
             Instant firstCovered,
             BigDecimal realizedExportCtKwh,
             BigDecimal marketValueSolarCtKwh,
-            Boolean marketValueProvisional) {
+            Boolean marketValueProvisional,
+            BigDecimal einspeiseErloesEur,
+            BigDecimal selbstverbrauchKwh,
+            BigDecimal eingespeistKwh,
+            BigDecimal batterieBewegtKwh) {
+    }
+
+    /**
+     * One time bucket of the money-centric Meine-Anlage view: the raw parts of
+     * the Gesamtertrag over the bucket - {@code einspeiseErloesEur} (metered
+     * export valued at spot + Marktprämie) and {@code selbstverbrauchKwh}
+     * (self-consumed energy). The strompreis-dependent Eigenverbrauchs-Wert and
+     * the Gesamtertrag itself are assembled in the controller (one place holds
+     * the tariff rule), so a NULL strompreis never fabricates a euro value.
+     */
+    public record BucketPoint(
+            Instant start,
+            BigDecimal einspeiseErloesEur,
+            BigDecimal selbstverbrauchKwh) {
     }
 
     /** One Europe/Berlin day of realized savings of one site. */
@@ -245,7 +283,15 @@ public class EarningsRepository {
                         + "   AS market_value_ct,"
                         + " bool_or(mv.provisional)"
                         + "   FILTER (WHERE " + mvFilter + " AND r.grid_export_kwh > 0)"
-                        + "   AS market_value_provisional "
+                        + "   AS market_value_provisional,"
+                        + " sum(" + EINSPEISE_ERLOES_EUR + ")"
+                        + "   FILTER (WHERE " + COVERED + ") AS einspeise_erloes_eur,"
+                        + " sum(" + SELBSTVERBRAUCH_KWH + ")"
+                        + "   FILTER (WHERE " + COVERED + ") AS selbstverbrauch_kwh,"
+                        + " sum(r.grid_export_kwh)"
+                        + "   FILTER (WHERE " + COVERED + ") AS eingespeist_kwh,"
+                        + " sum(" + BATTERIE_BEWEGT_KWH + ")"
+                        + "   FILTER (WHERE " + COVERED + ") AS batterie_bewegt_kwh "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + PRICE_LATERAL
@@ -266,7 +312,11 @@ public class EarningsRepository {
                             rs.getBigDecimal("realized_export_ct"),
                             marketValueCt,
                             marketValueCt == null ? null
-                                    : provisional != null && (Boolean) provisional));
+                                    : provisional != null && (Boolean) provisional,
+                            rs.getBigDecimal("einspeise_erloes_eur"),
+                            rs.getBigDecimal("selbstverbrauch_kwh"),
+                            rs.getBigDecimal("eingespeist_kwh"),
+                            rs.getBigDecimal("batterie_bewegt_kwh")));
                 },
                 Timestamp.from(from), Timestamp.from(to));
         return result;
@@ -422,6 +472,58 @@ public class EarningsRepository {
                                         rs.getTimestamp("day").toInstant().atZone(ZONE).toLocalDate(),
                                         saved));
                     }
+                },
+                Timestamp.from(from), Timestamp.from(to));
+        return result;
+    }
+
+    /** The bucket width of a {@link #bucketed} series (a safe SQL date_trunc unit). */
+    public enum Bucket {
+        HOUR("hour"),
+        DAY("day"),
+        MONTH("month");
+
+        private final String unit;
+
+        Bucket(String unit) {
+            this.unit = unit;
+        }
+    }
+
+    /**
+     * The per-site Gesamtertrag parts bucketed by Europe/Berlin hour/day/month
+     * over {@code [from, to)} - feeds the money-centric view's Ertrag chart
+     * (hour for the day range, day for the month range, month for the year/all
+     * ranges) AND the 12-month strip (month buckets over the last year).
+     *
+     * <p>Only covered slots (channels + price) enter a bucket, exactly like the
+     * money sums, so the series and the totals describe the same slot set. The
+     * bucket start is the Europe/Berlin calendar bucket start as a proper
+     * instant ({@code date_trunc(...) AT TIME ZONE 'Europe/Berlin'} - guaranteed
+     * correct across DST and month lengths, no TimescaleDB month-bucket
+     * dependency). The bucket unit is a fixed enum literal, never client input.
+     */
+    public Map<UUID, List<BucketPoint>> bucketed(Instant from, Instant to, Bucket bucket) {
+        Map<UUID, List<BucketPoint>> result = new HashMap<>();
+        String start = "(date_trunc('" + bucket.unit
+                + "', r.bucket AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')";
+        jdbc.query(
+                "SELECT r.site_id, " + start + " AS bucket_start,"
+                        + " sum(" + EINSPEISE_ERLOES_EUR + ") AS einspeise_erloes_eur,"
+                        + " sum(" + SELBSTVERBRAUCH_KWH + ") AS selbstverbrauch_kwh "
+                        + "FROM telemetry_rollup_15m r "
+                        + "JOIN site s ON s.id = r.site_id "
+                        + PRICE_LATERAL
+                        + MARKET_VALUE_JOIN
+                        + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
+                        + "GROUP BY r.site_id, bucket_start ORDER BY r.site_id, bucket_start",
+                rs -> {
+                    result.computeIfAbsent(rs.getObject("site_id", UUID.class),
+                                    k -> new ArrayList<>())
+                            .add(new BucketPoint(
+                                    rs.getTimestamp("bucket_start").toInstant(),
+                                    rs.getBigDecimal("einspeise_erloes_eur"),
+                                    rs.getBigDecimal("selbstverbrauch_kwh")));
                 },
                 Timestamp.from(from), Timestamp.from(to));
         return result;

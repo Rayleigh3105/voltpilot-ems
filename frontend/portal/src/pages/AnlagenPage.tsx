@@ -10,28 +10,24 @@ import {
   type Earnings,
   type EarningsRange,
   type Overview,
-  type SchedulePlan,
   type Site,
 } from '../api';
 import {
   BATTERY_NO_DEVICE_WARNING,
   composeSiteSentence,
-  fleetKind,
   notComputableHint,
-  marktwertBenchmark,
-  premiumDetail,
-  premiumIncluded,
   siteLiveFresh,
   siteSnapshot,
 } from '../fleet';
-import { eurAmount, fmtNum, fmtRelative, plantKindLabel } from '../format';
+import { fmtNum, fmtRelative, plantKindLabel } from '../format';
+import { bestBucketText, periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
-import { planHourBars, planSentence, savingsTodayEur } from '../schedule';
 import { nextHourIndex } from '../weather';
 import { CreateSiteDrawer } from '../components/CreateSiteDrawer';
 import { EnergyFlow } from '../components/EnergyFlow';
 import { FleetSiteCard } from '../components/FleetOverview';
-import { EarningsHero } from '../components/FleetOverview';
+import { ErtragChart } from '../components/ErtragChart';
+import { AnlageHero, EnergyStatsRow, MonthStrip, PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
@@ -86,8 +82,11 @@ export function AnlagenPage(props: AnlagenPageProps) {
     return (
       <AnlagenSubPage
         site={site}
+        sites={sites}
+        devices={props.devices}
         sub={route.sub}
         onBack={() => onNavigate(anlageRoute(site.id))}
+        onReload={props.onReload}
       />
     );
   }
@@ -265,17 +264,27 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     title: 'Wetter',
     subtitle: 'Die Vorhersage am Standort Ihrer Anlage - Grundlage der PV-Prognose.',
   },
+  technik: {
+    title: 'Technik & Einstellungen',
+    subtitle: 'Wechselrichter, Speicher, Anlagentyp, Strompreis und der Standort Ihrer Anlage.',
+  },
 };
 
 /** One deep view of an Anlage, with the way back always in sight. */
 function AnlagenSubPage({
   site,
+  sites,
+  devices,
   sub,
   onBack,
+  onReload,
 }: {
   site: Site;
+  sites: Site[];
+  devices: Device[];
   sub: AnlagenSub;
   onBack: () => void;
+  onReload: (selectSiteId?: string) => void;
 }) {
   const meta = SUB_PAGES[sub];
   return (
@@ -294,6 +303,16 @@ function AnlagenSubPage({
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
+      {sub === 'technik' && (
+        <TechnikSection
+          site={site}
+          devices={devices}
+          sites={sites}
+          onReload={onReload}
+          onSiteSaved={(updated) => onReload(updated.id)}
+          onSiteDeleted={onBack}
+        />
+      )}
     </>
   );
 }
@@ -310,8 +329,6 @@ function AnlagenSubPage({
 export function AnlageSeite({
   site,
   sites,
-  devices,
-  onReload,
   onOpenSub,
   onBackToList,
 }: AnlagenPageProps & {
@@ -323,8 +340,10 @@ export function AnlageSeite({
   const [overviewFailed, setOverviewFailed] = useState(false);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [earnFailed, setEarnFailed] = useState(false);
+  // The period tabs govern the whole page (captain 2026-07-07). `at` is the
+  // selected instance (a month tapped in the strip); null = the current period.
   const [range, setRange] = useState<EarningsRange>('month');
-  const [plan, setPlan] = useState<SchedulePlan | null>(null);
+  const [at, setAt] = useState<string | null>(null);
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
@@ -350,10 +369,12 @@ export function AnlageSeite({
     // edited), keeping a fresh claim's status current without the 30 s poll.
   }, [site.id, sites, reloadKey]);
 
-  // The measured money hero - tenant-wide response, rendered site-scoped.
+  // The measured money numbers - tenant-wide response, rendered site-scoped.
+  // Refetched when the period (range/at) changes; the page keeps the previous
+  // numbers until the new ones arrive (no flash).
   useEffect(() => {
     let active = true;
-    api.earnings(range).then(
+    api.earnings(range, at).then(
       (e) => {
         if (!active) return;
         setEarnings(e);
@@ -366,20 +387,11 @@ export function AnlageSeite({
     return () => {
       active = false;
     };
-  }, [site.id, reloadKey, range]);
+  }, [site.id, reloadKey, range, at]);
 
-  // Fahrplan mini preview + Wetter teaser, loaded silently: a failure keeps
-  // the calm static copy, the links always work.
+  // Wetter teaser for the "Mehr" card, loaded silently.
   useEffect(() => {
     let active = true;
-    api.schedule(site.id).then(
-      (p) => {
-        if (active) setPlan(p);
-      },
-      () => {
-        if (active) setPlan(null);
-      },
-    );
     api.weather(site.id).then(
       (w) => {
         if (!active) return;
@@ -396,6 +408,8 @@ export function AnlageSeite({
   // Freshness tick (5 s) + silent 30 s background poll.
   const rangeRef = useRef(range);
   rangeRef.current = range;
+  const atRef = useRef(at);
+  atRef.current = at;
   useEffect(() => {
     let ticks = 0;
     const timer = setInterval(() => {
@@ -405,7 +419,7 @@ export function AnlageSeite({
           (o) => setOverview(o),
           () => {},
         );
-        api.earnings(rangeRef.current).then(
+        api.earnings(rangeRef.current, atRef.current).then(
           (e) => setEarnings(e),
           () => {},
         );
@@ -419,11 +433,22 @@ export function AnlageSeite({
   const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
   const siteEarnings = earnings?.sites.find((x) => x.id === site.id) ?? null;
 
-  const slots = plan?.slots ?? [];
-  const planText = planSentence(slots, site.plantKind, now);
-  const planSavings = savingsTodayEur(slots, now);
-  const bars = planHourBars(slots, now);
-  const maxBarKw = bars.reduce((m, b) => Math.max(m, b.kw ?? 0), 0);
+  // The period label + strip selection follow the SELECTED instance.
+  const atDate = at ? new Date(`${at}T12:00:00`) : now;
+  const period = periodLabel(range, atDate, now);
+  const currentMonthIso = `${now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 7)}-01`;
+  const selectedMonth = at ?? currentMonthIso;
+  const series = siteEarnings?.series ?? [];
+  const best = bestBucketText(series, range);
+
+  const switchRange = (r: EarningsRange) => {
+    setRange(r);
+    setAt(null);
+  };
+  const selectMonth = (monthIso: string) => {
+    setRange('month');
+    setAt(monthIso);
+  };
 
   return (
     <>
@@ -434,7 +459,7 @@ export function AnlageSeite({
         </button>
       )}
 
-      {/* 1 · Kopf: Ist alles gut? Ein Blick. */}
+      {/* 1 · Kopf: Status + Warnungen bleiben oben sichtbar; Technik hinterm Zahnrad. */}
       <div className="vp-page-head vp-anlage-head">
         <div className="titles">
           <h1>
@@ -457,6 +482,15 @@ export function AnlageSeite({
         <div className="vp-anlage-badges">
           <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>
           <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
+          <button
+            type="button"
+            className="vp-gear-btn"
+            onClick={() => onOpenSub('technik')}
+            aria-label="Technik & Einstellungen"
+            title="Technik & Einstellungen"
+          >
+            <Icon name="settings" size={18} />
+          </button>
         </div>
       </div>
 
@@ -466,29 +500,60 @@ export function AnlageSeite({
         </div>
       )}
 
-      {/* 2 · Geld + 3 · Jetzt (side by side on wide screens, stacked on phones). */}
-      <div className="vp-fleet-top">
-        {earnings == null && !earnFailed ? (
-          <Skeleton height={300} radius="var(--vp-radius-lg)" />
-        ) : (
-          <EarningsHero
-            kind={fleetKind([site.plantKind])}
-            money={siteEarnings}
-            dailySaved={siteEarnings?.dailySaved ?? []}
-            range={range}
-            dataRange={earnings?.range}
-            onRange={setRange}
-            now={now}
-            unavailable={earnFailed}
-            premium={siteEarnings ? premiumIncluded([siteEarnings]) : false}
-            premiumDetail={siteEarnings ? premiumDetail([siteEarnings]) : null}
-            benchmark={siteEarnings ? marktwertBenchmark(siteEarnings) : null}
-            emptyHint={
-              siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined
-            }
-          />
-        )}
+      {/* 2 · Zeitraum-Tabs regieren die ganze Seite. */}
+      <PeriodTabs range={range} onRange={switchRange} />
 
+      {/* 3 · Monats-Leiste (nur im Monatsmodus): letzte 12 Monate zum Durchtippen. */}
+      {range === 'month' && (
+        <MonthStrip
+          slots={stripSlots(siteEarnings?.monthlyStrip ?? [], now)}
+          selectedMonth={selectedMonth}
+          onSelect={selectMonth}
+        />
+      )}
+
+      {/* 4 · Geld: der Gesamtertrag als Held. */}
+      {earnings == null && !earnFailed ? (
+        <Skeleton height={280} radius="var(--vp-radius-lg)" />
+      ) : (
+        <AnlageHero
+          money={siteEarnings}
+          period={period}
+          unavailable={earnFailed}
+          emptyHint={siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined}
+        />
+      )}
+
+      {/* 5 · Ertrag-Chart pro Tag/Monat + „bester Tag". */}
+      <section className="vp-section" aria-label="Ertrag">
+        <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+          <span className="vp-card-label">Ertrag · {period}</span>
+          {earnings == null && !earnFailed ? (
+            <Skeleton height={220} radius="var(--vp-radius-md)" />
+          ) : series.length > 0 ? (
+            <>
+              <ErtragChart series={series} range={range} />
+              {best && <p className="vp-anlage-best">{best}</p>}
+            </>
+          ) : (
+            <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+              Für diesen Zeitraum liegen noch keine Erträge vor. Sobald Ihre Anlage
+              misst und Börsenpreise vorliegen, erscheint hier Ihr Verlauf.
+            </p>
+          )}
+        </Card>
+      </section>
+
+      {/* 6 · Energie-Kennzahlen. */}
+      <section className="vp-section" aria-label="Energie">
+        <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+          <span className="vp-card-label">Energie · {period}</span>
+          <EnergyStatsRow money={siteEarnings} />
+        </Card>
+      </section>
+
+      {/* 7 · Jetzt gerade: Live bleibt, kompakt - Detail eine Ebene tiefer. */}
+      <section className="vp-section" aria-label="Jetzt gerade">
         <Card padding="lg" radius="lg" className="vp-site-status" style={{ minWidth: 0 }}>
           <span className="vp-card-label">Jetzt gerade</span>
           {overview == null && overviewFailed ? (
@@ -518,95 +583,18 @@ export function AnlageSeite({
             </>
           )}
         </Card>
-      </div>
-
-      {/* 4 · Fahrplan: die Mini-Vorschau mit dem einen deutschen Satz. */}
-      <section className="vp-section" aria-label="Fahrplan heute">
-        <Card padding="lg" radius="lg" className="vp-plan-mini-card" style={{ minWidth: 0 }}>
-          <span className="vp-card-label">Fahrplan · heute</span>
-          {plan != null && slots.length > 0 ? (
-            <>
-              <div className="vp-plan-mini" role="img" aria-label="Fahrplan-Vorschau für heute">
-                {bars.map((b) => (
-                  <i
-                    key={b.hour}
-                    className={
-                      b.kw == null || b.kind === 'ruhe'
-                        ? 'idle'
-                        : b.kind === 'entladen'
-                          ? 'dis'
-                          : b.kind === 'netzladen'
-                            ? 'grid'
-                            : 'ch'
-                    }
-                    style={
-                      b.kw != null && b.kind !== 'ruhe' && maxBarKw > 0
-                        ? { height: `${Math.max(18, Math.round((b.kw / maxBarKw) * 100))}%` }
-                        : undefined
-                    }
-                    title={`${b.hour}–${b.hour + 1} Uhr`}
-                  />
-                ))}
-              </div>
-              <p className="vp-plan-mini-text">
-                {planText ?? 'Der Fahrplan für heute liegt noch nicht vor.'}
-                {planSavings != null && (
-                  <>
-                    {' '}
-                    <b>
-                      Heute geplant: {planSavings >= 0 ? '+' : ''}
-                      {eurAmount(planSavings)}
-                    </b>
-                  </>
-                )}
-              </p>
-            </>
-          ) : (
-            <p className="vp-plan-mini-text">
-              Noch kein Fahrplan. Sobald Ihre Anlage einen Speicher meldet und
-              Börsenpreise vorliegen, plant VoltPilot den Tag automatisch.
-            </p>
-          )}
-          <div className="vp-site-status-foot" style={{ marginTop: 'var(--vp-space-3)' }}>
-            <span />
-            <a
-              href={`#/anlage/${site.id}/fahrplan`}
-              onClick={(e) => {
-                e.preventDefault();
-                onOpenSub('fahrplan');
-              }}
-            >
-              Ganzen Fahrplan ansehen →
-            </a>
-          </div>
-        </Card>
       </section>
 
-      {/* 5 · Technik: Wechselrichter, Speicher, Register, Standort. */}
-      <section className="vp-section" aria-label="Technik">
-        <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-          <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-4)' }}>
-            <IconTile category="industry" size={40}>
-              <Icon name="zap" size={20} />
-            </IconTile>
-            <h2>Technik</h2>
-          </div>
-          <TechnikSection
-            site={site}
-            devices={devices}
-            sites={sites}
-            onReload={onReload}
-            onSiteSaved={(updated) => onReload(updated.id)}
-            onSiteDeleted={() => {
-              if (onBackToList) onBackToList();
-            }}
-          />
-        </Card>
-      </section>
-
-      {/* 6 · Mehr zu dieser Anlage. */}
+      {/* 8 · Mehr zu dieser Anlage: Fahrplan, Historie, Wetter - eine Ebene tiefer. */}
       <section className="vp-section" aria-label="Mehr zu dieser Anlage">
-        <div className="vp-detail-grid two">
+        <div className="vp-detail-grid three">
+          <DetailCard
+            icon="calendar"
+            category="industry"
+            title="Batterie-Fahrplan"
+            line="Was VoltPilot heute mit Ihrem Speicher plant."
+            onOpen={() => onOpenSub('fahrplan')}
+          />
           <DetailCard
             icon="history"
             category="home"
