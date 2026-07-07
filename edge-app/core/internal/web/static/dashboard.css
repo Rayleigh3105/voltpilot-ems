@@ -339,6 +339,50 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .chart-empty div { max-width: 300px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
+/* ---------------- Fahrplan (battery dispatch plan) ---------------- */
+.chart-plan { height: 220px; }
+
+/* Plan freshness pill in the card header */
+.plan-fresh { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.plan-fresh .ss-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.plan-fresh.ok { color: var(--ok); }
+.plan-fresh.warn { color: var(--warn); }
+.plan-fresh.err { color: var(--err); }
+
+/* Current guard-clamped setpoint summary */
+.plan-now {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 14px 16px; border-radius: var(--radius-sm);
+  background: var(--bg-2); border: 1px solid var(--line);
+}
+.plan-now-main { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.plan-now-label { font-size: 12.5px; color: var(--muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .04em; }
+.plan-now-value { font-size: 28px; font-weight: 750; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; line-height: 1; }
+.plan-now-value .u { font-size: 14px; font-weight: 650; color: var(--muted); margin-left: 4px; }
+.plan-now-badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+.plan-now-badge.charge { color: var(--batt); background: var(--batt-soft); }
+.plan-now-badge.discharge { color: var(--brand-deep); background: var(--brand-soft); }
+.plan-now-badge.idle { color: var(--muted); background: #EEF2F7; }
+.plan-now-sub { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* Plan legend swatches */
+.pl-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.pl-charge { background: var(--batt); }
+.pl-discharge { background: var(--brand-deep); }
+.pl-curtail { background: var(--grid-c); }
+
+/* Honest empty state */
+.plan-empty { display: flex; align-items: center; gap: 14px; padding: 8px 2px; }
+.plan-empty-ico {
+  width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center;
+  background: var(--brand-soft); color: var(--brand-deep);
+}
+.plan-empty-ico svg { width: 23px; height: 23px; }
+.plan-empty strong { font-size: 14.5px; }
+.plan-empty p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; max-width: 560px; }
+
 /* ---------- Data purge (guarded destructive action) ---------- */
 .purge-card { border: 1px solid #F1CDCD; }
 .purge-head { display: flex; gap: 14px; align-items: flex-start; }
@@ -463,6 +507,8 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 
   .chart-power { height: 220px; }
   .chart-soc { height: 150px; }
+  .chart-plan { height: 200px; }
+  .plan-now-value { font-size: 24px; }
 }
 
 /* Small phone: reclaim width - drop the non-essential version and tighten

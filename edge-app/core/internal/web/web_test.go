@@ -14,6 +14,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -87,6 +88,19 @@ func (f *fakePurge) PurgeRecordedData() (state.DataPurgeInfo, error) {
 	}, nil
 }
 
+// fakePlan is an in-memory PlanController for the HTTP-layer test. A nil view
+// means "no plan cached yet" (has_plan=false).
+type fakePlan struct {
+	view *plan.View
+}
+
+func (f *fakePlan) CurrentPlan() (plan.View, bool) {
+	if f.view == nil {
+		return plan.View{}, false
+	}
+	return *f.view, true
+}
+
 func newServer(t *testing.T) (*httptest.Server, *fakeInverter) {
 	t.Helper()
 	srv, fi, _ := newServerWithHistory(t)
@@ -97,7 +111,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 	t.Helper()
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h))
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}))
 	t.Cleanup(srv.Close)
 	return srv, fi, h
 }
@@ -224,7 +238,7 @@ func TestStateEnvelopeCarriesServerClock(t *testing.T) {
 		s.Inverter = configuredInverter()
 		s.LastTelemetry = time.Now().UTC()
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
@@ -294,7 +308,7 @@ func TestHistoryReturnsRecentSamplesWithDerivedBattery(t *testing.T) {
 func TestStateExposesBufferDataLoss(t *testing.T) {
 	st := state.New("edge-test", "test")
 	st.Update(func(s *state.Snapshot) { s.BufferDataLoss = true; s.BufferPending = 7 })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -349,7 +363,7 @@ func configuredInverter() *state.InverterInfo {
 func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 	// (a) No inverter configured -> step "inverter", locked, no reference.
 	st := state.New("edge-gate", "test")
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -386,7 +400,7 @@ func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 func TestOnboardingGateDoneOncePaired(t *testing.T) {
 	st := state.New("edge-paired", "test")
 	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10)))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -437,7 +451,7 @@ func waitForLine(sc *bufio.Scanner, want string) bool {
 func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 	fp := &fakePurge{}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10)))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -467,7 +481,7 @@ func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
 	fp := &fakePurge{err: context.DeadlineExceeded}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10)))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -674,5 +688,135 @@ func TestSettingsPageServesStructure(t *testing.T) {
 	}
 	if !strings.Contains(get("/inverter.html"), `href="einstellungen.html"`) {
 		t.Error("inverter.html: missing the Einstellungen link")
+	}
+}
+
+// serveHandler builds a test server with the given plan controller (and the
+// standard fakes) so the plan endpoint can be exercised with/without a plan.
+func serveHandler(t *testing.T, pl PlanController) *httptest.Server {
+	t.Helper()
+	st := state.New("edge-test", "test")
+	st.Update(func(s *state.Snapshot) {
+		s.Mode = state.ModeSchedule
+		s.SetpointKw = 12.5
+		s.SlotStart = time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
+	})
+	srv := httptest.NewServer(Handler(st,
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), pl))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// The Fahrplan endpoint returns the cached plan (slots + freshness + active
+// slot) alongside the live guard-clamped setpoint/mode from state.
+func TestPlanEndpointReturnsCachedPlan(t *testing.T) {
+	payload := `{
+	  "schema_version": "1.0", "slot_minutes": 15,
+	  "slots": [
+	    { "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": 12.5, "pv_limit_kw": 4.0 },
+	    { "start": "2026-07-01T09:15:00Z", "battery_setpoint_kw": -8.0 }
+	  ]
+	}`
+	rx := time.Now().UTC() // fresh so the plan is not stale
+	p, err := plan.Parse([]byte(payload), rx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := p.BuildView(time.Now().UTC())
+	srv := serveHandler(t, &fakePlan{view: &view})
+
+	resp, err := http.Get(srv.URL + "/api/plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	var body struct {
+		HasPlan    bool      `json:"has_plan"`
+		Mode       string    `json:"mode"`
+		SetpointKw float64   `json:"setpoint_kw"`
+		ServerNow  int64     `json:"server_now_ms"`
+		Plan       plan.View `json:"plan"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.HasPlan || len(body.Plan.Slots) != 2 {
+		t.Fatalf("plan not returned: %+v", body)
+	}
+	if body.Mode != string(state.ModeSchedule) || body.SetpointKw != 12.5 {
+		t.Errorf("live setpoint/mode not carried: mode=%q setpoint=%v", body.Mode, body.SetpointKw)
+	}
+	if !body.Plan.Slots[0].Curtailed || body.Plan.Slots[0].PvLimitKw == nil {
+		t.Errorf("curtailment not surfaced: %+v", body.Plan.Slots[0])
+	}
+	if body.Plan.StaleAfterSeconds != int(plan.StaleAfter/time.Second) {
+		t.Errorf("stale window not exposed: %d", body.Plan.StaleAfterSeconds)
+	}
+	if body.ServerNow <= 0 {
+		t.Errorf("missing device clock")
+	}
+}
+
+// With no plan cached, the endpoint reports has_plan=false (and omits "plan"),
+// so the UI shows the honest empty state.
+func TestPlanEndpointNoPlan(t *testing.T) {
+	srv := serveHandler(t, &fakePlan{})
+	resp, err := http.Get(srv.URL + "/api/plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var raw map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["has_plan"] != false {
+		t.Fatalf("expected has_plan=false, got %v", raw["has_plan"])
+	}
+	if _, present := raw["plan"]; present {
+		t.Errorf("plan key must be omitted when no plan is cached")
+	}
+}
+
+// The Fahrplan section is built by plan.js against fixed element ids; pin the
+// embedded page + asset so a static/ edit that forgets the //go:embed rebuild
+// (or renames a mount point) fails here instead of shipping a broken view.
+func TestFahrplanSectionServed(t *testing.T) {
+	srv := serveHandler(t, &fakePlan{})
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	page := get("/index.html")
+	for _, want := range []string{
+		`id="planChart"`, `id="planEmpty"`, `id="planBody"`, `id="planFresh"`,
+		`id="planNow"`, `Noch kein Fahrplan empfangen`, `src="plan.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing %s", want)
+		}
+	}
+	js := get("/plan.js")
+	if !strings.Contains(js, "/api/plan") {
+		t.Error("plan.js: does not call the plan API")
+	}
+	if !strings.Contains(js, "VPPlan") {
+		t.Error("plan.js: does not expose the VPPlan hook dashboard.js calls")
 	}
 }

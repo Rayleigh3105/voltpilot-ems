@@ -42,6 +42,76 @@ func TestParseContractPayload(t *testing.T) {
 	}
 }
 
+// The optional pv_limit_kw (Phase-3 curtailment) is parsed and retained per
+// slot; absent stays nil, and a bad/negative value is dropped (never shown as a
+// real curtailment). The edge does not execute the field - only displays it.
+func TestParseKeepsPvLimitCurtailment(t *testing.T) {
+	payload := `{
+	  "schema_version": "1.0", "slot_minutes": 15,
+	  "slots": [
+	    { "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": 5.0, "pv_limit_kw": 3.5 },
+	    { "start": "2026-07-01T09:15:00Z", "battery_setpoint_kw": -2.0 },
+	    { "start": "2026-07-01T09:30:00Z", "battery_setpoint_kw": 1.0, "pv_limit_kw": -1.0 }
+	  ]
+	}`
+	p, err := Parse([]byte(payload), time.Now())
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if p.Slots[0].PvLimitKw == nil || *p.Slots[0].PvLimitKw != 3.5 {
+		t.Errorf("slot 0 pv_limit not kept: %+v", p.Slots[0].PvLimitKw)
+	}
+	if p.Slots[1].PvLimitKw != nil {
+		t.Errorf("absent pv_limit must stay nil: %+v", p.Slots[1].PvLimitKw)
+	}
+	if p.Slots[2].PvLimitKw != nil {
+		t.Errorf("negative pv_limit must be dropped: %+v", p.Slots[2].PvLimitKw)
+	}
+}
+
+// BuildView marks the executing slot (only while fresh) and flags curtailed
+// slots, so the local Fahrplan view can render freshness + the active bar.
+func TestBuildViewMarksActiveAndCurtailed(t *testing.T) {
+	payload := `{
+	  "schema_version": "1.0", "slot_minutes": 15,
+	  "slots": [
+	    { "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": -25.0 },
+	    { "start": "2026-07-01T09:15:00Z", "battery_setpoint_kw": 30.0, "pv_limit_kw": 4.0 }
+	  ]
+	}`
+	rx := time.Date(2026, 7, 1, 9, 1, 0, 0, time.UTC)
+	p, err := Parse([]byte(payload), rx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fresh plan, "now" inside the first slot.
+	v := p.BuildView(time.Date(2026, 7, 1, 9, 7, 0, 0, time.UTC))
+	if !v.Fresh || v.ActiveIndex != 0 {
+		t.Fatalf("expected fresh plan, active slot 0: %+v", v)
+	}
+	if len(v.Slots) != 2 || !v.Slots[0].Active || v.Slots[1].Active {
+		t.Errorf("active flag wrong: %+v", v.Slots)
+	}
+	if v.Slots[0].Curtailed || !v.Slots[1].Curtailed {
+		t.Errorf("curtailed flag wrong: %+v", v.Slots)
+	}
+	if v.StaleAfterSeconds != int(StaleAfter/time.Second) {
+		t.Errorf("stale window not exposed: %d", v.StaleAfterSeconds)
+	}
+
+	// Stale plan (>20 min after receipt): no active slot even though one covers now.
+	vs := p.BuildView(rx.Add(21 * time.Minute))
+	if vs.Fresh || vs.ActiveIndex != -1 {
+		t.Errorf("stale plan must have no active slot: %+v", vs)
+	}
+	for _, s := range vs.Slots {
+		if s.Active {
+			t.Errorf("no slot may be active in a stale plan: %+v", s)
+		}
+	}
+}
+
 func TestParseRejectsMalformed(t *testing.T) {
 	cases := map[string]string{
 		"bad json":       `{`,

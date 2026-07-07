@@ -371,6 +371,9 @@
     renderStatus(s);
     renderPurge(s);
     renderFlow();
+    // Hand the state to the Fahrplan view: it refetches the full plan when a new
+    // one arrives and keeps the live setpoint + active slot + freshness current.
+    if (window.VPPlan) window.VPPlan.onState(s);
   }
 
   // ---------- data purge ("Datenaufzeichnungen löschen") ----------

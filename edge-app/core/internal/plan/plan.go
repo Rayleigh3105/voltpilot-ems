@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,6 +27,11 @@ const StaleAfter = 20 * time.Minute
 type Slot struct {
 	Start             time.Time `json:"start"`
 	BatterySetpointKw float64   `json:"battery_setpoint_kw"`
+	// PvLimitKw is the OPTIONAL planned PV feed-in cap (curtailment) for the
+	// slot, kW, >= 0. nil = no limit (the contract's default). The edge does not
+	// EXECUTE this field (see docs/contracts/mqtt-schedule.schema.json), but it is
+	// retained so the local Fahrplan view can show the planned curtailment.
+	PvLimitKw *float64 `json:"pv_limit_kw,omitempty"`
 }
 
 // Plan is the parsed, validated schedule payload.
@@ -45,8 +51,9 @@ type wire struct {
 	GeneratedAt   string `json:"generated_at"`
 	SlotMinutes   int    `json:"slot_minutes"`
 	Slots         []struct {
-		Start             string  `json:"start"`
-		BatterySetpointKw float64 `json:"battery_setpoint_kw"`
+		Start             string   `json:"start"`
+		BatterySetpointKw float64  `json:"battery_setpoint_kw"`
+		PvLimitKw         *float64 `json:"pv_limit_kw"`
 	} `json:"slots"`
 }
 
@@ -80,7 +87,14 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		if err != nil {
 			return nil, fmt.Errorf("slot start %q: %w", s.Start, err)
 		}
-		p.Slots = append(p.Slots, Slot{Start: start, BatterySetpointKw: s.BatterySetpointKw})
+		slot := Slot{Start: start, BatterySetpointKw: s.BatterySetpointKw}
+		// Keep a valid, non-negative feed-in cap only; the contract guarantees
+		// >= 0, and a bad value must never be shown as a real curtailment.
+		if s.PvLimitKw != nil && !math.IsNaN(*s.PvLimitKw) && !math.IsInf(*s.PvLimitKw, 0) && *s.PvLimitKw >= 0 {
+			v := *s.PvLimitKw
+			slot.PvLimitKw = &v
+		}
+		p.Slots = append(p.Slots, slot)
 	}
 	return p, nil
 }
@@ -105,6 +119,67 @@ func (p *Plan) ActiveSetpoint(now time.Time) (kw float64, slotStart time.Time, o
 		}
 	}
 	return 0, time.Time{}, false
+}
+
+// SlotView is one plan slot as the local Fahrplan view renders it.
+type SlotView struct {
+	Start             time.Time `json:"start"`
+	BatterySetpointKw float64   `json:"battery_setpoint_kw"`
+	// PvLimitKw echoes the slot's planned feed-in cap (nil = no limit).
+	PvLimitKw *float64 `json:"pv_limit_kw,omitempty"`
+	// Curtailed is true when the slot carries a PV feed-in cap (planned
+	// curtailment) - the view draws a distinct marker for it.
+	Curtailed bool `json:"curtailed"`
+	// Active is true for the slot whose [start, start+slot_minutes) contains
+	// "now", and only while the plan is fresh (matches ActiveSetpoint).
+	Active bool `json:"active"`
+}
+
+// View is the cached plan projected for the local Fahrplan view at "now": the
+// slots plus the derived freshness and which slot is executing. Read-only; it
+// never influences execution.
+type View struct {
+	PlanID            string     `json:"plan_id"`
+	GeneratedAt       time.Time  `json:"generated_at,omitzero"`
+	ReceivedAt        time.Time  `json:"received_at"`
+	SlotMinutes       int        `json:"slot_minutes"`
+	StaleAfterSeconds int        `json:"stale_after_seconds"`
+	Fresh             bool       `json:"fresh"`
+	ActiveIndex       int        `json:"active_index"` // -1 when no slot is active
+	Slots             []SlotView `json:"slots"`
+}
+
+// BuildView projects the plan for the local web app at "now": it marks the
+// active slot (only when the plan is fresh, mirroring ActiveSetpoint), flags
+// curtailed slots, and reports freshness against the contract's staleness
+// window. Callers must not call it on a nil plan.
+func (p *Plan) BuildView(now time.Time) View {
+	fresh := p.Fresh(now)
+	v := View{
+		PlanID:            p.PlanID,
+		GeneratedAt:       p.GeneratedAt,
+		ReceivedAt:        p.ReceivedAt,
+		SlotMinutes:       p.SlotMinutes,
+		StaleAfterSeconds: int(StaleAfter / time.Second),
+		Fresh:             fresh,
+		ActiveIndex:       -1,
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	v.Slots = make([]SlotView, 0, len(p.Slots))
+	for i, s := range p.Slots {
+		active := fresh && !now.Before(s.Start) && now.Before(s.Start.Add(width))
+		if active {
+			v.ActiveIndex = i
+		}
+		v.Slots = append(v.Slots, SlotView{
+			Start:             s.Start,
+			BatterySetpointKw: s.BatterySetpointKw,
+			PvLimitKw:         s.PvLimitKw,
+			Curtailed:         s.PvLimitKw != nil,
+			Active:            active,
+		})
+	}
+	return v
 }
 
 // Store persists the last received plan across restarts.

@@ -19,6 +19,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -39,6 +40,13 @@ type InverterController interface {
 // offline). The agent implements it.
 type PurgeController interface {
 	PurgeRecordedData() (state.DataPurgeInfo, error)
+}
+
+// PlanController exposes the cached battery-dispatch plan for the local
+// Fahrplan view: the slots, freshness and the executing slot. Read-only. The
+// agent implements it.
+type PlanController interface {
+	CurrentPlan() (plan.View, bool)
 }
 
 // DespikeController backs the "Ausreißer-Filter" settings surface: read the
@@ -119,10 +127,11 @@ func envelope(st *state.Store) stateEnvelope {
 }
 
 // Handler builds the HTTP mux: the single-page UI, the state JSON it polls, the
-// live telemetry history + stream (for the dashboard charts), the
-// inverter-selection API, the data-purge action, and the health endpoint.
+// live telemetry history + stream (for the dashboard charts), the cached
+// dispatch plan (Fahrplan view), the inverter-selection API, the data-purge
+// action, and the health endpoint.
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
-	despike DespikeController, hist *history.Ring) http.Handler {
+	despike DespikeController, hist *history.Ring, pl PlanController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -152,6 +161,31 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			"samples":       hist.Recent(time.Duration(minutes)*time.Minute, now),
 			"server_now_ms": now.UnixMilli(),
 		})
+	})
+
+	// GET /api/plan - the cached battery-dispatch plan for the Fahrplan view:
+	// the slots (setpoint + optional planned curtailment), freshness against the
+	// contract's 20-min staleness window, the executing slot, and the live
+	// guard-clamped current setpoint/mode (from state) so the section is
+	// self-contained. has_plan=false with no "plan" key = no plan received yet
+	// (the UI shows the honest empty state). Read-only; never drives execution.
+	mux.HandleFunc("GET /api/plan", func(w http.ResponseWriter, r *http.Request) {
+		snap := st.Get()
+		resp := map[string]any{
+			"server_now_ms": time.Now().UnixMilli(),
+			"mode":          snap.Mode,
+			"setpoint_kw":   snap.SetpointKw,
+		}
+		if !snap.SlotStart.IsZero() {
+			resp["slot_start"] = snap.SlotStart
+		}
+		if view, ok := pl.CurrentPlan(); ok {
+			resp["has_plan"] = true
+			resp["plan"] = view
+		} else {
+			resp["has_plan"] = false
+		}
+		writeJSON(w, http.StatusOK, resp)
 	})
 
 	// GET /api/stream - Server-Sent Events pushing live device state and new

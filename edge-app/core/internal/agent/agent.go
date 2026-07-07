@@ -872,6 +872,20 @@ func (a *Agent) kick() {
 // charts (recent samples + live stream). Local, read-only.
 func (a *Agent) History() *history.Ring { return a.hist }
 
+// CurrentPlan returns the cached battery-dispatch plan projected for "now" (the
+// local Fahrplan view): its slots, freshness and the executing slot. ok=false
+// when no plan has been received/cached yet. Read-only - it never influences
+// execution (that stays with applySetpoint over the same cached plan).
+func (a *Agent) CurrentPlan() (plan.View, bool) {
+	a.mu.Lock()
+	p := a.currentPlan
+	a.mu.Unlock()
+	if p == nil {
+		return plan.View{}, false
+	}
+	return p.BuildView(time.Now().UTC()), true
+}
+
 // InverterCatalog returns the selectable brand/family/field option tree.
 func (a *Agent) InverterCatalog() inverter.Catalog { return a.invCat }
 
