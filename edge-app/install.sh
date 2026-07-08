@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
 #
-# VoltPilot Edge-App - guided installer for a NEW edge device.
+# VoltPilot Edge-App - standalone guided installer for a NEW edge device.
 #
-# Wraps the existing edge-app/docker-compose.yml (real mode: core + nodered,
-# NO simulator) with the manual DEPLOY.md flow turned into a guided, idempotent
-# install: prerequisite checks, registry login, interactive .env creation,
-# pull + up, Reference-ID display + portal-claim guidance, and honest
-# connection verification.
+# This is the ONLY file that needs to be on the device. It WRITES its own
+# docker-compose.yml (real mode: core + nodered pulled from the registry, NO
+# build contexts, NO simulator) plus the .env into the current directory, then
+# runs the manual DEPLOY.md flow as a guided, idempotent install: prerequisite
+# checks, registry login, .env creation, pull + up, Reference-ID display +
+# portal-claim guidance, and honest connection verification. No repo clone
+# required - hand a technician just this script.
+#
+# The generated compose mirrors the repo's real-mode services (image names,
+# env wiring, volumes, ports) so a pulled stack behaves identically to a
+# repo-based `docker compose up -d`. If the repo compose's real-mode
+# image refs / env / volumes change, update generate_compose() below to match.
 #
 # Safe to re-run: it reconfigures / pulls the latest images / brings the stack
 # back up with `up -d`. It NEVER destroys the device's data volumes
-# (vp-edge-data / vp-nodered-data) or its established identity.
+# (vp-edge-data / vp-nodered-data) or its established identity, and it never
+# silently clobbers a hand-edited docker-compose.yml.
 #
-# Usage: ./install.sh [--help]        (run from anywhere - it resolves its own dir)
+# Usage: ./install.sh [--help]   (writes compose + .env into the current dir)
 #
 set -euo pipefail
 
@@ -22,6 +30,14 @@ set -euo pipefail
 # --------------------------------------------------------------------------
 readonly REGISTRY="git.tecmaxx.de"
 readonly PORTAL_URL="https://portal.voltpilot.de"
+
+# Registry image refs for the generated compose (real mode only, no build).
+# Keep in lockstep with edge-app/docker-compose.yml's real-mode services.
+readonly CORE_IMAGE="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest"
+readonly NODERED_IMAGE="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest"
+# Marker on the first line of a compose file WE generated, so a re-run can tell
+# our file apart from a hand-edited one and never clobbers a foreign file.
+readonly COMPOSE_MARKER="# @voltpilot-edge-install: generated docker-compose.yml (do not hand-edit; re-run install.sh --reconfigure)"
 
 readonly DEF_VP_PORTAL_BASE_URL="https://portal.voltpilot.de"
 readonly DEF_VP_MQTT_HOST="mqtt.voltpilot.de"
@@ -45,8 +61,10 @@ readonly DEV_HATCHES="VP_DEV_TENANT_ID VP_DEV_SITE_ID VP_DEV_DEVICE_ID VP_DEV_CL
 # Runtime flags.
 NON_INTERACTIVE=0
 FORCE_RECONFIGURE=0
+FORCE_COMPOSE=0
 SKIP_PULL=0
 DRY_RUN=0
+PRINT_COMPOSE=0
 
 # --------------------------------------------------------------------------
 # Output helpers (color only on a TTY).
@@ -68,19 +86,26 @@ die()   { err "$*"; printf '\n%sInstallation abgebrochen.%s\n' "${C_RED}" "${C_R
 
 usage() {
   cat <<EOF
-${C_BOLD}VoltPilot Edge-App - Installer${C_RESET}
+${C_BOLD}VoltPilot Edge-App - eigenständiger Installer${C_RESET}
 
-Richtet ein NEUES Edge-Gerät gegen die VoltPilot-Live-Cloud ein: prüft die
-Voraussetzungen, meldet an der Image-Registry an, erstellt die .env interaktiv,
+Die einzige Datei, die auf dem Gerät liegen muss: sie SCHREIBT ihre eigene
+docker-compose.yml und die .env in das aktuelle Verzeichnis und richtet ein
+NEUES Edge-Gerät gegen die VoltPilot-Live-Cloud ein - prüft die
+Voraussetzungen, meldet an der Image-Registry an, erstellt die .env,
 zieht die Images, startet ${C_BOLD}core + nodered${C_RESET} (echter Wechselrichter, KEIN Simulator),
-zeigt die Referenz-ID an und verifiziert die Anbindung.
+zeigt die Referenz-ID an und verifiziert die Anbindung. Kein Repo-Klon nötig.
+
+Die erzeugte docker-compose.yml nutzt ausschließlich vorgefertigte
+Registry-Images (${C_BOLD}pull_policy: always${C_RESET}, kein lokaler Build, kein Simulator).
 
 Mehrfaches Ausführen ist sicher: es konfiguriert neu / zieht die neuesten Images
 / startet erneut mit 'up -d' und löscht dabei NIE die Datenvolumes
-(vp-edge-data / vp-nodered-data) oder die Geräteidentität.
+(vp-edge-data / vp-nodered-data) oder die Geräteidentität. Eine bestehende,
+selbst erzeugte docker-compose.yml wird aktualisiert; eine ${C_BOLD}handbearbeitete${C_RESET}
+docker-compose.yml wird nie ohne Rückfrage überschrieben.
 
 ${C_BOLD}Aufruf:${C_RESET}
-  ./install.sh [Optionen]
+  ./install.sh [Optionen]      (schreibt compose + .env ins aktuelle Verzeichnis)
 
 ${C_BOLD}Optionen:${C_RESET}
   -h, --help           Diese Hilfe anzeigen und beenden.
@@ -88,10 +113,17 @@ ${C_BOLD}Optionen:${C_RESET}
                        Keine Rückfragen; Werte aus der Umgebung / bestehenden
                        .env / Standardwerten übernehmen. Erfordert ein
                        gesetztes, nicht-Standard VP_NODERED_PASSWORD.
-      --reconfigure    Die .env neu erstellen, auch wenn sie schon existiert.
+      --reconfigure    Die .env UND die docker-compose.yml neu erstellen, auch
+                       wenn sie schon existieren.
+      --force-compose  Nur die docker-compose.yml neu erzeugen (auch eine
+                       handbearbeitete wird überschrieben), .env bleibt.
+      --print-compose  Die erzeugte docker-compose.yml nach stdout schreiben und
+                       beenden (schreibt nichts, prüft nichts). Nützlich zum
+                       Prüfen / Ableiten der Datei.
       --skip-pull      'docker compose pull' überspringen (nur 'up -d').
-      --dry-run        Nur prüfen: Voraussetzungen + 'docker compose config'.
-                       Kein Login, kein Pull, kein Start, keine Änderung an .env.
+      --dry-run        Nur prüfen: Voraussetzungen + 'docker compose config'
+                       gegen die erzeugte Compose-Datei (temporär). Kein Login,
+                       kein Pull, kein Start, keine Änderung an compose/.env.
 
 ${C_BOLD}Umgebungsvariablen${C_RESET} (für --non-interactive; überschreiben die Standardwerte):
   VP_PORTAL_BASE_URL VP_MQTT_HOST VP_MQTT_PORT VP_REF
@@ -111,7 +143,9 @@ parse_args() {
     case "$1" in
       -h|--help) usage; exit 0 ;;
       --non-interactive) NON_INTERACTIVE=1 ;;
-      --reconfigure) FORCE_RECONFIGURE=1 ;;
+      --reconfigure) FORCE_RECONFIGURE=1; FORCE_COMPOSE=1 ;;
+      --force-compose) FORCE_COMPOSE=1 ;;
+      --print-compose) PRINT_COMPOSE=1 ;;
       --skip-pull) SKIP_PULL=1 ;;
       --dry-run) DRY_RUN=1 ;;
       *) err "Unbekannte Option: $1"; echo; usage; exit 2 ;;
@@ -121,9 +155,11 @@ parse_args() {
 }
 
 # --------------------------------------------------------------------------
-# docker compose wrapper (v2 plugin form only).
+# docker compose wrapper (v2 plugin form only). Pins the generated compose
+# file + project directory (= the target dir) so it works regardless of CWD
+# and always loads the target dir's .env.
 # --------------------------------------------------------------------------
-dc() { docker compose "$@"; }
+dc() { docker compose --project-directory "$TARGET_DIR" -f "$COMPOSE_FILE" "$@"; }
 
 # --------------------------------------------------------------------------
 # Prompt with a default; honors --non-interactive (uses env/default silently).
@@ -186,7 +222,7 @@ json_field() {
 # STEP 1 - Prerequisites.
 # =========================================================================
 check_prerequisites() {
-  step "1/6  Voraussetzungen prüfen"
+  step "1/7  Voraussetzungen prüfen"
   local os; os="$(uname -s 2>/dev/null || echo unknown)"
 
   if ! command -v docker >/dev/null 2>&1; then
@@ -239,7 +275,7 @@ registry_config_has_auth() {
 }
 
 check_registry_login() {
-  step "2/6  An der Image-Registry (${REGISTRY}) anmelden"
+  step "2/7  An der Image-Registry (${REGISTRY}) anmelden"
   if [ "$DRY_RUN" -eq 1 ]; then
     if registry_config_has_auth; then
       ok "Ein Anmelde-Eintrag für ${REGISTRY} ist vorhanden (Dry-Run: nicht verifiziert)."
@@ -272,7 +308,148 @@ check_registry_login() {
 }
 
 # =========================================================================
-# STEP 3 - Configure .env.
+# STEP 3 - Generate docker-compose.yml (images only, REAL mode).
+# =========================================================================
+
+# Emit the standalone compose YAML to stdout. Mirrors the real-mode services
+# of edge-app/docker-compose.yml EXACTLY (image names, env var names +
+# defaults, volume names, port mappings) MINUS the build: contexts and the
+# sim profile - a device only ever pulls prebuilt images. Keep in lockstep
+# with edge-app/docker-compose.yml.
+generate_compose() {
+  cat <<EOF
+${COMPOSE_MARKER}
+#
+# VoltPilot Edge-App - eigenständige docker-compose.yml, erzeugt von install.sh.
+# Echter Betrieb: NUR vorgefertigte Registry-Images (kein lokaler Build), NUR
+# core + nodered (kein Simulator). Behandelt sich wie ein Repo-basiertes
+# 'docker compose up -d' im echten Modus.
+#
+# Neu erzeugen (z. B. nach einem Installer-Update):
+#   ./install.sh --force-compose      (nur diese Datei)
+#   ./install.sh --reconfigure        (diese Datei + .env)
+#
+# Die Datenvolumes (vp-edge-data / vp-nodered-data) bleiben dabei unberührt.
+
+name: voltpilot-edge
+
+services:
+  core:
+    image: ${CORE_IMAGE}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      VP_PORTAL_BASE_URL: \${VP_PORTAL_BASE_URL:-https://portal.voltpilot.de}
+      VP_MQTT_HOST: \${VP_MQTT_HOST:-mqtt.voltpilot.de}
+      VP_MQTT_PORT: \${VP_MQTT_PORT:-8883}
+      VP_REF: \${VP_REF:-}
+      VP_MAX_CHARGE_KW: \${VP_MAX_CHARGE_KW:-50}
+      VP_MAX_DISCHARGE_KW: \${VP_MAX_DISCHARGE_KW:-50}
+      VP_SOC_MIN_PCT: \${VP_SOC_MIN_PCT:-5}
+      VP_SOC_MAX_PCT: \${VP_SOC_MAX_PCT:-95}
+      VP_BUFFER_HOURS: \${VP_BUFFER_HOURS:-48}
+      # Dev-only escape hatches (skip enrollment / plain-MQTT cloud). Leave
+      # EMPTY on customer devices - the installer never sets them.
+      VP_DEV_TENANT_ID: \${VP_DEV_TENANT_ID:-}
+      VP_DEV_SITE_ID: \${VP_DEV_SITE_ID:-}
+      VP_DEV_DEVICE_ID: \${VP_DEV_DEVICE_ID:-}
+      VP_DEV_CLOUD_URL: \${VP_DEV_CLOUD_URL:-}
+    volumes:
+      - vp-edge-data:/data
+    ports:
+      # Local device web app (LAN): http://<geraet>:8484
+      - "\${VP_WEB_PORT:-8484}:8484"
+      # Embedded local MQTT bus, host-loopback only (debugging; Layer 1
+      # reaches it via the compose network as core:1883).
+      - "127.0.0.1:\${VP_BUS_PORT:-1884}:1883"
+
+  nodered:
+    image: ${NODERED_IMAGE}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      - core
+    environment:
+      VP_NODERED_USER: \${VP_NODERED_USER:-voltpilot}
+      VP_NODERED_PASSWORD: \${VP_NODERED_PASSWORD:-voltpilot}
+    volumes:
+      # Named volume so per-customer flow wiring survives container
+      # recreation; seeded from the image (template flows) on first run.
+      - vp-nodered-data:/data
+    ports:
+      # Node-RED editor (LAN, behind adminAuth): the VoltPilot service
+      # access for per-customer flow wiring. NOT for customers.
+      - "\${VP_NODERED_PORT:-1881}:1880"
+
+volumes:
+  vp-edge-data:
+  vp-nodered-data:
+EOF
+}
+
+# True if the file exists and carries OUR generated marker on its first line.
+compose_is_ours() {
+  local file="$1"
+  [ -f "$file" ] && IFS= read -r first < "$file" 2>/dev/null && [ "$first" = "$COMPOSE_MARKER" ]
+}
+
+# Write the compose atomically (never touches data volumes).
+write_compose_file() {
+  local tmp; tmp="$(mktemp "${TARGET_DIR}/.docker-compose.yml.XXXXXX")"
+  generate_compose > "$tmp"
+  chmod 644 "$tmp"
+  mv "$tmp" "$COMPOSE_FILE"
+}
+
+generate_compose_step() {
+  step "3/7  docker-compose.yml erzeugen (nur Images, echter Modus)"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    warn "Dry-Run: docker-compose.yml wird NICHT geschrieben (Konfiguration wird temporär geprüft)."
+    return
+  fi
+
+  if [ ! -f "$COMPOSE_FILE" ]; then
+    write_compose_file
+    ok "docker-compose.yml erzeugt (core + nodered, Registry-Images, kein Simulator)."
+    return
+  fi
+
+  # A file already exists.
+  if compose_is_ours "$COMPOSE_FILE"; then
+    # It is one we generated - safe to refresh so image refs/wiring stay in
+    # lockstep. Data volumes are never touched by rewriting this file.
+    write_compose_file
+    ok "Bestehende (vom Installer erzeugte) docker-compose.yml aktualisiert."
+    return
+  fi
+
+  # Foreign / hand-edited file: never clobber silently.
+  if [ "$FORCE_COMPOSE" -eq 1 ]; then
+    write_compose_file
+    warn "Vorhandene, NICHT vom Installer erzeugte docker-compose.yml überschrieben (--force-compose/--reconfigure)."
+    return
+  fi
+
+  if [ "$NON_INTERACTIVE" -eq 1 ]; then
+    ok "Bestehende docker-compose.yml wird beibehalten (--non-interactive; --force-compose zum Überschreiben)."
+    return
+  fi
+
+  warn "Es existiert bereits eine docker-compose.yml, die NICHT vom Installer stammt (evtl. handbearbeitet)."
+  local choice=""
+  read -rp "    Beibehalten [B] oder mit der Installer-Version überschreiben [Ü]? [${C_DIM}B${C_RESET}]: " choice || choice=""
+  case "${choice:-B}" in
+    [ÜüUu]*)
+      write_compose_file
+      warn "docker-compose.yml mit der Installer-Version überschrieben." ;;
+    *)
+      ok "Bestehende docker-compose.yml wird beibehalten." ;;
+  esac
+}
+
+# =========================================================================
+# STEP 4 - Configure .env.
 # =========================================================================
 
 # Read a KEY=value from an existing .env (uncommented lines only).
@@ -299,8 +476,8 @@ warn_dev_hatches() {
 }
 
 configure_env() {
-  step "3/6  Konfiguration (.env in edge-app/)"
-  local envfile="${EDGE_DIR}/.env"
+  step "4/7  Konfiguration (.env)"
+  local envfile="$ENV_FILE"
 
   if [ -f "$envfile" ] && [ "$FORCE_RECONFIGURE" -eq 0 ]; then
     if [ "$NON_INTERACTIVE" -eq 1 ]; then
@@ -412,7 +589,7 @@ configure_env() {
   VP_NODERED_PASSWORD="$pw"
 
   # --- Write the .env atomically (never echo the password). ----------------
-  local tmp; tmp="$(mktemp "${EDGE_DIR}/.env.XXXXXX")"
+  local tmp; tmp="$(mktemp "${TARGET_DIR}/.env.XXXXXX")"
   # Restrict permissions before writing the secret.
   chmod 600 "$tmp"
   {
@@ -447,18 +624,37 @@ configure_env() {
   } > "$tmp"
   mv "$tmp" "$envfile"
   chmod 600 "$envfile"
-  ok "${envfile#"$EDGE_DIR"/} geschrieben (Passwort nicht protokolliert, Rechte 600)."
+  ok "${envfile#"$TARGET_DIR"/} geschrieben (Passwort nicht protokolliert, Rechte 600)."
 
   # Remember the web port for the verification step in this process.
   ACTIVE_WEB_PORT="$VP_WEB_PORT"
 }
 
 # =========================================================================
-# STEP 4 - Pull + start (real mode, no sim).
+# STEP 5 - Validate the compose config.
 # =========================================================================
 compose_validate() {
-  step "4/6  Compose-Konfiguration prüfen"
+  step "5/7  Compose-Konfiguration prüfen"
   local errlog; errlog="$(mktemp)"
+
+  # In dry-run no file was written, so validate the GENERATED content via a
+  # throwaway compose file (all env vars carry :-defaults, so no .env needed).
+  # This self-checks the generator even in an empty directory.
+  if [ "$DRY_RUN" -eq 1 ]; then
+    local tmpc; tmpc="$(mktemp "${TMPDIR:-/tmp}/vp-compose.XXXXXX.yml")"
+    generate_compose > "$tmpc"
+    if docker compose -f "$tmpc" config >/dev/null 2>"$errlog"; then
+      ok "'docker compose config' gegen die erzeugte Compose-Datei ist valide (Dry-Run)."
+      rm -f "$errlog" "$tmpc"
+    else
+      err "'docker compose config' (erzeugte Datei) ist fehlerhaft:"
+      sed 's/^/      /' "$errlog" >&2 || true
+      rm -f "$errlog" "$tmpc"
+      die "Erzeugte Compose-Konfiguration ungültig."
+    fi
+    return
+  fi
+
   if dc config >/dev/null 2>"$errlog"; then
     ok "'docker compose config' ist valide."
     rm -f "$errlog"
@@ -471,7 +667,7 @@ compose_validate() {
 }
 
 pull_and_up() {
-  step "5/6  Images ziehen und starten (core + nodered, ohne Simulator)"
+  step "6/7  Images ziehen und starten (core + nodered, ohne Simulator)"
   if [ "$DRY_RUN" -eq 1 ]; then
     warn "Dry-Run: 'docker compose pull' und 'up -d' werden übersprungen."
     return
@@ -493,14 +689,14 @@ pull_and_up() {
   info "Starte die Container (up -d, Volumes bleiben erhalten) ..."
   if ! dc up -d; then
     err "'docker compose up -d' ist fehlgeschlagen."
-    info "Logs ansehen: (cd '${EDGE_DIR}' && docker compose logs)"
+    info "Logs ansehen: (cd '${TARGET_DIR}' && docker compose logs)"
     die "Start fehlgeschlagen."
   fi
   ok "core + nodered gestartet."
 }
 
 # =========================================================================
-# STEP 6 - Reference-ID + claim guidance + verification.
+# STEP 7 - Reference-ID + claim guidance + verification.
 # =========================================================================
 health_json() {
   curl -fsS --max-time 3 "http://127.0.0.1:${ACTIVE_WEB_PORT}/health" 2>/dev/null || true
@@ -523,7 +719,7 @@ wait_for_core() {
 }
 
 show_reference_and_verify() {
-  step "6/6  Referenz-ID, Portal-Beanspruchung und Verifizierung"
+  step "7/7  Referenz-ID, Portal-Beanspruchung und Verifizierung"
 
   if [ "$DRY_RUN" -eq 1 ]; then
     warn "Dry-Run: keine laufenden Container - Referenz/Verifizierung übersprungen."
@@ -539,8 +735,8 @@ show_reference_and_verify() {
   local json ref pairing cloud
   if ! json="$(wait_for_core)"; then
     err "Der Core hat sich innerhalb von 90 s nicht gemeldet."
-    info "Status ansehen: (cd '${EDGE_DIR}' && docker compose ps)"
-    info "Logs ansehen:   (cd '${EDGE_DIR}' && docker compose logs -f core)"
+    info "Status ansehen: (cd '${TARGET_DIR}' && docker compose ps)"
+    info "Logs ansehen:   (cd '${TARGET_DIR}' && docker compose logs -f core)"
     VERIFY_RESULT="FAIL"
     return
   fi
@@ -597,7 +793,7 @@ show_reference_and_verify() {
       info "Aktion: im Portal widerrufen + neu beanspruchen (siehe DEPLOY.md)." ;;
     geraet_fehler)
       err "Lokaler Gerätefehler (${pairing}) - z. B. /data nicht schreibbar."
-      info "Logs prüfen: (cd '${EDGE_DIR}' && docker compose logs core)"
+      info "Logs prüfen: (cd '${TARGET_DIR}' && docker compose logs core)"
       containers_ok=0 ;;
     start|"")
       warn "Enrollment noch nicht gestartet (Pairing-Zustand: ${pairing:-unbekannt}). Kurz warten und /health erneut prüfen." ;;
@@ -675,7 +871,7 @@ print_summary() {
     *)     printf '    Verifizierung:     %s\n' "${VERIFY_RESULT:-unbekannt}" ;;
   esac
   echo
-  info "Nützliche Befehle (in ${EDGE_DIR}):"
+  info "Nützliche Befehle (in ${TARGET_DIR}):"
   info "  Status:  docker compose ps"
   info "  Logs:    docker compose logs -f core"
   info "  Update:  ./install.sh   (zieht neue Images, startet neu, Volumes bleiben)"
@@ -687,29 +883,35 @@ print_summary() {
 main() {
   parse_args "$@"
 
-  # Resolve our own directory so the script works regardless of the CWD, then
-  # operate on edge-app/ (the dir this script lives in).
-  local src="${BASH_SOURCE[0]}"
-  while [ -h "$src" ]; do
-    local dir; dir="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
-    src="$(readlink "$src")"; [ "${src#/}" = "$src" ] && src="$dir/$src"
-  done
-  EDGE_DIR="$(cd -P "$(dirname "$src")" >/dev/null 2>&1 && pwd)"
-  readonly EDGE_DIR
+  # --print-compose: emit the generated compose and exit. Writes nothing,
+  # needs no docker - the docker-free self-check + an ops "derive the file"
+  # escape hatch.
+  if [ "$PRINT_COMPOSE" -eq 1 ]; then
+    generate_compose
+    exit 0
+  fi
 
-  [ -f "${EDGE_DIR}/docker-compose.yml" ] || die "docker-compose.yml nicht in ${EDGE_DIR} gefunden - liegt install.sh im edge-app/-Ordner?"
-  cd "$EDGE_DIR"
+  # Standalone: operate in the CURRENT working directory (where the operator
+  # ran the script). We WRITE docker-compose.yml + .env here and never require
+  # a repo checkout. Resolve to a physical path so it is CWD-robust.
+  TARGET_DIR="$(pwd -P)"
+  readonly TARGET_DIR
+  COMPOSE_FILE="${TARGET_DIR}/docker-compose.yml"
+  readonly COMPOSE_FILE
+  ENV_FILE="${TARGET_DIR}/.env"
+  readonly ENV_FILE
 
   # Defaults for the verification step (overwritten once .env is known).
-  ACTIVE_WEB_PORT="$(env_get VP_WEB_PORT "${EDGE_DIR}/.env")"; ACTIVE_WEB_PORT="${ACTIVE_WEB_PORT:-$DEF_VP_WEB_PORT}"
+  ACTIVE_WEB_PORT="$(env_get VP_WEB_PORT "$ENV_FILE")"; ACTIVE_WEB_PORT="${ACTIVE_WEB_PORT:-$DEF_VP_WEB_PORT}"
   VERIFY_RESULT="unbekannt"; FINAL_REF=""; FINAL_WEB_URL=""; FINAL_PAIRING=""
 
-  printf '%s%sVoltPilot Edge-App - geführte Installation%s\n' "${C_BOLD}" "${C_CYAN}" "${C_RESET}"
-  printf '%sArbeitsverzeichnis: %s%s\n' "${C_DIM}" "$EDGE_DIR" "${C_RESET}"
+  printf '%s%sVoltPilot Edge-App - geführte Installation (eigenständig)%s\n' "${C_BOLD}" "${C_CYAN}" "${C_RESET}"
+  printf '%sArbeitsverzeichnis: %s%s\n' "${C_DIM}" "$TARGET_DIR" "${C_RESET}"
   [ "$DRY_RUN" -eq 1 ] && printf '%sModus: DRY-RUN (nur prüfen)%s\n' "${C_YELLOW}" "${C_RESET}"
 
   check_prerequisites
   check_registry_login
+  generate_compose_step
   configure_env
   compose_validate
   pull_and_up

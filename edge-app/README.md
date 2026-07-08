@@ -30,11 +30,13 @@ Without the `sim` profile (`docker compose up -d`) the same stack runs for a **r
 
 ## Kundenerlebnis (production)
 
-Für ein NEUES Gerät ist der **geführte Installer** der empfohlene Weg - er prüft die Voraussetzungen, meldet an der Registry an, legt die `.env` interaktiv an, startet `core` + `nodered` (echter Wechselrichter, kein Simulator), zeigt die Referenz-ID an und verifiziert die Anbindung; mehrfach ausführbar, ohne Datenvolumes/Identität zu löschen (Runbook + Fallback: [`DEPLOY.md`](DEPLOY.md)):
+Für ein NEUES Gerät ist der **eigenständige, geführte Installer** der empfohlene Weg - `install.sh` ist die **einzige Datei**, die auf das Gerät muss: er **erzeugt seine eigene `docker-compose.yml`** (nur vorgefertigte Registry-Images, kein Build, kein Simulator) und die `.env`, prüft die Voraussetzungen, meldet an der Registry an, startet `core` + `nodered` (echter Wechselrichter), zeigt die Referenz-ID an und verifiziert die Anbindung; mehrfach ausführbar, ohne Datenvolumes/Identität zu löschen (Runbook + Fallback: [`DEPLOY.md`](DEPLOY.md)):
 
 ```bash
-cd edge-app
-./install.sh          # --help, --reconfigure, --dry-run, --non-interactive
+# nur install.sh auf das Gerät kopieren, dann:
+./install.sh          # schreibt docker-compose.yml + .env ins aktuelle Verzeichnis
+                      # Optionen: --help, --reconfigure, --force-compose,
+                      #           --print-compose, --dry-run, --non-interactive
 ```
 
 Manuell (Fallback):
