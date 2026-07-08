@@ -366,6 +366,8 @@ VoltPilots kontinuierlichen `edge/setpoint` (kW, + laden / − entladen) darauf 
 
 > Diese Adressen sind aus öffentlichen Karten (deye-controller / sunsynk) trianguliert und variieren je Modell/Firmware. Sie dienen nur als Ausgangspunkt für das Folge-Arbeitspaket - **erst am Prüfstand pro Gerät verifizieren**, mit Klammern gegen Strom-/SoC-/Leistungsgrenzen, bevor irgendein Schreibbefehl scharf geschaltet wird.
 
+**Die Steuer-Abstraktion ist inzwischen GEBAUT** (`inverter-control-routing.js` `controlRoute` + Rücklesen; FC6/FC16-Schreibframes in `deye/solarman-v5.js`), aber diese Register bleiben **`bench_pending` und der Deye-Adapter nur lesend**, bis pro Modell die Prüfstand-Checkliste abgehakt ist: **[`CONTROL-BENCH.md`](CONTROL-BENCH.md)**. Erst danach kommt die Familie in die Zertifizierungs-Allowlist und Steuerung wird pro Gerät scharfgeschaltet.
+
 ---
 
 ## Siehe auch

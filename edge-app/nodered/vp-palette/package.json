@@ -14,7 +14,8 @@
       "vp-telemetrie": "nodes/vp-telemetrie.js",
       "vp-sollwert": "nodes/vp-sollwert.js",
       "vp-status": "nodes/vp-status.js",
-      "vp-inverter-config": "nodes/vp-inverter-config.js"
+      "vp-inverter-config": "nodes/vp-inverter-config.js",
+      "vp-control-readback": "nodes/vp-control-readback.js"
     }
   },
   "dependencies": {

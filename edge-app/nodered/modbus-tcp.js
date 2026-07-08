@@ -116,6 +116,56 @@ function buildReadRequest({ txid = 0, unitId = 1, addr, count }) {
   return buf;
 }
 
+const FN_WRITE_SINGLE = 0x06;
+
+/**
+ * buildWriteSingleRequest - a Modbus-TCP "write single register" (fn 0x06)
+ * frame. The write side of the generic_modbus / SunSpec CONTROL adapter
+ * (report §4.4a): battery_power -> reg 40, control_enable -> reg 41,
+ * pv_limit -> reg 42. `value` is masked to 16 bits (two's-complement power word).
+ * The server echoes the request; parseWriteSingleResponse validates the echo.
+ */
+function buildWriteSingleRequest({ txid = 0, unitId = 1, addr, value }) {
+  const buf = Buffer.alloc(12);
+  buf.writeUInt16BE(txid & 0xffff, 0);
+  buf.writeUInt16BE(0x0000, 2);
+  buf.writeUInt16BE(6, 4);
+  buf[6] = unitId & 0xff;
+  buf[7] = FN_WRITE_SINGLE;
+  buf.writeUInt16BE(addr & 0xffff, 8);
+  buf.writeUInt16BE(value & 0xffff, 10);
+  return buf;
+}
+
+/**
+ * parseWriteSingleResponse - validate a Modbus-TCP fn-0x06 echo reply and
+ * return { addr, value }. Throws on a short frame, a txid/unit mismatch, a
+ * Modbus exception (fn | 0x80) or an unexpected function code. The register's
+ * effective value is confirmed by the fn-0x03 readback loop, not this echo.
+ */
+function parseWriteSingleResponse(buf, opts = {}) {
+  if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf);
+  if (buf.length < 12) throw new Error('Modbus-Schreibantwort zu kurz');
+  const txid = buf.readUInt16BE(0);
+  const proto = buf.readUInt16BE(2);
+  const unit = buf[6];
+  const fn = buf[7];
+  if (proto !== 0) throw new Error('unerwartete Protokoll-ID ' + proto);
+  if (opts.expectTxid !== undefined && (opts.expectTxid & 0xffff) !== txid) {
+    throw new Error('Transaktions-ID weicht ab: ' + txid);
+  }
+  if (opts.expectUnit !== undefined && (opts.expectUnit & 0xff) !== unit) {
+    throw new Error('Unit-ID weicht ab: ' + unit);
+  }
+  if (fn & 0x80) {
+    throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16).padStart(2, '0'));
+  }
+  if (fn !== FN_WRITE_SINGLE) {
+    throw new Error('unerwartete Modbus-Funktion 0x' + fn.toString(16).padStart(2, '0'));
+  }
+  return { addr: buf.readUInt16BE(8), value: buf.readUInt16BE(10) };
+}
+
 /**
  * expectedFrameLength - total byte length a Modbus-TCP frame claims via its
  * MBAP length field (6-byte MBAP prefix + `length`). Returns null until the 6
@@ -168,10 +218,13 @@ function parseReadResponse(buf, opts = {}) {
 
 module.exports = {
   FN_READ_HOLDING,
+  FN_WRITE_SINGLE,
   PROFILES,
   profileRead,
   decodeProfile,
   buildReadRequest,
+  buildWriteSingleRequest,
+  parseWriteSingleResponse,
   expectedFrameLength,
   parseReadResponse,
   _helpers: { s16, round3, round1 },

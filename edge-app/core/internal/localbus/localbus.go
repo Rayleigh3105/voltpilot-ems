@@ -13,6 +13,14 @@
 //	                 "slot_start"?: RFC3339, "ts": RFC3339}
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
+//	edge/control/readback  Layer 1 -> core   NOT retained. Per-register
+//	                commanded-vs-actual result of an inverter control write, so
+//	                the core can show register-level proof + fold a summary into
+//	                the cloud status heartbeat. Shape:
+//	                {"ts", "family", "source", "slot_start"?, "control_enabled",
+//	                 "certified", "all_match", "mismatch_roles":[...],
+//	                 "registers":[{"role","fc","addr","commanded_raw",
+//	                   "commanded_kw"?,"actual_raw","actual_kw"?,"match"}]}
 //	edge/inverter/config  core -> Layer 1   RETAINED inverter selection the
 //	                customer made in the local web app (brand/family/
 //	                communication/connection). Node-RED reads it to self-wire
@@ -30,10 +38,11 @@ import (
 
 // Topics of the local bus namespace.
 const (
-	TopicTelemetry      = "edge/telemetry"
-	TopicSetpoint       = "edge/setpoint"
-	TopicStatus         = "edge/status"
-	TopicInverterConfig = "edge/inverter/config"
+	TopicTelemetry       = "edge/telemetry"
+	TopicSetpoint        = "edge/setpoint"
+	TopicStatus          = "edge/status"
+	TopicInverterConfig  = "edge/inverter/config"
+	TopicControlReadback = "edge/control/readback"
 )
 
 // Bus wraps the embedded broker.

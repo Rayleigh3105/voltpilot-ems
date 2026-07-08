@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -48,6 +49,23 @@ type Config struct {
 	// BufferHours bounds the on-disk telemetry ring buffer (oldest-first
 	// eviction beyond this horizon).
 	BufferHours int `json:"buffer_hours"`
+
+	// ControlEnabled is the GLOBAL inverter-control kill-switch (report §6.6).
+	// Default FALSE: the edge reads + reads-back but writes NOTHING until an
+	// operator explicitly enables control on this device. When false, the core
+	// publishes control_enabled=false on edge/setpoint and Layer 1 drops all
+	// writes (readbacks still run). This is safety-critical - never default true.
+	ControlEnabled bool `json:"control_enabled"`
+	// ControlCertifiedFamilies is the per-model bench-certification allowlist,
+	// keyed by register-map family (report §6.7). Only a selected inverter whose
+	// family is listed here may ever receive a live write, AND only when
+	// ControlEnabled is also true. Default "sunspec" (proven against the
+	// simulator); a Deye family is added ONLY after its model is bench-verified.
+	ControlCertifiedFamilies []string `json:"control_certified_families"`
+	// GridChargeAllowed permits the (Deye ToU) grid-charge bit. Default FALSE =
+	// EEG-compliant (an EEG plant must never grid-charge). Authoritatively the
+	// site's netzladen_erlaubt flag; kept off by default on-device.
+	GridChargeAllowed bool `json:"grid_charge_allowed"`
 
 	// SetpointInterval is how often the current setpoint is recomputed and
 	// re-published on the local bus (the slot boundary is always hit).
@@ -89,6 +107,9 @@ func Defaults() Config {
 		BufferHours:              48,
 		SetpointIntervalSeconds:  10,
 		ReconcileIntervalSeconds: 300,
+		ControlEnabled:           false,
+		ControlCertifiedFamilies: []string{"sunspec"},
+		GridChargeAllowed:        false,
 	}
 }
 
@@ -133,7 +154,28 @@ func Load() (Config, error) {
 	if cfg.BufferHours <= 0 {
 		cfg.BufferHours = Defaults().BufferHours
 	}
+	if len(cfg.ControlCertifiedFamilies) == 0 {
+		cfg.ControlCertifiedFamilies = Defaults().ControlCertifiedFamilies
+	}
 	return cfg, nil
+}
+
+// ControlCertified reports whether the given register-map family is on the
+// bench-certification allowlist. Uncertified families are read-only regardless
+// of the kill-switch. An empty family (no inverter selected yet, e.g. the dev /
+// simulator path) is treated as certified: the Layer-1 control adapter still
+// enforces its own per-family gate, and a real device always has a selection.
+func (c Config) ControlCertified(family string) bool {
+	family = strings.TrimSpace(family)
+	if family == "" {
+		return true
+	}
+	for _, f := range c.ControlCertifiedFamilies {
+		if strings.EqualFold(strings.TrimSpace(f), family) {
+			return true
+		}
+	}
+	return false
 }
 
 func applyEnv(cfg *Config) {
@@ -170,6 +212,22 @@ func applyEnv(cfg *Config) {
 	num("VP_BUFFER_HOURS", &cfg.BufferHours)
 	num("VP_SETPOINT_INTERVAL_SECONDS", &cfg.SetpointIntervalSeconds)
 	num("VP_RECONCILE_INTERVAL_SECONDS", &cfg.ReconcileIntervalSeconds)
+	boolEnv := func(key string, dst *bool) {
+		if v := os.Getenv(key); v != "" {
+			*dst = v == "1" || strings.EqualFold(v, "true")
+		}
+	}
+	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
+	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
+	if v := os.Getenv("VP_CONTROL_CERTIFIED_FAMILIES"); v != "" {
+		var fams []string
+		for _, f := range strings.Split(v, ",") {
+			if f = strings.TrimSpace(f); f != "" {
+				fams = append(fams, f)
+			}
+		}
+		cfg.ControlCertifiedFamilies = fams
+	}
 	str("VP_DEV_TENANT_ID", &cfg.DevTenantID)
 	str("VP_DEV_SITE_ID", &cfg.DevSiteID)
 	str("VP_DEV_DEVICE_ID", &cfg.DevDeviceID)

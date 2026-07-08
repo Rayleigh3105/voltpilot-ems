@@ -488,6 +488,27 @@ export interface Overview {
   dailySavings: OverviewDailySavings[];
 }
 
+// ---- Inverter control confirmation (GET /api/v1/sites/{id}/control-status) --
+
+/**
+ * The latest inverter-control confirmation for a site: what the schedule
+ * commanded ({@code commandedKw}) vs. what the inverter read back
+ * ({@code confirmedKw}), a healthy/mismatch verdict, and the freshness anchor
+ * the "Steuerung" strip turns into "geprüft vor X". `controlEnabled` /
+ * `certified` distinguish "confirmed", "control off" and "not yet released".
+ */
+export interface ControlStatus {
+  deviceId: string;
+  commandedKw: number | null;
+  confirmedKw: number | null;
+  allMatch: boolean;
+  controlEnabled: boolean;
+  certified: boolean;
+  mismatchRoles: string | null;
+  slotStart: string | null;
+  checkedAt: string;
+}
+
 // ---- Realized earnings (GET /api/v1/earnings) -------------------------------
 
 export type EarningsRange = 'day' | 'month' | 'year' | 'all';
@@ -719,6 +740,15 @@ export const api = {
     request<Earnings>(
       `/api/v1/earnings?range=${range}${at ? `&at=${at}` : ''}`,
     ),
+  /**
+   * The site's latest inverter-control confirmation (the calm "Steuerung"
+   * strip). Resolves to null when no device has reported a readback yet
+   * (endpoint answers 204).
+   */
+  controlStatus: (siteId: string) =>
+    request<ControlStatus | undefined>(
+      `/api/v1/sites/${siteId}/control-status`,
+    ).then((v) => v ?? null),
   listSites: () => request<Site[]>('/api/v1/sites'),
   createSite: (input: CreateSiteInput) =>
     request<Site>('/api/v1/sites', {

@@ -6,6 +6,7 @@ import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
 import {
   api,
+  type ControlStatus,
   type Device,
   type Earnings,
   type EarningsRange,
@@ -23,7 +24,9 @@ import { fmtNum, fmtRelative, plantKindLabel } from '../format';
 import { bestBucketText, periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
 import { nextHourIndex } from '../weather';
+import { controlStrip } from '../control';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
+import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { ErtragChart } from '../components/ErtragChart';
@@ -343,6 +346,7 @@ export function AnlageSeite({
   const [range, setRange] = useState<EarningsRange>('month');
   const [at, setAt] = useState<string | null>(null);
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
+  const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
@@ -387,6 +391,23 @@ export function AnlageSeite({
     };
   }, [site.id, reloadKey, range, at]);
 
+  // Inverter-control confirmation for the calm "Steuerung" strip, loaded
+  // silently (null while none has arrived yet or on any failure).
+  useEffect(() => {
+    let active = true;
+    api.controlStatus(site.id).then(
+      (c) => {
+        if (active) setControlStatus(c);
+      },
+      () => {
+        if (active) setControlStatus(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
+
   // Wetter teaser for the "Mehr" card, loaded silently.
   useEffect(() => {
     let active = true;
@@ -421,12 +442,17 @@ export function AnlageSeite({
           (e) => setEarnings(e),
           () => {},
         );
+        api.controlStatus(site.id).then(
+          (c) => setControlStatus(c),
+          () => {},
+        );
       }
     }, TICK_MS);
     return () => clearInterval(timer);
   }, []);
 
   const ovSite = overview?.sites.find((x) => x.id === site.id) ?? null;
+  const controlView = controlStrip(controlStatus, now);
   const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;
   const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
   const siteEarnings = earnings?.sites.find((x) => x.id === site.id) ?? null;
@@ -582,6 +608,11 @@ export function AnlageSeite({
           )}
         </Card>
       </section>
+
+      {/* 7b · Steuerung: did the inverter accept the schedule setpoint? A calm
+          confirmation strip (captain decision 4), shown once a device has
+          reported a control readback. */}
+      {controlView && <ControlStrip view={controlView} />}
 
       {/* 8 · Mehr zu dieser Anlage: Fahrplan, Historie, Wetter - eine Ebene tiefer. */}
       <section className="vp-section" aria-label="Mehr zu dieser Anlage">

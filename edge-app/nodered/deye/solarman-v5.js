@@ -85,6 +85,80 @@ function readHoldingRegistersRequest(slaveId, startReg, count) {
 }
 
 /**
+ * writeSingleRegisterRequest - build a Modbus-RTU "write single register"
+ * (fn 0x06) frame: [slave, 0x06, regHi, regLo, valHi, valLo, crcLo, crcHi].
+ * The write side of the Deye control adapter (report §4.4b): a live ToU/power
+ * register is written one word at a time. The value is masked to 16 bits.
+ */
+function writeSingleRegisterRequest(slaveId, reg, value) {
+  const body = Buffer.alloc(6);
+  body[0] = slaveId & 0xff;
+  body[1] = 0x06;
+  body.writeUInt16BE(reg & 0xffff, 2);
+  body.writeUInt16BE(value & 0xffff, 4);
+  const crc = modbusCrc16(body);
+  return Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
+}
+
+/**
+ * writeMultipleRegistersRequest - build a Modbus-RTU "write multiple registers"
+ * (fn 0x10) frame: [slave, 0x10, startHi, startLo, countHi, countLo, byteCount,
+ * data..BE.., crcLo, crcHi]. Used when several contiguous control registers
+ * (e.g. a ToU slot's power + target-SoC) must be written atomically. `values`
+ * is an array of 16-bit words, written big-endian per Modbus.
+ */
+function writeMultipleRegistersRequest(slaveId, startReg, values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error('writeMultipleRegistersRequest: values must be a non-empty array');
+  }
+  const count = values.length;
+  const byteCount = count * 2;
+  const body = Buffer.alloc(7 + byteCount);
+  body[0] = slaveId & 0xff;
+  body[1] = 0x10;
+  body.writeUInt16BE(startReg & 0xffff, 2);
+  body.writeUInt16BE(count & 0xffff, 4);
+  body[6] = byteCount & 0xff;
+  for (let i = 0; i < count; i++) body.writeUInt16BE(values[i] & 0xffff, 7 + i * 2);
+  const crc = modbusCrc16(body);
+  return Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
+}
+
+/**
+ * parseWriteResponse - validate a Modbus-RTU write reply (fn 0x06 echo or
+ * fn 0x10 acknowledgement) and return { fn, reg, value } for 0x06 or
+ * { fn, startReg, count } for 0x10. Throws on a short frame, a bad CRC, a
+ * Modbus exception (fn | 0x80) or an unexpected function code. This is the
+ * READBACK-adjacent proof that the logger accepted the write frame; the actual
+ * register value is confirmed by a follow-up fn-0x03 read (the readback loop,
+ * report §5).
+ */
+function parseWriteResponse(mb, opts = {}) {
+  if (!Buffer.isBuffer(mb)) mb = Buffer.from(mb);
+  if (mb.length < 5) throw new Error('Modbus-Schreibantwort zu kurz');
+  const body = mb.slice(0, mb.length - 2);
+  const crcGot = mb.readUInt16LE(mb.length - 2);
+  const crcCalc = modbusCrc16(body);
+  if (crcGot !== crcCalc) throw new Error('Modbus-CRC falsch');
+  const fn = mb[1];
+  if (fn & 0x80) {
+    throw new Error('Modbus-Ausnahme 0x' + mb[2].toString(16).padStart(2, '0'));
+  }
+  if (opts.expectFn !== undefined && fn !== opts.expectFn) {
+    throw new Error('unerwartete Modbus-Funktion 0x' + fn.toString(16).padStart(2, '0'));
+  }
+  if (fn === 0x06) {
+    if (body.length < 6) throw new Error('fn-0x06-Antwort unvollstaendig');
+    return { fn, reg: mb.readUInt16BE(2), value: mb.readUInt16BE(4) };
+  }
+  if (fn === 0x10) {
+    if (body.length < 6) throw new Error('fn-0x10-Antwort unvollstaendig');
+    return { fn, startReg: mb.readUInt16BE(2), count: mb.readUInt16BE(4) };
+  }
+  throw new Error('unerwartete Modbus-Schreibfunktion 0x' + fn.toString(16).padStart(2, '0'));
+}
+
+/**
  * parseModbusResponse - validate a Modbus-RTU fn-0x03 reply and return its
  * register words (big-endian, index 0 = first requested register).
  * Throws on a short frame, a bad CRC, a Modbus exception (fn | 0x80), an
@@ -244,6 +318,37 @@ function buildReadRequest({ loggerSerial, sequence = 0, slaveId = 1, startReg, c
   return buildV5Request({ loggerSerial, sequence, modbusFrame });
 }
 
+/**
+ * buildWriteSingleRequest - convenience: full V5 request frame for a Modbus
+ * fn-0x06 write of one holding register. The write side of the Deye control
+ * adapter; only ever built for a BENCH-CERTIFIED model (report §6.7), never for
+ * a guessed address.
+ */
+function buildWriteSingleRequest({ loggerSerial, sequence = 0, slaveId = 1, reg, value }) {
+  const modbusFrame = writeSingleRegisterRequest(slaveId, reg, value);
+  return buildV5Request({ loggerSerial, sequence, modbusFrame });
+}
+
+/**
+ * buildWriteMultipleRequest - convenience: full V5 request frame for a Modbus
+ * fn-0x10 write of contiguous holding registers.
+ */
+function buildWriteMultipleRequest({ loggerSerial, sequence = 0, slaveId = 1, startReg, values }) {
+  const modbusFrame = writeMultipleRegistersRequest(slaveId, startReg, values);
+  return buildV5Request({ loggerSerial, sequence, modbusFrame });
+}
+
+/**
+ * readWriteResultFromResponse - one-shot: unwrap a V5 response frame and parse
+ * its embedded Modbus write acknowledgement (fn 0x06 / 0x10). Throws on any
+ * framing/CRC/exception. The register VALUE is confirmed by the fn-0x03 readback
+ * loop, not by this ack.
+ */
+function readWriteResultFromResponse(buf, opts = {}) {
+  const v5 = parseV5Response(buf, opts);
+  return parseWriteResponse(v5.modbusFrame, opts);
+}
+
 module.exports = {
   // constants
   V5_START,
@@ -254,14 +359,20 @@ module.exports = {
   // modbus
   modbusCrc16,
   readHoldingRegistersRequest,
+  writeSingleRegisterRequest,
+  writeMultipleRegistersRequest,
   parseModbusResponse,
+  parseWriteResponse,
   // v5
   v5Checksum,
   buildV5Request,
   buildReadRequest,
+  buildWriteSingleRequest,
+  buildWriteMultipleRequest,
   expectedFrameLength,
   parseV5Response,
   readRegistersFromResponse,
+  readWriteResultFromResponse,
   registerBlock,
   normLoggerSerial,
 };

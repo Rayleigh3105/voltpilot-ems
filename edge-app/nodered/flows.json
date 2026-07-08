@@ -277,6 +277,78 @@
     ]
   },
   {
+    "id": "auto-control-note",
+    "type": "comment",
+    "z": "tab-auto",
+    "name": "Steuerung: Sollwert -> Schreibplan (controlRoute) -> schreiben + zuruecklesen -> vp-control-readback. Standard AUS (Not-Aus), Deye nur lesend.",
+    "info": "",
+    "x": 520,
+    "y": 500,
+    "wires": []
+  },
+  {
+    "id": "auto-sollwert",
+    "type": "vp-sollwert",
+    "z": "tab-auto",
+    "name": "Sollwert vom Core",
+    "core": "cfg-vp-core",
+    "x": 140,
+    "y": 560,
+    "wires": [
+      [
+        "auto-control-plan"
+      ]
+    ]
+  },
+  {
+    "id": "auto-control-plan",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Steuerung / Schreibplan",
+    "func": "// Steuerung / Schreibplan - der Herzschlag der Selbstverdrahtung auf der\n// SCHREIB-Seite: nimmt den (bereits guard-begrenzten) Sollwert vom Core und\n// baut den Schreibplan fuer die aktive Auswahl. Traegt eine KOPIE von\n// controlRoute() aus edge-app/nodered/inverter-control-routing.js (synchron\n// gehalten, gepinnt von flows-sync.test.js). SICHERHEIT: schreibt NICHTS,\n// solange nicht control_enabled (Not-Aus des Core, Standard AUS) UND die\n// Familie zertifiziert ist ('sunspec'; Deye bleibt bis zur Pruefstand-Freigabe\n// nur lesend).\nfunction controlRoute(selection, setpoint, opts) {\n  opts = opts || {};\n  var idle = function (reason) { return { adapter: 'idle', family: '', certified: false, controlEnabled: false, writes: [], readbacks: [], reason: reason }; };\n  if (!selection) return idle('keine Auswahl');\n  var conn = selection.connection || {};\n  var ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';\n  if (!ip) return idle('keine IP-Adresse');\n  if (!setpoint || typeof setpoint.battery_setpoint_kw !== 'number' || !isFinite(setpoint.battery_setpoint_kw)) return idle('kein gueltiger Sollwert');\n  var CERTIFIED = { sunspec: true };\n  var s16raw = function (kw) { return Math.round(kw * 100) & 0xffff; };\n  var clampPct = function (v) { return Math.max(0, Math.min(100, Math.round(v))); };\n  var NO_PV_LIMIT = 0xffff;\n  var controlEnabled = setpoint.control_enabled === true;\n  var family = typeof selection.family === 'string' ? selection.family.trim() : '';\n  var certified = CERTIFIED[family] === true;\n  var kw = setpoint.battery_setpoint_kw;\n  var pvLimitKw = (typeof setpoint.pv_limit_kw === 'number' && isFinite(setpoint.pv_limit_kw) && setpoint.pv_limit_kw >= 0) ? setpoint.pv_limit_kw : null;\n  if (selection.communication === 'modbus_tcp') {\n    var port = Number(conn.port) > 0 ? Number(conn.port) : 502;\n    var unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;\n    var invert = conn.invert_control_sign === true;\n    var battKw = invert ? -kw : kw;\n    var battRaw = s16raw(battKw);\n    var pvRaw = pvLimitKw == null ? NO_PV_LIMIT : (Math.max(0, Math.round(pvLimitKw * 100)) & 0xffff);\n    var planned = [\n      { role: 'battery_power', fc: 6, addr: 40, value: battRaw, encode: { kind: 'kw_x100_s16', scale: 100, kw: battKw }, dwell_s: 0, min_change: 0 },\n      { role: 'control_enable', fc: 6, addr: 41, value: 1, encode: { kind: 'flag' }, dwell_s: 0, min_change: 0 },\n      { role: 'pv_limit', fc: 6, addr: 42, value: pvRaw, encode: { kind: 'pv_limit_x100_u16', scale: 100, sentinel: NO_PV_LIMIT, kw: pvLimitKw }, dwell_s: 0, min_change: 0 }\n    ];\n    var readbacks = [\n      { role: 'battery_power', fc: 3, addr: 40, expect: battRaw, tolerance: 1 },\n      { role: 'control_enable', fc: 3, addr: 41, expect: 1, tolerance: 0 },\n      { role: 'pv_limit', fc: 3, addr: 42, expect: pvRaw, tolerance: 1 }\n    ];\n    var writeAllowed = certified && controlEnabled;\n    var out = { adapter: 'modbus_tcp', family: family, profile: family, target: ip + ':' + port, connection: { ip: ip, port: port, unit_id: unitId }, certified: certified, controlEnabled: controlEnabled, writes: writeAllowed ? planned : [], readbacks: readbacks, planned: planned };\n    if (!writeAllowed) out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Modell noch nicht freigegeben';\n    return out;\n  }\n  if (selection.communication === 'solarman_v5') {\n    var dport = Number(conn.port) > 0 ? Number(conn.port) : 8899;\n    var serial = conn.serial;\n    var slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;\n    var dinvert = conn.invert_control_sign === true;\n    var socMin = (typeof setpoint.soc_min_pct === 'number' && isFinite(setpoint.soc_min_pct)) ? setpoint.soc_min_pct : 5;\n    var dbattKw = dinvert ? -kw : kw;\n    var charging = dbattKw > 0;\n    var powerW = Math.round(Math.abs(dbattKw) * 1000);\n    var targetSoc = charging ? 100 : clampPct(socMin);\n    var gridChargeAllowed = setpoint.grid_charge_allowed === true;\n    var gridChargeBit = (gridChargeAllowed && charging) ? 1 : 0;\n    var ratedKw = Number(opts.ratedKw) > 0 ? Number(opts.ratedKw) : 0;\n    var exportPct = (pvLimitKw == null || ratedKw <= 0) ? 100 : clampPct((pvLimitKw / ratedKw) * 100);\n    var dplanned = [\n      { role: 'work_mode', fc: 6, addr: 0x0f01, value: 1, encode: { kind: 'work_mode', mode: 'tou' }, dwell_s: 900, min_change: 0, bench_pending: true },\n      { role: 'battery_power', fc: 6, addr: 0x0f3d, value: powerW & 0xffff, encode: { kind: 'watt_u16', kw: dbattKw }, dwell_s: 900, min_change: 50, bench_pending: true },\n      { role: 'battery_target_soc', fc: 6, addr: 0x0f44, value: targetSoc, encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' }, dwell_s: 900, min_change: 1, bench_pending: true },\n      { role: 'grid_charge_enable', fc: 6, addr: 0x0f4b, value: gridChargeBit, encode: { kind: 'flag', eeg_gated: true }, dwell_s: 900, min_change: 0, bench_pending: true },\n      { role: 'pv_limit', fc: 6, addr: 0x0028, value: exportPct, encode: { kind: 'export_pct', rated_kw: ratedKw, kw: pvLimitKw }, dwell_s: 900, min_change: 1, bench_pending: true }\n    ];\n    return { adapter: 'solarman_v5', family: family, target: ip + ':' + dport, connection: { ip: ip, port: dport, serial: serial, mb_slave_id: slaveId }, certified: certified, controlEnabled: controlEnabled, writes: [], readbacks: [], planned: dplanned, reason: 'Steuerung f\\u00fcr dieses Modell noch nicht freigegeben' };\n  }\n  return idle('unbekannte Kommunikationsmethode');\n}\nvar sp = msg.setpoint || null;\nif (!sp) { node.status({ fill: 'grey', shape: 'ring', text: 'kein Sollwert' }); return null; }\nvar sel = flow.get('inverter_config') || null;\nmsg.control = controlRoute(sel, sp, {});\nif (msg.control.adapter === 'idle') { node.status({ fill: 'grey', shape: 'ring', text: msg.control.reason || 'keine Steuerung' }); return null; }\nvar nWrites = msg.control.writes.length;\nnode.status({ fill: nWrites ? 'blue' : 'grey', shape: 'dot', text: msg.control.family + ': ' + (nWrites ? (nWrites + ' Schreibbefehle') : (msg.control.reason || 'nur lesen')) });\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 560,
+    "wires": [
+      [
+        "auto-control-exec"
+      ]
+    ]
+  },
+  {
+    "id": "auto-control-exec",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Steuerung schreiben + zuruecklesen",
+    "func": "// Steuerung schreiben + zuruecklesen (report Rueckleseschleife §5): eine\n// geordnete TCP-Verbindung, erst die FC6-Schreibbefehle, dann jedes Register\n// per FC3 zurueckgelesen und befohlen-gegen-tatsaechlich verglichen. Ergebnis\n// -> vp-control-readback (edge/control/readback, nicht retained). Nur der\n// generische SunSpec-Adapter schreibt hier; der Deye-Adapter traegt keine\n// ausfuehrbaren Befehle (nur lesend bis Pruefstand-Freigabe) und macht nichts.\nconst net = global.get('net');\nif (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }\nconst ctrl = msg.control;\nif (!ctrl || ctrl.adapter !== 'modbus_tcp' || !Array.isArray(ctrl.readbacks) || ctrl.readbacks.length === 0) {\n  node.status({ fill: 'grey', shape: 'ring', text: (ctrl && ctrl.reason) ? ctrl.reason : 'keine Steuerung' });\n  return null;\n}\nconst conn = ctrl.connection || {};\nconst unitId = conn.unit_id || 1;\nconst timeoutMs = conn.timeout_ms || 5000;\nconst s16 = (v) => { v &= 0xffff; return v > 0x7fff ? v - 0x10000 : v; };\nconst frameLen = (buf) => (buf.length < 6 ? null : 6 + buf.readUInt16BE(4));\nconst buildRead = (txid, addr, count) => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x03; b.writeUInt16BE(addr & 0xffff, 8); b.writeUInt16BE(count & 0xffff, 10); return b; };\nconst buildWrite = (txid, addr, value) => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x06; b.writeUInt16BE(addr & 0xffff, 8); b.writeUInt16BE(value & 0xffff, 10); return b; };\nconst parseRead = (buf, txid) => { if (buf.length < 9) throw new Error('Antwort zu kurz'); if (buf.readUInt16BE(0) !== (txid & 0xffff)) throw new Error('Transaktions-ID'); const fn = buf[7]; if (fn & 0x80) throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16)); if (fn !== 0x03) throw new Error('Modbus-Funktion 0x' + fn.toString(16)); const bc = buf[8]; const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(buf.readUInt16BE(9 + i * 2)); return regs; };\nconst parseWrite = (buf, txid) => { if (buf.length < 12) throw new Error('Schreibantwort zu kurz'); if (buf.readUInt16BE(0) !== (txid & 0xffff)) throw new Error('Transaktions-ID'); const fn = buf[7]; if (fn & 0x80) throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16)); if (fn !== 0x06) throw new Error('Modbus-Funktion 0x' + fn.toString(16)); return { addr: buf.readUInt16BE(8), value: buf.readUInt16BE(10) }; };\nlet txid = context.get('ctxid') || 0;\nreturn new Promise((resolve) => {\n  const sock = new net.Socket();\n  sock.setNoDelay(true);\n  let done = false, acc = Buffer.alloc(0), pending = null;\n  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); resolve(null); } else { resolve(okMsg); } };\n  const t = setTimeout(() => finish(new Error('Timeout')), timeoutMs);\n  sock.once('error', (e) => finish(e));\n  const txn = (buf, parse) => new Promise((res, rej) => { pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(buf); });\n  sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); const need = frameLen(acc); if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const frame = acc.slice(0, need); acc = acc.slice(need); try { p.res(p.parse(frame)); } catch (e) { p.rej(e); } } });\n  sock.connect(conn.port || 502, conn.ip, async () => {\n    try {\n      for (const w of (ctrl.writes || [])) { txid = (txid + 1) & 0xffff; const wt = txid; await txn(buildWrite(txid, w.addr, w.value), (b) => parseWrite(b, wt)); }\n      const registers = [];\n      for (const rb of ctrl.readbacks) { txid = (txid + 1) & 0xffff; const rt = txid; const regs = await txn(buildRead(txid, rb.addr, 1), (b) => parseRead(b, rt)); const actual = regs[0] & 0xffff; const tol = rb.tolerance || 0; const entry = { role: rb.role, fc: 3, addr: rb.addr, commanded_raw: rb.expect & 0xffff, actual_raw: actual, match: Math.abs(actual - (rb.expect & 0xffff)) <= tol }; if (rb.role === 'battery_power') { entry.commanded_kw = s16(rb.expect) / 100; entry.actual_kw = s16(actual) / 100; } if (rb.role === 'pv_limit') { entry.commanded_kw = (rb.expect & 0xffff) === 0xffff ? null : rb.expect / 100; entry.actual_kw = actual === 0xffff ? null : actual / 100; } registers.push(entry); }\n      context.set('ctxid', txid);\n      const all = registers.every((r) => r.match);\n      node.status({ fill: all ? 'green' : 'red', shape: 'dot', text: all ? ('bestätigt (' + registers.length + ')') : 'Abweichung' });\n      const sp = msg.setpoint || {};\n      msg.payload = { ts: new Date().toISOString(), family: ctrl.family, source: sp.source || '', slot_start: sp.slot_start, control_enabled: !!ctrl.controlEnabled, certified: !!ctrl.certified, registers: registers };\n      finish(null, msg);\n    } catch (e) { finish(e); }\n  });\n});",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 650,
+    "y": 560,
+    "wires": [
+      [
+        "auto-control-readback"
+      ]
+    ]
+  },
+  {
+    "id": "auto-control-readback",
+    "type": "vp-control-readback",
+    "z": "tab-auto",
+    "name": "Rueckmeldung an Core",
+    "core": "cfg-vp-core",
+    "x": 930,
+    "y": 560,
+    "wires": []
+  },
+  {
     "id": "tab-sim",
     "type": "tab",
     "label": "SunSpec (Simulator)",
@@ -412,99 +484,75 @@
     ]
   },
   {
+    "id": "sim-control-note",
+    "type": "comment",
+    "z": "tab-sim",
+    "name": "Steuerung + Rueckleseverifikation gegen den Simulator: FC6 Reg 40/41/42 schreiben, FC3 zuruecklesen, vergleichen",
+    "info": "",
+    "x": 380,
+    "y": 300,
+    "wires": []
+  },
+  {
     "id": "sim-sollwert",
     "type": "vp-sollwert",
     "z": "tab-sim",
     "name": "Sollwert vom Core",
     "core": "cfg-vp-core",
     "x": 140,
-    "y": 320,
+    "y": 360,
     "wires": [
       [
-        "sim-sp2reg"
+        "sim-control-plan"
       ]
     ]
   },
   {
-    "id": "sim-sp2reg",
+    "id": "sim-control-plan",
     "type": "function",
     "z": "tab-sim",
-    "name": "Sollwert -> FC6 Reg 40",
-    "func": "// Der Sollwert ist bereits durch die Guards des Core begrenzt; hier nur die\n// Übersetzung ins Register (int16, 0,01 kW, Zweierkomplement).\nconst kw = Number(msg.payload);\nif (!isFinite(kw)) { return null; }\nconst raw = Math.round(kw * 100) & 0xffff;\nmsg.payload = { value: raw, fc: 6, unitid: 1, address: 40, quantity: 1 };\nnode.status({ fill: 'blue', shape: 'dot', text: (msg.setpoint && msg.setpoint.source || '?') + ' -> ' + kw.toFixed(1) + ' kW' });\nreturn msg;",
+    "name": "Steuerung / Schreibplan",
+    "func": "// Steuerung / Schreibplan - der Herzschlag der Selbstverdrahtung auf der\n// SCHREIB-Seite: nimmt den (bereits guard-begrenzten) Sollwert vom Core und\n// baut den Schreibplan fuer die aktive Auswahl. Traegt eine KOPIE von\n// controlRoute() aus edge-app/nodered/inverter-control-routing.js (synchron\n// gehalten, gepinnt von flows-sync.test.js). SICHERHEIT: schreibt NICHTS,\n// solange nicht control_enabled (Not-Aus des Core, Standard AUS) UND die\n// Familie zertifiziert ist ('sunspec'; Deye bleibt bis zur Pruefstand-Freigabe\n// nur lesend).\nfunction controlRoute(selection, setpoint, opts) {\n  opts = opts || {};\n  var idle = function (reason) { return { adapter: 'idle', family: '', certified: false, controlEnabled: false, writes: [], readbacks: [], reason: reason }; };\n  if (!selection) return idle('keine Auswahl');\n  var conn = selection.connection || {};\n  var ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';\n  if (!ip) return idle('keine IP-Adresse');\n  if (!setpoint || typeof setpoint.battery_setpoint_kw !== 'number' || !isFinite(setpoint.battery_setpoint_kw)) return idle('kein gueltiger Sollwert');\n  var CERTIFIED = { sunspec: true };\n  var s16raw = function (kw) { return Math.round(kw * 100) & 0xffff; };\n  var clampPct = function (v) { return Math.max(0, Math.min(100, Math.round(v))); };\n  var NO_PV_LIMIT = 0xffff;\n  var controlEnabled = setpoint.control_enabled === true;\n  var family = typeof selection.family === 'string' ? selection.family.trim() : '';\n  var certified = CERTIFIED[family] === true;\n  var kw = setpoint.battery_setpoint_kw;\n  var pvLimitKw = (typeof setpoint.pv_limit_kw === 'number' && isFinite(setpoint.pv_limit_kw) && setpoint.pv_limit_kw >= 0) ? setpoint.pv_limit_kw : null;\n  if (selection.communication === 'modbus_tcp') {\n    var port = Number(conn.port) > 0 ? Number(conn.port) : 502;\n    var unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;\n    var invert = conn.invert_control_sign === true;\n    var battKw = invert ? -kw : kw;\n    var battRaw = s16raw(battKw);\n    var pvRaw = pvLimitKw == null ? NO_PV_LIMIT : (Math.max(0, Math.round(pvLimitKw * 100)) & 0xffff);\n    var planned = [\n      { role: 'battery_power', fc: 6, addr: 40, value: battRaw, encode: { kind: 'kw_x100_s16', scale: 100, kw: battKw }, dwell_s: 0, min_change: 0 },\n      { role: 'control_enable', fc: 6, addr: 41, value: 1, encode: { kind: 'flag' }, dwell_s: 0, min_change: 0 },\n      { role: 'pv_limit', fc: 6, addr: 42, value: pvRaw, encode: { kind: 'pv_limit_x100_u16', scale: 100, sentinel: NO_PV_LIMIT, kw: pvLimitKw }, dwell_s: 0, min_change: 0 }\n    ];\n    var readbacks = [\n      { role: 'battery_power', fc: 3, addr: 40, expect: battRaw, tolerance: 1 },\n      { role: 'control_enable', fc: 3, addr: 41, expect: 1, tolerance: 0 },\n      { role: 'pv_limit', fc: 3, addr: 42, expect: pvRaw, tolerance: 1 }\n    ];\n    var writeAllowed = certified && controlEnabled;\n    var out = { adapter: 'modbus_tcp', family: family, profile: family, target: ip + ':' + port, connection: { ip: ip, port: port, unit_id: unitId }, certified: certified, controlEnabled: controlEnabled, writes: writeAllowed ? planned : [], readbacks: readbacks, planned: planned };\n    if (!writeAllowed) out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Modell noch nicht freigegeben';\n    return out;\n  }\n  if (selection.communication === 'solarman_v5') {\n    var dport = Number(conn.port) > 0 ? Number(conn.port) : 8899;\n    var serial = conn.serial;\n    var slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;\n    var dinvert = conn.invert_control_sign === true;\n    var socMin = (typeof setpoint.soc_min_pct === 'number' && isFinite(setpoint.soc_min_pct)) ? setpoint.soc_min_pct : 5;\n    var dbattKw = dinvert ? -kw : kw;\n    var charging = dbattKw > 0;\n    var powerW = Math.round(Math.abs(dbattKw) * 1000);\n    var targetSoc = charging ? 100 : clampPct(socMin);\n    var gridChargeAllowed = setpoint.grid_charge_allowed === true;\n    var gridChargeBit = (gridChargeAllowed && charging) ? 1 : 0;\n    var ratedKw = Number(opts.ratedKw) > 0 ? Number(opts.ratedKw) : 0;\n    var exportPct = (pvLimitKw == null || ratedKw <= 0) ? 100 : clampPct((pvLimitKw / ratedKw) * 100);\n    var dplanned = [\n      { role: 'work_mode', fc: 6, addr: 0x0f01, value: 1, encode: { kind: 'work_mode', mode: 'tou' }, dwell_s: 900, min_change: 0, bench_pending: true },\n      { role: 'battery_power', fc: 6, addr: 0x0f3d, value: powerW & 0xffff, encode: { kind: 'watt_u16', kw: dbattKw }, dwell_s: 900, min_change: 50, bench_pending: true },\n      { role: 'battery_target_soc', fc: 6, addr: 0x0f44, value: targetSoc, encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' }, dwell_s: 900, min_change: 1, bench_pending: true },\n      { role: 'grid_charge_enable', fc: 6, addr: 0x0f4b, value: gridChargeBit, encode: { kind: 'flag', eeg_gated: true }, dwell_s: 900, min_change: 0, bench_pending: true },\n      { role: 'pv_limit', fc: 6, addr: 0x0028, value: exportPct, encode: { kind: 'export_pct', rated_kw: ratedKw, kw: pvLimitKw }, dwell_s: 900, min_change: 1, bench_pending: true }\n    ];\n    return { adapter: 'solarman_v5', family: family, target: ip + ':' + dport, connection: { ip: ip, port: dport, serial: serial, mb_slave_id: slaveId }, certified: certified, controlEnabled: controlEnabled, writes: [], readbacks: [], planned: dplanned, reason: 'Steuerung f\\u00fcr dieses Modell noch nicht freigegeben' };\n  }\n  return idle('unbekannte Kommunikationsmethode');\n}\nvar sp = msg.setpoint || null;\nif (!sp) { node.status({ fill: 'grey', shape: 'ring', text: 'kein Sollwert' }); return null; }\nvar sel = { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: 'edge-sim', port: 502, unit_id: 1 } };\nmsg.control = controlRoute(sel, sp, {});\nif (msg.control.adapter === 'idle') { node.status({ fill: 'grey', shape: 'ring', text: msg.control.reason || 'keine Steuerung' }); return null; }\nvar nWrites = msg.control.writes.length;\nnode.status({ fill: nWrites ? 'blue' : 'grey', shape: 'dot', text: msg.control.family + ': ' + (nWrites ? (nWrites + ' Schreibbefehle') : (msg.control.reason || 'nur lesen')) });\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
     "x": 380,
-    "y": 320,
+    "y": 360,
     "wires": [
       [
-        "sim-write"
+        "sim-control-exec"
       ]
     ]
   },
   {
-    "id": "sim-write",
-    "type": "modbus-flex-write",
-    "z": "tab-sim",
-    "name": "write setpoint (FC6 Adr. 40)",
-    "showStatusActivities": false,
-    "showErrors": false,
-    "server": "cfg-mb-sim",
-    "keepMsgProperties": false,
-    "emptyMsgOnFail": true,
-    "delayOnStart": false,
-    "startDelayTime": "",
-    "x": 640,
-    "y": 320,
-    "wires": [
-      [],
-      []
-    ]
-  },
-  {
-    "id": "sim-enable-inj",
-    "type": "inject",
-    "z": "tab-sim",
-    "name": "EMS-Steuerung aktivieren (einmalig)",
-    "props": [
-      {
-        "p": "payload"
-      }
-    ],
-    "repeat": "",
-    "crontab": "",
-    "once": true,
-    "onceDelay": "4",
-    "topic": "",
-    "payload": "",
-    "payloadType": "date",
-    "x": 200,
-    "y": 400,
-    "wires": [
-      [
-        "sim-enable-fn"
-      ]
-    ]
-  },
-  {
-    "id": "sim-enable-fn",
+    "id": "sim-control-exec",
     "type": "function",
     "z": "tab-sim",
-    "name": "enable (Reg 41 = 1)",
-    "func": "msg.payload = { value: 1, fc: 6, unitid: 1, address: 41, quantity: 1 };\nreturn msg;",
+    "name": "Steuerung schreiben + zuruecklesen",
+    "func": "// Steuerung schreiben + zuruecklesen (report Rueckleseschleife §5): eine\n// geordnete TCP-Verbindung, erst die FC6-Schreibbefehle, dann jedes Register\n// per FC3 zurueckgelesen und befohlen-gegen-tatsaechlich verglichen. Ergebnis\n// -> vp-control-readback (edge/control/readback, nicht retained). Nur der\n// generische SunSpec-Adapter schreibt hier; der Deye-Adapter traegt keine\n// ausfuehrbaren Befehle (nur lesend bis Pruefstand-Freigabe) und macht nichts.\nconst net = global.get('net');\nif (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }\nconst ctrl = msg.control;\nif (!ctrl || ctrl.adapter !== 'modbus_tcp' || !Array.isArray(ctrl.readbacks) || ctrl.readbacks.length === 0) {\n  node.status({ fill: 'grey', shape: 'ring', text: (ctrl && ctrl.reason) ? ctrl.reason : 'keine Steuerung' });\n  return null;\n}\nconst conn = ctrl.connection || {};\nconst unitId = conn.unit_id || 1;\nconst timeoutMs = conn.timeout_ms || 5000;\nconst s16 = (v) => { v &= 0xffff; return v > 0x7fff ? v - 0x10000 : v; };\nconst frameLen = (buf) => (buf.length < 6 ? null : 6 + buf.readUInt16BE(4));\nconst buildRead = (txid, addr, count) => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x03; b.writeUInt16BE(addr & 0xffff, 8); b.writeUInt16BE(count & 0xffff, 10); return b; };\nconst buildWrite = (txid, addr, value) => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x06; b.writeUInt16BE(addr & 0xffff, 8); b.writeUInt16BE(value & 0xffff, 10); return b; };\nconst parseRead = (buf, txid) => { if (buf.length < 9) throw new Error('Antwort zu kurz'); if (buf.readUInt16BE(0) !== (txid & 0xffff)) throw new Error('Transaktions-ID'); const fn = buf[7]; if (fn & 0x80) throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16)); if (fn !== 0x03) throw new Error('Modbus-Funktion 0x' + fn.toString(16)); const bc = buf[8]; const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(buf.readUInt16BE(9 + i * 2)); return regs; };\nconst parseWrite = (buf, txid) => { if (buf.length < 12) throw new Error('Schreibantwort zu kurz'); if (buf.readUInt16BE(0) !== (txid & 0xffff)) throw new Error('Transaktions-ID'); const fn = buf[7]; if (fn & 0x80) throw new Error('Modbus-Ausnahme 0x' + (buf[8] || 0).toString(16)); if (fn !== 0x06) throw new Error('Modbus-Funktion 0x' + fn.toString(16)); return { addr: buf.readUInt16BE(8), value: buf.readUInt16BE(10) }; };\nlet txid = context.get('ctxid') || 0;\nreturn new Promise((resolve) => {\n  const sock = new net.Socket();\n  sock.setNoDelay(true);\n  let done = false, acc = Buffer.alloc(0), pending = null;\n  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); resolve(null); } else { resolve(okMsg); } };\n  const t = setTimeout(() => finish(new Error('Timeout')), timeoutMs);\n  sock.once('error', (e) => finish(e));\n  const txn = (buf, parse) => new Promise((res, rej) => { pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(buf); });\n  sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); const need = frameLen(acc); if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const frame = acc.slice(0, need); acc = acc.slice(need); try { p.res(p.parse(frame)); } catch (e) { p.rej(e); } } });\n  sock.connect(conn.port || 502, conn.ip, async () => {\n    try {\n      for (const w of (ctrl.writes || [])) { txid = (txid + 1) & 0xffff; const wt = txid; await txn(buildWrite(txid, w.addr, w.value), (b) => parseWrite(b, wt)); }\n      const registers = [];\n      for (const rb of ctrl.readbacks) { txid = (txid + 1) & 0xffff; const rt = txid; const regs = await txn(buildRead(txid, rb.addr, 1), (b) => parseRead(b, rt)); const actual = regs[0] & 0xffff; const tol = rb.tolerance || 0; const entry = { role: rb.role, fc: 3, addr: rb.addr, commanded_raw: rb.expect & 0xffff, actual_raw: actual, match: Math.abs(actual - (rb.expect & 0xffff)) <= tol }; if (rb.role === 'battery_power') { entry.commanded_kw = s16(rb.expect) / 100; entry.actual_kw = s16(actual) / 100; } if (rb.role === 'pv_limit') { entry.commanded_kw = (rb.expect & 0xffff) === 0xffff ? null : rb.expect / 100; entry.actual_kw = actual === 0xffff ? null : actual / 100; } registers.push(entry); }\n      context.set('ctxid', txid);\n      const all = registers.every((r) => r.match);\n      node.status({ fill: all ? 'green' : 'red', shape: 'dot', text: all ? ('bestätigt (' + registers.length + ')') : 'Abweichung' });\n      const sp = msg.setpoint || {};\n      msg.payload = { ts: new Date().toISOString(), family: ctrl.family, source: sp.source || '', slot_start: sp.slot_start, control_enabled: !!ctrl.controlEnabled, certified: !!ctrl.certified, registers: registers };\n      finish(null, msg);\n    } catch (e) { finish(e); }\n  });\n});",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 450,
-    "y": 400,
+    "x": 650,
+    "y": 360,
     "wires": [
       [
-        "sim-write"
+        "sim-control-readback"
       ]
     ]
+  },
+  {
+    "id": "sim-control-readback",
+    "type": "vp-control-readback",
+    "z": "tab-sim",
+    "name": "Rueckmeldung an Core",
+    "core": "cfg-vp-core",
+    "x": 930,
+    "y": 360,
+    "wires": []
   }
 ]

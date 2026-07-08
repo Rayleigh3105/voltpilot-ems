@@ -374,6 +374,9 @@
     // Hand the state to the Fahrplan view: it refetches the full plan when a new
     // one arrives and keeps the live setpoint + active slot + freshness current.
     if (window.VPPlan) window.VPPlan.onState(s);
+    // Hand the state to the "Steuerung & Bestätigung" card (register-level
+    // control readback fed by state.control).
+    if (window.VPControl) window.VPControl.onState(s);
   }
 
   // ---------- data purge ("Datenaufzeichnungen löschen") ----------

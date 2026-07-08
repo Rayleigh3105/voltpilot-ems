@@ -47,6 +47,17 @@ type Snapshot struct {
 	// nil until one is chosen in the local web app.
 	Inverter *InverterInfo `json:"inverter,omitempty"`
 
+	// ControlEnabled is the global inverter-control kill-switch (VP_CONTROL_ENABLED,
+	// default false). ControlCertified reflects whether the selected model's
+	// register-map family is on the bench-certification allowlist. Together they
+	// gate whether ANY setpoint is written to the inverter.
+	ControlEnabled   bool `json:"control_enabled"`
+	ControlCertified bool `json:"control_certified"`
+	// Control is the latest per-register control readback (commanded vs actual),
+	// nil until the first readback arrives. Read-only proof for the :8484
+	// "Steuerung & Bestätigung" card + the cloud status heartbeat.
+	Control *ControlInfo `json:"control,omitempty"`
+
 	// DataPurge tracks a data purge ("Datenaufzeichnungen löschen") triggered
 	// on this device: nil when none is in flight or everything is confirmed.
 	DataPurge *DataPurgeInfo `json:"data_purge,omitempty"`
@@ -75,6 +86,34 @@ type DataPurgeInfo struct {
 	RequestedAt time.Time `json:"requested_at"`
 	CloudState  string    `json:"cloud_state"`
 	ConfirmedAt time.Time `json:"confirmed_at,omitzero"`
+}
+
+// ControlInfo is the UI-facing per-register control readback: what the schedule
+// commanded vs. what the inverter reads back, with an accept/mismatch verdict.
+// Fed by edge/control/readback (report §5). Read-only proof - it controls
+// nothing.
+type ControlInfo struct {
+	CheckedAt      time.Time         `json:"checked_at"`
+	Family         string            `json:"family,omitempty"`
+	Source         string            `json:"source,omitempty"` // "schedule" | "default"
+	SlotStart      string            `json:"slot_start,omitempty"`
+	ControlEnabled bool              `json:"control_enabled"`
+	Certified      bool              `json:"certified"`
+	AllMatch       bool              `json:"all_match"`
+	MismatchRoles  []string          `json:"mismatch_roles,omitempty"`
+	Registers      []ControlRegister `json:"registers"`
+}
+
+// ControlRegister is one control register's commanded-vs-actual readback.
+type ControlRegister struct {
+	Role         string   `json:"role"`
+	Fc           int      `json:"fc,omitempty"`
+	Addr         int      `json:"addr"`
+	CommandedRaw int      `json:"commanded_raw"`
+	CommandedKw  *float64 `json:"commanded_kw,omitempty"`
+	ActualRaw    int      `json:"actual_raw"`
+	ActualKw     *float64 `json:"actual_kw,omitempty"`
+	Match        bool     `json:"match"`
 }
 
 // InverterInfo is the UI-facing summary of the selected inverter.

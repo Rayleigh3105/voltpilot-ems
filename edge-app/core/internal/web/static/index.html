@@ -255,6 +255,51 @@
       </div>
     </section>
 
+    <!-- Inverter control confirmation (Steuerung & Bestätigung) -->
+    <div class="section-title">Steuerung &amp; Bestätigung</div>
+    <section class="card control-card">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3"/></svg></span>Wechselrichter-Steuerung</h3>
+        <span class="ctrl-state" id="ctrlState" hidden><span class="ss-dot"></span><span id="ctrlStateText">–</span></span>
+      </div>
+
+      <!-- The setpoint that was commanded + how it was confirmed -->
+      <div id="ctrlBody" hidden>
+        <div class="plan-now" id="ctrlNow">
+          <div class="plan-now-main">
+            <span class="plan-now-label">Fahrplan-Sollwert</span>
+            <span class="plan-now-value"><span id="ctrlCmdVal">–</span><span class="u">kW</span></span>
+            <span class="plan-now-badge idle" id="ctrlModeBadge">–</span>
+          </div>
+          <p class="plan-now-sub" id="ctrlNowSub"></p>
+        </div>
+
+        <div class="ctrl-banner" id="ctrlBanner" hidden></div>
+
+        <div class="ctrl-table-wrap">
+          <table class="ctrl-table" id="ctrlTable">
+            <thead>
+              <tr><th>Register</th><th>Befohlen</th><th>Wechselrichter</th><th>Status</th></tr>
+            </thead>
+            <tbody id="ctrlRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Not-yet-controlled / read-only states -->
+      <div class="plan-empty" id="ctrlEmpty">
+        <span class="plan-empty-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        </span>
+        <div>
+          <strong id="ctrlEmptyTitle">Noch keine Steuerung.</strong>
+          <p id="ctrlEmptyText">Sobald der Fahrplan an den Wechselrichter geschrieben und
+          zurückgelesen wird, sehen Sie hier register-genau, ob der Wechselrichter
+          den Sollwert übernommen hat.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- Live power chart -->
     <div class="section-title">Verlauf</div>
     <section class="card chart-card">
@@ -342,6 +387,7 @@
 
   <script src="charts.js"></script>
   <script src="plan.js"></script>
+  <script src="control.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

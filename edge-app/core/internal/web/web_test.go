@@ -820,3 +820,43 @@ func TestFahrplanSectionServed(t *testing.T) {
 		t.Error("plan.js: does not expose the VPPlan hook dashboard.js calls")
 	}
 }
+
+// The "Steuerung & Bestätigung" section is built by control.js against fixed
+// element ids and fed by state.control; pin the embedded page + asset so a
+// static/ edit that forgets the //go:embed rebuild fails here.
+func TestSteuerungSectionServed(t *testing.T) {
+	srv := serveHandler(t, &fakePlan{})
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	page := get("/index.html")
+	for _, want := range []string{
+		`id="ctrlRows"`, `id="ctrlBody"`, `id="ctrlEmpty"`, `id="ctrlBanner"`,
+		`Wechselrichter-Steuerung`, `src="control.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing %s", want)
+		}
+	}
+	js := get("/control.js")
+	if !strings.Contains(js, "VPControl") {
+		t.Error("control.js: does not expose the VPControl hook dashboard.js calls")
+	}
+	if !strings.Contains(js, "Abweichung") {
+		t.Error("control.js: missing the mismatch wording")
+	}
+}

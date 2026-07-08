@@ -18,3 +18,9 @@ services:
       VP_DEV_SITE_ID: "00000000-0000-0000-0000-000000000002"
       VP_DEV_DEVICE_ID: "00000000-0000-0000-0000-000000000003"
       VP_DEV_CLOUD_URL: "tcp://cloud-broker:1883"
+      # Enable the inverter-control kill-switch so the Simulator control path
+      # writes reg 40/41/42 and reads them back (write -> readback -> match).
+      # No inverter is selected in the core here, so the empty family is treated
+      # as certified (dev/sim path); the Node-RED sim adapter's own family gate
+      # ('sunspec' certified) still governs.
+      VP_CONTROL_ENABLED: "true"

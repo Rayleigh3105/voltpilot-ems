@@ -15,6 +15,8 @@ func clearEnv(t *testing.T) {
 		"VP_MAX_DISCHARGE_KW", "VP_SOC_MIN_PCT", "VP_SOC_MAX_PCT", "VP_BUFFER_HOURS",
 		"VP_SETPOINT_INTERVAL_SECONDS", "VP_DEV_TENANT_ID", "VP_DEV_SITE_ID",
 		"VP_DEV_DEVICE_ID", "VP_DEV_CLOUD_URL", "VP_DEV_INSECURE",
+		"VP_CONTROL_ENABLED", "VP_GRID_CHARGE_ALLOWED", "VP_CONTROL_CERTIFIED_FAMILIES",
+		"VP_RECONCILE_INTERVAL_SECONDS",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -122,5 +124,53 @@ func TestInvalidConfigFileFails(t *testing.T) {
 	t.Setenv("VP_CONFIG", path)
 	if _, err := Load(); err == nil {
 		t.Error("malformed config file must fail loudly")
+	}
+}
+
+func TestControlDefaultsOffAndCertifiedAllowlist(t *testing.T) {
+	clearEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ControlEnabled {
+		t.Fatal("ControlEnabled must default false (kill-switch off)")
+	}
+	if cfg.GridChargeAllowed {
+		t.Fatal("GridChargeAllowed must default false (EEG-compliant)")
+	}
+	if !cfg.ControlCertified("sunspec") {
+		t.Fatal("sunspec must be certified by default")
+	}
+	if cfg.ControlCertified("hybrid_3p") {
+		t.Fatal("Deye hybrid_3p must NOT be certified by default")
+	}
+	// An empty family (no selection / sim path) is treated as certified; the
+	// Layer-1 adapter still enforces its own gate.
+	if !cfg.ControlCertified("") {
+		t.Fatal("empty family should be certified (dev/sim path)")
+	}
+}
+
+func TestControlEnvOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("VP_CONTROL_ENABLED", "true")
+	t.Setenv("VP_GRID_CHARGE_ALLOWED", "1")
+	t.Setenv("VP_CONTROL_CERTIFIED_FAMILIES", "sunspec, hybrid_3p")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ControlEnabled || !cfg.GridChargeAllowed {
+		t.Fatalf("env bools not applied: %+v", cfg)
+	}
+	if !cfg.ControlCertified("hybrid_3p") {
+		t.Fatal("hybrid_3p should be certified after the env override")
+	}
+	if !cfg.ControlCertified("sunspec") {
+		t.Fatal("sunspec should remain certified")
+	}
+	if cfg.ControlCertified("micro") {
+		t.Fatal("micro should not be certified")
 	}
 }

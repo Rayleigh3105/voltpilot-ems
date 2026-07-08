@@ -368,6 +368,8 @@ services:
       VOLTPILOT_PROVISIONING_ENABLED: "true"
       MQTT_BROKER_URL: tcp://emqx:1883
       VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED: "true"
+      # Inverter-control confirmation ingestion (portal "Steuerung" strip).
+      VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
     volumes:
       # Device-CA working dir (created by tools/pki/voltpilot-ca.sh init-ca in
       # this clone). READ-WRITE on purpose: issuance advances the CA's

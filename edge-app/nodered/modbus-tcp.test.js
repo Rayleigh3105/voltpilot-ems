@@ -98,3 +98,42 @@ test('decodeProfile returns null for an unknown profile or short block', () => {
   assert.strictEqual(mb.decodeProfile('nope', [1, 2, 3, 4, 5, 6, 7]), null);
   assert.strictEqual(mb.decodeProfile('sunspec', [1, 2, 3]), null);
 });
+
+// --- fn-0x06 write single register (the SunSpec control adapter write side) ---
+
+// Build a fn-0x06 echo response (server echoes the request).
+function buildWriteEcho({ txid = 0, unit = 1, addr, value }) {
+  const buf = Buffer.alloc(12);
+  buf.writeUInt16BE(txid & 0xffff, 0);
+  buf.writeUInt16BE(0, 2);
+  buf.writeUInt16BE(6, 4);
+  buf[6] = unit & 0xff;
+  buf[7] = mb.FN_WRITE_SINGLE;
+  buf.writeUInt16BE(addr & 0xffff, 8);
+  buf.writeUInt16BE(value & 0xffff, 10);
+  return buf;
+}
+
+test('buildWriteSingleRequest encodes a fn-0x06 MBAP+PDU frame', () => {
+  const req = mb.buildWriteSingleRequest({ txid: 0x0009, unitId: 1, addr: 40, value: (-2500) & 0xffff });
+  assert.strictEqual(req.length, 12);
+  assert.strictEqual(req.readUInt16BE(0), 0x0009);
+  assert.strictEqual(req.readUInt16BE(4), 6);
+  assert.strictEqual(req[7], 0x06);
+  assert.strictEqual(req.readUInt16BE(8), 40);
+  assert.strictEqual(req.readUInt16BE(10), (-2500) & 0xffff); // int16 0.01 kW two's complement
+});
+
+test('parseWriteSingleResponse round-trips the echoed addr/value', () => {
+  const echo = buildWriteEcho({ txid: 9, unit: 1, addr: 42, value: 0xffff });
+  const got = mb.parseWriteSingleResponse(echo, { expectTxid: 9, expectUnit: 1 });
+  assert.deepStrictEqual(got, { addr: 42, value: 0xffff });
+});
+
+test('parseWriteSingleResponse rejects a Modbus exception and a txid mismatch', () => {
+  const exc = Buffer.alloc(12);
+  exc.writeUInt16BE(1, 0); exc.writeUInt16BE(6, 4); exc[6] = 1; exc[7] = 0x86; exc[8] = 0x02;
+  assert.throws(() => mb.parseWriteSingleResponse(exc), /Ausnahme 0x02/);
+  const echo = buildWriteEcho({ txid: 9, addr: 40, value: 1 });
+  assert.throws(() => mb.parseWriteSingleResponse(echo, { expectTxid: 8 }), /Transaktions-ID/);
+});

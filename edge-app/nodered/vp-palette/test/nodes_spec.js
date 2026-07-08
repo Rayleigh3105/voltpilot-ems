@@ -16,6 +16,7 @@ const vpTelemetrie = require('../nodes/vp-telemetrie.js');
 const vpSollwert = require('../nodes/vp-sollwert.js');
 const vpStatus = require('../nodes/vp-status.js');
 const vpInverterConfig = require('../nodes/vp-inverter-config.js');
+const vpControlReadback = require('../nodes/vp-control-readback.js');
 
 helper.init(require.resolve('node-red'));
 
@@ -111,6 +112,34 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpInverterConfig.parse(Buffer.from(JSON.stringify({
       schema_version: '1.0', communication: 'modbus_tcp', family: 'sunspec', connection: {},
     }))), null);
+  });
+
+  it('vp-control-readback shapes a readback and derives all_match / mismatch_roles', function () {
+    const ok = vpControlReadback.shape({
+      ts: '2026-07-08T12:00:03Z', family: 'sunspec', source: 'schedule',
+      registers: [
+        { role: 'battery_power', fc: 3, addr: 40, commanded_raw: 64536, actual_raw: 64536, match: true },
+        { role: 'control_enable', fc: 3, addr: 41, commanded_raw: 1, actual_raw: 1, match: true },
+      ],
+    });
+    assert.strictEqual(ok.all_match, true);
+    assert.deepStrictEqual(ok.mismatch_roles, []);
+
+    const bad = vpControlReadback.shape({
+      registers: [
+        { role: 'battery_power', fc: 3, addr: 40, commanded_raw: 64536, actual_raw: 1200, match: false },
+        { role: 'control_enable', fc: 3, addr: 41, commanded_raw: 1, actual_raw: 1, match: true },
+      ],
+    });
+    assert.strictEqual(bad.all_match, false);
+    assert.deepStrictEqual(bad.mismatch_roles, ['battery_power']);
+  });
+
+  it('vp-control-readback rejects malformed readbacks', function () {
+    assert.strictEqual(vpControlReadback.shape(null), null);
+    assert.strictEqual(vpControlReadback.shape({}), null);
+    assert.strictEqual(vpControlReadback.shape({ registers: 'x' }), null);
+    assert.strictEqual(vpControlReadback.shape({ registers: [{ role: 'x' }] }), null);
   });
 });
 
@@ -286,6 +315,34 @@ describe('nodes against a local-bus stand-in', function () {
       const st1 = helper.getNode('st1');
       setTimeout(function () {
         st1.receive({ payload: true });
+      }, 300);
+    });
+  });
+
+  it('vp-control-readback publishes the readback on edge/control/readback (not retained)', function (done) {
+    const flow = coreFlow([
+      { id: 'cr1', type: 'vp-control-readback', core: 'core1' },
+    ]);
+    broker.subscribe('edge/control/readback', function (packet, cb) {
+      cb();
+      const m = JSON.parse(packet.payload.toString());
+      try {
+        assert.strictEqual(packet.retain, false, 'readback is a live event, never retained');
+        assert.strictEqual(m.all_match, true);
+        assert.strictEqual(m.registers.length, 1);
+        assert.strictEqual(m.registers[0].role, 'battery_power');
+        done();
+      } catch (e) {
+        done(e);
+      }
+    }, function () {});
+    helper.load([vpCore, vpControlReadback], flow, function () {
+      const cr1 = helper.getNode('cr1');
+      setTimeout(function () {
+        cr1.receive({ payload: {
+          family: 'sunspec', source: 'schedule',
+          registers: [{ role: 'battery_power', fc: 3, addr: 40, commanded_raw: 64536, actual_raw: 64536, match: true }],
+        } });
       }, 300);
     });
   });

@@ -300,6 +300,9 @@ services:
       # Device-initiated data purge: consume purge_request messages from the
       # status topic (docs/contracts/mqtt-data-purge.schema.json).
       VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED: "true"
+      # Inverter-control confirmation: ingest the additive `control` block of the
+      # status heartbeat into device_control_status (portal "Steuerung" strip).
+      VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
     ports:
       - "${API_PORT:-8090}:8090"
     healthcheck:

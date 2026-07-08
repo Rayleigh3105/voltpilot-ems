@@ -1,0 +1,37 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-control-readback', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'status.svg',
+    align: 'right',
+    label: function () { return this.name || 'vp-control-readback'; },
+    paletteLabel: 'vp-control-readback'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-control-readback">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-control-readback">
+  <p>Meldet dem VoltPilot Core-Agenten das Ergebnis eines Steuerbefehls je
+  Register (befohlen gegen zurückgelesen), damit die lokale Geräte-Webansicht
+  „Steuerung &amp; Bestätigung" register-genau anzeigt, ob der Wechselrichter
+  den Fahrplan-Sollwert übernommen hat.</p>
+  <p><code>msg.payload</code>: das Rücklese-Objekt mit
+  <code>registers: [{ role, addr, commanded_raw, actual_raw, match }]</code>
+  und <code>all_match</code>.</p>
+</script>

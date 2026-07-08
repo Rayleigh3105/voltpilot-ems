@@ -575,6 +575,28 @@ paths:
               schema: { $ref: "#/components/schemas/Schedule" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/control-status:
+    get:
+      tags: [schedules]
+      summary: Latest inverter-control confirmation for a site ("Steuerung").
+      description: >
+        What the schedule commanded vs. what the inverter read back for this
+        site's device(s), ingested from the additive `control` block of the
+        device status heartbeat (report §5). Feeds the portal's calm "Steuerung"
+        strip ("Fahrplan-Sollwert X -> Wechselrichter bestätigt Y", healthy |
+        mismatch | stale). RLS-scoped by tenant. 204 (no body) until a device has
+        reported a control readback.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's latest control confirmation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlStatus" }
+        "204": { description: No control readback reported yet for this site. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/history:
     get:
       tags: [history]
@@ -1948,6 +1970,19 @@ components:
               priceEurMwh: { type: number }
               costEur: { type: number, description: "Projected slot cost with the plan." }
               baselineCostEur: { type: number, description: "Projected slot cost with the battery idle." }
+    ControlStatus:
+      type: object
+      description: Latest inverter-control confirmation for a site (report §5).
+      properties:
+        deviceId: { type: string, format: uuid }
+        commandedKw: { type: number, nullable: true, description: "Commanded battery setpoint (Fahrplan-Sollwert)." }
+        confirmedKw: { type: number, nullable: true, description: "Setpoint the inverter read back." }
+        allMatch: { type: boolean, description: "True when every controlled register confirmed its commanded value." }
+        controlEnabled: { type: boolean, description: "Whether the device's control kill-switch is on." }
+        certified: { type: boolean, description: "Whether the model is bench-certified for control." }
+        mismatchRoles: { type: string, nullable: true, description: "Comma-separated roles that did not confirm (e.g. \"battery_power\")." }
+        slotStart: { type: string, format: date-time, nullable: true }
+        checkedAt: { type: string, format: date-time, description: "When the readback was taken (\"geprüft vor X\")." }
     History:
       type: object
       properties:

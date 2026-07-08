@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const routing = require('./inverter-routing');
+const controlRouting = require('./inverter-control-routing');
 const modbusTcp = require('./modbus-tcp');
 const deyeDecode = require('./deye/deye-decode');
 
@@ -135,6 +136,53 @@ test('flow Deye decoder DROPS an out-of-range SoC hybrid_3p read, like the modul
   const { ret } = runDeyeDecode(cfg, blocks);
   assert.strictEqual(ret, null);
   assert.strictEqual(deyeDecode.decode(blocks, cfg), null);
+});
+
+// The "Steuerung / Schreibplan" node (auto-control-plan) carries a synced COPY
+// of inverter-control-routing.controlRoute(). These assert the inline body's
+// write plan matches the module byte-for-byte (JSON-compared) - the safety-
+// critical drift guard: a divergence could silently re-enable a gated write.
+function runControlPlan(sel, setpoint) {
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint }, flow: { inverter_config: sel },
+  });
+  return msg.control;
+}
+
+test('flow control planner matches controlRoute() for a certified SunSpec write', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
+    communication: 'modbus_tcp', connection: { ip: 'edge-sim', port: 502, unit_id: 1 },
+  };
+  const sp = { battery_setpoint_kw: -25, pv_limit_kw: 3, source: 'schedule', control_enabled: true };
+  const flowPlan = runControlPlan(sel, sp);
+  const modulePlan = JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, {})));
+  assert.deepStrictEqual(flowPlan, modulePlan);
+  assert.strictEqual(flowPlan.writes.length, 3, 'certified + enabled -> writes');
+});
+
+test('flow control planner matches controlRoute() with the kill-switch OFF (no writes)', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
+    communication: 'modbus_tcp', connection: { ip: 'edge-sim', port: 502, unit_id: 1 },
+  };
+  const sp = { battery_setpoint_kw: -25, source: 'schedule', control_enabled: false };
+  const flowPlan = runControlPlan(sel, sp);
+  assert.deepStrictEqual(flowPlan, JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, {}))));
+  assert.deepStrictEqual(flowPlan.writes, [], 'kill-switch off -> no writes');
+  assert.strictEqual(flowPlan.readbacks.length, 3, 'readbacks still run');
+});
+
+test('flow control planner keeps Deye read-only (uncertified) like the module', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5',
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 },
+  };
+  const sp = { battery_setpoint_kw: -20, pv_limit_kw: 25, source: 'schedule', control_enabled: true };
+  const flowPlan = runControlPlan(sel, sp);
+  assert.deepStrictEqual(flowPlan, JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, {}))));
+  assert.deepStrictEqual(flowPlan.writes, [], 'Deye never emits an executable write');
+  assert.strictEqual(flowPlan.certified, false);
 });
 
 test('flow modbus decoder matches modbus-tcp.decodeProfile() (sunspec)', () => {

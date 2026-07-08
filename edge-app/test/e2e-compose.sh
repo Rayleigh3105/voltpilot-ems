@@ -88,5 +88,27 @@ STATE=$(curl -fsS "http://127.0.0.1:${VP_WEB_PORT}/api/state")
 echo "$STATE" | grep -q '"mode":"fahrplan"' || fail "core not in fahrplan mode: $STATE"
 echo "$STATE" | grep -q '"inverter_link":"up"' || fail "inverter link not reported up: $STATE"
 
+echo "--- control write -> readback -> match (sim control adapter writes reg 40/41/42, reads them back)"
+# The setpoint loop writes -25 kW (reg 40) + enable (reg 41) + the pv-limit
+# sentinel (reg 42), reads all three back via FC3 and publishes the per-register
+# verdict on edge/control/readback; the core folds it into state.control.
+CTRL_OK=""
+for i in $(seq 1 30); do
+  STATE=$(curl -fsS "http://127.0.0.1:${VP_WEB_PORT}/api/state")
+  if printf '%s' "$STATE" | python3 -c '
+import json, sys
+s = json.load(sys.stdin)
+c = s.get("control")
+if not c or not c.get("all_match"): sys.exit(1)
+regs = {r["role"]: r for r in c.get("registers", [])}
+bp = regs.get("battery_power")
+ok = bp and abs((bp.get("actual_kw") or 0) - (-25.0)) < 0.01 and c.get("control_enabled") and c.get("certified")
+sys.exit(0 if ok else 1)
+'; then CTRL_OK=1; break; fi
+  sleep 2
+done
+[ -n "$CTRL_OK" ] || { echo "$STATE"; fail "control readback never confirmed reg 40 = -25 kW (all_match)"; }
+echo "control readback confirmed: -25 kW written to reg 40, read back and matched"
+
 echo
-echo "E2E OK: full loop verified (sim -> nodered/vp-palette -> core -> cloud broker; schedule -> guards -> sim)."
+echo "E2E OK: full loop verified (sim -> nodered/vp-palette -> core -> cloud broker; schedule -> guards -> sim; control write -> readback -> match)."

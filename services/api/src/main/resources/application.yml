@@ -107,6 +107,13 @@ voltpilot:
   # turns it on.
   purge:
     mqtt-listener-enabled: ${VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED:false}
+  # Inverter-control confirmation ingestion: a sibling listener on the same
+  # status topic parses the additive `control` block of the device heartbeat
+  # (commanded vs. read-back inverter setpoint) into device_control_status, so
+  # the portal can render the "Steuerung" strip. Reuses the provisioning broker
+  # settings above. Off by default; compose turns it on next to the purge one.
+  control:
+    mqtt-listener-enabled: ${VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED:false}
   # First-boot device enrollment over HTTPS: a fresh edge device uploads a CSR
   # for its reference and polls for its mTLS certificate; once the ref is
   # claimed, the api signs the CSR with the device CA (ca-dir = the working dir

@@ -198,3 +198,29 @@ func TestStoreRoundtrip(t *testing.T) {
 		t.Errorf("persisted plan differs: %+v", p)
 	}
 }
+
+func TestActivePvLimitForwardsAndClears(t *testing.T) {
+	now := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
+	cap := 3.0
+	p := &Plan{
+		SlotMinutes: 15,
+		ReceivedAt:  now,
+		Slots: []Slot{
+			{Start: now.Add(-1 * time.Minute), BatterySetpointKw: -5, PvLimitKw: &cap},
+			{Start: now.Add(14 * time.Minute), BatterySetpointKw: -5}, // next slot, no cap
+		},
+	}
+	got := p.ActivePvLimit(now)
+	if got == nil || *got != 3.0 {
+		t.Fatalf("ActivePvLimit = %v, want 3", got)
+	}
+	// A slot without a cap -> nil (the core then clears any latched limit).
+	if p.ActivePvLimit(now.Add(15*time.Minute)) != nil {
+		t.Fatal("uncapped slot should yield nil pv limit")
+	}
+	// A stale plan yields nil regardless of the slot's cap.
+	stale := &Plan{SlotMinutes: 15, ReceivedAt: now.Add(-30 * time.Minute), Slots: p.Slots}
+	if stale.ActivePvLimit(now) != nil {
+		t.Fatal("stale plan should yield nil pv limit")
+	}
+}

@@ -5,6 +5,7 @@ import com.voltpilot.api.history.HistoryService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.PriceRepository;
+import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.ScheduleRepository;
 import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -17,6 +18,7 @@ import com.voltpilot.api.web.dto.HistoryDto;
 import com.voltpilot.api.web.dto.PriceHistoryDto;
 import com.voltpilot.api.web.dto.PricePointDto;
 import com.voltpilot.api.web.dto.PriceSeriesDto;
+import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.SiteDeletionPreviewDto;
 import com.voltpilot.api.web.dto.SiteDto;
@@ -67,6 +69,7 @@ public class SiteController {
     private final ScheduleRepository schedules;
     private final HistoryService history;
     private final ForecastQualityRepository forecastQuality;
+    private final ControlStatusRepository controlStatus;
     private final String activeLoadModel;
     private final String activePvModel;
 
@@ -80,6 +83,7 @@ public class SiteController {
             ScheduleRepository schedules,
             HistoryService history,
             ForecastQualityRepository forecastQuality,
+            ControlStatusRepository controlStatus,
             @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
             @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
@@ -91,6 +95,7 @@ public class SiteController {
         this.schedules = schedules;
         this.history = history;
         this.forecastQuality = forecastQuality;
+        this.controlStatus = controlStatus;
         this.activeLoadModel = activeLoadModel;
         this.activePvModel = activePvModel;
     }
@@ -356,5 +361,21 @@ public class SiteController {
         }
         SchedulePlanDto plan = schedules.latestForSite(siteId);
         return plan != null ? plan : SchedulePlanDto.empty();
+    }
+
+    /**
+     * The latest inverter-control confirmation for this site (report §5.4): what
+     * the schedule commanded vs. what the inverter read back, for the portal's
+     * calm "Steuerung" strip. 204 (no body) when no device has reported a
+     * control readback yet; foreign site -> 404 (RLS).
+     */
+    @GetMapping("/{siteId}/control-status")
+    public ResponseEntity<ControlStatusDto> controlStatus(@PathVariable UUID siteId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return controlStatus.latestForSite(siteId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
     }
 }

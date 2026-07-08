@@ -18,8 +18,45 @@ const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const controlRouting = require('./inverter-control-routing');
+
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
+
+// A Modbus-TCP server that also honours fn-0x06 writes into a register store,
+// so a written register reads back exactly (the readback loop's proof target -
+// mirrors edge/sim, which stores reg 40/41/42 and serves them via FC3).
+function startReadWriteServer(initial) {
+  const store = Object.assign({}, initial);
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      sock.on('data', (req) => {
+        const txid = req.readUInt16BE(0);
+        const fn = req[7];
+        if (fn === 0x06) {
+          const addr = req.readUInt16BE(8);
+          const value = req.readUInt16BE(10);
+          store[addr] = value & 0xffff;
+          sock.write(req); // echo
+          return;
+        }
+        const addr = req.readUInt16BE(8);
+        const count = req.readUInt16BE(10);
+        const byteCount = count * 2;
+        const resp = Buffer.alloc(9 + byteCount);
+        resp.writeUInt16BE(txid, 0);
+        resp.writeUInt16BE(0, 2);
+        resp.writeUInt16BE(3 + byteCount, 4);
+        resp[6] = req[6];
+        resp[7] = 0x03;
+        resp[8] = byteCount;
+        for (let i = 0; i < count; i++) resp.writeUInt16BE((store[addr + i] || 0) & 0xffff, 9 + i * 2);
+        sock.write(resp);
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, store }));
+  });
+}
 
 // A minimal Modbus-TCP server answering fn-0x03 with a fixed register block.
 function startModbusServer(regs) {
@@ -92,6 +129,76 @@ test('generic Modbus-TCP flow reads + decodes a live server end to end', async (
   } finally {
     server.close();
   }
+});
+
+test('control exec writes reg 40/41/42 then reads them back and confirms a match', async () => {
+  const { server, port, store } = await startReadWriteServer({ 40: 0, 41: 0, 42: 0xffff });
+  try {
+    const sel = {
+      schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
+      communication: 'modbus_tcp', connection: { ip: '127.0.0.1', port, unit_id: 1 },
+    };
+    const setpoint = { battery_setpoint_kw: -25, pv_limit_kw: 3, source: 'schedule', slot_start: '2026-07-08T12:00:00Z', control_enabled: true };
+    const msg = { control: controlRouting.controlRoute(sel, setpoint, {}), setpoint };
+    const out = await runFunctionNode(byId['auto-control-exec'].func, msg);
+    assert.ok(out, 'exec published a readback (no socket error)');
+    const rb = out.payload;
+    assert.strictEqual(rb.family, 'sunspec');
+    assert.strictEqual(rb.source, 'schedule');
+    assert.strictEqual(rb.control_enabled, true);
+    assert.strictEqual(rb.certified, true);
+    // the store now holds the written values (write actually happened)
+    assert.strictEqual(store[40], (-2500) & 0xffff, 'battery setpoint written to reg 40');
+    assert.strictEqual(store[41], 1, 'control-enable written to reg 41');
+    assert.strictEqual(store[42], 300, 'pv-limit written to reg 42');
+    // every register reads back its commanded value -> all match
+    const byRole = Object.fromEntries(rb.registers.map((r) => [r.role, r]));
+    assert.strictEqual(byRole.battery_power.actual_raw, (-2500) & 0xffff);
+    assert.strictEqual(byRole.battery_power.actual_kw, -25);
+    assert.strictEqual(byRole.battery_power.match, true);
+    assert.strictEqual(byRole.pv_limit.actual_kw, 3);
+    assert.ok(rb.registers.every((r) => r.match), 'all registers confirmed');
+  } finally {
+    server.close();
+  }
+});
+
+test('control exec flags a mismatch when the inverter ignores the write', async () => {
+  // A server that echoes the write ack but does NOT store it (reg 40 stays 0) -
+  // the readback then differs from the command: the exact case the captain wants
+  // to catch ("der Wechselrichter hat den Sollwert nicht uebernommen").
+  const server = net.createServer((sock) => {
+    sock.on('data', (req) => {
+      const txid = req.readUInt16BE(0);
+      const fn = req[7];
+      if (fn === 0x06) { sock.write(req); return; } // ack but drop the value
+      const count = req.readUInt16BE(10);
+      const resp = Buffer.alloc(9 + count * 2);
+      resp.writeUInt16BE(txid, 0); resp.writeUInt16BE(3 + count * 2, 4); resp[6] = req[6]; resp[7] = 0x03; resp[8] = count * 2;
+      sock.write(resp); // all registers read back 0
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const port = server.address().port;
+    const sel = { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: '127.0.0.1', port, unit_id: 1 } };
+    const setpoint = { battery_setpoint_kw: -25, source: 'schedule', control_enabled: true };
+    const msg = { control: controlRouting.controlRoute(sel, setpoint, {}), setpoint };
+    const out = await runFunctionNode(byId['auto-control-exec'].func, msg);
+    const byRole = Object.fromEntries(out.payload.registers.map((r) => [r.role, r]));
+    assert.strictEqual(byRole.battery_power.match, false, 'reg 40 not adopted -> mismatch');
+    assert.strictEqual(byRole.battery_power.actual_raw, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test('control exec no-ops for an uncertified Deye plan (read-only, no publish)', async () => {
+  const sel = { schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5', connection: { ip: '127.0.0.1', port: 8899, serial: '1', mb_slave_id: 1 } };
+  const setpoint = { battery_setpoint_kw: -5, source: 'schedule', control_enabled: true };
+  const msg = { control: controlRouting.controlRoute(sel, setpoint, {}), setpoint };
+  const out = await runFunctionNode(byId['auto-control-exec'].func, msg);
+  assert.strictEqual(out, null, 'no readback published for a read-only adapter');
 });
 
 test('generic Modbus-TCP reader returns null on a connection error (idle-safe)', async () => {

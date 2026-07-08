@@ -7,6 +7,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,6 +88,12 @@ class PortalApiTest {
 
     @Autowired
     TestRestTemplate rest;
+
+    @Autowired
+    com.voltpilot.api.repo.DeviceRepository deviceRepo;
+
+    @Autowired
+    com.voltpilot.api.repo.ControlStatusRepository controlStatusRepo;
 
     // ---- token validation ---------------------------------------------------
 
@@ -2142,6 +2149,72 @@ class PortalApiTest {
         } catch (Exception e) {
             throw new IllegalStateException("query failed: " + sql, e);
         }
+    }
+
+    // ---- inverter control confirmation --------------------------------------
+
+    @Test
+    void controlStatusIsIngestedFromHeartbeatAndTenantScoped() {
+        var listener = new com.voltpilot.api.control.ControlStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, controlStatusRepo);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+
+        // A heartbeat carrying a CONFIRMED control block for the demo device.
+        listener.handle(topic, ("{"
+                + "\"schema_version\":\"1.0\","
+                + "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\","
+                + "\"online\":true,\"control_source\":\"schedule\","
+                + "\"control\":{\"commanded_kw\":-4.0,\"confirmed_kw\":-4.0,\"all_match\":true,"
+                + "\"control_enabled\":true,\"certified\":true,\"slot_start\":\"2026-07-08T12:00:00Z\","
+                + "\"checked_at\":\"2026-07-08T12:00:03Z\",\"mismatch_roles\":[]}}").getBytes(StandardCharsets.UTF_8));
+
+        ResponseEntity<Map> ok = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
+        assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ok.getBody().get("commandedKw")).isEqualTo(-4.0);
+        assertThat(ok.getBody().get("confirmedKw")).isEqualTo(-4.0);
+        assertThat(ok.getBody().get("allMatch")).isEqualTo(true);
+        assertThat(ok.getBody().get("controlEnabled")).isEqualTo(true);
+        assertThat(ok.getBody().get("certified")).isEqualTo(true);
+
+        // Tenant B cannot even see the site -> RLS 404.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // A newer MISMATCH heartbeat upserts the row (newest wins).
+        listener.handle(topic, ("{"
+                + "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\","
+                + "\"control\":{\"commanded_kw\":-4.0,\"confirmed_kw\":-1.2,\"all_match\":false,"
+                + "\"control_enabled\":true,\"certified\":true,"
+                + "\"checked_at\":\"2026-07-08T12:05:00Z\",\"mismatch_roles\":[\"battery_power\"]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> mism = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
+        assertThat(mism.getBody().get("allMatch")).isEqualTo(false);
+        assertThat(mism.getBody().get("confirmedKw")).isEqualTo(-1.2);
+        assertThat(mism.getBody().get("mismatchRoles")).isEqualTo("battery_power");
+
+        // A SPOOFED payload identity (device != topic) is ignored: row unchanged.
+        listener.handle(topic, ("{"
+                + "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"99999999-9999-9999-9999-999999999999\","
+                + "\"control\":{\"commanded_kw\":0,\"confirmed_kw\":0,\"all_match\":true,"
+                + "\"control_enabled\":true,\"certified\":true,\"checked_at\":\"2026-07-08T12:09:00Z\"}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> still = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
+        assertThat(still.getBody().get("allMatch")).isEqualTo(false); // spoof ignored, mismatch stays
     }
 
     /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */

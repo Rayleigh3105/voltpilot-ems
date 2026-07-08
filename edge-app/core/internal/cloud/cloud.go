@@ -190,10 +190,26 @@ func (l *Link) PublishTelemetry(e buffer.Entry) error {
 	return tok.Error()
 }
 
+// ControlSummary is the compact inverter-control confirmation folded into the
+// status heartbeat (report §5.3), so the cloud sees "Fahrplan sagt X ->
+// Wechselrichter bestätigt Y" without register-level detail. Additive; the
+// status heartbeat has no frozen schema, schema_version stays "1.0".
+type ControlSummary struct {
+	CommandedKw    *float64 `json:"commanded_kw"`
+	ConfirmedKw    *float64 `json:"confirmed_kw"`
+	AllMatch       bool     `json:"all_match"`
+	ControlEnabled bool     `json:"control_enabled"`
+	Certified      bool     `json:"certified"`
+	SlotStart      string   `json:"slot_start,omitempty"`
+	CheckedAt      string   `json:"checked_at"`
+	MismatchRoles  []string `json:"mismatch_roles"`
+}
+
 // PublishStatus sends the lightweight heartbeat on .../status (no frozen
 // schema; mirrors the Node-RED edge's shape). Fire-and-forget semantics:
-// errors are returned but the caller does not retry status.
-func (l *Link) PublishStatus(controlSource string, socPct *float64) error {
+// errors are returned but the caller does not retry status. `control` is the
+// optional control confirmation (nil = omit the block).
+func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -203,6 +219,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64) error {
 		"online":         true,
 		"control_source": controlSource,
 		"soc_pct":        socPct,
+	}
+	if control != nil {
+		payload["control"] = control
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

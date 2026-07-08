@@ -121,6 +121,28 @@ func (p *Plan) ActiveSetpoint(now time.Time) (kw float64, slotStart time.Time, o
 	return 0, time.Time{}, false
 }
 
+// ActivePvLimit returns the OPTIONAL PV feed-in cap (kW, >= 0) of the slot active
+// at now, so the core can forward it to Layer 1 for curtailment execution. nil
+// when the plan is stale, no slot is active, or the active slot has no cap - the
+// caller then clears any latched limit (report §4.5). Mirrors ActiveSetpoint's
+// freshness/window semantics exactly.
+func (p *Plan) ActivePvLimit(now time.Time) *float64 {
+	if !p.Fresh(now) {
+		return nil
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	for _, s := range p.Slots {
+		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
+			if s.PvLimitKw != nil {
+				v := *s.PvLimitKw
+				return &v
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
 // SlotView is one plan slot as the local Fahrplan view renders it.
 type SlotView struct {
 	Start             time.Time `json:"start"`

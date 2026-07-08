@@ -4,6 +4,8 @@ This file is the project's committed home for project-intrinsic agent knowledge:
 
 - Add durable project-specific notes here as they are discovered through real work.
 
+- **Anlagen-Seite "Steuerung" strip (inverter control confirmation, `vp-inverter-control`).** A calm read-only line "Fahrplan-Sollwert X → Wechselrichter bestätigt Y" below "Jetzt gerade", rendered by `components/ControlStrip.tsx` from the pure, unit-tested `src/control.ts` `controlStrip(status, now) → {state: healthy|mismatch|stale|off|pending, tone, sentence, agoNote}` (dot tones in `.vp-control-*` CSS). Data: `api.controlStatus(siteId)` → `GET /api/v1/sites/{id}/control-status` (204 → null; polled on the 30 s overview cadence, NOT the 5 s freshness tick). **Customer copy stays free of register/Modbus/kill-switch jargon** (that detail lives on the edge device's `:8484` "Steuerung & Bestätigung" card); `control.test.ts` pins this. The strip renders only once a device reports a readback (control is OFF by default, so most sites show nothing until an operator enables + bench-certifies control - see the root AGENTS.md "Inverter control" section).
+
 ## Build & test
 
 - **`npm run build`** = `tsc && vite build` (the type-check is the primary CI gate). **`npm test`** = `vitest run` (jsdom); `npm run test:watch` for the loop. Config in `vitest.config.ts` (separate from `vite.config.ts`); jest-dom matchers are wired in `src/test/setup.ts`.

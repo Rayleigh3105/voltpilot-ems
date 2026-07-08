@@ -268,3 +268,102 @@ test('string family: AC-output 32-bit low-word-first survives the V5 round trip'
   assert.strictEqual('load_kw' in reading, false, 'string has no house-load meter');
   assert.strictEqual('power_kw' in reading, false, 'string has no grid meter');
 });
+
+// --- Write PDUs: FC6 / FC16 round trips ---------------------------------------
+//
+// These are the write side of the Deye control adapter (report §4.4b, §3.3).
+// They are UNIT-tested here; a live write is only ever issued for a bench-
+// CERTIFIED model, never from a guessed address (see the safety gate).
+
+// Build a V5 *response* wrapping a raw Modbus reply body (any function code) -
+// used to feed the write-ack parsers a genuine framed reply.
+function makeV5WithModbusBody(mbBody, { loggerSerial, sequence = 0 } = {}) {
+  const mbCrc = refModbusCrc(mbBody);
+  const modbus = [...mbBody, mbCrc & 0xff, (mbCrc >> 8) & 0xff];
+  const preamble = [0x02, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const length = preamble.length + modbus.length;
+  const header = [0xa5, length & 0xff, (length >> 8) & 0xff, 0x10, 0x15, sequence & 0xff, (sequence >> 8) & 0xff];
+  const serial = loggerSerial >>> 0;
+  header.push(serial & 0xff, (serial >> 8) & 0xff, (serial >> 16) & 0xff, (serial >> 24) & 0xff);
+  const frame = [...header, ...preamble, ...modbus, 0x00, 0x15];
+  frame[frame.length - 2] = refV5Checksum(frame);
+  return Buffer.from(frame);
+}
+
+test('writeSingleRegisterRequest builds fn-0x06 with a low-byte-first CRC', () => {
+  const f = S.writeSingleRegisterRequest(1, 0x0028, 100);
+  assert.deepStrictEqual([...f.slice(0, 6)], [0x01, 0x06, 0x00, 0x28, 0x00, 0x64], 'slave/fn/reg/value BE');
+  assert.strictEqual(f.readUInt16LE(6), refModbusCrc([...f.slice(0, 6)]), 'CRC LE');
+  assert.strictEqual(f.length, 8);
+});
+
+test('writeSingleRegisterRequest masks the value to 16 bits (two-complement power word)', () => {
+  const f = S.writeSingleRegisterRequest(1, 0x0f3d, -4000 & 0xffff);
+  assert.deepStrictEqual([...f.slice(2, 6)], [0x0f, 0x3d, 0xf0, 0x60], 'reg 0x0F3D, value 0xF060 = -4000');
+});
+
+test('writeMultipleRegistersRequest builds fn-0x10 with byte count + BE words', () => {
+  const f = S.writeMultipleRegistersRequest(1, 0x0f3d, [4000, 80]);
+  // slave, fn, startHi, startLo, cntHi, cntLo, byteCount, w0Hi, w0Lo, w1Hi, w1Lo
+  assert.deepStrictEqual([...f.slice(0, 11)], [0x01, 0x10, 0x0f, 0x3d, 0x00, 0x02, 0x04, 0x0f, 0xa0, 0x00, 0x50]);
+  assert.strictEqual(f.readUInt16LE(11), refModbusCrc([...f.slice(0, 11)]), 'CRC LE');
+});
+
+test('writeMultipleRegistersRequest rejects an empty value list', () => {
+  assert.throws(() => S.writeMultipleRegistersRequest(1, 0, []), /non-empty/);
+});
+
+test('buildWriteSingleRequest wraps fn-0x06 in an exact V5 request frame', () => {
+  const loggerSerial = 2985159064; // real captain logger serial (DEYE.md)
+  const sequence = 0x0203;
+  const frame = S.buildWriteSingleRequest({ loggerSerial, sequence, slaveId: 1, reg: 0x0028, value: 50 });
+  assert.strictEqual(frame[0], 0xa5, 'start');
+  assert.strictEqual(frame[frame.length - 1], 0x15, 'end');
+  assert.strictEqual(frame.readUInt16LE(3), 0x4510, 'request control code');
+  assert.strictEqual(frame.readUInt16LE(5), sequence, 'sequence LE');
+  assert.strictEqual(frame.readUInt32LE(7), loggerSerial, 'logger serial LE32');
+  // embedded modbus fn-0x06 at offset 26
+  assert.deepStrictEqual([...frame.slice(26, 32)], [0x01, 0x06, 0x00, 0x28, 0x00, 0x32], 'fn-0x06 write');
+  assert.strictEqual(frame[frame.length - 2], refV5Checksum([...frame]), 'V5 checksum');
+  assert.strictEqual(frame.length, 11 + 15 + 8 + 2, 'full frame length');
+});
+
+test('parseWriteResponse reads back a fn-0x06 echo', () => {
+  const mbBody = [0x01, 0x06, 0x00, 0x28, 0x00, 0x64];
+  const crc = refModbusCrc(mbBody);
+  const mb = Buffer.from([...mbBody, crc & 0xff, (crc >> 8) & 0xff]);
+  const r = S.parseWriteResponse(mb, { expectFn: 0x06 });
+  assert.deepStrictEqual(r, { fn: 0x06, reg: 0x0028, value: 100 });
+});
+
+test('parseWriteResponse reads back a fn-0x10 acknowledgement', () => {
+  const mbBody = [0x01, 0x10, 0x0f, 0x3d, 0x00, 0x02];
+  const crc = refModbusCrc(mbBody);
+  const mb = Buffer.from([...mbBody, crc & 0xff, (crc >> 8) & 0xff]);
+  const r = S.parseWriteResponse(mb, { expectFn: 0x10 });
+  assert.deepStrictEqual(r, { fn: 0x10, startReg: 0x0f3d, count: 2 });
+});
+
+test('readWriteResultFromResponse unwraps a V5 write ack round trip', () => {
+  const loggerSerial = 2985159064;
+  const sequence = 7;
+  // fn-0x06 echo body
+  const echo = makeV5WithModbusBody([0x01, 0x06, 0x00, 0x28, 0x00, 0x32], { loggerSerial, sequence });
+  const r = S.readWriteResultFromResponse(echo, { expectLoggerSerial: loggerSerial, expectSequence: sequence, expectFn: 0x06 });
+  assert.deepStrictEqual(r, { fn: 0x06, reg: 0x0028, value: 50 });
+});
+
+test('parseWriteResponse surfaces a Modbus write exception and a bad CRC', () => {
+  const exc = [0x01, 0x86, 0x02]; // illegal data address on a 0x06 write
+  const crc = refModbusCrc(exc);
+  assert.throws(() => S.parseWriteResponse(Buffer.from([...exc, crc & 0xff, (crc >> 8) & 0xff])), /Ausnahme 0x02/);
+  const good = [0x01, 0x06, 0x00, 0x28, 0x00, 0x64];
+  assert.throws(() => S.parseWriteResponse(Buffer.from([...good, 0x00, 0x00])), /CRC/);
+});
+
+test('parseWriteResponse rejects an unexpected function code when asked', () => {
+  const mbBody = [0x01, 0x06, 0x00, 0x28, 0x00, 0x64];
+  const crc = refModbusCrc(mbBody);
+  const mb = Buffer.from([...mbBody, crc & 0xff, (crc >> 8) & 0xff]);
+  assert.throws(() => S.parseWriteResponse(mb, { expectFn: 0x10 }), /unerwartete Modbus-Funktion/);
+});

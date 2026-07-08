@@ -239,6 +239,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(localbus.TopicStatus, 2, a.onLocalStatus); err != nil {
 		return err
 	}
+	if err := bus.Subscribe(localbus.TopicControlReadback, 3, a.onControlReadback); err != nil {
+		return err
+	}
 
 	// Re-publish the persisted inverter selection retained, so a Node-RED that
 	// (re)joins the bus after a reboot immediately self-wires the right adapter.
@@ -514,7 +517,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.mu.Lock()
 				soc := a.lastRawSoc
 				a.mu.Unlock()
-				if err := link.PublishStatus(src, soc); err != nil {
+				if err := link.PublishStatus(src, soc, controlSummary(snap)); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():
@@ -708,6 +711,92 @@ func (a *Agent) onLocalStatus(_ string, payload []byte) {
 	})
 }
 
+// controlSummary distils the latest control readback into the compact heartbeat
+// block the cloud ingests (report §5.3). Returns nil when no readback exists yet
+// (the block is then omitted). commanded/confirmed kW come from the battery_power
+// register when present.
+func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
+	c := snap.Control
+	if c == nil {
+		return nil
+	}
+	sum := &cloud.ControlSummary{
+		AllMatch:       c.AllMatch,
+		ControlEnabled: c.ControlEnabled,
+		Certified:      c.Certified,
+		SlotStart:      c.SlotStart,
+		CheckedAt:      c.CheckedAt.UTC().Format(time.RFC3339Nano),
+		MismatchRoles:  c.MismatchRoles,
+	}
+	if sum.MismatchRoles == nil {
+		sum.MismatchRoles = []string{}
+	}
+	for _, r := range c.Registers {
+		if r.Role == "battery_power" {
+			sum.CommandedKw = r.CommandedKw
+			sum.ConfirmedKw = r.ActualKw
+			break
+		}
+	}
+	return sum
+}
+
+// onControlReadback ingests one control readback from Layer 1 (edge/control/
+// readback): the per-register commanded-vs-actual result of a control write. It
+// is stored in the Snapshot for the :8484 "Steuerung & Bestätigung" card and
+// folded into the status heartbeat so the cloud sees a compact confirmation
+// (report §5). Read-only - it never influences execution.
+func (a *Agent) onControlReadback(_ string, payload []byte) {
+	var m struct {
+		Ts             string   `json:"ts"`
+		Family         string   `json:"family"`
+		Source         string   `json:"source"`
+		SlotStart      string   `json:"slot_start"`
+		ControlEnabled bool     `json:"control_enabled"`
+		Certified      bool     `json:"certified"`
+		AllMatch       bool     `json:"all_match"`
+		MismatchRoles  []string `json:"mismatch_roles"`
+		Registers      []struct {
+			Role         string   `json:"role"`
+			Fc           int      `json:"fc"`
+			Addr         int      `json:"addr"`
+			CommandedRaw int      `json:"commanded_raw"`
+			CommandedKw  *float64 `json:"commanded_kw"`
+			ActualRaw    int      `json:"actual_raw"`
+			ActualKw     *float64 `json:"actual_kw"`
+			Match        bool     `json:"match"`
+		} `json:"registers"`
+	}
+	if err := json.Unmarshal(payload, &m); err != nil || len(m.Registers) == 0 {
+		slog.Warn("control readback malformed; skipped")
+		return
+	}
+	checkedAt := time.Now().UTC()
+	if m.Ts != "" {
+		if t, err := time.Parse(time.RFC3339, m.Ts); err == nil {
+			checkedAt = t.UTC()
+		}
+	}
+	info := &state.ControlInfo{
+		CheckedAt:      checkedAt,
+		Family:         m.Family,
+		Source:         m.Source,
+		SlotStart:      m.SlotStart,
+		ControlEnabled: m.ControlEnabled,
+		Certified:      m.Certified,
+		AllMatch:       m.AllMatch,
+		MismatchRoles:  m.MismatchRoles,
+	}
+	for _, r := range m.Registers {
+		info.Registers = append(info.Registers, state.ControlRegister{
+			Role: r.Role, Fc: r.Fc, Addr: r.Addr,
+			CommandedRaw: r.CommandedRaw, CommandedKw: r.CommandedKw,
+			ActualRaw: r.ActualRaw, ActualKw: r.ActualKw, Match: r.Match,
+		})
+	}
+	a.State.Update(func(s *state.Snapshot) { s.Control = info })
+}
+
 // onSchedule handles a (retained) schedule payload from the cloud: validate
 // against the frozen contract, verify it addresses THIS device, cache it in
 // memory + on disk.
@@ -780,10 +869,18 @@ func (a *Agent) applySetpoint(now time.Time) {
 		mode      state.Mode
 		source    string
 		slotStart time.Time
+		pvLimit   *float64
 	)
 	if raw, start, ok := p.ActiveSetpoint(now); ok {
 		kw = guards.Clamp(raw, limits, r)
 		mode, source, slotStart = state.ModeSchedule, "schedule", start
+		// Forward the slot's PV feed-in cap so a control adapter can execute
+		// curtailment (report §4.5). Guard: only-reduce, never negative; cleared
+		// (nil) on stale/fallback because ActivePvLimit returns nil there.
+		if lim := p.ActivePvLimit(now); lim != nil && *lim >= 0 {
+			v := math.Round(*lim*1000) / 1000
+			pvLimit = &v
+		}
 	} else if hasReading {
 		kw = guards.Clamp(guards.SelfConsumption(r), limits, r)
 		mode, source = state.ModeSelfConsume, "default"
@@ -794,10 +891,32 @@ func (a *Agent) applySetpoint(now time.Time) {
 		return
 	}
 
+	// Control gate (report §6.6/§6.7): the setpoint carries the core's kill-switch
+	// AND per-model certification verdict as control_enabled. Layer 1 writes only
+	// when this is true (defence in depth with its own family allowlist). OFF by
+	// default - no inverter is driven until an operator enables control.
+	a.invMu.Lock()
+	family := ""
+	if a.inv != nil {
+		family = a.inv.Family
+	}
+	a.invMu.Unlock()
+	certified := a.Cfg.ControlCertified(family)
+	controlEnabled := a.Cfg.ControlEnabled && certified
+
 	msg := map[string]any{
 		"battery_setpoint_kw": kw,
 		"source":              source,
 		"ts":                  now.Format(time.RFC3339Nano),
+		"control_enabled":     controlEnabled,
+		"grid_charge_allowed": a.Cfg.GridChargeAllowed,
+		"soc_min_pct":         a.Cfg.SocMinPct,
+	}
+	// pv_limit_kw is only present when the active slot caps feed-in; its ABSENCE
+	// tells the adapter to clear any latched limit (backward-compatible: an
+	// adapter that ignores the field keeps working).
+	if pvLimit != nil {
+		msg["pv_limit_kw"] = *pvLimit
 	}
 	if !slotStart.IsZero() {
 		msg["slot_start"] = slotStart.UTC().Format(time.RFC3339)
@@ -811,6 +930,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Mode = mode
 		s.SetpointKw = kw
 		s.SlotStart = slotStart
+		s.ControlEnabled = controlEnabled
+		s.ControlCertified = certified
 	})
 }
 
