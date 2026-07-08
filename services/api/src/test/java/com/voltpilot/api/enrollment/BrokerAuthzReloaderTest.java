@@ -59,6 +59,43 @@ class BrokerAuthzReloaderTest {
     }
 
     @Test
+    void reloadNowReportsSuccessAndFailure() throws Exception {
+        Path acl = Files.writeString(dir.resolve("acl.conf"), "{allow, all}.\n", StandardCharsets.UTF_8);
+        BrokerAuthzReloader ok = new BrokerAuthzReloader(acl, r -> { }, 0, inlineScheduler());
+        assertThat(ok.reloadNow()).isTrue();
+
+        BrokerAuthzReloader broken = new BrokerAuthzReloader(acl, r -> {
+            throw new RuntimeException("EMQX unreachable");
+        }, 0, inlineScheduler());
+        assertThat(broken.reloadNow()).isFalse();
+    }
+
+    @Test
+    void reloadNowBlockingRetriesThenSucceedsAndGivesUpAfterAttempts() throws Exception {
+        Path acl = Files.writeString(dir.resolve("acl.conf"), "{allow, all}.\n", StandardCharsets.UTF_8);
+
+        // Fails twice (broker blip during a rolling deploy) then succeeds.
+        AtomicInteger calls = new AtomicInteger();
+        BrokerAuthzReloader flaky = new BrokerAuthzReloader(acl, r -> {
+            if (calls.incrementAndGet() < 3) {
+                throw new RuntimeException("EMQX not ready yet");
+            }
+        }, 0, inlineScheduler());
+        assertThat(flaky.reloadNowBlocking(3, java.time.Duration.ZERO)).isTrue();
+        assertThat(calls.get()).isEqualTo(3);
+
+        // Never recovers: bounded, returns false, never throws (the startup path
+        // turns this into a loud, actionable ERROR, not a crashed boot).
+        AtomicInteger tries = new AtomicInteger();
+        BrokerAuthzReloader dead = new BrokerAuthzReloader(acl, r -> {
+            tries.incrementAndGet();
+            throw new RuntimeException("EMQX unreachable");
+        }, 0, inlineScheduler());
+        assertThat(dead.reloadNowBlocking(3, java.time.Duration.ZERO)).isFalse();
+        assertThat(tries.get()).isEqualTo(3);
+    }
+
+    @Test
     void reloadIsNonFatalWhenTheAclFileIsMissing() {
         BrokerAuthzReloader reloader = new BrokerAuthzReloader(dir.resolve("does-not-exist.conf"),
                 r -> {

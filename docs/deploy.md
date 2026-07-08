@@ -90,11 +90,21 @@ EMQX reads the ACL directory **read-only** and applies changed grants only on an
 EMQX's file authorizer is first-match, top to bottom: a per-device grant is only reachable if it sits **above** the catch-all UUID default-deny, i.e. INSIDE the `%%<<BEGIN..>> .. %%<<END GENERATED DEVICE GRANTS>>` region.
 A past bug could leave a grant appended **below** the default-deny (unreachable, so the device was denied and kicked off the broker) with the template tail duplicated - the 2026-07-08 prod-down incident.
 Three layers now keep `acl.conf` canonical and repair it with **no manual edit and no device re-claim**:
-1. **api startup self-heal (primary).** On boot the api normalizes `acl.conf` in place - moves every device grant above the default-deny, collapses duplicated `default-deny`/`$SYS`/`{allow, all}` tails to exactly one, keeps exactly one generated region - and, only if that changed anything, triggers the authz reload above. A healthy file is left byte-for-byte untouched (no reload noise). So **deploying the new image alone heals an already-corrupted file and the affected device reconnects on its own.**
+1. **api startup self-heal (primary).** On boot the api normalizes `acl.conf` in place - moves every device grant above the default-deny, collapses duplicated `default-deny`/`$SYS`/`{allow, all}` tails to exactly one, keeps exactly one generated region - and, only if that changed anything, **forces EMQX to re-read the file synchronously** (the REST authz reload below, retried a few times to ride out a rolling-deploy blip). A healthy file is left byte-for-byte untouched (no reload noise). So **deploying the new image alone heals an already-corrupted file and the affected device reconnects on its own, without restarting EMQX** - the api logs the resolved `acl.conf` path on boot, a loud `WARN` naming what it fixed, and an `INFO` once the reload lands. Proven end-to-end against a real EMQX 5.8.3 by `AclSelfHealBrokerE2eTest` (corrupted acl.conf denies a SUBSCRIBE -> heal + reload -> the same device is allowed on the running broker).
 2. **Grant writes** (enrollment issuance, `voltpilot-ca.sh issue/revoke`) do the same canonicalizing rebuild, so any claim/unclaim also self-heals.
 3. **The deploy-time merge** (`tools/pki/merge-acl-grants.sh`) collects device grants from the deployed file wherever they sit (a grant below the deny is no longer silently dropped) and re-emits them inside the base's single region above a single tail.
 
 All three are idempotent and never duplicate the tail.
+
+**Does an already-running EMQX need `docker restart emqx` after this deploy? No - not when `broker-authz-reload` is enabled** (the prod compose sets `VOLTPILOT_BROKER_AUTHZ_RELOAD_ENABLED=true`, reusing `EMQX_DASHBOARD_PASSWORD`). The startup self-heal drives the REST `PUT /authorization/sources/file`, which re-initializes EMQX's file authorizer on the running broker (verified: a plain `emqx ctl conf reload` does **not** re-read `acl.conf`, but this does). **Break-glass:** if the api logs `Broker ACL was healed ... but EMQX did NOT accept the authz reload` (broker unreachable, wrong `broker-authz-reload.api-url`/credentials, or the feature disabled), the file on disk is already correct - just force the re-read manually:
+
+```bash
+./tools/pki/reload-broker-authz.sh            # preferred (same re-init the api attempts)
+# or, if that is unavailable:
+docker compose -f docker-compose.prod.yml restart emqx   # re-reads acl.conf at boot
+```
+
+Never hand-edit `acl.conf` to fix ordering - the self-heal already made it canonical; only the broker re-read is missing.
 
 If the CA must NOT live on this host, set `VOLTPILOT_ENROLLMENT_ENABLED=false` in `.env`, run `init-ca` elsewhere and `scp` the four broker files over - see [Device mTLS material](#3-device-mtls-material-staged-once-on-the-vps); device certs are then issued manually with `voltpilot-ca.sh issue`.
 

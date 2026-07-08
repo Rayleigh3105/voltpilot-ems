@@ -3,8 +3,10 @@ package com.voltpilot.api.enrollment;
 import com.voltpilot.api.enrollment.EnrollmentDeviceLookup.DeviceIdentity;
 import com.voltpilot.api.enrollment.EnrollmentRepository.Enrollment;
 import jakarta.annotation.PostConstruct;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
@@ -56,6 +58,14 @@ public class EnrollmentService {
     private static final int LOCK_STRIPES = 64;
     private final Object[] refLocks = new Object[LOCK_STRIPES];
 
+    // Startup self-heal reload: EMQX has usually been running across the api
+    // redeploy (that is the whole problem - it keeps its old compiled rules), so
+    // the first attempt normally succeeds; the retries only cover a brief broker
+    // blip during a rolling deploy. Bounded so a genuinely unreachable broker
+    // does not stall the boot for long before the actionable ERROR is logged.
+    private static final int STARTUP_RELOAD_ATTEMPTS = 3;
+    private static final Duration STARTUP_RELOAD_RETRY_DELAY = Duration.ofSeconds(2);
+
     public EnrollmentService(EnrollmentProperties properties, EnrollmentRepository enrollments,
             EnrollmentDeviceLookup devices, ObjectProvider<BrokerAuthzReloader> authzReloader) {
         if (properties.caDir() == null || properties.caDir().isBlank()) {
@@ -94,32 +104,82 @@ public class EnrollmentService {
      * 2026-07-08 prod-down incident: a claimed device's grant sat BELOW the
      * default-deny with the template tail duplicated, so the device was refused
      * and kicked off the broker). A plain container redeploy triggers no grant
-     * write, so the repair must happen here. Idempotent and quiet: a healthy
-     * file is left byte-unchanged and NO reload fires; a corrupted file is
+     * write, so the repair must happen here.
+     *
+     * <p>Runs unconditionally on boot and never crashes it: a healthy file is
+     * left byte-unchanged and NO reload fires; an unrecognized file / IO error
+     * is reported as {@code SKIPPED} (WARN), never thrown. A corrupted file is
      * normalized (grants moved above the default-deny, duplicate tails
-     * collapsed) with a loud WARN, then the existing authz reload is triggered
-     * so affected devices reconnect on their own within seconds.
+     * collapsed) with a loud WARN.
+     *
+     * <p><strong>The reload is the load-bearing half</strong> (item 2 of the
+     * 2026-07-08 hardening): EMQX compiles {@code acl.conf} ONCE at boot and
+     * does NOT re-read it on a plain {@code emqx ctl conf reload}, so healing the
+     * file on disk is not enough - the broker must be forced to re-read it. When
+     * a heal happened we therefore reload EMQX SYNCHRONOUSLY here (bounded
+     * retries for a rolling-deploy blip) and, if the broker did not accept it,
+     * log a loud, actionable ERROR naming the manual fallback
+     * ({@code reload-broker-authz.sh} / {@code docker restart emqx}) rather than
+     * silently leaving the device denied.
      */
     @PostConstruct
     void selfHealBrokerAclOnStartup() {
         if (aclWriter == null) {
+            log.warn("Broker ACL self-heal disabled: voltpilot.enrollment.acl-file is not set - "
+                    + "device grants must be managed out of band");
             return;
         }
+        // State the resolved path (item 3): a wrong mount is the fastest way to
+        // "heal succeeded but the device is still denied", and a single log line
+        // makes it obvious in the deploy logs. EMQX must read the SAME host file
+        // via its directory mount (docker-compose.prod.yml: infra/mqtt/acl).
+        Path resolved = Path.of(properties.aclFile()).toAbsolutePath();
+        log.info("Broker ACL grant file resolves to {} (exists={}, writable={}); EMQX must read "
+                + "the SAME file via its acl/ DIRECTORY mount (see docker-compose.prod.yml)",
+                resolved, Files.exists(resolved), Files.isWritable(resolved));
+
         AclGrantWriter.NormalizeResult result = aclWriter.normalizeInPlace();
-        if (result.healed()) {
-            log.warn("Self-healed a corrupted broker ACL at {}: moved {} device grant block(s) "
-                    + "that sat BELOW the default-deny (unreachable) into the generated region "
-                    + "and collapsed the duplicated tail ({} '{{allow, all}}' copies -> 1). "
-                    + "Triggering an authz reload so affected devices reconnect without a "
-                    + "re-claim.", properties.aclFile(), result.grantsMovedAboveDeny(),
-                    result.tailCopies());
-            requestBrokerAuthzReload();
-        } else if (result.skipped()) {
+        if (result.skipped()) {
             log.warn("Broker ACL self-heal skipped for {}: {} (managing grants out of band)",
-                    properties.aclFile(), result.detail());
+                    resolved, result.detail());
+            return;
+        }
+        if (!result.healed()) {
+            log.debug("Broker ACL at {} already canonical - no self-heal needed", resolved);
+            return;
+        }
+
+        log.warn("Self-healed a corrupted broker ACL at {}: moved {} device grant block(s) that "
+                + "sat BELOW the default-deny (unreachable) into the generated region and "
+                + "collapsed the duplicated tail ({} '{{allow, all}}' copies -> 1). The file is "
+                + "now correct; forcing EMQX to re-read it so affected devices reconnect without "
+                + "a re-claim.", resolved, result.grantsMovedAboveDeny(), result.tailCopies());
+
+        BrokerAuthzReloader reloader = authzReloader.getIfAvailable();
+        if (reloader == null) {
+            log.error("Broker ACL was healed at {} but the api CANNOT reload EMQX automatically "
+                    + "(voltpilot.enrollment.broker-authz-reload is disabled). EMQX compiles "
+                    + "acl.conf ONCE at boot and does NOT re-read it on a plain reload, so the "
+                    + "healed grants take effect only after the broker is forced to re-read the "
+                    + "file. ACTION REQUIRED: run tools/pki/reload-broker-authz.sh on the broker "
+                    + "host, or `docker restart emqx`. Until then affected device(s) stay DENIED.",
+                    resolved);
+            return;
+        }
+        boolean reloaded = reloader.reloadNowBlocking(STARTUP_RELOAD_ATTEMPTS,
+                STARTUP_RELOAD_RETRY_DELAY);
+        if (reloaded) {
+            log.info("Broker authz reloaded after self-heal - affected device(s) will reconnect "
+                    + "within seconds, no re-claim needed.");
         } else {
-            log.debug("Broker ACL at {} already canonical - no self-heal needed",
-                    properties.aclFile());
+            log.error("Broker ACL was healed at {} but EMQX did NOT accept the authz reload after "
+                    + "{} attempts. EMQX keeps its OLD compiled rules until it re-reads the file, "
+                    + "so the affected device(s) remain DENIED and stuck in a reconnect loop. "
+                    + "ACTION REQUIRED: run tools/pki/reload-broker-authz.sh on the broker host, "
+                    + "or `docker restart emqx` (a plain `emqx ctl conf reload` does NOT re-read "
+                    + "acl.conf). Verify voltpilot.enrollment.broker-authz-reload.api-url + "
+                    + "credentials and that this api can reach EMQX.", resolved,
+                    STARTUP_RELOAD_ATTEMPTS);
         }
     }
 

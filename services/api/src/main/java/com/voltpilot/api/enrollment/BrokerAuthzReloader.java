@@ -145,25 +145,56 @@ public class BrokerAuthzReloader implements AutoCloseable {
     }
 
     /**
+     * Synchronous reload with bounded retries, for the STARTUP self-heal path
+     * where the caller must KNOW whether EMQX actually re-read the healed file
+     * so it can log a loud, actionable ERROR if not (a healed acl.conf that the
+     * broker never re-reads still leaves the device denied). Retries a brief
+     * broker blip during a rolling deploy; never throws, never crashes the boot.
+     * Returns true once EMQX accepted the push, false after exhausting attempts.
+     */
+    public boolean reloadNowBlocking(int attempts, Duration between) {
+        int tries = Math.max(1, attempts);
+        long sleepMillis = between == null ? 0 : Math.max(0, between.toMillis());
+        for (int i = 1; i <= tries; i++) {
+            if (reloadNow()) {
+                return true;
+            }
+            if (i < tries && sleepMillis > 0) {
+                try {
+                    Thread.sleep(sleepMillis);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Read the current ACL file and push it to EMQX. Best-effort: any failure is
      * logged and swallowed - the cron/deploy reload is the backstop, and an
      * issuance/unclaim must never fail because the broker was briefly
-     * unreachable.
+     * unreachable. Returns true when the broker accepted the push (so the
+     * startup self-heal can distinguish "EMQX re-read the healed file" from
+     * "still denied, operator action needed").
      */
-    void reloadNow() {
+    boolean reloadNow() {
         String rules;
         try {
             rules = Files.readString(aclFile, StandardCharsets.UTF_8);
         } catch (Exception e) {
             log.warn("Broker authz reload skipped - cannot read {}: {}", aclFile, e.getMessage());
-            return;
+            return false;
         }
         try {
             updater.putRules(rules);
             log.info("Broker authz reloaded via EMQX REST - grant changes are now in effect");
+            return true;
         } catch (Exception e) {
             log.warn("Broker authz reload failed ({}); the deploy/cron reload "
                     + "(tools/pki/reload-broker-authz.sh) remains the backstop", e.toString());
+            return false;
         }
     }
 
