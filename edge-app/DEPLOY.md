@@ -112,7 +112,7 @@ docker compose logs -f core   # "vp-edge-core started" + "enrollment: generated 
 
 ### 3a. Ohne lokalen Build: fertige Images ziehen (empfohlen)
 
-Die Edge-App-Images sind in der Forgejo-Registry veröffentlicht (`git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core` + `edge-app-nodered`, Plattform `linux/amd64`) - gebaut vom Workflow `.forgejo/workflows/edge-images.yaml` (nativ auf dem Runner) bzw. von VoltPilot gepusht. Die `docker-compose.yml` benennt genau diese Images, sodass auf der Edge-VM **kein** lokaler Build (`--build`) nötig ist - besonders auf schwacher Hardware sind gebaute Images deutlich schneller als ein `--build` (der `nodered`-Build kompiliert u. a. das Deye-CLI in einer Go-Stage).
+Die Edge-App-Images sind in der Forgejo-Registry veröffentlicht (`git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core` + `edge-app-nodered`, **Multi-Arch: `linux/amd64` + `linux/arm64`**, sodass ein Raspberry Pi automatisch die arm64-Variante zieht) - gebaut vom Workflow `.forgejo/workflows/edge-images.yaml` (auf dem amd64-Runner, arm64 per Cross-Compile) bzw. von VoltPilot gepusht. Die `docker-compose.yml` benennt genau diese Images, sodass auf der Edge-VM **kein** lokaler Build (`--build`) nötig ist - besonders auf schwacher Hardware sind gebaute Images deutlich schneller als ein `--build` (der `nodered`-Build kompiliert u. a. das Deye-CLI in einer Go-Stage).
 
 ```bash
 docker login git.tecmaxx.de           # einmalig, mit den bereitgestellten Zugangsdaten

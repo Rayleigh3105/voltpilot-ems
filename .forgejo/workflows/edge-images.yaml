@@ -4,9 +4,11 @@ name: Build & Push Edge-App Images
 # the operator can PULL them on the edge device instead of building locally
 # (the edge docker-compose.yml already names these images). Manual trigger.
 #
-# Runs NATIVELY on the amd64 runner - much faster than an emulated local build
-# on an Apple-silicon workstation, where the nodered image's golang stage (it
-# compiles the Deye AT-CLI) runs under linux/amd64 emulation.
+# Builds a MULTI-ARCH manifest list (linux/amd64 + linux/arm64) under each tag
+# so a Raspberry Pi (arm64/v8) pulls the arm64 variant automatically. Runs on
+# the amd64 runner: the core image cross-compiles (Go GOARCH from $TARGETARCH),
+# and the nodered image's golang deye-build stage is cross-compiled too, so no
+# arm64 emulation is needed. QEMU is set up for any residual emulated layers.
 #
 # Required Forgejo Actions secrets (Repo -> Settings -> Actions -> Secrets):
 #   FORGEJO_USERNAME / FORGEJO_PASSWORD  - registry login (git.tecmaxx.de)
@@ -34,6 +36,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -49,7 +54,7 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.context }}/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           cache-from: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache
           cache-to: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache,mode=max

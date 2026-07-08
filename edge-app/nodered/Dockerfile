@@ -7,10 +7,12 @@
 # A dependency-free Go binary that speaks the Deye WiFi logger's AT-command
 # Modbus tunnel (UDP 48899). The self-wiring read path uses Solarman-V5 (TCP
 # 8899), NOT this CLI - it is kept on PATH only as a DIAGNOSTIC tool (the at_cli
-# fallback + ad-hoc register dumps documented in DEYE.md). Under buildx the
-# golang stage runs per target platform, so `go build` yields the correct arch
-# natively - no cross-compile flags needed. Pin DEYE_REF for reproducible builds.
-FROM golang:1.22-bookworm AS deye-build
+# fallback + ad-hoc register dumps documented in DEYE.md). The stage pins itself
+# to $BUILDPLATFORM and cross-compiles (GOOS/GOARCH from $TARGETARCH), so an
+# arm64 (Pi) image builds on the amd64 runner WITHOUT emulation - the CLI is
+# pure Go with CGO disabled. Pin DEYE_REF for reproducible builds.
+FROM --platform=$BUILDPLATFORM golang:1.22-bookworm AS deye-build
+ARG TARGETOS TARGETARCH
 # Pinned to a commit for reproducible builds; override to a branch/tag/SHA.
 ARG DEYE_REF=2c09976a5d1480432170376c539dec758bd02d00
 RUN git clone --filter=blob:none \
@@ -18,7 +20,7 @@ RUN git clone --filter=blob:none \
  && cd /src \
  && git checkout ${DEYE_REF} \
  && cd src \
- && CGO_ENABLED=0 go build -trimpath -o /out/deye .
+ && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /out/deye .
 
 # --- stage 2: the Node-RED image ---------------------------------------------
 FROM nodered/node-red:4.0
