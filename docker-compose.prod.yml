@@ -279,10 +279,13 @@ services:
       keycloak:
         condition: service_healthy
     environment:
-      # `local` seeds the two demo tenants + demo telemetry so a fresh deploy is
-      # immediately demoable (matches the demo/demo user in the imported realm).
-      # Set SPRING_PROFILES_ACTIVE= (blank) in .env for a clean production DB.
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      # Production default is a BLANK profile: only db/migration (prod-safe core)
+      # runs, never db/dev, so no demo tenants/telemetry land on a real DB. Set
+      # SPRING_PROFILES_ACTIVE=local in .env ONLY for a throwaway demo VM (seeds
+      # the two demo tenants + demo/demo realm user). Editing a db/dev migration
+      # after a VM ran `local` no longer bricks startup - see the api's
+      # spring.flyway.ignore-migration-patterns "*:missing" (docs/deploy.md).
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
       SERVER_PORT: 8090
       # Runtime connection: non-privileged app role (RLS applies to it).
       POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/${POSTGRES_DB:-voltpilot}

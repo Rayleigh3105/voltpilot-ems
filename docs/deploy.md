@@ -58,7 +58,7 @@ openssl rand -hex 16      # EMQX_NODE_COOKIE
 openssl rand -base64 24   # EMQX_DASHBOARD_PASSWORD
 ```
 
-Leave `SPRING_PROFILES_ACTIVE=local` for the first look (seeds the demo tenants, so `demo`/`demo` shows data immediately).
+`SPRING_PROFILES_ACTIVE` is **blank by default = production** (only the prod-safe `db/migration` core runs, no demo data). For a throwaway internal/demo VM where you want `demo`/`demo` to show data immediately, set `SPRING_PROFILES_ACTIVE=local` - it additionally runs the dev seed migrations (`db/dev`). Read [Spring profile: production is blank, demo is `local`](#spring-profile-production-is-blank-demo-is-local) before choosing, and especially before editing a `db/dev` migration on a running `local` VM.
 
 ### 3. Stage the MQTT broker certs (required - EMQX will not start without them)
 
@@ -227,7 +227,7 @@ openssl rand -hex 16      # EMQX_NODE_COOKIE
 ```
 
 Set `DOMAIN` and `APP_PORT` to match your reverse-proxy config.
-Leave `SPRING_PROFILES_ACTIVE=local` to seed the two demo tenants + demo users for a first look; set it **blank** for a clean production database (and remove the demo users from the realm - see below).
+`SPRING_PROFILES_ACTIVE` is **blank by default = production** (clean DB, no demo data); set it to `local` only for a throwaway VM where you want the two demo tenants + demo users seeded for a first look. See [Spring profile: production is blank, demo is `local`](#spring-profile-production-is-blank-demo-is-local) - it also covers what to do when a VM that once ran `local` fails Flyway validation on startup.
 
 **Optional: ENTSO-E as the day-ahead price source.**
 The `market-data` collector defaults to the keyless energy-charts.info API (`MARKET_DATA_SOURCE=energy-charts`), so prices flow with no secret.
@@ -319,12 +319,57 @@ Unchanged from the secure-broker design: a device makes an **outbound-only** mut
 The cert CN carries the `device_id`; EMQX binds identity from the cert and the per-device ACL confines it to `ems/{tenant}/{site}/{device}/#`.
 Issue + hand out certs with the provisioning flow in [`connect-a-device.md`](connect-a-device.md); revoke with `voltpilot-ca.sh revoke` + `tools/pki/reload-broker-authz.sh`.
 
+## Spring profile: production is blank, demo is `local`
+
+**Production runs with a BLANK `SPRING_PROFILES_ACTIVE`** (the default in `.env.prod.example` and `docker-compose.prod.yml`).
+Then only `db/migration` (the prod-safe core schema) runs, and no demo tenants or telemetry ever land on the database.
+
+Set `SPRING_PROFILES_ACTIVE=local` **only** for a throwaway internal/demo VM.
+`local` additionally runs the DEV-ONLY seed migrations in `db/dev` (two demo tenants, the demo fleet + earnings history, and the `demo`/`demo2` realm users).
+
+### Deploys self-heal a `db/dev` checksum drift (no manual step)
+
+Flyway records the checksum of every applied migration in `flyway_schema_history` and, by default, aborts startup if a recorded migration either changed checksum or is no longer present on the classpath.
+That produced two recurring outages on the captain's `local` VM:
+
+- **Editing an already-applied `db/dev` migration** (e.g. the FK existence-guard hotfixes to `V20260706020000` / `V20260706030000`) changed its checksum → `Migration checksum mismatch` → the api refused to start.
+- **Switching a `local` VM back to a blank profile** dropped `db/dev` off the classpath while those migrations stayed in `flyway_schema_history` → `detected applied migration not resolved locally` → the api refused to start.
+
+Two mechanisms now fix this, and **neither needs a human at the database**:
+
+1. **Self-healing migration on startup (primary).** The api ships a `FlywayMigrationStrategy` (`SelfHealingFlywayMigrationStrategy`) that keeps STRICT validation on the happy path but reacts to a validation failure instead of crash-looping: it logs a loud `WARN` naming the drifted versions, runs `flyway repair()` to realign the recorded checksums to the shipped migrations (no migration is re-executed - the schema is already in that state), and retries `migrate()` once.
+   So simply deploying the new image boots the captain's **existing `local` VM** cleanly even though its dev-seed rows carry the old pre-hotfix checksums - the drift heals itself.
+   The catch is narrow: only a Flyway *validation* failure triggers a repair. A genuinely broken migration (a SQL error while applying) is a different exception, is not caught, and still fails the boot.
+2. **`spring.flyway.ignore-migration-patterns: "*:missing"` (hygiene).** Tolerates *applied-but-now-absent* migrations, scoped to `:missing` only - so a VM that once ran `local` and is moved to the blank production profile boots cleanly (the off-classpath `db/dev` rows are ignored) without even needing a repair. It does **not** loosen checksum validation, so at the pure-Flyway-config level a real edit of an on-classpath migration is still flagged (the self-healing strategy is what then repairs it, loudly).
+
+**Residual risk (accepted):** because `repair()` realigns checksums to whatever ships, an accidental edit of an already-applied **core** (`db/migration`) migration would be accepted with only the logged `WARN`, not blocked.
+The mitigation is unchanged discipline - **never edit an already-applied migration** (see AGENTS.md) plus code review - and the `WARN` names the versions, so an unexpected *core* version appearing in the deploy log is the signal to investigate.
+Fresh CI/Testcontainers DBs have no prior history, so they never drift and always run a plain strict migrate.
+
+**Forward-looking cleanup:** moving the VM to the blank production profile (`SPRING_PROFILES_ACTIVE=` in `.env`, then `docker compose -f docker-compose.prod.yml up -d --force-recreate api`) stops it running the dev seeds at all, so there is eventually no dev-seed drift left to heal. The already-seeded demo rows stay in the DB (blank does not delete them - see the launch cleanup below).
+
+### Break-glass: manual repair (should not be needed)
+
+The self-healing strategy above makes this unnecessary, but if you ever need to realign a recorded checksum by hand (e.g. the strategy is disabled, or you are on an older image), the manual equivalent of what `repair()` does is a direct `UPDATE`.
+The mismatch error prints the value Flyway computed locally (`resolved locally: <n>`); write it straight into the history row:
+
+```bash
+# <version> and <resolved-locally-checksum> come from the mismatch error, e.g.
+# "Migration checksum mismatch for migration version 20260706020000
+#  -> Applied to database : 111111111
+#  -> Resolved locally    : 222222222"
+docker compose -f docker-compose.prod.yml exec timescaledb \
+  psql -U voltpilot -d voltpilot -c \
+  "UPDATE flyway_schema_history SET checksum = <resolved-locally-checksum> WHERE version = '<version>';"
+```
+
+Then restart the api. As normal practice you **never edit an already-applied migration** (see AGENTS.md).
+
 ## Going to a real production launch
 
-The defaults make a fresh deploy immediately demoable.
-Before serving real customers:
+Before serving real customers (on a VM that was demoed with `local`, or a fresh one):
 
-- Set `SPRING_PROFILES_ACTIVE=` (blank) in `.env` so the api does **not** seed demo tenants/telemetry.
+- Confirm `SPRING_PROFILES_ACTIVE=` (blank) in `.env` so the api does **not** seed demo tenants/telemetry (the production default; see [the profile section](#spring-profile-production-is-blank-demo-is-local)).
 - Remove the `demo`/`demo2` users from `infra/prod/keycloak/voltpilot-realm.json` (or delete them in the Keycloak admin console) and create real users, each with a `tenant_id` attribute and a matching `tenant` row.
 - Decide whether to keep public self-registration (`VOLTPILOT_REGISTRATION_ENABLED`, default `true`; set `false` in `.env` for a closed platform where only Portal-Admins create accounts).
   Its rate limiter assumes **2** own proxy hops appending to `X-Forwarded-For` (external reverse proxy → frontend nginx, `VOLTPILOT_REGISTRATION_RATE_LIMIT_TRUSTED_PROXIES=2`) - adjust the value if you add or remove a proxy layer.

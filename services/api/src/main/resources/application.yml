@@ -19,6 +19,15 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
     locations: classpath:db/migration
+    # Tolerate APPLIED-but-now-absent migrations, scoped to ":missing" ONLY.
+    # A production instance runs with a BLANK profile (db/migration only), but a
+    # VM that previously ran SPRING_PROFILES_ACTIVE=local already applied the
+    # db/dev seeds; once the local profile is dropped those migrations leave the
+    # classpath, and by default Flyway validation FAILS startup ("detected
+    # applied migration not resolved locally"). ":missing" tolerates exactly that
+    # so prod boots cleanly - without loosening checksum/other validation, so
+    # dev + CI still catch an accidental edit of an already-applied migration.
+    ignore-migration-patterns: "*:missing"
     placeholders:
       appDbUser: ${APP_DB_USER:voltpilot_app}
       appDbPassword: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
