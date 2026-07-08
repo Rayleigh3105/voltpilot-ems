@@ -2284,3 +2284,333 @@ button.vp-cl-item.is-off .vp-cl-label {
   color: var(--vp-text, #1f2733);
 }
 .vp-control-ago { flex: 0 0 auto; white-space: nowrap; }
+
+/* ============================================================================
+   "Meine Anlage" v4 - the 3-zone desktop dashboard + phone money-first reflow
+   (captain 2026-07-08). Above the fold on desktop: Geld | Live | Rail; below a
+   full-width Fahrplan band, then the deep-view cards. On phone/tablet the zones
+   dissolve (display:contents) and the blocks reorder money-first via `order`.
+   ========================================================================== */
+
+.vp-anlage-dash {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--vp-gap);
+  align-items: start;
+  min-width: 0;
+}
+/* Grid/flex items must shrink below their content's min-content, else a single
+   wide child (a chart, a long number) blows out the 1fr track and the column
+   overflows the viewport. */
+.vp-dash-hero,
+.vp-dash-ertrag,
+.vp-dash-energy,
+.vp-dash-live,
+.vp-dash-control,
+.vp-dash-plantraf,
+.vp-dash-rail,
+.vp-dash-health,
+.vp-dash-fahrplan,
+.vp-dash-deep {
+  min-width: 0;
+}
+/* Section margins are handled by the grid gap inside the dashboard. */
+.vp-anlage-dash .vp-section {
+  margin-top: 0;
+}
+.vp-anlage-dash .vp-money-hero {
+  margin-bottom: 0;
+}
+
+/* Phone + tablet: zones dissolve, blocks reflow into the money-first order. */
+@media (max-width: 1159px) {
+  .vp-zone {
+    display: contents;
+  }
+  .vp-dash-hero { order: 1; }
+  .vp-dash-plantraf { order: 2; }
+  .vp-dash-live { order: 3; }
+  .vp-dash-fahrplan { order: 4; }
+  .vp-dash-control { order: 5; }
+  .vp-dash-ertrag { order: 6; }
+  .vp-dash-energy { order: 7; }
+  .vp-dash-deep { order: 8; }
+  /* The vertical rail + standalone health list are a desktop affordance; on
+     phone the horizontal month strip navigates and the header sentence +
+     warnings carry the health story. */
+  .vp-dash-rail,
+  .vp-dash-health {
+    display: none;
+  }
+}
+
+/* Desktop: the real 3-zone dashboard. */
+@media (min-width: 1160px) {
+  .vp-anlage-dash {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr) minmax(0, 3fr);
+  }
+  .vp-zone {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vp-gap);
+    min-width: 0;
+  }
+  .vp-dash-fahrplan,
+  .vp-dash-deep {
+    grid-column: 1 / -1;
+  }
+  /* The horizontal month strip is replaced by the vertical rail in Zone C. */
+  .vp-mstrip-mobile {
+    display: none;
+  }
+}
+
+/* --- Live zone: the weather "why" one-liner under the energy flow ---------- */
+.vp-live-why {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--vp-space-3) 0 0;
+  font-size: 0.85rem;
+  color: var(--vp-navy-2, #2c5282);
+}
+.vp-live-why svg {
+  flex: 0 0 auto;
+  color: var(--vp-flow-pv, #f59e0b);
+}
+
+/* --- Plan-traf-zu one-liner (the optimizer's trust number) ----------------- */
+.vp-plantraf {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  width: 100%;
+  text-align: left;
+  padding: 13px 15px;
+  border: 1px solid #fde68a;
+  border-radius: var(--vp-radius-md, 16px);
+  background: #fffbeb;
+  color: #92400e;
+  cursor: pointer;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.vp-plantraf:hover {
+  border-color: #fbbf24;
+  box-shadow: 0 2px 10px rgba(180, 130, 20, 0.12);
+}
+.vp-plantraf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
+  outline-offset: 1px;
+}
+.vp-plantraf-ico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: #b45309;
+}
+.vp-plantraf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-plantraf-text b {
+  font-weight: 700;
+  color: #78350f;
+  font-variant-numeric: tabular-nums;
+}
+.vp-plantraf-chev {
+  flex: 0 0 auto;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: #d1a05a;
+}
+
+/* --- Zone C: the vertical 12-month rail ------------------------------------ */
+.vp-mrail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-mrail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vp-mrail-m {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.76rem;
+}
+.vp-mrail-m:hover {
+  background: var(--vp-bg-light, #f8f9fa);
+}
+.vp-mrail-m:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
+  outline-offset: 1px;
+}
+.vp-mrail-m .mn {
+  color: var(--vp-text-gray, #6c757d);
+  font-weight: 600;
+  text-align: left;
+}
+.vp-mrail-m .mb {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--vp-paleblue-b, #e3ecff);
+  overflow: hidden;
+}
+.vp-mrail-m .mbf {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--vp-grad-hero);
+}
+.vp-mrail-m .mv {
+  font-family: var(--vp-font-heading, inherit);
+  font-weight: 700;
+  color: var(--vp-text-dark, #1a1a1a);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.vp-mrail-m.on {
+  background: var(--vp-paleblue-start, #f0f4ff);
+  border-color: var(--vp-primary-deep, #5a8de8);
+}
+.vp-mrail-m.on .mn {
+  color: var(--vp-primary-deep, #5a8de8);
+}
+.vp-mrail-cap {
+  font-size: 0.72rem;
+  color: var(--vp-text-gray, #6c757d);
+}
+
+/* --- Zone C: the Gesundheits-Checklist ------------------------------------- */
+.vp-health {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-health-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vp-health-item {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+.vp-health-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #fff;
+}
+.vp-health-item.tone-ok .vp-health-mark {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-health-item.tone-warn .vp-health-mark {
+  background: #f59e0b;
+}
+.vp-health-item.tone-off .vp-health-mark {
+  background: var(--vp-gray, #ced4da);
+}
+.vp-health-label {
+  color: var(--vp-text-dark, #1a1a1a);
+  font-weight: 600;
+  min-width: 0;
+}
+.vp-health-detail {
+  color: var(--vp-text-gray, #6c757d);
+  text-align: right;
+  font-size: 0.76rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- The promoted Fahrplan band -------------------------------------------- */
+.vp-fp-band {
+  min-width: 0;
+}
+.vp-fp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  margin-bottom: var(--vp-space-2);
+  flex-wrap: wrap;
+}
+.vp-fp-head .vp-card-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.vp-fp-summary {
+  margin: var(--vp-space-3) 0 0;
+  font-size: 0.92rem;
+  color: var(--vp-text-dark, #1a1a1a);
+  line-height: 1.5;
+}
+.vp-fp-summary .s {
+  font-weight: 600;
+}
+.vp-fp-summary b {
+  color: #2e7d32;
+  font-weight: 700;
+}
+.vp-fp-curtail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--vp-space-2) 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-navy-2, #2c5282);
+}
+.vp-fp-curtail svg {
+  flex: 0 0 auto;
+  color: var(--vp-flow-pv, #f59e0b);
+}
+
+/* The compact mini bars (phone) with a "Jetzt" marker. */
+.vp-plan-mini-wrap {
+  position: relative;
+  margin-top: var(--vp-space-3);
+}
+.vp-plan-mini-wrap .vp-plan-mini {
+  margin-top: 0;
+}
+.vp-plan-mini i.idle {
+  align-self: center;
+  height: 4px;
+  background: var(--vp-border, #e9ecef);
+}
+.vp-plan-mini-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: #e5484d;
+  opacity: 0.75;
+  pointer-events: none;
+}

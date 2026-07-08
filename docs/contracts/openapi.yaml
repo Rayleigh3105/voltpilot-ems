@@ -1997,6 +1997,7 @@ components:
               priceEurMwh: { type: number }
               costEur: { type: number, description: "Projected slot cost with the plan." }
               baselineCostEur: { type: number, description: "Projected slot cost with the battery idle." }
+              curtailKw: { type: number, nullable: true, description: "Planned PV curtailment for the slot (kW held back, >= 0); the optimizer curtails feed-in at negative prices. Null on pre-curtailment runs." }
     ControlStatus:
       type: object
       description: Latest inverter-control confirmation for a site (report §5).

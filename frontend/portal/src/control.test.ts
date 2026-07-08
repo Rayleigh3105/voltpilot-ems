@@ -20,8 +20,17 @@ function status(over: Partial<ControlStatus>): ControlStatus {
 }
 
 describe('controlStrip', () => {
-  it('returns null when there is no status yet', () => {
+  it('returns null when there is no status yet (default)', () => {
     expect(controlStrip(null, NOW)).toBeNull();
+  });
+
+  it('stays honest for a controllable plant with no readback yet (report N4)', () => {
+    const v = controlStrip(null, NOW, true)!;
+    expect(v.state).toBe('preparing');
+    expect(v.tone).toBe('off');
+    expect(v.sentence).toContain('vorbereitet');
+    // No register/Modbus jargon reaches the customer.
+    expect(v.sentence.toLowerCase()).not.toContain('modbus');
   });
 
   it('is healthy when the inverter confirms the commanded setpoint', () => {

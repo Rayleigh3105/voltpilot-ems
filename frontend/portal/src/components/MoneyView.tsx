@@ -109,6 +109,53 @@ export function MonthStrip({
 }
 
 /**
+ * The vertical 12-month rail (desktop Zone C navigator): the same 12-month data
+ * as {@link MonthStrip}, laid out as a compact column of rows - each a month
+ * name, a proportional bar and its Gesamtertrag. Tapping a month re-scopes the
+ * whole page. The bar width is relative to the best month; null months render an
+ * empty bar (never a fake zero). Desktop-only; phones keep the horizontal strip.
+ */
+export function MonthRail({
+  slots,
+  selectedMonth,
+  onSelect,
+}: {
+  slots: StripSlot[];
+  selectedMonth: string;
+  onSelect: (monthIso: string) => void;
+}) {
+  const max = Math.max(1, ...slots.map((s) => (s.value != null && s.value > 0 ? s.value : 0)));
+  return (
+    <div className="vp-mrail">
+      <span className="vp-card-label">12-Monats-Verlauf</span>
+      <div className="vp-mrail-list" role="tablist" aria-label="Monat wählen">
+        {slots.map((s) => {
+          const pct = s.value != null && s.value > 0 ? Math.max(4, Math.round((s.value / max) * 100)) : 0;
+          const on = s.month === selectedMonth;
+          return (
+            <button
+              key={s.month}
+              role="tab"
+              aria-selected={on}
+              className={`vp-mrail-m${on ? ' on' : ''}`}
+              onClick={() => onSelect(s.month)}
+              title={s.value == null ? s.label : `${s.label}: ${stripValueLabel(s.value)} €`}
+            >
+              <span className="mn">{s.label}</span>
+              <span className="mb">
+                <span className="mbf" style={{ width: `${pct}%` }} />
+              </span>
+              <span className="mv">{stripValueLabel(s.value)}</span>
+            </button>
+          );
+        })}
+      </div>
+      <span className="vp-mrail-cap">Tippen wechselt den Zeitraum der Seite.</span>
+    </div>
+  );
+}
+
+/**
  * One money tile inside the hero. An optional `info` renders an InfoTip after
  * the label so the number's provenance is one tap away (decision 3) while the
  * collapsed tile stays as calm as before.

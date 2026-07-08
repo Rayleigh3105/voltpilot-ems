@@ -15,8 +15,10 @@ import { fmtNum, fmtRelative } from './format';
  *   stale    - the last confirmation is older than the freshness window.
  *   off      - control is switched off for this device (Not-Aus).
  *   pending  - the model is not yet released for control (read-only).
+ *   preparing - a controllable plant that has not reported a readback yet, so
+ *               the loop is honestly shown as being set up (report N4).
  */
-export type ControlState = 'healthy' | 'mismatch' | 'stale' | 'off' | 'pending';
+export type ControlState = 'healthy' | 'mismatch' | 'stale' | 'off' | 'pending' | 'preparing';
 
 export interface ControlStripView {
   state: ControlState;
@@ -38,14 +40,29 @@ function kw(v: number | null): string {
 
 /**
  * controlStrip - derive the calm "Steuerung" strip from the latest control
- * confirmation. `status` is null when no readback has arrived yet (the strip is
- * then not rendered by the caller).
+ * confirmation.
+ *
+ * `status` is null when no readback has arrived yet. By default the strip is
+ * then not rendered (returns null). For a controllable plant (a battery with a
+ * controlling device, `expectControl = true`) the strip stays honest instead
+ * (report N4): "Die Steuerung wird vorbereitet ..." so the "is the plan being
+ * executed" loop is always visibly closed rather than silently missing.
  */
 export function controlStrip(
   status: ControlStatus | null,
   now: Date = new Date(),
+  expectControl = false,
 ): ControlStripView | null {
-  if (!status) return null;
+  if (!status) {
+    if (!expectControl) return null;
+    return {
+      state: 'preparing',
+      tone: 'off',
+      sentence:
+        'Die Steuerung wird vorbereitet - sobald Ihr Wechselrichter den ersten Sollwert bestätigt, sehen Sie es hier.',
+      agoNote: '',
+    };
+  }
 
   // Not yet released for control: the inverter is only monitored.
   if (!status.certified) {

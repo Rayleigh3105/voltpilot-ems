@@ -66,6 +66,47 @@ export function savingsTodayEur(
   return priced.reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
 }
 
+/** Below this the curtailment is solver noise, not a real feed-in cap. */
+export const CURTAIL_DEADBAND_KW = 0.01;
+
+/**
+ * Today's PV curtailment result: how much energy the optimizer held back and
+ * the negative-price loss that avoided (report N2, "heute X kWh abgeregelt,
+ * Y € Verlust vermieden"). At negative day-ahead prices exporting COSTS money,
+ * so each curtailed kWh in a negative-price slot avoids paying |price| for it.
+ * Null when today has no curtailing slot - the line then stays hidden, never a
+ * fake "0 kWh abgeregelt".
+ */
+export interface CurtailmentToday {
+  /** Total curtailed energy today (kWh). */
+  curtailedKwh: number;
+  /** Euro loss avoided by not exporting in negative-price slots (>= 0). */
+  avoidedLossEur: number;
+}
+
+export function curtailmentToday(
+  slots: { start: string; curtailKw: number | null; priceEurMwh: number | null }[],
+  now: Date,
+  slotMinutes = 15,
+): CurtailmentToday | null {
+  const hours = slotMinutes / 60;
+  let curtailedKwh = 0;
+  let avoidedLossEur = 0;
+  for (const s of todaySlots(slots, now)) {
+    const kw = s.curtailKw == null ? 0 : Number(s.curtailKw);
+    if (!(kw > CURTAIL_DEADBAND_KW)) continue;
+    const kwh = kw * hours;
+    curtailedKwh += kwh;
+    const price = s.priceEurMwh == null ? 0 : Number(s.priceEurMwh);
+    if (price < 0) {
+      // EUR/MWh -> EUR/kWh: /1000; negative price => positive avoided loss.
+      avoidedLossEur += kwh * (-price / 1000);
+    }
+  }
+  if (curtailedKwh <= CURTAIL_DEADBAND_KW * hours) return null;
+  return { curtailedKwh, avoidedLossEur };
+}
+
 /** One bar of the hourly mini chart; kw null = no plan data for that hour. */
 export interface PlanHourBar {
   hour: number;

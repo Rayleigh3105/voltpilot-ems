@@ -139,6 +139,13 @@ export interface ScheduleSlot {
   priceEurMwh: number | null;
   costEur: number | null;
   baselineCostEur: number | null;
+  /**
+   * Planned PV curtailment for the slot (kW held back, always >= 0). At
+   * negative prices the optimizer curtails feed-in so the plant does not pay
+   * to export; the Anlage page surfaces "heute X kWh abgeregelt, Y € Verlust
+   * vermieden". Null on runs that predate the curtailment column.
+   */
+  curtailKw: number | null;
 }
 
 export interface SchedulePlan {

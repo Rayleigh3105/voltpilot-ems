@@ -930,14 +930,14 @@ class PortalApiTest {
                 + "now() - interval '1 hour', 0, 0, 50.0, 0, 0, 100.0, 0, 0) "
                 + "ON CONFLICT DO NOTHING");
         exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
-                + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur) "
+                + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw) "
                 + "VALUES "
                 + "(now(), '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
-                + "now(), 5.0, 8.0, 62.5, 3.0, 0.0, 80.0, 0.02, 0.10), "
+                + "now(), 5.0, 8.0, 62.5, 3.0, 0.0, 80.0, 0.02, 0.10, 0.0), "
                 + "(now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
-                + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05) "
+                + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05, 1.5) "
                 + "ON CONFLICT DO NOTHING");
 
         ResponseEntity<Map<String, Object>> res = rest.exchange(
@@ -956,6 +956,12 @@ class PortalApiTest {
         Map<String, Object> first = (Map<String, Object>) slots.get(0);
         assertThat(((Number) first.get("batteryKw")).doubleValue()).isEqualTo(5.0);
         assertThat(((Number) first.get("socPct")).doubleValue()).isEqualTo(62.5);
+        assertThat(((Number) first.get("curtailKw")).doubleValue()).isEqualTo(0.0);
+        // The curtailing slot carries its held-back PV so the portal can quantify
+        // the avoided negative-price loss.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> second = (Map<String, Object>) slots.get(1);
+        assertThat(((Number) second.get("curtailKw")).doubleValue()).isEqualTo(1.5);
 
         // A site with no plan yet: empty but well-formed (tenant B's own site).
         ResponseEntity<Map<String, Object>> empty = rest.exchange(

@@ -11,6 +11,7 @@ import {
   type Earnings,
   type EarningsRange,
   type Overview,
+  type SchedulePlan,
   type Site,
 } from '../api';
 import {
@@ -20,17 +21,22 @@ import {
   siteLiveFresh,
   siteSnapshot,
 } from '../fleet';
-import { fmtNum, fmtRelative, plantKindLabel } from '../format';
+import { eurAmount, fmtNum, fmtRelative, plantKindLabel } from '../format';
 import { periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
-import { nextHourIndex } from '../weather';
+import { nextHourIndex, weatherWhy } from '../weather';
 import { controlStrip } from '../control';
+import { todaySlots } from '../schedule';
+import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
+import { healthChecklist } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
+import { FahrplanBand } from '../components/FahrplanBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { ErtragChart } from '../components/ErtragChart';
-import { AnlageHero, EnergyStatsRow, MonthStrip, PeriodTabs } from '../components/MoneyView';
+import { HealthChecklist } from '../components/HealthChecklist';
+import { AnlageHero, EnergyStatsRow, MonthRail, MonthStrip, PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
@@ -346,7 +352,12 @@ export function AnlageSeite({
   const [range, setRange] = useState<EarningsRange>('month');
   const [at, setAt] = useState<string | null>(null);
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
+  const [weatherWhyText, setWeatherWhyText] = useState<string | null>(null);
   const [controlStatus, setControlStatus] = useState<ControlStatus | null>(null);
+  const [plan, setPlan] = useState<SchedulePlan | null>(null);
+  const [planLoading, setPlanLoading] = useState(true);
+  const [planFailed, setPlanFailed] = useState(false);
+  const [planTraf, setPlanTraf] = useState<PlanTrafZu | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
@@ -408,7 +419,8 @@ export function AnlageSeite({
     };
   }, [site.id, reloadKey]);
 
-  // Wetter teaser for the "Mehr" card, loaded silently.
+  // Wetter: the "Mehr" card teaser temp AND the live-zone "why" one-liner
+  // (report N3), loaded silently.
   useEffect(() => {
     let active = true;
     api.weather(site.id).then(
@@ -416,8 +428,50 @@ export function AnlageSeite({
         if (!active) return;
         const idx = nextHourIndex(w.points, Date.now());
         setNextHourTempC(idx >= 0 ? (w.points[idx].temperatureC ?? null) : null);
+        setWeatherWhyText(weatherWhy(w.points, new Date()));
       },
       () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
+
+  // The battery-dispatch plan: drives the promoted Fahrplan band, the
+  // Fahrplan-aktiv health item and whether control is expected.
+  useEffect(() => {
+    let active = true;
+    setPlanLoading(true);
+    api.schedule(site.id).then(
+      (p) => {
+        if (!active) return;
+        setPlan(p);
+        setPlanFailed(false);
+        setPlanLoading(false);
+      },
+      () => {
+        if (!active) return;
+        setPlanFailed(true);
+        setPlanLoading(false);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
+
+  // Plan-vs-actual accuracy for the "Fahrplan traf zu X %" one-liner (report
+  // N5): the latest point of the forecast-quality plan_accuracy series,
+  // graduated from Prognosequalität. Silent - null when nothing trustworthy.
+  useEffect(() => {
+    let active = true;
+    api.forecastQuality(site.id).then(
+      (fq) => {
+        if (active) setPlanTraf(planTrafZu(fq.planAccuracy, new Date()));
+      },
+      () => {
+        if (active) setPlanTraf(null);
+      },
     );
     return () => {
       active = false;
@@ -446,16 +500,39 @@ export function AnlageSeite({
           (c) => setControlStatus(c),
           () => {},
         );
+        api.schedule(site.id).then(
+          (p) => setPlan(p),
+          () => {},
+        );
       }
     }, TICK_MS);
     return () => clearInterval(timer);
   }, []);
 
   const ovSite = overview?.sites.find((x) => x.id === site.id) ?? null;
-  const controlView = controlStrip(controlStatus, now);
+  const siteEarnings = earnings?.sites.find((x) => x.id === site.id) ?? null;
   const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;
   const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
-  const siteEarnings = earnings?.sites.find((x) => x.id === site.id) ?? null;
+
+  // Fahrplan-derived flags: whether the plan is current for today (health) and
+  // whether the site is controllable (a plan published to a battery device),
+  // which keeps the Steuerung strip honest even before the first readback.
+  const planSlots = plan?.slots ?? [];
+  const hasPlanToday = todaySlots(planSlots, now).length > 0;
+  const batteryLinked = plan?.deviceId != null;
+  const controlView = controlStrip(controlStatus, now, batteryLinked);
+
+  // The Gesundheits-Checklist (desktop Zone C).
+  const health = healthChecklist({
+    deviceCount: ovSite?.deviceCount ?? 0,
+    onlineCount: ovSite?.onlineCount ?? 0,
+    waitingCount: ovSite?.waitingCount ?? 0,
+    hasPlanToday,
+    hasAnyPlan: planSlots.length > 0,
+    controlState: controlView?.state ?? null,
+    batteryWithoutDevice: ovSite?.batteryWithoutDevice ?? false,
+    batteryLinked,
+  });
 
   // The period label + strip selection follow the SELECTED instance.
   const atDate = at ? new Date(`${at}T12:00:00`) : now;
@@ -526,126 +603,213 @@ export function AnlageSeite({
       {/* 2 · Zeitraum-Tabs regieren die ganze Seite. */}
       <PeriodTabs range={range} onRange={switchRange} />
 
-      {/* 3 · Monats-Leiste (nur im Monatsmodus): letzte 12 Monate zum Durchtippen. */}
+      {/* 3 · Monats-Leiste (Phone/Tablet): letzte 12 Monate zum Durchtippen.
+          Auf Desktop ersetzt der vertikale Rail in Zone C diese Leiste. */}
       {range === 'month' && (
-        <MonthStrip
-          slots={stripSlots(siteEarnings?.monthlyStrip ?? [], now)}
-          selectedMonth={selectedMonth}
-          onSelect={selectMonth}
-        />
-      )}
-
-      {/* 4 · Geld: der Gesamtertrag als Held. */}
-      {earnings == null && !earnFailed ? (
-        <Skeleton height={280} radius="var(--vp-radius-lg)" />
-      ) : (
-        <AnlageHero
-          money={siteEarnings}
-          period={period}
-          unavailable={earnFailed}
-          emptyHint={siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined}
-        />
-      )}
-
-      {/* 5 · Ertrag-Chart pro Tag/Monat + „bester Tag". */}
-      <section className="vp-section" aria-label="Ertrag">
-        <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-          <span className="vp-card-label">Ertrag · {period}</span>
-          {earnings == null && !earnFailed ? (
-            <Skeleton height={220} radius="var(--vp-radius-md)" />
-          ) : series.length > 0 ? (
-            <ErtragChart series={series} range={range} />
-          ) : (
-            <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-              Für diesen Zeitraum liegen noch keine Erträge vor. Sobald Ihre Anlage
-              misst und Börsenpreise vorliegen, erscheint hier Ihr Verlauf.
-            </p>
-          )}
-        </Card>
-      </section>
-
-      {/* 6 · Energie-Kennzahlen. */}
-      <section className="vp-section" aria-label="Energie">
-        <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-          <span className="vp-card-label">Energie · {period}</span>
-          <EnergyStatsRow money={siteEarnings} />
-        </Card>
-      </section>
-
-      {/* 7 · Jetzt gerade: Live bleibt, kompakt - Detail eine Ebene tiefer. */}
-      <section className="vp-section" aria-label="Jetzt gerade">
-        <Card padding="lg" radius="lg" className="vp-site-status" style={{ minWidth: 0 }}>
-          <span className="vp-card-label">Jetzt gerade</span>
-          {overview == null && overviewFailed ? (
-            <ErrorState
-              message="Der Live-Zustand Ihrer Anlage konnte gerade nicht geladen werden."
-              onRetry={() => setReloadKey((k) => k + 1)}
-            />
-          ) : ovSite == null ? (
-            <Skeleton height={240} radius="var(--vp-radius-md)" />
-          ) : (
-            <>
-              <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
-              <div className="vp-site-status-foot">
-                <span className="vp-note">
-                  {ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : ''}
-                </span>
-                <a
-                  href={`#/anlage/${site.id}/live`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onOpenSub('live');
-                  }}
-                >
-                  Live-Daten im Detail →
-                </a>
-              </div>
-            </>
-          )}
-        </Card>
-      </section>
-
-      {/* 7b · Steuerung: did the inverter accept the schedule setpoint? A calm
-          confirmation strip (captain decision 4), shown once a device has
-          reported a control readback. */}
-      {controlView && <ControlStrip view={controlView} />}
-
-      {/* 8 · Mehr zu dieser Anlage: Fahrplan, Historie, Wetter - eine Ebene tiefer. */}
-      <section className="vp-section" aria-label="Mehr zu dieser Anlage">
-        <div className="vp-detail-grid three">
-          <DetailCard
-            icon="calendar"
-            category="industry"
-            title="Batterie-Fahrplan"
-            line="Was VoltPilot heute mit Ihrem Speicher plant."
-            onOpen={() => onOpenSub('fahrplan')}
-          />
-          <DetailCard
-            icon="history"
-            category="home"
-            title="Historie & Erlöse"
-            line="Ihre Tage im Rückblick - Kosten, Ersparnis, Verhalten."
-            onOpen={() => onOpenSub('historie')}
-          />
-          <DetailCard
-            icon="sun"
-            category="solar"
-            title="Wetter am Standort"
-            line={
-              nextHourTempC != null
-                ? `Nächste Stunde ${fmtNum(nextHourTempC, '°C')}.`
-                : 'Die Vorhersage für Ihre Anlage.'
-            }
-            onOpen={() => onOpenSub('wetter')}
+        <div className="vp-mstrip-mobile">
+          <MonthStrip
+            slots={stripSlots(siteEarnings?.monthlyStrip ?? [], now)}
+            selectedMonth={selectedMonth}
+            onSelect={selectMonth}
           />
         </div>
-      </section>
+      )}
+
+      {/* Das 3-Zonen-Dashboard (Desktop): Geld | Live | Rail über einem
+          Fahrplan-Band in voller Breite. Auf Phone/Tablet lösen sich die Zonen
+          auf und die Blöcke ordnen sich geldzuerst (per CSS order). */}
+      <div className="vp-anlage-dash">
+        {/* ---- Zone A · Geld (ruhig) ------------------------------------- */}
+        <div className="vp-zone vp-zone-money">
+          <div className="vp-dash-hero">
+            {earnings == null && !earnFailed ? (
+              <Skeleton height={300} radius="var(--vp-radius-lg)" />
+            ) : (
+              <AnlageHero
+                money={siteEarnings}
+                period={period}
+                unavailable={earnFailed}
+                emptyHint={
+                  siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined
+                }
+              />
+            )}
+          </div>
+
+          <div className="vp-dash-ertrag">
+            <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+              <span className="vp-card-label">Ertrag · {period}</span>
+              {earnings == null && !earnFailed ? (
+                <Skeleton height={220} radius="var(--vp-radius-md)" />
+              ) : series.length > 0 ? (
+                <ErtragChart series={series} range={range} />
+              ) : (
+                <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+                  Für diesen Zeitraum liegen noch keine Erträge vor. Sobald Ihre Anlage
+                  misst und Börsenpreise vorliegen, erscheint hier Ihr Verlauf.
+                </p>
+              )}
+            </Card>
+          </div>
+
+          <div className="vp-dash-energy">
+            <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+              <span className="vp-card-label">Energie · {period}</span>
+              <EnergyStatsRow money={siteEarnings} />
+            </Card>
+          </div>
+        </div>
+
+        {/* ---- Zone B · Live (bewegt) ------------------------------------ */}
+        <div className="vp-zone vp-zone-live">
+          <div className="vp-dash-live">
+            <Card padding="lg" radius="lg" className="vp-site-status" style={{ minWidth: 0 }}>
+              <span className="vp-card-label">Jetzt gerade</span>
+              {overview == null && overviewFailed ? (
+                <ErrorState
+                  message="Der Live-Zustand Ihrer Anlage konnte gerade nicht geladen werden."
+                  onRetry={() => setReloadKey((k) => k + 1)}
+                />
+              ) : ovSite == null ? (
+                <Skeleton height={240} radius="var(--vp-radius-md)" />
+              ) : (
+                <>
+                  <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
+                  {weatherWhyText && fresh && (
+                    <p className="vp-live-why">
+                      <Icon name="sun" size={14} /> {weatherWhyText}
+                    </p>
+                  )}
+                  <div className="vp-site-status-foot">
+                    <span className="vp-note">
+                      {ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : ''}
+                    </span>
+                    <a
+                      href={`#/anlage/${site.id}/live`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        onOpenSub('live');
+                      }}
+                    >
+                      Live-Daten im Detail →
+                    </a>
+                  </div>
+                </>
+              )}
+            </Card>
+          </div>
+
+          {/* Steuerung: honest even before the first readback (report N4). */}
+          {controlView && (
+            <div className="vp-dash-control">
+              <ControlStrip view={controlView} />
+            </div>
+          )}
+
+          {/* Plan-traf-zu one-liner (report N5): the optimizer's trust number. */}
+          {planTraf && (
+            <div className="vp-dash-plantraf">
+              <PlanTrafCard traf={planTraf} onOpen={() => onOpenSub('fahrplan')} />
+            </div>
+          )}
+        </div>
+
+        {/* ---- Zone C · Rail (Desktop-only) ------------------------------ */}
+        <div className="vp-zone vp-zone-rail">
+          {range === 'month' && (
+            <div className="vp-dash-rail">
+              <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+                <MonthRail
+                  slots={stripSlots(siteEarnings?.monthlyStrip ?? [], now)}
+                  selectedMonth={selectedMonth}
+                  onSelect={selectMonth}
+                />
+              </Card>
+            </div>
+          )}
+          {health.length > 0 && (
+            <div className="vp-dash-health">
+              <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+                <HealthChecklist items={health} />
+              </Card>
+            </div>
+          )}
+        </div>
+
+        {/* ---- Fahrplan-Band (volle Breite) ----------------------------- */}
+        <div className="vp-dash-fahrplan">
+          <FahrplanBand
+            plan={plan}
+            plantKind={site.plantKind}
+            now={now}
+            loading={planLoading && plan == null}
+            failed={planFailed}
+            onOpen={() => onOpenSub('fahrplan')}
+          />
+        </div>
+
+        {/* ---- Tiefer schauen (volle Breite) ---------------------------- */}
+        <div className="vp-dash-deep">
+          <div className="vp-detail-grid three">
+            <DetailCard
+              icon="history"
+              category="home"
+              title="Historie & Erlöse"
+              line="Ihre Tage im Rückblick - Kosten, Ersparnis, Verhalten."
+              onOpen={() => onOpenSub('historie')}
+            />
+            <DetailCard
+              icon="sun"
+              category="solar"
+              title="Wetter am Standort"
+              line={
+                nextHourTempC != null
+                  ? `Nächste Stunde ${fmtNum(nextHourTempC, '°C')}.`
+                  : 'Die Vorhersage für Ihre Anlage.'
+              }
+              onOpen={() => onOpenSub('wetter')}
+            />
+            <DetailCard
+              icon="settings"
+              category="industry"
+              title="Technik & Einstellungen"
+              line="Wechselrichter, Speicher, Tarif und Standort."
+              onOpen={() => onOpenSub('technik')}
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Single-Anlage customers have no Übersicht/Anlagen-Liste; their way to
           a SECOND Anlage is the always-visible "＋ Anlage hinzufügen" action in
           the shell header (App.tsx / AppShell, gated by showAddAnlageButton).
           From the second Anlage on, the list and fleet Übersicht carry it. */}
     </>
+  );
+}
+
+/**
+ * The Plan-traf-zu one-liner card (report N5): the single most trust-building
+ * graduated number - "Der Fahrplan traf gestern zu 93 % zu", plus the realized
+ * advantage vs. doing nothing when positive. Tapping opens the full Fahrplan.
+ */
+function PlanTrafCard({ traf, onOpen }: { traf: PlanTrafZu; onOpen: () => void }) {
+  return (
+    <button type="button" className="vp-plantraf" onClick={onOpen}>
+      <span className="vp-plantraf-ico" aria-hidden="true">
+        <Icon name="trending-up" size={18} />
+      </span>
+      <span className="vp-plantraf-text">
+        Der Fahrplan traf {traf.whenLabel} zu <b>{traf.accuracyPct} %</b> zu
+        {traf.savedVsBaselineEur != null && (
+          <> · <b>+{eurAmount(traf.savedVsBaselineEur)}</b> ggü. ohne Speicher</>
+        )}
+        .
+      </span>
+      <span className="vp-plantraf-chev" aria-hidden="true">
+        ›
+      </span>
+    </button>
   );
 }
 

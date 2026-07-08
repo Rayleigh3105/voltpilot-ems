@@ -4,7 +4,14 @@
 process.env.TZ = 'Europe/Berlin';
 
 import { describe, expect, it } from 'vitest';
-import { axisHourLabel, hoursAhead, nextHourIndex, nowMarkerIndex, tooltipHeader } from './weather';
+import {
+  axisHourLabel,
+  hoursAhead,
+  nextHourIndex,
+  nowMarkerIndex,
+  tooltipHeader,
+  weatherWhy,
+} from './weather';
 
 /** Hourly UTC points like the weather API returns (run day starts 00:00 UTC). */
 function hourlyPoints(startIso: string, hours: number) {
@@ -72,5 +79,45 @@ describe('local-time rendering (UTC never reaches the user)', () => {
   it('never crashes on a malformed timestamp', () => {
     expect(tooltipHeader('garbage')).toBe('garbage');
     expect(axisHourLabel('garbage')).toBe('garbage');
+  });
+});
+
+describe('weatherWhy (the live-zone PV "why" one-liner)', () => {
+  const NOW = new Date(2026, 6, 7, 10, 0); // 10:00 Berlin local
+
+  /** Cloud points at local hours of NOW's day (cloudCoverPct per hour). */
+  function clouds(from: number, list: (number | null)[]) {
+    return list.map((c, i) => ({
+      ts: new Date(2026, 6, 7, from + i, 0).toISOString(),
+      cloudCoverPct: c,
+    }));
+  }
+
+  it('is null when no upcoming daytime cloud data exists', () => {
+    expect(weatherWhy([], NOW)).toBeNull();
+    // Only past hours (< now) and night hours -> nothing to say.
+    expect(weatherWhy(clouds(6, [10, 20]), NOW)).toBeNull();
+  });
+
+  it('sunny now, clouding over later -> "Sonnig bis H Uhr"', () => {
+    const pts = clouds(10, [10, 15, 20, 80, 90]); // clear until 13:00, then cloudy
+    expect(weatherWhy(pts, NOW)).toBe('Sonnig bis 13 Uhr - gute PV-Erträge erwartet.');
+  });
+
+  it('sunny all remaining day -> "Überwiegend sonnig"', () => {
+    expect(weatherWhy(clouds(10, [10, 20, 15, 25, 30]), NOW)).toBe(
+      'Überwiegend sonnig - gute PV-Erträge erwartet.',
+    );
+  });
+
+  it('cloudy now, clearing later -> "Ab H Uhr sonniger"', () => {
+    const pts = clouds(10, [90, 85, 30, 20]); // clears at 12:00
+    expect(weatherWhy(pts, NOW)).toBe('Ab 12 Uhr sonniger - dann bessere PV-Erträge.');
+  });
+
+  it('overcast all day -> "Stark bewölkt"', () => {
+    expect(weatherWhy(clouds(10, [90, 85, 95, 80]), NOW)).toBe(
+      'Stark bewölkt - heute wenig Solarertrag.',
+    );
   });
 });

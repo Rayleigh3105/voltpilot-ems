@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   chargeKind,
+  curtailmentToday,
   daypart,
   hasGridCharge,
   planHourBars,
@@ -207,6 +208,39 @@ describe('planHourBars', () => {
   it('renders a planned-idle hour as ruhe with kw 0', () => {
     const bars = planHourBars(hours(9, 10, 0, 1), NOW);
     expect(bars[9]).toEqual({ hour: 9, kind: 'ruhe', kw: 0 });
+  });
+});
+
+/** One 15-min curtailment slot at local hour of NOW's day (or day+1). */
+function cslot(hour: number, curtailKw: number | null, priceEurMwh: number | null, dayOffset = 0) {
+  return {
+    start: new Date(2026, 6, 7 + dayOffset, hour, 0).toISOString(),
+    curtailKw,
+    priceEurMwh,
+  };
+}
+
+describe('curtailmentToday', () => {
+  it('is null when nothing is curtailed today', () => {
+    expect(curtailmentToday([cslot(10, 0, 50), cslot(11, null, 40)], NOW)).toBeNull();
+  });
+
+  it('sums curtailed energy and avoids the negative-price loss only', () => {
+    // 8 kW held back for 15 min at -60 EUR/MWh => 2 kWh, avoided 2*0.06 = 0.12 €.
+    // 4 kW held back for 15 min at +30 EUR/MWh => 1 kWh, no avoided loss (price > 0).
+    const r = curtailmentToday([cslot(12, 8, -60), cslot(13, 4, 30)], NOW)!;
+    expect(r.curtailedKwh).toBeCloseTo(3, 6);
+    expect(r.avoidedLossEur).toBeCloseTo(0.12, 6);
+  });
+
+  it('ignores tomorrow slots and sub-deadband noise', () => {
+    const r = curtailmentToday(
+      [cslot(12, 6, -80), cslot(9, 0.005, -80), cslot(12, 6, -80, 1)],
+      NOW,
+    )!;
+    // Only today's 6 kW slot counts: 1.5 kWh, avoided 1.5*0.08 = 0.12 €.
+    expect(r.curtailedKwh).toBeCloseTo(1.5, 6);
+    expect(r.avoidedLossEur).toBeCloseTo(0.12, 6);
   });
 });
 

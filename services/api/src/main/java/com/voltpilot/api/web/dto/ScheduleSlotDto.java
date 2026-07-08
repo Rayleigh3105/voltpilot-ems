@@ -8,6 +8,13 @@ import java.time.Instant;
  * +charge/-discharge (the frozen schedule contract), {@code gridKw} is signed
  * +import/-export (the telemetry convention); costs are the projected slot cost
  * with the plan vs. with the battery idle (the no-battery baseline).
+ *
+ * <p>{@code curtailKw} is the planned PV curtailment for the slot (kW the
+ * optimizer holds back, only ever &gt;= 0 - {@code schedule.curtail_kw},
+ * migration V20260706040000): at negative prices the optimizer curtails feed-in
+ * so the plant does not pay to export, and the portal surfaces the avoided loss
+ * ("heute X kWh abgeregelt, Y € Verlust vermieden"). Null on runs that predate
+ * the curtailment column or slots without curtailment data.
  */
 public record ScheduleSlotDto(
         Instant start,
@@ -16,5 +23,6 @@ public record ScheduleSlotDto(
         BigDecimal socPct,
         BigDecimal priceEurMwh,
         BigDecimal costEur,
-        BigDecimal baselineCostEur) {
+        BigDecimal baselineCostEur,
+        BigDecimal curtailKw) {
 }
