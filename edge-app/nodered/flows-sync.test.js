@@ -185,6 +185,18 @@ test('flow control planner keeps Deye read-only (uncertified) like the module', 
   assert.strictEqual(flowPlan.certified, false);
 });
 
+test('flow control planner matches the module for the OTHER Deye branches (hybrid_1p, string)', () => {
+  const base = { schema_version: '1.0', brand: 'deye', communication: 'solarman_v5', connection: { ip: '10.1.2.3', port: 8899, serial: '2985159064', mb_slave_id: 1 } };
+  // hybrid_1p (its own register block) and a charging setpoint that grid-charges.
+  const sel1p = { ...base, family: 'hybrid_1p' };
+  const sp1p = { battery_setpoint_kw: 6, pv_limit_kw: 4, grid_charge_allowed: true, source: 'schedule', control_enabled: true };
+  assert.deepStrictEqual(runControlPlan(sel1p, sp1p), JSON.parse(JSON.stringify(controlRouting.controlRoute(sel1p, sp1p, {}))));
+  // string (no battery -> the reg==null inline branch)
+  const selStr = { ...base, family: 'string' };
+  const spStr = { battery_setpoint_kw: 0, source: 'schedule', control_enabled: true };
+  assert.deepStrictEqual(runControlPlan(selStr, spStr), JSON.parse(JSON.stringify(controlRouting.controlRoute(selStr, spStr, {}))));
+});
+
 test('flow modbus decoder matches modbus-tcp.decodeProfile() (sunspec)', () => {
   const regs = [250, 1200, 800, 500, 550, 7000, 5000, 0, 0];
   const msg = { mb: { profile: 'sunspec', regs } };

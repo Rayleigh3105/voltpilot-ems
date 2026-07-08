@@ -12,9 +12,13 @@ SunSpec-/Modbus-Adapter ist gegen den Simulator bewiesen und daher zertifiziert;
 **alle Deye-Familien sind bewusst NICHT zertifiziert** (`CERTIFIED_CONTROL_FAMILIES`
 in `inverter-control-routing.js` bzw. `VP_CONTROL_CERTIFIED_FAMILIES` im Core) und
 bleiben **nur lesend**, bis diese Checkliste pro Modell abgearbeitet ist. Die
-ToU-/Work-Mode-Register in `inverter-control-routing.js` (`DEYE_CONTROL_REG`) sind aus
-öffentlichen Karten trianguliert (DEYE.md) und **als `bench_pending` markiert** - sie
-werden bis zur Freigabe nie in einen Schreibbefehl umgesetzt.
+ToU-/Work-Mode-Register in `inverter-control-routing.js` (`DEYE_CONTROL_REG`) sind
+seit 2026-07-08 **quellenbasiert aus [`davidrapan/ha-solarman`](https://github.com/davidrapan/ha-solarman)**
+(MIT; `deye_p3.yaml` → `hybrid_3p`, `deye_hybrid.yaml` → `hybrid_1p`) statt trianguliert -
+ha-solarman steuert denselben Solarman-V5-Logger, die Adressen sind also belastbar.
+Sie bleiben dennoch **als `bench_pending` markiert** (per Modell/Firmware zu bestätigen) und
+werden bis zur Freigabe nie in einen Schreibbefehl umgesetzt. Konkrete Adressen: siehe
+die Tabelle in [`DEYE.md`](DEYE.md) → „Ausgeklammert: Hybrid-Batteriesteuerung".
 
 Diese Datei ist die Vorlage, die firstmate dem Captain für die Prüfstand-Sitzung an
 seinem echten **SUN-\*-SG01HP3-EU** (und einem LV-Gerät **SG04LP3**) übergibt.
@@ -32,12 +36,15 @@ seinem echten **SUN-\*-SG01HP3-EU** (und einem LV-Gerät **SG04LP3**) übergibt.
 
 ## Checkliste (pro Modell/Firmware abzuhaken - report §6.3)
 
-1. **Register-Adressen bestätigen.** Für dieses Firmware-Release die tatsächlichen
-   Adressen von System-Work-Mode, ToU-Slot (Startzeit / Leistung / Ziel-SoC /
-   Netzlade-Bit) und der Lade-/Entlade-STROMgrenzen ermitteln und mit
-   `DEYE_CONTROL_REG` abgleichen. Abweichung → Adresse pro Modell in der Config
-   überschreiben (kein Code-Edit), **nie eine geratene Adresse als zertifiziert
-   ausliefern**.
+1. **Register-Adressen bestätigen.** Die ha-solarman-Adressen für dieses Firmware-Release
+   verifizieren: Work Mode (`0x008E` 3p / `0x00F4` 1p), Time-of-Use-Enable (`0x0092` / `0x00F8`),
+   ToU-Programm 1 (Startzeit `0x0094`/`0x00FA`, Leistung `0x009A`/`0x0100`, Ziel-SoC `0x00A6`/`0x010C`,
+   Charging-Enum `0x00AC`/`0x0112`) und die Lade-/Entlade-STROMgrenzen (`0x006C`/`0x006D` bzw.
+   `0x00D2`/`0x00D3`) - alle in `DEYE_CONTROL_REG`. Als Beweis, dass die Adressen NICHT im
+   Telemetriefenster liegen: der Lese-Dump `0x008D…0x00B1` (3p) muss statische Config-Werte
+   zeigen (Enums, Prozente, Zeiten), nicht die schwankende Live-Telemetrie aus `0x024C…`/`0x0F00…`.
+   Abweichung → Adresse pro Modell in der Config überschreiben (kein Code-Edit), **nie eine
+   geratene Adresse als zertifiziert ausliefern**.
 2. **Richtung über Ziel-SoC.** Belegen, dass ein ToU-Slot mit Ziel-SoC = 100 %
    tatsächlich **lädt** und mit Ziel-SoC = SoC-Untergrenze tatsächlich **entlädt**
    (Strategie A). Gegen die gemessene Batterieleistung querchecken.
@@ -86,6 +93,8 @@ ausgelesen, aber nicht gesteuert.
   `controlRoute`-Abstraktion (Schreibplan + Rücklesen), Quelle der Wahrheit.
 - [`deye/solarman-v5.js`](deye/solarman-v5.js) - die FC6/FC16-Schreibframes für Deye
   (Round-Trip-getestet).
-- [`DEYE.md`](DEYE.md) → „Ausgeklammert: Hybrid-Batteriesteuerung" - die triangulierten
-  Steuerregister (Ausgangspunkt für Punkt 1).
+- [`DEYE.md`](DEYE.md) → „Ausgeklammert: Hybrid-Batteriesteuerung" - die
+  ha-solarman-basierten Steuerregister je Familie (Ausgangspunkt für Punkt 1).
+- [`davidrapan/ha-solarman`](https://github.com/davidrapan/ha-solarman) (MIT) - Quelle der
+  Adressen (`deye_p3.yaml` = `hybrid_3p`, `deye_hybrid.yaml` = `hybrid_1p`).
 - Scout-Bericht `vp-inverter-control-arch/report.md` §6.3 - die ursprüngliche Liste.

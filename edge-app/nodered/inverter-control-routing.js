@@ -166,24 +166,83 @@ function sunspecControl({ selection, conn, ip, family, certified, controlEnabled
 // --- deye / hybrid control adapter (UNCERTIFIED - read-only until bench) ------
 //
 // The battery-power -> live ToU slot translation (report §3.3 strategy A). The
-// addresses are triangulated from DEYE.md and are BENCH-PENDING, so this adapter
-// NEVER emits executable writes (writes:[]). The `planned` list carries the
-// intended ToU mapping for the :8484 display and the unit tests - it is the
-// concrete artefact the bench session verifies, not a live command.
+// addresses are now SOURCED from ha-solarman (see DEYE_CONTROL_REG below), no
+// longer triangulated, but they are STILL BENCH-PENDING per model/firmware, so
+// this adapter NEVER emits executable writes (writes:[]). The `planned` list
+// carries the intended ToU mapping for the :8484 display and the unit tests -
+// it is the concrete artefact the bench session verifies, not a live command.
+//
+// SOURCE (facts, not code): davidrapan/ha-solarman (MIT) inverter_definitions -
+// deye_p3.yaml (SG04LP3 LV + SG01HP3 HV -> our hybrid_3p; "Tested with
+// 25K-SG01HP3 12K-SG04LP3") and deye_hybrid.yaml (SG0*LP1 -> our hybrid_1p).
+// ha-solarman controls the SAME Solarman-V5 WiFi logger we use, so it PROVES the
+// logger passes control writes and its per-model register profiles are the
+// reliable address source. The register ADDRESSES/scales/enums are facts,
+// re-expressed here in our own adapter structure with attribution; no ha-solarman
+// CODE is copied. Our earlier 0x0F00-region triangulation was WRONG: a read-only
+// bench dump of the captain's SG04LP3 showed 0x0F00.. holds LIVE TELEMETRY, not
+// the ToU/work-mode config - the real levers live in the 0x008D..0x00B1 (3p) /
+// 0x00F3..0x0117 (1p) holding-register block, OUTSIDE the telemetry window
+// (data/learnings.md 2026-07-08).
 
-// Deye hybrid ToU / work-mode control registers (DEYE.md §"Ausgeklammert",
-// triangulated from deye-controller / sunsynk / ha-solarman - VERIFY PER MODEL
-// on the bench before certifying). Same base map for hybrid_1p and hybrid_3p
-// (the high map); hybrid_1p addresses are analogous and equally bench-gated.
+// Deye hybrid ToU / work-mode control registers, PER battery-capable family.
+// String/micro (no battery) are handled separately (active-power-limit only).
+// Program N (N=1..6) registers are contiguous, so we address them by a base +
+// the slot index. VoltPilot commands through ONE live ToU program slot
+// (DEYE_CONTROL_SLOT, Program 1) - strategy A.
 const DEYE_CONTROL_REG = {
-  WORK_MODE: 0x0f01, // System Work Mode / energy pattern (Self-use / ToU ...)
-  TOU_ENABLE: 0x0f02, // ToU enable + weekday mask (bitmask)
-  SLOT_POWER: 0x0f3d, // ToU slot power (W), per slot
-  SLOT_TARGET_SOC: 0x0f44, // ToU slot target SoC (%), per slot
-  SLOT_GRID_CHARGE: 0x0f4b, // ToU slot grid-charge enable bit, per slot
-  EXPORT_LIMIT: deyeDecode.POWER_LIMIT_REG, // 0x0028 active-power/export limit (%)
+  // hybrid_3p: SUN-*-SG04LP3 (LV) + SUN-*-SG01HP3 (HV). ha-solarman deye_p3.yaml
+  // "Work Mode" + "Time of Use" groups. Program Power uses ha-solarman's scale
+  // [1, 10] (LV = 1 -> W, HV = 10 -> decawatt), selected on-device by the
+  // `power_scale` config (default 1; HV sets 10) exactly like the read map.
+  hybrid_3p: {
+    energyPattern: 0x008d, // Battery First(0) / Load First(1)
+    workMode: 0x008e, // Export First(0) / Zero Export To Load(1) / Zero Export To CT(2)
+    maxSellPower: 0x008f, // W (scale [1,10])
+    solarSell: 0x0091, // Export Surplus (Solar Sell) switch
+    touEnable: 0x0092, // Time of Use enable + weekday mask (bit0=Enabled; 0x00FF="Week")
+    progTimeBase: 0x0094, // Program 1..6 Time (HHMM)             0x0094..0x0099
+    progPowerBase: 0x009a, // Program 1..6 Power (W, scale [1,10]) 0x009A..0x009F
+    progSocBase: 0x00a6, // Program 1..6 target SOC (%)          0x00A6..0x00AB
+    progChargeBase: 0x00ac, // Program 1..6 Charging enum          0x00AC..0x00B1
+    maxChargeCurrent: 0x006c, // Battery Max Charging Current (A)
+    maxDischargeCurrent: 0x006d, // Battery Max Discharging Current (A)
+    exportLimit: 0x00e7, // "Grid Max Export power" (feed-in cap, W)
+    exportLimitScale: 10, // 0x00E7 fixed scale 10 (register = W / 10)
+  },
+  // hybrid_1p: SUN-*-SG03LP1 low map. ha-solarman deye_hybrid.yaml "Work Mode"
+  // group. No dedicated "Grid Max Export power" register on this family, so the
+  // feed-in cap maps to "Export Surplus Power" (Max Sell Power, W, scale 1).
+  hybrid_1p: {
+    energyPattern: 0x00f3,
+    workMode: 0x00f4,
+    maxSellPower: 0x00f5,
+    solarSell: 0x00f7,
+    touEnable: 0x00f8,
+    progTimeBase: 0x00fa, // 0x00FA..0x00FF
+    progPowerBase: 0x0100, // 0x0100..0x0105
+    progSocBase: 0x010c, // 0x010C..0x0111
+    progChargeBase: 0x0112, // 0x0112..0x0117
+    maxChargeCurrent: 0x00d2,
+    maxDischargeCurrent: 0x00d3,
+    exportLimit: 0x00f5, // Max Sell Power (W, scale 1)
+    exportLimitScale: 1,
+  },
 };
-const WORK_MODE_TOU = 1; // "Time-of-Use" work-mode selector value (bench-verify)
+
+// ha-solarman enum values (facts from the two Deye definitions).
+const DEYE_WORK_MODE = { EXPORT_FIRST: 0, ZERO_EXPORT_TO_LOAD: 1, ZERO_EXPORT_TO_CT: 2 };
+// "Time of Use" enable: 0x00FF = "Week" (all 7 weekday bits) with bit0 = Enabled.
+const DEYE_TOU_ENABLED_ALL_WEEK = 0x00ff;
+// "Program N Charging" enum: Disabled / Grid / Generator / Both.
+const DEYE_PROG_CHARGE = { DISABLED: 0, GRID: 1, GENERATOR: 2, BOTH: 3 };
+// VoltPilot drives ONE live ToU program slot (Program 1, zero-based index 0).
+const DEYE_CONTROL_SLOT = 0;
+
+function deyeFamilyControlReg(family) {
+  return Object.prototype.hasOwnProperty.call(DEYE_CONTROL_REG, family)
+    ? DEYE_CONTROL_REG[family] : null;
+}
 
 function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
@@ -191,51 +250,11 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
   const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
   const invert = conn.invert_control_sign === true;
   const socMin = isFiniteNum(setpoint.soc_min_pct) ? setpoint.soc_min_pct : 5;
+  // power_scale mirrors the read map: LV = 1 (register in W), HV = 10 (decawatt).
+  const powerScale = Number(conn.power_scale) > 0 ? Number(conn.power_scale) : 1;
 
-  const battKw = invert ? -kw : kw;
-  const charging = battKw > 0;
-  const powerW = Math.round(Math.abs(battKw) * 1000);
-  // Direction is encoded by target SoC vs. current SoC (strategy A): charge ->
-  // full, discharge -> the operating floor.
-  const targetSoc = charging ? 100 : clampPct(socMin);
-  // Grid-charge is EEG-gated: only ever enabled when the site explicitly permits
-  // grid charging (netzladen_erlaubt) AND the slot is charging. Default false =
-  // EEG-compliant (an EEG plant must never grid-charge). The optimizer already
-  // refuses grid-charging for EEG sites; this is the belt-and-braces on-device.
-  const gridChargeAllowed = setpoint.grid_charge_allowed === true;
-  const gridChargeBit = gridChargeAllowed && charging ? 1 : 0;
-
-  // pv_limit -> export-limit % of rated (report §3.3 B). No limit -> 100 %.
-  const ratedKw = Number(opts.ratedKw) > 0 ? Number(opts.ratedKw) : 0;
-  const exportPct = pvLimitKw == null || ratedKw <= 0
-    ? 100 : clampPct((pvLimitKw / ratedKw) * 100);
-
-  const planned = [
-    {
-      role: 'work_mode', fc: 6, addr: DEYE_CONTROL_REG.WORK_MODE, value: WORK_MODE_TOU,
-      encode: { kind: 'work_mode', mode: 'tou' }, dwell_s: 900, min_change: 0, bench_pending: true,
-    },
-    {
-      role: 'battery_power', fc: 6, addr: DEYE_CONTROL_REG.SLOT_POWER, value: powerW & 0xffff,
-      encode: { kind: 'watt_u16', kw: battKw }, dwell_s: 900, min_change: 50, bench_pending: true,
-    },
-    {
-      role: 'battery_target_soc', fc: 6, addr: DEYE_CONTROL_REG.SLOT_TARGET_SOC, value: targetSoc,
-      encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' },
-      dwell_s: 900, min_change: 1, bench_pending: true,
-    },
-    {
-      role: 'grid_charge_enable', fc: 6, addr: DEYE_CONTROL_REG.SLOT_GRID_CHARGE, value: gridChargeBit,
-      encode: { kind: 'flag', eeg_gated: true }, dwell_s: 900, min_change: 0, bench_pending: true,
-    },
-    {
-      role: 'pv_limit', fc: 6, addr: DEYE_CONTROL_REG.EXPORT_LIMIT, value: exportPct,
-      encode: { kind: 'export_pct', rated_kw: ratedKw, kw: pvLimitKw }, dwell_s: 900, min_change: 1,
-      bench_pending: true,
-    },
-  ];
-
-  return {
+  const reg = deyeFamilyControlReg(family);
+  const base = {
     adapter: 'solarman_v5', family,
     target: ip + ':' + port,
     connection: { ip, port, serial, mb_slave_id: slaveId },
@@ -245,9 +264,82 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
     // address, and do not pretend to confirm control registers we cannot trust.
     writes: [],
     readbacks: [],
-    planned,
     reason: 'Steuerung für dieses Modell noch nicht freigegeben',
   };
+
+  // String / micro Deye: NO battery, NO ToU. The only lever is the active-power
+  // limit (0x0028), which IS the correct register there (unlike on a hybrid).
+  if (!reg) {
+    const ratedKw = Number(opts.ratedKw) > 0 ? Number(opts.ratedKw) : 0;
+    const planned = [];
+    if (pvLimitKw != null && ratedKw > 0) {
+      planned.push({
+        role: 'pv_limit', fc: 6, addr: deyeDecode.POWER_LIMIT_REG,
+        value: clampPct((pvLimitKw / ratedKw) * 100),
+        encode: { kind: 'active_power_pct', rated_kw: ratedKw, kw: pvLimitKw },
+        dwell_s: 900, min_change: 1, bench_pending: true,
+      });
+    }
+    return { ...base, planned };
+  }
+
+  const battKw = invert ? -kw : kw;
+  const charging = battKw > 0;
+  // Program Power is the slot's charge/discharge power cap (W / power_scale).
+  const powerReg = Math.max(0, Math.round((Math.abs(battKw) * 1000) / powerScale)) & 0xffff;
+  // Direction is encoded by the slot's target SoC (strategy A): charge -> full,
+  // discharge -> the operating floor. ha-solarman "Program N SOC", %.
+  const targetSoc = charging ? 100 : clampPct(socMin);
+  // Grid-charge is EEG-gated: the slot's "Program N Charging" is only ever set to
+  // Grid when the site explicitly permits grid charging (netzladen_erlaubt) AND
+  // the slot is charging. Default = Disabled (an EEG plant must never grid-charge;
+  // the optimizer already refuses it - this is the on-device belt-and-braces).
+  const gridChargeAllowed = setpoint.grid_charge_allowed === true;
+  const chargeEnum = gridChargeAllowed && charging
+    ? DEYE_PROG_CHARGE.GRID : DEYE_PROG_CHARGE.DISABLED;
+
+  const slot = DEYE_CONTROL_SLOT;
+  const planned = [
+    {
+      // Export First lets the ToU schedule sell surplus (grid arbitrage); the
+      // exact work-mode value is bench-verified per firmware.
+      role: 'work_mode', fc: 6, addr: reg.workMode, value: DEYE_WORK_MODE.EXPORT_FIRST,
+      encode: { kind: 'work_mode', enum: 'export_first' }, dwell_s: 900, min_change: 0, bench_pending: true,
+    },
+    {
+      // Turn the ToU scheduler on for all weekdays (bit0=Enabled, 0x00FF="Week").
+      role: 'tou_enable', fc: 6, addr: reg.touEnable, value: DEYE_TOU_ENABLED_ALL_WEEK,
+      encode: { kind: 'tou_mask', all_week: true }, dwell_s: 900, min_change: 0, bench_pending: true,
+    },
+    {
+      role: 'battery_power', fc: 6, addr: reg.progPowerBase + slot, value: powerReg,
+      encode: { kind: 'watt_scaled_u16', scale: powerScale, kw: battKw }, dwell_s: 900, min_change: 50, bench_pending: true,
+    },
+    {
+      role: 'battery_target_soc', fc: 6, addr: reg.progSocBase + slot, value: targetSoc,
+      encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' },
+      dwell_s: 900, min_change: 1, bench_pending: true,
+    },
+    {
+      role: 'grid_charge_enable', fc: 6, addr: reg.progChargeBase + slot, value: chargeEnum,
+      encode: { kind: 'charge_enum', eeg_gated: true, disabled: DEYE_PROG_CHARGE.DISABLED, grid: DEYE_PROG_CHARGE.GRID },
+      dwell_s: 900, min_change: 0, bench_pending: true,
+    },
+  ];
+  // pv_limit -> the family's feed-in cap register, in W / register-scale. Absent
+  // (no curtailment) -> no write, matching the schedule contract (absent = no
+  // limit), so an uncurtailed tick never touches the export cap.
+  if (pvLimitKw != null) {
+    const capW = Math.max(0, pvLimitKw * 1000);
+    planned.push({
+      role: 'pv_limit', fc: 6, addr: reg.exportLimit,
+      value: Math.round(capW / reg.exportLimitScale) & 0xffff,
+      encode: { kind: 'feed_in_cap_w', scale: reg.exportLimitScale, kw: pvLimitKw },
+      dwell_s: 900, min_change: 1, bench_pending: true,
+    });
+  }
+
+  return { ...base, planned };
 }
 
 module.exports = {
@@ -256,7 +348,10 @@ module.exports = {
   SUNSPEC_REG,
   NO_PV_LIMIT,
   DEYE_CONTROL_REG,
-  WORK_MODE_TOU,
+  DEYE_WORK_MODE,
+  DEYE_PROG_CHARGE,
+  DEYE_TOU_ENABLED_ALL_WEEK,
+  DEYE_CONTROL_SLOT,
   CERTIFIED_CONTROL_FAMILIES,
   controlRoute,
 };

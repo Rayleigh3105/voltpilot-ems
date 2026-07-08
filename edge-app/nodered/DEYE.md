@@ -347,26 +347,40 @@ Der Messwert-Kontrakt (Felder/Einheiten/Vorzeichen, QoS/Kadenz) steht in [`CUSTO
 
 **Bewusst NICHT in dieser Vorlage** (sicherheitskritischer Folgeschritt).
 
-Deye-Hybride haben **keinen direkten Batterie-Watt-Sollwert**. Die Steuerung erfolgt **indirekt** über den *System Work Mode* + ein *Time-of-Use-Programm* (Ziel-SoC + Watt + Netzlade-Bit) plus **maximale Lade-/Entlade-STROM-Grenzen (Ampere!)**.
+Deye-Hybride haben **keinen direkten Batterie-Watt-Sollwert**. Die Steuerung erfolgt **indirekt** über den *Work Mode* + ein *Time-of-Use-Programm* (Ziel-SoC + Watt + Netzlade-Auswahl) plus **maximale Lade-/Entlade-STROM-Grenzen (Ampere!)**.
 Sie ist modellabhängig, und ein falscher Schreibbefehl kann die Batterie **beschädigen**.
 VoltPilots kontinuierlichen `edge/setpoint` (kW, + laden / − entladen) darauf abzubilden erfordert Software-Klammern **plus Prüfung pro Gerät am Prüfstand** - das ist ein eigenes, sicherheitsgesichertes Arbeitspaket.
 
-**TODO (recherchierte Steuerregister für den Folgeschritt - vor Nutzung pro Modell verifizieren):**
+**Steuerregister - jetzt QUELLENBASIERT aus ha-solarman (nicht mehr trianguliert), aber weiterhin pro Modell/Firmware am Prüfstand zu bestätigen.**
 
-| Zweck | Register (hybrid_3p / high map) | Hinweis |
-|---|---|---|
-| System Work Mode / Energy pattern | `0x0F01` (3841) | Modus-Auswahl (Self-use / Time-of-use …) |
-| Time-of-Use aktivieren + Wochentagsmaske | `0x0F02` (3842) | Bitmaske |
-| ToU-Slot-Startzeiten | `0x0F26`… (3878+) | pro Slot |
-| ToU-Slot-Leistung (Watt) | `0x0F3D`… (3901+) | pro Slot |
-| ToU-Slot-Ziel-SoC (%) | `0x0F44`… (3908+) | pro Slot |
-| ToU-Slot-Netzlade-Bit | `0x0F4B`… (3915+) | Grid-Charge an/aus pro Slot |
-| Max. Ladestrom (A) | `0x0F09` (3849) | **Strom, nicht Leistung** |
-| Max. Entladestrom (A) | `0x0F0A` (3850) | **Strom, nicht Leistung** |
+Quelle: [`davidrapan/ha-solarman`](https://github.com/davidrapan/ha-solarman) (MIT), `custom_components/solarman/inverter_definitions/` - `deye_p3.yaml` (SG04LP3 LV **und** SG01HP3 HV → unsere `hybrid_3p`; dort *"Tested with 25K-SG01HP3 12K-SG04LP3"*) und `deye_hybrid.yaml` (SG0\*LP1 → `hybrid_1p`).
+ha-solarman steuert **denselben Solarman-V5-WiFi-Logger** wie wir (FC6/FC16-Modbus im V5-Frame) - beweist also, dass der Logger Steuerschreibvorgänge durchreicht, und liefert die verlässlichen Adressen. Register-**Adressen/Skalen/Enums sind Fakten** und mit Quellenangabe übernommen; kein ha-solarman-**Code** wurde kopiert.
 
-> Diese Adressen sind aus öffentlichen Karten (deye-controller / sunsynk) trianguliert und variieren je Modell/Firmware. Sie dienen nur als Ausgangspunkt für das Folge-Arbeitspaket - **erst am Prüfstand pro Gerät verifizieren**, mit Klammern gegen Strom-/SoC-/Leistungsgrenzen, bevor irgendein Schreibbefehl scharf geschaltet wird.
+> **Korrektur (data/learnings.md 2026-07-08):** Der frühere `0x0F00`-Ansatz war FALSCH - ein Lese-Dump des SG04LP3 des Kapitäns zeigte, dass `0x0F00…` **Live-Telemetrie** hält, nicht die ToU/Work-Mode-Config. Die echten Hebel liegen im Holding-Register-Block `0x008D…0x00B1` (3p) bzw. `0x00F3…0x0117` (1p), **außerhalb** des Telemetriefensters (`0x024C…`/`0x0F00…`).
 
-**Die Steuer-Abstraktion ist inzwischen GEBAUT** (`inverter-control-routing.js` `controlRoute` + Rücklesen; FC6/FC16-Schreibframes in `deye/solarman-v5.js`), aber diese Register bleiben **`bench_pending` und der Deye-Adapter nur lesend**, bis pro Modell die Prüfstand-Checkliste abgehakt ist: **[`CONTROL-BENCH.md`](CONTROL-BENCH.md)**. Erst danach kommt die Familie in die Zertifizierungs-Allowlist und Steuerung wird pro Gerät scharfgeschaltet.
+ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EINEN Live-Slot (Programm 1)** - Strategie A. Adressen je Familie (`inverter-control-routing.js` `DEYE_CONTROL_REG`):
+
+| Zweck | Rolle | `hybrid_3p` (deye_p3) | `hybrid_1p` (deye_hybrid) | Hinweis |
+|---|---|---|---|---|
+| Energy Pattern | - | `0x008D` | `0x00F3` | Battery First(0) / Load First(1) |
+| Work Mode | `work_mode` | `0x008E` | `0x00F4` | Export First(0) / Zero Export To Load(1) / …To CT(2) |
+| Time-of-Use aktivieren + Wochentagsmaske | `tou_enable` | `0x0092` | `0x00F8` | Bit0 = Enabled; `0x00FF` = „Week" (alle Tage) |
+| Programm 1..6 Startzeit (HHMM) | - | `0x0094…0x0099` | `0x00FA…0x00FF` | pro Slot |
+| Programm 1..6 Leistung (W) | `battery_power` | `0x009A…0x009F` | `0x0100…0x0105` | Skala `[1,10]` (LV=1 W / HV=10 Dekawatt) via `power_scale` |
+| Programm 1..6 Ziel-SoC (%) | `battery_target_soc` | `0x00A6…0x00AB` | `0x010C…0x0111` | Richtung über Ziel-SoC (laden→hoch / entladen→Boden) |
+| Programm 1..6 Charging | `grid_charge_enable` | `0x00AC…0x00B1` | `0x0112…0x0117` | Enum: Disabled(0)/Grid(1)/Generator(2)/Both(3) - **EEG-gated** |
+| Max. Ladestrom (A) | - | `0x006C` | `0x00D2` | **Strom, nicht Leistung** |
+| Max. Entladestrom (A) | - | `0x006D` | `0x00D3` | **Strom, nicht Leistung** |
+| Netz-Einspeisegrenze (W) | `pv_limit` | `0x00E7` „Grid Max Export power" (Skala 10) | `0x00F5` „Max Sell Power" (Skala 1) | Curtailment-Kappe; absent = keine Grenze |
+
+> **String/Micro** (ohne Batterie) haben kein ToU: dort bleibt die **Wirkleistungsbegrenzung `0x0028`** ([Abschnitt 4](#4-wirkleistungsbegrenzung-stringmicro)) der einzige Steuerhebel - der Deye-Adapter plant für diese Familien NUR `pv_limit` an `0x0028`. Auf **Hybriden** war `0x0028` bislang FALSCH verdrahtet und wurde entfernt.
+> **Vorzeichen/Skalen bleiben VERIFY-on-device** (`invert_control_sign`, `power_scale`), genau wie beim Lesen.
+
+**Schreibweg = Standard-Modbus im V5-Frame.** ha-solarman schreibt mit `WRITE_SINGLE_REGISTER` (FC6) / `WRITE_MULTIPLE_REGISTERS` (FC16) - byte-identisch zu unseren `deye/solarman-v5.js`-Buildern (`writeSingleRegisterRequest`/`writeMultipleRegistersRequest`, unit-getestet). Kein Frame-Fix nötig.
+
+**Die Steuer-Abstraktion ist GEBAUT** (`inverter-control-routing.js` `controlRoute` + Rücklesen; FC6/FC16-Schreibframes in `deye/solarman-v5.js`), aber die Deye-Register bleiben **`bench_pending` und der Deye-Adapter nur lesend** (`CERTIFIED_CONTROL_FAMILIES = {sunspec}`, `VP_CONTROL_ENABLED` Standard aus), bis pro Modell die Prüfstand-Checkliste abgehakt ist: **[`CONTROL-BENCH.md`](CONTROL-BENCH.md)**. Erst danach kommt die Familie in die Zertifizierungs-Allowlist und Steuerung wird pro Gerät scharfgeschaltet.
+
+**Batterie-Lade-/Entlade-Steuerregister für den Prüfstand-Folgeschritt (nur `hybrid_3p` gezeigt; `hybrid_1p` analog, siehe Tabelle):** zusätzlich zu obiger ToU-Steuerung stehen für Feinregelung `Export Surplus Power`/Max Sell Power (`0x008F`/`0x00F5`), `Solar Sell`-Schalter (`0x0091`/`0x00F7`) und die Strom-Grenzen (`0x006C/0x006D`) bereit - alle in `DEYE_CONTROL_REG` dokumentiert, alle `bench_pending`.
 
 ---
 
