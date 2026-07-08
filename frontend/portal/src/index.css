@@ -2186,6 +2186,36 @@ button.vp-cl-item.is-off .vp-cl-label {
   color: var(--vp-text-dark, #1a1a1a);
   font-variant-numeric: tabular-nums;
 }
+/* One-line everyday-language explanation under each energy tile (decision 4). */
+.vp-estat .e {
+  font-size: 0.64rem;
+  color: var(--vp-text-gray, #6c757d);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* Provenance "i" tips on the dark money hero: inline with the label + legible
+   on the gradient (decision 3). */
+.vp-money-tile .t {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.vp-money-hero .vp-fleet-hero-label,
+.vp-money-hero .vp-fleet-hero-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.vp-money-hero .vp-infotip-btn {
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+.vp-money-hero .vp-infotip-btn:hover,
+.vp-money-hero .vp-infotip-btn[aria-expanded='true'] {
+  color: #fff;
+}
 
 /* "Bester Tag: 7. Juli · +48,20 €" under the Ertrag chart. */
 .vp-anlage-best {

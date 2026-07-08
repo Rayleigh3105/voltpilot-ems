@@ -8,7 +8,7 @@
  * All calendar reasoning is Europe/Berlin (the v1 platform timezone), matching
  * the backend's earnings buckets.
  */
-import type { EarningsMonth, EarningsRange, EarningsSeriesPoint } from './api';
+import type { EarningsMonth, EarningsRange, EarningsSeriesPoint, EarningsSite } from './api';
 import { eurAmount, NBSP } from './format';
 
 const ZONE = 'Europe/Berlin';
@@ -163,6 +163,122 @@ export function bucketTooltipLabel(startIso: string, range: EarningsRange): stri
     default:
       return d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: ZONE });
   }
+}
+
+/** ct/kWh for provenance copy: German comma, one decimal ("7,6"). */
+function ctAmount(value: number): string {
+  return value.toLocaleString('de-DE', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
+/**
+ * Nachvollziehbarkeit (captain decision 3, 2026-07-08): each euro figure in the
+ * money hero carries an expandable "i" whose body is ONE plain-German sentence
+ * of provenance - the real quantities and prices of THIS Anlage, not a formula.
+ * Each function returns null when the number is not shown (nothing to explain),
+ * so the hero stays as calm as before when collapsed.
+ */
+
+/**
+ * Einspeise-Erlös provenance: "Eingespeiste X MWh × Ø Y ct/kWh Börsenpreis Ihrer
+ * Einspeise-Zeiten" (+ the Marktprämie note for a Direktvermarktung site with an
+ * anzulegender Wert). realizedExportCtKwh is the export-weighted spot price the
+ * feed-in actually fetched, so the number is real.
+ */
+export function einspeiseProvenance(money: EarningsSite): string | null {
+  if (money.einspeiseErloesEur == null) return null;
+  const premium =
+    money.plantKind === 'direktvermarktung' && money.anzulegenderWertCtKwh != null
+      ? ' Enthält Ihre Marktprämie.'
+      : '';
+  if (money.eingespeistKwh == null || money.realizedExportCtKwh == null) {
+    return `Erlös aus dem ins Netz eingespeisten Solarstrom, bewertet zum Börsenpreis Ihrer Einspeise-Zeiten.${premium}`;
+  }
+  return (
+    `Eingespeiste ${energyLabel(money.eingespeistKwh)} × Ø ${ctAmount(money.realizedExportCtKwh)} ct/kWh ` +
+    `Börsenpreis Ihrer Einspeise-Zeiten.${premium}`
+  );
+}
+
+/**
+ * Wert-des-Eigenverbrauchs provenance, tariff-aware (the heart of decision 1+3):
+ * dynamisch = "Selbst verbrauchte X MWh × dynamischer Börsenpreis + N ct/kWh
+ * Aufschlag (im Schnitt M ct/kWh)"; fest = "× N ct/kWh (Ihr fester Strompreis)";
+ * ohne = the honest "why no euro" note. The average ct/kWh is derived from the
+ * two real numbers (value / kWh), so the dynamic copy is exact.
+ */
+export function eigenverbrauchProvenance(money: EarningsSite): string | null {
+  const kwh = money.selbstverbrauchKwh;
+  if (kwh == null) return null;
+  const menge = `Selbst verbrauchte ${energyLabel(kwh)}`;
+  if (money.tarifArt === 'ohne' || money.eigenverbrauchsWertEur == null) {
+    return (
+      `${menge} - direkt im Haus genutzter Solarstrom. Für einen Euro-Wert hinterlegen Sie ` +
+      `Ihren Stromtarif unter „Technik & Einstellungen".`
+    );
+  }
+  const gespart = ' So viel teuren Netzstrom haben Sie sich gespart.';
+  if (money.tarifArt === 'fest') {
+    const preis = money.tarifParamCtKwh != null ? `${ctAmount(money.tarifParamCtKwh)} ct/kWh` : 'Ihrem festen Strompreis';
+    return `${menge} × ${preis} (Ihr fester Strompreis).${gespart}`;
+  }
+  // dynamisch: spot per slot + optional Aufschlag, with the real average.
+  const aufschlag =
+    money.tarifParamCtKwh != null && money.tarifParamCtKwh > 0
+      ? `dynamischer Börsenpreis + ${ctAmount(money.tarifParamCtKwh)} ct/kWh Aufschlag`
+      : 'dynamischer Börsenpreis (ohne Aufschlag - konservativ gerechnet)';
+  const avg = kwh > 0 ? ` (im Schnitt ${ctAmount((money.eigenverbrauchsWertEur / kwh) * 100)} ct/kWh)` : '';
+  return `${menge} × ${aufschlag}${avg}.${gespart}`;
+}
+
+/**
+ * Gesamtertrag provenance: names the two parts that add up to it (feed-in
+ * revenue + the value of self-consumption), so the big number is traceable.
+ */
+export function gesamtertragProvenance(money: EarningsSite): string | null {
+  if (money.gesamtertragEur == null) return null;
+  const einspeise = money.einspeiseErloesEur != null ? `Einspeise-Erlös ${eurAmount(money.einspeiseErloesEur)}` : null;
+  const wert = money.eigenverbrauchsWertEur != null ? `Wert des Eigenverbrauchs ${eurAmount(money.eigenverbrauchsWertEur)}` : null;
+  const parts = [einspeise, wert].filter(Boolean).join(' + ');
+  return parts
+    ? `Gesamtertrag = ${parts}.`
+    : 'Ihr gesamter Ertrag in diesem Zeitraum: Einspeise-Erlös plus Wert Ihres Eigenverbrauchs.';
+}
+
+/**
+ * "davon durch VoltPilots Steuerung" provenance: the measured extra vs. an
+ * unregulated plant (battery off, PV fed in immediately) - what the steering
+ * concretely earned/saved.
+ */
+export function savedProvenance(money: EarningsSite): string | null {
+  if (money.savedEur == null) return null;
+  const verb = money.plantKind === 'direktvermarktung' ? 'mehr verdient' : 'gespart';
+  return (
+    `Gemessen gegenüber einer ungeregelten Anlage (Speicher aus, Solarstrom sofort eingespeist): ` +
+    `so viel hat VoltPilots Steuerung ${verb}.`
+  );
+}
+
+/** One energy tile of the money view: a name, the value, and a mini-explanation. */
+export interface EnergyTile {
+  label: string;
+  value: string;
+  hint: string;
+}
+
+/**
+ * The three energy tiles, renamed + self-explaining (captain decision 4):
+ * "Eingespeist / Selbst genutzt / Über Batterie", each with a one-line
+ * everyday-language hint. Pure so anlage.test.ts pins the wording.
+ */
+export function energyTiles(money: EarningsSite | null): EnergyTile[] {
+  return [
+    { label: 'Eingespeist', value: energyLabel(money?.eingespeistKwh), hint: 'ins Netz verkauft' },
+    { label: 'Selbst genutzt', value: energyLabel(money?.selbstverbrauchKwh), hint: 'direkt im Haus verbraucht' },
+    { label: 'Über Batterie', value: energyLabel(money?.batterieBewegtKwh), hint: 'zwischengespeichert' },
+  ];
 }
 
 /** The best (highest-Gesamtertrag) bucket of a series, or null when empty. */

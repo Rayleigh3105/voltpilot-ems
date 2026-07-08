@@ -13,9 +13,13 @@ import java.math.BigDecimal;
  * tenant is never part of the body; the row is addressed through RLS, so a
  * customer can only ever update their own sites (admins reach any tenant's
  * sites via the tenant switcher, i.e. the same RLS-scoped path with an
- * overridden context). {@code strompreisCtKwh} is the customer's optional
- * retail electricity price (ct/kWh); null clears it (self-consumption then
- * shows in kWh only), a value sets it for the Eigenverbrauchs-Wert.
+ * overridden context). {@code tarifArt}/{@code tarifParamCtKwh} are the
+ * customer's electricity tariff (they REPLACE the old fixed strompreisCtKwh):
+ * {@code tarifArt} is {@code dynamisch} | {@code fest} | {@code ohne} (default
+ * {@code ohne}, a full-representation field like {@code plantKind}), and
+ * {@code tarifParamCtKwh} (ct/kWh) is its parameter - the fixed retail price for
+ * {@code fest}, the optional spot-price Aufschlag for {@code dynamisch}, cleared
+ * for {@code ohne}.
  *
  * <p>{@code netzladenErlaubt} (the per-site grid-charging switch): the SITE
  * OWNER may flip it too (captain revision 2026-07-07 of decision 3 - not only
@@ -41,10 +45,13 @@ public record UpdateSiteRequest(
         @Digits(integer = 5, fraction = 3,
                 message = "anzulegenderWertCtKwh must have at most 3 decimal places")
                 BigDecimal anzulegenderWertCtKwh,
-        @DecimalMin(value = "0", message = "strompreisCtKwh must not be negative")
+        @Pattern(regexp = "dynamisch|fest|ohne",
+                message = "tarifArt must be one of dynamisch, fest, ohne")
+                String tarifArt,
+        @DecimalMin(value = "0", message = "tarifParamCtKwh must not be negative")
         @Digits(integer = 5, fraction = 3,
-                message = "strompreisCtKwh must have at most 3 decimal places")
-                BigDecimal strompreisCtKwh,
+                message = "tarifParamCtKwh must have at most 3 decimal places")
+                BigDecimal tarifParamCtKwh,
         Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {
@@ -53,5 +60,14 @@ public record UpdateSiteRequest(
 
     public String plantKindOrDefault() {
         return plantKind == null || plantKind.isBlank() ? "eigenverbrauch" : plantKind;
+    }
+
+    public String tarifArtOrDefault() {
+        return tarifArt == null || tarifArt.isBlank() ? "ohne" : tarifArt;
+    }
+
+    /** null for {@code ohne} (no euro value), otherwise the given parameter. */
+    public BigDecimal tarifParamOrNull() {
+        return "ohne".equals(tarifArtOrDefault()) ? null : tarifParamCtKwh;
     }
 }

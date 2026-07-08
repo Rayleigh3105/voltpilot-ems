@@ -75,11 +75,15 @@ public record EarningsDto(
      *
      * <p><b>Money-centric "Meine Anlage" fields (v2).</b> The Gesamtertrag of
      * the window = {@code einspeiseErloesEur} (metered feed-in valued at spot +
-     * Marktprämie) + {@code eigenverbrauchsWertEur} (self-consumed kWh valued at
-     * the customer's retail {@code strompreisCtKwh}). {@code strompreisCtKwh}
-     * echoes the site's configured tariff (null = not set); when it is null
-     * {@code eigenverbrauchsWertEur} is null too (self-consumption shown only as
-     * {@code selbstverbrauchKwh}, never a fabricated euro) and
+     * Marktprämie) + {@code eigenverbrauchsWertEur} (self-consumed energy valued
+     * per the site's tariff). {@code tarifArt}/{@code tarifParamCtKwh} echo the
+     * configured tariff ({@code dynamisch}/{@code fest}/{@code ohne} + its
+     * ct/kWh parameter) so the portal can render the provenance sentence. The
+     * Eigenverbrauchs-Wert is computed slot-by-slot in the repository:
+     * {@code dynamisch} prices each self-consumed kWh at that slot's Börsenpreis
+     * + the Aufschlag, {@code fest} at the fixed price. For an {@code ohne}
+     * tariff {@code eigenverbrauchsWertEur} is null (self-consumption shown only
+     * as {@code selbstverbrauchKwh}, never a fabricated euro) and
      * {@code gesamtertragEur} equals {@code einspeiseErloesEur} alone.
      * {@code eingespeistKwh}/{@code selbstverbrauchKwh}/{@code batterieBewegtKwh}
      * are the window's energy sums. All are null when nothing is computable
@@ -105,7 +109,8 @@ public record EarningsDto(
             LocalDate firstCoveredDate,
             String reason,
             List<EarningsDailyDto> dailySaved,
-            BigDecimal strompreisCtKwh,
+            String tarifArt,
+            BigDecimal tarifParamCtKwh,
             BigDecimal einspeiseErloesEur,
             BigDecimal eigenverbrauchsWertEur,
             BigDecimal gesamtertragEur,

@@ -28,10 +28,15 @@ import java.math.BigDecimal;
  * from it (see EarningsRepository) - the deprecated fixed
  * {@code marktpraemieCtKwh} is NOT accepted here anymore (unknown JSON fields
  * are ignored, so an old client sending it simply no-ops).
- * {@code strompreisCtKwh} is the customer's optional retail electricity price
- * (ct/kWh, from their Stromrechnung); null = not configured. When set, the
- * realized earnings value the site's self-consumed energy in euros; without it
- * the portal shows self-consumption in kWh only, never a fabricated euro number.
+ * {@code tarifArt}/{@code tarifParamCtKwh} are the customer's electricity tariff
+ * (they REPLACE the old fixed strompreisCtKwh): {@code tarifArt} is
+ * {@code dynamisch} | {@code fest} | {@code ohne} (default {@code ohne}), and
+ * {@code tarifParamCtKwh} (ct/kWh, >= 0, optional) is its parameter - the fixed
+ * retail price for {@code fest}, the optional spot-price Aufschlag for
+ * {@code dynamisch}, unused for {@code ohne}. When the tariff is set the realized
+ * earnings value self-consumed energy in euros (dynamisch: per 15-min slot at
+ * spot + Aufschlag; fest: at the fixed price); {@code ohne} shows kWh only, never
+ * a fabricated euro number.
  *
  * <p>{@code netzladenErlaubt} (the per-site grid-charging switch): the SITE
  * OWNER may set it too (captain revision 2026-07-07 of decision 3 - not only
@@ -57,10 +62,13 @@ public record CreateSiteRequest(
         @Digits(integer = 5, fraction = 3,
                 message = "anzulegenderWertCtKwh must have at most 3 decimal places")
                 BigDecimal anzulegenderWertCtKwh,
-        @DecimalMin(value = "0", message = "strompreisCtKwh must not be negative")
+        @Pattern(regexp = "dynamisch|fest|ohne",
+                message = "tarifArt must be one of dynamisch, fest, ohne")
+                String tarifArt,
+        @DecimalMin(value = "0", message = "tarifParamCtKwh must not be negative")
         @Digits(integer = 5, fraction = 3,
-                message = "strompreisCtKwh must have at most 3 decimal places")
-                BigDecimal strompreisCtKwh,
+                message = "tarifParamCtKwh must have at most 3 decimal places")
+                BigDecimal tarifParamCtKwh,
         Boolean netzladenErlaubt) {
 
     public String biddingZoneOrDefault() {
@@ -69,5 +77,18 @@ public record CreateSiteRequest(
 
     public String plantKindOrDefault() {
         return plantKind == null || plantKind.isBlank() ? "eigenverbrauch" : plantKind;
+    }
+
+    public String tarifArtOrDefault() {
+        return tarifArt == null || tarifArt.isBlank() ? "ohne" : tarifArt;
+    }
+
+    /**
+     * The tariff parameter to persist: null for {@code ohne} (no euro value),
+     * otherwise the given value - so a stray parameter can never linger on an
+     * {@code ohne} site.
+     */
+    public BigDecimal tarifParamOrNull() {
+        return "ohne".equals(tarifArtOrDefault()) ? null : tarifParamCtKwh;
     }
 }

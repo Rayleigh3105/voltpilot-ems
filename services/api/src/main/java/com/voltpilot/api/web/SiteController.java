@@ -122,7 +122,7 @@ public class SiteController {
         SiteDto created = sites.create(tenantId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
                 request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
-                request.strompreisCtKwh(), request.netzladenErlaubt());
+                request.tarifArtOrDefault(), request.tarifParamOrNull(), request.netzladenErlaubt());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -138,7 +138,7 @@ public class SiteController {
         SiteDto updated = sites.update(siteId, request.name().trim(),
                 request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
                 request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
-                request.strompreisCtKwh(), request.netzladenErlaubt());
+                request.tarifArtOrDefault(), request.tarifParamOrNull(), request.netzladenErlaubt());
         if (updated == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }

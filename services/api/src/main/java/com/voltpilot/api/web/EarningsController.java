@@ -157,26 +157,28 @@ public class EarningsController {
                     .map(d -> new EarningsDailyDto(d.day(), d.savedEur()))
                     .toList();
 
-            // The money-centric Gesamtertrag = Einspeise-Erlös + (only when a
-            // retail tariff is set) the Eigenverbrauchs-Wert. A NULL strompreis
-            // keeps the self-consumption in kWh only and never fabricates a euro
-            // value, so gesamtertrag falls back to the feed-in revenue alone.
-            BigDecimal strompreis = site.strompreisCtKwh();
+            // The money-centric Gesamtertrag = Einspeise-Erlös + the
+            // Eigenverbrauchs-Wert. The latter is computed slot-by-slot in the
+            // repository per the site's tariff (dynamisch: at each slot's spot
+            // price + Aufschlag; fest: at the fixed price; ohne: NULL), so an
+            // 'ohne' tariff keeps the self-consumption in kWh only and never
+            // fabricates a euro - gesamtertrag then falls back to the feed-in
+            // revenue alone.
             BigDecimal einspeise = covered > 0 ? agg.einspeiseErloesEur() : null;
             BigDecimal selbstverbrauchKwh = covered > 0 ? agg.selbstverbrauchKwh() : null;
-            BigDecimal eigenverbrauchsWert = eigenverbrauchsWert(selbstverbrauchKwh, strompreis);
+            BigDecimal eigenverbrauchsWert = covered > 0 ? agg.eigenverbrauchsWertEur() : null;
             BigDecimal gesamtertrag = einspeise == null ? null
                     : eigenverbrauchsWert == null ? einspeise : einspeise.add(eigenverbrauchsWert);
 
             List<EarningsSeriesPointDto> siteSeries = series
                     .getOrDefault(site.id(), List.of()).stream()
-                    .map(p -> new EarningsSeriesPointDto(p.start(), gesamtertragOf(p, strompreis)))
+                    .map(p -> new EarningsSeriesPointDto(p.start(), gesamtertragOf(p)))
                     .toList();
             List<EarningsMonthDto> siteStrip = strip
                     .getOrDefault(site.id(), List.of()).stream()
                     .map(p -> new EarningsMonthDto(
                             p.start().atZone(HistoryRange.ZONE).toLocalDate(),
-                            gesamtertragOf(p, strompreis)))
+                            gesamtertragOf(p)))
                     .toList();
 
             fleet.add(new EarningsSiteDto(
@@ -196,7 +198,8 @@ public class EarningsController {
                     siteFirst,
                     covered > 0 ? null : reason(agg),
                     dailySaved,
-                    strompreis,
+                    site.tarifArt(),
+                    site.tarifParamCtKwh(),
                     einspeise,
                     eigenverbrauchsWert,
                     gesamtertrag,
@@ -250,22 +253,14 @@ public class EarningsController {
     }
 
     /**
-     * The euro value of self-consumed energy: {@code selbstverbrauchKwh x
-     * strompreis / 100}. Null when either input is null - a site without a
-     * configured retail tariff never gets a fabricated Eigenverbrauchs-Wert.
-     * {@code movePointLeft(2)} divides by 100 exactly (ct/kWh x kWh = ct -> EUR).
+     * One bucket's Gesamtertrag: feed-in revenue + the tariff-priced
+     * self-consumption value (both summed per slot in the repository, so a
+     * dynamic tariff is valued at each slot's own Börsenpreis). A NULL
+     * Eigenverbrauchs-Wert ({@code ohne} tariff) leaves the feed-in revenue alone.
      */
-    private static BigDecimal eigenverbrauchsWert(BigDecimal selbstverbrauchKwh, BigDecimal strompreis) {
-        if (selbstverbrauchKwh == null || strompreis == null) {
-            return null;
-        }
-        return selbstverbrauchKwh.multiply(strompreis).movePointLeft(2);
-    }
-
-    /** One bucket's Gesamtertrag: feed-in revenue + (tariff set) self-consumption value. */
-    private static BigDecimal gesamtertragOf(EarningsRepository.BucketPoint p, BigDecimal strompreis) {
+    private static BigDecimal gesamtertragOf(EarningsRepository.BucketPoint p) {
         BigDecimal einspeise = p.einspeiseErloesEur() == null ? BigDecimal.ZERO : p.einspeiseErloesEur();
-        BigDecimal wert = eigenverbrauchsWert(p.selbstverbrauchKwh(), strompreis);
+        BigDecimal wert = p.eigenverbrauchsWertEur();
         return wert == null ? einspeise : einspeise.add(wert);
     }
 }

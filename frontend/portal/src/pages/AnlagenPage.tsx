@@ -21,7 +21,7 @@ import {
   siteSnapshot,
 } from '../fleet';
 import { fmtNum, fmtRelative, plantKindLabel } from '../format';
-import { bestBucketText, periodLabel, stripSlots } from '../anlage';
+import { periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
 import { nextHourIndex } from '../weather';
 import { controlStrip } from '../control';
@@ -267,7 +267,7 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
   },
   technik: {
     title: 'Technik & Einstellungen',
-    subtitle: 'Wechselrichter, Speicher, Anlagentyp, Strompreis und der Standort Ihrer Anlage.',
+    subtitle: 'Wechselrichter, Speicher, Anlagentyp, Stromtarif und der Standort Ihrer Anlage.',
   },
 };
 
@@ -463,7 +463,6 @@ export function AnlageSeite({
   const currentMonthIso = `${now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 7)}-01`;
   const selectedMonth = at ?? currentMonthIso;
   const series = siteEarnings?.series ?? [];
-  const best = bestBucketText(series, range);
 
   const switchRange = (r: EarningsRange) => {
     setRange(r);
@@ -555,10 +554,7 @@ export function AnlageSeite({
           {earnings == null && !earnFailed ? (
             <Skeleton height={220} radius="var(--vp-radius-md)" />
           ) : series.length > 0 ? (
-            <>
-              <ErtragChart series={series} range={range} />
-              {best && <p className="vp-anlage-best">{best}</p>}
-            </>
+            <ErtragChart series={series} range={range} />
           ) : (
             <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
               Für diesen Zeitraum liegen noch keine Erträge vor. Sobald Ihre Anlage

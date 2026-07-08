@@ -9,6 +9,14 @@ const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
  */
 export type PlantKind = 'direktvermarktung' | 'eigenverbrauch';
 
+/**
+ * Electricity tariff art of a site (REPLACES the old fixed strompreis). Steers
+ * how self-consumed energy is valued in euros: 'dynamisch' = each self-consumed
+ * kWh at its 15-min Börsenpreis + an optional Aufschlag; 'fest' = a single fixed
+ * retail price; 'ohne' = no euro value (kWh only, never fabricated).
+ */
+export type TarifArt = 'dynamisch' | 'fest' | 'ohne';
+
 export interface Site {
   id: string;
   name: string;
@@ -25,12 +33,17 @@ export interface Site {
    */
   anzulegenderWertCtKwh: number | null;
   /**
-   * Retail electricity price (ct/kWh) from the customer's Stromrechnung; null =
-   * not configured. When set, the money-centric Meine-Anlage view values the
-   * site's self-consumed energy in euros (Eigenverbrauchs-Wert); without it the
-   * self-consumption shows in kWh only, never a fabricated euro value.
+   * Electricity tariff art (REPLACES the fixed strompreisCtKwh). 'dynamisch'
+   * values self-consumption per 15-min slot at spot + Aufschlag, 'fest' at the
+   * fixed price, 'ohne' in kWh only. Defaults to 'ohne'.
    */
-  strompreisCtKwh: number | null;
+  tarifArt: TarifArt;
+  /**
+   * The tariff parameter (ct/kWh); null = none. The fixed retail price for
+   * 'fest', the optional spot-price Aufschlag (grid fees, levies, margin) for
+   * 'dynamisch', unused for 'ohne'.
+   */
+  tarifParamCtKwh: number | null;
   /**
    * Per-site grid-charging switch: false (default) = "Nur Solarladen (EEG)"
    * (the optimizer charges the battery only from PV surplus), true =
@@ -50,8 +63,10 @@ export interface CreateSiteInput {
   plantKind?: PlantKind;
   /** Anzulegender Wert in ct/kWh (>= 0); omit/null = not configured. */
   anzulegenderWertCtKwh?: number | null;
-  /** Retail electricity price in ct/kWh (>= 0); omit/null = not configured. */
-  strompreisCtKwh?: number | null;
+  /** Electricity tariff art; omitted = 'ohne'. */
+  tarifArt?: TarifArt;
+  /** Tariff parameter in ct/kWh (>= 0): fixed price for fest, Aufschlag for dynamisch. */
+  tarifParamCtKwh?: number | null;
   /**
    * Grid-charging switch, settable by the site owner and by Portal-Admins.
    * Omitted = the safe default false on create / keep the stored value on
@@ -587,17 +602,20 @@ export interface EarningsSite {
   /**
    * Money-centric "Meine Anlage" view (v2). Gesamtertrag =
    * einspeiseErloesEur (metered feed-in valued at spot + Marktprämie) +
-   * eigenverbrauchsWertEur (self-consumed kWh x the retail strompreisCtKwh).
-   * eigenverbrauchsWertEur is null when strompreisCtKwh is unset (self-
-   * consumption is then shown as selbstverbrauchKwh only, never a fabricated
-   * euro), and gesamtertragEur then equals einspeiseErloesEur alone. All money
-   * fields are null when nothing is computable (same `reason`). `series` is the
-   * Ertrag chart for the selected range (per Berlin hour for day, day for
-   * month, month for year/all); `monthlyStrip` is the last 12 months
-   * (independent of range) - the tappable strip. Both list only computable
-   * buckets.
+   * eigenverbrauchsWertEur (self-consumed energy valued per the site's tariff).
+   * `tarifArt`/`tarifParamCtKwh` echo the configured tariff so the provenance
+   * sentence can name it. eigenverbrauchsWertEur is computed slot-by-slot
+   * (dynamisch: each kWh at its 15-min spot price + Aufschlag; fest: the fixed
+   * price) and is null for an 'ohne' tariff (self-consumption then shown as
+   * selbstverbrauchKwh only, never a fabricated euro), so gesamtertragEur equals
+   * einspeiseErloesEur alone. All money fields are null when nothing is
+   * computable (same `reason`). `series` is the Ertrag chart for the selected
+   * range (per Berlin hour for day, day for month, month for year/all);
+   * `monthlyStrip` is the last 12 months (independent of range) - the tappable
+   * strip. Both list only computable buckets.
    */
-  strompreisCtKwh: number | null;
+  tarifArt: TarifArt;
+  tarifParamCtKwh: number | null;
   einspeiseErloesEur: number | null;
   eigenverbrauchsWertEur: number | null;
   gesamtertragEur: number | null;

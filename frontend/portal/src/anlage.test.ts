@@ -1,17 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import type { EarningsMonth, EarningsSeriesPoint } from './api';
+import type { EarningsMonth, EarningsSeriesPoint, EarningsSite } from './api';
 import {
   bestBucket,
   bestBucketText,
   bucketAxisLabel,
+  eigenverbrauchProvenance,
+  einspeiseProvenance,
   energyLabel,
+  energyTiles,
   ertragTitle,
+  gesamtertragProvenance,
   monthLong,
   monthShort,
   periodLabel,
+  savedProvenance,
   stripSlots,
   stripValueLabel,
 } from './anlage';
+
+/** A computable EarningsSite with sensible defaults, overridable per test. */
+function makeMoney(over: Partial<EarningsSite> = {}): EarningsSite {
+  return {
+    id: 's-1',
+    name: 'Anlage',
+    plantKind: 'eigenverbrauch',
+    anzulegenderWertCtKwh: null,
+    realizedExportCtKwh: 7.6,
+    marketValueSolarCtKwh: null,
+    marketValueProvisional: null,
+    baselineEur: null,
+    actualEur: null,
+    savedEur: 38.42,
+    arbitrageEur: null,
+    pvShiftEur: null,
+    coveredSlots: 100,
+    firstCoveredDate: null,
+    reason: null,
+    dailySaved: [],
+    tarifArt: 'ohne',
+    tarifParamCtKwh: null,
+    einspeiseErloesEur: 421.1,
+    eigenverbrauchsWertEur: null,
+    gesamtertragEur: 421.1,
+    selbstverbrauchKwh: 820,
+    eingespeistKwh: 5550,
+    batterieBewegtKwh: 1610,
+    series: [],
+    monthlyStrip: [],
+    ...over,
+  };
+}
 
 describe('energyLabel', () => {
   it('shows MWh from a megawatt-hour up, kWh below, and never a fake zero', () => {
@@ -111,5 +149,84 @@ describe('ertragTitle', () => {
     expect(ertragTitle('month')).toBe('Ertrag pro Tag');
     expect(ertragTitle('year')).toBe('Ertrag pro Monat');
     expect(ertragTitle('all')).toBe('Ertrag pro Monat');
+  });
+});
+
+describe('einspeiseProvenance (decision 3)', () => {
+  it('names the fed-in energy and the realized Ø Börsenpreis', () => {
+    const t = einspeiseProvenance(makeMoney());
+    expect(t).toContain('Eingespeiste 5,55 MWh');
+    expect(t).toContain('Ø 7,6 ct/kWh');
+    expect(t).toContain('Börsenpreis Ihrer Einspeise-Zeiten');
+  });
+  it('adds the Marktprämie note only for a Direktvermarktung site with an anzulegender Wert', () => {
+    expect(einspeiseProvenance(makeMoney({ plantKind: 'direktvermarktung', anzulegenderWertCtKwh: 8.11 })))
+      .toContain('Marktprämie');
+    expect(einspeiseProvenance(makeMoney())).not.toContain('Marktprämie');
+  });
+  it('is null when there is no feed-in revenue', () => {
+    expect(einspeiseProvenance(makeMoney({ einspeiseErloesEur: null }))).toBeNull();
+  });
+});
+
+describe('eigenverbrauchProvenance (dynamic tariff, decision 1+3)', () => {
+  it('dynamisch: names the spot price + Aufschlag AND the real effective average', () => {
+    // 91.70 € over 820 kWh -> 11,2 ct/kWh average, computed from the two numbers.
+    const t = eigenverbrauchProvenance(
+      makeMoney({ tarifArt: 'dynamisch', tarifParamCtKwh: 18, eigenverbrauchsWertEur: 91.7, selbstverbrauchKwh: 820 }),
+    );
+    expect(t).toContain('Selbst verbrauchte 820 kWh');
+    expect(t).toContain('dynamischer Börsenpreis + 18,0 ct/kWh Aufschlag');
+    expect(t).toContain('im Schnitt 11,2 ct/kWh');
+  });
+  it('dynamisch without an Aufschlag says so (conservative)', () => {
+    const t = eigenverbrauchProvenance(
+      makeMoney({ tarifArt: 'dynamisch', tarifParamCtKwh: null, eigenverbrauchsWertEur: 82, selbstverbrauchKwh: 820 }),
+    );
+    expect(t).toContain('ohne Aufschlag');
+    expect(t).not.toContain('+ ');
+  });
+  it('fest: names the fixed price', () => {
+    const t = eigenverbrauchProvenance(
+      makeMoney({ tarifArt: 'fest', tarifParamCtKwh: 32.5, eigenverbrauchsWertEur: 266.5, selbstverbrauchKwh: 820 }),
+    );
+    expect(t).toContain('32,5 ct/kWh');
+    expect(t).toContain('fester Strompreis');
+  });
+  it('ohne: the honest "hinterlegen Sie Ihren Tarif" note, no fabricated euro', () => {
+    const t = eigenverbrauchProvenance(makeMoney({ tarifArt: 'ohne', eigenverbrauchsWertEur: null }));
+    expect(t).toContain('Technik & Einstellungen');
+    expect(t).not.toContain('ct/kWh');
+  });
+});
+
+describe('gesamtertrag / saved provenance', () => {
+  it('gesamtertrag names its two parts with the real amounts', () => {
+    const t = gesamtertragProvenance(
+      makeMoney({ einspeiseErloesEur: 421.1, eigenverbrauchsWertEur: 91.7, gesamtertragEur: 512.8 }),
+    );
+    expect(t).toContain('Einspeise-Erlös 421,10');
+    expect(t).toContain('Wert des Eigenverbrauchs 91,70');
+  });
+  it('saved provenance uses the plant-kind verb (gespart vs. mehr verdient)', () => {
+    expect(savedProvenance(makeMoney())).toContain('gespart');
+    expect(savedProvenance(makeMoney({ plantKind: 'direktvermarktung' }))).toContain('mehr verdient');
+    expect(savedProvenance(makeMoney({ savedEur: null }))).toBeNull();
+  });
+});
+
+describe('energyTiles (decision 4)', () => {
+  it('renames the three tiles and gives each a plain-German hint', () => {
+    const tiles = energyTiles(makeMoney());
+    expect(tiles.map((t) => t.label)).toEqual(['Eingespeist', 'Selbst genutzt', 'Über Batterie']);
+    expect(tiles.map((t) => t.hint)).toEqual([
+      'ins Netz verkauft',
+      'direkt im Haus verbraucht',
+      'zwischengespeichert',
+    ]);
+    expect(tiles[2].value).toBe('1,61 MWh');
+  });
+  it('shows "–" instead of a fake zero when nothing is computable', () => {
+    expect(energyTiles(null).map((t) => t.value)).toEqual(['–', '–', '–']);
   });
 });

@@ -11,10 +11,12 @@ import {
   type Site,
   type SiteAsset,
   type SiteDeletionPreview,
+  type TarifArt,
 } from '../api';
-import { BATTERY_NO_DEVICE_WARNING, parsePremiumInput, premiumInputText } from '../fleet';
+import { BATTERY_NO_DEVICE_WARNING, parsePremiumInput, premiumInputText, tarifArtLabel } from '../fleet';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { LocationMap } from '../components/LocationMap';
+import { TariffFields } from '../components/TariffFields';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
 import { NetzladenBadge } from '../components/NetzladenBadge';
@@ -340,12 +342,10 @@ export function TechnikSection({
                   <td>{fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)}</td>
                 </tr>
               )}
-              {site.strompreisCtKwh != null && (
-                <tr>
-                  <th scope="row">Ihr Strompreis</th>
-                  <td>{fmtNum(site.strompreisCtKwh, 'ct/kWh', 2)}</td>
-                </tr>
-              )}
+              <tr>
+                <th scope="row">Stromtarif</th>
+                <td>{tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}</td>
+              </tr>
               {linkedAssets.length > 0 && (
                 <tr>
                   <th scope="row">Register</th>
@@ -425,7 +425,8 @@ export function SiteEditForm({
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
   const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
   const [praemie, setPraemie] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
-  const [strompreis, setStrompreis] = useState(premiumInputText(site.strompreisCtKwh ?? null));
+  const [tarifArt, setTarifArt] = useState<TarifArt>(site.tarifArt ?? 'ohne');
+  const [tarifParam, setTarifParam] = useState(premiumInputText(site.tarifParamCtKwh ?? null));
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [busy, setBusy] = useState(false);
@@ -438,9 +439,13 @@ export function SiteEditForm({
       setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
       return;
     }
-    const strompreisValue = parsePremiumInput(strompreis);
-    if (strompreisValue === undefined) {
-      setError('Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.');
+    const tarifParamValue = tarifArt === 'ohne' ? null : parsePremiumInput(tarifParam);
+    if (tarifParamValue === undefined) {
+      setError(
+        tarifArt === 'dynamisch'
+          ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
+          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
+      );
       return;
     }
     setBusy(true);
@@ -453,7 +458,8 @@ export function SiteEditForm({
         longitude: lon,
         plantKind,
         anzulegenderWertCtKwh: praemieValue,
-        strompreisCtKwh: strompreisValue,
+        tarifArt,
+        tarifParamCtKwh: tarifParamValue,
         netzladenErlaubt: netzladen,
       });
       onSaved(updated);
@@ -541,20 +547,13 @@ export function SiteEditForm({
             EEG-Vergütung bezieht.
           </p>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <Input
-            label="Ihr Strompreis (ct/kWh)"
-            placeholder="z. B. 32,5"
-            inputMode="decimal"
-            value={strompreis}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStrompreis(e.target.value)}
-          />
-          <p className="vp-note" style={{ margin: 0 }}>
-            Für den Wert Ihres Eigenverbrauchs - siehe Stromrechnung. Optional: ohne
-            Angabe zeigen wir den Eigenverbrauch nur in kWh, nie einen erfundenen
-            Euro-Wert.
-          </p>
-        </div>
+        <TariffFields
+          tarifArt={tarifArt}
+          onTarifArt={setTarifArt}
+          param={tarifParam}
+          onParam={setTarifParam}
+          idPrefix="edit-site"
+        />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
           <LocationMap

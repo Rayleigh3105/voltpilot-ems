@@ -39,6 +39,8 @@ const eegSite: Site = {
   longitude: null,
   plantKind: 'eigenverbrauch',
   marktpraemieCtKwh: null,
+  tarifArt: 'ohne',
+  tarifParamCtKwh: null,
   netzladenErlaubt: false,
 };
 

@@ -27,6 +27,7 @@ import {
   siteLiveFresh,
   siteSnapshot,
   sparkDays,
+  tarifArtLabel,
 } from './fleet';
 
 const NOW = new Date('2026-07-06T12:00:00Z');
@@ -405,6 +406,17 @@ describe('netzladenBadge (grid-charging mode)', () => {
   });
 });
 
+describe('tarifArtLabel (Technik read-only view)', () => {
+  it('names the art and its ct/kWh parameter in plain German', () => {
+    expect(tarifArtLabel('dynamisch', 18)).toBe('Dynamisch (Börsenpreis + 18,0 ct/kWh Aufschlag)');
+    expect(tarifArtLabel('dynamisch', null)).toBe('Dynamisch (nur Börsenpreis)');
+    expect(tarifArtLabel('dynamisch', 0)).toBe('Dynamisch (nur Börsenpreis)');
+    expect(tarifArtLabel('fest', 32.5)).toBe('Fest: 32,5 ct/kWh');
+    expect(tarifArtLabel('fest', null)).toBe('Fest');
+    expect(tarifArtLabel('ohne', null)).toBe('Ohne Angabe');
+  });
+});
+
 describe('battery-without-device warning copy', () => {
   it('names the problem and the fix without internal jargon', () => {
     expect(BATTERY_NO_DEVICE_WARNING).toContain('keinem Gerät zugeordnet');
@@ -433,7 +445,8 @@ describe('daily saved helpers', () => {
     firstCoveredDate: null,
     reason: null,
     dailySaved,
-    strompreisCtKwh: null,
+    tarifArt: 'ohne',
+    tarifParamCtKwh: null,
     einspeiseErloesEur: null,
     eigenverbrauchsWertEur: null,
     gesamtertragEur: null,

@@ -14,7 +14,7 @@
  * turns it amber and names it ("1 Gerät ... meldet sich nicht") - calm and
  * concrete, never alarm-red.
  */
-import type { EarningsDaily, EarningsRange, EarningsReason, EarningsSite, OverviewLive, OverviewSite, PlantKind } from './api';
+import type { EarningsDaily, EarningsRange, EarningsReason, EarningsSite, OverviewLive, OverviewSite, PlantKind, TarifArt } from './api';
 import { ONLINE_WINDOW_MS } from './api';
 import { eurAmount, fmtNum } from './format';
 import { composeStatusSentence, DEADBAND_KW, deriveBatteryKw, type LiveSnapshot } from './live';
@@ -306,6 +306,21 @@ export function parsePremiumInput(text: string): number | null | undefined {
 /** The stored anzulegender Wert as form text (German comma), '' when unset. */
 export function premiumInputText(anzulegenderWertCtKwh: number | null): string {
   return anzulegenderWertCtKwh == null ? '' : String(anzulegenderWertCtKwh).replace('.', ',');
+}
+
+/**
+ * The read-only Stromtarif label for the Technik view: names the art and, when
+ * set, its ct/kWh parameter in plain German ("Dynamisch (Börsenpreis + 18
+ * ct/kWh Aufschlag)", "Fest: 32,5 ct/kWh", "Ohne Angabe").
+ */
+export function tarifArtLabel(tarifArt: TarifArt, tarifParamCtKwh: number | null): string {
+  if (tarifArt === 'ohne') return 'Ohne Angabe';
+  if (tarifArt === 'fest') {
+    return tarifParamCtKwh != null ? `Fest: ${ctAmount(tarifParamCtKwh)} ct/kWh` : 'Fest';
+  }
+  return tarifParamCtKwh != null && tarifParamCtKwh > 0
+    ? `Dynamisch (Börsenpreis + ${ctAmount(tarifParamCtKwh)} ct/kWh Aufschlag)`
+    : 'Dynamisch (nur Börsenpreis)';
 }
 
 /**

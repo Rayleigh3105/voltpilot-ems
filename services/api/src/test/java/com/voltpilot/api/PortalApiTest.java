@@ -1578,12 +1578,13 @@ class PortalApiTest {
     /**
      * The money-centric "Meine Anlage" v2 aggregates (captain 2026-07-07): per
      * site the Einspeise-Erlös (metered export x spot + Marktprämie), the
-     * Eigenverbrauchs-kWh, the Eigenverbrauchs-Wert in euros ONLY when a retail
-     * {@code strompreisCtKwh} is set (never fabricated), the Gesamtertrag =
-     * Einspeise-Erlös + Eigenverbrauchs-Wert, the energy sums, the Ertrag chart
-     * series and the 12-month strip. Hand-computed over two current-month CH
-     * slots (midday export+charge, evening import+discharge); one site carries a
-     * 30 ct/kWh tariff, its twin carries none (the honest kWh-only regression).
+     * Eigenverbrauchs-kWh, the Eigenverbrauchs-Wert in euros ONLY when a tariff
+     * is set (never fabricated), the Gesamtertrag = Einspeise-Erlös +
+     * Eigenverbrauchs-Wert, the energy sums, the Ertrag chart series and the
+     * 12-month strip. Hand-computed over two current-month CH slots (midday
+     * export+charge, evening import+discharge); one site carries a fest 30 ct/kWh
+     * tariff, its twin carries none/ohne (the honest kWh-only regression). The
+     * dynamic path has its own test below.
      *
      * <p>Seeded now()-relative INSIDE the current Berlin month (month-start + 10
      * days) so the month range, the day-bucketed series and the today-anchored
@@ -1595,7 +1596,7 @@ class PortalApiTest {
         String demo = token("demo", "demo");
         String tenantA = "00000000-0000-0000-0000-000000000001";
 
-        String withTariff = createSiteWithStrompreis(demo, "MV Haus", "CH", "eigenverbrauch", "30");
+        String withTariff = createSiteWithTarif(demo, "MV Haus", "CH", "eigenverbrauch", "fest", "30");
         String noTariff = createSite(demo, "MV Ohne", "CH", "eigenverbrauch");
 
         // Two 15-min slots on the same Berlin day, month-start + 10 days:
@@ -1630,7 +1631,8 @@ class PortalApiTest {
         org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
 
         Map<String, Object> withRow = siteRow(body, withTariff);
-        assertThat(num(withRow, "strompreisCtKwh")).isCloseTo(30.0, eps);
+        assertThat(withRow.get("tarifArt")).isEqualTo("fest");
+        assertThat(num(withRow, "tarifParamCtKwh")).isCloseTo(30.0, eps);
         assertThat(num(withRow, "einspeiseErloesEur")).isCloseTo(0.10, eps);
         assertThat(num(withRow, "selbstverbrauchKwh")).isCloseTo(1.0, eps);
         assertThat(num(withRow, "eigenverbrauchsWertEur")).isCloseTo(0.30, eps);
@@ -1655,7 +1657,8 @@ class PortalApiTest {
         // No tariff => self-consumption stays kWh-only, NEVER a fabricated euro,
         // and the Gesamtertrag is the feed-in revenue alone.
         Map<String, Object> withoutRow = siteRow(body, noTariff);
-        assertThat(withoutRow).containsEntry("strompreisCtKwh", null)
+        assertThat(withoutRow).containsEntry("tarifArt", "ohne")
+                .containsEntry("tarifParamCtKwh", null)
                 .containsEntry("eigenverbrauchsWertEur", null);
         assertThat(num(withoutRow, "selbstverbrauchKwh")).isCloseTo(1.0, eps);
         assertThat(num(withoutRow, "einspeiseErloesEur")).isCloseTo(0.10, eps);
@@ -1669,6 +1672,96 @@ class PortalApiTest {
                 new ParameterizedTypeReference<>() {});
         assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
                 .doesNotContain(withTariff, noTariff);
+    }
+
+    /**
+     * The DYNAMIC tariff (captain decision 2026-07-08, "Meine Anlage
+     * nachvollziehbar"): a dynamisch site's self-consumed energy is valued
+     * SLOT BY SLOT at that quarter hour's Börsenpreis + the fixed Aufschlag -
+     * NOT at a single fixed price. Hand-computed over three current-month CH
+     * slots at prices 100 / 200 / -40 EUR/MWh (the negative slot proves the spot
+     * part follows the price down while the Aufschlag keeps the value positive),
+     * cross-checked against a fest twin with the SAME measurements (whose
+     * price-independent value differs), plus a previous-month slot the month
+     * window must exclude.
+     */
+    @Test
+    void earningsValueDynamicSelfConsumptionSlotBySlotAtSpotPlusAufschlag() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        // Aufschlag 18 ct/kWh on the spot price; a fest twin at 30 ct/kWh.
+        String dyn = createSiteWithTarif(demo, "MV Dyn", "CH", "eigenverbrauch", "dynamisch", "18");
+        String fest = createSiteWithTarif(demo, "MV Fest", "CH", "eigenverbrauch", "fest", "30");
+
+        // Three slots on the same Berlin day (month-start + 12 days):
+        //   11:00 price 100: pv 2.0 load 0.5 export 1.0 -> sv 0.5, einspeise 0.10,
+        //          dyn 0.5*(0.10+0.18)=0.14
+        //   18:00 price 200: load 1.5 import 1.0        -> sv 0.5, dyn 0.5*(0.20+0.18)=0.19
+        //   03:00 price -40: load 1.0 import 0.4        -> sv 0.6, dyn 0.6*(-0.04+0.18)=0.084
+        //   dyn eigenverbrauchsWert 0.414, sv 1.6 kWh, eingespeist 1.0, einspeise 0.10,
+        //   gesamt 0.514. fest twin (30 ct, price-independent): 1.6*0.30=0.48, gesamt 0.58.
+        String ta = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '12 days 11 hours') AT TIME ZONE 'Europe/Berlin'";
+        String tb = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '12 days 18 hours') AT TIME ZONE 'Europe/Berlin'";
+        String tc = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '12 days 3 hours') AT TIME ZONE 'Europe/Berlin'";
+        // A previous-month slot the range=month window must NOT count.
+        String tprev = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " - interval '5 days' + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "VALUES (" + ta + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "(" + tb + ", 'CH', 'PT15M', 200.0, 'EUR', 'test'), "
+                + "(" + tc + ", 'CH', 'PT15M', -40.0, 'EUR', 'test'), "
+                + "(" + tprev + ", 'CH', 'PT15M', 500.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+        for (String site : new String[] {dyn, fest}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "(" + ta + ", '" + tenantA + "', '" + site + "', 2.0, 0.5, 0.0, 1.0, 0.0, 0.0, 90), "
+                    + "(" + tb + ", '" + tenantA + "', '" + site + "', 0.0, 1.5, 1.0, 0.0, 0.0, 0.0, 90), "
+                    + "(" + tc + ", '" + tenantA + "', '" + site + "', 0.0, 1.0, 0.4, 0.0, 0.0, 0.0, 90), "
+                    + "(" + tprev + ", '" + tenantA + "', '" + site + "', 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 90) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        Map<String, Object> dynRow = siteRow(body, dyn);
+        assertThat(dynRow.get("tarifArt")).isEqualTo("dynamisch");
+        assertThat(num(dynRow, "tarifParamCtKwh")).isCloseTo(18.0, eps);
+        // Slot-by-slot spot + Aufschlag - NOT selbstverbrauch x a single price.
+        assertThat(num(dynRow, "eigenverbrauchsWertEur")).isCloseTo(0.414, eps);
+        assertThat(num(dynRow, "selbstverbrauchKwh")).isCloseTo(1.6, eps);
+        assertThat(num(dynRow, "einspeiseErloesEur")).isCloseTo(0.10, eps);
+        assertThat(num(dynRow, "gesamtertragEur")).isCloseTo(0.514, eps);
+        // Reconciles with its parts, exactly.
+        assertThat(num(dynRow, "gesamtertragEur")).isCloseTo(
+                num(dynRow, "einspeiseErloesEur") + num(dynRow, "eigenverbrauchsWertEur"), eps);
+        // The month series (one day) carries only the current month's slots -
+        // the previous-month slot is excluded (else it would inflate the day).
+        assertThat(num(list(dynRow, "series").get(0), "gesamtertragEur")).isCloseTo(0.514, eps);
+        // The 12-month strip DOES span months (oldest first): the previous month
+        // shows the excluded slot's value on its own, the current month (newest,
+        // last) shows 0.514 - proving the window logic, not a leak.
+        List<Map<String, Object>> dynStrip = list(dynRow, "monthlyStrip");
+        assertThat(num(dynStrip.get(dynStrip.size() - 1), "gesamtertragEur")).isCloseTo(0.514, eps);
+        assertThat(num(dynStrip.get(0), "gesamtertragEur")).isCloseTo(1.36, eps);
+
+        // The fest twin: identical measurements, a price-INDEPENDENT value that
+        // differs from the dynamic one - proving the dynamic path really uses
+        // per-slot spot prices, not the flat tariff.
+        Map<String, Object> festRow = siteRow(body, fest);
+        assertThat(festRow.get("tarifArt")).isEqualTo("fest");
+        assertThat(num(festRow, "eigenverbrauchsWertEur")).isCloseTo(0.48, eps);
+        assertThat(num(festRow, "gesamtertragEur")).isCloseTo(0.58, eps);
+        assertThat(num(festRow, "eigenverbrauchsWertEur"))
+                .isNotCloseTo(num(dynRow, "eigenverbrauchsWertEur"), org.assertj.core.data.Offset.offset(0.05));
     }
 
     /**
@@ -2108,11 +2201,14 @@ class PortalApiTest {
         return (String) created.getBody().get("id");
     }
 
-    private String createSiteWithStrompreis(String token, String name, String zone,
-            String plantKind, String strompreisCtKwh) {
+    private String createSiteWithTarif(String token, String name, String zone,
+            String plantKind, String tarifArt, String tarifParamCtKwh) {
         Map<String, Object> payload = new java.util.HashMap<>(Map.of(
                 "name", name, "biddingZone", zone, "plantKind", plantKind,
-                "strompreisCtKwh", new java.math.BigDecimal(strompreisCtKwh)));
+                "tarifArt", tarifArt));
+        if (tarifParamCtKwh != null) {
+            payload.put("tarifParamCtKwh", new java.math.BigDecimal(tarifParamCtKwh));
+        }
         ResponseEntity<Map<String, Object>> created = rest.exchange(
                 url("/api/v1/sites"), HttpMethod.POST,
                 new HttpEntity<>(payload, bearer(token)),

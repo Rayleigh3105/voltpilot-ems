@@ -177,6 +177,32 @@ public class EarningsRepository {
     private static final String SELBSTVERBRAUCH_KWH =
             "GREATEST(r.load_kwh - r.grid_import_kwh, 0)";
 
+    /**
+     * The euro value of a slot's self-consumed energy, per the site's tariff
+     * (captain 2026-07-08, migration V20260708010000):
+     * <ul>
+     * <li><b>dynamisch</b>: self-consumed kWh valued at THIS slot's Börsenpreis
+     * plus the optional fixed Aufschlag - the whole point of the dynamic model,
+     * exact per 15-min slot, never a single fixed price. A null Aufschlag values
+     * at pure spot (honest, conservative). Note the spot part can be negative in
+     * a negative-price slot; that is the correct dynamic-tariff economics (the
+     * §51 suspension is a FEED-IN/Marktprämie rule, not a self-consumption one).</li>
+     * <li><b>fest</b>: self-consumed kWh valued at the fixed retail price (the
+     * old strompreis behaviour); NULL when no price is configured.</li>
+     * <li><b>ohne</b>: NULL - no euro value (self-consumption shown in kWh only).</li>
+     * </ul>
+     * price is EUR/MWh, so {@code price/1000} is EUR/kWh and the Aufschlag
+     * ({@code ct/kWh}) divides by 100. Within {@code COVERED} the price is never
+     * null, so the dynamic branch is always well-defined.
+     */
+    private static final String EIGENVERBRAUCHS_WERT_EUR =
+            "(CASE"
+                    + " WHEN s.tarif_art = 'dynamisch' THEN " + SELBSTVERBRAUCH_KWH
+                    + "   * (p.price_eur_mwh / 1000.0 + COALESCE(s.tarif_param_ct_kwh, 0) / 100.0)"
+                    + " WHEN s.tarif_art = 'fest' AND s.tarif_param_ct_kwh IS NOT NULL THEN "
+                    + SELBSTVERBRAUCH_KWH + " * s.tarif_param_ct_kwh / 100.0"
+                    + " ELSE NULL END)";
+
     /** Energy moved through the battery in a slot (charged + discharged). */
     private static final String BATTERIE_BEWEGT_KWH =
             "(COALESCE(r.battery_charge_kwh, 0) + COALESCE(r.battery_discharge_kwh, 0))";
@@ -214,23 +240,27 @@ public class EarningsRepository {
             BigDecimal marketValueSolarCtKwh,
             Boolean marketValueProvisional,
             BigDecimal einspeiseErloesEur,
+            BigDecimal eigenverbrauchsWertEur,
             BigDecimal selbstverbrauchKwh,
             BigDecimal eingespeistKwh,
             BigDecimal batterieBewegtKwh) {
     }
 
     /**
-     * One time bucket of the money-centric Meine-Anlage view: the raw parts of
-     * the Gesamtertrag over the bucket - {@code einspeiseErloesEur} (metered
-     * export valued at spot + Marktprämie) and {@code selbstverbrauchKwh}
-     * (self-consumed energy). The strompreis-dependent Eigenverbrauchs-Wert and
-     * the Gesamtertrag itself are assembled in the controller (one place holds
-     * the tariff rule), so a NULL strompreis never fabricates a euro value.
+     * One time bucket of the money-centric Meine-Anlage view: the parts of the
+     * Gesamtertrag over the bucket - {@code einspeiseErloesEur} (metered export
+     * valued at spot + Marktprämie) and {@code eigenverbrauchsWertEur} (the
+     * self-consumed energy valued per the site's tariff, dynamisch slot-by-slot
+     * at spot + Aufschlag). Both are summed per slot in SQL, so a dynamic tariff
+     * is priced with each slot's own Börsenpreis; {@code eigenverbrauchsWertEur}
+     * is NULL for an {@code ohne} tariff (never a fabricated euro). The
+     * Gesamtertrag ({@code einspeise + eigenverbrauchsWert}, null-safe) is
+     * assembled in the controller.
      */
     public record BucketPoint(
             Instant start,
             BigDecimal einspeiseErloesEur,
-            BigDecimal selbstverbrauchKwh) {
+            BigDecimal eigenverbrauchsWertEur) {
     }
 
     /** One Europe/Berlin day of realized savings of one site. */
@@ -286,6 +316,8 @@ public class EarningsRepository {
                         + "   AS market_value_provisional,"
                         + " sum(" + EINSPEISE_ERLOES_EUR + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS einspeise_erloes_eur,"
+                        + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ")"
+                        + "   FILTER (WHERE " + COVERED + ") AS eigenverbrauchs_wert_eur,"
                         + " sum(" + SELBSTVERBRAUCH_KWH + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS selbstverbrauch_kwh,"
                         + " sum(r.grid_export_kwh)"
@@ -314,6 +346,7 @@ public class EarningsRepository {
                             marketValueCt == null ? null
                                     : provisional != null && (Boolean) provisional,
                             rs.getBigDecimal("einspeise_erloes_eur"),
+                            rs.getBigDecimal("eigenverbrauchs_wert_eur"),
                             rs.getBigDecimal("selbstverbrauch_kwh"),
                             rs.getBigDecimal("eingespeist_kwh"),
                             rs.getBigDecimal("batterie_bewegt_kwh")));
@@ -510,7 +543,7 @@ public class EarningsRepository {
         jdbc.query(
                 "SELECT r.site_id, " + start + " AS bucket_start,"
                         + " sum(" + EINSPEISE_ERLOES_EUR + ") AS einspeise_erloes_eur,"
-                        + " sum(" + SELBSTVERBRAUCH_KWH + ") AS selbstverbrauch_kwh "
+                        + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ") AS eigenverbrauchs_wert_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + PRICE_LATERAL
@@ -523,7 +556,7 @@ public class EarningsRepository {
                             .add(new BucketPoint(
                                     rs.getTimestamp("bucket_start").toInstant(),
                                     rs.getBigDecimal("einspeise_erloes_eur"),
-                                    rs.getBigDecimal("selbstverbrauch_kwh")));
+                                    rs.getBigDecimal("eigenverbrauchs_wert_eur")));
                 },
                 Timestamp.from(from), Timestamp.from(to));
         return result;

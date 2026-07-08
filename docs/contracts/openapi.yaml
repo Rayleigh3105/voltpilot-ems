@@ -1278,18 +1278,25 @@ components:
             Wert). Echoed read-only for one release, no longer accepted on
             create/update and no longer used in any computation; the column
             and this property are removed next release.
-        strompreisCtKwh:
+        tarifArt:
+          type: string
+          enum: [dynamisch, fest, ohne]
+          description: >
+            The customer's electricity tariff art (REPLACES the fixed
+            strompreisCtKwh). 'dynamisch' = spot-coupled (each self-consumed kWh
+            valued at its 15-min Börsenpreis + the optional Aufschlag); 'fest' =
+            a single fixed retail price; 'ohne' = no euro value (self-consumption
+            shown in kWh only). Defaults to 'ohne'.
+        tarifParamCtKwh:
           type: number
           nullable: true
           minimum: 0
-          example: 32.5
+          example: 18.0
           description: >
-            Optional retail electricity price (ct/kWh) from the customer's
-            Stromrechnung; null = not configured. When set, the money-centric
-            "Meine Anlage" view (GET /earnings) values self-consumed energy in
-            euros (Eigenverbrauchs-Wert = self-consumed kWh x this price); when
-            null the self-consumption is shown in kWh only, never a fabricated
-            euro value. Editable by the site owner and by Portal-Admins.
+            The tariff parameter (ct/kWh, >= 0): the fixed retail price for
+            'fest', the optional spot-price Aufschlag (grid fees, levies, margin)
+            for 'dynamisch', null for 'ohne' / unset. Editable by the site owner
+            and by Portal-Admins.
         netzladenErlaubt:
           type: boolean
           description: >
@@ -1582,13 +1589,19 @@ components:
             properties:
               day: { type: string, format: date }
               savedEur: { type: number }
-        strompreisCtKwh:
+        tarifArt:
+          type: string
+          enum: [dynamisch, fest, ohne]
+          description: >
+            The site's configured electricity tariff art, echoed so the
+            money-centric view can render the provenance sentence ("... zum
+            dynamischen Börsenpreis + Aufschlag" vs. "... zum festen Preis").
+        tarifParamCtKwh:
           type: number
           nullable: true
           description: >
-            The site's configured retail electricity price (ct/kWh), echoed so
-            the money-centric view knows whether it may value self-consumption
-            in euros; null = not configured (self-consumption in kWh only).
+            The tariff parameter (ct/kWh): the fixed retail price for fest, the
+            optional spot-price Aufschlag for dynamisch, null for ohne / unset.
         einspeiseErloesEur:
           type: number
           nullable: true
@@ -1599,9 +1612,10 @@ components:
           type: number
           nullable: true
           description: >
-            Value of self-consumed energy = selbstverbrauchKwh x strompreis;
-            null when strompreisCtKwh is unset (never a fabricated euro) or
-            nothing is computable.
+            Value of self-consumed energy, computed slot-by-slot per the site's
+            tariff (dynamisch: each self-consumed kWh at its 15-min Börsenpreis +
+            Aufschlag; fest: at the fixed price); null for an 'ohne' tariff
+            (never a fabricated euro) or when nothing is computable.
         gesamtertragEur:
           type: number
           nullable: true
@@ -1706,15 +1720,21 @@ components:
             the plant's fixed EEG reference rate; only meaningful for
             direktvermarktung sites. (The deprecated marktpraemieCtKwh is no
             longer accepted; old clients sending it are ignored.)
-        strompreisCtKwh:
+        tarifArt:
+          type: string
+          enum: [dynamisch, fest, ohne]
+          description: >
+            The customer's electricity tariff art (default 'ohne'). 'dynamisch'
+            values self-consumption per 15-min slot at spot + Aufschlag, 'fest'
+            at the fixed price, 'ohne' in kWh only.
+        tarifParamCtKwh:
           type: number
           nullable: true
           minimum: 0
           description: >
-            Optional retail electricity price (ct/kWh, >= 0, at most 3
-            decimals) from the customer's Stromrechnung; when set, the
-            money-centric view values self-consumption in euros. Omit/null =
-            not configured.
+            The tariff parameter (ct/kWh, >= 0, at most 3 decimals): fixed price
+            for 'fest', optional Aufschlag for 'dynamisch', ignored (cleared)
+            for 'ohne'. Omit/null = not configured.
         netzladenErlaubt:
           type: boolean
           nullable: true
@@ -1736,13 +1756,20 @@ components:
         longitude: { type: number, nullable: true, minimum: -180, maximum: 180 }
         plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
         anzulegenderWertCtKwh: { type: number, nullable: true, minimum: 0 }
-        strompreisCtKwh:
+        tarifArt:
+          type: string
+          enum: [dynamisch, fest, ohne]
+          description: >
+            The customer's electricity tariff art (default 'ohne'; a
+            full-representation field like plantKind, so an omitted value resets
+            to 'ohne').
+        tarifParamCtKwh:
           type: number
           nullable: true
           minimum: 0
           description: >
-            Optional retail electricity price (ct/kWh); null clears it
-            (self-consumption then shown in kWh only), a value sets it.
+            The tariff parameter (ct/kWh): fixed price for 'fest', optional
+            Aufschlag for 'dynamisch', cleared for 'ohne'.
         netzladenErlaubt:
           type: boolean
           nullable: true

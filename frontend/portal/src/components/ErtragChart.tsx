@@ -1,9 +1,21 @@
 import type { EarningsRange, EarningsSeriesPoint } from '../api';
-import { bestBucket, bucketAxisLabel, bucketTooltipLabel, ertragTitle } from '../anlage';
+import {
+  bestBucket,
+  bestBucketText,
+  bucketAxisLabel,
+  bucketTooltipLabel,
+  ertragTitle,
+} from '../anlage';
 import { eurAmount } from '../format';
 import { chartTheme } from '../chartTheme';
 import { useEChart } from '../useEChart';
-import { ChartSubtitle } from './ChartExplain';
+import { ChartInsight, ChartSubtitle } from './ChartExplain';
+
+/** The per-range "Was zeigt das?" line: Ertrag = Einspeisung + Eigenverbrauch. */
+function ertragExplain(range: EarningsRange): string {
+  const bucket = range === 'day' ? 'jede Stunde' : range === 'month' ? 'jeden Tag' : 'jeden Monat';
+  return `Was zeigt das? Ihr Ertrag für ${bucket} = Einspeisung + Wert Ihres Eigenverbrauchs. Grün = bester Wert.`;
+}
 
 /**
  * The money-centric "Ertrag" bar chart: Gesamtertrag per bucket over the
@@ -87,10 +99,13 @@ export function ErtragChart({
     [series, range, bestStart],
   );
 
+  const bestText = bestBucketText(series, range);
+
   return (
     <>
-      <ChartSubtitle>{ertragTitle(range)} · grün = bester Wert</ChartSubtitle>
+      <ChartSubtitle>{ertragExplain(range)}</ChartSubtitle>
       <div className="vp-chart compact" ref={ref} role="img" aria-label={ertragTitle(range)} />
+      {bestText && <ChartInsight icon="euro">{bestText}</ChartInsight>}
     </>
   );
 }

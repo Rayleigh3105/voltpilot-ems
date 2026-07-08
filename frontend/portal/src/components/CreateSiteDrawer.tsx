@@ -4,9 +4,10 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
-import { ApiError, type CreateSiteInput, type PlantKind, type Site } from '../api';
+import { ApiError, type CreateSiteInput, type PlantKind, type Site, type TarifArt } from '../api';
 import { parsePremiumInput } from '../fleet';
 import { LocationMap } from './LocationMap';
+import { TariffFields } from './TariffFields';
 
 /**
  * "Anlage anlegen" as a plain single-form drawer. Since the one-flow
@@ -34,7 +35,8 @@ export function CreateSiteDrawer({
   const [plantKind, setPlantKind] = useState<PlantKind>('eigenverbrauch');
   const [netzladen, setNetzladen] = useState(false);
   const [praemie, setPraemie] = useState('');
-  const [strompreis, setStrompreis] = useState('');
+  const [tarifArt, setTarifArt] = useState<TarifArt>('ohne');
+  const [tarifParam, setTarifParam] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,7 +50,8 @@ export function CreateSiteDrawer({
     setPlantKind('eigenverbrauch');
     setNetzladen(false);
     setPraemie('');
-    setStrompreis('');
+    setTarifArt('ohne');
+    setTarifParam('');
     setError(null);
   }
 
@@ -59,9 +62,13 @@ export function CreateSiteDrawer({
       setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
       return;
     }
-    const strompreisValue = parsePremiumInput(strompreis);
-    if (strompreisValue === undefined) {
-      setError('Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.');
+    const tarifParamValue = tarifArt === 'ohne' ? null : parsePremiumInput(tarifParam);
+    if (tarifParamValue === undefined) {
+      setError(
+        tarifArt === 'dynamisch'
+          ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
+          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
+      );
       return;
     }
     setBusy(true);
@@ -74,7 +81,8 @@ export function CreateSiteDrawer({
         longitude: lon,
         plantKind,
         anzulegenderWertCtKwh: praemieValue,
-        strompreisCtKwh: strompreisValue,
+        tarifArt,
+        tarifParamCtKwh: tarifParamValue,
         netzladenErlaubt: netzladen,
       });
       reset();
@@ -170,19 +178,13 @@ export function CreateSiteDrawer({
             </p>
           </div>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <Input
-            label="Ihr Strompreis (ct/kWh)"
-            placeholder="z. B. 32,5"
-            inputMode="decimal"
-            value={strompreis}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStrompreis(e.target.value)}
-          />
-          <p className="vp-note" style={{ margin: 0 }}>
-            Für den Wert Ihres Eigenverbrauchs - siehe Stromrechnung. Optional: ohne
-            Angabe zeigen wir den Eigenverbrauch nur in kWh.
-          </p>
-        </div>
+        <TariffFields
+          tarifArt={tarifArt}
+          onTarifArt={setTarifArt}
+          param={tarifParam}
+          onParam={setTarifParam}
+          idPrefix="create-site"
+        />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
             Netzladen des Speichers

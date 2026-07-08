@@ -1,7 +1,18 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { EarningsRange, EarningsSite } from '../api';
-import { energyLabel, stripValueLabel, type StripSlot } from '../anlage';
+import {
+  eigenverbrauchProvenance,
+  einspeiseProvenance,
+  energyLabel,
+  energyTiles,
+  gesamtertragProvenance,
+  savedProvenance,
+  stripValueLabel,
+  type StripSlot,
+} from '../anlage';
+import { marktwertBenchmark } from '../fleet';
 import { eurAmount } from '../format';
+import { InfoTip } from './InfoTip';
 import { useCountUp } from './FleetOverview';
 
 /**
@@ -97,11 +108,18 @@ export function MonthStrip({
   );
 }
 
-/** One money tile inside the hero. */
-function Tile({ t, v }: { t: string; v: string }) {
+/**
+ * One money tile inside the hero. An optional `info` renders an InfoTip after
+ * the label so the number's provenance is one tap away (decision 3) while the
+ * collapsed tile stays as calm as before.
+ */
+function Tile({ t, v, info }: { t: string; v: string; info?: ReactNode }) {
   return (
     <div className="vp-money-tile">
-      <span className="t">{t}</span>
+      <span className="t">
+        {t}
+        {info && <InfoTip label={`Herkunft: ${t}`}>{info}</InfoTip>}
+      </span>
       <span className="v">{v}</span>
     </div>
   );
@@ -128,17 +146,19 @@ export function AnlageHero({
   const gesamt = money?.gesamtertragEur ?? null;
   const animated = useCountUp(gesamt);
 
-  const tiles: { t: string; v: string }[] = [];
+  const tiles: { t: string; v: string; info?: ReactNode }[] = [];
   let provisional = false;
   if (money && gesamt != null) {
     tiles.push({
       t: 'Einspeise-Erlös',
       v: money.einspeiseErloesEur != null ? eurAmount(money.einspeiseErloesEur) : '–',
+      info: einspeiseProvenance(money),
     });
+    const eigenInfo = eigenverbrauchProvenance(money);
     tiles.push(
       money.eigenverbrauchsWertEur != null
-        ? { t: 'Wert des Eigenverbrauchs', v: eurAmount(money.eigenverbrauchsWertEur) }
-        : { t: 'Eigenverbrauch', v: energyLabel(money.selbstverbrauchKwh) },
+        ? { t: 'Wert des Eigenverbrauchs', v: eurAmount(money.eigenverbrauchsWertEur), info: eigenInfo }
+        : { t: 'Eigenverbrauch', v: energyLabel(money.selbstverbrauchKwh), info: eigenInfo },
     );
     if (
       money.plantKind === 'direktvermarktung' &&
@@ -146,7 +166,11 @@ export function AnlageHero({
       money.marketValueSolarCtKwh != null
     ) {
       provisional = money.marketValueProvisional === true;
-      tiles.push({ t: 'Ihr Marktwert', v: ctLabel(money.realizedExportCtKwh) });
+      tiles.push({
+        t: 'Ihr Marktwert',
+        v: ctLabel(money.realizedExportCtKwh),
+        info: marktwertBenchmark(money),
+      });
       tiles.push({
         t: 'Ø Markt (Solar)',
         v: `${ctLabel(money.marketValueSolarCtKwh)}${provisional ? ' *' : ''}`,
@@ -154,9 +178,17 @@ export function AnlageHero({
     }
   }
 
+  const gesamtInfo = money ? gesamtertragProvenance(money) : null;
+  const savedInfo = money ? savedProvenance(money) : null;
+
   return (
     <section className="vp-fleet-hero vp-money-hero" aria-label={`Gesamtertrag ${period}`}>
-      <span className="vp-fleet-hero-label">Gesamtertrag · {period}</span>
+      <span className="vp-fleet-hero-label">
+        Gesamtertrag · {period}
+        {gesamt != null && gesamtInfo && (
+          <InfoTip label="Herkunft: Gesamtertrag">{gesamtInfo}</InfoTip>
+        )}
+      </span>
       {gesamt == null ? (
         <>
           <span className="vp-fleet-hero-value">–</span>
@@ -177,11 +209,14 @@ export function AnlageHero({
             <span className="vp-fleet-hero-sub">
               davon {money.savedEur >= 0 ? '+' : ''}
               {eurAmount(money.savedEur)} durch VoltPilots Steuerung
+              {savedInfo && (
+                <InfoTip label="Herkunft: VoltPilots Steuerung">{savedInfo}</InfoTip>
+              )}
             </span>
           )}
           <div className="vp-money-tiles">
             {tiles.map((tile) => (
-              <Tile key={tile.t} t={tile.t} v={tile.v} />
+              <Tile key={tile.t} t={tile.t} v={tile.v} info={tile.info} />
             ))}
           </div>
           {provisional && (
@@ -193,19 +228,20 @@ export function AnlageHero({
   );
 }
 
-/** The energy-stats row: eingespeist / selbst verbraucht / Batterie bewegt. */
+/**
+ * The energy-stats row (captain decision 4): "Eingespeist / Selbst genutzt /
+ * Über Batterie", each with a one-line everyday-language mini-explanation
+ * underneath ("ins Netz verkauft" / "direkt im Haus verbraucht" /
+ * "zwischengespeichert"). The wording is the pure `energyTiles`.
+ */
 export function EnergyStatsRow({ money }: { money: EarningsSite | null }) {
-  const stats: { t: string; v: string }[] = [
-    { t: 'Eingespeist', v: energyLabel(money?.eingespeistKwh) },
-    { t: 'Selbst verbraucht', v: energyLabel(money?.selbstverbrauchKwh) },
-    { t: 'Batterie bewegt', v: energyLabel(money?.batterieBewegtKwh) },
-  ];
   return (
     <div className="vp-estats">
-      {stats.map((s) => (
-        <div className="vp-estat" key={s.t}>
-          <span className="t">{s.t}</span>
-          <span className="v">{s.v}</span>
+      {energyTiles(money).map((s) => (
+        <div className="vp-estat" key={s.label}>
+          <span className="t">{s.label}</span>
+          <span className="v">{s.value}</span>
+          <span className="e">{s.hint}</span>
         </div>
       ))}
     </div>

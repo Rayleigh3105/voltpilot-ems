@@ -39,6 +39,8 @@ const createdSite: Site = {
   longitude: null,
   plantKind: 'eigenverbrauch',
   marktpraemieCtKwh: null,
+  tarifArt: 'ohne',
+  tarifParamCtKwh: null,
   netzladenErlaubt: true,
 };
 
