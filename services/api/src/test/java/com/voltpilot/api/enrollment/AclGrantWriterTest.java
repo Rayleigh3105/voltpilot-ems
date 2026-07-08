@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -173,6 +174,256 @@ class AclGrantWriterTest {
         // The rename path swaps in the temp file: a new inode replaces the old
         // one - the property that makes a half-written broker read impossible.
         assertThat(Files.getAttribute(aclFile, "unix:ino")).isNotEqualTo(originalInode);
+    }
+
+    // ---- Self-healing / grant-ordering regression (prod-down 2026-07-08) -----
+
+    /**
+     * The real ACL tail: a first-match default-deny for every UUID (device)
+     * username, then {@code {allow, all}}. A device grant is only reachable if
+     * it sits ABOVE this deny.
+     */
+    private static final String DEFAULT_DENY =
+            "{deny, {username, {re, \"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+            + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$\"}}, all, [\"#\"]}.";
+
+    /** A well-formed base ACL with the real default-deny tail. */
+    private void writeBaseWithRealTail() throws Exception {
+        Files.writeString(aclFile, ""
+                + "{allow, {username, \"vp-internal\"}, all, [\"#\"]}.\n"
+                + "%% --- Per-device grants (GENERATED - do not hand-edit). ---\n"
+                + "%%<<BEGIN GENERATED DEVICE GRANTS>>\n"
+                + "%%<<END GENERATED DEVICE GRANTS>>\n"
+                + "%% --- Default-deny for devices. ---\n"
+                + DEFAULT_DENY + "\n"
+                + "{deny, all, subscribe, [\"$SYS/#\"]}.\n"
+                + "{allow, all}.\n", StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void everyDeviceGrantLandsAboveTheDefaultDeny() throws Exception {
+        writeBaseWithRealTail();
+        UUID a = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001");
+        UUID b = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002");
+        writer.writeGrant(TENANT, SITE, a);
+        writer.writeGrant(TENANT, SITE, b);
+
+        List<String> lines = Files.readAllLines(aclFile);
+        int deny = indexOf(lines, DEFAULT_DENY);
+        assertThat(deny).isGreaterThan(0);
+        // Both devices' allow rules precede the catch-all deny -> reachable.
+        assertThat(lastAllowLineFor(lines, a)).isLessThan(deny);
+        assertThat(lastAllowLineFor(lines, b)).isLessThan(deny);
+        // Exactly one region and one tail: no duplication.
+        assertThat(countOccurrences(Files.readString(aclFile), "%%<<END GENERATED DEVICE GRANTS>>"))
+                .isEqualTo(1);
+        assertThat(countOccurrences(Files.readString(aclFile), "%%<<BEGIN GENERATED DEVICE GRANTS>>"))
+                .isEqualTo(1);
+        assertThat(countOccurrences(Files.readString(aclFile), DEFAULT_DENY)).isEqualTo(1);
+        assertThat(countLines(lines, "{allow, all}.")).isEqualTo(1);
+    }
+
+    /**
+     * The exact prod-down shape (captain's VM, 2026-07-08): the seed device's
+     * grant sits correctly inside the region, but a later claim's grant was
+     * written AFTER the default-deny + {@code {allow, all}} (so it is
+     * unreachable and the device is kicked off the broker), and the whole
+     * template tail is DUPLICATED. The next grant write must normalize it.
+     */
+    @Test
+    void selfHealsAGrantWrittenBelowTheDenyWithADuplicatedTail() throws Exception {
+        UUID seed = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        UUID broken = UUID.fromString("cdba2ee8-0000-0000-0000-000000000009");
+        String seedBlock = block(seed);
+        String brokenBlock = block(broken);
+        String tail = "%% --- Default-deny for devices. ---\n"
+                + DEFAULT_DENY + "\n"
+                + "{deny, all, subscribe, [\"$SYS/#\"]}.\n"
+                + "{allow, all}.\n";
+
+        // grant below the deny + duplicated tail, exactly like the incident.
+        Files.writeString(aclFile, ""
+                + "{allow, {username, \"vp-internal\"}, all, [\"#\"]}.\n"
+                + "%%<<BEGIN GENERATED DEVICE GRANTS>>\n"
+                + seedBlock
+                + "%%<<END GENERATED DEVICE GRANTS>>\n"
+                + tail
+                + brokenBlock            // <-- unreachable: below the deny
+                + "%%<<END GENERATED DEVICE GRANTS>>\n"
+                + tail,                  // <-- duplicated template tail
+                StandardCharsets.UTF_8);
+
+        // Any subsequent write self-heals: re-claim the broken device.
+        writer.writeGrant(TENANT, SITE, broken);
+
+        List<String> lines = Files.readAllLines(aclFile);
+        String content = Files.readString(aclFile);
+        int deny = indexOf(lines, DEFAULT_DENY);
+        // Both grants now reachable, above the single default-deny.
+        assertThat(lastAllowLineFor(lines, seed)).isLessThan(deny);
+        assertThat(lastAllowLineFor(lines, broken)).isLessThan(deny);
+        // No duplication left anywhere.
+        assertThat(countOccurrences(content, "%%<<device " + broken + " ")).isEqualTo(1);
+        assertThat(countOccurrences(content, "%%<<device " + seed + " ")).isEqualTo(1);
+        assertThat(countOccurrences(content, "%%<<BEGIN GENERATED DEVICE GRANTS>>")).isEqualTo(1);
+        assertThat(countOccurrences(content, "%%<<END GENERATED DEVICE GRANTS>>")).isEqualTo(1);
+        assertThat(countOccurrences(content, DEFAULT_DENY)).isEqualTo(1);
+        assertThat(countLines(lines, "{allow, all}.")).isEqualTo(1);
+    }
+
+    @Test
+    void normalizingAnAlreadyCleanFileIsIdempotent() throws Exception {
+        writeBaseWithRealTail();
+        UUID a = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001");
+        UUID b = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002");
+        writer.writeGrant(TENANT, SITE, a);
+        writer.writeGrant(TENANT, SITE, b);
+        String once = Files.readString(aclFile);
+
+        // Re-writing an existing device rewrites the file to byte-identical.
+        writer.writeGrant(TENANT, SITE, a);
+        assertThat(Files.readString(aclFile)).isEqualTo(once);
+    }
+
+    /**
+     * Documented EMQX first-match reasoning (the broker itself is not run here;
+     * {@code verify_mqtt_security.py} exercises the live authorizer): EMQX
+     * evaluates rules top-down and stops at the first match. After healing, a
+     * granted device's own allow rule appears strictly BEFORE the UUID
+     * catch-all deny, so it matches ALLOW first; an ungranted UUID has no allow
+     * rule and falls straight to the deny. The ordering assertions below are
+     * exactly the property that makes that outcome hold.
+     */
+    @Test
+    void healedOrderingAllowsGrantedDeviceAndDeniesUngrantedUuid() throws Exception {
+        writeBaseWithRealTail();
+        UUID granted = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001");
+        UUID ungranted = UUID.fromString("ffffffff-0000-0000-0000-00000000000f");
+        writer.writeGrant(TENANT, SITE, granted);
+
+        List<String> lines = Files.readAllLines(aclFile);
+        int deny = indexOf(lines, DEFAULT_DENY);
+        // granted: an allow rule exists ABOVE the deny -> first match is ALLOW.
+        assertThat(lastAllowLineFor(lines, granted)).isLessThan(deny);
+        // ungranted: no allow rule anywhere -> first (and only) match is DENY.
+        assertThat(lastAllowLineFor(lines, ungranted)).isEqualTo(-1);
+    }
+
+    // ---- Startup self-heal: a deploy repairs a broken acl.conf, no re-claim ---
+
+    @Test
+    void normalizeInPlaceHealsTheIncidentShapeAndReportsWhatItFixed() throws Exception {
+        UUID seed = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        UUID broken = UUID.fromString("cdba2ee8-0000-0000-0000-000000000009");
+        String tail = "%% --- Default-deny for devices. ---\n"
+                + DEFAULT_DENY + "\n"
+                + "{deny, all, subscribe, [\"$SYS/#\"]}.\n"
+                + "{allow, all}.\n";
+        Files.writeString(aclFile, ""
+                + "{allow, {username, \"vp-internal\"}, all, [\"#\"]}.\n"
+                + "%%<<BEGIN GENERATED DEVICE GRANTS>>\n"
+                + block(seed)
+                + "%%<<END GENERATED DEVICE GRANTS>>\n"
+                + tail
+                + block(broken)          // below the deny -> unreachable
+                + "%%<<END GENERATED DEVICE GRANTS>>\n"
+                + tail,                  // duplicated tail
+                StandardCharsets.UTF_8);
+
+        AclGrantWriter.NormalizeResult result = writer.normalizeInPlace();
+
+        assertThat(result.healed()).isTrue();
+        assertThat(result.grantsMovedAboveDeny()).isEqualTo(1); // the cdba block
+        assertThat(result.tailCopies()).isEqualTo(2);           // collapsed to one
+
+        List<String> lines = Files.readAllLines(aclFile);
+        int deny = indexOf(lines, DEFAULT_DENY);
+        assertThat(lastAllowLineFor(lines, broken)).isLessThan(deny);
+        assertThat(lastAllowLineFor(lines, seed)).isLessThan(deny);
+        assertThat(countLines(lines, "{allow, all}.")).isEqualTo(1);
+        assertThat(countOccurrences(Files.readString(aclFile), "%%<<END GENERATED DEVICE GRANTS>>"))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void normalizeInPlaceLeavesAHealthyFileByteUnchangedAndDoesNotRewrite() throws Exception {
+        writeBaseWithRealTail();
+        writer.writeGrant(TENANT, SITE, UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001"));
+        String before = Files.readString(aclFile);
+        Object inodeBefore = Files.getAttribute(aclFile, "unix:ino");
+
+        AclGrantWriter.NormalizeResult result = writer.normalizeInPlace();
+
+        assertThat(result.healed()).isFalse();
+        assertThat(result.skipped()).isFalse(); // UNCHANGED
+        assertThat(Files.readString(aclFile)).isEqualTo(before);
+        // No rewrite at all -> the atomic rename never ran, inode is the same.
+        assertThat(Files.getAttribute(aclFile, "unix:ino")).isEqualTo(inodeBefore);
+    }
+
+    @Test
+    void normalizeInPlaceOfTheCommittedAclFileIsANoOp() throws Exception {
+        // Regression guard: the checked-in prod base is already canonical, so a
+        // startup self-heal over it must never rewrite (no reload noise).
+        Path committed = Path.of("../../infra/mqtt/acl/acl.conf");
+        assumeTrue(Files.exists(committed));
+        Path copy = dir.resolve("committed.conf");
+        Files.copy(committed, copy);
+        AclGrantWriter.NormalizeResult result = new AclGrantWriter(copy).normalizeInPlace();
+        assertThat(result.healed()).isFalse();
+        assertThat(result.skipped()).isFalse();
+        assertThat(Files.readString(copy)).isEqualTo(Files.readString(committed));
+    }
+
+    @Test
+    void normalizeInPlaceSkipsAFileWithoutTheGeneratedRegion() throws Exception {
+        Path noAnchor = dir.resolve("plain.conf");
+        Files.writeString(noAnchor, "{allow, all}.\n");
+        AclGrantWriter.NormalizeResult result = new AclGrantWriter(noAnchor).normalizeInPlace();
+        assertThat(result.skipped()).isTrue();
+        assertThat(result.detail()).contains("anchor");
+        assertThat(Files.readString(noAnchor)).isEqualTo("{allow, all}.\n"); // untouched
+    }
+
+    private static String block(UUID device) {
+        String base = "ems/" + TENANT + "/" + SITE + "/" + device;
+        return "%%<<device " + device + " tenant " + TENANT + " site " + SITE + ">>\n"
+                + "{allow, {username, \"" + device + "\"}, publish,   [\"" + base
+                + "/telemetry\", \"" + base + "/status\"]}.\n"
+                + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base
+                + "/schedule\", \"" + base + "/command\", \"" + base + "/config\"]}.\n"
+                + "%%<<end device " + device + ">>\n";
+    }
+
+    private static int indexOf(List<String> lines, String exact) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).equals(exact)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Index of the last line that is an {@code {allow, {username, "<device>"}...}} rule, or -1. */
+    private static int lastAllowLineFor(List<String> lines, UUID device) {
+        String needle = "{allow, {username, \"" + device + "\"}";
+        int found = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).startsWith(needle)) {
+                found = i;
+            }
+        }
+        return found;
+    }
+
+    private static int countLines(List<String> lines, String exactTrimmed) {
+        int n = 0;
+        for (String line : lines) {
+            if (line.trim().equals(exactTrimmed)) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private Object originalInode;

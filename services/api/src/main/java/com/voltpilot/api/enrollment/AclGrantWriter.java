@@ -12,9 +12,13 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,12 +29,25 @@ import org.slf4j.LoggerFactory;
  * shell tool's {@code revoke} (which removes the block) keeps working over
  * api-written grants and vice versa.
  *
- * <p>Each device owns a marked block inserted just above the
- * {@code %%<<END GENERATED DEVICE GRANTS>>} anchor (grants stay grouped above
- * the catch-all deny rules); re-issuing replaces the device's existing block
- * (idempotent). The rewrite is atomic (temp file + move) so the broker never
- * reads a half-written file. The broker applies changes on its next authz
- * reload ({@code tools/pki/reload-broker-authz.sh} - see docs/deploy.md).
+ * <p>EMQX's file authorizer is FIRST-MATCH, top-to-bottom, and the ACL ends
+ * with a catch-all default-deny for UUID (device) usernames followed by
+ * {@code {allow, all}}. A device grant is therefore only reachable if it sits
+ * ABOVE that default-deny - which is what the
+ * {@code %%<<BEGIN..>> .. %%<<END GENERATED DEVICE GRANTS>>} region is for.
+ * Every write is a full CANONICALIZING rebuild: all device grants are collected
+ * (wherever they were), the current device's block is inserted/replaced, and
+ * the file is re-emitted with exactly ONE generated region above exactly ONE
+ * default-deny tail. This is deliberately self-healing: a file that was
+ * previously corrupted - a grant appended AFTER the default-deny (unreachable),
+ * a duplicated template tail - is normalized on the next grant write or removal
+ * so the very next claim/unclaim/reload fixes it without touching the broker
+ * host (a real prod-down incident, 2026-07-08: the captain's claimed device was
+ * denied and kicked off the broker because its grant landed below the deny).
+ *
+ * <p>The rewrite is atomic (temp file + move) so the broker never reads a
+ * half-written file. The broker applies changes on its next authz reload
+ * ({@code tools/pki/reload-broker-authz.sh} / {@code BrokerAuthzReloader} - see
+ * docs/deploy.md).
  *
  * <p><strong>Deployment constraint:</strong> the ACL file's DIRECTORY must be
  * bind-mounted into this container, never the file alone. A single-file bind
@@ -46,7 +63,14 @@ class AclGrantWriter {
 
     private static final Logger log = LoggerFactory.getLogger(AclGrantWriter.class);
 
+    static final String BEGIN_ANCHOR = "%%<<BEGIN GENERATED DEVICE GRANTS>>";
     static final String END_ANCHOR = "%%<<END GENERATED DEVICE GRANTS>>";
+
+    /** The terminal catch-all of the ACL; anything after the first one is a duplicated tail. */
+    private static final String ALLOW_ALL = "{allow, all}.";
+
+    /** A per-device block opens with {@code %%<<device <id> ...>>}; capture the id. */
+    private static final Pattern DEVICE_BEGIN = Pattern.compile("^%%<<device (\\S+) ");
 
     /**
      * rw-r--r-- : the EMQX broker reads the file as a DIFFERENT non-root uid
@@ -68,25 +92,123 @@ class AclGrantWriter {
     synchronized void writeGrant(UUID tenantId, UUID siteId, UUID deviceId) {
         try {
             List<String> lines = new ArrayList<>(Files.readAllLines(aclFile, StandardCharsets.UTF_8));
-            removeBlock(lines, deviceId);
-            int anchor = indexOfAnchor(lines);
-            lines.addAll(anchor, grantBlock(tenantId, siteId, deviceId));
-            writeAtomically(lines);
+            Parsed parsed = parse(lines);
+            // Insert or replace this device's block, keeping its position if it
+            // was already present (idempotent re-claim), else appending it.
+            parsed.blocks.put(deviceId.toString(), grantBlock(tenantId, siteId, deviceId));
+            writeAtomically(rebuild(parsed));
         } catch (IOException e) {
             throw new IllegalStateException("cannot write ACL grant for device " + deviceId
                     + " to " + aclFile + ": " + e.getMessage(), e);
         }
     }
 
+    /** Outcome of a startup {@link #normalizeInPlace()} self-heal. */
+    record NormalizeResult(Status status, int grantsMovedAboveDeny, int tailCopies, String detail) {
+        enum Status { UNCHANGED, HEALED, SKIPPED }
+
+        static NormalizeResult unchanged() {
+            return new NormalizeResult(Status.UNCHANGED, 0, 0, null);
+        }
+
+        static NormalizeResult healed(int grantsMovedAboveDeny, int tailCopies) {
+            return new NormalizeResult(Status.HEALED, grantsMovedAboveDeny, tailCopies, null);
+        }
+
+        static NormalizeResult skipped(String detail) {
+            return new NormalizeResult(Status.SKIPPED, 0, 0, detail);
+        }
+
+        boolean healed() {
+            return status == Status.HEALED;
+        }
+
+        boolean skipped() {
+            return status == Status.SKIPPED;
+        }
+    }
+
+    /**
+     * Idempotent self-heal, meant to run once at api startup so a DEPLOY repairs
+     * an already-corrupted acl.conf on its own - WITHOUT any grant write or
+     * device re-claim. Canonicalizes the file exactly like a grant write
+     * (collapse duplicated default-deny/allow-all tails to one, exactly one
+     * generated region, every device grant moved above the default-deny) and
+     * rewrites it ONLY when that changes something - a healthy file is left
+     * byte-for-byte untouched (so the caller can skip the authz reload and stay
+     * quiet). Never throws: a file we do not recognize (no region anchors) or an
+     * IO failure is reported as {@code SKIPPED}, never a crashed api boot.
+     */
+    synchronized NormalizeResult normalizeInPlace() {
+        List<String> original;
+        try {
+            original = Files.readAllLines(aclFile, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return NormalizeResult.skipped("cannot read " + aclFile + ": " + e.getMessage());
+        }
+        List<String> healed;
+        try {
+            healed = rebuild(parse(new ArrayList<>(original)));
+        } catch (IllegalStateException e) {
+            // No region anchors - not the file we own; leave it for a human.
+            return NormalizeResult.skipped(e.getMessage());
+        }
+        if (healed.equals(original)) {
+            return NormalizeResult.unchanged();
+        }
+        int grantsBelowDeny = deviceBlocksBelowDefaultDeny(original);
+        int tailCopies = countTail(original);
+        try {
+            writeAtomically(healed);
+        } catch (IOException e) {
+            return NormalizeResult.skipped("cannot rewrite " + aclFile + ": " + e.getMessage());
+        }
+        return NormalizeResult.healed(grantsBelowDeny, tailCopies);
+    }
+
+    /** How many device grant blocks open BELOW the first default-deny (unreachable). */
+    private static int deviceBlocksBelowDefaultDeny(List<String> lines) {
+        int deny = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (isDefaultDenyLine(lines.get(i))) {
+                deny = i;
+                break;
+            }
+        }
+        if (deny < 0) {
+            return 0;
+        }
+        int count = 0;
+        for (int i = deny + 1; i < lines.size(); i++) {
+            if (lines.get(i).startsWith("%%<<device ")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** Number of terminal {@code {allow, all}.} lines (a healthy file has exactly one). */
+    private static int countTail(List<String> lines) {
+        int n = 0;
+        for (String line : lines) {
+            if (line.trim().equals(ALLOW_ALL)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
     /**
      * Removes a device's grant block (the unclaim counterpart: an ungranted
-     * device_id falls into the ACL's default-deny). No-op when absent.
+     * device_id falls into the ACL's default-deny). No-op when absent. Still
+     * canonicalizes the file, so an unclaim also self-heals prior corruption.
      */
     synchronized void removeGrant(UUID deviceId) {
         try {
             List<String> lines = new ArrayList<>(Files.readAllLines(aclFile, StandardCharsets.UTF_8));
-            removeBlock(lines, deviceId);
-            writeAtomically(lines);
+            Parsed parsed = parse(lines);
+            parsed.blocks.remove(deviceId.toString());
+            writeAtomically(rebuild(parsed));
         } catch (IOException e) {
             throw new IllegalStateException("cannot remove ACL grant for device " + deviceId
                     + " from " + aclFile + ": " + e.getMessage(), e);
@@ -104,35 +226,116 @@ class AclGrantWriter {
                 "%%<<end device " + deviceId + ">>");
     }
 
-    private static void removeBlock(List<String> lines, UUID deviceId) {
-        String begin = "%%<<device " + deviceId + " ";
-        String end = "%%<<end device " + deviceId + ">>";
-        List<String> kept = new ArrayList<>(lines.size());
-        boolean skipping = false;
+    /** The file split into its non-device "skeleton" and the device grant blocks (ordered). */
+    private record Parsed(List<String> skeleton, LinkedHashMap<String, List<String>> blocks) {}
+
+    /**
+     * Splits the file into the ordered device grant blocks (keyed by device id,
+     * last occurrence wins on a corrupt duplicate) and the skeleton - every
+     * other line, INCLUDING the region anchors and the tail, in order and
+     * verbatim. Device blocks may appear anywhere (inside the region, or - the
+     * corruption we heal - after the default-deny tail); all are collected.
+     */
+    private static Parsed parse(List<String> lines) {
+        LinkedHashMap<String, List<String>> blocks = new LinkedHashMap<>();
+        List<String> skeleton = new ArrayList<>(lines.size());
+        String openId = null;
+        List<String> current = null;
         for (String line : lines) {
-            if (!skipping && line.startsWith(begin)) {
-                skipping = true;
-                continue;
-            }
-            if (skipping) {
-                if (line.startsWith(end)) {
-                    skipping = false;
+            if (openId != null) {
+                current.add(line);
+                if (line.startsWith("%%<<end device " + openId + ">>")) {
+                    blocks.put(openId, current);
+                    openId = null;
+                    current = null;
                 }
                 continue;
             }
-            kept.add(line);
+            Matcher m = DEVICE_BEGIN.matcher(line);
+            if (m.find()) {
+                openId = m.group(1);
+                current = new ArrayList<>();
+                current.add(line);
+                continue;
+            }
+            // Drop stray, unpaired device-block debris; keep everything else.
+            if (line.startsWith("%%<<end device ")) {
+                continue;
+            }
+            skeleton.add(line);
         }
-        lines.clear();
-        lines.addAll(kept);
+        if (openId != null) {
+            // Unterminated block (truncated corruption): keep what we captured.
+            blocks.put(openId, current);
+        }
+        return new Parsed(skeleton, blocks);
     }
 
-    private int indexOfAnchor(List<String> lines) {
-        for (int i = 0; i < lines.size(); i++) {
-            if (lines.get(i).contains(END_ANCHOR)) {
+    /**
+     * Re-emits the file canonically: preamble up to and including the FIRST
+     * {@link #BEGIN_ANCHOR}, then every device grant, then the FIRST
+     * {@link #END_ANCHOR}, then a single collapsed tail. Any further anchors and
+     * any duplicated tail below the first {@code {allow, all}.} are dropped, so
+     * all grants end up ABOVE the default-deny and the structure is idempotent.
+     */
+    private List<String> rebuild(Parsed parsed) {
+        List<String> skeleton = parsed.skeleton;
+        int begin = indexOfContaining(skeleton, BEGIN_ANCHOR, 0);
+        int end = begin < 0 ? -1 : indexOfContaining(skeleton, END_ANCHOR, begin + 1);
+        if (begin < 0 || end < 0) {
+            throw new IllegalStateException("ACL region anchors '" + BEGIN_ANCHOR + "' / '"
+                    + END_ANCHOR + "' missing in " + aclFile);
+        }
+
+        List<String> out = new ArrayList<>(skeleton.subList(0, begin + 1)); // preamble + BEGIN
+        for (List<String> block : parsed.blocks.values()) {
+            out.addAll(block);
+        }
+        out.add(skeleton.get(end)); // exact END line text
+
+        List<String> rest = new ArrayList<>(skeleton.subList(end + 1, skeleton.size()));
+        rest.removeIf(l -> l.contains(BEGIN_ANCHOR) || l.contains(END_ANCHOR)); // duplicate anchors
+        out.addAll(collapseTail(rest));
+        return out;
+    }
+
+    /**
+     * Collapses a possibly-duplicated tail to a single one: keep everything up
+     * to and including the first {@code {allow, all}.} (the ACL's terminal
+     * line) and drop the rest. If there is no terminal allow-all (a customized
+     * ACL), fall back to removing repeated default-deny lines, keeping the first.
+     */
+    private static List<String> collapseTail(List<String> rest) {
+        for (int i = 0; i < rest.size(); i++) {
+            if (rest.get(i).trim().equals(ALLOW_ALL)) {
+                return new ArrayList<>(rest.subList(0, i + 1));
+            }
+        }
+        List<String> deduped = new ArrayList<>(rest.size());
+        boolean seenDeny = false;
+        for (String line : rest) {
+            if (isDefaultDenyLine(line)) {
+                if (seenDeny) {
+                    continue;
+                }
+                seenDeny = true;
+            }
+            deduped.add(line);
+        }
+        return deduped;
+    }
+
+    private static boolean isDefaultDenyLine(String line) {
+        return line.trim().startsWith("{deny, {username, {re,");
+    }
+
+    private static int indexOfContaining(List<String> lines, String needle, int from) {
+        for (int i = Math.max(0, from); i < lines.size(); i++) {
+            if (lines.get(i).contains(needle)) {
                 return i;
             }
         }
-        throw new IllegalStateException("ACL anchor '" + END_ANCHOR + "' missing in " + aclFile);
+        return -1;
     }
 
     private void writeAtomically(List<String> lines) throws IOException {

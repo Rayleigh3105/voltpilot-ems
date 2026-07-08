@@ -2,6 +2,7 @@ package com.voltpilot.api.enrollment;
 
 import com.voltpilot.api.enrollment.EnrollmentDeviceLookup.DeviceIdentity;
 import com.voltpilot.api.enrollment.EnrollmentRepository.Enrollment;
+import jakarta.annotation.PostConstruct;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Optional;
@@ -85,6 +86,41 @@ public class EnrollmentService {
      */
     private void requestBrokerAuthzReload() {
         authzReloader.ifAvailable(BrokerAuthzReloader::requestReload);
+    }
+
+    /**
+     * Self-heal the broker ACL on api startup, so a DEPLOY alone repairs an
+     * already-corrupted acl.conf - no manual edit, no device re-claim (the
+     * 2026-07-08 prod-down incident: a claimed device's grant sat BELOW the
+     * default-deny with the template tail duplicated, so the device was refused
+     * and kicked off the broker). A plain container redeploy triggers no grant
+     * write, so the repair must happen here. Idempotent and quiet: a healthy
+     * file is left byte-unchanged and NO reload fires; a corrupted file is
+     * normalized (grants moved above the default-deny, duplicate tails
+     * collapsed) with a loud WARN, then the existing authz reload is triggered
+     * so affected devices reconnect on their own within seconds.
+     */
+    @PostConstruct
+    void selfHealBrokerAclOnStartup() {
+        if (aclWriter == null) {
+            return;
+        }
+        AclGrantWriter.NormalizeResult result = aclWriter.normalizeInPlace();
+        if (result.healed()) {
+            log.warn("Self-healed a corrupted broker ACL at {}: moved {} device grant block(s) "
+                    + "that sat BELOW the default-deny (unreachable) into the generated region "
+                    + "and collapsed the duplicated tail ({} '{{allow, all}}' copies -> 1). "
+                    + "Triggering an authz reload so affected devices reconnect without a "
+                    + "re-claim.", properties.aclFile(), result.grantsMovedAboveDeny(),
+                    result.tailCopies());
+            requestBrokerAuthzReload();
+        } else if (result.skipped()) {
+            log.warn("Broker ACL self-heal skipped for {}: {} (managing grants out of band)",
+                    properties.aclFile(), result.detail());
+        } else {
+            log.debug("Broker ACL at {} already canonical - no self-heal needed",
+                    properties.aclFile());
+        }
     }
 
     /** What the device receives once its ref is claimed. */

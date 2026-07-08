@@ -173,22 +173,26 @@ EOF
 
 # ---------------------------------------------------------------------------
 # ACL grant management. Each device owns a marked block:
-#   #<<device <id> tenant <t> site <s>>>
+#   %%<<device <id> tenant <t> site <s>>>
 #   ...two rules...
-#   #<<end device <id>>>
-# Idempotent: an existing block for the device is replaced.
+#   %%<<end device <id>>>
+#
+# EMQX's file authorizer is FIRST-MATCH: a per-device grant is only reachable
+# if it sits ABOVE the catch-all UUID default-deny, i.e. INSIDE the
+# %%<<BEGIN..>>..%%<<END GENERATED DEVICE GRANTS>> region. Every write is a
+# full CANONICALIZING rebuild (normalize_acl below): all device blocks are
+# collected wherever they sit, the current device's block is inserted/replaced,
+# and the file is re-emitted with exactly one region above exactly one
+# default-deny tail. This self-heals a previously corrupted file (a grant
+# appended below the deny, a duplicated template tail - the 2026-07-08 prod
+# incident) on the next write. Idempotent: an existing block is replaced.
 # ---------------------------------------------------------------------------
 write_acl_grant() {
   local tenant="$1" site="$2" device="$3"
   local base="ems/${tenant}/${site}/${device}"
   [[ -f "$ACL_FILE" ]] || die "ACL file not found: ${ACL_FILE}"
-
-  remove_acl_grant "$device"
-
-  # Insert just before the generated-region end anchor so grants stay grouped
-  # above the catch-all deny rules.
-  local anchor='%%<<END GENERATED DEVICE GRANTS>>'
-  grep -qF "$anchor" "$ACL_FILE" || die "ACL anchor '${anchor}' missing in ${ACL_FILE}"
+  grep -qF '%%<<END GENERATED DEVICE GRANTS>>' "$ACL_FILE" \
+    || die "ACL anchor '%%<<END GENERATED DEVICE GRANTS>>' missing in ${ACL_FILE}"
 
   local blockfile; blockfile="$(mktemp)"
   cat > "$blockfile" <<EOF
@@ -198,16 +202,7 @@ write_acl_grant() {
 %%<<end device ${device}>>
 EOF
 
-  local tmp; tmp="$(mktemp)"
-  awk -v anchor="$anchor" -v blockfile="$blockfile" '
-    index($0, anchor) { while ((getline line < blockfile) > 0) print line; close(blockfile) }
-    { print }
-  ' "$ACL_FILE" > "$tmp"
-  # mktemp creates 0600 and mv carries that mode onto the ACL file, which the
-  # broker (different non-root uid, read-only mount) then cannot read - it
-  # fails boot-time config validation on its next restart.
-  chmod 644 "$tmp"
-  mv "$tmp" "$ACL_FILE"
+  normalize_acl "$device" "$blockfile"
   rm -f "$blockfile"
   info "ACL grant written for device ${device}"
 }
@@ -215,13 +210,80 @@ EOF
 remove_acl_grant() {
   local device="$1"
   [[ -f "$ACL_FILE" ]] || return 0
+  grep -qF '%%<<END GENERATED DEVICE GRANTS>>' "$ACL_FILE" || return 0
+  normalize_acl "$device" ""
+}
+
+# normalize_acl <device-to-drop> <blockfile-to-insert|"">
+# Canonical rebuild that also self-heals a corrupted acl.conf. Collects every
+# device grant block (anywhere in the file), drops <device-to-drop>, appends
+# the block in <blockfile> if given, then re-emits: preamble + BEGIN + all
+# grants + END + a single collapsed tail (duplicate anchors and any tail below
+# the first `{allow, all}.` removed). All grants therefore land above the deny.
+normalize_acl() {
+  local drop_device="$1" blockfile="$2"
   local tmp; tmp="$(mktemp)"
-  awk -v dev="$device" '
-    $0 ~ ("^%%<<device " dev " ")   { skip=1; next }
-    skip && $0 ~ ("^%%<<end device " dev ">>") { skip=0; next }
-    !skip { print }
-  ' "$ACL_FILE" > "$tmp"
-  chmod 644 "$tmp"  # keep the ACL broker-readable (see write_acl_grant)
+  awk -v drop="$drop_device" -v blockfile="$blockfile" '
+    function is_allow_all(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s == "{allow, all}." }
+    # ---- split into skeleton (everything else) + device blocks, keyed by id ----
+    # A device block opens with "%%<<device <id> ..." so field 2 is the id
+    # (portable: no gawk 3-arg match()).
+    {
+      line = $0
+      if (openid != "") {
+        block[openid] = block[openid] line "\n"
+        if (line ~ ("^%%<<end device " openid ">>")) openid = ""
+        next
+      }
+      if (line ~ /^%%<<device /) {
+        id = $2
+        if (!(id in seen)) { seen[id] = 1; order[++norder] = id }
+        block[id] = line "\n"
+        openid = id
+        next
+      }
+      if (line ~ /^%%<<end device /) next          # stray unpaired end marker
+      nskel++; skel[nskel] = line
+    }
+    END {
+      # drop the requested device; add/replace the inserted one
+      if (drop != "" && (drop in block)) { block[drop] = "" }
+      if (blockfile != "") {
+        newid = ""; newblock = ""
+        while ((getline bl < blockfile) > 0) {
+          if (bl ~ /^%%<<device /) { split(bl, f, " "); newid = f[2] }
+          newblock = newblock bl "\n"
+        }
+        close(blockfile)
+        if (newid != "" && !(newid in seen)) { seen[newid] = 1; order[++norder] = newid }
+        block[newid] = newblock
+      }
+      # find first BEGIN, then first END after it
+      b = 0; e = 0
+      for (i = 1; i <= nskel; i++) if (index(skel[i], "%%<<BEGIN GENERATED DEVICE GRANTS>>")) { b = i; break }
+      if (b > 0) for (i = b + 1; i <= nskel; i++) if (index(skel[i], "%%<<END GENERATED DEVICE GRANTS>>")) { e = i; break }
+      if (b == 0 || e == 0) { print "ACL_NORMALIZE_ERROR" > "/dev/stderr"; exit 3 }
+      # preamble + BEGIN
+      for (i = 1; i <= b; i++) print skel[i]
+      # every device grant, in first-appearance order
+      for (k = 1; k <= norder; k++) { id = order[k]; if (block[id] != "") printf "%s", block[id] }
+      # END line (exact)
+      print skel[e]
+      # tail after END: drop duplicate anchors, keep through first allow-all
+      done = 0
+      for (i = e + 1; i <= nskel; i++) {
+        if (done) continue
+        if (index(skel[i], "%%<<BEGIN GENERATED DEVICE GRANTS>>")) continue
+        if (index(skel[i], "%%<<END GENERATED DEVICE GRANTS>>")) continue
+        print skel[i]
+        if (is_allow_all(skel[i])) done = 1
+      }
+    }
+  ' "$ACL_FILE" > "$tmp" || { rm -f "$tmp"; die "failed to normalize ${ACL_FILE}"; }
+  # mktemp creates 0600 and mv carries that mode onto the ACL file, which the
+  # broker (different non-root uid, read-only mount) then cannot read - it
+  # fails boot-time config validation on its next restart.
+  chmod 644 "$tmp"
   mv "$tmp" "$ACL_FILE"
 }
 

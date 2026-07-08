@@ -86,6 +86,16 @@ EMQX reads the ACL directory **read-only** and applies changed grants only on an
 
 (The CI deploy workflows run this automatically after `up -d`. Note that `emqx ctl conf reload` does **not** re-read the ACL file - the file authorizer compiles its rules at source init and is only re-initialized when its config changes, which the script forces; verified on EMQX 5.8.3.)
 
+**Self-healing ACL (grant ordering).**
+EMQX's file authorizer is first-match, top to bottom: a per-device grant is only reachable if it sits **above** the catch-all UUID default-deny, i.e. INSIDE the `%%<<BEGIN..>> .. %%<<END GENERATED DEVICE GRANTS>>` region.
+A past bug could leave a grant appended **below** the default-deny (unreachable, so the device was denied and kicked off the broker) with the template tail duplicated - the 2026-07-08 prod-down incident.
+Three layers now keep `acl.conf` canonical and repair it with **no manual edit and no device re-claim**:
+1. **api startup self-heal (primary).** On boot the api normalizes `acl.conf` in place - moves every device grant above the default-deny, collapses duplicated `default-deny`/`$SYS`/`{allow, all}` tails to exactly one, keeps exactly one generated region - and, only if that changed anything, triggers the authz reload above. A healthy file is left byte-for-byte untouched (no reload noise). So **deploying the new image alone heals an already-corrupted file and the affected device reconnects on its own.**
+2. **Grant writes** (enrollment issuance, `voltpilot-ca.sh issue/revoke`) do the same canonicalizing rebuild, so any claim/unclaim also self-heals.
+3. **The deploy-time merge** (`tools/pki/merge-acl-grants.sh`) collects device grants from the deployed file wherever they sit (a grant below the deny is no longer silently dropped) and re-emits them inside the base's single region above a single tail.
+
+All three are idempotent and never duplicate the tail.
+
 If the CA must NOT live on this host, set `VOLTPILOT_ENROLLMENT_ENABLED=false` in `.env`, run `init-ca` elsewhere and `scp` the four broker files over - see [Device mTLS material](#3-device-mtls-material-staged-once-on-the-vps); device certs are then issued manually with `voltpilot-ca.sh issue`.
 
 ### 4. Build and start
