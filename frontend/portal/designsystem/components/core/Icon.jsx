@@ -210,6 +210,34 @@ const PATHS = {
       <polyline points="16 17 22 17 22 13" />
     </>
   ),
+  home: (
+    <>
+      <path d="M3 10.5a2 2 0 0 1 .7-1.52l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <path d="M9 21v-7h6v7" />
+    </>
+  ),
+  cpu: (
+    <>
+      <rect width="16" height="16" x="4" y="4" rx="2" />
+      <rect width="6" height="6" x="9" y="9" rx="1" />
+      <path d="M9 2v2" />
+      <path d="M15 2v2" />
+      <path d="M9 20v2" />
+      <path d="M15 20v2" />
+      <path d="M2 9h2" />
+      <path d="M2 15h2" />
+      <path d="M20 9h2" />
+      <path d="M20 15h2" />
+    </>
+  ),
+  'file-text': (
+    <>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <path d="M14 3v6h6" />
+      <path d="M9 13h6" />
+      <path d="M9 17h6" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, strokeWidth = 2, style = {}, ...props }) {

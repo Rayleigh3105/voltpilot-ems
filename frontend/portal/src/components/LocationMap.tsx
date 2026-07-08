@@ -43,10 +43,18 @@ export function LocationMap({
   lat,
   lon,
   onChange,
+  readonly = false,
 }: {
   lat: number | null;
   lon: number | null;
   onChange: (lat: number | null, lon: number | null) => void;
+  /**
+   * Display-only preview (the Technik "Meine Anlage" read-first view): the pin
+   * is not draggable, the map does not accept clicks, and the coordinate
+   * expander / "Entfernen" affordances are hidden. Default false keeps the full
+   * interactive editor for the three site forms.
+   */
+  readonly?: boolean;
 }) {
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -81,14 +89,19 @@ export function LocationMap({
       zoom: hasPin ? PIN_ZOOM : DACH_ZOOM,
       scrollWheelZoom: false,
       attributionControl: true,
+      ...(readonly
+        ? { dragging: false, doubleClickZoom: false, zoomControl: false, keyboard: false }
+        : {}),
     });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap',
     }).addTo(map);
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      place(e.latlng.lat, e.latlng.lng);
-    });
+    if (!readonly) {
+      map.on('click', (e: L.LeafletMouseEvent) => {
+        place(e.latlng.lat, e.latlng.lng);
+      });
+    }
     mapRef.current = map;
     // Leaflet needs a size recalculation once the container has laid out
     // (drawers/onboarding cards animate in). Guard against the map having
@@ -129,11 +142,13 @@ export function LocationMap({
         iconSize: [34, 34],
         iconAnchor: [17, 32],
       });
-      const marker = L.marker(pos, { icon, draggable: true, keyboard: false }).addTo(map);
-      marker.on('dragend', () => {
-        const p = marker.getLatLng();
-        place(p.lat, p.lng);
-      });
+      const marker = L.marker(pos, { icon, draggable: !readonly, keyboard: false }).addTo(map);
+      if (!readonly) {
+        marker.on('dragend', () => {
+          const p = marker.getLatLng();
+          place(p.lat, p.lng);
+        });
+      }
       markerRef.current = marker;
       map.setView(pos, Math.max(map.getZoom(), PIN_ZOOM));
     } else {
@@ -185,7 +200,7 @@ export function LocationMap({
   return (
     <div className="vp-map-field">
       <div className="vp-map" ref={mapEl} role="application" aria-label="Standortkarte">
-        {!hasPin && (
+        {!hasPin && !readonly && (
           <div className="vp-map-hint" aria-hidden="true">
             <Icon name="map-pin" size={16} />
             <span>Tippen Sie auf die Karte, um den Standort zu setzen</span>
@@ -199,7 +214,7 @@ export function LocationMap({
         ) : (
           <span className="vp-muted">Noch kein Standort gesetzt (optional)</span>
         )}
-        {hasPin && (
+        {hasPin && !readonly && (
           <button
             type="button"
             className="vp-linklike"
@@ -210,16 +225,18 @@ export function LocationMap({
           </button>
         )}
       </div>
-      <button
-        type="button"
-        className="vp-linklike vp-map-manual-toggle"
-        aria-expanded={manualOpen}
-        onClick={() => setManualOpen((o) => !o)}
-      >
-        <Icon name={manualOpen ? 'chevron-down' : 'chevron-right'} size={14} />
-        Koordinaten manuell bearbeiten
-      </button>
-      {manualOpen && (
+      {!readonly && (
+        <button
+          type="button"
+          className="vp-linklike vp-map-manual-toggle"
+          aria-expanded={manualOpen}
+          onClick={() => setManualOpen((o) => !o)}
+        >
+          <Icon name={manualOpen ? 'chevron-down' : 'chevron-right'} size={14} />
+          Koordinaten manuell bearbeiten
+        </button>
+      )}
+      {!readonly && manualOpen && (
         <div className="vp-map-manual">
           <Input
             label="Breitengrad"

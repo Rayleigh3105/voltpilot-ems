@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import type { IconName } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
 import {
   api,
   ApiError,
+  type CreateSiteInput,
   type Device,
   type PlantKind,
   type Site,
@@ -20,17 +22,212 @@ import { TariffFields } from '../components/TariffFields';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
 import { NetzladenBadge } from '../components/NetzladenBadge';
+import { InfoTip } from '../components/InfoTip';
 import { MastrDrawer } from '../components/MastrDrawer';
 import { ErrorState, TextSkeleton } from '../components/States';
 
 /**
- * The Technik section of the Anlagen-Seite: everything that used to live in
- * the Standorte and Geräte detail drawers, now ON the Anlage - Wechselrichter
- * (status + reference, detail drawer), Speicher (params + editor incl. the
- * controlling-device picker), the MaStR registry link, and the Stammdaten
- * ("Standort" survives only as the address inside this section) with edit
- * form and the guarded delete.
+ * "Technik & Einstellungen" - the gear subpage of the Anlage, rebuilt as a calm,
+ * editorial page (task vp-technik-erklaerbar): a slim left jump-navigation and
+ * six explained sections on the right (Meine Anlage / Mein Gerät / Mein Speicher
+ * / Vergütung & Tarif / Registrierung / Anlage löschen). Four principles drive
+ * it: group by meaning (not DB table), read first + edit on demand, collapse the
+ * installer jargon behind "Technische Details", and explain every section in
+ * plain German with an info-tooltip per Fachbegriff. Nothing was removed - every
+ * setting that used to stack here is still reachable, just one level calmer.
  */
+
+/** The six sections, in the captain-approved order; ids double as scroll anchors. */
+const SECTIONS = [
+  { key: 'anlage', icon: 'home' as IconName, label: 'Meine Anlage' },
+  { key: 'geraet', icon: 'cpu' as IconName, label: 'Mein Gerät' },
+  { key: 'speicher', icon: 'battery' as IconName, label: 'Mein Speicher' },
+  { key: 'verguetung', icon: 'euro' as IconName, label: 'Vergütung & Tarif' },
+  { key: 'registrierung', icon: 'file-text' as IconName, label: 'Registrierung' },
+  { key: 'loeschen', icon: 'trash' as IconName, label: 'Anlage löschen', danger: true },
+] as const;
+
+type SectionKey = (typeof SECTIONS)[number]['key'];
+
+const anchorId = (key: SectionKey) => `technik-${key}`;
+
+/** Matches the phone breakpoint where sections turn into collapsible cards. */
+function useIsPhone(): boolean {
+  const query = '(max-width: 720px)';
+  const [isPhone, setIsPhone] = useState(
+    () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia(query).matches
+      : false,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setIsPhone(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isPhone;
+}
+
+/** Highlights the jump-nav item of the section currently in view (desktop). */
+function useScrollSpy(keys: readonly SectionKey[], enabled: boolean): SectionKey | null {
+  const [active, setActive] = useState<SectionKey | null>(keys[0] ?? null);
+  useEffect(() => {
+    if (!enabled || typeof IntersectionObserver === 'undefined') return;
+    const observed = keys
+      .map((k) => document.getElementById(anchorId(k)))
+      .filter((el): el is HTMLElement => el != null);
+    if (observed.length === 0) return;
+    const seen = new Map<string, number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) seen.set(e.target.id, e.intersectionRatio);
+        let best: { key: SectionKey; ratio: number } | null = null;
+        for (const k of keys) {
+          const ratio = seen.get(anchorId(k)) ?? 0;
+          if (ratio > 0 && (best == null || ratio > best.ratio)) best = { key: k, ratio };
+        }
+        if (best) setActive(best.key);
+      },
+      { rootMargin: '-96px 0px -55% 0px', threshold: [0, 0.2, 0.5, 1] },
+    );
+    observed.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [keys, enabled]);
+  return active;
+}
+
+/** The desktop jump-navigation: a hairline left rail that scrolls to a section. */
+function JumpNav({ active }: { active: SectionKey | null }) {
+  return (
+    <nav className="vp-technik-nav" aria-label="Abschnitte">
+      {SECTIONS.map((s) => (
+        <a
+          key={s.key}
+          href={`#${anchorId(s.key)}`}
+          className={`${active === s.key ? 'on' : ''}${'danger' in s && s.danger ? ' danger' : ''}`}
+          onClick={(e) => {
+            e.preventDefault();
+            document
+              .getElementById(anchorId(s.key))
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+        >
+          <Icon name={s.icon} size={16} />
+          {s.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+/**
+ * One explained section. On desktop it is an airy, borderless block (icon tile +
+ * title + one explaining sentence + an optional edit affordance, then its
+ * content). On the phone it becomes a bordered, collapsible card - a calm list
+ * when closed, tap to open. An `alwaysVisible` node (a real warning) stays
+ * shown even when the phone card is collapsed.
+ */
+function TechCard({
+  section,
+  explain,
+  summary,
+  action,
+  alwaysVisible,
+  children,
+}: {
+  section: (typeof SECTIONS)[number];
+  explain: string;
+  /** The one-line status shown under the title on a collapsed phone card. */
+  summary?: ReactNode;
+  /** Desktop: rendered in the header (e.g. the edit pencil). Phone: in the body. */
+  action?: ReactNode;
+  alwaysVisible?: ReactNode;
+  children: ReactNode;
+}) {
+  const isPhone = useIsPhone();
+  const [open, setOpen] = useState(false);
+  const danger = 'danger' in section && section.danger;
+  const showBody = !isPhone || open;
+
+  const head = (
+    <>
+      <span className="vp-tech-cico">
+        <Icon name={section.icon} size={19} />
+      </span>
+      <span className="vp-tech-ct">
+        <span className="vp-tech-title">{section.label}</span>
+        <span className="vp-tech-exp">{isPhone && !open && summary ? summary : explain}</span>
+      </span>
+    </>
+  );
+
+  return (
+    <section
+      id={anchorId(section.key)}
+      className={`vp-tech-card${danger ? ' danger' : ''}${isPhone && open ? ' open' : ''}`}
+    >
+      {isPhone ? (
+        <button
+          type="button"
+          className="vp-tech-card-h toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {head}
+          <Icon name="chevron-down" size={18} className="vp-tech-chev" />
+        </button>
+      ) : (
+        <div className="vp-tech-card-h">
+          {head}
+          {action && <span className="vp-tech-action">{action}</span>}
+        </div>
+      )}
+
+      {alwaysVisible}
+
+      {showBody && (
+        <div className="vp-tech-card-body">
+          {isPhone && action && <div className="vp-tech-action-phone">{action}</div>}
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** The inline "Technische Details" disclosure - installer values, one click away. */
+function TechnischeDetails({ hint, children }: { hint: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="vp-tech-disc-wrap">
+      <button
+        type="button"
+        className={`vp-tech-disc${open ? ' open' : ''}`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Icon name="chevron-down" size={16} className="vp-tech-disc-chev" />
+        Technische Details
+        <span className="lbl">{hint}</span>
+        <span className="cv">{open ? 'ausblenden' : 'einblenden'}</span>
+      </button>
+      {open && <div className="vp-tech-disc-body">{children}</div>}
+    </div>
+  );
+}
+
+/** An outlined "Bearbeiten" affordance matching the mockup's restrained pencil. */
+function EditPencil({ onClick, label = 'Bearbeiten' }: { onClick: () => void; label?: string }) {
+  return (
+    <button type="button" className="vp-tech-edit" onClick={onClick}>
+      <Icon name="pencil" size={15} />
+      {label}
+    </button>
+  );
+}
+
 export function TechnikSection({
   site,
   devices,
@@ -51,7 +248,7 @@ export function TechnikSection({
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [assetsError, setAssetsError] = useState(false);
   const [assetsReloadKey, setAssetsReloadKey] = useState(0);
-  const [editing, setEditing] = useState(false);
+  const [editSection, setEditSection] = useState<'anlage' | 'verguetung' | null>(null);
   const [mastrOpen, setMastrOpen] = useState(false);
   const [preview, setPreview] = useState<SiteDeletionPreview | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -59,11 +256,17 @@ export function TechnikSection({
   const [deviceDetailId, setDeviceDetailId] = useState<string | null>(null);
   const [addDeviceOpen, setAddDeviceOpen] = useState(false);
 
+  const isPhone = useIsPhone();
+  const activeSection = useScrollSpy(
+    SECTIONS.map((s) => s.key),
+    !isPhone,
+  );
+
   const siteDevices = devices.filter((d) => d.siteId === site.id);
   const deviceDetail = siteDevices.find((d) => d.id === deviceDetailId) ?? null;
 
   useEffect(() => {
-    setEditing(false);
+    setEditSection(null);
     setPreview(null);
     setDeleteError(null);
     let cancelled = false;
@@ -76,7 +279,7 @@ export function TechnikSection({
       })
       .catch(() => {
         // Distinguish "couldn't load" from "you have none": a backend/RLS
-        // failure must not masquerade as an empty Anlagendaten section.
+        // failure must not masquerade as an empty section.
         if (!cancelled) setAssetsError(true);
       });
     api
@@ -142,15 +345,84 @@ export function TechnikSection({
     .sort()
     .pop();
 
-  return (
-    <>
-      {/* Wechselrichter: the Anlage's device(s), status-first. */}
-      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-        <h3 className="vp-tech-h">Wechselrichter</h3>
-      </div>
+  const isDv = site.plantKind === 'direktvermarktung';
+
+  // --- Section: Meine Anlage (Stammdaten) ---------------------------------
+  const anlageEditing = editSection === 'anlage';
+  const anlageCard = (
+    <TechCard
+      key="anlage"
+      section={SECTIONS[0]}
+      explain="Die Grunddaten Ihrer Anlage - Name, Standort und Anlagentyp."
+      summary={site.name}
+      action={anlageEditing ? undefined : <EditPencil onClick={() => setEditSection('anlage')} />}
+    >
+      {anlageEditing ? (
+        <StammdatenEditForm
+          site={site}
+          onCancel={() => setEditSection(null)}
+          onSaved={(updated) => {
+            setEditSection(null);
+            onSiteSaved(updated);
+            onReload(updated.id);
+          }}
+        />
+      ) : (
+        <>
+          <dl className="vp-kv">
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">Name</dt>
+              <dd className="vp-kv-v">{site.name}</dd>
+            </div>
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">Standort</dt>
+              <dd className="vp-kv-v">
+                {fmtCoords(site.latitude, site.longitude) ?? (
+                  <span className="vp-muted">noch nicht hinterlegt</span>
+                )}
+                {' · '}
+                {zoneLabel(site.biddingZone)}
+              </dd>
+            </div>
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">Anlagentyp</dt>
+              <dd className="vp-kv-v">{plantKindLabel(site.plantKind)}</dd>
+            </div>
+          </dl>
+          {site.latitude != null && site.longitude != null ? (
+            <div className="vp-tech-map">
+              <LocationMap lat={site.latitude} lon={site.longitude} onChange={() => {}} readonly />
+            </div>
+          ) : (
+            <div className="vp-alert vp-alert-info" style={{ marginBottom: 0 }}>
+              Ohne Standort auf der Karte gibt es keine Wettervorhersage für diese Anlage.
+              Tippen Sie auf „Bearbeiten", um ihn zu setzen.
+            </div>
+          )}
+        </>
+      )}
+    </TechCard>
+  );
+
+  // --- Section: Mein Gerät (Wechselrichter) -------------------------------
+  const geraetSummary =
+    siteDevices.length === 0 ? (
+      'Noch kein Gerät verbunden'
+    ) : siteDevices.length === 1 ? (
+      <DeviceStatusBadge device={siteDevices[0]} />
+    ) : (
+      `${siteDevices.length} Geräte`
+    );
+  const geraetCard = (
+    <TechCard
+      key="geraet"
+      section={SECTIONS[1]}
+      explain="Der Wechselrichter, der Ihre Anlage steuert und Messwerte sendet."
+      summary={geraetSummary}
+    >
       {siteDevices.length === 0 ? (
         <>
-          <p className="vp-muted">
+          <p className="vp-muted" style={{ marginTop: 0 }}>
             Noch kein Gerät verbunden. Fügen Sie Ihr Gerät mit seiner Geräte-ID hinzu -
             es verbindet sich selbst, sobald es eingeschaltet ist.
           </p>
@@ -158,50 +430,88 @@ export function TechnikSection({
             variant="outline"
             iconLeft={<Icon name="plus" size={16} />}
             onClick={() => setAddDeviceOpen(true)}
-            style={{ marginBottom: 'var(--vp-space-5)' }}
           >
             Gerät hinzufügen
           </Button>
         </>
       ) : (
-        <table className="vp-table" style={{ marginBottom: 'var(--vp-space-5)' }}>
-          <tbody>
+        <>
+          <div className="vp-tech-devices">
             {siteDevices.map((d) => (
-              <tr key={d.id} className="clickable" onClick={() => setDeviceDetailId(d.id)}>
-                <td>
-                  {d.name ? (
-                    <>
-                      <b>{d.name}</b>
-                      <div className="vp-note vp-mono">{d.externalRef}</div>
-                    </>
-                  ) : (
-                    <span className="vp-mono">{d.externalRef}</span>
-                  )}
-                  <div className="vp-note">{deviceKindLabel(d.kind)}</div>
-                </td>
-                <td style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                key={d.id}
+                className="vp-tech-device"
+                onClick={() => setDeviceDetailId(d.id)}
+              >
+                <span className="vp-tech-device-main">
+                  <span className="vp-tech-device-name">{d.name || d.externalRef}</span>
+                  <span className="vp-note">{deviceKindLabel(d.kind)}</span>
+                </span>
+                <span className="vp-tech-device-status">
                   <DeviceStatusBadge device={d} />
-                  <div className="vp-note">{fmtRelative(d.lastSeenAt)}</div>
-                </td>
-                <td style={{ width: 1 }}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e: React.MouseEvent) => {
-                      e.stopPropagation();
-                      setDeviceDetailId(d.id);
-                    }}
-                  >
-                    Details
-                  </Button>
-                </td>
-              </tr>
+                  <span className="vp-note">{fmtRelative(d.lastSeenAt)}</span>
+                </span>
+                <Icon name="chevron-right" size={18} className="vp-tech-device-chev" />
+              </button>
             ))}
-          </tbody>
-        </table>
+          </div>
+          <TechnischeDetails hint="Geräte-ID, Typ, Verlauf">
+            <dl className="vp-kv">
+              {siteDevices.map((d) => (
+                <div className="vp-kv-row" key={d.id}>
+                  <dt className="vp-kv-k">{d.name || 'Geräte-ID'}</dt>
+                  <dd className="vp-kv-v vp-mono">{d.externalRef}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="vp-note">
+              Tippen Sie ein Gerät oben an, um Typ, Verlauf und weitere Aktionen zu öffnen.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              iconLeft={<Icon name="plus" size={16} />}
+              onClick={() => setAddDeviceOpen(true)}
+            >
+              Weiteres Gerät hinzufügen
+            </Button>
+          </TechnischeDetails>
+        </>
       )}
+    </TechCard>
+  );
 
-      {/* Speicher & Steuerung (params, editor, controlling device). */}
+  // --- Section: Mein Speicher ---------------------------------------------
+  // The battery-without-device warning is a real failure, so it is surfaced at
+  // the card's always-visible slot (shown even on a collapsed phone card),
+  // NOT buried in the collapsible body.
+  const batteryNeedsDevice = batteryAsset != null && batteryAsset.deviceId == null;
+  const speicherCard = (
+    <TechCard
+      key="speicher"
+      section={SECTIONS[2]}
+      explain="Ihr Batteriespeicher - so lädt und entlädt ihn der Fahrplan optimal."
+      summary={
+        batteryNeedsDevice ? (
+          <span className="vp-tech-warn-summary">Speicher ohne Gerät</span>
+        ) : batteryAsset?.capacityKwh != null ? (
+          fmtNum(batteryAsset.capacityKwh, 'kWh', 1)
+        ) : (
+          'Kein Speicher hinterlegt'
+        )
+      }
+      alwaysVisible={
+        assets != null && batteryNeedsDevice ? (
+          <div
+            className="vp-alert vp-alert-warn"
+            style={{ marginTop: 'var(--vp-space-3)', marginBottom: 0 }}
+          >
+            {BATTERY_NO_DEVICE_WARNING}
+          </div>
+        ) : undefined
+      }
+    >
       {assetsError ? (
         <ErrorState
           message="Die Anlagendaten konnten nicht geladen werden."
@@ -210,162 +520,184 @@ export function TechnikSection({
       ) : assets === null ? (
         <TextSkeleton lines={3} />
       ) : (
-        <>
-          <BatteryControlSection
-            siteId={site.id}
-            battery={batteryAsset}
-            devices={siteDevices}
-            onSaved={(a) => setAssets(a)}
-          />
-
-          {/* Anlagendaten (Marktstammdatenregister). */}
-          <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-            <h3 className="vp-tech-h">Anlagendaten (Marktstammdatenregister)</h3>
-          </div>
-          {linkedAssets.length === 0 ? (
-            <>
-              <p className="vp-muted">
-                Optional: Verknüpfen Sie Ihre PV-Anlage (und ggf. den Speicher) mit dem
-                Marktstammdatenregister, damit Prognose und Optimierung mit den amtlich
-                registrierten Werten rechnen.
-              </p>
-              <Button
-                variant="outline"
-                iconLeft={<Icon name="sun" size={16} />}
-                onClick={() => setMastrOpen(true)}
-                style={{ marginBottom: 'var(--vp-space-5)' }}
-              >
-                Anlage verknüpfen
-              </Button>
-            </>
-          ) : (
-            <>
-              <table className="vp-table" style={{ marginBottom: 'var(--vp-space-3)' }}>
-                <tbody>
-                  {pvAsset && (
-                    <>
-                      <tr>
-                        <th scope="row">PV-Leistung</th>
-                        <td>
-                          {pvAsset.pvCapacityKwp != null ? fmtNum(pvAsset.pvCapacityKwp, 'kWp', 2) : '-'}
-                          {pvAsset.moduleCount != null ? ` · ${pvAsset.moduleCount} Module` : ''}
-                        </td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Ausrichtung / Neigung</th>
-                        <td>
-                          {pvAsset.azimuthDeg != null ? fmtNum(pvAsset.azimuthDeg, '°', 0) : 'Standard (Süd)'}
-                          {' / '}
-                          {pvAsset.tiltDeg != null ? fmtNum(pvAsset.tiltDeg, '°', 0) : 'Standard (30°)'}
-                        </td>
-                      </tr>
-                      <tr>
-                        <th scope="row">MaStR-Nummer PV</th>
-                        <td className="vp-mono">{pvAsset.registryUnitId}</td>
-                      </tr>
-                    </>
-                  )}
-                  {lastFetched && (
-                    <tr>
-                      <th scope="row">Zuletzt abgerufen</th>
-                      <td>{fmtRelative(lastFetched)}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setMastrOpen(true)}
-                style={{ marginBottom: 'var(--vp-space-5)' }}
-              >
-                Neu aus dem Register abrufen
-              </Button>
-            </>
-          )}
-        </>
+        <BatteryControlSection
+          siteId={site.id}
+          battery={batteryAsset}
+          devices={siteDevices}
+          onSaved={(a) => setAssets(a)}
+          hideWarning
+        />
       )}
+    </TechCard>
+  );
 
-      {/* Stammdaten: Anlagentyp, Netzladen, Marktprämie und der Standort
-          (die Adresse der Anlage) - editierbar wie bisher. */}
-      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-        <h3 className="vp-tech-h">Standort &amp; Einstellungen</h3>
-        {!editing && (
-          <Button
-            variant="ghost"
-            size="sm"
-            iconLeft={<Icon name="pencil" size={16} />}
-            onClick={() => setEditing(true)}
-            style={{ marginLeft: 'auto' }}
-          >
-            Bearbeiten
-          </Button>
-        )}
-      </div>
-      {editing ? (
-        <SiteEditForm
+  // --- Section: Vergütung & Tarif -----------------------------------------
+  const verguetungEditing = editSection === 'verguetung';
+  const verguetungCard = (
+    <TechCard
+      key="verguetung"
+      section={SECTIONS[3]}
+      explain="Wie Ihr eingespeister und selbst genutzter Strom bewertet wird."
+      summary={tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}
+      action={
+        verguetungEditing ? undefined : <EditPencil onClick={() => setEditSection('verguetung')} />
+      }
+    >
+      {verguetungEditing ? (
+        <VerguetungEditForm
           site={site}
-          onCancel={() => setEditing(false)}
+          onCancel={() => setEditSection(null)}
           onSaved={(updated) => {
-            setEditing(false);
+            setEditSection(null);
             onSiteSaved(updated);
             onReload(updated.id);
           }}
         />
       ) : (
         <>
-          <table className="vp-table" style={{ marginBottom: 'var(--vp-space-4)' }}>
-            <tbody>
-              <tr>
-                <th scope="row">Standort</th>
-                <td>
-                  {fmtCoords(site.latitude, site.longitude) ?? (
-                    <span className="vp-muted">noch nicht hinterlegt</span>
+          <dl className="vp-kv">
+            {isDv && (
+              <div className="vp-kv-row">
+                <dt className="vp-kv-k">
+                  Anzulegender Wert
+                  <InfoTip title="Anzulegender Wert">
+                    Ihr fester Vergütungssatz aus der Direktvermarktung (EEG-Zuschlag). Er ist die
+                    Basis Ihrer Marktprämie: Wir rechnen die Differenz zum monatlichen Marktwert
+                    Solar in Ihren Erlös ein; bei negativen Börsenpreisen entfällt sie.
+                  </InfoTip>
+                </dt>
+                <dd className="vp-kv-v">
+                  {site.anzulegenderWertCtKwh != null ? (
+                    fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)
+                  ) : (
+                    <span className="vp-muted">nicht hinterlegt</span>
                   )}
-                  {' · '}
-                  {zoneLabel(site.biddingZone)}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Anlagentyp</th>
-                <td>{plantKindLabel(site.plantKind)}</td>
-              </tr>
-              <tr>
-                <th scope="row">Netzladen</th>
-                <td>
-                  <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
-                </td>
-              </tr>
-              {site.plantKind === 'direktvermarktung' && site.anzulegenderWertCtKwh != null && (
-                <tr>
-                  <th scope="row">Anzulegender Wert</th>
-                  <td>{fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)}</td>
-                </tr>
-              )}
-              <tr>
-                <th scope="row">Stromtarif</th>
-                <td>{tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}</td>
-              </tr>
-              {linkedAssets.length > 0 && (
-                <tr>
-                  <th scope="row">Register</th>
-                  <td>
-                    <Badge variant="ok" dot>
-                      MaStR verknüpft
-                    </Badge>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          {site.latitude == null && (
-            <div className="vp-alert vp-alert-info" style={{ marginTop: 0, marginBottom: 'var(--vp-space-4)' }}>
-              Ohne Standort auf der Karte gibt es keine Wettervorhersage für diese Anlage.
+                </dd>
+              </div>
+            )}
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">
+                Ihr Stromtarif
+                <InfoTip title="Stromtarif">
+                  Grundlage für den Wert Ihres Eigenverbrauchs. „Dynamisch" bewertet jede selbst
+                  genutzte Kilowattstunde zum jeweiligen Börsenpreis plus Aufschlag, „Fest" zu
+                  Ihrem festen Arbeitspreis.
+                </InfoTip>
+              </dt>
+              <dd className="vp-kv-v">{tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}</dd>
             </div>
-          )}
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">
+                Netzladen
+                <InfoTip title="Netzladen des Speichers">
+                  Legt fest, ob Ihr Speicher auch Strom aus dem Netz laden darf. EEG-geförderte
+                  Anlagen dürfen das nicht (Ausschließlichkeitsprinzip) - dann lädt der Speicher nur
+                  aus eigenem Solarstrom.
+                </InfoTip>
+              </dt>
+              <dd className="vp-kv-v">
+                <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
+              </dd>
+            </div>
+          </dl>
+          <p className="vp-tech-miniexp">
+            {isDv
+              ? '„Anzulegender Wert": Ihr fixer Vergütungssatz aus der Direktvermarktung - die Basis der Marktprämie.'
+              : 'Ihr Stromtarif bestimmt, wie viel eine selbst genutzte Kilowattstunde für Sie wert ist.'}
+          </p>
         </>
       )}
+    </TechCard>
+  );
 
+  // --- Section: Registrierung (Marktstammdaten) ---------------------------
+  const registrierungCard = (
+    <TechCard
+      key="registrierung"
+      section={SECTIONS[4]}
+      explain="Die offizielle Registrierung Ihrer Anlage - brauchen Sie nur selten."
+      summary={linkedAssets.length > 0 ? 'MaStR verknüpft' : 'Nicht verknüpft'}
+    >
+      {assetsError ? (
+        <ErrorState
+          message="Die Anlagendaten konnten nicht geladen werden."
+          onRetry={() => setAssetsReloadKey((k) => k + 1)}
+        />
+      ) : assets === null ? (
+        <TextSkeleton lines={2} />
+      ) : linkedAssets.length === 0 ? (
+        <>
+          <p className="vp-muted" style={{ marginTop: 0 }}>
+            Optional: Verknüpfen Sie Ihre PV-Anlage (und ggf. den Speicher) mit dem
+            Marktstammdatenregister, damit Prognose und Optimierung mit den amtlich
+            registrierten Werten rechnen.
+          </p>
+          <Button
+            variant="outline"
+            iconLeft={<Icon name="sun" size={16} />}
+            onClick={() => setMastrOpen(true)}
+          >
+            Anlage verknüpfen
+          </Button>
+        </>
+      ) : (
+        <>
+          <div className="vp-tech-reg-status">
+            <Badge variant="ok" dot>
+              MaStR verknüpft
+            </Badge>
+            {lastFetched && (
+              <span className="vp-note">Zuletzt abgerufen {fmtRelative(lastFetched)}</span>
+            )}
+          </div>
+          <TechnischeDetails hint="Registrierte Werte, MaStR-Nummern">
+            <dl className="vp-kv">
+              {pvAsset && (
+                <>
+                  <div className="vp-kv-row">
+                    <dt className="vp-kv-k">PV-Leistung</dt>
+                    <dd className="vp-kv-v">
+                      {pvAsset.pvCapacityKwp != null ? fmtNum(pvAsset.pvCapacityKwp, 'kWp', 2) : '-'}
+                      {pvAsset.moduleCount != null ? ` · ${pvAsset.moduleCount} Module` : ''}
+                    </dd>
+                  </div>
+                  <div className="vp-kv-row">
+                    <dt className="vp-kv-k">Ausrichtung / Neigung</dt>
+                    <dd className="vp-kv-v">
+                      {pvAsset.azimuthDeg != null ? fmtNum(pvAsset.azimuthDeg, '°', 0) : 'Standard (Süd)'}
+                      {' / '}
+                      {pvAsset.tiltDeg != null ? fmtNum(pvAsset.tiltDeg, '°', 0) : 'Standard (30°)'}
+                    </dd>
+                  </div>
+                  <div className="vp-kv-row">
+                    <dt className="vp-kv-k">MaStR-Nummer PV</dt>
+                    <dd className="vp-kv-v vp-mono">{pvAsset.registryUnitId}</dd>
+                  </div>
+                </>
+              )}
+            </dl>
+            <Button
+              variant="ghost"
+              size="sm"
+              iconLeft={<Icon name="refresh-cw" size={16} />}
+              onClick={() => setMastrOpen(true)}
+            >
+              Neu aus dem Register abrufen
+            </Button>
+          </TechnischeDetails>
+        </>
+      )}
+    </TechCard>
+  );
+
+  // --- Section: Anlage löschen --------------------------------------------
+  const loeschenCard = (
+    <TechCard
+      key="loeschen"
+      section={SECTIONS[5]}
+      explain="Entfernt die Anlage und alle ihre Daten unwiderruflich."
+      summary="Unwiderruflich"
+    >
       <DangerZone
         actionLabel="Anlage löschen"
         description="Eine gelöschte Anlage kann nicht wiederhergestellt werden."
@@ -373,13 +705,27 @@ export function TechnikSection({
         confirmLabel="Anlage endgültig löschen"
         disabledReason={
           siteDevices.length > 0
-            ? `Die Anlage kann nicht gelöscht werden, solange ihr Geräte zugeordnet sind (${siteDevices.length} Gerät${siteDevices.length === 1 ? '' : 'e'}). Entfernen Sie zuerst das Gerät oben unter „Wechselrichter".`
+            ? `Die Anlage kann nicht gelöscht werden, solange ihr Geräte zugeordnet sind (${siteDevices.length} Gerät${siteDevices.length === 1 ? '' : 'e'}). Entfernen Sie zuerst das Gerät oben unter „Mein Gerät".`
             : null
         }
         busy={deleteBusy}
         error={deleteError}
         onConfirm={() => void deleteSite()}
       />
+    </TechCard>
+  );
+
+  return (
+    <div className="vp-technik">
+      <JumpNav active={activeSection} />
+      <div className="vp-technik-sections">
+        {anlageCard}
+        {geraetCard}
+        {speicherCard}
+        {verguetungCard}
+        {registrierungCard}
+        {loeschenCard}
+      </div>
 
       <MastrDrawer
         site={site}
@@ -399,19 +745,39 @@ export function TechnikSection({
         onClose={() => setDeviceDetailId(null)}
         onChanged={() => onReload(site.id)}
       />
-    </>
+    </div>
   );
 }
 
 /**
- * Inline edit form of the Anlage's Stammdaten: name, bidding zone and
- * coordinates - the same fields and client-side checks as CreateSiteDrawer.
- * The grid-charging switch ("Netzladen des Speichers") is editable by the
- * site owner too (captain revision 2026-07-07 of decision 3 - not only the
- * Portal-Admin); the Ausschließlichkeitsprinzip warning stays so nobody
- * flips it uninformed.
+ * Builds a full site update payload from the current site, applying only the
+ * fields a focused form edits. The backend UpdateSiteRequest is a
+ * full-representation record (name is @NotBlank, plantKind/tarifArt default when
+ * omitted), so a partial body would blank the untouched fields - each inline
+ * form therefore carries the current values through unchanged.
  */
-export function SiteEditForm({
+function buildSitePayload(site: Site, overrides: Partial<CreateSiteInput>): CreateSiteInput {
+  return {
+    name: site.name,
+    biddingZone: site.biddingZone,
+    latitude: site.latitude,
+    longitude: site.longitude,
+    plantKind: site.plantKind,
+    anzulegenderWertCtKwh: site.anzulegenderWertCtKwh,
+    tarifArt: site.tarifArt,
+    tarifParamCtKwh: site.tarifParamCtKwh,
+    netzladenErlaubt: site.netzladenErlaubt,
+    ...overrides,
+  };
+}
+
+/**
+ * Inline edit form of the Anlage's Grunddaten: name, Gebotszone, Anlagentyp and
+ * the location map. The Vergütung/Tarif fields are edited in their own section
+ * (VerguetungEditForm); both carry the other group's values through unchanged
+ * via buildSitePayload so a focused save never blanks a field.
+ */
+export function StammdatenEditForm({
   site,
   onCancel,
   onSaved,
@@ -423,10 +789,6 @@ export function SiteEditForm({
   const [name, setName] = useState(site.name);
   const [biddingZone, setBiddingZone] = useState(site.biddingZone);
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
-  const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
-  const [praemie, setPraemie] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
-  const [tarifArt, setTarifArt] = useState<TarifArt>(site.tarifArt ?? 'ohne');
-  const [tarifParam, setTarifParam] = useState(premiumInputText(site.tarifParamCtKwh ?? null));
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
   const [busy, setBusy] = useState(false);
@@ -434,34 +796,19 @@ export function SiteEditForm({
 
   async function save() {
     if (!name.trim()) return;
-    const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
-    if (praemieValue === undefined) {
-      setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
-      return;
-    }
-    const tarifParamValue = tarifArt === 'ohne' ? null : parsePremiumInput(tarifParam);
-    if (tarifParamValue === undefined) {
-      setError(
-        tarifArt === 'dynamisch'
-          ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
-          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
-      );
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
-      const updated = await api.updateSite(site.id, {
-        name: name.trim(),
-        biddingZone,
-        latitude: lat,
-        longitude: lon,
-        plantKind,
-        anzulegenderWertCtKwh: praemieValue,
-        tarifArt,
-        tarifParamCtKwh: tarifParamValue,
-        netzladenErlaubt: netzladen,
-      });
+      const updated = await api.updateSite(
+        site.id,
+        buildSitePayload(site, {
+          name: name.trim(),
+          biddingZone,
+          latitude: lat,
+          longitude: lon,
+          plantKind,
+        }),
+      );
       onSaved(updated);
     } catch (e) {
       setError(
@@ -475,11 +822,12 @@ export function SiteEditForm({
   }
 
   return (
-    <div style={{ marginBottom: 'var(--vp-space-5)' }}>
+    <div className="vp-tech-editform">
       <div className="vp-form-stack">
         <Input
           label="Name *"
           value={name}
+          autoFocus
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -511,7 +859,101 @@ export function SiteEditForm({
             <option value="direktvermarktung">Direktvermarktung (Einspeisung am Markt)</option>
           </select>
         </div>
-        {plantKind === 'direktvermarktung' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
+          <LocationMap
+            lat={lat}
+            lon={lon}
+            onChange={(la, lo) => {
+              setLat(la);
+              setLon(lo);
+            }}
+          />
+          <p className="vp-note" style={{ margin: 0 }}>
+            Verschieben Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
+          </p>
+        </div>
+      </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <div className="vp-tech-editactions">
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Abbrechen
+        </Button>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
+          {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Inline edit form of the Vergütung & Tarif: anzulegender Wert (Direktvermarktung
+ * only), the electricity tariff (TariffFields) and the grid-charging switch. The
+ * switch is editable by the site owner too (captain revision 2026-07-07 of
+ * decision 3); the Ausschließlichkeitsprinzip warning stays so nobody flips it
+ * uninformed. Carries the Grunddaten through unchanged via buildSitePayload.
+ */
+export function VerguetungEditForm({
+  site,
+  onCancel,
+  onSaved,
+}: {
+  site: Site;
+  onCancel: () => void;
+  onSaved: (updated: Site) => void;
+}) {
+  const isDv = site.plantKind === 'direktvermarktung';
+  const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
+  const [praemie, setPraemie] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
+  const [tarifArt, setTarifArt] = useState<TarifArt>(site.tarifArt ?? 'ohne');
+  const [tarifParam, setTarifParam] = useState(premiumInputText(site.tarifParamCtKwh ?? null));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const praemieValue = isDv ? parsePremiumInput(praemie) : null;
+    if (praemieValue === undefined) {
+      setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
+      return;
+    }
+    const tarifParamValue = tarifArt === 'ohne' ? null : parsePremiumInput(tarifParam);
+    if (tarifParamValue === undefined) {
+      setError(
+        tarifArt === 'dynamisch'
+          ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
+          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
+      );
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.updateSite(
+        site.id,
+        buildSitePayload(site, {
+          anzulegenderWertCtKwh: praemieValue,
+          tarifArt,
+          tarifParamCtKwh: tarifParamValue,
+          netzladenErlaubt: netzladen,
+        }),
+      );
+      onSaved(updated);
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.status === 400
+          ? 'Ungültige Eingabe. Bitte prüfen Sie Ihre Werte.'
+          : 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-tech-editform">
+      <div className="vp-form-stack">
+        {isDv && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             <Input
               label="Anzulegender Wert (ct/kWh)"
@@ -528,6 +970,13 @@ export function SiteEditForm({
             </p>
           </div>
         )}
+        <TariffFields
+          tarifArt={tarifArt}
+          onTarifArt={setTarifArt}
+          param={tarifParam}
+          onParam={setTarifParam}
+          idPrefix="edit-site"
+        />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="edit-site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
             Netzladen des Speichers
@@ -547,34 +996,13 @@ export function SiteEditForm({
             EEG-Vergütung bezieht.
           </p>
         </div>
-        <TariffFields
-          tarifArt={tarifArt}
-          onTarifArt={setTarifArt}
-          param={tarifParam}
-          onParam={setTarifParam}
-          idPrefix="edit-site"
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label style={{ fontSize: '0.9rem', fontWeight: 600 }}>Standort auf der Karte</label>
-          <LocationMap
-            lat={lat}
-            lon={lon}
-            onChange={(la, lo) => {
-              setLat(la);
-              setLon(lo);
-            }}
-          />
-          <p className="vp-note" style={{ margin: 0 }}>
-            Verschieben Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
-          </p>
-        </div>
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
-      <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>
+      <div className="vp-tech-editactions">
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
         </Button>
       </div>
@@ -583,23 +1011,31 @@ export function SiteEditForm({
 }
 
 /**
- * "Speicher & Steuerung": the battery master data (the optimizer's inputs) and
- * the controlling-device link, editable by hand - the inverter-centric surface
- * the captain asked for ("Ihr Wechselrichter steuert diesen Speicher"). It is
- * also the only place a plant NOT in the Marktstammdatenregister can maintain
- * its battery at all. When the battery has no controlling device it shows the
- * plain-German warning that the plan cannot be executed, and offers the fix.
+ * "Mein Speicher" body: the battery master data (the optimizer's inputs) and
+ * the controlling-device link, read-first (only Kapazität on top) with the
+ * installer values behind "Technische Details". It is also the only place a
+ * plant NOT in the Marktstammdatenregister can maintain its battery at all.
+ * When the battery has no controlling device it shows the plain-German warning
+ * that the plan cannot be executed (ALWAYS visible - a real failure), and
+ * offers the fix.
  */
 export function BatteryControlSection({
   siteId,
   battery,
   devices,
   onSaved,
+  hideWarning = false,
 }: {
   siteId: string;
   battery: SiteAsset | null;
   devices: Device[];
   onSaved: (assets: SiteAsset[]) => void;
+  /**
+   * The Technik page renders the no-device warning at the section's always-
+   * visible slot (so a collapsed phone card still shows it), so it suppresses
+   * the internal one here. Default false keeps the warning for standalone use.
+   */
+  hideWarning?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -612,100 +1048,107 @@ export function BatteryControlSection({
     : null;
   const needsDevice = battery != null && battery.deviceId == null;
 
+  if (editing) {
+    return (
+      <BatteryEditForm
+        siteId={siteId}
+        battery={battery}
+        devices={devices}
+        onCancel={() => setEditing(false)}
+        onSaved={(a) => {
+          setEditing(false);
+          onSaved(a);
+        }}
+      />
+    );
+  }
+
+  if (battery == null) {
+    return (
+      <>
+        <p className="vp-muted" style={{ marginTop: 0 }}>
+          Kein Speicher hinterlegt. Tragen Sie die Speicherdaten ein, damit der
+          Fahrplan Ihren Speicher optimal lädt und entlädt.
+        </p>
+        <Button
+          variant="outline"
+          iconLeft={<Icon name="battery" size={16} />}
+          onClick={() => setEditing(true)}
+        >
+          Speicher hinzufügen
+        </Button>
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="vp-section-head" style={{ marginBottom: 'var(--vp-space-3)' }}>
-        <h3 className="vp-tech-h">Speicher &amp; Steuerung</h3>
-      </div>
-
-      {needsDevice && !editing && (
+      {needsDevice && !hideWarning && (
         <div className="vp-alert vp-alert-warn" style={{ marginTop: 0 }}>
           {BATTERY_NO_DEVICE_WARNING}
         </div>
       )}
-
-      {editing ? (
-        <BatteryEditForm
-          siteId={siteId}
-          battery={battery}
-          devices={devices}
-          onCancel={() => setEditing(false)}
-          onSaved={(a) => {
-            setEditing(false);
-            onSaved(a);
-          }}
-        />
-      ) : battery == null ? (
-        <>
-          <p className="vp-muted">
-            Kein Speicher hinterlegt. Tragen Sie die Speicherdaten ein, damit der
-            Fahrplan Ihren Speicher optimal lädt und entlädt.
-          </p>
-          <Button
-            variant="outline"
-            iconLeft={<Icon name="battery" size={16} />}
-            onClick={() => setEditing(true)}
-            style={{ marginBottom: 'var(--vp-space-5)' }}
-          >
-            Speicher hinzufügen
-          </Button>
-        </>
-      ) : (
-        <>
-          <p className="vp-note" style={{ marginTop: 0 }}>
-            Ihr Wechselrichter steuert diesen Speicher - er führt den Fahrplan aus.
-          </p>
-          <table className="vp-table" style={{ marginBottom: 'var(--vp-space-3)' }}>
-            <tbody>
-              <tr>
-                <th scope="row">Kapazität</th>
-                <td>{battery.capacityKwh != null ? fmtNum(battery.capacityKwh, 'kWh', 1) : '-'}</td>
-              </tr>
-              <tr>
-                <th scope="row">Lade-/Entladeleistung</th>
-                <td>
-                  {battery.maxChargeKw != null ? fmtNum(battery.maxChargeKw, 'kW', 2) : '-'}
-                  {' / '}
-                  {battery.maxDischargeKw != null ? fmtNum(battery.maxDischargeKw, 'kW', 2) : '-'}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Wirkungsgrad</th>
-                <td>
-                  {battery.roundtripEfficiencyPct != null
-                    ? fmtNum(battery.roundtripEfficiencyPct, '%', 0)
-                    : 'Standard (92 %)'}
-                </td>
-              </tr>
-              <tr>
-                <th scope="row">Steuerndes Gerät</th>
-                <td>
-                  {controllingDevice ? (
-                    controllingDevice.name || controllingDevice.externalRef
-                  ) : (
-                    <span className="vp-muted">nicht zugeordnet</span>
-                  )}
-                </td>
-              </tr>
-              {battery.registryUnitId && (
-                <tr>
-                  <th scope="row">MaStR-Nummer Speicher</th>
-                  <td className="vp-mono">{battery.registryUnitId}</td>
-                </tr>
+      <dl className="vp-kv">
+        <div className="vp-kv-row">
+          <dt className="vp-kv-k">Kapazität</dt>
+          <dd className="vp-kv-v">
+            {battery.capacityKwh != null ? fmtNum(battery.capacityKwh, 'kWh', 1) : '-'}
+          </dd>
+        </div>
+      </dl>
+      <TechnischeDetails hint="Lade-/Entladeleistung, Wirkungsgrad, steuerndes Gerät">
+        <dl className="vp-kv">
+          <div className="vp-kv-row">
+            <dt className="vp-kv-k">Lade-/Entladeleistung</dt>
+            <dd className="vp-kv-v">
+              {battery.maxChargeKw != null ? fmtNum(battery.maxChargeKw, 'kW', 2) : '-'}
+              {' / '}
+              {battery.maxDischargeKw != null ? fmtNum(battery.maxDischargeKw, 'kW', 2) : '-'}
+            </dd>
+          </div>
+          <div className="vp-kv-row">
+            <dt className="vp-kv-k">
+              Wirkungsgrad
+              <InfoTip title="Wirkungsgrad">
+                Round-Trip-Wirkungsgrad: der Anteil der eingespeicherten Energie, der beim Laden und
+                Entladen erhalten bleibt. Der Rest geht als Verlust verloren. Standard 92 %.
+              </InfoTip>
+            </dt>
+            <dd className="vp-kv-v">
+              {battery.roundtripEfficiencyPct != null
+                ? fmtNum(battery.roundtripEfficiencyPct, '%', 0)
+                : 'Standard (92 %)'}
+            </dd>
+          </div>
+          <div className="vp-kv-row">
+            <dt className="vp-kv-k">Steuerndes Gerät</dt>
+            <dd className="vp-kv-v">
+              {controllingDevice ? (
+                controllingDevice.name || controllingDevice.externalRef
+              ) : (
+                <span className="vp-muted">nicht zugeordnet</span>
               )}
-            </tbody>
-          </table>
-          <Button
-            variant="ghost"
-            size="sm"
-            iconLeft={<Icon name="pencil" size={16} />}
-            onClick={() => setEditing(true)}
-            style={{ marginBottom: 'var(--vp-space-5)' }}
-          >
-            Speicher bearbeiten
-          </Button>
-        </>
-      )}
+            </dd>
+          </div>
+          {battery.registryUnitId && (
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">MaStR-Nummer Speicher</dt>
+              <dd className="vp-kv-v vp-mono">{battery.registryUnitId}</dd>
+            </div>
+          )}
+        </dl>
+        <p className="vp-note" style={{ marginTop: 0 }}>
+          Ihr Wechselrichter steuert diesen Speicher - er führt den Fahrplan aus.
+        </p>
+        <Button
+          variant="ghost"
+          size="sm"
+          iconLeft={<Icon name="pencil" size={16} />}
+          onClick={() => setEditing(true)}
+        >
+          Speicher bearbeiten
+        </Button>
+      </TechnischeDetails>
     </>
   );
 }
@@ -773,7 +1216,7 @@ function BatteryEditForm({
   }
 
   return (
-    <div style={{ marginBottom: 'var(--vp-space-5)' }}>
+    <div className="vp-tech-editform">
       <div className="vp-form-stack">
         <Input
           label="Kapazität (kWh) *"
@@ -828,7 +1271,7 @@ function BatteryEditForm({
         </div>
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
-      <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>
+      <div className="vp-tech-editactions">
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>

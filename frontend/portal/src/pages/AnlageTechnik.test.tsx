@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BatteryControlSection, SiteEditForm } from './AnlageTechnik';
+import { BatteryControlSection, VerguetungEditForm } from './AnlageTechnik';
 import { api, type Device, type Site, type SiteAsset } from '../api';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
@@ -44,9 +44,9 @@ const eegSite: Site = {
   netzladenErlaubt: false,
 };
 
-describe('SiteEditForm (netzladen switch, captain revision 2026-07-07)', () => {
+describe('VerguetungEditForm (netzladen switch, captain revision 2026-07-07)', () => {
   it('renders the editable switch for site owners - no read-only admin note anymore', () => {
-    render(<SiteEditForm site={eegSite} onCancel={() => {}} onSaved={() => {}} />);
+    render(<VerguetungEditForm site={eegSite} onCancel={() => {}} onSaved={() => {}} />);
     const select = screen.getByLabelText('Netzladen des Speichers') as HTMLSelectElement;
     expect(select.value).toBe('verboten');
     // The Ausschließlichkeitsprinzip warning stays, carrying the responsibility.
@@ -58,20 +58,23 @@ describe('SiteEditForm (netzladen switch, captain revision 2026-07-07)', () => {
     expect(screen.queryByText(/Änderung nur durch den Betreiber/)).not.toBeInTheDocument();
   });
 
-  it('sends the flipped netzladenErlaubt value on save', async () => {
+  it('sends the flipped netzladenErlaubt value on save, carrying the Stammdaten through', async () => {
     const updateSite = vi
       .spyOn(api, 'updateSite')
       .mockResolvedValue({ ...eegSite, netzladenErlaubt: true });
     const onSaved = vi.fn();
-    render(<SiteEditForm site={eegSite} onCancel={() => {}} onSaved={onSaved} />);
+    render(<VerguetungEditForm site={eegSite} onCancel={() => {}} onSaved={onSaved} />);
     fireEvent.change(screen.getByLabelText('Netzladen des Speichers'), {
       target: { value: 'erlaubt' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    // A focused form still posts the full site representation (name is @NotBlank
+    // server-side, plantKind/tarifArt default when omitted), so the untouched
+    // Grunddaten ride along unchanged.
     expect(updateSite).toHaveBeenCalledWith(
       eegSite.id,
-      expect.objectContaining({ netzladenErlaubt: true }),
+      expect.objectContaining({ netzladenErlaubt: true, name: eegSite.name, plantKind: 'eigenverbrauch' }),
     );
     updateSite.mockRestore();
   });
@@ -113,7 +116,7 @@ function device(over: Partial<Device> = {}): Device {
 }
 
 describe('BatteryControlSection (battery <-> device control path)', () => {
-  it('warns when the battery has no controlling device', () => {
+  it('warns when the battery has no controlling device (warning stays always visible)', () => {
     render(
       <BatteryControlSection
         siteId="s-1"
@@ -122,7 +125,10 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
         onSaved={() => {}}
       />,
     );
+    // The no-device warning is a real failure - shown before any disclosure.
     expect(screen.getByText(/keinem Gerät zugeordnet/)).toBeInTheDocument();
+    // The controlling-device row moved behind "Technische Details".
+    fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
     expect(screen.getByText(/nicht zugeordnet/)).toBeInTheDocument();
   });
 
@@ -136,6 +142,7 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
       />,
     );
     expect(screen.queryByText(/keinem Gerät zugeordnet/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
     expect(screen.getByText('Wechselrichter Garage')).toBeInTheDocument();
   });
 
@@ -157,6 +164,8 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
         onSaved={onSaved}
       />,
     );
+    // The editor lives behind "Technische Details" in the read-first layout.
+    fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
     fireEvent.click(screen.getByRole('button', { name: /Speicher bearbeiten/ }));
     // German comma decimal is accepted.
     fireEvent.change(screen.getByLabelText('Kapazität (kWh) *'), { target: { value: '12,5' } });
