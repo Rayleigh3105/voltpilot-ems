@@ -30,6 +30,15 @@ Without the `sim` profile (`docker compose up -d`) the same stack runs for a **r
 
 ## Kundenerlebnis (production)
 
+Für ein NEUES Gerät ist der **geführte Installer** der empfohlene Weg - er prüft die Voraussetzungen, meldet an der Registry an, legt die `.env` interaktiv an, startet `core` + `nodered` (echter Wechselrichter, kein Simulator), zeigt die Referenz-ID an und verifiziert die Anbindung; mehrfach ausführbar, ohne Datenvolumes/Identität zu löschen (Runbook + Fallback: [`DEPLOY.md`](DEPLOY.md)):
+
+```bash
+cd edge-app
+./install.sh          # --help, --reconfigure, --dry-run, --non-interactive
+```
+
+Manuell (Fallback):
+
 1. Install: `cp .env.example .env` (optional), `docker compose up -d`.
 2. Open **http://\<geraet\>:8484** on the LAN: the page shows the **Referenz-ID** big and copyable, plus the pairing state.
 3. Enter that reference in the VoltPilot portal (*Geräte → ＋ Gerät hinzufügen*).

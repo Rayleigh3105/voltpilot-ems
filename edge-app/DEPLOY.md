@@ -6,6 +6,20 @@ Kein Simulator, keine `VP_DEV_*`-Abkürzungen: das ist der echte First-Boot-Enro
 
 Der allgemeine Aufbau steht in [`README.md`](README.md); dies hier ist der Deploy-Weg für den Produktivbetrieb.
 
+## Empfohlen: der geführte Installer (`install.sh`)
+
+Der schnellste, robusteste Weg ist der mitgelieferte **geführte Installer** - er formalisiert genau die manuellen Schritte unten (Voraussetzungen prüfen, an der Registry anmelden, `.env` interaktiv anlegen, Images ziehen + starten, Referenz-ID anzeigen, Anbindung verifizieren) und ist mehrfach ausführbar (idempotent), ohne je die Datenvolumes oder die Geräteidentität zu löschen:
+
+```bash
+git clone https://git.tecmaxx.de/mamotec/voltpilot-ems.git
+cd voltpilot-ems/edge-app
+./install.sh
+```
+
+Der Installer startet **nur** den echten Modus (`core` + `nodered`, kein Simulator), verlangt ein nicht-Standard Node-RED-Passwort und setzt die `VP_DEV_*`-Schalter nie. Nützliche Optionen: `./install.sh --help`, `--reconfigure` (neue `.env`), `--dry-run` (nur prüfen), `--non-interactive` (Werte aus der Umgebung). Danach ist nur noch der Wechselrichter zu wählen (Abschnitt 4) und die Referenz im Portal zu beanspruchen (Abschnitt 5), die der Installer am Ende anzeigt.
+
+Die folgenden Abschnitte beschreiben denselben Ablauf **manuell** (Fallback bzw. zum Nachvollziehen).
+
 ## 0. Voraussetzungen
 
 - **Docker + Compose-Plugin** auf der VM (`docker --version`, `docker compose version`).
