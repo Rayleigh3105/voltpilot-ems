@@ -385,6 +385,109 @@ class AclGrantWriterTest {
         assertThat(Files.readString(noAnchor)).isEqualTo("{allow, all}.\n"); // untouched
     }
 
+    // --- regenerateGrants: rebuild the region from the DB source of truth -------
+
+    @Test
+    void regenerateGrantsRestoresAGrantThatIsEntirelyMissingFromTheFile() throws Exception {
+        // The captain's live-VM shape (2026-07-08): structure intact, the device
+        // grant ENTIRELY ABSENT - a prior buggy rebuild dropped it. Reorder-only
+        // can't help; the grant must be regenerated from what the api KNOWS.
+        writeBaseWithRealTail();
+        UUID device = UUID.fromString("cdba2ee8-0000-0000-0000-000000000003");
+        assertThat(Files.readString(aclFile)).doesNotContain(device.toString());
+
+        AclGrantWriter.RegenerateResult result = writer.regenerateGrants(
+                List.of(new AclGrantWriter.DeviceGrant(TENANT, SITE, device)));
+
+        assertThat(result.changed()).isTrue();
+        assertThat(result.restoredFromTruth()).isEqualTo(1);
+        List<String> lines = Files.readAllLines(aclFile);
+        assertThat(lastAllowLineFor(lines, device))
+                .as("restored grant sits above the default-deny (reachable)")
+                .isGreaterThanOrEqualTo(0).isLessThan(indexOf(lines, DEFAULT_DENY));
+    }
+
+    @Test
+    void regenerateGrantsNeverDropsAGrantSittingAfterASecondEndMarkerInADuplicatedTail()
+            throws Exception {
+        // The malformed shape the amendment calls out: a device grant sitting
+        // AFTER a SECOND END marker in a duplicated tail. The collect-from-
+        // anywhere parse must PRESERVE it (and the DB list must restore it even if
+        // it didn't) - never silently drop it, the root cause of the outage.
+        UUID seed = UUID.fromString("aaaaaaaa-0000-0000-0000-000000000001");
+        UUID stray = UUID.fromString("cdba2ee8-0000-0000-0000-000000000003");
+        Files.writeString(aclFile, ""
+                + "{allow, {username, \"vp-internal\"}, all, [\"#\"]}.\n"
+                + "%%<<BEGIN GENERATED DEVICE GRANTS>>\n"
+                + block(seed)
+                + "%%<<END GENERATED DEVICE GRANTS>>\n"
+                + DEFAULT_DENY + "\n"
+                + "{allow, all}.\n"
+                + "%%<<END GENERATED DEVICE GRANTS>>\n"   // duplicated end marker
+                + block(stray)                             // grant after the 2nd END
+                + DEFAULT_DENY + "\n"
+                + "{allow, all}.\n", StandardCharsets.UTF_8);
+
+        // Regenerate from truth listing BOTH devices -> both end up in-region.
+        AclGrantWriter.RegenerateResult result = writer.regenerateGrants(List.of(
+                new AclGrantWriter.DeviceGrant(TENANT, SITE, seed),
+                new AclGrantWriter.DeviceGrant(TENANT, SITE, stray)));
+
+        assertThat(result.changed()).isTrue();
+        List<String> lines = Files.readAllLines(aclFile);
+        int deny = indexOf(lines, DEFAULT_DENY);
+        assertThat(lastAllowLineFor(lines, seed)).as("seed preserved above deny")
+                .isGreaterThanOrEqualTo(0).isLessThan(deny);
+        assertThat(lastAllowLineFor(lines, stray)).as("the after-2nd-END grant is NOT dropped")
+                .isGreaterThanOrEqualTo(0).isLessThan(deny);
+        assertThat(countLines(lines, "{allow, all}.")).as("single tail").isEqualTo(1);
+    }
+
+    @Test
+    void regenerateGrantsPreservesShellProvisionedGrantsNotInTheDbList() throws Exception {
+        // A grant written out of band (tools/pki) is in-region but NOT in the DB
+        // list; regenerating from truth must keep it (union, never a truth-only
+        // replace that would revoke shell-provisioned devices).
+        writeBaseWithRealTail();
+        UUID shell = UUID.fromString("bbbbbbbb-0000-0000-0000-000000000002");
+        writer.writeGrant(TENANT, SITE, shell);
+        UUID db = UUID.fromString("cdba2ee8-0000-0000-0000-000000000003");
+
+        writer.regenerateGrants(List.of(new AclGrantWriter.DeviceGrant(TENANT, SITE, db)));
+
+        List<String> lines = Files.readAllLines(aclFile);
+        int deny = indexOf(lines, DEFAULT_DENY);
+        assertThat(lastAllowLineFor(lines, shell)).as("shell grant preserved")
+                .isGreaterThanOrEqualTo(0).isLessThan(deny);
+        assertThat(lastAllowLineFor(lines, db)).as("db grant present")
+                .isGreaterThanOrEqualTo(0).isLessThan(deny);
+    }
+
+    @Test
+    void regenerateGrantsLeavesACompleteCanonicalFileByteUnchanged() throws Exception {
+        writeBaseWithRealTail();
+        writer.writeGrant(TENANT, SITE, DEVICE);
+        String before = Files.readString(aclFile);
+
+        AclGrantWriter.RegenerateResult result = writer.regenerateGrants(
+                List.of(new AclGrantWriter.DeviceGrant(TENANT, SITE, DEVICE)));
+
+        assertThat(result.changed()).isFalse();
+        assertThat(result.skipped()).isFalse();
+        assertThat(result.restoredFromTruth()).isZero();
+        assertThat(Files.readString(aclFile)).isEqualTo(before);
+    }
+
+    @Test
+    void regenerateGrantsSkipsAFileWithoutTheGeneratedRegion() throws Exception {
+        Path noAnchor = dir.resolve("plain.conf");
+        Files.writeString(noAnchor, "{allow, all}.\n");
+        AclGrantWriter.RegenerateResult result = new AclGrantWriter(noAnchor).regenerateGrants(
+                List.of(new AclGrantWriter.DeviceGrant(TENANT, SITE, DEVICE)));
+        assertThat(result.skipped()).isTrue();
+        assertThat(Files.readString(noAnchor)).isEqualTo("{allow, all}.\n"); // untouched
+    }
+
     private static String block(UUID device) {
         String base = "ems/" + TENANT + "/" + SITE + "/" + device;
         return "%%<<device " + device + " tenant " + TENANT + " site " + SITE + ">>\n"

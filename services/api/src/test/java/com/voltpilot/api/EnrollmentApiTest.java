@@ -151,6 +151,9 @@ class EnrollmentApiTest {
     @Autowired
     TestRestTemplate rest;
 
+    @Autowired
+    com.voltpilot.api.enrollment.EnrollmentDeviceLookup deviceLookup;
+
     // ---- (1) the full first-boot journey --------------------------------------
 
     @Test
@@ -360,6 +363,49 @@ class EnrollmentApiTest {
         // ...while a neighbour polls unaffected.
         assertThat(getCertificate("enroll-rate-probe", "198.51.100.77").getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    // ---- (3) the source of truth for the startup ACL regeneration -------------
+
+    @Test
+    void enrolledDeviceIdentitiesListDrivesTheStartupAclRegeneration() throws Exception {
+        // A device that has a CSR but is NOT yet claimed must NOT appear - it has
+        // no issued certificate, so it needs no grant (pending).
+        provisionSticker("VP-TRUTH-PENDING");
+        assertThat(postCsr("VP-TRUTH-PENDING", TestPki.csrPem(TestPki.rsaKeyPair(2048), "CN=dev"),
+                null).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        // A device that is claimed AND enrolled (cert issued) IS the source of
+        // truth for its ACL grant - this is what the startup self-heal
+        // regenerates so a dropped grant is restored.
+        provisionSticker("VP-TRUTH-CLAIMED");
+        assertThat(postCsr("VP-TRUTH-CLAIMED", TestPki.csrPem(TestPki.rsaKeyPair(2048), "CN=dev"),
+                null).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        ResponseEntity<Map<String, Object>> claimed = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "VP-TRUTH-CLAIMED"),
+                        bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        UUID deviceId = UUID.fromString((String) claimed.getBody().get("id"));
+        // The poll issues the certificate (enrolls it).
+        assertThat(getCertificate("VP-TRUTH-CLAIMED").getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(deviceLookup.allEnrolledDeviceIdentities())
+                .as("the claimed+enrolled device is the ACL source of truth")
+                .contains(new com.voltpilot.api.enrollment.EnrollmentDeviceLookup.DeviceIdentity(
+                        UUID.fromString(TENANT_A), UUID.fromString(BERLIN_SITE), deviceId))
+                .as("a CSR-only (unclaimed, no cert) device is not in the list")
+                .noneSatisfy(d -> assertThat(d.deviceId()).isNull());
+
+        // Unclaim -> the device row is gone -> it drops out of the source of truth
+        // (its grant should no longer be regenerated).
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(token("demo", "demo"))), Void.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(deviceLookup.allEnrolledDeviceIdentities())
+                .as("an unclaimed device leaves the source of truth")
+                .noneSatisfy(d -> assertThat(d.deviceId()).isEqualTo(deviceId));
     }
 
     // ---- helpers ---------------------------------------------------------------

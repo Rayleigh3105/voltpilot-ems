@@ -12,6 +12,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -164,6 +165,86 @@ class AclGrantWriter {
             return NormalizeResult.skipped("cannot rewrite " + aclFile + ": " + e.getMessage());
         }
         return NormalizeResult.healed(grantsBelowDeny, tailCopies);
+    }
+
+    /** One device that MUST have an in-region grant (from the DB source of truth). */
+    record DeviceGrant(UUID tenantId, UUID siteId, UUID deviceId) {}
+
+    /** Outcome of a startup {@link #regenerateGrants(Collection)}. */
+    record RegenerateResult(NormalizeResult.Status status, int authoritative, int restoredFromTruth,
+            int grantsMovedAboveDeny, int tailCopies, String detail) {
+
+        static RegenerateResult skipped(String detail) {
+            return new RegenerateResult(NormalizeResult.Status.SKIPPED, 0, 0, 0, 0, detail);
+        }
+
+        boolean skipped() {
+            return status == NormalizeResult.Status.SKIPPED;
+        }
+
+        boolean changed() {
+            return status == NormalizeResult.Status.HEALED;
+        }
+    }
+
+    /**
+     * Rebuild the generated-grant region from the AUTHORITATIVE device list (the
+     * DB source of truth), meant to run once at api startup. For EVERY given
+     * device an correct in-region grant is emitted, so a grant that a prior buggy
+     * rebuild DROPPED from the file is RESTORED - not merely reordered (you cannot
+     * reload a grant that is not in the file; the 2026-07-08 residual outage:
+     * device {@code cdba2ee8}'s grant was entirely absent from the live acl.conf).
+     * This is a superset of {@link #normalizeInPlace()}: it ALSO canonicalizes
+     * (single region above a single default-deny tail, duplicate tails collapsed,
+     * misordered grants moved up) and preserves any grants NOT in the list (e.g.
+     * shell-provisioned via {@code tools/pki} - collected from anywhere in the
+     * file). Rewrites ONLY when something changed; never throws - a file without
+     * the region anchors (not one we own, or a fully-wiped file the DB alone
+     * cannot reconstruct) is reported {@code SKIPPED}.
+     */
+    synchronized RegenerateResult regenerateGrants(Collection<DeviceGrant> authoritative) {
+        List<String> original;
+        try {
+            original = Files.readAllLines(aclFile, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return RegenerateResult.skipped("cannot read " + aclFile + ": " + e.getMessage());
+        }
+        Parsed parsed;
+        try {
+            parsed = parse(new ArrayList<>(original));
+        } catch (IllegalStateException e) {
+            return RegenerateResult.skipped(e.getMessage());
+        }
+        int restored = 0;
+        for (DeviceGrant g : authoritative) {
+            List<String> desired = grantBlock(g.tenantId(), g.siteId(), g.deviceId());
+            List<String> existing = parsed.blocks.get(g.deviceId().toString());
+            // Missing entirely (dropped) or present but not byte-identical
+            // (misformatted/stale identity) -> (re)write it from truth.
+            if (!desired.equals(existing)) {
+                restored++;
+            }
+            parsed.blocks.put(g.deviceId().toString(), desired);
+        }
+        List<String> rebuilt;
+        try {
+            rebuilt = rebuild(parsed); // throws when the region anchors are missing
+        } catch (IllegalStateException e) {
+            return RegenerateResult.skipped(e.getMessage());
+        }
+        if (rebuilt.equals(original)) {
+            return new RegenerateResult(NormalizeResult.Status.UNCHANGED, authoritative.size(),
+                    0, 0, 0, null);
+        }
+        int grantsBelowDeny = deviceBlocksBelowDefaultDeny(original);
+        int tailCopies = countTail(original);
+        try {
+            writeAtomically(rebuilt);
+        } catch (IOException e) {
+            return RegenerateResult.skipped("cannot rewrite " + aclFile + ": " + e.getMessage());
+        }
+        return new RegenerateResult(NormalizeResult.Status.HEALED, authoritative.size(), restored,
+                grantsBelowDeny, tailCopies, null);
     }
 
     /** How many device grant blocks open BELOW the first default-deny (unreachable). */

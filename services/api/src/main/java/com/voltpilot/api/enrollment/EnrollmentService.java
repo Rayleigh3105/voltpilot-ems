@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
@@ -106,21 +107,35 @@ public class EnrollmentService {
      * and kicked off the broker). A plain container redeploy triggers no grant
      * write, so the repair must happen here.
      *
-     * <p>Runs unconditionally on boot and never crashes it: a healthy file is
-     * left byte-unchanged and NO reload fires; an unrecognized file / IO error
-     * is reported as {@code SKIPPED} (WARN), never thrown. A corrupted file is
-     * normalized (grants moved above the default-deny, duplicate tails
-     * collapsed) with a loud WARN.
+     * <p>Runs unconditionally on boot and never crashes it: an unrecognized file
+     * / IO error is reported as {@code SKIPPED} (WARN), never thrown.
      *
-     * <p><strong>The reload is the load-bearing half</strong> (item 2 of the
-     * 2026-07-08 hardening): EMQX compiles {@code acl.conf} ONCE at boot and
-     * does NOT re-read it on a plain {@code emqx ctl conf reload}, so healing the
-     * file on disk is not enough - the broker must be forced to re-read it. When
-     * a heal happened we therefore reload EMQX SYNCHRONOUSLY here (bounded
-     * retries for a rolling-deploy blip) and, if the broker did not accept it,
-     * log a loud, actionable ERROR naming the manual fallback
+     * <p><strong>Regenerate from the DB source of truth, not the file</strong>
+     * (2026-07-08 definitive fix - the captain's device {@code cdba2ee8} stayed
+     * offline after #100/#101 because its grant was ENTIRELY ABSENT from the live
+     * acl.conf: a prior buggy rebuild had DROPPED it, and you cannot reorder or
+     * reload a grant that is not there). So the self-heal REBUILDS the
+     * generated-grant region from what the api KNOWS - every claimed + enrolled
+     * device ({@link EnrollmentDeviceLookup#allEnrolledDeviceIdentities()}) gets a
+     * correct in-region grant - which RESTORES a dropped grant, FIXES a misordered
+     * one, and canonicalizes the file (single region above a single default-deny
+     * tail). Grants not in the DB list (e.g. shell-provisioned via
+     * {@code tools/pki}) are preserved. If the DB is unreachable at boot we fall
+     * back to a pure canonicalize (no restore) so ordering is still fixed and the
+     * reload still fires - never crashing the boot.
+     *
+     * <p><strong>The reload ALWAYS runs</strong> (regardless of whether the file
+     * changed). EMQX compiles {@code acl.conf} ONCE at source init and does NOT
+     * re-read it on its own (a plain {@code emqx ctl conf reload} does NOT re-read
+     * the file - verified on 5.8.3), so a broker up across earlier deploys can
+     * still enforce STALE compiled rules even when the on-disk file is already
+     * correct. We therefore reconcile EMQX's live ruleset with the current file on
+     * EVERY boot; the reload is idempotent and cheap. If the broker does not
+     * accept it we log a loud, actionable ERROR naming the manual fallback
      * ({@code reload-broker-authz.sh} / {@code docker restart emqx}) rather than
-     * silently leaving the device denied.
+     * silently leaving the device denied. Only a {@code SKIPPED} regenerate (a
+     * file we do not own / cannot read / no region anchors) short-circuits the
+     * reload.
      */
     @PostConstruct
     void selfHealBrokerAclOnStartup() {
@@ -138,48 +153,98 @@ public class EnrollmentService {
                 + "the SAME file via its acl/ DIRECTORY mount (see docker-compose.prod.yml)",
                 resolved, Files.exists(resolved), Files.isWritable(resolved));
 
-        AclGrantWriter.NormalizeResult result = aclWriter.normalizeInPlace();
+        // The authoritative grant set: every claimed + enrolled device MUST have a
+        // grant. Deriving it from the DB (not the possibly-broken file) is what
+        // lets a DROPPED grant be restored, not just reordered.
+        List<AclGrantWriter.DeviceGrant> authoritative;
+        try {
+            authoritative = devices.allEnrolledDeviceIdentities().stream()
+                    .map(d -> new AclGrantWriter.DeviceGrant(d.tenantId(), d.siteId(), d.deviceId()))
+                    .toList();
+            log.info("Broker ACL regeneration: {} claimed+enrolled device grant(s) are the source "
+                    + "of truth", authoritative.size());
+        } catch (RuntimeException e) {
+            // DB unreachable at boot: still canonicalize + reload (fixes ordering,
+            // reconciles a stale broker), but a grant DROPPED from the file cannot
+            // be restored until the DB is reachable and the api restarts.
+            log.error("Could not load enrolled devices from the DB for ACL regeneration ({}); "
+                    + "falling back to canonicalize-only. A grant DROPPED from the file will NOT "
+                    + "be restored on this boot - restart the api once the DB is reachable.",
+                    e.toString());
+            authoritative = List.of();
+        }
+
+        AclGrantWriter.RegenerateResult result = aclWriter.regenerateGrants(authoritative);
         if (result.skipped()) {
-            log.warn("Broker ACL self-heal skipped for {}: {} (managing grants out of band)",
-                    resolved, result.detail());
+            log.warn("Broker ACL regeneration skipped for {}: {} (managing grants out of band); "
+                    + "NOT reloading EMQX for a file we do not own", resolved, result.detail());
             return;
         }
-        if (!result.healed()) {
-            log.debug("Broker ACL at {} already canonical - no self-heal needed", resolved);
-            return;
+        if (result.changed()) {
+            log.warn("Regenerated broker ACL at {} from the DB source of truth: (re)wrote {} of {} "
+                    + "enrolled device grant(s) [restores any DROPPED grant], moved {} grant "
+                    + "block(s) that sat BELOW the default-deny into the generated region, and "
+                    + "collapsed {} duplicate tail(s). The file is now correct.", resolved,
+                    result.restoredFromTruth(), result.authoritative(),
+                    result.grantsMovedAboveDeny(), result.tailCopies());
+        } else {
+            log.info("Broker ACL at {} already canonical and complete ({} enrolled device grant(s) "
+                    + "present) - no file change needed.", resolved, result.authoritative());
         }
 
-        log.warn("Self-healed a corrupted broker ACL at {}: moved {} device grant block(s) that "
-                + "sat BELOW the default-deny (unreachable) into the generated region and "
-                + "collapsed the duplicated tail ({} '{{allow, all}}' copies -> 1). The file is "
-                + "now correct; forcing EMQX to re-read it so affected devices reconnect without "
-                + "a re-claim.", resolved, result.grantsMovedAboveDeny(), result.tailCopies());
+        // ALWAYS reload, changed or not: the file being correct does NOT mean the
+        // running broker is, so reconcile EMQX's compiled rules with the current
+        // file on every boot. This is the fix for the residual 2026-07-08 outage
+        // where the file was already canonical (an earlier attempt fixed it) but
+        // the long-running EMQX never re-read it -> device stayed denied -> no
+        // reload fired because the self-heal saw "nothing to change".
+        reconcileBrokerAuthzOnStartup(resolved, result.changed());
+    }
 
+    /**
+     * Force the running EMQX to re-read the (now canonical) ACL file on startup,
+     * whether or not the file was just healed. Bounded retries cover a brief
+     * broker blip during a rolling deploy; never throws, never crashes the boot.
+     * A failure (broker unreachable / reload disabled) is a loud, actionable log
+     * - the cron/deploy reload stays the backstop.
+     */
+    private void reconcileBrokerAuthzOnStartup(Path resolved, boolean fileChanged) {
+        String context = fileChanged ? "after regenerating grants"
+                : "reconciling the already-canonical file";
         BrokerAuthzReloader reloader = authzReloader.getIfAvailable();
         if (reloader == null) {
-            log.error("Broker ACL was healed at {} but the api CANNOT reload EMQX automatically "
-                    + "(voltpilot.enrollment.broker-authz-reload is disabled). EMQX compiles "
-                    + "acl.conf ONCE at boot and does NOT re-read it on a plain reload, so the "
-                    + "healed grants take effect only after the broker is forced to re-read the "
-                    + "file. ACTION REQUIRED: run tools/pki/reload-broker-authz.sh on the broker "
-                    + "host, or `docker restart emqx`. Until then affected device(s) stay DENIED.",
-                    resolved);
+            // Without the reloader we cannot reconcile a stale broker. A changed
+            // file with no reloader is the worse case (grants definitely changed),
+            // so ERROR there; an already-canonical file is usually fine, so WARN.
+            String shared = "EMQX compiles acl.conf ONCE at source init and does NOT re-read it on "
+                    + "its own, so a long-running broker may still enforce STALE rules. ACTION IF "
+                    + "A DEVICE IS DENIED: run tools/pki/reload-broker-authz.sh on the broker host, "
+                    + "or `docker restart emqx`.";
+            if (fileChanged) {
+                log.error("Broker ACL was regenerated at {} but the api CANNOT reload EMQX "
+                        + "automatically "
+                        + "(voltpilot.enrollment.broker-authz-reload is disabled). {} Until then "
+                        + "affected device(s) stay DENIED.", resolved, shared);
+            } else {
+                log.warn("Broker ACL at {} is canonical but the api CANNOT reload EMQX automatically "
+                        + "(voltpilot.enrollment.broker-authz-reload is disabled), so a broker "
+                        + "holding stale rules is NOT reconciled on this boot. {}", resolved, shared);
+            }
             return;
         }
         boolean reloaded = reloader.reloadNowBlocking(STARTUP_RELOAD_ATTEMPTS,
                 STARTUP_RELOAD_RETRY_DELAY);
         if (reloaded) {
-            log.info("Broker authz reloaded after self-heal - affected device(s) will reconnect "
-                    + "within seconds, no re-claim needed.");
+            log.info("Broker authz reloaded on startup ({}) - EMQX re-read {}; any affected "
+                    + "device(s) reconnect within seconds, no re-claim needed.", context, resolved);
         } else {
-            log.error("Broker ACL was healed at {} but EMQX did NOT accept the authz reload after "
-                    + "{} attempts. EMQX keeps its OLD compiled rules until it re-reads the file, "
-                    + "so the affected device(s) remain DENIED and stuck in a reconnect loop. "
-                    + "ACTION REQUIRED: run tools/pki/reload-broker-authz.sh on the broker host, "
-                    + "or `docker restart emqx` (a plain `emqx ctl conf reload` does NOT re-read "
-                    + "acl.conf). Verify voltpilot.enrollment.broker-authz-reload.api-url + "
-                    + "credentials and that this api can reach EMQX.", resolved,
-                    STARTUP_RELOAD_ATTEMPTS);
+            log.error("Broker authz reload FAILED on startup ({}) after {} attempts. EMQX keeps its "
+                    + "OLD compiled rules until it re-reads {}, so a device may remain DENIED and "
+                    + "stuck in a reconnect loop. ACTION REQUIRED: run "
+                    + "tools/pki/reload-broker-authz.sh on the broker host, or `docker restart "
+                    + "emqx` (a plain `emqx ctl conf reload` does NOT re-read acl.conf). Verify "
+                    + "voltpilot.enrollment.broker-authz-reload.api-url + credentials and that this "
+                    + "api can reach EMQX.", context, STARTUP_RELOAD_ATTEMPTS, resolved);
         }
     }
 
