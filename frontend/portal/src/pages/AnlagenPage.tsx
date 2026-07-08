@@ -329,7 +329,6 @@ export function AnlageSeite({
   sites,
   onOpenSub,
   onBackToList,
-  onReload,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -346,7 +345,6 @@ export function AnlageSeite({
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
-  const [addDrawer, setAddDrawer] = useState(false);
 
   // Status + live snapshot: the site's overview row (device health + newest
   // sample) - the same source the fleet cards render from.
@@ -616,23 +614,10 @@ export function AnlageSeite({
         </div>
       </section>
 
-      {/* Single-Anlage customers have no Übersicht/Anlagen-Liste, so their
-          only way to a SECOND Anlage lives here - one calm line, same
-          one-flow drawer as everywhere else. From the second Anlage on the
-          list and the fleet Übersicht carry the button instead. */}
-      {onBackToList == null && (
-        <p className="vp-note" style={{ textAlign: 'center', margin: 'var(--vp-space-6) 0 0' }}>
-          Sie haben eine weitere Anlage?{' '}
-          <button type="button" className="vp-linklike" onClick={() => setAddDrawer(true)}>
-            Anlage anlegen
-          </button>
-        </p>
-      )}
-      <AnlageAnlegenDrawer
-        open={addDrawer}
-        onClose={() => setAddDrawer(false)}
-        onChanged={(createdSiteId) => onReload(createdSiteId)}
-      />
+      {/* Single-Anlage customers have no Übersicht/Anlagen-Liste; their way to
+          a SECOND Anlage is the always-visible "＋ Anlage hinzufügen" action in
+          the shell header (App.tsx / AppShell, gated by showAddAnlageButton).
+          From the second Anlage on, the list and fleet Übersicht carry it. */}
     </>
   );
 }

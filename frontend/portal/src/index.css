@@ -164,6 +164,14 @@ a:focus-visible,
 .vp-topbar .spacer {
   flex: 1;
 }
+/* Always-visible "＋ Anlage hinzufügen" header action (single-Anlage
+   customers). Never shrinks; keeps a ≥44px touch target; on phones it
+   collapses to icon-only. */
+.vp-add-anlage-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 44px;
+}
 .vp-hamburger {
   display: none;
   background: none;
@@ -1484,6 +1492,10 @@ button.vp-cl-item.is-off .vp-cl-label {
   }
   .vp-usermenu .meta {
     display: none; /* collapse to the avatar */
+  }
+  /* Icon-only on phones - the button's aria-label keeps it accessible. */
+  .vp-add-anlage-label {
+    display: none;
   }
   .vp-context {
     max-width: 150px;

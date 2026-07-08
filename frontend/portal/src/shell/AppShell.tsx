@@ -19,6 +19,8 @@ export function AppShell({
   onNavigate,
   isAdmin,
   showOverview,
+  showAddAnlage,
+  onAddAnlage,
   counts,
   tenants,
   tenantOverride,
@@ -30,6 +32,14 @@ export function AppShell({
   isAdmin: boolean;
   /** Show the "Übersicht" nav item (fleet customers + admins only). */
   showOverview: boolean;
+  /**
+   * Show the always-visible "＋ Anlage hinzufügen" header action. Scoped to a
+   * single-Anlage customer (see `showAddAnlageButton`) - their only obvious way
+   * to a second Anlage, reachable from every page.
+   */
+  showAddAnlage: boolean;
+  /** Open the "Anlage anlegen" one-flow drawer (hosted by the caller). */
+  onAddAnlage: () => void;
   counts: { sites: number | null; devices: number | null };
   /** Admin only: tenants for the context switcher. */
   tenants: Tenant[];
@@ -141,6 +151,22 @@ export function AppShell({
             <span className="here">{pageLabel(page, counts.sites)}</span>
           </div>
           <div className="spacer" />
+
+          {showAddAnlage && (
+            // The single-Anlage customer's always-visible way to a second
+            // Anlage. Icon + label on wider screens, icon-only on phones (the
+            // aria-label keeps it accessible). Opens the same one-flow drawer.
+            <Button
+              variant="primary"
+              size="sm"
+              className="vp-add-anlage-btn"
+              iconLeft={<Icon name="plus" size={18} />}
+              onClick={onAddAnlage}
+              aria-label="Anlage hinzufügen"
+            >
+              <span className="vp-add-anlage-label">Anlage hinzufügen</span>
+            </Button>
+          )}
 
           {isAdmin && (
             // Admin: the context chip is a real tenant SWITCHER - picking a

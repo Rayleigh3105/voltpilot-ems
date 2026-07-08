@@ -9,6 +9,7 @@ import { api, ApiError, register, setTenantOverride, type Device, type Site } fr
 import { adminApi, type Tenant } from './admin/adminApi';
 import { AppShell } from './shell/AppShell';
 import {
+  anlageRoute,
   hashForRoute,
   pageRoute,
   PLATFORM_PAGES,
@@ -16,6 +17,8 @@ import {
   type PageId,
   type Route,
 } from './nav';
+import { showAddAnlageButton } from './addAnlage';
+import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
 import { UebersichtPage } from './pages/UebersichtPage';
 import { AnlagenPage } from './pages/AnlagenPage';
@@ -366,6 +369,8 @@ function UnifiedPortal() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  // The shell's "＋ Anlage hinzufügen" one-flow drawer (single-Anlage customers).
+  const [addAnlageOpen, setAddAnlageOpen] = useState(false);
 
   const navigate = useCallback(
     (target: Route | PageId) => {
@@ -520,6 +525,16 @@ function UnifiedPortal() {
   const showOnboarding =
     !isAdmin && loaded && !error && devices.length === 0 && !onboardingDismissed;
 
+  // The always-visible shell action for the one case with no obvious entry
+  // point: a customer with exactly one Anlage (no Übersicht, no Anlagen-Liste).
+  const showAddAnlage = showAddAnlageButton({
+    isAdmin,
+    loaded,
+    tenantReady,
+    onboarding: showOnboarding,
+    siteCount: sites.length,
+  });
+
   function finishOnboarding() {
     setOnboardingDismissed(true);
     void reload();
@@ -533,6 +548,8 @@ function UnifiedPortal() {
       // Single-plant merge: the "Übersicht" nav item only appears from the
       // second Anlage on (a single-Anlage customer's home IS "Meine Anlage").
       showOverview={isAdmin || (loaded && tenantReady && sites.length >= 2)}
+      showAddAnlage={showAddAnlage}
+      onAddAnlage={() => setAddAnlageOpen(true)}
       counts={{
         sites: tenantReady ? sites.length : null,
         devices: tenantReady ? devices.length : null,
@@ -613,6 +630,18 @@ function UnifiedPortal() {
           {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
         </>
       )}
+
+      {/* The shell's "＋ Anlage hinzufügen" action opens the SAME one-flow
+          drawer as everywhere else; on finish we reload and land the customer
+          on their new Anlage. Always mounted so `open` alone drives it. */}
+      <AnlageAnlegenDrawer
+        open={addAnlageOpen}
+        onClose={() => setAddAnlageOpen(false)}
+        onChanged={(createdSiteId) => {
+          void reload(createdSiteId);
+          navigate(anlageRoute(createdSiteId));
+        }}
+      />
     </AppShell>
   );
 }
