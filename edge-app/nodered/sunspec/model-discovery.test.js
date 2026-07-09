@@ -73,6 +73,19 @@ const commonBody = () => new Array(66).fill(0);
 const invBody = () => new Array(50).fill(0);
 const storageBody = () => new Array(D.M124.LENGTH).fill(0);
 
+// A model-124 storage body with WChaMax + the InOutWRte/MinRsvPct scale factors
+// set, so finalize() reads the live scalars for the kW<->% conversion. Defaults:
+// WChaMax=1000, SF=1 -> 10000 W = 10 kW; InOutWRte_SF=-2; MinRsvPct_SF=-2.
+function storageBodyWith(opts) {
+  opts = opts || {};
+  const body = new Array(D.M124.LENGTH).fill(0);
+  body[D.M124.WChaMax] = (opts.wChaMax != null ? opts.wChaMax : 1000) & 0xffff;
+  body[D.M124.WChaMax_SF] = (opts.wChaMaxSf != null ? opts.wChaMaxSf : 1) & 0xffff;
+  body[D.M124.InOutWRte_SF] = (opts.inOutWRteSf != null ? opts.inOutWRteSf : -2) & 0xffff;
+  body[D.M124.MinRsvPct_SF] = (opts.minRsvPctSf != null ? opts.minRsvPctSf : -2) & 0xffff;
+  return body;
+}
+
 // A full, realistic GEN24-shaped list (report §1.3 sequence).
 function fullDeviceModels(inverterId, sf) {
   return [
@@ -309,4 +322,163 @@ test('planCurtailment is IDLE-SAFE when discovery failed / Model 123 absent / na
   assert.strictEqual(c.ok, false);
   assert.deepStrictEqual(c.writes, []);
   assert.match(c.reason, /Nennleistung|Nameplate/);
+});
+
+// --- Model 124 storage discovery + planStorage (increment 2) -----------------
+
+// A full GEN24-shaped list whose storage body carries a real WChaMax (10 kW) and
+// scale factors, so discovery reads the scalars planStorage needs.
+function storageDeviceModels(sf) {
+  return [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: 103, body: invBody() },
+    { id: D.MODEL.NAMEPLATE, body: nameplateBody(1200, 1) }, // 12 kW inverter
+    { id: D.MODEL.IMMEDIATE_CONTROLS, body: controlsBody(sf != null ? sf : -2) },
+    { id: D.MODEL.STORAGE, body: storageBodyWith({ wChaMax: 1000, wChaMaxSf: 1 }) }, // 10 kW battery
+  ];
+}
+function storageDiscovery() {
+  return D.discover(readerOver(buildImage(D.DEFAULT_BASE, storageDeviceModels(-2))));
+}
+
+test('discover resolves Model 124 addresses and reads WChaMax + storage scale factors live', () => {
+  const r = storageDiscovery();
+  assert.strictEqual(r.ok, true);
+  const m124 = r.byId[124];
+  assert.ok(m124, 'model 124 located');
+  // Field addresses = discovered body base + fixed standard offsets (never hardcoded).
+  assert.strictEqual(r.storage.present, true);
+  assert.strictEqual(r.storage.inWRteAddr, m124.bodyAddr + D.M124.InWRte);
+  assert.strictEqual(r.storage.outWRteAddr, m124.bodyAddr + D.M124.OutWRte);
+  assert.strictEqual(r.storage.storCtlModAddr, m124.bodyAddr + D.M124.StorCtl_Mod);
+  assert.strictEqual(r.storage.minRsvPctAddr, m124.bodyAddr + D.M124.MinRsvPct);
+  assert.strictEqual(r.storage.chaGriSetAddr, m124.bodyAddr + D.M124.ChaGriSet);
+  assert.strictEqual(r.storage.inOutWRteRvrtTmsAddr, m124.bodyAddr + D.M124.InOutWRte_RvrtTms);
+  // Live scalars: WChaMax 1000 * 10^1 / 1000 = 10 kW, SFs read from the body.
+  assert.ok(Math.abs(r.wChaMaxKw - 10) < 1e-9);
+  assert.strictEqual(r.inOutWRteSf, -2);
+  assert.strictEqual(r.minRsvPctSf, -2);
+});
+
+test('planStorage maps a CHARGE setpoint -> InWRte % + StorCtl_Mod charge bit at discovered addresses', () => {
+  const disc = storageDiscovery(); // 10 kW WChaMax, SF -2
+  const plan = D.planStorage({ discovery: disc, batterySetpointKw: 5, socMinPct: 10 }); // 5 of 10 kW = 50 %
+  assert.strictEqual(plan.ok, true);
+  assert.strictEqual(plan.ratePct, 50);
+  assert.strictEqual(plan.rateRaw, 5000); // 50 % / 10^-2
+  assert.strictEqual(plan.mode, D.STORCTL_MOD.CHARGE);
+
+  const w = Object.fromEntries(plan.writes.map((op) => [op.role, op]));
+  assert.strictEqual(w.battery_in_rate.addr, disc.storage.inWRteAddr);
+  assert.strictEqual(w.battery_in_rate.value, 5000);
+  assert.strictEqual(w.battery_out_rate.value, 0, 'discharge channel idle while charging');
+  assert.strictEqual(w.battery_storage_mode.addr, disc.storage.storCtlModAddr);
+  assert.strictEqual(w.battery_storage_mode.value, D.STORCTL_MOD.CHARGE);
+  // MinRsvPct floor from soc_min = 10 %, SF -2 -> 1000.
+  assert.strictEqual(w.battery_min_reserve.addr, disc.storage.minRsvPctAddr);
+  assert.strictEqual(w.battery_min_reserve.value, 1000);
+
+  // Ordering is safety-relevant: rate values + reserve + grid + revert BEFORE the
+  // StorCtl_Mod (the direction-enable bits) is armed LAST.
+  assert.strictEqual(plan.writes[plan.writes.length - 1].role, 'battery_storage_mode');
+  assert.deepStrictEqual(plan.writes.map((op) => op.role), [
+    'battery_in_rate', 'battery_out_rate', 'battery_min_reserve',
+    'battery_grid_charge', 'battery_revert_tms', 'battery_storage_mode',
+  ]);
+
+  // Readbacks mirror the writes at the same addresses.
+  const rb = Object.fromEntries(plan.readbacks.map((op) => [op.role, op]));
+  assert.strictEqual(rb.battery_in_rate.fc, 3);
+  assert.strictEqual(rb.battery_in_rate.expect, 5000);
+  assert.strictEqual(rb.battery_storage_mode.expect, D.STORCTL_MOD.CHARGE);
+});
+
+test('planStorage maps a DISCHARGE setpoint -> OutWRte % + StorCtl_Mod discharge bit', () => {
+  const disc = storageDiscovery();
+  const plan = D.planStorage({ discovery: disc, batterySetpointKw: -2.5 }); // 2.5 of 10 kW = 25 %
+  assert.strictEqual(plan.ok, true);
+  assert.strictEqual(plan.ratePct, 25);
+  assert.strictEqual(plan.mode, D.STORCTL_MOD.DISCHARGE);
+  const w = Object.fromEntries(plan.writes.map((op) => [op.role, op]));
+  assert.strictEqual(w.battery_out_rate.addr, disc.storage.outWRteAddr);
+  assert.strictEqual(w.battery_out_rate.value, 2500);
+  assert.strictEqual(w.battery_in_rate.value, 0, 'charge channel idle while discharging');
+  assert.strictEqual(w.battery_storage_mode.value, D.STORCTL_MOD.DISCHARGE);
+});
+
+test('planStorage kW->% conversion uses WChaMax and clamps to [0,100]', () => {
+  const disc = storageDiscovery(); // 10 kW
+  // 20 kW command on a 10 kW battery can only be 100 %.
+  const hi = D.planStorage({ discovery: disc, batterySetpointKw: 20 });
+  assert.strictEqual(hi.ratePct, 100);
+  assert.strictEqual(hi.rateRaw, 10000);
+  // An override WChaMax of 5 kW makes a 2.5 kW charge 50 %.
+  const ovr = D.planStorage({ discovery: disc, batterySetpointKw: 2.5, wChaMaxKw: 5, inOutWRteSf: 0 });
+  assert.strictEqual(ovr.ratePct, 50);
+  assert.strictEqual(ovr.rateRaw, 50); // SF 0 -> raw = pct
+});
+
+test('planStorage idle setpoint (0 kW) RELEASES control: StorCtl_Mod = NONE, both rates 0', () => {
+  const disc = storageDiscovery();
+  const plan = D.planStorage({ discovery: disc, batterySetpointKw: 0 });
+  assert.strictEqual(plan.ok, true);
+  assert.strictEqual(plan.mode, D.STORCTL_MOD.NONE);
+  const w = Object.fromEntries(plan.writes.map((op) => [op.role, op]));
+  assert.strictEqual(w.battery_in_rate.value, 0);
+  assert.strictEqual(w.battery_out_rate.value, 0);
+  assert.strictEqual(w.battery_storage_mode.value, 0);
+});
+
+test('planStorage grid-charge is EEG-gated: ChaGriSet = PV unless permitted AND charging', () => {
+  const disc = storageDiscovery();
+  const grid = (p) => p.writes.find((op) => op.role === 'battery_grid_charge').value;
+  // Charging, not permitted -> PV (grid charging OFF, the EEG-safe default).
+  assert.strictEqual(grid(D.planStorage({ discovery: disc, batterySetpointKw: 5 })), D.CHA_GRI_SET.PV);
+  // Charging, permitted -> GRID.
+  assert.strictEqual(grid(D.planStorage({ discovery: disc, batterySetpointKw: 5, gridChargeAllowed: true })), D.CHA_GRI_SET.GRID);
+  // Discharging, even when permitted -> PV (grid charging is irrelevant on discharge).
+  assert.strictEqual(grid(D.planStorage({ discovery: disc, batterySetpointKw: -5, gridChargeAllowed: true })), D.CHA_GRI_SET.PV);
+});
+
+test('planStorage honours a custom revert timeout (the storage dead-man switch)', () => {
+  const disc = storageDiscovery();
+  const plan = D.planStorage({ discovery: disc, batterySetpointKw: 5, rvrtTms: 120 });
+  assert.strictEqual(plan.writes.find((op) => op.role === 'battery_revert_tms').value, 120);
+  const dflt = D.planStorage({ discovery: disc, batterySetpointKw: 5 });
+  assert.strictEqual(dflt.writes.find((op) => op.role === 'battery_revert_tms').value, D.DEFAULT_STORAGE_RVRT_TMS);
+});
+
+test('planStorage is IDLE-SAFE when discovery failed / Model 124 absent / WChaMax unknown / bad setpoint', () => {
+  // No discovery.
+  const a = D.planStorage({ discovery: null, batterySetpointKw: 5 });
+  assert.strictEqual(a.ok, false);
+  assert.deepStrictEqual(a.writes, []);
+  assert.deepStrictEqual(a.readbacks, []);
+  assert.match(a.reason, /nicht erkannt/);
+
+  // Discovery ok but no Model 124 (a batteryless inverter).
+  const noStore = D.discover(readerOver(buildImage(D.DEFAULT_BASE, [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: D.MODEL.NAMEPLATE, body: nameplateBody(1200, 1) },
+    { id: D.MODEL.IMMEDIATE_CONTROLS, body: controlsBody(-2) },
+  ])));
+  const b = D.planStorage({ discovery: noStore, batterySetpointKw: 5 });
+  assert.strictEqual(b.ok, false);
+  assert.deepStrictEqual(b.writes, []);
+  assert.match(b.reason, /124|Storage/);
+
+  // Model 124 present but WChaMax unknown (all-zero storage body -> WChaMax 0).
+  const noWCha = D.discover(readerOver(buildImage(D.DEFAULT_BASE, [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: D.MODEL.STORAGE, body: storageBody() }, // WChaMax = 0
+  ])));
+  const c = D.planStorage({ discovery: noWCha, batterySetpointKw: 5 });
+  assert.strictEqual(c.ok, false);
+  assert.deepStrictEqual(c.writes, []);
+  assert.match(c.reason, /WChaMax|Nennladeleistung/);
+
+  // Non-finite setpoint.
+  const d = D.planStorage({ discovery: storageDiscovery(), batterySetpointKw: NaN });
+  assert.strictEqual(d.ok, false);
+  assert.deepStrictEqual(d.writes, []);
 });

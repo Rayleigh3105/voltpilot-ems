@@ -31,7 +31,7 @@ const FRONIUS_SEL = {
 // Build a live SunSpec model-discovery result over a minimal fixture register
 // image (a Common + Nameplate(12 kW) + Immediate-Controls(SF -2) list), the way
 // the flow/core would hand it to controlRoute via opts.sunspec on a real device.
-function froniusDiscovery() {
+function froniusDiscovery(withStorage) {
   const base = sunspec.DEFAULT_BASE;
   const img = new Map();
   img.set(base, (sunspec.SID >>> 16) & 0xffff);
@@ -50,6 +50,13 @@ function froniusDiscovery() {
   put(sunspec.MODEL.COMMON, new Array(66).fill(0));
   put(sunspec.MODEL.NAMEPLATE, np);
   put(sunspec.MODEL.IMMEDIATE_CONTROLS, ctl);
+  if (withStorage) {
+    const st = new Array(sunspec.M124.LENGTH).fill(0);
+    st[sunspec.M124.WChaMax] = 1000; st[sunspec.M124.WChaMax_SF] = 1; // 10 kW battery
+    st[sunspec.M124.InOutWRte_SF] = -2 & 0xffff;
+    st[sunspec.M124.MinRsvPct_SF] = -2 & 0xffff;
+    put(sunspec.MODEL.STORAGE, st);
+  }
   img.set(addr, sunspec.END_MODEL_ID); img.set(addr + 1, 0);
   const read = (a, count) => {
     const out = [];
@@ -57,6 +64,9 @@ function froniusDiscovery() {
     return out;
   };
   return sunspec.discover(read);
+}
+function froniusDiscoveryWithStorage() {
+  return froniusDiscovery(true);
 }
 
 const enabled = (over) => ({ battery_setpoint_kw: 0, source: 'schedule', control_enabled: true, ...over });
@@ -254,6 +264,87 @@ test('Fronius uncurtailed slot plans DISABLING the limit (Model 123 enable = 0)'
   const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 0, pv_limit_kw: null }), { sunspec: froniusDiscovery() });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
   assert.strictEqual(p.pv_limit_enable.value, sunspec.WMAX_LIM_ENA.DISABLED);
+});
+
+// --- Fronius SunSpec STORAGE battery control (increment 2, UNCERTIFIED) --------
+
+test('Fronius storage: a CHARGE setpoint plans Model 124 InWRte + StorCtl_Mod (bench_pending, never executable)', () => {
+  const disc = froniusDiscoveryWithStorage();
+  // charge 5 kW into a 10 kW WChaMax battery -> 50 %, SF -2 -> raw 5000.
+  const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 5, soc_min_pct: 10 }), { sunspec: disc });
+  assert.strictEqual(r.adapter, 'fronius_sunspec');
+  assert.strictEqual(r.certified, false);
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.battery_in_rate.addr, disc.storage.inWRteAddr);
+  assert.strictEqual(p.battery_in_rate.value, 5000);
+  assert.strictEqual(p.battery_out_rate.value, 0);
+  assert.strictEqual(p.battery_storage_mode.addr, disc.storage.storCtlModAddr);
+  assert.strictEqual(p.battery_storage_mode.value, sunspec.STORCTL_MOD.CHARGE);
+  assert.strictEqual(p.battery_min_reserve.value, 1000); // soc_min 10 %, SF -2
+  // grid-charge EEG-gated: not permitted -> PV (off)
+  assert.strictEqual(p.battery_grid_charge.value, sunspec.CHA_GRI_SET.PV);
+  // every storage op is bench_pending, and NOTHING is executable
+  for (const role of ['battery_in_rate', 'battery_out_rate', 'battery_storage_mode', 'battery_min_reserve', 'battery_grid_charge', 'battery_revert_tms']) {
+    assert.strictEqual(p[role].bench_pending, true, role + ' must be bench_pending');
+  }
+  assert.deepStrictEqual(r.writes, [], 'no live storage write to an uncertified inverter');
+  assert.deepStrictEqual(r.readbacks, [], 'no fake confirmation of unproven storage registers');
+});
+
+test('Fronius storage: a DISCHARGE setpoint plans OutWRte + the discharge bit', () => {
+  const disc = froniusDiscoveryWithStorage();
+  const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: -2.5 }), { sunspec: disc });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.battery_out_rate.addr, disc.storage.outWRteAddr);
+  assert.strictEqual(p.battery_out_rate.value, 2500); // 2.5 of 10 kW = 25 %
+  assert.strictEqual(p.battery_in_rate.value, 0);
+  assert.strictEqual(p.battery_storage_mode.value, sunspec.STORCTL_MOD.DISCHARGE);
+});
+
+test('Fronius storage: grid-charge ChaGriSet is EEG-gated (GRID only when permitted AND charging)', () => {
+  const disc = froniusDiscoveryWithStorage();
+  const grid = (sp) => {
+    const r = C.controlRoute(FRONIUS_SEL, sp, { sunspec: disc });
+    return r.planned.find((w) => w.role === 'battery_grid_charge').value;
+  };
+  assert.strictEqual(grid({ battery_setpoint_kw: 5, source: 'schedule', control_enabled: true }), sunspec.CHA_GRI_SET.PV, 'EEG default: no grid charge');
+  assert.strictEqual(grid({ battery_setpoint_kw: 5, source: 'schedule', control_enabled: true, grid_charge_allowed: true }), sunspec.CHA_GRI_SET.GRID, 'permitted + charging');
+  assert.strictEqual(grid({ battery_setpoint_kw: -5, source: 'schedule', control_enabled: true, grid_charge_allowed: true }), sunspec.CHA_GRI_SET.PV, 'discharging never grid-charges');
+});
+
+test('Fronius storage honours invert_control_sign for the battery direction (never hardcoded)', () => {
+  const sel = { ...FRONIUS_SEL, connection: { ...FRONIUS_SEL.connection, invert_control_sign: true } };
+  // -5 kW inverted -> +5 kW = charge -> InWRte set, discharge idle
+  const r = C.controlRoute(sel, enabled({ battery_setpoint_kw: -5 }), { sunspec: froniusDiscoveryWithStorage() });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.battery_storage_mode.value, sunspec.STORCTL_MOD.CHARGE);
+  assert.strictEqual(p.battery_in_rate.value, 5000);
+});
+
+test('Fronius storage is UNCERTIFIED: control_enabled never produces executable storage writes', () => {
+  const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 5, pv_limit_kw: 6 }), { sunspec: froniusDiscoveryWithStorage() });
+  assert.strictEqual(r.controlEnabled, true);
+  assert.strictEqual(r.certified, false);
+  assert.deepStrictEqual(r.writes, [], 'never a live storage write, even with the kill-switch on');
+  assert.deepStrictEqual(r.readbacks, []);
+  // both curtailment AND storage roles are present in the planned bench artefact
+  const roles = new Set(r.planned.map((w) => w.role));
+  assert.ok(roles.has('pv_limit_pct'), 'curtailment still planned');
+  assert.ok(roles.has('battery_in_rate'), 'storage planned');
+  assert.ok(r.planned.every((w) => w.bench_pending === true));
+});
+
+test('Fronius storage is IDLE-SAFE when Model 124 is absent (no battery / no discovery)', () => {
+  // Discovery WITHOUT storage: Model 123 present -> only curtailment planned, no storage ops.
+  const noStore = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 5, pv_limit_kw: 6 }), { sunspec: froniusDiscovery() });
+  const roles = new Set(noStore.planned.map((w) => w.role));
+  assert.ok(roles.has('pv_limit_pct'), 'curtailment still planned');
+  assert.strictEqual(noStore.planned.find((w) => w.role === 'battery_in_rate'), undefined, 'no fabricated storage address without Model 124');
+  // No discovery at all: nothing planned, honest reason.
+  const noDisc = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 5 }), {});
+  assert.deepStrictEqual(noDisc.planned, []);
+  assert.deepStrictEqual(noDisc.writes, []);
+  assert.match(noDisc.reason, /nicht erkannt|nicht freigegeben/);
 });
 
 test('CERTIFIED_CONTROL_FAMILIES contains sunspec but no Deye or Fronius family', () => {

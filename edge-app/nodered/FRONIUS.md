@@ -15,9 +15,10 @@ in einem Aufruf, also den kompletten kanonischen Messwertsatz von VoltPilot.
   (`deye/solarman-v5.js` + `deye/deye-decode.js`).
 - **Nur lesen (Steuerung unzertifiziert).** Fronius bleibt per Konstruktion
   nur-lesend, wie Deye: es steht **nicht** in `inverter-control-routing.js`'s
-  `CERTIFIED_CONTROL_FAMILIES`. Ein SunSpec-Modbus-**Curtailment**-Pfad (Modell 123)
-  ist als **nur geplant** (`planned`, nie ausgeführt) verdrahtet - Details +
-  Sicherheit in Abschnitt 6. Batterie-Laden/-Entladen bleibt ausgeklammert.
+  `CERTIFIED_CONTROL_FAMILIES`. Der SunSpec-Modbus-Steuerpfad - **Curtailment**
+  (Modell 123 `WMaxLimPct`) UND **Batterie Laden/Entladen** (Modell 124 Storage) -
+  ist als **nur geplant** (`planned`/`bench_pending`, nie ausgeführt) verdrahtet;
+  Details + Sicherheit in Abschnitt 6.
 - **Nur cloud-/vertragsneutral.** Die kanonischen Kanäle
   (`pv_power_kw`/`power_kw`/`load_kw`/`soc_pct`) existieren bereits - keine
   Änderung an Contract, Ingest, Rollups, Portal oder Optimierer.
@@ -115,14 +116,17 @@ Produktivbetrieb **an einem echten Gerät verifizieren**:
 
 Ohne/bei unbekannter Auswahl bleibt der Tab idle-sicher.
 
-## 6. Steuerung (Einspeise-Begrenzung / Curtailment) - SunSpec Modbus, NUR GEPLANT
+## 6. Steuerung (Curtailment + Batterie) - SunSpec Modbus, NUR GEPLANT
 
 Fronius-Steuerung läuft über die **standardbasierte SunSpec-Modbus-Schnittstelle**
 (nicht die Solar-API und **nicht** den evcc-`config/timeofuse`-HTTP-Hack - vom
 Design-Bericht `vp-fronius-control-scout-c4` verworfen: undokumentiert,
-credential-gebunden, zweimal über Firmware-Versionen gebrochen). Increment 1 ist
-**nur Curtailment**: SunSpec **Modell 123 `WMaxLimPct`** (0-100 % der Nennleistung),
-das direkte SunSpec-Gegenstück zum bereits zertifizierten Simulator-`pv_limit`-Write.
+credential-gebunden, zweimal über Firmware-Versionen gebrochen). Zwei Increments:
+**Increment 1 = Curtailment** (SunSpec **Modell 123 `WMaxLimPct`**, 0-100 % der
+Nennleistung, das direkte Gegenstück zum bereits zertifizierten Simulator-`pv_limit`-Write)
+und **Increment 2 = Batterie Laden/Entladen** (SunSpec **Modell 124 (Storage)**
+`InWRte`/`OutWRte` + `StorCtl_Mod`, mit `MinRsvPct` + EEG-gesperrtem `ChaGriSet` +
+`InOutWRte_RvrtTms`). Beide sind gebaut, aber **unzertifiziert** (siehe SICHERHEIT).
 
 **SICHERHEIT (Captain-Entscheidung 3, nicht verhandelbar): Fronius ist UNZERTIFIZIERT
 und schreibt NICHTS live.** Genau wie jede Deye-Familie: `fronius_solar_api` steht
@@ -152,9 +156,21 @@ Live-Steuerung folgt **erst nach einem echten Prüfstand-Durchgang** (siehe
   Reihenfolge sicherheitsrelevant: erst Wert + Rückfall-Timer, **zuletzt** die
   Aktivierung. Ein unbegrenzter Slot (`pv_limit_kw` fehlt) **deaktiviert** die
   Begrenzung (`WMaxLim_Ena = 0`), damit eine alte Begrenzung nie stehen bleibt.
+- **Modell-124-Zuordnung (Batterie Laden/Entladen, Increment 2):** `battery_setpoint_kw`
+  (+ laden / − entladen) → `InWRte`/`OutWRte` (Prozent der erkannten `WChaMax`) plus die
+  `StorCtl_Mod`-Bits (Bit0 laden / Bit1 entladen; 0 = freigegeben/Eigenverbrauch),
+  `MinRsvPct` (Reserve-Boden aus `soc_min`), das EEG-gesperrte `ChaGriSet`-Netzlade-Gate
+  (nur `GRID`, wenn `grid_charge_allowed` UND geladen wird; sonst `PV`/aus) und der
+  `InOutWRte_RvrtTms`-Totmann-Schalter. Reihenfolge wie beim Curtailment: erst Raten +
+  Reserve + Netzlade-Gate + Rückfall-Timer, **zuletzt** die `StorCtl_Mod`-Aktivierung.
+  Ein Idle-Sollwert (0 kW) setzt `StorCtl_Mod = 0` (Steuerung freigeben). **Höheres
+  Risiko** - ein falsches Vorzeichen/Skalierung kann die Batterie schädigen, daher pro
+  Batterie-Marke einzeln am Prüfstand zu bestätigen (`CONTROL-BENCH.md` → Fronius Storage).
+  Fehlt Modell 124 (kein Speicher / keine Erkennung) → idle-sicher, nur Curtailment.
 - **Vorzeichen/Skalierung sind AM GERÄT ZU PRÜFEN.** `WMaxLimPct` ist ein Prozent
-  der Nennleistung, das Register ist mit dem **live gelesenen** `WMaxLimPct_SF`
-  skaliert (Fallback -2). Alle Annahmen sind im Code als „VERIFY on device" markiert.
+  der Nennleistung, `InWRte`/`OutWRte` sind Prozent von `WChaMax`; die Register sind mit
+  den **live gelesenen** Skalierungsfaktoren skaliert (`WMaxLimPct_SF`/`InOutWRte_SF`,
+  Fallback -2). Alle Annahmen sind im Code als „VERIFY on device" markiert.
 - **Steuer-Endpunkt (Modbus, getrennt vom Lese-Endpunkt).** Die Solar-API-Lesung
   läuft über HTTP (Port 80); SunSpec-Steuerung ist eine **separate** Modbus-TCP-
   Fläche (Port 502, nachdem der Installateur „Allow Control" gesetzt hat). Der
@@ -172,12 +188,13 @@ Steuerpfad bleibt idle-sicher.
 
 ## Ausgeklammert (bewusst)
 
-- **Batterie Laden/Entladen (Modell 124/802-803).** Das ist Increment 2
-  (`vp-fronius-control-battery`) - höheres Risiko (kann Batteriegesundheit/Garantie
-  betreffen), eigener Prüfstand-Durchgang. Die Erkennung findet Modell 124 bereits,
-  gebaut werden seine Schreibbefehle hier **nicht**.
+- **802/803-Batteriebank-Detail als eigener Kanal.** Die Erkennung lokalisiert Modell
+  124; 802/803 (String-Spannung/-Strom) sind nur Kalibrierung/Gegenprobe und werden
+  nicht separat geschrieben. VoltPilot leitet `battery_kw` weiter aus der Leistungsbilanz
+  ab (dieselbe Regel wie beim Lesen), nicht aus rohen Batterie-Registern.
 - **Fronius live schalten / zertifizieren.** Braucht den echten Prüfstand-Durchgang
-  (Register-Adressen, Vorzeichen, kW↔%-Umrechnung, `RvrtTms`-Verhalten) - separat.
+  pro Batterie-Marke (Register-Adressen, Vorzeichen, kW↔%-Umrechnung, `StorCtl_Mod`-Bits,
+  `ChaGriSet`-Enum, `RvrtTms`-Verhalten) - separat, `CONTROL-BENCH.md` → Fronius Storage.
 - **Der GEN24-`config/timeofuse`-HTTP-Pfad** - vom Design verworfen, wird nicht gebaut.
 - **Fronius als zusätzliche Quelle (`fronius_solar_api`-Netz-Zähler/Erzeuger).**
   Der Multi-Source-Pfad liest heute nur `modbus_tcp`-Quellen; eine Fronius-Quelle
