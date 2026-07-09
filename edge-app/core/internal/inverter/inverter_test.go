@@ -232,6 +232,106 @@ func TestNormalizeGenericModbus(t *testing.T) {
 	}
 }
 
+func TestNormalizeFronius(t *testing.T) {
+	cat := DefaultCatalog()
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand:      BrandFronius,
+		Model:      FamFroniusSolarAPI,
+		Connection: Connection{IP: "192.168.0.20"}, // port/insecure_tls omitted -> defaults
+	}, now)
+	if err != nil {
+		t.Fatalf("valid fronius selection rejected: %v", err)
+	}
+	if sel.Communication != CommFroniusSolarAPI {
+		t.Errorf("communication derived from brand: %q", sel.Communication)
+	}
+	if sel.Family != FamFroniusSolarAPI {
+		t.Errorf("family: %q", sel.Family)
+	}
+	if sel.Connection.Port != defaultFroniusPort {
+		t.Errorf("default fronius port: %d", sel.Connection.Port)
+	}
+	// no serial / unit id / power scale for the Solar API.
+	if sel.Connection.Serial != "" || sel.Connection.MbSlaveID != 0 ||
+		sel.Connection.UnitID != 0 || sel.Connection.Profile != "" || sel.Connection.PowerScale != 0 {
+		t.Errorf("cross-transport fields leaked: %+v", sel.Connection)
+	}
+
+	// the escape hatches (insecure_tls + invert_grid_sign) are carried through.
+	sel2, err := cat.Normalize(SelectionRequest{
+		Brand: BrandFronius, Model: FamFroniusSolarAPI,
+		Connection: Connection{IP: "10.0.0.7", Port: 443, InsecureTLS: true, InvertGridSign: true},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sel2.Connection.InsecureTLS || !sel2.Connection.InvertGridSign || sel2.Connection.Port != 443 {
+		t.Errorf("fronius escape hatches not carried: %+v", sel2.Connection)
+	}
+}
+
+func TestFroniusBrandInCatalog(t *testing.T) {
+	cat := DefaultCatalog()
+	b, ok := cat.brand(BrandFronius)
+	if !ok {
+		t.Fatal("Fronius brand missing from catalog")
+	}
+	if b.Communication != CommFroniusSolarAPI {
+		t.Errorf("fronius communication: %q", b.Communication)
+	}
+	if len(b.Models) != 1 || b.Models[0].Family != FamFroniusSolarAPI {
+		t.Errorf("fronius models: %+v", b.Models)
+	}
+	// froniusFields: host required, port default 80, insecure_tls checkbox, no serial/unit_id/auth.
+	keys := map[string]Field{}
+	for _, f := range b.Fields {
+		keys[f.Key] = f
+	}
+	if f, ok := keys["ip"]; !ok || !f.Required {
+		t.Errorf("fronius must require a host field")
+	}
+	if f, ok := keys["port"]; !ok || f.Default != defaultFroniusPort {
+		t.Errorf("fronius port default: %+v", keys["port"])
+	}
+	if f, ok := keys["insecure_tls"]; !ok || f.Type != "checkbox" {
+		t.Errorf("fronius insecure_tls checkbox: %+v", f)
+	}
+	for _, forbidden := range []string{"serial", "unit_id", "mb_slave_id", "password"} {
+		if _, ok := keys[forbidden]; ok {
+			t.Errorf("fronius must NOT expose %q (Solar API needs no such field)", forbidden)
+		}
+	}
+}
+
+func TestBusPayloadFroniusShape(t *testing.T) {
+	cat := DefaultCatalog()
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandFronius, Model: FamFroniusSolarAPI,
+		Connection: Connection{IP: "192.168.0.20", InsecureTLS: true, InvertGridSign: true},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["communication"] != CommFroniusSolarAPI || m["family"] != FamFroniusSolarAPI {
+		t.Fatalf("fronius payload top-level: %v", m)
+	}
+	conn := m["connection"].(map[string]any)
+	if conn["ip"] != "192.168.0.20" || conn["port"].(float64) != defaultFroniusPort ||
+		conn["insecure_tls"] != true || conn["invert_grid_sign"] != true {
+		t.Fatalf("fronius connection: %v", conn)
+	}
+	// cross-transport keys must be absent from a fronius payload.
+	for _, forbidden := range []string{"serial", "mb_slave_id", "power_scale", "unit_id", "profile"} {
+		if _, ok := conn[forbidden]; ok {
+			t.Fatalf("%q must not appear in fronius payload: %v", forbidden, conn)
+		}
+	}
+}
+
 func TestNormalizeRejects(t *testing.T) {
 	cat := DefaultCatalog()
 	cases := []struct {
@@ -244,6 +344,8 @@ func TestNormalizeRejects(t *testing.T) {
 		{"bad port", SelectionRequest{Brand: BrandGenericModbus, Family: "sunspec", Connection: Connection{IP: "1.2.3.4", Port: 70000}}},
 		{"bad power scale", SelectionRequest{Brand: BrandDeye, Family: "hybrid_3p", Connection: Connection{IP: "1.2.3.4", Serial: "s", PowerScale: 3}}},
 		{"bad slave id", SelectionRequest{Brand: BrandDeye, Family: "hybrid_3p", Connection: Connection{IP: "1.2.3.4", Serial: "s", MbSlaveID: 999}}},
+		{"fronius missing host", SelectionRequest{Brand: BrandFronius, Model: FamFroniusSolarAPI}},
+		{"fronius bad port", SelectionRequest{Brand: BrandFronius, Model: FamFroniusSolarAPI, Connection: Connection{IP: "1.2.3.4", Port: 70000}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

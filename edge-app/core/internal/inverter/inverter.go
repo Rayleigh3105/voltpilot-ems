@@ -30,20 +30,23 @@ const SchemaVersion = "1.0"
 
 // Communication methods.
 const (
-	CommSolarmanV5 = "solarman_v5" // Deye WiFi datalogger, Modbus-RTU over TCP 8899
-	CommModbusTCP  = "modbus_tcp"  // generic Modbus/SunSpec over TCP 502
+	CommSolarmanV5      = "solarman_v5"       // Deye WiFi datalogger, Modbus-RTU over TCP 8899
+	CommModbusTCP       = "modbus_tcp"        // generic Modbus/SunSpec over TCP 502
+	CommFroniusSolarAPI = "fronius_solar_api" // Fronius Solar API (local HTTP/JSON), like HA
 )
 
 // Brand ids.
 const (
 	BrandDeye          = "deye"
 	BrandGenericModbus = "generic_modbus"
+	BrandFronius       = "fronius"
 )
 
 // Default ports per communication.
 const (
 	defaultSolarmanPort = 8899
 	defaultModbusPort   = 502
+	defaultFroniusPort  = 80 // Fronius Solar API (HTTP); GEN24 self-signed HTTPS uses insecure_tls
 )
 
 // ValidationError carries a customer-facing German message; the web layer maps
@@ -160,6 +163,24 @@ func modbusFields() []Field {
 	}
 }
 
+// froniusFields describes the Fronius Solar API (local HTTP/JSON) connection.
+// Unlike the Modbus/Solarman transports it needs NO serial, NO unit id and NO
+// auth (the Solar API is unauthenticated on the LAN, like Home Assistant reads
+// it). Only the host, the port (80 by default) and an escape hatch for the GEN24
+// self-signed-cert firmware and the rare inverted grid sign.
+func froniusFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
+			Help: "Die IP des Fronius-Wechselrichters im lokalen Netz (z. B. 192.168.0.20). Die Solar API muss in der Weboberfläche des Wechselrichters aktiviert sein."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultFroniusPort,
+			Help: "HTTP-Port der Solar API, üblicherweise 80."},
+		{Key: "insecure_tls", Label: "Selbstsigniertes Zertifikat akzeptieren (HTTPS)", Type: "checkbox",
+			Help: "Nur setzen, wenn Ihre GEN24-Firmware auf HTTPS mit selbstsigniertem Zertifikat umleitet."},
+		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
+			Help: "Normalerweise NICHT nötig (Fronius-Vorzeichen passt bereits). Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."},
+	}
+}
+
 // Register-map family ids (the INTERNAL decode profiles in
 // nodered/deye/deye-decode.js). Every selectable Deye Model resolves to one of
 // these; the generic-Modbus brand uses "sunspec".
@@ -169,6 +190,11 @@ const (
 	FamString   = "string"    // G03/G04 grid-tie AC output (no battery)
 	FamMicro    = "micro"     // SUN*G3 micro AC output (no battery)
 	FamSunSpec  = "sunspec"   // generic Modbus/SunSpec profile
+	// FamFroniusSolarAPI is the single decode profile for the Fronius Solar API
+	// (HTTP/JSON). The Solar API is self-describing (GetPowerFlowRealtimeData
+	// returns PV+grid+load+battery+SoC in one call), so there is no per-model
+	// register map to pick - one family covers every Fronius line.
+	FamFroniusSolarAPI = "fronius_solar_api"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -233,6 +259,26 @@ func deyeModels() []Model {
 	}
 }
 
+// froniusFamilies is the register-map reference list for Fronius. The Solar API
+// is self-describing, so there is exactly one decode profile.
+func froniusFamilies() []Family {
+	return []Family{
+		{ID: FamFroniusSolarAPI, Label: "Fronius Solar API", Note: "Lokale HTTP/JSON-Schnittstelle (GetPowerFlowRealtimeData, v1)"},
+	}
+}
+
+// froniusModels offers one generic Fronius entry (mirroring the generic-Modbus
+// single-entry pattern): the Solar API delivers the same PowerFlow shape across
+// the GEN24 / Symo / Primo / Symo Hybrid lines, so no per-model register map is
+// needed. No RatedKw is set (like the generic SunSpec entry), so the physical-
+// envelope guard stays inactive for Fronius until a rating is ever modelled.
+func froniusModels() []Model {
+	return []Model{
+		{ID: FamFroniusSolarAPI, Label: "Fronius (Solar API)", Family: FamFroniusSolarAPI,
+			Note: "GEN24, Symo, Primo, Symo Hybrid u. a. über die lokale Solar API"},
+	}
+}
+
 // DefaultCatalog returns the built-in option tree.
 func DefaultCatalog() Catalog {
 	return Catalog{
@@ -261,6 +307,16 @@ func DefaultCatalog() Catalog {
 					{ID: FamSunSpec, Label: "SunSpec (Standard)", Note: "SunSpec-konformes Modbus-Registermodell"},
 				},
 				Fields: modbusFields(),
+			},
+			{
+				ID:            BrandFronius,
+				Label:         "Fronius",
+				Communication: CommFroniusSolarAPI,
+				CommLabel:     "Fronius Solar API (HTTP/JSON)",
+				Note:          "Fronius-Wechselrichter (GEN24, Symo, Primo, Symo Hybrid u. a.) werden über die lokale Solar API ausgelesen. Aktivieren Sie die Solar API in der Weboberfläche des Wechselrichters.",
+				Models:        froniusModels(),
+				Families:      froniusFamilies(),
+				Fields:        froniusFields(),
 			},
 		},
 	}
@@ -339,6 +395,9 @@ type Connection struct {
 	// modbus_tcp
 	UnitID  int    `json:"unit_id,omitempty"`
 	Profile string `json:"profile,omitempty"`
+
+	// fronius_solar_api (InvertGridSign above is shared as the sign escape hatch)
+	InsecureTLS bool `json:"insecure_tls,omitempty"`
 }
 
 // SelectionRequest is what the web form POSTs: the client picks brand + the
@@ -443,8 +502,8 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.PowerScale != 1 && conn.PowerScale != 10 {
 			return Selection{}, invalid("Die Leistungsskalierung muss 1 oder 10 sein.")
 		}
-		// modbus-only fields are not part of this transport.
-		conn.UnitID, conn.Profile = 0, ""
+		// fields of the other transports are not part of this one.
+		conn.UnitID, conn.Profile, conn.InsecureTLS = 0, "", false
 	case CommModbusTCP:
 		if conn.Port == 0 {
 			conn.Port = defaultModbusPort
@@ -456,8 +515,17 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 			return Selection{}, invalid("Die Modbus-Unit-ID muss zwischen 1 und 247 liegen.")
 		}
 		conn.Profile = registerFamily // the register-map family IS the Modbus/SunSpec profile
-		// solarman-only fields are not part of this transport.
-		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
+		// fields of the other transports are not part of this one.
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS = "", 0, false, 0, false
+	case CommFroniusSolarAPI:
+		// The Solar API (HTTP/JSON) needs only host + port; no serial, unit id or
+		// auth. `insecure_tls` and `invert_grid_sign` (shared) are the only extras.
+		if conn.Port == 0 {
+			conn.Port = defaultFroniusPort
+		}
+		// fields of the other transports are not part of this one.
+		conn.Serial, conn.MbSlaveID, conn.PowerScale = "", 0, 0
+		conn.UnitID, conn.Profile = 0, ""
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -483,6 +551,9 @@ func (s Selection) BusPayload() []byte {
 	case CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile
+	case CommFroniusSolarAPI:
+		conn["insecure_tls"] = s.Connection.InsecureTLS
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 	}
 	payload := map[string]any{
 		"schema_version": SchemaVersion,

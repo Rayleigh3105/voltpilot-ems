@@ -28,6 +28,22 @@ function solarmanConfig(overrides = {}) {
   );
 }
 
+// A valid retained fronius_solar_api config.
+function froniusConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'fronius',
+      label: 'Fronius · Fronius (Solar API)',
+      family: 'fronius_solar_api',
+      communication: 'fronius_solar_api',
+      connection: { ip: '192.168.0.20', port: 80, insecure_tls: false, invert_grid_sign: false },
+      updated_at: '2026-07-09T12:00:00Z',
+    },
+    overrides,
+  );
+}
+
 // A valid retained modbus_tcp config (generic SunSpec).
 function modbusConfig(overrides = {}) {
   return Object.assign(
@@ -140,6 +156,45 @@ test('route: modbus_tcp with an unknown profile -> idle', () => {
   });
   assert.strictEqual(r.adapter, 'idle');
   assert.match(r.reason, /Profil/);
+});
+
+test('route: fronius_solar_api -> HTTP GET plan with the v1 PowerFlow url', () => {
+  const r = routing.route(routing.parseConfig(froniusConfig()));
+  assert.strictEqual(r.adapter, 'fronius_solar_api');
+  assert.strictEqual(r.family, 'fronius_solar_api');
+  assert.strictEqual(r.target, '192.168.0.20:80');
+  assert.strictEqual(r.scheme, 'http');
+  assert.strictEqual(r.url, 'http://192.168.0.20:80/solar_api/v1/GetPowerFlowRealtimeData.fcgi');
+  assert.strictEqual(r.connection.insecure_tls, false);
+  assert.strictEqual(r.connection.invert_grid_sign, false);
+});
+
+test('route: fronius defaults the port to 80', () => {
+  const r = routing.route(routing.parseConfig(froniusConfig({ connection: { ip: '10.0.0.9' } })));
+  assert.strictEqual(r.target, '10.0.0.9:80');
+  assert.strictEqual(r.url, 'http://10.0.0.9:80/solar_api/v1/GetPowerFlowRealtimeData.fcgi');
+});
+
+test('route: fronius insecure_tls -> https scheme (GEN24 self-signed cert)', () => {
+  const r = routing.route(routing.parseConfig(froniusConfig({ connection: { ip: '10.0.0.9', port: 443, insecure_tls: true } })));
+  assert.strictEqual(r.scheme, 'https');
+  assert.strictEqual(r.connection.insecure_tls, true);
+  assert.strictEqual(r.url, 'https://10.0.0.9:443/solar_api/v1/GetPowerFlowRealtimeData.fcgi');
+});
+
+test('route: fronius carries the invert_grid_sign escape hatch', () => {
+  const r = routing.route(routing.parseConfig(froniusConfig({ connection: { ip: '10.0.0.9', invert_grid_sign: true } })));
+  assert.strictEqual(r.connection.invert_grid_sign, true);
+});
+
+test('route: fronius with an unknown family -> idle', () => {
+  const r = routing.route({
+    communication: 'fronius_solar_api',
+    family: 'nonsense',
+    connection: { ip: '10.0.0.9' },
+  });
+  assert.strictEqual(r.adapter, 'idle');
+  assert.match(r.reason, /Fronius-Familie/);
 });
 
 test('route: null / no selection -> idle (stay idle-safe)', () => {

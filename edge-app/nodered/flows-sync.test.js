@@ -21,6 +21,7 @@ const routing = require('./inverter-routing');
 const controlRouting = require('./inverter-control-routing');
 const modbusTcp = require('./modbus-tcp');
 const deyeDecode = require('./deye/deye-decode');
+const froniusSolarApi = require('./fronius/solar-api');
 const sourcesRouting = require('./sources-routing');
 
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
@@ -89,11 +90,32 @@ test('flow router matches inverter-routing.route() for modbus_tcp', () => {
   assert.deepStrictEqual(outMsg.mb.read, expected.read);
 });
 
-test('flow router routes to idle (output 3) with no selection', () => {
+test('flow router matches inverter-routing.route() for fronius_solar_api', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'fronius', label: 'Fronius', family: 'fronius_solar_api',
+    communication: 'fronius_solar_api',
+    connection: { ip: '192.168.0.20', port: 80, insecure_tls: false, invert_grid_sign: false },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[2]; // output 3 carries msg.fronius
+  const expected = routing.route(routing.parseConfig(sel));
+  assert.strictEqual(outMsg.fronius.url, expected.url);
+  assert.strictEqual(outMsg.fronius.target, expected.target);
+  assert.strictEqual(outMsg.fronius.scheme, expected.scheme);
+  assert.strictEqual(outMsg.fronius.insecure_tls, expected.connection.insecure_tls);
+  assert.strictEqual(outMsg.fronius.invert_grid_sign, expected.connection.invert_grid_sign);
+  // idle (output 4) and the other branches must be null on this path.
+  assert.strictEqual(ret[0], null);
+  assert.strictEqual(ret[1], null);
+  assert.strictEqual(ret[3], null);
+});
+
+test('flow router routes to idle (output 4) with no selection', () => {
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow: {} });
   assert.strictEqual(ret[0], null);
   assert.strictEqual(ret[1], null);
-  assert.ok(ret[2] && ret[2].idle);
+  assert.strictEqual(ret[2], null);
+  assert.ok(ret[3] && ret[3].idle);
 });
 
 // The "Deye-Register -> Messwerte" node carries a synced copy of deye-decode.js
@@ -196,6 +218,46 @@ test('flow control planner matches the module for the OTHER Deye branches (hybri
   const selStr = { ...base, family: 'string' };
   const spStr = { battery_setpoint_kw: 0, source: 'schedule', control_enabled: true };
   assert.deepStrictEqual(runControlPlan(selStr, spStr), JSON.parse(JSON.stringify(controlRouting.controlRoute(selStr, spStr, {}))));
+});
+
+// The "Fronius PowerFlow -> Messwerte" node (auto-fronius-decode) carries a
+// synced COPY of fronius/solar-api.decodePowerFlow. Given a PowerFlow fixture it
+// must produce the identical reading the module does - incl. the SoC drop and
+// the never-fabricate-absent-fields discipline.
+function runFroniusDecode(json, invertGridSign) {
+  return runFunctionNode(byId['auto-fronius-decode'].func, {
+    msg: { fronius: { json, invert_grid_sign: !!invertGridSign } },
+  });
+}
+
+test('flow Fronius decoder matches solar-api.decodePowerFlow() for a hybrid read', () => {
+  const json = {
+    Head: { Status: { Code: 0 } },
+    Body: { Data: { Site: { P_Grid: -500, P_PV: 3000, P_Load: -2500, P_Akku: 1000 }, Inverters: { 1: { SOC: 57.5 } } } },
+  };
+  const { ret } = runFroniusDecode(json, false);
+  const flowReading = ret[0].payload;
+  delete flowReading.ts; // the flow stamps a live ts
+  assert.deepStrictEqual(flowReading, froniusSolarApi.decodePowerFlow(json).reading);
+  assert.strictEqual(flowReading.soc_pct, 57.5);
+  // battery power is never published as a channel.
+  assert.strictEqual(flowReading.battery_kw, undefined);
+});
+
+test('flow Fronius decoder DROPS a bad-status / all-null read, like the module', () => {
+  const bad = { Head: { Status: { Code: 255 } }, Body: { Data: { Site: { P_Grid: 100 } } } };
+  const { ret } = runFroniusDecode(bad, false);
+  assert.strictEqual(ret, null, 'flow node returns null -> no telemetry published');
+  assert.strictEqual(froniusSolarApi.decodePowerFlow(bad), null, 'module agrees');
+});
+
+test('flow Fronius decoder omits SoC when there is no battery, like the module', () => {
+  const noBatt = { Head: { Status: { Code: 0 } }, Body: { Data: { Site: { P_Grid: 1500, P_PV: 2000, P_Load: -3500 }, Inverters: { 1: { DT: 1 } } } } };
+  const { ret } = runFroniusDecode(noBatt, false);
+  const flowReading = ret[0].payload;
+  delete flowReading.ts;
+  assert.deepStrictEqual(flowReading, froniusSolarApi.decodePowerFlow(noBatt).reading);
+  assert.strictEqual('soc_pct' in flowReading, false);
 });
 
 test('flow modbus decoder matches modbus-tcp.decodeProfile() (sunspec)', () => {

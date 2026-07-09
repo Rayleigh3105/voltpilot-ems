@@ -37,7 +37,7 @@
     "type": "tab",
     "label": "Wechselrichter (automatisch)",
     "disabled": false,
-    "info": "SELBSTVERDRAHTUNG (Capstone): der Kunde waehlt seinen Wechselrichter EINMAL\nim Edge-App-Webportal (:8484 -> \"Wechselrichter einrichten\"); der Core\nveroeffentlicht die Auswahl retained auf dem lokalen Bus\n(edge/inverter/config). Dieser Tab liest sie und faehrt AUTOMATISCH den\nrichtigen Leseadapter - OHNE Flow-Edit pro Kunde:\n\n  - Deye (communication=solarman_v5) -> Solarman-V5 ueber TCP 8899, mit der\n    gewaehlten family-Registerkarte (deye/deye-decode.js).\n  - alles andere (generic_modbus / modbus_tcp) -> Modbus-TCP ueber Port 502\n    mit dem gewaehlten Profil (modbus-tcp.js).\n\nOhne Auswahl bleibt der Tab idle-sicher (kein Absturz). Nur Lesen/Monitoring\n- dieser Tab steuert NICHTS. Routing/Codecs: edge-app/nodered/\ninverter-routing.js + modbus-tcp.js + deye/*.js (getestet, Quelle der\nWahrheit; die Funktionsknoten tragen synchron gehaltene Kopien)."
+    "info": "SELBSTVERDRAHTUNG (Capstone): der Kunde waehlt seinen Wechselrichter EINMAL\nim Edge-App-Webportal (:8484 -> \"Wechselrichter einrichten\"); der Core\nveroeffentlicht die Auswahl retained auf dem lokalen Bus\n(edge/inverter/config). Dieser Tab liest sie und faehrt AUTOMATISCH den\nrichtigen Leseadapter - OHNE Flow-Edit pro Kunde:\n\n  - Deye (communication=solarman_v5) -> Solarman-V5 ueber TCP 8899, mit der\n    gewaehlten family-Registerkarte (deye/deye-decode.js).\n  - Fronius (communication=fronius_solar_api) -> EIN HTTP-GET auf die lokale\n    Solar API (GetPowerFlowRealtimeData.fcgi, v1) - wie Home Assistant\n    (fronius/solar-api.js). Nur lesen, kein Modbus.\n  - alles andere (generic_modbus / modbus_tcp) -> Modbus-TCP ueber Port 502\n    mit dem gewaehlten Profil (modbus-tcp.js).\n\nOhne Auswahl bleibt der Tab idle-sicher (kein Absturz). Nur Lesen/Monitoring\n- dieser Tab steuert NICHTS. Routing/Codecs: edge-app/nodered/\ninverter-routing.js + modbus-tcp.js + deye/*.js + fronius/solar-api.js\n(getestet, Quelle der Wahrheit; die Funktionsknoten tragen synchron\ngehaltene Kopien)."
   },
   {
     "id": "auto-note",
@@ -110,8 +110,8 @@
     "type": "function",
     "z": "tab-auto",
     "name": "Router / Leseplan",
-    "func": "// Router / Leseplan - das Herzstueck der Selbstverdrahtung: liest die aktive\n// Wechselrichter-Auswahl aus dem Flow-Kontext (von vp-inverter-config gesetzt)\n// und waehlt GENAU EINEN Lesepfad. Synchron gehalten mit\n// edge-app/nodered/inverter-routing.js (route) + den Registerkarten aus\n// deye/deye-decode.js und modbus-tcp.js.\n//   Ausgang 1: Deye Solarman-V5   (msg.deye)\n//   Ausgang 2: generisches Modbus (msg.mb)\n//   Ausgang 3: untaetig           (keine/unbekannte Auswahl)\nconst DEYE_READS = {\n  string:    [{ start: 0x0050, count: 0x0002 }],\n  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],\n  hybrid_3p: [{ start: 0x024c, count: 0x0058 }],\n  micro:     [{ start: 0x0056, count: 0x0002 }]\n};\nconst MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };\nconst num = (v, d) => { const n = typeof v === 'string' ? Number(v.trim()) : v; return (typeof n === 'number' && isFinite(n)) ? n : d; };\nconst idle = (reason) => { node.status({ fill: 'grey', shape: 'ring', text: reason }); msg.idle = reason; return [null, null, msg]; };\nconst sel = flow.get('inverter_config');\nif (!sel) return idle('keine Auswahl');\nconst conn = sel.connection || {};\nconst ip = (typeof conn.ip === 'string' ? conn.ip : '').trim();\nif (!ip) return idle('keine IP-Adresse');\nif (sel.communication === 'solarman_v5') {\n  const reads = DEYE_READS[sel.family];\n  if (!reads) return idle('unbekannte Deye-Familie: ' + sel.family);\n  const serial = conn.serial;\n  if (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) return idle('Datenlogger-Seriennummer fehlt');\n  const port = num(conn.port, 8899);\n  const cfg = {\n    ip, port, serial,\n    mb_slave_id: num(conn.mb_slave_id, 1),\n    family: sel.family,\n    invert_grid_sign: !!conn.invert_grid_sign,\n    invert_batt_sign: !!conn.invert_batt_sign,\n    power_scale: num(conn.power_scale, 1) > 0 ? num(conn.power_scale, 1) : 1\n  };\n  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => ({ start: r.start, count: r.count })), i: 0, blocks: [] };\n  node.status({ fill: 'blue', shape: 'dot', text: 'Deye ' + sel.family + ' -> Solarman-V5' });\n  return [msg, null, null];\n}\nif (sel.communication === 'modbus_tcp') {\n  const read = MODBUS_PROFILES[sel.family];\n  if (!read) return idle('unbekanntes Modbus-Profil: ' + sel.family);\n  const port = num(conn.port, 502);\n  msg.mb = { conn: { ip, port, unit_id: num(conn.unit_id, 1) }, profile: sel.family, read: { fc: read.fc, addr: read.addr, count: read.count }, target: ip + ':' + port };\n  node.status({ fill: 'blue', shape: 'dot', text: 'Modbus ' + sel.family + ' @ ' + ip + ':' + port });\n  return [null, msg, null];\n}\nreturn idle('unbekannte Kommunikationsmethode');",
-    "outputs": 3,
+    "func": "// Router / Leseplan - das Herzstueck der Selbstverdrahtung: liest die aktive\n// Wechselrichter-Auswahl aus dem Flow-Kontext (von vp-inverter-config gesetzt)\n// und waehlt GENAU EINEN Lesepfad. Synchron gehalten mit\n// edge-app/nodered/inverter-routing.js (route) + den Registerkarten aus\n// deye/deye-decode.js und modbus-tcp.js.\n//   Ausgang 1: Deye Solarman-V5   (msg.deye)\n//   Ausgang 2: generisches Modbus (msg.mb)\n//   Ausgang 3: Fronius Solar API  (msg.fronius)\n//   Ausgang 4: untaetig           (keine/unbekannte Auswahl)\nconst DEYE_READS = {\n  string:    [{ start: 0x0050, count: 0x0002 }],\n  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],\n  hybrid_3p: [{ start: 0x024c, count: 0x0058 }],\n  micro:     [{ start: 0x0056, count: 0x0002 }]\n};\nconst MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };\nconst FRONIUS_FAMILIES = { fronius_solar_api: true };\nconst FRONIUS_POWERFLOW_PATH = '/solar_api/v1/GetPowerFlowRealtimeData.fcgi';\nconst num = (v, d) => { const n = typeof v === 'string' ? Number(v.trim()) : v; return (typeof n === 'number' && isFinite(n)) ? n : d; };\nconst idle = (reason) => { node.status({ fill: 'grey', shape: 'ring', text: reason }); msg.idle = reason; return [null, null, null, msg]; };\nconst sel = flow.get('inverter_config');\nif (!sel) return idle('keine Auswahl');\nconst conn = sel.connection || {};\nconst ip = (typeof conn.ip === 'string' ? conn.ip : '').trim();\nif (!ip) return idle('keine IP-Adresse');\nif (sel.communication === 'solarman_v5') {\n  const reads = DEYE_READS[sel.family];\n  if (!reads) return idle('unbekannte Deye-Familie: ' + sel.family);\n  const serial = conn.serial;\n  if (serial === undefined || serial === null || serial === '' || !(Number(serial) > 0)) return idle('Datenlogger-Seriennummer fehlt');\n  const port = num(conn.port, 8899);\n  const cfg = {\n    ip, port, serial,\n    mb_slave_id: num(conn.mb_slave_id, 1),\n    family: sel.family,\n    invert_grid_sign: !!conn.invert_grid_sign,\n    invert_batt_sign: !!conn.invert_batt_sign,\n    power_scale: num(conn.power_scale, 1) > 0 ? num(conn.power_scale, 1) : 1\n  };\n  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => ({ start: r.start, count: r.count })), i: 0, blocks: [] };\n  node.status({ fill: 'blue', shape: 'dot', text: 'Deye ' + sel.family + ' -> Solarman-V5' });\n  return [msg, null, null, null];\n}\nif (sel.communication === 'modbus_tcp') {\n  const read = MODBUS_PROFILES[sel.family];\n  if (!read) return idle('unbekanntes Modbus-Profil: ' + sel.family);\n  const port = num(conn.port, 502);\n  msg.mb = { conn: { ip, port, unit_id: num(conn.unit_id, 1) }, profile: sel.family, read: { fc: read.fc, addr: read.addr, count: read.count }, target: ip + ':' + port };\n  node.status({ fill: 'blue', shape: 'dot', text: 'Modbus ' + sel.family + ' @ ' + ip + ':' + port });\n  return [null, msg, null, null];\n}\nif (sel.communication === 'fronius_solar_api') {\n  if (!FRONIUS_FAMILIES[sel.family]) return idle('unbekannte Fronius-Familie: ' + sel.family);\n  const port = num(conn.port, 80);\n  const insecure = !!conn.insecure_tls;\n  const scheme = insecure ? 'https' : 'http';\n  msg.fronius = { url: scheme + '://' + ip + ':' + port + FRONIUS_POWERFLOW_PATH, scheme, insecure_tls: insecure, invert_grid_sign: !!conn.invert_grid_sign, target: ip + ':' + port };\n  node.status({ fill: 'blue', shape: 'dot', text: 'Fronius Solar API @ ' + ip + ':' + port });\n  return [null, null, msg, null];\n}\nreturn idle('unbekannte Kommunikationsmethode');",
+    "outputs": 4,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
@@ -124,6 +124,9 @@
       ],
       [
         "auto-modbus"
+      ],
+      [
+        "auto-fronius"
       ],
       [
         "auto-idle"
@@ -215,6 +218,48 @@
     ]
   },
   {
+    "id": "auto-fronius",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Fronius Solar API lesen (HTTP)",
+    "func": "// Fronius Solar API lesen: EIN HTTP(S)-GET auf GetPowerFlowRealtimeData.fcgi\n// (Solar API v1) - wie Home Assistant Fronius liest. Traegt KEINE Decode-Logik\n// (der naechste Knoten decodiert), nur den HTTP-Client. https +\n// rejectUnauthorized:false NUR bei insecure_tls (GEN24-Firmware, die auf HTTPS\n// mit selbstsigniertem Zertifikat umleitet). Jeder Fehler (Verbindung, Timeout,\n// kein JSON, HTTP>=400) -> null = idle-sicher, nie fabriziert. Quelle der\n// Wahrheit fuer die URL/Decode: edge-app/nodered/fronius/solar-api.js.\nconst http = global.get('http');\nconst https = global.get('https');\nif (!http || !https) { node.status({ fill: 'red', shape: 'ring', text: 'http/https fehlt (settings.js)' }); node.error('functionGlobalContext.http/https in settings.js setzen', msg); return null; }\nconst f = msg.fronius;\nif (!f || !f.url) return null;\nconst lib = f.scheme === 'https' ? https : http;\nconst timeoutMs = 5000;\nreturn new Promise((resolve) => {\n  let done = false;\n  const finish = (ok) => { if (done) return; done = true; resolve(ok); };\n  const opts = { method: 'GET', timeout: timeoutMs };\n  if (f.scheme === 'https') opts.rejectUnauthorized = f.insecure_tls ? false : true;\n  let req;\n  try {\n    req = lib.request(f.url, opts, (res) => {\n      if (res.statusCode >= 400) { node.status({ fill: 'red', shape: 'ring', text: 'HTTP ' + res.statusCode }); res.resume(); return finish(null); }\n      let body = '';\n      res.setEncoding('utf8');\n      res.on('data', (c) => { body += c; if (body.length > 262144) { try { req.destroy(); } catch (e) { /* ignore */ } } });\n      res.on('end', () => { try { f.json = JSON.parse(body); finish(msg); } catch (e) { node.status({ fill: 'red', shape: 'ring', text: 'kein JSON' }); finish(null); } });\n    });\n  } catch (e) { node.status({ fill: 'red', shape: 'ring', text: 'Fronius: ' + e.message }); return finish(null); }\n  req.on('error', (e) => { node.status({ fill: 'red', shape: 'ring', text: 'Fronius: ' + e.message }); finish(null); });\n  req.on('timeout', () => { node.status({ fill: 'red', shape: 'ring', text: 'Timeout' }); try { req.destroy(); } catch (e) { /* ignore */ } finish(null); });\n  req.end();\n});",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 400,
+    "wires": [
+      [
+        "auto-fronius-decode"
+      ]
+    ]
+  },
+  {
+    "id": "auto-fronius-decode",
+    "type": "function",
+    "z": "tab-auto",
+    "name": "Fronius PowerFlow -> Messwerte",
+    "func": "// Fronius PowerFlow -> flache edge/telemetry-Nachricht. Traegt eine KOPIE von\n// decodePowerFlow aus edge-app/nodered/fronius/solar-api.js - synchron halten\n// (flows-sync.test.js pinnt es). Ausgang 1: Messwerte fuer vp-telemetrie;\n// Ausgang 2: true als Link-Lebenszeichen. VORZEICHEN (auf echtem Geraet\n// PRUEFEN): power_kw = P_Grid (+Bezug/-Einspeisung, wie VoltPilot, KEINE\n// Invertierung noetig), load_kw = -P_Load (Fronius meldet Last negativ). Ein\n// fehlendes Feld -> Kanal ausgelassen (nie fabrizierte 0); SoC ausserhalb\n// (0,100] fallen gelassen; P_Akku nur Kalibrierung, NIE veroeffentlicht (die\n// Cloud leitet battery_kw aus der Leistungsbilanz ab).\nconst f = msg.fronius;\nif (!f || !f.json) { node.status({ fill: 'red', shape: 'ring', text: 'keine Antwort' }); return null; }\nconst r3 = (x) => Math.round(x * 1000) / 1000;\nconst r1 = (x) => Math.round(x * 10) / 10;\nconst num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);\nconst socOk = (p) => (typeof p === 'number' && isFinite(p) && p > 0 && p <= 100);\nconst decodePowerFlow = (json, opts) => {\n  opts = opts || {};\n  if (json == null || typeof json !== 'object') return null;\n  const body = json.Body;\n  const data = body && typeof body === 'object' ? body.Data : null;\n  if (!data || typeof data !== 'object') return null;\n  const head = json.Head;\n  if (head && head.Status && typeof head.Status.Code === 'number' && head.Status.Code !== 0) return null;\n  const site = data.Site;\n  if (!site || typeof site !== 'object') return null;\n  const reading = {};\n  const pGrid = num(site.P_Grid);\n  if (pGrid !== null) { const sign = opts.invertGridSign ? -1 : 1; reading.power_kw = r3((sign * pGrid) / 1000); }\n  const pPv = num(site.P_PV);\n  if (pPv !== null) reading.pv_power_kw = r3(Math.max(0, pPv) / 1000);\n  const pLoad = num(site.P_Load);\n  if (pLoad !== null) reading.load_kw = r3(Math.max(0, -pLoad) / 1000);\n  let soc = null;\n  const inv = data.Inverters;\n  if (inv && typeof inv === 'object') { const first = inv['1']; if (first && typeof first === 'object') soc = num(first.SOC); }\n  if (socOk(soc)) reading.soc_pct = r1(soc);\n  if (Object.keys(reading).length === 0) return null;\n  const pAkku = num(site.P_Akku);\n  const battKw = pAkku === null ? null : r3(pAkku / 1000);\n  return { reading, battKw };\n};\nconst out = decodePowerFlow(f.json, { invertGridSign: !!f.invert_grid_sign });\nif (!out) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine Messwerte' }); return null; }\nconst reading = Object.assign({ ts: new Date().toISOString() }, out.reading);\nconst pv = reading.pv_power_kw !== undefined ? reading.pv_power_kw.toFixed(1) : '?';\nconst soc = reading.soc_pct !== undefined ? (', SoC ' + reading.soc_pct.toFixed(0) + ' %') : '';\nnode.status({ fill: 'green', shape: 'dot', text: 'pv ' + pv + ' kW' + soc });\nreturn [{ payload: reading }, { payload: true }];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 460,
+    "wires": [
+      [
+        "auto-telemetrie"
+      ],
+      [
+        "auto-status",
+        "auto-linkwatch"
+      ]
+    ]
+  },
+  {
     "id": "auto-idle",
     "type": "function",
     "z": "tab-auto",
@@ -226,7 +271,7 @@
     "finalize": "",
     "libs": [],
     "x": 600,
-    "y": 420,
+    "y": 540,
     "wires": [
       []
     ]
@@ -280,10 +325,10 @@
     "id": "auto-control-note",
     "type": "comment",
     "z": "tab-auto",
-    "name": "Steuerung: Sollwert -> Schreibplan (controlRoute) -> schreiben + zuruecklesen -> vp-control-readback. Standard AUS (Not-Aus), Deye nur lesend.",
+    "name": "Steuerung: Sollwert -> Schreibplan (controlRoute) -> schreiben + zuruecklesen -> vp-control-readback. Standard AUS (Not-Aus), Deye/Fronius nur lesend.",
     "info": "",
     "x": 520,
-    "y": 500,
+    "y": 620,
     "wires": []
   },
   {
@@ -293,7 +338,7 @@
     "name": "Sollwert vom Core",
     "core": "cfg-vp-core",
     "x": 140,
-    "y": 560,
+    "y": 680,
     "wires": [
       [
         "auto-control-plan"
@@ -312,7 +357,7 @@
     "finalize": "",
     "libs": [],
     "x": 380,
-    "y": 560,
+    "y": 680,
     "wires": [
       [
         "auto-control-exec"
@@ -331,7 +376,7 @@
     "finalize": "",
     "libs": [],
     "x": 650,
-    "y": 560,
+    "y": 680,
     "wires": [
       [
         "auto-control-readback"
@@ -345,7 +390,7 @@
     "name": "Rueckmeldung an Core",
     "core": "cfg-vp-core",
     "x": 930,
-    "y": 560,
+    "y": 680,
     "wires": []
   },
   {
