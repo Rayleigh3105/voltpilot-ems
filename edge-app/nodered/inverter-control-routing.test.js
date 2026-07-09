@@ -13,6 +13,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 
 const C = require('./inverter-control-routing.js');
+const sunspec = require('./sunspec/model-discovery.js');
 
 const SUNSPEC_SEL = {
   schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
@@ -22,6 +23,41 @@ const DEYE_SEL = {
   schema_version: '1.0', brand: 'deye', family: 'hybrid_3p',
   communication: 'solarman_v5', connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 },
 };
+const FRONIUS_SEL = {
+  schema_version: '1.0', brand: 'fronius', family: 'fronius_solar_api',
+  communication: 'fronius_solar_api', connection: { ip: '192.168.0.20', port: 80 },
+};
+
+// Build a live SunSpec model-discovery result over a minimal fixture register
+// image (a Common + Nameplate(12 kW) + Immediate-Controls(SF -2) list), the way
+// the flow/core would hand it to controlRoute via opts.sunspec on a real device.
+function froniusDiscovery() {
+  const base = sunspec.DEFAULT_BASE;
+  const img = new Map();
+  img.set(base, (sunspec.SID >>> 16) & 0xffff);
+  img.set(base + 1, sunspec.SID & 0xffff);
+  let addr = base + 2;
+  const put = (id, body) => {
+    img.set(addr, id & 0xffff);
+    img.set(addr + 1, body.length & 0xffff);
+    for (let i = 0; i < body.length; i++) img.set(addr + 2 + i, body[i] & 0xffff);
+    addr += 2 + body.length;
+  };
+  const np = new Array(26).fill(0);
+  np[sunspec.M120.WRtg] = 12000; np[sunspec.M120.WRtg_SF] = 0; // 12 kW
+  const ctl = new Array(sunspec.M123.LENGTH).fill(0);
+  ctl[sunspec.M123.WMaxLimPct_SF] = -2 & 0xffff;
+  put(sunspec.MODEL.COMMON, new Array(66).fill(0));
+  put(sunspec.MODEL.NAMEPLATE, np);
+  put(sunspec.MODEL.IMMEDIATE_CONTROLS, ctl);
+  img.set(addr, sunspec.END_MODEL_ID); img.set(addr + 1, 0);
+  const read = (a, count) => {
+    const out = [];
+    for (let i = 0; i < count; i++) { const w = img.get(a + i); if (w === undefined) break; out.push(w); }
+    return out;
+  };
+  return sunspec.discover(read);
+}
 
 const enabled = (over) => ({ battery_setpoint_kw: 0, source: 'schedule', control_enabled: true, ...over });
 
@@ -178,9 +214,51 @@ test('Deye string/micro (no battery) only plans the active-power limit at 0x0028
   assert.strictEqual(r.planned.find((w) => w.role === 'battery_power'), undefined);
 });
 
-test('CERTIFIED_CONTROL_FAMILIES contains sunspec but no Deye family', () => {
+// --- Fronius SunSpec curtailment adapter (UNCERTIFIED - planned only) ---------
+
+test('Fronius is UNCERTIFIED: never emits executable writes/readbacks even when control_enabled', () => {
+  const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 0, pv_limit_kw: 6 }), { sunspec: froniusDiscovery() });
+  assert.strictEqual(r.adapter, 'fronius_sunspec');
+  assert.strictEqual(r.certified, false, 'fronius must not be certified');
+  assert.strictEqual(r.controlEnabled, true);
+  assert.deepStrictEqual(r.writes, [], 'no live write to an uncertified inverter');
+  assert.deepStrictEqual(r.readbacks, [], 'no fake confirmation of unproven registers');
+  // control endpoint is the SunSpec Modbus surface (502), NOT the Solar-API port 80
+  assert.strictEqual(r.connection.port, C.DEFAULT_FRONIUS_CONTROL_PORT);
+});
+
+test('Fronius planned curtailment maps pv_limit_kw -> discovered Model 123 WMaxLimPct (bench_pending)', () => {
+  const disc = froniusDiscovery();
+  const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 0, pv_limit_kw: 6 }), { sunspec: disc });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  // 6 kW cap of a 12 kW nameplate -> 50 %, register scale SF -2 -> raw 5000.
+  assert.strictEqual(p.pv_limit_pct.addr, disc.controls.wMaxLimPctAddr);
+  assert.strictEqual(p.pv_limit_pct.value, 5000);
+  assert.strictEqual(p.pv_limit_enable.addr, disc.controls.wMaxLimEnaAddr);
+  assert.strictEqual(p.pv_limit_enable.value, sunspec.WMAX_LIM_ENA.ENABLED);
+  assert.strictEqual(p.pv_limit_revert_tms.addr, disc.controls.wMaxLimPctRvrtTmsAddr);
+  // every Fronius planned op is bench-pending, and NONE is executable
+  assert.ok(r.planned.every((w) => w.bench_pending === true));
+  assert.deepStrictEqual(r.writes, []);
+});
+
+test('Fronius is IDLE-SAFE without a discovery result: no planned addresses, honest reason', () => {
+  const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 0, pv_limit_kw: 6 }), {});
+  assert.strictEqual(r.adapter, 'fronius_sunspec');
+  assert.deepStrictEqual(r.writes, []);
+  assert.deepStrictEqual(r.planned, [], 'no fabricated address without live model discovery');
+  assert.match(r.reason, /nicht erkannt|nicht freigegeben/);
+});
+
+test('Fronius uncurtailed slot plans DISABLING the limit (Model 123 enable = 0)', () => {
+  const r = C.controlRoute(FRONIUS_SEL, enabled({ battery_setpoint_kw: 0, pv_limit_kw: null }), { sunspec: froniusDiscovery() });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.pv_limit_enable.value, sunspec.WMAX_LIM_ENA.DISABLED);
+});
+
+test('CERTIFIED_CONTROL_FAMILIES contains sunspec but no Deye or Fronius family', () => {
   assert.ok(C.CERTIFIED_CONTROL_FAMILIES.has('sunspec'));
-  for (const f of ['hybrid_3p', 'hybrid_1p', 'string', 'micro']) {
+  for (const f of ['hybrid_3p', 'hybrid_1p', 'string', 'micro', 'fronius_solar_api']) {
     assert.ok(!C.CERTIFIED_CONTROL_FAMILIES.has(f), f + ' must stay uncertified');
   }
 });

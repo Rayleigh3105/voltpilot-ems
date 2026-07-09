@@ -13,9 +13,11 @@ in einem Aufruf, also den kompletten kanonischen Messwertsatz von VoltPilot.
   (ein Node-RED-Flow ist self-contained JSON und kann keine Repo-Datei requiren);
   `flows-sync.test.js` pinnt beide zusammen - das gleiche Prinzip wie bei Deye
   (`deye/solarman-v5.js` + `deye/deye-decode.js`).
-- **Nur lesen.** Fronius bleibt per Konstruktion nur-lesend, wie Deye: es steht
-  **nicht** in `inverter-control-routing.js`'s `CERTIFIED_CONTROL_FAMILIES`.
-  Batteriesteuerung ist ausgeklammert (siehe unten).
+- **Nur lesen (Steuerung unzertifiziert).** Fronius bleibt per Konstruktion
+  nur-lesend, wie Deye: es steht **nicht** in `inverter-control-routing.js`'s
+  `CERTIFIED_CONTROL_FAMILIES`. Ein SunSpec-Modbus-**Curtailment**-Pfad (Modell 123)
+  ist als **nur geplant** (`planned`, nie ausgeführt) verdrahtet - Details +
+  Sicherheit in Abschnitt 6. Batterie-Laden/-Entladen bleibt ausgeklammert.
 - **Nur cloud-/vertragsneutral.** Die kanonischen Kanäle
   (`pv_power_kw`/`power_kw`/`load_kw`/`soc_pct`) existieren bereits - keine
   Änderung an Contract, Ingest, Rollups, Portal oder Optimierer.
@@ -113,24 +115,84 @@ Produktivbetrieb **an einem echten Gerät verifizieren**:
 
 Ohne/bei unbekannter Auswahl bleibt der Tab idle-sicher.
 
+## 6. Steuerung (Einspeise-Begrenzung / Curtailment) - SunSpec Modbus, NUR GEPLANT
+
+Fronius-Steuerung läuft über die **standardbasierte SunSpec-Modbus-Schnittstelle**
+(nicht die Solar-API und **nicht** den evcc-`config/timeofuse`-HTTP-Hack - vom
+Design-Bericht `vp-fronius-control-scout-c4` verworfen: undokumentiert,
+credential-gebunden, zweimal über Firmware-Versionen gebrochen). Increment 1 ist
+**nur Curtailment**: SunSpec **Modell 123 `WMaxLimPct`** (0-100 % der Nennleistung),
+das direkte SunSpec-Gegenstück zum bereits zertifizierten Simulator-`pv_limit`-Write.
+
+**SICHERHEIT (Captain-Entscheidung 3, nicht verhandelbar): Fronius ist UNZERTIFIZIERT
+und schreibt NICHTS live.** Genau wie jede Deye-Familie: `fronius_solar_api` steht
+**nicht** in `CERTIFIED_CONTROL_FAMILIES` (`inverter-control-routing.js`) noch in
+`VP_CONTROL_CERTIFIED_FAMILIES` (Core). `controlRoute` liefert den beabsichtigten
+Schreibplan nur als **`planned`** (Prüfstand-Artefakt, `bench_pending`), **niemals
+als ausführbaren `writes`-Eintrag**, unabhängig von `VP_CONTROL_ENABLED`. Der
+Adaptername `fronius_sunspec` ist bewusst ungleich `modbus_tcp`, sodass der
+Schreib-/Rücklese-Executor im Flow darauf **nichts tut** (no-op, wie bei Deye).
+Live-Steuerung folgt **erst nach einem echten Prüfstand-Durchgang** (siehe
+[`CONTROL-BENCH.md`](CONTROL-BENCH.md) → Fronius) - separat und später.
+
+- **Echte SunSpec-Modell-Erkennung** ([`sunspec/model-discovery.js`](sunspec/model-discovery.js),
+  `sunspec/model-discovery.test.js`): läuft vom bekannten Basis-Register (40001 /
+  SID „SunS") die dynamische Modell-Liste ab, findet Common (1), Nameplate (120),
+  **Immediate Controls (123)** und Storage (124), unterstützt **int+SF (101/102/103)
+  UND float (111/112/113)**. **Adressen werden LIVE erkannt, nie aus einer Tabelle
+  hartkodiert** (der Bericht fand zwei widersprüchliche Community-Tabellen für
+  dasselbe Register - genau der Grund für die Erkennung). Feldversätze innerhalb
+  eines Modells (WMaxLimPct = Basis+3, WMaxLim_Ena = +7 …) sind die feste
+  SunSpec-Definition; die **Modell-Basis** wird erkannt. Fehlt der SID-Marker oder
+  Modell 123 → **idle-sicher, kein Schreibplan, nie eine fabrizierte Adresse**.
+- **Modell-123-Zuordnung:** `pv_limit_kw` → `WMaxLimPct` (kW → % der erkannten
+  Nennleistung `WRtg`), plus `WMaxLim_Ena` (Aktivierung) und `WMaxLimPct_RvrtTms`
+  (Rückfall-Timeout - der herstellereigene Totmann-Schalter, der die Begrenzung
+  automatisch aufhebt, wenn keine neuen Modbus-Nachrichten mehr eintreffen).
+  Reihenfolge sicherheitsrelevant: erst Wert + Rückfall-Timer, **zuletzt** die
+  Aktivierung. Ein unbegrenzter Slot (`pv_limit_kw` fehlt) **deaktiviert** die
+  Begrenzung (`WMaxLim_Ena = 0`), damit eine alte Begrenzung nie stehen bleibt.
+- **Vorzeichen/Skalierung sind AM GERÄT ZU PRÜFEN.** `WMaxLimPct` ist ein Prozent
+  der Nennleistung, das Register ist mit dem **live gelesenen** `WMaxLimPct_SF`
+  skaliert (Fallback -2). Alle Annahmen sind im Code als „VERIFY on device" markiert.
+- **Steuer-Endpunkt (Modbus, getrennt vom Lese-Endpunkt).** Die Solar-API-Lesung
+  läuft über HTTP (Port 80); SunSpec-Steuerung ist eine **separate** Modbus-TCP-
+  Fläche (Port 502, nachdem der Installateur „Allow Control" gesetzt hat). Der
+  Steuer-Adapter nutzt dieselbe `connection.ip` plus optional `control_port`
+  (Standard 502) + `control_unit_id` (Standard 1) - additive Felder, die der
+  Lesepfad ignoriert. Da nur geplant, ist das eine Prüfstand-/Freigabe-Einstellung,
+  kein UX-Schritt in diesem Increment.
+
+**Aktivieren am Gerät (für den späteren Prüfstand, NICHT für diesen Increment):**
+Weboberfläche → **Kommunikation → Modbus** → (1) **SunSpec Model Type** wählen
+(`float` = 111/112/113 oder `int + SF` = 101/102/103) und (2) **„Allow Control"**
+ankreuzen (das ist ein zweiter, separater Schalter neben „Solar API aktivieren").
+Ohne „Allow Control" antwortet der Wechselrichter auf keine Schreibbefehle - der
+Steuerpfad bleibt idle-sicher.
+
 ## Ausgeklammert (bewusst)
 
-- **Steuerung / Schreibpfad.** Fronius bleibt nur-lesend (nicht in
-  `CERTIFIED_CONTROL_FAMILIES`). Eine spätere Steuerung würde die
-  `config/timeofuse`-artigen GEN24-Endpunkte adressieren - deren Pfad Fronius über
-  Firmware-Versionen schon verschoben/gebrochen hat (evcc #21472), also ein
-  eigener Prüfstand-Durchgang, unabhängig von diesem Lese-Increment.
+- **Batterie Laden/Entladen (Modell 124/802-803).** Das ist Increment 2
+  (`vp-fronius-control-battery`) - höheres Risiko (kann Batteriegesundheit/Garantie
+  betreffen), eigener Prüfstand-Durchgang. Die Erkennung findet Modell 124 bereits,
+  gebaut werden seine Schreibbefehle hier **nicht**.
+- **Fronius live schalten / zertifizieren.** Braucht den echten Prüfstand-Durchgang
+  (Register-Adressen, Vorzeichen, kW↔%-Umrechnung, `RvrtTms`-Verhalten) - separat.
+- **Der GEN24-`config/timeofuse`-HTTP-Pfad** - vom Design verworfen, wird nicht gebaut.
 - **Fronius als zusätzliche Quelle (`fronius_solar_api`-Netz-Zähler/Erzeuger).**
   Der Multi-Source-Pfad liest heute nur `modbus_tcp`-Quellen; eine Fronius-Quelle
-  wird vom Routing erkannt, ihr Einzel-Leser ist zurückgestellt (kleiner
-  Folgeschritt, der dieses Decode-Modul wiederverwendet).
-- **Echte, standardbasierte SunSpec-Modell-Erkennung** (größere, separate
-  Fähigkeit) - Fronius unterstützt zwar Modbus/SunSpec, HA nutzt es aber bewusst
-  nicht; die Solar API ist der einfachere, reichhaltigere Weg.
+  wird vom Routing erkannt, ihr Einzel-Leser ist zurückgestellt.
 
 ## Siehe auch
 
-- [`fronius/solar-api.js`](fronius/solar-api.js) - Decode-Modul (Quelle der Wahrheit)
+- [`fronius/solar-api.js`](fronius/solar-api.js) - Lese-Decode-Modul (Quelle der Wahrheit)
+- [`sunspec/model-discovery.js`](sunspec/model-discovery.js) - SunSpec-Modell-Erkennung
+  + Modell-123-Curtailment-Zuordnung (Steuerung, Quelle der Wahrheit)
+- [`inverter-control-routing.js`](inverter-control-routing.js) - Schreib-Routing
+  (Fronius-Zweig, `planned`-only) + `CERTIFIED_CONTROL_FAMILIES`-Gate
+- [`CONTROL-BENCH.md`](CONTROL-BENCH.md) - Prüfstand-Checkliste (Fronius-Abschnitt)
 - [`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md) - `edge/inverter/config`-Contract
 - [`DEYE.md`](DEYE.md) - das Schwestermodell (Solarman-V5), gleiche Disziplin
 - Home Assistant Fronius / `pyfronius` - Referenzimplementierung
+- Design-Bericht `vp-fronius-control-scout-c4` - die Steuer-Design-Entscheidung
+  (SunSpec Modbus statt `config/timeofuse`)

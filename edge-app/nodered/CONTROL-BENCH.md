@@ -69,12 +69,61 @@ seinem echten **SUN-\*-SG01HP3-EU** (und einem LV-Gerät **SG04LP3**) übergibt.
    sicheren Neutralzustand zurück (Eigenverbrauch / kein erzwungener Sollwert, keine
    veraltete Begrenzung latch-t). Kein stehender Zwangssollwert.
 
+## Checkliste Fronius (SunSpec Modbus, Curtailment - Increment 1)
+
+Fronius-Steuerung läuft über **SunSpec Modbus** (Modell 123 `WMaxLimPct`), nicht die
+Solar-API und nicht `config/timeofuse` (Design-Bericht `vp-fronius-control-scout-c4`).
+Der Adapter (`inverter-control-routing.js` → `froniusControl`) + die Modell-Erkennung
+(`sunspec/model-discovery.js`) sind gebaut, aber **unzertifiziert**: Fronius steht
+**nicht** in `CERTIFIED_CONTROL_FAMILIES` / `VP_CONTROL_CERTIFIED_FAMILIES`, der Plan
+ist **nur `planned`** (`bench_pending`), es gibt **keinen Live-Write**. Der
+automatisierte Beweis läuft nur gegen den **Simulator** (SunSpec-Profil, Reg 40/41/42);
+ein echter Fronius-Write geht erst nach diesem Durchgang live.
+
+**Vor der Sitzung (Fronius-spezifisch):**
+
+- Am Wechselrichter **Kommunikation → Modbus**: (1) **SunSpec Model Type** wählen
+  (`float` 111/112/113 oder `int + SF` 101/102/103) und (2) **„Allow Control"** ankreuzen
+  (zweiter Schalter neben „Solar API aktivieren"). Ohne „Allow Control" antwortet der
+  Wechselrichter auf keine Schreibbefehle.
+- **An einem Ersatz-Wechselrichter mit echter Batterie** testen, nie am Kundengerät.
+- Steuer-Endpunkt: Modbus TCP auf `<IP>:502` (getrennt vom Solar-API-Lese-Port 80);
+  ggf. `control_port`/`control_unit_id` in der Inverter-Config setzen.
+
+**Abzuhaken (pro Modell/Firmware, Bericht §3.3):**
+
+1. **Modell-Erkennung.** Der dynamische Walk (`sunspec/model-discovery.js`) findet
+   Common (1), Nameplate (120), **Immediate Controls (123)** und Storage (124) auf
+   genau diesem Gerät + Firmware + SunSpec-Model-Type korrekt. **Adressen live erkannt,
+   nie aus einer Tabelle** (zwei Community-Tabellen widersprachen sich beim selben
+   Register). Modell 123 fehlt → idle-sicher, kein Schreibplan.
+2. **`WMaxLimPct`/`WMaxLim_Ena` wirken + lesen zurück.** Einen Wert (z. B. 50 %)
+   schreiben, per FC3 zurücklesen (Rückleseschleife), und gegen die gemessene
+   Einspeiseleistung querchecken, dass die Begrenzung tatsächlich greift.
+3. **`WMaxLimPct_RvrtTms` (Totmann-Schalter).** Wert setzen, Schreiben **einstellen** →
+   der Wechselrichter muss die Begrenzung nach Ablauf des Rückfall-Timeouts **sicher
+   aufheben** (kein stehender Zwangswert). Standard 60 s (der Core republiziert alle
+   ~10 s), Bereich laut Handbuch 0-28800 s - am Gerät verifizieren.
+4. **kW↔%-Umrechnung.** `WMaxLimPct` ist Prozent der Nennleistung; die erkannte
+   `WRtg` (× 10^`WRtg_SF`) und der live gelesene `WMaxLimPct_SF` (Fallback -2) müssen
+   die kW↔%-Umrechnung sauber round-trippen (z. B. 6 kW Cap auf 12 kW → 50 %).
+5. **Vorzeichen/Skalierung.** Firmware-abhängig, nie annehmen (im Code „VERIFY on
+   device" markiert). Am echten Gerät bestätigen, dass eine höhere `WMaxLimPct` mehr
+   Einspeisung erlaubt und `WMaxLim_Ena = 0` die Begrenzung wirklich aufhebt.
+6. **Reihenfolge + Fail-Safe.** Der Plan schreibt Wert + Rückfall-Timer VOR der
+   Aktivierung. Bestätigen: Steuerung aus / Plan veraltet / Verbindungsverlust →
+   neutraler Zustand (keine stehende Begrenzung).
+
+Batterie-Laden/-Entladen (Modell 124/802-803) ist **Increment 2** (`vp-fronius-control-battery`),
+nicht Teil dieser Fronius-Curtailment-Freigabe.
+
 ## Freigabe (Zertifizierung)
 
 Erst wenn **alle sieben Punkte** für ein konkretes Modell/Firmware bestätigt sind:
 
 - Die Register-Familie in die Zertifizierungs-Allowlist aufnehmen -
-  `VP_CONTROL_CERTIFIED_FAMILIES` im Core (z. B. `sunspec,hybrid_3p`) und
+  `VP_CONTROL_CERTIFIED_FAMILIES` im Core (z. B. `sunspec,hybrid_3p` bzw.
+  `sunspec,fronius_solar_api` für Fronius-Curtailment) und
   `CERTIFIED_CONTROL_FAMILIES` in `inverter-control-routing.js` (+ dem synchron
   gehaltenen Flow-Knoten). Beide Gates sind absichtlich redundant (Defense-in-Depth).
 - Steuerung pro Gerät scharfschalten: `VP_CONTROL_ENABLED=true` erst für die

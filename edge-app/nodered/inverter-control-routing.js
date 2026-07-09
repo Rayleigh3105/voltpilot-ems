@@ -38,9 +38,22 @@
  */
 
 const deyeDecode = require('./deye/deye-decode');
+const sunspec = require('./sunspec/model-discovery');
 
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
+const COMM_FRONIUS = 'fronius_solar_api';
+
+// The Modbus-TCP control endpoint a Fronius device exposes for SunSpec control.
+// It is a SEPARATE surface from the Solar-API HTTP READ endpoint (port 80): the
+// installer ticks "Allow Control" in Communication -> Modbus, and SunSpec control
+// then lives on TCP 502 of the SAME inverter IP (report §1.3). So the Fronius
+// control adapter reads the shared `connection.ip` plus OPTIONAL control-specific
+// `control_port` (default 502) + `control_unit_id` (default 1) - additive fields
+// the read path ignores (parseConfig is forward-compatible). No product/UX change
+// ships now: Fronius is UNCERTIFIED (planned-only), so these are documented
+// bench/certification-time settings, defaulted so nothing breaks.
+const DEFAULT_FRONIUS_CONTROL_PORT = 502;
 
 // SunSpec / generic-Modbus control registers (the sim + the "Wechselrichter
 // (automatisch)" generic path). Mirrors edge/sim/sunspec-sim.js writable regs.
@@ -107,6 +120,9 @@ function controlRoute(selection, setpoint, opts = {}) {
   if (selection.communication === COMM_SOLARMAN) {
     return deyeControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
   }
+  if (selection.communication === COMM_FRONIUS) {
+    return froniusControl({ conn, ip, family, certified, controlEnabled, pvLimitKw, opts });
+  }
   return idle('unbekannte Kommunikationsmethode');
 }
 
@@ -161,6 +177,65 @@ function sunspecControl({ selection, conn, ip, family, certified, controlEnabled
     out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Modell noch nicht freigegeben';
   }
   return out;
+}
+
+// --- Fronius SunSpec-Modbus control adapter (UNCERTIFIED - planned only) ------
+//
+// Fronius battery control uses the standards-based SunSpec Modbus surface, NOT
+// the Solar-API HTTP read path and NOT the evcc `config/timeofuse` HTTP hack
+// (rejected by the design report §3.1 - unversioned, credentialed, broken twice).
+// Increment 1 is CURTAILMENT ONLY: Model 123 `WMaxLimPct`, the direct SunSpec
+// analogue of the already-certified sim `pv_limit` write (sunspecControl above).
+//
+// SAFETY: Fronius is DELIBERATELY absent from CERTIFIED_CONTROL_FAMILIES, so this
+// adapter NEVER emits an executable write (writes:[]) and NEVER fabricates a
+// readback against an unproven/undiscovered register (readbacks:[]) - exactly the
+// Deye discipline. The intended curtailment WriteOps are surfaced as `planned`
+// (bench artefact, marked bench_pending) ONLY when a live SunSpec model-discovery
+// result is supplied via opts.sunspec; without it we cannot know the Model 123
+// base, so `planned` is empty and the reason says discovery is required - never a
+// fabricated address (report §3.3). Going live needs a real-hardware bench pass
+// (CONTROL-BENCH.md), after which the family joins BOTH allowlists.
+//
+// The adapter name 'fronius_sunspec' is distinct from 'modbus_tcp', so the flow's
+// generic-Modbus control executor no-ops on it (like it does for Deye's
+// 'solarman_v5') - there is no code path that could execute a Fronius write here.
+const FRONIUS_NOT_CERTIFIED_REASON = 'Steuerung für dieses Modell noch nicht freigegeben';
+
+function froniusControl({ conn, ip, family, certified, controlEnabled, pvLimitKw, opts }) {
+  const port = Number(conn.control_port) > 0 ? Number(conn.control_port) : DEFAULT_FRONIUS_CONTROL_PORT;
+  const unitId = Number(conn.control_unit_id) > 0 ? Number(conn.control_unit_id) : 1;
+
+  // The curtailment plan needs the discovered Model 123 base + the live nameplate
+  // rating + WMaxLimPct scale factor. The flow/core performs the discovery walk
+  // I/O (SunSpec model-discovery) and passes the result in via opts.sunspec;
+  // controlRoute itself stays a pure function. Absent -> plan.ok=false -> no
+  // planned addresses (idle-safe).
+  const plan = sunspec.planCurtailment({
+    discovery: opts.sunspec || null,
+    pvLimitKw,
+    nameplateKw: opts.nameplateKw,
+    wMaxLimPctSf: opts.wMaxLimPctSf,
+    rvrtTms: opts.rvrtTms,
+  });
+  const planned = plan.ok ? plan.writes.map((w) => ({ ...w, bench_pending: true })) : [];
+  const reason = plan.ok
+    ? FRONIUS_NOT_CERTIFIED_REASON
+    : 'Fronius SunSpec: ' + plan.reason + ' (Steuerung nicht freigegeben)';
+
+  return {
+    adapter: 'fronius_sunspec', family,
+    target: ip + ':' + port,
+    connection: { ip, port, unit_id: unitId },
+    certified, // false until bench-certified
+    controlEnabled,
+    // Read-only until certified: NEVER an executable write, and no fake readback
+    // of a register we have not discovered + proven on the bench.
+    writes: [],
+    readbacks: [],
+    planned,
+    reason,
+  };
 }
 
 // --- deye / hybrid control adapter (UNCERTIFIED - read-only until bench) ------
@@ -345,6 +420,8 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
 module.exports = {
   COMM_SOLARMAN,
   COMM_MODBUS,
+  COMM_FRONIUS,
+  DEFAULT_FRONIUS_CONTROL_PORT,
   SUNSPEC_REG,
   NO_PV_LIMIT,
   DEYE_CONTROL_REG,
