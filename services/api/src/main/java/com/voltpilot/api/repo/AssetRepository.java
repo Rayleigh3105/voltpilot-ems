@@ -152,6 +152,36 @@ public class AssetRepository {
                 siteId, siteId) > 0;
     }
 
+    /**
+     * Adjust the site's AGGREGATE PV nameplate by {@code deltaKwp} (multi-source
+     * Anlage): adding an additional Erzeuger measurement point adds its kWp, and
+     * removing one subtracts it, so {@code asset.pv.pv_capacity_kwp} stays
+     * "primary PV + Σ additional Erzeuger" - the total the forecast + physical
+     * envelope need. Never drops below 0. Exact per-operation deltas (create adds,
+     * delete subtracts) keep it consistent WITHOUT clobbering a MaStR- or
+     * manually-set primary kWp (unlike a full recompute). Creates the {@code pv}
+     * asset row on first positive delta if the site has none yet; RLS-scoped.
+     * Returns true if a row was updated or created.
+     */
+    public boolean addPvCapacity(UUID tenantId, UUID siteId, BigDecimal deltaKwp) {
+        if (deltaKwp == null || deltaKwp.signum() == 0) {
+            return false;
+        }
+        int updated = jdbc.update(
+                "UPDATE asset SET pv_capacity_kwp = GREATEST(COALESCE(pv_capacity_kwp, 0) + ?, 0) "
+                        + "WHERE site_id = ? AND type = 'pv'",
+                deltaKwp, siteId);
+        if (updated == 0 && deltaKwp.signum() > 0) {
+            // No PV asset yet: create it carrying just the additional generation.
+            jdbc.update(
+                    "INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) "
+                            + "VALUES (?, ?, 'pv', ?)",
+                    tenantId, siteId, deltaKwp);
+            return true;
+        }
+        return updated > 0;
+    }
+
     private static SiteAssetDto mapAsset(ResultSet rs, int rowNum) throws SQLException {
         Timestamp fetched = rs.getTimestamp("registry_fetched_at");
         java.sql.Date commissioned = rs.getDate("commissioned_on");

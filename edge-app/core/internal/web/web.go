@@ -20,6 +20,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -33,6 +34,17 @@ type InverterController interface {
 	InverterCatalog() inverter.Catalog
 	GetInverter() (inverter.Selection, bool)
 	SetInverter(inverter.SelectionRequest) (inverter.Selection, error)
+}
+
+// SourcesController backs the "Energiequellen" surface: the ADDITIONAL read-only
+// measurement points (Phase 1: Erzeuger/PV) a site has beyond its one
+// battery-hybrid inverter. The agent implements it; adding/removing a source
+// re-publishes the retained edge/sources/config and widens the physical
+// envelope. Read-only by construction - a source never gets a control path.
+type SourcesController interface {
+	ListSources() []sources.Source
+	AddSource(sources.Request) (sources.Source, error)
+	DeleteSource(id string) error
 }
 
 // PurgeController backs the "Datenaufzeichnungen löschen" action: wipe the
@@ -131,7 +143,8 @@ func envelope(st *state.Store) stateEnvelope {
 // dispatch plan (Fahrplan view), the inverter-selection API, the data-purge
 // action, and the health endpoint.
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
-	despike DespikeController, hist *history.Ring, pl PlanController) http.Handler {
+	despike DespikeController, hist *history.Ring, pl PlanController,
+	src SourcesController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -274,6 +287,56 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"selection": sel})
+	})
+
+	// GET /api/sources - the ADDITIONAL read-only measurement points (Phase 1:
+	// Erzeuger/PV) plus the SAME option catalog the inverter form uses, so the
+	// "Energiequelle hinzufügen" form is fully data-driven off one endpoint.
+	mux.HandleFunc("GET /api/sources", func(w http.ResponseWriter, r *http.Request) {
+		list := src.ListSources()
+		if list == nil {
+			list = []sources.Source{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"sources": list,
+			"catalog": inv.InverterCatalog(),
+		})
+	})
+
+	// POST /api/sources - add an additional Erzeuger source (master data only, no
+	// device claim). Validation failures return 400 with a German message.
+	mux.HandleFunc("POST /api/sources", func(w http.ResponseWriter, r *http.Request) {
+		var req sources.Request
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		s, err := src.AddSource(req)
+		if err != nil {
+			var ve *sources.ValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Energiequelle konnte nicht gespeichert werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"source": s})
+	})
+
+	// DELETE /api/sources/{id} - remove an additional source. Unknown id -> 404.
+	mux.HandleFunc("DELETE /api/sources/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if err := src.DeleteSource(id); err != nil {
+			if errors.Is(err, sources.ErrNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]any{"error": "Energiequelle nicht gefunden."})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Energiequelle konnte nicht entfernt werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 
 	// GET /api/despike - the "Ausreißer-Filter" configuration: the current

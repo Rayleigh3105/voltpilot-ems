@@ -228,3 +228,47 @@
   .form-actions { justify-content: stretch; }
   .btn-primary { width: 100%; }
 }
+
+/* -------------------------------------------------------------------------
+   Weitere Energiequellen (additional read-only Erzeuger measurement points).
+   Reuses the same tokens as the inverter card above.
+   ------------------------------------------------------------------------- */
+.src-card { margin-top: 18px; }
+.src-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.src-title { margin: 0; font-size: 17px; font-weight: 750; color: var(--ink); }
+.src-lead { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; max-width: 560px; }
+
+.btn-secondary {
+  flex: none; padding: 9px 14px; font-size: 13.5px; font-weight: 650;
+  border: 1px solid var(--brand); border-radius: var(--radius-sm);
+  background: var(--brand-soft); color: var(--brand-deep); cursor: pointer;
+  white-space: nowrap;
+}
+.btn-secondary:hover { background: #DCE8FB; }
+.btn-secondary:focus-visible { outline: 2px solid var(--brand-deep); outline-offset: 2px; }
+.btn-ghost {
+  padding: 11px 16px; font-size: 14px; font-weight: 600;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.btn-ghost:hover { background: var(--bg-2); }
+
+.src-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.src-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.src-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.src-item-name { font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.src-item-meta { font-size: 12.5px; color: var(--muted); }
+.src-item-see { font-size: 12px; color: var(--ink-2); }
+.src-del {
+  flex: none; padding: 7px 12px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--danger, #c0392b); cursor: pointer;
+}
+.src-del:hover { background: #FDECEA; border-color: #F5C6C0; }
+
+.src-empty { margin: 16px 0 0; color: var(--muted); font-size: 13px; }
+.src-form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }

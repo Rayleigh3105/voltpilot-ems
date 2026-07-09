@@ -90,6 +90,19 @@ func EnvelopeFor(ratedKw float64, hasBattery bool) (maxPvKw, maxBatteryKw float6
 	return maxPvKw, maxBatteryKw
 }
 
+// EnvelopePvBound returns the PV plausibility bound for a TOTAL generation
+// nameplate - the sum of the battery-hybrid inverter's rating and every
+// additional Erzeuger source's kWp (multi-source Anlage). It uses the same DC
+// over-sizing headroom as EnvelopeFor, so a single-source site (Σ = the one
+// inverter's rating) yields exactly the pre-multi-source bound. A total <= 0
+// yields 0 (PV not bounded).
+func EnvelopePvBound(totalPvRatedKw float64) float64 {
+	if totalPvRatedKw <= 0 {
+		return 0
+	}
+	return totalPvRatedKw*envPvFactor + envAbsoluteSlack
+}
+
 // SetBounds installs new bounds live (called when the inverter selection
 // changes). Zero bounds disable the respective check; both zero => inactive.
 // The last-good state is preserved so continuity is not broken by a reconfigure.
@@ -105,6 +118,14 @@ func (e *Envelope) Active() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.maxPvKw > 0 || e.maxBatteryKw > 0
+}
+
+// Bounds returns the current PV and battery bounds (0 = unbounded). Used to
+// prove the multi-source PV bound widening.
+func (e *Envelope) Bounds() (maxPvKw, maxBatteryKw float64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.maxPvKw, e.maxBatteryKw
 }
 
 // Accept enforces the physical envelope on a measurement map IN PLACE at

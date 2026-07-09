@@ -681,6 +681,81 @@ paths:
                 items: { $ref: "#/components/schemas/SiteAsset" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/measurement-points:
+    get:
+      tags: [registry]
+      summary: The site's additional read-only measurement points (multi-source Anlage).
+      description: >
+        A site with a battery-hybrid inverter PLUS a separate AC-coupled PV
+        records the second PV here as an Erzeuger source; its kWp sums into the
+        aggregate `asset.pv` the forecast reads. NO second device claim - the
+        source is read through the site's one connected edge. Read-only by
+        construction (control is always false).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's measurement points.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MeasurementPoint" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+    post:
+      tags: [registry]
+      summary: Record an additional Erzeuger (PV) source; its kWp sums into the aggregate site PV.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  description: Phase 1 must be the Erzeuger role. Defaults to it.
+                  enum: [pv-generation]
+                label: { type: string, maxLength: 120 }
+                brand: { type: string, maxLength: 60 }
+                model: { type: string, maxLength: 60 }
+                capacityKwp:
+                  type: number
+                  description: Per-source nameplate (kWp); sums into the aggregate asset.pv.
+                registryUnitId:
+                  type: string
+                  description: The source's OWN MaStR SEE number (optional - never blocks adding).
+      responses:
+        "200":
+          description: The site's measurement points after the add.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MeasurementPoint" }
+        "400": { description: A non-Erzeuger role (Phase 1) or invalid values. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/measurement-points/{pointId}:
+    delete:
+      tags: [registry]
+      summary: Remove an additional source; its kWp is subtracted from the aggregate site PV.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: pointId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's remaining measurement points.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MeasurementPoint" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Measurement point or site not found for this tenant (RLS). }
   /api/v1/sites/{siteId}/mastr-lookup:
     post:
       tags: [registry]
@@ -1332,6 +1407,22 @@ components:
         registry: { type: string, nullable: true, example: mastr }
         registryUnitId: { type: string, nullable: true, example: SEE966831669444 }
         registryFetchedAt: { type: string, format: date-time, nullable: true }
+    MeasurementPoint:
+      type: object
+      description: >
+        One additional read-only measurement point of a site (multi-source
+        Anlage). Phase 1 records Erzeuger (PV) sources whose kWp sums into the
+        aggregate asset.pv. Read-only by construction (control always false).
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, example: pv-generation, description: "Phase 1: 'pv-generation' (Erzeuger)." }
+        label: { type: string, nullable: true }
+        brand: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        capacityKwp: { type: number, nullable: true, description: Per-source nameplate (kWp). }
+        registryUnitId: { type: string, nullable: true, example: SEE900000000001 }
+        control: { type: boolean, description: Always false for the roles recorded here. }
+        createdAt: { type: string, format: date-time, nullable: true }
     MastrPreview:
       type: object
       description: >

@@ -349,6 +349,108 @@
     "wires": []
   },
   {
+    "id": "tab-sources",
+    "type": "tab",
+    "label": "Energiequellen (automatisch)",
+    "disabled": false,
+    "info": "ZUSAETZLICHE ENERGIEQUELLEN (Multi-Source, Phase 1): Neben dem einen\nSpeicher-Wechselrichter (Tab \"Wechselrichter (automatisch)\") kann eine Anlage\nweitere NUR-LESENDE Erzeuger (z. B. eine separate AC-gekoppelte PV) haben. Der\nKunde fuegt sie im Edge-App-Webportal (:8484) hinzu; der Core veroeffentlicht\ndie Liste retained (edge/sources/config). Dieser Tab liest jede Erzeuger-Quelle\nund veroeffentlicht ihre PV auf edge/sources/<id>/telemetry - der Core summiert\nsie in die Gesamt-Messung der Anlage (site_pv). OHNE Flow-Edit pro Kunde.\n\nUmfang Phase 1: modbus_tcp/SunSpec-Quellen werden gelesen; eine solarman_v5-\nQuelle wird erkannt, ihr Einzel-Leser ist zurueckgestellt. NUR LESEN - fuer\neine Quelle gibt es keinen Steuerpfad. Routing/Codecs: sources-routing.js +\nmodbus-tcp.js (getestet; die Funktionsknoten tragen synchrone Kopien)."
+  },
+  {
+    "id": "sources-note",
+    "type": "comment",
+    "z": "tab-sources",
+    "name": "Weitere Erzeuger auslesen: edge/sources/config -> je Quelle lesen -> edge/sources/<id>/telemetry (Core summiert zur Gesamt-PV)",
+    "info": "",
+    "x": 520,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "sources-cfg",
+    "type": "vp-sources-config",
+    "z": "tab-sources",
+    "name": "Quellen vom Core (retained)",
+    "core": "cfg-vp-core",
+    "x": 200,
+    "y": 100,
+    "wires": [
+      [
+        "sources-store"
+      ]
+    ]
+  },
+  {
+    "id": "sources-store",
+    "type": "function",
+    "z": "tab-sources",
+    "name": "Quellen uebernehmen",
+    "func": "// Uebernimmt die im Edge-App-Portal hinzugefuegten zusaetzlichen Energiequellen\n// (retained auf edge/sources/config, von vp-sources-config geparst) und baut\n// daraus die kompakten Leseplaene der Erzeuger-Modbus-Quellen. Synchron gehalten\n// mit edge-app/nodered/sources-routing.js (planSources, Modbus-Zweig).\nconst list = Array.isArray(msg.payload) ? msg.payload : [];\nconst num = (v, d) => { const n = typeof v === 'string' ? Number(v.trim()) : v; return (typeof n === 'number' && isFinite(n)) ? n : d; };\nconst MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };\nconst plans = [];\nlet deferred = 0;\nlist.forEach((s) => {\n  if (!s || s.role !== 'pv-generation') return;\n  const conn = s.connection || {};\n  const ip = (typeof conn.ip === 'string' ? conn.ip : '').trim();\n  if (!ip) return;\n  if (s.communication === 'modbus_tcp') {\n    const read = MODBUS_PROFILES[s.family];\n    if (!read) return;\n    plans.push({ id: s.id, profile: s.family, conn: { ip, port: num(conn.port, 502), unit_id: num(conn.unit_id, 1) }, read: { fc: read.fc, addr: read.addr, count: read.count } });\n  } else if (s.communication === 'solarman_v5') {\n    deferred++; // recognised, per-source Solarman executor deferred (Phase 1)\n  }\n});\nflow.set('source_plans', plans);\nconst txt = plans.length + ' Erzeuger-Quelle(n)' + (deferred ? (', ' + deferred + ' Deye zurueckgestellt') : '');\nnode.status({ fill: plans.length ? 'green' : 'grey', shape: plans.length ? 'dot' : 'ring', text: plans.length ? txt : 'keine Erzeuger-Quellen' });\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 470,
+    "y": 100,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "sources-poll",
+    "type": "inject",
+    "z": "tab-sources",
+    "name": "poll 5s",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "5",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "4",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 130,
+    "y": 180,
+    "wires": [
+      [
+        "sources-read"
+      ]
+    ]
+  },
+  {
+    "id": "sources-read",
+    "type": "function",
+    "z": "tab-sources",
+    "name": "Erzeuger-Quellen lesen (Modbus, sequenziell)",
+    "func": "// Liest jede konfigurierte Erzeuger-Modbus-Quelle SEQUENZIELL (nie zwei Sockets\n// gleichzeitig), decodiert PV aus dem SunSpec-Profil und sendet je Quelle eine\n// Nachricht {source_id, payload:{pv_power_kw}} an vp-quelle. FEHLERISOLATION:\n// eine tote Quelle wird uebersprungen (kein Send) - die anderen liefern weiter,\n// der Core zaehlt eine fehlende Quelle als abwesend (nie als fabrizierte 0).\n// Traegt eine KOPIE des Modbus-Codecs aus edge-app/nodered/modbus-tcp.js.\nconst net = global.get('net');\nif (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }\nconst plans = flow.get('source_plans') || [];\nif (!plans.length) { node.status({ fill: 'grey', shape: 'ring', text: 'keine Erzeuger-Quellen' }); return null; }\nconst s16 = (v) => { v &= 0xffff; return v > 0x7fff ? v - 0x10000 : v; };\nconst r3 = (x) => Math.round(x * 1000) / 1000;\nconst frameLen = (buf) => (buf.length < 6 ? null : 6 + buf.readUInt16BE(4));\nconst decodePv = (profile, regs) => {\n  if (profile === 'sunspec') { if (regs.length < 7) return null; return r3(s16(regs[1]) / 100); }\n  return null;\n};\nconst readOne = (plan, txid) => new Promise((resolve) => {\n  const conn = plan.conn; const unitId = conn.unit_id || 1; const timeoutMs = 5000;\n  const sock = new net.Socket(); sock.setNoDelay(true);\n  let done = false; let acc = Buffer.alloc(0);\n  const finish = (regs) => { if (done) return; done = true; try { sock.destroy(); } catch (e) { /* ignore */ } resolve(regs); };\n  const t = setTimeout(() => finish(null), timeoutMs);\n  const build = () => { const b = Buffer.alloc(12); b.writeUInt16BE(txid & 0xffff, 0); b.writeUInt16BE(0, 2); b.writeUInt16BE(6, 4); b[6] = unitId & 0xff; b[7] = 0x03; b.writeUInt16BE(plan.read.addr & 0xffff, 8); b.writeUInt16BE(plan.read.count & 0xffff, 10); return b; };\n  sock.once('error', () => { clearTimeout(t); finish(null); });\n  sock.connect(conn.port || 502, conn.ip, () => {\n    sock.on('data', (chunk) => {\n      acc = Buffer.concat([acc, chunk]);\n      const need = frameLen(acc);\n      if (need !== null && acc.length >= need) {\n        clearTimeout(t);\n        try { const buf = acc.slice(0, need); const fn = buf[7]; if (fn & 0x80 || fn !== 0x03) return finish(null); const bc = buf[8]; if (bc <= 0 || buf.length < 9 + bc) return finish(null); const regs = []; for (let i = 0; i < bc >> 1; i++) regs.push(buf.readUInt16BE(9 + i * 2)); finish(regs); } catch (e) { finish(null); }\n      }\n    });\n    sock.write(build());\n  });\n});\nlet txid = context.get('stxid') || 0;\nreturn (async () => {\n  let ok = 0, fail = 0;\n  for (const plan of plans) {\n    txid = (txid + 1) & 0xffff;\n    const regs = await readOne(plan, txid);\n    if (!Array.isArray(regs)) { fail++; continue; }\n    const pv = decodePv(plan.profile, regs);\n    if (pv === null || pv === undefined) { fail++; continue; }\n    ok++;\n    node.send({ source_id: plan.id, payload: { pv_power_kw: pv, ts: new Date().toISOString() } });\n  }\n  context.set('stxid', txid);\n  node.status({ fill: ok ? 'green' : (fail ? 'yellow' : 'grey'), shape: 'dot', text: ok + ' gelesen' + (fail ? (', ' + fail + ' ohne Antwort') : '') });\n  return null;\n})();",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 180,
+    "wires": [
+      [
+        "sources-quelle"
+      ]
+    ]
+  },
+  {
+    "id": "sources-quelle",
+    "type": "vp-quelle",
+    "z": "tab-sources",
+    "name": "PV an VoltPilot Core",
+    "core": "cfg-vp-core",
+    "x": 760,
+    "y": 180,
+    "wires": []
+  },
+  {
     "id": "tab-sim",
     "type": "tab",
     "label": "SunSpec (Simulator)",

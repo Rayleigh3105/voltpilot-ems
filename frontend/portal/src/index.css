@@ -3202,3 +3202,18 @@ button.vp-tech-card-h.toggle {
   opacity: 0.75;
   pointer-events: none;
 }
+
+/* --- Weitere Erzeuger (additional read-only PV sources, multi-source Anlage) --- */
+.vp-tech-sub { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--vp-border, #E6E9F0); }
+.vp-tech-sub-title { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: var(--vp-ink, #1A2332); }
+.vp-erzeuger { min-width: 0; }
+.vp-erzeuger-list { list-style: none; margin: 12px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.vp-erzeuger-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--vp-border, #E6E9F0); border-radius: var(--vp-radius-md, 12px);
+  background: #fff; min-width: 0;
+}
+.vp-erzeuger-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vp-erzeuger-name { font-size: 14px; font-weight: 650; color: var(--vp-ink, #1A2332); }
+.vp-erzeuger-form { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; max-width: 420px; }
+.vp-erzeuger-actions { display: flex; gap: 8px; justify-content: flex-end; }

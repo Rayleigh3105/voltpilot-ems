@@ -21,6 +21,7 @@ import { LocationMap } from '../components/LocationMap';
 import { TariffFields } from '../components/TariffFields';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
+import { ErzeugerSourcesPanel } from '../components/ErzeugerSourcesPanel';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { InfoTip } from '../components/InfoTip';
 import { MastrDrawer } from '../components/MastrDrawer';
@@ -479,6 +480,10 @@ export function TechnikSection({
           </TechnischeDetails>
         </>
       )}
+      <div className="vp-tech-sub">
+        <h3 className="vp-tech-sub-title">Weitere Erzeuger</h3>
+        <ErzeugerSourcesPanel siteId={site.id} />
+      </div>
     </TechCard>
   );
 

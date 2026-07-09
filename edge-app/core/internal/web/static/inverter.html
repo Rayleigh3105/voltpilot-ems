@@ -116,6 +116,63 @@
       </section>
     </form>
 
+    <section class="card src-card" id="sourcesCard">
+      <div class="src-head">
+        <div>
+          <h2 class="src-title">Weitere Energiequellen</h2>
+          <p class="src-lead">
+            Hat diese Anlage neben dem Speicher-Wechselrichter oben noch eine
+            <strong>separate PV-Anlage</strong> (z. B. eine ältere AC-gekoppelte
+            Anlage), fügen Sie sie hier als <strong>Erzeuger</strong> hinzu.
+            VoltPilot liest sie mit aus und zählt ihre Erzeugung zur
+            Gesamt-PV der Anlage. Nur Lesen – gesteuert wird nichts.
+          </p>
+        </div>
+        <button type="button" class="btn-secondary" id="srcAddToggle">＋ Erzeuger hinzufügen</button>
+      </div>
+
+      <ul class="src-list" id="srcList"></ul>
+      <p class="src-empty" id="srcEmpty">Noch keine weiteren Energiequellen. Für eine Anlage mit nur einem Wechselrichter ist das der Normalfall.</p>
+
+      <form id="srcForm" class="src-form" novalidate hidden>
+        <div class="field">
+          <label for="srcLabel">Bezeichnung (optional)</label>
+          <input id="srcLabel" type="text" autocomplete="off" placeholder="z. B. PV Dach Süd">
+        </div>
+        <div class="field">
+          <label for="srcBrand">Marke</label>
+          <select id="srcBrand" required></select>
+        </div>
+        <div class="field">
+          <label for="srcModel">Modell</label>
+          <select id="srcModel" required></select>
+        </div>
+        <div class="field">
+          <label>Kommunikationsmethode</label>
+          <div class="comm-readonly" id="srcComm">–</div>
+        </div>
+        <fieldset class="conn">
+          <legend>Verbindungsdaten</legend>
+          <div id="srcFields"></div>
+        </fieldset>
+        <div class="field">
+          <label for="srcKwp">Anlagenleistung (kWp)</label>
+          <input id="srcKwp" type="number" min="0" step="0.1" inputmode="decimal" placeholder="z. B. 70">
+          <p class="field-help">Wird zur Gesamt-PV der Anlage summiert und begrenzt die Plausibilitätsprüfung.</p>
+        </div>
+        <div class="field">
+          <label for="srcSee">MaStR-Nummer der Quelle (optional)</label>
+          <input id="srcSee" type="text" autocomplete="off" placeholder="SEE…" spellcheck="false">
+          <p class="field-help">Die eigene SEE-Nummer dieser PV-Anlage aus dem Marktstammdatenregister. Nicht zwingend erforderlich.</p>
+        </div>
+        <p class="form-error" id="srcError" hidden></p>
+        <div class="form-actions">
+          <button type="button" class="btn-ghost" id="srcCancel">Abbrechen</button>
+          <button type="submit" class="btn-primary" id="srcSave">Quelle hinzufügen</button>
+        </div>
+      </form>
+    </section>
+
     <footer class="foot">
       Lokale Geräteansicht. Die Auswahl gilt nur für dieses Gerät; die
       Anlagensteuerung erfolgt über das VoltPilot-Portal.
@@ -123,5 +180,6 @@
   </main>
 
   <script src="inverter.js"></script>
+  <script src="sources.js"></script>
 </body>
 </html>

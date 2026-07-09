@@ -15,6 +15,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -101,6 +102,41 @@ func (f *fakePlan) CurrentPlan() (plan.View, bool) {
 	return *f.view, true
 }
 
+// fakeSources is an in-memory SourcesController for the HTTP-layer test.
+type fakeSources struct {
+	list   []sources.Source
+	addErr error
+	delErr error
+}
+
+func (f *fakeSources) ListSources() []sources.Source { return f.list }
+
+func (f *fakeSources) AddSource(req sources.Request) (sources.Source, error) {
+	if f.addErr != nil {
+		return sources.Source{}, f.addErr
+	}
+	s, err := sources.Normalize(inverter.DefaultCatalog(), req, time.Unix(0, 0))
+	if err != nil {
+		return sources.Source{}, err
+	}
+	s.ID = "src-fixed"
+	f.list = append(f.list, s)
+	return s, nil
+}
+
+func (f *fakeSources) DeleteSource(id string) error {
+	if f.delErr != nil {
+		return f.delErr
+	}
+	for i, s := range f.list {
+		if s.ID == id {
+			f.list = append(f.list[:i], f.list[i+1:]...)
+			return nil
+		}
+	}
+	return sources.ErrNotFound
+}
+
 func newServer(t *testing.T) (*httptest.Server, *fakeInverter) {
 	t.Helper()
 	srv, fi, _ := newServerWithHistory(t)
@@ -111,7 +147,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 	t.Helper()
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}))
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}))
 	t.Cleanup(srv.Close)
 	return srv, fi, h
 }
@@ -238,7 +274,7 @@ func TestStateEnvelopeCarriesServerClock(t *testing.T) {
 		s.Inverter = configuredInverter()
 		s.LastTelemetry = time.Now().UTC()
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
@@ -308,7 +344,7 @@ func TestHistoryReturnsRecentSamplesWithDerivedBattery(t *testing.T) {
 func TestStateExposesBufferDataLoss(t *testing.T) {
 	st := state.New("edge-test", "test")
 	st.Update(func(s *state.Snapshot) { s.BufferDataLoss = true; s.BufferPending = 7 })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -363,7 +399,7 @@ func configuredInverter() *state.InverterInfo {
 func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 	// (a) No inverter configured -> step "inverter", locked, no reference.
 	st := state.New("edge-gate", "test")
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -400,7 +436,7 @@ func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 func TestOnboardingGateDoneOncePaired(t *testing.T) {
 	st := state.New("edge-paired", "test")
 	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -451,7 +487,7 @@ func waitForLine(sc *bufio.Scanner, want string) bool {
 func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 	fp := &fakePurge{}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -481,7 +517,7 @@ func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
 	fp := &fakePurge{err: context.DeadlineExceeded}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -642,6 +678,22 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	if !strings.Contains(js, "modelList") {
 		t.Error("inverter.js: does not drive the modelList listbox")
 	}
+
+	// The "Weitere Energiequellen" (additional Erzeuger) surface + its script must
+	// ship too (//go:embed rebuild contract), driven by sources.js against fixed
+	// ids and the /api/sources endpoints.
+	for _, want := range []string{
+		`id="sourcesCard"`, `id="srcList"`, `id="srcForm"`, `id="srcAddToggle"`,
+		`id="srcKwp"`, `id="srcSee"`, `src="sources.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("inverter.html: missing Energiequellen element %s", want)
+		}
+	}
+	srcJs := get("/sources.js")
+	if !strings.Contains(srcJs, "/api/sources") || !strings.Contains(srcJs, "pv-generation") {
+		t.Error("sources.js: does not drive the /api/sources Erzeuger surface")
+	}
 }
 
 // The settings page (Ausreißer-Filter) is built by einstellungen.js against
@@ -702,7 +754,7 @@ func serveHandler(t *testing.T, pl PlanController) *httptest.Server {
 		s.SlotStart = time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
 	})
 	srv := httptest.NewServer(Handler(st,
-		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), pl))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), pl, &fakeSources{}))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -858,5 +910,111 @@ func TestSteuerungSectionServed(t *testing.T) {
 	}
 	if !strings.Contains(js, "Abweichung") {
 		t.Error("control.js: missing the mismatch wording")
+	}
+}
+
+// --- /api/sources (additional read-only Erzeuger measurement points) ---------
+
+func sourcesServer(t *testing.T, fs *fakeSources) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, fs))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSourcesListReturnsSourcesAndCatalog(t *testing.T) {
+	srv := sourcesServer(t, &fakeSources{})
+	resp, err := http.Get(srv.URL + "/api/sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Sources []sources.Source `json:"sources"`
+		Catalog inverter.Catalog `json:"catalog"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Sources == nil {
+		t.Fatalf("sources should be a (possibly empty) array, not null")
+	}
+	if len(body.Catalog.Brands) == 0 {
+		t.Fatalf("catalog should be embedded so the add form is data-driven")
+	}
+}
+
+func TestSourcesAddAndDelete(t *testing.T) {
+	fs := &fakeSources{}
+	srv := sourcesServer(t, fs)
+
+	reqBody := `{"role":"pv-generation","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.70"},"capacity_kwp":70}`
+	resp, err := http.Post(srv.URL+"/api/sources", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("add status %d", resp.StatusCode)
+	}
+	var added struct {
+		Source sources.Source `json:"source"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&added); err != nil {
+		t.Fatal(err)
+	}
+	if added.Source.ID == "" || added.Source.CapacityKwp != 70 {
+		t.Fatalf("added source wrong: %+v", added.Source)
+	}
+	if len(fs.list) != 1 {
+		t.Fatalf("source not stored: %d", len(fs.list))
+	}
+
+	// DELETE the source.
+	del, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/sources/"+added.Source.ID, nil)
+	dresp, err := http.DefaultClient.Do(del)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dresp.Body.Close()
+	if dresp.StatusCode != 200 {
+		t.Fatalf("delete status %d", dresp.StatusCode)
+	}
+	if len(fs.list) != 0 {
+		t.Fatalf("source not removed")
+	}
+
+	// DELETE an unknown id -> 404.
+	del2, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/sources/nope", nil)
+	d2, err := http.DefaultClient.Do(del2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d2.Body.Close()
+	if d2.StatusCode != 404 {
+		t.Fatalf("delete unknown status = %d, want 404", d2.StatusCode)
+	}
+}
+
+func TestSourcesAddValidationErrorIs400(t *testing.T) {
+	srv := sourcesServer(t, &fakeSources{})
+	// A grid-meter role is Phase 2 -> the normalize validation refuses it (400).
+	body := `{"role":"grid-meter","brand":"generic_modbus","model":"sunspec","connection":{"ip":"1.2.3.4"}}`
+	resp, err := http.Post(srv.URL+"/api/sources", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	var e struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&e)
+	if e.Error == "" {
+		t.Fatalf("expected a German error message")
 	}
 }

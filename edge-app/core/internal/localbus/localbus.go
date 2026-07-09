@@ -25,6 +25,14 @@
 //	                customer made in the local web app (brand/family/
 //	                communication/connection). Node-RED reads it to self-wire
 //	                the right read adapter. Shape: edge-app/INVERTER-CONFIG.md.
+//	edge/sources/config   core -> Layer 1   RETAINED array of ADDITIONAL
+//	                read-only measurement points (Phase 1: Erzeuger/PV). Sibling
+//	                of edge/inverter/config; Node-RED reads it to self-wire a read
+//	                of each source. Shape: internal/sources (BusConfig).
+//	edge/sources/{id}/telemetry  Layer 1 -> core   per-source flat measurement
+//	                (same shape as edge/telemetry). The core keeps the latest per
+//	                source and SUMS PV into the composite site reading; a stale
+//	                source contributes nothing (absent, never a fabricated 0).
 package localbus
 
 import (

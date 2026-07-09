@@ -384,6 +384,34 @@ export interface SiteAsset {
 }
 
 /**
+ * An additional read-only measurement point of a site (multi-source Anlage). A
+ * site with a battery-hybrid inverter PLUS a separate AC-coupled PV records the
+ * second PV here as an Erzeuger source; its kWp sums into the aggregate site PV.
+ * Read-only by construction (control is always false).
+ */
+export interface MeasurementPoint {
+  id: string;
+  role: string;
+  label: string | null;
+  brand: string | null;
+  model: string | null;
+  capacityKwp: number | null;
+  registryUnitId: string | null;
+  control: boolean;
+  createdAt: string | null;
+}
+
+/** Record a new additional Erzeuger source (master data; no second device claim). */
+export interface CreateMeasurementPointInput {
+  role?: string;
+  label?: string;
+  brand?: string;
+  model?: string;
+  capacityKwp?: number;
+  registryUnitId?: string;
+}
+
+/**
  * Mapped MaStR record for confirmation ("Anlage verknüpfen" step 2). Nothing
  * is persisted until mastrApply; null fields mean "nicht im Register
  * hinterlegt" (e.g. Balkonkraftwerke carry no orientation).
@@ -833,6 +861,20 @@ export const api = {
     return request<TelemetryPoint[]>(`/api/v1/sites/${siteId}/telemetry${qs ? `?${qs}` : ''}`);
   },
   siteAssets: (siteId: string) => request<SiteAsset[]>(`/api/v1/sites/${siteId}/assets`),
+  /** A site's additional read-only Erzeuger measurement points (multi-source). */
+  measurementPoints: (siteId: string) =>
+    request<MeasurementPoint[]>(`/api/v1/sites/${siteId}/measurement-points`),
+  /** Record an additional Erzeuger source; returns the site's points afterwards. */
+  addMeasurementPoint: (siteId: string, input: CreateMeasurementPointInput) =>
+    request<MeasurementPoint[]>(`/api/v1/sites/${siteId}/measurement-points`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  /** Remove an additional source; returns the site's remaining points. */
+  deleteMeasurementPoint: (siteId: string, pointId: string) =>
+    request<MeasurementPoint[]>(`/api/v1/sites/${siteId}/measurement-points/${pointId}`, {
+      method: 'DELETE',
+    }),
   /**
    * Save the site's battery master data by hand and maintain its controlling
    * device link ("Ihr Wechselrichter steuert diesen Speicher"). Omit deviceId

@@ -1,0 +1,40 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-sources-config', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-sources-config'; },
+    paletteLabel: 'vp-sources-config'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-sources-config">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-sources-config">
+  <p>Abonniert die vom VoltPilot Core-Agenten retained veröffentlichte Liste der
+  <b>zusätzlichen Energiequellen</b> (nur-lesende Erzeuger/PV) auf dem lokalen Bus
+  (<code>edge/sources/config</code>) und gibt sie an den Flow, der daraus
+  automatisch je Quelle einen Leseadapter verdrahtet - ohne Flow-Edit pro Kunde.
+  Das Gegenstück zu <code>vp-inverter-config</code> (der eine Speicher-/
+  Steuerquelle).</p>
+  <p><code>msg.payload</code> / <code>msg.sources</code>: Array der Quellen
+  (<code>id</code>, <code>role</code>, <code>brand</code>, <code>model</code>,
+  <code>family</code>, <code>communication</code>, <code>connection</code>,
+  <code>interval_s</code>, <code>capacity_kwp</code>); <code>[]</code> wenn keine
+  Quellen konfiguriert sind. Nur Lesen - eine Quelle wird nie gesteuert.</p>
+</script>

@@ -26,6 +26,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 )
 
@@ -61,6 +62,15 @@ type Agent struct {
 
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
+
+	// Additional read-only measurement points (Phase 1: Erzeuger/PV). srcs is the
+	// persisted config; srcReadings holds the latest per-source reading (its PV +
+	// the wall-clock receive time, for freshness/error isolation). The core sums
+	// fresh Erzeuger PV into the composite site reading at onLocalTelemetry.
+	srcStore    *sources.Store
+	srcMu       sync.Mutex
+	srcs        []sources.Source
+	srcReadings map[string]sourceReading
 
 	link       *cloud.Link
 	linkCancel context.CancelFunc // cancels the current link's heartbeat goroutine
@@ -163,6 +173,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	ss, err := sources.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	ds, err := guards.NewSettingsStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -183,6 +197,8 @@ func New(cfg config.Config) (*Agent, error) {
 		planStore:    ps,
 		invStore:     is,
 		invCat:       inverter.DefaultCatalog(),
+		srcStore:     ss,
+		srcReadings:  map[string]sourceReading{},
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
 		despikeStore: ds,
@@ -204,16 +220,27 @@ func New(cfg config.Config) (*Agent, error) {
 	} else if err != nil {
 		slog.Warn("cached plan unreadable; starting without", "err", err)
 	}
+	// Restore the additional read-only measurement points (Erzeuger/PV) BEFORE
+	// the envelope is applied, so its widened PV bound accounts for them; they are
+	// (re-)published retained on the local bus once the bus is up in Start.
+	if list, ok, err := ss.Load(); err == nil && ok {
+		a.srcs = list
+		slog.Info("loaded additional measurement points from disk", "count", len(list))
+	} else if err != nil {
+		slog.Warn("stored measurement points unreadable; starting without", "err", err)
+	}
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
 		a.inv = &sel
 		a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
-		a.applyEnvelope(&sel)
 		slog.Info("loaded inverter selection from disk", "brand", sel.Brand, "family", sel.Family)
 	} else if err != nil {
 		slog.Warn("stored inverter selection unreadable; starting without", "err", err)
 	}
+	// Configure the physical envelope from the restored primary + sources (its PV
+	// bound is Σ generation nameplate). Safe with no inverter (inactive/PV-only).
+	a.reapplyEnvelope()
 	// A purge requested before a restart and not yet confirmed by the cloud is
 	// restored and re-sent once connected.
 	a.restorePendingPurge()
@@ -242,10 +269,19 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := bus.Subscribe(localbus.TopicControlReadback, 3, a.onControlReadback); err != nil {
 		return err
 	}
+	// Additional read-only sources (Phase 1: Erzeuger/PV) publish per-source
+	// telemetry under edge/sources/{id}/telemetry; the core sums them into the
+	// composite site reading. Wildcard subscription so any number of sources works
+	// without per-source (un)subscribe on add/remove.
+	if err := bus.Subscribe(sources.TopicWildcard, 4, a.onSourceTelemetry); err != nil {
+		return err
+	}
 
 	// Re-publish the persisted inverter selection retained, so a Node-RED that
 	// (re)joins the bus after a reboot immediately self-wires the right adapter.
 	a.publishInverterConfig()
+	// Same for the additional-source config: Node-RED self-wires a read of each.
+	a.publishSourcesConfig()
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
@@ -563,6 +599,30 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	if len(measurements) == 0 {
 		slog.Warn("local telemetry carried no known measurement; skipped")
 		return
+	}
+	// Multi-source aggregation (Phase 1): fold every FRESH additional Erzeuger
+	// source's PV into the composite site reading BEFORE the guards run (so the
+	// physical envelope, widened to Σ generation nameplate, sees the composite,
+	// and the despiker acts on the site total). This is where the "AC-coupled PV
+	// invisible -> garbage load" bug is fixed: the primary battery-hybrid
+	// misattributes the separate PV's production to load, so once that PV is
+	// measured explicitly we ADD it to site PV and REMOVE it from the primary's
+	// load reading. A stale/absent source contributes nothing (never a fabricated
+	// 0), so with zero sources this is a no-op and the single-source path stays
+	// byte-for-byte unchanged. site_grid is left as the primary reports it; a
+	// dedicated Netz meter (install-independent correctness) is Phase 2. See
+	// report §3.2 balance option (A) for the Erzeuger case; the exact load
+	// correction is install-specific (report Q1).
+	if extraPv := a.aggregateSourcePv(); extraPv > 0 {
+		base := measurements["pv_power_kw"] // 0 when the primary reports no PV
+		measurements["pv_power_kw"] = base + extraPv
+		if load, ok := measurements["load_kw"]; ok {
+			corrected := load - extraPv
+			if corrected < 0 {
+				corrected = 0
+			}
+			measurements["load_kw"] = corrected
+		}
 	}
 	// SoC plausibility gate (drop-don't-fabricate), the same policy as the Deye
 	// decoder's socPlausible(): an out-of-band SoC marks the WHOLE read as
@@ -1043,22 +1103,45 @@ func (a *Agent) SetInverter(req inverter.SelectionRequest) (inverter.Selection, 
 	return sel, nil
 }
 
+// reapplyEnvelope reconfigures the physical envelope from the CURRENT primary
+// selection plus the additional sources - called whenever either changes.
+func (a *Agent) reapplyEnvelope() {
+	a.invMu.Lock()
+	sel := a.inv
+	a.invMu.Unlock()
+	a.applyEnvelope(sel)
+}
+
 // applyEnvelope (re)configures the physical-plausibility envelope from the
-// selected inverter model: the model's nameplate rating bounds PV and (for
-// battery families) the derived battery charge/discharge, enforced regardless of
-// the operator's despike preset. An unknown model / no rating leaves the
-// envelope inactive (bounds 0), so a device without a known rating is unaffected.
+// selected inverter model AND the additional generation sources: the PV bound is
+// Σ generation nameplate (the primary's rating plus every Erzeuger source's kWp)
+// so a legitimate multi-source PV total is never "despiked"; the derived-battery
+// bound stays the primary's rating alone (only the battery-hybrid moves the
+// battery). Enforced regardless of the operator's despike preset. With no known
+// rating anywhere the envelope stays inactive (bounds 0).
 func (a *Agent) applyEnvelope(sel *inverter.Selection) {
-	if a.envelope == nil || sel == nil {
+	if a.envelope == nil {
 		return
 	}
-	var maxPv, maxBatt float64
-	if rated, ok := a.invCat.RatedKw(sel.Brand, sel.Model); ok {
-		maxPv, maxBatt = guards.EnvelopeFor(rated, inverter.FamilyHasBattery(sel.Family))
+	var pvRated, maxBatt float64
+	if sel != nil {
+		if rated, ok := a.invCat.RatedKw(sel.Brand, sel.Model); ok {
+			pvRated += rated
+			_, maxBatt = guards.EnvelopeFor(rated, inverter.FamilyHasBattery(sel.Family))
+		}
 	}
+	a.srcMu.Lock()
+	for _, s := range a.srcs {
+		if s.Role == sources.RoleErzeuger && s.CapacityKwp > 0 {
+			pvRated += s.CapacityKwp
+		}
+	}
+	nSrc := len(a.srcs)
+	a.srcMu.Unlock()
+	maxPv := guards.EnvelopePvBound(pvRated)
 	a.envelope.SetBounds(maxPv, maxBatt)
-	slog.Info("physical envelope configured", "model", sel.Model, "family", sel.Family,
-		"max_pv_kw", maxPv, "max_battery_kw", maxBatt)
+	slog.Info("physical envelope configured", "max_pv_kw", maxPv, "max_battery_kw", maxBatt,
+		"sources", nSrc)
 }
 
 // publishInverterConfig publishes the current selection retained on the local
@@ -1072,6 +1155,155 @@ func (a *Agent) publishInverterConfig() {
 	}
 	if err := a.Bus.Publish(localbus.TopicInverterConfig, sel.BusPayload(), true); err != nil {
 		slog.Error("inverter config publish failed", "err", err)
+	}
+}
+
+// --- Additional read-only measurement points (Erzeuger/PV) ---
+
+// sourceReading is the latest reading kept per additional source: its PV (kW)
+// and the wall-clock time it arrived (for freshness / error isolation, decoupled
+// from any device clock).
+type sourceReading struct {
+	pv   float64
+	recv time.Time
+}
+
+// sourceStaleFloor is the minimum freshness window: a source whose last reading
+// is older than max(3*interval, this) is treated as absent (contributes
+// nothing), so one dead AC-PV inverter never blanks the composite - it just
+// stops adding its share.
+const sourceStaleFloor = 60 * time.Second
+
+// onSourceTelemetry ingests one additional source's reading (edge/sources/{id}/
+// telemetry): keep the latest PV per source. It never fabricates a value - an
+// absent/invalid PV is simply not recorded, so the source contributes nothing.
+func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
+	id := sources.IDFromTopic(topic)
+	if id == "" {
+		slog.Warn("source telemetry on unexpected topic; skipped", "topic", topic)
+		return
+	}
+	var m struct {
+		PvPowerKw *float64 `json:"pv_power_kw"`
+	}
+	if err := json.Unmarshal(payload, &m); err != nil {
+		slog.Warn("source telemetry malformed; skipped", "id", id, "err", err)
+		return
+	}
+	if m.PvPowerKw == nil || math.IsNaN(*m.PvPowerKw) || math.IsInf(*m.PvPowerKw, 0) {
+		return // no usable PV - stay absent, never a fabricated 0
+	}
+	a.srcMu.Lock()
+	a.srcReadings[id] = sourceReading{pv: *m.PvPowerKw, recv: time.Now().UTC()}
+	a.srcMu.Unlock()
+}
+
+// aggregateSourcePv sums the PV of every fresh Erzeuger source. A source with no
+// reading yet, or a stale one, is skipped (absent, not zero).
+func (a *Agent) aggregateSourcePv() float64 {
+	now := time.Now().UTC()
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	var sum float64
+	for _, s := range a.srcs {
+		if s.Role != sources.RoleErzeuger {
+			continue
+		}
+		r, ok := a.srcReadings[s.ID]
+		if !ok {
+			continue
+		}
+		window := time.Duration(3*s.IntervalS) * time.Second
+		if window < sourceStaleFloor {
+			window = sourceStaleFloor
+		}
+		if now.Sub(r.recv) > window {
+			continue
+		}
+		sum += r.pv
+	}
+	return sum
+}
+
+// ListSources returns a copy of the configured additional sources.
+func (a *Agent) ListSources() []sources.Source {
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	return append([]sources.Source(nil), a.srcs...)
+}
+
+// AddSource validates a request against the catalog, assigns a stable id,
+// persists it, re-publishes the retained source config for Node-RED, and widens
+// the physical envelope. A bad request returns a *sources.ValidationError (the
+// web layer maps it to HTTP 400). READ-ONLY by construction: a source never gets
+// a control topic.
+func (a *Agent) AddSource(req sources.Request) (sources.Source, error) {
+	src, err := sources.Normalize(a.invCat, req, time.Now())
+	if err != nil {
+		return sources.Source{}, err
+	}
+	src.ID = sources.NewID()
+	a.srcMu.Lock()
+	a.srcs = append(a.srcs, src)
+	list := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	if err := a.srcStore.Save(list); err != nil {
+		// Roll back the in-memory add so disk + memory stay consistent.
+		a.srcMu.Lock()
+		a.srcs = removeSourceByID(a.srcs, src.ID)
+		a.srcMu.Unlock()
+		return sources.Source{}, fmt.Errorf("Energiequelle konnte nicht gespeichert werden: %w", err)
+	}
+	a.publishSourcesConfig()
+	a.reapplyEnvelope()
+	slog.Info("measurement point added", "id", src.ID, "role", src.Role,
+		"brand", src.Brand, "family", src.Family, "capacity_kwp", src.CapacityKwp)
+	return src, nil
+}
+
+// DeleteSource removes an additional source by id, persists, re-publishes the
+// retained config and re-applies the envelope. Unknown id -> sources.ErrNotFound.
+func (a *Agent) DeleteSource(id string) error {
+	a.srcMu.Lock()
+	before := len(a.srcs)
+	a.srcs = removeSourceByID(a.srcs, id)
+	if len(a.srcs) == before {
+		a.srcMu.Unlock()
+		return sources.ErrNotFound
+	}
+	delete(a.srcReadings, id)
+	list := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	if err := a.srcStore.Save(list); err != nil {
+		return fmt.Errorf("Energiequelle konnte nicht entfernt werden: %w", err)
+	}
+	a.publishSourcesConfig()
+	a.reapplyEnvelope()
+	slog.Info("measurement point removed", "id", id)
+	return nil
+}
+
+func removeSourceByID(list []sources.Source, id string) []sources.Source {
+	out := list[:0:0]
+	for _, s := range list {
+		if s.ID != id {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// publishSourcesConfig publishes the current source list retained on the local
+// bus (empty array clears it). No-op when the bus is not up yet.
+func (a *Agent) publishSourcesConfig() {
+	if a.Bus == nil {
+		return
+	}
+	a.srcMu.Lock()
+	list := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	if err := a.Bus.Publish(sources.TopicConfig, sources.BusConfig(list), true); err != nil {
+		slog.Error("source config publish failed", "err", err)
 	}
 }
 

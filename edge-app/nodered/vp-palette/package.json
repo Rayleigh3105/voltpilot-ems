@@ -1,7 +1,7 @@
 {
   "name": "@voltpilot/node-red-vp-palette",
   "version": "0.1.0",
-  "description": "VoltPilot Edge-App Node-RED-Palette: vp-telemetrie, vp-sollwert, vp-status und vp-inverter-config verbinden die Kunden-I/O-Flows mit dem lokalen Bus des VoltPilot Core-Agenten.",
+  "description": "VoltPilot Edge-App Node-RED-Palette: vp-telemetrie, vp-sollwert, vp-status, vp-inverter-config, vp-sources-config und vp-quelle verbinden die Kunden-I/O-Flows mit dem lokalen Bus des VoltPilot Core-Agenten.",
   "license": "UNLICENSED",
   "private": true,
   "keywords": [
@@ -15,7 +15,9 @@
       "vp-sollwert": "nodes/vp-sollwert.js",
       "vp-status": "nodes/vp-status.js",
       "vp-inverter-config": "nodes/vp-inverter-config.js",
-      "vp-control-readback": "nodes/vp-control-readback.js"
+      "vp-control-readback": "nodes/vp-control-readback.js",
+      "vp-sources-config": "nodes/vp-sources-config.js",
+      "vp-quelle": "nodes/vp-quelle.js"
     }
   },
   "dependencies": {

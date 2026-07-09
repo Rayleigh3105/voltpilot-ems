@@ -17,6 +17,8 @@ const vpSollwert = require('../nodes/vp-sollwert.js');
 const vpStatus = require('../nodes/vp-status.js');
 const vpInverterConfig = require('../nodes/vp-inverter-config.js');
 const vpControlReadback = require('../nodes/vp-control-readback.js');
+const vpSourcesConfig = require('../nodes/vp-sources-config.js');
+const vpQuelle = require('../nodes/vp-quelle.js');
 
 helper.init(require.resolve('node-red'));
 
@@ -140,6 +142,48 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpControlReadback.shape({}), null);
     assert.strictEqual(vpControlReadback.shape({ registers: 'x' }), null);
     assert.strictEqual(vpControlReadback.shape({ registers: [{ role: 'x' }] }), null);
+  });
+
+  it('vp-sources-config parses a valid retained source array', function () {
+    const list = vpSourcesConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0',
+      sources: [
+        { id: 'src-a', role: 'pv-generation', brand: 'generic_modbus', family: 'sunspec',
+          communication: 'modbus_tcp', connection: { ip: '192.168.0.70' }, capacity_kwp: 70 },
+      ],
+    })));
+    assert.strictEqual(list.length, 1);
+    assert.strictEqual(list[0].id, 'src-a');
+    assert.strictEqual(list[0].capacity_kwp, 70);
+  });
+
+  it('vp-sources-config distinguishes a cleared config ([]) from garbage (null)', function () {
+    assert.deepStrictEqual(vpSourcesConfig.parse(Buffer.from('')), []);
+    assert.deepStrictEqual(vpSourcesConfig.parse(Buffer.from(JSON.stringify({ schema_version: '1.0', sources: [] }))), []);
+    assert.strictEqual(vpSourcesConfig.parse(Buffer.from('kaputt')), null);
+    assert.strictEqual(vpSourcesConfig.parse(Buffer.from(JSON.stringify({ schema_version: '2.0', sources: [] }))), null);
+  });
+
+  it('vp-sources-config drops entries without id / ip / family', function () {
+    const list = vpSourcesConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0',
+      sources: [
+        { id: 'ok', role: 'pv-generation', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: '1.2.3.4' } },
+        { role: 'pv-generation', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: '1.2.3.4' } }, // no id
+        { id: 'noip', family: 'sunspec', communication: 'modbus_tcp', connection: {} },
+      ],
+    })));
+    assert.strictEqual(list.length, 1);
+    assert.strictEqual(list[0].id, 'ok');
+  });
+
+  it('vp-quelle shapes a source reading (pv only) and builds a safe per-source topic', function () {
+    assert.deepStrictEqual(vpQuelle.shape({ pv_power_kw: 42, load_kw: 9 }), { pv_power_kw: 42 });
+    assert.deepStrictEqual(vpQuelle.shape({ pv_kw: 5 }), { pv_power_kw: 5 }); // alias
+    assert.strictEqual(vpQuelle.shape({ load_kw: 3 }), null); // no PV -> nothing
+    assert.strictEqual(vpQuelle.topicFor('src-a'), 'edge/sources/src-a/telemetry');
+    assert.strictEqual(vpQuelle.topicFor('a/b'), null); // topic-injection guard
+    assert.strictEqual(vpQuelle.topicFor(''), null);
   });
 });
 
@@ -343,6 +387,61 @@ describe('nodes against a local-bus stand-in', function () {
           family: 'sunspec', source: 'schedule',
           registers: [{ role: 'battery_power', fc: 3, addr: 40, commanded_raw: 64536, actual_raw: 64536, match: true }],
         } });
+      }, 300);
+    });
+  });
+
+  it('vp-sources-config emits the retained source array from edge/sources/config', function (done) {
+    const flow = coreFlow([
+      { id: 'sc1', type: 'vp-sources-config', core: 'core1', wires: [['h1']] },
+      { id: 'h1', type: 'helper' },
+    ]);
+    const pub = mqtt.connect('mqtt://127.0.0.1:' + port);
+    pub.on('connect', function () {
+      pub.publish('edge/sources/config', JSON.stringify({
+        schema_version: '1.0',
+        sources: [
+          { id: 'src-a', role: 'pv-generation', brand: 'generic_modbus', family: 'sunspec',
+            communication: 'modbus_tcp', connection: { ip: 'edge-pv', port: 502, unit_id: 1 }, capacity_kwp: 70 },
+        ],
+      }), { qos: 1, retain: true }, function () {
+        pub.end();
+        helper.load([vpCore, vpSourcesConfig], flow, function () {
+          const h1 = helper.getNode('h1');
+          h1.on('input', function (msg) {
+            try {
+              assert.strictEqual(msg.payload.length, 1);
+              assert.strictEqual(msg.sources[0].id, 'src-a');
+              assert.strictEqual(msg.sources[0].capacity_kwp, 70);
+              done();
+            } catch (e) {
+              done(e);
+            }
+          });
+        });
+      });
+    });
+  });
+
+  it('vp-quelle publishes a source reading on edge/sources/<id>/telemetry', function (done) {
+    const flow = coreFlow([
+      { id: 'q1', type: 'vp-quelle', core: 'core1' },
+    ]);
+    broker.subscribe('edge/sources/src-a/telemetry', function (packet, cb) {
+      cb();
+      const m = JSON.parse(packet.payload.toString());
+      try {
+        assert.strictEqual(m.pv_power_kw, 33);
+        assert.strictEqual(packet.retain, false, 'per-source telemetry is a live event, never retained');
+        done();
+      } catch (e) {
+        done(e);
+      }
+    }, function () {});
+    helper.load([vpCore, vpQuelle], flow, function () {
+      const q1 = helper.getNode('q1');
+      setTimeout(function () {
+        q1.receive({ source_id: 'src-a', payload: { pv_power_kw: 33 } });
       }, 300);
     });
   });

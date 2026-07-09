@@ -1,6 +1,7 @@
 package com.voltpilot.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Connection;
@@ -2251,6 +2252,116 @@ class PortalApiTest {
                 + "' AND device_id = '" + oneDevice + "'")).isEqualTo(1);
         assertThat(queryLong("SELECT count(*) FROM asset WHERE id = '" + twoBattery
                 + "' AND device_id IS NULL")).isEqualTo(1);
+    }
+
+    @Test
+    void measurementPointsRecordErzeugerSourcesAndSumIntoAggregatePv() {
+        String demo = token("demo", "demo");
+        String site = createSite(demo, "Multi-Source Anlage", "DE-LU", "eigenverbrauch");
+
+        // Empty to start.
+        assertThat(measurementPoints(demo, site)).isEmpty();
+        assertThat(aggregatePvKwp(demo, site)).isNull();
+
+        // Record a 70 kWp AC-coupled PV as an Erzeuger source (with its own SEE #).
+        List<Map<String, Object>> after = createMeasurementPoint(demo, site, Map.of(
+                "role", "pv-generation", "label", "PV Dach Süd",
+                "capacityKwp", 70, "registryUnitId", "SEE900000000001"));
+        assertThat(after).hasSize(1);
+        assertThat(after.get(0).get("role")).isEqualTo("pv-generation");
+        assertThat(after.get(0).get("control")).isEqualTo(false);
+        assertThat(after.get(0).get("registryUnitId")).isEqualTo("SEE900000000001");
+        // The aggregate site PV nameplate now carries the additional generation.
+        assertThat(aggregatePvKwp(demo, site)).isEqualByComparingTo("70");
+
+        // A second Erzeuger sums in (asset.pv = Σ Erzeuger).
+        createMeasurementPoint(demo, site, Map.of("role", "pv-generation", "capacityKwp", 30));
+        assertThat(measurementPoints(demo, site)).hasSize(2);
+        assertThat(aggregatePvKwp(demo, site)).isEqualByComparingTo("100");
+
+        // Remove the first -> aggregate drops by its kWp.
+        String firstId = (String) after.get(0).get("id");
+        ResponseEntity<String> del = rest.exchange(
+                url("/api/v1/sites/" + site + "/measurement-points/" + firstId),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(del.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(measurementPoints(demo, site)).hasSize(1);
+        assertThat(aggregatePvKwp(demo, site)).isEqualByComparingTo("30");
+
+        // Deleting an unknown id -> 404.
+        assertThat(rest.exchange(url("/api/v1/sites/" + site + "/measurement-points/"
+                + java.util.UUID.randomUUID()), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // A non-Erzeuger role is refused in Phase 1 -> 400.
+        assertThat(rest.exchange(url("/api/v1/sites/" + site + "/measurement-points"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("role", "grid-meter"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Foreign site (tenant B) is invisible under RLS -> 404 on list and create.
+        assertThat(rest.exchange(url("/api/v1/sites/" + HAMBURG_SITE + "/measurement-points"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url("/api/v1/sites/" + HAMBURG_SITE + "/measurement-points"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("role", "pv-generation"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void measurementPointDbConstraintsEnforceReadOnlyControlSafety() {
+        String tenant = "00000000-0000-0000-0000-000000000001";
+        String site = "ccccccc1-0000-0000-0000-000000000001";
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES "
+                + "('" + site + "', '" + tenant + "', 'Control Safety Site', 'DE-LU')");
+
+        // control=true is forbidden for a non-battery-hybrid role (the CHECK).
+        assertThatThrownBy(() -> exec("INSERT INTO measurement_point "
+                + "(tenant_id, site_id, role, control) VALUES "
+                + "('" + tenant + "', '" + site + "', 'pv-generation', TRUE)"))
+                .isInstanceOf(IllegalStateException.class);
+
+        // At most ONE control=true point per site (the partial unique index): the
+        // first battery-hybrid control point is allowed, a second is rejected.
+        exec("INSERT INTO measurement_point (tenant_id, site_id, role, control) VALUES "
+                + "('" + tenant + "', '" + site + "', 'battery-hybrid', TRUE)");
+        assertThatThrownBy(() -> exec("INSERT INTO measurement_point "
+                + "(tenant_id, site_id, role, control) VALUES "
+                + "('" + tenant + "', '" + site + "', 'battery-hybrid', TRUE)"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    /** GET the site's measurement points as the given user. */
+    private List<Map<String, Object>> measurementPoints(String token, String siteId) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    /** POST a measurement point, asserting 200 and returning the resulting list. */
+    private List<Map<String, Object>> createMeasurementPoint(String token, String siteId,
+            Map<String, Object> body) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
+                new HttpEntity<>(body, bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    /** The site's aggregate pv asset kWp via GET /assets (null when no pv asset). */
+    private java.math.BigDecimal aggregatePvKwp(String token, String siteId) {
+        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/assets"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody().stream()
+                .filter(a -> "pv".equals(a.get("type"))).findFirst()
+                .map(a -> a.get("pvCapacityKwp"))
+                .filter(java.util.Objects::nonNull)
+                .map(v -> new java.math.BigDecimal(v.toString()))
+                .orElse(null);
     }
 
     /** PUT /battery for a site as the given user, returning the asset list. */
