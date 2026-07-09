@@ -1,13 +1,23 @@
 // sources.js - the "Weitere Energiequellen" surface on the inverter page:
-// list / add / remove ADDITIONAL read-only Erzeuger (PV) measurement points.
-// It reuses the SAME option catalog as the inverter form (GET /api/sources
-// returns {sources, catalog}), forces role=Erzeuger and control off (a source
-// never gets a control path), and captures an optional kWp + MaStR SEE number.
+// list / add / remove ADDITIONAL read-only measurement points. Two roles today:
+// an Erzeuger (a separate PV inverter, whose generation is summed into the site
+// PV) and a Netz-Zähler (a grid meter at the point of common coupling, whose
+// signed power measures site grid directly). It reuses the SAME option catalog
+// as the inverter form (GET /api/sources returns {sources, catalog}), keeps
+// control off (a source never gets a control path), and captures a kWp + MaStR
+// SEE number for an Erzeuger only (a meter has no nameplate).
 // Self-contained, no framework, matches the inverter page's tokens/markup.
 (function () {
   "use strict";
 
+  var ROLE_ERZEUGER = "pv-generation";
+  var ROLE_NETZ = "grid-meter";
+
   function $(id) { return document.getElementById(id); }
+
+  function roleLabel(role) {
+    return role === ROLE_NETZ ? "Netz-Zähler" : "Erzeuger";
+  }
 
   function el(tag, attrs, text) {
     var e = document.createElement(tag);
@@ -51,7 +61,7 @@
       var meta = [];
       if (s.capacity_kwp) meta.push(fmtKwp(s.capacity_kwp) + " kWp");
       if (s.connection && s.connection.ip) meta.push(s.connection.ip);
-      meta.push("Erzeuger · nur Lesen");
+      meta.push(roleLabel(s.role) + " · nur Lesen");
       main.appendChild(el("span", { class: "src-item-meta" }, meta.join(" · ")));
       if (s.registry_unit_id) {
         main.appendChild(el("span", { class: "src-item-see" }, "MaStR: " + s.registry_unit_id));
@@ -128,6 +138,18 @@
     });
   }
 
+  // onRoleChange shows the nameplate fields (kWp + MaStR SEE) only for an
+  // Erzeuger; a Netz meter has no nameplate, so they are hidden and left blank.
+  function onRoleChange() {
+    var netz = $("srcRole").value === ROLE_NETZ;
+    $("srcKwpField").hidden = netz;
+    $("srcSeeField").hidden = netz;
+    $("srcRoleHelp").textContent = netz
+      ? "Ein eigener Zähler am Netzübergang. Sein gemessener Bezug/Einspeisung ersetzt den Wert des Speicher-Wechselrichters."
+      : "Eine zusätzliche PV-Anlage, deren Erzeugung mitgezählt wird.";
+    $("srcLabel").placeholder = netz ? "z. B. Netz-Zähler Hausanschluss" : "z. B. PV Dach Süd";
+  }
+
   function collect() {
     var conn = {};
     $("srcFields").querySelectorAll("[data-key]").forEach(function (input) {
@@ -143,17 +165,21 @@
         conn[key] = input.value.trim();
       }
     });
+    var role = $("srcRole").value || ROLE_ERZEUGER;
     var req = {
-      role: "pv-generation",
+      role: role,
       brand: $("srcBrand").value,
       model: $("srcModel").value,
       connection: conn,
       label: $("srcLabel").value.trim(),
     };
-    var kwp = Number($("srcKwp").value);
-    if ($("srcKwp").value !== "" && !isNaN(kwp)) req.capacity_kwp = kwp;
-    var see = $("srcSee").value.trim();
-    if (see) req.registry_unit_id = see;
+    // A meter carries no nameplate/MaStR number; only an Erzeuger does.
+    if (role === ROLE_ERZEUGER) {
+      var kwp = Number($("srcKwp").value);
+      if ($("srcKwp").value !== "" && !isNaN(kwp)) req.capacity_kwp = kwp;
+      var see = $("srcSee").value.trim();
+      if (see) req.registry_unit_id = see;
+    }
     return req;
   }
 
@@ -177,6 +203,8 @@
     $("srcLabel").value = "";
     $("srcKwp").value = "";
     $("srcSee").value = "";
+    $("srcRole").value = ROLE_ERZEUGER;
+    onRoleChange();
   }
 
   function addSource(ev) {
@@ -205,7 +233,10 @@
   }
 
   function removeSource(s) {
-    if (!window.confirm("Diese Energiequelle entfernen? Ihre Erzeugung fließt dann nicht mehr in die Gesamt-PV ein.")) return;
+    var msg = s.role === ROLE_NETZ
+      ? "Diesen Netz-Zähler entfernen? Der Netzbezug wird dann wieder vom Speicher-Wechselrichter gemessen."
+      : "Diese Energiequelle entfernen? Ihre Erzeugung fließt dann nicht mehr in die Gesamt-PV ein.";
+    if (!window.confirm(msg)) return;
     fetch("/api/sources/" + encodeURIComponent(s.id), { method: "DELETE" })
       .then(function () { load(); })
       .catch(function () { /* leave the list; a reload will re-sync */ });
@@ -226,7 +257,9 @@
     $("srcAddToggle").addEventListener("click", openForm);
     $("srcCancel").addEventListener("click", closeForm);
     $("srcBrand").addEventListener("change", onBrandChange);
+    $("srcRole").addEventListener("change", onRoleChange);
     $("srcForm").addEventListener("submit", addSource);
+    onRoleChange();
     load();
   });
 })();

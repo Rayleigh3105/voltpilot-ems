@@ -51,12 +51,33 @@ func TestNormalizeValidErzeugerDefaultsAndDerivations(t *testing.T) {
 	}
 }
 
-func TestNormalizeRejectsNonErzeugerRole(t *testing.T) {
+func TestNormalizeAcceptsNetzMeterRoleWithoutCapacity(t *testing.T) {
 	req := erzeugerReq()
-	req.Role = "grid-meter" // Phase 2 role, not yet allowed
+	req.Role = RoleNetz // Increment 1: a grid meter at the PCC
+	req.CapacityKwp = 0 // a meter has no nameplate
+	req.Model = inverter.FamSunSpec
+	src, err := Normalize(cat(), req, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error normalizing a Netz meter: %v", err)
+	}
+	if src.Role != RoleNetz {
+		t.Fatalf("role = %q, want %q", src.Role, RoleNetz)
+	}
+	if src.CapacityKwp != 0 {
+		t.Fatalf("a meter should carry no capacity, got %v", src.CapacityKwp)
+	}
+	// Transport validation is reused exactly like the Erzeuger path.
+	if src.Communication != inverter.CommModbusTCP || src.Connection.Port != 502 {
+		t.Fatalf("Netz transport not derived: comm=%q port=%d", src.Communication, src.Connection.Port)
+	}
+}
+
+func TestNormalizeRejectsUnknownRole(t *testing.T) {
+	req := erzeugerReq()
+	req.Role = "wallbox" // reserved vocabulary, not yet configurable on the edge
 	_, err := Normalize(cat(), req, time.Now())
 	if err == nil {
-		t.Fatal("expected a validation error for a non-Erzeuger role")
+		t.Fatal("expected a validation error for an unknown role")
 	}
 	var ve *ValidationError
 	if !asValidation(err, &ve) {

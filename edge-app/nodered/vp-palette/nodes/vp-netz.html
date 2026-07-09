@@ -1,0 +1,40 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-netz', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'bridge.svg',
+    align: 'right',
+    label: function () { return this.name || 'vp-netz'; },
+    paletteLabel: 'vp-netz'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-netz">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-netz">
+  <p>Sendet die Messung EINES Netz-Zählers am Netzübergang an den VoltPilot
+  Core-Agenten, auf dem quellenspezifischen Topic
+  <code>edge/sources/&lt;id&gt;/telemetry</code>. Der Core nutzt den gemessenen,
+  vorzeichenbehafteten Netzwert (+ Bezug / - Einspeisung) direkt für die Anlage
+  und ersetzt damit den Wert des Speicher-Wechselrichters.</p>
+  <p><code>msg.source_id</code>: die Quellen-ID (aus
+  <code>edge/sources/config</code>), erforderlich.<br>
+  <code>msg.payload</code>: Objekt mit <code>power_kw</code> (vorzeichenbehaftet,
+  und optional <code>ts</code>). Nur Lesen - für eine Quelle gibt es keinen
+  Steuerpfad.</p>
+</script>

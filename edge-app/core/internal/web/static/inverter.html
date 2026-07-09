@@ -123,18 +123,27 @@
           <p class="src-lead">
             Hat diese Anlage neben dem Speicher-Wechselrichter oben noch eine
             <strong>separate PV-Anlage</strong> (z. B. eine ältere AC-gekoppelte
-            Anlage), fügen Sie sie hier als <strong>Erzeuger</strong> hinzu.
-            VoltPilot liest sie mit aus und zählt ihre Erzeugung zur
-            Gesamt-PV der Anlage. Nur Lesen – gesteuert wird nichts.
+            Anlage) oder einen <strong>eigenen Zähler am Netzübergang</strong>,
+            fügen Sie sie hier hinzu. VoltPilot liest sie mit aus: eine PV-Anlage
+            zählt zur Gesamt-Erzeugung, ein Netz-Zähler misst den Bezug und die
+            Einspeisung direkt am Übergabepunkt. Nur Lesen – gesteuert wird nichts.
           </p>
         </div>
-        <button type="button" class="btn-secondary" id="srcAddToggle">＋ Erzeuger hinzufügen</button>
+        <button type="button" class="btn-secondary" id="srcAddToggle">＋ Energiequelle hinzufügen</button>
       </div>
 
       <ul class="src-list" id="srcList"></ul>
       <p class="src-empty" id="srcEmpty">Noch keine weiteren Energiequellen. Für eine Anlage mit nur einem Wechselrichter ist das der Normalfall.</p>
 
       <form id="srcForm" class="src-form" novalidate hidden>
+        <div class="field">
+          <label for="srcRole">Art der Energiequelle</label>
+          <select id="srcRole" required>
+            <option value="pv-generation">Weitere PV-Anlage (Erzeuger)</option>
+            <option value="grid-meter">Netz-Zähler (am Netzübergang)</option>
+          </select>
+          <p class="field-help" id="srcRoleHelp">Eine zusätzliche PV-Anlage, deren Erzeugung mitgezählt wird.</p>
+        </div>
         <div class="field">
           <label for="srcLabel">Bezeichnung (optional)</label>
           <input id="srcLabel" type="text" autocomplete="off" placeholder="z. B. PV Dach Süd">
@@ -155,12 +164,12 @@
           <legend>Verbindungsdaten</legend>
           <div id="srcFields"></div>
         </fieldset>
-        <div class="field">
+        <div class="field" id="srcKwpField">
           <label for="srcKwp">Anlagenleistung (kWp)</label>
           <input id="srcKwp" type="number" min="0" step="0.1" inputmode="decimal" placeholder="z. B. 70">
           <p class="field-help">Wird zur Gesamt-PV der Anlage summiert und begrenzt die Plausibilitätsprüfung.</p>
         </div>
-        <div class="field">
+        <div class="field" id="srcSeeField">
           <label for="srcSee">MaStR-Nummer der Quelle (optional)</label>
           <input id="srcSee" type="text" autocomplete="off" placeholder="SEE…" spellcheck="false">
           <p class="field-help">Die eigene SEE-Nummer dieser PV-Anlage aus dem Marktstammdatenregister. Nicht zwingend erforderlich.</p>

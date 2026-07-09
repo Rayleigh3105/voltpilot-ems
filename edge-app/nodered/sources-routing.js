@@ -34,6 +34,7 @@ const { parseConfig, route } = require('./inverter-routing');
 
 const SCHEMA_VERSION = '1.0';
 const ROLE_ERZEUGER = 'pv-generation';
+const ROLE_NETZ = 'grid-meter';
 
 function num(v, fallback) {
   const n = typeof v === 'string' ? Number(v.trim()) : v;
@@ -89,14 +90,16 @@ function parseSourcesConfig(input) {
 
 /**
  * planSources - map parsed source entries onto their read plans, keeping ONLY
- * Erzeuger sources that route to a usable (non-idle) read path. Returns a list
- * of { id, role, capacity_kwp, plan } where plan is the inverter-routing.route
- * result (adapter modbus_tcp | solarman_v5).
+ * read-only measurement roles (Erzeuger PV + Netz grid meter) that route to a
+ * usable (non-idle) read path. Returns a list of { id, role, capacity_kwp, plan }
+ * where plan is the inverter-routing.route result (adapter modbus_tcp |
+ * solarman_v5). The role rides along so the reader picks the right field to
+ * publish (Erzeuger -> pv_power_kw, Netz -> signed power_kw).
  */
 function planSources(entries) {
   const out = [];
   (entries || []).forEach((e) => {
-    if (!e || e.role !== ROLE_ERZEUGER) return;
+    if (!e || (e.role !== ROLE_ERZEUGER && e.role !== ROLE_NETZ)) return;
     const plan = route(e.selection);
     if (!plan || plan.adapter === 'idle') return;
     out.push({ id: e.id, role: e.role, capacity_kwp: e.capacity_kwp, plan });
@@ -107,6 +110,7 @@ function planSources(entries) {
 module.exports = {
   SCHEMA_VERSION,
   ROLE_ERZEUGER,
+  ROLE_NETZ,
   parseSourcesConfig,
   planSources,
 };

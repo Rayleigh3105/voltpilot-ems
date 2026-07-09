@@ -36,10 +36,22 @@ import (
 // SchemaVersion of the edge/sources/config payload shape.
 const SchemaVersion = "1.0"
 
-// Roles. Phase 1 ships ONLY the Erzeuger (generation) role; the rest of the
-// Luxone role vocabulary (Netz / Verbraucher / Wallbox) is Phase 2. A source is
-// always read-only, so there is no control role here by design.
-const RoleErzeuger = "pv-generation"
+// Roles. Phase 1 shipped the Erzeuger (generation) role; Increment 1 adds the
+// Netz (grid meter) role at the point of common coupling, which makes site_grid
+// an authoritative measurement instead of the primary hybrid inverter's CT. The
+// rest of the Luxone role vocabulary (Verbraucher / Wallbox) is later work. A
+// source is always read-only, so there is no control role here by design.
+const (
+	RoleErzeuger = "pv-generation"
+	RoleNetz     = "grid-meter"
+)
+
+// isKnownRole reports whether role is one of the read-only source roles the edge
+// can configure today. A meter (RoleNetz) carries no capacity_kwp; an Erzeuger
+// (RoleErzeuger) may.
+func isKnownRole(role string) bool {
+	return role == RoleErzeuger || role == RoleNetz
+}
 
 // Read-cadence defaults + bounds (seconds). The primary inverter polls every 5 s
 // in the dev flow; an additional PV source reuses that cadence by default.
@@ -114,8 +126,8 @@ func Normalize(cat inverter.Catalog, req Request, now time.Time) (Source, error)
 	if role == "" {
 		role = RoleErzeuger
 	}
-	if role != RoleErzeuger {
-		return Source{}, invalid("In dieser Version können nur Erzeuger-Quellen (z. B. eine zusätzliche PV-Anlage) hinzugefügt werden.")
+	if !isKnownRole(role) {
+		return Source{}, invalid("Diese Art von Energiequelle wird nicht unterstützt (nur zusätzliche PV-Anlagen oder ein Netz-Zähler).")
 	}
 
 	// Reuse the exact inverter validation (brand/model/family + connection). The
