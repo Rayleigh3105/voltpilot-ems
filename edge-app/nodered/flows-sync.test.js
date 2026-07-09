@@ -340,3 +340,28 @@ test('flow sources-read decodes SunSpec PV + grid consistently with modbus-tcp',
   assert.ok(byId['sources-read'].func.includes('s16(regs[1]) / 100'));
   assert.ok(byId['sources-read'].func.includes('s16(regs[0]) / 100'));
 });
+
+// The "Verbindung testen (einmal lesen)" node carries EMBEDDED verbatim copies
+// of test-read.js + the four decode modules (a Node-RED flow cannot `require` a
+// repo file). This is the drift guard: the running flow must contain the exact
+// current file contents, so editing a module without re-running build-flows.js
+// fails here instead of shipping a stale test-read.
+test('flow test-read embeds the current test-read.js + decode module sources', () => {
+  const func = byId['test-read'].func;
+  const embeds = [
+    'test-read.js',
+    'deye/solarman-v5.js',
+    'deye/deye-decode.js',
+    'modbus-tcp.js',
+    'fronius/solar-api.js',
+  ];
+  for (const rel of embeds) {
+    const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
+    assert.ok(
+      func.includes(src),
+      'flows.json test-read node is out of sync with ' + rel + ' - re-run build-flows.js',
+    );
+  }
+  // And it wires the embedded modules into makeReadOnce the intended way.
+  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5'));
+});

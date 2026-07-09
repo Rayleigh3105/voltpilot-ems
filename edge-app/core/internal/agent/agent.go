@@ -6,6 +6,7 @@ package agent
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
 
 // Version is stamped by the build (ldflags); shown in the UI + deviceInfo.
@@ -73,6 +75,13 @@ type Agent struct {
 	srcMu       sync.Mutex
 	srcs        []sources.Source
 	srcReadings map[string]sourceReading
+
+	// testReads correlates an in-flight "Verbindung testen" round-trip
+	// (edge/test-read/request -> Node-RED -> edge/test-read/result) to the
+	// waiting HTTP handler by request id. The channel is buffered (size 1) so the
+	// bus handler never blocks even if the handler already timed out and left.
+	testMu    sync.Mutex
+	testReads map[string]chan testconn.Result
 
 	link       *cloud.Link
 	linkCancel context.CancelFunc // cancels the current link's heartbeat goroutine
@@ -201,6 +210,7 @@ func New(cfg config.Config) (*Agent, error) {
 		invCat:       inverter.DefaultCatalog(),
 		srcStore:     ss,
 		srcReadings:  map[string]sourceReading{},
+		testReads:    map[string]chan testconn.Result{},
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
 		despikeStore: ds,
@@ -276,6 +286,11 @@ func (a *Agent) Start(ctx context.Context) error {
 	// composite site reading. Wildcard subscription so any number of sources works
 	// without per-source (un)subscribe on add/remove.
 	if err := bus.Subscribe(sources.TopicWildcard, 4, a.onSourceTelemetry); err != nil {
+		return err
+	}
+	// One-shot "Verbindung testen" results from Node-RED (edge/test-read/result),
+	// correlated to the waiting HTTP handler by request id.
+	if err := bus.Subscribe(localbus.TopicTestReadResult, 5, a.onTestReadResult); err != nil {
 		return err
 	}
 
@@ -1299,6 +1314,137 @@ func (a *Agent) ListSources() []sources.Source {
 	a.srcMu.Lock()
 	defer a.srcMu.Unlock()
 	return append([]sources.Source(nil), a.srcs...)
+}
+
+// SourceStatuses reports the live delivery status per source id, so the web app
+// can render the ok/warn/pending dot next to each source (the freshness
+// machinery already exists internally; this surfaces it):
+//   - "ok"      the source delivered a reading within its freshness window,
+//   - "warn"    a reading arrived once but is now stale (window elapsed),
+//   - "pending" no reading has ever arrived (waiting for first data).
+//
+// It never fabricates a value - "pending" is the honest state for a source the
+// flow has not yet read.
+func (a *Agent) SourceStatuses() map[string]string {
+	now := time.Now().UTC()
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	out := make(map[string]string, len(a.srcs))
+	for _, s := range a.srcs {
+		if _, ok := a.srcReadings[s.ID]; !ok {
+			out[s.ID] = "pending"
+			continue
+		}
+		if _, fresh := a.sourceFresh(s, now); fresh {
+			out[s.ID] = "ok"
+		} else {
+			out[s.ID] = "warn"
+		}
+	}
+	return out
+}
+
+// --- "Verbindung testen" one-shot connection probe ---
+
+// testReadTimeout bounds a single "Verbindung testen" round-trip. It matches the
+// solarman-probe default (8 s) plus headroom for the flow's own socket timeout.
+// A var (not const) so tests can shorten it.
+var testReadTimeout = 10 * time.Second
+
+// TestConnection reads the given UNSAVED connection form ONCE and returns the
+// decoded values or a classified error. It never persists or publishes any
+// config and never blocks Speichern - it is a confidence check. The actual read
+// runs in Node-RED via the same route()+decode the self-wiring poll uses
+// (edge/test-read/request -> edge/test-read/result), correlated by request id.
+func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
+	// Normalize the form against the catalog to derive communication/family and
+	// validate the connection, exactly like a save would - but persist nothing.
+	connRaw, _ := json.Marshal(req.Connection)
+	var conn inverter.Connection
+	_ = json.Unmarshal(connRaw, &conn)
+	sel, err := a.invCat.Normalize(inverter.SelectionRequest{
+		Brand:      req.Brand,
+		Model:      req.Model,
+		Family:     req.Family,
+		Connection: conn,
+	}, time.Now())
+	if err != nil {
+		msg := "Die Verbindungsdaten sind unvollständig."
+		var ve *inverter.ValidationError
+		if errors.As(err, &ve) {
+			msg = ve.Msg
+		}
+		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest, Message: msg}
+	}
+	if a.Bus == nil {
+		return testconn.Result{OK: false, ErrorCode: testconn.ErrTimeout, Message: "Die Prüfung ist derzeit nicht möglich."}
+	}
+
+	id := newTestReadID()
+	ch := make(chan testconn.Result, 1)
+	a.testMu.Lock()
+	a.testReads[id] = ch
+	a.testMu.Unlock()
+	defer func() {
+		a.testMu.Lock()
+		delete(a.testReads, id)
+		a.testMu.Unlock()
+	}()
+
+	// The request payload is the same selection shape route() consumes, plus the
+	// correlation id and the display-only role (a source may carry one).
+	var payload map[string]any
+	_ = json.Unmarshal(sel.BusPayload(), &payload)
+	payload["request_id"] = id
+	if role := strings.TrimSpace(req.Role); role != "" {
+		payload["role"] = role
+	}
+	raw, _ := json.Marshal(payload)
+	if err := a.Bus.Publish(localbus.TopicTestReadRequest, raw, false); err != nil {
+		return testconn.Result{OK: false, ErrorCode: testconn.ErrTimeout, Message: "Die Prüfung konnte nicht gestartet werden."}
+	}
+
+	select {
+	case res := <-ch:
+		return res
+	case <-time.After(testReadTimeout):
+		return testconn.Result{OK: false, ErrorCode: testconn.ErrTimeout}
+	}
+}
+
+// onTestReadResult routes a one-shot test-read result from Node-RED to the
+// waiting TestConnection call by request id. Unknown/expired ids are dropped
+// (the handler already timed out and left); the buffered channel + non-blocking
+// send mean this never blocks the bus.
+func (a *Agent) onTestReadResult(_ string, payload []byte) {
+	var m struct {
+		RequestID string            `json:"request_id"`
+		OK        bool              `json:"ok"`
+		ErrorCode string            `json:"error_code"`
+		Message   string            `json:"message"`
+		Reading   *testconn.Reading `json:"reading"`
+	}
+	if err := json.Unmarshal(payload, &m); err != nil || m.RequestID == "" {
+		slog.Warn("test-read result malformed; skipped")
+		return
+	}
+	a.testMu.Lock()
+	ch := a.testReads[m.RequestID]
+	a.testMu.Unlock()
+	if ch == nil {
+		return // unknown / already-timed-out request
+	}
+	select {
+	case ch <- testconn.Result{OK: m.OK, ErrorCode: m.ErrorCode, Message: m.Message, Reading: m.Reading}:
+	default:
+	}
+}
+
+// newTestReadID returns a short random correlation id for a test-read round-trip.
+func newTestReadID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return "tr-" + hex.EncodeToString(b)
 }
 
 // AddSource validates a request against the catalog, assigns a stable id,

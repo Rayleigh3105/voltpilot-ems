@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#5A8DE8">
-  <title>VoltPilot Edge · Wechselrichter</title>
+  <title>VoltPilot Edge · Meine Anlage</title>
   <link rel="stylesheet" href="dashboard.css">
   <link rel="stylesheet" href="inverter.css">
 </head>
@@ -35,151 +35,151 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
         </span>
         <div>
-          <h1 class="inv-title">Wechselrichter einrichten</h1>
+          <h1 class="inv-title">Meine Anlage</h1>
           <p class="inv-lead">
-            Marke und Modell auswählen, Verbindungsdaten angeben – alles Weitere
-            passiert automatisch. VoltPilot liest die Anlage nur aus; gesteuert wird nichts.
+            Wechselrichter, Speicher und zusätzliche Energiequellen dieser Anlage –
+            alles an einem Ort. VoltPilot liest die Anlage nur aus; gesteuert wird nichts.
           </p>
         </div>
-      </div>
-
-      <div class="current" id="current" hidden>
-        <span class="current-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        </span>
-        <div class="current-text">
-          <p class="current-model" id="currentModel">–</p>
-          <p class="current-detail" id="currentDetail"></p>
-        </div>
-        <span class="current-badge" id="currentBadge">Konfiguriert</span>
       </div>
     </section>
 
-    <form id="form" novalidate>
-      <section class="card inv-form-card">
-        <div class="field">
-          <label for="brand">Marke</label>
-          <select id="brand" required></select>
-          <p class="field-help" id="brandHelp"></p>
+    <section class="card anlage-card" id="anlageCard">
+      <!-- Group 1: Wechselrichter / Speicher (inverter.js) -->
+      <div class="grp" id="invGroup">
+        <div class="grp-head">
+          <span class="grp-ico inv" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M11 16h2"/></svg>
+          </span>
+          <span class="grp-title">Wechselrichter / Speicher</span>
+          <span class="grp-note">· steuerbares Gerät</span>
         </div>
 
-        <div class="field">
-          <label id="modelLabel" for="modelSearch">Modell</label>
-          <div class="picker" id="picker">
-            <div class="picker-search" id="pickerSearch">
-              <svg class="picker-search-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <input id="modelSearch" type="text" inputmode="search" autocomplete="off" autocorrect="off"
-                     spellcheck="false" enterkeyhint="go"
-                     role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="modelList"
-                     placeholder="Modell suchen, z. B. 12K oder SG04LP3">
-              <button type="button" class="picker-clear" id="modelClear" aria-label="Suche löschen" hidden>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-              </button>
+        <ul class="rows" id="invRows" hidden>
+          <li class="row">
+            <span class="row-dot" id="invDot" aria-hidden="true"></span>
+            <div class="row-main">
+              <span class="row-name" id="invName">–</span>
+              <span class="row-meta" id="invMeta"></span>
             </div>
-            <div class="picker-panel">
-              <ul class="picker-list" id="modelList" role="listbox" aria-labelledby="modelLabel"></ul>
-              <div class="picker-empty" id="modelEmpty" hidden>
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/></svg>
-                <p class="picker-empty-title">Kein Modell gefunden</p>
-                <p class="picker-empty-hint" id="modelEmptyHint"></p>
-                <button type="button" class="picker-reset" id="modelReset">Suche zurücksetzen</button>
+            <span class="row-badge" id="invBadge"></span>
+            <span class="row-actions">
+              <button type="button" class="icon-btn" id="invEditBtn" title="Bearbeiten" aria-label="Wechselrichter bearbeiten">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+            </span>
+          </li>
+        </ul>
+
+        <div class="empty-row" id="invEmpty" hidden>
+          <p>Noch kein Wechselrichter eingerichtet.</p>
+          <button type="button" class="link-btn-txt" id="invSetupBtn">Jetzt einrichten →</button>
+        </div>
+
+        <form id="form" class="inv-edit-form" novalidate hidden>
+          <div class="field">
+            <label for="brand">Marke</label>
+            <select id="brand" required></select>
+            <p class="field-help" id="brandHelp"></p>
+          </div>
+
+          <div class="field">
+            <label id="modelLabel" for="modelSearch">Modell</label>
+            <div class="picker" id="picker">
+              <div class="picker-search" id="pickerSearch">
+                <svg class="picker-search-ico" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input id="modelSearch" type="text" inputmode="search" autocomplete="off" autocorrect="off"
+                       spellcheck="false" enterkeyhint="go"
+                       role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="modelList"
+                       placeholder="Modell suchen, z. B. 12K oder SG04LP3">
+                <button type="button" class="picker-clear" id="modelClear" aria-label="Suche löschen" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <div class="picker-panel">
+                <ul class="picker-list" id="modelList" role="listbox" aria-labelledby="modelLabel"></ul>
+                <div class="picker-empty" id="modelEmpty" hidden>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/></svg>
+                  <p class="picker-empty-title">Kein Modell gefunden</p>
+                  <p class="picker-empty-hint" id="modelEmptyHint"></p>
+                  <button type="button" class="picker-reset" id="modelReset">Suche zurücksetzen</button>
+                </div>
+              </div>
+              <div class="picker-foot">
+                <span class="picker-count" id="modelCount"></span>
+                <span class="picker-chosen" id="modelChosen" hidden>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span id="modelChosenLabel"></span>
+                </span>
               </div>
             </div>
-            <div class="picker-foot">
-              <span class="picker-count" id="modelCount"></span>
-              <span class="picker-chosen" id="modelChosen" hidden>
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                <span id="modelChosenLabel"></span>
-              </span>
+            <p class="field-help" id="modelHelp">Wählen Sie Ihr genaues Wechselrichter-Modell aus der Liste.</p>
+          </div>
+
+          <div class="field">
+            <label>Kommunikationsmethode</label>
+            <div class="comm-readonly" id="comm">–</div>
+            <p class="field-help">Wird automatisch aus der Marke abgeleitet.</p>
+          </div>
+
+          <fieldset class="conn">
+            <legend>Verbindungsdaten</legend>
+            <div id="fields"></div>
+          </fieldset>
+
+          <p class="form-error" id="formError" hidden></p>
+          <p class="form-ok" id="formOk" hidden>Gespeichert. Die Anlage wird jetzt angebunden.</p>
+          <div class="verify-panel" id="invVerify" hidden></div>
+
+          <div class="form-actions-row">
+            <button type="button" class="btn-ghost" id="invTestBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0 1 12-5M19 12a7 7 0 0 1-12 5M15 3v4h-4M9 21v-4h4"/></svg>
+              <span>Verbindung testen</span>
+            </button>
+            <div class="form-actions-right">
+              <button type="button" class="btn-ghost" id="invCancelBtn" hidden>Abbrechen</button>
+              <button type="submit" class="btn-primary" id="saveBtn">Speichern</button>
             </div>
           </div>
-          <p class="field-help" id="modelHelp">Wählen Sie Ihr genaues Wechselrichter-Modell aus der Liste.</p>
-        </div>
-
-        <div class="field">
-          <label>Kommunikationsmethode</label>
-          <div class="comm-readonly" id="comm">–</div>
-          <p class="field-help">Wird automatisch aus der Marke abgeleitet.</p>
-        </div>
-
-        <fieldset class="conn">
-          <legend>Verbindungsdaten</legend>
-          <div id="fields"></div>
-        </fieldset>
-
-        <p class="form-error" id="formError" hidden></p>
-        <p class="form-ok" id="formOk" hidden>Gespeichert. Die Anlage wird jetzt angebunden.</p>
-
-        <div class="form-actions">
-          <button type="submit" class="btn-primary" id="saveBtn">Speichern</button>
-        </div>
-      </section>
-    </form>
-
-    <section class="card src-card" id="sourcesCard">
-      <div class="src-head">
-        <div>
-          <h2 class="src-title">Weitere Energiequellen</h2>
-          <p class="src-lead">
-            Hat diese Anlage neben dem Speicher-Wechselrichter oben noch eine
-            <strong>separate PV-Anlage</strong> (z. B. eine ältere AC-gekoppelte
-            Anlage) oder einen <strong>eigenen Zähler am Netzübergang</strong>,
-            fügen Sie sie hier hinzu. VoltPilot liest sie mit aus: eine PV-Anlage
-            zählt zur Gesamt-Erzeugung, ein Netz-Zähler misst den Bezug und die
-            Einspeisung direkt am Übergabepunkt. Nur Lesen – gesteuert wird nichts.
-          </p>
-        </div>
-        <button type="button" class="btn-secondary" id="srcAddToggle">＋ Energiequelle hinzufügen</button>
+        </form>
       </div>
 
-      <ul class="src-list" id="srcList"></ul>
-      <p class="src-empty" id="srcEmpty">Noch keine weiteren Energiequellen. Für eine Anlage mit nur einem Wechselrichter ist das der Normalfall.</p>
+      <!-- Group 2: Erzeuger (sources.js) -->
+      <div class="grp" id="erzGroup">
+        <div class="grp-head">
+          <span class="grp-ico pv" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+          </span>
+          <span class="grp-title">Erzeuger</span>
+          <span class="grp-note" id="erzNote">· 0 zusätzliche Quellen</span>
+        </div>
+        <ul class="rows" id="erzList"></ul>
+        <div class="empty-row" id="erzEmpty">
+          <p>Keine weitere PV-Anlage hinzugefügt. Für eine Anlage mit nur einem Wechselrichter ist das der Normalfall.</p>
+        </div>
+      </div>
 
-      <form id="srcForm" class="src-form" novalidate hidden>
-        <div class="field">
-          <label for="srcRole">Art der Energiequelle</label>
-          <select id="srcRole" required>
-            <option value="pv-generation">Weitere PV-Anlage (Erzeuger)</option>
-            <option value="grid-meter">Netz-Zähler (am Netzübergang)</option>
-          </select>
-          <p class="field-help" id="srcRoleHelp">Eine zusätzliche PV-Anlage, deren Erzeugung mitgezählt wird.</p>
+      <!-- Group 3: Netz-Zähler (sources.js) -->
+      <div class="grp" id="netzGroup">
+        <div class="grp-head">
+          <span class="grp-ico grid" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v18M17 3v18M7 8l10 3M17 13l-10 3"/></svg>
+          </span>
+          <span class="grp-title">Netz-Zähler</span>
+          <span class="grp-note" id="netzNote">· optional, max. 1</span>
         </div>
-        <div class="field">
-          <label for="srcLabel">Bezeichnung (optional)</label>
-          <input id="srcLabel" type="text" autocomplete="off" placeholder="z. B. PV Dach Süd">
+        <ul class="rows" id="netzList"></ul>
+        <div class="empty-row" id="netzEmpty">
+          <p>Kein eigener Zähler am Netzübergang eingerichtet.</p>
         </div>
-        <div class="field">
-          <label for="srcBrand">Marke</label>
-          <select id="srcBrand" required></select>
-        </div>
-        <div class="field">
-          <label for="srcModel">Modell</label>
-          <select id="srcModel" required></select>
-        </div>
-        <div class="field">
-          <label>Kommunikationsmethode</label>
-          <div class="comm-readonly" id="srcComm">–</div>
-        </div>
-        <fieldset class="conn">
-          <legend>Verbindungsdaten</legend>
-          <div id="srcFields"></div>
-        </fieldset>
-        <div class="field" id="srcKwpField">
-          <label for="srcKwp">Anlagenleistung (kWp)</label>
-          <input id="srcKwp" type="number" min="0" step="0.1" inputmode="decimal" placeholder="z. B. 70">
-          <p class="field-help">Wird zur Gesamt-PV der Anlage summiert und begrenzt die Plausibilitätsprüfung.</p>
-        </div>
-        <div class="field" id="srcSeeField">
-          <label for="srcSee">MaStR-Nummer der Quelle (optional)</label>
-          <input id="srcSee" type="text" autocomplete="off" placeholder="SEE…" spellcheck="false">
-          <p class="field-help">Die eigene SEE-Nummer dieser PV-Anlage aus dem Marktstammdatenregister. Nicht zwingend erforderlich.</p>
-        </div>
-        <p class="form-error" id="srcError" hidden></p>
-        <div class="form-actions">
-          <button type="button" class="btn-ghost" id="srcCancel">Abbrechen</button>
-          <button type="submit" class="btn-primary" id="srcSave">Quelle hinzufügen</button>
-        </div>
-      </form>
+      </div>
+
+      <div class="add-source-cta">
+        <button type="button" class="btn-secondary" id="srcAddToggle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Quelle hinzufügen</span>
+        </button>
+      </div>
     </section>
 
     <footer class="foot">
@@ -188,6 +188,80 @@
     </footer>
   </main>
 
+  <!-- Add-source drawer (side panel on desktop/tablet, full-screen sheet on phones) -->
+  <div class="drawer-backdrop" id="srcDrawerBackdrop" hidden>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="srcDrawerTitle">
+      <div class="drawer-head">
+        <h3 id="srcDrawerTitle">Quelle hinzufügen</h3>
+        <button type="button" class="icon-btn" id="srcClose" title="Schließen" aria-label="Schließen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <form id="srcForm" novalidate>
+          <div class="field">
+            <label>Art der Energiequelle</label>
+            <div class="role-pick" id="rolePick">
+              <button type="button" class="role-card pv" data-role="pv-generation" id="roleErz">
+                <span class="rc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg></span>
+                <strong>Erzeuger</strong>
+                <span>Weitere PV-Anlage, deren Erzeugung mitgezählt wird</span>
+              </button>
+              <button type="button" class="role-card grid" data-role="grid-meter" id="roleNetz">
+                <span class="rc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v18M17 3v18M7 8l10 3M17 13l-10 3"/></svg></span>
+                <strong>Netz-Zähler</strong>
+                <span>Eigener Zähler am Netzübergang</span>
+                <span class="role-locked-note" id="netzLockedNote" hidden>Bereits eingerichtet – nur ein Netz-Zähler pro Anlage möglich.</span>
+              </button>
+            </div>
+            <p class="field-help" id="srcRoleHelp">Eine zusätzliche PV-Anlage, deren Erzeugung mitgezählt wird.</p>
+          </div>
+
+          <div class="field">
+            <label for="srcLabel">Bezeichnung (optional)</label>
+            <input id="srcLabel" type="text" autocomplete="off" placeholder="z. B. PV Dach Süd">
+          </div>
+          <div class="field">
+            <label for="srcBrand">Marke</label>
+            <select id="srcBrand" required></select>
+          </div>
+          <div class="field">
+            <label for="srcModel">Modell</label>
+            <select id="srcModel" required></select>
+          </div>
+          <div class="field">
+            <label>Kommunikationsmethode</label>
+            <div class="comm-readonly" id="srcComm">–</div>
+          </div>
+          <fieldset class="conn">
+            <legend>Verbindungsdaten</legend>
+            <div id="srcFields"></div>
+          </fieldset>
+          <div class="field" id="srcKwpField">
+            <label for="srcKwp">Anlagenleistung (kWp)</label>
+            <input id="srcKwp" type="number" min="0" step="0.1" inputmode="decimal" placeholder="z. B. 70">
+            <p class="field-help">Wird zur Gesamt-PV der Anlage summiert und begrenzt die Plausibilitätsprüfung.</p>
+          </div>
+          <div class="field" id="srcSeeField">
+            <label for="srcSee">MaStR-Nummer der Quelle (optional)</label>
+            <input id="srcSee" type="text" autocomplete="off" placeholder="SEE…" spellcheck="false">
+            <p class="field-help">Die eigene SEE-Nummer dieser PV-Anlage aus dem Marktstammdatenregister. Nicht zwingend erforderlich.</p>
+          </div>
+          <p class="form-error" id="srcError" hidden></p>
+          <div class="verify-panel" id="srcVerify" hidden></div>
+        </form>
+      </div>
+      <div class="drawer-foot">
+        <button type="button" class="btn-ghost" id="srcTestBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0 1 12-5M19 12a7 7 0 0 1-12 5M15 3v4h-4M9 21v-4h4"/></svg>
+          <span>Verbindung testen</span>
+        </button>
+        <button type="submit" form="srcForm" class="btn-primary" id="srcSave">Quelle hinzufügen</button>
+      </div>
+    </aside>
+  </div>
+
+  <script src="verify.js"></script>
   <script src="inverter.js"></script>
   <script src="sources.js"></script>
 </body>

@@ -33,6 +33,14 @@
 //	                (same shape as edge/telemetry). The core keeps the latest per
 //	                source and SUMS PV into the composite site reading; a stale
 //	                source contributes nothing (absent, never a fabricated 0).
+//	edge/test-read/request  core -> Layer 1   NOT retained. A one-shot
+//	                "Verbindung testen" probe of an UNSAVED connection form:
+//	                {request_id, schema_version, role?, brand, model, family,
+//	                 communication, connection}. Node-RED runs the existing
+//	                route()+decode once against it and answers on:
+//	edge/test-read/result   Layer 1 -> core   NOT retained. The one-shot result:
+//	                {request_id, ok, error_code?, reading?{pv_kw?,load_kw?,
+//	                 grid_kw?,soc_pct?}}. Correlated to the request by request_id.
 package localbus
 
 import (
@@ -51,6 +59,8 @@ const (
 	TopicStatus          = "edge/status"
 	TopicInverterConfig  = "edge/inverter/config"
 	TopicControlReadback = "edge/control/readback"
+	TopicTestReadRequest = "edge/test-read/request"
+	TopicTestReadResult  = "edge/test-read/result"
 )
 
 // Bus wraps the embedded broker.
