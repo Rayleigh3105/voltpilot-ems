@@ -29,11 +29,11 @@ The core (re-)publishes it at boot and on every change.
 ```jsonc
 {
   "schema_version": "1.0",
-  "brand": "deye",                          // "deye" | "generic_modbus"
+  "brand": "deye",                          // "deye" | "generic_modbus" | "fronius"
   "label": "Deye · SUN-12K-SG04LP3-EU",     // human label (brand · model)
   "model": "sun-12k-sg04lp3",               // the concrete model the customer picked
   "family": "hybrid_3p",                    // register-map / profile id (Node-RED routes on THIS)
-  "communication": "solarman_v5",           // "solarman_v5" | "modbus_tcp"
+  "communication": "solarman_v5",           // "solarman_v5" | "modbus_tcp" | "fronius_solar_api"
   "connection": { /* per communication, see below */ },
   "updated_at": "2026-07-03T12:00:00Z"      // RFC 3339, when the choice was saved
 }
@@ -47,10 +47,11 @@ resolves to and stays the field the Node-RED adapter routes on - so a
 `family` keeps working (unknown fields are ignored per the contract).
 
 The **communication method is fixed per brand** (the captain's rule): a Deye is
-always read through its WiFi datalogger via **Solarman-V5** (TCP 8899); every
-other brand is generic **Modbus TCP** (502). The client never sends
-`communication` or `label` - the core derives both from the brand, so an
-inconsistent transport can't be requested.
+always read through its WiFi datalogger via **Solarman-V5** (TCP 8899); a Fronius
+is read via its local **Solar API** (HTTP/JSON); every other brand is generic
+**Modbus TCP** (502). The client never sends `communication` or `label` - the
+core derives both from the brand, so an inconsistent transport can't be
+requested.
 
 `connection` carries **only** the fields the chosen communication needs:
 
@@ -91,6 +92,27 @@ and `SUN-*-SG01HP3` HV model resolves to `hybrid_3p`).
 SunSpec register model, matching the `edge/sim` SunSpec source; the profile is
 decoded by the `PROFILES` map in `nodered/modbus-tcp.js`, additive per profile).
 
+### `communication: "fronius_solar_api"` (Fronius)
+
+```jsonc
+"connection": {
+  "ip": "192.168.0.20",       // Fronius inverter IP on the LAN
+  "port": 80,                 // Solar API HTTP port (default 80)
+  "insecure_tls": false,      // true = dial HTTPS + accept a self-signed cert (GEN24 firmware)
+  "invert_grid_sign": false   // escape hatch, default off (Fronius sign already matches)
+}
+```
+
+`family` is always `fronius_solar_api` (the Solar API is self-describing, so
+there is no per-model register map). The edge does **one** HTTP GET to
+`http(s)://{ip}:{port}/solar_api/v1/GetPowerFlowRealtimeData.fcgi` (Solar API
+**v1**), exactly like Home Assistant, and maps `Site.P_PV`/`P_Grid`/`P_Load` +
+`Inverters["1"].SOC` onto the canonical channels. No serial, unit id or auth is
+needed. See [`nodered/FRONIUS.md`](nodered/FRONIUS.md) for the operator guide
+(enabling the Solar API, the GEN24 self-signed-cert quirk, the v1-vs-v0 caveat).
+Read-only; battery power (`P_Akku`) is used only for calibration, never
+published (the cloud derives `battery_kw` from the power balance).
+
 ## Catalog (what the UI offers)
 
 The UI form is fully data-driven from `GET /api/inverter` → `catalog`, so adding
@@ -102,6 +124,7 @@ exposes a per-model list (`models`, the UI selection unit) plus its register-map
 | brand | communication | models (selection unit) | register-map families |
 |---|---|---|---|
 | `deye` | `solarman_v5` | every `SUN-*` model individually (SG04LP3 LV incl. 12K, SG01HP3 HV, SG03LP1 1-phase, G03/G04 string, SUN*G3 micro) | `hybrid_3p`, `hybrid_1p`, `string`, `micro` |
+| `fronius` | `fronius_solar_api` | `fronius_solar_api` (one generic entry; GEN24 / Symo / Primo / Symo Hybrid) | `fronius_solar_api` |
 | `generic_modbus` | `modbus_tcp` | `sunspec` | `sunspec` |
 
 Each `models[]` entry is `{id, label, family, note}` - `family` is the register
@@ -136,6 +159,8 @@ edit:
     (`nodered/deye/deye-decode.js`).
   - `modbus_tcp` → the generic Modbus-TCP reader + profile decode
     (`nodered/modbus-tcp.js`), using `profile` (= `family`) + `unit_id`.
+  - `fronius_solar_api` → one HTTP(S) GET to the Solar API + the PowerFlow decode
+    (`nodered/fronius/solar-api.js`), using `url` + `insecure_tls`.
 - The decoded canonical measurements go to `edge/telemetry` via `vp-telemetrie`
   (`power_kw`/`soc_pct`/`pv_power_kw`/`load_kw`/`grid_limit_kw`); this contract
   changes only how the adapter is **selected**, not the telemetry shape.

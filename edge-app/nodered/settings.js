@@ -18,11 +18,18 @@ module.exports = {
   flowFile: "flows.json",
   uiPort: process.env.NODE_RED_PORT || 1880,
 
-  // Expose Node's built-in `net` to Function nodes so the Deye "Solarman-V5
-  // lesen" node can open the single TCP:8899 connection to the Solarman/Deye
-  // WiFi logger (Modbus-RTU in a Solarman V5 frame). See DEYE.md "Solarman V5".
+  // Expose Node's built-in modules the Function nodes need:
+  //  - `net`   : the Deye "Solarman-V5 lesen" node opens the single TCP:8899
+  //              connection to the Solarman/Deye WiFi logger (Modbus-RTU in a
+  //              Solarman V5 frame). See DEYE.md "Solarman V5".
+  //  - `http`/`https` : the Fronius "Solar API lesen" node performs the one
+  //              HTTP(S) GET to GetPowerFlowRealtimeData.fcgi. `https` is used
+  //              (with rejectUnauthorized:false) for the GEN24 self-signed-cert
+  //              firmware. See FRONIUS.md.
   functionGlobalContext: {
     net: require("net"),
+    http: require("http"),
+    https: require("https"),
   },
 
   adminAuth: {

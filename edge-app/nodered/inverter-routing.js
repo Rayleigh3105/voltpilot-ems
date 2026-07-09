@@ -35,18 +35,24 @@
 // the read plans are the exact ones the decoders expect.
 const deyeDecode = require('./deye/deye-decode');
 const modbusTcp = require('./modbus-tcp');
+const froniusSolarApi = require('./fronius/solar-api');
 
 const SCHEMA_VERSION = '1.0';
 
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
+const COMM_FRONIUS = 'fronius_solar_api';
 
 const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
+const DEFAULT_FRONIUS_PORT = 80;
 
 // Deye register families that carry measurement registers (the ones the read
 // plan can serve). Mirrors deye-decode.FAMILIES keys.
 const DEYE_FAMILIES = Object.keys(deyeDecode.FAMILIES);
+
+// The Fronius Solar API family set (one entry - the API is self-describing).
+const FRONIUS_FAMILIES = Object.keys(froniusSolarApi.FAMILIES);
 
 function isObject(v) {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -78,7 +84,7 @@ function parseConfig(input) {
   if (obj.schema_version !== SCHEMA_VERSION) return null;
 
   const communication = typeof obj.communication === 'string' ? obj.communication : '';
-  if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS) return null;
+  if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS && communication !== COMM_FRONIUS) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -107,6 +113,8 @@ function parseConfig(input) {
  *     mb_slave_id,invert_grid_sign,power_scale}, reads:[{start,count}] }
  *   { adapter: 'modbus_tcp', profile, target, connection:{ip,port,unit_id},
  *     read:{fc,addr,count} }
+ *   { adapter: 'fronius_solar_api', family, target, connection:{ip,port,
+ *     insecure_tls,invert_grid_sign}, scheme, url }   // one HTTP GET
  *   { adapter: 'idle', reason }   // no/unknown/unreadable selection
  *
  * `sel` may be null (nothing selected yet) -> idle.
@@ -168,6 +176,35 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_FRONIUS) {
+    // The Solar API is self-describing, so there is exactly one family. Gate on
+    // the known set for symmetry with the other adapters (an unknown family
+    // stays idle-safe, never fabricates).
+    if (!FRONIUS_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte Fronius-Familie: ' + sel.family };
+    }
+    const port = num(conn.port, DEFAULT_FRONIUS_PORT);
+    // insecure_tls -> dial HTTPS and accept a self-signed cert (GEN24 firmware
+    // that redirects to HTTPS); otherwise plain HTTP on the given port.
+    const insecure = !!conn.insecure_tls;
+    const scheme = insecure ? 'https' : 'http';
+    return {
+      adapter: COMM_FRONIUS,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        insecure_tls: insecure,
+        // Escape hatch, default off: Fronius's P_Grid sign already matches
+        // VoltPilot's +import/-export, so no inversion is needed by default.
+        invert_grid_sign: !!conn.invert_grid_sign,
+      },
+      scheme,
+      url: froniusSolarApi.powerFlowUrl(scheme, ip, port),
+    };
+  }
+
   return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
 }
 
@@ -175,8 +212,10 @@ module.exports = {
   SCHEMA_VERSION,
   COMM_SOLARMAN,
   COMM_MODBUS,
+  COMM_FRONIUS,
   DEFAULT_SOLARMAN_PORT,
   DEFAULT_MODBUS_PORT,
+  DEFAULT_FRONIUS_PORT,
   parseConfig,
   route,
 };
