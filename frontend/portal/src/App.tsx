@@ -637,6 +637,7 @@ function UnifiedPortal() {
       <AnlageAnlegenDrawer
         open={addAnlageOpen}
         onClose={() => setAddAnlageOpen(false)}
+        existingSites={sites}
         onChanged={(createdSiteId) => {
           void reload(createdSiteId);
           navigate(anlageRoute(createdSiteId));

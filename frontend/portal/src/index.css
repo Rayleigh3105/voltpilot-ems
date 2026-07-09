@@ -1284,6 +1284,181 @@ button.vp-cl-item.is-off .vp-cl-label {
   color: #2e7d32;
 }
 
+/* Register-first "Anlage anlegen" flow (captain 2026-07-09) */
+.vp-anlage-flow {
+  min-width: 0;
+}
+.vp-field-row {
+  display: flex;
+  gap: var(--vp-space-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.vp-field-row > :first-child {
+  min-width: 0;
+}
+/* "Gleicher Standort wie …" reuse chips (captain decision 5) */
+.vp-reuse-loc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+.vp-reuse-loc-lbl {
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-muted);
+}
+.vp-reuse-loc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+}
+.vp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-1, 0.25rem);
+  max-width: 100%;
+  padding: 0.4rem 0.7rem;
+  font-family: var(--vp-font-body);
+  font-size: var(--vp-text-sm);
+  font-weight: var(--vp-weight-medium);
+  color: var(--vp-action);
+  background: var(--vp-paleblue-start);
+  border: 1px solid var(--vp-paleblue-end);
+  border-radius: var(--vp-radius-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-chip:hover {
+  border-color: var(--vp-primary-deep);
+}
+.vp-chip svg {
+  flex-shrink: 0;
+}
+/* Inline hint line with a leading line-icon (register auto-fill note) */
+.vp-hint-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+}
+.vp-hint-row svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--vp-action);
+}
+.vp-linklike-quiet {
+  color: var(--vp-text-muted);
+  font-weight: var(--vp-weight-medium);
+}
+/* MaStR confirmation card (register preview) */
+.vp-mastr-card {
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  padding: var(--vp-space-4);
+  margin-bottom: var(--vp-space-3);
+  background: var(--vp-surface);
+  min-width: 0;
+}
+.vp-mastr-pv {
+  background: var(--vp-mint-start);
+  border-color: var(--vp-mint-end);
+}
+.vp-mastr-storage {
+  background: var(--vp-paleblue-start);
+  border-color: var(--vp-paleblue-end);
+}
+.vp-mastr-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-space-3);
+}
+.vp-mastr-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-weight: var(--vp-weight-semibold);
+  font-size: 0.95rem;
+  color: var(--vp-text-dark);
+}
+.vp-mastr-nr {
+  margin-left: auto;
+  font-size: var(--vp-text-sm);
+}
+.vp-kv-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+}
+.vp-kv-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-2) 0;
+  border-bottom: 1px solid rgba(30, 58, 95, 0.1);
+  font-size: 0.88rem;
+}
+.vp-kv-row:last-child {
+  border-bottom: none;
+}
+.vp-kv-row dt {
+  color: var(--vp-text-muted);
+  min-width: 0;
+}
+.vp-kv-row dd {
+  margin: 0;
+  font-weight: var(--vp-weight-semibold);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.vp-mastr-plaus {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+  margin: var(--vp-space-3) 0 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+}
+.vp-mastr-plaus svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--vp-action);
+}
+/* Fertig-summary key/value list */
+.vp-summary-list {
+  display: grid;
+  gap: 0;
+  margin: var(--vp-space-4) 0 0;
+  text-align: left;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  padding: var(--vp-space-1) var(--vp-space-4);
+}
+.vp-summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-3) 0;
+  border-bottom: 1px solid var(--vp-hair, var(--vp-border));
+  font-size: 0.9rem;
+}
+.vp-summary-row:last-child {
+  border-bottom: none;
+}
+.vp-summary-row dt {
+  color: var(--vp-text-muted);
+}
+.vp-summary-row dd {
+  margin: 0;
+  font-weight: var(--vp-weight-semibold);
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* Empty state */
 .vp-empty {
   text-align: center;

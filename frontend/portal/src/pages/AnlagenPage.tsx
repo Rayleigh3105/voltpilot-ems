@@ -248,6 +248,7 @@ function AnlagenListe({
       <AnlageAnlegenDrawer
         open={drawer}
         onClose={() => setDrawer(false)}
+        existingSites={sites}
         onChanged={(createdSiteId) => onReload(createdSiteId)}
       />
     </>

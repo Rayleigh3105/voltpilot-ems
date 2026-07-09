@@ -6,36 +6,21 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { api, ApiError, type MastrApplyInput, type MastrPreview, type Site, type SiteAsset } from '../api';
+import { validateSeeNummer } from '../anlageFlow';
 import { fmtNum } from '../format';
 
 /**
- * "Anlage verknüpfen" (optional MaStR onboarding step): the customer enters
- * their SEE unit number(s) from the BNetzA registration confirmation, we fetch
- * the public registry record, show it in plain German for CONFIRMATION, and
- * only "Übernehmen" persists the values onto the site's assets. Registry data
- * is a prefill the customer confirms - never silently applied.
+ * "Anlage verknüpfen" (optional MaStR update step on an existing Anlage): the
+ * customer enters their SEE unit number(s) from the BNetzA registration
+ * confirmation, we fetch the public registry record, show it in plain German
+ * for CONFIRMATION, and only "Übernehmen" persists the values onto the site's
+ * assets. Registry data is a prefill the customer confirms - never silently
+ * applied. (New Anlagen use the register-first AnlageFlow instead.)
  */
 
-/** Client-side prefix validation with the same friendly hints as the backend. */
-export function validateSeeNummer(raw: string): string | null {
-  const cleaned = raw.replace(/\s+/g, '').toUpperCase();
-  if (!cleaned) return null;
-  if (/^SEE\d{12}$/.test(cleaned)) return null;
-  const prefix = cleaned.slice(0, 3);
-  if (prefix === 'SES') {
-    return 'SES-Nummern kennzeichnen keine Einheit. Auch Batteriespeicher haben eine SEE-Nummer.';
-  }
-  if (prefix === 'SSE') {
-    return 'Das ist die Nummer der Speicher-Anlage. Bitte die SEE-Nummer der Speicher-Einheit eingeben.';
-  }
-  if (prefix === 'EEG') {
-    return 'Das ist die Nummer der EEG-Anlage. Bitte die SEE-Nummer der Einheit eingeben.';
-  }
-  if (prefix === 'ABR') {
-    return 'Das ist Ihre Betreibernummer. Bitte die SEE-Nummer der Einheit eingeben.';
-  }
-  return 'Eine Einheitennummer beginnt mit SEE, gefolgt von 12 Ziffern (z. B. SEE966831669444).';
-}
+// The SEE-number validator now lives in ../anlageFlow (shared with the
+// register-first AnlageFlow); re-exported here for existing importers.
+export { validateSeeNummer };
 
 const NOT_IN_REGISTRY = <span className="vp-muted">nicht im Register hinterlegt</span>;
 

@@ -35,7 +35,9 @@ export type IconName =
   | 'trending-down'
   | 'home'
   | 'cpu'
-  | 'file-text';
+  | 'file-text'
+  | 'link'
+  | 'search';
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   name: IconName;

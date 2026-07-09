@@ -286,6 +286,7 @@ function FleetUebersicht({
       <AnlageAnlegenDrawer
         open={siteDrawer}
         onClose={() => setSiteDrawer(false)}
+        existingSites={sites}
         onChanged={(createdSiteId) => {
           onReload(createdSiteId);
           setReloadKey((k) => k + 1);

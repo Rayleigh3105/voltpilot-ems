@@ -1,23 +1,29 @@
-import type { SaveBatteryInput } from './api';
+import type { MastrApplyInput, MastrPreview, SaveBatteryInput } from './api';
+import { fmtNum } from './format';
 
 /**
- * Pure logic of the ONE "Anlage anlegen" flow (captain decision 5,
- * 2026-07-07): Anlage benennen + Adresse + Anlagentyp -> Geräte-ID
- * verbinden -> Speicher (optional). Both hosts - the first-run onboarding
- * wizard and the "Anlage anlegen" drawer - render the same
- * `components/AnlageFlow.tsx`, which derives everything word- and
- * step-related from this module so it stays unit-testable without a DOM.
+ * Pure logic of the REGISTER-FIRST "Anlage anlegen" flow (captain
+ * 2026-07-09): instead of typing PV and battery specs by hand, the customer
+ * enters their MaStR number(s) and VoltPilot pulls the data from the
+ * Marktstammdatenregister. Steps: 1 · Anlage (Name + Standort) ->
+ * 2 · Register (PV + Speicher aus dem Register, Vorschau, Übernehmen; manual
+ * entry is the always-reachable fallback) -> 3 · Gerät (Geräte-ID verbinden)
+ * -> Fertig. Both hosts - the first-run onboarding wizard and the
+ * "Anlage anlegen" drawer - render the same `components/AnlageFlow.tsx`,
+ * which derives everything word- and step-related from this module so it
+ * stays unit-testable without a DOM.
  */
 
-/** The step rail of the flow, in order. */
-export const FLOW_STEPS = ['Anlage', 'Gerät', 'Speicher'] as const;
+/** The step rail of the flow, in order (register-first). */
+export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät'] as const;
 
 export type FlowStep = 1 | 2 | 3;
 
 /**
- * Where the flow starts: a customer who already created an Anlage (but has
- * no device yet - wizard restart, "Später einrichten") resumes at the
- * Gerät step instead of being asked to create a second Anlage.
+ * Where the flow starts: a customer who already created an Anlage (but has no
+ * device yet - wizard restart, "Später einrichten") resumes at the Register
+ * step. Register is skippable, so nothing is forced on them, but the
+ * register-first value stays offered on the way back to the Gerät step.
  */
 export function initialFlowStep(hasSite: boolean): FlowStep {
   return hasSite ? 2 : 1;
@@ -75,10 +81,10 @@ export type BatteryFormResult =
   | { ok: false; error: string };
 
 /**
- * Validate the Speicher step's three fields (German comma decimals accepted).
- * The controlling device is deliberately NOT part of the result: omitting
- * `deviceId` lets the backend auto-link the Anlage's single device - the
- * claimed inverter controls the battery without any extra wiring.
+ * Validate the manual Speicher fallback's three fields (German comma decimals
+ * accepted). The controlling device is deliberately NOT part of the result:
+ * omitting `deviceId` lets the backend auto-link the Anlage's single device -
+ * the claimed inverter controls the battery without any extra wiring.
  */
 export function parseBatteryForm(input: {
   capacity: string;
@@ -98,4 +104,107 @@ export function parseBatteryForm(input: {
     ok: true,
     value: { capacityKwh: cap, maxChargeKw: chg, maxDischargeKw: dis },
   };
+}
+
+// --- MaStR (Marktstammdaten) helpers: the register-first heart of the flow ---
+
+/** Canonical SEE number: strip whitespace, uppercase (the api canonicalizes too). */
+export function normalizeSeeNummer(raw: string): string {
+  return raw.replace(/\s+/g, '').toUpperCase();
+}
+
+/**
+ * Client-side SEE-number check with the same friendly hints the backend
+ * returns, so a wrong prefix is caught before the round-trip. Returns null for
+ * an empty field (optional) or a well-formed SEE number, else a German hint.
+ */
+export function validateSeeNummer(raw: string): string | null {
+  const cleaned = normalizeSeeNummer(raw);
+  if (!cleaned) return null;
+  if (/^SEE\d{12}$/.test(cleaned)) return null;
+  const prefix = cleaned.slice(0, 3);
+  if (prefix === 'SES') {
+    return 'SES-Nummern kennzeichnen keine Einheit. Auch Batteriespeicher haben eine SEE-Nummer.';
+  }
+  if (prefix === 'SSE') {
+    return 'Das ist die Nummer der Speicher-Anlage. Bitte die SEE-Nummer der Speicher-Einheit eingeben.';
+  }
+  if (prefix === 'EEG') {
+    return 'Das ist die Nummer der EEG-Anlage. Bitte die SEE-Nummer der Einheit eingeben.';
+  }
+  if (prefix === 'ABR') {
+    return 'Das ist Ihre Betreibernummer. Bitte die SEE-Nummer der Einheit eingeben.';
+  }
+  return 'Eine Einheitennummer beginnt mit SEE, gefolgt von 12 Ziffern (z. B. SEE966831669444).';
+}
+
+/**
+ * Which storage number to look up: an explicitly typed one always wins; when
+ * the field is empty and the PV record cross-links a storage unit
+ * (`linkedUnitNumber`), that number is adopted automatically so the customer
+ * usually never types the second number. Null = no storage to look up.
+ */
+export function pickStorageNumber(
+  pvPreview: MastrPreview | null,
+  explicitStorage: string,
+): { number: string; autoFilled: boolean } | null {
+  const explicit = normalizeSeeNummer(explicitStorage);
+  if (explicit) return { number: explicit, autoFilled: false };
+  const linked = pvPreview?.linkedUnitNumber ? normalizeSeeNummer(pvPreview.linkedUnitNumber) : '';
+  if (linked) return { number: linked, autoFilled: true };
+  return null;
+}
+
+/**
+ * Map confirmed MaStR previews onto the apply payload (PV onto the PV asset,
+ * storage onto the battery asset) - `mastr-apply` persists both atomically and
+ * auto-links the battery to the site's device.
+ */
+export function buildMastrApply(previews: MastrPreview[]): MastrApplyInput {
+  const input: MastrApplyInput = {};
+  for (const p of previews) {
+    if (p.kind === 'pv') {
+      input.pv = {
+        mastrNummer: p.mastrNummer,
+        capacityKwp: p.powerKw,
+        moduleCount: p.moduleCount,
+        azimuthDeg: p.azimuthDeg,
+        tiltDeg: p.tiltDeg,
+        commissionedOn: p.commissionedOn,
+      };
+    } else {
+      input.storage = {
+        mastrNummer: p.mastrNummer,
+        capacityKwh: p.storageCapacityKwh,
+        maxChargeKw: p.chargePowerKw,
+        maxDischargeKw: p.powerKw,
+        commissionedOn: p.commissionedOn,
+      };
+    }
+  }
+  return input;
+}
+
+/** One-line PV recap for the Fertig screen, e.g. "9,8 kWp · Süd 30°". */
+export function mastrPvSummary(p: MastrPreview): string {
+  const parts: string[] = [];
+  if (p.powerKw != null) parts.push(fmtNum(p.powerKw, 'kWp', 2));
+  const orient = [p.azimuthLabel, p.tiltLabel].filter(Boolean).join(' ');
+  if (orient) parts.push(orient);
+  return parts.join(' · ') || 'aus dem Register';
+}
+
+/** One-line Speicher recap for the Fertig screen, e.g. "10 kWh · 5 kW". */
+export function mastrStorageSummary(p: MastrPreview): string {
+  const parts: string[] = [];
+  if (p.storageCapacityKwh != null) parts.push(fmtNum(p.storageCapacityKwh, 'kWh', 1));
+  if (p.powerKw != null) parts.push(fmtNum(p.powerKw, 'kW', 2));
+  if (p.batteryTechnology) parts.push(p.batteryTechnology);
+  return parts.join(' · ') || 'aus dem Register';
+}
+
+/** The register plausibility line, e.g. "89551 Königsbronn". Null when absent. */
+export function mastrLocationLabel(p: MastrPreview): string | null {
+  const label = `${p.plz ?? ''} ${p.ort ?? ''}`.trim();
+  return label || null;
 }

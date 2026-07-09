@@ -1,31 +1,50 @@
 import { useEffect, useRef, useState } from 'react';
+import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type Device, type PlantKind, type Site, type TarifArt } from '../api';
 import {
+  api,
+  ApiError,
+  type Device,
+  type MastrPreview,
+  type PlantKind,
+  type Site,
+  type TarifArt,
+} from '../api';
+import {
+  buildMastrApply,
   DEVICE_ID_FIELD,
   DEVICE_ID_UNKNOWN_MSG,
   FLOW_STEPS,
   initialFlowStep,
+  mastrLocationLabel,
+  mastrPvSummary,
+  mastrStorageSummary,
   normalizeDeviceIdInput,
+  normalizeSeeNummer,
   parseBatteryForm,
+  pickStorageNumber,
+  validateSeeNummer,
   zoneForCountry,
 } from '../anlageFlow';
 import { parsePremiumInput } from '../fleet';
+import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
 import { TariffFields } from './TariffFields';
 
 /**
- * THE "Anlage anlegen" flow (captain decision 5, 2026-07-07): ONE sequenced
- * flow instead of site-then-device - 1 · Anlage (Name + Adresse + Anlagentyp,
- * Feineinstellungen eingeklappt), 2 · Gerät (Geräte-ID verbinden),
- * 3 · Speicher (optional; the claimed inverter auto-links as the controlling
- * device). Both entry points render THIS component: the first-run onboarding
- * wizard (full-page card, waits for first data at the end) and the
- * "Anlage anlegen" drawer for existing customers (summary finish). Every
- * step past the first is skippable and dead-end-free - whatever exists so
- * far is kept and reachable again (resume banner, Technik section).
+ * THE register-first "Anlage anlegen" flow (captain 2026-07-09): instead of
+ * typing PV and battery specs by hand, the customer enters their MaStR
+ * number(s) and VoltPilot pulls the data from the Marktstammdatenregister.
+ * 1 · Anlage (Name + Standort) -> 2 · Register (PV + Speicher aus dem
+ * Register, Vorschau, Übernehmen - manual entry stays one tap away) ->
+ * 3 · Gerät (Geräte-ID verbinden) -> Fertig. Both entry points render THIS
+ * component: the first-run onboarding wizard (full-page card, waits for first
+ * data at the end) and the "Anlage anlegen" drawer for existing customers
+ * (summary finish). Every step past the first is skippable and dead-end-free -
+ * whatever exists so far is kept and reachable again (resume banner, Technik
+ * section). Pure step/validation/MaStR-mapping logic lives in ../anlageFlow.
  */
 
 export interface GeoPlace {
@@ -105,7 +124,7 @@ export function LocationSearch({
       <div className="vp-field-row">
         <div style={{ flex: '1 1 220px' }}>
           <Input
-            label="Ort"
+            label="Standort"
             placeholder="z. B. Berlin oder 10115"
             value={query}
             onChange={(e) => setQuery((e.target as HTMLInputElement).value)}
@@ -164,13 +183,20 @@ function StepsRail({ current }: { current: number }) {
 
 export function AnlageFlow({
   sites,
+  existingSites,
   waitForFirstData,
   onSiteCreated,
   onDone,
   onSkipAll,
 }: {
-  /** The customer's existing Anlagen (wizard resume + target picker). */
+  /** The customer's existing Anlagen (wizard resume + Gerät target picker). */
   sites: Site[];
+  /**
+   * All of the customer's Anlagen for the "gleicher Standort wie …" reuse
+   * affordance in the Anlage step. Defaults to `sites`; the drawer passes the
+   * real list even though it starts a fresh flow with `sites={[]}`.
+   */
+  existingSites?: Site[];
   /**
    * true = first-run wizard: after a claimed device the flow ends on the
    * "Ihr Gerät meldet sich…" wait screen (polls for first data).
@@ -185,13 +211,17 @@ export function AnlageFlow({
   onSkipAll?: () => void;
 }) {
   // Resume: a customer who already has an Anlage but no device continues at
-  // the Gerät step (wizard restart after "Später einrichten").
+  // the Register step (skippable) on the way to the Gerät step.
   const [site, setSite] = useState<Site | null>(sites[0] ?? null);
   const [createdHere, setCreatedHere] = useState(false);
   const [claimed, setClaimed] = useState<Device | null>(null);
-  const [batterySaved, setBatterySaved] = useState(false);
+  // What the register applied (drives the Fertig summary + "Quelle: Register").
+  const [pvApplied, setPvApplied] = useState<MastrPreview | null>(null);
+  const [storageApplied, setStorageApplied] = useState<MastrPreview | null>(null);
+  const [manualBatterySaved, setManualBatterySaved] = useState(false);
   const [step, setStep] = useState<number>(initialFlowStep(sites.length > 0));
 
+  const locationSites = existingSites ?? sites;
   const finished = step > FLOW_STEPS.length;
 
   return (
@@ -199,6 +229,7 @@ export function AnlageFlow({
       <StepsRail current={step} />
       {step === 1 && (
         <AnlageStep
+          locationSites={locationSites}
           onCreated={(s) => {
             setSite(s);
             setCreatedHere(true);
@@ -208,22 +239,27 @@ export function AnlageFlow({
         />
       )}
       {step === 2 && site && (
-        <GeraetStep
-          sites={createdHere ? [site] : sites}
+        <RegisterStep
           site={site}
-          onSiteChange={setSite}
-          onClaimed={(d) => {
-            setClaimed(d);
+          onApplied={(pv, storage) => {
+            setPvApplied(pv);
+            setStorageApplied(storage);
+            setStep(3);
+          }}
+          onManualSaved={() => {
+            setManualBatterySaved(true);
             setStep(3);
           }}
           onSkip={() => setStep(3)}
         />
       )}
       {step === 3 && site && (
-        <SpeicherStep
+        <GeraetStep
+          sites={createdHere ? [site] : locationSites}
           site={site}
-          onSaved={() => {
-            setBatterySaved(true);
+          onSiteChange={setSite}
+          onClaimed={(d) => {
+            setClaimed(d);
             setStep(4);
           }}
           onSkip={() => setStep(4)}
@@ -237,7 +273,9 @@ export function AnlageFlow({
           <SummaryStep
             site={site}
             claimed={claimed}
-            batterySaved={batterySaved}
+            pvApplied={pvApplied}
+            storageApplied={storageApplied}
+            manualBatterySaved={manualBatterySaved}
             onDone={onDone}
           />
         ))}
@@ -253,19 +291,26 @@ export function AnlageFlow({
 }
 
 /**
- * Step 1 · Anlage: Name + Adresse (Suche + Karte) + Anlagentyp. The
- * Feineinstellungen (anzulegender Wert, Strompreis, Netzladen) stay collapsed
- * so the first screen stays simple - everything is editable later under
- * Technik & Einstellungen. The Gebotszone is derived from the address'
- * country (no jargon in the UI).
+ * Step 1 · Anlage: Name + Standort (Suche + Karte). The exact PV/Speicher
+ * specs come from the register in step 2, so this screen stays intentionally
+ * short. The Feineinstellungen (anzulegender Wert, Stromtarif, Netzladen) stay
+ * collapsed - everything is editable later under Technik & Einstellungen. The
+ * Gebotszone is derived from the address' country (no jargon in the UI).
  */
-function AnlageStep({ onCreated }: { onCreated: (site: Site) => void }) {
+function AnlageStep({
+  locationSites,
+  onCreated,
+}: {
+  locationSites: Site[];
+  onCreated: (site: Site) => void;
+}) {
   const [name, setName] = useState('');
   const [place, setPlace] = useState<GeoPlace | null>(null);
-  // Actual coordinates: seeded from the chosen Ort, then fine-tunable by
-  // dragging the pin (which can diverge from the searched town).
+  // Actual coordinates: seeded from the chosen Ort or a reused Anlage, then
+  // fine-tunable by dragging the pin.
   const [lat, setLat] = useState<number | null>(null);
   const [lon, setLon] = useState<number | null>(null);
+  const [zone, setZone] = useState<string>('DE-LU');
   const [plantKind, setPlantKind] = useState<PlantKind>('eigenverbrauch');
   const [advanced, setAdvanced] = useState(false);
   const [netzladen, setNetzladen] = useState(false);
@@ -278,13 +323,23 @@ function AnlageStep({ onCreated }: { onCreated: (site: Site) => void }) {
   const nameRef = useRef<HTMLInputElement>(null);
 
   const valid = name.trim().length > 0;
+  // "Gleicher Standort wie …": Anlagen the customer already placed on the map.
+  const reusable = locationSites.filter((s) => s.latitude != null && s.longitude != null);
 
   function selectPlace(p: GeoPlace | null) {
     setPlace(p);
     if (p) {
       setLat(p.latitude);
       setLon(p.longitude);
+      setZone(zoneForCountry(p.countryCode));
     }
+  }
+
+  function reuseLocation(s: Site) {
+    setPlace(null);
+    setLat(s.latitude);
+    setLon(s.longitude);
+    setZone(s.biddingZone);
   }
 
   async function submit() {
@@ -314,7 +369,7 @@ function AnlageStep({ onCreated }: { onCreated: (site: Site) => void }) {
     try {
       const site = await api.createSite({
         name: name.trim(),
-        biddingZone: zoneForCountry(place?.countryCode),
+        biddingZone: zone,
         latitude: lat,
         longitude: lon,
         plantKind,
@@ -337,16 +392,16 @@ function AnlageStep({ onCreated }: { onCreated: (site: Site) => void }) {
 
   return (
     <div className="vp-onboarding-step">
-      <h3>Ihre Anlage</h3>
+      <h3>Wie heißt Ihre Anlage?</h3>
       <p className="vp-muted">
-        Geben Sie Ihrer Anlage einen Namen und sagen Sie uns, wo sie steht - so
-        erhalten Sie eine Wetter- und Ertragsprognose.
+        Ein Name, unter dem Sie sie wiederfinden - und wo sie steht. Leistung,
+        Speicher &amp; Co. holen wir gleich aus dem Register.
       </p>
       <div style={{ display: 'grid', gap: 16 }}>
         <Input
           ref={nameRef}
           label="Name der Anlage"
-          placeholder="z. B. Zuhause"
+          placeholder="z. B. Anlage Auernheim"
           value={name}
           onChange={(e) => {
             setName((e.target as HTMLInputElement).value);
@@ -355,6 +410,24 @@ function AnlageStep({ onCreated }: { onCreated: (site: Site) => void }) {
           onBlur={() => setTouched(true)}
           error={touched && !valid ? 'Bitte geben Sie einen Namen für Ihre Anlage ein.' : null}
         />
+        {reusable.length > 0 && (
+          <div className="vp-reuse-loc">
+            <span className="vp-reuse-loc-lbl">Gleicher Standort wie</span>
+            <div className="vp-reuse-loc-chips">
+              {reusable.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="vp-chip"
+                  onClick={() => reuseLocation(s)}
+                >
+                  <Icon name="map-pin" size={13} />
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <LocationSearch selected={place} onSelect={selectPlace} />
         <LocationMap
           lat={lat}
@@ -467,7 +540,7 @@ function AnlageStep({ onCreated }: { onCreated: (site: Site) => void }) {
       </Button>
       {lat == null && (
         <p className="vp-note" style={{ marginTop: 8 }}>
-          Ohne Adresse geht es auch - dann allerdings ohne Wetterprognose.
+          Ohne Standort geht es auch - dann allerdings ohne Wetterprognose.
         </p>
       )}
       {err && <div className="vp-alert vp-alert-err">{err}</div>}
@@ -476,7 +549,395 @@ function AnlageStep({ onCreated }: { onCreated: (site: Site) => void }) {
 }
 
 /**
- * Step 2 · Gerät: connect the VoltPilot device by its Geräte-ID. Skippable -
+ * Step 2 · Register: the heart of the register-first flow. The customer enters
+ * the MaStR number of the PV plant (and optionally the storage; it is
+ * auto-filled from the register's `linkedUnitNumber` when the two are linked),
+ * we look both up and show ONE preview to confirm, and "Übernehmen" applies
+ * PV + Speicher together (`mastr-apply`, atomic, auto-links the battery to the
+ * device). Manual entry is always one tap away for Balkonkraftwerke,
+ * unregistered plants or an unknown number.
+ */
+function RegisterStep({
+  site,
+  onApplied,
+  onManualSaved,
+  onSkip,
+}: {
+  site: Site;
+  onApplied: (pv: MastrPreview | null, storage: MastrPreview | null) => void;
+  onManualSaved: () => void;
+  onSkip: () => void;
+}) {
+  const [mode, setMode] = useState<'enter' | 'preview' | 'manual'>('enter');
+  const [pvNummer, setPvNummer] = useState('');
+  const [storageNummer, setStorageNummer] = useState('');
+  const [storageAutoFilled, setStorageAutoFilled] = useState(false);
+  const [previews, setPreviews] = useState<MastrPreview[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const pvHint = validateSeeNummer(pvNummer);
+  const storageHint = validateSeeNummer(storageNummer);
+  const canLookup =
+    !busy && !pvHint && !storageHint && (pvNummer.trim() !== '' || storageNummer.trim() !== '');
+
+  const pvPreview = previews?.find((p) => p.kind === 'pv') ?? null;
+  const storagePreview = previews?.find((p) => p.kind === 'storage') ?? null;
+
+  async function lookup() {
+    if (!canLookup) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const found: MastrPreview[] = [];
+      let pv: MastrPreview | null = null;
+      const pvNorm = normalizeSeeNummer(pvNummer);
+      if (pvNorm) {
+        pv = await api.mastrLookup(site.id, pvNorm);
+        found.push(pv);
+      }
+      // Auto-adopt the linked storage number when the field is empty.
+      const storage = pickStorageNumber(pv, storageNummer);
+      if (storage) {
+        const storagePrev = await api.mastrLookup(site.id, storage.number);
+        found.push(storagePrev);
+        if (storage.autoFilled) {
+          setStorageNummer(storage.number);
+          setStorageAutoFilled(true);
+        }
+      }
+      const kinds = found.map((p) => p.kind);
+      if (new Set(kinds).size !== kinds.length) {
+        setError(
+          'Beide Nummern gehören zur gleichen Einheitenart. Bitte geben Sie die SEE-Nummer der PV-Anlage und - falls vorhanden - die des Speichers an.',
+        );
+        return;
+      }
+      setPreviews(found);
+      setMode('preview');
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : 'Die Registerabfrage ist gerade nicht erreichbar. Bitte versuchen Sie es gleich noch einmal.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function apply() {
+    if (!previews) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.mastrApply(site.id, buildMastrApply(previews));
+      onApplied(pvPreview, storagePreview);
+    } catch (e) {
+      setError(
+        e instanceof ApiError
+          ? e.message
+          : 'Die Daten konnten nicht übernommen werden. Bitte versuchen Sie es erneut.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (mode === 'manual') {
+    return (
+      <ManualBatteryStep
+        site={site}
+        onSaved={onManualSaved}
+        onSkip={onSkip}
+        onBack={() => setMode('enter')}
+      />
+    );
+  }
+
+  if (mode === 'preview' && previews) {
+    return (
+      <div className="vp-onboarding-step">
+        <h3>Im Register gefunden</h3>
+        <p className="vp-muted">Bitte kurz prüfen und bestätigen - erst dann speichern wir die Werte.</p>
+        {pvPreview && <MastrPreviewCard preview={pvPreview} />}
+        {storagePreview && (
+          <MastrPreviewCard preview={storagePreview} linked={storageAutoFilled} />
+        )}
+        <p className="vp-note">
+          Datenquelle: Marktstammdatenregister der Bundesnetzagentur (dl-de/by-2-0). Straße und
+          Koordinaten sind für private Betreiber nicht öffentlich - Ihren Standort setzen Sie selbst.
+        </p>
+        <Button
+          variant="primary"
+          size="lg"
+          fullWidth
+          onClick={apply}
+          disabled={busy}
+          style={{ marginTop: 8 }}
+        >
+          {busy ? 'Wird übernommen…' : 'Übernehmen & weiter'}
+        </Button>
+        <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
+          <button
+            type="button"
+            className="vp-linklike"
+            onClick={() => {
+              setMode('enter');
+              setError(null);
+            }}
+          >
+            Zurück zu den Nummern
+          </button>
+        </p>
+        {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="vp-onboarding-step">
+      <h3>PV &amp; Speicher aus dem Register</h3>
+      <p className="vp-muted">
+        Geben Sie die MaStR-Nummer Ihrer PV-Anlage ein - wir holen Leistung, Modulzahl und
+        Ausrichtung automatisch. Den verknüpften Speicher erkennen wir mit.
+      </p>
+      <div style={{ display: 'grid', gap: 16 }}>
+        <Input
+          label="MaStR-Nummer der PV-Anlage"
+          placeholder="z. B. SEE966831669444"
+          value={pvNummer}
+          error={pvHint}
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck={false}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+            setPvNummer(e.target.value);
+            if (error) setError(null);
+          }}
+        />
+        <div>
+          <Input
+            label="MaStR-Nummer des Speichers (optional)"
+            placeholder="z. B. SEE972142227037"
+            value={storageNummer}
+            error={storageHint}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              setStorageNummer(e.target.value);
+              setStorageAutoFilled(false);
+              if (error) setError(null);
+            }}
+          />
+          <p className="vp-note vp-hint-row" style={{ margin: '6px 0 0' }}>
+            <Icon name="link" size={14} />
+            <span>
+              {storageAutoFilled
+                ? 'Verknüpft - automatisch aus der PV-Anlage übernommen.'
+                : 'Ist Ihr Speicher im Register verknüpft, füllen wir die Nummer nach der Suche automatisch. Kein Speicher? Feld leer lassen.'}
+            </span>
+          </p>
+        </div>
+      </div>
+      <Button
+        variant="primary"
+        size="lg"
+        fullWidth
+        onClick={lookup}
+        disabled={!canLookup}
+        style={{ marginTop: 20 }}
+      >
+        <Icon name="search" size={17} style={{ marginRight: 8, verticalAlign: '-3px' }} />
+        {busy ? 'Suche im Register…' : 'Im Register suchen'}
+      </Button>
+      <p className="vp-note" style={{ marginTop: 10, textAlign: 'center' }}>
+        <button type="button" className="vp-linklike" onClick={() => setMode('manual')}>
+          Keine Nummer? Daten manuell eingeben
+        </button>
+      </p>
+      <p className="vp-note" style={{ marginTop: 4, textAlign: 'center' }}>
+        <button type="button" className="vp-linklike vp-linklike-quiet" onClick={onSkip}>
+          Überspringen - später nachtragen
+        </button>
+      </p>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+    </div>
+  );
+}
+
+/** The confirmation card for one mapped MaStR record (PV or storage). */
+function MastrPreviewCard({ preview, linked }: { preview: MastrPreview; linked?: boolean }) {
+  const isPv = preview.kind === 'pv';
+  const location = mastrLocationLabel(preview);
+  return (
+    <div className={`vp-mastr-card ${isPv ? 'vp-mastr-pv' : 'vp-mastr-storage'}`}>
+      <div className="vp-mastr-card-head">
+        <span className="vp-mastr-card-title">
+          <Icon name={isPv ? 'sun' : 'battery'} size={16} />
+          {isPv ? 'PV-Anlage' : 'Batteriespeicher'}
+        </span>
+        {linked && (
+          <Badge variant="tint" dot>
+            verknüpft
+          </Badge>
+        )}
+        <span className="vp-mono vp-note vp-mastr-nr">{preview.mastrNummer}</span>
+      </div>
+      <dl className="vp-kv-list">
+        {isPv ? (
+          <>
+            <KvRow k="Leistung" v={preview.powerKw != null ? fmtNum(preview.powerKw, 'kWp', 2) : null} />
+            <KvRow k="Module" v={preview.moduleCount != null ? String(preview.moduleCount) : null} />
+            <KvRow
+              k="Ausrichtung"
+              v={[preview.azimuthLabel, preview.tiltLabel].filter(Boolean).join(' · ') || null}
+            />
+            <KvRow k="In Betrieb seit" v={preview.commissionedOn} />
+          </>
+        ) : (
+          <>
+            <KvRow
+              k="Kapazität"
+              v={preview.storageCapacityKwh != null ? fmtNum(preview.storageCapacityKwh, 'kWh', 1) : null}
+            />
+            <KvRow k="Entladeleistung" v={preview.powerKw != null ? fmtNum(preview.powerKw, 'kW', 2) : null} />
+            <KvRow k="Ladeleistung" v={preview.chargePowerKw != null ? fmtNum(preview.chargePowerKw, 'kW', 2) : null} />
+            <KvRow k="Technologie" v={preview.batteryTechnology} />
+          </>
+        )}
+      </dl>
+      {location && (
+        <p className="vp-mastr-plaus">
+          <Icon name="map-pin" size={14} />
+          <span>{location} - stimmt das?</span>
+        </p>
+      )}
+      {preview.warnings.map((w) => (
+        <div key={w} className="vp-alert vp-alert-info" style={{ marginBottom: 0, marginTop: 10 }}>
+          {w}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function KvRow({ k, v }: { k: string; v: string | null }) {
+  return (
+    <div className="vp-kv-row">
+      <dt>{k}</dt>
+      <dd>{v ?? <span className="vp-muted">nicht im Register</span>}</dd>
+    </div>
+  );
+}
+
+/**
+ * The manual fallback (today's hand-entry path): the battery master data the
+ * Fahrplan plans with. No controlling-device picker - the claimed inverter
+ * auto-links as the Anlage's single device (backend auto-link). Kept fully
+ * functional for Balkonkraftwerke / unregistered plants / an unknown number.
+ */
+function ManualBatteryStep({
+  site,
+  onSaved,
+  onSkip,
+  onBack,
+}: {
+  site: Site;
+  onSaved: () => void;
+  onSkip: () => void;
+  onBack: () => void;
+}) {
+  const [capacity, setCapacity] = useState('');
+  const [maxCharge, setMaxCharge] = useState('');
+  const [maxDischarge, setMaxDischarge] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (busy) return;
+    const parsed = parseBatteryForm({ capacity, maxCharge, maxDischarge });
+    if (!parsed.ok) {
+      setErr(parsed.error);
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      // No deviceId: the backend links the Anlage's single device (the
+      // claimed inverter) as the controlling device automatically.
+      await api.saveBattery(site.id, parsed.value);
+      onSaved();
+    } catch (e) {
+      setErr(
+        e instanceof ApiError && e.status === 400
+          ? 'Ungültige Eingabe. Bitte prüfen Sie die Werte.'
+          : 'Die Speicherdaten konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-onboarding-step">
+      <h3>Daten manuell eingeben</h3>
+      <p className="vp-muted">
+        Kein Eintrag im Register (z. B. Balkonkraftwerk) oder Nummer nicht zur Hand? Tragen Sie
+        die Speicherdaten aus dem Datenblatt ein - Sie können sie jederzeit unter „Technik &amp;
+        Einstellungen" ändern.
+      </p>
+      <div style={{ display: 'grid', gap: 16 }}>
+        <Input
+          label="Kapazität (kWh)"
+          placeholder="z. B. 10"
+          inputMode="decimal"
+          value={capacity}
+          onChange={(e) => setCapacity((e.target as HTMLInputElement).value)}
+        />
+        <Input
+          label="Max. Ladeleistung (kW)"
+          placeholder="z. B. 5"
+          inputMode="decimal"
+          value={maxCharge}
+          onChange={(e) => setMaxCharge((e.target as HTMLInputElement).value)}
+        />
+        <Input
+          label="Max. Entladeleistung (kW)"
+          placeholder="z. B. 5"
+          inputMode="decimal"
+          value={maxDischarge}
+          onChange={(e) => setMaxDischarge((e.target as HTMLInputElement).value)}
+        />
+      </div>
+      <Button
+        variant="primary"
+        size="lg"
+        fullWidth
+        onClick={submit}
+        disabled={busy}
+        style={{ marginTop: 20 }}
+      >
+        {busy ? 'Speichere…' : 'Speicher speichern'}
+      </Button>
+      <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
+        <button type="button" className="vp-linklike" onClick={onSkip}>
+          Kein Speicher oder später eintragen
+        </button>
+      </p>
+      <p className="vp-note" style={{ marginTop: 4, textAlign: 'center' }}>
+        <button type="button" className="vp-linklike vp-linklike-quiet" onClick={onBack}>
+          Zurück zur Registersuche
+        </button>
+      </p>
+      {err && <div className="vp-alert vp-alert-err">{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * Step 3 · Gerät: connect the VoltPilot device by its Geräte-ID. Skippable -
  * the Anlage exists either way and the resume banner keeps the way back in.
  */
 function GeraetStep({
@@ -586,108 +1047,11 @@ function GeraetStep({
         disabled={busy}
         style={{ marginTop: 20 }}
       >
-        {busy ? 'Verbinde…' : 'Gerät verbinden'}
+        {busy ? 'Verbinde…' : 'Anlage anlegen'}
       </Button>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
-          Gerät später verbinden
-        </button>
-      </p>
-      {err && <div className="vp-alert vp-alert-err">{err}</div>}
-    </div>
-  );
-}
-
-/**
- * Step 3 · Speicher (optional): the battery master data the Fahrplan plans
- * with. No controlling-device picker here - the claimed inverter auto-links
- * as the Anlage's single device (backend auto-link); everything further
- * (Wirkungsgrad, Gerätewahl) lives under Technik & Einstellungen.
- */
-function SpeicherStep({
-  site,
-  onSaved,
-  onSkip,
-}: {
-  site: Site;
-  onSaved: () => void;
-  onSkip: () => void;
-}) {
-  const [capacity, setCapacity] = useState('');
-  const [maxCharge, setMaxCharge] = useState('');
-  const [maxDischarge, setMaxDischarge] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function submit() {
-    if (busy) return;
-    const parsed = parseBatteryForm({ capacity, maxCharge, maxDischarge });
-    if (!parsed.ok) {
-      setErr(parsed.error);
-      return;
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      // No deviceId: the backend links the Anlage's single device (the
-      // claimed inverter) as the controlling device automatically.
-      await api.saveBattery(site.id, parsed.value);
-      onSaved();
-    } catch (e) {
-      setErr(
-        e instanceof ApiError && e.status === 400
-          ? 'Ungültige Eingabe. Bitte prüfen Sie die Werte.'
-          : 'Die Speicherdaten konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="vp-onboarding-step">
-      <h3>Ihr Batteriespeicher</h3>
-      <p className="vp-muted">
-        Optional: Mit den Speicherdaten plant VoltPilot den Lade-Fahrplan Ihres
-        Speichers. Die Werte stehen im Datenblatt - Sie können sie jederzeit
-        unter „Technik &amp; Einstellungen" nachtragen oder ändern.
-      </p>
-      <div style={{ display: 'grid', gap: 16 }}>
-        <Input
-          label="Kapazität (kWh)"
-          placeholder="z. B. 10"
-          inputMode="decimal"
-          value={capacity}
-          onChange={(e) => setCapacity((e.target as HTMLInputElement).value)}
-        />
-        <Input
-          label="Max. Ladeleistung (kW)"
-          placeholder="z. B. 5"
-          inputMode="decimal"
-          value={maxCharge}
-          onChange={(e) => setMaxCharge((e.target as HTMLInputElement).value)}
-        />
-        <Input
-          label="Max. Entladeleistung (kW)"
-          placeholder="z. B. 5"
-          inputMode="decimal"
-          value={maxDischarge}
-          onChange={(e) => setMaxDischarge((e.target as HTMLInputElement).value)}
-        />
-      </div>
-      <Button
-        variant="primary"
-        size="lg"
-        fullWidth
-        onClick={submit}
-        disabled={busy}
-        style={{ marginTop: 20 }}
-      >
-        {busy ? 'Speichere…' : 'Speicher speichern'}
-      </Button>
-      <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
-        <button type="button" className="vp-linklike" onClick={onSkip}>
-          Kein Speicher oder später eintragen
+          Gerät habe ich noch nicht - später
         </button>
       </p>
       {err && <div className="vp-alert vp-alert-err">{err}</div>}
@@ -736,7 +1100,7 @@ export function FirstDataStep({ siteId, onDone }: { siteId: string; onDone: () =
           den optimierten Speicher-Fahrplan Ihrer Anlage.
         </p>
         <Button variant="primary" size="lg" fullWidth onClick={onDone} style={{ marginTop: 12 }}>
-          Zum Portal
+          Zur Anlage
         </Button>
       </div>
     );
@@ -768,46 +1132,59 @@ export function FirstDataStep({ siteId, onDone }: { siteId: string; onDone: () =
 
 /**
  * Drawer finish (and wizard finish without a claimed device): an honest
- * summary of what exists now and what happens next - never pretending a
- * skipped step happened.
+ * summary of what was created - PV, Speicher, Gerät and the source - never
+ * pretending a skipped step happened.
  */
 function SummaryStep({
   site,
   claimed,
-  batterySaved,
+  pvApplied,
+  storageApplied,
+  manualBatterySaved,
   onDone,
 }: {
   site: Site;
   claimed: Device | null;
-  batterySaved: boolean;
+  pvApplied: MastrPreview | null;
+  storageApplied: MastrPreview | null;
+  manualBatterySaved: boolean;
   onDone: () => void;
 }) {
+  const fromRegistry = pvApplied != null || storageApplied != null;
   return (
     <div className="vp-onboarding-step" style={{ textAlign: 'center' }}>
       <div className="vp-success-mark" aria-hidden="true">
         <Icon name="check" size={26} strokeWidth={2.5} />
       </div>
-      <h3>Anlage „{site.name}“ ist angelegt</h3>
-      {claimed ? (
-        <p className="vp-muted">
-          Ihr Gerät <span className="vp-mono">{claimed.externalRef}</span> ist verbunden.
-          Sobald es eingeschaltet ist, konfiguriert es sich selbst und beginnt zu senden -
-          der Status wechselt dann automatisch auf „online“.
-        </p>
-      ) : (
-        <p className="vp-muted">
-          Noch ist kein Gerät verbunden. Sie können es jederzeit nachholen - auf der
-          Anlagen-Seite unter „Technik &amp; Einstellungen“.
+      <h3>Anlage „{site.name}“ ist da</h3>
+      <dl className="vp-summary-list">
+        {pvApplied && <SummaryRow k="PV" v={mastrPvSummary(pvApplied)} />}
+        {storageApplied ? (
+          <SummaryRow k="Speicher" v={mastrStorageSummary(storageApplied)} />
+        ) : (
+          manualBatterySaved && <SummaryRow k="Speicher" v="manuell hinterlegt" />
+        )}
+        <SummaryRow k="Gerät" v={claimed ? claimed.externalRef : 'später verbinden'} />
+        {fromRegistry && <SummaryRow k="Quelle" v="Marktstammdaten" />}
+      </dl>
+      {!claimed && (
+        <p className="vp-note" style={{ marginTop: 12 }}>
+          Sie können das Gerät jederzeit nachholen - auf der Anlagen-Seite unter „Technik &amp;
+          Einstellungen".
         </p>
       )}
-      {batterySaved && (
-        <p className="vp-muted">
-          Die Speicherdaten sind hinterlegt - der Fahrplan plant damit.
-        </p>
-      )}
-      <Button variant="primary" size="lg" fullWidth onClick={onDone} style={{ marginTop: 12 }}>
-        Fertig
+      <Button variant="primary" size="lg" fullWidth onClick={onDone} style={{ marginTop: 16 }}>
+        Zur Anlage
       </Button>
+    </div>
+  );
+}
+
+function SummaryRow({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="vp-summary-row">
+      <dt>{k}</dt>
+      <dd className="vp-mono">{v}</dd>
     </div>
   );
 }
