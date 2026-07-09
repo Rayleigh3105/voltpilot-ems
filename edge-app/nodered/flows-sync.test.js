@@ -208,6 +208,22 @@ test('flow control planner keeps Deye read-only (uncertified) like the module', 
   assert.strictEqual(flowPlan.certified, false);
 });
 
+test('flow control planner keeps Fronius planned-only (uncertified) like the module', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'fronius', family: 'fronius_solar_api',
+    communication: 'fronius_solar_api', connection: { ip: '192.168.0.20', port: 80 },
+  };
+  const sp = { battery_setpoint_kw: 0, pv_limit_kw: 6, source: 'schedule', control_enabled: true };
+  const flowPlan = runControlPlan(sel, sp);
+  assert.deepStrictEqual(flowPlan, JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, {}))));
+  assert.strictEqual(flowPlan.adapter, 'fronius_sunspec');
+  assert.strictEqual(flowPlan.certified, false);
+  assert.deepStrictEqual(flowPlan.writes, [], 'Fronius never emits an executable write');
+  assert.deepStrictEqual(flowPlan.readbacks, []);
+  // no discovery in-flow this increment -> no fabricated planned address
+  assert.deepStrictEqual(flowPlan.planned, []);
+});
+
 test('flow control planner matches the module for the OTHER Deye branches (hybrid_1p, string)', () => {
   const base = { schema_version: '1.0', brand: 'deye', communication: 'solarman_v5', connection: { ip: '10.1.2.3', port: 8899, serial: '2985159064', mb_slave_id: 1 } };
   // hybrid_1p (its own register block) and a charging setpoint that grid-charges.
