@@ -2,7 +2,8 @@
 
 /**
  * sunspec/model-discovery - a REAL SunSpec model-discovery walker + the Model 123
- * (Immediate Controls) curtailment mapping. This is the one-time, reusable
+ * (Immediate Controls) curtailment mapping AND the Model 124 (Storage) battery
+ * charge/discharge mapping (increment 2). This is the one-time, reusable
  * capability the Fronius (and any future real-SunSpec brand, e.g. SMA) control
  * path needs, and is deliberately SEPARATE from modbus-tcp.js's compact 9-register
  * `sunspec` PROFILE - that profile is the SIMULATOR's fixed layout, NOT real
@@ -87,22 +88,53 @@ const M120 = {
   WRtg: 1, // uint16, nameplate active-power rating
   WRtg_SF: 2, // sunssf (signed)
 };
-// Model 124 (Storage) offsets - REFERENCE ONLY for increment 2 (battery
-// charge/discharge control). Discovery locates model 124 if present; this
-// increment writes NOTHING here (report "OUT of scope").
+// Model 124 (Storage / Basic Storage Control) field offsets - the fixed SunSpec
+// model definition (pysunspec2 model_124). Increment 2 (battery charge/discharge
+// control) writes these via planStorage() below; the ABSOLUTE addresses are the
+// discovered model-124 body base + these standard offsets, never a hard-coded
+// table (the report found two community tables disagreeing on the same register).
 const M124 = {
   WChaMax: 0, // uint16, nameplate max charge rate (100% ref for InWRte/OutWRte)
-  StorCtl_Mod: 3, // bitfield16
-  MinRsvPct: 5, // uint16, minimum reserve SoC
-  ChaState: 6, // uint16, current SoC (read)
-  OutWRte: 10, // int16, discharge rate (% of WChaMax)
-  InWRte: 11, // int16, charge rate (% of WChaMax)
-  InOutWRte_RvrtTms: 13, // uint16, revert timeout (s)
-  ChaGriSet: 15, // enum16, grid-charge gate
+  StorCtl_Mod: 3, // bitfield16 (bit0 = charge-rate limit active, bit1 = discharge)
+  MinRsvPct: 5, // uint16, minimum reserve SoC (% of WChaMax capacity), * MinRsvPct_SF
+  ChaState: 6, // uint16, current SoC (read only, cross-check)
+  OutWRte: 10, // int16, discharge rate (% of WChaMax), * InOutWRte_SF
+  InWRte: 11, // int16, charge rate (% of WChaMax), * InOutWRte_SF
+  InOutWRte_RvrtTms: 13, // uint16, revert timeout (s) - the storage dead-man's switch
+  ChaGriSet: 15, // enum16, grid-charge gate (0 = PV only / 1 = grid permitted)
+  WChaMax_SF: 16, // sunssf (signed) - the WChaMax scale factor
+  MinRsvPct_SF: 19, // sunssf (signed) - the MinRsvPct scale factor
+  InOutWRte_SF: 23, // sunssf (signed) - the InWRte/OutWRte scale factor
   LENGTH: 24,
 };
 
 const WMAX_LIM_ENA = { DISABLED: 0, ENABLED: 1 };
+
+// StorCtl_Mod is a bitmask: bit0 activates charge-rate limiting (InWRte), bit1
+// activates discharge-rate limiting (OutWRte). VoltPilot drives ONE direction per
+// slot, so exactly one bit is set for a charge/discharge command, and NONE (0 =
+// release, self-consumption) for an idle setpoint. VERIFY the bit semantics + that
+// setting the bit FORCES (not merely limits) the rate on the bench.
+const STORCTL_MOD = { NONE: 0, CHARGE: 0x01, DISCHARGE: 0x02 };
+
+// ChaGriSet grid-charge gate: PV = charge from PV only (grid charging OFF, the
+// EEG-safe default), GRID = grid charging permitted. VERIFY the exact enum on the
+// bench (community-documented, the report flags it "confirm on bench"). Never set
+// GRID unless the site explicitly permits grid charging (site.netzladen_erlaubt).
+const CHA_GRI_SET = { PV: 0, GRID: 1 };
+
+// Default revert timeout for the storage rate registers (report §1.3/§3.3): the
+// inverter auto-reverts to self-consumption if no fresh Modbus message arrives
+// within InOutWRte_RvrtTms, so a crashed/partitioned client can never leave the
+// battery pinned to a stale charge/discharge rate. Same 60 s margin as curtailment
+// (the core re-publishes the setpoint every ~10 s). Range per manual 0..28800.
+const DEFAULT_STORAGE_RVRT_TMS = 60;
+
+// Fallback scale factors used ONLY when discovery could not read the live SF; the
+// real values come from the device. A device typically holds a percentage * 100
+// (SF = -2). VERIFY on device.
+const DEFAULT_INOUT_WRTE_SF = -2; // InWRte / OutWRte
+const DEFAULT_MIN_RSV_PCT_SF = -2; // MinRsvPct
 
 // Default revert timeout for the curtailment write (report §1.3 / §3.3): the
 // inverter auto-reverts if no fresh Modbus message arrives within RvrtTms, so a
@@ -234,9 +266,7 @@ function finalize(readBlock, base, models, truncated) {
 
   const controls = resolveControls(byId[MODEL.IMMEDIATE_CONTROLS]);
   const nameplate = resolveNameplate(byId[MODEL.NAMEPLATE]);
-  const storage = byId[MODEL.STORAGE]
-    ? { present: true, id: MODEL.STORAGE, bodyAddr: byId[MODEL.STORAGE].bodyAddr }
-    : { present: false };
+  const storage = resolveStorage(byId[MODEL.STORAGE]);
 
   const result = {
     ok: true,
@@ -250,6 +280,9 @@ function finalize(readBlock, base, models, truncated) {
     storage,
     nameplateKw: null,
     wMaxLimPctSf: null,
+    wChaMaxKw: null,
+    inOutWRteSf: null,
+    minRsvPctSf: null,
   };
 
   // Live-read the scalars needed to convert kW <-> % (report §3.2: "read WChaMax /
@@ -266,6 +299,18 @@ function finalize(readBlock, base, models, truncated) {
   if (controls.present) {
     const sf = readWords(readBlock, controls.wMaxLimPctSfAddr, 1);
     if (sf) result.wMaxLimPctSf = s16(sf[0]);
+  }
+  // Storage scalars for the kW<->% conversion of the InWRte/OutWRte rate registers
+  // (report §3.2: "read WChaMax once ... and convert"). Best-effort - a failed read
+  // leaves the value null and planStorage then reports the honest idle-safe reason.
+  if (storage.present) {
+    const w = readWords(readBlock, storage.wChaMaxAddr, 1);
+    const wsf = readWords(readBlock, storage.wChaMaxSfAddr, 1);
+    if (w && wsf) result.wChaMaxKw = (w[0] * Math.pow(10, s16(wsf[0]))) / 1000;
+    const io = readWords(readBlock, storage.inOutWRteSfAddr, 1);
+    if (io) result.inOutWRteSf = s16(io[0]);
+    const mr = readWords(readBlock, storage.minRsvPctSfAddr, 1);
+    if (mr) result.minRsvPctSf = s16(mr[0]);
   }
   return result;
 }
@@ -294,6 +339,27 @@ function resolveNameplate(m) {
     bodyAddr: m.bodyAddr,
     wRtgAddr: m.bodyAddr + M120.WRtg,
     wRtgSfAddr: m.bodyAddr + M120.WRtg_SF,
+  };
+}
+
+/** resolveStorage - Model 124 field addresses (absolute = bodyAddr + offset). */
+function resolveStorage(m) {
+  if (!m) return { present: false };
+  return {
+    present: true,
+    id: MODEL.STORAGE,
+    bodyAddr: m.bodyAddr,
+    wChaMaxAddr: m.bodyAddr + M124.WChaMax,
+    wChaMaxSfAddr: m.bodyAddr + M124.WChaMax_SF,
+    storCtlModAddr: m.bodyAddr + M124.StorCtl_Mod,
+    minRsvPctAddr: m.bodyAddr + M124.MinRsvPct,
+    minRsvPctSfAddr: m.bodyAddr + M124.MinRsvPct_SF,
+    chaStateAddr: m.bodyAddr + M124.ChaState,
+    outWRteAddr: m.bodyAddr + M124.OutWRte,
+    inWRteAddr: m.bodyAddr + M124.InWRte,
+    inOutWRteRvrtTmsAddr: m.bodyAddr + M124.InOutWRte_RvrtTms,
+    inOutWRteSfAddr: m.bodyAddr + M124.InOutWRte_SF,
+    chaGriSetAddr: m.bodyAddr + M124.ChaGriSet,
   };
 }
 
@@ -381,6 +447,143 @@ function planCurtailment(args) {
   return { ok: true, writes, readbacks, pct, pctRaw, ena };
 }
 
+// --- Model 124 (Storage) battery charge/discharge mapping (INCREMENT 2) -------
+
+/**
+ * planStorage - map VoltPilot's direct battery-power setpoint (`battery_setpoint_kw`,
+ * + = charge / - = discharge) onto a Model 124 Storage write + readback plan using
+ * DISCOVERED addresses. This is the higher-risk increment-2 companion to
+ * planCurtailment: a wrong sign/scale can affect a real battery's health, so the
+ * Fronius family stays ABSENT from CERTIFIED_CONTROL_FAMILIES and this plan is only
+ * ever surfaced as `planned`/`bench_pending` (never executed) until a real-hardware
+ * bench pass (CONTROL-BENCH.md → Fronius storage).
+ *
+ *   { discovery, batterySetpointKw, gridChargeAllowed?, socMinPct?, wChaMaxKw?,
+ *     inOutWRteSf?, minRsvPctSf?, rvrtTms? }
+ *     discovery         - a discover() result (carries the model-124 addresses +
+ *                         the live WChaMax kW + the InOutWRte/MinRsvPct scale factors).
+ *     batterySetpointKw - the guard-clamped command in kW; + charge / - discharge /
+ *                         0 = release (idle, self-consumption). Sign is applied by
+ *                         the caller (froniusControl honours invert_control_sign),
+ *                         so this value is already in device orientation.
+ *     gridChargeAllowed - EEG gate; ChaGriSet = GRID only when true AND charging.
+ *     socMinPct         - the operating-floor SoC -> MinRsvPct (a reserve floor,
+ *                         NOT a per-cycle target the way Deye's target-SoC hack is;
+ *                         InWRte/OutWRte carry direction directly, so no hack here).
+ *     wChaMaxKw         - override the discovered battery nameplate max charge rate
+ *                         (kW) - the 100% reference for InWRte/OutWRte; for tests /
+ *                         when the device didn't publish it.
+ *     inOutWRteSf/minRsvPctSf - override the discovered scale factors.
+ *     rvrtTms           - override the revert timeout (s); default DEFAULT_STORAGE_RVRT_TMS.
+ *
+ * Returns { ok, writes:[WriteOp], readbacks:[ReadOp], ratePct, rateRaw, mode,
+ * chaGriSet, minRsvRaw } on success, or { ok:false, reason, writes:[], readbacks:[] }
+ * when discovery is missing, Model 124 is absent, WChaMax is unknown, or the
+ * setpoint is not finite - IDLE-SAFE, never a fabricated address (report §3.3).
+ *
+ * WriteOp = { role, fc:6, addr, value, encode, dwell_s, min_change }
+ * ReadOp  = { role, fc:3, addr, expect, tolerance }
+ *
+ * Sign/scale are firmware-dependent: InWRte/OutWRte are a % of WChaMax scaled by the
+ * DEVICE's InOutWRte_SF (read live, fallback -2); StorCtl_Mod bit semantics and the
+ * ChaGriSet enum are community-documented. VERIFY every one of these on the bench
+ * BEFORE certifying - a wrong storage write can damage a battery.
+ */
+function planStorage(args) {
+  args = args || {};
+  const discovery = args.discovery || null;
+  const idle = (reason) => ({ ok: false, reason, writes: [], readbacks: [] });
+
+  if (!discovery || !discovery.ok) return idle('SunSpec-Modelle nicht erkannt');
+  const s = discovery.storage;
+  if (!s || !s.present) return idle('Modell 124 (Storage) fehlt');
+
+  const battKw = Number(args.batterySetpointKw);
+  if (!Number.isFinite(battKw)) return idle('kein gueltiger Batterie-Sollwert');
+
+  const wChaMaxKw = args.wChaMaxKw != null ? Number(args.wChaMaxKw) : Number(discovery.wChaMaxKw);
+  if (!(wChaMaxKw > 0)) return idle('Batterie-Nennladeleistung (WChaMax) unbekannt');
+
+  const ioSf = Number.isFinite(args.inOutWRteSf)
+    ? args.inOutWRteSf
+    : (Number.isFinite(discovery.inOutWRteSf) ? discovery.inOutWRteSf : DEFAULT_INOUT_WRTE_SF);
+  const mrSf = Number.isFinite(args.minRsvPctSf)
+    ? args.minRsvPctSf
+    : (Number.isFinite(discovery.minRsvPctSf) ? discovery.minRsvPctSf : DEFAULT_MIN_RSV_PCT_SF);
+  const rvrt = (Number.isFinite(args.rvrtTms) && args.rvrtTms >= 0
+    ? Math.round(args.rvrtTms) : DEFAULT_STORAGE_RVRT_TMS) & 0xffff;
+
+  const charging = battKw > 0;
+  const discharging = battKw < 0;
+  // Rate as % of WChaMax (both InWRte and OutWRte reference WChaMax), clamped
+  // [0,100]. The idle channel (the non-active direction) is 0.
+  const ratePct = Math.max(0, Math.min(100, (Math.abs(battKw) / wChaMaxKw) * 100));
+  // Register value = pct / 10^SF (SF negative -> multiplies up, e.g. SF=-2 -> *100).
+  const rateRaw = Math.round(ratePct / Math.pow(10, ioSf)) & 0xffff;
+  const inRate = charging ? rateRaw : 0;
+  const outRate = discharging ? rateRaw : 0;
+  // StorCtl_Mod activates ONLY the active direction's rate limit; idle (0 kW) sets
+  // NONE = release control -> the inverter self-consumes.
+  const mode = charging ? STORCTL_MOD.CHARGE : (discharging ? STORCTL_MOD.DISCHARGE : STORCTL_MOD.NONE);
+
+  // MinRsvPct floor from the operating-floor SoC (a % of capacity), scaled by SF.
+  const socMin = Number.isFinite(args.socMinPct) ? Math.max(0, Math.min(100, args.socMinPct)) : 0;
+  const minRsvRaw = Math.round(socMin / Math.pow(10, mrSf)) & 0xffff;
+
+  // Grid-charge EEG gate: GRID only when explicitly permitted AND charging; else PV
+  // (grid charging OFF, the EEG-safe default). Default off - an EEG plant must never
+  // grid-charge; the optimizer already refuses it, this is the on-device belt-and-braces.
+  const gridChargeAllowed = args.gridChargeAllowed === true;
+  const chaGriSet = (gridChargeAllowed && charging) ? CHA_GRI_SET.GRID : CHA_GRI_SET.PV;
+
+  // Ordering is safety-relevant: set the RATE values + reserve floor + grid gate +
+  // the REVERT timer FIRST, ARM the StorCtl_Mod (the direction-enable bits) LAST, so
+  // a mode can never be activated with a stale rate or without its dead-man's timer.
+  const writes = [
+    {
+      role: 'battery_in_rate', fc: 6, addr: s.inWRteAddr, value: inRate,
+      encode: { kind: 'wchamax_pct', pct: charging ? ratePct : 0, sf: ioSf, wchamax_kw: wChaMaxKw, kw: charging ? battKw : 0 },
+      dwell_s: 0, min_change: 0,
+    },
+    {
+      role: 'battery_out_rate', fc: 6, addr: s.outWRteAddr, value: outRate,
+      encode: { kind: 'wchamax_pct', pct: discharging ? ratePct : 0, sf: ioSf, wchamax_kw: wChaMaxKw, kw: discharging ? battKw : 0 },
+      dwell_s: 0, min_change: 0,
+    },
+    {
+      role: 'battery_min_reserve', fc: 6, addr: s.minRsvPctAddr, value: minRsvRaw,
+      encode: { kind: 'min_rsv_pct', pct: socMin, sf: mrSf },
+      dwell_s: 900, min_change: 1, // MinRsvPct is a config (EEPROM) setting - write on change
+    },
+    {
+      role: 'battery_grid_charge', fc: 6, addr: s.chaGriSetAddr, value: chaGriSet,
+      encode: { kind: 'cha_gri_set', eeg_gated: true, pv: CHA_GRI_SET.PV, grid: CHA_GRI_SET.GRID, permitted: gridChargeAllowed },
+      dwell_s: 900, min_change: 0, // grid-charge gate is a config (EEPROM) setting
+    },
+    {
+      role: 'battery_revert_tms', fc: 6, addr: s.inOutWRteRvrtTmsAddr, value: rvrt,
+      encode: { kind: 'seconds' }, dwell_s: 0, min_change: 0,
+    },
+    {
+      role: 'battery_storage_mode', fc: 6, addr: s.storCtlModAddr, value: mode,
+      encode: {
+        kind: 'storctl_mod', charge: STORCTL_MOD.CHARGE, discharge: STORCTL_MOD.DISCHARGE,
+        direction: charging ? 'charge' : (discharging ? 'discharge' : 'idle'),
+      },
+      dwell_s: 0, min_change: 0,
+    },
+  ];
+  const readbacks = [
+    { role: 'battery_in_rate', fc: 3, addr: s.inWRteAddr, expect: inRate, tolerance: 1 },
+    { role: 'battery_out_rate', fc: 3, addr: s.outWRteAddr, expect: outRate, tolerance: 1 },
+    { role: 'battery_min_reserve', fc: 3, addr: s.minRsvPctAddr, expect: minRsvRaw, tolerance: 1 },
+    { role: 'battery_grid_charge', fc: 3, addr: s.chaGriSetAddr, expect: chaGriSet, tolerance: 0 },
+    { role: 'battery_revert_tms', fc: 3, addr: s.inOutWRteRvrtTmsAddr, expect: rvrt, tolerance: 2 },
+    { role: 'battery_storage_mode', fc: 3, addr: s.storCtlModAddr, expect: mode, tolerance: 0 },
+  ];
+  return { ok: true, writes, readbacks, ratePct, rateRaw, mode, chaGriSet, minRsvRaw };
+}
+
 module.exports = {
   SID,
   END_MODEL_ID,
@@ -391,12 +594,19 @@ module.exports = {
   M120,
   M124,
   WMAX_LIM_ENA,
+  STORCTL_MOD,
+  CHA_GRI_SET,
   DEFAULT_RVRT_TMS,
+  DEFAULT_STORAGE_RVRT_TMS,
   DEFAULT_WMAX_LIM_PCT_SF,
+  DEFAULT_INOUT_WRTE_SF,
+  DEFAULT_MIN_RSV_PCT_SF,
   discover,
   discoverAt,
   resolveControls,
   resolveNameplate,
+  resolveStorage,
   planCurtailment,
+  planStorage,
   _helpers: { u32, s16, readWords },
 };

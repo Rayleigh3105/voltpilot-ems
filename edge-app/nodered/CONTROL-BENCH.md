@@ -114,8 +114,73 @@ ein echter Fronius-Write geht erst nach diesem Durchgang live.
    Aktivierung. Bestätigen: Steuerung aus / Plan veraltet / Verbindungsverlust →
    neutraler Zustand (keine stehende Begrenzung).
 
-Batterie-Laden/-Entladen (Modell 124/802-803) ist **Increment 2** (`vp-fronius-control-battery`),
-nicht Teil dieser Fronius-Curtailment-Freigabe.
+## Checkliste Fronius (SunSpec Modbus, Batterie-Laden/-Entladen - Increment 2)
+
+Batterie-Laden/-Entladen läuft über **SunSpec Modell 124 (Storage)** (+ 802/803 für
+Batteriebank-Details, falls vorhanden) - `InWRte`/`OutWRte`, `StorCtl_Mod`,
+`MinRsvPct`, `ChaGriSet`, mit dem herstellereigenen `InOutWRte_RvrtTms`-Totmann-Schalter.
+Der Adapter (`inverter-control-routing.js` → `froniusControl`) plant diese Register über
+`sunspec/model-discovery.js` → `planStorage`. **Höheres Risiko als Curtailment: ein
+falsches Vorzeichen oder eine falsche Skalierung kann die Batterie schädigen** (Bericht
+§3.4). Wie Curtailment ist es **unzertifiziert**: Fronius steht nicht in
+`CERTIFIED_CONTROL_FAMILIES` / `VP_CONTROL_CERTIFIED_FAMILIES`, der Plan ist **nur
+`planned` (`bench_pending`)**, es gibt **keinen Live-Write**. Batteriesteuerung ist
+**pro Batterie-Marke** (BYD, LG Chem RESU, Fronius-eigene Linie …) einzeln zu bestätigen,
+genau wie die Deye-Familien.
+
+**Vor der Sitzung (zusätzlich zur Curtailment-Vorbereitung oben):**
+
+- **Echte Batterie am Ersatz-Wechselrichter**, nie am Kundenspeicher - ein falscher
+  Lade-/Entlade-Befehl kann die Batterie beschädigen.
+- „Allow Control" muss gesetzt sein (siehe Curtailment-Abschnitt); der Read-Pfad
+  (SoC, Batterieleistung) muss plausible Werte liefern, bevor geschrieben wird.
+
+**Abzuhaken (pro Modell/Batterie-Marke/Firmware, Bericht §3.3/§3.4, in dieser Reihenfolge):**
+
+1. **Modell-Erkennung findet Storage.** Der dynamische Walk lokalisiert Modell 124
+   (und 802/803 falls vorhanden) korrekt auf genau diesem Gerät + Firmware. **Adressen
+   live erkannt, nie aus einer Tabelle.** Modell 124 fehlt → idle-sicher, kein Speicher-
+   Schreibplan (auch bei vorhandenem Modell 123 wird dann nur Curtailment geplant).
+2. **`InWRte`/`OutWRte` Richtung + Vorzeichen.** Belegen, dass ein Laden-Sollwert
+   `InWRte` setzt (+ `StorCtl_Mod` Bit0) und **tatsächlich lädt**, ein Entladen-Sollwert
+   `OutWRte` (+ Bit1) und **tatsächlich entlädt** - gegen die gemessene Batterieleistung
+   querchecken, nie annehmen. Bei invertierter Schreibrichtung `invert_control_sign` in
+   der Inverter-Config setzen (der Adapter liest es, hardcodiert nie ein Vorzeichen).
+3. **`StorCtl_Mod`-Bit-Semantik.** Bestätigen: Bit0 = Ladebegrenzung aktiv, Bit1 =
+   Entladebegrenzung aktiv; `StorCtl_Mod = 0` = Steuerung freigegeben (Rückfall auf
+   Eigenverbrauch). Und dass das Setzen des Bits die Rate **erzwingt** (nicht nur nach
+   oben begrenzt) - falls es nur begrenzt, ist die Zuordnung pro Modell zu überdenken.
+4. **`WChaMax`-basierte kW↔%-Umrechnung.** `InWRte`/`OutWRte` sind Prozent von `WChaMax`
+   (der Nennladeleistung der Batterie), skaliert mit dem **live gelesenen** `InOutWRte_SF`
+   (Fallback -2). Die Umrechnung über die tatsächliche `WChaMax` sauber round-trippen
+   (z. B. 5 kW auf 10 kW `WChaMax` → 50 %). `WChaMax` selbst über `WChaMax_SF` prüfen.
+5. **`MinRsvPct` (Reserve-Untergrenze) aus `soc_min`.** Belegen, dass der geschriebene
+   Wert die Reserve-SoC-Untergrenze setzt (skaliert mit `MinRsvPct_SF`) - ein
+   Reserve-Boden, **kein** per-Zyklus-Ziel (anders als der Deye-Ziel-SoC-Trick;
+   `InWRte`/`OutWRte` tragen die Richtung direkt, der Trick entfällt hier).
+6. **`ChaGriSet` Netzlade-Gate + EEG-Standard AUS.** Bestätigen: das Netzlade-Register
+   wird **nur** auf `GRID` gesetzt, wenn der Standort Netzladen ausdrücklich erlaubt
+   (`grid_charge_allowed`, aus `site.netzladen_erlaubt`) **UND** geladen wird; sonst `PV`
+   (aus). Standard AUS - **vor** dem ersten scharfen Netzlade-Bit verifizieren. Das
+   genaue Enum (`PV`/`GRID`) ist am Gerät zu bestätigen (community-dokumentiert).
+7. **`InOutWRte_RvrtTms` (Totmann-Schalter) end-to-end.** Wert setzen, Schreiben
+   **einstellen** → die Batterie muss nach Ablauf des Rückfall-Timeouts in den
+   **Eigenverbrauch zurückkehren** (nicht auf der letzten befohlenen Rate stehen bleiben).
+   Standard 60 s (der Core republiziert alle ~10 s), Bereich 0-28800 s.
+8. **Reihenfolge + Rücklese-Treue.** Der Plan schreibt Raten + Reserve + Netzlade-Gate +
+   Rückfall-Timer VOR dem `StorCtl_Mod` (die Aktivierungs-Bits zuletzt). Bestätigen: jedes
+   Register liest prompt seinen geschriebenen Wert zurück (die Rückleseschleife), UND die
+   Batterie handelt tatsächlich (gegen die Telemetrie-Leistung).
+9. **EEPROM-Schreibkadenz.** `MinRsvPct`/`ChaGriSet` sind Config (EEPROM), `InWRte`/
+   `OutWRte`/`StorCtl_Mod` sind RAM-Register (durch `RvrtTms` gesichert). Die
+   Write-on-Change-Politik (`dwell_s`/`min_change` je WriteOp) gegen die
+   Herstellerangaben zur EEPROM-Schreibfestigkeit prüfen.
+
+**Batterie-Marken einzeln freigeben:** Storage-Register/802-803-Details können je
+Batterie-Marke abweichen. Jede Marke, mit der Fronius-Batteriesteuerung ausgeliefert
+wird, durchläuft diese Liste separat - genau wie Deye pro Familie.
+
+Nach bestandener Curtailment- **und** Storage-Freigabe: siehe „Freigabe" unten.
 
 ## Freigabe (Zertifizierung)
 

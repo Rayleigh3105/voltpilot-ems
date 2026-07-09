@@ -121,7 +121,7 @@ function controlRoute(selection, setpoint, opts = {}) {
     return deyeControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
   }
   if (selection.communication === COMM_FRONIUS) {
-    return froniusControl({ conn, ip, family, certified, controlEnabled, pvLimitKw, opts });
+    return froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
   }
   return idle('unbekannte Kommunikationsmethode');
 }
@@ -184,44 +184,75 @@ function sunspecControl({ selection, conn, ip, family, certified, controlEnabled
 // Fronius battery control uses the standards-based SunSpec Modbus surface, NOT
 // the Solar-API HTTP read path and NOT the evcc `config/timeofuse` HTTP hack
 // (rejected by the design report §3.1 - unversioned, credentialed, broken twice).
-// Increment 1 is CURTAILMENT ONLY: Model 123 `WMaxLimPct`, the direct SunSpec
-// analogue of the already-certified sim `pv_limit` write (sunspecControl above).
+//   - Increment 1 = CURTAILMENT: Model 123 `WMaxLimPct`, the direct SunSpec
+//     analogue of the already-certified sim `pv_limit` write (sunspecControl above).
+//   - Increment 2 = BATTERY CHARGE/DISCHARGE: Model 124 (Storage) `InWRte`/`OutWRte`
+//     (% of the discovered `WChaMax`) + `StorCtl_Mod` bits, `MinRsvPct` (soc floor)
+//     and the EEG-gated `ChaGriSet` grid-charge gate, with the native
+//     `InOutWRte_RvrtTms` dead-man's switch. HIGHER RISK - a wrong sign/scale can
+//     affect a real battery's health/warranty (report §3.4).
 //
-// SAFETY: Fronius is DELIBERATELY absent from CERTIFIED_CONTROL_FAMILIES, so this
-// adapter NEVER emits an executable write (writes:[]) and NEVER fabricates a
-// readback against an unproven/undiscovered register (readbacks:[]) - exactly the
-// Deye discipline. The intended curtailment WriteOps are surfaced as `planned`
-// (bench artefact, marked bench_pending) ONLY when a live SunSpec model-discovery
-// result is supplied via opts.sunspec; without it we cannot know the Model 123
-// base, so `planned` is empty and the reason says discovery is required - never a
-// fabricated address (report §3.3). Going live needs a real-hardware bench pass
-// (CONTROL-BENCH.md), after which the family joins BOTH allowlists.
+// SAFETY (captain decision 3 - NON-NEGOTIABLE): Fronius is DELIBERATELY absent from
+// CERTIFIED_CONTROL_FAMILIES, so this adapter NEVER emits an executable write
+// (writes:[]) and NEVER fabricates a readback against an unproven/undiscovered
+// register (readbacks:[]) - exactly the Deye discipline. Both increments' intended
+// WriteOps are surfaced as `planned` (bench artefact, marked bench_pending) ONLY
+// when a live SunSpec model-discovery result is supplied via opts.sunspec; without
+// it we cannot know the Model 123/124 bases, so `planned` is empty and the reason
+// says discovery is required - never a fabricated address (report §3.3). Battery
+// control stays bench_pending PER battery brand until a real-hardware bench pass
+// (CONTROL-BENCH.md → Fronius storage), after which the family joins BOTH allowlists.
 //
 // The adapter name 'fronius_sunspec' is distinct from 'modbus_tcp', so the flow's
 // generic-Modbus control executor no-ops on it (like it does for Deye's
 // 'solarman_v5') - there is no code path that could execute a Fronius write here.
 const FRONIUS_NOT_CERTIFIED_REASON = 'Steuerung für dieses Modell noch nicht freigegeben';
 
-function froniusControl({ conn, ip, family, certified, controlEnabled, pvLimitKw, opts }) {
+function froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts }) {
   const port = Number(conn.control_port) > 0 ? Number(conn.control_port) : DEFAULT_FRONIUS_CONTROL_PORT;
   const unitId = Number(conn.control_unit_id) > 0 ? Number(conn.control_unit_id) : 1;
+  // Sign is CONFIG, never code: invert_control_sign flips the battery-power write
+  // direction if the bench shows it inverted (same as sunspecControl/deyeControl).
+  const invert = conn.invert_control_sign === true;
+  const battKw = isFiniteNum(kw) ? (invert ? -kw : kw) : 0;
+  const sp = setpoint || {};
+  const gridChargeAllowed = sp.grid_charge_allowed === true;
+  const socMin = isFiniteNum(sp.soc_min_pct) ? sp.soc_min_pct : 5;
 
-  // The curtailment plan needs the discovered Model 123 base + the live nameplate
-  // rating + WMaxLimPct scale factor. The flow/core performs the discovery walk
-  // I/O (SunSpec model-discovery) and passes the result in via opts.sunspec;
-  // controlRoute itself stays a pure function. Absent -> plan.ok=false -> no
-  // planned addresses (idle-safe).
-  const plan = sunspec.planCurtailment({
-    discovery: opts.sunspec || null,
+  // Both plans need a live SunSpec model-discovery result (Model 123/124 bases +
+  // the live nameplate/WChaMax scalars). The flow/core performs the discovery walk
+  // I/O and passes it in via opts.sunspec; controlRoute itself stays a pure
+  // function. Absent -> plan.ok=false -> no planned addresses (idle-safe), and the
+  // adapter output is byte-identical to the flow's Fronius branch (no in-flow
+  // discovery), so flows-sync.test.js stays green.
+  const discovery = opts.sunspec || null;
+  const curtailPlan = sunspec.planCurtailment({
+    discovery,
     pvLimitKw,
     nameplateKw: opts.nameplateKw,
     wMaxLimPctSf: opts.wMaxLimPctSf,
     rvrtTms: opts.rvrtTms,
   });
-  const planned = plan.ok ? plan.writes.map((w) => ({ ...w, bench_pending: true })) : [];
-  const reason = plan.ok
+  const storagePlan = sunspec.planStorage({
+    discovery,
+    batterySetpointKw: battKw,
+    gridChargeAllowed,
+    socMinPct: socMin,
+    wChaMaxKw: opts.wChaMaxKw,
+    inOutWRteSf: opts.inOutWRteSf,
+    minRsvPctSf: opts.minRsvPctSf,
+    rvrtTms: opts.storageRvrtTms,
+  });
+
+  const planned = [
+    ...(curtailPlan.ok ? curtailPlan.writes.map((w) => ({ ...w, bench_pending: true })) : []),
+    ...(storagePlan.ok ? storagePlan.writes.map((w) => ({ ...w, bench_pending: true })) : []),
+  ];
+  // When nothing planned, the honest reason is the discovery/model failure (curtailment
+  // reports it first). This keeps the opts.sunspec-absent output identical to the flow.
+  const reason = planned.length > 0
     ? FRONIUS_NOT_CERTIFIED_REASON
-    : 'Fronius SunSpec: ' + plan.reason + ' (Steuerung nicht freigegeben)';
+    : 'Fronius SunSpec: ' + curtailPlan.reason + ' (Steuerung nicht freigegeben)';
 
   return {
     adapter: 'fronius_sunspec', family,
