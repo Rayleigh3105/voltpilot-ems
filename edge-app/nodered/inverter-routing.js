@@ -150,7 +150,8 @@ function route(sel) {
         mb_slave_id: num(conn.mb_slave_id, 1),
         invert_grid_sign: !!conn.invert_grid_sign,
         invert_batt_sign: !!conn.invert_batt_sign,
-        power_scale: num(conn.power_scale, 1) > 0 ? num(conn.power_scale, 1) : 1,
+        // Manual override / fallback (0 = auto-detect the LV/HV scale from 0x0000).
+        power_scale: num(conn.power_scale, 0),
       },
       reads,
     };

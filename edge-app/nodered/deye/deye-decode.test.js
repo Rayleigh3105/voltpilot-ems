@@ -148,14 +148,15 @@ test('hybrid_1p read plan is one block 0x00A9..0x00BE', () => {
 // --- hybrid_3p ---------------------------------------------------------------
 
 test('hybrid_3p decode: high-map registers, PV summed, SoC & signs', () => {
-  const b = block(0x024c, 0x58, {
+  const b = block(0x024c, 0x67, {
     0x024c: 66, // SoC 66 %
     0x024e: 500, // battery +500 W (charge) -> 0.5 kW
-    0x0271: 4000, // grid import 4000 W -> 4 kW
-    0x028d: 3000, // load 3000 W -> 3 kW
+    0x0271: 4000, // grid import low word 4000 W -> 4 kW (high 0x02B2 = 0)
+    0x028d: 3000, // load low word 3000 W -> 3 kW (high 0x0293 = 0)
     0x02a0: 3500, // PV1
     0x02a1: 200, // PV2 -> sum 3.7 kW
   });
+  // No device register in the blocks -> scale falls back to 1 (LV/native watts).
   const { reading, batt_kw } = D.decode([b], { family: 'hybrid_3p' });
   assert.strictEqual(reading.soc_pct, 66);
   assert.strictEqual(reading.power_kw, 4);
@@ -164,12 +165,17 @@ test('hybrid_3p decode: high-map registers, PV summed, SoC & signs', () => {
   assert.strictEqual(batt_kw, 0.5);
 });
 
-test('hybrid_3p read plan is one block 0x024C..0x02A3 (covers PV1..PV4)', () => {
-  const [r] = D.planReads({ family: 'hybrid_3p' });
-  assert.strictEqual(r.start, 0x024c);
-  assert.strictEqual(r.count, 0x58);
-  // last summed PV register (0x02A3) must fall inside the read block
-  assert.ok(r.start + r.count - 1 >= 0x02a3, 'read block must reach PV4 at 0x02A3');
+test('hybrid_3p read plan is [device 0x0000, measurement 0x024C..0x02B2]', () => {
+  const reads = D.planReads({ family: 'hybrid_3p' });
+  assert.strictEqual(reads.length, 2, 'device-identity block + measurement block');
+  assert.deepStrictEqual(reads[0], { start: 0x0000, count: 0x0001 }, 'device register 0x0000');
+  const m = reads[1];
+  assert.strictEqual(m.start, 0x024c);
+  assert.ok(m.count <= 125, 'must not exceed the Modbus fn-0x03 register limit');
+  const last = m.start + m.count - 1;
+  assert.ok(last >= 0x02a3, 'read block must reach PV4 at 0x02A3');
+  assert.ok(last >= 0x02b2, 'read block must reach the 32-bit Grid high word at 0x02B2');
+  assert.ok(last >= 0x0293, 'read block must reach the 32-bit Load high word at 0x0293');
 });
 
 // --- SG01HP3 (HV, 3-4 MPPT) - the confirmed captain device -------------------
@@ -177,11 +183,12 @@ test('hybrid_3p read plan is one block 0x024C..0x02A3 (covers PV1..PV4)', () => 
 // midday PV-surplus moment: 4 MPPTs producing, battery charging, grid EXPORTING.
 // Proves all four tracker registers are summed and the grid sign flips to export.
 test('hybrid_3p SG01HP3: sums all 4 MPPTs and decodes an export moment', () => {
-  const b = block(0x024c, 0x58, {
+  const b = block(0x024c, 0x67, {
     0x024c: 88, // SoC 88 %
     0x024e: 6000, // battery +6000 W (charging from PV surplus) -> 6 kW
-    0x0271: (-12000 & 0xffff), // raw grid -12000 W; with invert_grid_sign -> +12 kW below
-    0x028d: 9000, // total load 9000 W -> 9 kW
+    0x0271: (-12000 & 0xffff), // grid low word; high word (0x02B2) sign-extends below
+    0x02b2: 0xffff, // grid high word -> full s32 -12000 W; with invert_grid_sign -> +12 kW
+    0x028d: 9000, // total load low word 9000 W -> 9 kW (high 0x0293 = 0)
     0x02a0: 12000, // PV1 12 kW
     0x02a1: 11000, // PV2 11 kW
     0x02a2: 3000, // PV3  3 kW
@@ -205,7 +212,7 @@ test('hybrid_3p SG01HP3: sums all 4 MPPTs and decodes an export moment', () => {
 // A BM3 (3-MPPT) unit has no PV4 wired: register 0x02A3 reads 0 and the sum is
 // still correct - proves the 4-register sum is safe on 3-MPPT hardware.
 test('hybrid_3p BM3: absent PV4 (0x02A3=0) does not corrupt the PV sum', () => {
-  const b = block(0x024c, 0x58, {
+  const b = block(0x024c, 0x67, {
     0x024c: 50,
     0x02a0: 5000,
     0x02a1: 4000,
@@ -225,7 +232,7 @@ test('hybrid_3p BM3: absent PV4 (0x02A3=0) does not corrupt the PV sum', () => {
 // never a 0.
 
 test('hybrid_3p: an all-zero (unanswered) frame is dropped, not published as soc 0', () => {
-  const b = block(0x024c, 0x58, {}); // every register 0 - the classic empty answer
+  const b = block(0x024c, 0x67, {}); // every register 0 - the classic empty answer
   assert.strictEqual(D.decode([b], { family: 'hybrid_3p' }), null, 'all-zero read -> no sample');
 });
 
@@ -237,24 +244,24 @@ test('hybrid_1p: an all-zero (unanswered) frame is dropped, not published as soc
 test('hybrid_3p: an out-of-range SoC (garbage/misaligned frame) is dropped', () => {
   // SoC register reads 1250 (a temperature/voltage-like value) with otherwise
   // plausible power fields - a misaligned/garbage frame. Must drop, not clip.
-  const b = block(0x024c, 0x58, { 0x024c: 1250, 0x028d: 3000, 0x02a0: 2000 });
+  const b = block(0x024c, 0x67, { 0x024c: 1250, 0x028d: 3000, 0x02a0: 2000 });
   assert.strictEqual(D.decode([b], { family: 'hybrid_3p' }), null, 'soc>100 -> no sample');
 });
 
 test('hybrid_3p: an exact-0 SoC with real power fields is still dropped (0 = empty-answer signature)', () => {
-  const b = block(0x024c, 0x58, { 0x024c: 0, 0x028d: 3000, 0x02a0: 4000 });
+  const b = block(0x024c, 0x67, { 0x024c: 0, 0x028d: 3000, 0x02a0: 4000 });
   assert.strictEqual(D.decode([b], { family: 'hybrid_3p' }), null);
 });
 
 test('hybrid_3p: a plausible LOW SoC (above the BMS floor) is kept', () => {
-  const b = block(0x024c, 0x58, { 0x024c: 8, 0x028d: 2000 }); // 8 % - real, above 0
+  const b = block(0x024c, 0x67, { 0x024c: 8, 0x028d: 2000 }); // 8 % - real, above 0
   const { reading } = D.decode([b], { family: 'hybrid_3p' });
   assert.strictEqual(reading.soc_pct, 8, 'a genuine low SoC survives the gate');
   assert.strictEqual(reading.load_kw, 2);
 });
 
 test('hybrid_3p: a full-battery 100 % SoC is kept (inclusive upper bound)', () => {
-  const b = block(0x024c, 0x58, { 0x024c: 100, 0x028d: 500 });
+  const b = block(0x024c, 0x67, { 0x024c: 100, 0x028d: 500 });
   const { reading } = D.decode([b], { family: 'hybrid_3p' });
   assert.strictEqual(reading.soc_pct, 100);
 });
@@ -356,29 +363,158 @@ test('micro read plan is one block at 0x0056 and still supports the 0x0028 limit
   assert.deepStrictEqual(D.powerLimitCmd('h:8899', 50).args, ['-t', 'h:8899', '-xmbw', '0028000102' + '0032']);
 });
 
-// --- hybrid_3p HV decawatt-scaling lever (power_scale, VERIFY-on-device) ------
-// Default scale is 1 W (ha-solarman). An HV firmware that reports decawatts is
-// handled by config `power_scale: 10` - no map/code edit. It scales every power
-// field (pv/grid/load/batt) but never SoC.
+// --- hybrid_3p HV/LV scale AUTO-DETECT (device register 0x0000) ---------------
+// Per davidrapan/ha-solarman deye_p3.yaml, PV Power and Battery Power carry a
+// dual scale [1, 10] (LV=1 W, HV=10 W/decawatt); Grid and Load carry NO scale
+// (always plain watts). ha-solarman auto-detects LV vs HV from the "Device"
+// register 0x0000 (const.py AUTODETECTION_DEYE: LV codes -> mod 0 -> scale 1;
+// HV codes -> mod 1 -> scale 10). We mirror this exactly.
 
-test('power_scale multiplies all power fields but leaves SoC untouched', () => {
-  const b = block(0x024c, 0x58, {
+// A device-identity block { start: 0x0000, regs: [code] }.
+function deviceBlock(code) {
+  return { start: 0x0000, regs: [code & 0xffff] };
+}
+
+// A measurement block with a known set of fields, used to prove the per-field
+// scaling regardless of the class.
+function measBlock() {
+  return block(0x024c, 0x67, {
     0x024c: 77, // SoC 77 %
-    0x024e: 300, // batt raw 300
-    0x0271: 1500, // grid raw 1500
-    0x028d: 900, // load raw 900
+    0x024e: 300, // battery raw 300 W
+    0x0271: 1500, // grid low word raw 1500 W (high 0)
+    0x028d: 900, // load low word raw 900 W (high 0)
     0x02a0: 2000, // PV1 raw 2000
-    0x02a1: 500, // PV2 raw 500 -> raw sum 2500
+    0x02a1: 500, // PV2 raw 500 -> raw sum 2500 W
   });
-  const scaled = D.decode([b], { family: 'hybrid_3p', power_scale: 10 });
-  // raw W x10 /1000 -> kW
-  assert.strictEqual(scaled.reading.pv_power_kw, 25, '2500 raw x10 = 25 kW');
-  assert.strictEqual(scaled.reading.power_kw, 15, '1500 raw x10 = 15 kW');
-  assert.strictEqual(scaled.reading.load_kw, 9, '900 raw x10 = 9 kW');
-  assert.strictEqual(scaled.batt_kw, 3, '300 raw x10 = 3 kW');
-  assert.strictEqual(scaled.reading.soc_pct, 77, 'SoC is a percent, never power-scaled');
-  // default (scale 1) is the #49-verified behavior
-  const plain = D.decode([b], { family: 'hybrid_3p' });
-  assert.strictEqual(plain.reading.pv_power_kw, 2.5);
-  assert.strictEqual(plain.reading.power_kw, 1.5);
+}
+
+test('auto-detect LV device (0x0005): PV/battery scale 1, grid/load always 1', () => {
+  const r = D.decode([deviceBlock(0x0005), measBlock()], { family: 'hybrid_3p' });
+  assert.strictEqual(r.reading.pv_power_kw, 2.5, 'LV -> PV x1');
+  assert.strictEqual(r.batt_kw, 0.3, 'LV -> battery x1');
+  assert.strictEqual(r.reading.power_kw, 1.5, 'grid always watts');
+  assert.strictEqual(r.reading.load_kw, 0.9, 'load always watts');
+  assert.strictEqual(r.reading.soc_pct, 77, 'SoC never scaled');
+});
+
+test('auto-detect HV device (0x0006): PV/battery scale 10, grid/load STAY 1 (the asymmetry fix)', () => {
+  const r = D.decode([deviceBlock(0x0006), measBlock()], { family: 'hybrid_3p' });
+  assert.strictEqual(r.reading.pv_power_kw, 25, 'HV -> PV x10 (2500 raw)');
+  assert.strictEqual(r.batt_kw, 3, 'HV -> battery x10 (300 raw)');
+  assert.strictEqual(r.reading.power_kw, 1.5, 'grid NOT scaled by class (always watts)');
+  assert.strictEqual(r.reading.load_kw, 0.9, 'load NOT scaled by class (always watts)');
+  assert.strictEqual(r.reading.soc_pct, 77, 'SoC never scaled');
+});
+
+test('auto-detect HV 20-50kw band (0x0008 and 0x0601, the SUN-30K class): scale 10', () => {
+  for (const code of [0x0008, 0x0601, 0x0007, 0x0600]) {
+    const r = D.decode([deviceBlock(code), measBlock()], { family: 'hybrid_3p' });
+    assert.strictEqual(r.reading.pv_power_kw, 25, `HV code 0x${code.toString(16)} -> PV x10`);
+    assert.strictEqual(r.batt_kw, 3, `HV code 0x${code.toString(16)} -> battery x10`);
+  }
+});
+
+test('auto-detect: LV alias 0x0500 -> scale 1', () => {
+  const r = D.decode([deviceBlock(0x0500), measBlock()], { family: 'hybrid_3p' });
+  assert.strictEqual(r.reading.pv_power_kw, 2.5);
+  assert.strictEqual(r.batt_kw, 0.3);
+});
+
+test('scaleClass maps the device-type codes exactly like ha-solarman', () => {
+  const fam = D.FAMILIES.hybrid_3p;
+  for (const c of D.DEVICE_TYPES_LV) assert.strictEqual(D.scaleClass([deviceBlock(c)], fam), 1, `LV 0x${c.toString(16)}`);
+  for (const c of D.DEVICE_TYPES_HV) assert.strictEqual(D.scaleClass([deviceBlock(c)], fam), 10, `HV 0x${c.toString(16)}`);
+  assert.strictEqual(D.scaleClass([deviceBlock(0x0000)], fam), undefined, 'unknown code -> undefined');
+  assert.strictEqual(D.scaleClass([measBlock()], fam), undefined, 'no device register -> undefined');
+});
+
+// --- power_scale: manual override / fallback ---------------------------------
+// power_scale is no longer a uniform multiplier: it OVERRIDES the auto-detected
+// PV/battery class (1 or 10) and never touches grid/load. It also serves as the
+// fallback when 0x0000 cannot be read.
+
+test('manual power_scale 10 OVERRIDES an LV auto-detect (operator wins)', () => {
+  const r = D.decode([deviceBlock(0x0005), measBlock()], { family: 'hybrid_3p', power_scale: 10 });
+  assert.strictEqual(r.reading.pv_power_kw, 25, 'override forces PV x10 despite LV device');
+  assert.strictEqual(r.batt_kw, 3);
+  assert.strictEqual(r.reading.power_kw, 1.5, 'grid still watts under override');
+  assert.strictEqual(r.reading.load_kw, 0.9, 'load still watts under override');
+});
+
+test('manual power_scale 1 OVERRIDES an HV auto-detect (operator wins)', () => {
+  const r = D.decode([deviceBlock(0x0008), measBlock()], { family: 'hybrid_3p', power_scale: 1 });
+  assert.strictEqual(r.reading.pv_power_kw, 2.5, 'override forces PV x1 despite HV device');
+  assert.strictEqual(r.batt_kw, 0.3);
+});
+
+test('fallback: device register unreadable AND no override -> scale 1 (never fabricate a class)', () => {
+  // Only the measurement block present (0x0000 absent), power_scale omitted/0/auto.
+  for (const cfg of [{ family: 'hybrid_3p' }, { family: 'hybrid_3p', power_scale: 0 }]) {
+    const r = D.decode([measBlock()], cfg);
+    assert.strictEqual(r.reading.pv_power_kw, 2.5, 'fallback PV x1');
+    assert.strictEqual(r.batt_kw, 0.3, 'fallback battery x1');
+    assert.strictEqual(r.reading.power_kw, 1.5);
+  }
+});
+
+test('fallback: unknown device code with no override -> scale 1', () => {
+  const r = D.decode([deviceBlock(0x1234), measBlock()], { family: 'hybrid_3p' });
+  assert.strictEqual(r.reading.pv_power_kw, 2.5);
+  assert.strictEqual(r.batt_kw, 0.3);
+});
+
+// --- 32-bit Grid / Load reconstruction (low + high word) ---------------------
+// ha-solarman: Grid Power = 0x0271(low)+0x02B2(high), Load = 0x028D(low)+0x0293
+// (high), both signed 32-bit. The old single-16-bit read wrapped a >|32.7 kW|
+// excursion on a 30-50 kW unit; the 32-bit read must decode it correctly.
+
+function s32(v) {
+  return { lo: v & 0xffff, hi: (v >>> 16) & 0xffff };
+}
+
+test('32-bit grid/load: values WITHIN int16 range (positive + negative) decode correctly', () => {
+  // grid +5000 W (import), load 4000 W - both fit in one 16-bit word.
+  const g = s32(5000);
+  const l = s32(4000);
+  const b = block(0x024c, 0x67, {
+    0x024c: 60,
+    0x0271: g.lo, 0x02b2: g.hi,
+    0x028d: l.lo, 0x0293: l.hi,
+  });
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.power_kw, 5);
+  assert.strictEqual(reading.load_kw, 4);
+});
+
+test('32-bit grid: a >32.7 kW import does NOT wrap (the overflow fix)', () => {
+  // 45000 W = 45 kW, well past the int16 ceiling of 32767. Low-16-bit alone would
+  // read 45000 & 0xffff = -20536 (wrap); the 32-bit read must give +45 kW.
+  const g = s32(45000);
+  const b = block(0x024c, 0x67, { 0x024c: 40, 0x0271: g.lo, 0x02b2: g.hi });
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.power_kw, 45, 'no int16 wrap on a 45 kW import');
+});
+
+test('32-bit grid: a large export (< -32.7 kW) decodes as a signed negative', () => {
+  // -40000 W export on a 50 kW unit.
+  const g = s32(-40000 >>> 0);
+  const b = block(0x024c, 0x67, { 0x024c: 55, 0x0271: g.lo, 0x02b2: g.hi });
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.power_kw, -40, 'signed 32-bit export, no wrap');
+});
+
+test('32-bit load: a >32.7 kW house load decodes without wrap', () => {
+  const l = s32(38000);
+  const b = block(0x024c, 0x67, { 0x024c: 70, 0x028d: l.lo, 0x0293: l.hi });
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.load_kw, 38);
+});
+
+test('32-bit grid + HV scale compose: grid stays watts even at HV, big value still fine', () => {
+  // HV device (scale 10 for PV/batt), a 45 kW grid import: grid must NOT be x10.
+  const g = s32(45000);
+  const b = block(0x024c, 0x67, { 0x024c: 50, 0x0271: g.lo, 0x02b2: g.hi, 0x02a0: 2000 });
+  const { reading } = D.decode([deviceBlock(0x0008), b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.power_kw, 45, 'grid is watts regardless of HV class');
+  assert.strictEqual(reading.pv_power_kw, 20, 'PV still x10 (2000 raw -> 20 kW)');
 });

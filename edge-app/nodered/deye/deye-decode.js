@@ -38,12 +38,23 @@
  *
  * See the model->family table in DEYE.md.
  *
- * IMPORTANT: the ADDRESSES are authoritative from ha-solarman, but a few
- * SCALINGS and all raw SIGNS are firmware-dependent and MUST be verified on the
- * actual device (see the sign-calibration procedure in DEYE.md). The
- * per-inverter `invert_grid_sign` / `invert_batt_sign` flags exist precisely
- * because raw grid/battery signs differ between firmwares, and the optional
- * `power_scale` (default 1) exists for the hybrid_3p HV-decawatt contingency.
+ * IMPORTANT: the ADDRESSES are authoritative from ha-solarman, but all raw
+ * SIGNS are firmware-dependent and MUST be verified on the actual device (see
+ * the sign-calibration procedure in DEYE.md). The per-inverter
+ * `invert_grid_sign` / `invert_batt_sign` flags exist precisely because raw
+ * grid/battery signs differ between firmwares.
+ *
+ * HV/LV POWER SCALE (hybrid_3p) - auto-detected, mirroring ha-solarman. In
+ * davidrapan/ha-solarman `deye_p3.yaml` the PV Power and Battery Power sensors
+ * carry a dual `scale: [1, 10]` (LV=1 W, HV=10 W/decawatt) - and ha-solarman
+ * AUTO-DETECTS which one from the "Device" identity register 0x0000
+ * (const.py AUTODETECTION_DEYE: LV codes -> mod 0 -> scale 1; HV codes -> mod 1
+ * -> scale 10). Grid Power and Load Consumption Power carry NO scale attribute
+ * (always plain watts) and are 32-bit low+high word (rule 4). We mirror all of
+ * this: `decode()` reads 0x0000, maps it to the LV/HV scale, applies it ONLY to
+ * PV + battery (never grid/load/SoC). The optional `power_scale` config field is
+ * now a MANUAL OVERRIDE / fallback: an explicit 1 or 10 wins over auto-detect,
+ * and 1 is the fallback when 0x0000 is unreadable (never fabricate a class).
  */
 
 // --- core telemetry sign convention ------------------------------------------
@@ -51,6 +62,18 @@
 // batt_kw:    + = charge       / - = discharge    (matches edge/setpoint; NOT a cloud
 //             telemetry field - the cloud derives battery from the power balance, so we
 //             read it only as a calibration aid / status text).
+
+// --- hybrid_3p HV/LV scale auto-detect (ha-solarman `mod`) -------------------
+// The "Device" identity register 0x0000 (deye_p3.yaml Device sensor) carries a
+// device-type code. ha-solarman maps it to `mod` (const.py AUTODETECTION_DEYE):
+//   LV codes -> mod 0 -> PV/battery scale [1,10][0] = 1 (native watts)
+//   HV codes -> mod 1 -> PV/battery scale [1,10][1] = 10 (decawatt firmware)
+// The HV set includes 0x0008/0x0601 = "HV 3-Phase Inverter 20-50kw", the exact
+// class the SUN-30K-SG01HP3-EU sits in. An unknown/unreadable code -> no class
+// (caller falls back to the manual power_scale, default 1).
+const DEVICE_REG = 0x0000;
+const DEVICE_TYPES_LV = [0x0005, 0x0500]; // mod 0 -> scale 1
+const DEVICE_TYPES_HV = [0x0006, 0x0007, 0x0600, 0x0008, 0x0601]; // mod 1 -> scale 10
 
 const FAMILIES = {
   // Deye grid-tie STRING inverter, NO battery, NO house-load/grid meter
@@ -98,28 +121,37 @@ const FAMILIES = {
   // map (there is no separate SG01HP3 definition in ha-solarman); the only
   // per-model difference is the MPPT count, so PV sums ALL FOUR tracker power
   // registers (an absent PV3/PV4 reads 0 and is harmless).
-  // Addresses are authoritative from StephanJoubert/home_assistant_solarman
-  // deye_sg04lp3.yaml (SOC 588, batt 590, grid 625 s16, load 653, PV1 672, PV2
-  // 673 - all u16 scale 1); PV3/PV4 (674/675) fall inside ha-solarman's
-  // 0x02A0..0x02A7 read range and come from the Deye Modbus manual for the HV
-  // 3-4 MPPT units. Confirmed device: captain's SUN-*-SG01HP3-EU (inverter
-  // serial 2407224048, #49 real-logger read).
-  // HV-SCALING (VERIFY-on-device): ha-solarman uses scale 1 (W). If a live read
-  // on an HV unit shows PV ~10x low vs the logger status page or power_kw
-  // saturating at +/-32.7 kW (int16), that firmware reports DECAWATTS - set
-  // `power_scale: 10` in the inverter config (no code edit). Default 1.
+  // Addresses are authoritative from davidrapan/ha-solarman deye_p3.yaml (SG0*LP3
+  // LV + SG0*HP3 HV): SOC 0x024C, Battery Power 0x024E (scale [1,10]), PV Power =
+  // sum of 0x02A0..0x02A3 (scale [1,10]); Grid Power = 0x0271(low)+0x02B2(high)
+  // and Load Consumption Power = 0x028D(low)+0x0293(high), both signed 32-bit
+  // (rule 4) and always plain watts (NO scale). Device-identity register 0x0000
+  // selects the LV/HV scale for PV + battery (see DEVICE_TYPES_* above).
+  // HV/LV SCALE is now AUTO-DETECTED from 0x0000; `power_scale` is only a manual
+  // override / fallback. Signs (invert_grid_sign/invert_batt_sign) stay
+  // VERIFY-on-device.
   hybrid_3p: {
     label: 'Hybrid 3-phasig (SG04LP3 LV / SG01HP3 HV, high map, bis 4 MPPT)',
     hasBattery: true,
-    // 0x024C..0x02A3 (88 regs) - one block, under the 125-reg fn-0x03 limit.
-    reads: [{ start: 0x024c, count: 0x0058 }],
+    // Two blocks: the device-identity register 0x0000 (LV/HV scale class) and the
+    // measurement block 0x024C..0x02B2 (103 regs, still under the 125-reg fn-0x03
+    // limit) - now wide enough to include the 32-bit Grid high word at 0x02B2
+    // (the Load high word 0x0293 already sat inside the old block).
+    reads: [
+      { start: DEVICE_REG, count: 0x0001 },
+      { start: 0x024c, count: 0x0067 },
+    ],
+    // The register whose device-type code drives the LV/HV PV+battery scale.
+    scaleReg: DEVICE_REG,
     fields: {
-      soc: { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' }, // reg 588, %
-      batt: { addr: 0x024e, bits: 16, signed: true, scale: 1 }, // reg 590, W (calibration only)
-      grid: { addr: 0x0271, bits: 16, signed: true, scale: 1 }, // reg 625, W (+ import / - export)
-      load: { addr: 0x028d, bits: 16, signed: false, scale: 1 }, // reg 653, W
-      // PV1..PV4 power, reg 672/673/674/675 (BM3 uses 3, BM4 uses 4; PV4=0 on LV/BM3).
-      pv: { addrs: [0x02a0, 0x02a1, 0x02a2, 0x02a3], bits: 16, signed: false, scale: 1, sum: true },
+      soc: { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' }, // %
+      // PV + battery carry the ha-solarman [1,10] LV/HV scale -> hvScale flag.
+      batt: { addr: 0x024e, bits: 16, signed: true, hvScale: true }, // W (calibration only)
+      // Grid + load: 32-bit low+high word, signed, ALWAYS plain watts (no scale).
+      grid: { addrs: [0x0271, 0x02b2], bits: 32, signed: true }, // + import / - export
+      load: { addrs: [0x028d, 0x0293], bits: 32, signed: true }, // house load
+      // PV1..PV4 power (BM3 uses 3, BM4 uses 4; PV4=0 on LV/BM3).
+      pv: { addrs: [0x02a0, 0x02a1, 0x02a2, 0x02a3], bits: 16, signed: false, sum: true, hvScale: true },
     },
   },
 
@@ -213,8 +245,12 @@ function readReg(blocks, addr) {
 function fieldValue(blocks, f) {
   let raw;
   if (f.bits === 32) {
-    const lo = readReg(blocks, f.addr);
-    const hi = readReg(blocks, f.addr + 1);
+    // Low word first. Two consecutive regs (f.addr, f.addr+1) OR an explicit
+    // [low, high] pair for non-contiguous 32-bit values (hybrid_3p grid/load).
+    const loAddr = f.addrs ? f.addrs[0] : f.addr;
+    const hiAddr = f.addrs ? f.addrs[1] : f.addr + 1;
+    const lo = readReg(blocks, loAddr);
+    const hi = readReg(blocks, hiAddr);
     if (lo === undefined || hi === undefined) return undefined;
     raw = hi * 65536 + lo; // LOW-WORD-FIRST
     if (f.signed && raw > 0x7fffffff) raw -= 0x100000000;
@@ -234,22 +270,62 @@ function fieldValue(blocks, f) {
 }
 
 /**
+ * scaleClass - the ha-solarman [1,10] LV/HV multiplier for a family's PV +
+ * battery power, read from the device-identity register (`fam.scaleReg`, hybrid_3p
+ * only). LV device codes -> 1, HV device codes -> 10. Returns undefined when the
+ * family has no scale register, the register is unreadable, or the code is
+ * unknown - the caller then falls back to the manual override / default.
+ */
+function scaleClass(blocks, fam) {
+  if (!fam || fam.scaleReg === undefined) return undefined;
+  const code = readReg(blocks, fam.scaleReg);
+  if (code === undefined) return undefined;
+  const c = code & 0xffff;
+  if (DEVICE_TYPES_HV.indexOf(c) !== -1) return 10;
+  if (DEVICE_TYPES_LV.indexOf(c) !== -1) return 1;
+  return undefined;
+}
+
+/**
  * decode - turn the read blocks + inverter config into the flat edge/telemetry
  * reading. Returns { reading, batt_kw } where `reading` carries only the
  * canonical cloud fields (power_kw / pv_power_kw / load_kw / soc_pct) and
  * `batt_kw` is the calibration-only battery power (never published).
  *
  * config = { family, invert_grid_sign?, invert_batt_sign?, power_scale? }.
- * `power_scale` (default 1) multiplies every POWER field (pv/load/grid/batt,
- * never SoC) on top of its per-field base scale - the documented lever for the
- * hybrid_3p HV-decawatt firmware (set 10) without touching the map.
+ *
+ * The hybrid_3p HV/LV scale (applied to PV + battery ONLY, never grid/load/SoC)
+ * is resolved with this precedence:
+ *   1. an explicit operator override `power_scale` of 1 or 10 wins;
+ *   2. else it is AUTO-DETECTED from the device-identity register 0x0000;
+ *   3. else (register unreadable / unknown code / no override) it falls back to
+ *      1 - never fabricating a class.
  */
 function decode(blocks, config) {
   const fam = FAMILIES[config && config.family];
   if (!fam) return null;
   const f = fam.fields;
-  const pscale = Number(config.power_scale) > 0 ? Number(config.power_scale) : 1;
-  const toKw = (w) => round3((w * pscale) / 1000);
+
+  // hvScale: the [1,10] LV/HV multiplier for PV + battery power. Manual override
+  // (power_scale 1 or 10) wins; else auto-detect from 0x0000; else fall back to 1.
+  const manual = Number(config && config.power_scale);
+  let hvScale;
+  if (manual === 1 || manual === 10) {
+    hvScale = manual;
+  } else {
+    const detected = scaleClass(blocks, fam);
+    hvScale = detected !== undefined ? detected : 1;
+  }
+
+  // A field's kW: raw (already ×its base scale) → optional sign flip → ×hvScale
+  // for [1,10]-scaled fields (PV/battery), ×1 for the always-watt grid/load.
+  const toKw = (spec, invert) => {
+    let w = fieldValue(blocks, spec);
+    if (w === undefined) return undefined;
+    if (invert) w = -w;
+    return round3((w * (spec.hvScale ? hvScale : 1)) / 1000);
+  };
+
   const reading = {};
   let batt_kw;
 
@@ -264,27 +340,21 @@ function decode(blocks, config) {
   }
 
   if (f.pv) {
-    const w = fieldValue(blocks, f.pv);
-    if (w !== undefined) reading.pv_power_kw = toKw(w);
+    const kw = toKw(f.pv, false);
+    if (kw !== undefined) reading.pv_power_kw = kw;
   }
   if (f.load) {
-    const w = fieldValue(blocks, f.load);
-    if (w !== undefined) reading.load_kw = toKw(w);
+    const kw = toKw(f.load, false);
+    if (kw !== undefined) reading.load_kw = kw;
   }
   if (f.grid) {
-    let w = fieldValue(blocks, f.grid);
-    if (w !== undefined) {
-      if (config.invert_grid_sign) w = -w;
-      reading.power_kw = toKw(w);
-    }
+    const kw = toKw(f.grid, config.invert_grid_sign);
+    if (kw !== undefined) reading.power_kw = kw;
   }
   if (socPct !== undefined) reading.soc_pct = socPct;
   if (fam.hasBattery && f.batt) {
-    let w = fieldValue(blocks, f.batt);
-    if (w !== undefined) {
-      if (config.invert_batt_sign) w = -w;
-      batt_kw = toKw(w);
-    }
+    const kw = toKw(f.batt, config.invert_batt_sign);
+    if (kw !== undefined) batt_kw = kw;
   }
   return { reading, batt_kw };
 }
@@ -335,9 +405,13 @@ function detectHybridFamily(lowStdout, highStdout) {
 module.exports = {
   FAMILIES,
   POWER_LIMIT_REG,
+  DEVICE_REG,
+  DEVICE_TYPES_LV,
+  DEVICE_TYPES_HV,
   parseOk,
   readReg,
   fieldValue,
+  scaleClass,
   decode,
   planReads,
   readCmd,

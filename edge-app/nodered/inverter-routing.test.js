@@ -93,16 +93,21 @@ test('route: solarman_v5 -> Deye reader with family register plan', () => {
   assert.strictEqual(r.connection.serial, '2985159064');
   assert.strictEqual(r.connection.mb_slave_id, 1);
   assert.strictEqual(r.connection.power_scale, 1);
-  // hybrid_3p reads one 88-register block starting at 0x024c.
-  assert.deepStrictEqual(r.reads, [{ start: 0x024c, count: 0x0058 }]);
+  // hybrid_3p reads the device-identity register 0x0000 (LV/HV scale class) plus
+  // the widened 103-register measurement block starting at 0x024c.
+  assert.deepStrictEqual(r.reads, [
+    { start: 0x0000, count: 0x0001 },
+    { start: 0x024c, count: 0x0067 },
+  ]);
 });
 
-test('route: solarman_v5 defaults port, slave id and power_scale', () => {
+test('route: solarman_v5 defaults port, slave id and power_scale (auto=0)', () => {
   const cfg = solarmanConfig({ connection: { ip: '10.0.0.5', serial: '42' } });
   const r = routing.route(routing.parseConfig(cfg));
   assert.strictEqual(r.target, '10.0.0.5:8899');
   assert.strictEqual(r.connection.mb_slave_id, 1);
-  assert.strictEqual(r.connection.power_scale, 1);
+  // No power_scale set -> 0 = auto-detect the LV/HV scale from register 0x0000.
+  assert.strictEqual(r.connection.power_scale, 0);
 });
 
 test('route: solarman_v5 carries invert_grid_sign and power_scale=10', () => {

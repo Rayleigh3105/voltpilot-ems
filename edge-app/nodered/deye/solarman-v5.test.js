@@ -240,11 +240,11 @@ test('hybrid_3p: a CRC-valid but all-zero (unanswered) V5 read decodes to a drop
 // with plausible power fields - proving the gate does not reject real data.
 test('hybrid_3p SG04LP3 LV: a real 57 % SoC read survives the V5 round trip', () => {
   const start = 0x024c;
-  const count = 0x58;
+  const count = 0x67; // widened block includes the 32-bit grid high word at 0x02B2
   const regs = new Array(count).fill(0);
   regs[0x024c - start] = 57; // SoC 57 %
-  regs[0x028d - start] = 2400; // load 2.4 kW
-  regs[0x0271 - start] = 900; // grid import 0.9 kW
+  regs[0x028d - start] = 2400; // load low word 2.4 kW (high 0x0293 = 0)
+  regs[0x0271 - start] = 900; // grid import low word 0.9 kW (high 0x02B2 = 0)
   regs[0x024e - start] = -1500 & 0xffff; // battery discharging (night)
   const frame = makeResponseFrame(regs, { loggerSerial: 2985159064 });
   const block = S.registerBlock(start, frame);
