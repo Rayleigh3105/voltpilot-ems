@@ -63,10 +63,12 @@ type Agent struct {
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
 
-	// Additional read-only measurement points (Phase 1: Erzeuger/PV). srcs is the
-	// persisted config; srcReadings holds the latest per-source reading (its PV +
-	// the wall-clock receive time, for freshness/error isolation). The core sums
-	// fresh Erzeuger PV into the composite site reading at onLocalTelemetry.
+	// Additional read-only measurement points (Erzeuger/PV + a Netz/grid meter).
+	// srcs is the persisted config; srcReadings holds the latest per-source
+	// reading (its PV and/or signed grid power + the wall-clock receive time, for
+	// freshness/error isolation). The core sums fresh Erzeuger PV into the
+	// composite site reading and lets a fresh Netz meter override site grid at
+	// onLocalTelemetry.
 	srcStore    *sources.Store
 	srcMu       sync.Mutex
 	srcs        []sources.Source
@@ -609,10 +611,8 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// measured explicitly we ADD it to site PV and REMOVE it from the primary's
 	// load reading. A stale/absent source contributes nothing (never a fabricated
 	// 0), so with zero sources this is a no-op and the single-source path stays
-	// byte-for-byte unchanged. site_grid is left as the primary reports it; a
-	// dedicated Netz meter (install-independent correctness) is Phase 2. See
-	// report §3.2 balance option (A) for the Erzeuger case; the exact load
-	// correction is install-specific (report Q1).
+	// byte-for-byte unchanged. See report §3.2 balance option (A) for the Erzeuger
+	// case; the exact load correction is install-specific (report Q1).
 	if extraPv := a.aggregateSourcePv(); extraPv > 0 {
 		base := measurements["pv_power_kw"] // 0 when the primary reports no PV
 		measurements["pv_power_kw"] = base + extraPv
@@ -623,6 +623,18 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 			}
 			measurements["load_kw"] = corrected
 		}
+	}
+	// Grid-authoritative override (Increment 1): a dedicated Netz meter at the
+	// point of common coupling measures site_grid directly, so its signed value
+	// (+import/-export) REPLACES the primary hybrid inverter's CT-derived
+	// power_kw. This makes the money channel (grid import/export drives earnings
+	// and the optimizer) install-independent instead of relying on the primary's
+	// CT. A stale/absent meter falls back to the primary CT (graceful
+	// degradation), so with zero Netz sources this is a no-op and every existing
+	// path stays byte-for-byte unchanged. Battery derives downstream from the
+	// now-correct grid (history.go), no change there.
+	if g := a.authoritativeGrid(); g != nil {
+		measurements["power_kw"] = *g
 	}
 	// SoC plausibility gate (drop-don't-fabricate), the same policy as the Deye
 	// decoder's socPlausible(): an out-of-band SoC marks the WHOLE read as
@@ -1160,11 +1172,14 @@ func (a *Agent) publishInverterConfig() {
 
 // --- Additional read-only measurement points (Erzeuger/PV) ---
 
-// sourceReading is the latest reading kept per additional source: its PV (kW)
-// and the wall-clock time it arrived (for freshness / error isolation, decoupled
-// from any device clock).
+// sourceReading is the latest reading kept per additional source: its PV (kW,
+// for an Erzeuger), its signed grid power (kW, +import/-export, for a Netz
+// meter) and the wall-clock time it arrived (for freshness / error isolation,
+// decoupled from any device clock). A role only ever populates its own field;
+// the other stays nil.
 type sourceReading struct {
-	pv   float64
+	pv   *float64
+	grid *float64
 	recv time.Time
 }
 
@@ -1175,8 +1190,11 @@ type sourceReading struct {
 const sourceStaleFloor = 60 * time.Second
 
 // onSourceTelemetry ingests one additional source's reading (edge/sources/{id}/
-// telemetry): keep the latest PV per source. It never fabricates a value - an
-// absent/invalid PV is simply not recorded, so the source contributes nothing.
+// telemetry): keep the latest PV and/or signed grid power per source, by role.
+// An Erzeuger carries pv_power_kw; a Netz meter carries power_kw (signed,
+// +import/-export). It never fabricates a value - an absent/invalid field is
+// simply not recorded, so the source contributes nothing; a reading with no
+// usable field at all is dropped entirely (never advances freshness).
 func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	id := sources.IDFromTopic(topic)
 	if id == "" {
@@ -1185,17 +1203,43 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	}
 	var m struct {
 		PvPowerKw *float64 `json:"pv_power_kw"`
+		PowerKw   *float64 `json:"power_kw"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("source telemetry malformed; skipped", "id", id, "err", err)
 		return
 	}
-	if m.PvPowerKw == nil || math.IsNaN(*m.PvPowerKw) || math.IsInf(*m.PvPowerKw, 0) {
-		return // no usable PV - stay absent, never a fabricated 0
+	usable := func(v *float64) *float64 {
+		if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) {
+			return nil // stay absent, never a fabricated 0
+		}
+		return v
+	}
+	pv, grid := usable(m.PvPowerKw), usable(m.PowerKw)
+	if pv == nil && grid == nil {
+		return // nothing usable in this reading
 	}
 	a.srcMu.Lock()
-	a.srcReadings[id] = sourceReading{pv: *m.PvPowerKw, recv: time.Now().UTC()}
+	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, recv: time.Now().UTC()}
 	a.srcMu.Unlock()
+}
+
+// sourceFresh reports whether a source's last reading is within its freshness
+// window (max(3*interval, sourceStaleFloor)); ok=false when there is no reading
+// yet. Callers hold a.srcMu.
+func (a *Agent) sourceFresh(s sources.Source, now time.Time) (sourceReading, bool) {
+	r, ok := a.srcReadings[s.ID]
+	if !ok {
+		return sourceReading{}, false
+	}
+	window := time.Duration(3*s.IntervalS) * time.Second
+	if window < sourceStaleFloor {
+		window = sourceStaleFloor
+	}
+	if now.Sub(r.recv) > window {
+		return sourceReading{}, false
+	}
+	return r, true
 }
 
 // aggregateSourcePv sums the PV of every fresh Erzeuger source. A source with no
@@ -1209,20 +1253,45 @@ func (a *Agent) aggregateSourcePv() float64 {
 		if s.Role != sources.RoleErzeuger {
 			continue
 		}
-		r, ok := a.srcReadings[s.ID]
-		if !ok {
+		r, ok := a.sourceFresh(s, now)
+		if !ok || r.pv == nil {
 			continue
 		}
-		window := time.Duration(3*s.IntervalS) * time.Second
-		if window < sourceStaleFloor {
-			window = sourceStaleFloor
-		}
-		if now.Sub(r.recv) > window {
-			continue
-		}
-		sum += r.pv
+		sum += *r.pv
 	}
 	return sum
+}
+
+// authoritativeGrid returns the signed grid power (kW, +import/-export) from the
+// newest FRESH Netz (grid-meter) source, or nil when no such fresh reading
+// exists. A dedicated meter at the point of common coupling measures site_grid
+// directly, so its value OVERRIDES the primary hybrid inverter's CT-derived
+// power_kw; a stale/absent meter falls back to the primary CT (graceful
+// degradation, never a fabricated value). With 0-1 Netz per site (enforced in
+// the portal) "newest" is a safety net for a misconfigured pair, not a real
+// aggregation.
+func (a *Agent) authoritativeGrid() *float64 {
+	now := time.Now().UTC()
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	var best *sourceReading
+	for _, s := range a.srcs {
+		if s.Role != sources.RoleNetz {
+			continue
+		}
+		r, ok := a.sourceFresh(s, now)
+		if !ok || r.grid == nil {
+			continue
+		}
+		if best == nil || r.recv.After(best.recv) {
+			rr := r
+			best = &rr
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	return best.grid
 }
 
 // ListSources returns a copy of the configured additional sources.

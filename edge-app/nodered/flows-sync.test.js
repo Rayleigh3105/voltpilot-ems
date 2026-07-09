@@ -211,45 +211,54 @@ test('flow modbus decoder matches modbus-tcp.decodeProfile() (sunspec)', () => {
 
 // The "Quellen uebernehmen" (sources-store) node carries a synced copy of the
 // modbus branch of sources-routing.planSources: given the retained source array
-// it must build the same per-source read plans (id + connection + read) the
-// module produces for modbus_tcp Erzeuger sources, and count/skip the rest.
+// it must build the same per-source read plans (id + role + connection + read)
+// the module produces for modbus_tcp read-only sources, and count/skip the rest.
+// Both roles (Erzeuger PV + Netz grid meter) are planned; the plan carries role.
 test('flow sources-store matches sources-routing.planSources for modbus sources', () => {
   const payload = [
     { id: 'src-a', role: 'pv-generation', brand: 'generic_modbus', model: 'sunspec', family: 'sunspec',
       communication: 'modbus_tcp', connection: { ip: '192.168.0.70', port: 502, unit_id: 2 }, capacity_kwp: 70 },
     { id: 'src-deye', role: 'pv-generation', brand: 'deye', family: 'hybrid_3p',
       communication: 'solarman_v5', connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 } },
-    { id: 'src-load', role: 'grid-meter', communication: 'modbus_tcp', family: 'sunspec', connection: { ip: '1.2.3.4' } },
+    { id: 'src-netz', role: 'grid-meter', communication: 'modbus_tcp', family: 'sunspec', connection: { ip: '1.2.3.4' } },
   ];
   const flow = {};
   runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow });
   // Normalize across the vm realm (its Object/Array prototypes trip deepStrictEqual).
   const plans = JSON.parse(JSON.stringify(flow.source_plans));
-  // Only the modbus Erzeuger source is planned (Deye deferred, grid-meter role ignored).
-  assert.equal(plans.length, 1);
-  assert.equal(plans[0].id, 'src-a');
-  assert.equal(plans[0].conn.ip, '192.168.0.70');
-  assert.equal(plans[0].conn.unit_id, 2);
-  assert.deepStrictEqual(plans[0].read, { fc: 3, addr: 0, count: 9 });
+  // The two modbus sources are planned (Deye deferred); each plan carries its role.
+  assert.equal(plans.length, 2);
+  const byPlanId = Object.fromEntries(plans.map((p) => [p.id, p]));
+  assert.equal(byPlanId['src-a'].role, 'pv-generation');
+  assert.equal(byPlanId['src-a'].conn.ip, '192.168.0.70');
+  assert.equal(byPlanId['src-a'].conn.unit_id, 2);
+  assert.deepStrictEqual(byPlanId['src-a'].read, { fc: 3, addr: 0, count: 9 });
+  assert.equal(byPlanId['src-netz'].role, 'grid-meter');
+  assert.equal(byPlanId['src-netz'].conn.ip, '1.2.3.4');
 
-  // Cross-check against the module: it recognises BOTH the modbus and the deye
-  // Erzeuger source (routing), and the flow store keeps the modbus one.
+  // Cross-check against the module: it recognises the modbus + deye Erzeuger and
+  // the modbus Netz source; the flow store keeps the two modbus ones with role.
   const routed = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: payload }));
   const modbusRouted = routed.filter((r) => r.plan.adapter === 'modbus_tcp');
-  assert.equal(modbusRouted.length, 1);
-  assert.equal(modbusRouted[0].id, plans[0].id);
+  assert.equal(modbusRouted.length, 2);
+  assert.deepStrictEqual(
+    modbusRouted.map((r) => r.id).sort(),
+    plans.map((p) => p.id).sort(),
+  );
 });
 
-// The "Erzeuger-Quellen lesen" node decodes SunSpec PV the same way the shared
-// modbus decode does - the source reader only forwards PV (a source is an
-// Erzeuger). We assert its inline sunspec PV decode equals modbus-tcp's.
-test('flow sources-read decodes SunSpec PV consistently with modbus-tcp', () => {
+// The "Quellen lesen" node decodes SunSpec by role the same way the shared modbus
+// decode does: an Erzeuger forwards PV (register 1), a Netz meter forwards signed
+// grid (register 0). We assert both inline decode constants match modbus-tcp's.
+test('flow sources-read decodes SunSpec PV + grid consistently with modbus-tcp', () => {
   const regs = new Array(9).fill(0);
-  regs[1] = 4200; // pv 42.00 kW (s16/100)
-  // Drive one plan through a fake socket is out of scope here; instead assert the
-  // decode constant the inline body uses matches the module's pv field.
-  const expected = modbusTcp.decodeProfile('sunspec', regs).reading.pv_power_kw;
-  assert.equal(expected, 42);
-  // The inline decodePv uses s16(regs[1])/100 -> identical to the module's pv.
+  regs[0] = 65036; // grid -5.00 kW (s16/100 -> export)
+  regs[1] = 4200;  // pv 42.00 kW (s16/100)
+  const decoded = modbusTcp.decodeProfile('sunspec', regs).reading;
+  assert.equal(decoded.pv_power_kw, 42);
+  assert.equal(decoded.power_kw, -5);
+  // The inline decodePv/decodeGrid use s16(regs[1])/100 and s16(regs[0])/100 ->
+  // identical to the module's pv / grid fields.
   assert.ok(byId['sources-read'].func.includes('s16(regs[1]) / 100'));
+  assert.ok(byId['sources-read'].func.includes('s16(regs[0]) / 100'));
 });

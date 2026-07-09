@@ -688,8 +688,11 @@ paths:
       description: >
         A site with a battery-hybrid inverter PLUS a separate AC-coupled PV
         records the second PV here as an Erzeuger source; its kWp sums into the
-        aggregate `asset.pv` the forecast reads. NO second device claim - the
-        source is read through the site's one connected edge. Read-only by
+        aggregate `asset.pv` the forecast reads. A dedicated grid meter at the
+        point of common coupling is recorded as a Netz source (`grid-meter`, at
+        most one per site, no nameplate); it does not touch `asset.pv`. NO second
+        device claim - sources are read through the site's one connected edge,
+        which folds a Netz meter into the authoritative site grid. Read-only by
         construction (control is always false).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -705,7 +708,7 @@ paths:
         "404": { description: Site not found for this tenant (RLS). }
     post:
       tags: [registry]
-      summary: Record an additional Erzeuger (PV) source; its kWp sums into the aggregate site PV.
+      summary: Record an additional read-only source (Erzeuger PV, or a single Netz grid meter).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -717,14 +720,16 @@ paths:
               properties:
                 role:
                   type: string
-                  description: Phase 1 must be the Erzeuger role. Defaults to it.
-                  enum: [pv-generation]
+                  description: >
+                    'pv-generation' (Erzeuger, default) or 'grid-meter' (Netz, at
+                    most one per site; carries no nameplate).
+                  enum: [pv-generation, grid-meter]
                 label: { type: string, maxLength: 120 }
                 brand: { type: string, maxLength: 60 }
                 model: { type: string, maxLength: 60 }
                 capacityKwp:
                   type: number
-                  description: Per-source nameplate (kWp); sums into the aggregate asset.pv.
+                  description: Per-Erzeuger nameplate (kWp); sums into the aggregate asset.pv. Ignored for a Netz meter.
                 registryUnitId:
                   type: string
                   description: The source's OWN MaStR SEE number (optional - never blocks adding).
@@ -736,9 +741,10 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/MeasurementPoint" }
-        "400": { description: A non-Erzeuger role (Phase 1) or invalid values. }
+        "400": { description: An unknown role or invalid values. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
+        "409": { description: The site already has a Netz (grid-meter) source. }
   /api/v1/sites/{siteId}/measurement-points/{pointId}:
     delete:
       tags: [registry]
@@ -1411,11 +1417,13 @@ components:
       type: object
       description: >
         One additional read-only measurement point of a site (multi-source
-        Anlage). Phase 1 records Erzeuger (PV) sources whose kWp sums into the
-        aggregate asset.pv. Read-only by construction (control always false).
+        Anlage). Records Erzeuger (PV) sources whose kWp sums into the aggregate
+        asset.pv, and an optional single Netz (grid-meter) source at the point of
+        common coupling (no nameplate). Read-only by construction (control always
+        false).
       properties:
         id: { type: string, format: uuid }
-        role: { type: string, example: pv-generation, description: "Phase 1: 'pv-generation' (Erzeuger)." }
+        role: { type: string, example: pv-generation, description: "'pv-generation' (Erzeuger) or 'grid-meter' (Netz)." }
         label: { type: string, nullable: true }
         brand: { type: string, nullable: true }
         model: { type: string, nullable: true }

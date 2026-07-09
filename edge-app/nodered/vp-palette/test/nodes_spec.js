@@ -19,6 +19,7 @@ const vpInverterConfig = require('../nodes/vp-inverter-config.js');
 const vpControlReadback = require('../nodes/vp-control-readback.js');
 const vpSourcesConfig = require('../nodes/vp-sources-config.js');
 const vpQuelle = require('../nodes/vp-quelle.js');
+const vpNetz = require('../nodes/vp-netz.js');
 
 helper.init(require.resolve('node-red'));
 
@@ -184,6 +185,17 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpQuelle.topicFor('src-a'), 'edge/sources/src-a/telemetry');
     assert.strictEqual(vpQuelle.topicFor('a/b'), null); // topic-injection guard
     assert.strictEqual(vpQuelle.topicFor(''), null);
+  });
+
+  it('vp-netz shapes a signed grid reading (power_kw only) and guards the topic', function () {
+    assert.deepStrictEqual(vpNetz.shape({ power_kw: -8, pv_power_kw: 3 }), { power_kw: -8 }); // export, drops non-grid
+    assert.deepStrictEqual(vpNetz.shape({ grid_kw: 12 }), { power_kw: 12 }); // alias, import
+    assert.deepStrictEqual(vpNetz.shape({ power_kw: 0 }), { power_kw: 0 }); // 0 is a valid signed value
+    assert.strictEqual(vpNetz.shape({ pv_power_kw: 5 }), null); // no grid -> nothing
+    assert.strictEqual(vpNetz.shape({ power_kw: Infinity }), null);
+    assert.strictEqual(vpNetz.topicFor('src-n'), 'edge/sources/src-n/telemetry');
+    assert.strictEqual(vpNetz.topicFor('a/b'), null); // same topic-injection guard as vp-quelle
+    assert.strictEqual(vpNetz.topicFor('#'), null);
   });
 });
 

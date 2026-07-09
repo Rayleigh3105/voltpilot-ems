@@ -40,6 +40,25 @@ func feedSource(a *Agent, id string, pv float64) {
 		[]byte(fmt.Sprintf(`{"pv_power_kw": %v}`, pv)))
 }
 
+func addNetz(t *testing.T, a *Agent) sources.Source {
+	t.Helper()
+	src, err := a.AddSource(sources.Request{
+		Role:       sources.RoleNetz,
+		Brand:      inverter.BrandGenericModbus,
+		Model:      inverter.FamSunSpec,
+		Connection: inverter.Connection{IP: "192.168.0.70"},
+	})
+	if err != nil {
+		t.Fatalf("AddSource(Netz): %v", err)
+	}
+	return src
+}
+
+func feedNetz(a *Agent, id string, grid float64) {
+	a.onSourceTelemetry(sources.TopicPrefix+id+"/telemetry",
+		[]byte(fmt.Sprintf(`{"power_kw": %v}`, grid)))
+}
+
 func feedPrimary(a *Agent, pv, load, grid, soc float64) {
 	a.onLocalTelemetry(localbus.TopicTelemetry, []byte(fmt.Sprintf(
 		`{"pv_power_kw": %v, "load_kw": %v, "power_kw": %v, "soc_pct": %v}`, pv, load, grid, soc)))
@@ -127,6 +146,90 @@ func TestZeroSourcesIsByteForByteSingleSource(t *testing.T) {
 	snap := a.State.Get()
 	if snap.PvKw != 20 || snap.LoadKw != 60 {
 		t.Fatalf("single-source path changed: pv=%v load=%v (want 20 / 60)", snap.PvKw, snap.LoadKw)
+	}
+}
+
+// Increment 1 (Netz-Zähler): a dedicated grid meter at the point of common
+// coupling measures site_grid directly, so a FRESH reading OVERRIDES the primary
+// hybrid inverter's CT-derived power_kw (the money channel becomes
+// install-independent); a stale/absent meter falls back to the primary CT; with
+// no Netz source the grid channel is byte-for-byte unchanged.
+
+// gridOf reads the newest recorded site grid (power_kw) from the history ring -
+// the money channel the cloud publish and the derived-battery both consume. The
+// state snapshot has no grid field; the override lands in the buffer + ring.
+func gridOf(t *testing.T, a *Agent) float64 {
+	t.Helper()
+	rec := a.hist.Recent(time.Hour, time.Now())
+	if len(rec) == 0 {
+		t.Fatalf("no history sample recorded")
+	}
+	g := rec[len(rec)-1].GridKw
+	if g == nil {
+		t.Fatalf("newest history sample has no grid value")
+	}
+	return *g
+}
+
+func TestFreshNetzMeterOverridesPrimaryGrid(t *testing.T) {
+	a := newGateTestAgent(t)
+	n := addNetz(t, a)
+	feedNetz(a, n.ID, -8) // meter at PCC reads 8 kW export
+	// Primary hybrid's own CT reports a different (wrong) grid figure.
+	feedPrimary(a, 20, 60, 3, 50)
+
+	if got := gridOf(t, a); got != -8 {
+		t.Fatalf("site grid = %v, want -8 (meter overrides primary CT)", got)
+	}
+	// The override touches ONLY grid: PV and load stay the primary's (no Erzeuger).
+	snap := a.State.Get()
+	if snap.PvKw != 20 || snap.LoadKw != 60 {
+		t.Fatalf("Netz override changed pv/load: pv=%v load=%v (want 20 / 60)", snap.PvKw, snap.LoadKw)
+	}
+}
+
+func TestStaleNetzMeterFallsBackToPrimaryGrid(t *testing.T) {
+	a := newGateTestAgent(t)
+	n := addNetz(t, a)
+	feedNetz(a, n.ID, -8)
+	// Age the meter reading past its freshness window.
+	a.srcMu.Lock()
+	r := a.srcReadings[n.ID]
+	r.recv = time.Now().Add(-10 * time.Minute)
+	a.srcReadings[n.ID] = r
+	a.srcMu.Unlock()
+
+	feedPrimary(a, 20, 60, 3, 50)
+	if got := gridOf(t, a); got != 3 {
+		t.Fatalf("site grid = %v, want 3 (stale meter falls back to primary CT)", got)
+	}
+}
+
+func TestNoNetzMeterLeavesGridByteForByte(t *testing.T) {
+	a := newGateTestAgent(t)
+	// An Erzeuger present but NO Netz meter: grid stays exactly the primary's.
+	s := addErzeuger(t, a, 40)
+	feedSource(a, s.ID, 30)
+	feedPrimary(a, 20, 60, -5, 50)
+	if got := gridOf(t, a); got != -5 {
+		t.Fatalf("site grid = %v, want -5 (no Netz override)", got)
+	}
+}
+
+func TestNetzMeterAddsNothingToPvEnvelopeBound(t *testing.T) {
+	a := newGateTestAgent(t)
+	if _, err := a.SetInverter(inverter.SelectionRequest{
+		Brand:      inverter.BrandDeye,
+		Model:      "sun-12k-sg04lp3",
+		Connection: inverter.Connection{IP: "192.168.0.28", Serial: "2985159064"},
+	}); err != nil {
+		t.Fatalf("SetInverter: %v", err)
+	}
+	base, _ := a.envelope.Bounds()
+	addNetz(t, a)
+	after, _ := a.envelope.Bounds()
+	if after != base {
+		t.Fatalf("Netz meter changed the PV envelope bound: %v -> %v", base, after)
 	}
 }
 

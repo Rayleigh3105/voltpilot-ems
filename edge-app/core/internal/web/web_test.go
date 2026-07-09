@@ -684,15 +684,16 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	// ids and the /api/sources endpoints.
 	for _, want := range []string{
 		`id="sourcesCard"`, `id="srcList"`, `id="srcForm"`, `id="srcAddToggle"`,
-		`id="srcKwp"`, `id="srcSee"`, `src="sources.js"`,
+		`id="srcRole"`, `id="srcKwp"`, `id="srcKwpField"`, `id="srcSee"`, `src="sources.js"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("inverter.html: missing Energiequellen element %s", want)
 		}
 	}
 	srcJs := get("/sources.js")
-	if !strings.Contains(srcJs, "/api/sources") || !strings.Contains(srcJs, "pv-generation") {
-		t.Error("sources.js: does not drive the /api/sources Erzeuger surface")
+	if !strings.Contains(srcJs, "/api/sources") || !strings.Contains(srcJs, "pv-generation") ||
+		!strings.Contains(srcJs, "grid-meter") {
+		t.Error("sources.js: does not drive the /api/sources Erzeuger + Netz surface")
 	}
 }
 
@@ -998,10 +999,36 @@ func TestSourcesAddAndDelete(t *testing.T) {
 	}
 }
 
+func TestSourcesAddNetzMeter(t *testing.T) {
+	fs := &fakeSources{}
+	srv := sourcesServer(t, fs)
+	// A grid meter carries no capacity_kwp; the transport is validated like any
+	// source. Increment 1 accepts it (200).
+	reqBody := `{"role":"grid-meter","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.71"}}`
+	resp, err := http.Post(srv.URL+"/api/sources", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("add Netz status %d, want 200", resp.StatusCode)
+	}
+	var added struct {
+		Source sources.Source `json:"source"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&added); err != nil {
+		t.Fatal(err)
+	}
+	if added.Source.Role != sources.RoleNetz || added.Source.CapacityKwp != 0 {
+		t.Fatalf("added Netz meter wrong: %+v", added.Source)
+	}
+}
+
 func TestSourcesAddValidationErrorIs400(t *testing.T) {
 	srv := sourcesServer(t, &fakeSources{})
-	// A grid-meter role is Phase 2 -> the normalize validation refuses it (400).
-	body := `{"role":"grid-meter","brand":"generic_modbus","model":"sunspec","connection":{"ip":"1.2.3.4"}}`
+	// An unknown role (wallbox is reserved, not yet configurable) -> the normalize
+	// validation refuses it (400). grid-meter is now accepted (Increment 1).
+	body := `{"role":"wallbox","brand":"generic_modbus","model":"sunspec","connection":{"ip":"1.2.3.4"}}`
 	resp, err := http.Post(srv.URL+"/api/sources", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)

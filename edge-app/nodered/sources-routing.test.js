@@ -75,8 +75,16 @@ test('planSources returns a modbus read plan for an Erzeuger source', () => {
   assert.ok(plans[0].plan.read && typeof plans[0].plan.read.addr === 'number');
 });
 
-test('planSources ignores a non-Erzeuger role (Phase 2 roles are not read yet)', () => {
-  const plans = sr.planSources(sr.parseSourcesConfig(config([modbusSource({ role: 'grid-meter' })])));
+test('planSources returns a modbus read plan for a Netz (grid-meter) source, carrying the role', () => {
+  const plans = sr.planSources(sr.parseSourcesConfig(config([modbusSource({ id: 'src-netz', role: 'grid-meter' })])));
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].id, 'src-netz');
+  assert.equal(plans[0].role, 'grid-meter');
+  assert.equal(plans[0].plan.adapter, 'modbus_tcp');
+});
+
+test('planSources ignores an unknown role (reserved vocabulary not read yet)', () => {
+  const plans = sr.planSources(sr.parseSourcesConfig(config([modbusSource({ role: 'wallbox' })])));
   assert.equal(plans.length, 0);
 });
 

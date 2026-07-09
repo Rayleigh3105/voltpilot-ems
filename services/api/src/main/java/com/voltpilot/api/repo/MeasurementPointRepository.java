@@ -61,6 +61,14 @@ public class MeasurementPointRepository {
         return caps.isEmpty() ? null : caps.get(0);
     }
 
+    /** How many measurement points of a given role the site already has. */
+    public int countByRole(UUID siteId, String role) {
+        Integer n = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM measurement_point WHERE site_id = ? AND role = ?",
+                Integer.class, siteId, role);
+        return n != null ? n : 0;
+    }
+
     /** Σ capacity_kwp over the site's Erzeuger measurement points (0 when none). */
     public BigDecimal sumErzeugerKwp(UUID siteId) {
         BigDecimal sum = jdbc.queryForObject(

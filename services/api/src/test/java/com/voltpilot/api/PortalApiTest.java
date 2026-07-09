@@ -2294,9 +2294,23 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo)), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
-        // A non-Erzeuger role is refused in Phase 1 -> 400.
+        // A Netz (grid-meter) source is accepted, carries no nameplate (does NOT
+        // bump the aggregate PV), and is capped at one per site.
+        List<Map<String, Object>> withNetz = createMeasurementPoint(demo, site, Map.of(
+                "role", "grid-meter", "label", "Netz-Zähler Hausanschluss"));
+        assertThat(withNetz).anyMatch(p -> "grid-meter".equals(p.get("role")));
+        assertThat(withNetz).filteredOn(p -> "grid-meter".equals(p.get("role")))
+                .allSatisfy(p -> assertThat(p.get("capacityKwp")).isNull());
+        assertThat(aggregatePvKwp(demo, site)).isEqualByComparingTo("30"); // meter never touches asset.pv
+
+        // A SECOND Netz meter is refused -> 409 (one meter at the point of common coupling).
         assertThat(rest.exchange(url("/api/v1/sites/" + site + "/measurement-points"),
                 HttpMethod.POST, new HttpEntity<>(Map.of("role", "grid-meter"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        // An unknown role is still refused -> 400.
+        assertThat(rest.exchange(url("/api/v1/sites/" + site + "/measurement-points"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("role", "wallbox"), bearer(demo)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
         // Foreign site (tenant B) is invisible under RLS -> 404 on list and create.

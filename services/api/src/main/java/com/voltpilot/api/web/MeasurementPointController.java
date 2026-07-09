@@ -34,16 +34,23 @@ import org.springframework.web.server.ResponseStatusException;
  * the {@code X-Tenant-Id} switcher like every customer endpoint.
  *
  * <p>Control safety: a measurement point recorded here is READ-ONLY by
- * construction (Phase 1 accepts only the Erzeuger role; the DB CHECK forbids
- * control on it). The battery setpoint / curtailment targets the battery-hybrid
+ * construction (only read-only roles are accepted; the DB CHECK forbids control
+ * on them). The battery setpoint / curtailment targets the battery-hybrid
  * inverter ONLY.
+ *
+ * <p>Roles: an Erzeuger (PV) source sums its kWp into {@code asset.pv}; a Netz
+ * (grid meter) has no nameplate, does not touch {@code asset.pv}, and is capped
+ * at one per site (a single meter at the point of common coupling). This is
+ * master data only - the edge is the read authority and folds the meter into the
+ * site grid; the aggregation itself lives on the edge (report Increment 1).
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/measurement-points")
 public class MeasurementPointController {
 
-    /** The only role recordable in Phase 1 (Erzeuger / generation). */
+    /** Read-only source roles recordable today. */
     private static final String ROLE_ERZEUGER = "pv-generation";
+    private static final String ROLE_NETZ = "grid-meter";
 
     private final SiteRepository sites;
     private final MeasurementPointRepository points;
@@ -63,8 +70,10 @@ public class MeasurementPointController {
     }
 
     /**
-     * Record an additional Erzeuger source and add its kWp to the aggregate site
-     * PV, in one transaction so the point and the aggregate never half-apply.
+     * Record an additional read-only source. An Erzeuger adds its kWp to the
+     * aggregate site PV (one transaction so the point and the aggregate never
+     * half-apply); a Netz meter carries no nameplate and leaves {@code asset.pv}
+     * untouched, and there may be at most one Netz per site.
      */
     @Transactional
     @PostMapping
@@ -75,17 +84,24 @@ public class MeasurementPointController {
 
         String role = request.role() == null || request.role().isBlank()
                 ? ROLE_ERZEUGER : request.role().trim();
-        if (!ROLE_ERZEUGER.equals(role)) {
+        if (!ROLE_ERZEUGER.equals(role) && !ROLE_NETZ.equals(role)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "In dieser Version können nur Erzeuger-Quellen hinzugefügt werden.");
+                    "Diese Art von Energiequelle wird nicht unterstützt.");
+        }
+        if (ROLE_NETZ.equals(role) && points.countByRole(siteId, ROLE_NETZ) > 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Diese Anlage hat bereits einen Netz-Zähler. Es ist nur einer möglich.");
         }
         String label = blankToNull(request.label());
-        BigDecimal capacity = request.capacityKwp();
+        // A meter has no nameplate; only an Erzeuger's kWp feeds the aggregate PV.
+        BigDecimal capacity = ROLE_NETZ.equals(role) ? null : request.capacityKwp();
 
         points.create(tenantId, siteId, role, label, blankToNull(request.brand()),
                 blankToNull(request.model()), capacity, blankToNull(request.registryUnitId()));
-        // The additional generation adds to the aggregate PV nameplate.
-        assets.addPvCapacity(tenantId, siteId, capacity);
+        if (ROLE_ERZEUGER.equals(role)) {
+            // The additional generation adds to the aggregate PV nameplate.
+            assets.addPvCapacity(tenantId, siteId, capacity);
+        }
         return points.findForSite(siteId);
     }
 
