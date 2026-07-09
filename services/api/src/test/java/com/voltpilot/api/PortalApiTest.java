@@ -2050,6 +2050,104 @@ class PortalApiTest {
         assertThat(map(other.getBody(), "totals")).containsEntry("arbitrageEur", null);
     }
 
+    /**
+     * The FORWARD expected Marktwert Solar (captain 2026-07-09): the site's own
+     * PV forecast weights the day-ahead price into a production-weighted
+     * average. Seeded relative to now() so it exercises the real {@code
+     * time >= now()} horizon filter of the endpoint. Three CH slots (aligned to
+     * the quarter-hour grid so each finds its price):
+     *
+     * <pre>
+     *   +1h  pv 2 kW  price 100  -> weight 2
+     *   +2h  pv 6 kW  price 200  -> weight 6
+     *   +3h  pv 1 kW  price -40  -> weight 1   (negative price pulls it DOWN)
+     *   weighted = (100*2 + 200*6 - 40*1) / (2+6+1) = 1360/9 EUR/MWh
+     *   ct/kWh   = 1360/9 / 10   = 15.111...
+     * </pre>
+     *
+     * A night-zero slot (+4h, pv 0) is seeded too: it must not shift the value
+     * (contributes 0 to both sums) but still widens the covered horizon. A
+     * second site has a forecast but NO price -> null (hidden). Only the ACTIVE
+     * PV model ('pv-physical') is consumed - a shadow challenger's rows are
+     * ignored. RLS keeps tenant B out.
+     */
+    @Test
+    void earningsExposeTheForwardExpectedMarketValueWeightedByPvForecast() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String site = createSite(demo, "Expected MW Werk", "CH", "direktvermarktung");
+        String noPrice = createSite(demo, "Expected MW Ohne Preis", "AT", "eigenverbrauch");
+
+        // Forward day-ahead prices for CH, aligned to the 15-min slot grid at
+        // +1h/+2h/+3h from now (the +4h night slot deliberately has NO price
+        // either - a zero-PV slot never needs one).
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "(time_bucket('15 minutes', now() + interval '1 hour'), 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "(time_bucket('15 minutes', now() + interval '2 hours'), 'CH', 'PT15M', 200.0, 'EUR', 'test'), "
+                + "(time_bucket('15 minutes', now() + interval '3 hours'), 'CH', 'PT15M', -40.0, 'EUR', 'test'), "
+                // priced night slot: covered, but pv 0 => it must not move the value
+                + "(time_bucket('15 minutes', now() + interval '4 hours'), 'CH', 'PT15M', 300.0, 'EUR', 'test') "
+                + "ON CONFLICT DO NOTHING");
+
+        // Active-model PV forecast (latest run) for the priced site + a night
+        // zero; plus a SHADOW challenger row at a huge price-weighted value that
+        // must be ignored (wrong model).
+        exec("INSERT INTO forecast (time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) VALUES "
+                + "(time_bucket('15 minutes', now() + interval '1 hour'), '" + tenantA + "', '" + site
+                + "', 'pv', 'pv-physical', 2.0, now(), 60, 'test'), "
+                + "(time_bucket('15 minutes', now() + interval '2 hours'), '" + tenantA + "', '" + site
+                + "', 'pv', 'pv-physical', 6.0, now(), 120, 'test'), "
+                + "(time_bucket('15 minutes', now() + interval '3 hours'), '" + tenantA + "', '" + site
+                + "', 'pv', 'pv-physical', 1.0, now(), 180, 'test'), "
+                + "(time_bucket('15 minutes', now() + interval '4 hours'), '" + tenantA + "', '" + site
+                + "', 'pv', 'pv-physical', 0.0, now(), 240, 'test'), "
+                // shadow challenger at the SAME slot - never consumed:
+                + "(time_bucket('15 minutes', now() + interval '1 hour'), '" + tenantA + "', '" + site
+                + "', 'pv', 'pv-residual-xgb', 9.0, now(), 60, 'test')");
+
+        // The second site has a forecast but its AT zone has no forward price.
+        exec("INSERT INTO forecast (time, tenant_id, site_id, kind, model, value_kw, run_at, horizon_min, method) VALUES "
+                + "(time_bucket('15 minutes', now() + interval '1 hour'), '" + tenantA + "', '" + noPrice
+                + "', 'pv', 'pv-physical', 3.0, now(), 60, 'test')");
+
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-6);
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> mwSite = siteRow(res.getBody(), site);
+        assertThat(num(mwSite, "expectedMarketValueSolarCtKwh")).isCloseTo(1360.0 / 9 / 10, eps);
+        // The horizon spans all four both-covered forward slots (incl. the
+        // night zero), so the portal can honestly say "nächste ~4 h".
+        assertThat(mwSite).containsEntry("expectedMarketValueSlots", 4);
+        assertThat(mwSite.get("expectedMarketValueFrom")).isNotNull();
+        assertThat(mwSite.get("expectedMarketValueTo")).isNotNull();
+        assertThat((String) mwSite.get("expectedMarketValueFrom"))
+                .isLessThan((String) mwSite.get("expectedMarketValueTo"));
+
+        // Forecast but no forward price -> null, the portal hides the figure.
+        assertThat(siteRow(res.getBody(), noPrice))
+                .containsEntry("expectedMarketValueSolarCtKwh", null)
+                .containsEntry("expectedMarketValueSlots", null);
+
+        // It is range-INDEPENDENT (always the future): the same on range=day.
+        ResponseEntity<Map<String, Object>> day = rest.exchange(
+                url("/api/v1/earnings?range=day"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(num(siteRow(day.getBody(), site), "expectedMarketValueSolarCtKwh"))
+                .isCloseTo(1360.0 / 9 / 10, eps);
+
+        // RLS: tenant B never sees the site nor a value.
+        ResponseEntity<Map<String, Object>> other = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
+                .doesNotContain(site, noPrice);
+    }
+
     // ---- battery-asset <-> device auto-link ---------------------------------
 
     @Test

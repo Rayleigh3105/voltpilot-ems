@@ -2329,6 +2329,21 @@ button.vp-cl-item.is-off .vp-cl-label {
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.78);
 }
+/* Forward "erwarteter Marktwert Solar" - one calm line under the tiles. */
+.vp-money-forward {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: var(--vp-space-3) 0 0;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+.vp-money-forward .v {
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
 
 /* Energie-Kennzahlen row: eingespeist / selbst verbraucht / Batterie bewegt. */
 .vp-estats {

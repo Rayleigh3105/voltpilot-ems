@@ -629,6 +629,20 @@ export interface EarningsSite {
   selbstverbrauchKwh: number | null;
   eingespeistKwh: number | null;
   batterieBewegtKwh: number | null;
+  /**
+   * Forward-looking expected Marktwert Solar (ct/kWh): the day-ahead price
+   * weighted with THIS site's own PV forecast over the coming horizon
+   * (Σ(price × pv) / Σ(pv)) - the forward companion to the realized
+   * `marketValueSolarCtKwh`. Range-independent (always the future).
+   * `expectedMarketValueFrom`/`...To` bound the covered forward slots and
+   * `expectedMarketValueSlots` counts them, so the portal can say "nächste
+   * N h". All four are null when there is no forward PV forecast or no
+   * forward price coverage - the figure is then hidden (never a fake 0).
+   */
+  expectedMarketValueSolarCtKwh: number | null;
+  expectedMarketValueFrom: string | null;
+  expectedMarketValueTo: string | null;
+  expectedMarketValueSlots: number | null;
   series: EarningsSeriesPoint[];
   monthlyStrip: EarningsMonth[];
 }

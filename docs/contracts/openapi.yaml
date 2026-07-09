@@ -1635,6 +1635,33 @@ components:
           type: number
           nullable: true
           description: Energy moved through the battery over the window (charged + discharged, kWh).
+        expectedMarketValueSolarCtKwh:
+          type: number
+          nullable: true
+          description: >
+            Forward-looking expected Marktwert Solar (ct/kWh): the day-ahead
+            price weighted with THIS site's own PV forecast over the coming
+            horizon (Σ(price × pv) / Σ(pv)) - the forward companion to the
+            realized marketValueSolarCtKwh. Range-independent (always the
+            future). Null when there is no forward PV forecast or no forward
+            day-ahead price coverage (the portal then hides the figure).
+        expectedMarketValueFrom:
+          type: string
+          format: date-time
+          nullable: true
+          description: First covered forward slot of expectedMarketValueSolarCtKwh.
+        expectedMarketValueTo:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last covered forward slot of expectedMarketValueSolarCtKwh.
+        expectedMarketValueSlots:
+          type: integer
+          nullable: true
+          description: >
+            Number of forward 15-min slots (price + forecast both present)
+            behind expectedMarketValueSolarCtKwh - lets the portal state the
+            horizon ("nächste N h").
         series:
           type: array
           description: >

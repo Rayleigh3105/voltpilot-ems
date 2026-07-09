@@ -281,6 +281,58 @@ export function energyTiles(money: EarningsSite | null): EnergyTile[] {
   ];
 }
 
+/**
+ * The forward "erwarteter Marktwert Solar" line for the Anlage money view
+ * (captain 2026-07-09): the day-ahead price weighted with THIS Anlage's own PV
+ * forecast over the coming horizon (Σ(price × pv) / Σ(pv), backend-computed),
+ * the forward companion to the realized `marktwertBenchmark`. Returns the
+ * formatted ct/kWh value, a plain-German horizon label ("nächste 24 h") and the
+ * InfoTip text. Null when the backend has no forward figure (no PV forecast or
+ * no forward price coverage) - the portal then hides the line entirely, never a
+ * fake 0. Pure so anlage.test.ts pins the wording.
+ */
+export interface ExpectedMarketValueLine {
+  /** "15,1 ct/kWh" (NBSP before the unit). */
+  value: string;
+  /** "nächste 24 h" - the covered forward window. */
+  horizon: string;
+  /** The InfoTip sentence (the plain formula, no jargon). */
+  info: string;
+}
+
+export function expectedMarketValueLine(
+  money: Pick<
+    EarningsSite,
+    | 'expectedMarketValueSolarCtKwh'
+    | 'expectedMarketValueFrom'
+    | 'expectedMarketValueTo'
+    | 'expectedMarketValueSlots'
+  >,
+): ExpectedMarketValueLine | null {
+  const ct = money.expectedMarketValueSolarCtKwh;
+  if (ct == null) return null;
+  return {
+    value: `${ctAmount(ct)}${NBSP}ct/kWh`,
+    horizon: expectedHorizonLabel(money.expectedMarketValueFrom, money.expectedMarketValueTo),
+    info:
+      'Erwarteter Marktwert Solar: die Day-Ahead-Börsenpreise der kommenden Stunden, ' +
+      'gewichtet mit der PV-Prognose Ihrer Anlage - so viel ist Ihr Solarstrom im Schnitt ' +
+      'wert, wenn er tatsächlich erzeugt wird.',
+  };
+}
+
+/**
+ * "nächste N h" from the covered forward window: the span from the first to the
+ * last covered slot start, plus the last slot's 15 min, rounded to whole hours.
+ * Falls back to "kommende Stunden" when the bounds are absent.
+ */
+function expectedHorizonLabel(from: string | null, to: string | null): string {
+  if (from == null || to == null) return 'kommende Stunden';
+  const spanH = (Date.parse(to) - Date.parse(from)) / 3_600_000 + 0.25;
+  const hours = Math.max(1, Math.round(spanH));
+  return `nächste ${hours}${NBSP}h`;
+}
+
 /** The best (highest-Gesamtertrag) bucket of a series, or null when empty. */
 export function bestBucket(series: EarningsSeriesPoint[]): EarningsSeriesPoint | null {
   let best: EarningsSeriesPoint | null = null;

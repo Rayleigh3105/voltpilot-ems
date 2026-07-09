@@ -5,6 +5,7 @@ import {
   einspeiseProvenance,
   energyLabel,
   energyTiles,
+  expectedMarketValueLine,
   gesamtertragProvenance,
   savedProvenance,
   stripValueLabel,
@@ -227,6 +228,9 @@ export function AnlageHero({
 
   const gesamtInfo = money ? gesamtertragProvenance(money) : null;
   const savedInfo = money ? savedProvenance(money) : null;
+  // Forward-looking expected Marktwert Solar (captain 2026-07-09) - one calm
+  // line, hidden when there is no forward PV forecast / price coverage.
+  const forward = money ? expectedMarketValueLine(money) : null;
 
   return (
     <section className="vp-fleet-hero vp-money-hero" aria-label={`Gesamtertrag ${period}`}>
@@ -266,6 +270,13 @@ export function AnlageHero({
               <Tile key={tile.t} t={tile.t} v={tile.v} info={tile.info} />
             ))}
           </div>
+          {forward && (
+            <p className="vp-money-forward">
+              <span>Erwarteter Marktwert Solar ({forward.horizon}):</span>
+              <span className="v">{forward.value}</span>
+              <InfoTip label="Erwarteter Marktwert Solar">{forward.info}</InfoTip>
+            </p>
+          )}
           {provisional && (
             <p className="vp-money-note">* vorläufiger Monatswert (Marktdaten noch nicht endgültig)</p>
           )}

@@ -9,6 +9,7 @@ import {
   energyLabel,
   energyTiles,
   ertragTitle,
+  expectedMarketValueLine,
   gesamtertragProvenance,
   monthLong,
   monthShort,
@@ -45,6 +46,10 @@ function makeMoney(over: Partial<EarningsSite> = {}): EarningsSite {
     selbstverbrauchKwh: 820,
     eingespeistKwh: 5550,
     batterieBewegtKwh: 1610,
+    expectedMarketValueSolarCtKwh: null,
+    expectedMarketValueFrom: null,
+    expectedMarketValueTo: null,
+    expectedMarketValueSlots: null,
     series: [],
     monthlyStrip: [],
     ...over,
@@ -228,5 +233,62 @@ describe('energyTiles (decision 4)', () => {
   });
   it('shows "–" instead of a fake zero when nothing is computable', () => {
     expect(energyTiles(null).map((t) => t.value)).toEqual(['–', '–', '–']);
+  });
+});
+
+describe('expectedMarketValueLine (forward Marktwert Solar, captain 2026-07-09)', () => {
+  const NBSP = ' ';
+
+  it('formats the ct/kWh value and derives the horizon from the covered window', () => {
+    const line = expectedMarketValueLine(
+      makeMoney({
+        expectedMarketValueSolarCtKwh: 15.1111,
+        // first slot start -> last slot start; +15 min for the last slot span.
+        expectedMarketValueFrom: '2026-07-09T08:00:00Z',
+        expectedMarketValueTo: '2026-07-10T07:45:00Z',
+        expectedMarketValueSlots: 96,
+      }),
+    );
+    expect(line).not.toBeNull();
+    expect(line!.value).toBe(`15,1${NBSP}ct/kWh`);
+    // 23:45 span + 0:15 last slot = 24 h.
+    expect(line!.horizon).toBe(`nächste 24${NBSP}h`);
+    expect(line!.info).toContain('PV-Prognose');
+    expect(line!.info).toContain('Day-Ahead');
+  });
+
+  it('rounds a short horizon and never claims less than an hour', () => {
+    const line = expectedMarketValueLine(
+      makeMoney({
+        expectedMarketValueSolarCtKwh: 7.2,
+        expectedMarketValueFrom: '2026-07-09T08:00:00Z',
+        expectedMarketValueTo: '2026-07-09T11:00:00Z',
+        expectedMarketValueSlots: 13,
+      }),
+    );
+    expect(line!.horizon).toBe(`nächste 3${NBSP}h`);
+  });
+
+  it('falls back to "kommende Stunden" when the bounds are missing', () => {
+    const line = expectedMarketValueLine(
+      makeMoney({ expectedMarketValueSolarCtKwh: 9.9, expectedMarketValueFrom: null, expectedMarketValueTo: null }),
+    );
+    expect(line!.horizon).toBe('kommende Stunden');
+  });
+
+  it('is hidden (null) when there is no forward figure - never a fake 0', () => {
+    expect(expectedMarketValueLine(makeMoney({ expectedMarketValueSolarCtKwh: null }))).toBeNull();
+  });
+
+  it('includes a negative expected value honestly (negative prices pull it down)', () => {
+    const line = expectedMarketValueLine(
+      makeMoney({
+        expectedMarketValueSolarCtKwh: -1.4,
+        expectedMarketValueFrom: '2026-07-09T08:00:00Z',
+        expectedMarketValueTo: '2026-07-09T14:00:00Z',
+        expectedMarketValueSlots: 25,
+      }),
+    );
+    expect(line!.value).toBe(`-1,4${NBSP}ct/kWh`);
   });
 });

@@ -91,6 +91,18 @@ public record EarningsDto(
      * Europe/Berlin hour for the day range, per day for month, per month for
      * year/all); {@code monthlyStrip} is the last 12 months' Gesamtertrag (the
      * tappable month strip) - both list only buckets that had a computable slot.
+     *
+     * <p><b>Forward benchmark (captain 2026-07-09).</b>
+     * {@code expectedMarketValueSolarCtKwh} is this site's expected Marktwert
+     * Solar (ct/kWh): the day-ahead price weighted with the site's OWN PV
+     * forecast over the coming horizon ({@code Σ(price × pv) / Σ(pv)}), the
+     * forward companion to the realized {@code marketValueSolarCtKwh}. It is
+     * independent of {@code range} (always the future).
+     * {@code expectedMarketValueFrom}/{@code ...To} bound the covered forward
+     * slots and {@code expectedMarketValueSlots} counts them, so the portal can
+     * say "nächste N h". All four are null when there is no forward PV forecast
+     * or no forward price coverage - the portal then hides the figure (never a
+     * fabricated 0).
      */
     public record EarningsSiteDto(
             UUID id,
@@ -117,6 +129,10 @@ public record EarningsDto(
             BigDecimal selbstverbrauchKwh,
             BigDecimal eingespeistKwh,
             BigDecimal batterieBewegtKwh,
+            BigDecimal expectedMarketValueSolarCtKwh,
+            Instant expectedMarketValueFrom,
+            Instant expectedMarketValueTo,
+            Long expectedMarketValueSlots,
             List<EarningsSeriesPointDto> series,
             List<EarningsMonthDto> monthlyStrip) {
     }

@@ -268,6 +268,28 @@ public class EarningsRepository {
     }
 
     /**
+     * The FORWARD-looking expected Marktwert Solar of one site (captain
+     * decision 2026-07-09): a plant-specific, production-weighted average
+     * day-ahead price over the future horizon -
+     *
+     * <pre>
+     *   erwarteter Marktwert Solar = Σ(price(t) × pv_forecast(t)) / Σ(pv_forecast(t))
+     * </pre>
+     *
+     * in {@code ctKwh} (same unit as the realized {@code marketValueSolarCtKwh}),
+     * over the slots {@code [from, to]} ({@code slots} of them) where BOTH a
+     * day-ahead price AND this site's PV forecast exist. This is the forward
+     * companion to the realized/backward benchmark - it says what the market
+     * VALUES this site's coming production, weighted by when it will actually
+     * produce (not by a generic clear-sky shape like the Germany-wide
+     * provisional value). Null (absent from the map) when there is no forward
+     * PV forecast or no forward price coverage - never a fabricated figure.
+     */
+    public record ExpectedMarketValue(
+            BigDecimal ctKwh, Instant from, Instant to, long slots) {
+    }
+
+    /**
      * The grid-charging (arbitrage) attribution of one netzladen-erlaubt site
      * over a window: {@code arbitrageEur} is the part of the site's saved that
      * the grid-charging permission concretely earned, {@code gridChargedKwh}
@@ -507,6 +529,79 @@ public class EarningsRepository {
                     }
                 },
                 Timestamp.from(from), Timestamp.from(to));
+        return result;
+    }
+
+    /**
+     * The forward expected Marktwert Solar per site (see
+     * {@link ExpectedMarketValue}): the site's coming PV production valued at
+     * the day-ahead price, production-weighted, over the forward horizon from
+     * {@code now}.
+     *
+     * <p>For each site the LATEST stored run of the ACTIVE PV model
+     * ({@code pvModel}) is taken (shadow challengers are never consumed - same
+     * rule as the optimizer's {@code inputs.py}); its future slots
+     * ({@code time >= now}) are joined to the day-ahead price of the site's OWN
+     * bidding zone with the {@link #PRICE_LATERAL} matching (PT15M preferred,
+     * PT60M fallback). The weighted average
+     * {@code Σ(price × pv) / Σ(pv)} is EUR/MWh; {@code / 10} converts to ct/kWh.
+     * The forecast is in POWER (kW, the {@code forecast.value_kw} the optimizer
+     * reads); the constant 15-min slot length cancels in the weighted average,
+     * so weighting by power gives the identical result to weighting by energy.
+     *
+     * <p>The forecast table carries NO RLS (backend-only consumers), so the
+     * JOIN to the RLS-scoped {@code site} table is what fences the query to the
+     * caller's tenant - the same technique the realized aggregates use.
+     * Negative-price slots are included (they legitimately pull the expected
+     * value down); zero-production night slots contribute 0 to both sums and so
+     * never distort the weighting. Sites without a future forecast slot, or
+     * whose forward slots find no price, are ABSENT from the map (their
+     * {@code Σ(pv)} is 0 -> the value is NULL -> the row is dropped) - never a
+     * fake zero.
+     */
+    public Map<UUID, ExpectedMarketValue> expectedMarketValue(String pvModel, Instant now) {
+        Map<UUID, ExpectedMarketValue> result = new HashMap<>();
+        jdbc.query(
+                "WITH latest_run AS ("
+                        + "  SELECT f.site_id, max(f.run_at) AS run_at"
+                        + "  FROM forecast f JOIN site s ON s.id = f.site_id"
+                        + "  WHERE f.kind = 'pv' AND f.model = ?"
+                        + "  GROUP BY f.site_id"
+                        + "), fc AS ("
+                        + "  SELECT f.site_id, f.time, f.value_kw"
+                        + "  FROM forecast f"
+                        + "  JOIN latest_run lr ON lr.site_id = f.site_id AND lr.run_at = f.run_at"
+                        + "  WHERE f.kind = 'pv' AND f.model = ? AND f.time >= ? AND f.value_kw >= 0"
+                        + ") "
+                        + "SELECT fc.site_id,"
+                        + " sum(p.price_eur_mwh * fc.value_kw) / NULLIF(sum(fc.value_kw), 0) / 10"
+                        + "   AS expected_ct,"
+                        + " count(*) AS slots, min(fc.time) AS from_ts, max(fc.time) AS to_ts "
+                        + "FROM fc "
+                        + "JOIN site s ON s.id = fc.site_id "
+                        + "JOIN LATERAL ("
+                        + "  SELECT p.price_eur_mwh FROM day_ahead_prices p"
+                        + "  WHERE p.bidding_zone = s.bidding_zone AND p.ts <= fc.time"
+                        + "    AND p.ts + (CASE p.resolution WHEN 'PT60M' THEN INTERVAL '60 minutes'"
+                        + "                ELSE INTERVAL '15 minutes' END) > fc.time"
+                        + "  ORDER BY (p.resolution = 'PT15M') DESC, p.ts DESC LIMIT 1"
+                        + ") p ON true "
+                        + "GROUP BY fc.site_id",
+                rs -> {
+                    BigDecimal ct = rs.getBigDecimal("expected_ct");
+                    if (ct == null) {
+                        // All forward slots have zero PV production (or no
+                        // priced forward slot survived the join) - no defensible
+                        // expected value, so drop the site.
+                        return;
+                    }
+                    result.put(rs.getObject("site_id", UUID.class), new ExpectedMarketValue(
+                            ct,
+                            rs.getTimestamp("from_ts").toInstant(),
+                            rs.getTimestamp("to_ts").toInstant(),
+                            rs.getLong("slots")));
+                },
+                pvModel, pvModel, Timestamp.from(now));
         return result;
     }
 

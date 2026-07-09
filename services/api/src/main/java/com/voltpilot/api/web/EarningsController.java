@@ -58,10 +58,14 @@ public class EarningsController {
 
     private final SiteRepository sites;
     private final EarningsRepository earnings;
+    private final String activePvModel;
 
-    public EarningsController(SiteRepository sites, EarningsRepository earnings) {
+    public EarningsController(SiteRepository sites, EarningsRepository earnings,
+            @org.springframework.beans.factory.annotation.Value(
+                    "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
+        this.activePvModel = activePvModel;
     }
 
     @GetMapping
@@ -87,6 +91,11 @@ public class EarningsController {
 
         Map<UUID, EarningsRepository.SiteAggregate> aggregates = earnings.aggregate(from, to);
         Map<UUID, EarningsRepository.ArbitrageSplit> splits = earnings.arbitrageSplit(from, to);
+        // The forward expected Marktwert Solar is independent of the selected
+        // range (always the coming horizon), so it is computed once against the
+        // wall clock, keyed on the ACTIVE PV model.
+        Map<UUID, EarningsRepository.ExpectedMarketValue> expected =
+                earnings.expectedMarketValue(activePvModel, Instant.now());
         Map<UUID, List<EarningsRepository.DailySaved>> daily = earnings.dailySavedPerSite(
                 HistoryRange.DAY.window(today.minusDays(DAILY_SAVED_DAYS - 1)).from(),
                 HistoryRange.DAY.window(today).to());
@@ -139,6 +148,9 @@ public class EarningsController {
             EarningsRepository.ArbitrageSplit split = splits.get(site.id());
             BigDecimal arbitrage = split != null && saved != null ? split.arbitrageEur() : null;
             BigDecimal pvShift = arbitrage != null ? saved.subtract(arbitrage) : null;
+            // Forward expected Marktwert Solar (range-independent); absent when
+            // the site has no forward PV forecast or price coverage.
+            EarningsRepository.ExpectedMarketValue exp = expected.get(site.id());
 
             if (baseline != null) {
                 totalBaseline = totalBaseline == null ? baseline : totalBaseline.add(baseline);
@@ -206,6 +218,10 @@ public class EarningsController {
                     selbstverbrauchKwh,
                     covered > 0 ? agg.eingespeistKwh() : null,
                     covered > 0 ? agg.batterieBewegtKwh() : null,
+                    exp == null ? null : exp.ctKwh(),
+                    exp == null ? null : exp.from(),
+                    exp == null ? null : exp.to(),
+                    exp == null ? null : exp.slots(),
                     siteSeries,
                     siteStrip));
         }
