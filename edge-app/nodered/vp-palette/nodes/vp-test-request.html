@@ -1,0 +1,37 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-test-request', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-test-request'; },
+    paletteLabel: 'vp-test-request'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-test-request">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-test-request">
+  <p>Empfängt eine „Verbindung testen"-Anfrage vom VoltPilot Core-Agenten auf
+  <code>edge/test-read/request</code> (nicht retained) und gibt sie aus, damit
+  der Flow die (noch nicht gespeicherte) Auswahl EINMAL liest und über
+  <code>vp-test-result</code> antwortet.</p>
+  <p><code>msg.payload</code>: die Anfrage <code>{ request_id, role?, brand,
+  model, family, communication, connection }</code>.<br>
+  <code>msg.request_id</code>: die Korrelations-ID. Nur Lesen – ein
+  Bestätigungs-Check, kein Speicher-Gate.</p>
+</script>

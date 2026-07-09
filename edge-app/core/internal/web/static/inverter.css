@@ -11,30 +11,61 @@
 .inv-title { margin: 0; font-size: 19px; font-weight: 750; letter-spacing: -.01em; }
 .inv-lead { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; max-width: 560px; }
 
-/* Currently configured inverter (shown once a selection exists) */
-.current {
+/* ---------------- Role-grouped "Meine Anlage" card ---------------- */
+.anlage-card { padding: 22px; }
+
+.grp + .grp { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.grp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.grp-ico { width: 30px; height: 30px; flex: none; border-radius: 9px; display: grid; place-items: center; color: #fff; }
+.grp-ico svg { width: 16px; height: 16px; }
+.grp-ico.inv { background: var(--brand-deep); }
+.grp-ico.pv { background: var(--pv); }
+.grp-ico.grid { background: var(--grid-c); }
+.grp-title { font-size: 14.5px; font-weight: 750; color: var(--ink); }
+.grp-note { font-size: 12px; color: var(--muted); }
+
+/* Source/inverter rows */
+.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.row {
   display: flex; align-items: center; gap: 12px;
-  margin-top: 18px; padding: 13px 16px;
-  background: var(--ok-soft); border: 1px solid #CBEBD5; border-radius: var(--radius-sm);
+  padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--surface);
 }
-.current-ico {
-  width: 34px; height: 34px; flex: none; border-radius: 10px;
-  display: grid; place-items: center;
-  background: var(--ok); color: #fff;
+.row-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.row-dot.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.row-dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.row-dot.off { background: #B4C0CF; box-shadow: 0 0 0 3px #EEF2F7; }
+.row-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
+.row-name { font-size: 13.8px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-meta { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-badge { flex: none; }
+/* Rows use a slightly more compact pill than the dashboard chrome. */
+.row .pill { padding: 5px 10px; font-size: 11.5px; gap: 6px; }
+.row .pill .dot { width: 7px; height: 7px; box-shadow: none; }
+.row-actions { flex: none; display: flex; align-items: center; gap: 2px; }
+
+.icon-btn {
+  width: 32px; height: 32px; display: grid; place-items: center;
+  border-radius: 8px; border: 1px solid transparent; background: transparent;
+  color: var(--muted); cursor: pointer;
 }
-.current-ico svg { width: 18px; height: 18px; }
-.current-text { min-width: 0; }
-.current-model { margin: 0; font-weight: 700; font-size: 15px; }
-.current-detail { margin: 1px 0 0; color: var(--ink-2); font-size: 12.5px; }
-.current-badge {
-  margin-left: auto; flex: none;
-  color: var(--ok); background: #fff; border: 1px solid #CBEBD5;
-  font-size: 11.5px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase;
-  padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+.icon-btn:hover { background: var(--bg-2); color: var(--ink-2); }
+.icon-btn.danger:hover { background: var(--err-soft); color: var(--err); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+.empty-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 13px; border: 1px dashed #C7D2E0; border-radius: var(--radius-sm); background: var(--bg-2);
 }
+.empty-row p { margin: 0; font-size: 12.8px; color: var(--muted); }
+.link-btn-txt { flex: none; background: none; border: 0; color: var(--brand-deep); font-size: 12.8px; font-weight: 700; cursor: pointer; padding: 2px; }
+.link-btn-txt:hover { text-decoration: underline; }
+
+.add-source-cta { display: flex; justify-content: flex-end; margin-top: 16px; }
 
 /* ---------------- Form fields ---------------- */
 .inv-form-card { padding: 24px; }
+.inv-edit-form { margin-top: 14px; }
 
 .field { margin-bottom: 20px; }
 .field > label {
@@ -97,6 +128,9 @@
 }
 
 .form-actions { display: flex; justify-content: flex-end; }
+/* Verbindung testen sits on the left, Abbrechen/Speichern on the right. */
+.form-actions-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.form-actions-right { display: flex; align-items: center; gap: 10px; }
 .btn-primary {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   padding: 12px 26px; border: 0; border-radius: 11px; min-height: 48px;
@@ -214,61 +248,115 @@
   .topbar { flex-wrap: nowrap; }
   .topbar-right { width: auto; }
 
-  .inv-head-card, .inv-form-card { padding: 18px; }
+  .inv-head-card, .inv-form-card, .anlage-card { padding: 18px; }
   .inv-title { font-size: 17.5px; }
-
-  /* Badge drops under the model text instead of squeezing one row. */
-  .current { flex-wrap: wrap; }
-  .current-badge { margin-left: 46px; order: 3; }
 
   .conn { padding: 14px 14px 0; }
 
   .picker-panel { max-height: 44vh; }
 
-  .form-actions { justify-content: stretch; }
-  .btn-primary { width: 100%; }
+  /* Rows: let the status pill drop under the name/meta instead of squeezing. */
+  .row { flex-wrap: wrap; }
+  .row-main { flex-basis: 100%; }
+  .row-badge { margin-left: 21px; }
+  .row-actions { margin-left: auto; }
+
+  /* The drawer becomes a full-screen sheet (portal drawer->sheet convention). */
+  .drawer { width: 100vw; max-width: 100vw; height: 100dvh; }
+
+  /* One role card per row on a narrow sheet. */
+  .role-pick { grid-template-columns: 1fr; }
+
+  /* Stacked action buttons, full width, on phones. */
+  .form-actions-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .form-actions-right { flex-direction: column; align-items: stretch; }
+  .form-actions-row .btn-ghost, .form-actions-right .btn-ghost, .form-actions-right .btn-primary { width: 100%; justify-content: center; }
+  .drawer-foot { flex-direction: column; }
+  .drawer-foot .btn-ghost, .drawer-foot .btn-primary { width: 100%; justify-content: center; }
 }
 
 /* -------------------------------------------------------------------------
-   Weitere Energiequellen (additional read-only Erzeuger measurement points).
-   Reuses the same tokens as the inverter card above.
+   Buttons shared by the card + the add-source drawer.
    ------------------------------------------------------------------------- */
-.src-card { margin-top: 18px; }
-.src-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.src-title { margin: 0; font-size: 17px; font-weight: 750; color: var(--ink); }
-.src-lead { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; max-width: 560px; }
-
 .btn-secondary {
-  flex: none; padding: 9px 14px; font-size: 13.5px; font-weight: 650;
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  padding: 9px 15px; font-size: 13.2px; font-weight: 650;
   border: 1px solid var(--brand); border-radius: var(--radius-sm);
   background: var(--brand-soft); color: var(--brand-deep); cursor: pointer;
   white-space: nowrap;
 }
+.btn-secondary svg { width: 14px; height: 14px; }
 .btn-secondary:hover { background: #DCE8FB; }
 .btn-secondary:focus-visible { outline: 2px solid var(--brand-deep); outline-offset: 2px; }
 .btn-ghost {
+  display: inline-flex; align-items: center; gap: 7px;
   padding: 11px 16px; font-size: 14px; font-weight: 600;
   border: 1px solid var(--line); border-radius: var(--radius-sm);
   background: var(--surface); color: var(--ink-2); cursor: pointer;
 }
-.btn-ghost:hover { background: var(--bg-2); }
+.btn-ghost svg { width: 15px; height: 15px; }
+.btn-ghost:hover:not(:disabled) { background: var(--bg-2); }
+.btn-ghost:disabled { opacity: .6; cursor: default; }
 
-.src-list { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.src-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-sm);
-  background: var(--surface);
+/* -------------------------------------------------------------------------
+   "Verbindung testen" result panel (shared: inverter form + drawer).
+   ------------------------------------------------------------------------- */
+.verify-panel {
+  margin: 14px 0; padding: 13px 15px; border-radius: var(--radius-sm);
+  font-size: 12.8px; display: flex; gap: 11px; align-items: flex-start;
 }
-.src-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.src-item-name { font-size: 14.5px; font-weight: 700; color: var(--ink); }
-.src-item-meta { font-size: 12.5px; color: var(--muted); }
-.src-item-see { font-size: 12px; color: var(--ink-2); }
-.src-del {
-  flex: none; padding: 7px 12px; font-size: 12.5px; font-weight: 600;
-  border: 1px solid var(--line); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--danger, #c0392b); cursor: pointer;
+.verify-panel .verify-ico { flex: none; margin-top: 1px; }
+.verify-panel .verify-ico svg { width: 18px; height: 18px; display: block; }
+.verify-panel.loading { background: var(--bg-2); border: 1px solid var(--line); color: var(--ink-2); }
+.verify-panel.ok { background: var(--ok-soft); border: 1px solid #CBEBD5; color: #14532D; }
+.verify-panel.err { background: var(--err-soft); border: 1px solid #F1CDCD; color: #7A1F1F; }
+.verify-panel .vp-title { font-weight: 750; margin: 0 0 3px; font-size: 13px; }
+.verify-panel .vp-body { margin: 0; opacity: .92; }
+.verify-readings { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.vr-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+  padding: 5px 10px; border-radius: 8px; background: #fff; border: 1px solid #CBEBD5; color: var(--ink);
 }
-.src-del:hover { background: #FDECEA; border-color: #F5C6C0; }
+.vr-chip .sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.spin {
+  width: 14px; height: 14px; border-radius: 50%; flex: none; margin-top: 2px;
+  border: 2px solid rgba(62, 114, 206, .28); border-top-color: var(--brand-deep);
+  animation: vp-spin .7s linear infinite;
+}
+@keyframes vp-spin { to { transform: rotate(360deg); } }
 
-.src-empty { margin: 16px 0 0; color: var(--muted); font-size: 13px; }
-.src-form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+/* -------------------------------------------------------------------------
+   Add-source drawer (side panel on desktop/tablet, full-screen sheet on phone).
+   ------------------------------------------------------------------------- */
+.drawer-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(19, 26, 36, .38);
+  display: flex; justify-content: flex-end;
+}
+.drawer {
+  width: 420px; max-width: 92%; height: 100%;
+  background: var(--surface); box-shadow: -10px 0 30px rgba(19, 26, 36, .16);
+  display: flex; flex-direction: column;
+}
+.drawer-head { display: flex; align-items: center; gap: 10px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.drawer-head h3 { margin: 0; font-size: 16px; font-weight: 750; flex: 1 1 auto; }
+.drawer-body { padding: 18px 20px; overflow-y: auto; flex: 1 1 auto; }
+.drawer-foot { padding: 14px 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 10px; }
+.drawer-foot .btn-ghost, .drawer-foot .btn-primary { flex: 0 1 auto; }
+
+/* Role picker (two big cards, mirrors the old onRoleChange behavior). */
+.role-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.role-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left;
+  padding: 14px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface);
+  cursor: pointer; font-family: inherit; color: var(--ink);
+}
+.role-card .rc-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; }
+.role-card .rc-ico svg { width: 18px; height: 18px; }
+.role-card.pv .rc-ico { background: var(--pv); }
+.role-card.grid .rc-ico { background: var(--grid-c); }
+.role-card strong { font-size: 13.6px; }
+.role-card span { font-size: 11.8px; color: var(--muted); line-height: 1.4; }
+.role-card.sel { border-color: var(--brand-deep); box-shadow: 0 0 0 3px rgba(90, 141, 232, .18); background: linear-gradient(180deg, #fff, var(--brand-soft)); }
+.role-card.locked, .role-card:disabled { opacity: .55; cursor: not-allowed; }
+.role-locked-note { color: var(--warn); font-weight: 650; }

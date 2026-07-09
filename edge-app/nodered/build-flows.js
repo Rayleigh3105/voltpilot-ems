@@ -647,6 +647,90 @@ const sourcesNodes = [
   { id: 'sources-netz', type: 'vp-netz', z: SRCTAB, name: 'Netz-Zaehler an VoltPilot Core', core: 'cfg-vp-core', x: 760, y: 220, wires: [] },
 ];
 
+// --- Verbindung testen (one-shot test-read) ----------------------------------
+//
+// The "Verbindung testen" button on :8484 posts an UNSAVED connection form to
+// the core, which publishes it on edge/test-read/request (vp-test-request). This
+// function reads the device ONCE with the SAME route()+decode the self-wiring
+// poll uses and answers on edge/test-read/result (vp-test-result), correlated by
+// request_id. It carries SYNCED COPIES of the decode modules + test-read.js by
+// EMBEDDING the files verbatim (a Node-RED flow cannot `require` a repo file);
+// flows-sync.test.js pins them and test-read.test.js unit-tests the module. Read
+// only - it opens a socket / one HTTP GET, never writes, never gates Speichern.
+const embedModule = (file) =>
+  '(function () { var module = { exports: {} };\n' +
+  fs.readFileSync(path.join(__dirname, file), 'utf8') +
+  '\nreturn module.exports; })()';
+
+const testReadFunc = [
+  '// Verbindung testen (einmal lesen): liest die noch nicht gespeicherte Auswahl',
+  '// EINMAL ueber denselben route()+decode wie der Selbstverdrahtungs-Poll und',
+  '// klassifiziert das Ergebnis (ok / unreachable / no_answer / invalid_response',
+  '// / implausible / fronius_api). Traegt SYNCHRON GEHALTENE Kopien der Decode-',
+  '// Module + test-read.js (build-flows.js bettet die Dateien ein; flows-sync',
+  '// pinnt sie, test-read.test.js testet sie). NUR LESEN - schreibt nie, gatet',
+  '// nie das Speichern.',
+  'var __SV5 = ' + embedModule('deye/solarman-v5.js') + ';',
+  'var __DEYE = ' + embedModule('deye/deye-decode.js') + ';',
+  'var __MB = ' + embedModule('modbus-tcp.js') + ';',
+  'var __FR = ' + embedModule('fronius/solar-api.js') + ';',
+  'var __TR = ' + embedModule('test-read.js') + ';',
+  "var net = global.get('net');",
+  "var http = global.get('http');",
+  "var https = global.get('https');",
+  "if (!net || !http || !https) { node.status({ fill: 'red', shape: 'ring', text: 'net/http fehlt (settings.js)' }); node.error('functionGlobalContext.net/http/https in settings.js setzen', msg); return null; }",
+  'var req = msg.payload;',
+  "if (!req || typeof req.request_id !== 'string' || !req.request_id) { node.status({ fill: 'yellow', shape: 'ring', text: 'ungueltige Testanfrage' }); return null; }",
+  'var readOnce = __TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, net: net, http: http, https: https });',
+  "node.status({ fill: 'blue', shape: 'dot', text: 'pruefe ' + (req.brand || req.communication || '?') });",
+  'return readOnce(req, req.role).then(function (res) {',
+  "  res = res || { ok: false, error_code: 'invalid_response' };",
+  '  res.request_id = req.request_id;',
+  "  node.status({ fill: res.ok ? 'green' : 'yellow', shape: 'dot', text: res.ok ? 'Verbindung ok' : (res.error_code || 'Fehler') });",
+  '  return { payload: res };',
+  '}).catch(function (e) {',
+  "  node.status({ fill: 'red', shape: 'ring', text: 'Fehler: ' + (e && e.message) });",
+  "  return { payload: { request_id: req.request_id, ok: false, error_code: 'invalid_response' } };",
+  '});',
+].join('\n');
+
+const TESTTAB = 'tab-test';
+const testNodes = [
+  {
+    id: TESTTAB, type: 'tab', label: 'Verbindung testen', disabled: false,
+    info: [
+      'VERBINDUNG TESTEN: der "Verbindung testen"-Button im Edge-App-Webportal',
+      '(:8484) prueft eine NOCH NICHT GESPEICHERTE Wechselrichter-/Quellen-',
+      'Verbindung. Der Core veroeffentlicht das Formular auf edge/test-read/request',
+      '(nicht retained); dieser Tab liest das Geraet EINMAL ueber denselben',
+      'route()+decode wie die Selbstverdrahtung und antwortet auf',
+      'edge/test-read/result mit den decodierten Werten oder einem klassifizierten',
+      'Fehler. NUR LESEN - schreibt nie, blockiert nie das Speichern.',
+      '',
+      'Routing/Decode: test-read.js + deye/*.js + modbus-tcp.js + fronius/*.js',
+      '(getestet; der Funktionsknoten traegt eingebettete Kopien der Dateien,',
+      'gepinnt von flows-sync.test.js).',
+    ].join('\n'),
+  },
+  {
+    id: 'test-note', type: 'comment', z: TESTTAB,
+    name: 'edge/test-read/request -> einmal lesen (route + decode) -> edge/test-read/result',
+    info: '', x: 470, y: 40, wires: [],
+  },
+  {
+    id: 'test-request', type: 'vp-test-request', z: TESTTAB, name: 'Testanfrage vom Core', core: 'cfg-vp-core',
+    x: 180, y: 120, wires: [['test-read']],
+  },
+  {
+    id: 'test-read', type: 'function', z: TESTTAB, name: 'Verbindung testen (einmal lesen)', func: testReadFunc,
+    outputs: 1, noerr: 0, initialize: '', finalize: '', libs: [], x: 470, y: 120, wires: [['test-result']],
+  },
+  {
+    id: 'test-result', type: 'vp-test-result', z: TESTTAB, name: 'Ergebnis an Core', core: 'cfg-vp-core',
+    x: 790, y: 120, wires: [],
+  },
+];
+
 const fn = (id, name, func, outputs, wires) => ({
   id, type: 'function', z: TAB, name, func, outputs, noerr: 0, initialize: '', finalize: '', libs: [], x: 0, y: 0, wires,
 });
@@ -762,6 +846,6 @@ const simControlNodes = [
 
 const simNodes = [simTab, ...simReadNodes, ...simControlNodes];
 
-const flows = [...keepConfig, ...autoNodes, ...sourcesNodes, ...simNodes];
+const flows = [...keepConfig, ...autoNodes, ...sourcesNodes, ...testNodes, ...simNodes];
 fs.writeFileSync(OUT, JSON.stringify(flows, null, 2) + '\n');
 console.log('flows.json written:', flows.length, 'nodes');

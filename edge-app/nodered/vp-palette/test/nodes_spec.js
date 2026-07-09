@@ -20,6 +20,8 @@ const vpControlReadback = require('../nodes/vp-control-readback.js');
 const vpSourcesConfig = require('../nodes/vp-sources-config.js');
 const vpQuelle = require('../nodes/vp-quelle.js');
 const vpNetz = require('../nodes/vp-netz.js');
+const vpTestRequest = require('../nodes/vp-test-request.js');
+const vpTestResult = require('../nodes/vp-test-result.js');
 
 helper.init(require.resolve('node-red'));
 
@@ -196,6 +198,24 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpNetz.topicFor('src-n'), 'edge/sources/src-n/telemetry');
     assert.strictEqual(vpNetz.topicFor('a/b'), null); // same topic-injection guard as vp-quelle
     assert.strictEqual(vpNetz.topicFor('#'), null);
+  });
+
+  it('vp-test-request parses a valid test-read request and drops unusable ones', function () {
+    const ok = vpTestRequest.parse(Buffer.from(JSON.stringify({
+      request_id: 'tr-1', brand: 'deye', model: 'x', family: 'hybrid_3p',
+      communication: 'solarman_v5', connection: { ip: '192.168.0.28', serial: '2985159064' },
+    })));
+    assert.strictEqual(ok.request_id, 'tr-1');
+    assert.strictEqual(vpTestRequest.parse(Buffer.from('kaputt')), null); // bad JSON
+    assert.strictEqual(vpTestRequest.parse(Buffer.from(JSON.stringify({ connection: { ip: '1.2.3.4' } }))), null); // no request_id
+    assert.strictEqual(vpTestRequest.parse(Buffer.from(JSON.stringify({ request_id: 'x', connection: {} }))), null); // no ip
+  });
+
+  it('vp-test-result passes through a valid result and drops one without request_id', function () {
+    const ok = vpTestResult.shape({ request_id: 'tr-1', ok: true, reading: { pv_kw: 4.8 } });
+    assert.strictEqual(ok.request_id, 'tr-1');
+    assert.strictEqual(vpTestResult.shape(null), null);
+    assert.strictEqual(vpTestResult.shape({ ok: true }), null); // no request_id
   });
 });
 
@@ -454,6 +474,60 @@ describe('nodes against a local-bus stand-in', function () {
       const q1 = helper.getNode('q1');
       setTimeout(function () {
         q1.receive({ source_id: 'src-a', payload: { pv_power_kw: 33 } });
+      }, 300);
+    });
+  });
+
+  it('vp-test-request emits a test-read request from edge/test-read/request', function (done) {
+    const flow = coreFlow([
+      { id: 'tr1', type: 'vp-test-request', core: 'core1', wires: [['h1']] },
+      { id: 'h1', type: 'helper' },
+    ]);
+    helper.load([vpCore, vpTestRequest], flow, function () {
+      const h1 = helper.getNode('h1');
+      h1.on('input', function (msg) {
+        try {
+          assert.strictEqual(msg.request_id, 'tr-xyz');
+          assert.strictEqual(msg.payload.brand, 'generic_modbus');
+          done();
+        } catch (e) {
+          done(e);
+        }
+      });
+      // Give the node's client a moment to subscribe, then publish (non-retained).
+      const pub = mqtt.connect('mqtt://127.0.0.1:' + port);
+      pub.on('connect', function () {
+        setTimeout(function () {
+          pub.publish('edge/test-read/request', JSON.stringify({
+            request_id: 'tr-xyz', brand: 'generic_modbus', model: 'sunspec', family: 'sunspec',
+            communication: 'modbus_tcp', connection: { ip: '127.0.0.1', port: 502 },
+          }), { qos: 1, retain: false }, function () { pub.end(); });
+        }, 300);
+      });
+    });
+  });
+
+  it('vp-test-result publishes the result on edge/test-read/result (never retained)', function (done) {
+    const flow = coreFlow([
+      { id: 'tres1', type: 'vp-test-result', core: 'core1' },
+    ]);
+    broker.subscribe('edge/test-read/result', function (packet, cb) {
+      cb();
+      const m = JSON.parse(packet.payload.toString());
+      try {
+        assert.strictEqual(m.request_id, 'tr-xyz');
+        assert.strictEqual(m.ok, true);
+        assert.strictEqual(m.reading.pv_kw, 4.8);
+        assert.strictEqual(packet.retain, false, 'a test result is a live event, never retained');
+        done();
+      } catch (e) {
+        done(e);
+      }
+    }, function () {});
+    helper.load([vpCore, vpTestResult], flow, function () {
+      const n = helper.getNode('tres1');
+      setTimeout(function () {
+        n.receive({ payload: { request_id: 'tr-xyz', ok: true, reading: { pv_kw: 4.8 } } });
       }, 300);
     });
   });

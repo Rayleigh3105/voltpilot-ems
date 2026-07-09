@@ -17,6 +17,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
 
 func ptr(v float64) *float64 { return &v }
@@ -50,11 +51,19 @@ func (f *fakeDespike) SetDespike(req guards.DespikeSettings) (guards.DespikeStat
 
 // fakeInverter is an in-memory InverterController for the HTTP-layer test.
 type fakeInverter struct {
-	cat inverter.Catalog
-	sel *inverter.Selection
+	cat        inverter.Catalog
+	sel        *inverter.Selection
+	testResult testconn.Result   // returned by TestConnection
+	testReq    *testconn.Request // captured last TestConnection request
 }
 
 func (f *fakeInverter) InverterCatalog() inverter.Catalog { return f.cat }
+
+func (f *fakeInverter) TestConnection(req testconn.Request) testconn.Result {
+	r := req
+	f.testReq = &r
+	return f.testResult
+}
 
 func (f *fakeInverter) GetInverter() (inverter.Selection, bool) {
 	if f.sel == nil {
@@ -104,12 +113,15 @@ func (f *fakePlan) CurrentPlan() (plan.View, bool) {
 
 // fakeSources is an in-memory SourcesController for the HTTP-layer test.
 type fakeSources struct {
-	list   []sources.Source
-	addErr error
-	delErr error
+	list     []sources.Source
+	statuses map[string]string
+	addErr   error
+	delErr   error
 }
 
 func (f *fakeSources) ListSources() []sources.Source { return f.list }
+
+func (f *fakeSources) SourceStatuses() map[string]string { return f.statuses }
 
 func (f *fakeSources) AddSource(req sources.Request) (sources.Source, error) {
 	if f.addErr != nil {
@@ -658,9 +670,16 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 
 	page := get("/inverter.html")
 	for _, want := range []string{
+		// The model picker (built by inverter.js) is unchanged.
 		`id="modelSearch"`, `id="modelList"`, `role="listbox"`,
 		`id="modelEmpty"`, `id="modelChosen"`,
-		`href="dashboard.css"`, `href="inverter.css"`, `src="inverter.js"`,
+		// The role-grouped "Meine Anlage" card: the Wechselrichter summary/edit
+		// group + the Erzeuger/Netz groups + the add-source CTA.
+		`id="anlageCard"`, `id="invGroup"`, `id="invRows"`, `id="invEmpty"`,
+		`id="erzList"`, `id="netzList"`, `id="srcAddToggle"`,
+		// The "Verbindung testen" buttons + result panels (inverter form + drawer).
+		`id="invTestBtn"`, `id="invVerify"`, `id="srcTestBtn"`, `id="srcVerify"`,
+		`href="dashboard.css"`, `href="inverter.css"`, `src="verify.js"`, `src="inverter.js"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("inverter.html: missing %s", want)
@@ -674,17 +693,26 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	if !strings.Contains(css, ".picker-opt") {
 		t.Error("inverter.css: missing model picker styles")
 	}
+	if !strings.Contains(css, ".drawer") || !strings.Contains(css, ".role-card") || !strings.Contains(css, ".verify-panel") {
+		t.Error("inverter.css: missing drawer / role-card / verify-panel styles")
+	}
 	js := get("/inverter.js")
 	if !strings.Contains(js, "modelList") {
 		t.Error("inverter.js: does not drive the modelList listbox")
 	}
 
-	// The "Weitere Energiequellen" (additional Erzeuger) surface + its script must
-	// ship too (//go:embed rebuild contract), driven by sources.js against fixed
-	// ids and the /api/sources endpoints.
+	// The shared "Verbindung testen" helper must ship and drive the endpoint.
+	verifyJs := get("/verify.js")
+	if !strings.Contains(verifyJs, "/api/test-connection") {
+		t.Error("verify.js: does not call the /api/test-connection endpoint")
+	}
+
+	// The Erzeuger + Netz-Zähler groups + the add drawer + its script must ship
+	// too (//go:embed rebuild contract), driven by sources.js against fixed ids
+	// and the /api/sources endpoints.
 	for _, want := range []string{
-		`id="sourcesCard"`, `id="srcList"`, `id="srcForm"`, `id="srcAddToggle"`,
-		`id="srcRole"`, `id="srcKwp"`, `id="srcKwpField"`, `id="srcSee"`, `src="sources.js"`,
+		`id="srcDrawerBackdrop"`, `id="srcForm"`, `id="rolePick"`,
+		`id="srcFields"`, `id="srcKwp"`, `id="srcKwpField"`, `id="srcSee"`, `src="sources.js"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("inverter.html: missing Energiequellen element %s", want)
@@ -1043,5 +1071,86 @@ func TestSourcesAddValidationErrorIs400(t *testing.T) {
 	_ = json.NewDecoder(resp.Body).Decode(&e)
 	if e.Error == "" {
 		t.Fatalf("expected a German error message")
+	}
+}
+
+// The sources listing carries a per-source live status ("ok"|"warn"|"pending")
+// so the page can render the status dot next to each source without a second
+// call (backend dep A of the inverter-setup redesign).
+func TestSourcesListReturnsPerSourceStatus(t *testing.T) {
+	fs := &fakeSources{
+		list: []sources.Source{
+			{ID: "src-a", Role: sources.RoleErzeuger, Brand: "generic_modbus"},
+			{ID: "src-b", Role: sources.RoleNetz, Brand: "generic_modbus"},
+		},
+		statuses: map[string]string{"src-a": "ok", "src-b": "pending"},
+	}
+	srv := sourcesServer(t, fs)
+	resp, err := http.Get(srv.URL + "/api/sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Sources  []sources.Source  `json:"sources"`
+		Statuses map[string]string `json:"statuses"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Statuses == nil {
+		t.Fatalf("statuses should be a (possibly empty) map, not null")
+	}
+	if body.Statuses["src-a"] != "ok" || body.Statuses["src-b"] != "pending" {
+		t.Fatalf("per-source status wrong: %+v", body.Statuses)
+	}
+}
+
+// POST /api/test-connection passes the unsaved form to TestConnection and
+// returns its result verbatim (backend dep B). The endpoint never persists and
+// answers HTTP 200 for both ok and classified-error outcomes.
+func TestTestConnectionReturnsControllerResult(t *testing.T) {
+	fi := &fakeInverter{
+		cat:        inverter.DefaultCatalog(),
+		testResult: testconn.Result{OK: true, Reading: &testconn.Reading{PvKw: ptr(4.8), SocPct: ptr(62)}},
+	}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
+	t.Cleanup(srv.Close)
+
+	reqBody := `{"role":"pv-generation","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.70"}}`
+	resp, err := http.Post(srv.URL+"/api/test-connection", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var res testconn.Result
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK || res.Reading == nil || res.Reading.PvKw == nil || *res.Reading.PvKw != 4.8 {
+		t.Fatalf("result not returned verbatim: %+v", res)
+	}
+	// The controller saw the unsaved form (role + brand carried through).
+	if fi.testReq == nil || fi.testReq.Role != "pv-generation" || fi.testReq.Brand != "generic_modbus" {
+		t.Fatalf("TestConnection did not receive the form: %+v", fi.testReq)
+	}
+}
+
+func TestTestConnectionMalformedBodyReturns400(t *testing.T) {
+	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
+	t.Cleanup(srv.Close)
+	resp, err := http.Post(srv.URL+"/api/test-connection", "application/json", strings.NewReader("{bad"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 }

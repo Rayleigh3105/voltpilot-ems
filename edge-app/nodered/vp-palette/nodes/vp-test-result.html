@@ -1,0 +1,36 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-test-result', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'bridge.svg',
+    align: 'right',
+    label: function () { return this.name || 'vp-test-result'; },
+    paletteLabel: 'vp-test-result'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-test-result">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-test-result">
+  <p>Sendet das Ergebnis einer „Verbindung testen"-Prüfung an den VoltPilot
+  Core-Agenten auf <code>edge/test-read/result</code> (nicht retained),
+  korreliert über die <code>request_id</code>.</p>
+  <p><code>msg.payload</code>: das Ergebnisobjekt <code>{ request_id, ok,
+  error_code?, message?, reading? }</code>. Eine Nutzlast ohne
+  <code>request_id</code> wird verworfen.</p>
+</script>

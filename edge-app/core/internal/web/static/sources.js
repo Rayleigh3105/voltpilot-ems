@@ -1,12 +1,12 @@
-// sources.js - the "Weitere Energiequellen" surface on the inverter page:
-// list / add / remove ADDITIONAL read-only measurement points. Two roles today:
-// an Erzeuger (a separate PV inverter, whose generation is summed into the site
-// PV) and a Netz-Zähler (a grid meter at the point of common coupling, whose
-// signed power measures site grid directly). It reuses the SAME option catalog
-// as the inverter form (GET /api/sources returns {sources, catalog}), keeps
-// control off (a source never gets a control path), and captures a kWp + MaStR
-// SEE number for an Erzeuger only (a meter has no nameplate).
-// Self-contained, no framework, matches the inverter page's tokens/markup.
+// sources.js - the "Erzeuger" + "Netz-Zähler" groups of the "Meine Anlage" card:
+// list (grouped by role, with a live status dot/pill per source) + add (in a
+// focused drawer) + remove ADDITIONAL read-only measurement points. Two roles:
+// an Erzeuger (a separate PV inverter, summed into the site PV) and a Netz-Zähler
+// (a grid meter at the point of common coupling, 0-1 per site). It reuses the
+// SAME option catalog as the inverter form (GET /api/sources returns {sources,
+// statuses, catalog}), keeps control off (a source never gets a control path),
+// and captures a kWp + MaStR SEE number for an Erzeuger only.
+// Self-contained, no framework; shares VP (verify.js) with the inverter form.
 (function () {
   "use strict";
 
@@ -14,25 +14,16 @@
   var ROLE_NETZ = "grid-meter";
 
   function $(id) { return document.getElementById(id); }
+  var el = window.VP.el;
 
   function roleLabel(role) {
     return role === ROLE_NETZ ? "Netz-Zähler" : "Erzeuger";
   }
 
-  function el(tag, attrs, text) {
-    var e = document.createElement(tag);
-    if (attrs) {
-      Object.keys(attrs).forEach(function (k) {
-        if (k === "class") e.className = attrs[k];
-        else if (k === "html") e.innerHTML = attrs[k];
-        else e.setAttribute(k, attrs[k]);
-      });
-    }
-    if (text != null) e.appendChild(document.createTextNode(text));
-    return e;
-  }
-
   var catalog = null;
+  var statuses = {};       // source id -> "ok"|"warn"|"pending"
+  var hasNetz = false;     // whether a Netz-Zähler already exists (role-lock)
+  var currentRole = ROLE_ERZEUGER;
 
   function brandById(id) {
     if (!catalog) return null;
@@ -46,36 +37,61 @@
     return c === "solarman_v5" ? "Solarman-V5 (WiFi-Datenlogger)" : "Modbus TCP";
   }
 
-  /* ---------------- list ---------------- */
-
-  function renderList(list) {
-    var ul = $("srcList");
-    ul.innerHTML = "";
-    var has = list && list.length > 0;
-    $("srcEmpty").hidden = has;
-    if (!has) return;
-    list.forEach(function (s) {
-      var li = el("li", { class: "src-item" });
-      var main = el("div", { class: "src-item-main" });
-      main.appendChild(el("span", { class: "src-item-name" }, s.label || s.brand));
-      var meta = [];
-      if (s.capacity_kwp) meta.push(fmtKwp(s.capacity_kwp) + " kWp");
-      if (s.connection && s.connection.ip) meta.push(s.connection.ip);
-      meta.push(roleLabel(s.role) + " · nur Lesen");
-      main.appendChild(el("span", { class: "src-item-meta" }, meta.join(" · ")));
-      if (s.registry_unit_id) {
-        main.appendChild(el("span", { class: "src-item-see" }, "MaStR: " + s.registry_unit_id));
-      }
-      li.appendChild(main);
-      var del = el("button", { type: "button", class: "src-del", "aria-label": "Quelle entfernen" }, "Entfernen");
-      del.addEventListener("click", function () { removeSource(s); });
-      li.appendChild(del);
-      ul.appendChild(li);
-    });
-  }
-
   function fmtKwp(v) {
     return (Math.round(v * 10) / 10).toString().replace(".", ",");
+  }
+
+  /* ---------------- list (grouped by role) ---------------- */
+
+  // buildRow renders one source row: status dot + name + meta + status pill +
+  // an "Entfernen" (unclaim) action. There is no per-source edit (the edge has
+  // no source-edit endpoint - identity/transport is set at add time).
+  function buildRow(s) {
+    var li = el("li", { class: "row" });
+    var st = window.VP.statusPill(statuses[s.id] || "pending");
+    li.appendChild(el("span", { class: "row-dot " + st.dot, "aria-hidden": "true" }));
+
+    var main = el("div", { class: "row-main" });
+    main.appendChild(el("span", { class: "row-name" }, s.label || s.brand));
+    var meta = [];
+    if (s.capacity_kwp) meta.push(fmtKwp(s.capacity_kwp) + " kWp");
+    meta.push(commLabel(s.communication));
+    if (s.connection && s.connection.ip) meta.push(s.connection.ip);
+    main.appendChild(el("span", { class: "row-meta" }, meta.join(" · ")));
+    li.appendChild(main);
+
+    var badge = el("span", { class: "row-badge" });
+    var pill = el("span", { class: "pill " + st.pill });
+    pill.appendChild(el("span", { class: "dot" }));
+    pill.appendChild(document.createTextNode(st.label));
+    badge.appendChild(pill);
+    li.appendChild(badge);
+
+    var actions = el("span", { class: "row-actions" });
+    var del = el("button", { type: "button", class: "icon-btn danger", title: "Entfernen", "aria-label": "Quelle entfernen",
+      html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>' });
+    del.addEventListener("click", function () { removeSource(s); });
+    actions.appendChild(del);
+    li.appendChild(actions);
+    return li;
+  }
+
+  function renderGroups(list) {
+    var erz = [], netz = [];
+    (list || []).forEach(function (s) {
+      if (s.role === ROLE_NETZ) netz.push(s); else erz.push(s);
+    });
+    hasNetz = netz.length > 0;
+
+    var erzUl = $("erzList"); erzUl.innerHTML = "";
+    erz.forEach(function (s) { erzUl.appendChild(buildRow(s)); });
+    $("erzEmpty").hidden = erz.length > 0;
+    $("erzNote").textContent = "· " + erz.length + (erz.length === 1 ? " zusätzliche Quelle" : " zusätzliche Quellen");
+
+    var netzUl = $("netzList"); netzUl.innerHTML = "";
+    netz.forEach(function (s) { netzUl.appendChild(buildRow(s)); });
+    $("netzEmpty").hidden = netz.length > 0;
+    $("netzNote").textContent = hasNetz ? "· 1 von 1" : "· optional, max. 1";
   }
 
   /* ---------------- add form ---------------- */
@@ -138,10 +154,15 @@
     });
   }
 
-  // onRoleChange shows the nameplate fields (kWp + MaStR SEE) only for an
-  // Erzeuger; a Netz meter has no nameplate, so they are hidden and left blank.
-  function onRoleChange() {
-    var netz = $("srcRole").value === ROLE_NETZ;
+  // setRole selects a role card and shows the nameplate fields (kWp + MaStR SEE)
+  // only for an Erzeuger; a Netz meter has no nameplate. The Netz card is locked
+  // (and never selectable) once one already exists.
+  function setRole(role) {
+    if (role === ROLE_NETZ && hasNetz) return;
+    currentRole = role;
+    $("roleErz").classList.toggle("sel", role === ROLE_ERZEUGER);
+    $("roleNetz").classList.toggle("sel", role === ROLE_NETZ);
+    var netz = role === ROLE_NETZ;
     $("srcKwpField").hidden = netz;
     $("srcSeeField").hidden = netz;
     $("srcRoleHelp").textContent = netz
@@ -165,16 +186,14 @@
         conn[key] = input.value.trim();
       }
     });
-    var role = $("srcRole").value || ROLE_ERZEUGER;
     var req = {
-      role: role,
+      role: currentRole,
       brand: $("srcBrand").value,
       model: $("srcModel").value,
       connection: conn,
       label: $("srcLabel").value.trim(),
     };
-    // A meter carries no nameplate/MaStR number; only an Erzeuger does.
-    if (role === ROLE_ERZEUGER) {
+    if (currentRole === ROLE_ERZEUGER) {
       var kwp = Number($("srcKwp").value);
       if ($("srcKwp").value !== "" && !isNaN(kwp)) req.capacity_kwp = kwp;
       var see = $("srcSee").value.trim();
@@ -190,21 +209,30 @@
     e.textContent = msg;
   }
 
-  function openForm() {
-    $("srcForm").hidden = false;
-    $("srcAddToggle").hidden = true;
-    showError(null);
-  }
+  /* ---------------- drawer ---------------- */
 
-  function closeForm() {
-    $("srcForm").hidden = true;
-    $("srcAddToggle").hidden = false;
-    showError(null);
+  function openDrawer() {
+    // Reset the form and role selection each time it opens.
     $("srcLabel").value = "";
     $("srcKwp").value = "";
     $("srcSee").value = "";
-    $("srcRole").value = ROLE_ERZEUGER;
-    onRoleChange();
+    showError(null);
+    window.VP.clearVerify($("srcVerify"));
+    // Lock the Netz role card when one already exists.
+    $("roleNetz").disabled = hasNetz;
+    $("roleNetz").classList.toggle("locked", hasNetz);
+    $("netzLockedNote").hidden = !hasNetz;
+    setRole(ROLE_ERZEUGER);
+    if ($("srcBrand").options.length === 0 && catalog) populateBrands();
+    else onBrandChange();
+    $("srcDrawerBackdrop").hidden = false;
+    document.body.classList.add("drawer-open");
+    $("srcLabel").focus();
+  }
+
+  function closeDrawer() {
+    $("srcDrawerBackdrop").hidden = true;
+    document.body.classList.remove("drawer-open");
   }
 
   function addSource(ev) {
@@ -224,7 +252,7 @@
         showError((res.body && res.body.error) || "Die Energiequelle konnte nicht gespeichert werden.");
         return;
       }
-      closeForm();
+      closeDrawer();
       load();
     }).catch(function () {
       save.disabled = false;
@@ -247,19 +275,29 @@
   function load() {
     fetch("/api/sources").then(function (r) { return r.json(); }).then(function (data) {
       catalog = data.catalog;
-      renderList(data.sources || []);
-      if ($("srcBrand").options.length === 0 && catalog) populateBrands();
+      statuses = data.statuses || {};
+      renderGroups(data.sources || []);
     }).catch(function () { /* keep the page usable; the inverter form still works */ });
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    if (!$("sourcesCard")) return;
-    $("srcAddToggle").addEventListener("click", openForm);
-    $("srcCancel").addEventListener("click", closeForm);
+    if (!$("anlageCard")) return;
+    $("srcAddToggle").addEventListener("click", openDrawer);
+    $("srcClose").addEventListener("click", closeDrawer);
+    $("srcDrawerBackdrop").addEventListener("click", function (e) {
+      if (e.target === $("srcDrawerBackdrop")) closeDrawer();
+    });
+    $("roleErz").addEventListener("click", function () { setRole(ROLE_ERZEUGER); });
+    $("roleNetz").addEventListener("click", function () { setRole(ROLE_NETZ); });
     $("srcBrand").addEventListener("change", onBrandChange);
-    $("srcRole").addEventListener("change", onRoleChange);
     $("srcForm").addEventListener("submit", addSource);
-    onRoleChange();
+    $("srcTestBtn").addEventListener("click", function () {
+      window.VP.testConnection({
+        payload: collect(),
+        panel: $("srcVerify"),
+        button: $("srcTestBtn"),
+      });
+    });
     load();
   });
 })();

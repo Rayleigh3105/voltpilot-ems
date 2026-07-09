@@ -22,6 +22,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
 
 //go:embed static
@@ -34,6 +35,11 @@ type InverterController interface {
 	InverterCatalog() inverter.Catalog
 	GetInverter() (inverter.Selection, bool)
 	SetInverter(inverter.SelectionRequest) (inverter.Selection, error)
+	// TestConnection reads an UNSAVED connection form once and returns the
+	// decoded values or a classified error. It serves BOTH the inverter form and
+	// the add-source drawer (they share the brand/model/connection shape) and
+	// never persists anything - it is a confidence check, never a save gate.
+	TestConnection(testconn.Request) testconn.Result
 }
 
 // SourcesController backs the "Energiequellen" surface: the ADDITIONAL read-only
@@ -43,6 +49,9 @@ type InverterController interface {
 // envelope. Read-only by construction - a source never gets a control path.
 type SourcesController interface {
 	ListSources() []sources.Source
+	// SourceStatuses maps each source id to its live delivery status
+	// ("ok"|"warn"|"pending"), so the web app can show a status dot per source.
+	SourceStatuses() map[string]string
 	AddSource(sources.Request) (sources.Source, error)
 	DeleteSource(id string) error
 }
@@ -289,6 +298,21 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		writeJSON(w, http.StatusOK, map[string]any{"selection": sel})
 	})
 
+	// POST /api/test-connection - "Verbindung testen": read an UNSAVED
+	// connection form ONCE and return the decoded values or a classified error.
+	// Serves both the inverter form and the add-source drawer. Never persists;
+	// never a save gate. Always HTTP 200 (the outcome, incl. failures, is in the
+	// JSON body) except on a malformed request body.
+	mux.HandleFunc("POST /api/test-connection", func(w http.ResponseWriter, r *http.Request) {
+		var req testconn.Request
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		writeJSON(w, http.StatusOK, inv.TestConnection(req))
+	})
+
 	// GET /api/sources - the ADDITIONAL read-only measurement points (Phase 1:
 	// Erzeuger/PV) plus the SAME option catalog the inverter form uses, so the
 	// "Energiequelle hinzufügen" form is fully data-driven off one endpoint.
@@ -297,9 +321,14 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		if list == nil {
 			list = []sources.Source{}
 		}
+		statuses := src.SourceStatuses()
+		if statuses == nil {
+			statuses = map[string]string{}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"sources": list,
-			"catalog": inv.InverterCatalog(),
+			"sources":  list,
+			"statuses": statuses,
+			"catalog":  inv.InverterCatalog(),
 		})
 	})
 

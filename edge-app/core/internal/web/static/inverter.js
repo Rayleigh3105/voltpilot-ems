@@ -21,6 +21,7 @@
 
   var catalog = null;      // {schema_version, brands:[...]}
   var selection = null;    // current selection or null
+  var invConnected = false; // whether the inverter has delivered telemetry (live status)
 
   var chosenModel = null;  // picked model id for the current brand (or null)
   var visible = [];        // models currently rendered, in list order (keyboard nav)
@@ -373,22 +374,66 @@
     return { brand: $("brand").value, model: chosenModel, connection: conn };
   }
 
-  function showCurrent() {
-    var box = $("current");
-    if (!selection) { box.hidden = true; return; }
-    box.hidden = false;
-    $("currentModel").textContent = selection.label;
+  // renderSummary paints the "Wechselrichter / Speicher" group row (or the empty
+  // state when nothing is configured), with a live status dot + pill. The
+  // permanently-open form is gone: the form only shows on "Bearbeiten" / "Jetzt
+  // einrichten".
+  function renderSummary() {
+    var rows = $("invRows"), empty = $("invEmpty");
+    if (!selection) {
+      rows.hidden = true;
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    rows.hidden = false;
+    $("invName").textContent = selection.label || selection.brand;
     var c = selection.connection || {};
     var host = c.ip ? (c.ip + (c.port ? ":" + c.port : "")) : "";
-    $("currentDetail").textContent =
-      commLabel(selection.communication) + (host ? " · " + host : "");
+    $("invMeta").textContent = commLabel(selection.communication) + (host ? " · " + host : "");
+    var st = window.VP.statusPill(invConnected ? "ok" : "pending");
+    $("invDot").className = "row-dot " + st.dot;
+    var badge = $("invBadge");
+    badge.innerHTML = "";
+    var pill = window.VP.el("span", { class: "pill " + st.pill });
+    pill.appendChild(window.VP.el("span", { class: "dot" }));
+    pill.appendChild(document.createTextNode(st.label));
+    badge.appendChild(pill);
   }
 
-  function render() {
+  // buildForm fills the form inputs (brand list, model picker, connection fields)
+  // for the current selection/catalog. It does NOT show the form.
+  function buildForm() {
     renderBrands();
     if (selection) { $("brand").value = selection.brand; }
     onBrandChange();
-    showCurrent();
+  }
+
+  // openForm reveals the inverter form (edit or first setup); closeForm hides it
+  // back to the summary/empty row.
+  function openForm() {
+    buildForm();
+    $("form").hidden = false;
+    $("invRows").hidden = true;
+    $("invEmpty").hidden = true;
+    $("invCancelBtn").hidden = false;
+    $("formOk").hidden = true;
+    $("formError").hidden = true;
+    window.VP.clearVerify($("invVerify"));
+    $("form").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function closeForm() {
+    $("form").hidden = true;
+    window.VP.clearVerify($("invVerify"));
+    renderSummary();
+  }
+
+  function loadStatus() {
+    fetch("/api/state", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (s) { invConnected = !!(s && s.inverter_connected); renderSummary(); })
+      .catch(function () { /* status is best-effort; the summary still renders */ });
   }
 
   function load() {
@@ -397,7 +442,9 @@
       .then(function (data) {
         catalog = data.catalog;
         selection = data.selection || null;
-        render();
+        buildForm();
+        renderSummary();
+        loadStatus();
       })
       .catch(function () {
         $("formError").hidden = false;
@@ -433,9 +480,12 @@
           return;
         }
         selection = res.body.selection;
-        showCurrent();
-        $("formOk").hidden = false;
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        // Collapse the form back to the summary row (the row is the confirmation);
+        // refresh the live status shortly after so the pill can flip to "Liefert
+        // Daten" once telemetry arrives.
+        closeForm();
+        loadStatus();
+        $("invGroup").scrollIntoView({ block: "nearest", behavior: "smooth" });
       })
       .catch(function () {
         $("formError").hidden = false;
@@ -457,6 +507,27 @@
   $("modelClear").addEventListener("click", clearSearch);
   $("modelReset").addEventListener("click", clearSearch);
   $("form").addEventListener("submit", submit);
+
+  // Edit / first-setup / cancel toggle the inverter form.
+  $("invEditBtn").addEventListener("click", openForm);
+  $("invSetupBtn").addEventListener("click", openForm);
+  $("invCancelBtn").addEventListener("click", closeForm);
+
+  // "Verbindung testen" - a confidence check on the current (unsaved) form; it
+  // never blocks Speichern.
+  $("invTestBtn").addEventListener("click", function () {
+    if (!chosenModel) {
+      $("formError").hidden = false;
+      $("formError").textContent = "Bitte wählen Sie zuerst Ihr Modell aus der Liste.";
+      $("picker").classList.add("invalid");
+      return;
+    }
+    window.VP.testConnection({
+      payload: collect(),
+      panel: $("invVerify"),
+      button: $("invTestBtn"),
+    });
+  });
 
   load();
 })();
