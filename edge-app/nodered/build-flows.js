@@ -60,7 +60,10 @@ const routerFunc = [
   "const DEYE_READS = {",
   "  string:    [{ start: 0x0050, count: 0x0002 }],",
   "  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],",
-  "  hybrid_3p: [{ start: 0x024c, count: 0x0058 }],",
+  // hybrid_3p: device-identity register 0x0000 (LV/HV scale class) + the widened
+  // measurement block 0x024C..0x02B2 (103 regs) covering the 32-bit grid/load.
+  // Must equal deye-decode.planReads({family:'hybrid_3p'}) (flows-sync guard).
+  "  hybrid_3p: [{ start: 0x0000, count: 0x0001 }, { start: 0x024c, count: 0x0067 }],",
   "  micro:     [{ start: 0x0056, count: 0x0002 }]",
   "};",
   "const MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };",
@@ -85,7 +88,9 @@ const routerFunc = [
   "    family: sel.family,",
   "    invert_grid_sign: !!conn.invert_grid_sign,",
   "    invert_batt_sign: !!conn.invert_batt_sign,",
-  "    power_scale: num(conn.power_scale, 1) > 0 ? num(conn.power_scale, 1) : 1",
+  // power_scale is now a MANUAL OVERRIDE / fallback (0 = auto-detect from 0x0000);
+  // pass it through unchanged so the decoder resolves the LV/HV scale.
+  "    power_scale: num(conn.power_scale, 0)",
   "  };",
   "  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => ({ start: r.start, count: r.count })), i: 0, blocks: [] };",
   "  node.status({ fill: 'blue', shape: 'dot', text: 'Deye ' + sel.family + ' -> Solarman-V5' });",

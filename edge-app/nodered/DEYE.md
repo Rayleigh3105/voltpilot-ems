@@ -119,8 +119,11 @@ node edge-app/nodered/deye/solarman-probe.js \
 
 > **Erwartung beim Live-Check (SG01HP3):** `soc_pct` 0..100, `load_kw ≥ 0`,
 > `pv_power_kw` = Summe aller MPPTs (~ Wert der Logger-Statusseite "Current power",
-> nachts ≈ 0). Passt `pv_power_kw` gegen die Statusseite **~10× zu klein** oder
-> klemmt `power_kw` bei ±32,7 kW, ist es die HV-Dezawatt-Skalierung → siehe
+> nachts ≈ 0). Die HV/LV-Skala erkennt der Decoder jetzt **automatisch** aus dem
+> Geräteregister `0x0000` (HV → ×10), und Netz/Last werden als **32-Bit** gelesen -
+> ein `power_kw`-Klemmen bei ±32,7 kW gehört damit der Vergangenheit an. Passt
+> `pv_power_kw` trotz Auto-Erkennung noch gegen die Statusseite **~10× zu klein**,
+> siehe die manuelle Übersteuerung im
 > VERIFY-Hinweis in [Abschnitt 2, `hybrid_3p`](#hybrid_3p---3-phasige-hybride-high-map-sg04lp3-und-sg01hp3).
 > Der frühere `--family string`-Lauf lieferte **Müll** (30 MW), weil er die
 > Batterie-/Konfig-Register `0x0050..0x00CC` als Messwerte fehlinterpretierte -
@@ -225,17 +228,20 @@ Deckt zwei Baureihen mit **derselben** high-map ab:
 - **SG04LP3** (LV-Batterie): `SUN-5..12K-SG04LP3`, 2 MPPT.
 - **SG01HP3** (HV-Batterie): `SUN-29.9/30/35/40/50K-SG01HP3-EU-BM3/BM4`, 3-4 MPPT. **Das bestätigte Captain-Gerät** (WR-Serial `2407224048`, Logger `2985159064` @ `192.168.0.28`).
 
-| Feld | Register (dez.) | Breite | Quelle |
-|---|---|---|---|
-| `soc_pct` | `0x024C` (588) | 16-Bit (%) | ha-solarman `deye_sg04lp3.yaml` |
-| `pv_power_kw` | `0x02A0`..`0x02A3` (672-675, **Summe PV1..PV4**) | 16-Bit je | ha-solarman + Deye-Modbus-Manual |
-| `power_kw` (Netz) | `0x0271` (625) | 16-Bit, **vorzeichenbehaftet** | ha-solarman ("Total Grid Power") |
-| `load_kw` | `0x028D` (653) | 16-Bit | ha-solarman ("Total Load Power") |
-| `batt` (nur Kalibrierung) | `0x024E` (590) | 16-Bit, **vorzeichenbehaftet** | ha-solarman ("Battery Power") |
+| Feld | Register (dez.) | Breite | Skala | Quelle |
+|---|---|---|---|---|
+| Geräte-Kennung (LV/HV) | `0x0000` (0) | 16-Bit | - | ha-solarman `deye_p3.yaml` ("Device"), `const.py` `AUTODETECTION_DEYE` |
+| `soc_pct` | `0x024C` (588) | 16-Bit (%) | 1 | ha-solarman `deye_p3.yaml` |
+| `pv_power_kw` | `0x02A0`..`0x02A3` (672-675, **Summe PV1..PV4**) | 16-Bit je | **`[1,10]` LV/HV** | ha-solarman + Deye-Modbus-Manual |
+| `power_kw` (Netz) | `0x0271` (625, low) + `0x02B2` (690, high) | **32-Bit**, vorzeichenbehaftet | 1 (immer W) | ha-solarman ("Grid Power", rule 4) |
+| `load_kw` | `0x028D` (653, low) + `0x0293` (659, high) | **32-Bit**, vorzeichenbehaftet | 1 (immer W) | ha-solarman ("Load Consumption Power", rule 4) |
+| `batt` (nur Kalibrierung) | `0x024E` (590) | 16-Bit, vorzeichenbehaftet | **`[1,10]` LV/HV** | ha-solarman ("Battery Power") |
 
-Ein Leseblock: `-xmb 024C0058` (0x024C..0x02A3, 88 Register - deckt SoC bis PV4 ab, unter dem 125-Register-Limit).
+Zwei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000) und `-xmb 024C0067` (0x024C..0x02B2, 103 Register - deckt SoC bis PV4 **und** die 32-Bit-Netz/Last-Highwords ab, weiter unter dem 125-Register-Limit).
 
 Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein nicht bestücktes PV3/PV4 liest `0` und stört die Summe nicht.
+
+> **HV/LV-Skalierung wird AUTOMATISCH erkannt** (wie ha-solarman). In `deye_p3.yaml` tragen **PV Power** und **Battery Power** eine doppelte `scale: [1, 10]` (LV = 1 W, HV = 10 W/Dekawatt); **Grid Power** und **Load Consumption Power** haben **keine** Skala (immer Watt). ha-solarman wählt LV vs. HV über das Geräteregister `0x0000` (`const.py` `AUTODETECTION_DEYE`: LV-Codes `0x0005`/`0x0500` → `mod 0` → Skala 1; HV-Codes `0x0006`/`0x0007`/`0x0600`/`0x0008`/`0x0601` → `mod 1` → Skala 10; `0x0008`/`0x0601` = "HV 3-Phase Inverter 20-50kw", genau die Klasse des `SUN-30K-SG01HP3-EU`). Der Decoder liest `0x0000`, mappt es auf die LV/HV-Skala und wendet sie **nur** auf PV + Batterie an - Netz/Last/SoC nie. Das Feld `power_scale` ist nur noch eine **manuelle Übersteuerung** (`1` oder `10` gewinnt gegen die Auto-Erkennung) bzw. der **Rückfall** auf `1`, wenn `0x0000` nicht lesbar ist (nie eine Klasse erfinden).
 
 > **SoC-Plausibilität (drop-don't-fabricate).** Ein Solarman-Logger, der den
 > Wechselrichter gerade **nicht** erreicht (typisch nachts), antwortet trotzdem
@@ -250,9 +256,9 @@ Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein
 
 > **Adressen sind autoritativ** aus StephanJoubert/home_assistant_solarman (`deye_sg04lp3.yaml`, das die SG01HP3-Nutzer laut Repo-Issue #444 ebenfalls verwenden) plus dem Deye-Modbus-Manual für PV3/PV4 (674/675).
 >
-> **VERIFY-on-device (offen bis zum Live-Read):**
+> **VERIFY-on-device:**
 > 1. **Netz-Vorzeichen** (`invert_grid_sign`) - firmwareabhängig; mittags per PV-Überschuss kalibrieren (siehe [Abschnitt 5](#5-vorzeichen-kalibrierung-am-gerät)).
-> 2. **Skalierung auf dem HV-Gerät** (`power_scale`, Default `1`). Die Karte nutzt Watt (`scale = 1`) wie ha-solarman - so am Captain-SG01HP3 in #49 gelesen. Falls die Live-Werte auf **einem anderen** HV-Gerät gegen die Logger-Statusseite **~10× zu klein** wirken oder `power_kw` bei ±32,7 kW klemmt (int16-Sättigung), nutzt diese HV-Firmware **Dezawatt** - dann **`power_scale: 10`** in die Wechselrichter-Konfiguration setzen (kein Code-/Karten-Edit; `power_scale` multipliziert alle Leistungsfelder pv/grid/load/batt, niemals SoC).
+> 2. **HV/LV-Skalierung** wird jetzt **automatisch** aus `0x0000` erkannt (siehe Kasten oben) - kein manueller Schritt mehr nötig. `power_scale` bleibt nur als **Übersteuerung**/Rückfall. Hinweis zur Historie: #49 hat die **Familien­auswahl** (`hybrid_3p` statt der falschen `string`-Karte) am Captain-Gerät bestätigt, **nicht** die Skala - die frühere Behauptung "Skala 1 am SG01HP3 in #49 gelesen" war eine Doku-Übertreibung ohne Live-Messung. Da die HV-Klasse laut ha-solarman `mod 1` = **Dekawatt (×10)** ist, wird ein SG01HP3 automatisch ×10 skaliert; nur wenn die Auto-Erkennung nicht greift (Register `0x0000` unlesbar oder Werte weiter unplausibel), lässt sich `power_scale` in der Wechselrichter-Konfiguration manuell auf `1` oder `10` stellen (multipliziert dann nur PV + Batterie, nie Netz/Last/SoC).
 
 ### `micro` - Deye/Bosswerk-Mikrowechselrichter (SUN*G3)
 
@@ -265,7 +271,7 @@ ha-solarman `deye_2mppt.yaml` (SUN600..1600G3, 2 MPPT) und `deye_4mppt.yaml` (SU
 Ein Leseblock: `-xmb 00560002`. Wie beim String ist der AC-Ausgang post-inverter = Summe aller MPPTs (2 oder 4), also MPPT-Zahl-unabhängig. Kein Netz, keine Last, kein SoC.
 Zusätzlich bleibt die **Wirkleistungsbegrenzung** an `0x0028` ([Abschnitt 4](#4-wirkleistungsbegrenzung-stringmicro)) der Steuerpfad.
 
-> **Warum ein Block statt vieler Einzel-Lesungen?** Ein Lesebefehl liefert einen zusammenhängenden Block; die Felder werden per absoluter Adresse extrahiert. Das hält die AT-Runden minimal und vermeidet gleichzeitige `deye`-Prozesse auf dem Logger. Die Hybrid-Familien lesen einen 22- (`hybrid_1p`) bzw. 88-Register-Block (`hybrid_3p`), string/micro nur ein 2-Register-Paar - alle unter dem 125-Register-Maximum von Modbus fn 0x03. Die Lese-Kette ist sequenziell und verträgt bei Bedarf auch mehrere Blöcke.
+> **Warum wenige Blöcke statt vieler Einzel-Lesungen?** Ein Lesebefehl liefert einen zusammenhängenden Block; die Felder werden per absoluter Adresse extrahiert. Das hält die AT-Runden minimal und vermeidet gleichzeitige `deye`-Prozesse auf dem Logger. `hybrid_1p` liest einen 22-Register-Block; `hybrid_3p` liest **zwei** Blöcke (die 1-Register-Geräte­kennung `0x0000` für die LV/HV-Skala + den 103-Register-Messblock `0x024C..0x02B2`); string/micro nur ein 2-Register-Paar - alle unter dem 125-Register-Maximum von Modbus fn 0x03. Die Lese-Kette ist sequenziell und verträgt problemlos mehrere Blöcke.
 
 `batt` ist **kein** Cloud-Telemetriefeld: es wird nur gelesen, um Vorzeichen zu kalibrieren und im Knotenstatus/Debug anzuzeigen. Die Cloud leitet die Batterieleistung aus der Leistungsbilanz ab (siehe `CUSTOM-INVERTER.md`).
 `grid_limit_kw` (§14a-Hüllkurve) liefern diese Deye-Register nicht direkt; das Feld bleibt daher leer (optional). Wer es aus einem separaten Zähler/Register hat, ergänzt es im Decoder-Knoten.
@@ -332,10 +338,10 @@ Deye wird über die **Wechselrichter-Auswahl** im Edge-App-Portal eingerichtet; 
 2. Lokale Webansicht öffnen (`http://<geraet>:8484` → **"Wechselrichter einrichten"**) und wählen:
    - Marke **Deye**, **Familie** (`string` | `hybrid_1p` | `hybrid_3p` | `micro`),
    - Logger-**IP**, **Datenlogger-Seriennummer** (die Zahl aus der Probe - NICHT die Wechselrichter-Seriennummer), ggf. Modbus-Slave-ID,
-   - **"Netz-Vorzeichen invertieren"** und **Leistungsskalierung (×10)** bleiben zunächst aus und werden bei der Kalibrierung gesetzt.
+   - **"Netz-Vorzeichen invertieren"** bleibt zunächst aus und wird bei der Kalibrierung gesetzt; **Leistungsskalierung** bleibt auf **"Automatisch"** (die LV/HV-Skala erkennt der Decoder aus dem Geräteregister `0x0000`).
    Diese Felder sind exakt die `connection`-Parameter aus [`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md); der Transport (Solarman-V5, TCP 8899) ist pro Marke fix.
 3. Familie unbekannt? Mit `solarman-probe.js --ip <logger> --serial <n> --start 0x00B8 --count 1` (low map) vs `--start 0x024C --count 1` (high map) prüfen: genau eine liefert einen sinnvollen SoC (0..100) → `hybrid_1p` vs `hybrid_3p`. `string`/`micro` haben keinen SoC und werden manuell gewählt.
-4. **Vorzeichen am Gerät kalibrieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)): stimmt das Netz-Vorzeichen nicht, in der Auswahl "Netz-Vorzeichen invertieren" setzen; zeigt eine HV-Firmware die Leistung 10× zu niedrig, Leistungsskalierung ×10.
+4. **Vorzeichen am Gerät kalibrieren** ([Abschnitt 5](#5-vorzeichen-kalibrierung-am-geraet)): stimmt das Netz-Vorzeichen nicht, in der Auswahl "Netz-Vorzeichen invertieren" setzen. Die HV/LV-Leistungsskala wird automatisch erkannt; nur falls sie nicht greift, "Leistungsskalierung" manuell auf ×10 (bzw. ×1) stellen.
 5. Batterie-Limits im `.env` setzen (`VP_MAX_CHARGE_KW`, `VP_MAX_DISCHARGE_KW`, `VP_SOC_*`) und `docker compose up -d`.
 
 Die Auswahl treibt den Lesepfad `read → vp-telemetrie`, `Link-Status → vp-status`; alles Cloud-seitige bleibt im Core.

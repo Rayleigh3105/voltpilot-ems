@@ -143,10 +143,11 @@ func solarmanFields() []Field {
 			Help: "Meist 1."},
 		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
 			Help: "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."},
-		{Key: "power_scale", Label: "Leistungsskalierung", Type: "select", Default: 1,
-			Help: "Standard ist Watt. Nur auf Dekawatt (×10) stellen, wenn die Leistungswerte um den Faktor 10 zu niedrig sind (manche HV-Firmware).",
+		{Key: "power_scale", Label: "Leistungsskalierung", Type: "select", Default: 0,
+			Help: "Wird bei 3-phasigen Hybriden (SG04LP3/SG01HP3) automatisch aus dem Gerät erkannt (Niedervolt = Watt, Hochvolt = Dekawatt ×10). Nur als manuelle Übersteuerung ändern, wenn die automatische Erkennung nicht greift.",
 			Options: []Opt{
-				{Value: 1, Label: "Standard (Watt)"},
+				{Value: 0, Label: "Automatisch (empfohlen)"},
+				{Value: 1, Label: "Watt (×1)"},
 				{Value: 10, Label: "Dekawatt (×10)"},
 			}},
 	}
@@ -496,11 +497,10 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.MbSlaveID < 1 || conn.MbSlaveID > 247 {
 			return Selection{}, invalid("Die Modbus-Slave-ID muss zwischen 1 und 247 liegen.")
 		}
-		if conn.PowerScale == 0 {
-			conn.PowerScale = 1
-		}
-		if conn.PowerScale != 1 && conn.PowerScale != 10 {
-			return Selection{}, invalid("Die Leistungsskalierung muss 1 oder 10 sein.")
+		// 0 = auto-detect the LV/HV scale from the device register 0x0000 (the
+		// default); 1 or 10 is a manual override. See deye/deye-decode.js.
+		if conn.PowerScale != 0 && conn.PowerScale != 1 && conn.PowerScale != 10 {
+			return Selection{}, invalid("Die Leistungsskalierung muss automatisch (0), 1 oder 10 sein.")
 		}
 		// fields of the other transports are not part of this one.
 		conn.UnitID, conn.Profile, conn.InsecureTLS = 0, "", false

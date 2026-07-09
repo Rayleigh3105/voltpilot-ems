@@ -18,6 +18,7 @@ func TestNormalizeDeyeSolarmanDefaultsAndDerivation(t *testing.T) {
 			IP:     "192.168.0.28",
 			Serial: "2985159064",
 			// port, mb_slave_id, power_scale omitted -> defaults
+			// (power_scale 0 = auto-detect the LV/HV scale from register 0x0000)
 		},
 	}, now)
 	if err != nil {
@@ -35,8 +36,8 @@ func TestNormalizeDeyeSolarmanDefaultsAndDerivation(t *testing.T) {
 	if sel.Connection.MbSlaveID != 1 {
 		t.Errorf("default slave id: %d", sel.Connection.MbSlaveID)
 	}
-	if sel.Connection.PowerScale != 1 {
-		t.Errorf("default power scale: %v", sel.Connection.PowerScale)
+	if sel.Connection.PowerScale != 0 {
+		t.Errorf("default power scale should be 0 (auto-detect): %v", sel.Connection.PowerScale)
 	}
 	if !sel.UpdatedAt.Equal(now) {
 		t.Errorf("updated_at not stamped: %v", sel.UpdatedAt)
@@ -353,6 +354,26 @@ func TestNormalizeRejects(t *testing.T) {
 				t.Fatalf("expected rejection")
 			}
 		})
+	}
+}
+
+func TestNormalizeAcceptsPowerScaleAutoAndOverrides(t *testing.T) {
+	cat := DefaultCatalog()
+	// 0 = auto-detect (default), 1 and 10 are explicit manual overrides.
+	for _, ps := range []float64{0, 1, 10} {
+		sel, err := cat.Normalize(SelectionRequest{
+			Brand:  BrandDeye,
+			Family: "hybrid_3p",
+			Connection: Connection{
+				IP: "192.168.0.28", Serial: "2985159064", PowerScale: ps,
+			},
+		}, now)
+		if err != nil {
+			t.Fatalf("power_scale %v rejected: %v", ps, err)
+		}
+		if sel.Connection.PowerScale != ps {
+			t.Errorf("power_scale %v not preserved: got %v", ps, sel.Connection.PowerScale)
+		}
 	}
 }
 
