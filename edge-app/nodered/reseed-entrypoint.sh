@@ -27,14 +27,34 @@
 # re-seeds and logs loudly what it replaced. This makes future `docker compose
 # pull && up -d` updates take automatically, with no manual volume wipe and
 # without touching vp-edge-data (the core's identity/certs/inverter config).
+#
+# PRIVILEGE (prod-down fix, 2026-07-09)
+# -------------------------------------
+# This entrypoint MUST run as ROOT. An OLDER image seeded the vp-palette /
+# node_modules dirs into /data at BUILD time via `COPY ... /data`, so on a
+# pre-existing `vp-nodered-data` volume those dirs are ROOT-owned. If the
+# re-seed ran unprivileged (the old Dockerfile did `USER node-red` before the
+# ENTRYPOINT), `rm -rf "$DATA_DIR/vp-palette"` failed with `Permission denied`
+# (rm needs write on the root-owned parent), `set -e` aborted, the container
+# looped, and the device went dark - no telemetry. So the Dockerfile now leaves
+# the ENTRYPOINT running as root; we re-seed with enough privilege to replace
+# any prior ownership, `chown` /data to the run user, and then DROP privileges
+# to run Node-RED itself UNPRIVILEGED (su-exec), exactly as before.
 set -eu
 
 # Paths are overridable so the re-seed logic is unit-testable off a temp dir
 # (see reseed.test.sh); the defaults are the production image/volume paths.
 TEMPLATE_DIR="${VP_TEMPLATE_DIR:-/opt/vp-template}"
 DATA_DIR="${VP_DATA_DIR:-/data}"
+# The unprivileged user Node-RED runs as (also who ends up owning /data).
+RUN_USER="${VP_RUN_USER:-node-red:node-red}"
 MARKER="${DATA_DIR}/.vp-template-version"
 VERSION_FILE="${TEMPLATE_DIR}/.vp-template-version"
+
+# Set to 1 by reseed_template when it actually replaced anything, so the
+# (recursive, thousands-of-files in node_modules) chown below runs ONLY when
+# ownership might be wrong - a healthy up-to-date start stays cheap and quiet.
+DID_RESEED=0
 
 log() { echo "[vp-edge/nodered] $*"; }
 
@@ -61,14 +81,15 @@ reseed_template() {
   done
 
   # Template DIRS: replace outright so removed nodes/deps never linger. The
-  # vp-palette `file:` dep is a symlink (node_modules/@voltpilot/... ->
-  # ../../vp-palette) inside node_modules, so copying BOTH at the same relative
-  # layout keeps that link valid. `cp -RP` copies recursively and PRESERVES the
-  # symlink (-P = never dereference), but deliberately NOT ownership: the
-  # container runs as the non-root node-red user, and preserving ownership
-  # (cp -a / -p) would EPERM-warn on the volume filesystem - the copied files
-  # are node-red-owned anyway (the writer). `-RP` is portable across the image's
-  # BusyBox cp, GNU coreutils, and BSD/macOS cp (the reseed.test.sh host).
+  # rm -rf can only remove root-owned dirs left by an OLDER image because the
+  # entrypoint runs as root (see the PRIVILEGE note above). The vp-palette
+  # `file:` dep is a symlink (node_modules/@voltpilot/... -> ../../vp-palette)
+  # inside node_modules, so copying BOTH at the same relative layout keeps that
+  # link valid. `cp -RP` copies recursively and PRESERVES the symlink (-P =
+  # never dereference), but deliberately NOT ownership (no -a / -p): the copies
+  # inherit the copier's uid (root here), and the `chown -R` below hands the
+  # whole tree back to the node-red run user. `-RP` is portable across the
+  # image's BusyBox cp, GNU coreutils, and BSD/macOS cp (the reseed.test.sh host).
   for d in vp-palette node_modules; do
     if [ -e "$TEMPLATE_DIR/$d" ]; then
       rm -rf "$DATA_DIR/$d"
@@ -77,8 +98,31 @@ reseed_template() {
   done
 
   printf '%s\n' "$want" > "$MARKER"
+  DID_RESEED=1
   log "re-seed complete (version ${want})"
 }
 
 reseed_template
+
+# When we run as root (the production ENTRYPOINT path), hand /data to the run
+# user and drop privileges so Node-RED runs UNPRIVILEGED. Re-seeding may have
+# replaced dirs an OLDER image left root-owned (build-time COPY into /data), and
+# Node-RED needs to own its userDir to write runtime state - so chown /data
+# after a re-seed. We only chown when we actually re-seeded: a volume already
+# seeded by THIS image is node-red-owned, so a healthy restart skips the walk.
+if [ "$(id -u)" = "0" ]; then
+  if [ "$DID_RESEED" = "1" ]; then
+    chown -R "$RUN_USER" "$DATA_DIR" 2>/dev/null \
+      || log "WARN: could not chown ${DATA_DIR} to ${RUN_USER} (Node-RED may fail to write runtime state)"
+  fi
+  if command -v su-exec >/dev/null 2>&1; then
+    exec su-exec "$RUN_USER" "$@"
+  fi
+  # Never silently run Node-RED as root: loud warning + still hand off, so the
+  # process starts (telemetry over privilege hygiene) but the break is visible.
+  log "WARN: su-exec not found; running '$*' as ROOT (Node-RED should run unprivileged)"
+fi
+
+# Non-root already (host unit tests, or an operator running the container with
+# --user): nothing to drop, run the command as-is.
 exec "$@"

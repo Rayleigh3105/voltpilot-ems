@@ -92,4 +92,14 @@ printf 'drift\n' >> "$B/flows.json"
 [ "$(mk_marker "$A")" != "$(mk_marker "$B")" ] || fail "a changed flows.json did not change the marker"
 pass "content-hash marker is stable for identical trees and changes on any edit"
 
+# --- Case 5: PRIVILEGE-DROP guard (prod-down 2026-07-09). Docker-free structural
+# check that the entrypoint runs the re-seed as ROOT and drops to node-red - the
+# real root-owned-volume reproduction lives in reseed-perms.docker.test.sh, but
+# this keeps the regression guarded in a Docker-less lane. -----------------
+grep -q 'id -u' "$ENTRY"     || fail "entrypoint lost the root (id -u) branch that lets the re-seed replace root-owned template dirs"
+grep -q 'su-exec' "$ENTRY"   || fail "entrypoint lost the su-exec privilege drop (Node-RED must run as node-red, not root)"
+grep -q 'chown -R' "$ENTRY"  || fail "entrypoint lost the chown of \$DATA_DIR to the run user"
+pass "entrypoint re-seeds as root, chowns /data, and drops privileges via su-exec (structural guard)"
+
 echo "== reseed test OK =="
+echo "(root-owned-volume reproduction: run reseed-perms.docker.test.sh with Docker present)"
