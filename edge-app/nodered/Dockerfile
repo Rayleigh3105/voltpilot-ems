@@ -25,14 +25,24 @@ RUN git clone --filter=blob:none \
 # --- stage 2: the Node-RED image ---------------------------------------------
 FROM nodered/node-red:4.0
 
-# The deye CLI on PATH so the exec nodes work out of the box + the re-seed
-# entrypoint (see below).
+# Everything below runs as root - at BUILD time AND at RUNTIME. The re-seed
+# ENTRYPOINT must be root: an OLDER image left the vp-palette / node_modules
+# dirs root-owned in the /data volume (build-time COPY into /data), so an
+# unprivileged re-seed hit `rm: Permission denied` and looped the container
+# (prod-down 2026-07-09). The entrypoint re-seeds as root, chowns /data to the
+# node-red user, then DROPS privileges via su-exec, so Node-RED still runs
+# UNPRIVILEGED. We therefore deliberately do NOT `USER node-red` here.
+#
+# su-exec: the tiny Alpine privilege-drop helper (postgres/redis-alpine idiom).
+# The base image is Alpine, which ships neither gosu nor a util-linux setpriv -
+# its BusyBox setpriv can't --reuid/--regid - so su-exec is the right tool.
+# The deye CLI stays on PATH so the exec nodes work out of the box.
 USER root
+RUN apk add --no-cache su-exec
 COPY --from=deye-build /out/deye /usr/local/bin/deye
 COPY reseed-entrypoint.sh /usr/local/bin/vp-nodered-entrypoint.sh
 RUN chmod 0755 /usr/local/bin/deye /usr/local/bin/vp-nodered-entrypoint.sh \
- && mkdir -p /opt/vp-template && chown node-red:node-red /opt/vp-template
-USER node-red
+ && mkdir -p /opt/vp-template
 
 # The template assets (VoltPilot-owned flows + palette + settings) are baked at
 # a NON-shadowed image path, NOT at /data - because the compose named volume
@@ -68,8 +78,10 @@ RUN cd /opt/vp-template \
 # Re-seed the image's template into /data (over the shadowing volume) on every
 # start, then hand off to the base image's own entrypoint (./entrypoint.sh in
 # WORKDIR /usr/src/node-red - it runs red.js --userDir /data and forwards
-# SIGTERM/SIGINT for a clean shutdown). Our wrapper `exec`s it, so Node-RED
-# still runs as PID-forwarded child exactly as before.
+# SIGTERM/SIGINT for a clean shutdown). Our wrapper runs the re-seed as root,
+# chowns /data to node-red, then `exec su-exec node-red:node-red ./entrypoint.sh`
+# - so Node-RED runs as the non-root node-red user (PID-forwarded) exactly as
+# before, only the re-seed step gains root. No `USER node-red` here on purpose.
 ENTRYPOINT ["/usr/local/bin/vp-nodered-entrypoint.sh"]
 CMD ["./entrypoint.sh"]
 
