@@ -456,3 +456,16 @@ def test_pv_surplus_is_stored_for_the_evening_peak():
     assert sum(s.battery_kw for s in midday) > 1.0
     assert sum(s.battery_kw for s in evening) < -1.0
     assert plan.savings_eur > 0.5
+
+
+@needs_highs
+def test_plan_carries_the_sites_grid_charge_posture_for_the_edge():
+    # P5 (EEG execution gap): the plan hands netzladen_erlaubt to the edge as
+    # the optional grid_charge_allowed contract field, so the solar-only-charge
+    # rule is also enforced against MEASURED pv/load at execution time
+    # (guards.Limits.SolarOnlyCharge), not just in forecast space.
+    eeg = solve(make_input(arbitrage_prices(), netzladen_erlaubt=False))
+    assert eeg.grid_charge_allowed is False
+
+    merchant = solve(make_input(arbitrage_prices()))
+    assert merchant.grid_charge_allowed is True

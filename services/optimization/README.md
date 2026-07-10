@@ -104,6 +104,7 @@ The former "grid charging is unconstrained" known gap is CLOSED (captain decisio
 
 Everything else (prices, forecasts, §14a, efficiency, curtailment, tie-breaks, persistence, publishing) is shared between the modes - one optimizer, one conditional constraint pair, never two code paths.
 The portal derives the visible proof from the persisted plan: a slot that charges while net-importing is a grid-charge slot (own color in the Fahrplan chart); on an EEG site that color can never appear.
+Since Stage 4 (P5) the constraint is no longer forecast-only: the published payload carries the OPTIONAL `grid_charge_allowed` field (= `netzladen_erlaubt`; contract-additive, `schema_version` stays 1.0) and the customer edge clamps commanded charge to the MEASURED PV surplus (`edge-app/core` `guards.Limits.SolarOnlyCharge`) - so a PV forecast overshoot can no longer turn a planned "solar" charge into real grid import at execution time (critique F5).
 
 ## What one cycle does (per site with a battery asset)
 

@@ -334,6 +334,11 @@ class SchedulePlan:
     battery: BatteryParams
     slots: list[PlanSlot] = field(default_factory=list)
     slot_minutes: int = SLOT_MINUTES
+    # Mirrors site.netzladen_erlaubt at plan time; published as the OPTIONAL
+    # grid_charge_allowed contract field (P5) so the EDGE enforces the EEG
+    # solar-only-charge rule against MEASURED pv/load. None = omit the field
+    # (legacy payload shape, edge behaves exactly as before).
+    grid_charge_allowed: bool | None = None
 
     @property
     def cost_eur(self) -> float:

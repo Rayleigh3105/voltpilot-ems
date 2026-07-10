@@ -32,7 +32,7 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
     """The contract payload for a plan (``mqtt-schedule.schema.json``)."""
     if plan.device_id is None:
         raise ValueError("cannot build a schedule payload without a device")
-    return {
+    payload = {
         "schema_version": SCHEMA_VERSION,
         "tenant_id": str(plan.tenant_id),
         "site_id": str(plan.site_id),
@@ -43,6 +43,13 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
         "slot_minutes": plan.slot_minutes,
         "slots": [_slot_payload(slot) for slot in plan.slots],
     }
+    # OPTIONAL per the contract (P5, additive like pv_limit_kw): the site's
+    # EEG posture. false = the edge clamps commanded charge to the MEASURED
+    # PV surplus (solar-only charging enforced at execution time, not just in
+    # forecast space). None keeps the legacy payload shape byte-identical.
+    if plan.grid_charge_allowed is not None:
+        payload["grid_charge_allowed"] = plan.grid_charge_allowed
+    return payload
 
 
 def _slot_payload(slot) -> dict:

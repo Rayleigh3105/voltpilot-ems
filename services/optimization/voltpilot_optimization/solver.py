@@ -446,4 +446,7 @@ def _extract_plan(
         battery=inp.battery,
         slots=slots,
         slot_minutes=inp.slot_minutes,
+        # P5: hand the site's EEG posture to the edge so the solar-only-charge
+        # rule is also enforced against MEASURED values, not just the forecast.
+        grid_charge_allowed=inp.netzladen_erlaubt,
     )

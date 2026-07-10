@@ -136,6 +136,86 @@ func TestSetpointKillSwitchOffByDefault(t *testing.T) {
 	}
 }
 
+// TestSetpointEegSolarOnlyClamp: a plan carrying grid_charge_allowed=false
+// (EEG site, P5) clamps the commanded charge to the MEASURED PV surplus
+// before the setpoint is published, and turns the forwarded adapter-level
+// grid_charge_allowed off even when the device-local config permits it. A
+// plan WITHOUT the field (pre-P5 cloud) keeps today's behavior byte-for-byte.
+func TestSetpointEegSolarOnlyClamp(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.GridChargeAllowed = true // device-local gate open: the PLAN must win
+	a, addr := startBusOnlyAgent(t, cfg)
+	sub := subscribeSetpoint(t, addr)
+
+	now := time.Now().UTC()
+	eegFalse := false
+
+	// EEG plan commands +20 kW charge; measured pv 5 / load 4 -> surplus 1.
+	p := freshPlan(now, 20, nil)
+	p.GridChargeAllowed = &eegFalse
+	a.mu.Lock()
+	a.currentPlan = p
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 5, LoadKw: 4, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now)
+
+	waitFor(t, 5*time.Second, "EEG-clamped setpoint", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 1.0
+	})
+	m, _ := sub.latest()
+	if m["battery_setpoint_kw"] != 1.0 {
+		t.Fatalf("EEG charge must clamp to the measured surplus: %v", m["battery_setpoint_kw"])
+	}
+	if m["grid_charge_allowed"] != false {
+		t.Fatalf("plan grid_charge_allowed=false must gate the adapter bit: %v", m)
+	}
+	if a.State.Get().SetpointKw != 1.0 {
+		t.Fatalf("snapshot setpoint: %v", a.State.Get().SetpointKw)
+	}
+
+	// Zero surplus (pv 2 < load 4): the same command clamps to 0 - never a
+	// grid charge on an EEG site, whatever the schedule says.
+	a.mu.Lock()
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 4, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "zero-surplus clamp", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 0.0
+	})
+
+	// Legacy plan without the field: NO clamp (pre-P5 behavior), the
+	// device-local config drives the forwarded adapter bit.
+	a.mu.Lock()
+	a.currentPlan = freshPlan(now, 20, nil)
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 4, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "legacy plan unclamped", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 20.0
+	})
+	m, _ = sub.latest()
+	if m["grid_charge_allowed"] != true {
+		t.Fatalf("legacy plan must leave the local config in charge: %v", m)
+	}
+
+	// Merchant plan (field true): grid charging stays permitted - no regression.
+	eegTrue := true
+	p = freshPlan(now, 20, nil)
+	p.GridChargeAllowed = &eegTrue
+	a.mu.Lock()
+	a.currentPlan = p
+	a.mu.Unlock()
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "merchant plan unclamped", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == 20.0 && m["grid_charge_allowed"] == true
+	})
+}
+
 func TestControlReadbackLandsInSnapshotAndHeartbeat(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()

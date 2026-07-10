@@ -2,7 +2,9 @@
 // EVERY battery setpoint before it is handed to Layer 1 for an inverter
 // write. It is a faithful port of the Node-RED edge's "5 - Guards" flow
 // (edge/node-red/flows.json fn-guards), extended to cap the §14a envelope on
-// BOTH directions (import and export), matching the cloud MILP's semantics.
+// BOTH directions (import and export) and to enforce EEG solar-only charging
+// against MEASURED values (Limits.SolarOnlyCharge, P5), matching the cloud
+// MILP's semantics.
 //
 // The schedule contract (docs/contracts/mqtt-schedule.schema.json,
 // x-failsafe) declares the plan ADVISORY: the edge clamps every commanded
@@ -17,6 +19,16 @@ type Limits struct {
 	MaxDischargeKw float64 // > 0 (magnitude)
 	SocMinPct      float64
 	SocMaxPct      float64
+	// SolarOnlyCharge enforces the EEG Ausschliesslichkeitsprinzip at
+	// EXECUTION time (P5, the on-device twin of the cloud MILP's
+	// solar-only-charge constraint): commanded CHARGE is clamped to the
+	// MEASURED PV surplus max(pv - load, 0), so a PV forecast overshoot can
+	// never turn a planned "solar" charge into real grid import on an
+	// EEG-funded plant. Set from the plan's grid_charge_allowed=false (the
+	// schedule contract's optional field mirroring site.netzladen_erlaubt).
+	// Zero value (false) = no extra clamp = pre-P5 behavior. Discharge is
+	// never affected.
+	SolarOnlyCharge bool
 }
 
 // Reading is the subset of the latest inverter reading the guards need.
@@ -39,9 +51,15 @@ func known(v float64) bool { return !math.IsNaN(v) }
 //
 //  1. clamp to the rated charge/discharge band,
 //  2. SoC bounds: no charging at/above SocMax, no discharging at/below SocMin,
-//  3. observed §14a envelope: predicted grid power (load + battery - pv,
+//  3. EEG solar-only charge (when Limits.SolarOnlyCharge): charge <=
+//     max(measured pv - load, 0). Unknown pv/load clamps charge to 0 - a
+//     compliance guard must not charge blind (unlike the advisory guards,
+//     which skip on missing data). The later §14a export correction can only
+//     ever raise charge to pv - load - limit <= the surplus, so it never
+//     re-violates this clamp,
+//  4. observed §14a envelope: predicted grid power (load + battery - pv,
 //     + = import) must stay within [-gridLimit, +gridLimit],
-//  4. re-apply the rated band LAST - the §14a correction can otherwise push
+//  5. re-apply the rated band LAST - the §14a correction can otherwise push
 //     the value outside it.
 //
 // The result is always finite; a non-finite command clamps to 0.
@@ -68,7 +86,18 @@ func Clamp(commandKw float64, l Limits, r Reading) float64 {
 		}
 	}
 
-	// 3) observed §14a envelope, both directions. predictedGrid > 0 = import.
+	// 3) EEG solar-only charge: never charge beyond the MEASURED PV surplus.
+	// Charging without a usable pv/load reading clamps to 0 - grid-charging
+	// blind is exactly the violation this guard exists to exclude.
+	if l.SolarOnlyCharge && kw > 0 {
+		surplus := 0.0
+		if known(r.PvKw) && known(r.LoadKw) {
+			surplus = math.Max(r.PvKw-r.LoadKw, 0)
+		}
+		kw = math.Min(kw, surplus)
+	}
+
+	// 4) observed §14a envelope, both directions. predictedGrid > 0 = import.
 	if known(r.GridLimitKw) && known(r.LoadKw) && known(r.PvKw) {
 		limit := math.Abs(r.GridLimitKw)
 		predicted := r.LoadKw + kw - r.PvKw
@@ -79,7 +108,7 @@ func Clamp(commandKw float64, l Limits, r Reading) float64 {
 		}
 	}
 
-	// 4) rated band again - the envelope correction must never escape it.
+	// 5) rated band again - the envelope correction must never escape it.
 	kw = band(kw)
 
 	// Round to W resolution like the Node-RED guard (stable register writes).

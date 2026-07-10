@@ -944,11 +944,20 @@ func (a *Agent) applySetpoint(now time.Time) {
 
 	hasReading := !math.IsNaN(r.PvKw) || !math.IsNaN(r.LoadKw) || !math.IsNaN(r.SocPct)
 
+	// P5 EEG execution gap: a plan carrying grid_charge_allowed=false (the
+	// site is EEG-funded, site.netzladen_erlaubt) demands the solar-only
+	// clamp - charge <= MEASURED pv - load - on every commanded setpoint.
+	// Field absent (pre-P5 cloud) = no clamp, today's behavior; the
+	// self-consumption fallback follows pv - load and never grid-charges,
+	// so the clamp composing into it is a no-op there.
+	solarOnly := p.SolarOnlyCharge()
+
 	limits := guards.Limits{
-		MaxChargeKw:    a.Cfg.MaxChargeKw,
-		MaxDischargeKw: a.Cfg.MaxDischargeKw,
-		SocMinPct:      a.Cfg.SocMinPct,
-		SocMaxPct:      a.Cfg.SocMaxPct,
+		MaxChargeKw:     a.Cfg.MaxChargeKw,
+		MaxDischargeKw:  a.Cfg.MaxDischargeKw,
+		SocMinPct:       a.Cfg.SocMinPct,
+		SocMaxPct:       a.Cfg.SocMaxPct,
+		SolarOnlyCharge: solarOnly,
 	}
 
 	var (
@@ -996,7 +1005,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 		"source":              source,
 		"ts":                  now.Format(time.RFC3339Nano),
 		"control_enabled":     controlEnabled,
-		"grid_charge_allowed": a.Cfg.GridChargeAllowed,
+		// Most restrictive wins: the device-local VP_GRID_CHARGE_ALLOWED gate
+		// AND the plan-carried site posture (an EEG plan also turns off the
+		// adapter-level grid-charge bit, e.g. Deye ToU Charging=Grid). A plan
+		// without the field leaves the local config in charge, as before.
+		"grid_charge_allowed": a.Cfg.GridChargeAllowed && !solarOnly,
 		"soc_min_pct":         a.Cfg.SocMinPct,
 	}
 	// pv_limit_kw is only present when the active slot caps feed-in; its ABSENCE
