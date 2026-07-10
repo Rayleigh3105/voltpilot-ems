@@ -21,7 +21,8 @@ export type PageId =
   | 'prognose'
   | 'mandanten'
   | 'benutzer'
-  | 'geraete-registry';
+  | 'geraete-registry'
+  | 'optimizer';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
 export type AnlagenSub = 'live' | 'fahrplan' | 'historie' | 'wetter' | 'technik';
@@ -62,6 +63,7 @@ export const PLATFORM_PAGES: PageDef[] = [
   { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
   { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
+  { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
 ];
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */

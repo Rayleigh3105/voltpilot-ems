@@ -27,6 +27,7 @@ import { PrognosePage } from './pages/PrognosePage';
 import { MandantenPage } from './pages/admin/MandantenPage';
 import { BenutzerPage } from './pages/admin/BenutzerPage';
 import { GeraeteRegistryPage } from './pages/admin/GeraeteRegistryPage';
+import { OptimizerPage } from './pages/admin/OptimizerPage';
 
 export default function App({
   initialAuth,
@@ -628,6 +629,7 @@ function UnifiedPortal() {
             <BenutzerPage tenants={tenants} tenantOverride={tenantId} />
           )}
           {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
+          {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
         </>
       )}
 
