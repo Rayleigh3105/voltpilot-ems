@@ -1,38 +1,61 @@
 """The battery-dispatch MILP (architecture section 11).
 
-Deterministic cost minimization over a rolling 24h horizon in 15-min slots -
-the *optimize* half of predict-then-optimize. Inputs (prices, load/PV
+Deterministic market-revenue maximization over a rolling 24h horizon in 15-min
+slots - the *optimize* half of predict-then-optimize. Inputs (prices, load/PV
 forecasts, SoC, battery params) arrive as a plain :class:`OptimizationInput`;
 the solver never knows where a forecast came from, so the forecasting layer can
 later be replaced by learned models without touching this module.
 
 Formulation (per slot t, dt = 0.25 h):
 
-    minimize   sum_t  price_t [EUR/MWh] * grid_t [kW] * dt / 1000
+    minimize   sum_t  (import_price_t * import_t - export_value_t * export_t) * dt / 1000
                       + c_wear/2 * (charge_t + discharge_t) * dt   (battery wear, see below)
                       + epsilon * curtail_t                        (tie-break, see below)
-    where      grid_t = load_t - pv_t + curtail_t + charge_t - discharge_t   (+import/-export)
+    where      import_t - export_t = load_t - pv_t + curtail_t + charge_t - discharge_t
     s.t.       0 <= charge_t    <= max_charge    * is_charging_t
                0 <= discharge_t <= max_discharge * (1 - is_charging_t)
+               0 <= import_t    <= M_imp_t * is_importing_t        (never import AND export)
+               0 <= export_t    <= M_exp_t * (1 - is_importing_t)
                0 <= curtail_t   <= pv_t                            (only ever a REDUCTION)
                soc_{t+1} = soc_t + (eta * charge_t - discharge_t / eta) * dt
                soc_min <= soc_t <= soc_max
-               |grid_t| <= grid_limit                              (observed §14a, hard cap)
+               import_t <= grid_limit, export_t <= grid_limit      (observed §14a, hard cap)
                soc_T >= soc_0                                      (terminal condition)
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t - load_t, 0)                   (charge from PV surplus only)
-               grid_t   <= M_t * (1 - is_charging_t)               (never import while charging)
+               import_t <= M_imp_t * (1 - is_charging_t)           (never import while charging)
 
 Design decisions, deliberately:
 
-- **Energy pricing is symmetric** at the day-ahead spot price for import and
-  export (the Direktvermarktung MVP assumption; feed-in tariffs / spreads are
-  future work). The objective therefore uses one signed grid variable.
+- **Import and export are priced ASYMMETRICALLY per slot (P1, Stage 2 of the
+  optimizer redesign - the market-revenue objective).** ``import_price_t`` is
+  what an imported kWh really costs the site (its supply tariff: spot +
+  Aufschlag for a dynamic tariff, the flat retail price for a fixed one, bare
+  spot for a spot-settled load); ``export_value_t`` is what an exported kWh
+  really earns (spot + Marktprämie for Direktvermarktung, the feste
+  EEG-Einspeisevergütung for an eigenverbrauch plant, bare spot otherwise) -
+  built by :mod:`voltpilot_optimization.pricing`. Minimizing this signed
+  cashflow IS maximizing market revenue. The pre-P1 symmetric bare-spot model
+  (critique finding F1: economically wrong for nearly every real DACH
+  prosumer) is the exact special case import_price == export_value == spot,
+  which remains the fallback whenever tariff/remuneration data is absent.
+  Under asymmetric prices, energy routing decisions become real: PV can serve
+  the battery while the load imports cheaply, and a stored kWh goes to
+  whichever flow (avoided import vs. export) earns more per slot - no
+  hard-coded self-consumption preference anywhere (target report §2.2).
+- **Simultaneous import+export is excluded with a second binary**
+  (``is_importing``). With asymmetric prices this is not just a degeneracy
+  guard: whenever export_value_t > import_price_t (a real configuration - a
+  spot-settled Direktvermarktung site's premium makes export worth MORE than
+  import costs), an LP would import and export unboundedly in the same slot to
+  farm the difference without any physical flow. The big-Ms are the tightest
+  physical bounds: M_imp_t = max(load_t, 0) + max_charge (+ any negative-PV
+  guard), M_exp_t = max(pv_t, 0) + max_discharge (+ any negative-load guard).
 - **Simultaneous charge+discharge is excluded with binaries** (``is_charging``),
   not by an efficiency argument: with only round-trip losses in the model, an
   LP would happily charge AND discharge in the same slot whenever the price is
   NEGATIVE (burning energy through the round trip is "profitable" then), and
-  negative day-ahead prices are a normal occurrence in DE-LU. 96 binaries are
+  negative day-ahead prices are a normal occurrence in DE-LU. 192 binaries are
   trivial for HiGHS (solves in milliseconds).
 - **Terminal condition ``soc_T >= soc_0``**: the plan may not "earn" its savings
   by simply dumping stored energy; whatever it discharges it must have charged
@@ -40,20 +63,25 @@ Design decisions, deliberately:
 - **Efficiency is split symmetrically** (sqrt of the round trip per direction),
   so stored energy is charged and discharged at the same marginal loss.
 - **PV curtailment is a first-class decision** (``curtail_t``, Phase 3 of the
-  fleet overview): without it, ``grid = load - pv + charge - discharge`` FORCES
-  the plant to export surplus PV even at negative prices - with a full battery
-  the plan then literally pays to feed in. Curtailment is bounded by the PV
-  forecast (only ever a *reduction* of feed-in, never negative generation - the
-  safety property the edge re-clamps), and there is deliberately NO price
-  condition in the model: with symmetric spot pricing, discarding energy is
-  optimal exactly when the price is negative (at positive prices it burns
-  revenue), so the economics pick the right slots on their own. A tiny
-  tie-break penalty (``CURTAIL_TIEBREAK_EUR_PER_KW``) keeps the solution
-  deterministic where the price makes curtailing cost-neutral (price == 0, or
-  PV already fully consumed on site): prefer NOT curtailing. It corresponds to
-  a price threshold of ~-0.004 EUR/MWh - negligible against real negative
-  prices, but it means hairline-negative slots (0 > price > -0.004) stay
-  uncurtailed rather than churning the inverter for fractions of a cent.
+  fleet overview): without it, the grid balance FORCES the plant to export
+  surplus PV even when feeding in costs money - with a full battery the plan
+  then literally pays to feed in. Curtailment is bounded by the PV forecast
+  (only ever a *reduction* of feed-in, never negative generation - the safety
+  property the edge re-clamps), and there is deliberately NO price condition
+  in the model: discarding energy is optimal exactly when the EXPORT VALUE is
+  negative (at a positive export value it burns revenue), so the economics
+  pick the right slots on their own. Under P1 that automatically fixes
+  critique finding F6: a Direktvermarktung plant curtails at negative spot
+  (the premium is suspended there, export value = spot < 0), while a
+  feste-Vergütung plant commissioned before the Solarspitzengesetz NEVER
+  curtails (its export value is the fixed rate, positive regardless of spot).
+  A tiny tie-break penalty (``CURTAIL_TIEBREAK_EUR_PER_KW``) keeps the
+  solution deterministic where the export value makes curtailing cost-neutral
+  (value == 0, e.g. a post-Solarspitzengesetz plant in a negative-price slot,
+  or PV already fully consumed on site): prefer NOT curtailing. It corresponds
+  to a value threshold of ~-0.004 EUR/MWh - negligible against real negative
+  prices, but it means hairline-negative slots stay uncurtailed rather than
+  churning the inverter for fractions of a cent.
 - **Battery degradation is PRICED, not epsilon-scale (P2 of the optimizer
   redesign, critique finding F2).** ``c_wear`` is the asset's wear cost per kWh
   cycled (``BatteryParams.wear_cost_ct_per_kwh``: the per-asset
@@ -89,19 +117,21 @@ Design decisions, deliberately:
 
   1. ``charge_t <= max(pv_t - load_t, 0)`` - the headline rule on the forecast
      PV surplus (parameter-only, keeps the LP relaxation tight).
-  2. ``grid_t <= M_t * (1 - is_charging_t)`` - no net import while charging.
+  2. ``import_t <= M_imp_t * (1 - is_charging_t)`` - no import while charging.
      This closes the CURTAILMENT loophole the first rule alone leaves open: at
      negative prices the model could otherwise curtail the PV fully AND charge
      "from PV" per rule 1 - the balance then imports the charge power from the
      grid (paid import replacing the discarded PV), which is precisely the
      Graustrom the EEG mode must exclude. With rule 2, a charging slot can
-     never be a net-importing slot, so charge <= pv - curtail - load holds and
-     the stored energy is provably solar. ``M_t = max(load_t, 0) + max_charge``
-     bounds the import of a non-charging slot (load fully imported at full
-     curtailment), so the big-M never binds when the battery is not charging.
-     Curtailment itself stays unrestricted - it limits FEED-IN, not charge
-     availability, and full curtailment while importing the LOAD is still a
-     legitimate (and EEG-clean) negative-price play.
+     never be an importing slot, so charge <= pv - curtail - load holds and
+     the stored energy is provably solar (which is also why the pricing layer
+     may credit EEG remuneration on ALL export in EEG mode - see
+     :mod:`voltpilot_optimization.pricing`). ``M_imp_t`` is the same physical
+     import bound the import/export exclusion uses, so the big-M never binds
+     when the battery is not charging. Curtailment itself stays unrestricted -
+     it limits FEED-IN, not charge availability, and full curtailment while
+     importing the LOAD is still a legitimate (and EEG-clean) negative-price
+     play.
 
 The solver toolchain is Pyomo + HiGHS via ``highspy`` (the repo-wide choice,
 see AGENTS.md); ``highspy`` stays a lazy import behind the optional ``solver``
@@ -176,14 +206,47 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     m.soc = Var(m.S, bounds=(p.soc_min_kwh, p.soc_max_kwh))
     m.soc[0].fix(soc0)
 
-    def _grid(model, t):
-        return (
-            inp.load_kw[t]
-            - inp.pv_kw[t]
-            + model.curtail[t]
-            + model.charge[t]
-            - model.discharge[t]
-        )
+    # The tightest physical bounds on a slot's import/export (see module
+    # docstring): import <= load + charge (curtail cancels at most the full
+    # PV), export <= pv + discharge. The max(-x, 0) terms only guard against
+    # pathological negative forecasts ever making the big-M cut into the
+    # feasible region.
+    def _m_import(t: int) -> float:
+        return max(inp.load_kw[t], 0.0) + p.max_charge_kw + max(-inp.pv_kw[t], 0.0)
+
+    def _m_export(t: int) -> float:
+        return max(inp.pv_kw[t], 0.0) + p.max_discharge_kw + max(-inp.load_kw[t], 0.0)
+
+    m.grid_import = Var(
+        m.T, domain=NonNegativeReals, bounds=lambda model, t: (0.0, _m_import(t))
+    )
+    m.grid_export = Var(
+        m.T, domain=NonNegativeReals, bounds=lambda model, t: (0.0, _m_export(t))
+    )
+    m.is_importing = Var(m.T, domain=Binary)
+
+    # The grid balance ties the split import/export to the physical flows.
+    m.grid_balance = Constraint(
+        m.T,
+        rule=lambda model, t: model.grid_import[t] - model.grid_export[t]
+        == inp.load_kw[t]
+        - inp.pv_kw[t]
+        + model.curtail[t]
+        + model.charge[t]
+        - model.discharge[t],
+    )
+    # Mutually exclusive import/export (see module docstring: with
+    # export_value > import_price this is load-bearing, not just a tie-break).
+    m.import_gate = Constraint(
+        m.T,
+        rule=lambda model, t: model.grid_import[t]
+        <= _m_import(t) * model.is_importing[t],
+    )
+    m.export_gate = Constraint(
+        m.T,
+        rule=lambda model, t: model.grid_export[t]
+        <= _m_export(t) * (1 - model.is_importing[t]),
+    )
 
     m.soc_dynamics = Constraint(
         m.T,
@@ -209,19 +272,18 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             rule=lambda model, t: model.charge[t]
             <= max(inp.pv_kw[t] - inp.load_kw[t], 0.0),
         )
-        # (2) Never a net-importing slot while charging - closes the
-        # curtailment loophole (see the module docstring): without it the model
-        # could curtail PV fully and cover the "solar" charge with paid grid
-        # import at negative prices. M_t bounds any non-charging slot's import.
+        # (2) Never an importing slot while charging - closes the curtailment
+        # loophole (see the module docstring): without it the model could
+        # curtail PV fully and cover the "solar" charge with paid grid import
+        # at negative prices.
         m.no_import_while_charging = Constraint(
             m.T,
-            rule=lambda model, t: _grid(model, t)
-            <= (max(inp.load_kw[t], 0.0) + p.max_charge_kw)
-            * (1 - model.is_charging[t]),
+            rule=lambda model, t: model.grid_import[t]
+            <= _m_import(t) * (1 - model.is_charging[t]),
         )
     if enforce_grid_limit and inp.grid_limit_kw is not None:
         m.grid_import_cap = Constraint(
-            m.T, rule=lambda model, t: _grid(model, t) <= inp.grid_limit_kw
+            m.T, rule=lambda model, t: model.grid_import[t] <= inp.grid_limit_kw
         )
         # DELIBERATELY still symmetric (export capped by the observed IMPORT
         # envelope): section 14a is an import-side dimming instrument, so
@@ -230,7 +292,7 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         # regulatory-adjacent and awaits the captain's D5 answer. Stage 1 only
         # fixed the STALENESS of the reading (inputs._fresh_measurement).
         m.grid_export_cap = Constraint(
-            m.T, rule=lambda model, t: _grid(model, t) >= -inp.grid_limit_kw
+            m.T, rule=lambda model, t: model.grid_export[t] <= inp.grid_limit_kw
         )
     # Terminal condition: never plan a net battery drain over the horizon.
     m.terminal_soc = Constraint(rule=lambda model: model.soc[n] >= soc0)
@@ -238,9 +300,16 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     # Real degradation cost per AC-side kWh in each direction (see module
     # docstring); the epsilon tie-break below stays for the c_wear = 0 case.
     wear_eur_per_kwh = p.wear_cost_eur_per_kwh_each_way
+    import_prices = inp.import_prices
+    export_values = inp.export_values
     m.total_cost = Objective(
         expr=sum(
-            inp.prices_eur_mwh[t] * _grid(m, t) * dt / 1000.0
+            (
+                import_prices[t] * m.grid_import[t]
+                - export_values[t] * m.grid_export[t]
+            )
+            * dt
+            / 1000.0
             + wear_eur_per_kwh * (m.charge[t] + m.discharge[t]) * dt
             + CURTAIL_TIEBREAK_EUR_PER_KW * m.curtail[t]
             + BATTERY_WEAR_TIEBREAK_EUR_PER_KW * (m.charge[t] + m.discharge[t])
@@ -310,6 +379,9 @@ def _extract_plan(
         battery_kw = charge - discharge
         # Clamp solver tolerance noise: curtailment is [0, pv] by construction.
         curtail_kw = min(max(float(value(model.curtail[t])), 0.0), max(inp.pv_kw[t], 0.0))
+        # Net grid power from the balance (the import/export split is exact by
+        # the is_importing binary, so max(grid, 0)/max(-grid, 0) recovers it
+        # without solver noise).
         grid_kw = inp.load_kw[t] - inp.pv_kw[t] + curtail_kw + battery_kw
         price = inp.prices_eur_mwh[t]
         slots.append(
@@ -321,7 +393,7 @@ def _extract_plan(
                 load_kw=round(inp.load_kw[t], 4),
                 pv_kw=round(inp.pv_kw[t], 4),
                 price_eur_mwh=price,
-                cost_eur=round(price * grid_kw * dt / 1000.0, 6),
+                cost_eur=round(inp.cashflow_cost_eur(t, grid_kw), 6),
                 baseline_cost_eur=round(inp.baseline_cost_eur(t), 6),
                 curtail_kw=round(curtail_kw, 4),
                 wear_cost_eur=round(

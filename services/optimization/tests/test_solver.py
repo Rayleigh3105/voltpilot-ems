@@ -78,10 +78,12 @@ def solve(inp: OptimizationInput):
 
 def test_model_builds_without_solver():
     model = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
-    # 96 slots: dynamics + 2 gates + 2 grid caps per slot, 1 terminal condition.
-    assert model.nconstraints() == 96 * 5 + 1
-    # charge/discharge/binary/curtail per slot + 97 SoC nodes.
-    assert model.nvariables() == 96 * 4 + 97
+    # 96 slots: balance + import/export gates + dynamics + charge/discharge
+    # gates + 2 grid caps per slot, 1 terminal condition.
+    assert model.nconstraints() == 96 * 8 + 1
+    # charge/discharge/is_charging/curtail/import/export/is_importing per slot
+    # + 97 SoC nodes.
+    assert model.nvariables() == 96 * 7 + 97
 
 
 def test_curtailment_exists_in_both_builds_and_is_bounded_by_pv():
@@ -313,10 +315,10 @@ def test_fallback_build_curtails_too():
 
 
 def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
-    # Merchant build: the EXACT pre-switch model - same constraint/variable
-    # counts, no EEG constraint objects (the regression guarantee).
+    # Merchant build: same constraint/variable counts as before the EEG switch,
+    # no EEG constraint objects (the regression guarantee).
     merchant = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
-    assert merchant.nconstraints() == 96 * 5 + 1
+    assert merchant.nconstraints() == 96 * 8 + 1
     assert not hasattr(merchant, "solar_only_charge")
     assert not hasattr(merchant, "no_import_while_charging")
 
@@ -332,7 +334,7 @@ def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
         )
         assert hasattr(eeg, "solar_only_charge")
         assert hasattr(eeg, "no_import_while_charging")
-        expected = 96 * 7 + 1 if enforce else 96 * 5 + 1
+        expected = 96 * 10 + 1 if enforce else 96 * 8 + 1
         assert eeg.nconstraints() == expected
 
 

@@ -14,7 +14,12 @@ consumes what other layers produced:
   stale §14a reading means "no active limit" (a dimming event is temporary and
   re-asserts itself in live telemetry - one old reading must never cap every
   future plan), a stale SoC falls back to the neutral default instead of
-  silently planning from yesterday's value.
+  silently planning from yesterday's value,
+- the pricing master data for the P1 asymmetric objective: ``site.plant_kind``,
+  ``site.tarif_art``/``tarif_param_ct_kwh``, ``site.anzulegender_wert_ct_kwh``,
+  the PV asset's ``commissioned_on``/``pv_capacity_kwp`` (MaStR) and the
+  ``monthly_market_value`` Monatsmarktwert rows - turned into per-slot
+  import/export price series by :mod:`voltpilot_optimization.pricing`.
 
 Reads run as the trusted backend role (cross-tenant, like the weather
 collector); psycopg is a lazy import behind the optional ``db`` extra.
@@ -42,6 +47,13 @@ from voltpilot_optimization.domain import (
     horizon_slot_starts,
 )
 from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
+from voltpilot_optimization.pricing import (
+    SiteTariff,
+    berlin_month,
+    export_values,
+    import_prices,
+    needs_market_values,
+)
 
 logger = logging.getLogger("voltpilot.optimization.inputs")
 
@@ -104,6 +116,11 @@ class BatterySite:
     (``site.latitude``/``site.longitude``, nullable) - used to night-floor the
     PV input so the persistence fallback can never fabricate night "solar" (see
     :func:`voltpilot_optimization.fallback.night_floor_pv`).
+
+    ``tariff`` carries the pricing-relevant master data (P1: plant_kind,
+    tarif_art/param, anzulegender Wert, the PV asset's commissioning date +
+    kWp) feeding the asymmetric import/export pricing; the default reproduces
+    the symmetric bare-spot model.
     """
 
     tenant_id: UUID
@@ -114,6 +131,7 @@ class BatterySite:
     netzladen_erlaubt: bool
     latitude: float | None = None
     longitude: float | None = None
+    tariff: SiteTariff = SiteTariff()
 
 
 def load_battery_sites(dsn: str) -> list[BatterySite]:
@@ -130,9 +148,13 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             SELECT a.tenant_id, a.site_id, a.device_id, s.bidding_zone,
                    a.capacity_kwh, a.max_charge_kw, a.max_discharge_kw,
                    a.roundtrip_efficiency_pct, s.netzladen_erlaubt,
-                   s.latitude, s.longitude, a.wear_cost_ct_per_kwh
+                   s.latitude, s.longitude, a.wear_cost_ct_per_kwh,
+                   s.plant_kind, s.tarif_art, s.tarif_param_ct_kwh,
+                   s.anzulegender_wert_ct_kwh,
+                   pv.commissioned_on, pv.pv_capacity_kwp
             FROM asset a
             JOIN site s ON s.id = a.site_id
+            LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv'
             WHERE a.type = 'battery'
             ORDER BY a.site_id
             """
@@ -141,6 +163,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             (
                 tenant_id, site_id, device_id, zone, cap, chg, dis, eff,
                 netzladen, lat, lon, wear_ct,
+                plant_kind, tarif_art, tarif_param, anzulegender_wert,
+                commissioned_on, pv_kwp,
             ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
@@ -169,6 +193,23 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                     netzladen_erlaubt=bool(netzladen),
                     latitude=float(lat) if lat is not None else None,
                     longitude=float(lon) if lon is not None else None,
+                    tariff=SiteTariff(
+                        plant_kind=(
+                            str(plant_kind) if plant_kind is not None
+                            else "eigenverbrauch"
+                        ),
+                        tarif_art=str(tarif_art) if tarif_art is not None else "ohne",
+                        tarif_param_ct_kwh=(
+                            float(tarif_param) if tarif_param is not None else None
+                        ),
+                        anzulegender_wert_ct_kwh=(
+                            float(anzulegender_wert)
+                            if anzulegender_wert is not None
+                            else None
+                        ),
+                        commissioned_on=commissioned_on,
+                        pv_capacity_kwp=float(pv_kwp) if pv_kwp is not None else None,
+                    ),
                 )
             )
     return sites
@@ -223,18 +264,39 @@ def gather_inputs(
         dsn, site.site_id, "grid_limit_kw", now, grid_limit_max_age()
     )
 
+    # P1 asymmetric pricing: build the per-slot import/export series from the
+    # site's tariff/remuneration master data (missing data degrades that side
+    # to bare spot inside the pricing layer - never a skipped site).
+    spot = [prices[s] for s in slot_starts]
+    market_values: dict = {}
+    if needs_market_values(site.tariff, site.netzladen_erlaubt):
+        market_values = _load_market_values(
+            dsn, sorted({berlin_month(s) for s in slot_starts})
+        )
+    import_series = import_prices(site.tariff, spot)
+    export_series = export_values(
+        site.tariff,
+        site.netzladen_erlaubt,
+        spot,
+        slot_starts,
+        market_values,
+        site_id=site.site_id,
+    )
+
     return OptimizationInput(
         tenant_id=site.tenant_id,
         site_id=site.site_id,
         device_id=site.device_id,
         battery=site.battery,
         slot_starts=slot_starts,
-        prices_eur_mwh=[prices[s] for s in slot_starts],
+        prices_eur_mwh=spot,
         load_kw=load_kw,
         pv_kw=pv_kw,
         initial_soc_kwh=float(soc_pct) / 100.0 * site.battery.capacity_kwh,
         netzladen_erlaubt=site.netzladen_erlaubt,
         grid_limit_kw=float(grid_limit) if grid_limit is not None else None,
+        import_price_eur_mwh=import_series,
+        export_value_eur_mwh=export_series,
     )
 
 
@@ -271,6 +333,24 @@ def _load_prices(
             for i in range(slots_covered):
                 by_slot[ts + i * timedelta(minutes=SLOT_MINUTES)] = float(price)
     return by_slot
+
+
+def _load_market_values(dsn: str, months: list) -> dict:
+    """Monatsmarktwert Solar (ct/kWh) for the given German calendar months
+    (first-of-month dates) - the ``monthly_market_value`` table fed by
+    services/market-data. Absent months simply stay absent (no premium for
+    their slots; the pricing layer flags them)."""
+    import psycopg  # lazy: optional [db] extra
+
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT month, value_ct_kwh FROM monthly_market_value
+            WHERE technology = 'solar' AND month = ANY(%s)
+            """,
+            (months,),
+        )
+        return {month: float(value) for month, value in cur.fetchall()}
 
 
 def _forecast_or_fallback(

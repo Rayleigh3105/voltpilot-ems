@@ -117,6 +117,16 @@ class OptimizationInput:
     Ausschliesslichkeitsprinzip for EEG-funded plants. The field is REQUIRED
     (no default) on purpose: every caller must decide, so a forgotten wire-up
     can never silently put an EEG plant into grid arbitrage.
+
+    **Asymmetric pricing (P1, Stage 2 of the optimizer redesign):**
+    ``import_price_eur_mwh``/``export_value_eur_mwh`` are the per-slot cost of
+    an imported kWh and value of an exported kWh, built from the site's tariff
+    and remuneration by :mod:`voltpilot_optimization.pricing`. ``None`` (the
+    default) means bare spot on that side - the pre-P1 symmetric model, so
+    un-wired callers and pure-market sites behave exactly as before.
+    ``prices_eur_mwh`` stays the SPOT series (persisted per slot for the
+    portal's price curve; also the §51 sign signal the pricing layer already
+    folded into the export values).
     """
 
     tenant_id: UUID
@@ -131,6 +141,8 @@ class OptimizationInput:
     netzladen_erlaubt: bool
     grid_limit_kw: float | None = None
     slot_minutes: int = SLOT_MINUTES
+    import_price_eur_mwh: list[float] | None = None
+    export_value_eur_mwh: list[float] | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -138,6 +150,10 @@ class OptimizationInput:
             raise ValueError("horizon must contain at least one slot")
         for name in ("prices_eur_mwh", "load_kw", "pv_kw"):
             if len(getattr(self, name)) != n:
+                raise ValueError(f"{name} must have one entry per slot ({n})")
+        for name in ("import_price_eur_mwh", "export_value_eur_mwh"):
+            series = getattr(self, name)
+            if series is not None and len(series) != n:
                 raise ValueError(f"{name} must have one entry per slot ({n})")
         if self.slot_minutes <= 0:
             raise ValueError("slot_minutes must be positive")
@@ -152,11 +168,47 @@ class OptimizationInput:
     def slot_hours(self) -> float:
         return self.slot_minutes / 60.0
 
+    @property
+    def import_prices(self) -> list[float]:
+        """Per-slot import price, falling back to bare spot (symmetric model)."""
+        return (
+            self.import_price_eur_mwh
+            if self.import_price_eur_mwh is not None
+            else self.prices_eur_mwh
+        )
+
+    @property
+    def export_values(self) -> list[float]:
+        """Per-slot export value, falling back to bare spot (symmetric model)."""
+        return (
+            self.export_value_eur_mwh
+            if self.export_value_eur_mwh is not None
+            else self.prices_eur_mwh
+        )
+
+    def cashflow_cost_eur(self, index: int, grid_kw: float) -> float:
+        """Projected cost of one slot at the given net grid power under the
+        asymmetric pricing: import paid at the import price, export credited
+        at the export value (negative = revenue)."""
+        import_kw = max(grid_kw, 0.0)
+        export_kw = max(-grid_kw, 0.0)
+        return (
+            (
+                self.import_prices[index] * import_kw
+                - self.export_values[index] * export_kw
+            )
+            * self.slot_hours
+            / 1000.0
+        )
+
     def baseline_cost_eur(self, index: int) -> float:
         """Projected cost of one slot with the battery idle (the no-battery
-        baseline the headline savings are measured against)."""
+        baseline the headline savings are measured against), under the same
+        asymmetric pricing as the plan - the unregulated plant imports its
+        residual load at the tariff and feeds its PV surplus in at the
+        remuneration (mirroring EarningsRepository's baseline semantics)."""
         residual_kw = self.load_kw[index] - self.pv_kw[index]
-        return self.prices_eur_mwh[index] * residual_kw * self.slot_hours / 1000.0
+        return self.cashflow_cost_eur(index, residual_kw)
 
 
 @dataclass(frozen=True)
@@ -169,11 +221,12 @@ class PlanSlot:
     soc_kwh: float  # state of charge at slot END
     load_kw: float  # load forecast input used
     pv_kw: float  # PV forecast input used
-    price_eur_mwh: float
-    cost_eur: float  # projected slot cost with the plan
-    baseline_cost_eur: float  # projected slot cost with the battery idle
+    price_eur_mwh: float  # the day-ahead SPOT price (portal price curve)
+    cost_eur: float  # projected slot cashflow with the plan (asymmetric pricing)
+    baseline_cost_eur: float  # projected slot cashflow with the battery idle
     # Planned PV curtailment (kW discarded, 0 <= curtail_kw <= pv_kw). Non-zero
-    # only when feeding in would COST money (negative prices) - see solver.py.
+    # only when feeding in would COST money (negative EXPORT VALUE, e.g. a
+    # Direktvermarktung plant at negative spot) - see solver.py.
     curtail_kw: float = 0.0
     # Priced battery degradation of this slot's throughput (EUR, >= 0) - the
     # wear the plan spends to earn its grid savings. NOT included in cost_eur
