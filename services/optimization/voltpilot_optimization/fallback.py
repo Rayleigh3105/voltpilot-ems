@@ -53,6 +53,53 @@ def persistence_forecast(
     return [p.value_kw for p in series.points]
 
 
+def night_floor_pv(
+    pv_kw: list[float],
+    slot_starts: list[datetime],
+    latitude: float | None,
+    longitude: float | None,
+) -> tuple[list[float], list[int]]:
+    """Zero every PV slot whose sun is below the horizon at the site location.
+
+    A defensive night floor on the optimizer's PV *input*. The physical PV model
+    (:class:`voltpilot_forecast.pv.PhysicalPvForecaster`) is already 0 at night,
+    so applying this to a stored physical forecast is a no-op; but the
+    persistence *fallback* (:func:`persistence_forecast`) reuses the LOAD
+    baseline and has NO "PV must be 0 at night" knowledge - on short/reset
+    history it smears the last observed daytime PV value across every night slot
+    (phantom night "Solarstrom" that mislabels a real night grid-charge and can
+    even satisfy the EEG ``solar_only_charge`` constraint). A night-zero floor on
+    ``pv_kw`` can never be physically wrong, so it is applied to the final PV
+    series regardless of source.
+
+    Reuses ``voltpilot_forecast``'s already-shipped solar geometry
+    (``solar_position``/``SolarPosition.is_daytime``, lazy import like
+    :func:`persistence_forecast`). The site ``latitude``/``longitude`` are
+    nullable; with no coordinates the solar position can't be computed, so the
+    series is returned UNCHANGED (never raises - the optimizer must still run).
+
+    Returns ``(masked_series, zeroed_indices)`` - ``zeroed_indices`` is empty
+    when nothing changed, so the caller can log any fabrication distinctly.
+    """
+    if latitude is None or longitude is None:
+        return list(pv_kw), []
+
+    # Lazy: reuse the forecast service's solar geometry (see module docstring).
+    from voltpilot_forecast.domain import GeoLocation
+    from voltpilot_forecast.solar import solar_position
+
+    location = GeoLocation(latitude=latitude, longitude=longitude)
+    floored: list[float] = []
+    zeroed: list[int] = []
+    for i, (value, ts) in enumerate(zip(pv_kw, slot_starts)):
+        if value > 0.0 and not solar_position(location, ts).is_daytime:
+            floored.append(0.0)
+            zeroed.append(i)
+        else:
+            floored.append(value)
+    return floored, zeroed
+
+
 def _slot_minutes(slot_starts: list[datetime]) -> int:
     if len(slot_starts) < 2:
         return 15
