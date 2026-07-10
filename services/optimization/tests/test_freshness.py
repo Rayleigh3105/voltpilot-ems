@@ -171,9 +171,11 @@ def test_no_reading_at_all_keeps_the_old_defaults(readings):
 
 
 class _SitesCursor:
-    def __init__(self, wear_ct, backup_reserve=None) -> None:
+    def __init__(self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None) -> None:
         self._wear_ct = wear_ct
         self._backup_reserve = backup_reserve
+        self._soc_min = soc_min
+        self._soc_max = soc_max
         self._rows: list = []
 
     def __enter__(self):
@@ -188,12 +190,14 @@ class _SitesCursor:
         assert "a.wear_cost_ct_per_kwh" in sql
         assert "s.tarif_art" in sql  # the P1 pricing master data is read too
         assert "s.backup_reserve_soc_pct" in sql  # the P11 reserve is read too
+        assert "a.soc_min_pct" in sql  # the admin-tunable SoC band is read too
         self._rows = [
             (
                 TENANT, SITE, uuid4(), "DE-LU",
                 10.0, 5.0, 5.0, 92.0, True, None, None, self._wear_ct,
                 "eigenverbrauch", "ohne", None, None, None, None,
                 self._backup_reserve,
+                self._soc_min, self._soc_max,
             )
         ]
 
@@ -201,7 +205,7 @@ class _SitesCursor:
         return self._rows
 
 
-def _wire_sites(monkeypatch, wear_ct, backup_reserve=None):
+def _wire_sites(monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None):
     class _Conn:
         def __enter__(self):
             return self
@@ -210,7 +214,7 @@ def _wire_sites(monkeypatch, wear_ct, backup_reserve=None):
             return False
 
         def cursor(self):
-            return _SitesCursor(wear_ct, backup_reserve)
+            return _SitesCursor(wear_ct, backup_reserve, soc_min, soc_max)
 
     monkeypatch.setitem(
         sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: _Conn())
@@ -245,3 +249,41 @@ def test_backup_reserve_column_resolves_to_the_battery_params(monkeypatch):
     _wire_sites(monkeypatch, None, backup_reserve=40.0)
     [site] = load_battery_sites("postgresql://fake")
     assert site.battery.backup_reserve_pct == 40.0
+
+
+# ---- per-asset SoC band resolution (load_battery_sites) ----------------------
+
+
+def test_null_soc_band_keeps_the_platform_defaults(monkeypatch):
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == 0.05
+    assert site.battery.soc_max_fraction == 0.95
+
+
+def test_configured_soc_band_lands_on_the_battery_params(monkeypatch):
+    _wire_sites(monkeypatch, None, soc_min=10.0, soc_max=90.0)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == pytest.approx(0.10)
+    assert site.battery.soc_max_fraction == pytest.approx(0.90)
+
+    # One-sided overrides compose with the other side's default.
+    _wire_sites(monkeypatch, None, soc_min=20.0)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == pytest.approx(0.20)
+    assert site.battery.soc_max_fraction == 0.95
+
+
+def test_inconsistent_soc_band_falls_back_to_defaults_with_a_warning(
+    monkeypatch, caplog
+):
+    # min above the default max (only min set) must not crash the site's run:
+    # the platform band applies and the misconfiguration is logged loudly.
+    import logging as _logging
+
+    _wire_sites(monkeypatch, None, soc_min=96.0)
+    with caplog.at_level(_logging.WARNING):
+        [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.soc_min_fraction == 0.05
+    assert site.battery.soc_max_fraction == 0.95
+    assert any("invalid_soc_band" in r.message for r in caplog.records)

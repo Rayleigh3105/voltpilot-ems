@@ -287,6 +287,13 @@ services:
       # keep in sync with forecast-collector + optimizer (same .env variables).
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
+      # Api-side mirror of the optimizer's platform tunables (admin optimizer
+      # panel + per-slot diagnostics) - same .env variables as the optimization
+      # service, so the display and the solver never disagree.
+      OPTIMIZER_WEAR_COST_CT_PER_KWH: ${OPTIMIZER_WEAR_COST_CT_PER_KWH:-4.0}
+      OPTIMIZER_TERMINAL_VALUE_QUANTILE: ${OPTIMIZER_TERMINAL_VALUE_QUANTILE:-0.3}
+      OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH: ${OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH:-}
+      OPTIMIZER_EEG_RATES_JSON: ${OPTIMIZER_EEG_RATES_JSON:-}
       # Marktstammdatenregister ("Anlage verknüpfen"): blank = the keyless public
       # JSON backend; set the captain's Webdienst credentials to use the official
       # SOAP webservice instead (see AGENTS.md, "MaStR integration").

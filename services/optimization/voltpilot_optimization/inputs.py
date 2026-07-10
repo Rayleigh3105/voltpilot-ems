@@ -43,6 +43,8 @@ from voltpilot_optimization.config import (
 )
 from voltpilot_optimization.domain import (
     BatteryParams,
+    DEFAULT_SOC_MAX_FRACTION,
+    DEFAULT_SOC_MIN_FRACTION,
     OptimizationInput,
     SLOT_MINUTES,
     SLOTS_24H,
@@ -155,7 +157,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                    s.plant_kind, s.tarif_art, s.tarif_param_ct_kwh,
                    s.anzulegender_wert_ct_kwh,
                    pv.commissioned_on, pv.pv_capacity_kwp,
-                   s.backup_reserve_soc_pct
+                   s.backup_reserve_soc_pct,
+                   a.soc_min_pct, a.soc_max_pct
             FROM asset a
             JOIN site s ON s.id = a.site_id
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv'
@@ -169,6 +172,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                 netzladen, lat, lon, wear_ct,
                 plant_kind, tarif_art, tarif_param, anzulegender_wert,
                 commissioned_on, pv_kwp, backup_reserve,
+                soc_min_pct, soc_max_pct,
             ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
@@ -176,6 +180,9 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                     extra={"context": {"site_id": str(site_id)}},
                 )
                 continue
+            soc_min_fraction, soc_max_fraction = _soc_band(
+                site_id, soc_min_pct, soc_max_pct
+            )
             sites.append(
                 BatterySite(
                     tenant_id=tenant_id,
@@ -189,6 +196,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                         roundtrip_efficiency=(
                             float(eff) / 100.0 if eff is not None else 0.92
                         ),
+                        soc_min_fraction=soc_min_fraction,
+                        soc_max_fraction=soc_max_fraction,
                         wear_cost_ct_per_kwh=(
                             float(wear_ct) if wear_ct is not None
                             else default_wear_ct
@@ -222,6 +231,46 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                 )
             )
     return sites
+
+
+def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
+    """Resolve the per-asset usable SoC band (``asset.soc_min_pct``/
+    ``soc_max_pct``, api migration V20260710020000, admin-tuned) into
+    :class:`BatteryParams` fractions.
+
+    NULL columns keep the platform defaults (5-95%). An inconsistent band
+    (effective min >= effective max - possible when only one side is set and
+    it crosses the other side's default) falls back to the platform defaults
+    with a loud warning instead of crashing the site's every run: master data
+    to fix, never a dead optimizer.
+    """
+    soc_min = (
+        float(soc_min_pct) / 100.0
+        if soc_min_pct is not None
+        else DEFAULT_SOC_MIN_FRACTION
+    )
+    soc_max = (
+        float(soc_max_pct) / 100.0
+        if soc_max_pct is not None
+        else DEFAULT_SOC_MAX_FRACTION
+    )
+    if not 0.0 <= soc_min < soc_max <= 1.0:
+        logger.warning(
+            "site.invalid_soc_band",
+            extra={
+                "context": {
+                    "site_id": str(site_id),
+                    "soc_min_pct": str(soc_min_pct),
+                    "soc_max_pct": str(soc_max_pct),
+                    "reason": (
+                        "configured SoC band is inconsistent - falling back "
+                        "to the platform default 5-95%"
+                    ),
+                }
+            },
+        )
+        return DEFAULT_SOC_MIN_FRACTION, DEFAULT_SOC_MAX_FRACTION
+    return soc_min, soc_max
 
 
 def gather_inputs(

@@ -96,6 +96,17 @@ voltpilot:
   forecast:
     active-load-model: ${VOLTPILOT_ACTIVE_LOAD_MODEL:load-persistence}
     active-pv-model: ${VOLTPILOT_ACTIVE_PV_MODEL:pv-physical}
+  # Api-side MIRROR of the optimizer's platform tunables (services/optimization
+  # voltpilot_optimization/config.py) feeding the admin optimizer panel and the
+  # per-slot diagnostics. The api only DISPLAYS these - pass the SAME
+  # OPTIMIZER_* env vars to the api and the optimization container (the compose
+  # files do), the VOLTPILOT_ACTIVE_*_MODEL discipline. terminal-value-* are
+  # read-only in the panel (env-level; changing them is a redeploy).
+  optimizer:
+    default-wear-cost-ct-per-kwh: ${OPTIMIZER_WEAR_COST_CT_PER_KWH:4.0}
+    terminal-value-quantile: ${OPTIMIZER_TERMINAL_VALUE_QUANTILE:0.3}
+    terminal-value-ct-per-kwh: ${OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH:}
+    eeg-rates-json: ${OPTIMIZER_EEG_RATES_JSON:}
   # Marktstammdatenregister lookups ("Anlage verknuepfen"). Dual-source: with
   # the captain's Webdienstnutzer credentials set, the official SOAP webservice
   # is used; with the BLANK defaults, the keyless public JSON backend serves
