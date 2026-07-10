@@ -53,7 +53,11 @@ def make_input(prices: list[float], battery: BatteryParams) -> OptimizationInput
         prices_eur_mwh=prices,
         load_kw=[5.0] * n,
         pv_kw=[0.0] * n,
-        initial_soc_kwh=5.0,
+        # Start at the SoC floor: the wear threshold is a CYCLING property
+        # (charge -> discharge round trip). Since P3 a plan may additionally
+        # realize PRE-STORED energy at any price above the terminal-value
+        # anchor, which would muddy the pure cycling assertions below.
+        initial_soc_kwh=battery.soc_min_kwh,
         netzladen_erlaubt=True,
     )
 

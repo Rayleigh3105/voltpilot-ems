@@ -79,8 +79,9 @@ def solve(inp: OptimizationInput):
 def test_model_builds_without_solver():
     model = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
     # 96 slots: balance + import/export gates + dynamics + charge/discharge
-    # gates + 2 grid caps per slot, 1 terminal condition.
-    assert model.nconstraints() == 96 * 8 + 1
+    # gates + 2 grid caps per slot. (The old hard terminal-SoC constraint is
+    # gone - P3 replaced it with a terminal-value objective term.)
+    assert model.nconstraints() == 96 * 8
     # charge/discharge/is_charging/curtail/import/export/is_importing per slot
     # + 97 SoC nodes.
     assert model.nvariables() == 96 * 7 + 97
@@ -159,13 +160,17 @@ def test_small_spread_below_roundtrip_loss_and_wear_stays_idle():
     # the 4 ct/kWh default and eta^2 = 0.92 is ~38.4 EUR/MWh. A 5% spread must
     # not trigger cycling; a 70% spread must. (The dedicated wear tests in
     # test_wear.py pin the threshold band itself.)
+    # Start at the SoC floor so the test isolates pure CYCLING economics:
+    # since P3 the plan may legitimately REALIZE pre-stored energy at a price
+    # above the terminal-value anchor (that is the F3 fix), which is a
+    # different decision than opening a new cycle.
     n = 96
     small = [100.0] * (n // 2) + [105.0] * (n - n // 2)
-    plan = solve(make_input(small))
+    plan = solve(make_input(small, soc0_kwh=BATTERY.soc_min_kwh))
     assert all(abs(s.battery_kw) < 1e-6 for s in plan.slots)
 
     big = [100.0] * (n // 2) + [170.0] * (n - n // 2)
-    plan = solve(make_input(big))
+    plan = solve(make_input(big, soc0_kwh=BATTERY.soc_min_kwh))
     assert any(s.battery_kw > 1e-3 for s in plan.slots)
 
 
@@ -212,12 +217,6 @@ def test_no_simultaneous_charge_and_discharge_even_at_negative_prices():
         charge = float(value(model.charge[t]))
         discharge = float(value(model.discharge[t]))
         assert min(charge, discharge) < 1e-6, f"slot {t} charges AND discharges"
-
-
-@needs_highs
-def test_terminal_soc_never_below_initial():
-    plan = solve(make_input(arbitrage_prices(), soc0_kwh=8.0))
-    assert plan.slots[-1].soc_kwh >= plan.battery.clamp_soc_kwh(8.0) - 1e-6
 
 
 # ---- Negative-price curtailment (Phase 3) -----------------------------------
@@ -318,7 +317,7 @@ def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
     # Merchant build: same constraint/variable counts as before the EEG switch,
     # no EEG constraint objects (the regression guarantee).
     merchant = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
-    assert merchant.nconstraints() == 96 * 8 + 1
+    assert merchant.nconstraints() == 96 * 8
     assert not hasattr(merchant, "solar_only_charge")
     assert not hasattr(merchant, "no_import_while_charging")
 
@@ -334,7 +333,7 @@ def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
         )
         assert hasattr(eeg, "solar_only_charge")
         assert hasattr(eeg, "no_import_while_charging")
-        expected = 96 * 10 + 1 if enforce else 96 * 8 + 1
+        expected = 96 * 10 if enforce else 96 * 8
         assert eeg.nconstraints() == expected
 
 
@@ -342,13 +341,16 @@ def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
 def test_eeg_mode_never_charges_from_grid_even_under_extreme_spread():
     # The hardest temptation: a free night (price 0) before a 500 EUR/MWh
     # evening, and NO PV at all. Merchant mode fills the battery from the grid;
-    # EEG mode has no PV surplus to charge from and must leave the battery
-    # completely idle (discharging would violate the terminal-SoC rule).
+    # EEG mode has no PV surplus, so NOTHING may charge - but since P3 the
+    # stored energy it already holds legitimately discharges into the 500 peak
+    # (pre-P3, the hard terminal floor froze it completely - critique F3; the
+    # dedicated F3 tests live in test_terminal_value.py).
     n = 96
     prices = [0.0] * 32 + [100.0] * 32 + [500.0] * 32
     eeg = solve(make_input(prices, load=5.0, pv=0.0, netzladen_erlaubt=False))
-    assert all(abs(s.battery_kw) < 1e-6 for s in eeg.slots)
-    assert eeg.savings_eur == pytest.approx(0.0, abs=1e-6)
+    assert all(s.battery_kw <= 1e-6 for s in eeg.slots), "no grid charge, ever"
+    discharged_kwh = -sum(min(s.battery_kw, 0.0) for s in eeg.slots) * 0.25
+    assert discharged_kwh > 1.0, "the stored energy serves the 500 peak (P3)"
 
     merchant = solve(make_input(prices, load=5.0, pv=0.0))
     charged_kwh = sum(s.battery_kw for s in merchant.slots if s.battery_kw > 0) * 0.25

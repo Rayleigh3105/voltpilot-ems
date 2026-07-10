@@ -95,6 +95,7 @@ def readings(monkeypatch) -> dict[str, tuple[datetime, float]]:
     monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
     monkeypatch.delenv("OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES", raising=False)
     monkeypatch.delenv("OPTIMIZER_SOC_MAX_AGE_MINUTES", raising=False)
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH", raising=False)
     return table
 
 
@@ -170,8 +171,9 @@ def test_no_reading_at_all_keeps_the_old_defaults(readings):
 
 
 class _SitesCursor:
-    def __init__(self, wear_ct) -> None:
+    def __init__(self, wear_ct, backup_reserve=None) -> None:
         self._wear_ct = wear_ct
+        self._backup_reserve = backup_reserve
         self._rows: list = []
 
     def __enter__(self):
@@ -185,11 +187,13 @@ class _SitesCursor:
         assert "FROM asset" in sql
         assert "a.wear_cost_ct_per_kwh" in sql
         assert "s.tarif_art" in sql  # the P1 pricing master data is read too
+        assert "s.backup_reserve_soc_pct" in sql  # the P11 reserve is read too
         self._rows = [
             (
                 TENANT, SITE, uuid4(), "DE-LU",
                 10.0, 5.0, 5.0, 92.0, True, None, None, self._wear_ct,
                 "eigenverbrauch", "ohne", None, None, None, None,
+                self._backup_reserve,
             )
         ]
 
@@ -197,7 +201,7 @@ class _SitesCursor:
         return self._rows
 
 
-def _wire_sites(monkeypatch, wear_ct):
+def _wire_sites(monkeypatch, wear_ct, backup_reserve=None):
     class _Conn:
         def __enter__(self):
             return self
@@ -206,7 +210,7 @@ def _wire_sites(monkeypatch, wear_ct):
             return False
 
         def cursor(self):
-            return _SitesCursor(wear_ct)
+            return _SitesCursor(wear_ct, backup_reserve)
 
     monkeypatch.setitem(
         sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: _Conn())
@@ -229,3 +233,15 @@ def test_asset_wear_override_beats_the_platform_default(monkeypatch):
     monkeypatch.setenv("OPTIMIZER_WEAR_COST_CT_PER_KWH", "2.5")
     [site] = load_battery_sites("postgresql://fake")
     assert site.battery.wear_cost_ct_per_kwh == 7.75
+
+
+def test_backup_reserve_column_resolves_to_the_battery_params(monkeypatch):
+    # NULL column -> no reserve (the 5% technical floor applies unchanged).
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.backup_reserve_pct is None
+
+    # A configured site.backup_reserve_soc_pct lands on the battery params.
+    _wire_sites(monkeypatch, None, backup_reserve=40.0)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.battery.backup_reserve_pct == 40.0

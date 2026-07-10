@@ -22,7 +22,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from voltpilot_optimization.config import DEFAULT_WEAR_COST_CT_PER_KWH
+from voltpilot_optimization.config import (
+    DEFAULT_WEAR_COST_CT_PER_KWH,
+    terminal_value_quantile,
+)
 
 SLOT_MINUTES = 15
 SLOTS_24H = 96
@@ -47,6 +50,12 @@ class BatteryParams:
     nullable ``asset.wear_cost_ct_per_kwh`` override, falling back to the
     platform default (env ``OPTIMIZER_WEAR_COST_CT_PER_KWH``); derivation in
     :mod:`voltpilot_optimization.config`. 0 disables wear pricing.
+
+    ``backup_reserve_pct`` is the customer-configured backup-reserve minimum
+    SoC (P11; ``site.backup_reserve_soc_pct``, nullable): the plan never
+    discharges below it - a HARD constraint, never a soft preference. ``None``
+    (the default) means the platform 5% technical floor applies unchanged;
+    a value below the technical floor is ineffective (the floor wins).
     """
 
     capacity_kwh: float
@@ -56,6 +65,7 @@ class BatteryParams:
     soc_min_fraction: float = DEFAULT_SOC_MIN_FRACTION
     soc_max_fraction: float = DEFAULT_SOC_MAX_FRACTION
     wear_cost_ct_per_kwh: float = DEFAULT_WEAR_COST_CT_PER_KWH
+    backup_reserve_pct: float | None = None
 
     def __post_init__(self) -> None:
         if self.capacity_kwh <= 0:
@@ -71,6 +81,11 @@ class BatteryParams:
             and self.wear_cost_ct_per_kwh >= 0.0
         ):
             raise ValueError("wear_cost_ct_per_kwh must be finite and >= 0")
+        if self.backup_reserve_pct is not None and not (
+            math.isfinite(self.backup_reserve_pct)
+            and 0.0 <= self.backup_reserve_pct <= 100.0
+        ):
+            raise ValueError("backup_reserve_pct must be within [0, 100] when set")
 
     @property
     def one_way_efficiency(self) -> float:
@@ -98,6 +113,24 @@ class BatteryParams:
         """Clamp a measured SoC into the usable window (keeps the model feasible
         when telemetry reports a SoC outside the reserve band)."""
         return min(max(soc_kwh, self.soc_min_kwh), self.soc_max_kwh)
+
+    def soc_floor_kwh(self, initial_soc_kwh: float) -> float:
+        """The effective SoC lower bound of a plan starting at
+        ``initial_soc_kwh`` (already clamped into the technical band).
+
+        The backup reserve (P11) raises the technical floor - hard, never
+        soft - but is RELAXED to the actual start when the battery currently
+        sits below it: a below-reserve battery must still yield a feasible
+        plan, and "never discharge any further" is the correct hard property
+        there (recovery charging follows from the economics/PV; each 15-min
+        MPC re-plan then ratchets the floor up as the battery recovers).
+        Capped at ``soc_max_kwh`` so a 100% reserve pins the battery full
+        instead of going infeasible."""
+        floor = self.soc_min_kwh
+        if self.backup_reserve_pct is not None:
+            reserve_kwh = self.capacity_kwh * self.backup_reserve_pct / 100.0
+            floor = min(max(floor, reserve_kwh), self.soc_max_kwh)
+        return min(floor, initial_soc_kwh)
 
 
 @dataclass(frozen=True)
@@ -127,6 +160,13 @@ class OptimizationInput:
     ``prices_eur_mwh`` stays the SPOT series (persisted per slot for the
     portal's price curve; also the §51 sign signal the pricing layer already
     folded into the export values).
+
+    **Terminal energy value (P3, Stage 3):** ``terminal_value_eur_per_kwh`` is
+    the value the objective credits per kWh left in the battery at the horizon
+    end (EUR per STORED kWh). ``None`` (the default) derives it from the
+    horizon's own prices (:meth:`effective_terminal_value_eur_per_kwh`);
+    ``gather_inputs`` sets an explicit value only when the platform override
+    ``OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH`` is configured.
     """
 
     tenant_id: UUID
@@ -143,6 +183,7 @@ class OptimizationInput:
     slot_minutes: int = SLOT_MINUTES
     import_price_eur_mwh: list[float] | None = None
     export_value_eur_mwh: list[float] | None = None
+    terminal_value_eur_per_kwh: float | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -159,6 +200,13 @@ class OptimizationInput:
             raise ValueError("slot_minutes must be positive")
         if self.grid_limit_kw is not None and self.grid_limit_kw <= 0:
             raise ValueError("grid_limit_kw must be positive when set")
+        if self.terminal_value_eur_per_kwh is not None and not (
+            math.isfinite(self.terminal_value_eur_per_kwh)
+            and self.terminal_value_eur_per_kwh >= 0.0
+        ):
+            raise ValueError(
+                "terminal_value_eur_per_kwh must be finite and >= 0 when set"
+            )
 
     @property
     def slots(self) -> int:
@@ -185,6 +233,34 @@ class OptimizationInput:
             if self.export_value_eur_mwh is not None
             else self.prices_eur_mwh
         )
+
+    def effective_terminal_value_eur_per_kwh(self, env=None) -> float:
+        """The terminal energy value the solver credits per stored kWh at the
+        horizon end (P3): the explicit override when set, else derived from
+        the horizon's own prices.
+
+        Derivation (see the P3 section of :mod:`voltpilot_optimization.config`
+        for the reasoning): ``eta * (P_q - wear)``, floored at 0, where
+        ``P_q`` is a conservative low quantile (default the 30th percentile)
+        of the per-slot best-use price ``max(import_price_t, export_value_t)``,
+        ``eta`` the one-way efficiency (a stored kWh only delivers ``eta`` AC
+        kWh) and ``wear`` the per-AC-kWh wear the eventual discharge will
+        cost. Because the same ``eta``/``wear`` price the in-horizon discharge,
+        a slot priced exactly at ``P_q`` ties with holding (the epsilon
+        tie-breaks then prefer holding) - flat curves stay idle by
+        construction.
+        """
+        if self.terminal_value_eur_per_kwh is not None:
+            return self.terminal_value_eur_per_kwh
+        best_use = [
+            max(imp, exp)
+            for imp, exp in zip(self.import_prices, self.export_values)
+        ]
+        quantile = terminal_value_quantile(env)
+        anchor = sorted(best_use)[int(quantile * (len(best_use) - 1))]
+        eta = self.battery.one_way_efficiency
+        wear_eur_mwh = self.battery.wear_cost_eur_per_kwh_each_way * 1000.0
+        return max(0.0, eta * (anchor - wear_eur_mwh) / 1000.0)
 
     def cashflow_cost_eur(self, index: int, grid_kw: float) -> float:
         """Projected cost of one slot at the given net grid power under the
@@ -276,7 +352,10 @@ class SchedulePlan:
     def savings_eur(self) -> float:
         """Projected GRID savings vs. the no-battery baseline over the horizon
         (gross of battery wear - subtract :attr:`wear_cost_eur` for the honest
-        net figure; the persisted per-slot columns carry both)."""
+        net figure; the persisted per-slot columns carry both). Since P3
+        (terminal energy value) this may include realizing energy the battery
+        already held at the plan start - the realized-earnings engine, not the
+        planned figure, remains the honest money number."""
         return self.baseline_cost_eur - self.cost_eur
 
     def soc_pct(self, slot: PlanSlot) -> float:

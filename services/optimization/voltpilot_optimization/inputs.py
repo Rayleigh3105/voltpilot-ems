@@ -15,6 +15,8 @@ consumes what other layers produced:
   re-asserts itself in live telemetry - one old reading must never cap every
   future plan), a stale SoC falls back to the neutral default instead of
   silently planning from yesterday's value,
+- the per-site backup-reserve SoC floor (``site.backup_reserve_soc_pct``, P11)
+  and the grid-charging switch from ``site``,
 - the pricing master data for the P1 asymmetric objective: ``site.plant_kind``,
   ``site.tarif_art``/``tarif_param_ct_kwh``, ``site.anzulegender_wert_ct_kwh``,
   the PV asset's ``commissioned_on``/``pv_capacity_kwp`` (MaStR) and the
@@ -37,6 +39,7 @@ from voltpilot_optimization.config import (
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
     soc_max_age,
+    terminal_value_override_eur_per_kwh,
 )
 from voltpilot_optimization.domain import (
     BatteryParams,
@@ -151,7 +154,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                    s.latitude, s.longitude, a.wear_cost_ct_per_kwh,
                    s.plant_kind, s.tarif_art, s.tarif_param_ct_kwh,
                    s.anzulegender_wert_ct_kwh,
-                   pv.commissioned_on, pv.pv_capacity_kwp
+                   pv.commissioned_on, pv.pv_capacity_kwp,
+                   s.backup_reserve_soc_pct
             FROM asset a
             JOIN site s ON s.id = a.site_id
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv'
@@ -164,7 +168,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                 tenant_id, site_id, device_id, zone, cap, chg, dis, eff,
                 netzladen, lat, lon, wear_ct,
                 plant_kind, tarif_art, tarif_param, anzulegender_wert,
-                commissioned_on, pv_kwp,
+                commissioned_on, pv_kwp, backup_reserve,
             ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
@@ -188,6 +192,11 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                         wear_cost_ct_per_kwh=(
                             float(wear_ct) if wear_ct is not None
                             else default_wear_ct
+                        ),
+                        backup_reserve_pct=(
+                            float(backup_reserve)
+                            if backup_reserve is not None
+                            else None
                         ),
                     ),
                     netzladen_erlaubt=bool(netzladen),
@@ -297,6 +306,9 @@ def gather_inputs(
         grid_limit_kw=float(grid_limit) if grid_limit is not None else None,
         import_price_eur_mwh=import_series,
         export_value_eur_mwh=export_series,
+        # P3: None = derive the terminal energy value from the horizon's own
+        # prices; only an explicit platform override pins it.
+        terminal_value_eur_per_kwh=terminal_value_override_eur_per_kwh(),
     )
 
 

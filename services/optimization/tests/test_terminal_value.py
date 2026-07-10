@@ -1,0 +1,263 @@
+"""Terminal energy value (P3, optimizer-redesign Stage 3, critique finding F3).
+
+The hard ``soc_T >= soc_0`` floor froze an EEG battery on every low-PV day
+(critique Experiment 1: a 90%-full battery idled through a 250 EUR/MWh evening
+because no PV surplus meant nothing could charge, hence nothing was allowed to
+discharge) and forced merchant plans into uneconomic end-of-horizon buy-backs.
+P3 replaces it with an objective credit ``V_end * (soc_T - soc_0)``.
+
+These tests pin the three behavioral results the redesign demands:
+1. the F3 scenario now DISCHARGES into the evening peak,
+2. a horizon-end dump for a trivial gain is still avoided (V_end holds it -
+   proven by the contrast with an explicit V_end = 0, which dumps),
+3. a merchant end-state is no longer forced into a buy-back,
+plus the V_end derivation itself (quantile anchor, wear/eta discount, zero
+floor, env override/validation). Solver tests need the HiGHS wheel.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+from datetime import datetime, timezone
+from uuid import uuid4
+
+import pytest
+
+from voltpilot_optimization.config import (
+    terminal_value_override_eur_per_kwh,
+    terminal_value_quantile,
+)
+from voltpilot_optimization.domain import (
+    BatteryParams,
+    OptimizationInput,
+    horizon_slot_starts,
+)
+
+needs_highs = pytest.mark.skipif(
+    importlib.util.find_spec("highspy") is None,
+    reason="HiGHS wheel unavailable on this platform",
+)
+
+T0 = datetime(2026, 7, 1, 6, 0, tzinfo=timezone.utc)
+BATTERY = BatteryParams(
+    capacity_kwh=10.0,
+    max_charge_kw=5.0,
+    max_discharge_kw=5.0,
+    roundtrip_efficiency=0.92,
+)
+ETA = BATTERY.one_way_efficiency
+WEAR_EUR_MWH = BATTERY.wear_cost_eur_per_kwh_each_way * 1000.0  # 20 at default
+
+
+def make_input(
+    prices: list[float],
+    load: float = 2.0,
+    pv: float | list[float] = 0.0,
+    soc0_kwh: float = 9.0,
+    netzladen_erlaubt: bool = False,
+    terminal_value_eur_per_kwh: float | None = None,
+) -> OptimizationInput:
+    n = len(prices)
+    return OptimizationInput(
+        tenant_id=uuid4(),
+        site_id=uuid4(),
+        device_id=uuid4(),
+        battery=BATTERY,
+        slot_starts=horizon_slot_starts(T0, n),
+        prices_eur_mwh=prices,
+        load_kw=[load] * n,
+        pv_kw=[pv] * n if isinstance(pv, (int, float)) else pv,
+        initial_soc_kwh=soc0_kwh,
+        netzladen_erlaubt=netzladen_erlaubt,
+        terminal_value_eur_per_kwh=terminal_value_eur_per_kwh,
+    )
+
+
+def solve(inp: OptimizationInput):
+    from voltpilot_optimization.solver import optimize
+
+    return optimize(inp, plan_id=uuid4(), generated_at=T0)
+
+
+# ---- the F3 scenario: full battery, cloudy day, expensive evening ------------
+
+
+@needs_highs
+def test_f3_eeg_site_discharges_its_full_battery_into_the_evening_peak():
+    """Critique Experiment 1, reproduced: EEG mode, battery 90% full, NO PV
+    for the whole 24h horizon (cloudy), a 250 EUR/MWh evening peak. The old
+    terminal floor forbade ALL discharge (charging was impossible, so the end
+    SoC could never recover) - 9 kWh of stored solar idled through the peak
+    while the household imported. Now the stored energy serves the peak."""
+    n = 96
+    prices = [100.0] * 80 + [250.0] * 16  # cloudy day, expensive evening
+    plan = solve(make_input(prices, load=2.0, pv=0.0, soc0_kwh=9.0))
+
+    peak = plan.slots[80:]
+    discharged_kwh = -sum(min(s.battery_kw, 0.0) for s in peak) * 0.25
+    assert discharged_kwh > 5.0, "the frozen battery must discharge into the peak"
+    # EEG mode still never charges (no PV surplus exists).
+    assert all(s.battery_kw <= 1e-6 for s in plan.slots)
+    # The horizon ends BELOW the start SoC - exactly what the old hard floor
+    # forbade and what P3 legalizes.
+    assert plan.slots[-1].soc_kwh < 9.0 - 5.0
+    # And it is worth real money vs. the battery-idle baseline.
+    assert plan.savings_eur > 1.0
+
+
+@needs_highs
+def test_f3_stored_energy_waits_for_the_peak_instead_of_dumping_early():
+    # Same scenario: the cheap 100-slots BEFORE the peak must not discharge -
+    # the terminal value (and the better peak ahead) both beat realizing at
+    # the anchor price.
+    n = 96
+    prices = [100.0] * 80 + [250.0] * 16
+    plan = solve(make_input(prices, load=2.0, pv=0.0, soc0_kwh=9.0))
+    assert all(abs(s.battery_kw) < 1e-6 for s in plan.slots[:80])
+
+
+# ---- no dump for a trivial gain ----------------------------------------------
+
+
+@needs_highs
+def test_cheap_end_of_horizon_tail_is_held_not_dumped():
+    """Battery full, prices decline into a cheap tail: dumping at the 100-tail
+    would earn a little NOW, but the derived V_end (anchored at the horizon's
+    dominant 200 level) values holding higher - the plan keeps the energy for
+    tomorrow instead of realizing a trivial gain."""
+    prices = [200.0] * 80 + [100.0] * 16
+    inp = make_input(
+        prices, load=2.0, pv=0.0, soc0_kwh=BATTERY.soc_max_kwh,
+        netzladen_erlaubt=True,
+    )
+    plan = solve(inp)
+    tail = plan.slots[80:]
+    assert all(s.battery_kw >= -1e-6 for s in tail), "no dump into the cheap tail"
+    # Nothing better than the anchor exists in-horizon either (200 == anchor
+    # is an exact tie, broken toward holding), so the battery holds outright.
+    assert plan.slots[-1].soc_kwh == pytest.approx(BATTERY.soc_max_kwh, abs=1e-3)
+
+    # CONTRAST: with the terminal value explicitly zeroed (stored energy worth
+    # nothing at the horizon end), the same input dumps - proving V_end is
+    # what prevents the dump, not some leftover constraint.
+    dumped = solve(
+        make_input(
+            prices, load=2.0, pv=0.0, soc0_kwh=BATTERY.soc_max_kwh,
+            netzladen_erlaubt=True, terminal_value_eur_per_kwh=0.0,
+        )
+    )
+    assert dumped.slots[-1].soc_kwh == pytest.approx(BATTERY.soc_min_kwh, abs=1e-3)
+
+
+@needs_highs
+def test_flat_curve_still_plans_an_idle_battery():
+    # The long-standing product property "zero savings on a flat curve" must
+    # survive P3: discharging at exactly the derived anchor price is an exact
+    # tie with holding, broken toward idle by the epsilon tie-breaks.
+    plan = solve(
+        make_input([100.0] * 96, load=5.0, pv=0.0, soc0_kwh=5.0,
+                   netzladen_erlaubt=True)
+    )
+    assert all(abs(s.battery_kw) < 1e-6 for s in plan.slots)
+    assert plan.savings_eur == pytest.approx(0.0, abs=1e-6)
+
+
+# ---- merchant end-states: no forced buy-back ----------------------------------
+
+
+@needs_highs
+def test_merchant_site_is_not_forced_to_buy_back_after_selling_the_peak():
+    """Early peak, then a long 200-priced rest: the old terminal floor forced
+    the plan to re-purchase whatever it sold at 250 (at 200 + wear + losses -
+    an uneconomic mandatory buy-back). Now it sells the peak and simply ends
+    lower: re-charging at 200 is worth less than the terminal value gains."""
+    prices = [250.0] * 16 + [200.0] * 80
+    plan = solve(
+        make_input(prices, load=2.0, pv=0.0, soc0_kwh=9.0, netzladen_erlaubt=True)
+    )
+    peak_discharged = -sum(min(s.battery_kw, 0.0) for s in plan.slots[:16]) * 0.25
+    assert peak_discharged > 5.0, "the early 250 peak is sold"
+    charged_kwh = sum(max(s.battery_kw, 0.0) for s in plan.slots) * 0.25
+    assert charged_kwh < 1e-6, "no forced (or speculative) buy-back at 200"
+    assert plan.slots[-1].soc_kwh < 9.0 - 5.0
+
+
+# ---- the V_end derivation ------------------------------------------------------
+
+
+def test_derived_value_is_the_wear_and_efficiency_discounted_quantile(monkeypatch):
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    # 96 slots, 30th percentile of the best-use prices: index int(0.3*95)=28
+    # of the ascending sort -> 100 on this curve.
+    prices = [100.0] * 48 + [200.0] * 48
+    inp = make_input(prices, netzladen_erlaubt=True)
+    expected = ETA * (100.0 - WEAR_EUR_MWH) / 1000.0
+    assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
+
+
+def test_derived_value_uses_the_best_use_price_import_or_export(monkeypatch):
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    # A retail site: import (fest 430) dwarfs spot - stored energy's future
+    # value is the avoided retail import, not the spot export.
+    n = 96
+    spot = [100.0] * n
+    inp = OptimizationInput(
+        tenant_id=uuid4(),
+        site_id=uuid4(),
+        device_id=None,
+        battery=BATTERY,
+        slot_starts=horizon_slot_starts(T0, n),
+        prices_eur_mwh=spot,
+        load_kw=[2.0] * n,
+        pv_kw=[0.0] * n,
+        initial_soc_kwh=5.0,
+        netzladen_erlaubt=False,
+        import_price_eur_mwh=[430.0] * n,
+        export_value_eur_mwh=[82.0] * n,
+    )
+    expected = ETA * (430.0 - WEAR_EUR_MWH) / 1000.0
+    assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
+
+
+def test_derived_value_never_goes_negative(monkeypatch):
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    # An all-negative horizon values stored energy at nothing - never below.
+    inp = make_input([-80.0] * 96, netzladen_erlaubt=True)
+    assert inp.effective_terminal_value_eur_per_kwh() == 0.0
+
+
+def test_explicit_field_wins_over_the_derivation():
+    inp = make_input([100.0] * 96, terminal_value_eur_per_kwh=0.123)
+    assert inp.effective_terminal_value_eur_per_kwh() == 0.123
+    with pytest.raises(ValueError):
+        make_input([100.0] * 96, terminal_value_eur_per_kwh=-0.01)
+
+
+def test_quantile_env_is_tunable_and_validated(monkeypatch):
+    prices = [100.0] * 48 + [200.0] * 48
+    inp = make_input(prices, netzladen_erlaubt=True)
+    monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", "0.9")
+    expected = ETA * (200.0 - WEAR_EUR_MWH) / 1000.0
+    assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
+
+    monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", "1.5")
+    with pytest.raises(ValueError):
+        terminal_value_quantile()
+    monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", "garbage")
+    with pytest.raises(ValueError):
+        terminal_value_quantile()
+
+
+def test_override_env_resolves_ct_to_eur_and_validates(monkeypatch):
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH", raising=False)
+    assert terminal_value_override_eur_per_kwh() is None
+    monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH", "8.5")
+    assert terminal_value_override_eur_per_kwh() == pytest.approx(0.085)
+    monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH", "0")
+    assert terminal_value_override_eur_per_kwh() == 0.0  # explicit zero, not None
+    monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH", "-1")
+    with pytest.raises(ValueError):
+        terminal_value_override_eur_per_kwh()
+    monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH", "garbage")
+    with pytest.raises(ValueError):
+        terminal_value_override_eur_per_kwh()
