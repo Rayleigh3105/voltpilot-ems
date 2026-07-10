@@ -1236,6 +1236,108 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Tenant or user not found (including a user outside this tenant). }
+  /api/v1/admin/sites/{siteId}/optimizer-diagnostics:
+    get:
+      tags: [admin]
+      summary: Per-slot "why" view of one persisted optimizer run (Portal-Admin).
+      description: >
+        The plan's slots PLUS the per-slot euro decomposition the P1-P5 solver
+        redesign actually optimized against: the bare spot price
+        (`solverPriceCtKwh`), the real import price per the site's tariff
+        (spot+Aufschlag / flat / spot), the real export value (spot + dynamic
+        Marktprämie for Direktvermarktung incl. the §51 negative-price
+        suspension; feste EEG-Einspeisevergütung incl. §51a for Eigenverbrauch;
+        bare spot in merchant mode - mirrors the optimizer's pricing.py), the
+        PERSISTED per-slot wear spend and its derived ct/kWh rate, an
+        explicitly-APPROXIMATE stored-energy value (forward best-use price
+        discounted by efficiency and wear - NOT a MILP shadow price), a
+        decision label (the portal chargeKind twin) and one composed German
+        rationale per slot. Fields that are honestly not computable for a slot
+        (no persisted spot, pre-P2 rows without wear, battery-less site) are
+        null, never a fabricated 0.
+
+        Requires the `platform-admin` role AND the `X-Tenant-Id` tenant
+        switcher: the read runs RLS-scoped over the selected tenant's own data
+        (no BYPASSRLS); no tenant selected or the wrong tenant = 404. The §14a
+        limit a run used is not persisted and therefore not returned;
+        forecast-model lifecycle comes from GET /sites/{siteId}/forecast-quality.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: generatedAt
+          in: query
+          required: false
+          schema: { type: string, format: date-time }
+          description: >
+            Select a historical run by its exact generated_at; omitted = the
+            latest run. An unknown timestamp is a 404 (never silently the
+            latest); `availableRuns` in the response lists recent choices.
+      responses:
+        "200":
+          description: >
+            The run's diagnostics; a site without any plan yet returns an
+            empty well-formed body (generatedAt null, no slots).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OptimizerDiagnostics" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not visible for the selected tenant, or unknown generatedAt. }
+  /api/v1/admin/sites/{siteId}/optimizer-config:
+    get:
+      tags: [admin]
+      summary: The site's optimizer knobs - platform defaults, overrides, effective values.
+      description: >
+        Platform defaults mirror the optimizer's `OPTIMIZER_*` environment
+        (the api receives the same variables - keep them in sync in compose);
+        overrides are the nullable per-site/per-asset columns
+        (`asset.wear_cost_ct_per_kwh`, `asset.soc_min_pct`/`soc_max_pct`,
+        `site.backup_reserve_soc_pct`); effective = override ?? default. The
+        pre-existing site levers (netzladen_erlaubt, plant_kind, tariff,
+        anzulegender Wert) are echoed READ-ONLY - they stay editable via
+        PUT /api/v1/sites/{siteId} (admins: with the X-Tenant-Id switcher).
+        Terminal-value settings are env-level and read-only here. Same
+        auth/tenancy as optimizer-diagnostics.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The merged config view.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OptimizerConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not visible for the selected tenant. }
+    put:
+      tags: [admin]
+      summary: Write the per-site / per-asset optimizer overrides.
+      description: >
+        FULL-REPRESENTATION for the four override fields: the body IS the
+        override state, a null/absent field CLEARS that override back to the
+        platform default (matching the columns' NULL semantics). Battery
+        fields (wear cost, SoC band) require a battery asset (409 otherwise);
+        the EFFECTIVE SoC band (override ?? default per side) must stay a real
+        window (400). Changes apply on the optimizer's next 15-min cycle - no
+        re-solve is triggered here (the what-if endpoint is a deferred later
+        increment, design §4.3).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOptimizerConfigRequest" }
+      responses:
+        "200":
+          description: The updated merged config view.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OptimizerConfig" }
+        "400": { description: Invalid value range or inconsistent effective SoC band. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not visible for the selected tenant. }
+        "409": { description: Battery override on a site without a battery asset. }
 components:
   securitySchemes:
     bearerAuth:
@@ -2344,3 +2446,123 @@ components:
         email: { type: string, format: email, nullable: true }
         firstName: { type: string, nullable: true, maxLength: 120 }
         lastName: { type: string, nullable: true, maxLength: 120 }
+    OptimizerDiagnostics:
+      type: object
+      description: >
+        One persisted optimizer run with the per-slot euro decomposition (see
+        the endpoint description). Run-level fields carry the "inputs at a
+        glance" master data; `storedEnergyValueIsApproximation` is always true
+        (the stored-energy value is a forward best-use heuristic, not a MILP
+        shadow price - the UI must label it).
+      properties:
+        siteId: { type: string, format: uuid }
+        planId: { type: string, format: uuid, nullable: true }
+        generatedAt: { type: string, format: date-time, nullable: true, description: Null when the site has no plan yet. }
+        slotMinutes: { type: integer, example: 15 }
+        availableRuns:
+          type: array
+          items: { type: string, format: date-time }
+          description: Recent run timestamps (newest first) for the run picker.
+        plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
+        netzladenErlaubt: { type: boolean }
+        tarifArt: { type: string, enum: [dynamisch, fest, ohne] }
+        tarifParamCtKwh: { type: number, nullable: true }
+        anzulegenderWertCtKwh: { type: number, nullable: true }
+        backupReserveSocPct: { type: number, nullable: true }
+        battery:
+          type: object
+          nullable: true
+          description: Null for sites without a battery asset.
+          properties:
+            capacityKwh: { type: number, nullable: true }
+            roundtripEfficiencyPct: { type: number, nullable: true }
+            wearCostCtPerKwh: { type: number, description: The EFFECTIVE per-cycle wear rate. }
+            wearCostSource: { type: string, enum: [asset, platform-default] }
+            socMinPct: { type: number, description: Effective usable-band floor (override or 5). }
+            socMaxPct: { type: number, description: Effective usable-band ceiling (override or 95). }
+        activeLoadModel: { type: string }
+        activePvModel: { type: string }
+        storedEnergyValueIsApproximation: { type: boolean, example: true }
+        slots:
+          type: array
+          items: { $ref: "#/components/schemas/OptimizerDiagnosticsSlot" }
+    OptimizerDiagnosticsSlot:
+      type: object
+      description: >
+        One 15-min plan slot: the persisted schedule columns plus the computed
+        ct/kWh decomposition. Every computed field is null when honestly not
+        computable for this slot (no persisted spot price, pre-P2 row without
+        wear, battery-less site) - never a fabricated 0.
+      properties:
+        time: { type: string, format: date-time }
+        batteryKw: { type: number, nullable: true, description: +charge / -discharge. }
+        gridKw: { type: number, nullable: true, description: +import / -export. }
+        socPct: { type: number, nullable: true }
+        loadKw: { type: number, nullable: true }
+        pvKw: { type: number, nullable: true }
+        curtailKw: { type: number, nullable: true }
+        costEur: { type: number, nullable: true }
+        baselineCostEur: { type: number, nullable: true }
+        wearCostEur: { type: number, nullable: true, description: The persisted P2 wear this slot spends. }
+        solverPriceCtKwh: { type: number, nullable: true, description: The bare day-ahead spot price (schedule.price_eur_mwh / 10). }
+        importPriceCtKwh: { type: number, nullable: true, description: Real cost of an imported kWh per the site's tariff. }
+        exportValueCtKwh: { type: number, nullable: true, description: Real value of an exported kWh per the plant's remuneration. }
+        wearCostCtKwh: { type: number, nullable: true, description: Derived wear rate per kWh of throughput (null for idle slots). }
+        valueOfStoredEnergyCtKwh: { type: number, nullable: true, description: APPROXIMATION - forward best-use price x efficiency minus wear. }
+        decisionLabel: { type: string, enum: [solarladen, netzladen, entladen, ruhe] }
+        whyText: { type: string, description: One composed German sentence explaining the decision. }
+    OptimizerConfig:
+      type: object
+      description: The optimizer knobs of one site (see the endpoint description).
+      properties:
+        siteId: { type: string, format: uuid }
+        hasBattery: { type: boolean }
+        defaults:
+          type: object
+          description: Platform-wide tunables (the optimizer's OPTIMIZER_* env; read-only).
+          properties:
+            wearCostCtPerKwh: { type: number, example: 4.0 }
+            socMinPct: { type: number, example: 5 }
+            socMaxPct: { type: number, example: 95 }
+            terminalValueQuantile: { type: number, example: 0.3 }
+            terminalValueCtPerKwh: { type: number, nullable: true, description: Null = derived per plan. }
+        overrides:
+          type: object
+          description: The nullable per-site/per-asset columns (null = default applies).
+          properties:
+            wearCostCtPerKwh: { type: number, nullable: true }
+            socMinPct: { type: number, nullable: true }
+            socMaxPct: { type: number, nullable: true }
+            backupReserveSocPct: { type: number, nullable: true }
+        effective:
+          type: object
+          description: >
+            What the optimizer resolves (override ?? default). Battery fields
+            are null for battery-less sites; a null backupReserveSocPct means
+            "no reserve" (the technical floor applies unchanged).
+          properties:
+            wearCostCtPerKwh: { type: number, nullable: true }
+            socMinPct: { type: number, nullable: true }
+            socMaxPct: { type: number, nullable: true }
+            backupReserveSocPct: { type: number, nullable: true }
+        site:
+          type: object
+          description: Read-only echo of the levers editable via PUT /api/v1/sites/{siteId}.
+          properties:
+            netzladenErlaubt: { type: boolean }
+            plantKind: { type: string }
+            tarifArt: { type: string }
+            tarifParamCtKwh: { type: number, nullable: true }
+            anzulegenderWertCtKwh: { type: number, nullable: true }
+    UpdateOptimizerConfigRequest:
+      type: object
+      description: >
+        Full-representation override write: a null/absent field clears that
+        override back to the platform default. wearCostCtPerKwh/socMinPct/
+        socMaxPct live on the battery asset (409 without one);
+        backupReserveSocPct on the site.
+      properties:
+        wearCostCtPerKwh: { type: number, nullable: true, minimum: 0 }
+        socMinPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        socMaxPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        backupReserveSocPct: { type: number, nullable: true, minimum: 0, maximum: 100 }

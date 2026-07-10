@@ -793,7 +793,331 @@ class AdminApiTest {
                 .isEqualTo(HttpStatus.NO_CONTENT);
     }
 
+    // ---- admin optimizer surface: diagnostics + config -----------------------
+
+    /**
+     * The per-slot "why" decomposition (design vp-admin-optimizer-ui-design
+     * §4.2) against hand-computed economics on two plants: a Direktvermarktung
+     * site (dynamic tariff + Marktprämie incl. the §51 negative-price
+     * suspension) and an Eigenverbrauch site (flat retail tariff + feste
+     * Vergütung surviving negative spot for a 2023 plant). Also: generatedAt
+     * defaults to the LATEST run and can select an older one; wear derives
+     * from the PERSISTED wear_cost_eur; auth + tenant scoping mirror the
+     * sanctioned admin switcher pattern.
+     */
+    @Test
+    void optimizerDiagnosticsDecomposeSlotsWithRealTariffAndRemuneration() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Optimizer Diagnose GmbH", "CI").get("id");
+
+        String dvSite = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "DV Anlage", "biddingZone", "DE-LU",
+                        "plantKind", "direktvermarktung", "anzulegenderWertCtKwh", 8.11,
+                        "tarifArt", "dynamisch", "tarifParamCtKwh", 18.0), bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String evSite = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "EV Anlage", "biddingZone", "DE-LU",
+                        "plantKind", "eigenverbrauch",
+                        "tarifArt", "fest", "tarifParamCtKwh", 30.0), bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        // Batteries: DV without a wear override (platform default 4.0 applies),
+        // EV with a 6.0 ct override; the EV site's PV asset carries the MaStR
+        // commissioning date + kWp driving its feste Vergütung (2023 => 8.2 ct).
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + dvSite + "', 'battery', 20, 10, 10, 92)");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct, wear_cost_ct_per_kwh) VALUES ('"
+                + tenantId + "', '" + evSite + "', 'battery', 20, 10, 10, 92, 6.0)");
+        exec("INSERT INTO asset (tenant_id, site_id, type, commissioned_on, pv_capacity_kwp) "
+                + "VALUES ('" + tenantId + "', '" + evSite + "', 'pv', DATE '2023-06-15', 5.0)");
+
+        // The slots' Monatsmarktwert Solar (current + next Berlin month so a
+        // month-boundary run stays deterministic): 4.5 ct => premium 3.61 ct.
+        // ON CONFLICT DO UPDATE - a premium test must OWN its months (the
+        // seedHistoryDay price rule; dev-seed rows would otherwise win).
+        exec("INSERT INTO monthly_market_value (month, technology, value_ct_kwh, provisional, source) "
+                + "VALUES (date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')::date, "
+                + "'solar', 4.5, false, 'test'), "
+                + "((date_trunc('month', now() AT TIME ZONE 'Europe/Berlin') + interval '1 month')::date, "
+                + "'solar', 4.5, false, 'test') "
+                + "ON CONFLICT (technology, month) DO UPDATE SET "
+                + "value_ct_kwh = EXCLUDED.value_ct_kwh, provisional = EXCLUDED.provisional");
+
+        // Two DV runs: an older single-slot run (must NOT be the default) and
+        // the latest run with hand-computable slots. Wear 0.02 EUR on 4 kW *
+        // 15 min = 1 kWh throughput => 2.0 ct/kWh.
+        java.time.Instant genNew = java.time.Instant.now()
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        java.time.Instant genOld = genNew.minusSeconds(3600);
+        java.time.Instant slot1 = genNew.plusSeconds(900);
+        java.time.Instant slot2 = genNew.plusSeconds(1800);
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw, "
+                + "grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur) "
+                + "VALUES ('" + slot1 + "', '" + tenantId + "', '" + dvSite + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000001', '" + genOld + "', 0, 0, 50, 0, 0, 100, 0, 0)");
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw, "
+                + "grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur, "
+                + "curtail_kw, wear_cost_eur) VALUES "
+                + "('" + slot1 + "', '" + tenantId + "', '" + dvSite + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000002', '" + genNew + "', "
+                + "4.0, 6.0, 55, 2.0, 0.0, 100, 0.15, 0.05, 0, 0.02), "
+                + "('" + slot2 + "', '" + tenantId + "', '" + dvSite + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000002', '" + genNew + "', "
+                + "-4.0, -2.0, 35, 2.0, 4.0, -40, -0.02, 0.01, 1.5, 0.02)");
+        // One EV run: a positive- and a negative-price slot.
+        exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, battery_kw, "
+                + "grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur) VALUES "
+                + "('" + slot1 + "', '" + tenantId + "', '" + evSite + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000003', '" + genNew + "', "
+                + "3.0, -1.0, 60, 1.0, 5.0, 200, 0, 0), "
+                + "('" + slot2 + "', '" + tenantId + "', '" + evSite + "', "
+                + "'bbbbbbbb-0000-0000-0000-000000000003', '" + genNew + "', "
+                + "0.0, -2.0, 60, 1.0, 3.0, -40, 0, 0)");
+
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+
+        // ---- DV site, default run = the LATEST ------------------------------
+        ResponseEntity<Map<String, Object>> dv = rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(dv.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> dvBody = dv.getBody();
+        assertThat(dvBody).containsEntry("generatedAt", genNew.toString());
+        assertThat(dvBody).containsEntry("plantKind", "direktvermarktung");
+        assertThat(dvBody).containsEntry("tarifArt", "dynamisch");
+        assertThat(dvBody).containsEntry("storedEnergyValueIsApproximation", true);
+        @SuppressWarnings("unchecked")
+        List<Object> availableRuns = (List<Object>) dvBody.get("availableRuns");
+        assertThat(availableRuns).contains(genNew.toString(), genOld.toString());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> dvBattery = (Map<String, Object>) dvBody.get("battery");
+        assertThat(num(dvBattery, "wearCostCtPerKwh")).isEqualTo(4.0);
+        assertThat(dvBattery).containsEntry("wearCostSource", "platform-default");
+        assertThat(num(dvBattery, "socMinPct")).isEqualTo(5.0);
+        assertThat(num(dvBattery, "socMaxPct")).isEqualTo(95.0);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> dvSlots = (List<Map<String, Object>>) dvBody.get("slots");
+        assertThat(dvSlots).hasSize(2);
+        Map<String, Object> s1 = dvSlots.get(0);
+        double eta = Math.sqrt(0.92);
+        // Spot 100 EUR/MWh: solver 10 ct; import = spot + 18 ct Aufschlag;
+        // export = spot + max(8.11 - 4.5, 0) Marktprämie; grid-charging slot.
+        assertThat(num(s1, "solverPriceCtKwh")).isCloseTo(10.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(s1, "importPriceCtKwh")).isCloseTo(28.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(s1, "exportValueCtKwh")).isCloseTo(13.61, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(s1, "wearCostCtKwh")).isCloseTo(2.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(s1).containsEntry("decisionLabel", "netzladen");
+        // Forward best-use = max over both slots of max(import, export):
+        // slot1 28 ct, slot2 14 ct => 28; discounted by eta and half the
+        // effective wear (4.0 platform default / 2).
+        assertThat(num(s1, "valueOfStoredEnergyCtKwh"))
+                .isCloseTo(eta * (28.0 - 2.0), org.assertj.core.data.Offset.offset(1e-6));
+        assertThat((String) s1.get("whyText")).contains("aus dem Netz");
+
+        Map<String, Object> s2 = dvSlots.get(1);
+        // Spot -40: the Marktprämie is SUSPENDED (§51), export = bare spot.
+        assertThat(num(s2, "solverPriceCtKwh")).isCloseTo(-4.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(s2, "importPriceCtKwh")).isCloseTo(14.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(s2, "exportValueCtKwh")).isCloseTo(-4.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(s2).containsEntry("decisionLabel", "entladen");
+        assertThat(num(s2, "curtailKw")).isEqualTo(1.5);
+        assertThat(num(s2, "valueOfStoredEnergyCtKwh"))
+                .isCloseTo(eta * (14.0 - 2.0), org.assertj.core.data.Offset.offset(1e-6));
+        assertThat((String) s2.get("whyText")).contains("Drosselt");
+
+        // ---- explicit generatedAt selects the OLDER run ----------------------
+        ResponseEntity<Map<String, Object>> old = rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics?generatedAt=" + genOld),
+                HttpMethod.GET, new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(old.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(old.getBody()).containsEntry("generatedAt", genOld.toString());
+        assertThat((List<?>) old.getBody().get("slots")).hasSize(1);
+        // ...and an unknown run is a 404, not silently the latest.
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite
+                        + "/optimizer-diagnostics?generatedAt=1999-01-01T00:00:00Z"),
+                HttpMethod.GET, new HttpEntity<>(adminTenant), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // ---- EV site: flat tariff + feste Vergütung ---------------------------
+        ResponseEntity<Map<String, Object>> ev = rest.exchange(
+                url("/api/v1/admin/sites/" + evSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> evSlots = (List<Map<String, Object>>) ev.getBody().get("slots");
+        assertThat(evSlots).hasSize(2);
+        // Import is the flat 30 ct retail price at ANY spot; export is the 8.2 ct
+        // feste Vergütung (<=10 kWp, 2023) - which SURVIVES the negative slot
+        // (pre-Solarspitzengesetz plant, the F6 rule).
+        assertThat(num(evSlots.get(0), "importPriceCtKwh")).isEqualTo(30.0);
+        assertThat(num(evSlots.get(0), "exportValueCtKwh")).isEqualTo(8.2);
+        assertThat(evSlots.get(0)).containsEntry("decisionLabel", "solarladen");
+        assertThat(num(evSlots.get(1), "importPriceCtKwh")).isEqualTo(30.0);
+        assertThat(num(evSlots.get(1), "exportValueCtKwh")).isEqualTo(8.2);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> evBattery = (Map<String, Object>) ev.getBody().get("battery");
+        assertThat(num(evBattery, "wearCostCtPerKwh")).isEqualTo(6.0);
+        assertThat(evBattery).containsEntry("wearCostSource", "asset");
+
+        // ---- auth + tenant scoping -------------------------------------------
+        // A customer token is refused outright (backend boundary, not UI).
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        // An admin WITHOUT a selected tenant sees nothing (RLS default-deny).
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        // ...and with the WRONG tenant selected the site stays invisible.
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * The optimizer-config panel (design §2.7): effective values merge the
+     * platform defaults with the per-site/per-asset overrides; the PUT is
+     * full-representation (null clears back to the default) and lands on the
+     * exact columns the optimizer reads; an inconsistent SoC band is refused;
+     * battery knobs need a battery asset; auth + tenancy as everywhere.
+     */
+    @Test
+    void optimizerConfigMergesDefaultsWithOverridesAndWritesThem() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Optimizer Konfig AG", "CI").get("id");
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Konfig Anlage", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + siteId + "', 'battery', 20, 10, 10, 92)");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+        String configUrl = url("/api/v1/admin/sites/" + siteId + "/optimizer-config");
+
+        // Fresh site: platform defaults, no overrides, effective == defaults.
+        ResponseEntity<Map<String, Object>> initial = rest.exchange(configUrl, HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(initial.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(initial.getBody()).containsEntry("hasBattery", true);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> defaults = (Map<String, Object>) initial.getBody().get("defaults");
+        assertThat(num(defaults, "wearCostCtPerKwh")).isEqualTo(4.0);
+        assertThat(num(defaults, "socMinPct")).isEqualTo(5.0);
+        assertThat(num(defaults, "socMaxPct")).isEqualTo(95.0);
+        assertThat(num(defaults, "terminalValueQuantile")).isEqualTo(0.3);
+        assertThat(defaults.get("terminalValueCtPerKwh")).isNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> noOverrides = (Map<String, Object>) initial.getBody().get("overrides");
+        assertThat(noOverrides.get("wearCostCtPerKwh")).isNull();
+        assertThat(noOverrides.get("backupReserveSocPct")).isNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> effective = (Map<String, Object>) initial.getBody().get("effective");
+        assertThat(num(effective, "wearCostCtPerKwh")).isEqualTo(4.0);
+        assertThat(num(effective, "socMinPct")).isEqualTo(5.0);
+        assertThat(num(effective, "socMaxPct")).isEqualTo(95.0);
+        assertThat(effective.get("backupReserveSocPct")).isNull();
+
+        // Write overrides; the response and a fresh GET both reflect them.
+        ResponseEntity<Map<String, Object>> written = rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("wearCostCtPerKwh", 2.5, "socMinPct", 10,
+                        "socMaxPct", 90, "backupReserveSocPct", 30), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(written.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> setEffective = (Map<String, Object>) written.getBody().get("effective");
+        assertThat(num(setEffective, "wearCostCtPerKwh")).isEqualTo(2.5);
+        assertThat(num(setEffective, "socMinPct")).isEqualTo(10.0);
+        assertThat(num(setEffective, "socMaxPct")).isEqualTo(90.0);
+        assertThat(num(setEffective, "backupReserveSocPct")).isEqualTo(30.0);
+        // ...and they landed on the exact columns the OPTIMIZER reads
+        // (inputs.load_battery_sites), not a parallel store.
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'battery' AND wear_cost_ct_per_kwh = 2.5 "
+                + "AND soc_min_pct = 10 AND soc_max_pct = 90")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + siteId
+                + "' AND backup_reserve_soc_pct = 30")).isEqualTo(1);
+
+        // Full-representation PUT with nothing set CLEARS every override.
+        ResponseEntity<Map<String, Object>> cleared = rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of(), adminTenant), new ParameterizedTypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        Map<String, Object> clearedEffective = (Map<String, Object>) cleared.getBody().get("effective");
+        assertThat(num(clearedEffective, "wearCostCtPerKwh")).isEqualTo(4.0);
+        assertThat(num(clearedEffective, "socMinPct")).isEqualTo(5.0);
+        assertThat(clearedEffective.get("backupReserveSocPct")).isNull();
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId
+                + "' AND wear_cost_ct_per_kwh IS NULL AND soc_min_pct IS NULL")).isEqualTo(1);
+
+        // An inconsistent EFFECTIVE band is refused: one-sided min crossing the
+        // default max, and an explicit min >= max.
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("socMinPct", 96), adminTenant), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("socMinPct", 50, "socMaxPct", 40), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // A battery-less site refuses battery knobs (409) but takes the
+        // site-level reserve; its diagnostics are empty but well-formed.
+        String bareSite = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Ohne Speicher", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String bareUrl = url("/api/v1/admin/sites/" + bareSite + "/optimizer-config");
+        assertThat(rest.exchange(bareUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("wearCostCtPerKwh", 3.0), adminTenant), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        ResponseEntity<Map<String, Object>> bare = rest.exchange(bareUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("backupReserveSocPct", 25), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(bare.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(bare.getBody()).containsEntry("hasBattery", false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> bareEffective = (Map<String, Object>) bare.getBody().get("effective");
+        assertThat(bareEffective.get("wearCostCtPerKwh")).isNull();
+        assertThat(num(bareEffective, "backupReserveSocPct")).isEqualTo(25.0);
+        ResponseEntity<Map<String, Object>> noPlan = rest.exchange(
+                url("/api/v1/admin/sites/" + bareSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(noPlan.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat((List<?>) noPlan.getBody().get("slots")).isEmpty();
+        assertThat(noPlan.getBody().get("generatedAt")).isNull();
+
+        // Auth + tenancy: customer 403; admin without/with the wrong tenant 404.
+        String demo = token("demo", "demo");
+        assertThat(rest.exchange(configUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("backupReserveSocPct", 1), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(configUrl, HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("backupReserveSocPct", 1),
+                        withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     // ---- helpers ------------------------------------------------------------
+
+    private static double num(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        assertThat(v).as("numeric field '" + key + "'").isInstanceOf(Number.class);
+        return ((Number) v).doubleValue();
+    }
 
     private Map<String, Object> createTenant(String token, String name, String segment) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
