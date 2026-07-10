@@ -169,11 +169,14 @@ export function AppShell({
           )}
 
           {isAdmin && (
-            // Admin: the context chip is a real tenant SWITCHER - picking a
-            // tenant renders the customer pages for that tenant (RLS-scoped
-            // via the X-Tenant-Id header, see api.ts). Customers get no chip:
-            // their tenant is fixed by the login, a badge would add nothing.
+            // Admin: the context chip is a real tenant SWITCHER - the operator's
+            // core cross-tenant tool. Picking a tenant renders the customer
+            // pages for that tenant (RLS-scoped via the X-Tenant-Id header, see
+            // api.ts). The leading building icon + trailing caret make it
+            // unmistakably THE Mandanten control and clearly a dropdown.
+            // Customers get no chip: their tenant is fixed by the login.
             <span className="vp-context" title="Mandanten-Kontext wechseln">
+              <Icon name="building" size={16} className="vp-context-ic" />
               <select
                 aria-label="Mandanten-Kontext"
                 value={tenantOverride ?? ''}
@@ -186,6 +189,7 @@ export function AppShell({
                   </option>
                 ))}
               </select>
+              <Icon name="chevron-down" size={16} className="vp-context-caret" />
             </span>
           )}
 

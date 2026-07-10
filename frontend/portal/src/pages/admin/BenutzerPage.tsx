@@ -7,9 +7,10 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi, type AdminUser, type Tenant } from '../../admin/adminApi';
+import { AdminPageHead } from './AdminPageHead';
 import { CreateUserDrawer } from './CreateUserDrawer';
 import { RowMenu } from '../../components/RowMenu';
-import { ErrorState, TableSkeleton } from '../../components/States';
+import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 
 /**
  * Plattform → Benutzer: customer users per tenant, same list + add-drawer
@@ -103,41 +104,48 @@ export function BenutzerPage({
     }
   }
 
+  const headActions = (
+    <>
+      <select
+        aria-label="Mandant wählen"
+        className="vp-select"
+        style={{ width: 'auto' }}
+        value={tenantId ?? ''}
+        onChange={(e) => setTenantId(e.target.value || null)}
+      >
+        <option value="">Mandant wählen…</option>
+        {tenants.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+      <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)} disabled={!tenant}>
+        Benutzer anlegen
+      </Button>
+    </>
+  );
+
   return (
     <>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>Benutzer</h1>
-          <p>Kundenzugänge je Mandant verwalten.</p>
-        </div>
-        <div className="actions">
-          <select
-            aria-label="Mandant wählen"
-            className="vp-select"
-            style={{ width: 'auto' }}
-            value={tenantId ?? ''}
-            onChange={(e) => setTenantId(e.target.value || null)}
-          >
-            <option value="">Mandant wählen…</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)} disabled={!tenant}>
-            Benutzer anlegen
-          </Button>
-        </div>
-      </div>
+      <AdminPageHead
+        icon="users"
+        category="home"
+        title="Benutzer"
+        description="Kundenzugänge je Mandant verwalten."
+        actions={headActions}
+      />
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
 
       {!tenant ? (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">
-            Wählen Sie oben einen Mandanten, um dessen Benutzer zu sehen und anzulegen.
-          </p>
+          <EmptyState
+            icon="users"
+            category="home"
+            title="Mandant wählen"
+            description="Wählen Sie oben einen Mandanten, um dessen Benutzer zu sehen und anzulegen."
+          />
         </Card>
       ) : loadError ? (
         <ErrorState message={loadError} onRetry={() => void reload()} />
@@ -147,7 +155,17 @@ export function BenutzerPage({
         </Card>
       ) : users.length === 0 ? (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">Noch keine Benutzer für {tenant.name}. Legen Sie den ersten an.</p>
+          <EmptyState
+            icon="users"
+            category="home"
+            title={`Noch keine Benutzer für ${tenant.name}`}
+            description="Legen Sie den ersten Kundenzugang für diesen Mandanten an."
+            action={
+              <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
+                Benutzer anlegen
+              </Button>
+            }
+          />
         </Card>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>

@@ -3219,6 +3219,48 @@ button.vp-tech-card-h.toggle {
 .vp-erzeuger-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 /* ============================================================================
+   Portal-Admin (Plattform) shared chrome
+   The iconed page header (AdminPageHead), the Mandanten pulse strip, quiet
+   table sub-lines and a ghost destructive action - so the four admin pages
+   (Mandanten / Benutzer / Geräte-Registry / Optimizer) read as one operator
+   console. Tokens only.
+   ============================================================================ */
+/* AdminPageHead: IconTile + title/description, vertically centred (overrides the
+   customer .vp-page-head flex-start so the tile lines up with the heading). */
+.vp-admin-head {
+  align-items: center;
+}
+.vp-admin-head-main {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+/* The platform pulse: the KPI tiles stay compact so the strip is a calm glance,
+   not a hero. */
+.vp-admin-pulse {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+}
+/* Primary table cell that stacks a value over a quiet secondary line (the
+   Mandant name over its short id) - one column on desktop AND inside the
+   phone label/value row. */
+.vp-cell-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vp-cell-sub {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted);
+  margin-top: 2px;
+}
+/* Ghost button in the destructive tone (matches the RowMenu danger red) for a
+   single inline destructive action that does not warrant an overflow menu. */
+.vp-btn-danger {
+  color: var(--vp-industry-end);
+}
+
+/* ============================================================================
    Portal-Admin Optimizer page (pages/admin/OptimizerPage)
    Diagnostic + tune surface. Built on the shared tokens + chart palette; the
    verdict/waterfall/kpi blocks mirror the design mockup's look.

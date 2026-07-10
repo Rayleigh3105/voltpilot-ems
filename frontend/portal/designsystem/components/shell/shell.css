@@ -61,20 +61,39 @@
   padding: var(--vp-space-4) var(--vp-space-3) var(--vp-space-2);
 }
 
-/* ---------- Tenant context chip (top bar) ---------- */
+/* ---------- Tenant context chip / switcher (top bar) ----------
+   The admin's core cross-tenant tool: a real <select> wrapped in a pill with a
+   leading building icon and a trailing caret, so it reads unmistakably as THE
+   Mandanten switcher (and clearly a dropdown). */
 .vp-context {
   display: inline-flex;
   align-items: center;
   gap: var(--vp-space-2);
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-pill);
-  padding: 0.35rem 0.85rem;
+  padding: 0.35rem 0.75rem 0.35rem 0.85rem;
   background: var(--vp-surface);
   font-size: var(--vp-text-sm);
   color: var(--vp-text-dark);
   font-weight: 600;
-  max-width: 260px;
-  min-height: 36px;
+  max-width: 280px;
+  min-height: 38px;
+  transition: var(--vp-transition-fast);
+}
+.vp-context:hover {
+  border-color: var(--vp-gray);
+}
+.vp-context:focus-within {
+  border-color: var(--vp-primary);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-context .vp-context-ic {
+  color: var(--vp-primary-deep);
+  flex-shrink: 0;
+}
+.vp-context .vp-context-caret {
+  color: var(--vp-text-gray);
+  flex-shrink: 0;
 }
 .vp-context .who {
   overflow: hidden;
@@ -86,7 +105,8 @@
   border-color: transparent;
   color: var(--vp-primary-deep);
 }
-/* Admin variant: the chip wraps a real <select> (keyboard-accessible). */
+/* Admin variant: the chip wraps a real <select> (keyboard-accessible). The
+   native caret is hidden in favour of the trailing Icon caret above. */
 .vp-context select {
   border: none;
   background: transparent;
@@ -94,8 +114,12 @@
   color: inherit;
   outline: none;
   cursor: pointer;
+  min-width: 0;
+  flex: 1 1 auto;
   max-width: 210px;
   text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* ---------- Drawer (right side panel: add / detail) ---------- */

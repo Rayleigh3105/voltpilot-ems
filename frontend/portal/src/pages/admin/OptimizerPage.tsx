@@ -8,7 +8,8 @@ import { adminApi, type Tenant } from '../../admin/adminApi';
 import { fmtNum, plantKindLabel } from '../../format';
 import { ChartInsight } from '../../components/ChartExplain';
 import { InfoTip } from '../../components/InfoTip';
-import { ChartCardSkeleton, ErrorState, TextSkeleton } from '../../components/States';
+import { ChartCardSkeleton, EmptyState, ErrorState, TextSkeleton } from '../../components/States';
+import { AdminPageHead } from './AdminPageHead';
 import {
   optimizerApi,
   type OptimizerConfig,
@@ -132,16 +133,12 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
 
   return (
     <>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>Optimizer</h1>
-          <p>
-            Diagnose &amp; Konfiguration: verstehen, was der Optimizer für eine Anlage geplant
-            hat und warum - und die Stellhebel pro Anlage justieren. Änderungen wirken beim
-            nächsten Planungslauf.
-          </p>
-        </div>
-      </div>
+      <AdminPageHead
+        icon="settings"
+        category="primary"
+        title="Optimizer"
+        description="Diagnose & Konfiguration: verstehen, was der Optimizer für eine Anlage geplant hat und warum - und die Stellhebel pro Anlage justieren. Änderungen wirken beim nächsten Planungslauf."
+      />
 
       {/* ---- picker row -------------------------------------------------------- */}
       <Card className="vp-optim-pickers" style={{ marginBottom: 'var(--vp-space-4)' }}>
@@ -218,13 +215,21 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
 
       {!tenantId ? (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">
-            Wählen Sie oben einen Mandanten und eine Anlage, um die Optimizer-Diagnose zu öffnen.
-          </p>
+          <EmptyState
+            icon="settings"
+            category="primary"
+            title="Optimizer-Diagnose öffnen"
+            description="Wählen Sie oben einen Mandanten und eine Anlage, um die Optimizer-Diagnose zu öffnen."
+          />
         </Card>
       ) : !siteId ? (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">Wählen Sie eine Anlage dieses Mandanten.</p>
+          <EmptyState
+            icon="sun"
+            category="solar"
+            title="Anlage wählen"
+            description="Wählen Sie eine Anlage dieses Mandanten, um ihren Fahrplan und die Stellhebel zu sehen."
+          />
         </Card>
       ) : diagState === 'loading' && !diag ? (
         <Card>
@@ -234,10 +239,12 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
         <ErrorState message={diagError} onRetry={() => loadDiagnostics(runAt)} />
       ) : diag && diag.slots.length === 0 ? (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">
-            Für diese Anlage liegt noch kein Optimizer-Lauf vor. Sobald Preise und Prognosen für
-            den Planungshorizont vorhanden sind, erscheint hier der Fahrplan.
-          </p>
+          <EmptyState
+            icon="calendar"
+            category="dynamic"
+            title="Noch kein Fahrplan"
+            description="Für diese Anlage liegt noch kein Optimizer-Lauf vor. Sobald Preise und Prognosen für den Planungshorizont vorhanden sind, erscheint hier der Fahrplan."
+          />
         </Card>
       ) : diag ? (
         <div className="vp-optim-body">

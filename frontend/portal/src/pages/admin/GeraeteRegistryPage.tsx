@@ -8,7 +8,8 @@ import { Input } from '../../../designsystem/components/forms/Input';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError } from '../../api';
 import { adminApi, type ProvisionedDevice } from '../../admin/adminApi';
-import { ErrorState, TableSkeleton } from '../../components/States';
+import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
+import { AdminPageHead } from './AdminPageHead';
 import { normalizeDeviceIdInput } from '../../anlageFlow';
 import { deviceKindLabel } from '../../format';
 
@@ -62,22 +63,21 @@ export function GeraeteRegistryPage() {
     void reload();
   }, []);
 
+  const registerButton = (
+    <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
+      Geräte-ID registrieren
+    </Button>
+  );
+
   return (
     <>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>Geräte-Registry</h1>
-          <p>
-            Produzierte Geräte mit ihrer Aufkleber-ID registrieren - Kunden können nur
-            registrierte Geräte-IDs verbinden, Tippfehler werden sofort abgewiesen.
-          </p>
-        </div>
-        <div className="actions">
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
-            Geräte-ID registrieren
-          </Button>
-        </div>
-      </div>
+      <AdminPageHead
+        icon="list"
+        category="primary"
+        title="Geräte-Registry"
+        description="Produzierte Geräte mit ihrer Aufkleber-ID registrieren - Kunden können nur registrierte Geräte-IDs verbinden, Tippfehler werden sofort abgewiesen."
+        actions={registerButton}
+      />
 
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
 
@@ -89,9 +89,13 @@ export function GeraeteRegistryPage() {
         </Card>
       ) : devices.length === 0 ? (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">
-            Noch keine Geräte registriert. Registrieren Sie die erste Geräte-ID.
-          </p>
+          <EmptyState
+            icon="list"
+            category="primary"
+            title="Noch keine Geräte registriert"
+            description="Registrieren Sie die erste Aufkleber-ID (Format VP-XXXX-XXXX), damit Kunden ihr Gerät verbinden können."
+            action={registerButton}
+          />
         </Card>
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -130,6 +134,8 @@ export function GeraeteRegistryPage() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className={d.claimed ? undefined : 'vp-btn-danger'}
+                      iconLeft={<Icon name="trash" size={16} />}
                       onClick={() => remove(d)}
                       disabled={d.claimed}
                       title={
@@ -137,7 +143,6 @@ export function GeraeteRegistryPage() {
                           ? 'Verbundene Geräte-IDs können nicht entfernt werden - das Gerät muss zuerst vom Kundenkonto getrennt werden.'
                           : undefined
                       }
-                      style={d.claimed ? undefined : { color: 'var(--vp-industry-end)' }}
                     >
                       Entfernen
                     </Button>
