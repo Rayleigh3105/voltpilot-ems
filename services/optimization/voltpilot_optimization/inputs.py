@@ -31,7 +31,7 @@ from voltpilot_optimization.domain import (
     ensure_utc,
     horizon_slot_starts,
 )
-from voltpilot_optimization.fallback import persistence_forecast
+from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
 
 logger = logging.getLogger("voltpilot.optimization.inputs")
 
@@ -89,6 +89,11 @@ class BatterySite:
     ``netzladen_erlaubt`` is the per-site grid-charging switch
     (``site.netzladen_erlaubt``, DB default FALSE): False = EEG mode, the
     battery charges only from PV surplus; True = merchant mode (arbitrage).
+
+    ``latitude``/``longitude`` are the site's WGS84 coordinates
+    (``site.latitude``/``site.longitude``, nullable) - used to night-floor the
+    PV input so the persistence fallback can never fabricate night "solar" (see
+    :func:`voltpilot_optimization.fallback.night_floor_pv`).
     """
 
     tenant_id: UUID
@@ -97,6 +102,8 @@ class BatterySite:
     bidding_zone: str
     battery: BatteryParams
     netzladen_erlaubt: bool
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 def load_battery_sites(dsn: str) -> list[BatterySite]:
@@ -109,7 +116,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             """
             SELECT a.tenant_id, a.site_id, a.device_id, s.bidding_zone,
                    a.capacity_kwh, a.max_charge_kw, a.max_discharge_kw,
-                   a.roundtrip_efficiency_pct, s.netzladen_erlaubt
+                   a.roundtrip_efficiency_pct, s.netzladen_erlaubt,
+                   s.latitude, s.longitude
             FROM asset a
             JOIN site s ON s.id = a.site_id
             WHERE a.type = 'battery'
@@ -117,7 +125,10 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             """
         )
         for row in cur.fetchall():
-            (tenant_id, site_id, device_id, zone, cap, chg, dis, eff, netzladen) = row
+            (
+                tenant_id, site_id, device_id, zone, cap, chg, dis, eff,
+                netzladen, lat, lon,
+            ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
                     "site.skipped_missing_params",
@@ -139,6 +150,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                         ),
                     ),
                     netzladen_erlaubt=bool(netzladen),
+                    latitude=float(lat) if lat is not None else None,
+                    longitude=float(lon) if lon is not None else None,
                 )
             )
     return sites
@@ -173,8 +186,13 @@ def gather_inputs(
         )
     slot_starts = slot_starts[:covered]
 
-    load_kw = _forecast_or_fallback(dsn, site, "load", "load_kw", slot_starts, now)
-    pv_kw = _forecast_or_fallback(dsn, site, "pv", "pv_power_kw", slot_starts, now)
+    load_kw, _ = _forecast_or_fallback(
+        dsn, site, "load", "load_kw", slot_starts, now
+    )
+    pv_kw, pv_used_fallback = _forecast_or_fallback(
+        dsn, site, "pv", "pv_power_kw", slot_starts, now
+    )
+    pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
 
     soc_pct = _latest_measurement(dsn, site.site_id, "soc_pct")
     if soc_pct is None:
@@ -238,28 +256,90 @@ def _forecast_or_fallback(
     telemetry_column: str,
     slot_starts: list[datetime],
     now: datetime,
-) -> list[float]:
+) -> tuple[list[float], bool]:
     """The ACTIVE model's latest stored forecast run when it covers the
     horizon, else the persistence baseline over recent telemetry (never fails:
     with no telemetry at all it degrades to zeros, i.e. a pure price-arbitrage
-    plan). Shadow challengers' rows are never consumed here."""
+    plan). Shadow challengers' rows are never consumed here.
+
+    Returns ``(series, used_fallback)`` so the PV caller can flag a fallback-fed
+    night-floor distinctly (the collector<->optimizer 15-min race, §4a of the
+    scout report - visible in monitoring before it silently degrades plans)."""
     stored = _load_forecast(dsn, site.site_id, kind, active_model(kind))
     if all(s in stored for s in slot_starts):
-        return [stored[s] for s in slot_starts]
+        return [stored[s] for s in slot_starts], False
 
     history = _load_history(dsn, site.site_id, telemetry_column, now)
+    missing = sum(1 for s in slot_starts if s not in stored)
     logger.info(
         "forecast.fallback",
         extra={
             "context": {
                 "site_id": str(site.site_id),
                 "kind": kind,
+                "horizon_slots": len(slot_starts),
                 "stored_slots": len(stored),
+                "missing_slots": missing,
                 "history_points": len(history),
             }
         },
     )
-    return persistence_forecast(history, slot_starts)
+    return persistence_forecast(history, slot_starts), True
+
+
+def _night_floor_pv_input(
+    site: BatterySite,
+    slot_starts: list[datetime],
+    pv_kw: list[float],
+    used_fallback: bool,
+) -> list[float]:
+    """Apply the night-zero floor to the site's PV input and log any fabrication.
+
+    Defensive: applied to the FINAL PV series regardless of source (a night-zero
+    floor can never be physically wrong - the stored physical model is already 0
+    at night, so it is a no-op there), so no phantom night PV from any current or
+    future PV path reaches the MILP. See
+    :func:`voltpilot_optimization.fallback.night_floor_pv`.
+    """
+    floored, zeroed = night_floor_pv(
+        pv_kw, slot_starts, site.latitude, site.longitude
+    )
+    if site.latitude is None or site.longitude is None:
+        if used_fallback:
+            logger.warning(
+                "forecast.pv_fallback.no_coordinates",
+                extra={
+                    "context": {
+                        "site_id": str(site.site_id),
+                        "kind": "pv",
+                        "reason": (
+                            "PV persistence fallback fired but the site has no "
+                            "latitude/longitude - cannot night-floor; a daytime "
+                            "value may be smeared across night slots"
+                        ),
+                    }
+                },
+            )
+        return floored
+    if zeroed:
+        logger.warning(
+            "forecast.pv.night_floor_applied",
+            extra={
+                "context": {
+                    "site_id": str(site.site_id),
+                    "kind": "pv",
+                    "used_fallback": used_fallback,
+                    "night_slots_zeroed": len(zeroed),
+                    "max_fabricated_kw": round(max(pv_kw[i] for i in zeroed), 4),
+                    "reason": (
+                        "PV persistence fallback fabricated non-zero night PV"
+                        if used_fallback
+                        else "stored PV forecast reported non-zero night values"
+                    ),
+                }
+            },
+        )
+    return floored
 
 
 def _load_forecast(
