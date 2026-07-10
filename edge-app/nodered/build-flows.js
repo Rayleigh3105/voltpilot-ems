@@ -53,10 +53,11 @@ const routerFunc = [
   "// und waehlt GENAU EINEN Lesepfad. Synchron gehalten mit",
   "// edge-app/nodered/inverter-routing.js (route) + den Registerkarten aus",
   "// deye/deye-decode.js und modbus-tcp.js.",
-  "//   Ausgang 1: Deye Solarman-V5   (msg.deye)",
-  "//   Ausgang 2: generisches Modbus (msg.mb)",
-  "//   Ausgang 3: Fronius Solar API  (msg.fronius)",
-  "//   Ausgang 4: untaetig           (keine/unbekannte Auswahl)",
+  "//   Ausgang 1: Deye Solarman-V5       (msg.deye)",
+  "//   Ausgang 2: generisches Modbus     (msg.mb)",
+  "//   Ausgang 3: Fronius Solar API      (msg.fronius)",
+  "//   Ausgang 4: Fronius SunSpec-Modbus (msg.sunspec)",
+  "//   Ausgang 5: untaetig               (keine/unbekannte Auswahl)",
   "const DEYE_READS = {",
   "  string:    [{ start: 0x0050, count: 0x0002 }],",
   "  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],",
@@ -70,7 +71,7 @@ const routerFunc = [
   "const FRONIUS_FAMILIES = { fronius_solar_api: true };",
   "const FRONIUS_POWERFLOW_PATH = '/solar_api/v1/GetPowerFlowRealtimeData.fcgi';",
   "const num = (v, d) => { const n = typeof v === 'string' ? Number(v.trim()) : v; return (typeof n === 'number' && isFinite(n)) ? n : d; };",
-  "const idle = (reason) => { node.status({ fill: 'grey', shape: 'ring', text: reason }); msg.idle = reason; return [null, null, null, msg]; };",
+  "const idle = (reason) => { node.status({ fill: 'grey', shape: 'ring', text: reason }); msg.idle = reason; return [null, null, null, null, msg]; };",
   "const sel = flow.get('inverter_config');",
   "if (!sel) return idle('keine Auswahl');",
   "const conn = sel.connection || {};",
@@ -94,7 +95,7 @@ const routerFunc = [
   "  };",
   "  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => ({ start: r.start, count: r.count })), i: 0, blocks: [] };",
   "  node.status({ fill: 'blue', shape: 'dot', text: 'Deye ' + sel.family + ' -> Solarman-V5' });",
-  "  return [msg, null, null, null];",
+  "  return [msg, null, null, null, null];",
   "}",
   "if (sel.communication === 'modbus_tcp') {",
   "  const read = MODBUS_PROFILES[sel.family];",
@@ -102,7 +103,7 @@ const routerFunc = [
   "  const port = num(conn.port, 502);",
   "  msg.mb = { conn: { ip, port, unit_id: num(conn.unit_id, 1) }, profile: sel.family, read: { fc: read.fc, addr: read.addr, count: read.count }, target: ip + ':' + port };",
   "  node.status({ fill: 'blue', shape: 'dot', text: 'Modbus ' + sel.family + ' @ ' + ip + ':' + port });",
-  "  return [null, msg, null, null];",
+  "  return [null, msg, null, null, null];",
   "}",
   "if (sel.communication === 'fronius_solar_api') {",
   "  if (!FRONIUS_FAMILIES[sel.family]) return idle('unbekannte Fronius-Familie: ' + sel.family);",
@@ -111,7 +112,14 @@ const routerFunc = [
   "  const scheme = insecure ? 'https' : 'http';",
   "  msg.fronius = { url: scheme + '://' + ip + ':' + port + FRONIUS_POWERFLOW_PATH, scheme, insecure_tls: insecure, invert_grid_sign: !!conn.invert_grid_sign, target: ip + ':' + port };",
   "  node.status({ fill: 'blue', shape: 'dot', text: 'Fronius Solar API @ ' + ip + ':' + port });",
-  "  return [null, null, msg, null];",
+  "  return [null, null, msg, null, null];",
+  "}",
+  "if (sel.communication === 'fronius_sunspec') {",
+  "  const port = num(conn.port, 502);",
+  "  const modelType = (conn.model_type === 'float' || conn.model_type === 'int_sf') ? conn.model_type : 'auto';",
+  "  msg.sunspec = { conn: { ip, port, unit_id: num(conn.unit_id, 1), invert_grid_sign: !!conn.invert_grid_sign, model_type: modelType }, target: ip + ':' + port };",
+  "  node.status({ fill: 'blue', shape: 'dot', text: 'Fronius SunSpec @ ' + ip + ':' + port });",
+  "  return [null, null, null, msg, null];",
   "}",
   "return idle('unbekannte Kommunikationsmethode');",
 ].join('\n');
@@ -662,6 +670,40 @@ const embedModule = (file) =>
   fs.readFileSync(path.join(__dirname, file), 'utf8') +
   '\nreturn module.exports; })()';
 
+// The Fronius SunSpec-Modbus reader (real SunSpec discovery over Modbus TCP,
+// port 502) for a Fronius Eco 27.0-3-S and any SunSpec-conformant inverter whose
+// Solar API is unusable. It EMBEDS verbatim copies of sunspec/model-discovery.js
+// (the walk) + sunspec/sunspec-live.js (the socket reader + measurement decode) -
+// a Node-RED flow cannot `require` a repo file; flows-sync.test.js pins the
+// embed. READ-ONLY (FC3), idle-safe (unreachable / no SunSpec device -> null).
+const sunspecReadFunc = [
+  '// Fronius SunSpec-Modbus lesen: echte SunSpec-Modellerkennung ueber Modbus TCP',
+  '// (Port 502) - fuer Fronius-Wechselrichter, deren Solar API nicht funktioniert',
+  '// (z. B. Eco 27.0-3-S). Traegt EINGEBETTETE Kopien von sunspec/model-discovery.js',
+  '// + sunspec/sunspec-live.js (ein Node-RED-Flow kann keine Repo-Datei requiren;',
+  '// flows-sync.test.js pinnt die Einbettung). Der Walker entdeckt die Modell-',
+  '// Basisadresse LIVE und decodiert die Messwerte (Modell 111/112/113 float bzw.',
+  '// 101/102/103 int+SF) -> pv_power_kw. NUR LESEN (FC3), schreibt nie. Idle-sicher:',
+  '// unerreichbar / kein SunSpec-Geraet -> null (nie fabriziert). Ausgang 1:',
+  '// Messwerte fuer vp-telemetrie; Ausgang 2: true als Link-Lebenszeichen.',
+  'var __DISC = ' + embedModule('sunspec/model-discovery.js') + ';',
+  'var __SS = ' + embedModule('sunspec/sunspec-live.js') + ';',
+  "var net = global.get('net');",
+  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  'var s = msg.sunspec;',
+  'if (!s || !s.conn || !s.conn.ip) return null;',
+  'var conn = s.conn;',
+  'var read = __SS.makeSunspecReader({ net: net, discovery: __DISC });',
+  'return read({ ip: conn.ip, port: conn.port, unitId: conn.unit_id, invertGridSign: !!conn.invert_grid_sign, modelType: conn.model_type }).then(function (out) {',
+  "  if (!out || !out.reading) { node.status({ fill: 'yellow', shape: 'ring', text: 'keine SunSpec-Messwerte' }); return null; }",
+  '  var reading = Object.assign({ ts: new Date().toISOString() }, out.reading);',
+  "  var pv = reading.pv_power_kw !== undefined ? reading.pv_power_kw.toFixed(1) : '?';",
+  "  var st = (out.meta && out.meta.stLabel) ? (' (' + out.meta.stLabel + ')') : '';",
+  "  node.status({ fill: 'green', shape: 'dot', text: 'pv ' + pv + ' kW' + st });",
+  '  return [{ payload: reading }, { payload: true }];',
+  "}).catch(function () { node.status({ fill: 'red', shape: 'ring', text: 'SunSpec-Lesefehler' }); return null; });",
+].join('\n');
+
 const testReadFunc = [
   '// Verbindung testen (einmal lesen): liest die noch nicht gespeicherte Auswahl',
   '// EINMAL ueber denselben route()+decode wie der Selbstverdrahtungs-Poll und',
@@ -674,6 +716,8 @@ const testReadFunc = [
   'var __DEYE = ' + embedModule('deye/deye-decode.js') + ';',
   'var __MB = ' + embedModule('modbus-tcp.js') + ';',
   'var __FR = ' + embedModule('fronius/solar-api.js') + ';',
+  'var __DISC = ' + embedModule('sunspec/model-discovery.js') + ';',
+  'var __SS = ' + embedModule('sunspec/sunspec-live.js') + ';',
   'var __TR = ' + embedModule('test-read.js') + ';',
   "var net = global.get('net');",
   "var http = global.get('http');",
@@ -681,7 +725,7 @@ const testReadFunc = [
   "if (!net || !http || !https) { node.status({ fill: 'red', shape: 'ring', text: 'net/http fehlt (settings.js)' }); node.error('functionGlobalContext.net/http/https in settings.js setzen', msg); return null; }",
   'var req = msg.payload;',
   "if (!req || typeof req.request_id !== 'string' || !req.request_id) { node.status({ fill: 'yellow', shape: 'ring', text: 'ungueltige Testanfrage' }); return null; }",
-  'var readOnce = __TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, net: net, http: http, https: https });',
+  'var readOnce = __TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, net: net, http: http, https: https });',
   "node.status({ fill: 'blue', shape: 'dot', text: 'pruefe ' + (req.brand || req.communication || '?') });",
   'return readOnce(req, req.role).then(function (res) {',
   "  res = res || { ok: false, error_code: 'invalid_response' };",
@@ -750,6 +794,9 @@ const autoNodes = [
       '  - Fronius (communication=fronius_solar_api) -> EIN HTTP-GET auf die lokale',
       '    Solar API (GetPowerFlowRealtimeData.fcgi, v1) - wie Home Assistant',
       '    (fronius/solar-api.js). Nur lesen, kein Modbus.',
+      '  - Fronius (communication=fronius_sunspec) -> echte SunSpec-Modellerkennung',
+      '    ueber Modbus TCP (Port 502) fuer Geraete ohne Solar API, z. B. Eco',
+      '    27.0-3-S (sunspec/model-discovery.js + sunspec/sunspec-live.js). Nur lesen.',
       '  - alles andere (generic_modbus / modbus_tcp) -> Modbus-TCP ueber Port 502',
       '    mit dem gewaehlten Profil (modbus-tcp.js).',
       '',
@@ -775,7 +822,7 @@ const autoNodes = [
     props: [{ p: 'payload' }], repeat: '5', crontab: '', once: true, onceDelay: '3',
     topic: '', payload: '', payloadType: 'date', x: 130, y: 180, wires: [['auto-router']],
   },
-  Object.assign(fn('auto-router', 'Router / Leseplan', routerFunc, 4, [['auto-solarman'], ['auto-modbus'], ['auto-fronius'], ['auto-idle']]), { x: 320, y: 180 }),
+  Object.assign(fn('auto-router', 'Router / Leseplan', routerFunc, 5, [['auto-solarman'], ['auto-modbus'], ['auto-fronius'], ['auto-sunspec'], ['auto-idle']]), { x: 320, y: 180 }),
 
   // Deye Solarman-V5 branch (verbatim reader + decoder)
   Object.assign(fn('auto-solarman', 'Solarman-V5 lesen (TCP 8899)', solarmanFunc, 1, [['auto-deye-decode']]), { x: 600, y: 140 }),
@@ -789,8 +836,12 @@ const autoNodes = [
   Object.assign(fn('auto-fronius', 'Fronius Solar API lesen (HTTP)', froniusReadFunc, 1, [['auto-fronius-decode']]), { x: 600, y: 400 }),
   Object.assign(fn('auto-fronius-decode', 'Fronius PowerFlow -> Messwerte', froniusDecodeFunc, 2, [['auto-telemetrie'], ['auto-status', 'auto-linkwatch']]), { x: 600, y: 460 }),
 
+  // Fronius SunSpec-Modbus branch (real SunSpec discovery walk + measurement decode,
+  // one node: read+decode+publish, embeds model-discovery.js + sunspec-live.js)
+  Object.assign(fn('auto-sunspec', 'Fronius SunSpec lesen (Modbus TCP)', sunspecReadFunc, 2, [['auto-telemetrie'], ['auto-status', 'auto-linkwatch']]), { x: 600, y: 520 }),
+
   // Idle branch (status only, no publish)
-  Object.assign(fn('auto-idle', 'untaetig (Statusanzeige)', idleFunc, 1, [[]]), { x: 600, y: 540 }),
+  Object.assign(fn('auto-idle', 'untaetig (Statusanzeige)', idleFunc, 1, [[]]), { x: 600, y: 580 }),
 
   // Shared sinks
   { id: 'auto-telemetrie', type: 'vp-telemetrie', z: TAB, name: 'an VoltPilot Core', core: 'cfg-vp-core', x: 900, y: 180, wires: [] },

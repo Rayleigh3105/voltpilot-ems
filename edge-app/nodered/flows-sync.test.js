@@ -104,18 +104,42 @@ test('flow router matches inverter-routing.route() for fronius_solar_api', () =>
   assert.strictEqual(outMsg.fronius.scheme, expected.scheme);
   assert.strictEqual(outMsg.fronius.insecure_tls, expected.connection.insecure_tls);
   assert.strictEqual(outMsg.fronius.invert_grid_sign, expected.connection.invert_grid_sign);
-  // idle (output 4) and the other branches must be null on this path.
+  // the other branches (incl. sunspec output 4 + idle output 5) must be null here.
   assert.strictEqual(ret[0], null);
   assert.strictEqual(ret[1], null);
   assert.strictEqual(ret[3], null);
+  assert.strictEqual(ret[4], null);
 });
 
-test('flow router routes to idle (output 4) with no selection', () => {
+test('flow router matches inverter-routing.route() for fronius_sunspec', () => {
+  const sel = {
+    schema_version: '1.0', brand: 'fronius_sunspec', label: 'Fronius Eco', family: 'sunspec_live',
+    communication: 'fronius_sunspec',
+    connection: { ip: '192.168.210.40', port: 502, unit_id: 1, model_type: 'float', invert_grid_sign: false },
+  };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow: { inverter_config: sel } });
+  const outMsg = ret[3]; // output 4 carries msg.sunspec
+  const expected = routing.route(routing.parseConfig(sel));
+  assert.strictEqual(outMsg.sunspec.target, expected.target);
+  assert.strictEqual(outMsg.sunspec.conn.ip, expected.connection.ip);
+  assert.strictEqual(outMsg.sunspec.conn.port, expected.connection.port);
+  assert.strictEqual(outMsg.sunspec.conn.unit_id, expected.connection.unit_id);
+  assert.strictEqual(outMsg.sunspec.conn.model_type, expected.connection.model_type);
+  assert.strictEqual(outMsg.sunspec.conn.invert_grid_sign, expected.connection.invert_grid_sign);
+  // the other branches must be null on this path.
+  assert.strictEqual(ret[0], null);
+  assert.strictEqual(ret[1], null);
+  assert.strictEqual(ret[2], null);
+  assert.strictEqual(ret[4], null);
+});
+
+test('flow router routes to idle (output 5) with no selection', () => {
   const { ret } = runFunctionNode(byId['auto-router'].func, { flow: {} });
   assert.strictEqual(ret[0], null);
   assert.strictEqual(ret[1], null);
   assert.strictEqual(ret[2], null);
-  assert.ok(ret[3] && ret[3].idle);
+  assert.strictEqual(ret[3], null);
+  assert.ok(ret[4] && ret[4].idle);
 });
 
 // The "Deye-Register -> Messwerte" node carries a synced copy of deye-decode.js
@@ -354,6 +378,8 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     'deye/deye-decode.js',
     'modbus-tcp.js',
     'fronius/solar-api.js',
+    'sunspec/model-discovery.js',
+    'sunspec/sunspec-live.js',
   ];
   for (const rel of embeds) {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
@@ -363,5 +389,21 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     );
   }
   // And it wires the embedded modules into makeReadOnce the intended way.
-  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5'));
+  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC'));
+});
+
+// The "Fronius SunSpec lesen" node (auto-sunspec) carries EMBEDDED verbatim
+// copies of sunspec/model-discovery.js + sunspec/sunspec-live.js (a Node-RED flow
+// cannot `require` a repo file). This is the drift guard: editing either module
+// without re-running build-flows.js fails here instead of shipping a stale reader.
+test('flow auto-sunspec embeds the current model-discovery.js + sunspec-live.js sources', () => {
+  const func = byId['auto-sunspec'].func;
+  for (const rel of ['sunspec/model-discovery.js', 'sunspec/sunspec-live.js']) {
+    const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
+    assert.ok(
+      func.includes(src),
+      'flows.json auto-sunspec node is out of sync with ' + rel + ' - re-run build-flows.js',
+    );
+  }
+  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC })'));
 });

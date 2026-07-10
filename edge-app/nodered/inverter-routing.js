@@ -42,10 +42,22 @@ const SCHEMA_VERSION = '1.0';
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
 const COMM_FRONIUS = 'fronius_solar_api';
+// Real SunSpec discovery over Modbus TCP (port 502): a Fronius Eco (and any
+// SunSpec-conformant inverter) whose Solar API is unusable is read this way. The
+// read path is the live model-discovery walk + measurement decode
+// (sunspec/sunspec-live.js), NOT the fake fixed-block modbus_tcp `sunspec`
+// profile. Read-only; control (Model 123) is a separate bench-gated increment.
+const COMM_FRONIUS_SUNSPEC = 'fronius_sunspec';
 
 const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
 const DEFAULT_FRONIUS_PORT = 80;
+const DEFAULT_FRONIUS_SUNSPEC_PORT = 502;
+
+// The one register-profile id the SunSpec-live read path uses (mirrors how the
+// Deye family / Modbus profile names the decode). Discovery is dynamic, so there
+// is no fixed register block - the profile just names the adapter.
+const SUNSPEC_LIVE_PROFILE = 'sunspec_live';
 
 // Deye register families that carry measurement registers (the ones the read
 // plan can serve). Mirrors deye-decode.FAMILIES keys.
@@ -84,7 +96,8 @@ function parseConfig(input) {
   if (obj.schema_version !== SCHEMA_VERSION) return null;
 
   const communication = typeof obj.communication === 'string' ? obj.communication : '';
-  if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS && communication !== COMM_FRONIUS) return null;
+  if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS &&
+      communication !== COMM_FRONIUS && communication !== COMM_FRONIUS_SUNSPEC) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -206,6 +219,31 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_FRONIUS_SUNSPEC) {
+    // Real SunSpec discovery over Modbus TCP. There is no fixed register block
+    // (addresses are discovered live per device/firmware, report §2.1), so the
+    // plan carries the connection + an optional model-type hint; the reader runs
+    // the sunspec/sunspec-live.js walk + decode. unit_id is a first-class field
+    // (default 1 on TCP; the two-Eco / meter multi-unit modelling is a later
+    // increment).
+    const port = num(conn.port, DEFAULT_FRONIUS_SUNSPEC_PORT);
+    const modelType = conn.model_type === 'float' || conn.model_type === 'int_sf' ? conn.model_type : 'auto';
+    return {
+      adapter: 'sunspec_live',
+      profile: SUNSPEC_LIVE_PROFILE,
+      target: ip + ':' + port,
+      connection: {
+        ip,
+        port,
+        unit_id: num(conn.unit_id, 1),
+        // Escape hatch, default off: a meter's SunSpec W sign vs VoltPilot's
+        // +import/-export must be VERIFIED on device (no meter on the Eco site).
+        invert_grid_sign: !!conn.invert_grid_sign,
+        model_type: modelType,
+      },
+    };
+  }
+
   return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
 }
 
@@ -214,9 +252,12 @@ module.exports = {
   COMM_SOLARMAN,
   COMM_MODBUS,
   COMM_FRONIUS,
+  COMM_FRONIUS_SUNSPEC,
+  SUNSPEC_LIVE_PROFILE,
   DEFAULT_SOLARMAN_PORT,
   DEFAULT_MODBUS_PORT,
   DEFAULT_FRONIUS_PORT,
+  DEFAULT_FRONIUS_SUNSPEC_PORT,
   parseConfig,
   route,
 };
