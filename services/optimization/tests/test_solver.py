@@ -151,15 +151,18 @@ def test_soc_dynamics_account_for_efficiency():
 
 
 @needs_highs
-def test_small_spread_below_roundtrip_loss_stays_idle():
-    # Arbitrage pays only if price ratio beats 1/eta^2 (= 1/0.92 ~ 1.087).
-    # A 5% spread must not trigger cycling; a 30% spread must.
+def test_small_spread_below_roundtrip_loss_and_wear_stays_idle():
+    # Arbitrage pays only if the spread beats round-trip losses AND the priced
+    # battery wear (P2): eta^2 * p_d - p_c > wear * 5 * (1 + eta^2), which at
+    # the 4 ct/kWh default and eta^2 = 0.92 is ~38.4 EUR/MWh. A 5% spread must
+    # not trigger cycling; a 70% spread must. (The dedicated wear tests in
+    # test_wear.py pin the threshold band itself.)
     n = 96
     small = [100.0] * (n // 2) + [105.0] * (n - n // 2)
     plan = solve(make_input(small))
     assert all(abs(s.battery_kw) < 1e-6 for s in plan.slots)
 
-    big = [100.0] * (n // 2) + [130.0] * (n - n // 2)
+    big = [100.0] * (n // 2) + [170.0] * (n - n // 2)
     plan = solve(make_input(big))
     assert any(s.battery_kw > 1e-3 for s in plan.slots)
 

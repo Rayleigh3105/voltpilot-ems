@@ -9,7 +9,12 @@ consumes what other layers produced:
   fresh run covers the horizon, else the persistence-baseline **fallback**
   computed from recent telemetry by REUSING ``voltpilot_forecast`` (see
   :mod:`voltpilot_optimization.fallback` - no duplicated forecasting logic),
-- current SoC and the observed §14a ``grid_limit_kw`` from latest telemetry.
+- current SoC and the observed §14a ``grid_limit_kw`` from latest telemetry,
+  each behind a FRESHNESS window (:mod:`voltpilot_optimization.config`): a
+  stale §14a reading means "no active limit" (a dimming event is temporary and
+  re-asserts itself in live telemetry - one old reading must never cap every
+  future plan), a stale SoC falls back to the neutral default instead of
+  silently planning from yesterday's value.
 
 Reads run as the trusted backend role (cross-tenant, like the weather
 collector); psycopg is a lazy import behind the optional ``db`` extra.
@@ -23,6 +28,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from voltpilot_optimization.config import (
+    default_wear_cost_ct_per_kwh,
+    grid_limit_max_age,
+    soc_max_age,
+)
 from voltpilot_optimization.domain import (
     BatteryParams,
     OptimizationInput,
@@ -110,6 +120,9 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
     """Every site with a battery asset, with full parameters resolved."""
     import psycopg  # lazy: optional [db] extra
 
+    # Platform default for assets without a per-asset wear override (NULL
+    # column); resolved once per cycle so an env change needs only a restart.
+    default_wear_ct = default_wear_cost_ct_per_kwh()
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -117,7 +130,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
             SELECT a.tenant_id, a.site_id, a.device_id, s.bidding_zone,
                    a.capacity_kwh, a.max_charge_kw, a.max_discharge_kw,
                    a.roundtrip_efficiency_pct, s.netzladen_erlaubt,
-                   s.latitude, s.longitude
+                   s.latitude, s.longitude, a.wear_cost_ct_per_kwh
             FROM asset a
             JOIN site s ON s.id = a.site_id
             WHERE a.type = 'battery'
@@ -127,7 +140,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
         for row in cur.fetchall():
             (
                 tenant_id, site_id, device_id, zone, cap, chg, dis, eff,
-                netzladen, lat, lon,
+                netzladen, lat, lon, wear_ct,
             ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
@@ -147,6 +160,10 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                         max_discharge_kw=float(dis),
                         roundtrip_efficiency=(
                             float(eff) / 100.0 if eff is not None else 0.92
+                        ),
+                        wear_cost_ct_per_kwh=(
+                            float(wear_ct) if wear_ct is not None
+                            else default_wear_ct
                         ),
                     ),
                     netzladen_erlaubt=bool(netzladen),
@@ -194,10 +211,17 @@ def gather_inputs(
     )
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
 
-    soc_pct = _latest_measurement(dsn, site.site_id, "soc_pct")
+    # Both live readings sit behind a freshness window (F4/P4): a stale
+    # section-14a reading must NOT become a standing envelope over every future
+    # plan, and a stale SoC must not plan from yesterday's value.
+    soc_pct = _fresh_measurement(
+        dsn, site.site_id, "soc_pct", now, soc_max_age()
+    )
     if soc_pct is None:
         soc_pct = DEFAULT_SOC_PCT
-    grid_limit = _latest_measurement(dsn, site.site_id, "grid_limit_kw")
+    grid_limit = _fresh_measurement(
+        dsn, site.site_id, "grid_limit_kw", now, grid_limit_max_age()
+    )
 
     return OptimizationInput(
         tenant_id=site.tenant_id,
@@ -386,18 +410,49 @@ def _load_history(
         return [(ensure_utc(ts), float(v)) for ts, v in cur.fetchall()]
 
 
-def _latest_measurement(dsn: str, site_id: UUID, column: str):
+def _fresh_measurement(
+    dsn: str,
+    site_id: UUID,
+    column: str,
+    now: datetime,
+    max_age: timedelta,
+) -> float | None:
+    """The newest telemetry value for ``column`` IF it is fresh, else ``None``.
+
+    Deliberately reads the newest row WITHOUT a time bound and applies the
+    window here, so a discarded stale reading is FLAGGED with its age (F4: the
+    silent-poisoning failure mode was invisible) instead of just vanishing
+    from the query result.
+    """
     import psycopg  # lazy: optional [db] extra
 
     assert column in ("soc_pct", "grid_limit_kw")  # fixed set; never user input
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             f"""
-            SELECT {column} FROM telemetry
+            SELECT time, {column} FROM telemetry
             WHERE site_id = %s AND {column} IS NOT NULL
             ORDER BY time DESC LIMIT 1
             """,
             (site_id,),
         )
         row = cur.fetchone()
-        return row[0] if row else None
+    if row is None:
+        return None
+    observed_at, val = ensure_utc(row[0]), float(row[1])
+    age = now - observed_at
+    if age > max_age:
+        logger.warning(
+            "telemetry.stale_reading_ignored",
+            extra={
+                "context": {
+                    "site_id": str(site_id),
+                    "column": column,
+                    "value": val,
+                    "age_minutes": round(age.total_seconds() / 60.0, 1),
+                    "max_age_minutes": round(max_age.total_seconds() / 60.0, 1),
+                }
+            },
+        )
+        return None
+    return val

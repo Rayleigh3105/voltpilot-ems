@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from voltpilot_optimization.config import DEFAULT_WEAR_COST_CT_PER_KWH
+
 SLOT_MINUTES = 15
 SLOTS_24H = 96
 
@@ -39,6 +41,12 @@ class BatteryParams:
 
     ``roundtrip_efficiency`` is the AC round-trip fraction (0..1]; the solver
     splits it symmetrically (sqrt each way) between charge and discharge.
+
+    ``wear_cost_ct_per_kwh`` prices degradation per kWh CYCLED (one kWh charged
+    and discharged again, AC side) - resolved by ``load_battery_sites`` from the
+    nullable ``asset.wear_cost_ct_per_kwh`` override, falling back to the
+    platform default (env ``OPTIMIZER_WEAR_COST_CT_PER_KWH``); derivation in
+    :mod:`voltpilot_optimization.config`. 0 disables wear pricing.
     """
 
     capacity_kwh: float
@@ -47,6 +55,7 @@ class BatteryParams:
     roundtrip_efficiency: float = 0.92
     soc_min_fraction: float = DEFAULT_SOC_MIN_FRACTION
     soc_max_fraction: float = DEFAULT_SOC_MAX_FRACTION
+    wear_cost_ct_per_kwh: float = DEFAULT_WEAR_COST_CT_PER_KWH
 
     def __post_init__(self) -> None:
         if self.capacity_kwh <= 0:
@@ -57,11 +66,25 @@ class BatteryParams:
             raise ValueError("roundtrip_efficiency must be within (0, 1]")
         if not 0.0 <= self.soc_min_fraction < self.soc_max_fraction <= 1.0:
             raise ValueError("SoC fractions must satisfy 0 <= min < max <= 1")
+        if not (
+            math.isfinite(self.wear_cost_ct_per_kwh)
+            and self.wear_cost_ct_per_kwh >= 0.0
+        ):
+            raise ValueError("wear_cost_ct_per_kwh must be finite and >= 0")
 
     @property
     def one_way_efficiency(self) -> float:
         """Symmetric per-direction efficiency: sqrt of the round trip."""
         return math.sqrt(self.roundtrip_efficiency)
+
+    @property
+    def wear_cost_eur_per_kwh_each_way(self) -> float:
+        """Wear cost per AC-side kWh of throughput in ONE direction.
+
+        Half the per-cycle rate, so a full round trip of one kWh (one in, one
+        out) costs exactly ``wear_cost_ct_per_kwh``; a partial move (charged
+        within the horizon, not yet discharged) is charged half."""
+        return self.wear_cost_ct_per_kwh / 100.0 / 2.0
 
     @property
     def soc_min_kwh(self) -> float:
@@ -152,6 +175,13 @@ class PlanSlot:
     # Planned PV curtailment (kW discarded, 0 <= curtail_kw <= pv_kw). Non-zero
     # only when feeding in would COST money (negative prices) - see solver.py.
     curtail_kw: float = 0.0
+    # Priced battery degradation of this slot's throughput (EUR, >= 0) - the
+    # wear the plan spends to earn its grid savings. NOT included in cost_eur
+    # (which stays the projected grid cashflow): the honest slot economics are
+    # baseline_cost_eur - cost_eur - wear_cost_eur. Persisted alongside the
+    # other economics (schedule.wear_cost_eur); consumers (portal/admin "why"
+    # view) read it in a later stage.
+    wear_cost_eur: float = 0.0
 
     @property
     def pv_limit_kw(self) -> float | None:
@@ -185,8 +215,15 @@ class SchedulePlan:
         return sum(s.baseline_cost_eur for s in self.slots)
 
     @property
+    def wear_cost_eur(self) -> float:
+        """Priced battery degradation the plan spends over the horizon."""
+        return sum(s.wear_cost_eur for s in self.slots)
+
+    @property
     def savings_eur(self) -> float:
-        """Projected savings vs. the no-battery baseline over the horizon."""
+        """Projected GRID savings vs. the no-battery baseline over the horizon
+        (gross of battery wear - subtract :attr:`wear_cost_eur` for the honest
+        net figure; the persisted per-slot columns carry both)."""
         return self.baseline_cost_eur - self.cost_eur
 
     def soc_pct(self, slot: PlanSlot) -> float:
