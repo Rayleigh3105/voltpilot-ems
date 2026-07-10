@@ -33,6 +33,11 @@ const (
 	CommSolarmanV5      = "solarman_v5"       // Deye WiFi datalogger, Modbus-RTU over TCP 8899
 	CommModbusTCP       = "modbus_tcp"        // generic Modbus/SunSpec over TCP 502
 	CommFroniusSolarAPI = "fronius_solar_api" // Fronius Solar API (local HTTP/JSON), like HA
+	// CommFroniusSunSpec reads a Fronius inverter over real SunSpec Modbus TCP
+	// (dynamic model discovery, port 502) - the path for a Fronius Eco 27.0-3-S
+	// whose Solar API does not work. Read-only (telemetry); control is a separate
+	// bench-gated increment. See nodered/sunspec/sunspec-live.js + FRONIUS.md.
+	CommFroniusSunSpec = "fronius_sunspec"
 )
 
 // Brand ids.
@@ -40,13 +45,18 @@ const (
 	BrandDeye          = "deye"
 	BrandGenericModbus = "generic_modbus"
 	BrandFronius       = "fronius"
+	// BrandFroniusSunSpec is a separate catalog entry (not a second communication
+	// on BrandFronius) so the per-brand-fixed-communication model stays unchanged:
+	// "Fronius" = Solar API (HTTP), "Fronius (Modbus / SunSpec)" = SunSpec Modbus.
+	BrandFroniusSunSpec = "fronius_sunspec"
 )
 
 // Default ports per communication.
 const (
-	defaultSolarmanPort = 8899
-	defaultModbusPort   = 502
-	defaultFroniusPort  = 80 // Fronius Solar API (HTTP); GEN24 self-signed HTTPS uses insecure_tls
+	defaultSolarmanPort       = 8899
+	defaultModbusPort         = 502
+	defaultFroniusPort        = 80 // Fronius Solar API (HTTP); GEN24 self-signed HTTPS uses insecure_tls
+	defaultFroniusSunSpecPort = 502
 )
 
 // ValidationError carries a customer-facing German message; the web layer maps
@@ -196,6 +206,11 @@ const (
 	// returns PV+grid+load+battery+SoC in one call), so there is no per-model
 	// register map to pick - one family covers every Fronius line.
 	FamFroniusSolarAPI = "fronius_solar_api"
+	// FamSunSpecLive is the register profile for the real SunSpec-live read path
+	// (dynamic model discovery). Addresses are discovered per device, so - like
+	// the Solar API - there is one family, not a per-model register map. The
+	// Node-RED routing keys on communication=fronius_sunspec + this profile.
+	FamSunSpecLive = "sunspec_live"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -280,6 +295,53 @@ func froniusModels() []Model {
 	}
 }
 
+// froniusSunspecFields describes the Fronius SunSpec-Modbus (TCP 502) read
+// connection: host + Modbus unit id + an optional model-type hint (the walker
+// auto-detects float vs int+SF, so this is advisory) + the grid-sign escape
+// hatch. No serial, no auth. unit_id is a first-class field: on TCP the inverter
+// is typically unit 1; a second inverter / a Smart Meter may sit at another unit
+// id (that multi-unit modelling is a later increment - here it is configurable).
+func froniusSunspecFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse des Wechselrichters", Type: "text", Required: true,
+			Help: "Die IP des Fronius-Wechselrichters bzw. Datamanagers im lokalen Netz (z. B. 192.168.210.40). Modbus TCP muss in der Weboberfläche des Wechselrichters aktiviert sein (\"Wechselrichter-Steuerung über Modbus\")."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultFroniusSunSpecPort,
+			Help: "Modbus-TCP-Port, üblicherweise 502."},
+		{Key: "unit_id", Label: "Modbus-Unit-ID", Type: "number", Default: 1,
+			Help: "Die Modbus-Adresse des Wechselrichters, per TCP meist 1."},
+		{Key: "model_type", Label: "SunSpec-Modelltyp", Type: "select", Default: "auto",
+			Help: "Wird normalerweise automatisch erkannt. Nur ändern, wenn die automatische Erkennung nicht greift.",
+			Options: []Opt{
+				{Value: "auto", Label: "Automatisch (empfohlen)"},
+				{Value: "float", Label: "Float (111/112/113)"},
+				{Value: "int_sf", Label: "Integer + Skalierung (101/102/103)"},
+			}},
+		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
+			Help: "Nur relevant mit separatem Zähler; auf echtem Gerät prüfen."},
+	}
+}
+
+// froniusSunspecFamilies is the single decode profile (discovery is dynamic).
+func froniusSunspecFamilies() []Family {
+	return []Family{
+		{ID: FamSunSpecLive, Label: "SunSpec (Live-Messwerte)", Note: "Dynamische SunSpec-Modellerkennung über Modbus TCP"},
+	}
+}
+
+// froniusSunspecModels offers the concrete Fronius Modbus/SunSpec inverters. The
+// Eco 27.0-3-S carries RatedKw=27 so the physical-envelope guard engages; a
+// generic entry (no rating) covers other SunSpec-conformant Fronius inverters.
+func froniusSunspecModels() []Model {
+	return []Model{
+		{ID: "fronius-eco-27-3-s", Label: "Fronius Eco 27.0-3-S", Family: FamSunSpecLive, RatedKw: 27,
+			Note: "27 kW · 3-phasig · String (nur Erzeugung) · SunSpec Modbus TCP"},
+		{ID: "fronius-eco-25-3-s", Label: "Fronius Eco 25.0-3-S", Family: FamSunSpecLive, RatedKw: 25,
+			Note: "25 kW · 3-phasig · String (nur Erzeugung) · SunSpec Modbus TCP"},
+		{ID: FamSunSpecLive, Label: "Fronius (SunSpec, generisch)", Family: FamSunSpecLive,
+			Note: "Anderes SunSpec-fähiges Fronius-Modell (Nennleistung unbekannt)"},
+	}
+}
+
 // DefaultCatalog returns the built-in option tree.
 func DefaultCatalog() Catalog {
 	return Catalog{
@@ -318,6 +380,16 @@ func DefaultCatalog() Catalog {
 				Models:        froniusModels(),
 				Families:      froniusFamilies(),
 				Fields:        froniusFields(),
+			},
+			{
+				ID:            BrandFroniusSunSpec,
+				Label:         "Fronius (Modbus / SunSpec)",
+				Communication: CommFroniusSunSpec,
+				CommLabel:     "SunSpec Modbus TCP (TCP 502)",
+				Note:          "Für Fronius-Wechselrichter, deren Solar API nicht funktioniert (z. B. Eco 27.0-3-S): Auslesen über SunSpec Modbus TCP. Modbus muss in der Weboberfläche des Wechselrichters aktiviert sein.",
+				Models:        froniusSunspecModels(),
+				Families:      froniusSunspecFamilies(),
+				Fields:        froniusSunspecFields(),
 			},
 		},
 	}
@@ -399,6 +471,11 @@ type Connection struct {
 
 	// fronius_solar_api (InvertGridSign above is shared as the sign escape hatch)
 	InsecureTLS bool `json:"insecure_tls,omitempty"`
+
+	// fronius_sunspec (SunSpec-live over Modbus; reuses UnitID + InvertGridSign).
+	// ModelType is an optional hint ("auto"|"float"|"int_sf"); the walker
+	// auto-detects, so "auto" is the default.
+	ModelType string `json:"model_type,omitempty"`
 }
 
 // SelectionRequest is what the web form POSTs: the client picks brand + the
@@ -503,7 +580,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 			return Selection{}, invalid("Die Leistungsskalierung muss automatisch (0), 1 oder 10 sein.")
 		}
 		// fields of the other transports are not part of this one.
-		conn.UnitID, conn.Profile, conn.InsecureTLS = 0, "", false
+		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 	case CommModbusTCP:
 		if conn.Port == 0 {
 			conn.Port = defaultModbusPort
@@ -516,7 +593,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		}
 		conn.Profile = registerFamily // the register-map family IS the Modbus/SunSpec profile
 		// fields of the other transports are not part of this one.
-		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS = "", 0, false, 0, false
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, false, 0, false, ""
 	case CommFroniusSolarAPI:
 		// The Solar API (HTTP/JSON) needs only host + port; no serial, unit id or
 		// auth. `insecure_tls` and `invert_grid_sign` (shared) are the only extras.
@@ -524,8 +601,33 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 			conn.Port = defaultFroniusPort
 		}
 		// fields of the other transports are not part of this one.
-		conn.Serial, conn.MbSlaveID, conn.PowerScale = "", 0, 0
+		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.ModelType = "", 0, 0, ""
 		conn.UnitID, conn.Profile = 0, ""
+	case CommFroniusSunSpec:
+		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
+		// hint + the grid-sign escape hatch. The register-map profile is the single
+		// sunspec_live family (discovery is dynamic). model_type "auto" (default)
+		// lets the walker classify float vs int+SF.
+		if conn.Port == 0 {
+			conn.Port = defaultFroniusSunSpecPort
+		}
+		if conn.UnitID == 0 {
+			conn.UnitID = 1
+		}
+		if conn.UnitID < 1 || conn.UnitID > 247 {
+			return Selection{}, invalid("Die Modbus-Unit-ID muss zwischen 1 und 247 liegen.")
+		}
+		switch conn.ModelType {
+		case "", "auto":
+			conn.ModelType = "auto"
+		case "float", "int_sf":
+			// explicit override, keep as-is
+		default:
+			return Selection{}, invalid("Der SunSpec-Modelltyp muss automatisch, float oder int_sf sein.")
+		}
+		conn.Profile = registerFamily // sunspec_live
+		// fields of the other transports are not part of this one.
+		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS = "", 0, 0, false
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -553,6 +655,11 @@ func (s Selection) BusPayload() []byte {
 		conn["profile"] = s.Connection.Profile
 	case CommFroniusSolarAPI:
 		conn["insecure_tls"] = s.Connection.InsecureTLS
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+	case CommFroniusSunSpec:
+		conn["unit_id"] = s.Connection.UnitID
+		conn["profile"] = s.Connection.Profile
+		conn["model_type"] = s.Connection.ModelType
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 	}
 	payload := map[string]any{

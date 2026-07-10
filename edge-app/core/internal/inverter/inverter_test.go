@@ -333,6 +333,103 @@ func TestBusPayloadFroniusShape(t *testing.T) {
 	}
 }
 
+func TestNormalizeFroniusSunSpec(t *testing.T) {
+	cat := DefaultCatalog()
+	// The captain's Eco, selected by model, over SunSpec Modbus TCP.
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandFroniusSunSpec,
+		Model: "fronius-eco-27-3-s",
+		// port / unit_id / model_type omitted -> defaults (502 / 1 / auto)
+		Connection: Connection{IP: "192.168.210.40"},
+	}, now)
+	if err != nil {
+		t.Fatalf("valid fronius sunspec selection rejected: %v", err)
+	}
+	if sel.Communication != CommFroniusSunSpec {
+		t.Errorf("communication derived from brand: %q", sel.Communication)
+	}
+	if sel.Family != FamSunSpecLive {
+		t.Errorf("family must be the sunspec_live profile: %q", sel.Family)
+	}
+	if sel.Label != "Fronius (Modbus / SunSpec) · Fronius Eco 27.0-3-S" {
+		t.Errorf("label should name the concrete model: %q", sel.Label)
+	}
+	if sel.Connection.Port != defaultFroniusSunSpecPort {
+		t.Errorf("default port 502: %d", sel.Connection.Port)
+	}
+	if sel.Connection.UnitID != 1 {
+		t.Errorf("default unit id 1: %d", sel.Connection.UnitID)
+	}
+	if sel.Connection.ModelType != "auto" {
+		t.Errorf("default model_type auto: %q", sel.Connection.ModelType)
+	}
+	if sel.Connection.Profile != FamSunSpecLive {
+		t.Errorf("profile derived from family: %q", sel.Connection.Profile)
+	}
+	// cross-transport fields must not leak.
+	if sel.Connection.Serial != "" || sel.Connection.MbSlaveID != 0 ||
+		sel.Connection.PowerScale != 0 || sel.Connection.InsecureTLS {
+		t.Errorf("cross-transport fields leaked: %+v", sel.Connection)
+	}
+
+	// A configured unit id + explicit model_type + invert_grid_sign are carried.
+	sel2, err := cat.Normalize(SelectionRequest{
+		Brand: BrandFroniusSunSpec, Model: "fronius-eco-27-3-s",
+		Connection: Connection{IP: "10.0.0.40", UnitID: 2, ModelType: "float", InvertGridSign: true},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel2.Connection.UnitID != 2 || sel2.Connection.ModelType != "float" || !sel2.Connection.InvertGridSign {
+		t.Errorf("sunspec fields not carried: %+v", sel2.Connection)
+	}
+
+	// The Eco carries a 27 kW rating so the physical-envelope guard engages.
+	if rated, ok := cat.RatedKw(BrandFroniusSunSpec, "fronius-eco-27-3-s"); !ok || rated != 27 {
+		t.Fatalf("Eco 27.0-3-S rating = %v ok=%v, want 27", rated, ok)
+	}
+	// The generic SunSpec Fronius entry has no rating -> envelope inactive.
+	if _, ok := cat.RatedKw(BrandFroniusSunSpec, FamSunSpecLive); ok {
+		t.Fatal("generic Fronius SunSpec entry must have no known rating")
+	}
+	// A bad model_type is rejected.
+	if _, err := cat.Normalize(SelectionRequest{
+		Brand: BrandFroniusSunSpec, Model: "fronius-eco-27-3-s",
+		Connection: Connection{IP: "10.0.0.40", ModelType: "nonsense"},
+	}, now); err == nil {
+		t.Fatal("bad model_type must be rejected")
+	}
+}
+
+func TestBusPayloadFroniusSunSpecShape(t *testing.T) {
+	cat := DefaultCatalog()
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandFroniusSunSpec, Model: "fronius-eco-27-3-s",
+		Connection: Connection{IP: "192.168.210.40", UnitID: 1, ModelType: "float", InvertGridSign: true},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["communication"] != CommFroniusSunSpec || m["family"] != FamSunSpecLive {
+		t.Fatalf("fronius sunspec payload top-level: %v", m)
+	}
+	conn := m["connection"].(map[string]any)
+	if conn["unit_id"].(float64) != 1 || conn["profile"] != FamSunSpecLive ||
+		conn["model_type"] != "float" || conn["invert_grid_sign"] != true {
+		t.Fatalf("fronius sunspec connection: %v", conn)
+	}
+	// cross-transport keys must be absent.
+	for _, forbidden := range []string{"serial", "mb_slave_id", "power_scale", "insecure_tls"} {
+		if _, ok := conn[forbidden]; ok {
+			t.Fatalf("%q must not appear in fronius sunspec payload: %v", forbidden, conn)
+		}
+	}
+}
+
 func TestNormalizeRejects(t *testing.T) {
 	cat := DefaultCatalog()
 	cases := []struct {

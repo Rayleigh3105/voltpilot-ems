@@ -202,6 +202,56 @@ test('route: fronius with an unknown family -> idle', () => {
   assert.match(r.reason, /Fronius-Familie/);
 });
 
+// A valid retained fronius_sunspec config (real SunSpec over Modbus TCP).
+function froniusSunspecConfig(overrides = {}) {
+  return Object.assign(
+    {
+      schema_version: '1.0',
+      brand: 'fronius_sunspec',
+      label: 'Fronius (Modbus / SunSpec) · Fronius Eco 27.0-3-S',
+      family: 'sunspec_live',
+      communication: 'fronius_sunspec',
+      connection: { ip: '192.168.210.40', port: 502, unit_id: 1, model_type: 'float', invert_grid_sign: false },
+      updated_at: '2026-07-10T12:00:00Z',
+    },
+    overrides,
+  );
+}
+
+test('route: fronius_sunspec -> sunspec_live discovery-walk plan', () => {
+  const r = routing.route(routing.parseConfig(froniusSunspecConfig()));
+  assert.strictEqual(r.adapter, 'sunspec_live');
+  assert.strictEqual(r.profile, 'sunspec_live');
+  assert.strictEqual(r.target, '192.168.210.40:502');
+  assert.strictEqual(r.connection.unit_id, 1);
+  assert.strictEqual(r.connection.model_type, 'float');
+  assert.strictEqual(r.connection.invert_grid_sign, false);
+  // No fixed register block - discovery is dynamic.
+  assert.strictEqual(r.read, undefined);
+});
+
+test('route: fronius_sunspec defaults port 502, unit id 1, model_type auto', () => {
+  const r = routing.route(routing.parseConfig(froniusSunspecConfig({ connection: { ip: '10.0.0.40' } })));
+  assert.strictEqual(r.target, '10.0.0.40:502');
+  assert.strictEqual(r.connection.unit_id, 1);
+  assert.strictEqual(r.connection.model_type, 'auto');
+});
+
+test('route: fronius_sunspec carries a configured unit id + invert_grid_sign', () => {
+  const r = routing.route(routing.parseConfig(froniusSunspecConfig({
+    connection: { ip: '10.0.0.40', unit_id: 2, invert_grid_sign: true },
+  })));
+  assert.strictEqual(r.connection.unit_id, 2);
+  assert.strictEqual(r.connection.invert_grid_sign, true);
+});
+
+test('parseConfig accepts the fronius_sunspec communication', () => {
+  const sel = routing.parseConfig(froniusSunspecConfig());
+  assert.ok(sel);
+  assert.strictEqual(sel.communication, 'fronius_sunspec');
+  assert.strictEqual(sel.family, 'sunspec_live');
+});
+
 test('route: null / no selection -> idle (stay idle-safe)', () => {
   assert.strictEqual(routing.route(null).adapter, 'idle');
   assert.strictEqual(routing.route(undefined).adapter, 'idle');

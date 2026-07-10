@@ -29,11 +29,11 @@ The core (re-)publishes it at boot and on every change.
 ```jsonc
 {
   "schema_version": "1.0",
-  "brand": "deye",                          // "deye" | "generic_modbus" | "fronius"
+  "brand": "deye",                          // "deye" | "generic_modbus" | "fronius" | "fronius_sunspec"
   "label": "Deye · SUN-12K-SG04LP3-EU",     // human label (brand · model)
   "model": "sun-12k-sg04lp3",               // the concrete model the customer picked
   "family": "hybrid_3p",                    // register-map / profile id (Node-RED routes on THIS)
-  "communication": "solarman_v5",           // "solarman_v5" | "modbus_tcp" | "fronius_solar_api"
+  "communication": "solarman_v5",           // "solarman_v5" | "modbus_tcp" | "fronius_solar_api" | "fronius_sunspec"
   "connection": { /* per communication, see below */ },
   "updated_at": "2026-07-03T12:00:00Z"      // RFC 3339, when the choice was saved
 }
@@ -113,6 +113,32 @@ needed. See [`nodered/FRONIUS.md`](nodered/FRONIUS.md) for the operator guide
 Read-only; battery power (`P_Akku`) is used only for calibration, never
 published (the cloud derives `battery_kw` from the power balance).
 
+### `communication: "fronius_sunspec"` (Fronius over SunSpec Modbus TCP)
+
+For Fronius inverters whose Solar API does **not** work (e.g. the **Eco
+27.0-3-S**): read over real **SunSpec Modbus TCP** (port 502) instead.
+
+```jsonc
+"connection": {
+  "ip": "192.168.210.40",     // Fronius inverter / Datamanager IP on the LAN
+  "port": 502,                // Modbus-TCP port (default 502)
+  "unit_id": 1,               // Modbus unit id (per TCP usually 1; configurable)
+  "model_type": "auto",       // "auto" (recommended) | "float" | "int_sf" - the walker auto-detects
+  "invert_grid_sign": false   // escape hatch; only relevant with a meter (none on the Eco)
+}
+```
+
+`family` is always `sunspec_live` (SunSpec model addresses are discovered live,
+so there is no per-model register map). The edge runs a real SunSpec
+model-discovery walk (base 40000/50000/0) and decodes the inverter measurement
+model (float 111/112/113 or int+SF 101/102/103) into `pv_power_kw` (= `max(0,
+W)/1000`), surfacing `St`/`Evt1` for liveness. **Read-only** (FC3 only, never a
+write). A meter (model 21X) decoder exists but is minimal/optional and not wired
+live here (the Eco site has no meter). See
+[`nodered/FRONIUS.md`](nodered/FRONIUS.md) §5b for the operator guide. Signs +
+the `W→pv_power_kw` mapping are **VERIFY-on-device** (captain follow-up on the
+real Eco).
+
 ## Catalog (what the UI offers)
 
 The UI form is fully data-driven from `GET /api/inverter` → `catalog`, so adding
@@ -125,6 +151,7 @@ exposes a per-model list (`models`, the UI selection unit) plus its register-map
 |---|---|---|---|
 | `deye` | `solarman_v5` | every `SUN-*` model individually (SG04LP3 LV incl. 12K, SG01HP3 HV, SG03LP1 1-phase, G03/G04 string, SUN*G3 micro) | `hybrid_3p`, `hybrid_1p`, `string`, `micro` |
 | `fronius` | `fronius_solar_api` | `fronius_solar_api` (one generic entry; GEN24 / Symo / Primo / Symo Hybrid) | `fronius_solar_api` |
+| `fronius_sunspec` | `fronius_sunspec` | `Fronius Eco 27.0-3-S` / `25.0-3-S` (rated) + a generic SunSpec entry | `sunspec_live` |
 | `generic_modbus` | `modbus_tcp` | `sunspec` | `sunspec` |
 
 Each `models[]` entry is `{id, label, family, note}` - `family` is the register
@@ -161,6 +188,9 @@ edit:
     (`nodered/modbus-tcp.js`), using `profile` (= `family`) + `unit_id`.
   - `fronius_solar_api` → one HTTP(S) GET to the Solar API + the PowerFlow decode
     (`nodered/fronius/solar-api.js`), using `url` + `insecure_tls`.
+  - `fronius_sunspec` → the real SunSpec model-discovery walk + measurement decode
+    over Modbus TCP (`nodered/sunspec/model-discovery.js` +
+    `nodered/sunspec/sunspec-live.js`), using `unit_id` + `model_type`. Read-only.
 - The decoded canonical measurements go to `edge/telemetry` via `vp-telemetrie`
   (`power_kw`/`soc_pct`/`pv_power_kw`/`load_kw`/`grid_limit_kw`); this contract
   changes only how the adapter is **selected**, not the telemetry shape.

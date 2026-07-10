@@ -21,7 +21,9 @@
  * `makeReadOnce(deps)` takes its dependencies injected so the same code runs in
  * a unit test (real `net`/`http` + in-process servers) and in the flow node
  * (`global.get('net')` etc. + the embedded decode modules):
- *   deps = { deye, modbus, fronius, solarman, net, http, https }
+ *   deps = { deye, modbus, fronius, solarman, sunspec, discovery, net, http, https }
+ * (`sunspec` = sunspec/sunspec-live.js, `discovery` = sunspec/model-discovery.js,
+ * both used for the real SunSpec-Modbus read path)
  * and returns `readOnce(selection, role) -> Promise<Result>` where Result is
  *   { ok:true,  reading:{ pv_kw?, load_kw?, grid_kw?, soc_pct? } }
  *   { ok:false, error_code, message? }
@@ -70,6 +72,8 @@ function makeReadOnce(deps) {
   const modbus = deps.modbus;
   const fronius = deps.fronius;
   const solarman = deps.solarman;
+  const sunspec = deps.sunspec;
+  const discovery = deps.discovery;
   const net = deps.net;
   const http = deps.http;
   const https = deps.https;
@@ -108,6 +112,13 @@ function makeReadOnce(deps) {
       const scheme = insecure ? 'https' : 'http';
       const port = num(conn.port, 80);
       return { adapter: 'fronius_solar_api', ip, port, scheme, insecure_tls: insecure, invert_grid_sign: !!conn.invert_grid_sign, url: fronius.powerFlowUrl(scheme, ip, port) };
+    }
+    if (sel.communication === 'fronius_sunspec') {
+      return {
+        adapter: 'sunspec_live', ip, port: num(conn.port, 502), unitId: num(conn.unit_id, 1),
+        invert_grid_sign: !!conn.invert_grid_sign,
+        model_type: conn.model_type === 'float' || conn.model_type === 'int_sf' ? conn.model_type : 'auto',
+      };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
   }
@@ -239,12 +250,40 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readSunSpec proves a real SunSpec-Modbus read: it first probes the TCP
+  // connect (so a refused host classifies as unreachable), then runs the full
+  // sunspec-live discovery walk + measurement decode. A connected host that is
+  // not a decodable SunSpec device (or does not answer the walk) -> invalid
+  // response. Read-only.
+  function readSunSpec(plan, role) {
+    return new Promise((resolve) => {
+      const probe = new net.Socket();
+      probe.setNoDelay(true);
+      let settled = false;
+      const done = (res) => { if (settled) return; settled = true; try { probe.destroy(); } catch (e) { /* ignore */ } resolve(res); };
+      const t = setTimeout(() => done({ ok: false, error_code: ERR_UNREACHABLE }), CONNECT_TIMEOUT_MS);
+      probe.once('error', () => { clearTimeout(t); done({ ok: false, error_code: ERR_UNREACHABLE }); });
+      probe.connect(plan.port, plan.ip, () => {
+        clearTimeout(t);
+        try { probe.destroy(); } catch (e) { /* ignore */ }
+        const read = sunspec.makeSunspecReader({ net, discovery, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS });
+        read({ ip: plan.ip, port: plan.port, unitId: plan.unitId, invertGridSign: plan.invert_grid_sign, modelType: plan.model_type })
+          .then((out) => {
+            if (out && out.reading) return done({ ok: true, reading: toReading(out.reading, role) });
+            done({ ok: false, error_code: ERR_INVALID_RESPONSE });
+          })
+          .catch(() => done({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+      });
+    });
+  }
+
   return function readOnce(selection, role) {
     const plan = planFor(selection);
     if (plan.adapter === 'idle') return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: plan.reason });
     if (plan.adapter === 'modbus_tcp') return readModbus(plan, role);
     if (plan.adapter === 'solarman_v5') return readSolarman(plan, role);
     if (plan.adapter === 'fronius_solar_api') return readFronius(plan, role);
+    if (plan.adapter === 'sunspec_live') return readSunSpec(plan, role);
     return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST });
   };
 }

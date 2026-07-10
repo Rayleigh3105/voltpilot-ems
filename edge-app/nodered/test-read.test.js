@@ -20,9 +20,67 @@ const deye = require('./deye/deye-decode');
 const modbus = require('./modbus-tcp');
 const fronius = require('./fronius/solar-api');
 const solarman = require('./deye/solarman-v5');
+const sunspec = require('./sunspec/sunspec-live');
+const discovery = require('./sunspec/model-discovery');
 
 function deps(extra) {
-  return Object.assign({ deye, modbus, fronius, solarman, net, http, https }, extra || {});
+  return Object.assign({ deye, modbus, fronius, solarman, sunspec, discovery, net, http, https }, extra || {});
+}
+
+// Build a SunSpec float-113 register image (Map addr->word) for the reader tests.
+function sunspecEcoImage(base, wWatts) {
+  const img = new Map();
+  img.set(base, (0x53756e53 >>> 16) & 0xffff); // "SunS"
+  img.set(base + 1, 0x53756e53 & 0xffff);
+  let addr = base + 2;
+  const model = (id, body) => {
+    img.set(addr, id & 0xffff); img.set(addr + 1, body.length & 0xffff);
+    for (let i = 0; i < body.length; i++) img.set(addr + 2 + i, body[i] & 0xffff);
+    addr += 2 + body.length;
+  };
+  model(1, new Array(66).fill(0)); // Common
+  const inv = new Array(60).fill(0);
+  const wbuf = Buffer.alloc(4); wbuf.writeFloatBE(wWatts, 0);
+  inv[sunspec.INV_FLOAT.W] = wbuf.readUInt16BE(0);
+  inv[sunspec.INV_FLOAT.W + 1] = wbuf.readUInt16BE(2);
+  const hzbuf = Buffer.alloc(4); hzbuf.writeFloatBE(50, 0);
+  inv[sunspec.INV_FLOAT.Hz] = hzbuf.readUInt16BE(0);
+  inv[sunspec.INV_FLOAT.Hz + 1] = hzbuf.readUInt16BE(2);
+  inv[sunspec.INV_FLOAT.St] = 4; // MPPT
+  model(113, inv);
+  img.set(addr, 0xffff); img.set(addr + 1, 0);
+  return img;
+}
+
+// A Modbus-TCP server serving a SunSpec image, exception past the image end.
+function startSunspecServer(img) {
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      let acc = Buffer.alloc(0);
+      sock.on('data', (chunk) => {
+        acc = Buffer.concat([acc, chunk]);
+        while (acc.length >= 12) {
+          const req = acc.slice(0, 12); acc = acc.slice(12);
+          const txid = req.readUInt16BE(0);
+          const addr = req.readUInt16BE(8);
+          const count = req.readUInt16BE(10);
+          let ok = true;
+          for (let i = 0; i < count; i++) if (!img.has(addr + i)) { ok = false; break; }
+          if (!ok) {
+            const ex = Buffer.alloc(9);
+            ex.writeUInt16BE(txid, 0); ex.writeUInt16BE(3, 4); ex[6] = req[6]; ex[7] = 0x83; ex[8] = 0x02;
+            sock.write(ex); continue;
+          }
+          const bc = count * 2;
+          const resp = Buffer.alloc(9 + bc);
+          resp.writeUInt16BE(txid, 0); resp.writeUInt16BE(3 + bc, 4); resp[6] = req[6]; resp[7] = 0x03; resp[8] = bc;
+          for (let i = 0; i < count; i++) resp.writeUInt16BE((img.get(addr + i) || 0) & 0xffff, 9 + i * 2);
+          sock.write(resp);
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
 }
 
 // A minimal Modbus-TCP server answering fn-0x03 with a fixed register block.
@@ -143,6 +201,40 @@ test('invalid_request: a Deye form with no datalogger serial is rejected', async
   const res = await readOnce({ communication: 'solarman_v5', family: 'hybrid_3p', connection: { ip: '127.0.0.1' } });
   assert.strictEqual(res.ok, false);
   assert.strictEqual(res.error_code, testRead.ERR_INVALID_REQUEST);
+});
+
+test('fronius_sunspec: a live SunSpec inverter decodes into a PV reading', async () => {
+  const { server, port } = await startSunspecServer(sunspecEcoImage(40000, 26500));
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port, unit_id: 1, model_type: 'auto' } });
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.strictEqual(res.reading.pv_kw, 26.5);
+    assert.strictEqual('grid_kw' in res.reading, false); // PV-only inverter, no meter
+  } finally {
+    server.close();
+  }
+});
+
+test('fronius_sunspec: a refused connect classifies as unreachable', async () => {
+  const readOnce = testRead.makeReadOnce(deps({ connectTimeoutMs: 500 }));
+  const res = await readOnce({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port: 1, unit_id: 1 } });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.error_code, testRead.ERR_UNREACHABLE);
+});
+
+test('fronius_sunspec: a connected non-SunSpec host classifies as invalid_response', async () => {
+  const img = new Map();
+  for (let a = 40000; a < 40010; a++) img.set(a, 0x1234); // not "SunS"
+  const { server, port } = await startSunspecServer(img);
+  try {
+    const readOnce = testRead.makeReadOnce(deps({ readTimeoutMs: 500 }));
+    const res = await readOnce({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port, unit_id: 1 } });
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
+  } finally {
+    server.close();
+  }
 });
 
 test('fronius: a non-answering host classifies as fronius_api', async () => {

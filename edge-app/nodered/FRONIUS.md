@@ -116,6 +116,56 @@ Produktivbetrieb **an einem echten Gerät verifizieren**:
 
 Ohne/bei unbekannter Auswahl bleibt der Tab idle-sicher.
 
+## 5b. Wenn die Solar API NICHT funktioniert: SunSpec Modbus lesen (READ)
+
+Manche Fronius-Geräte liefern **keine** brauchbare Solar API - z. B. der
+**Fronius Eco 27.0-3-S** (3-phasig, String, nur Erzeugung): auf diesem Gerät ist
+die Solar API der captain-bestätigte Reinfall. Für diese Fälle gibt es einen
+**zweiten Lesepfad über echtes SunSpec Modbus TCP (Port 502)** - dieselbe
+standardbasierte Modbus-Schnittstelle, die auch die Steuerung nutzt (§6), aber
+hier **nur lesend** (FC3, schreibt nie).
+
+- **Marke:** „Fronius (Modbus / SunSpec)" (`communication: fronius_sunspec`) -
+  eine **eigene** Katalog-Marke, damit die „Fronius"-Marke (Solar API) unverändert
+  bleibt. Felder: IP, Port (502), Modbus-**Unit-ID** (per TCP meist 1),
+  SunSpec-Modelltyp (Standard **automatisch**), Netz-Vorzeichen invertieren.
+- **Modbus muss im Wechselrichter-UI aktiviert sein** („Wechselrichter-Steuerung
+  über Modbus"). Auf dem Eco steht die Kommunikations-Priorität
+  1. IO-Steuerung, 2. dynamische Leistungsreduzierung, 3. Modbus - für das reine
+  **Lesen** irrelevant, für eine spätere Steuerung aber load-bearing (§6).
+- **Echte SunSpec-Modellerkennung, keine fest verdrahteten Adressen.** Der Walker
+  ([`sunspec/model-discovery.js`](sunspec/model-discovery.js)) folgt der
+  dynamischen SunSpec-Modellliste ab Basis 40000/50000/0, erkennt Float
+  (111/112/113) vs. Integer+SF (101/102/103) und **findet die Modell-Basisadresse
+  live** - die Feld-Offsets innerhalb eines Modells sind die feste SunSpec-
+  Definition (das Fronius-Handbuch verlangt genau das: „nach dem Modell suchen,
+  dann mit Offsets arbeiten"). Der Decode + der Socket-Walk liegen in
+  [`sunspec/sunspec-live.js`](sunspec/sunspec-live.js) (offline-getestet gegen
+  Fixture-Register + einen In-Process-Modbus-Server).
+- **Was gelesen wird:** die AC-Wirkleistung `W` (Modell 11X/10X) →
+  `pv_power_kw = max(0, W)/1000` (die AC-Ausgangsleistung eines String-
+  Wechselrichters **ist** seine PV-Erzeugung), plus der Betriebszustand `St`
+  (inkl. `THROTTLED`) und `Evt1` für Liveness/Fehler. Ein echter 0-W-Messwert
+  (Nacht/Leerlauf) ist ein **gültiger** Wert und wird behalten - nie fabriziert.
+- **Zähler (Modell 21X):** der Decoder existiert **minimal + optional**, ist aber
+  auf dieser Anlage NICHT verdrahtet (der Eco-Standort hat keinen Fronius Smart
+  Meter) und **nicht am Gerät verifiziert**. Ohne Zähler ist ein reiner
+  `pv_power_kw`-Messwert ein ehrlicher Teil-Read.
+- **Umfang (Increment 1):** genau **ein** `(IP, Unit-ID)`-SunSpec-Read. Zwei Eco
+  an einem Datamanager bzw. an zwei IPs zu einer Anlage zu aggregieren ist ein
+  Folge-Increment (das Rollen-/Multi-Source-Modell), ebenso ein Zähler als
+  eigener Messpunkt.
+- **AM GERÄT ZU PRÜFEN (Captain-Follow-up):** dass `W → pv_power_kw` auf dem
+  echten Eco stimmt, `St`/`Evt1` plausibel sind und - falls je ein Zähler dazu
+  kommt - dessen `W`-Vorzeichen (`invert_grid_sign`). Hier ist alles gegen
+  Fixtures/Simulator bewiesen, aber **nicht** gegen die echte Hardware.
+
+Einrichten: im `:8484`-Portal Marke **„Fronius (Modbus / SunSpec)"** wählen, IP
++ Unit-ID eintragen, mit **„Verbindung testen"** den Read vor dem Beanspruchen
+beweisen, speichern - der Selbstverdrahtungs-Tab fährt den SunSpec-Lesepfad dann
+automatisch an (`communication: fronius_sunspec`, siehe
+[`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md)).
+
 ## 6. Steuerung (Curtailment + Batterie) - SunSpec Modbus, NUR GEPLANT
 
 Fronius-Steuerung läuft über die **standardbasierte SunSpec-Modbus-Schnittstelle**
