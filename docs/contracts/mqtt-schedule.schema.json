@@ -46,6 +46,10 @@
       "minimum": 1,
       "description": "Slot width in minutes. v1 always publishes 15 (the platform-wide optimization grid); the field exists so the edge never has to assume."
     },
+    "grid_charge_allowed": {
+      "type": "boolean",
+      "description": "OPTIONAL (added 2026-07, P5 EEG execution gap; ADDITIVE - schema_version stays 1.0 and an edge that ignores unknown optional fields keeps working unchanged). Mirrors site.netzladen_erlaubt at plan time. false = the plant is EEG-funded (Ausschliesslichkeitsprinzip): the edge MUST clamp any commanded battery CHARGE to max(measured_pv - measured_load, 0) before a register write - the on-device twin of the optimizer's solar-only-charge constraint, applied to MEASURED values so a PV forecast overshoot can never turn a planned solar charge into real grid import. true = grid charging is permitted (merchant mode), no extra clamp. ABSENT = treat as allowed (pre-P5 behavior; a legacy payload must not suddenly clamp a merchant site - the optimizer always publishes the field, so absence only occurs from an old cloud, where the edge behaves exactly as before). Discharge is never affected. SAFETY: this field can only ever RESTRICT charging, never widen any other guard."
+    },
     "slots": {
       "type": "array",
       "minItems": 1,

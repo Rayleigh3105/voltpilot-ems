@@ -69,6 +69,55 @@ func TestParseKeepsPvLimitCurtailment(t *testing.T) {
 	}
 }
 
+// The optional grid_charge_allowed (P5 EEG execution gap) is parsed, drives
+// SolarOnlyCharge, and survives the disk round-trip. ABSENT = nil = treat as
+// allowed (no clamp - the pre-P5 behavior a legacy payload must keep).
+func TestParseGridChargeAllowed(t *testing.T) {
+	slot := `{ "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": 5.0 }`
+
+	eeg, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,"grid_charge_allowed":false,"slots":[`+slot+`]}`), time.Now())
+	if err != nil {
+		t.Fatalf("Parse eeg: %v", err)
+	}
+	if eeg.GridChargeAllowed == nil || *eeg.GridChargeAllowed || !eeg.SolarOnlyCharge() {
+		t.Errorf("grid_charge_allowed=false must demand the solar-only clamp: %+v", eeg.GridChargeAllowed)
+	}
+
+	merchant, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,"grid_charge_allowed":true,"slots":[`+slot+`]}`), time.Now())
+	if err != nil {
+		t.Fatalf("Parse merchant: %v", err)
+	}
+	if merchant.GridChargeAllowed == nil || !*merchant.GridChargeAllowed || merchant.SolarOnlyCharge() {
+		t.Errorf("grid_charge_allowed=true must not clamp: %+v", merchant.GridChargeAllowed)
+	}
+
+	legacy := mustParse(t, time.Now()) // contractPayload carries no field
+	if legacy.GridChargeAllowed != nil || legacy.SolarOnlyCharge() {
+		t.Errorf("absent field must stay nil (no clamp): %+v", legacy.GridChargeAllowed)
+	}
+
+	var nilPlan *Plan
+	if nilPlan.SolarOnlyCharge() {
+		t.Error("nil plan must not demand the clamp")
+	}
+
+	// Disk round-trip keeps the posture (reboot-without-network case).
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(eeg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !loaded.SolarOnlyCharge() {
+		t.Errorf("persisted plan lost grid_charge_allowed=false: %+v", loaded.GridChargeAllowed)
+	}
+}
+
 // BuildView marks the executing slot (only while fresh) and flags curtailed
 // slots, so the local Fahrplan view can render freshness + the active bar.
 func TestBuildViewMarksActiveAndCurtailed(t *testing.T) {

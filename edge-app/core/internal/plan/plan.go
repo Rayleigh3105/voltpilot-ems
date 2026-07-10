@@ -42,15 +42,31 @@ type Plan struct {
 	Slots       []Slot    `json:"slots"`
 	// ReceivedAt anchors the staleness window; persisted with the plan.
 	ReceivedAt time.Time `json:"received_at"`
+	// GridChargeAllowed is the OPTIONAL contract field mirroring the site's
+	// netzladen_erlaubt (P5). nil = field absent (a pre-P5 cloud): treat as
+	// ALLOWED, i.e. no new clamp - the default that cannot break a merchant
+	// site; an EEG site behind an old cloud is no worse than before, and the
+	// updated optimizer always publishes the field. false = the setpoint
+	// executor must clamp charge to the MEASURED PV surplus
+	// (guards.Limits.SolarOnlyCharge).
+	GridChargeAllowed *bool `json:"grid_charge_allowed,omitempty"`
+}
+
+// SolarOnlyCharge reports whether the plan demands the EEG solar-only-charge
+// clamp: the grid_charge_allowed field is present AND false. Absent = no
+// clamp (see GridChargeAllowed).
+func (p *Plan) SolarOnlyCharge() bool {
+	return p != nil && p.GridChargeAllowed != nil && !*p.GridChargeAllowed
 }
 
 // wire mirrors the contract JSON (RFC 3339 strings).
 type wire struct {
-	SchemaVersion string `json:"schema_version"`
-	PlanID        string `json:"plan_id"`
-	GeneratedAt   string `json:"generated_at"`
-	SlotMinutes   int    `json:"slot_minutes"`
-	Slots         []struct {
+	SchemaVersion     string `json:"schema_version"`
+	PlanID            string `json:"plan_id"`
+	GeneratedAt       string `json:"generated_at"`
+	SlotMinutes       int    `json:"slot_minutes"`
+	GridChargeAllowed *bool  `json:"grid_charge_allowed"`
+	Slots             []struct {
 		Start             string   `json:"start"`
 		BatterySetpointKw float64  `json:"battery_setpoint_kw"`
 		PvLimitKw         *float64 `json:"pv_limit_kw"`
@@ -78,6 +94,10 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		PlanID:      w.PlanID,
 		SlotMinutes: w.SlotMinutes,
 		ReceivedAt:  receivedAt,
+	}
+	if w.GridChargeAllowed != nil {
+		v := *w.GridChargeAllowed
+		p.GridChargeAllowed = &v
 	}
 	if t, err := time.Parse(time.RFC3339, w.GeneratedAt); err == nil {
 		p.GeneratedAt = t

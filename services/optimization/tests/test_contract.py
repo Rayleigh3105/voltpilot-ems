@@ -172,3 +172,24 @@ def test_topic_matches_the_convention():
 def test_payload_requires_a_device():
     with pytest.raises(ValueError):
         build_schedule_payload(make_plan(device=None))
+
+
+def test_grid_charge_allowed_is_optional_additive_and_validates():
+    # P5 (EEG execution gap): the site's netzladen_erlaubt rides the payload
+    # as the OPTIONAL grid_charge_allowed field. None (legacy) OMITS it so
+    # pre-P5 payloads stay byte-identical; both boolean values validate
+    # against the frozen schema (schema_version stays 1.0).
+    validator = load_validator()
+
+    legacy = build_schedule_payload(make_plan())
+    assert "grid_charge_allowed" not in legacy
+    assert list(validator.iter_errors(legacy)) == []
+
+    import dataclasses
+
+    for allowed in (False, True):
+        plan = dataclasses.replace(make_plan(), grid_charge_allowed=allowed)
+        payload = build_schedule_payload(plan)
+        assert payload["grid_charge_allowed"] is allowed
+        errors = list(validator.iter_errors(payload))
+        assert errors == [], [e.message for e in errors]
