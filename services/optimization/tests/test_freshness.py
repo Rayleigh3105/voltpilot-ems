@@ -184,10 +184,12 @@ class _SitesCursor:
         sql = " ".join(sql.split())
         assert "FROM asset" in sql
         assert "a.wear_cost_ct_per_kwh" in sql
+        assert "s.tarif_art" in sql  # the P1 pricing master data is read too
         self._rows = [
             (
                 TENANT, SITE, uuid4(), "DE-LU",
                 10.0, 5.0, 5.0, 92.0, True, None, None, self._wear_ct,
+                "eigenverbrauch", "ohne", None, None, None, None,
             )
         ]
 
