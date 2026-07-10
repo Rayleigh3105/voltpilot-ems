@@ -37,6 +37,40 @@ never "yesterday's value still holds". Defaults: 60 min for ``grid_limit_kw``
 (a small multiple of the 15-min plan/telemetry cadence), 120 min for SoC (it
 drifts slowly, so a moderately old reading still beats the 50% default).
 
+Terminal energy value (P3, optimizer-redesign Stage 3, critique finding F3)
+----------------------------------------------------------------------------
+
+The hard terminal floor ``soc_T >= soc_0`` froze an EEG battery on every
+low-PV day (no surplus to charge from means no discharge was allowed at all -
+critique F3) and forced merchant plans into uneconomic end-of-horizon
+buy-backs. It is replaced by a terminal VALUE: the objective credits
+``V_end * (soc_T - soc_0)``, so stored energy left at the horizon end is worth
+money instead of being contractually pinned.
+
+``V_end`` (EUR per stored kWh) is derived per plan from the horizon's own
+prices unless overridden: ``eta * (P_q - wear)`` where ``P_q`` is a
+conservative low quantile (default the 30th percentile,
+``OPTIMIZER_TERMINAL_VALUE_QUANTILE``) of the per-slot BEST-USE price
+``max(import_price_t, export_value_t)``, ``eta`` the one-way efficiency (a
+stored kWh delivers only ``eta`` AC kWh) and ``wear`` the pending discharge
+wear - floored at 0 (a fully negative-priced horizon values storage at
+nothing, never below). Because the same ``eta``/``wear`` appear in the
+in-horizon discharge economics, "discharge at exactly ``P_q``" is an EXACT
+tie, broken toward holding by the epsilon tie-breaks - so a flat price curve
+still plans an idle battery (zero savings on flat, by construction), while
+any slot priced above the anchor genuinely beats holding and any slot below
+it (a trough, an end-of-horizon tail) does not - no more dump-to-earn.
+The quantile is deliberately BELOW the median: the estimate must stay under
+typical in-horizon discharge opportunities (or the plan defers real
+consumption value to "tomorrow", the F3 freeze in miniature) while staying
+above trough prices (or the plan dumps at the tail). The rolling 15-min MPC
+re-plan makes the estimate self-correcting.
+
+``OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH`` overrides the derivation with a fixed
+platform value (ct per stored kWh); ``0`` disables the terminal value
+entirely (stored energy at the horizon end is worth nothing - the plan then
+realizes any stored energy at any positive value, useful only for analysis).
+
 Feste EEG-Einspeisevergütung schedule (P1 export pricing, Stage 2)
 ------------------------------------------------------------------
 
@@ -89,6 +123,15 @@ GRID_LIMIT_MAX_AGE_ENV = "OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES"
 #: A soc_pct telemetry reading older than this falls back to the 50% default.
 DEFAULT_SOC_MAX_AGE_MINUTES = 120.0
 SOC_MAX_AGE_ENV = "OPTIMIZER_SOC_MAX_AGE_MINUTES"
+
+#: Quantile of the horizon's best-use prices anchoring the derived terminal
+#: energy value (see the P3 section of the module docstring).
+DEFAULT_TERMINAL_VALUE_QUANTILE = 0.3
+TERMINAL_VALUE_QUANTILE_ENV = "OPTIMIZER_TERMINAL_VALUE_QUANTILE"
+
+#: Fixed platform override of the terminal energy value (ct per stored kWh);
+#: unset/blank = derive from the horizon's prices.
+TERMINAL_VALUE_OVERRIDE_ENV = "OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH"
 
 #: Solarspitzengesetz (§51a EEG) entry into force: plants commissioned on/after
 #: this date earn NO feste Vergütung in negative-price slots.
@@ -200,6 +243,36 @@ def default_wear_cost_ct_per_kwh(env=None) -> float:
     return _float_env(
         env, WEAR_COST_ENV, DEFAULT_WEAR_COST_CT_PER_KWH, 0.0, allow_equal=True
     )
+
+
+def terminal_value_quantile(env=None) -> float:
+    """The quantile of the horizon's best-use prices anchoring the derived
+    terminal energy value (0..1; see the P3 module-docstring section)."""
+    env = os.environ if env is None else env
+    q = _float_env(
+        env,
+        TERMINAL_VALUE_QUANTILE_ENV,
+        DEFAULT_TERMINAL_VALUE_QUANTILE,
+        0.0,
+        allow_equal=True,
+    )
+    if q > 1.0:
+        raise ValueError(
+            f"{TERMINAL_VALUE_QUANTILE_ENV} must be within [0, 1], got {q!r}"
+        )
+    return q
+
+
+def terminal_value_override_eur_per_kwh(env=None) -> float | None:
+    """The fixed platform terminal-value override in EUR per stored kWh, or
+    ``None`` when unset (derive from the horizon's prices). ``0`` is a valid
+    explicit value ("stored energy is worth nothing at the horizon end")."""
+    env = os.environ if env is None else env
+    raw = env.get(TERMINAL_VALUE_OVERRIDE_ENV)
+    if raw is None or raw.strip() == "":
+        return None
+    ct = _float_env(env, TERMINAL_VALUE_OVERRIDE_ENV, 0.0, 0.0, allow_equal=True)
+    return ct / 100.0
 
 
 def grid_limit_max_age(env=None) -> timedelta:

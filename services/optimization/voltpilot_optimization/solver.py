@@ -11,6 +11,7 @@ Formulation (per slot t, dt = 0.25 h):
     minimize   sum_t  (import_price_t * import_t - export_value_t * export_t) * dt / 1000
                       + c_wear/2 * (charge_t + discharge_t) * dt   (battery wear, see below)
                       + epsilon * curtail_t                        (tie-break, see below)
+               - V_end * (soc_T - soc_0)                           (terminal energy value, see below)
     where      import_t - export_t = load_t - pv_t + curtail_t + charge_t - discharge_t
     s.t.       0 <= charge_t    <= max_charge    * is_charging_t
                0 <= discharge_t <= max_discharge * (1 - is_charging_t)
@@ -18,9 +19,10 @@ Formulation (per slot t, dt = 0.25 h):
                0 <= export_t    <= M_exp_t * (1 - is_importing_t)
                0 <= curtail_t   <= pv_t                            (only ever a REDUCTION)
                soc_{t+1} = soc_t + (eta * charge_t - discharge_t / eta) * dt
-               soc_min <= soc_t <= soc_max
+               soc_floor <= soc_t <= soc_max                       (soc_floor: 5% technical
+                                                                    floor, raised by the P11
+                                                                    backup reserve, see below)
                import_t <= grid_limit, export_t <= grid_limit      (observed §14a, hard cap)
-               soc_T >= soc_0                                      (terminal condition)
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t - load_t, 0)                   (charge from PV surplus only)
                import_t <= M_imp_t * (1 - is_charging_t)           (never import while charging)
@@ -57,9 +59,36 @@ Design decisions, deliberately:
   NEGATIVE (burning energy through the round trip is "profitable" then), and
   negative day-ahead prices are a normal occurrence in DE-LU. 192 binaries are
   trivial for HiGHS (solves in milliseconds).
-- **Terminal condition ``soc_T >= soc_0``**: the plan may not "earn" its savings
-  by simply dumping stored energy; whatever it discharges it must have charged
-  within the horizon. On a flat price curve the optimum is exactly idle.
+- **Terminal ENERGY VALUE instead of a hard terminal floor (P3, Stage 3 of the
+  optimizer redesign, critique finding F3).** The old constraint
+  ``soc_T >= soc_0`` froze the battery on every low-PV day in EEG mode (no PV
+  surplus means nothing may charge, so nothing may discharge either - a full
+  battery idled through a 250 EUR/MWh evening peak, and through whole German
+  winters) and forced merchant plans into uneconomic end-of-horizon buy-backs.
+  Instead the objective credits ``V_end * (soc_T - soc_0)``: stored energy
+  left at the horizon end is WORTH something, so the plan discharges whenever
+  a slot genuinely beats that value and holds otherwise. ``V_end`` comes from
+  :meth:`OptimizationInput.effective_terminal_value_eur_per_kwh` - a
+  conservative low quantile of the horizon's own best-use prices, times the
+  one-way efficiency, minus the pending discharge wear (derivation + config
+  knobs in :mod:`voltpilot_optimization.config`). Because the same
+  eta/wear terms price the in-horizon discharge, "discharge at exactly the
+  anchor price" is an EXACT tie broken toward holding by the epsilon
+  tie-breaks below: a flat price curve still plans an idle battery (zero
+  savings on flat, preserved by construction), a trough or cheap
+  end-of-horizon tail never triggers a dump (its value is below the anchor),
+  and any genuinely better slot discharges. Note the plan may now realize
+  energy stored BEFORE the horizon (that is the F3 fix); the ex-ante savings
+  figure reflects it, the realized-earnings engine stays the honest number.
+- **The backup-reserve SoC floor is a HARD constraint (P11).** A customer-
+  configured ``site.backup_reserve_soc_pct`` raises the battery's lower SoC
+  bound (``BatteryParams.soc_floor_kwh``): the plan NEVER schedules below it,
+  no matter what the terminal value or any price says - reserve is a hard
+  floor, V_end a soft value. (The Deye-Copilot scout documented that product
+  silently draining below its configured min-SoC; VoltPilot's must hold.) A
+  battery currently BELOW its reserve relaxes the floor to the actual start
+  (feasibility; it may not discharge any further, and the rolling MPC re-plan
+  ratchets the floor back up as it recovers).
 - **Efficiency is split symmetrically** (sqrt of the round trip per direction),
   so stored energy is charged and discharged at the same marginal loss.
 - **PV curtailment is a first-class decision** (``curtail_t``, Phase 3 of the
@@ -203,7 +232,11 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         domain=NonNegativeReals,
         bounds=lambda model, t: (0.0, max(inp.pv_kw[t], 0.0)),
     )
-    m.soc = Var(m.S, bounds=(p.soc_min_kwh, p.soc_max_kwh))
+    # SoC lower bound: the 5% technical floor, raised by the customer's backup
+    # reserve (P11, hard), relaxed to the actual start when the battery
+    # currently sits below it (see BatteryParams.soc_floor_kwh).
+    soc_floor = p.soc_floor_kwh(soc0)
+    m.soc = Var(m.S, bounds=(soc_floor, p.soc_max_kwh))
     m.soc[0].fix(soc0)
 
     # The tightest physical bounds on a slot's import/export (see module
@@ -294,14 +327,16 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.grid_export_cap = Constraint(
             m.T, rule=lambda model, t: model.grid_export[t] <= inp.grid_limit_kw
         )
-    # Terminal condition: never plan a net battery drain over the horizon.
-    m.terminal_soc = Constraint(rule=lambda model: model.soc[n] >= soc0)
-
     # Real degradation cost per AC-side kWh in each direction (see module
     # docstring); the epsilon tie-break below stays for the c_wear = 0 case.
     wear_eur_per_kwh = p.wear_cost_eur_per_kwh_each_way
     import_prices = inp.import_prices
     export_values = inp.export_values
+    # Terminal energy value (P3): credit the energy left in the battery at the
+    # horizon end, replacing the old hard soc_T >= soc_0 floor (see module
+    # docstring - this is what un-freezes an EEG battery on low-PV days while
+    # keeping end-of-horizon dumps unattractive).
+    v_end = inp.effective_terminal_value_eur_per_kwh()
     m.total_cost = Objective(
         expr=sum(
             (
@@ -314,7 +349,8 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             + CURTAIL_TIEBREAK_EUR_PER_KW * m.curtail[t]
             + BATTERY_WEAR_TIEBREAK_EUR_PER_KW * (m.charge[t] + m.discharge[t])
             for t in m.T
-        ),
+        )
+        - v_end * (m.soc[n] - soc0),
         sense=minimize,
     )
     return m
