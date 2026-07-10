@@ -602,6 +602,12 @@ services:
       # from the forecast hypertable (keep in sync with the forecast service).
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
+      # Optimizer-redesign Stage 1 tunables (services/optimization config.py):
+      # battery wear cost per kWh cycled (per-asset override via
+      # asset.wear_cost_ct_per_kwh) + telemetry freshness windows.
+      OPTIMIZER_WEAR_COST_CT_PER_KWH: ${OPTIMIZER_WEAR_COST_CT_PER_KWH:-4.0}
+      OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES: ${OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES:-60}
+      OPTIMIZER_SOC_MAX_AGE_MINUTES: ${OPTIMIZER_SOC_MAX_AGE_MINUTES:-120}
 
   # ---------------------------------------------------------------------------
   # Frontend: the built SPA on nginx, and the SINGLE public HTTP entry point the

@@ -24,6 +24,11 @@ UPDATE asset SET roundtrip_efficiency_pct = 92.00
     WHERE id = '00000000-0000-0000-0000-000000000004'
       AND roundtrip_efficiency_pct IS NULL;
 
+-- Per-asset battery wear-cost override (ct per kWh cycled); NULL = platform
+-- default. Mirrors api migration V20260710000000.
+ALTER TABLE asset ADD COLUMN IF NOT EXISTS wear_cost_ct_per_kwh NUMERIC(8, 3)
+    CHECK (wear_cost_ct_per_kwh IS NULL OR wear_cost_ct_per_kwh >= 0);
+
 CREATE TABLE IF NOT EXISTS schedule (
     time              TIMESTAMPTZ    NOT NULL,  -- slot start (UTC, 15-min grid)
     tenant_id         UUID           NOT NULL,  -- carried for RLS (like telemetry)
@@ -40,6 +45,7 @@ CREATE TABLE IF NOT EXISTS schedule (
     cost_eur          NUMERIC(12, 6),           -- projected slot cost WITH the plan
     baseline_cost_eur NUMERIC(12, 6),           -- projected slot cost with the battery idle
     curtail_kw        NUMERIC(12, 4),           -- planned PV curtailment (V20260706040000)
+    wear_cost_eur     NUMERIC(12, 6),           -- priced battery degradation of the slot (V20260710000000)
     PRIMARY KEY (site_id, generated_at, time)
 );
 

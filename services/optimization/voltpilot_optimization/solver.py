@@ -9,6 +9,7 @@ later be replaced by learned models without touching this module.
 Formulation (per slot t, dt = 0.25 h):
 
     minimize   sum_t  price_t [EUR/MWh] * grid_t [kW] * dt / 1000
+                      + c_wear/2 * (charge_t + discharge_t) * dt   (battery wear, see below)
                       + epsilon * curtail_t                        (tie-break, see below)
     where      grid_t = load_t - pv_t + curtail_t + charge_t - discharge_t   (+import/-export)
     s.t.       0 <= charge_t    <= max_charge    * is_charging_t
@@ -53,15 +54,29 @@ Design decisions, deliberately:
   a price threshold of ~-0.004 EUR/MWh - negligible against real negative
   prices, but it means hairline-negative slots (0 > price > -0.004) stay
   uncurtailed rather than churning the inverter for fractions of a cent.
+- **Battery degradation is PRICED, not epsilon-scale (P2 of the optimizer
+  redesign, critique finding F2).** ``c_wear`` is the asset's wear cost per kWh
+  cycled (``BatteryParams.wear_cost_ct_per_kwh``: the per-asset
+  ``asset.wear_cost_ct_per_kwh`` override or the platform default, see
+  :mod:`voltpilot_optimization.config` for the LFP derivation), levied as
+  ``c_wear/2`` on every AC-side kWh of charge AND discharge - a full round
+  trip of one kWh costs exactly ``c_wear``. A cycle therefore happens only
+  when the spread genuinely clears wear on top of round-trip losses:
+  ``eta^2 * p_discharge - p_charge > c_wear * 5 * (1 + eta^2)`` [EUR/MWh]
+  (~38 EUR/MWh at the 4 ct default) - the pre-P2 model cycled ~3 full
+  cycles/day chasing sub-cent spreads because its only wear signal was the
+  1e-6 tie-break below. The spent wear is persisted per slot
+  (``PlanSlot.wear_cost_eur`` -> ``schedule.wear_cost_eur``) so reporting can
+  show the honest net savings.
 - **A twin tie-break on battery throughput** (``BATTERY_WEAR_TIEBREAK_EUR_PER_KW``,
-  on charge + discharge) keeps the battery IDLE when cycling earns nothing.
-  Without it, curtailment introduces a degenerate tie: routing
-  otherwise-curtailed PV through the battery (charge now, discharge into a
-  capped export later) moves no money but slightly lowers total curtailment,
-  so the curtailment tie-break alone would PREFER that pointless wear. The
-  wear tie-break is the same epsilon scale (~0.008 EUR/MWh equivalent), so
-  real arbitrage is never distorted - it only breaks exact ties toward the
-  battery-friendly plan.
+  on charge + discharge) keeps the battery IDLE when cycling earns nothing
+  even when ``c_wear`` is configured to 0. Without it, curtailment introduces
+  a degenerate tie: routing otherwise-curtailed PV through the battery
+  (charge now, discharge into a capped export later) moves no money but
+  slightly lowers total curtailment, so the curtailment tie-break alone would
+  PREFER that pointless wear. The tie-break is the same epsilon scale
+  (~0.008 EUR/MWh equivalent), so real economics are never distorted - it
+  only breaks exact ties toward the battery-friendly plan.
 
 - **The per-site grid-charging switch (``netzladen_erlaubt``, captain decision
   2026-07-07)** is exactly ONE conditional pair of constraints - merchant mode
@@ -208,15 +223,25 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.grid_import_cap = Constraint(
             m.T, rule=lambda model, t: _grid(model, t) <= inp.grid_limit_kw
         )
+        # DELIBERATELY still symmetric (export capped by the observed IMPORT
+        # envelope): section 14a is an import-side dimming instrument, so
+        # mirroring it onto export can force curtailment of healthy PV
+        # (critique F4 part 2 / question D5) - changing the semantics is
+        # regulatory-adjacent and awaits the captain's D5 answer. Stage 1 only
+        # fixed the STALENESS of the reading (inputs._fresh_measurement).
         m.grid_export_cap = Constraint(
             m.T, rule=lambda model, t: _grid(model, t) >= -inp.grid_limit_kw
         )
     # Terminal condition: never plan a net battery drain over the horizon.
     m.terminal_soc = Constraint(rule=lambda model: model.soc[n] >= soc0)
 
+    # Real degradation cost per AC-side kWh in each direction (see module
+    # docstring); the epsilon tie-break below stays for the c_wear = 0 case.
+    wear_eur_per_kwh = p.wear_cost_eur_per_kwh_each_way
     m.total_cost = Objective(
         expr=sum(
             inp.prices_eur_mwh[t] * _grid(m, t) * dt / 1000.0
+            + wear_eur_per_kwh * (m.charge[t] + m.discharge[t]) * dt
             + CURTAIL_TIEBREAK_EUR_PER_KW * m.curtail[t]
             + BATTERY_WEAR_TIEBREAK_EUR_PER_KW * (m.charge[t] + m.discharge[t])
             for t in m.T
@@ -277,6 +302,7 @@ def _extract_plan(
     generated_at: datetime,
 ) -> SchedulePlan:
     dt = inp.slot_hours
+    wear_eur_per_kwh = inp.battery.wear_cost_eur_per_kwh_each_way
     slots: list[PlanSlot] = []
     for t in range(inp.slots):
         charge = float(value(model.charge[t]))
@@ -298,6 +324,9 @@ def _extract_plan(
                 cost_eur=round(price * grid_kw * dt / 1000.0, 6),
                 baseline_cost_eur=round(inp.baseline_cost_eur(t), 6),
                 curtail_kw=round(curtail_kw, 4),
+                wear_cost_eur=round(
+                    wear_eur_per_kwh * (charge + discharge) * dt, 6
+                ),
             )
         )
     return SchedulePlan(
