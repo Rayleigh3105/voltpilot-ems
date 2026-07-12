@@ -39,6 +39,15 @@ Für ein NEUES Gerät ist der **eigenständige, geführte Installer** der empfoh
                       #           --print-compose, --dry-run, --non-interactive
 ```
 
+Für ein LAUFENDES Gerät ist der Begleiter **`update.sh`** der empfohlene Update-Weg - ein Befehl, der die Compose-Datei(en) aktuell hält (Installer-Deployment über die `install.sh`-Vorlage, Repo-Klon per `git pull --ff-only`; Handbearbeitetes wird nie ohne `--force-compose` überschrieben), die frischen Registry-Images zieht, `up -d --remove-orphans` ausführt und die Anbindung über `/health` verifiziert. Volumes, Geräteidentität und `.env` bleiben dabei immer unberührt (Details: [`DEPLOY.md`](DEPLOY.md), Abschnitt "Betrieb"):
+
+```bash
+# im Deploy-Verzeichnis (update.sh liegt neben install.sh):
+./update.sh           # Compose aktualisieren + Images ziehen + up -d + Verifizierung
+                      # Optionen: --help, --dry-run, --skip-pull, --force-compose,
+                      #           --hostnet, --non-interactive, --print-compose/--print-hostnet
+```
+
 Manuell (Fallback):
 
 1. Install: `cp .env.example .env` (optional), `docker compose up -d`.
