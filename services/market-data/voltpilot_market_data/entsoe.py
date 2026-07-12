@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -42,6 +43,25 @@ DEFAULT_BASE_URL = "https://web-api.tp.entsoe.eu/api"
 # ENTSO-E "Price Document"; A62 is the day-ahead business type.
 _DOCUMENT_TYPE_PRICE = "A44"
 _ENTSOE_TIME_FORMAT = "%Y%m%d%H%M"
+
+# The securityToken rides in the URL query string, and requests/urllib3
+# transport errors embed the FULL request URL in their message ("Max retries
+# exceeded with url: /api?securityToken=...&documentType=..."). Strip any query
+# string outright, plus a belt-and-braces pass for a token that appears outside
+# a URL context.
+_QUERY_STRING_RE = re.compile(r"\?[^\s'\")\]>]*")
+_SECURITY_TOKEN_RE = re.compile(r"securityToken=[^&\s'\")\]>]*", re.IGNORECASE)
+
+
+def redact(exc: object) -> str:
+    """``str(exc)`` with URL query strings / securityToken values removed.
+
+    Must be applied to transport-error text BOTH before logging and before
+    embedding it in a raised exception message, so the captain's long-lived
+    API token never leaks into collector logs on a network/DNS/TLS failure.
+    """
+    text = _QUERY_STRING_RE.sub("?<redacted>", str(exc))
+    return _SECURITY_TOKEN_RE.sub("securityToken=<redacted>", text)
 
 
 @dataclass(frozen=True)
@@ -250,11 +270,17 @@ class EntsoeDayAheadPriceSource(DayAheadPriceSource):
                 self._config.base_url, params, self._config.timeout_seconds
             )
         except Exception as exc:  # network / DNS / TLS
+            # The raw exception text can embed the request URL incl. the
+            # securityToken - redact it, and raise `from None` so an uncaught
+            # traceback never prints the token-bearing cause chain either.
+            safe = f"{type(exc).__name__}: {redact(exc)}"
             logger.warning(
                 "entsoe.fetch.transport_error",
-                extra={"context": {**log_ctx, "error": str(exc)}},
+                extra={"context": {**log_ctx, "error": safe}},
             )
-            raise PriceSourceUnavailable(f"ENTSO-E request failed: {exc}") from exc
+            raise PriceSourceUnavailable(
+                f"ENTSO-E request failed: {safe}"
+            ) from None
 
         if resp.status_code == 401:
             raise PriceSourceError("ENTSO-E rejected the security token (401)")
