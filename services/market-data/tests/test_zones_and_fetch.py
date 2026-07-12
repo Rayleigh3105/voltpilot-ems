@@ -9,6 +9,7 @@ import pytest
 from voltpilot_market_data.entsoe import (
     EntsoeConfig,
     EntsoeDayAheadPriceSource,
+    redact,
 )
 from voltpilot_market_data.http import HttpResponse
 from voltpilot_market_data.source import PriceSourceError, PriceSourceUnavailable
@@ -78,3 +79,43 @@ def test_fetch_transport_error_is_unavailable():
     http = FakeHttpClient(error=ConnectionError("dns fail"))
     with pytest.raises(PriceSourceUnavailable):
         _source(http).fetch_day_ahead_prices("DE-LU", *WINDOW)
+
+
+def test_redact_strips_query_string_and_token():
+    # The exact urllib3 shape: full URL incl. the token in the query string.
+    exc = ConnectionError(
+        "HTTPSConnectionPool(host='web-api.tp.entsoe.eu', port=443): "
+        "Max retries exceeded with url: /api?securityToken=SECRET-123"
+        "&documentType=A44 (Caused by NameResolutionError)"
+    )
+    safe = redact(exc)
+    assert "SECRET-123" not in safe
+    assert "<redacted>" in safe
+    # Belt-and-braces: a token outside a URL/query context is redacted too.
+    assert "tok-99" not in redact(ValueError("securityToken=tok-99 rejected"))
+    # Text without a token passes through unchanged.
+    assert redact(ValueError("dns fail")) == "dns fail"
+
+
+def test_fetch_transport_error_never_leaks_the_token(caplog):
+    """S3: the token must reach neither the warning log nor the raised message
+    nor the exception chain (an uncaught traceback prints the cause)."""
+    token = "SECRET-TOKEN-XYZ"
+    err = ConnectionError(
+        "Max retries exceeded with url: "
+        f"/api?securityToken={token}&documentType=A44"
+    )
+    http = FakeHttpClient(error=err)
+    cfg = EntsoeConfig(security_token=token, base_url="https://example/api")
+    source = EntsoeDayAheadPriceSource(cfg, http_client=http)
+
+    with caplog.at_level("WARNING", logger="voltpilot.market_data.entsoe"):
+        with pytest.raises(PriceSourceUnavailable) as excinfo:
+            source.fetch_day_ahead_prices("DE-LU", *WINDOW)
+
+    assert token not in str(excinfo.value)
+    assert excinfo.value.__cause__ is None  # raised `from None`
+    assert excinfo.value.__suppress_context__ is True
+    for record in caplog.records:
+        assert token not in str(record.__dict__.get("context", ""))
+        assert token not in record.getMessage()
