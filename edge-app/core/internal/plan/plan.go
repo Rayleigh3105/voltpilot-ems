@@ -23,6 +23,13 @@ import (
 // refreshed within this window no longer drives the battery.
 const StaleAfter = 20 * time.Minute
 
+// redeliverySlack bounds how far behind generated_at a NEWLY received plan may
+// lag before it is treated as a broker redelivery of an old retained payload
+// rather than a fresh publish. The optimizer republishes every 15 min, well
+// inside StaleAfter; the extra slack absorbs publish latency and modest clock
+// skew between optimizer and edge.
+const redeliverySlack = 5 * time.Minute
+
 // Slot is one dispatch slot. Positive setpoint = charge, negative = discharge.
 type Slot struct {
 	Start             time.Time `json:"start"`
@@ -43,20 +50,25 @@ type Plan struct {
 	// ReceivedAt anchors the staleness window; persisted with the plan.
 	ReceivedAt time.Time `json:"received_at"`
 	// GridChargeAllowed is the OPTIONAL contract field mirroring the site's
-	// netzladen_erlaubt (P5). nil = field absent (a pre-P5 cloud): treat as
-	// ALLOWED, i.e. no new clamp - the default that cannot break a merchant
-	// site; an EEG site behind an old cloud is no worse than before, and the
-	// updated optimizer always publishes the field. false = the setpoint
-	// executor must clamp charge to the MEASURED PV surplus
-	// (guards.Limits.SolarOnlyCharge).
+	// netzladen_erlaubt (P5). false = the setpoint executor must clamp charge
+	// to the MEASURED PV surplus (guards.Limits.SolarOnlyCharge). nil = field
+	// absent (a pre-P5 cloud / hand-crafted payload): the edge treats that as
+	// MOST RESTRICTIVE and clamps too - a fail-SAFE deviation from the
+	// contract's absent=allowed reading, chosen deliberately: the updated
+	// optimizer always publishes the field (a merchant site's plan carries
+	// true and is unaffected), so only legacy/hand-crafted payloads change
+	// behavior, and an EEG site behind such a payload must never grid-charge.
 	GridChargeAllowed *bool `json:"grid_charge_allowed,omitempty"`
 }
 
 // SolarOnlyCharge reports whether the plan demands the EEG solar-only-charge
-// clamp: the grid_charge_allowed field is present AND false. Absent = no
-// clamp (see GridChargeAllowed).
+// clamp. Fail-safe: only an EXPLICIT grid_charge_allowed=true releases the
+// clamp; an absent field - or no plan at all - keeps the most restrictive
+// posture (see GridChargeAllowed). The clamp composes into the
+// self-consumption fallback as a no-op (pv - load never exceeds the surplus),
+// so a nil/legacy plan on a merchant site costs nothing on the fallback path.
 func (p *Plan) SolarOnlyCharge() bool {
-	return p != nil && p.GridChargeAllowed != nil && !*p.GridChargeAllowed
+	return p == nil || p.GridChargeAllowed == nil || !*p.GridChargeAllowed
 }
 
 // wire mirrors the contract JSON (RFC 3339 strings).
@@ -101,6 +113,19 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 	}
 	if t, err := time.Parse(time.RFC3339, w.GeneratedAt); err == nil {
 		p.GeneratedAt = t
+	}
+	// Freshness is bounded by PLAN AGE, not just receipt time: the broker
+	// redelivers the retained schedule on every reconnect, and stamping such a
+	// redelivery ReceivedAt=now would make an hours-old plan from a dead
+	// optimizer look "fresh" for another StaleAfter window (on a flapping link
+	// indefinitely). A payload whose generated_at already lies beyond
+	// StaleAfter+redeliverySlack in the past is therefore anchored to its
+	// generation time, so Fresh() rejects it immediately and the
+	// self-consumption fallback engages - matching the disk-cache path, which
+	// preserves the ORIGINAL ReceivedAt across restarts. Plans without a
+	// parseable generated_at keep the receipt-time anchor (nothing to bound by).
+	if !p.GeneratedAt.IsZero() && receivedAt.Sub(p.GeneratedAt) > StaleAfter+redeliverySlack {
+		p.ReceivedAt = p.GeneratedAt.Add(redeliverySlack)
 	}
 	for _, s := range w.Slots {
 		start, err := time.Parse(time.RFC3339, s.Start)

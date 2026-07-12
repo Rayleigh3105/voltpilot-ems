@@ -12,6 +12,7 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -291,5 +292,48 @@ func TestDeleteSourceStopsAggregatingAndNarrowsEnvelope(t *testing.T) {
 	feedPrimary(a, 20, 60, -5, 50)
 	if snap := a.State.Get(); snap.PvKw != 20 {
 		t.Fatalf("removed source still aggregated: pv=%v", snap.PvKw)
+	}
+}
+
+// B9: a failed persist must roll the in-memory removal back (mirroring
+// AddSource) - without the rollback, aggregation silently stops summing the
+// Erzeuger (site load jumps) while Node-RED keeps reading it and a reboot
+// resurrects it from the still-on-disk sources.json.
+func TestDeleteSourceRollsBackOnPersistFailure(t *testing.T) {
+	a := newGateTestAgent(t)
+	s := addErzeuger(t, a, 40)
+	feedSource(a, s.ID, 30)
+
+	// Make the source store's atomic write fail: the data dir (where
+	// sources.json.tmp is created) becomes read-only.
+	dir := a.Cfg.DataDir
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	if err := a.DeleteSource(s.ID); err == nil {
+		t.Fatal("expected DeleteSource to fail while the store is unwritable")
+	}
+	// The source must still be configured, its live reading kept, and the
+	// aggregation still summing it.
+	a.srcMu.Lock()
+	nSrcs := len(a.srcs)
+	_, hasReading := a.srcReadings[s.ID]
+	a.srcMu.Unlock()
+	if nSrcs != 1 || !hasReading {
+		t.Fatalf("in-memory removal not rolled back: srcs=%d reading=%v", nSrcs, hasReading)
+	}
+	feedPrimary(a, 20, 60, -5, 50)
+	if snap := a.State.Get(); snap.PvKw != 50 {
+		t.Fatalf("source no longer aggregated after failed delete: pv=%v", snap.PvKw)
+	}
+
+	// Once the store is writable again the delete goes through normally.
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DeleteSource(s.ID); err != nil {
+		t.Fatalf("DeleteSource after recovery: %v", err)
 	}
 }

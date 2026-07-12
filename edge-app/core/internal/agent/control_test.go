@@ -140,7 +140,8 @@ func TestSetpointKillSwitchOffByDefault(t *testing.T) {
 // (EEG site, P5) clamps the commanded charge to the MEASURED PV surplus
 // before the setpoint is published, and turns the forwarded adapter-level
 // grid_charge_allowed off even when the device-local config permits it. A
-// plan WITHOUT the field (pre-P5 cloud) keeps today's behavior byte-for-byte.
+// plan WITHOUT the field (legacy/hand-crafted payload) clamps too - fail-safe,
+// only an explicit grid_charge_allowed=true releases the clamp.
 func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
@@ -186,20 +187,23 @@ func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 		return ok && m["battery_setpoint_kw"] == 0.0
 	})
 
-	// Legacy plan without the field: NO clamp (pre-P5 behavior), the
-	// device-local config drives the forwarded adapter bit.
+	// Legacy plan WITHOUT the field: FAIL-SAFE - clamps exactly like an EEG
+	// plan (only an explicit grid_charge_allowed=true releases the clamp; the
+	// optimizer always publishes the field, so only legacy/hand-crafted
+	// payloads take this path). pv 5 / load 4 -> the +20 kW command clamps to
+	// the 1 kW surplus and the adapter bit stays off.
 	a.mu.Lock()
 	a.currentPlan = freshPlan(now, 20, nil)
-	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 4, GridLimitKw: guards.Unknown()}
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 5, LoadKw: 4, GridLimitKw: guards.Unknown()}
 	a.mu.Unlock()
 	a.applySetpoint(now)
-	waitFor(t, 5*time.Second, "legacy plan unclamped", func() bool {
+	waitFor(t, 5*time.Second, "legacy plan clamped fail-safe", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 20.0
+		return ok && m["battery_setpoint_kw"] == 1.0
 	})
 	m, _ = sub.latest()
-	if m["grid_charge_allowed"] != true {
-		t.Fatalf("legacy plan must leave the local config in charge: %v", m)
+	if m["grid_charge_allowed"] != false {
+		t.Fatalf("a plan without the field must keep the adapter bit off (fail-safe): %v", m)
 	}
 
 	// Merchant plan (field true): grid charging stays permitted - no regression.

@@ -947,8 +947,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// P5 EEG execution gap: a plan carrying grid_charge_allowed=false (the
 	// site is EEG-funded, site.netzladen_erlaubt) demands the solar-only
 	// clamp - charge <= MEASURED pv - load - on every commanded setpoint.
-	// Field absent (pre-P5 cloud) = no clamp, today's behavior; the
-	// self-consumption fallback follows pv - load and never grid-charges,
+	// FAIL-SAFE: the field ABSENT (legacy/hand-crafted payload) or no plan at
+	// all also clamps - only an explicit true releases it (the optimizer
+	// always publishes the field, so a merchant site's plan is unaffected).
+	// The self-consumption fallback follows pv - load and never grid-charges,
 	// so the clamp composing into it is a no-op there.
 	solarOnly := p.SolarOnlyCharge()
 
@@ -1008,7 +1010,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// Most restrictive wins: the device-local VP_GRID_CHARGE_ALLOWED gate
 		// AND the plan-carried site posture (an EEG plan also turns off the
 		// adapter-level grid-charge bit, e.g. Deye ToU Charging=Grid). A plan
-		// without the field leaves the local config in charge, as before.
+		// without the field - or no plan - is fail-safe: the bit stays off
+		// until a plan explicitly allows grid charging.
 		"grid_charge_allowed": a.Cfg.GridChargeAllowed && !solarOnly,
 		"soc_min_pct":         a.Cfg.SocMinPct,
 	}
@@ -1061,7 +1064,7 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 				slog.Warn("telemetry publish failed; will retry", "seq", e.Seq, "err", err)
 				break
 			}
-			if err := a.buf.Ack(); err != nil {
+			if err := a.buf.Ack(e.Seq); err != nil {
 				slog.Error("buffer ack failed", "err", err)
 				break
 			}
@@ -1491,18 +1494,37 @@ func (a *Agent) AddSource(req sources.Request) (sources.Source, error) {
 
 // DeleteSource removes an additional source by id, persists, re-publishes the
 // retained config and re-applies the envelope. Unknown id -> sources.ErrNotFound.
+// A failed persist rolls the in-memory removal back (mirroring AddSource), so
+// memory, disk and the retained Node-RED config never diverge: without the
+// rollback, aggregation would stop summing the Erzeuger (site load jumps)
+// while Node-RED keeps reading it and a reboot resurrects it.
 func (a *Agent) DeleteSource(id string) error {
 	a.srcMu.Lock()
-	before := len(a.srcs)
-	a.srcs = removeSourceByID(a.srcs, id)
-	if len(a.srcs) == before {
+	var removed *sources.Source
+	for i := range a.srcs {
+		if a.srcs[i].ID == id {
+			s := a.srcs[i]
+			removed = &s
+			break
+		}
+	}
+	if removed == nil {
 		a.srcMu.Unlock()
 		return sources.ErrNotFound
 	}
+	a.srcs = removeSourceByID(a.srcs, id)
+	reading, hadReading := a.srcReadings[id]
 	delete(a.srcReadings, id)
 	list := append([]sources.Source(nil), a.srcs...)
 	a.srcMu.Unlock()
 	if err := a.srcStore.Save(list); err != nil {
+		// Roll back the in-memory removal so disk + memory stay consistent.
+		a.srcMu.Lock()
+		a.srcs = append(a.srcs, *removed)
+		if hadReading {
+			a.srcReadings[id] = reading
+		}
+		a.srcMu.Unlock()
 		return fmt.Errorf("Energiequelle konnte nicht entfernt werden: %w", err)
 	}
 	a.publishSourcesConfig()

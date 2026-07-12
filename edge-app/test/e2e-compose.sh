@@ -15,6 +15,8 @@ cd "$(dirname "$0")/.."
 PROJECT="vpedge-e2e-$$"
 COMPOSE=(docker compose -p "$PROJECT" -f docker-compose.yml -f test/docker-compose.e2e.yml --profile sim)
 export VP_WEB_PORT=18484 VP_NODERED_PORT=11881 VP_BUS_PORT=11884
+# settings.js fails closed without a non-default editor password (S2).
+export VP_NODERED_PASSWORD=vp-e2e-editor-pass
 
 T_BASE="ems/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003"
 NET="${PROJECT}_default"

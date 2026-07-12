@@ -39,7 +39,7 @@ func TestReplayOrderingAndOriginalTimestamps(t *testing.T) {
 		if e.Measurements["power_kw"] != float64(i) {
 			t.Errorf("entry %d: payload mixed up", i)
 		}
-		if err := b.Ack(); err != nil {
+		if err := b.Ack(e.Seq); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -66,10 +66,11 @@ func TestCursorAndSeqSurviveRestart(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		_, _ = b.Append(base.Add(time.Duration(i)*time.Second), map[string]float64{"n": float64(i)})
 	}
-	if _, ok := b.Next(); !ok {
+	e0, ok := b.Next()
+	if !ok {
 		t.Fatal("missing entry")
 	}
-	_ = b.Ack() // consumed entry 0
+	_ = b.Ack(e0.Seq) // consumed entry 0
 	_ = b.Close()
 
 	// Restart: cursor at entry 1, seq counter continues at 3.
@@ -105,7 +106,7 @@ func TestSegmentRotationKeepsOrder(t *testing.T) {
 		if e.Seq != int64(i) {
 			t.Fatalf("order broken at %d: seq %d", i, e.Seq)
 		}
-		_ = b.Ack()
+		_ = b.Ack(e.Seq)
 	}
 }
 
@@ -158,10 +159,11 @@ func TestPendingCountsAcrossSegments(t *testing.T) {
 		t.Errorf("pending: got %d, want %d", p, n)
 	}
 	for i := 0; i < 10; i++ {
-		if _, ok := b.Next(); !ok {
+		e, ok := b.Next()
+		if !ok {
 			t.Fatal(fmt.Sprintf("entry %d missing", i))
 		}
-		_ = b.Ack()
+		_ = b.Ack(e.Seq)
 	}
 	if p := b.Pending(); p != n-10 {
 		t.Errorf("pending after acks: got %d, want %d", p, n-10)
@@ -193,10 +195,11 @@ func TestDataLossFlagOnEvictionAndClearsOnDrain(t *testing.T) {
 	}
 	// Drain the surviving backlog -> the flag clears.
 	for {
-		if _, ok := b.Next(); !ok {
+		e, ok := b.Next()
+		if !ok {
 			break
 		}
-		if err := b.Ack(); err != nil {
+		if err := b.Ack(e.Seq); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -218,10 +221,11 @@ func TestSegmentParsedOncePerDrain(t *testing.T) {
 	}
 	before := b.parseCount
 	for i := 0; i < n; i++ {
-		if _, ok := b.Next(); !ok {
+		e, ok := b.Next()
+		if !ok {
 			t.Fatalf("entry %d missing", i)
 		}
-		if err := b.Ack(); err != nil {
+		if err := b.Ack(e.Seq); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -271,10 +275,11 @@ func TestPurgeThroughDropsOldKeepsNewAndSurvivesRestart(t *testing.T) {
 		}
 	}
 	for i := 0; i < 2; i++ {
-		if _, ok := b.Next(); !ok {
+		e, ok := b.Next()
+		if !ok {
 			t.Fatal("expected entry")
 		}
-		if err := b.Ack(); err != nil {
+		if err := b.Ack(e.Seq); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -302,7 +307,7 @@ func TestPurgeThroughDropsOldKeepsNewAndSurvivesRestart(t *testing.T) {
 		if e.Seq != int64(i) {
 			t.Errorf("survivor %d: seq %d", i, e.Seq)
 		}
-		if err := b.Ack(); err != nil {
+		if err := b.Ack(e.Seq); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -322,6 +327,116 @@ func TestPurgeThroughDropsOldKeepsNewAndSurvivesRestart(t *testing.T) {
 	e, ok := b2.Next()
 	if !ok || e.Seq != 10 {
 		t.Fatalf("post-purge entry: ok=%v seq=%d, want seq 10", ok, e.Seq)
+	}
+}
+
+// B3 regression: the publisher's Next -> publish -> Ack is not atomic. A
+// PurgeThrough firing between Next and Ack rewrites the ring so segment 0
+// index 0 holds a SURVIVOR; a blind cursor advance would skip - and ack -
+// that survivor without ever publishing it. The identity-checked Ack must
+// no-op instead, so the survivor is redelivered.
+func TestAckAfterConcurrentPurgeDoesNotSkipSurvivor(t *testing.T) {
+	b := openT(t, t.TempDir(), 48*time.Hour)
+	base := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		if _, err := b.Append(base.Add(time.Duration(i)*time.Minute), map[string]float64{"n": float64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Publisher takes entry 0 (in flight, QoS1 publish running)...
+	inFlight, ok := b.Next()
+	if !ok || inFlight.Seq != 0 {
+		t.Fatalf("expected entry 0 in flight, got %+v ok=%v", inFlight, ok)
+	}
+	// ...meanwhile a purge drops entries 0+1; entry 2 survives at the cursor.
+	if _, err := b.PurgeThrough(base.Add(1 * time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	// The publish of entry 0 completes; the ack must NOT advance past the
+	// survivor now sitting at the cursor.
+	if err := b.Ack(inFlight.Seq); err != nil {
+		t.Fatal(err)
+	}
+	e, ok := b.Next()
+	if !ok || e.Seq != 2 {
+		t.Fatalf("survivor lost: got %+v ok=%v, want seq 2", e, ok)
+	}
+	if got := b.Pending(); got != 1 {
+		t.Errorf("pending = %d, want 1 (the un-acked survivor)", got)
+	}
+	// The survivor's OWN ack (after its publish) advances normally.
+	if err := b.Ack(e.Seq); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := b.Next(); ok {
+		t.Error("buffer should be drained after acking the survivor")
+	}
+	if got := b.Pending(); got != 0 {
+		t.Errorf("pending = %d, want 0", got)
+	}
+}
+
+// B3 regression, purge variant where the IN-FLIGHT entry itself survives the
+// purge: it ends up at the rebuilt cursor, so its ack is legitimate and must
+// advance (seq identity match), never double-deliver.
+func TestAckAfterConcurrentPurgeAdvancesWhenInFlightEntrySurvived(t *testing.T) {
+	b := openT(t, t.TempDir(), 48*time.Hour)
+	base := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 2; i++ {
+		if _, err := b.Append(base.Add(time.Duration(i)*time.Minute), map[string]float64{"n": float64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inFlight, _ := b.Next() // entry 0
+	// Purge through a cutoff BEFORE entry 0: both entries survive the rebuild.
+	if _, err := b.PurgeThrough(base.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Ack(inFlight.Seq); err != nil {
+		t.Fatal(err)
+	}
+	e, ok := b.Next()
+	if !ok || e.Seq != 1 {
+		t.Fatalf("expected entry 1 after legitimate ack, got %+v ok=%v", e, ok)
+	}
+}
+
+// B3 regression, evict variant: a retention evict during the in-flight
+// publish drops the segment the cursor was in and snaps the cursor to the
+// next segment's first entry - which was never published. The ack of the
+// evicted (but published) entry must not skip it.
+func TestAckAfterConcurrentEvictDoesNotSkipFirstSurvivor(t *testing.T) {
+	b := openT(t, t.TempDir(), time.Hour)
+	old := time.Now().UTC().Add(-3 * time.Hour)
+	// Exactly one full over-horizon segment (the sole segment is never
+	// evicted, so nothing drops yet).
+	for i := 0; i < segmentEntries; i++ {
+		if _, err := b.Append(old.Add(time.Duration(i)*time.Millisecond), map[string]float64{"n": float64(i)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Publisher takes the oldest entry (segment 0)...
+	inFlight, ok := b.Next()
+	if !ok || inFlight.Seq != 0 {
+		t.Fatalf("expected entry 0 in flight, got %+v ok=%v", inFlight, ok)
+	}
+	// ...a fresh Append rotates to segment 1 AND evicts the whole over-horizon
+	// segment 0; the cursor snaps to the tail segment's first entry.
+	if _, err := b.Append(time.Now().UTC(), map[string]float64{"n": 1000}); err != nil {
+		t.Fatal(err)
+	}
+	// The publish of the evicted entry completes: the ack must be a no-op.
+	if err := b.Ack(inFlight.Seq); err != nil {
+		t.Fatal(err)
+	}
+	e, ok := b.Next()
+	if !ok || e.Measurements["n"] != 1000 {
+		t.Fatalf("first tail entry lost to a mis-ack: %+v ok=%v", e, ok)
+	}
+	if got := b.Pending(); got != 1 {
+		t.Errorf("pending = %d, want 1 (the un-acked tail entry)", got)
 	}
 }
 
