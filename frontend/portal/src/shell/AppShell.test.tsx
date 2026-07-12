@@ -42,3 +42,42 @@ describe('AppShell "＋ Anlage hinzufügen" header action', () => {
     expect(screen.queryByRole('button', { name: 'Anlage hinzufügen' })).toBeNull();
   });
 });
+
+describe('AppShell admin tenant switcher', () => {
+  const tenants = [
+    { id: 't-1', name: 'Stadtwerke Musterstadt', segment: 'CI', plan: 'basic', createdAt: '2026-01-01T00:00:00Z' },
+    { id: 't-2', name: 'Familie Kaiser', segment: 'B2C', plan: 'basic', createdAt: '2026-01-01T00:00:00Z' },
+  ];
+
+  it('renders the tenant switcher with an "Alle Mandanten" default for admins', () => {
+    const onTenantChange = vi.fn();
+    render(
+      <AppShell
+        {...baseProps}
+        isAdmin
+        showOverview
+        showAddAnlage={false}
+        onAddAnlage={vi.fn()}
+        tenants={tenants}
+        onTenantChange={onTenantChange}
+      >
+        <div>content</div>
+      </AppShell>,
+    );
+    const select = screen.getByLabelText('Mandanten-Kontext');
+    expect(select).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Alle Mandanten' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Stadtwerke Musterstadt' })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: 't-2' } });
+    expect(onTenantChange).toHaveBeenCalledWith('t-2');
+  });
+
+  it('shows no tenant switcher for a customer', () => {
+    render(
+      <AppShell {...baseProps} isAdmin={false} showAddAnlage={false} onAddAnlage={vi.fn()} tenants={[]}>
+        <div>content</div>
+      </AppShell>,
+    );
+    expect(screen.queryByLabelText('Mandanten-Kontext')).toBeNull();
+  });
+});

@@ -5,9 +5,11 @@ import { Card } from '../../../designsystem/components/core/Card';
 import { Icon } from '../../../designsystem/components/core/Icon';
 import { IconTile } from '../../../designsystem/components/core/IconTile';
 import { Input } from '../../../designsystem/components/forms/Input';
+import { KpiCard } from '../../../designsystem/components/shell/KpiCard';
 import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError, type Site } from '../../api';
 import { fmtCoords, fmtNum } from '../../format';
+import { tenantPulse } from '../../adminPulse';
 import {
   adminApi,
   type AdminUser,
@@ -16,7 +18,8 @@ import {
 } from '../../admin/adminApi';
 import { CreateSiteDrawer } from '../../components/CreateSiteDrawer';
 import { DangerZone } from '../../components/DangerZone';
-import { ErrorState, TextSkeleton } from '../../components/States';
+import { EmptyState, ErrorState, TextSkeleton } from '../../components/States';
+import { AdminPageHead } from './AdminPageHead';
 import { CreateUserDrawer } from './CreateUserDrawer';
 import type { PageId } from '../../nav';
 
@@ -38,72 +41,81 @@ export function MandantenPage({
   const [addOpen, setAddOpen] = useState(false);
   const [detail, setDetail] = useState<Tenant | null>(null);
 
+  const addButton = (
+    <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
+      Mandant anlegen
+    </Button>
+  );
+
   return (
     <>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>Mandanten</h1>
-          <p>
-            Kunden (Mandanten) plattformweit verwalten. Zeile öffnen für Benutzer und
-            Anlagen - oder oben über den Kontext-Umschalter in die Portal-Ansicht
-            eines Mandanten springen.
-          </p>
-        </div>
-        <div className="actions">
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setAddOpen(true)}>
-            Mandant anlegen
-          </Button>
-        </div>
-      </div>
+      <AdminPageHead
+        icon="building"
+        category="industry"
+        title="Mandanten"
+        description="Kunden (Mandanten) plattformweit verwalten. Zeile öffnen für Benutzer und Anlagen - oder oben über den Kontext-Umschalter in die Portal-Ansicht eines Mandanten springen."
+        actions={addButton}
+      />
 
       {tenants.length === 0 ? (
         <Card padding="lg" radius="lg">
-          <p className="vp-muted">Noch keine Mandanten. Legen Sie den ersten an.</p>
+          <EmptyState
+            icon="building"
+            category="industry"
+            title="Noch keine Mandanten"
+            description="Legen Sie den ersten Mandanten an, um Kunden auf der Plattform zu verwalten - Benutzer und Anlagen richten Sie danach je Mandant ein."
+            action={addButton}
+          />
         </Card>
       ) : (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="vp-table responsive">
-            <thead>
-              <tr>
-                <th>Mandant</th>
-                <th>Segment</th>
-                <th>Tarif</th>
-                <th>Mandant-ID</th>
-                <th aria-label="Aktionen" />
-              </tr>
-            </thead>
-            <tbody>
-              {tenants.map((t) => (
-                <tr key={t.id} className="clickable" onClick={() => setDetail(t)}>
-                  <td data-label="Mandant">
-                    <b>{t.name}</b>
-                  </td>
-                  <td data-label="Segment">
-                    <Badge variant="tint">{segmentLabel(t.segment)}</Badge>
-                  </td>
-                  <td data-label="Tarif">
-                    <Badge variant="tint">{t.plan.toUpperCase()}</Badge>
-                  </td>
-                  <td data-label="Mandant-ID" className="vp-mono" title={t.id}>
-                    {t.id.slice(0, 8)}…
-                  </td>
-                  <td data-label="">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e: React.MouseEvent) => {
-                        e.stopPropagation();
-                        setDetail(t);
-                      }}
-                    >
-                      Details
-                    </Button>
-                  </td>
+        <>
+          <MandantenPulse tenants={tenants} />
+          <Card style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="vp-table responsive">
+              <thead>
+                <tr>
+                  <th>Mandant</th>
+                  <th>Segment</th>
+                  <th>Tarif</th>
+                  <th aria-label="Aktionen" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+              </thead>
+              <tbody>
+                {tenants.map((t) => (
+                  <tr key={t.id} className="clickable" onClick={() => setDetail(t)}>
+                    <td data-label="Mandant">
+                      <div className="vp-cell-main">
+                        <b>{t.name}</b>
+                        <span className="vp-cell-sub vp-mono" title={t.id}>
+                          {t.id.slice(0, 8)}…
+                        </span>
+                      </div>
+                    </td>
+                    <td data-label="Segment">
+                      <Badge variant="tint">{segmentLabel(t.segment)}</Badge>
+                    </td>
+                    <td data-label="Tarif">
+                      <Badge variant="tint">{t.plan.toUpperCase()}</Badge>
+                    </td>
+                    <td data-label="" style={{ textAlign: 'right' }}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Details zu ${t.name}`}
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          setDetail(t);
+                        }}
+                      >
+                        Details <Icon name="chevron-right" size={16} />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </>
       )}
 
       <CreateTenantDrawer
@@ -128,6 +140,45 @@ export function MandantenPage({
         />
       )}
     </>
+  );
+}
+
+/**
+ * Platform pulse strip: a compact at-a-glance count of Mandanten by segment,
+ * derived purely from the tenants in hand (tenantPulse) - the admin's first
+ * "how big is the platform?" signal above the table.
+ */
+function MandantenPulse({ tenants }: { tenants: Tenant[] }) {
+  const p = tenantPulse(tenants);
+  return (
+    <div className="vp-kpis vp-admin-pulse" style={{ marginBottom: 'var(--vp-space-6)' }}>
+      <KpiCard
+        icon={<Icon name="building" size={20} />}
+        category="primary"
+        value={fmtNum(p.total, '', 0)}
+        label="Mandanten gesamt"
+      />
+      <KpiCard
+        icon={<Icon name="home" size={20} />}
+        category="home"
+        value={fmtNum(p.privat, '', 0)}
+        label="Privatkunden"
+      />
+      <KpiCard
+        icon={<Icon name="building" size={20} />}
+        category="industry"
+        value={fmtNum(p.gewerbe, '', 0)}
+        label="Gewerbe & Industrie"
+      />
+      {p.andere > 0 && (
+        <KpiCard
+          icon={<Icon name="list" size={20} />}
+          category="dynamic"
+          value={fmtNum(p.andere, '', 0)}
+          label="Andere Segmente"
+        />
+      )}
+    </div>
   );
 }
 
