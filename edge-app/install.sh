@@ -874,7 +874,7 @@ print_summary() {
   info "Nützliche Befehle (in ${TARGET_DIR}):"
   info "  Status:  docker compose ps"
   info "  Logs:    docker compose logs -f core"
-  info "  Update:  ./install.sh   (zieht neue Images, startet neu, Volumes bleiben)"
+  info "  Update:  ./update.sh    (Compose aktuell halten + neue Images, Volumes bleiben)"
 }
 
 # =========================================================================
@@ -919,4 +919,10 @@ main() {
   print_summary
 }
 
-main "$@"
+# Source guard: update.sh sources this file to reuse generate_compose() and
+# the shared helpers (ONE source of truth for the compose template - see the
+# lockstep note above generate_compose). Sourcing defines everything but runs
+# nothing; direct execution behaves exactly as before.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi
