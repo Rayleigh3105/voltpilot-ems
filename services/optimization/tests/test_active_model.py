@@ -27,7 +27,6 @@ from voltpilot_optimization.inputs import BatterySite, gather_inputs
 NOW = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
 SITE = UUID("00000000-0000-0000-0000-000000000002")
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
-RUN_AT = NOW - timedelta(minutes=5)
 SLOTS = 16  # == MIN_HORIZON_SLOTS, the smallest plannable horizon
 
 #: value_kw per model - absurd challenger values so leakage is unmistakable.
@@ -56,15 +55,19 @@ class _FakeCursor:
         sql = " ".join(sql.split())
         if "FROM day_ahead_prices" in sql:
             self._rows = [(ts, "PT15M", 100.0) for ts in self.slot_starts]
-        elif "max(run_at)" in sql and "FROM forecast" in sql:
-            site_id, kind, model = params
-            assert model, "forecast query must filter on a model id"
-            has = (kind, model) in MODEL_VALUES and site_id == SITE
-            self._rows = [(RUN_AT if has else None,)]
         elif "FROM forecast" in sql:
-            site_id, kind, model, run_at = params
-            value = MODEL_VALUES[(kind, model)]
-            self._rows = [(ts, value) for ts in self.slot_starts]
+            # Per-slot freshest of ONE model (B1: the in-progress first slot
+            # exists only in the previous run, so latest-run-only is wrong).
+            assert "DISTINCT ON (time)" in sql
+            site_id, kind, model, since = params
+            assert model, "forecast query must filter on a model id"
+            value = MODEL_VALUES.get((kind, model))
+            has = value is not None and site_id == SITE
+            self._rows = (
+                [(ts, value) for ts in self.slot_starts if ts >= since]
+                if has
+                else []
+            )
         elif "FROM telemetry" in sql:
             self._rows = []  # no fallback history, no soc/grid readings
         else:  # pragma: no cover - unexpected query means the SQL changed
@@ -153,3 +156,67 @@ def test_wrong_kind_active_model_is_rejected(fake_psycopg, monkeypatch):
 
     with pytest.raises(ValueError):
         gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+
+def test_in_progress_first_slot_still_consumes_the_stored_forecast(monkeypatch):
+    """B1 companion: since the horizon includes the slot IN PROGRESS, whose
+    prediction exists only in the PREVIOUS collector run (a run covers slots
+    strictly after its run_at), the read must be freshest-PER-SLOT across
+    runs - latest-run-only would miss the first slot and silently drop the
+    whole stored forecast to the persistence fallback (zeros here)."""
+    slot_starts = horizon_slot_starts(NOW, SLOTS)
+    prev_run = NOW - timedelta(minutes=15)
+    latest_run = NOW - timedelta(minutes=5)
+    # The forecast table: (time, run_at, value) rows for the active models.
+    # prev_run covers the whole grid; latest_run starts strictly after NOW,
+    # so ONLY prev_run holds the in-progress slot_starts[0].
+    table: dict[tuple[str, str], list[tuple]] = {}
+    for kind, model, prev_v, latest_v in (
+        ("load", "load-persistence", 2.0, 1.0),
+        ("pv", "pv-physical", 0.25, 0.5),
+    ):
+        rows = [(ts, prev_run, prev_v) for ts in slot_starts]
+        rows += [(ts, latest_run, latest_v) for ts in slot_starts[1:]]
+        table[(kind, model)] = rows
+
+    class _Cursor(_FakeCursor):
+        def execute(self, sql, params=()):
+            sql_flat = " ".join(sql.split())
+            if "FROM forecast" in sql_flat:
+                assert "DISTINCT ON (time)" in sql_flat
+                site_id, kind, model, since = params
+                freshest: dict = {}
+                for ts, run_at, value in table.get((kind, model), []):
+                    if ts < since:
+                        continue
+                    if ts not in freshest or run_at > freshest[ts][0]:
+                        freshest[ts] = (run_at, value)
+                self._rows = sorted(
+                    (ts, value) for ts, (_, value) in freshest.items()
+                )
+            else:
+                super().execute(sql, params)
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def cursor(self):
+            return _Cursor()
+
+    monkeypatch.setitem(
+        sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: _Conn())
+    )
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_LOAD_MODEL", raising=False)
+    monkeypatch.delenv("VOLTPILOT_ACTIVE_PV_MODEL", raising=False)
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+
+    # First slot covers NOW (B1) and carries the PREVIOUS run's prediction;
+    # every future slot carries the latest run's. No fallback zeros anywhere.
+    assert inp.slot_starts[0] <= NOW
+    assert inp.load_kw == [2.0] + [1.0] * (SLOTS - 1)
+    assert inp.pv_kw == [0.25] + [0.5] * (SLOTS - 1)

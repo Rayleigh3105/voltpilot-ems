@@ -96,8 +96,15 @@ def test_cycle_plans_persists_and_publishes(wired):
         f"/{site_with_device.device_id}/schedule"
     )
     assert payload["horizon_slots"] == 96
-    # First slot starts at the next 15-min boundary after NOW (22:00).
-    assert payload["slots"][0]["start"] == "2026-07-01T22:00:00Z"
+    # B1 regression: the published plan's first slot COVERS NOW (starts at the
+    # boundary at/before it, 21:45 for NOW=21:53:11), so the edge finds an
+    # active slot immediately instead of falling back to self-consumption
+    # until the next boundary.
+    assert payload["slots"][0]["start"] == "2026-07-01T21:45:00Z"
+    first_start = datetime.fromisoformat(
+        payload["slots"][0]["start"].replace("Z", "+00:00")
+    )
+    assert first_start <= NOW
 
 
 def test_published_payload_validates_against_contract(wired):

@@ -281,7 +281,8 @@ def gather_inputs(
 ) -> OptimizationInput:
     """Assemble the slot-aligned :class:`OptimizationInput` for one site.
 
-    The horizon is the next ``horizon_slots`` 15-min slots, truncated to the
+    The horizon is ``horizon_slots`` 15-min slots starting with the slot in
+    progress at ``now`` (B1: the edge needs a slot covering now), truncated to the
     contiguous prefix covered by day-ahead prices (prices are the binding
     input - without a price a slot cannot be optimized). Raises
     :class:`SkipSite` when coverage is below :data:`MIN_HORIZON_SLOTS`.
@@ -430,7 +431,9 @@ def _forecast_or_fallback(
     Returns ``(series, used_fallback)`` so the PV caller can flag a fallback-fed
     night-floor distinctly (the collector<->optimizer 15-min race, §4a of the
     scout report - visible in monitoring before it silently degrades plans)."""
-    stored = _load_forecast(dsn, site.site_id, kind, active_model(kind))
+    stored = _load_forecast(
+        dsn, site.site_id, kind, active_model(kind), slot_starts[0]
+    )
     if all(s in stored for s in slot_starts):
         return [stored[s] for s in slot_starts], False
 
@@ -508,27 +511,29 @@ def _night_floor_pv_input(
 
 
 def _load_forecast(
-    dsn: str, site_id: UUID, kind: str, model: str
+    dsn: str, site_id: UUID, kind: str, model: str, since: datetime
 ) -> dict[datetime, float]:
-    """Latest run of ONE model (the active one) - shadow rows stay invisible."""
+    """Per-slot FRESHEST prediction of ONE model (the active one) from
+    ``since`` on - shadow rows stay invisible.
+
+    Freshest-per-slot instead of latest-run-only because the horizon includes
+    the slot IN PROGRESS (B1) while a collector run covers only slots strictly
+    after its ``run_at`` (``Horizon.slot_starts``): the in-progress slot's
+    prediction exists only in the PREVIOUS run. Latest-run-only would miss it
+    and silently discard the whole stored forecast in favor of the persistence
+    fallback whenever the collector fired earlier in the same slot. This is
+    the evaluation's "freshest prediction issued for the slot" rule; for every
+    strictly-future slot the newest run still wins."""
     import psycopg  # lazy: optional [db] extra
 
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT max(run_at) FROM forecast "
-            "WHERE site_id = %s AND kind = %s AND model = %s",
-            (site_id, kind, model),
-        )
-        row = cur.fetchone()
-        if row is None or row[0] is None:
-            return {}
-        cur.execute(
             """
-            SELECT time, value_kw FROM forecast
-            WHERE site_id = %s AND kind = %s AND model = %s AND run_at = %s
-            ORDER BY time
+            SELECT DISTINCT ON (time) time, value_kw FROM forecast
+            WHERE site_id = %s AND kind = %s AND model = %s AND time >= %s
+            ORDER BY time, run_at DESC
             """,
-            (site_id, kind, model, row[0]),
+            (site_id, kind, model, since),
         )
         return {ensure_utc(ts): float(v) for ts, v in cur.fetchall()}
 
@@ -536,9 +541,12 @@ def _load_forecast(
 def _load_history(
     dsn: str, site_id: UUID, column: str, now: datetime
 ) -> list[tuple[datetime, float]]:
+    # Fixed set, never user input - a hard raise (not assert, which is
+    # stripped under python -O) keeps the f-string interpolation safe (S15).
+    if column not in ("load_kw", "pv_power_kw"):
+        raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
 
-    assert column in ("load_kw", "pv_power_kw")  # fixed set; never user input
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             f"""
@@ -565,9 +573,12 @@ def _fresh_measurement(
     silent-poisoning failure mode was invisible) instead of just vanishing
     from the query result.
     """
+    # Fixed set, never user input - a hard raise (not assert, which is
+    # stripped under python -O) keeps the f-string interpolation safe (S15).
+    if column not in ("soc_pct", "grid_limit_kw"):
+        raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
 
-    assert column in ("soc_pct", "grid_limit_kw")  # fixed set; never user input
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             f"""

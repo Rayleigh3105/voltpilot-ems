@@ -384,9 +384,14 @@ def floor_to_slot(dt: datetime, slot_minutes: int = SLOT_MINUTES) -> datetime:
 def horizon_slot_starts(
     now: datetime, slots: int, slot_minutes: int = SLOT_MINUTES
 ) -> list[datetime]:
-    """The rolling-horizon slot grid: the first slot is the next boundary
-    strictly after ``now`` (we plan the future, not the slot in progress)."""
-    first = floor_to_slot(now, slot_minutes) + timedelta(minutes=slot_minutes)
+    """The rolling-horizon slot grid: the first slot is the one IN PROGRESS at
+    ``now`` (floored to the slot boundary), so the published plan always has a
+    slot covering ``now``. The edge activates a slot only once ``now >= start``
+    (plan.go ``ActiveSetpoint``); a grid starting at the NEXT boundary left it
+    with no active slot - self-consumption fallback instead of the optimizer's
+    dispatch - from every publish until the boundary (B1). Prices and forecasts
+    cover the in-progress slot and the live SoC is valid for its remainder."""
+    first = floor_to_slot(now, slot_minutes)
     return [first + i * timedelta(minutes=slot_minutes) for i in range(slots)]
 
 

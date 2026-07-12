@@ -183,12 +183,50 @@ def test_expired_remuneration_degrades_to_spot():
     assert values == SPOT
 
 
-def test_eigenverbrauch_in_merchant_mode_exports_at_bare_spot():
-    # Same Ausschliesslichkeitsprinzip guard as the DV premium.
-    values = export_values(
-        _ev_tariff(date(2023, 6, 15)), True, SPOT, STARTS, {}
+def test_eigenverbrauch_in_merchant_mode_exports_at_bare_spot_and_flags(caplog):
+    # Same Ausschliesslichkeitsprinzip guard as the DV premium - and since B5
+    # the same inconsistency WARNING: an EEG-remunerated (commissioned)
+    # eigenverbrauch plant in merchant mode was previously silent.
+    with caplog.at_level("WARNING"):
+        values = export_values(
+            _ev_tariff(date(2023, 6, 15)), True, SPOT, STARTS, {}
+        )
+    assert values == SPOT  # behavior unchanged: bare spot
+    assert any(
+        "eeg_remuneration_ignored_in_merchant_mode" in r.message
+        for r in caplog.records
     )
+
+
+def test_eigenverbrauch_merchant_without_commissioning_date_stays_silent(caplog):
+    # No commissioning date = no feste Vergütung to ignore = no inconsistency.
+    with caplog.at_level("WARNING"):
+        values = export_values(_ev_tariff(None), True, SPOT, STARTS, {})
     assert values == SPOT
+    assert not any(
+        "eeg_remuneration_ignored_in_merchant_mode" in r.message
+        for r in caplog.records
+    )
+
+
+def test_expiry_is_evaluated_per_slot_across_the_horizon_boundary():
+    # B10: a 2005 plant's remuneration ends Dec 31, 2025 (Berlin). A horizon
+    # crossing that midnight (= 2025-12-31 23:00 UTC) earns the rate in the
+    # 2025 slots and bare spot in the 2026 slots - not one verdict for all
+    # slots from the horizon start.
+    starts = [
+        datetime(2025, 12, 31, 22, 30, tzinfo=timezone.utc),  # Berlin 23:30
+        datetime(2025, 12, 31, 22, 45, tzinfo=timezone.utc),  # Berlin 23:45
+        datetime(2025, 12, 31, 23, 0, tzinfo=timezone.utc),   # Berlin 00:00
+        datetime(2025, 12, 31, 23, 15, tzinfo=timezone.utc),  # Berlin 00:15
+    ]
+    spot = [100.0, -20.0, 100.0, -20.0]
+    tariff = _ev_tariff(date(2005, 6, 15))
+    rate = feste_verguetung_ct_per_kwh(date(2005, 6, 15), 8.0) * 10.0
+    values = export_values(tariff, False, spot, starts, {})
+    # Pre-2025 plant: no §51a suspension, so the -20 slot still earns the rate
+    # while remunerated; both post-expiry slots degrade to bare spot.
+    assert values == [rate, rate, 100.0, -20.0]
 
 
 def test_blended_rate_weights_the_tranches():
@@ -295,8 +333,6 @@ class _FakeCursor:
             self._rows = [(ts, "PT15M", 100.0) for ts in self.slot_starts]
         elif "FROM monthly_market_value" in sql:
             self._rows = [(JULY, 5.0)]
-        elif "max(run_at)" in sql and "FROM forecast" in sql:
-            self._rows = [(NOW - timedelta(minutes=5),)]
         elif "FROM forecast" in sql:
             self._rows = [(ts, 1.0) for ts in self.slot_starts]
         elif "FROM telemetry" in sql and "LIMIT 1" in sql:

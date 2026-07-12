@@ -181,7 +181,10 @@ def load_sites(conn) -> list[SiteRow]:
 def _telemetry_history(
     conn, site_id: str, column: str, since: datetime
 ) -> list[Observation]:
-    assert column in ("load_kw", "pv_power_kw")  # fixed set; never user input
+    # Fixed set, never user input - a hard raise (not assert, which is
+    # stripped under python -O) keeps the f-string interpolation safe (S15).
+    if column not in ("load_kw", "pv_power_kw"):
+        raise ValueError(f"unsupported telemetry column: {column}")
     with conn.cursor() as cur:
         cur.execute(
             f"""

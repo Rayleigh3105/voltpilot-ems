@@ -31,7 +31,6 @@ from voltpilot_optimization.inputs import (
 NOW = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
 SITE = UUID("00000000-0000-0000-0000-000000000002")
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
-RUN_AT = NOW - timedelta(minutes=5)
 SLOTS = 16  # == MIN_HORIZON_SLOTS, the smallest plannable horizon
 
 
@@ -53,8 +52,6 @@ class _FakeCursor:
         sql = " ".join(sql.split())
         if "FROM day_ahead_prices" in sql:
             self._rows = [(ts, "PT15M", 100.0) for ts in self.slot_starts]
-        elif "max(run_at)" in sql and "FROM forecast" in sql:
-            self._rows = [(RUN_AT,)]
         elif "FROM forecast" in sql:
             self._rows = [(ts, 1.0) for ts in self.slot_starts]
         elif "FROM telemetry" in sql and "LIMIT 1" in sql:
@@ -287,3 +284,16 @@ def test_inconsistent_soc_band_falls_back_to_defaults_with_a_warning(
     assert site.battery.soc_min_fraction == 0.05
     assert site.battery.soc_max_fraction == 0.95
     assert any("invalid_soc_band" in r.message for r in caplog.records)
+
+
+def test_sql_column_guards_raise_instead_of_asserting():
+    # S15: the f-string column interpolation is guarded by a hard raise, not
+    # an assert (which python -O strips) - and it fires before any DB connect.
+    from voltpilot_optimization.inputs import _fresh_measurement, _load_history
+
+    with pytest.raises(ValueError, match="DROP TABLE"):
+        _load_history("dsn://unused", SITE, "load_kw; DROP TABLE t", NOW)
+    with pytest.raises(ValueError, match="load_kw"):
+        _fresh_measurement(
+            "dsn://unused", SITE, "load_kw", NOW, timedelta(hours=1)
+        )
