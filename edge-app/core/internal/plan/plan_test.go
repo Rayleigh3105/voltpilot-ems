@@ -70,8 +70,9 @@ func TestParseKeepsPvLimitCurtailment(t *testing.T) {
 }
 
 // The optional grid_charge_allowed (P5 EEG execution gap) is parsed, drives
-// SolarOnlyCharge, and survives the disk round-trip. ABSENT = nil = treat as
-// allowed (no clamp - the pre-P5 behavior a legacy payload must keep).
+// SolarOnlyCharge, and survives the disk round-trip. FAIL-SAFE: only an
+// explicit true releases the clamp; an ABSENT field (legacy/hand-crafted
+// payload) and a nil plan demand the most restrictive posture.
 func TestParseGridChargeAllowed(t *testing.T) {
 	slot := `{ "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": 5.0 }`
 
@@ -92,13 +93,16 @@ func TestParseGridChargeAllowed(t *testing.T) {
 	}
 
 	legacy := mustParse(t, time.Now()) // contractPayload carries no field
-	if legacy.GridChargeAllowed != nil || legacy.SolarOnlyCharge() {
-		t.Errorf("absent field must stay nil (no clamp): %+v", legacy.GridChargeAllowed)
+	if legacy.GridChargeAllowed != nil {
+		t.Errorf("absent field must stay nil: %+v", legacy.GridChargeAllowed)
+	}
+	if !legacy.SolarOnlyCharge() {
+		t.Error("absent field must demand the clamp (fail-safe, most restrictive)")
 	}
 
 	var nilPlan *Plan
-	if nilPlan.SolarOnlyCharge() {
-		t.Error("nil plan must not demand the clamp")
+	if !nilPlan.SolarOnlyCharge() {
+		t.Error("nil plan must demand the clamp (fail-safe)")
 	}
 
 	// Disk round-trip keeps the posture (reboot-without-network case).
@@ -220,6 +224,51 @@ func TestStalenessWindowMirrorsContract(t *testing.T) {
 	}
 	if _, _, ok := nilPlan.ActiveSetpoint(rx); ok {
 		t.Errorf("nil plan has no setpoint")
+	}
+}
+
+// A retained-schedule REDELIVERY (broker replays the retained plan on every
+// reconnect) must not reset the staleness clock: a plan whose generated_at is
+// already far in the past is anchored to its generation time, so a dead
+// optimizer's hours-old plan never drives the battery for another 20 min after
+// each reconnect - the self-consumption fallback engages immediately. Matches
+// the disk-cache path, which preserves the original ReceivedAt.
+func TestRedeliveredOldPlanIsStaleImmediately(t *testing.T) {
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	slots := `[{ "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": 5.0 },
+	           { "start": "2026-07-01T12:00:00Z", "battery_setpoint_kw": 5.0 }]`
+
+	// Generated 3h ago, redelivered now: stale at once, even though a slot
+	// covers now (the 24h horizon outlives the optimizer by design).
+	old, err := Parse([]byte(`{"schema_version":"1.0","generated_at":"2026-07-01T09:00:00Z","slot_minutes":15,"slots":`+slots+`}`), now)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if old.Fresh(now) {
+		t.Error("redelivered 3h-old plan must be stale immediately")
+	}
+	if _, _, ok := old.ActiveSetpoint(now); ok {
+		t.Error("redelivered 3h-old plan must not drive the battery")
+	}
+
+	// Generated within StaleAfter+slack: a genuine fresh publish (or a
+	// redelivery of a still-current plan) keeps today's behavior byte-for-byte.
+	recent, err := Parse([]byte(`{"schema_version":"1.0","generated_at":"2026-07-01T11:50:00Z","slot_minutes":15,"slots":`+slots+`}`), now)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !recent.ReceivedAt.Equal(now) || !recent.Fresh(now) {
+		t.Errorf("10-min-old plan must stay fresh with receivedAt=now: %+v", recent.ReceivedAt)
+	}
+
+	// No parseable generated_at: nothing to bound by - receipt-time anchor as
+	// before (legacy payloads keep working).
+	unbounded, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,"slots":`+slots+`}`), now)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !unbounded.ReceivedAt.Equal(now) || !unbounded.Fresh(now) {
+		t.Errorf("plan without generated_at keeps the receipt anchor: %+v", unbounded.ReceivedAt)
 	}
 }
 

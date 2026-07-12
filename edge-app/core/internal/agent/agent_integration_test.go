@@ -505,6 +505,10 @@ func TestFullLoopEnrollExecuteBufferReplay(t *testing.T) {
 		"generated_at":   time.Now().UTC().Format(time.RFC3339),
 		"horizon_slots":  2,
 		"slot_minutes":   15,
+		// The optimizer always publishes this field; without it the edge
+		// fail-safes into the EEG solar-only clamp (charge <= pv surplus),
+		// which would mask the rated-band clamp this step asserts.
+		"grid_charge_allowed": true,
 		"slots": []map[string]any{
 			{"start": slotStart.Format(time.RFC3339), "battery_setpoint_kw": 999.0},
 			{"start": slotStart.Add(15 * time.Minute).Format(time.RFC3339), "battery_setpoint_kw": 999.0},

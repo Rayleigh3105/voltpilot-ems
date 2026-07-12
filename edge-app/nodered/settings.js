@@ -5,14 +5,32 @@
  * the core agent is the customer-facing surface).
  *
  * Editor credentials: user "voltpilot", password from VP_NODERED_PASSWORD
- * (default "voltpilot" - CHANGE IT per installation, or provide a bcrypt
- * hash directly via VP_NODERED_PASSWORD_HASH).
+ * (or a bcrypt hash directly via VP_NODERED_PASSWORD_HASH).
+ *
+ * FAIL CLOSED: there is NO default password. An unset VP_NODERED_PASSWORD -
+ * or the historical default "voltpilot" - refuses to start instead of running
+ * a LAN-exposed editor with known credentials (install.sh enforces the same
+ * rule at .env creation; this is the backstop for a raw `docker compose up`).
  */
-const bcrypt = require("bcryptjs");
+const INSECURE_DEFAULT_PASSWORD = "voltpilot";
+
+// Validate BEFORE any require so the refusal cannot be masked by a missing
+// dependency, and the error names the exact fix.
+const passwordHashEnv = process.env.VP_NODERED_PASSWORD_HASH;
+const passwordEnv = process.env.VP_NODERED_PASSWORD;
+if (!passwordHashEnv && (!passwordEnv || passwordEnv === INSECURE_DEFAULT_PASSWORD)) {
+  throw new Error(
+    "VP_NODERED_PASSWORD ist nicht gesetzt oder ist der unsichere Standard '" +
+      INSECURE_DEFAULT_PASSWORD +
+      "'. Der Node-RED-Editor startet ohne eigenes Passwort NICHT (LAN-exponierte " +
+      "Admin-Oberflaeche). Setzen Sie VP_NODERED_PASSWORD in der .env auf einen " +
+      "eigenen Wert (empfohlen: ./install.sh --reconfigure) oder geben Sie einen " +
+      "bcrypt-Hash direkt via VP_NODERED_PASSWORD_HASH an."
+  );
+}
 
 const passwordHash =
-  process.env.VP_NODERED_PASSWORD_HASH ||
-  bcrypt.hashSync(process.env.VP_NODERED_PASSWORD || "voltpilot", 8);
+  passwordHashEnv || require("bcryptjs").hashSync(passwordEnv, 8);
 
 module.exports = {
   flowFile: "flows.json",

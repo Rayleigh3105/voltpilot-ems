@@ -371,7 +371,9 @@ services:
       - core
     environment:
       VP_NODERED_USER: \${VP_NODERED_USER:-voltpilot}
-      VP_NODERED_PASSWORD: \${VP_NODERED_PASSWORD:-voltpilot}
+      # Kein Standard-Passwort (fail closed): unset/'voltpilot' verweigert
+      # settings.js den Editor-Start. Wert in der .env setzen (install.sh).
+      VP_NODERED_PASSWORD: \${VP_NODERED_PASSWORD:-}
     volumes:
       # Named volume so per-customer flow wiring survives container
       # recreation; seeded from the image (template flows) on first run.

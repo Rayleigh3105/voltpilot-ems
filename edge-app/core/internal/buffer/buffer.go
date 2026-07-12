@@ -61,6 +61,12 @@ type Buffer struct {
 	readSeg int // cursor: segment number
 	readIdx int // cursor: entries already acked within readSeg
 
+	// pending counts entries buffered but not yet acked, maintained
+	// incrementally (Append/Ack/evict/purge) so Pending() never re-counts
+	// segment files - the former per-ingest/per-ack O(n) walk turned a
+	// backlog drain into O(n^2) file reads under the lock.
+	pending int
+
 	// cacheSeg/cacheEntries memoize the parsed contents of the segment the read
 	// cursor currently sits in, so Next() serves entries from memory instead of
 	// re-reading and re-parsing the whole segment file per entry (the former
@@ -130,6 +136,7 @@ func Open(dir string, retention time.Duration) (*Buffer, error) {
 			b.readIdx = 0
 		}
 	}
+	b.pending = b.countPendingLocked()
 	return b, nil
 }
 
@@ -187,6 +194,7 @@ func (b *Buffer) Append(ts time.Time, measurements map[string]float64) (Entry, e
 	}
 	b.tailN++
 	b.seq++
+	b.pending++
 	// The reader may be sitting in the tail segment we just extended; drop the
 	// stale cache so Next re-reads the new entry.
 	if b.cacheSeg == tail {
@@ -216,6 +224,15 @@ func (b *Buffer) evictLocked() {
 			// newer.
 			return
 		}
+		// Un-published entries this drop discards (the read cursor is still
+		// inside the segment). Counted BEFORE the file is removed.
+		unpublished := 0
+		if b.readSeg == oldest {
+			unpublished = countLines(b.segPath(oldest)) - b.readIdx
+			if unpublished < 0 {
+				unpublished = 0
+			}
+		}
 		// Either the segment is over-horizon, or its last entry is unreadable
 		// (empty/corrupt): drop it either way so eviction can't stall behind a
 		// bad segment and let the buffer grow unbounded.
@@ -231,11 +248,20 @@ func (b *Buffer) evictLocked() {
 		}
 		b.segments = b.segments[1:]
 		if b.readSeg < b.segments[0] {
-			// The read cursor was still inside the dropped segment: these
-			// entries were never published - real data loss.
-			b.lostData = true
-			slog.Warn("buffer dropped un-published telemetry (outage exceeded retention horizon)",
-				"segment", oldest, "retention", b.retention)
+			// The read cursor was still inside the dropped segment. Snapping it
+			// forward invalidates any Next() a publisher holds in flight - the
+			// identity-checked Ack (seq compare) then refuses to advance past
+			// an entry it never published.
+			b.pending -= unpublished
+			if b.pending < 0 {
+				b.pending = 0
+			}
+			if unpublished > 0 {
+				// Entries that were never published are gone - real data loss.
+				b.lostData = true
+				slog.Warn("buffer dropped un-published telemetry (outage exceeded retention horizon)",
+					"segment", oldest, "dropped", unpublished, "retention", b.retention)
+			}
 			b.readSeg = b.segments[0]
 			b.readIdx = 0
 			_ = b.saveCursorLocked()
@@ -303,21 +329,50 @@ func (b *Buffer) Next() (Entry, bool) {
 	}
 }
 
-// Ack advances the cursor past the entry last returned by Next and persists
-// the position. Once the backlog fully drains, any prior data-loss warning is
-// cleared (the outage is over and the buffer is healthy again).
-func (b *Buffer) Ack() error {
+// Ack advances the cursor past the entry last returned by Next - but ONLY
+// when that entry is still the one at the cursor, identified by seq. The
+// publisher's Next -> publish (QoS1, seconds) -> Ack sequence is not atomic:
+// a PurgeThrough (web/paho goroutine) or a retention evict can rewrite or
+// snap the cursor mid-flight, so a blind readIdx++ would silently skip - and
+// ack - a SURVIVOR that was never published. On a seq mismatch Ack is a
+// no-op; the publisher's next Next() then redelivers the entry actually at
+// the cursor (at-least-once, idempotent cloud-side).
+//
+// Once the backlog fully drains, any prior data-loss warning is cleared (the
+// outage is over and the buffer is healthy again). The cursor is persisted
+// periodically: a redelivery of the last few acked entries is a harmless
+// no-op on the idempotent writer, so we trade a bit of replay-on-crash for
+// far fewer syscalls during a large backlog drain.
+func (b *Buffer) Ack(seq int64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// Identity check against the entry at the cursor (sequence numbers are
+	// unique and monotonic). In the normal drain the cache was just populated
+	// by Next, so this is a slice lookup, not a file read.
+	if b.cacheSeg != b.readSeg {
+		entries, err := readSegment(b.segPath(b.readSeg))
+		if err != nil {
+			return err
+		}
+		b.cacheSeg = b.readSeg
+		b.cacheEntries = entries
+		b.parseCount++
+	}
+	if b.readIdx >= len(b.cacheEntries) || b.cacheEntries[b.readIdx].Seq != seq {
+		// The buffer changed under the in-flight publish (purge/evict): the
+		// entry at the cursor is NOT the one that was published. Never skip it.
+		slog.Debug("buffer ack ignored: cursor entry changed under an in-flight publish", "acked_seq", seq)
+		return nil
+	}
 	b.readIdx++
-	if b.lostData && b.pendingLocked() == 0 {
+	if b.pending > 0 {
+		b.pending--
+	}
+	if b.lostData && b.pending == 0 {
 		// State change worth persisting immediately (and rare).
 		b.lostData = false
 		return b.saveCursorLocked()
 	}
-	// Persist the cursor only periodically: a redelivery of the last few acked
-	// entries is a harmless no-op on the idempotent writer, so we trade a bit of
-	// replay-on-crash for far fewer syscalls during a large backlog drain.
 	b.acksSinceSave++
 	if b.acksSinceSave >= cursorSaveInterval {
 		return b.saveCursorLocked()
@@ -329,10 +384,13 @@ func (b *Buffer) Ack() error {
 func (b *Buffer) Pending() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.pendingLocked()
+	return b.pending
 }
 
-func (b *Buffer) pendingLocked() int {
+// countPendingLocked recounts pending from the segment files - used once at
+// Open to seed the in-memory counter (afterwards it is maintained
+// incrementally; see Buffer.pending).
+func (b *Buffer) countPendingLocked() int {
 	total := 0
 	for _, n := range b.segments {
 		if n < b.readSeg {
@@ -412,6 +470,7 @@ func (b *Buffer) PurgeThrough(t time.Time) (int, error) {
 	b.cacheSeg = -1
 	b.cacheEntries = nil
 	b.lostData = false
+	b.pending = len(survivors)
 	if len(survivors) > 0 {
 		f, err := os.OpenFile(b.segPath(0), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 		if err != nil {
