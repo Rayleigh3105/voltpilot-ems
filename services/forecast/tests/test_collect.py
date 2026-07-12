@@ -348,3 +348,16 @@ def test_evaluate_day_computes_skill_and_plan_rows_idempotently():
     evaluate_day(_EvalConnection(db), repo, day)
     assert len(repo.accuracy) == 2
     assert len(repo.plan_accuracy) == 1
+
+
+def test_sql_column_guards_raise_instead_of_asserting():
+    # S15: the f-string column interpolation in the telemetry readers is
+    # guarded by a hard raise, not an assert (which python -O strips) - and
+    # it fires before any cursor is opened (None passes as conn/cur).
+    from voltpilot_forecast.evaluate import _actuals
+    from voltpilot_forecast.forecast_collect import _telemetry_history
+
+    with pytest.raises(ValueError, match="DROP TABLE"):
+        _telemetry_history(None, "site", "load_kw; DROP TABLE t", NOW)
+    with pytest.raises(ValueError, match="soc_pct"):
+        _actuals(None, "site", "soc_pct", NOW, NOW)

@@ -158,6 +158,28 @@ def export_values(
                 }
             },
         )
+    if tariff.plant_kind == PLANT_KIND_EIGENVERBRAUCH and (
+        tariff.commissioned_on is not None
+    ):
+        # B5: the same inconsistency on an EEG-remunerated eigenverbrauch
+        # plant was previously silent. Warning only - whether physical PV
+        # export keeps its feste Vergütung in merchant mode is a pending
+        # captain decision; pricing stays bare spot either way.
+        logger.warning(
+            "pricing.eeg_remuneration_ignored_in_merchant_mode",
+            extra={
+                "context": {
+                    **ctx,
+                    "reason": (
+                        "netzladen_erlaubt=true on an eigenverbrauch plant "
+                        "with a commissioning date - a grid-charging plant "
+                        "cannot claim the feste Einspeisevergütung "
+                        "(Ausschliesslichkeitsprinzip); export is priced at "
+                        "bare spot"
+                    ),
+                }
+            },
+        )
     return list(spot_eur_mwh)
 
 
@@ -229,7 +251,14 @@ def _feste_verguetung_values(
             },
         )
         return list(spot)
-    if _remuneration_expired(tariff.commissioned_on, slot_starts[0]):
+    # B10: expiry is evaluated PER SLOT (like the §51a check below), so a
+    # horizon crossing Dec 31 of the expiry year prices the pre-midnight
+    # slots at the rate and the post-midnight slots at spot.
+    expired = [
+        _remuneration_expired(tariff.commissioned_on, start)
+        for start in slot_starts
+    ]
+    if any(expired):
         logger.info(
             "pricing.feste_verguetung_expired",
             extra={
@@ -239,20 +268,29 @@ def _feste_verguetung_values(
                     "reason": (
                         "the 20-year EEG remuneration has ended - export "
                         "degrades to bare spot (Marktwert-adjacent)"
+                        if all(expired)
+                        else "the 20-year EEG remuneration ends within this "
+                        "horizon - export degrades to bare spot from the "
+                        "expiry boundary (Marktwert-adjacent)"
                     ),
                 }
             },
         )
-        return list(spot)
+        if all(expired):
+            return list(spot)
     rate_eur_mwh = (
         feste_verguetung_ct_per_kwh(
             tariff.commissioned_on, tariff.pv_capacity_kwp, schedule
         )
         * CT_PER_KWH_TO_EUR_PER_MWH
     )
-    if tariff.commissioned_on >= SOLARSPITZENGESETZ_CUTOFF:
-        return [rate_eur_mwh if p >= 0 else 0.0 for p in spot]
-    return [rate_eur_mwh] * len(spot)
+    suspend_negative = tariff.commissioned_on >= SOLARSPITZENGESETZ_CUTOFF
+    return [
+        price
+        if is_expired
+        else (0.0 if suspend_negative and price < 0 else rate_eur_mwh)
+        for price, is_expired in zip(spot, expired)
+    ]
 
 
 def feste_verguetung_ct_per_kwh(

@@ -69,8 +69,11 @@ def _sites(cur) -> list[tuple[str, str]]:
 
 def _actuals(cur, site_id: str, column: str, start, end) -> dict[datetime, float]:
     """Slot-mean actuals (15-min buckets) from raw telemetry."""
-    # power_kw feeds the plan-economics realized cost; fixed set, never user input.
-    assert column in (*_KIND_COLUMNS.values(), "power_kw")
+    # power_kw feeds the plan-economics realized cost; fixed set, never user
+    # input - a hard raise (not assert, which is stripped under python -O)
+    # keeps the f-string interpolation safe (S15).
+    if column not in (*_KIND_COLUMNS.values(), "power_kw"):
+        raise ValueError(f"unsupported telemetry column: {column}")
     cur.execute(
         f"""
         SELECT time_bucket('15 minutes', time) AS bucket, avg({column})
