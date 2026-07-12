@@ -71,6 +71,9 @@ import org.bouncycastle.pkcs.PKCS10CertificationRequest;
  */
 class DeviceCertificateAuthority {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(DeviceCertificateAuthority.class);
+
     private static final DateTimeFormatter INDEX_DATE =
             DateTimeFormatter.ofPattern("yyMMddHHmmss'Z'", Locale.ROOT).withZone(ZoneOffset.UTC);
     /** Back-dated notBefore absorbs device clock skew right after first boot. */
@@ -161,6 +164,7 @@ class DeviceCertificateAuthority {
         }
         Path certPath = caDir.resolve("ca.crt");
         Path keyPath = caDir.resolve("ca.key");
+        warnIfKeyExposed(keyPath);
         try (PEMParser certParser = new PEMParser(new FileReader(certPath.toFile(), StandardCharsets.US_ASCII));
                 PEMParser keyParser = new PEMParser(new FileReader(keyPath.toFile(), StandardCharsets.US_ASCII))) {
             Object cert = certParser.readObject();
@@ -183,6 +187,43 @@ class DeviceCertificateAuthority {
         } catch (IOException e) {
             throw new IllegalStateException("cannot load device CA from " + caDir
                     + " (expected ca.crt + unencrypted ca.key): " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * The CA private key must stay owner-only ({@code voltpilot-ca.sh init-ca}
+     * creates it 600 inside a 700 dir); a group/other-readable key silently
+     * widens who can mint broker-valid device identities. WARN rather than
+     * refuse: enrollment availability must not hinge on a permission bit an
+     * operator can fix without a restart (the shell tooling stays the
+     * enforcement path), but the exposure must be visible in the log.
+     * Non-POSIX filesystems (Windows dev) are skipped.
+     */
+    private static void warnIfKeyExposed(Path keyPath) {
+        try {
+            java.nio.file.attribute.PosixFileAttributeView view = Files.getFileAttributeView(
+                    keyPath, java.nio.file.attribute.PosixFileAttributeView.class);
+            if (view == null) {
+                return;
+            }
+            java.util.Set<java.nio.file.attribute.PosixFilePermission> perms =
+                    view.readAttributes().permissions();
+            perms.retainAll(java.util.EnumSet.of(
+                    java.nio.file.attribute.PosixFilePermission.GROUP_READ,
+                    java.nio.file.attribute.PosixFilePermission.GROUP_WRITE,
+                    java.nio.file.attribute.PosixFilePermission.GROUP_EXECUTE,
+                    java.nio.file.attribute.PosixFilePermission.OTHERS_READ,
+                    java.nio.file.attribute.PosixFilePermission.OTHERS_WRITE,
+                    java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE));
+            if (!perms.isEmpty()) {
+                log.warn("Device CA key {} is accessible beyond its owner ({}) - anyone who can "
+                        + "read it can issue broker-valid device certificates. Fix with: "
+                        + "chmod 600 {}", keyPath, perms, keyPath);
+            }
+        } catch (IOException e) {
+            // Best-effort check only; the actual load right after reports real
+            // I/O trouble with a proper error.
+            log.debug("Could not check permissions of {}: {}", keyPath, e.getMessage());
         }
     }
 

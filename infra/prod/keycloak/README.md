@@ -9,6 +9,7 @@ Key points:
 
 - Keycloak substitutes the `${VAR}` / `${VAR:default}` placeholders from the container environment at import time.
   `VP_PUBLIC_ORIGIN` (redirect URIs / web origins), `VP_API_CLIENT_SECRET` (confidential client) and `VP_PORTAL_ADMIN_PASSWORD` (seeded Portal-Admin user) are set on the keycloak service in `docker-compose.prod.yml`.
+  The secret placeholders deliberately carry NO in-file defaults: importing this realm outside the compose path (whose `${VAR:?}` guards enforce real values) with the vars unset leaves the un-substituted literal in place instead of silently seeding a well-known `admin`/`change-me` credential.
   NOTE: the Wildfly-era `${env.VAR}` prefix syntax is NOT substituted by Keycloak 26 - it reaches client validation literally and aborts the import with "A redirect URI is not a valid URI" (verified against 26.0.5).
 - `sslRequired=external`: HTTPS is required for external requests, which the external reverse proxy (Nginx Proxy Manager or Caddy) terminates and signals via `X-Forwarded-Proto` (`KC_PROXY_HEADERS=xforwarded`).
 - `loginTheme: voltpilot` selects the branded login theme (`deploy/keycloak/themes/voltpilot`, bind-mounted by the compose).

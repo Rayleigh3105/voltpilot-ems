@@ -333,6 +333,31 @@ class PortalApiTest {
     }
 
     @Test
+    void topicUnsafeOrOverlongRefsAreRejectedBeforeReachingMqttOrTheDatabase() {
+        String demo = token("demo", "demo");
+
+        // The ref is interpolated into the retained MQTT provisioning topic, so
+        // MQTT metacharacters ('/', '+', '#') and over-long refs must be
+        // refused up front (audit S5) - same rule as the enrollment path.
+        for (String evil : List.of("ems/spoof", "a/+/b", "ref#", "x".repeat(70))) {
+            ResponseEntity<String> rejected = rest.exchange(
+                    url("/api/v1/devices/claim"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", evil),
+                            bearer(demo)),
+                    String.class);
+            assertThat(rejected.getStatusCode()).as("ref %s", evil)
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+        // Nothing was stored for any of them.
+        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+                url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(devices.getBody())
+                .extracting(d -> d.get("externalRef"))
+                .doesNotContain("ems/spoof", "a/+/b", "ref#");
+    }
+
+    @Test
     void deviceListingCarriesLastSeenFromTelemetry() {
         String demo = token("demo", "demo");
 

@@ -37,7 +37,7 @@
       "standardFlowEnabled": true,
       "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": true,
-      "secret": "${VP_API_CLIENT_SECRET:change-me}",
+      "secret": "${VP_API_CLIENT_SECRET}",
       "redirectUris": ["${VP_PUBLIC_ORIGIN}/*"],
       "webOrigins": ["${VP_PUBLIC_ORIGIN}"],
       "protocolMappers": [
@@ -111,7 +111,7 @@
       "firstName": "Platform",
       "lastName": "Admin",
       "credentials": [
-        { "type": "password", "value": "${VP_PORTAL_ADMIN_PASSWORD:admin}", "temporary": false }
+        { "type": "password", "value": "${VP_PORTAL_ADMIN_PASSWORD}", "temporary": false }
       ],
       "realmRoles": ["platform-admin"]
     },

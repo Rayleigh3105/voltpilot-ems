@@ -48,7 +48,14 @@ public class KeycloakAdminClient {
             String lastName, boolean enabled, String tenantId) {
     }
 
-    /** Raised when Keycloak rejects an operation (mapped to HTTP status by the controller). */
+    /**
+     * Raised when Keycloak rejects an operation (mapped to HTTP status by the
+     * controller). The message is always a FIXED string - controllers pass it
+     * as a {@code ResponseStatusException} reason, which can surface in HTTP
+     * responses (e.g. under {@code server.error.include-message: always}), so
+     * raw upstream Keycloak error bodies must never end up in it; they go to
+     * the server log only (see {@link #upstreamError}).
+     */
     public static class KeycloakAdminException extends RuntimeException {
         private final int status;
 
@@ -103,8 +110,7 @@ public class KeycloakAdminClient {
             if (ex.getStatusCode().value() == 409) {
                 throw new KeycloakAdminException(409, "A user with that username or email already exists");
             }
-            throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Keycloak user creation failed: " + ex.getResponseBodyAsString());
+            throw upstreamError("user creation", ex);
         }
 
         String userId = extractId(res.getHeaders().getLocation());
@@ -158,8 +164,7 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException ex) {
-            throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Assigning role failed: " + ex.getResponseBodyAsString());
+            throw upstreamError("role assignment", ex);
         }
     }
 
@@ -178,8 +183,7 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .body(new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {});
         } catch (RestClientResponseException ex) {
-            throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Listing users failed: " + ex.getResponseBodyAsString());
+            throw upstreamError("user listing", ex);
         }
         List<KeycloakUser> result = new ArrayList<>();
         if (users != null) {
@@ -224,8 +228,7 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException ex) {
-            throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Resetting the password failed: " + ex.getResponseBodyAsString());
+            throw upstreamError("password reset", ex);
         }
         clearBruteForceLockout(userId);
         log.info("Reset password for user {} (temporary={})", userId, temporary);
@@ -268,8 +271,7 @@ public class KeycloakAdminClient {
             if (ex.getStatusCode().value() == 409) {
                 throw new KeycloakAdminException(409, "A user with that email already exists");
             }
-            throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Updating user failed: " + ex.getResponseBodyAsString());
+            throw upstreamError("user update", ex);
         }
         return getUser(userId);
     }
@@ -281,8 +283,7 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException ex) {
-            throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Deleting user failed: " + ex.getResponseBodyAsString());
+            throw upstreamError("user deletion", ex);
         }
         log.info("Deleted user {}", userId);
     }
@@ -296,13 +297,27 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException ex) {
-            throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Updating user failed: " + ex.getResponseBodyAsString());
+            throw upstreamError("user update", ex);
         }
         return getUser(userId);
     }
 
     // ---- internals -----------------------------------------------------------
+
+    /**
+     * Maps an upstream Keycloak error to a {@link KeycloakAdminException} with a
+     * FIXED message. The raw response body is kept in the server log only - it
+     * must never travel in the exception message, which controllers use as the
+     * customer-visible {@code ResponseStatusException} reason (latent leak once
+     * someone flips {@code server.error.include-message: always}).
+     */
+    private static KeycloakAdminException upstreamError(String operation,
+            RestClientResponseException ex) {
+        log.warn("Keycloak {} failed with status {}: {}", operation,
+                ex.getStatusCode().value(), ex.getResponseBodyAsString());
+        return new KeycloakAdminException(ex.getStatusCode().value(),
+                "Keycloak " + operation + " failed");
+    }
 
     @SuppressWarnings("unchecked")
     private String tenantOf(Map<String, Object> user) {
@@ -358,9 +373,10 @@ public class KeycloakAdminClient {
                     .retrieve()
                     .body(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {});
         } catch (RestClientResponseException ex) {
+            log.warn("Keycloak admin token request failed with status {}: {}",
+                    ex.getStatusCode().value(), ex.getResponseBodyAsString());
             throw new KeycloakAdminException(ex.getStatusCode().value(),
-                    "Could not obtain Keycloak admin token (check the service-account roles): "
-                            + ex.getResponseBodyAsString());
+                    "Could not obtain Keycloak admin token (check the service-account roles)");
         }
         if (token == null || token.get("access_token") == null) {
             throw new KeycloakAdminException(502, "Keycloak returned no admin access_token");

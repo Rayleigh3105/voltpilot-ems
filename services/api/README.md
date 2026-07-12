@@ -38,7 +38,7 @@ Platform-admin-only (`/api/v1/admin/**`, realm role `platform-admin`): tenants, 
 ```
 
 - Health: `GET /health` (Spring Boot Actuator, mapped to root).
-- OIDC is off by default for offline unit tests. docker compose sets `VOLTPILOT_SECURITY_OIDC_ENABLED=true`, the issuer/JWKS URIs, and the DB roles.
+- OIDC is ON by default (fail-secure). Offline unit tests / broker-less dev opt out with `VOLTPILOT_SECURITY_OIDC_ENABLED=false`; docker compose sets it `true` explicitly plus the issuer/JWKS URIs and the DB roles.
 - **DB roles:** runtime connects as the non-privileged `voltpilot_app` role (so RLS applies); Flyway migrates as the `voltpilot` superuser. Never run the app datasource as the superuser.
 
 ## Status

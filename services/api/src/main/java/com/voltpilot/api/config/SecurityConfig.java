@@ -21,10 +21,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * Security wiring for the portal API.
  *
  * <p>OIDC (Keycloak) resource-server validation is toggled by
- * {@code voltpilot.security.oidc.enabled}. It is {@code false} by default so the
- * service builds and unit-tests standalone; docker-compose and the integration
- * tests flip it on and supply the issuer/JWKS. Either way the actuator
- * health/info endpoints stay open.
+ * {@code voltpilot.security.oidc.enabled}. It is {@code true} by default
+ * (fail-secure: a deployment that forgot the env var authenticates rather than
+ * permits-all); offline unit tests and broker-less dev setups OPT OUT
+ * explicitly via {@code VOLTPILOT_SECURITY_OIDC_ENABLED=false}. Either way the
+ * actuator health/info endpoints stay open.
  *
  * <p>The {@link TenantFilter} runs right after bearer-token authentication so the
  * validated {@code tenant_id} claim is published to {@code TenantContext} for the
@@ -37,9 +38,13 @@ public class SecurityConfig {
     @Value("${voltpilot.security.cors.allowed-origins:http://localhost:5173}")
     private List<String> allowedOrigins;
 
-    /** OIDC on: validate Bearer JWTs from Keycloak, open only health/info. */
+    /**
+     * OIDC on (the DEFAULT - fail-secure): validate Bearer JWTs from Keycloak,
+     * open only health/info + the public onboarding endpoints.
+     */
     @Bean
-    @ConditionalOnProperty(name = "voltpilot.security.oidc.enabled", havingValue = "true")
+    @ConditionalOnProperty(name = "voltpilot.security.oidc.enabled", havingValue = "true",
+            matchIfMissing = true)
     SecurityFilterChain secured(HttpSecurity http, TenantFilter tenantFilter) throws Exception {
         http
             .cors(Customizer.withDefaults())
@@ -69,9 +74,13 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** OIDC off (default/dev/unit-test): permit everything, no tenant context. */
+    /**
+     * OIDC off (EXPLICIT opt-out for offline unit tests / broker-less dev):
+     * permit everything, no tenant context. Never the default - a deployment
+     * has to say {@code VOLTPILOT_SECURITY_OIDC_ENABLED=false} to get this.
+     */
     @Bean
-    @ConditionalOnProperty(name = "voltpilot.security.oidc.enabled", havingValue = "false", matchIfMissing = true)
+    @ConditionalOnProperty(name = "voltpilot.security.oidc.enabled", havingValue = "false")
     SecurityFilterChain open(HttpSecurity http) throws Exception {
         http
             .cors(Customizer.withDefaults())

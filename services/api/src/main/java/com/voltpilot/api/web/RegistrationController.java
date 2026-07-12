@@ -88,11 +88,17 @@ public class RegistrationController {
             if (ex instanceof KeycloakAdminException kex) {
                 // Keycloak refused: pass a real 4xx/5xx through (409 = email taken).
                 // An out-of-range/unknown status is an upstream outage -> 503.
+                // The reason is a FIXED string on this PUBLIC endpoint - upstream
+                // detail (already reduced to a fixed message by
+                // KeycloakAdminClient, raw body in its log) stays server-side.
+                log.warn("Registration for tenant {} refused by the identity provider "
+                        + "(status {}): {}", tenant.id(), kex.status(), kex.getMessage());
                 HttpStatusCode status = HttpStatusCode.valueOf(
                         kex.status() >= 400 && kex.status() < 600 ? kex.status() : 503);
                 throw new ResponseStatusException(status,
                         kex.status() == 409 ? "An account with this email already exists"
-                                : kex.getMessage());
+                                : "Die Registrierung ist zurzeit nicht möglich. "
+                                        + "Bitte versuchen Sie es später erneut.");
             }
             // Transport failure (Keycloak unreachable/timeout): a temporary
             // outage, not a bad gateway response -> 503 so the portal shows the

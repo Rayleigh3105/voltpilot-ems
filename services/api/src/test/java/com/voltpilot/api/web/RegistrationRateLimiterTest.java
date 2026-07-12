@@ -91,6 +91,24 @@ class RegistrationRateLimiterTest {
     }
 
     @Test
+    void staleClientBucketsAreReclaimedEvenWhenTheirKeyIsNeverSeenAgain() {
+        // The memory-leak regression (audit S1): a client that made ONE accepted
+        // attempt and never returns must not keep its bucket forever - the lazy
+        // per-key prune never runs for it, so the periodic sweep has to prune
+        // each deque BEFORE the emptiness test.
+        RegistrationRateLimiter limiter = limiter(3, 1_000);
+        for (int i = 0; i < 50; i++) {
+            assertThat(limiter.tryAcquire("visitor-" + i)).isTrue();
+        }
+        assertThat(limiter.trackedClientCount()).isEqualTo(50);
+        // All 50 attempts age out of the window; the next request (a new
+        // client) triggers the scheduled sweep and reclaims every stale bucket.
+        clock.advance(Duration.ofMinutes(61));
+        assertThat(limiter.tryAcquire("fresh")).isTrue();
+        assertThat(limiter.trackedClientCount()).isEqualTo(1);
+    }
+
+    @Test
     void disabledLimiterAllowsEverything() {
         RegistrationRateLimiter limiter = new RegistrationRateLimiter(false, 1, 1,
                 Duration.ofHours(1), 0, clock);
