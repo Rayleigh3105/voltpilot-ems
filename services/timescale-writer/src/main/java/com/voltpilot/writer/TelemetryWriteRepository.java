@@ -23,6 +23,11 @@ import org.springframework.transaction.annotation.Transactional;
  * a guarded {@code INSERT ... WHERE NOT EXISTS} on {@code (device_id, time)}, so
  * re-processing the same sample is a no-op. Per-site ordering (single partition
  * per {@code tenant:site}) means redeliveries are sequential, not concurrent.
+ * Since api migration V20260712000000 a UNIQUE index on {@code (device_id,
+ * time)} backs the guard: a concurrent duplicate (zombie consumer during a
+ * rebalance) that slips past both guards fails the constraint instead of
+ * double-inserting; the exception makes Kafka redeliver, and the redelivery
+ * no-ops on the guard.
  */
 @Repository
 public class TelemetryWriteRepository {
@@ -64,6 +69,20 @@ public class TelemetryWriteRepository {
         // after the purge) insert normally. The device row is same-tenant, so
         // the RLS-scoped SELECT sees it; a telemetry row without a device row
         // (dev seeds, integrations) stays insertable.
+        //
+        // FOR SHARE first (audit B6b): lock the device row in share mode for
+        // the length of this transaction, so a concurrent purge's watermark
+        // UPDATE blocks until this insert commits (and its DELETE then sees
+        // the row), while an in-flight watermark UPDATE makes this SELECT
+        // wait and re-read the committed watermark. Without it, an insert
+        // whose snapshot predates the watermark commit passes the NOT EXISTS
+        // guard while the purge's DELETE cannot see the still-uncommitted
+        // row - an old-observation row would survive the purge. The guard in
+        // the INSERT below stays: it re-checks under the now-current snapshot
+        // and covers device-less rows the lock cannot.
+        jdbc.queryForList(
+                "SELECT data_purged_before FROM device WHERE id = ? FOR SHARE",
+                event.device_id());
         int rows = jdbc.update(
                 "INSERT INTO telemetry "
                         + "(time, received_at, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, "

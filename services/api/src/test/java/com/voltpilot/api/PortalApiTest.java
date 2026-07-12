@@ -1104,8 +1104,11 @@ class PortalApiTest {
                     m, t, BERLIN_SITE, d));
         }
         rows.setLength(rows.length() - 1);
+        // DO NOTHING: two tests share this seed and the unique index on
+        // (device_id, time) - migration V20260712000000 - refuses the literal
+        // re-insert; the values are identical, so skipping is correct.
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, load_kw) "
-                + "VALUES " + rows);
+                + "VALUES " + rows + " ON CONFLICT DO NOTHING");
         // DO UPDATE, not DO NOTHING: the dev earnings seed (V20260706030000)
         // rolls a 32-day DE-LU price window that can cover this fixed date -
         // the test's hand-computed expectations must own these two slots.
@@ -1244,6 +1247,100 @@ class PortalApiTest {
         assertThat(monthBuckets.get(0)).containsEntry("start", "2026-06-14T22:00:00Z");
         assertThat(num(monthBuckets.get(0), "loadKwh")).isEqualTo(1.25);
         assertThat(num(monthBuckets.get(0), "costEur")).isEqualTo(0.05);
+    }
+
+    /**
+     * Audit B2 regression: Postgres GREATEST ignores NULLs, so the old
+     * {@code avg(greatest(power_kw, 0))} counted a power-less sample as 0 -
+     * understating energy in mixed buckets and fabricating grid_import/export
+     * = 0 for generation-only sites (which then wrongly passed the earnings
+     * CHANNELS_OK gate instead of degrading to {@code missing_channels}). The
+     * NULL-safe aggregates must hold in ALL THREE in-sync copies: the live day
+     * view (HistoryRepository), the refresh procedure (V20260712000000), and
+     * the purge rebuild (SeriesRepository).
+     */
+    @Test
+    void rollupsNeverCoerceAbsentChannelsToZeroInAnyOfTheThreeCopies() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String devX = claimDevice(demo, "edge-nullsafe-01");
+        String devY = claimDevice(demo, "edge-nullsafe-02");
+
+        // Far-past day (2026-01-12, before the rollup job's 7-day window).
+        // 10:00 bucket MIXES a full sample with a power-less (pv-only) one;
+        // 11:00 bucket is generation-only (a Deye string/micro shape);
+        // 12:00 bucket belongs to the second device (purged later to exercise
+        // the SeriesRepository rebuild copy).
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, load_kw, pv_power_kw) VALUES "
+                + "('2026-01-12T10:00:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + devX
+                + "', 4.0, 4.0, 2.0), "
+                + "('2026-01-12T10:05:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + devX
+                + "', NULL, NULL, 6.0), "
+                + "('2026-01-12T11:00:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + devX
+                + "', NULL, NULL, 3.0), "
+                + "('2026-01-12T11:05:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + devX
+                + "', NULL, NULL, 5.0), "
+                + "('2026-01-12T12:00:00Z', '" + tenantA + "', '" + BERLIN_SITE + "', '" + devY
+                + "', 1.0, 1.0, 0)");
+
+        // Copy 1 - live day view (raw telemetry): the mixed bucket averages
+        // ONLY the samples that carry the channel (import avg(4)=4 -> 1.0 kWh,
+        // not the old avg(4, fabricated 0)=2 -> 0.5; battery charge avg(2)=2
+        // -> 0.5 kWh), and the generation-only bucket reports NULL grid and
+        // battery channels, never 0.
+        ResponseEntity<Map<String, Object>> day = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=day&at=2026-01-12"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(day.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> buckets = list(day.getBody(), "buckets");
+        assertThat(buckets).hasSize(3);
+        Map<String, Object> mixed = buckets.get(0);
+        assertThat(mixed).containsEntry("start", "2026-01-12T10:00:00Z");
+        assertThat(num(mixed, "gridImportKwh")).isEqualTo(1.0);
+        assertThat(num(mixed, "batteryChargeKwh")).isEqualTo(0.5);
+        assertThat(num(mixed, "pvKwh")).isEqualTo(1.0); // avg(2, 6) = 4 kW
+        Map<String, Object> genOnly = buckets.get(1);
+        assertThat(genOnly).containsEntry("start", "2026-01-12T11:00:00Z");
+        assertThat(num(genOnly, "pvKwh")).isEqualTo(1.0); // avg(3, 5) = 4 kW
+        assertThat(genOnly.get("gridImportKwh")).isNull();
+        assertThat(genOnly.get("gridExportKwh")).isNull();
+        assertThat(genOnly.get("batteryChargeKwh")).isNull();
+        assertThat(genOnly.get("batteryDischargeKwh")).isNull();
+
+        // Copy 2 - the refresh procedure (feeds the week/month/year rollups
+        // AND the earnings engine's CHANNELS_OK gate).
+        exec("CALL refresh_telemetry_rollups('2026-01-12T00:00:00Z')");
+        String mixed15m = "FROM telemetry_rollup_15m WHERE site_id = '" + BERLIN_SITE
+                + "' AND bucket = '2026-01-12T10:00:00Z'";
+        String gen15m = "FROM telemetry_rollup_15m WHERE site_id = '" + BERLIN_SITE
+                + "' AND bucket = '2026-01-12T11:00:00Z'";
+        assertThat(queryLong("SELECT count(*) " + mixed15m
+                + " AND grid_import_kwh = 1.0 AND battery_charge_kwh = 0.5 AND pv_kwh = 1.0"))
+                .isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) " + gen15m
+                + " AND grid_import_kwh IS NULL AND grid_export_kwh IS NULL"
+                + " AND battery_charge_kwh IS NULL AND battery_discharge_kwh IS NULL"
+                + " AND pv_kwh = 1.0")).isEqualTo(1);
+        // The 1h cascade keeps NULL as NULL (sum of NULLs), never 0.
+        assertThat(queryLong("SELECT count(*) FROM telemetry_rollup_1h WHERE site_id = '"
+                + BERLIN_SITE + "' AND bucket = '2026-01-12T11:00:00Z'"
+                + " AND grid_import_kwh IS NULL AND pv_kwh = 1.0")).isEqualTo(1);
+
+        // Copy 3 - the purge rebuild: purging the OTHER device recomputes the
+        // whole site's rollups through SeriesRepository, which must produce
+        // the same NULL-safe numbers.
+        assertThat(rest.exchange(url("/api/v1/devices/" + devY + "/purge-data"), HttpMethod.POST,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(queryLong("SELECT count(*) " + mixed15m
+                + " AND grid_import_kwh = 1.0 AND battery_charge_kwh = 0.5 AND pv_kwh = 1.0"))
+                .isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) " + gen15m
+                + " AND grid_import_kwh IS NULL AND grid_export_kwh IS NULL"
+                + " AND battery_charge_kwh IS NULL AND pv_kwh = 1.0")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM telemetry_rollup_15m WHERE site_id = '"
+                + BERLIN_SITE + "' AND bucket = '2026-01-12T12:00:00Z'")).isZero();
     }
 
     @SuppressWarnings("unchecked")

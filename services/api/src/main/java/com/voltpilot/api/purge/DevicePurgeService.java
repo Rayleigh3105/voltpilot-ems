@@ -70,7 +70,7 @@ public class DevicePurgeService {
         UUID tenantId = TenantContext.get();
         Instant purgedBefore = Instant.now();
         devices.setDataPurgedBefore(device.id(), purgedBefore);
-        long purgedRows = series.purgeDeviceRecordings(device.id(), device.siteId());
+        long purgedRows = series.purgeDeviceRecordings(device.id(), device.siteId(), purgedBefore);
         boolean notified = false;
         ProvisioningPublisher publisher = provisioning.getIfAvailable();
         if (publisher != null) {

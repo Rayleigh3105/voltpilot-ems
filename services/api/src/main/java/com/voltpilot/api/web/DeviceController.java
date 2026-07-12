@@ -197,7 +197,7 @@ public class DeviceController {
         UUID tenantId = TenantContext.get();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
-        series.purgeDeviceRecordings(deviceId, device.siteId());
+        series.purgeDeviceRecordings(deviceId, device.siteId(), null);
         if (!devices.delete(deviceId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }

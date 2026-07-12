@@ -2,6 +2,7 @@ package com.voltpilot.api.repo;
 
 import com.voltpilot.api.web.dto.SiteDeletionPreviewDto;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -71,11 +72,22 @@ public class SeriesRepository {
      * pass the same WITH CHECK. Unclaim reuses this so a removed device's data
      * never lingers in the Historie week/month/year buckets either.
      *
+     * <p>The delete is bounded by the purge watermark (audit B6a): a
+     * legitimately NEW sample - observed after the watermark - that arrives
+     * between the watermark commit and this delete must survive, because the
+     * edge already got its QoS1 ack and will never replay it. Unclaim passes
+     * {@code null} (no bound): the device row itself goes, so ALL its rows go.
+     *
+     * @param purgedBefore the purge watermark (delete only rows observed at or
+     *     before it), or {@code null} to delete everything (unclaim)
      * @return the number of raw telemetry rows removed
      */
     @Transactional
-    public long purgeDeviceRecordings(UUID deviceId, UUID siteId) {
-        long purged = jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId);
+    public long purgeDeviceRecordings(UUID deviceId, UUID siteId, Instant purgedBefore) {
+        long purged = purgedBefore == null
+                ? jdbc.update("DELETE FROM telemetry WHERE device_id = ?", deviceId)
+                : jdbc.update("DELETE FROM telemetry WHERE device_id = ? AND time <= ?",
+                        deviceId, Timestamp.from(purgedBefore));
         recomputeRollupsForSite(siteId);
         return purged;
     }
@@ -92,13 +104,19 @@ public class SeriesRepository {
                 "telemetry_rollup_15m", "telemetry_rollup_1h", "telemetry_rollup_1d"}) {
             jdbc.update("DELETE FROM " + table + " WHERE site_id = ?", siteId);
         }
+        // NULL-safe aggregates (audit B2), in sync with refresh_telemetry_rollups
+        // (V20260712000000): average only over samples where the source channels
+        // exist - GREATEST would otherwise coerce a NULL channel to 0.
         jdbc.update(
                 "INSERT INTO telemetry_rollup_15m "
                         + "SELECT time_bucket('15 minutes', time) AS bucket, tenant_id, site_id, "
                         + "  avg(pv_power_kw) * 0.25, avg(load_kw) * 0.25, "
-                        + "  avg(greatest(power_kw, 0)) * 0.25, avg(greatest(-power_kw, 0)) * 0.25, "
-                        + "  avg(greatest(power_kw - load_kw + pv_power_kw, 0)) * 0.25, "
-                        + "  avg(greatest(-(power_kw - load_kw + pv_power_kw), 0)) * 0.25, "
+                        + "  avg(CASE WHEN power_kw IS NOT NULL THEN greatest(power_kw, 0) END) * 0.25, "
+                        + "  avg(CASE WHEN power_kw IS NOT NULL THEN greatest(-power_kw, 0) END) * 0.25, "
+                        + "  avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL AND pv_power_kw IS NOT NULL "
+                        + "       THEN greatest(power_kw - load_kw + pv_power_kw, 0) END) * 0.25, "
+                        + "  avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL AND pv_power_kw IS NOT NULL "
+                        + "       THEN greatest(-(power_kw - load_kw + pv_power_kw), 0) END) * 0.25, "
                         + "  min(soc_pct), max(soc_pct), last(soc_pct, time), count(*) "
                         + "FROM telemetry WHERE site_id = ? GROUP BY 1, 2, 3",
                 siteId);

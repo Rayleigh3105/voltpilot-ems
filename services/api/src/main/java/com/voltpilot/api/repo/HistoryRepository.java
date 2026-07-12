@@ -57,10 +57,22 @@ public class HistoryRepository {
                         + "  SELECT time_bucket('15 minutes', time) AS bucket,"
                         + "         avg(pv_power_kw) * 0.25 AS pv_kwh,"
                         + "         avg(load_kw) * 0.25 AS load_kwh,"
-                        + "         avg(greatest(power_kw, 0)) * 0.25 AS grid_import_kwh,"
-                        + "         avg(greatest(-power_kw, 0)) * 0.25 AS grid_export_kwh,"
-                        + "         avg(greatest(power_kw - load_kw + pv_power_kw, 0)) * 0.25 AS battery_charge_kwh,"
-                        + "         avg(greatest(-(power_kw - load_kw + pv_power_kw), 0)) * 0.25 AS battery_discharge_kwh,"
+                        // NULL-safe (audit B2): GREATEST ignores NULLs, so a bare
+                        // greatest(power_kw, 0) fabricated 0 for power-less samples -
+                        // average only over samples where the source channels exist,
+                        // exactly like refresh_telemetry_rollups (V20260712000000).
+                        + "         avg(CASE WHEN power_kw IS NOT NULL"
+                        + "                  THEN greatest(power_kw, 0) END) * 0.25 AS grid_import_kwh,"
+                        + "         avg(CASE WHEN power_kw IS NOT NULL"
+                        + "                  THEN greatest(-power_kw, 0) END) * 0.25 AS grid_export_kwh,"
+                        + "         avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL"
+                        + "                       AND pv_power_kw IS NOT NULL"
+                        + "                  THEN greatest(power_kw - load_kw + pv_power_kw, 0)"
+                        + "             END) * 0.25 AS battery_charge_kwh,"
+                        + "         avg(CASE WHEN power_kw IS NOT NULL AND load_kw IS NOT NULL"
+                        + "                       AND pv_power_kw IS NOT NULL"
+                        + "                  THEN greatest(-(power_kw - load_kw + pv_power_kw), 0)"
+                        + "             END) * 0.25 AS battery_discharge_kwh,"
                         + "         min(soc_pct) AS soc_min_pct, max(soc_pct) AS soc_max_pct,"
                         + "         last(soc_pct, time) AS soc_last_pct"
                         + "  FROM telemetry WHERE site_id = ? AND time >= ? AND time < ?"
