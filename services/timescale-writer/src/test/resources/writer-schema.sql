@@ -34,6 +34,9 @@ SELECT create_hypertable('telemetry', 'time',
     chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_telemetry_device_time ON telemetry (device_id, time DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_device_received ON telemetry (device_id, received_at DESC);
+-- Mirrors api migration V20260712000000: the UNIQUE index that backs the
+-- writer's idempotent guarded insert against concurrent duplicates.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_telemetry_device_time ON telemetry (device_id, time DESC);
 
 GRANT USAGE ON SCHEMA public TO voltpilot_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON telemetry TO voltpilot_app;
@@ -54,7 +57,10 @@ CREATE TABLE IF NOT EXISTS device (
     data_purged_before TIMESTAMPTZ
 );
 
-GRANT SELECT ON device TO voltpilot_app;
+-- SELECT + UPDATE like the real grant (api V2 grants the app role full DML on
+-- device): the writer's SELECT ... FOR SHARE watermark lock (audit B6b)
+-- requires UPDATE privilege, which prod has.
+GRANT SELECT, UPDATE ON device TO voltpilot_app;
 
 ALTER TABLE device ENABLE ROW LEVEL SECURITY;
 ALTER TABLE device FORCE ROW LEVEL SECURITY;

@@ -1,6 +1,7 @@
 package com.voltpilot.writer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -178,6 +179,29 @@ class WriterPipeTest {
             assertThat(rs.next()).isTrue();
             assertThat(rs.getTimestamp("time").toInstant()).isEqualTo(Instant.parse(afterTs));
         }
+    }
+
+    /**
+     * Audit B7: the guarded {@code WHERE NOT EXISTS} keeps sequential Kafka
+     * redeliveries idempotent, but only the UNIQUE index on
+     * {@code (device_id, time)} (api migration V20260712000000, mirrored in
+     * writer-schema.sql) stops two CONCURRENT deliveries that both passed the
+     * guard (zombie consumer during a rebalance). Prove the constraint is
+     * real: a duplicate insert that bypasses the guard entirely is rejected
+     * by the database itself.
+     */
+    @Test
+    void uniqueIndexRefusesADuplicateThatBypassesTheGuard() throws Exception {
+        String device = UUID.randomUUID().toString();
+        String insert = "INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw) "
+                + "VALUES ('2026-07-03T10:00:00Z', '" + TENANT_A + "', '" + SITE + "', '"
+                + device + "', 1.0)";
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute(insert);
+            assertThatThrownBy(() -> st.execute(insert))
+                    .hasMessageContaining("uq_telemetry_device_time");
+        }
+        assertThat(rowsForDevice(device)).isEqualTo(1);
     }
 
     private static String eventFor(String tenant, String device, String observedAt) {
