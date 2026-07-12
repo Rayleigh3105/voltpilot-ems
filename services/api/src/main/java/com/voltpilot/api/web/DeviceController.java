@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
+import com.voltpilot.api.provisioning.ProvisioningTopics;
 import com.voltpilot.api.purge.DevicePurgeService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
@@ -87,6 +88,13 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
         String externalRef = canonicalExternalRef(request.externalRef());
+        // Topic-safety gate (defense in depth, same rule as the enrollment
+        // path): the ref is interpolated into the retained MQTT provisioning
+        // topic, so '/', '+', '#' and over-long refs must never get that far -
+        // reject them here instead of storing a device the broker cannot serve.
+        if (!ProvisioningTopics.isValidRef(externalRef)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ungültige Geräte-ID.");
+        }
         // Idempotent within the tenant: re-entering a device the account already
         // connected (wizard restart, double submit) returns that device instead
         // of a conflict. RLS scopes the lookup, so a hit is always the caller's own.

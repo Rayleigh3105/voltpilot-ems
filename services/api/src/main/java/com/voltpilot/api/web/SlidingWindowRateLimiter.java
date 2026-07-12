@@ -8,6 +8,8 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sliding-window rate limiter for the api's PUBLIC (unauthenticated) endpoints.
@@ -42,6 +44,11 @@ import java.util.Map;
  */
 public class SlidingWindowRateLimiter {
 
+    private static final Logger log = LoggerFactory.getLogger(SlidingWindowRateLimiter.class);
+
+    /** Above this many buckets a sweep runs immediately, not just on schedule. */
+    private static final int SWEEP_THRESHOLD = 10_000;
+
     private final boolean enabled;
     private final int perClientMax;
     private final int globalMax;
@@ -53,6 +60,8 @@ public class SlidingWindowRateLimiter {
     private final Map<String, Deque<Instant>> perClient = new HashMap<>();
     /** All accepted-attempt timestamps, oldest first. */
     private final Deque<Instant> global = new ArrayDeque<>();
+    /** Next scheduled full sweep (amortizes reclamation to one pass per window). */
+    private Instant nextSweepAt = Instant.MIN;
 
     protected SlidingWindowRateLimiter(boolean enabled, int perClientMax, int globalMax,
             Duration window, int trustedProxies, Clock clock) {
@@ -62,6 +71,15 @@ public class SlidingWindowRateLimiter {
         this.window = window;
         this.trustedProxies = trustedProxies;
         this.clock = clock;
+        // trusted-proxies is an operational footgun: too low behind a proxy
+        // collapses every client into one bucket (lockout), too high lets a
+        // client pick its own bucket via a crafted X-Forwarded-For. Log the
+        // resolved value so a misconfigured deployment is visible at startup.
+        log.info("{}: enabled={}, per-client-max={}, global-max={}, window={}, trusted-proxies={}"
+                + " ({})", getClass().getSimpleName(), enabled, perClientMax, globalMax, window,
+                trustedProxies,
+                trustedProxies <= 0 ? "X-Forwarded-For ignored, socket address is the client key"
+                        : "client key = X-Forwarded-For entry " + trustedProxies + " from the right");
     }
 
     /**
@@ -79,12 +97,12 @@ public class SlidingWindowRateLimiter {
         Deque<Instant> client = perClient.computeIfAbsent(clientKey, k -> new ArrayDeque<>());
         prune(client, cutoff);
         if (client.size() >= perClientMax || global.size() >= globalMax) {
-            sweepEmpty();
+            sweep(now, cutoff);
             return false;
         }
         client.add(now);
         global.add(now);
-        sweepEmpty();
+        sweep(now, cutoff);
         return true;
     }
 
@@ -112,6 +130,11 @@ public class SlidingWindowRateLimiter {
         return hop.isEmpty() ? request.getRemoteAddr() : hop;
     }
 
+    /** Test seam: how many client buckets the limiter currently holds. */
+    synchronized int trackedClientCount() {
+        return perClient.size();
+    }
+
     private static void prune(Deque<Instant> attempts, Instant cutoff) {
         while (!attempts.isEmpty() && attempts.peekFirst().isBefore(cutoff)) {
             attempts.removeFirst();
@@ -119,13 +142,28 @@ public class SlidingWindowRateLimiter {
     }
 
     /**
-     * Address rotation would otherwise grow the map without bound (every probed
-     * key creates a bucket, even when refused); entries themselves are already
-     * bounded by the global cap.
+     * Reclaims buckets so address diversity cannot grow the map without bound:
+     * a client that made one accepted attempt and is never seen again would
+     * otherwise keep a stale one-entry deque forever (its key is never
+     * re-accessed, so the lazy per-key prune in {@code tryAcquire} never runs
+     * for it). Each deque is pruned against the cutoff BEFORE the emptiness
+     * test, so stale-but-non-empty buckets are reclaimed too.
+     *
+     * <p>Amortization: one full pass per window is enough (an entry only
+     * becomes stale after {@code window}), plus an immediate pass when the map
+     * spikes past {@link #SWEEP_THRESHOLD}. The threshold pass self-corrects:
+     * after pruning, non-empty buckets hold at least one in-window accepted
+     * attempt each, so their count is bounded by the global cap - the map
+     * shrinks below the threshold instead of paying O(n) on every request.
      */
-    private void sweepEmpty() {
-        if (perClient.size() > 10_000) {
-            perClient.values().removeIf(Deque::isEmpty);
+    private void sweep(Instant now, Instant cutoff) {
+        if (perClient.size() <= SWEEP_THRESHOLD && now.isBefore(nextSweepAt)) {
+            return;
         }
+        perClient.values().removeIf(bucket -> {
+            prune(bucket, cutoff);
+            return bucket.isEmpty();
+        });
+        nextSweepAt = now.plus(window);
     }
 }

@@ -394,6 +394,9 @@ public class AdminController {
     private static ResponseStatusException toResponse(KeycloakAdminException ex) {
         HttpStatusCode status = HttpStatusCode.valueOf(
                 ex.status() >= 400 && ex.status() < 600 ? ex.status() : 502);
+        // Safe to pass through: KeycloakAdminException messages are FIXED
+        // strings by contract - raw upstream Keycloak bodies stay in the
+        // KeycloakAdminClient server log, never in the exception message.
         return new ResponseStatusException(status, ex.getMessage());
     }
 }

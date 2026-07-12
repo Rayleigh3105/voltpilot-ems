@@ -97,7 +97,7 @@ The user-facing spine. See `services/api/README.md` for the endpoint list.
 **Auth (Keycloak OIDC).** The api is an OAuth2 resource server validating realm `voltpilot` JWTs. The frontend logs in via the public `voltpilot-frontend` client (Authorization Code + PKCE); every token carries a `tenant_id` claim (a Keycloak user attribute, mapped on both clients).
 
 - **Issuer/JWKS split (the "issuer trap" fix).** `KC_HOSTNAME=http://localhost:8081` pins Keycloak's public URL, so browser- and script-minted tokens all carry `iss=http://localhost:8081/realms/voltpilot`. The api validates that issuer (`OIDC_ISSUER_URI`) but fetches signing keys from the compose-internal `OIDC_JWK_SET_URI=http://keycloak:8080/.../certs` - so it never needs to resolve `localhost:8081`. Spring's resource server accepts both `issuer-uri` + `jwk-set-uri` set together: keys from the latter, `iss` checked against the former.
-- OIDC is off by default (`VOLTPILOT_SECURITY_OIDC_ENABLED=false`) for offline unit tests; compose sets it `true`. CORS origins via `VOLTPILOT_CORS_ALLOWED_ORIGINS` (default `http://localhost:5173`).
+- OIDC is ON by default (fail-secure); offline unit tests and broker-less dev setups opt out explicitly with `VOLTPILOT_SECURITY_OIDC_ENABLED=false`; compose sets it `true` explicitly. CORS origins via `VOLTPILOT_CORS_ALLOWED_ORIGINS` (default `http://localhost:5173`).
 
 **Multi-tenancy via Postgres RLS.** `TenantFilter` reads `tenant_id` from the JWT into a request-scoped `TenantContext`; `TenantAwareDataSource` stamps it onto each borrowed connection via `set_config('app.tenant_id', ...)` and RESETs on return to the pool. RLS policies (migration `V2`) scope every table (`tenant`/`site`/`device`/`asset`/`telemetry`) with `tenant_id = current_setting('app.tenant_id')`. No tenant set => **default-deny** (zero rows).
 
@@ -645,7 +645,7 @@ The `:8484` inverter/sources page (`edge-app/core/internal/web/static/inverter.h
 
 - **Maven over Gradle** for JVM services: `mvn` is available and the wrapper is self-contained; keeps one build tool across the JVM tier. Each service is an independent Maven project (no shared reactor) to preserve clean service boundaries.
 - The committed Maven wrapper `distributionUrl` targets **Maven Central**, not any private mirror, so `./mvnw` works on a clean machine.
-- `api` OIDC is toggled off by default (`VOLTPILOT_SECURITY_OIDC_ENABLED`) so unit tests run offline; `timescale-writer` still excludes `DataSourceAutoConfiguration` until the writer is wired.
+- `api` OIDC defaults ON (fail-secure); offline unit tests opt out via `VOLTPILOT_SECURITY_OIDC_ENABLED=false`; `timescale-writer` still excludes `DataSourceAutoConfiguration` until the writer is wired.
 - One Postgres instance intentionally serves **both** timeseries (hypertables) and master data (architecture section 10).
 - **RLS needs a non-superuser connection.** Never point the api's runtime datasource at the `voltpilot` superuser - it would silently bypass RLS. Use `voltpilot_app` (see the auth section). New tenant-owned tables must add an RLS policy in a migration and be granted to `voltpilot_app`.
 - Tenant scoping is enforced in the DB, not the queries: repositories carry **no** `tenant_id` predicate. Out-of-tenant rows are invisible, so "not found" is 404, not 403.

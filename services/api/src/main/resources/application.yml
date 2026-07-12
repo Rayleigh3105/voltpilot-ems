@@ -51,8 +51,10 @@ spring:
 server:
   port: ${API_PORT:8090}
 
-# Toggle OIDC resource-server validation. Off by default for offline unit tests;
-# docker-compose and the integration tests set VOLTPILOT_SECURITY_OIDC_ENABLED=true.
+# Toggle OIDC resource-server validation. ON by default (fail-secure: a
+# deployment that forgot the env var authenticates rather than permits-all);
+# offline unit tests and broker-less dev setups opt out explicitly with
+# VOLTPILOT_SECURITY_OIDC_ENABLED=false.
 voltpilot:
   # Public self-service registration (tenant + login in one step). On by default;
   # closed platforms set VOLTPILOT_REGISTRATION_ENABLED=false to remove the
@@ -74,7 +76,7 @@ voltpilot:
       trusted-proxies: ${VOLTPILOT_REGISTRATION_RATE_LIMIT_TRUSTED_PROXIES:0}
   security:
     oidc:
-      enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:false}
+      enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}
     cors:
       allowed-origins: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:http://localhost:5173}
   # Dedicated cross-tenant datasource for the platform-admin API. Connects as the
