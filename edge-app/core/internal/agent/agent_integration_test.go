@@ -282,6 +282,16 @@ type reclaimEnrollStub struct {
 	csrPem string
 	device string // current issued device_id
 	issued string // cached cert for the current device
+
+	// unclaimed simulates a cloud-side removal: the certificate poll answers a
+	// definitive clean 404 "pending" (exactly what the real api serves after an
+	// unclaim - indistinguishable from never-claimed, by design).
+	unclaimed bool
+	// pending404Left / error503Left serve that many transient answers (clean
+	// 404 / 5xx) before returning to normal - deterministic short blips for the
+	// never-false-trigger assertions, independent of poll timing.
+	pending404Left int
+	error503Left   int
 }
 
 func startReclaimEnrollStub(t *testing.T, p *pki, mqttPort int) *reclaimEnrollStub {
@@ -304,7 +314,15 @@ func startReclaimEnrollStub(t *testing.T, p *pki, mqttPort int) *reclaimEnrollSt
 	mux.HandleFunc("GET /api/v1/enrollment/{ref}/certificate", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		if s.csrPem == "" {
+		if s.error503Left > 0 {
+			s.error503Left--
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		if s.unclaimed || s.pending404Left > 0 || s.csrPem == "" {
+			if s.pending404Left > 0 {
+				s.pending404Left--
+			}
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"status":"pending"}`))
 			return
@@ -327,12 +345,45 @@ func startReclaimEnrollStub(t *testing.T, p *pki, mqttPort int) *reclaimEnrollSt
 	return s
 }
 
-// reclaim points the ref at a new device row id, forcing a re-issue.
+// reclaim points the ref at a new device row id, forcing a re-issue. Also ends
+// a simulated unclaim (the re-claim mints a new device row against the stored
+// CSR - exactly what the real api does).
 func (s *reclaimEnrollStub) reclaim(newDevice string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.device = newDevice
 	s.issued = ""
+	s.unclaimed = false
+}
+
+// unclaim simulates removing the device in the portal: from now on the
+// certificate poll answers a definitive clean 404 "pending".
+func (s *reclaimEnrollStub) unclaim() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unclaimed = true
+}
+
+// blip serves n transient answers before returning to normal: kind is
+// "404" (clean pending) or "503" (portal erroring).
+func (s *reclaimEnrollStub) blip(kind string, n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch kind {
+	case "404":
+		s.pending404Left = n
+	case "503":
+		s.error503Left = n
+	default:
+		s.t.Fatalf("unknown blip kind %q", kind)
+	}
+}
+
+// blipDone reports whether all transient answers have been served.
+func (s *reclaimEnrollStub) blipDone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pending404Left == 0 && s.error503Left == 0
 }
 
 // --- Layer-1 stand-in on the local bus ---

@@ -16,7 +16,7 @@ func clearEnv(t *testing.T) {
 		"VP_SETPOINT_INTERVAL_SECONDS", "VP_DEV_TENANT_ID", "VP_DEV_SITE_ID",
 		"VP_DEV_DEVICE_ID", "VP_DEV_CLOUD_URL", "VP_DEV_INSECURE",
 		"VP_CONTROL_ENABLED", "VP_GRID_CHARGE_ALLOWED", "VP_CONTROL_CERTIFIED_FAMILIES",
-		"VP_RECONCILE_INTERVAL_SECONDS",
+		"VP_RECONCILE_INTERVAL_SECONDS", "VP_UNCLAIM_CONFIRM_MINUTES", "VP_UNCLAIM_CONFIRM_POLLS",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -113,6 +113,41 @@ func TestDevIdentity(t *testing.T) {
 	cfg, _ = Load()
 	if !cfg.DevIdentity() {
 		t.Error("full dev identity must count")
+	}
+}
+
+// The confirmed-unclaim knobs default GENEROUSLY (20 min / 4 polls) so a
+// transient portal blip can never read as "device removed"; env overrides work
+// and garbage/zero falls back to the defaults.
+func TestUnclaimConfirmDefaultsAndEnv(t *testing.T) {
+	clearEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UnclaimConfirm != 20*time.Minute || cfg.UnclaimConfirmPolls != 4 {
+		t.Errorf("unclaim-confirm defaults: %v / %d polls", cfg.UnclaimConfirm, cfg.UnclaimConfirmPolls)
+	}
+
+	t.Setenv("VP_UNCLAIM_CONFIRM_MINUTES", "45")
+	t.Setenv("VP_UNCLAIM_CONFIRM_POLLS", "9")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UnclaimConfirm != 45*time.Minute || cfg.UnclaimConfirmPolls != 9 {
+		t.Errorf("unclaim-confirm env override: %v / %d polls", cfg.UnclaimConfirm, cfg.UnclaimConfirmPolls)
+	}
+
+	// Zero/negative cannot disable the guard - it falls back to the defaults.
+	t.Setenv("VP_UNCLAIM_CONFIRM_MINUTES", "0")
+	t.Setenv("VP_UNCLAIM_CONFIRM_POLLS", "-1")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UnclaimConfirm != 20*time.Minute || cfg.UnclaimConfirmPolls != 4 {
+		t.Errorf("zero/negative must fall back to defaults: %v / %d polls", cfg.UnclaimConfirm, cfg.UnclaimConfirmPolls)
 	}
 }
 

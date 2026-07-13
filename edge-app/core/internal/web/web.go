@@ -111,6 +111,10 @@ type stateEnvelope struct {
 // paired reports whether a certificate is already on disk (the device is
 // claimed), mirroring the frontend's step derivation: any post-claim pairing
 // state counts, including the transient cloud-error/disconnect states.
+// geraet_entfernt (removed/unclaimed in the cloud) is DELIBERATELY not paired:
+// a cert is still on disk, but the claim mapping is gone - the onboarding gate
+// re-opens the portal step (revealing the reference once the inverter delivers
+// data) so the customer can re-claim.
 func paired(pairingState string) bool {
 	switch pairingState {
 	case "verbunden", "zertifikat_erhalten", "cloud_getrennt", "cloud_fehler":

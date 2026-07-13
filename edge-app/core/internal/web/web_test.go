@@ -472,6 +472,62 @@ func TestOnboardingGateDoneOncePaired(t *testing.T) {
 	}
 }
 
+// A device removed (unclaimed) in the cloud - geraet_entfernt - is DELIBERATELY
+// not "paired": the onboarding gate re-opens the portal-claim step so the
+// customer can re-claim, revealing the reference once the inverter delivers
+// data. /health carries the state for headless tooling (installer/watchdogs).
+func TestRemovedDeviceReopensClaimStepAndSurfacesOnHealth(t *testing.T) {
+	st := state.New("edge-removed", "test")
+	st.Update(func(s *state.Snapshot) {
+		s.PairingState = "geraet_entfernt"
+		s.Inverter = configuredInverter()
+		s.LastTelemetry = time.Now().UTC()
+		s.BufferPaused = true
+	})
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
+	defer srv.Close()
+
+	b := getState(t, srv)
+	if b.OnboardingStep != "claim" || !b.ClaimUnlocked {
+		t.Fatalf("removed device with a delivering inverter must re-open the claim step: %+v", b)
+	}
+	if b.Ref != "edge-removed" {
+		t.Fatalf("removed device must reveal the reference for the re-claim, got %q", b.Ref)
+	}
+
+	resp, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var health struct {
+		PairingState   string `json:"pairing_state"`
+		CloudConnected bool   `json:"cloud_connected"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		t.Fatal(err)
+	}
+	if health.PairingState != "geraet_entfernt" || health.CloudConnected {
+		t.Fatalf("/health must surface the removed state: %+v", health)
+	}
+
+	// The state envelope carries the honest buffer-pause flag for the UI.
+	sresp, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sresp.Body.Close()
+	var env struct {
+		BufferPaused bool `json:"buffer_paused"`
+	}
+	if err := json.NewDecoder(sresp.Body).Decode(&env); err != nil {
+		t.Fatal(err)
+	}
+	if !env.BufferPaused {
+		t.Fatal("state envelope must carry buffer_paused while removed")
+	}
+}
+
 func TestStreamPushesStateThenNewSamples(t *testing.T) {
 	srv, _, h := newServerWithHistory(t)
 	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/api/stream", nil)
