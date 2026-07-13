@@ -61,6 +61,7 @@ type Agent struct {
 	envelope       *guards.Envelope
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
+	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
 
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
@@ -591,6 +592,13 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		PvPowerKw   *float64 `json:"pv_power_kw"`
 		LoadKw      *float64 `json:"load_kw"`
 		GridLimitKw *float64 `json:"grid_limit_kw"`
+		// BatteryPowerKw is the primary inverter's MEASURED battery power
+		// (+ charge / - discharge, matching edge/setpoint and the cloud's
+		// balance-derived battery_kw). It is an INTERNAL input to the Netz-meter
+		// house-load balance below, deliberately NOT a published measurement
+		// channel - the cloud contract stays untouched and keeps deriving battery
+		// from the power balance.
+		BatteryPowerKw *float64 `json:"battery_power_kw"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("local telemetry malformed; skipped", "err", err)
@@ -616,6 +624,15 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	if len(measurements) == 0 {
 		slog.Warn("local telemetry carried no known measurement; skipped")
 		return
+	}
+	// The measured battery power stays OUT of the measurements map: it feeds
+	// only the house-load balance below, never the cloud buffer / history ring /
+	// state snapshot (the published contract keeps deriving battery from the
+	// power balance - which, with a balance-derived load, resolves to exactly
+	// this measured value).
+	battKw := m.BatteryPowerKw
+	if battKw != nil && (math.IsNaN(*battKw) || math.IsInf(*battKw, 0)) {
+		battKw = nil
 	}
 	// Multi-source aggregation (Phase 1): fold every FRESH additional Erzeuger
 	// source's PV into the composite site reading BEFORE the guards run (so the
@@ -650,6 +667,18 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// now-correct grid (history.go), no change there.
 	if g := a.authoritativeGrid(); g != nil {
 		measurements["power_kw"] = *g
+		// House load from the true site power balance: with an authoritative grid
+		// measurement the Erzeuger load-subtraction above (which clamps to 0 and
+		// masked the captain's real consumption behind a large AC-coupled PV) is
+		// replaced by
+		//   house = pv_total + grid - battery      (battery: + charge/- discharge)
+		// i.e. everything generated/imported that did not go into the battery is
+		// being consumed. Meter-gated: this runs ONLY inside a fresh Netz reading;
+		// and it degrades honestly - a missing composite PV or an unknown battery
+		// power keeps the estimate above instead of fabricating a wrong house.
+		if house, ok := a.houseFromBalance(measurements, *g, battKw); ok {
+			measurements["load_kw"] = house
+		}
 	}
 	// SoC plausibility gate (drop-don't-fabricate), the same policy as the Deye
 	// decoder's socPlausible(): an out-of-band SoC marks the WHOLE read as
@@ -1323,6 +1352,72 @@ func (a *Agent) authoritativeGrid() *float64 {
 		return nil
 	}
 	return best.grid
+}
+
+// houseFromBalance computes the TRUE house consumption from the site power
+// balance once a fresh Netz (grid-meter) reading is authoritative:
+//
+//	house = pv_total + grid - battery
+//
+// with pv_total the composite site PV (primary + fresh Erzeuger, already folded
+// into measurements), grid the meter's signed value (+import/-export) and
+// battery the primary's MEASURED battery power (+charge/-discharge). With a
+// battery-hybrid primary PLUS a separate AC-coupled PV, NEITHER device measures
+// the house directly and the Erzeuger load-subtraction clamps to 0 behind a
+// large AC PV ("Hausverbrauch 0,0 kW" masking real consumption) - the PCC meter
+// closes the balance. ok=false degrades to the caller's existing estimate when
+// a needed signal is honestly unavailable: no composite PV in the sample, or an
+// UNKNOWN battery power (battery power missing while the primary is not
+// provably batteryless - only string/micro/SunSpec-live families count battery
+// as a physical 0). Small negative results are measurement noise around a
+// balanced node and clamp to 0; house consumption is never negative.
+func (a *Agent) houseFromBalance(measurements map[string]float64, grid float64, batt *float64) (float64, bool) {
+	pv, ok := measurements["pv_power_kw"]
+	if !ok {
+		return 0, false
+	}
+	var battKw float64
+	switch {
+	case batt != nil:
+		battKw = *batt
+	case a.primaryBatteryless():
+		battKw = 0 // a grid-tie primary has no battery: 0 is a fact, not a guess
+	default:
+		// A (possible) battery whose power this sample does not carry: the
+		// balance would be wrong by the full battery power, so keep the estimate.
+		// Loud but rate-limited - a Netz meter is configured precisely for the
+		// accurate house figure, so silently staying on the estimate would look
+		// like the feature not working (e.g. a Layer-1 flow predating
+		// battery_power_kw on the local bus).
+		a.mu.Lock()
+		quiet := time.Since(a.lastBalanceLog) < balanceLogInterval
+		if !quiet {
+			a.lastBalanceLog = time.Now()
+		}
+		a.mu.Unlock()
+		if !quiet {
+			slog.Warn("netz meter is authoritative but the primary sample carries no battery_power_kw; " +
+				"house load stays the estimate (update the Node-RED flows / wire battery power onto edge/telemetry)")
+		}
+		return 0, false
+	}
+	house := pv + grid - battKw
+	if house < 0 {
+		house = 0
+	}
+	return house, true
+}
+
+// balanceLogInterval rate-limits the house-balance fallback warning.
+const balanceLogInterval = 5 * time.Minute
+
+// primaryBatteryless reports whether the configured primary inverter PROVABLY
+// has no battery (see inverter.FamilyBatteryless). No selection = unknown,
+// never assumed batteryless.
+func (a *Agent) primaryBatteryless() bool {
+	a.invMu.Lock()
+	defer a.invMu.Unlock()
+	return a.inv != nil && inverter.FamilyBatteryless(a.inv.Family)
 }
 
 // ListSources returns a copy of the configured additional sources.

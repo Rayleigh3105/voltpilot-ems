@@ -119,6 +119,17 @@ func TestRatedKwAndBatteryLookup(t *testing.T) {
 	if FamilyHasBattery(FamString) || FamilyHasBattery(FamMicro) || FamilyHasBattery(FamSunSpec) {
 		t.Fatal("string/micro/sunspec families must not be battery families")
 	}
+	// Batteryless = PROVABLY no battery (grid-tie generation only) - the house
+	// balance may count battery power as a physical 0 there. Deliberately NOT
+	// the complement of FamilyHasBattery: generic Modbus / Fronius Solar API
+	// MAY carry a battery, so a missing battery reading there is "unknown".
+	if !FamilyBatteryless(FamString) || !FamilyBatteryless(FamMicro) || !FamilyBatteryless(FamSunSpecLive) {
+		t.Fatal("string/micro/sunspec_live must be provably batteryless")
+	}
+	if FamilyBatteryless(FamHybrid3p) || FamilyBatteryless(FamHybrid1p) ||
+		FamilyBatteryless(FamSunSpec) || FamilyBatteryless(FamFroniusSolarAPI) || FamilyBatteryless("") {
+		t.Fatal("hybrids/generic/fronius/unknown must NOT count as batteryless")
+	}
 	// The generic SunSpec model has no rating -> envelope inactive.
 	if _, ok := cat.RatedKw(BrandGenericModbus, FamSunSpec); ok {
 		t.Fatal("generic SunSpec must have no known rating")

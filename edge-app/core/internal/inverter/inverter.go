@@ -451,6 +451,23 @@ func FamilyHasBattery(family string) bool {
 	}
 }
 
+// FamilyBatteryless reports whether a register-map family PROVABLY has no
+// battery (pure grid-tie generation: Deye string/micro AC output, the Fronius
+// Eco SunSpec-live read). For these, "battery power = 0" is a physical fact -
+// the Netz-meter house-load balance may treat a missing battery reading as
+// zero there. NOT the complement of FamilyHasBattery: families that MAY carry
+// a battery without publishing its power in every sample (the generic Modbus
+// profile, Fronius Solar API) return false from BOTH - a missing battery
+// reading there means "unknown", never a fabricated 0.
+func FamilyBatteryless(family string) bool {
+	switch family {
+	case FamString, FamMicro, FamSunSpecLive:
+		return true
+	default:
+		return false
+	}
+}
+
 // --- Selection: the persisted + published choice. ---
 
 // Connection holds the transport parameters. Only the fields relevant to the

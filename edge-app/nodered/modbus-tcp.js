@@ -77,8 +77,10 @@ const PROFILES = {
         soc_pct: round1(socPct),
         grid_limit_kw: gridLimitKw,
       };
-      // battery power is read for status/calibration only - never published
-      // (the cloud derives it from the power balance).
+      // battery power (+ charge / - discharge) is returned separately: the flow
+      // forwards it as battery_power_kw on the LOCAL bus only (the core's
+      // house-load balance with a Netz meter) - the cloud never receives it
+      // and keeps deriving battery from the power balance.
       const batt_kw = round3(s16(regs[3]) / 100);
       return { reading, batt_kw };
     },
