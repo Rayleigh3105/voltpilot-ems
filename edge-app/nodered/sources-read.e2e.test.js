@@ -21,6 +21,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const sunspec = require('./sunspec/sunspec-live');
+// The REAL palette node the flow's config path runs through (its parse() is the
+// exact message handler the retained edge/sources/config payload hits first).
+const vpSourcesConfig = require('./vp-palette/nodes/vp-sources-config.js');
 
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
@@ -105,14 +108,16 @@ function startModbusServer(img) {
 // node.send + node.warn capture, real node:net (awaits a Promise result).
 // `ctx` may be shared across invocations - a real function node keeps ONE
 // context store across poll ticks, which is what the overlap guard relies on.
-async function runFunctionNode(func, { msg = {}, flow = {}, sends = [], warns = [], ctx = {} } = {}) {
+async function runFunctionNode(func, { msg = {}, flow = {}, sends = [], warns = [], logs = [], ctx = {}, netStub = null, fakeTimers = null } = {}) {
   const sandbox = {
     msg,
-    node: { status() {}, error() {}, warn(w) { warns.push(String(w)); }, send(m) { sends.push(JSON.parse(JSON.stringify(m))); } },
+    node: { status() {}, error() {}, warn(w) { warns.push(String(w)); }, log(l) { logs.push(String(l)); }, send(m) { sends.push(JSON.parse(JSON.stringify(m))); } },
     context: { get: (k) => ctx[k], set: (k, v) => { ctx[k] = v; } },
     flow: { get: (k) => flow[k], set: (k, v) => { flow[k] = v; } },
-    global: { get: (k) => (k === 'net' ? net : undefined) },
-    Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map, setTimeout, clearTimeout,
+    global: { get: (k) => (k === 'net' ? (netStub || net) : undefined) },
+    Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map,
+    setTimeout: fakeTimers ? fakeTimers.setTimeout : setTimeout,
+    clearTimeout: fakeTimers ? fakeTimers.clearTimeout : clearTimeout,
   };
   const script = new vm.Script('(function(){' + func + '\n})()');
   const ret = script.runInContext(vm.createContext(sandbox));
@@ -179,9 +184,10 @@ async function storeAndRead(sourceList) {
   const flow = {};
   const sends = [];
   const warns = [];
-  await runFunctionNode(byId['sources-store'].func, { msg: { payload: sourceList }, flow, sends, warns });
-  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, sends, warns });
-  return { flow, sends, warns };
+  const logs = [];
+  await runFunctionNode(byId['sources-store'].func, { msg: { payload: sourceList }, flow, sends, warns, logs });
+  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, sends, warns, logs });
+  return { flow, sends, warns, logs };
 }
 
 // The captain's real source shape (core busEntry for a fronius_sunspec source).
@@ -299,6 +305,137 @@ test('a dead Fronius source is skipped (no send) while a live modbus source keep
   } finally {
     sim.server.close();
   }
+});
+
+// THE FAITHFUL REPRO of the real device (captain's Fronius Eco, second round
+// 2026-07-13): the ongoing poll delivered NEITHER data NOR a warn although the
+// source was configured correctly and "Verbindung testen" worked. Root cause:
+// vp-sources-config's parse() carried a STALE communication whitelist
+// (solarman_v5 + modbus_tcp only) and silently dropped the fronius_sunspec
+// source BEFORE the flow ever saw it -> the store planned nothing -> the read
+// node idled with "keine Quellen" (no read, no warn). The earlier e2e tests
+// here fed msg.payload straight into the store node, BYPASSING that parse -
+// which is exactly why they stayed green over the bug. This test starts from
+// the retained edge/sources/config BYTES the core actually publishes
+// (sources.go BusConfig()/busEntry() for a fronius_sunspec source - field set
+// verified against the Go source) and runs them through the REAL palette
+// parse() + the REAL store + read nodes.
+function retainedBusConfigBytes(port) {
+  return Buffer.from(JSON.stringify({
+    schema_version: '1.0',
+    sources: [{
+      id: 'src-eco',
+      role: 'pv-generation',
+      brand: 'fronius_sunspec',
+      model: 'fronius-eco-27-3-s',
+      family: 'sunspec_live',
+      communication: 'fronius_sunspec',
+      connection: { ip: '127.0.0.1', port, unit_id: 1, model_type: 'auto', invert_grid_sign: false },
+      interval_s: 5,
+      capacity_kwp: 70,
+    }],
+  }));
+}
+
+test('REGRESSION: the retained core config (busEntry bytes) passes vp-sources-config and the whole chain publishes', async () => {
+  const { server, port } = await startModbusServer(sunspecImage(40000, { wWatts: 26500 }));
+  try {
+    const list = vpSourcesConfig.parse(retainedBusConfigBytes(port));
+    assert.ok(Array.isArray(list), 'the retained payload is structurally valid, never null');
+    assert.equal(
+      list.length, 1,
+      'vp-sources-config must NOT drop a fronius_sunspec source (the stale-whitelist bug that made the real device deliver neither data nor a warn)',
+    );
+    const { flow, sends } = await storeAndRead(list);
+    assert.equal(flow.source_plans.length, 1, 'the parsed source is planned');
+    assert.equal(sends.length, 1, 'the poll publishes the reading');
+    assert.equal(sends[0][0].source_id, 'src-eco');
+    assert.equal(sends[0][0].payload.pv_power_kw, 26.5);
+  } finally {
+    server.close();
+  }
+});
+
+test('TRACE: one poll cycle logs config receipt, routing, read start, result and publish', async () => {
+  const { server, port } = await startModbusServer(sunspecImage(40000, { wWatts: 26500 }));
+  try {
+    const list = vpSourcesConfig.parse(retainedBusConfigBytes(port));
+    const { logs } = await storeAndRead(list);
+    const all = logs.join('\n');
+    assert.ok(all.includes('Quellen-Konfiguration: 1 Eintrag/Eintraege -> 1 Leseplan/-plaene'), 'store logs the plan count, got: ' + all);
+    assert.ok(all.includes('Quelle src-eco (pv-generation): fronius_sunspec 127.0.0.1:' + port + ' -> Leseplan sunspec_live'), 'store names the routed adapter per source');
+    assert.ok(all.includes('Lese Quelle src-eco (sunspec_live 127.0.0.1:' + port + ')'), 'read start is logged');
+    assert.ok(all.includes('Quelle src-eco: pv_power_kw=26.5 -> veroeffentlicht auf edge/sources/src-eco/telemetry'), 'result + publish are logged');
+    assert.ok(all.includes('Quellen-Zyklus: 1 gelesen, 0 fehlgeschlagen'), 'cycle summary is logged');
+  } finally {
+    server.close();
+  }
+});
+
+test('TRACE: an unroutable communication is loudly NOT-ROUTED instead of silently invisible', async () => {
+  const warns = [];
+  const logs = [];
+  const flow = {};
+  await runFunctionNode(byId['sources-store'].func, {
+    msg: { payload: [{ id: 'src-x', role: 'pv-generation', brand: 'x', family: 'y',
+      communication: 'fronius_solar_api', connection: { ip: '10.0.0.9' } }] },
+    flow, warns, logs,
+  });
+  assert.equal((flow.source_plans || []).length, 0);
+  assert.ok(
+    warns.some((w) => w.includes('src-x') && w.includes('NICHT VERDRAHTET') && w.includes('fronius_solar_api')),
+    'the unwired source is named in a warn, got: ' + JSON.stringify(warns),
+  );
+  // The read node then says WHY nothing is read (rate-limited, but the first
+  // tick always logs).
+  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, warns, logs });
+  assert.ok(
+    logs.some((l) => l.includes('keine Leseplaene')),
+    'an empty plan list is a logged decision, not silence: ' + JSON.stringify(logs),
+  );
+});
+
+test('TRACE: a tick skipped by the overlap guard logs the skip (rate-limited)', async () => {
+  const flow = { source_plans: [{ id: 'src-eco', role: 'pv-generation', adapter: 'sunspec_live', conn: { ip: '127.0.0.1', port: 1 } }] };
+  const logs = [];
+  const ctx = { src_busy_since: Date.now() - 7000 };
+  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, logs, ctx });
+  assert.ok(
+    logs.some((l) => l.includes('Tick uebersprungen') && l.includes('7 s')),
+    'the busy skip is logged with its age, got: ' + JSON.stringify(logs),
+  );
+});
+
+test('a read that outlives its own timeouts ends as a LOGGED Gesamt-Timeout - busy is always cleared, never a permanent silent skip', async () => {
+  // The pathological hang the overall Promise.race cap exists for: a socket
+  // that never connects, never errors, and whose reader-internal 8 s timers
+  // never fire (a hang no inner timeout catches). Fake timers suppress every
+  // timer below the 30 s overall cap and fire the cap itself after 30 ms real
+  // time - so ONLY the overall race can end the read, deterministically.
+  const hangSocket = { setNoDelay() {}, once() {}, on() {}, connect() {}, destroy() {}, write() {}, end() {} };
+  const netStub = { Socket: function () { return hangSocket; } };
+  const pendingFakes = [];
+  const fakeTimers = {
+    setTimeout: (fn, ms) => {
+      if (ms >= 30000) { const h = setTimeout(fn, 30); pendingFakes.push(h); return h; }
+      return { __suppressed: true };
+    },
+    clearTimeout: (h) => { if (h && h.__suppressed) return; clearTimeout(h); },
+  };
+  const flow = { source_plans: [{ id: 'src-hang', role: 'pv-generation', adapter: 'sunspec_live', conn: { ip: '203.0.113.1', port: 502, unit_id: 1, model_type: 'auto' } }] };
+  const warns = [];
+  const logs = [];
+  const ctx = {};
+  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, warns, logs, ctx, netStub, fakeTimers });
+  assert.equal(ctx.src_busy_since, 0, 'src_busy_since is ALWAYS cleared - a hang can never cause a permanent silent skip');
+  assert.ok(
+    warns.some((w) => w.includes('src-hang') && w.includes('Gesamt-Timeout')),
+    'the hang ends as a named Gesamt-Timeout warn, got: ' + JSON.stringify(warns),
+  );
+  assert.ok(
+    logs.some((l) => l.includes('Quellen-Zyklus: 0 gelesen, 1 fehlgeschlagen')),
+    'the cycle outcome is logged, got: ' + JSON.stringify(logs),
+  );
 });
 
 test('a mixed source list plans Fronius + modbus and defers a Deye solarman source', async () => {

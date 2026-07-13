@@ -112,11 +112,30 @@ describe('shaping (pure)', function () {
       schema_version: '2.0', communication: 'modbus_tcp', family: 'sunspec', connection: { ip: 'x' },
     }))), null);
     assert.strictEqual(vpInverterConfig.parse(Buffer.from(JSON.stringify({
-      schema_version: '1.0', communication: 'carrier-pigeon', family: 'x', connection: { ip: 'y' },
+      schema_version: '1.0', family: 'x', connection: { ip: 'y' }, // no communication
     }))), null);
     assert.strictEqual(vpInverterConfig.parse(Buffer.from(JSON.stringify({
       schema_version: '1.0', communication: 'modbus_tcp', family: 'sunspec', connection: {},
     }))), null);
+  });
+
+  // REGRESSION (same stale-whitelist class as vp-sources-config, 2026-07-13):
+  // a fronius_solar_api / fronius_sunspec PRIMARY selection was silently
+  // dropped here although the auto tab's router has live branches for both.
+  // Validation is structural only now: every communication passes through and
+  // the router decides (unknown -> idle with a named status).
+  it('vp-inverter-config passes fronius selections and unknown communications through (structural-only)', function () {
+    const sunspec = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', brand: 'fronius_sunspec', family: 'sunspec_live',
+      communication: 'fronius_sunspec',
+      connection: { ip: '192.168.210.40', port: 502, unit_id: 1, model_type: 'auto' },
+    })));
+    assert.ok(sunspec, 'fronius_sunspec must NOT be dropped');
+    assert.strictEqual(sunspec.communication, 'fronius_sunspec');
+    const future = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', communication: 'some_future_transport', family: 'x', connection: { ip: 'y' },
+    })));
+    assert.ok(future, 'an unknown communication passes through; the router goes idle with a named status');
   });
 
   it('vp-control-readback shapes a readback and derives all_match / mismatch_roles', function () {
@@ -178,6 +197,40 @@ describe('shaping (pure)', function () {
     })));
     assert.strictEqual(list.length, 1);
     assert.strictEqual(list[0].id, 'ok');
+  });
+
+  // REGRESSION (real device 2026-07-13): parse() once whitelisted solarman_v5 +
+  // modbus_tcp and silently dropped a fronius_sunspec Erzeuger BEFORE the flow
+  // ever saw it - neither data nor a warn anywhere. Validation is STRUCTURAL
+  // only now: every communication passes through; the flow's store node decides
+  // readability and logs NICHT VERDRAHTET for unknown ones.
+  it('vp-sources-config passes a fronius_sunspec source through (the exact core busEntry shape)', function () {
+    const list = vpSourcesConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0',
+      sources: [{
+        id: 'src-eco', role: 'pv-generation', brand: 'fronius_sunspec', model: 'fronius-eco-27-3-s',
+        family: 'sunspec_live', communication: 'fronius_sunspec',
+        connection: { ip: '192.168.210.40', port: 502, unit_id: 1, model_type: 'auto', invert_grid_sign: false },
+        interval_s: 5, capacity_kwp: 70,
+      }],
+    })));
+    assert.strictEqual(list.length, 1, 'fronius_sunspec must NOT be dropped (the stale-whitelist bug)');
+    assert.strictEqual(list[0].communication, 'fronius_sunspec');
+    assert.strictEqual(list[0].connection.model_type, 'auto');
+  });
+
+  it('vp-sources-config is structural-only: an unknown communication passes through (the flow logs it)', function () {
+    const d = vpSourcesConfig.parseDetailed(Buffer.from(JSON.stringify({
+      schema_version: '1.0',
+      sources: [
+        { id: 'src-new', role: 'pv-generation', family: 'x', communication: 'some_future_transport', connection: { ip: '1.2.3.4' } },
+        { id: 'src-nocomm', role: 'pv-generation', family: 'x', connection: { ip: '1.2.3.4' } },
+      ],
+    })));
+    assert.strictEqual(d.list.length, 1);
+    assert.strictEqual(d.list[0].id, 'src-new');
+    assert.strictEqual(d.dropped.length, 1);
+    assert.ok(d.dropped[0].indexOf('src-nocomm') === 0 && d.dropped[0].indexOf('communication') > 0, d.dropped[0]);
   });
 
   it('vp-quelle shapes a source reading (pv only) and builds a safe per-source topic', function () {
@@ -445,6 +498,46 @@ describe('nodes against a local-bus stand-in', function () {
               assert.strictEqual(msg.payload.length, 1);
               assert.strictEqual(msg.sources[0].id, 'src-a');
               assert.strictEqual(msg.sources[0].capacity_kwp, 70);
+              done();
+            } catch (e) {
+              done(e);
+            }
+          });
+        });
+      });
+    });
+  });
+
+  // The real-device gap the older integration test missed: it only ever
+  // published a modbus_tcp source, which the stale parse() whitelist happened
+  // to admit. This drives the ACTUAL node over the real bus with the retained
+  // fronius_sunspec payload the core publishes (busEntry shape) and asserts it
+  // reaches the flow.
+  it('vp-sources-config emits a retained fronius_sunspec source from edge/sources/config', function (done) {
+    const flow = coreFlow([
+      { id: 'sc2', type: 'vp-sources-config', core: 'core1', wires: [['h1']] },
+      { id: 'h1', type: 'helper' },
+    ]);
+    const pub = mqtt.connect('mqtt://127.0.0.1:' + port);
+    pub.on('connect', function () {
+      pub.publish('edge/sources/config', JSON.stringify({
+        schema_version: '1.0',
+        sources: [{
+          id: 'src-eco', role: 'pv-generation', brand: 'fronius_sunspec', model: 'fronius-eco-27-3-s',
+          family: 'sunspec_live', communication: 'fronius_sunspec',
+          connection: { ip: '192.168.210.40', port: 502, unit_id: 1, model_type: 'auto', invert_grid_sign: false },
+          interval_s: 5, capacity_kwp: 70,
+        }],
+      }), { qos: 1, retain: true }, function () {
+        pub.end();
+        helper.load([vpCore, vpSourcesConfig], flow, function () {
+          const h1 = helper.getNode('h1');
+          h1.on('input', function (msg) {
+            try {
+              assert.strictEqual(msg.payload.length, 1, 'the fronius_sunspec source must reach the flow (stale-whitelist regression)');
+              assert.strictEqual(msg.sources[0].id, 'src-eco');
+              assert.strictEqual(msg.sources[0].communication, 'fronius_sunspec');
+              assert.strictEqual(msg.sources[0].connection.unit_id, 1);
               done();
             } catch (e) {
               done(e);
