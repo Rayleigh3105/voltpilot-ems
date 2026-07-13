@@ -34,7 +34,7 @@ function runFunctionNode(func, { msg = {}, flow = {} } = {}) {
   const ctxStore = {};
   const sandbox = {
     msg,
-    node: { status() {}, error() {}, warn() {}, send() {} },
+    node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
     flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
     context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
     global: { get: () => undefined },

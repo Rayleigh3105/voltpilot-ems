@@ -25,9 +25,16 @@ const TOPIC = 'edge/inverter/config';
 const SCHEMA_VERSION = '1.0';
 
 // parse() is exported for unit tests: validate + normalize the retained payload
-// into a selection, or null when it is not a usable inverter config. Mirrors
-// parseConfig() in ../../inverter-routing.js (the source of truth for routing);
-// kept minimal here so the palette package stays self-contained.
+// into a selection, or null when it is not a usable inverter config.
+//
+// VALIDATION IS STRUCTURAL ONLY (same class of bug as vp-sources-config, found
+// 2026-07-13): an earlier build whitelisted solarman_v5 + modbus_tcp here and
+// therefore silently dropped a fronius_solar_api / fronius_sunspec PRIMARY
+// selection before the flow ever saw it - the auto tab's router has live
+// branches for both, but they were unreachable behind this node. Deciding
+// which communication is readable is the router's job (it goes idle with a
+// named status for unknown ones); this node passes every structurally valid
+// selection through.
 function parse(buf) {
   let obj;
   try {
@@ -37,7 +44,7 @@ function parse(buf) {
   }
   if (obj == null || typeof obj !== 'object' || Array.isArray(obj)) return null;
   if (obj.schema_version !== SCHEMA_VERSION) return null;
-  if (obj.communication !== 'solarman_v5' && obj.communication !== 'modbus_tcp') return null;
+  if (typeof obj.communication !== 'string' || obj.communication.trim() === '') return null;
   if (typeof obj.family !== 'string' || obj.family.trim() === '') return null;
   const conn = obj.connection;
   if (conn == null || typeof conn !== 'object' || Array.isArray(conn)) return null;
@@ -85,8 +92,13 @@ module.exports = function (RED) {
       const sel = parse(buf);
       if (!sel) {
         node.status({ fill: 'yellow', shape: 'ring', text: 'ungültige Auswahl verworfen' });
+        node.warn('edge/inverter/config: unbrauchbare Auswahl verworfen (JSON/Schema-Version/communication/family/connection.ip)');
         return;
       }
+      // TRACE (lands in docker compose logs nodered): the selection that
+      // reached the flow - so a selection that never wires the router is
+      // visible in ONE device log, without the editor.
+      node.log('edge/inverter/config: Auswahl ' + (sel.label || sel.brand || sel.family) + ' (' + sel.communication + ', ' + sel.connection.ip + ')');
       node.status({
         fill: 'green',
         shape: 'dot',
