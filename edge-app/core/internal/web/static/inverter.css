@@ -63,6 +63,14 @@
 
 .add-source-cta { display: flex; justify-content: flex-end; margin-top: 16px; }
 
+/* "Primär misst den gesamten Netzübergang" toggle (Netz-Zähler group): the
+   meter-less alternative for the true house consumption. Checkbox alignment
+   goes to the top so the multi-line label wraps cleanly on phones. */
+.balance-toggle { margin-top: 12px; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--bg-2); }
+.balance-toggle .checkbox-row { align-items: flex-start; min-height: 0; font-size: 13.5px; }
+.balance-toggle .checkbox-row input[type="checkbox"] { flex: none; margin-top: 1px; }
+.balance-toggle .field-help { margin-left: 30px; }
+
 /* ---------------- Form fields ---------------- */
 .inv-form-card { padding: 24px; }
 .inv-edit-form { margin-top: 14px; }

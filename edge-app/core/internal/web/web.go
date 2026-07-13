@@ -54,6 +54,12 @@ type SourcesController interface {
 	SourceStatuses() map[string]string
 	AddSource(sources.Request) (sources.Source, error)
 	DeleteSource(id string) error
+	// Balance settings: the operator-declared "primary grid CT measures the
+	// whole site connection" toggle rendered in the Netz-Zähler group (it is
+	// the meter-less alternative for the true house consumption). Persisted +
+	// applied live by the agent.
+	GetBalance() sources.BalanceSettings
+	SetBalance(sources.BalanceSettings) (sources.BalanceSettings, error)
 }
 
 // PurgeController backs the "Datenaufzeichnungen löschen" action: wipe the
@@ -329,7 +335,27 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			"sources":  list,
 			"statuses": statuses,
 			"catalog":  inv.InverterCatalog(),
+			"balance":  src.GetBalance(),
 		})
+	})
+
+	// POST /api/balance - the site power-balance settings (today the single
+	// "primary inverter measures the whole grid connection" toggle). Persisted
+	// and applied live; a dedicated Netz meter always takes precedence over the
+	// toggle, so flipping it can never override a working meter.
+	mux.HandleFunc("POST /api/balance", func(w http.ResponseWriter, r *http.Request) {
+		var req sources.BalanceSettings
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		cfg, err := src.SetBalance(req)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Einstellung konnte nicht gespeichert werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"balance": cfg})
 	})
 
 	// POST /api/sources - add an additional Erzeuger source (master data only, no
