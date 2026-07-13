@@ -67,14 +67,15 @@ It is a **flat** JSON object (not nested under `measurements` - that nesting is 
 | `pv_power_kw` | number | **kW** | optional | PV generation (≥0 in practice) | omitted |
 | `load_kw` | number | **kW** | optional | site load (≥0 in practice) | omitted |
 | `grid_limit_kw` | number | **kW** | optional | observed §14a envelope (magnitude; used as a ± cap) | omitted; the §14a guard step is skipped |
+| `battery_power_kw` | number | **kW** | optional | the inverter's MEASURED battery power, `+` = **charge**, `−` = **discharge** (matches `edge/setpoint`). **LOCAL-BUS ONLY, never a cloud channel**: with a configured Netz-Zähler source the core uses it to compute the true house load from the site power balance (`house = pv_total + grid − battery`); the cloud keeps deriving battery from the power balance. | omitted; with a Netz meter and a possible battery the core then keeps the estimated house load instead of guessing the balance |
 | `ts` | string | RFC 3339 | optional | measurement time | **core stamps `time.Now().UTC()`** (`agent.go:287-292`) |
 
 **Parsing / validation rules, exactly as coded (`agent.go:283-307`):**
 
 1. **Malformed JSON** → logged `"local telemetry malformed; skipped"` and dropped (`agent.go:283-286`). The stream never crashes.
 2. Each numeric field is accepted only if present **and** not `NaN`/`Inf` (`put()`, `agent.go:294-298`). A non-finite number is silently dropped for that field.
-3. Unknown/extra keys are **ignored** - only the five known fields are read (the struct at `agent.go:275-282`). There is no `additionalProperties` rejection on the local bus.
-4. If **none** of the five known measurements survive, the whole message is dropped: `"local telemetry carried no known measurement; skipped"` (`agent.go:304-306`).
+3. Unknown/extra keys are **ignored** - only the known fields are read (the struct in `onLocalTelemetry`). There is no `additionalProperties` rejection on the local bus.
+4. If **none** of the five known measurement channels survive, the whole message is dropped: `"local telemetry carried no known measurement; skipped"`. (`battery_power_kw` is a balance input, not a measurement channel - it alone never makes a message publishable.)
 5. **No range checks.** A `soc_pct` of 150 or a negative `pv_power_kw` is accepted and forwarded as-is. Range/enum is documented on the cloud contract only; the core does not enforce it.
 6. `ts`: a valid RFC 3339 string is parsed and used (converted to UTC); **anything else - missing or unparseable - falls back to "now"** (`agent.go:287-292`). An unparseable `ts` does not reject the message.
 
@@ -249,7 +250,7 @@ This drives the "Wechselrichter: verbunden/getrennt" line in the local web app; 
 
 5. **Identity is NOT in your message.** The local-bus payload carries no tenant/site/device IDs. The core attaches them from **enrollment** (`agent.go:202-205`, injected into the cloud payload at `cloud.go:157-164`). Consequence: you cannot "address" a device from Node-RED, and you must not try. Before the device is claimed/enrolled, telemetry is still **accepted and buffered** (`agent.go:325`) - it just is not forwarded to the cloud until the link is up (`publisherLoop`, `agent.go:471-510`), then replayed oldest-first with the original timestamps.
 
-6. **"No known measurement" = silently dropped.** If your function emits keys the core does not know (a typo like `pv_kw_power`, or everything undefined), the message is dropped with a warn log (`agent.go:304-306`). Only these five keys count: `power_kw, soc_pct, pv_power_kw, load_kw, grid_limit_kw` (`agent.go:275-282`). The `vp-telemetrie` palette node additionally aliases `grid_kw`/`pv_kw` (`vp-telemetrie.js:27,29`), but a raw `mqtt out` does not - use the canonical names.
+6. **"No known measurement" = silently dropped.** If your function emits keys the core does not know (a typo like `pv_kw_power`, or everything undefined), the message is dropped with a warn log (`agent.go:304-306`). Only these five measurement keys count: `power_kw, soc_pct, pv_power_kw, load_kw, grid_limit_kw` (plus the optional balance input `battery_power_kw`, which alone never makes a message publishable). The `vp-telemetrie` palette node additionally aliases `grid_kw`/`pv_kw` (`vp-telemetrie.js:27,29`), but a raw `mqtt out` does not - use the canonical names.
 
 7. **Non-finite numbers are dropped per-field.** `NaN`/`Infinity` for a field → that field is omitted (`agent.go:294-298`). If a sensor read fails, sending `NaN` is safe (that field just will not appear), but sending the *last good value* is usually what you want.
 

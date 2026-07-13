@@ -87,6 +87,35 @@ into the store node, bypassing the palette parse. Rules now baked in:
   machine temp-rewrite it to registry.npmjs.org, `npm ci`, then
   `git checkout package-lock.json`.
 
+## House load from the site power balance (Netz-Zähler) + battery-power sourcing
+
+With a battery-hybrid primary PLUS a separate AC-coupled PV, NEITHER device
+measures the true house load; the Erzeuger estimate `max(0, load − Σpv)` clamps
+to 0 behind a large AC PV. Once a FRESH Netz (grid-meter) source is
+authoritative, `agent.go onLocalTelemetry` derives
+`house = pv_total + grid − battery` (grid +import/−export, battery
++charge/−discharge) and overwrites `load_kw` BEFORE the guards. Rules:
+
+- **Meter-gated + never fabricate:** no/stale Netz meter, missing composite PV,
+  or UNKNOWN battery power → the old estimate, byte-for-byte. Battery power is
+  known when the sample carries `battery_power_kw`, or 0 when the primary
+  family is PROVABLY batteryless (`inverter.FamilyBatteryless`: string / micro /
+  sunspec_live - deliberately NOT the complement of `FamilyHasBattery`; generic
+  Modbus + Fronius Solar API MAY carry a battery and fall back).
+- **`battery_power_kw` is a LOCAL-BUS-ONLY optional field on `edge/telemetry`**
+  (+charge/−discharge, matching `edge/setpoint`): the flow decode nodes
+  (Deye `auto-deye-decode`, generic Modbus, sim tab) forward the already-decoded
+  calibration `batt_kw`; `vp-telemetrie.shape()` whitelists it. The Go agent
+  keeps it OUT of the `measurements` map, so it never reaches the cloud buffer /
+  history ring / snapshot - the cloud contract still derives battery from the
+  balance (which, with the balance-derived load, resolves to the measured
+  value). The Fronius branch deliberately does NOT forward `P_Akku` (sign
+  verify-on-device) → falls back to the estimate there.
+- Tests: core `agent/house_balance_test.go` (the captain's topology
+  numerically, all sign cases, every fallback), `flows-sync.test.js` pins the
+  flow↔module battery forwarding, vp-palette `nodes_spec.js` the shape
+  whitelist. Docs: `nodered/CUSTOM-INVERTER.md` §1.3 (field table).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

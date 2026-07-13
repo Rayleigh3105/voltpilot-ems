@@ -6,10 +6,14 @@
  *
  * Input msg.payload: an object with any of
  *   power_kw, soc_pct, pv_power_kw, load_kw, grid_limit_kw  (numbers)
+ *   battery_power_kw (number, OPTIONAL: the inverter's MEASURED battery power,
+ *     + charge / - discharge - matching edge/setpoint. LOCAL-BUS ONLY: the core
+ *     uses it to compute the true house load from the site power balance when a
+ *     Netz-Zaehler source is authoritative; it is never published to the cloud,
+ *     whose contract keeps deriving battery from the power balance.)
  *   ts (RFC 3339 string, optional - defaults to "now" in the core)
  * Aliases from the classic acquisition decode are accepted:
- *   grid_kw -> power_kw, pv_kw -> pv_power_kw, batt via power balance is NOT
- *   derived here - the cloud does that.
+ *   grid_kw -> power_kw, pv_kw -> pv_power_kw.
  */
 'use strict';
 
@@ -29,7 +33,10 @@ function shape(payload) {
   set('pv_power_kw', num(payload.pv_power_kw !== undefined ? payload.pv_power_kw : payload.pv_kw));
   set('load_kw', num(payload.load_kw));
   set('grid_limit_kw', num(payload.grid_limit_kw));
+  // battery_power_kw rides along ONLY next to real measurement channels (a
+  // battery-only payload is not a publishable reading), see the header note.
   if (Object.keys(out).length === 0) return null;
+  set('battery_power_kw', num(payload.battery_power_kw));
   if (typeof payload.ts === 'string' && !isNaN(Date.parse(payload.ts))) {
     out.ts = payload.ts;
   }

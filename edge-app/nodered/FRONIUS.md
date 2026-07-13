@@ -87,7 +87,7 @@ kanonischen Kanäle ab:
 | `pv_power_kw` | `P_PV` | W → kW, ≥ 0. `null` (Wechselrichter schläft) → Feld **ausgelassen**, nie fabrizierte 0. |
 | `load_kw` | **`−P_Load`** | Fronius meldet die Last **negativ** beim Verbrauch; VoltPilots `load_kw` ist nicht-negativ, also negieren (und auf ≥ 0 begrenzen). |
 | `soc_pct` | `Inverters["1"].SOC` | Nur bei Hybrid mit Batterie vorhanden. Fehlend/außerhalb `(0,100]` → **ausgelassen**, nie fabrizierte 0 (dieselbe Regel wie Deye `socPlausible`). |
-| Batterieleistung (nicht veröffentlicht) | `P_Akku` | Nur Kalibrierung/Gegenprobe - VoltPilot leitet `battery_kw` aus der Leistungsbilanz ab und veröffentlicht die Fronius-Zahl **nie** direkt. |
+| Batterieleistung (nicht veröffentlicht) | `P_Akku` | Nur Kalibrierung/Gegenprobe - VoltPilot leitet `battery_kw` aus der Leistungsbilanz ab und veröffentlicht die Fronius-Zahl **nie** direkt. **Bewusst auch nicht als lokales `battery_power_kw`** (das die Deye-/Modbus-Pfade für die Hausverbrauch-Bilanz mit Netz-Zähler mitgeben): das `P_Akku`-Vorzeichen ist AM GERÄT ZU PRÜFEN und noch unbestätigt - ein Fronius-Hybrid als Primärgerät fällt daher bei der Bilanz ehrlich auf die Schätzung zurück, statt mit falschem Vorzeichen zu rechnen. |
 | `grid_limit_kw` (§14a) | – | In den geprüften Realtime-Endpunkten **nicht bestätigt** vorhanden; der Contract behandelt das Feld ohnehin als optional (fehlt sauber). |
 
 ### Vorzeichen sind AM GERÄT ZU PRÜFEN

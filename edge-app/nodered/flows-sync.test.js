@@ -156,13 +156,22 @@ test('flow Deye decoder matches deye-decode.decode() for a real hybrid_3p read',
   const cfg = { family: 'hybrid_3p', power_scale: 1 };
   const regs = new Array(0x58).fill(0);
   regs[0x024c - 0x024c] = 57; // SoC 57 %
+  regs[0x024e - 0x024c] = 0xffff - 8500 + 1; // battery -8.5 kW (discharging, s16)
   regs[0x028d - 0x024c] = 2400; // load 2.4 kW
   regs[0x0271 - 0x024c] = 900; // grid 0.9 kW
   const blocks = [{ start: 0x024c, regs }];
   const { ret } = runDeyeDecode(cfg, blocks);
   const flowReading = ret[0].payload;
   delete flowReading.ts; // the flow stamps a live ts
-  assert.deepStrictEqual(flowReading, deyeDecode.decode(blocks, cfg).reading);
+  // The measured battery power rides along on the LOCAL bus as
+  // battery_power_kw (house-load balance with a Netz meter in the core),
+  // pinned against the module's calibration figure; the reading channels
+  // themselves stay byte-identical to the module.
+  const expected = deyeDecode.decode(blocks, cfg);
+  assert.strictEqual(flowReading.battery_power_kw, expected.batt_kw);
+  assert.strictEqual(flowReading.battery_power_kw, -8.5);
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, expected.reading);
   assert.strictEqual(flowReading.soc_pct, 57);
 });
 
@@ -305,10 +314,15 @@ test('flow modbus decoder matches modbus-tcp.decodeProfile() (sunspec)', () => {
   const msg = { mb: { profile: 'sunspec', regs } };
   const { ret } = runFunctionNode(byId['auto-mb-decode'].func, { msg });
   const flowReading = ret[0].payload; // output 1 payload
-  const expected = modbusTcp.decodeProfile('sunspec', regs).reading;
+  const expected = modbusTcp.decodeProfile('sunspec', regs);
   // the flow adds a live ts; compare the measurement fields only
   delete flowReading.ts;
-  assert.deepStrictEqual(flowReading, expected);
+  // battery power (reg 3, + charge) rides along on the LOCAL bus as
+  // battery_power_kw - pinned against the module's separate batt_kw.
+  assert.strictEqual(flowReading.battery_power_kw, expected.batt_kw);
+  assert.strictEqual(flowReading.battery_power_kw, 5);
+  delete flowReading.battery_power_kw;
+  assert.deepStrictEqual(flowReading, expected.reading);
 });
 
 // The "Quellen uebernehmen" (sources-store) node carries a synced copy of the

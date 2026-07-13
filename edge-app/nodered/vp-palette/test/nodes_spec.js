@@ -52,6 +52,18 @@ describe('shaping (pure)', function () {
     assert.deepStrictEqual(shaped, { power_kw: -2, pv_power_kw: 9, load_kw: 7 });
   });
 
+  it('vp-telemetrie forwards battery_power_kw only alongside real measurement channels', function () {
+    // The measured battery power (+ charge / - discharge) rides along on the
+    // local bus for the core's house-load balance with a Netz meter...
+    const shaped = vpTelemetrie.shape({ power_kw: -43.6, pv_power_kw: 35, battery_power_kw: -8.5 });
+    assert.deepStrictEqual(shaped, { power_kw: -43.6, pv_power_kw: 35, battery_power_kw: -8.5 });
+    // ...but a battery-only payload is not a publishable reading,
+    assert.strictEqual(vpTelemetrie.shape({ battery_power_kw: -8.5 }), null);
+    // and junk stays absent, never fabricated.
+    const junk = vpTelemetrie.shape({ load_kw: 3, battery_power_kw: NaN });
+    assert.deepStrictEqual(junk, { load_kw: 3 });
+  });
+
   it('vp-telemetrie rejects empty / non-numeric readings', function () {
     assert.strictEqual(vpTelemetrie.shape({}), null);
     assert.strictEqual(vpTelemetrie.shape(null), null);
