@@ -94,9 +94,21 @@ measures the true house load; the Erzeuger estimate `max(0, load − Σpv)` clam
 to 0 behind a large AC PV. Once a FRESH Netz (grid-meter) source is
 authoritative, `agent.go onLocalTelemetry` derives
 `house = pv_total + grid − battery` (grid +import/−export, battery
-+charge/−discharge) and overwrites `load_kw` BEFORE the guards. Rules:
++charge/−discharge) and overwrites `load_kw` BEFORE the guards. **The same
+balance also runs WITHOUT a meter** via the opt-in
+`primary_grid_is_site_total` toggle (`sources.BalanceSettings`, persisted in
+`data_dir/balance.json`; `:8484` "Meine Anlage" → Netz-Zähler group; write
+`POST /api/balance`, state echoed in `GET /api/sources`): the operator
+declares the PRIMARY inverter's grid CT sits at the PCC and already measures
+the whole site exchange incl. AC-coupled Erzeugers' feed-in (the captain's
+Deye: PV 35 + discharge 8.5 ≈ export 43.6 only closes if so), so the sample's
+own `power_kw` serves as the site grid. Default OFF = the estimate
+byte-for-byte (a primary CT that does NOT see the AC PV would over-count —
+topology fact, verify on device); a FRESH Netz meter always takes precedence,
+a stale one falls back to the toggle path before the estimate. Rules:
 
-- **Meter-gated + never fabricate:** no/stale Netz meter, missing composite PV,
+- **Gated + never fabricate:** no/stale Netz meter AND toggle off, missing
+  composite PV, missing primary `power_kw` (toggle path),
   or UNKNOWN battery power → the old estimate, byte-for-byte. Battery power is
   known when the sample carries `battery_power_kw`, or 0 when the primary
   family is PROVABLY batteryless (`inverter.FamilyBatteryless`: string / micro /

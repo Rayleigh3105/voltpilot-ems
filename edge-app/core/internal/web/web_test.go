@@ -117,9 +117,21 @@ type fakeSources struct {
 	statuses map[string]string
 	addErr   error
 	delErr   error
+	bal      sources.BalanceSettings
+	balErr   error
 }
 
 func (f *fakeSources) ListSources() []sources.Source { return f.list }
+
+func (f *fakeSources) GetBalance() sources.BalanceSettings { return f.bal }
+
+func (f *fakeSources) SetBalance(cfg sources.BalanceSettings) (sources.BalanceSettings, error) {
+	if f.balErr != nil {
+		return sources.BalanceSettings{}, f.balErr
+	}
+	f.bal = cfg
+	return cfg, nil
+}
 
 func (f *fakeSources) SourceStatuses() map[string]string { return f.statuses }
 
@@ -713,6 +725,8 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	for _, want := range []string{
 		`id="srcDrawerBackdrop"`, `id="srcForm"`, `id="rolePick"`,
 		`id="srcFields"`, `id="srcKwp"`, `id="srcKwpField"`, `id="srcSee"`, `src="sources.js"`,
+		// The "Primär misst den gesamten Netzübergang" toggle (Netz group).
+		`id="primGridBlock"`, `id="primGridToggle"`, `id="primGridHelp"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("inverter.html: missing Energiequellen element %s", want)
@@ -722,6 +736,9 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	if !strings.Contains(srcJs, "/api/sources") || !strings.Contains(srcJs, "pv-generation") ||
 		!strings.Contains(srcJs, "grid-meter") {
 		t.Error("sources.js: does not drive the /api/sources Erzeuger + Netz surface")
+	}
+	if !strings.Contains(srcJs, "/api/balance") || !strings.Contains(srcJs, "primary_grid_is_site_total") {
+		t.Error("sources.js: does not drive the /api/balance toggle")
 	}
 }
 
@@ -972,6 +989,65 @@ func TestSourcesListReturnsSourcesAndCatalog(t *testing.T) {
 	}
 	if len(body.Catalog.Brands) == 0 {
 		t.Fatalf("catalog should be embedded so the add form is data-driven")
+	}
+}
+
+// The "Primär misst den gesamten Netzübergang" toggle: GET /api/sources
+// carries the persisted settings (so the page renders them without a second
+// call) and POST /api/balance writes them; malformed JSON is a 400.
+func TestBalanceToggleRoundTrip(t *testing.T) {
+	fs := &fakeSources{}
+	srv := sourcesServer(t, fs)
+
+	readBalance := func() bool {
+		t.Helper()
+		resp, err := http.Get(srv.URL + "/api/sources")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body struct {
+			Balance sources.BalanceSettings `json:"balance"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return body.Balance.PrimaryGridIsSiteTotal
+	}
+
+	if readBalance() {
+		t.Fatal("toggle must default to false")
+	}
+
+	resp, err := http.Post(srv.URL+"/api/balance", "application/json",
+		strings.NewReader(`{"primary_grid_is_site_total": true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("set status %d", resp.StatusCode)
+	}
+	var set struct {
+		Balance sources.BalanceSettings `json:"balance"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
+		t.Fatal(err)
+	}
+	if !set.Balance.PrimaryGridIsSiteTotal || !fs.bal.PrimaryGridIsSiteTotal {
+		t.Fatalf("toggle not applied: resp %+v, fake %+v", set.Balance, fs.bal)
+	}
+	if !readBalance() {
+		t.Fatal("GET /api/sources does not echo the new toggle state")
+	}
+
+	bad, err := http.Post(srv.URL+"/api/balance", "application/json", strings.NewReader(`{nope`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bad.Body.Close()
+	if bad.StatusCode != 400 {
+		t.Fatalf("malformed body: status %d, want 400", bad.StatusCode)
 	}
 }
 

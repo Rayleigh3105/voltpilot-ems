@@ -25,8 +25,10 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 )
 
 // feedPrimaryBatt publishes a primary sample that carries the measured battery
@@ -219,6 +221,202 @@ func TestMissingPvFallsBackToTheEstimate(t *testing.T) {
 	}
 	if got := gridOf(t, a); got != 4 {
 		t.Fatalf("grid = %v, want 4 (meter authoritative regardless)", got)
+	}
+}
+
+/* ---- "Primär misst den gesamten Netzübergang" toggle (no dedicated meter) ----
+   The captain's real case: a Deye battery-hybrid whose grid CT sits at the
+   point of common coupling and already measures the whole site exchange incl.
+   the separate AC-coupled Fronius PV (his live numbers close the balance:
+   PV 35 + discharge 8.5 ≈ export 43.6). With the operator-declared
+   primary_grid_is_site_total toggle ON, the SAME house balance runs off the
+   primary's own power_kw - no meter hardware needed. Default OFF keeps the
+   estimate byte-for-byte (topology-dependent: a primary CT that does NOT see
+   the AC PV would over-count); a fresh Netz meter always takes precedence. */
+
+func enablePrimGrid(t *testing.T, a *Agent) {
+	t.Helper()
+	if _, err := a.SetBalance(sources.BalanceSettings{PrimaryGridIsSiteTotal: true}); err != nil {
+		t.Fatalf("SetBalance: %v", err)
+	}
+}
+
+// TestPrimaryGridSiteTotalReproducesTheCaptainsTopologyWithoutMeter: the exact
+// numeric scenario from the task, with NO Netz meter configured - the primary's
+// own grid reading closes the balance.
+func TestPrimaryGridSiteTotalReproducesTheCaptainsTopologyWithoutMeter(t *testing.T) {
+	a := newGateTestAgent(t)
+	enablePrimGrid(t, a)
+	erz := addErzeuger(t, a, 30)
+
+	// Site PV 35 kW total: primary hybrid 20 + AC-coupled Erzeuger 15. The
+	// primary's CT reads 43.6 kW export FOR THE WHOLE SITE (it sees the Fronius
+	// feed-in too); battery discharging 8.5 kW.
+	feedSource(a, erz.ID, 15)
+	feedPrimaryBatt(a, 20, 16, -43.6, 50, -8.5)
+
+	snap := a.State.Get()
+	if snap.PvKw != 35 {
+		t.Fatalf("site PV = %v, want 35 (primary 20 + Erzeuger 15)", snap.PvKw)
+	}
+	if snap.LoadKw != 0 {
+		t.Fatalf("house = %v, want 0 (35 - 43.6 + 8.5 = -0.1 clamps to 0)", snap.LoadKw)
+	}
+	if got := gridOf(t, a); got != -43.6 {
+		t.Fatalf("site grid = %v, want -43.6 (the primary CT, unchanged)", got)
+	}
+
+	// Less export on the next sample -> the REAL non-zero house the old
+	// estimate (max(0, 16 - 15) = 1) structurally cannot show.
+	feedPrimaryBatt(a, 20, 16, -30, 50, -8.5)
+	if got := a.State.Get().LoadKw; got != 13.5 {
+		t.Fatalf("house = %v, want 13.5 (35 - 30 + 8.5)", got)
+	}
+}
+
+func TestPrimaryGridToggleSignCases(t *testing.T) {
+	cases := []struct {
+		name                 string
+		pv, grid, batt, want float64
+	}{
+		{"importing while charging (cheap-price grid charge)", 0, 5, 3, 2},
+		{"importing while discharging (evening peak support)", 0, 2, -3, 5},
+		{"exporting while charging (midday surplus)", 10, -4, 2, 4},
+		{"pv zero, battery idle (plain night import)", 0, 1.2, 0, 1.2},
+		{"exporting while discharging", 6, -2, -1.5, 5.5},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newGateTestAgent(t)
+			enablePrimGrid(t, a)
+			// The primary's own load reading (99) is deliberately garbage so the
+			// assertion can only pass via the balance off the primary's grid.
+			feedPrimaryBatt(a, tc.pv, 99, tc.grid, 50, tc.batt)
+			if got := a.State.Get().LoadKw; got != tc.want {
+				t.Fatalf("house = %v, want %v (pv %v + grid %v - batt %v)",
+					got, tc.want, tc.pv, tc.grid, tc.batt)
+			}
+		})
+	}
+}
+
+// TestPrimaryGridToggleDefaultsOff pins the safety default: a fresh agent has
+// the toggle OFF, so even a sample carrying battery power keeps the estimate
+// byte-for-byte (no existing install changes behavior silently).
+func TestPrimaryGridToggleDefaultsOff(t *testing.T) {
+	a := newGateTestAgent(t)
+	if a.GetBalance().PrimaryGridIsSiteTotal {
+		t.Fatal("primary_grid_is_site_total must default to false")
+	}
+	erz := addErzeuger(t, a, 30)
+	feedSource(a, erz.ID, 15)
+	feedPrimaryBatt(a, 20, 16, -43.6, 50, -8.5)
+	snap := a.State.Get()
+	if snap.LoadKw != 1 { // max(0, 16 - 15): the existing Erzeuger estimate
+		t.Fatalf("load = %v, want 1 (toggle off -> estimate, never the balance)", snap.LoadKw)
+	}
+	if got := gridOf(t, a); got != -43.6 {
+		t.Fatalf("grid = %v, want -43.6 (primary CT untouched)", got)
+	}
+}
+
+// TestNetzMeterWinsOverThePrimaryGridToggle: a FRESH dedicated meter overrides
+// the toggle (its grid drives both power_kw and the balance); once the meter
+// goes stale the toggle keeps the balance alive off the primary's CT instead of
+// degrading all the way to the estimate.
+func TestNetzMeterWinsOverThePrimaryGridToggle(t *testing.T) {
+	a := newGateTestAgent(t)
+	enablePrimGrid(t, a)
+	erz := addErzeuger(t, a, 30)
+	netz := addNetz(t, a)
+	feedSource(a, erz.ID, 15)
+	feedNetz(a, netz.ID, -30)
+
+	// Meter fresh: its -30 wins over the primary CT's -43.6.
+	feedPrimaryBatt(a, 20, 16, -43.6, 50, -8.5)
+	snap := a.State.Get()
+	if got := gridOf(t, a); got != -30 {
+		t.Fatalf("grid = %v, want -30 (fresh meter wins over the toggle)", got)
+	}
+	if snap.LoadKw != 13.5 {
+		t.Fatalf("house = %v, want 13.5 (35 - 30 + 8.5, from the METER grid)", snap.LoadKw)
+	}
+
+	// Meter stale: the toggle path takes over with the primary's own CT.
+	ageSource(a, netz.ID)
+	feedPrimaryBatt(a, 20, 16, -43.6, 50, -8.5)
+	snap = a.State.Get()
+	if got := gridOf(t, a); got != -43.6 {
+		t.Fatalf("grid = %v, want -43.6 (stale meter -> primary CT)", got)
+	}
+	if snap.LoadKw != 0 {
+		t.Fatalf("house = %v, want 0 (35 - 43.6 + 8.5 clamps; toggle balance, not the estimate)", snap.LoadKw)
+	}
+}
+
+// TestPrimaryGridToggleUnknownBatteryFallsBackToTheEstimate: a hybrid primary
+// without battery power in the sample keeps the estimate - the toggle never
+// fabricates a balance that would be wrong by the full battery power.
+func TestPrimaryGridToggleUnknownBatteryFallsBackToTheEstimate(t *testing.T) {
+	a := newGateTestAgent(t)
+	enablePrimGrid(t, a)
+	selectPrimary(t, a, inverter.BrandDeye, "sun-12k-sg04lp3")
+	erz := addErzeuger(t, a, 30)
+	feedSource(a, erz.ID, 15)
+	feedPrimary(a, 20, 16, -35, 50) // no battery_power_kw in the sample
+	if got := a.State.Get().LoadKw; got != 1 {
+		t.Fatalf("load = %v, want 1 (unknown battery -> estimate)", got)
+	}
+}
+
+// TestPrimaryGridToggleMissingGridKeepsTheSampleLoad: without power_kw in the
+// sample there is no site grid to balance against - the load passes through.
+func TestPrimaryGridToggleMissingGridKeepsTheSampleLoad(t *testing.T) {
+	a := newGateTestAgent(t)
+	enablePrimGrid(t, a)
+	a.onLocalTelemetry(localbus.TopicTelemetry,
+		[]byte(`{"pv_power_kw": 20, "load_kw": 7, "soc_pct": 50, "battery_power_kw": 1}`))
+	if got := a.State.Get().LoadKw; got != 7 {
+		t.Fatalf("load = %v, want 7 (no grid -> no balance)", got)
+	}
+}
+
+// TestPrimaryGridToggleBatterylessPrimary: a provably batteryless primary
+// (Deye string family) balances with battery = 0 - the toggle even CREATES the
+// load channel for a generation-only device whose CT is at the PCC.
+func TestPrimaryGridToggleBatterylessPrimary(t *testing.T) {
+	a := newGateTestAgent(t)
+	enablePrimGrid(t, a)
+	selectPrimary(t, a, inverter.BrandDeye, "sun-5k-g03")
+	a.onLocalTelemetry(localbus.TopicTelemetry, []byte(`{"pv_power_kw": 5, "power_kw": -3}`))
+	if got := a.State.Get().LoadKw; got != 2 {
+		t.Fatalf("house = %v, want 2 (5 pv - 3 export, batteryless)", got)
+	}
+}
+
+// TestBalanceSettingsPersistAcrossRestart: the toggle survives a device reboot
+// (data-dir/balance.json) and is live again without re-configuration.
+func TestBalanceSettingsPersistAcrossRestart(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a1, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enablePrimGrid(t, a1)
+	a1.Stop()
+
+	a2, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(a2.Stop)
+	if !a2.GetBalance().PrimaryGridIsSiteTotal {
+		t.Fatal("toggle not restored from disk after restart")
+	}
+	feedPrimaryBatt(a2, 10, 99, -4, 50, 2)
+	if got := a2.State.Get().LoadKw; got != 4 {
+		t.Fatalf("house = %v, want 4 (10 - 4 - 2: the balance is active after restart)", got)
 	}
 }
 

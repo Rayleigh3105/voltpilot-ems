@@ -77,6 +77,14 @@ type Agent struct {
 	srcs        []sources.Source
 	srcReadings map[string]sourceReading
 
+	// Site power-balance settings (operator-declared topology facts, persisted
+	// in data-dir/balance.json): today the single "primary grid CT measures the
+	// whole site connection" toggle that lets the house-balance derivation run
+	// off the primary's own grid reading when no dedicated Netz meter exists.
+	// Guarded by srcMu (read on the telemetry hot path together with srcs).
+	balStore *sources.BalanceStore
+	bal      sources.BalanceSettings
+
 	// testReads correlates an in-flight "Verbindung testen" round-trip
 	// (edge/test-read/request -> Node-RED -> edge/test-read/result) to the
 	// waiting HTTP handler by request id. The channel is buffered (size 1) so the
@@ -189,6 +197,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	bs, err := sources.NewBalanceStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	ds, err := guards.NewSettingsStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -210,6 +222,7 @@ func New(cfg config.Config) (*Agent, error) {
 		invStore:     is,
 		invCat:       inverter.DefaultCatalog(),
 		srcStore:     ss,
+		balStore:     bs,
 		srcReadings:  map[string]sourceReading{},
 		testReads:    map[string]chan testconn.Result{},
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
@@ -241,6 +254,16 @@ func New(cfg config.Config) (*Agent, error) {
 		slog.Info("loaded additional measurement points from disk", "count", len(list))
 	} else if err != nil {
 		slog.Warn("stored measurement points unreadable; starting without", "err", err)
+	}
+	// Restore the site power-balance settings. A corrupt/missing file falls back
+	// to the safe defaults (toggle OFF = the existing estimate behavior).
+	if cfg, ok, err := bs.Load(); err == nil && ok {
+		a.bal = cfg
+		if cfg.PrimaryGridIsSiteTotal {
+			slog.Info("primary grid CT declared site-total; house load derives from the power balance")
+		}
+	} else if err != nil {
+		slog.Warn("stored balance settings unreadable; using defaults", "err", err)
 	}
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
@@ -678,6 +701,23 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		// power keeps the estimate above instead of fabricating a wrong house.
 		if house, ok := a.houseFromBalance(measurements, *g, battKw); ok {
 			measurements["load_kw"] = house
+		}
+	} else if a.primaryGridSiteTotal() {
+		// No (fresh) dedicated Netz meter, but the operator DECLARED that the
+		// primary inverter's own grid CT sits at the point of common coupling and
+		// measures the whole site's grid exchange - including any AC-coupled
+		// Erzeuger's feed-in (the captain's Deye: its CT "sees everything", so
+		// PV 35 + discharge 8.5 ≈ export 43.6 closes the balance). Then this very
+		// sample's power_kw IS the true site grid and the SAME balance applies,
+		// with no meter hardware needed. Explicitly opt-in (default OFF): on an
+		// install where the primary CT does NOT see the AC-coupled PV the balance
+		// would over-count, so the safe default keeps the estimate above. A fresh
+		// Netz meter always takes precedence (the branch order); the same honest
+		// degradation applies - missing grid/PV/battery keeps the estimate.
+		if grid, ok := measurements["power_kw"]; ok {
+			if house, ok := a.houseFromBalance(measurements, grid, battKw); ok {
+				measurements["load_kw"] = house
+			}
 		}
 	}
 	// SoC plausibility gate (drop-don't-fabricate), the same policy as the Deye
@@ -1355,22 +1395,26 @@ func (a *Agent) authoritativeGrid() *float64 {
 }
 
 // houseFromBalance computes the TRUE house consumption from the site power
-// balance once a fresh Netz (grid-meter) reading is authoritative:
+// balance once a site-authoritative grid value exists - either a fresh Netz
+// (grid-meter) reading, or (opt-in, sources.BalanceSettings
+// PrimaryGridIsSiteTotal) the primary inverter's own grid CT declared to sit at
+// the point of common coupling:
 //
 //	house = pv_total + grid - battery
 //
 // with pv_total the composite site PV (primary + fresh Erzeuger, already folded
-// into measurements), grid the meter's signed value (+import/-export) and
-// battery the primary's MEASURED battery power (+charge/-discharge). With a
+// into measurements), grid the site's signed grid exchange (+import/-export)
+// and battery the primary's MEASURED battery power (+charge/-discharge). With a
 // battery-hybrid primary PLUS a separate AC-coupled PV, NEITHER device measures
 // the house directly and the Erzeuger load-subtraction clamps to 0 behind a
-// large AC PV ("Hausverbrauch 0,0 kW" masking real consumption) - the PCC meter
-// closes the balance. ok=false degrades to the caller's existing estimate when
-// a needed signal is honestly unavailable: no composite PV in the sample, or an
-// UNKNOWN battery power (battery power missing while the primary is not
-// provably batteryless - only string/micro/SunSpec-live families count battery
-// as a physical 0). Small negative results are measurement noise around a
-// balanced node and clamp to 0; house consumption is never negative.
+// large AC PV ("Hausverbrauch 0,0 kW" masking real consumption) - a grid value
+// that truly covers the whole site closes the balance. ok=false degrades to the
+// caller's existing estimate when a needed signal is honestly unavailable: no
+// composite PV in the sample, or an UNKNOWN battery power (battery power
+// missing while the primary is not provably batteryless - only
+// string/micro/SunSpec-live families count battery as a physical 0). Small
+// negative results are measurement noise around a balanced node and clamp to 0;
+// house consumption is never negative.
 func (a *Agent) houseFromBalance(measurements map[string]float64, grid float64, batt *float64) (float64, bool) {
 	pv, ok := measurements["pv_power_kw"]
 	if !ok {
@@ -1385,10 +1429,10 @@ func (a *Agent) houseFromBalance(measurements map[string]float64, grid float64, 
 	default:
 		// A (possible) battery whose power this sample does not carry: the
 		// balance would be wrong by the full battery power, so keep the estimate.
-		// Loud but rate-limited - a Netz meter is configured precisely for the
-		// accurate house figure, so silently staying on the estimate would look
-		// like the feature not working (e.g. a Layer-1 flow predating
-		// battery_power_kw on the local bus).
+		// Loud but rate-limited - a Netz meter / the site-total toggle is
+		// configured precisely for the accurate house figure, so silently staying
+		// on the estimate would look like the feature not working (e.g. a Layer-1
+		// flow predating battery_power_kw on the local bus).
 		a.mu.Lock()
 		quiet := time.Since(a.lastBalanceLog) < balanceLogInterval
 		if !quiet {
@@ -1396,8 +1440,9 @@ func (a *Agent) houseFromBalance(measurements map[string]float64, grid float64, 
 		}
 		a.mu.Unlock()
 		if !quiet {
-			slog.Warn("netz meter is authoritative but the primary sample carries no battery_power_kw; " +
-				"house load stays the estimate (update the Node-RED flows / wire battery power onto edge/telemetry)")
+			slog.Warn("site grid is authoritative (Netz meter or primary CT declared site-total) but the primary " +
+				"sample carries no battery_power_kw; house load stays the estimate " +
+				"(update the Node-RED flows / wire battery power onto edge/telemetry)")
 		}
 		return 0, false
 	}
@@ -1418,6 +1463,36 @@ func (a *Agent) primaryBatteryless() bool {
 	a.invMu.Lock()
 	defer a.invMu.Unlock()
 	return a.inv != nil && inverter.FamilyBatteryless(a.inv.Family)
+}
+
+// primaryGridSiteTotal reports the operator-declared topology fact that the
+// primary inverter's grid CT measures the whole site connection (PCC), so its
+// power_kw may serve as the site grid in the house balance when no dedicated
+// Netz meter is authoritative. Default false = the existing estimate.
+func (a *Agent) primaryGridSiteTotal() bool {
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	return a.bal.PrimaryGridIsSiteTotal
+}
+
+// GetBalance returns the site power-balance settings (web.SourcesController).
+func (a *Agent) GetBalance() sources.BalanceSettings {
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	return a.bal
+}
+
+// SetBalance persists the site power-balance settings and applies them live
+// (the next telemetry sample already uses them; no restart needed).
+func (a *Agent) SetBalance(cfg sources.BalanceSettings) (sources.BalanceSettings, error) {
+	if err := a.balStore.Save(cfg); err != nil {
+		return sources.BalanceSettings{}, err
+	}
+	a.srcMu.Lock()
+	a.bal = cfg
+	a.srcMu.Unlock()
+	slog.Info("balance settings updated", "primary_grid_is_site_total", cfg.PrimaryGridIsSiteTotal)
+	return cfg, nil
 }
 
 // ListSources returns a copy of the configured additional sources.
