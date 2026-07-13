@@ -33,6 +33,12 @@ type Snapshot struct {
 	// buffered telemetry (retention horizon overrun) - the UI warns the customer
 	// instead of the pending count silently plateauing.
 	BufferDataLoss bool `json:"buffer_data_loss"`
+	// BufferPaused is true while the device is in the geraet_entfernt state
+	// (removed/unclaimed in the cloud): the store-and-forward buffer is NOT
+	// grown - there is no claimed identity to deliver it to - and the UI says so
+	// honestly instead of silently piling up data that can never be sent. The
+	// local dashboard/history keeps running; buffering resumes on re-claim.
+	BufferPaused bool `json:"buffer_paused"`
 
 	Mode         Mode      `json:"mode"`
 	SetpointKw   float64   `json:"setpoint_kw"`

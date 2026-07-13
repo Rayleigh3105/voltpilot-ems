@@ -556,6 +556,119 @@ func TestReconcilePendingIsNoOp(t *testing.T) {
 	if res.Changed {
 		t.Error("pending poll must not change the identity")
 	}
+	// The clean 404 IS surfaced as a definitive Pending signal, so a caller can
+	// escalate a SUSTAINED run of them (UnclaimDetector) - the single-pending
+	// no-op contract above stays.
+	if !res.Pending {
+		t.Error("a clean 404 'not claimed' answer must be reported as Pending")
+	}
+
+	// A real certificate answer is NOT pending.
+	stub.mu.Lock()
+	stub.claimed = true
+	stub.mu.Unlock()
+	res, err = e.Reconcile(ctx, id)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if res.Pending {
+		t.Error("a served certificate must not be reported as Pending")
+	}
+}
+
+// The UnclaimDetector confirms a removal ONLY on a sustained, uninterrupted run
+// of definitive clean-404 answers: both the consecutive-poll count AND the
+// elapsed wall-clock window must be satisfied, and ANY interruption (a real
+// answer, an unreachable portal, any error - all mapped to Reset by the caller)
+// starts the run over. This is the guard that keeps a transient portal blip
+// from ever reading as "device removed".
+func TestUnclaimDetectorConfirmsOnlySustainedCleanPending(t *testing.T) {
+	base := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
+
+	// (a) Many rapid polls inside a too-short window: poll count satisfied,
+	// window NOT -> never confirmed.
+	d := &UnclaimDetector{Window: 15 * time.Minute, MinPolls: 3}
+	for i := 0; i < 10; i++ {
+		if d.ObservePending(base.Add(time.Duration(i) * time.Second)) {
+			t.Fatalf("confirmed after %d rapid polls well inside the window", i+1)
+		}
+	}
+
+	// (b) A long window but too few polls: window satisfied, count NOT.
+	d = &UnclaimDetector{Window: 15 * time.Minute, MinPolls: 3}
+	if d.ObservePending(base) {
+		t.Fatal("confirmed on the first pending")
+	}
+	if d.ObservePending(base.Add(time.Hour)) {
+		t.Fatal("confirmed on the second pending despite MinPolls=3")
+	}
+
+	// (c) Both satisfied -> confirmed (and stays confirmed on further polls).
+	if !d.ObservePending(base.Add(time.Hour + time.Minute)) {
+		t.Fatal("not confirmed although both the window and the poll count are satisfied")
+	}
+	if !d.ObservePending(base.Add(time.Hour + 2*time.Minute)) {
+		t.Fatal("must stay confirmed on further pendings")
+	}
+
+	// (d) An interruption (outage error / real answer) resets the run: the
+	// polls before it never count again.
+	d = &UnclaimDetector{Window: 10 * time.Minute, MinPolls: 2}
+	d.ObservePending(base)
+	d.ObservePending(base.Add(5 * time.Minute))
+	d.Reset() // e.g. a dial error mid-run, or the portal answered the cert again
+	if d.ObservePending(base.Add(20 * time.Minute)) {
+		t.Fatal("confirmed on the FIRST pending after a reset - the run must start over")
+	}
+	if d.ObservePending(base.Add(25 * time.Minute)) {
+		t.Fatal("confirmed before the post-reset window elapsed")
+	}
+	if !d.ObservePending(base.Add(31 * time.Minute)) {
+		t.Fatal("not confirmed although the post-reset run satisfies both bounds")
+	}
+
+	// (e) Zero values fall back to the generous defaults (20 min / 4 polls).
+	d = &UnclaimDetector{}
+	for i := 0; i < 3; i++ {
+		if d.ObservePending(base.Add(time.Duration(i) * 10 * time.Minute)) {
+			t.Fatalf("default detector confirmed after only %d polls", i+1)
+		}
+	}
+	if !d.ObservePending(base.Add(30 * time.Minute)) {
+		t.Fatal("default detector must confirm on the 4th poll after 30 min")
+	}
+}
+
+// A portal outage during reconcile (5xx / dial error) is an ERROR, never the
+// definitive Pending signal - so it can never count toward a removal verdict.
+func TestReconcileOutageIsErrorNotPending(t *testing.T) {
+	ca := newTestCA(t)
+	stub := &apiStub{t: t, ca: ca, refKnown: true, claimed: true}
+	srv := httptest.NewServer(stub.handler())
+	defer srv.Close()
+
+	dir := t.TempDir()
+	e, id := enrollOnce(t, srv.URL, dir)
+
+	// 5xx: the portal is up but erroring.
+	err503 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer err503.Close()
+	e.PortalBaseURL = err503.URL
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := e.Reconcile(ctx, id)
+	if err == nil || res.Pending || res.Changed {
+		t.Fatalf("5xx must be an error, never Pending/Changed: res=%+v err=%v", res, err)
+	}
+
+	// Dial error: no portal reachable at all.
+	e.PortalBaseURL = "http://127.0.0.1:1"
+	res, err = e.Reconcile(ctx, id)
+	if err == nil || res.Pending || res.Changed {
+		t.Fatalf("dial error must be an error, never Pending/Changed: res=%+v err=%v", res, err)
+	}
 }
 
 func containsState(states []State, want State) bool {

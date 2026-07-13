@@ -146,6 +146,11 @@
     if (s.cloud_connected) {
       cv.className = "status-val ok"; cv.childNodes[0].nodeValue = "Verbunden";
       csub.textContent = "Daten werden übertragen";
+    } else if (s.buffer_paused) {
+      // Removed (unclaimed) in the cloud: buffering is honestly paused instead
+      // of piling up data that can never be sent.
+      cv.className = "status-val err"; cv.childNodes[0].nodeValue = "Entfernt";
+      csub.textContent = "Aufzeichnung pausiert – Gerät im Portal erneut hinzufügen";
     } else if (s.buffer_data_loss) {
       // Long outage overran the buffer: the oldest samples are being discarded.
       cv.className = "status-val err"; cv.childNodes[0].nodeValue = "Getrennt";
@@ -206,6 +211,8 @@
     var pill = $("cloudPill"), txt = $("cloudPillText"), dot = pill.querySelector(".dot");
     if (s.cloud_connected) {
       pill.className = "pill ok"; txt.textContent = "Cloud verbunden"; dot.classList.add("live");
+    } else if (s.pairing_state === "geraet_entfernt") {
+      pill.className = "pill off"; txt.textContent = "Aus Cloud entfernt"; dot.classList.remove("live");
     } else if (s.last_telemetry && serverAge(s.last_telemetry) < 90) {
       pill.className = "pill warn"; txt.textContent = "Lokal aktiv · Cloud getrennt"; dot.classList.remove("live");
     } else {
@@ -332,6 +339,8 @@
     var msg = null, soft = false;
     if (st === "schluessel_konflikt") {
       msg = "Registrierung gesperrt: Für diese Referenz ist bereits ein anderes Gerät registriert. Bitte den Support kontaktieren.";
+    } else if (st === "geraet_entfernt") {
+      msg = "Gerät wurde aus der Cloud entfernt – es wartet auf eine erneute Beanspruchung. Fügen Sie das Gerät im Portal wieder hinzu (Referenz unten); die lokale Anzeige läuft weiter, die Aufzeichnung für die Cloud ist pausiert.";
     } else if (st === "referenz_unbekannt") {
       msg = "Diese Geräte-ID ist dem System nicht bekannt. Bitte die Referenz auf dem Aufkleber prüfen.";
     } else if (st === "portal_nicht_erreichbar") {

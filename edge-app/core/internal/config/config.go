@@ -81,6 +81,20 @@ type Config struct {
 	// ReconcileIntervalSeconds is the config-file/env form of ReconcileInterval.
 	ReconcileIntervalSeconds int `json:"reconcile_interval_seconds"`
 
+	// UnclaimConfirm is how long an enrolled device must see an UNINTERRUPTED
+	// run of definitive clean-404 "not claimed" answers from a REACHABLE portal
+	// before it concludes it was removed (unclaimed) in the cloud and enters
+	// the honest geraet_entfernt state (pause cloud publish + buffering, keep
+	// polling for a re-claim). Deliberately GENEROUS: dial errors / timeouts /
+	// 5xx never count and reset the run, so a transient outage can never trip
+	// it. UnclaimConfirmPolls additionally requires that many consecutive
+	// clean-404 polls, whichever bound is reached LAST.
+	UnclaimConfirm time.Duration `json:"-"`
+	// UnclaimConfirmMinutes is the config-file/env form of UnclaimConfirm.
+	UnclaimConfirmMinutes int `json:"unclaim_confirm_minutes"`
+	// UnclaimConfirmPolls is the minimum number of consecutive clean-404 polls.
+	UnclaimConfirmPolls int `json:"unclaim_confirm_polls"`
+
 	// Dev-only escape hatches (mirrors tools/edge-simulator): a fixed
 	// identity skips enrollment, and a plain-MQTT cloud URL skips mTLS.
 	// NEVER set these on a customer device.
@@ -107,6 +121,8 @@ func Defaults() Config {
 		BufferHours:              48,
 		SetpointIntervalSeconds:  10,
 		ReconcileIntervalSeconds: 300,
+		UnclaimConfirmMinutes:    20,
+		UnclaimConfirmPolls:      4,
 		ControlEnabled:           false,
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
@@ -151,6 +167,13 @@ func Load() (Config, error) {
 		cfg.ReconcileIntervalSeconds = Defaults().ReconcileIntervalSeconds
 	}
 	cfg.ReconcileInterval = time.Duration(cfg.ReconcileIntervalSeconds) * time.Second
+	if cfg.UnclaimConfirmMinutes <= 0 {
+		cfg.UnclaimConfirmMinutes = Defaults().UnclaimConfirmMinutes
+	}
+	cfg.UnclaimConfirm = time.Duration(cfg.UnclaimConfirmMinutes) * time.Minute
+	if cfg.UnclaimConfirmPolls <= 0 {
+		cfg.UnclaimConfirmPolls = Defaults().UnclaimConfirmPolls
+	}
 	if cfg.BufferHours <= 0 {
 		cfg.BufferHours = Defaults().BufferHours
 	}
@@ -212,6 +235,8 @@ func applyEnv(cfg *Config) {
 	num("VP_BUFFER_HOURS", &cfg.BufferHours)
 	num("VP_SETPOINT_INTERVAL_SECONDS", &cfg.SetpointIntervalSeconds)
 	num("VP_RECONCILE_INTERVAL_SECONDS", &cfg.ReconcileIntervalSeconds)
+	num("VP_UNCLAIM_CONFIRM_MINUTES", &cfg.UnclaimConfirmMinutes)
+	num("VP_UNCLAIM_CONFIRM_POLLS", &cfg.UnclaimConfirmPolls)
 	boolEnv := func(key string, dst *bool) {
 		if v := os.Getenv(key); v != "" {
 			*dst = v == "1" || strings.EqualFold(v, "true")

@@ -83,6 +83,15 @@ const (
 	// Keeps the pairing checklist honest - it must not stay green "Verbunden"
 	// while the Cloud stat shows "getrennt". Reconnect is automatic.
 	StateCloudDisconnected State = "cloud_getrennt"
+	// StateRemoved: the device HELD a valid identity but the portal has been
+	// answering the certificate poll with a definitive clean 404 "pending" for a
+	// sustained window (UnclaimDetector) - the device was REMOVED (unclaimed) in
+	// the cloud. Distinct from cloud_getrennt (broker blip) and
+	// portal_nicht_erreichbar (transport failure): here the portal IS reachable
+	// and says "this reference is not claimed". The agent pauses cloud
+	// publishing + buffering, keeps the local identity/keys on disk, and keeps
+	// polling so a re-claim re-onboards automatically.
+	StateRemoved State = "geraet_entfernt"
 )
 
 // Enroller drives the enrollment state machine for one device.
@@ -289,6 +298,13 @@ type ReconcileResult struct {
 	Changed bool
 	// Identity is the freshly adopted identity (valid only when Changed).
 	Identity Identity
+	// Pending is true when the portal answered the poll with a DEFINITIVE clean
+	// 404 "pending" - the portal is reachable and says "this reference is not
+	// claimed". For an enrolled device that is the unclaim signal an
+	// UnclaimDetector escalates once it is SUSTAINED; a single Pending stays a
+	// no-op (Changed=false, nil error - the existing contract). A dial error /
+	// timeout / 5xx is an error, never Pending.
+	Pending bool
 }
 
 // Reconcile re-polls the certificate endpoint for an ALREADY-enrolled device
@@ -313,8 +329,11 @@ func (e *Enroller) Reconcile(ctx context.Context, current Identity) (ReconcileRe
 	cert, err := e.getCertificate(ctx)
 	if err != nil {
 		if errors.Is(err, errPending) {
-			// Unclaimed/unknown: keep the current identity, retry later.
-			return ReconcileResult{}, nil
+			// Unclaimed/unknown: keep the current identity, retry later. Pending
+			// tells the caller this was a DEFINITIVE clean 404 (portal reachable),
+			// so a SUSTAINED run of these can be escalated to "device removed"
+			// (UnclaimDetector) - a single one changes nothing.
+			return ReconcileResult{Pending: true}, nil
 		}
 		return ReconcileResult{}, err
 	}
@@ -335,6 +354,68 @@ func (e *Enroller) Reconcile(ctx context.Context, current Identity) (ReconcileRe
 	slog.Info("enrollment: adopted new device identity after re-claim",
 		"ref", e.Ref, "old_device_id", current.DeviceID, "new_device_id", id.DeviceID)
 	return ReconcileResult{Changed: true, Identity: id}, nil
+}
+
+// UnclaimDetector escalates a SUSTAINED run of definitive clean-404 "pending"
+// reconcile answers into a confirmed cloud-side removal (unclaim / device
+// deleted in the portal). The caller feeds it ONLY outcomes for a device that
+// currently HOLDS a valid identity (cert + device_id on disk) - a never-claimed
+// device polling pending is the normal onboarding state, never "removed".
+//
+// Safety property (the crux): a transient portal outage returns dial errors /
+// timeouts / 5xx - those are NOT clean 404s and must call Reset, so they can
+// never accumulate toward a removal verdict. Even a portal that TRANSIENTLY
+// answers clean 404s (restore mid-rollout, proxy misroute) cannot trip it:
+// confirmation requires BOTH a minimum number of CONSECUTIVE clean-404 polls
+// AND a minimum elapsed wall-clock window since the first one - any
+// interruption (a real answer, an error, an unreachable portal) starts over.
+// The zero values fall back to the generous defaults (20 min / 4 polls).
+type UnclaimDetector struct {
+	// Window is the minimum sustained pending duration before confirmation
+	// (<= 0 = DefaultUnclaimConfirmWindow).
+	Window time.Duration
+	// MinPolls is the minimum number of consecutive clean-404 polls before
+	// confirmation (<= 0 = DefaultUnclaimConfirmPolls).
+	MinPolls int
+
+	firstPending time.Time
+	pendings     int
+}
+
+// Generous defaults: at the default 5-min reconcile interval, 4 consecutive
+// clean 404s span ~15-20 min - a portal blip or a brief mis-answering window
+// can never look like a removal.
+const (
+	DefaultUnclaimConfirmWindow = 20 * time.Minute
+	DefaultUnclaimConfirmPolls  = 4
+)
+
+// ObservePending records one definitive clean-404 poll answer and reports
+// whether the removal is now CONFIRMED (the run satisfies both the poll count
+// and the elapsed window). Stays true on further pendings once confirmed.
+func (d *UnclaimDetector) ObservePending(now time.Time) bool {
+	if d.pendings == 0 {
+		d.firstPending = now
+	}
+	d.pendings++
+	window := d.Window
+	if window <= 0 {
+		window = DefaultUnclaimConfirmWindow
+	}
+	minPolls := d.MinPolls
+	if minPolls <= 0 {
+		minPolls = DefaultUnclaimConfirmPolls
+	}
+	return d.pendings >= minPolls && now.Sub(d.firstPending) >= window
+}
+
+// Reset clears the run. Call it on ANY non-pending outcome - a real certificate
+// answer (claimed), a dial error / timeout / 5xx (portal unreachable), or any
+// other poll error - so only an UNINTERRUPTED run of definitive clean 404s can
+// ever confirm a removal.
+func (d *UnclaimDetector) Reset() {
+	d.pendings = 0
+	d.firstPending = time.Time{}
 }
 
 // loadKey reads the persisted device key, erroring (incl. os.ErrNotExist) when

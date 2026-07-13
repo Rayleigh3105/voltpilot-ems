@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
@@ -95,6 +96,14 @@ type Agent struct {
 	link       *cloud.Link
 	linkCancel context.CancelFunc // cancels the current link's heartbeat goroutine
 	linkMu     sync.Mutex
+
+	// cloudRemoved is true while the device is in the geraet_entfernt state: a
+	// SUSTAINED run of definitive clean-404 "not claimed" answers confirmed the
+	// device was removed (unclaimed) in the cloud. The cloud link is torn down
+	// and onLocalTelemetry stops growing the store-and-forward buffer (the local
+	// dashboard keeps running); the reconcile loop keeps polling so a re-claim
+	// exits the state and resumes normal operation.
+	cloudRemoved atomic.Bool
 
 	// wake signals the publisher that new telemetry or connectivity arrived.
 	wake chan struct{}
@@ -452,6 +461,16 @@ func (a *Agent) startCloudWithRetry(ctx context.Context, id enroll.Identity, key
 // identity against the portal and adopts a changed device_id. It runs only for
 // enrolled devices (a DevIdentity never drifts). No-op when the identity is
 // unchanged, so it does not thrash.
+//
+// It also hosts the confirmed-unclaim detection: this loop only ever runs for a
+// device that HOLDS a valid identity (enrollment completed), so a SUSTAINED,
+// UNINTERRUPTED run of definitive clean-404 "not claimed" answers from a
+// REACHABLE portal (enroll.UnclaimDetector; window + poll count from
+// VP_UNCLAIM_CONFIRM_*) means the device was removed (unclaimed) in the cloud
+// -> geraet_entfernt. A never-claimed device polls pending inside enroll.Run
+// and never reaches this loop, so it can structurally never read "removed";
+// dial errors / timeouts / 5xx reset the detector, so a transient portal
+// outage keeps the existing portal-blip behavior (identity kept, link up).
 func (a *Agent) reconcileLoop(ctx context.Context, e *enroll.Enroller, current enroll.Identity) {
 	interval := a.Cfg.ReconcileInterval
 	if interval <= 0 {
@@ -460,6 +479,11 @@ func (a *Agent) reconcileLoop(ctx context.Context, e *enroll.Enroller, current e
 	if interval <= 0 {
 		interval = 5 * time.Minute
 	}
+	detector := &enroll.UnclaimDetector{
+		Window:   a.Cfg.UnclaimConfirm,
+		MinPolls: a.Cfg.UnclaimConfirmPolls,
+	}
+	removed := false
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -471,21 +495,82 @@ func (a *Agent) reconcileLoop(ctx context.Context, e *enroll.Enroller, current e
 		}
 		res, err := e.Reconcile(ctx, current)
 		if err != nil {
+			// Dial error / timeout / 5xx or any other poll failure: NOT a
+			// definitive "not claimed" answer - never counts toward removal.
+			detector.Reset()
 			if !errors.Is(err, context.Canceled) {
 				slog.Warn("identity reconcile failed; will retry", "err", err)
 			}
 			continue
 		}
-		if !res.Changed {
+		if res.Pending {
+			// Definitive clean 404 from a reachable portal while we HOLD a valid
+			// identity. Escalate only when sustained (window + consecutive polls).
+			if !removed && detector.ObservePending(time.Now()) {
+				a.enterRemoved(current)
+				removed = true
+			}
 			continue
 		}
-		key, cert, ca := e.CertFiles()
-		if err := a.adoptIdentity(res.Identity, key, cert, ca); err != nil {
-			slog.Error("failed to adopt new device identity", "err", err)
-			continue
+		// A real certificate answer: any accumulated clean-404 run is over.
+		detector.Reset()
+		if res.Changed {
+			// Re-claim (usual exit from geraet_entfernt too): adopt the new
+			// identity and stand the cloud link back up on the new topics.
+			key, cert, ca := e.CertFiles()
+			if err := a.adoptIdentity(res.Identity, key, cert, ca); err != nil {
+				slog.Error("failed to adopt new device identity", "err", err)
+				continue
+			}
+			current = res.Identity
+			removed = false
+		} else if removed {
+			// The portal serves the SAME identity again after a removal verdict
+			// (a false alarm - e.g. a misrouted portal that answered clean 404s
+			// for a while). Self-heal: resume buffering and stand the cloud link
+			// back up with the unchanged identity (blocking retry, like boot).
+			slog.Warn("portal serves the previous identity again after a removal verdict; resuming cloud operation",
+				"device_id", current.DeviceID)
+			a.resumeFromRemoved()
+			key, cert, ca := e.CertFiles()
+			if !a.startCloudWithRetry(ctx, current, key, cert, ca) {
+				return // ctx cancelled while retrying
+			}
+			removed = false
 		}
-		current = res.Identity
 	}
+}
+
+// enterRemoved transitions into the honest "removed in the cloud" state: tear
+// down the cloud publish path (nothing to publish into - the broker ACL grant
+// is pulled on unclaim anyway), pause the store-and-forward buffer so it stops
+// growing with data that has no claimed identity to go to, and surface
+// geraet_entfernt on :8484 + /health. The local identity/keys stay ON DISK -
+// a re-claim re-issues against the same key and the reconcile loop (which
+// keeps polling) adopts the new identity and resumes normally.
+func (a *Agent) enterRemoved(current enroll.Identity) {
+	a.teardownLink()
+	a.cloudRemoved.Store(true)
+	a.State.Update(func(s *state.Snapshot) {
+		s.PairingState = string(enroll.StateRemoved)
+		s.CloudConnected = false
+		s.BufferPaused = true
+	})
+	slog.Warn("device was removed (unclaimed) in the cloud - sustained 'not claimed' answers from a reachable portal; "+
+		"pausing cloud publishing + buffering, keeping identity on disk, polling for a re-claim",
+		"device_id", current.DeviceID, "ref", a.State.Get().Ref)
+}
+
+// resumeFromRemoved clears the removed state's flags (buffering resumes with
+// the next sample). The caller stands the cloud link back up.
+func (a *Agent) resumeFromRemoved() {
+	a.cloudRemoved.Store(false)
+	a.State.Update(func(s *state.Snapshot) {
+		s.BufferPaused = false
+		if s.PairingState == string(enroll.StateRemoved) {
+			s.PairingState = string(enroll.StateCertificateReceived)
+		}
+	})
 }
 
 // adoptIdentity switches the cloud link to a new device identity: the old mTLS
@@ -496,6 +581,27 @@ func (a *Agent) reconcileLoop(ctx context.Context, e *enroll.Enroller, current e
 // store-and-forward buffer is untouched: pending entries are stamped with the
 // current identity at publish time, so they flow to the new device_id.
 func (a *Agent) adoptIdentity(id enroll.Identity, keyPath, certPath, caPath string) error {
+	a.teardownLink()
+	// A re-claim is also the normal exit from geraet_entfernt: buffering
+	// resumes and the pairing state leaves "removed" (OnConnect sets verbunden
+	// once the broker accepts the new certificate).
+	a.cloudRemoved.Store(false)
+	a.State.Update(func(s *state.Snapshot) {
+		s.TenantID, s.SiteID, s.DeviceID = id.TenantID, id.SiteID, id.DeviceID
+		s.MqttHost = id.MqttHost
+		s.CloudConnected = false
+		s.BufferPaused = false
+		if s.PairingState == string(enroll.StateRemoved) {
+			s.PairingState = string(enroll.StateCertificateReceived)
+		}
+	})
+	slog.Info("switching cloud link to new device identity", "device_id", id.DeviceID)
+	return a.startCloud(id, keyPath, certPath, caPath)
+}
+
+// teardownLink stops the current cloud link (and its heartbeat goroutine), if
+// any. Shared by identity adoption and the removed-state transition.
+func (a *Agent) teardownLink() {
 	a.linkMu.Lock()
 	old := a.link
 	oldCancel := a.linkCancel
@@ -508,13 +614,6 @@ func (a *Agent) adoptIdentity(id enroll.Identity, keyPath, certPath, caPath stri
 	if old != nil {
 		old.Close()
 	}
-	a.State.Update(func(s *state.Snapshot) {
-		s.TenantID, s.SiteID, s.DeviceID = id.TenantID, id.SiteID, id.DeviceID
-		s.MqttHost = id.MqttHost
-		s.CloudConnected = false
-	})
-	slog.Info("switching cloud link to new device identity", "device_id", id.DeviceID)
-	return a.startCloud(id, keyPath, certPath, caPath)
 }
 
 // pokeReconcile nudges the reconcile loop without blocking.
@@ -791,9 +890,18 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	}
 	a.mu.Unlock()
 
-	if _, err := a.buf.Append(ts, measurements); err != nil {
-		slog.Error("telemetry buffer append failed", "err", err)
-		return
+	// While the device is removed (unclaimed) in the cloud, the local dashboard
+	// stays fully alive (guard reading, history ring, KPIs below) but the
+	// store-and-forward buffer is NOT grown: there is no claimed identity to
+	// deliver it to, and the cloud deleted the device's data on unclaim anyway.
+	// Honest pause (surfaced as BufferPaused) instead of silently piling up
+	// data that can never be sent; buffering resumes on re-claim.
+	bufferPaused := a.cloudRemoved.Load()
+	if !bufferPaused {
+		if _, err := a.buf.Append(ts, measurements); err != nil {
+			slog.Error("telemetry buffer append failed", "err", err)
+			return
+		}
 	}
 	// Feed the in-memory live-chart ring (local dashboard only). An absent
 	// measurement stays absent (nil) on the chart, never coerced to 0; a despiked
@@ -824,7 +932,9 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 			s.GridLimitKw = v
 		}
 	})
-	a.kick()
+	if !bufferPaused {
+		a.kick()
+	}
 }
 
 // logDespike records dropped spike samples for field diagnosis, rate-limited to
