@@ -412,7 +412,13 @@ test('flow sources-read embeds the current model-discovery.js + sunspec-live.js 
       'flows.json sources-read node is out of sync with ' + rel + ' - re-run build-flows.js',
     );
   }
-  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC })'));
+  // The read mirrors test-read.js's WORKING invocation: a FRESH reader per read
+  // with explicit timeouts (the one-shot "Verbindung testen" path proven on the
+  // real Fronius Eco), guarded against overlapping polls (skip-if-busy) and
+  // never silent on failure (rate-limited node.warn naming the source).
+  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS })'));
+  assert.ok(func.includes("context.get('src_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
 });
 
 // The "Quellen lesen" node decodes SunSpec by role the same way the shared modbus
@@ -471,5 +477,9 @@ test('flow auto-sunspec embeds the current model-discovery.js + sunspec-live.js 
       'flows.json auto-sunspec node is out of sync with ' + rel + ' - re-run build-flows.js',
     );
   }
-  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC })'));
+  // Same discipline as the sources poll: explicit timeouts (the test-read.js
+  // invocation shape), an overlap guard, and non-silent failures.
+  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC, connectTimeoutMs: 8000, readTimeoutMs: 8000 })'));
+  assert.ok(func.includes("context.get('ss_busy_since')"), 'overlap guard (skip-if-busy) present');
+  assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
 });
