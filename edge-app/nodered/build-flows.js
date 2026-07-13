@@ -497,25 +497,39 @@ const controlExecFunc = [
   "});",
 ].join('\n');
 
+// embedModule - embed a repo module VERBATIM into a function-node body (a
+// Node-RED flow cannot `require` a repo file at runtime); flows-sync.test.js
+// pins each embed against the file, so editing a module without re-running
+// build-flows.js fails there instead of shipping a stale copy.
+const embedModule = (file) =>
+  '(function () { var module = { exports: {} };\n' +
+  fs.readFileSync(path.join(__dirname, file), 'utf8') +
+  '\nreturn module.exports; })()';
+
 // --- Additional-source read fan-out (multi-source Anlage, Phase 1) -----------
 //
 // The read-side sibling of the inverter self-wiring: a site can have ADDITIONAL
 // read-only Erzeuger (PV) sources beyond the one battery-hybrid. vp-sources-config
 // hands the retained list (edge/sources/config) to a store node; a poll reads each
-// modbus_tcp source and publishes its PV on edge/sources/<id>/telemetry (vp-quelle),
-// where the core SUMS it into the composite site reading. SCOPE (Phase 1): the
-// executor reads modbus_tcp/SunSpec sources (the common separate AC-coupled PV,
-// and the e2e sim); a solarman_v5 source is counted but its per-source socket
-// executor is deferred (a second Deye as a read source is unusual). Read-only -
-// there is NO setpoint/control path for a source. Filtering mirrors
-// sources-routing.planSources (modbus branch); flows-sync.test.js pins it.
+// source and publishes its value on edge/sources/<id>/telemetry (vp-quelle /
+// vp-netz), where the core SUMS Erzeuger PV into the composite site reading.
+// SCOPE: the executor reads modbus_tcp sources (the compact sim profile the e2e
+// uses) AND fronius_sunspec sources via the real SunSpec model-discovery walk
+// (the common separate AC-coupled PV, e.g. a Fronius Eco as an Erzeuger); a
+// solarman_v5 source is counted but its per-source socket executor is deferred
+// (a second Deye as a read source is unusual). Read-only - there is NO
+// setpoint/control path for a source. Filtering mirrors
+// sources-routing.planSources; flows-sync.test.js pins it.
 const sourcesStoreFunc = [
   "// Uebernimmt die im Edge-App-Portal hinzugefuegten zusaetzlichen Energiequellen",
   "// (retained auf edge/sources/config, von vp-sources-config geparst) und baut",
-  "// daraus die kompakten Leseplaene der Modbus-Quellen. Zwei nur-lesende Rollen:",
-  "// pv-generation (Erzeuger) und grid-meter (Netz-Zaehler); der Leseplan traegt",
-  "// die Rolle, damit der Leser das richtige Feld veroeffentlicht. Synchron",
-  "// gehalten mit edge-app/nodered/sources-routing.js (planSources, Modbus-Zweig).",
+  "// daraus die kompakten Leseplaene. Zwei nur-lesende Rollen: pv-generation",
+  "// (Erzeuger) und grid-meter (Netz-Zaehler); der Leseplan traegt die Rolle,",
+  "// damit der Leser das richtige Feld veroeffentlicht. Zwei ausfuehrbare",
+  "// Adapter: modbus_tcp (kompaktes Sim-Profil) und fronius_sunspec ->",
+  "// sunspec_live (echte SunSpec-Modellerkennung ueber Modbus TCP, z. B. eine",
+  "// Fronius-PV als Erzeuger). Synchron gehalten mit",
+  "// edge-app/nodered/sources-routing.js (planSources).",
   "const list = Array.isArray(msg.payload) ? msg.payload : [];",
   "const num = (v, d) => { const n = typeof v === 'string' ? Number(v.trim()) : v; return (typeof n === 'number' && isFinite(n)) ? n : d; };",
   "const MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };",
@@ -529,7 +543,10 @@ const sourcesStoreFunc = [
   "  if (s.communication === 'modbus_tcp') {",
   "    const read = MODBUS_PROFILES[s.family];",
   "    if (!read) return;",
-  "    plans.push({ id: s.id, role: s.role, profile: s.family, conn: { ip, port: num(conn.port, 502), unit_id: num(conn.unit_id, 1) }, read: { fc: read.fc, addr: read.addr, count: read.count } });",
+  "    plans.push({ id: s.id, role: s.role, adapter: 'modbus_tcp', profile: s.family, conn: { ip, port: num(conn.port, 502), unit_id: num(conn.unit_id, 1) }, read: { fc: read.fc, addr: read.addr, count: read.count } });",
+  "  } else if (s.communication === 'fronius_sunspec') {",
+  "    const modelType = (conn.model_type === 'float' || conn.model_type === 'int_sf') ? conn.model_type : 'auto';",
+  "    plans.push({ id: s.id, role: s.role, adapter: 'sunspec_live', conn: { ip, port: num(conn.port, 502), unit_id: num(conn.unit_id, 1), invert_grid_sign: !!conn.invert_grid_sign, model_type: modelType } });",
   "  } else if (s.communication === 'solarman_v5') {",
   "    deferred++; // recognised, per-source Solarman executor deferred (Phase 1)",
   "  }",
@@ -541,15 +558,20 @@ const sourcesStoreFunc = [
 ].join('\n');
 
 const sourcesReadFunc = [
-  "// Liest jede konfigurierte Modbus-Quelle SEQUENZIELL (nie zwei Sockets",
-  "// gleichzeitig), decodiert aus dem SunSpec-Profil je nach Rolle das richtige",
-  "// Feld und sendet je Quelle eine Nachricht: Erzeuger {source_id, payload:",
+  "// Liest jede konfigurierte Quelle SEQUENZIELL (nie zwei Sockets gleichzeitig)",
+  "// und sendet je Quelle eine Nachricht nach Rolle: Erzeuger {source_id, payload:",
   "// {pv_power_kw}} an vp-quelle (Ausgang 1), Netz-Zaehler {source_id, payload:",
   "// {power_kw}} (vorzeichenbehaftet, + Bezug / - Einspeisung) an vp-netz",
-  "// (Ausgang 2). FEHLERISOLATION: eine tote Quelle wird uebersprungen (kein",
-  "// Send) - die anderen liefern weiter, der Core zaehlt eine fehlende Quelle als",
-  "// abwesend (nie als fabrizierte 0). Traegt eine KOPIE des Modbus-Codecs aus",
-  "// edge-app/nodered/modbus-tcp.js (Register 0 = Netz, Register 1 = PV).",
+  "// (Ausgang 2). Zwei Adapter: modbus_tcp decodiert den kompakten SunSpec-",
+  "// Sim-Block (KOPIE aus edge-app/nodered/modbus-tcp.js, Register 0 = Netz,",
+  "// Register 1 = PV); sunspec_live (fronius_sunspec) laeuft die echte SunSpec-",
+  "// Modellerkennung ueber EINGEBETTETE Kopien von sunspec/model-discovery.js +",
+  "// sunspec/sunspec-live.js (ein Node-RED-Flow kann keine Repo-Datei requiren;",
+  "// flows-sync.test.js pinnt die Einbettung). FEHLERISOLATION: eine tote Quelle",
+  "// wird uebersprungen (kein Send) - die anderen liefern weiter, der Core zaehlt",
+  "// eine fehlende Quelle als abwesend (nie als fabrizierte 0).",
+  'var __DISC = ' + embedModule('sunspec/model-discovery.js') + ';',
+  'var __SS = ' + embedModule('sunspec/sunspec-live.js') + ';',
   "const net = global.get('net');",
   "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
   "const plans = flow.get('source_plans') || [];",
@@ -585,21 +607,33 @@ const sourcesReadFunc = [
   "    sock.write(build());",
   "  });",
   "});",
+  "const sunspecRead = __SS.makeSunspecReader({ net: net, discovery: __DISC });",
   "let txid = context.get('stxid') || 0;",
   "return (async () => {",
   "  let ok = 0, fail = 0;",
   "  for (const plan of plans) {",
-  "    txid = (txid + 1) & 0xffff;",
-  "    const regs = await readOne(plan, txid);",
-  "    if (!Array.isArray(regs)) { fail++; continue; }",
+  "    let pv = null, grid = null;",
+  "    if (plan.adapter === 'sunspec_live') {",
+  "      const out = await sunspecRead({ ip: plan.conn.ip, port: plan.conn.port, unitId: plan.conn.unit_id, invertGridSign: !!plan.conn.invert_grid_sign, modelType: plan.conn.model_type }).catch(() => null);",
+  "      const reading = out && out.reading ? out.reading : null;",
+  "      if (reading) {",
+  "        if (typeof reading.pv_power_kw === 'number' && isFinite(reading.pv_power_kw)) pv = reading.pv_power_kw;",
+  "        if (typeof reading.power_kw === 'number' && isFinite(reading.power_kw)) grid = reading.power_kw;",
+  "      }",
+  "    } else {",
+  "      txid = (txid + 1) & 0xffff;",
+  "      const regs = await readOne(plan, txid);",
+  "      if (Array.isArray(regs)) {",
+  "        pv = decodePv(plan.profile, regs);",
+  "        grid = decodeGrid(plan.profile, regs);",
+  "      }",
+  "    }",
   "    const ts = new Date().toISOString();",
   "    if (plan.role === 'grid-meter') {",
-  "      const grid = decodeGrid(plan.profile, regs);",
   "      if (grid === null || grid === undefined) { fail++; continue; }",
   "      ok++;",
   "      node.send([null, { source_id: plan.id, payload: { power_kw: grid, ts } }]);",
   "    } else {",
-  "      const pv = decodePv(plan.profile, regs);",
   "      if (pv === null || pv === undefined) { fail++; continue; }",
   "      ok++;",
   "      node.send([{ source_id: plan.id, payload: { pv_power_kw: pv, ts } }, null]);",
@@ -629,10 +663,13 @@ const sourcesNodes = [
       'summiert, ein Netz-Zaehler ersetzt den Netzwert des Speicher-Wechselrichters.',
       'OHNE Flow-Edit pro Kunde.',
       '',
-      'Umfang: modbus_tcp/SunSpec-Quellen werden gelesen; eine solarman_v5-Quelle wird',
-      'erkannt, ihr Einzel-Leser ist zurueckgestellt. NUR LESEN - fuer eine Quelle gibt',
-      'es keinen Steuerpfad. Routing/Codecs: sources-routing.js + modbus-tcp.js',
-      '(getestet; die Funktionsknoten tragen synchrone Kopien).',
+      'Umfang: modbus_tcp-Quellen (kompaktes Sim-Profil) und fronius_sunspec-Quellen',
+      '(echte SunSpec-Modellerkennung ueber Modbus TCP, z. B. eine Fronius-PV als',
+      'Erzeuger) werden gelesen; eine solarman_v5-Quelle wird erkannt, ihr',
+      'Einzel-Leser ist zurueckgestellt. NUR LESEN - fuer eine Quelle gibt es keinen',
+      'Steuerpfad. Routing/Codecs: sources-routing.js + modbus-tcp.js +',
+      'sunspec/model-discovery.js + sunspec/sunspec-live.js (getestet; die',
+      'Funktionsknoten tragen synchrone/eingebettete Kopien).',
     ].join('\n'),
   },
   {
@@ -662,13 +699,9 @@ const sourcesNodes = [
 // function reads the device ONCE with the SAME route()+decode the self-wiring
 // poll uses and answers on edge/test-read/result (vp-test-result), correlated by
 // request_id. It carries SYNCED COPIES of the decode modules + test-read.js by
-// EMBEDDING the files verbatim (a Node-RED flow cannot `require` a repo file);
-// flows-sync.test.js pins them and test-read.test.js unit-tests the module. Read
-// only - it opens a socket / one HTTP GET, never writes, never gates Speichern.
-const embedModule = (file) =>
-  '(function () { var module = { exports: {} };\n' +
-  fs.readFileSync(path.join(__dirname, file), 'utf8') +
-  '\nreturn module.exports; })()';
+// EMBEDDING the files verbatim (embedModule above); flows-sync.test.js pins them
+// and test-read.test.js unit-tests the module. Read only - it opens a socket /
+// one HTTP GET, never writes, never gates Speichern.
 
 // The Fronius SunSpec-Modbus reader (real SunSpec discovery over Modbus TCP,
 // port 502) for a Fronius Eco 27.0-3-S and any SunSpec-conformant inverter whose

@@ -88,6 +88,25 @@ test('planSources ignores an unknown role (reserved vocabulary not read yet)', (
   assert.equal(plans.length, 0);
 });
 
+test('planSources returns a sunspec_live read plan for a Fronius SunSpec Erzeuger source', () => {
+  const fronius = modbusSource({
+    id: 'src-eco',
+    brand: 'fronius_sunspec',
+    model: 'fronius-eco-27-3-s',
+    family: 'sunspec_live',
+    communication: 'fronius_sunspec',
+    connection: { ip: '192.168.254.40', port: 502, unit_id: 1, model_type: 'auto', invert_grid_sign: false },
+  });
+  const plans = sr.planSources(sr.parseSourcesConfig(config([fronius])));
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].id, 'src-eco');
+  assert.equal(plans[0].role, 'pv-generation');
+  assert.equal(plans[0].plan.adapter, 'sunspec_live');
+  assert.equal(plans[0].plan.connection.ip, '192.168.254.40');
+  assert.equal(plans[0].plan.connection.unit_id, 1);
+  assert.equal(plans[0].plan.connection.model_type, 'auto');
+});
+
 test('planSources recognises a solarman source via routing (executor deferred)', () => {
   const solar = modbusSource({
     id: 'src-deye',
