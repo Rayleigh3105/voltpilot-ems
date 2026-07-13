@@ -349,6 +349,72 @@ test('flow sources-store matches sources-routing.planSources for modbus sources'
   );
 });
 
+// The "Quellen uebernehmen" node must ALSO plan a fronius_sunspec source (the
+// captain's real setup: a Fronius Eco as an Erzeuger read over SunSpec-live) -
+// the regression that made such a source silently deliver nothing: it routed to
+// adapter sunspec_live but the store dropped it, so the ongoing poll never read
+// it while "Verbindung testen" (its own full SunSpec read) worked.
+test('flow sources-store plans a fronius_sunspec (SunSpec-live) Erzeuger source like the module', () => {
+  const payload = [
+    { id: 'src-eco', role: 'pv-generation', brand: 'fronius_sunspec', model: 'fronius-eco-27-3-s', family: 'sunspec_live',
+      communication: 'fronius_sunspec', connection: { ip: '192.168.254.40', port: 502, unit_id: 2, model_type: 'float', invert_grid_sign: false }, capacity_kwp: 70 },
+  ];
+  const flow = {};
+  runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow });
+  const plans = JSON.parse(JSON.stringify(flow.source_plans));
+  assert.equal(plans.length, 1, 'the Fronius SunSpec source MUST be planned (was silently dropped)');
+  assert.equal(plans[0].id, 'src-eco');
+  assert.equal(plans[0].role, 'pv-generation');
+  assert.equal(plans[0].adapter, 'sunspec_live');
+  assert.equal(plans[0].conn.ip, '192.168.254.40');
+  assert.equal(plans[0].conn.port, 502);
+  assert.equal(plans[0].conn.unit_id, 2);
+  assert.equal(plans[0].conn.model_type, 'float');
+  assert.equal(plans[0].conn.invert_grid_sign, false);
+
+  // Cross-check against the module routing: same source, same adapter + connection.
+  const routed = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: payload }));
+  assert.equal(routed.length, 1);
+  assert.equal(routed[0].plan.adapter, 'sunspec_live');
+  assert.equal(routed[0].plan.connection.ip, plans[0].conn.ip);
+  assert.equal(routed[0].plan.connection.port, plans[0].conn.port);
+  assert.equal(routed[0].plan.connection.unit_id, plans[0].conn.unit_id);
+  assert.equal(routed[0].plan.connection.model_type, plans[0].conn.model_type);
+});
+
+// A connection with no model_type hint (or an unknown one) defaults to 'auto',
+// mirroring inverter-routing.route - an old core build that dropped the SunSpec
+// connection fields from the retained entry still yields a working plan.
+test('flow sources-store defaults a fronius_sunspec plan to model_type auto / unit 1', () => {
+  const payload = [
+    { id: 'src-old', role: 'pv-generation', brand: 'fronius_sunspec', family: 'sunspec_live',
+      communication: 'fronius_sunspec', connection: { ip: '192.168.254.40', port: 502 } },
+  ];
+  const flow = {};
+  runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow });
+  const plans = JSON.parse(JSON.stringify(flow.source_plans));
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].conn.unit_id, 1);
+  assert.equal(plans[0].conn.model_type, 'auto');
+  assert.equal(plans[0].conn.invert_grid_sign, false);
+});
+
+// The "Quellen lesen" node carries EMBEDDED verbatim copies of the SunSpec
+// discovery walk + live decode for its sunspec_live branch (the same embed the
+// primary auto-sunspec node uses). Drift guard: editing either module without
+// re-running build-flows.js fails here instead of shipping a stale reader.
+test('flow sources-read embeds the current model-discovery.js + sunspec-live.js sources', () => {
+  const func = byId['sources-read'].func;
+  for (const rel of ['sunspec/model-discovery.js', 'sunspec/sunspec-live.js']) {
+    const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
+    assert.ok(
+      func.includes(src),
+      'flows.json sources-read node is out of sync with ' + rel + ' - re-run build-flows.js',
+    );
+  }
+  assert.ok(func.includes('__SS.makeSunspecReader({ net: net, discovery: __DISC })'));
+});
+
 // The "Quellen lesen" node decodes SunSpec by role the same way the shared modbus
 // decode does: an Erzeuger forwards PV (register 1), a Netz meter forwards signed
 // grid (register 0). We assert both inline decode constants match modbus-tcp's.

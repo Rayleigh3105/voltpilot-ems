@@ -246,9 +246,12 @@ Steuerpfad bleibt idle-sicher.
   pro Batterie-Marke (Register-Adressen, Vorzeichen, kW↔%-Umrechnung, `StorCtl_Mod`-Bits,
   `ChaGriSet`-Enum, `RvrtTms`-Verhalten) - separat, `CONTROL-BENCH.md` → Fronius Storage.
 - **Der GEN24-`config/timeofuse`-HTTP-Pfad** - vom Design verworfen, wird nicht gebaut.
-- **Fronius als zusätzliche Quelle (`fronius_solar_api`-Netz-Zähler/Erzeuger).**
-  Der Multi-Source-Pfad liest heute nur `modbus_tcp`-Quellen; eine Fronius-Quelle
-  wird vom Routing erkannt, ihr Einzel-Leser ist zurückgestellt.
+- **Fronius als zusätzliche Quelle über die Solar API (`fronius_solar_api`).**
+  Der Multi-Source-Pfad liest `modbus_tcp`- **und `fronius_sunspec`-Quellen**
+  (echte SunSpec-Modellerkennung - eine Fronius-PV als Erzeuger, z. B. ein Eco,
+  liefert damit laufend Daten); eine **Solar-API**-Quelle wird vom Routing
+  erkannt, ihr Einzel-Leser ist weiterhin zurückgestellt (SunSpec stattdessen
+  wählen).
 
 ## Siehe auch
 

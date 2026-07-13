@@ -157,6 +157,54 @@ func TestBusConfigShape(t *testing.T) {
 	}
 }
 
+// A fronius_sunspec Erzeuger source (a Fronius read over SunSpec-live) must
+// publish its full SunSpec connection in the retained bus entry - without
+// unit_id/model_type/invert_grid_sign the Node-RED per-source reader can only
+// fall back to defaults (the captain's real "Wartet auf erste Daten" bug had
+// this as its Go-side half).
+func TestBusConfigCarriesFroniusSunSpecConnection(t *testing.T) {
+	req := Request{
+		Role:        RoleErzeuger,
+		Brand:       inverter.BrandFroniusSunSpec,
+		Model:       "fronius-eco-27-3-s",
+		Connection:  inverter.Connection{IP: "192.168.254.40", UnitID: 2, ModelType: "float", InvertGridSign: true},
+		CapacityKwp: 70,
+	}
+	src, err := Normalize(cat(), req, time.Now())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if src.Communication != inverter.CommFroniusSunSpec {
+		t.Fatalf("communication derived wrong: %q", src.Communication)
+	}
+	src.ID = "src-eco"
+	var m struct {
+		Sources []struct {
+			Communication string         `json:"communication"`
+			Connection    map[string]any `json:"connection"`
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal(BusConfig([]Source{src}), &m); err != nil {
+		t.Fatal(err)
+	}
+	conn := m.Sources[0].Connection
+	if m.Sources[0].Communication != inverter.CommFroniusSunSpec {
+		t.Fatalf("communication = %q", m.Sources[0].Communication)
+	}
+	if conn["unit_id"] != float64(2) {
+		t.Fatalf("unit_id missing from the bus entry: %+v", conn)
+	}
+	if conn["model_type"] != "float" {
+		t.Fatalf("model_type missing from the bus entry: %+v", conn)
+	}
+	if conn["invert_grid_sign"] != true {
+		t.Fatalf("invert_grid_sign missing from the bus entry: %+v", conn)
+	}
+	if conn["ip"] != "192.168.254.40" || conn["port"] != float64(502) {
+		t.Fatalf("ip/port wrong: %+v", conn)
+	}
+}
+
 func TestIDFromTopic(t *testing.T) {
 	cases := map[string]string{
 		"edge/sources/src-abc/telemetry": "src-abc",

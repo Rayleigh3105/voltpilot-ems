@@ -238,6 +238,13 @@ func (s Source) busEntry() map[string]any {
 	case inverter.CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile
+	case inverter.CommFroniusSunSpec:
+		// SunSpec-live over Modbus TCP (mirrors inverter.Selection.BusPayload):
+		// without these, Node-RED's per-source SunSpec reader falls back to
+		// unit 1 / model_type auto and loses the grid-sign escape hatch.
+		conn["unit_id"] = s.Connection.UnitID
+		conn["model_type"] = s.Connection.ModelType
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 	}
 	return map[string]any{
 		"id":            s.ID,
