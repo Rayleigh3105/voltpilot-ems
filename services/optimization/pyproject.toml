@@ -29,10 +29,18 @@ db = [
 mqtt = [
     "paho-mqtt>=2.0",
 ]
-# jsonschema validates published payloads against the frozen contract in tests.
+# openpyxl is only needed by the bdew-convert CLI (turning the operator's own
+# BDEW profile publication into the simulation's SIM_BDEW_H25_JSON file); kept
+# out of the runtime deps so the optimizer/simulation image stays lean.
+convert = [
+    "openpyxl>=3.1",
+]
+# jsonschema validates published payloads against the frozen contract in tests;
+# openpyxl lets the bdew-convert tests build their synthetic workbooks.
 dev = [
     "pytest>=8.0",
     "jsonschema>=4.21",
+    "openpyxl>=3.1",
 ]
 
 # NOTE: the forecast-fallback (voltpilot_optimization.fallback) additionally
