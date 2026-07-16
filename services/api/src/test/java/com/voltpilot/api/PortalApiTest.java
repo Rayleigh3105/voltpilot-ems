@@ -989,6 +989,32 @@ class PortalApiTest {
         Map<String, Object> second = (Map<String, Object>) slots.get(1);
         assertThat(((Number) second.get("curtailKw")).doubleValue()).isEqualTo(1.5);
 
+        // FK2 banked value, graceful degradation first: the run above predates
+        // the terminal-value column (NULL), so the euro line is null while the
+        // SoC bounds are still served. Plan-start SoC reverses the first slot's
+        // dynamics with the Berlin battery (100 kWh, roundtrip 92% => eta):
+        // socStart = 62.5 - eta*5kW*0.25h/100kWh*100 = 62.5 - 1.25*eta.
+        double eta = Math.sqrt(0.92);
+        double socStart = 62.5 - 1.25 * eta;
+        assertThat(res.getBody().get("bankedValueEur")).isNull();
+        assertThat(((Number) res.getBody().get("socStartPct")).doubleValue())
+                .isCloseTo(socStart, org.assertj.core.data.Offset.offset(0.01));
+        assertThat(((Number) res.getBody().get("socEndPct")).doubleValue()).isEqualTo(50.0);
+
+        // With the run's terminal value persisted (what the optimizer now
+        // writes), the banked value = V_end x (SoC_end - SoC_start) x capacity:
+        // the plan draws DOWN stored energy (end 50% < start ~61.3%), so the
+        // value is negative - "aus dem Vortag entnommen".
+        exec("UPDATE schedule SET terminal_value_eur_per_kwh = 0.18 "
+                + "WHERE plan_id = 'aaaaaaaa-0000-0000-0000-000000000002'");
+        ResponseEntity<Map<String, Object>> banked = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/schedule"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(((Number) banked.getBody().get("bankedValueEur")).doubleValue())
+                .isCloseTo(0.18 * (50.0 - socStart) / 100.0 * 100.0,
+                        org.assertj.core.data.Offset.offset(1e-3));
+
         // A site with no plan yet: empty but well-formed (tenant B's own site).
         ResponseEntity<Map<String, Object>> empty = rest.exchange(
                 url("/api/v1/sites/" + HAMBURG_SITE + "/schedule"), HttpMethod.GET,

@@ -1,0 +1,26 @@
+-- =============================================================================
+-- V20260716010000 - Persist the run's terminal energy value (FK2, banked-value
+-- honesty in the Fahrplan; optimizer-sharpening audit vp-solver-xlsx-f2 §4.3).
+-- -----------------------------------------------------------------------------
+-- schedule.terminal_value_eur_per_kwh: the P3 terminal energy value the run's
+-- objective credited per kWh left in the battery at the horizon end (EUR per
+-- STORED kWh), stamped by services/optimization on EVERY slot row of a run
+-- (it is a run-level fact; the schedule table has no run-level sibling, so it
+-- rides the existing per-slot upsert - the wear_cost_eur precedent).
+--
+-- Why: on "bank days" the optimizer correctly stores energy into the next day,
+-- but the headline savings (baseline - cost) then reads NEGATIVE even though
+-- real value was stored (e.g. -0,99 EUR while 43,75 kWh x 0,18 EUR/kWh = 7,89
+-- EUR of terminal value was banked) - the correct plan LOOKS broken. The api
+-- computes bankedValueEur = terminal_value x (SoC_end - SoC_start) from this
+-- column and the persisted SoC trajectory; the portal shows it as its own
+-- calm line ("davon in den Folgetag gespeichert").
+--
+-- Nullable: rows written before this migration carry NULL - the display then
+-- degrades gracefully (no banked line), never a fabricated number. The
+-- V20260701020000 SELECT grant on schedule is column-agnostic. Bootstrap
+-- mirror: infra/local/timescale/04-schedule.sql (kept in sync). The frozen
+-- MQTT schedule contract is untouched.
+-- =============================================================================
+
+ALTER TABLE schedule ADD COLUMN IF NOT EXISTS terminal_value_eur_per_kwh NUMERIC(12, 6);

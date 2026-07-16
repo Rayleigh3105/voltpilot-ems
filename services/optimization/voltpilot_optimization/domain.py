@@ -349,6 +349,14 @@ class SchedulePlan:
     # solar-only-charge rule against MEASURED pv/load. None = omit the field
     # (legacy payload shape, edge behaves exactly as before).
     grid_charge_allowed: bool | None = None
+    # The terminal energy value the run's objective credited per stored kWh at
+    # the horizon end (P3; :meth:`OptimizationInput.effective_terminal_value_eur_per_kwh`).
+    # Only the solver knows the derived value, so it is stamped here and
+    # persisted per run (schedule.terminal_value_eur_per_kwh) - the portal
+    # shows the banked value ``V_end * (soc_end - soc_start)`` as its own line
+    # on bank days (FK2), where savings_eur alone would look broken. None =
+    # unknown (pre-FK2 plans); the display then degrades gracefully.
+    terminal_value_eur_per_kwh: float | None = None
 
     @property
     def cost_eur(self) -> float:

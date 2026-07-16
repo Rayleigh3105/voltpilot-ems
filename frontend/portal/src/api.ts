@@ -166,6 +166,19 @@ export interface SchedulePlan {
   generatedAt: string | null;
   slotMinutes: number;
   savingsEur: number | null;
+  /**
+   * Value of the energy the plan banks into (positive) or draws out of
+   * (negative) the horizon - the run's terminal value per stored kWh times the
+   * SoC swing. Makes savingsEur honest on bank days (storing into tomorrow
+   * otherwise reads as negative savings). Null when not computable (runs
+   * predating the terminal-value column, no battery asset) - the banked line
+   * then stays hidden, never a fabricated 0.
+   */
+  bankedValueEur: number | null;
+  /** Battery SoC at the plan start (what the banked value is measured from). */
+  socStartPct: number | null;
+  /** Planned SoC at the horizon end. */
+  socEndPct: number | null;
   slots: ScheduleSlot[];
 }
 

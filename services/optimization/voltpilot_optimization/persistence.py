@@ -59,8 +59,9 @@ _UPSERT_SQL = """
 INSERT INTO schedule
     (time, tenant_id, site_id, device_id, plan_id, generated_at,
      battery_kw, grid_kw, soc_pct, load_kw, pv_kw,
-     price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+     price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur,
+     terminal_value_eur_per_kwh)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -74,8 +75,41 @@ DO UPDATE SET
     cost_eur          = EXCLUDED.cost_eur,
     baseline_cost_eur = EXCLUDED.baseline_cost_eur,
     curtail_kw        = EXCLUDED.curtail_kw,
-    wear_cost_eur     = EXCLUDED.wear_cost_eur;
+    wear_cost_eur     = EXCLUDED.wear_cost_eur,
+    terminal_value_eur_per_kwh = EXCLUDED.terminal_value_eur_per_kwh;
 """
+
+
+def plan_rows(plan: SchedulePlan) -> list[tuple]:
+    """The per-slot parameter tuples for :data:`_UPSERT_SQL` (one per slot).
+
+    ``terminal_value_eur_per_kwh`` is a RUN-level fact (the P3 credit per
+    stored kWh at the horizon end, FK2) repeated on every slot row of the run -
+    the schedule table has no run-level sibling, and the existing upsert keeps
+    working unchanged. NULL on plans that predate the field.
+    """
+    return [
+        (
+            slot.start,
+            plan.tenant_id,
+            plan.site_id,
+            plan.device_id,
+            plan.plan_id,
+            plan.generated_at,
+            slot.battery_kw,
+            slot.grid_kw,
+            round(plan.soc_pct(slot), 2),
+            slot.load_kw,
+            slot.pv_kw,
+            slot.price_eur_mwh,
+            slot.cost_eur,
+            slot.baseline_cost_eur,
+            slot.curtail_kw,
+            slot.wear_cost_eur,
+            plan.terminal_value_eur_per_kwh,
+        )
+        for slot in plan.slots
+    ]
 
 
 class TimescaleScheduleRepository:
@@ -91,27 +125,7 @@ class TimescaleScheduleRepository:
     def upsert_plan(self, plan: SchedulePlan) -> int:
         import psycopg  # lazy: optional [db] extra
 
-        rows = [
-            (
-                slot.start,
-                plan.tenant_id,
-                plan.site_id,
-                plan.device_id,
-                plan.plan_id,
-                plan.generated_at,
-                slot.battery_kw,
-                slot.grid_kw,
-                round(plan.soc_pct(slot), 2),
-                slot.load_kw,
-                slot.pv_kw,
-                slot.price_eur_mwh,
-                slot.cost_eur,
-                slot.baseline_cost_eur,
-                slot.curtail_kw,
-                slot.wear_cost_eur,
-            )
-            for slot in plan.slots
-        ]
+        rows = plan_rows(plan)
         with psycopg.connect(self._dsn) as conn:
             with conn.cursor() as cur:
                 cur.executemany(_UPSERT_SQL, rows)

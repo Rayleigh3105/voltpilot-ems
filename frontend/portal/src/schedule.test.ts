@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bankedValueLine,
   chargeKind,
   curtailmentToday,
   daypart,
   hasGridCharge,
+  HORIZON_HINT,
+  horizonHint,
   planHourBars,
   planSentence,
   savingsTodayEur,
   SLOT_DEADBAND_KW,
   todaySlots,
 } from './schedule';
+import { NBSP } from './format';
 
 /**
  * Fahrplan slot-kind derivation: a charging slot that net-imports is a
@@ -241,6 +245,60 @@ describe('curtailmentToday', () => {
     // Only today's 6 kW slot counts: 1.5 kWh, avoided 1.5*0.08 = 0.12 €.
     expect(r.curtailedKwh).toBeCloseTo(1.5, 6);
     expect(r.avoidedLossEur).toBeCloseTo(0.12, 6);
+  });
+});
+
+/**
+ * FK2: the banked-terminal-value line under the savings stat. On bank days the
+ * plan correctly stores energy into the next day and the headline savings read
+ * negative (the audit's -0,99 € while 7,89 € of value was stored) - the line
+ * is what keeps the correct plan from looking broken.
+ */
+describe('bankedValueLine', () => {
+  it('positive banked value reads as stored into the next day', () => {
+    expect(bankedValueLine(7.89)).toBe(`davon in den Folgetag gespeichert: +7,89${NBSP}€`);
+  });
+
+  it('negative banked value reads sign-honest as a withdrawal from yesterday', () => {
+    expect(bankedValueLine(-2.03)).toBe(`aus dem Vortag entnommen: 2,03${NBSP}€`);
+  });
+
+  it('hides on missing data and noise-level values - never a fake 0', () => {
+    expect(bankedValueLine(null)).toBeNull();
+    expect(bankedValueLine(undefined)).toBeNull();
+    expect(bankedValueLine(0)).toBeNull();
+    expect(bankedValueLine(0.004)).toBeNull();
+    expect(bankedValueLine(-0.004)).toBeNull();
+    expect(bankedValueLine(Number.NaN)).toBeNull();
+  });
+});
+
+/**
+ * FK2 part b: before the ~13:00 day-ahead publication the horizon ends at
+ * today's midnight, so the morning plan shows an evening "hold" that flips to
+ * discharge in the afternoon. The hint marks exactly that state, derived from
+ * the plan's own slot range.
+ */
+describe('horizonHint', () => {
+  // NOW is 09:30 local; a plan whose last slot starts 23:45 today ends at
+  // exactly local midnight - the pre-publication morning shape.
+  it('shows while the horizon ends within today', () => {
+    const slots = [slot(9, 15, 0), slot(23, 45, 0)];
+    expect(horizonHint(slots, NOW)).toBe(HORIZON_HINT);
+    expect(HORIZON_HINT).toContain('ab ca. 13 Uhr');
+  });
+
+  it('stays silent once the plan reaches into tomorrow', () => {
+    const slots = [slot(9, 15, 0), slot(23, 45, 0), slot(0, 0, 0, null, 1)];
+    expect(horizonHint(slots, NOW)).toBeNull();
+  });
+
+  it('stays silent for an entirely stale plan and for no plan', () => {
+    // Horizon ended at 08:00, before NOW (09:30) - a stale plan is a
+    // different problem than the pre-publication horizon.
+    const stale = [slot(6, 0, 0), slot(7, 45, 0)];
+    expect(horizonHint(stale, NOW)).toBeNull();
+    expect(horizonHint([], NOW)).toBeNull();
   });
 });
 

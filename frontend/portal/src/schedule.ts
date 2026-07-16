@@ -11,6 +11,8 @@
  * way a charging slot can net-import.
  */
 
+import { eurAmount } from './format';
+
 /** Matches the chart's "hält" deadband (0.05 kW) so tiny solver noise stays idle. */
 export const SLOT_DEADBAND_KW = 0.05;
 
@@ -64,6 +66,55 @@ export function savingsTodayEur(
   );
   if (priced.length === 0) return null;
   return priced.reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+}
+
+// ---- Banked terminal value + horizon-edge honesty (FK2) ----------------------
+
+/** Below this the banked value is solver/rounding noise, not a real bank. */
+export const BANKED_DEADBAND_EUR = 0.005;
+
+/**
+ * ONE calm German line making the savings figure honest on bank days (audit
+ * vp-solver-xlsx-f2 §4.3): when the plan stores energy into the next day the
+ * headline savings read small or negative although real value was banked -
+ * without this line the CORRECT plan looks broken. Positive = energy stored
+ * for tomorrow; negative = the plan draws down previously stored energy
+ * (sign-honest, worded as a withdrawal, never a fake "gespeichert"). Null
+ * hides the line: no data (pre-FK2 runs, no battery) or noise-level values.
+ */
+export function bankedValueLine(bankedValueEur: number | null | undefined): string | null {
+  if (bankedValueEur == null) return null;
+  const v = Number(bankedValueEur);
+  if (!Number.isFinite(v) || Math.abs(v) < BANKED_DEADBAND_EUR) return null;
+  if (v > 0) return `davon in den Folgetag gespeichert: +${eurAmount(v)}`;
+  return `aus dem Vortag entnommen: ${eurAmount(-v)}`;
+}
+
+export const HORIZON_HINT =
+  'Der Fahrplan reicht bis zum Tagesende – sobald die Börsenpreise für morgen ' +
+  'vorliegen (ab ca. 13 Uhr), plant VoltPilot darüber hinaus.';
+
+/**
+ * The horizon-edge honesty hint (FK2 part b): before the day-ahead price
+ * publication (~13:00) the plan's horizon ends at today's midnight, so the
+ * morning Fahrplan shows an evening "hold" that flips to discharge in the
+ * afternoon - users must not learn to distrust the plan. Derived purely from
+ * the plan's own slot range: the hint shows while the horizon end lies within
+ * today (still ahead of `now`); a plan reaching into tomorrow - or an entirely
+ * stale plan, which is a different problem - gets no hint.
+ */
+export function horizonHint(
+  slots: { start: string }[],
+  now: Date,
+  slotMinutes = 15,
+): string | null {
+  if (slots.length === 0) return null;
+  // Slots come time-ordered from the API; the horizon ends after the last one.
+  const last = new Date(slots[slots.length - 1].start).getTime();
+  const horizonEnd = last + slotMinutes * 60_000;
+  if (horizonEnd <= now.getTime()) return null;
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+  return horizonEnd <= endOfToday ? HORIZON_HINT : null;
 }
 
 /** Below this the curtailment is solver noise, not a real feed-in cap. */

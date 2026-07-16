@@ -150,6 +150,21 @@ def test_cheap_end_of_horizon_tail_is_held_not_dumped():
 
 
 @needs_highs
+def test_plan_is_stamped_with_the_effective_terminal_value_it_credited():
+    """FK2: the value the objective actually credited per stored kWh must ride
+    on the plan (and from there into schedule.terminal_value_eur_per_kwh), for
+    both the derived and the explicit-override case - the portal's banked-value
+    line is computed from exactly this number."""
+    inp = make_input([100.0] * 80 + [250.0] * 16)
+    plan = solve(inp)
+    assert plan.terminal_value_eur_per_kwh == pytest.approx(
+        inp.effective_terminal_value_eur_per_kwh(), abs=1e-6
+    )
+    explicit = solve(make_input([100.0] * 96, terminal_value_eur_per_kwh=0.05))
+    assert explicit.terminal_value_eur_per_kwh == pytest.approx(0.05, abs=1e-9)
+
+
+@needs_highs
 def test_flat_curve_still_plans_an_idle_battery():
     # The long-standing product property "zero savings on a flat curve" must
     # survive P3: discharging at exactly the derived anchor price is an exact
