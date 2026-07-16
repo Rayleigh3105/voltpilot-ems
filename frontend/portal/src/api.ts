@@ -158,6 +158,15 @@ export interface ScheduleSlot {
    * vermieden". Null on runs that predate the curtailment column.
    */
   curtailKw: number | null;
+  /**
+   * PV forecast the slot planned with (kW, `schedule.pv_kw`). Feeds the
+   * pv-aware "Laden aus dem Netz" derivation (schedule.ts chargeKind): since
+   * FK3 an EEG site may charge solar while the house imports, so cyan needs
+   * charge > available PV, not merely charge-while-importing. Null on rows
+   * without a persisted PV input (chargeKind then falls back to the old
+   * import-based rule).
+   */
+  pvKw: number | null;
 }
 
 export interface SchedulePlan {

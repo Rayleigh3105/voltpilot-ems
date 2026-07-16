@@ -960,7 +960,7 @@ class PortalApiTest {
                 + "VALUES "
                 + "(now(), '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
-                + "now(), 5.0, 8.0, 62.5, 3.0, 0.0, 80.0, 0.02, 0.10, 0.0), "
+                + "now(), 5.0, 8.0, 62.5, 3.0, 2.0, 80.0, 0.02, 0.10, 0.0), "
                 + "(now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
                 + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05, 1.5) "
@@ -983,6 +983,9 @@ class PortalApiTest {
         assertThat(((Number) first.get("batteryKw")).doubleValue()).isEqualTo(5.0);
         assertThat(((Number) first.get("socPct")).doubleValue()).isEqualTo(62.5);
         assertThat(((Number) first.get("curtailKw")).doubleValue()).isEqualTo(0.0);
+        // The PV forecast input rides along so the portal's pv-aware
+        // "Laden aus dem Netz" derivation (FK3) has its per-slot PV.
+        assertThat(((Number) first.get("pvKw")).doubleValue()).isEqualTo(2.0);
         // The curtailing slot carries its held-back PV so the portal can quantify
         // the avoided negative-price loss.
         @SuppressWarnings("unchecked")

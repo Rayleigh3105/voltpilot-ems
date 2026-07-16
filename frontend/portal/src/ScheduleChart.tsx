@@ -112,6 +112,8 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
                 const kind = chargeKind(
                   slots[p.dataIndex]?.batteryKw ?? null,
                   slots[p.dataIndex]?.gridKw ?? null,
+                  slots[p.dataIndex]?.pvKw,
+                  slots[p.dataIndex]?.curtailKw,
                 );
                 const label =
                   kind === 'netzladen'
@@ -136,6 +138,8 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
               const kind = chargeKind(
                 slots[params[0]?.dataIndex]?.batteryKw ?? null,
                 slots[params[0]?.dataIndex]?.gridKw ?? null,
+                slots[params[0]?.dataIndex]?.pvKw,
+                slots[params[0]?.dataIndex]?.curtailKw,
               );
               lines.push(
                 `<span style="color:${t.axis}">${
@@ -196,7 +200,9 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
               borderRadius: 2,
               color: (p: any) => {
                 const slot = slots[p.dataIndex];
-                if (slot && chargeKind(slot.batteryKw, slot.gridKw) === 'netzladen') {
+                const kind =
+                  slot && chargeKind(slot.batteryKw, slot.gridKw, slot.pvKw, slot.curtailKw);
+                if (kind === 'netzladen') {
                   return t.gridCharge;
                 }
                 return Number(p.value) >= 0 ? t.charge : t.discharge;

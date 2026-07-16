@@ -2,13 +2,16 @@
  * Pure Fahrplan-slot logic (unit-tested; ScheduleChart only renders it).
  *
  * The grid-charging switch (site.netzladen_erlaubt) makes it matter WHERE a
- * charging slot's energy comes from: a slot that charges while the site is
- * net-IMPORTING is a grid-charge slot ("Laden aus dem Netz") and gets its own
- * cyan color in the chart - on an EEG site that color can never appear, so the
- * chart itself is the visible proof that only solar is stored. The kind is
- * DERIVED from the persisted plan (battery_kw > 0 while grid_kw > 0), no
- * schema addition needed: charging beyond the site's own surplus is the only
- * way a charging slot can net-import.
+ * charging slot's energy comes from: a slot whose charge EXCEEDS the PV
+ * available in that slot is a grid-charge slot ("Laden aus dem Netz") and gets
+ * its own cyan color in the chart - on an EEG site that color can never
+ * appear, so the chart itself is the visible proof that only solar is stored.
+ * The kind is DERIVED from the persisted plan: since FK3 (PV-bus semantics)
+ * an EEG site legitimately charges solar WHILE the house imports its load, so
+ * "charging while net-importing" alone is no longer grid-charging - grid
+ * energy enters the battery only when battery_kw > pv_kw - curtail_kw (the
+ * solver's own solar-only bound). Slots without a PV value (pre-pvKw runs)
+ * fall back to the old import-based derivation.
  */
 
 import { eurAmount } from './format';
@@ -16,25 +19,54 @@ import { eurAmount } from './format';
 /** Matches the chart's "hält" deadband (0.05 kW) so tiny solver noise stays idle. */
 export const SLOT_DEADBAND_KW = 0.05;
 
+/**
+ * How far the charge must exceed the slot's available PV before it counts as
+ * grid-fed - forecast jitter and persisted rounding must not flicker a solar
+ * charge cyan (the EEG solver binds charge == pv exactly on cloudy days).
+ */
+export const PV_SOURCE_DEADBAND_KW = 0.1;
+
 export type ChargeKind = 'netzladen' | 'solarladen' | 'entladen' | 'ruhe';
 
 /** What one plan slot does with the battery, energy-source-honest. */
-export function chargeKind(batteryKw: number | null, gridKw: number | null): ChargeKind {
+export function chargeKind(
+  batteryKw: number | null,
+  gridKw: number | null,
+  pvKw?: number | null,
+  curtailKw?: number | null,
+): ChargeKind {
   // Coerce defensively (API decimals arrive as JSON numbers, but the chart
   // code wraps every value in Number() - mirror that convention here).
   const batt = batteryKw == null ? null : Number(batteryKw);
   const grid = gridKw == null ? null : Number(gridKw);
   if (batt == null || Math.abs(batt) <= SLOT_DEADBAND_KW) return 'ruhe';
   if (batt < 0) return 'entladen';
-  // Charging: net import means (part of) the charge comes from the grid.
-  return grid != null && grid > SLOT_DEADBAND_KW ? 'netzladen' : 'solarladen';
+  // Charging: grid energy can only flow INTO the battery while the slot
+  // net-imports - an exporting slot's charge is covered by PV by definition.
+  if (grid == null || grid <= SLOT_DEADBAND_KW) return 'solarladen';
+  const pv = pvKw == null ? null : Number(pvKw);
+  if (pv == null || !Number.isFinite(pv)) {
+    // No PV data (pre-pvKw runs): the old, coarser import-based rule.
+    return 'netzladen';
+  }
+  // PV-bus semantics (FK3): the battery may charge up to the PV actually
+  // produced (pv minus planned curtailment) while the house imports its load
+  // in parallel - only charge BEYOND that draws grid energy.
+  const curtail = curtailKw == null ? 0 : Math.max(Number(curtailKw), 0);
+  const available = Math.max(pv - curtail, 0);
+  return batt > available + PV_SOURCE_DEADBAND_KW ? 'netzladen' : 'solarladen';
 }
 
 /** Whether any slot of the plan charges from the grid (drives the legend entry). */
 export function hasGridCharge(
-  slots: { batteryKw: number | null; gridKw: number | null }[],
+  slots: {
+    batteryKw: number | null;
+    gridKw: number | null;
+    pvKw?: number | null;
+    curtailKw?: number | null;
+  }[],
 ): boolean {
-  return slots.some((s) => chargeKind(s.batteryKw, s.gridKw) === 'netzladen');
+  return slots.some((s) => chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw) === 'netzladen');
 }
 
 // ---- Fahrplan mini preview (the Anlagen-Seite's "Fahrplan · heute" card) -------
@@ -44,6 +76,10 @@ export interface PlanSlotLike {
   start: string;
   batteryKw: number | null;
   gridKw: number | null;
+  /** PV forecast the slot planned with (kW); absent = pre-pvKw fallback. */
+  pvKw?: number | null;
+  /** Planned PV curtailment (kW held back, >= 0). */
+  curtailKw?: number | null;
 }
 
 /** The plan's slots that fall on the local calendar day of `now`. */
@@ -170,7 +206,7 @@ export interface PlanHourBar {
  * Today's plan condensed to 24 hourly bars (the phone-calm resolution of the
  * mini preview): per hour the dominant battery direction by energy and its
  * mean power. A charging hour is 'netzladen' when most of its charge energy
- * net-imports (the chart's cyan proof carries over to the preview).
+ * is grid-fed (the chart's cyan proof carries over to the preview).
  */
 export function planHourBars(slots: PlanSlotLike[], now: Date): PlanHourBar[] {
   const byHour = new Map<number, PlanSlotLike[]>();
@@ -187,7 +223,7 @@ export function planHourBars(slots: PlanSlotLike[], now: Date): PlanHourBar[] {
     let gridCharge = 0;
     let discharge = 0;
     for (const s of list) {
-      const kind = chargeKind(s.batteryKw, s.gridKw);
+      const kind = chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw);
       const kw = Math.abs(Number(s.batteryKw ?? 0));
       if (kind === 'entladen') discharge += kw;
       else if (kind === 'solarladen') charge += kw;
@@ -265,7 +301,7 @@ function planRuns(sorted: PlanSlotLike[], slotMinutes: number): PlanRun[] {
   const runs: PlanRun[] = [];
   let current: PlanRun | null = null;
   for (const s of sorted) {
-    const k = chargeKind(s.batteryKw, s.gridKw);
+    const k = chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw);
     if (k === 'ruhe') continue;
     const dir = k === 'entladen' ? 'entladen' : 'laden';
     const start = new Date(s.start);
