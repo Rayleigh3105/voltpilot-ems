@@ -58,6 +58,14 @@ export interface Site {
    * optimizer enforces it export-only (FK1).
    */
   maxFeedInKw: number | null;
+  /**
+   * Leistungspreis (EUR/kW) of a Lastspitzenkappung setup, configured by
+   * VoltPilot (admin optimizer-config, Tier 2) - never customer-editable.
+   * DEFENSIVELY OPTIONAL: a sibling backend task adds the field; until that
+   * ships the API omits it (undefined) and absent/null both read as
+   * "not active" (see moduleSurface.ts).
+   */
+  leistungspreisEurKw?: number | null;
 }
 
 export interface CreateSiteInput {

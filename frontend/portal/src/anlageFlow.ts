@@ -7,17 +7,19 @@ import { fmtNum } from './format';
  * enters their MaStR number(s) and VoltPilot pulls the data from the
  * Marktstammdatenregister. Steps: 1 · Anlage (Name + Standort) ->
  * 2 · Register (PV + Speicher aus dem Register, Vorschau, Übernehmen; manual
- * entry is the always-reachable fallback) -> 3 · Gerät (Geräte-ID verbinden)
- * -> Fertig. Both hosts - the first-run onboarding wizard and the
- * "Anlage anlegen" drawer - render the same `components/AnlageFlow.tsx`,
- * which derives everything word- and step-related from this module so it
- * stays unit-testable without a DOM.
+ * entry is the always-reachable fallback) -> 3 · Nutzung ("Wie soll Ihr
+ * Speicher arbeiten?" - Speicherschonung + Optimierungs-Nutzungen, captain
+ * design update 2026-07-16; changeable later on the Optimierung subpage) ->
+ * 4 · Gerät (Geräte-ID verbinden) -> Fertig. Both hosts - the first-run
+ * onboarding wizard and the "Anlage anlegen" drawer - render the same
+ * `components/AnlageFlow.tsx`, which derives everything word- and step-related
+ * from this module so it stays unit-testable without a DOM.
  */
 
 /** The step rail of the flow, in order (register-first). */
-export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät'] as const;
+export const FLOW_STEPS = ['Anlage', 'Register', 'Nutzung', 'Gerät'] as const;
 
-export type FlowStep = 1 | 2 | 3;
+export type FlowStep = 1 | 2 | 3 | 4;
 
 /**
  * Where the flow starts: a customer who already created an Anlage (but has no

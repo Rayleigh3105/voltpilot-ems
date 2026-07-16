@@ -38,6 +38,7 @@ import { ErtragChart } from '../components/ErtragChart';
 import { HealthChecklist } from '../components/HealthChecklist';
 import { AnlageHero, EnergyStatsRow, MonthRail, MonthStrip, PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
+import { OptimierungSection } from '../components/OptimierungSection';
 import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
@@ -94,6 +95,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
         sites={sites}
         devices={props.devices}
         sub={route.sub}
+        isAdmin={isAdmin}
         onBack={() => onNavigate(anlageRoute(site.id))}
         onReload={props.onReload}
       />
@@ -276,6 +278,10 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     title: 'Technik & Einstellungen',
     subtitle: 'Wechselrichter, Speicher, Anlagentyp, Stromtarif und der Standort Ihrer Anlage.',
   },
+  optimierung: {
+    title: 'Optimierung',
+    subtitle: 'Was VoltPilot für Ihre Anlage steuert - was aktiv ist, was es bewirkt und was noch möglich ist.',
+  },
 };
 
 /** One deep view of an Anlage, with the way back always in sight. */
@@ -284,6 +290,7 @@ function AnlagenSubPage({
   sites,
   devices,
   sub,
+  isAdmin,
   onBack,
   onReload,
 }: {
@@ -291,6 +298,7 @@ function AnlagenSubPage({
   sites: Site[];
   devices: Device[];
   sub: AnlagenSub;
+  isAdmin: boolean;
   onBack: () => void;
   onReload: (selectSiteId?: string) => void;
 }) {
@@ -311,6 +319,7 @@ function AnlagenSubPage({
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
+      {sub === 'optimierung' && <OptimierungSection site={site} isAdmin={isAdmin} />}
       {sub === 'technik' && (
         <TechnikSection
           site={site}
@@ -751,7 +760,14 @@ export function AnlageSeite({
 
         {/* ---- Tiefer schauen (volle Breite) ---------------------------- */}
         <div className="vp-dash-deep">
-          <div className="vp-detail-grid three">
+          <div className="vp-detail-grid">
+            <DetailCard
+              icon="trending-up"
+              category="dynamic"
+              title="Optimierung"
+              line="Was VoltPilot für Sie steuert - aktiv, Wirkung, Möglichkeiten."
+              onOpen={() => onOpenSub('optimierung')}
+            />
             <DetailCard
               icon="history"
               category="home"

@@ -10,8 +10,24 @@ import {
   type MastrPreview,
   type PlantKind,
   type Site,
+  type SiteAsset,
   type TarifArt,
 } from '../api';
+import { isPlatformAdmin } from '../auth';
+import {
+  LASTSPITZEN_CUSTOMER_INFO,
+  NUTZUNG_QUESTION,
+  buildLastspitzenUpdate,
+  marktoptimierungLine,
+  parseLastspitzenForm,
+  supportsLastspitzenConfig,
+} from '../moduleSurface';
+import { optimizerApi, type LeistungspreisAbrechnung, type OptimizerConfig } from '../optimizerApi';
+import {
+  SPEICHERSCHONUNG_OPTIONS,
+  presetOf,
+  type SpeicherschonungPreset,
+} from '../speicherschonung';
 import {
   buildMastrApply,
   DEVICE_ID_FIELD,
@@ -39,7 +55,9 @@ import { TariffFields } from './TariffFields';
  * number(s) and VoltPilot pulls the data from the Marktstammdatenregister.
  * 1 · Anlage (Name + Standort) -> 2 · Register (PV + Speicher aus dem
  * Register, Vorschau, Übernehmen - manual entry stays one tap away) ->
- * 3 · Gerät (Geräte-ID verbinden) -> Fertig. Both entry points render THIS
+ * 3 · Nutzung ("Wie soll Ihr Speicher arbeiten?" - captain design update
+ * 2026-07-16, changeable later on the Optimierung subpage) ->
+ * 4 · Gerät (Geräte-ID verbinden) -> Fertig. Both entry points render THIS
  * component: the first-run onboarding wizard (full-page card, waits for first
  * data at the end) and the "Anlage anlegen" drawer for existing customers
  * (summary finish). Every step past the first is skippable and dead-end-free -
@@ -253,16 +271,17 @@ export function AnlageFlow({
           onSkip={() => setStep(3)}
         />
       )}
-      {step === 3 && site && (
+      {step === 3 && site && <NutzungStep site={site} onNext={() => setStep(4)} />}
+      {step === 4 && site && (
         <GeraetStep
           sites={createdHere ? [site] : locationSites}
           site={site}
           onSiteChange={setSite}
           onClaimed={(d) => {
             setClaimed(d);
-            setStep(4);
+            setStep(5);
           }}
-          onSkip={() => setStep(4)}
+          onSkip={() => setStep(5)}
         />
       )}
       {finished &&
@@ -960,7 +979,239 @@ function ManualBatteryStep({
 }
 
 /**
- * Step 3 · Gerät: connect the VoltPilot device by its Geräte-ID. Skippable -
+ * Step 3 · Nutzung: "Wie soll Ihr Speicher arbeiten?" (captain design update
+ * 2026-07-16) - the usages are chosen at setup time, changeable later on the
+ * Anlage's Optimierung subpage. Two parts, both optional and skippable:
+ *
+ *  - Umgang mit dem Speicher (Speicherschonung preset, default Ausgewogen) -
+ *    shown when the Register/manual step left a battery with complete master
+ *    data; saved through the battery PUT carrying those values unchanged.
+ *  - Optimierungs-Nutzungen (multi-select): Marktoptimierung is always on (it
+ *    is the product); Lastspitzenkappung is selectable as INTENT. When
+ *    VoltPilot itself onboards (platform-admin via the tenant switcher) AND
+ *    the backend already carries the contract fields (probed on the
+ *    optimizer-config GET - sibling task vp-peakshave-core-p1), the contract
+ *    fields appear inline and save via the admin config PUT; a plain customer
+ *    sees only the honest info text and nothing is persisted (Vertrieb läuft
+ *    persönlich).
+ */
+function NutzungStep({ site, onNext }: { site: Site; onNext: () => void }) {
+  const [battery, setBattery] = useState<SiteAsset | null>(null);
+  const [schonung, setSchonung] = useState<SpeicherschonungPreset>('ausgewogen');
+  const [lastspitzen, setLastspitzen] = useState(false);
+  const [adminConfig, setAdminConfig] = useState<OptimizerConfig | null>(null);
+  const [lp, setLp] = useState('');
+  const [abrechnung, setAbrechnung] = useState<LeistungspreisAbrechnung>('jahr');
+  const [reserve, setReserve] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const admin = isPlatformAdmin();
+
+  // The battery the Register/manual step just created (or none). Fail-soft.
+  useEffect(() => {
+    let active = true;
+    api.siteAssets(site.id).then(
+      (assets) => {
+        if (!active) return;
+        const b = assets.find((a) => a.type === 'battery') ?? null;
+        setBattery(b);
+        setSchonung(presetOf(b?.speicherschonung) ?? 'ausgewogen');
+      },
+      () => {
+        if (active) setBattery(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id]);
+
+  // Admin only: probe whether the backend already carries the contract fields.
+  useEffect(() => {
+    if (!admin) return;
+    let active = true;
+    optimizerApi.configViaSwitcher(site.id).then(
+      (c) => {
+        if (active) setAdminConfig(c);
+      },
+      () => {
+        if (active) setAdminConfig(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, admin]);
+
+  const batteryEditable =
+    battery != null &&
+    battery.capacityKwh != null &&
+    battery.maxChargeKw != null &&
+    battery.maxDischargeKw != null;
+  const adminFields = admin && supportsLastspitzenConfig(adminConfig?.overrides);
+
+  async function next() {
+    if (busy) return;
+    setErr(null);
+
+    // Validate the admin contract fields BEFORE any write.
+    let lastspitzenBody: ReturnType<typeof buildLastspitzenUpdate> | null = null;
+    if (lastspitzen && adminFields && adminConfig) {
+      const parsed = parseLastspitzenForm({ leistungspreis: lp, abrechnung, reserve });
+      if (!parsed.ok) {
+        setErr(parsed.error);
+        return;
+      }
+      lastspitzenBody = buildLastspitzenUpdate(adminConfig.overrides, parsed.value);
+    }
+
+    setBusy(true);
+    try {
+      // An untouched Ausgewogen equals the stored effective preset - only a
+      // real change writes (never pins the default onto the wear column).
+      if (batteryEditable && battery && schonung !== presetOf(battery.speicherschonung)) {
+        await api.saveBattery(site.id, {
+          capacityKwh: battery.capacityKwh as number,
+          maxChargeKw: battery.maxChargeKw as number,
+          maxDischargeKw: battery.maxDischargeKw as number,
+          roundtripEfficiencyPct: battery.roundtripEfficiencyPct,
+          deviceId: battery.deviceId,
+          speicherschonung: schonung,
+        });
+      }
+      if (lastspitzenBody) {
+        await optimizerApi.updateConfigViaSwitcher(site.id, lastspitzenBody);
+      }
+      onNext();
+    } catch {
+      setErr('Die Auswahl konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-onboarding-step">
+      <h3>{NUTZUNG_QUESTION}</h3>
+      <p className="vp-muted">
+        Sie können das später jederzeit auf der Anlagen-Seite unter „Optimierung" ändern.
+      </p>
+
+      {batteryEditable && (
+        <fieldset className="vp-schonung">
+          <legend className="vp-schonung-legend">Umgang mit dem Speicher</legend>
+          {SPEICHERSCHONUNG_OPTIONS.map((o) => (
+            <label
+              key={o.value}
+              className={'vp-schonung-opt' + (schonung === o.value ? ' selected' : '')}
+            >
+              <input
+                type="radio"
+                name="nutzung-speicherschonung"
+                value={o.value}
+                checked={schonung === o.value}
+                onChange={() => setSchonung(o.value)}
+              />
+              <span className="vp-schonung-main">
+                <span className="vp-schonung-label">
+                  {o.label}
+                  {o.recommended ? ' (empfohlen)' : ''}
+                </span>
+                <span className="vp-schonung-sentence">{o.sentence}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+
+      <fieldset className="vp-schonung">
+        <legend className="vp-schonung-legend">Optimierungs-Nutzungen</legend>
+        <label className="vp-schonung-opt selected">
+          <input type="checkbox" checked disabled />
+          <span className="vp-schonung-main">
+            <span className="vp-schonung-label">Marktoptimierung (immer aktiv)</span>
+            <span className="vp-schonung-sentence">
+              {marktoptimierungLine(site.plantKind, site.tarifArt)}
+            </span>
+          </span>
+        </label>
+        <label className={'vp-schonung-opt' + (lastspitzen ? ' selected' : '')}>
+          <input
+            type="checkbox"
+            checked={lastspitzen}
+            onChange={() => setLastspitzen((v) => !v)}
+          />
+          <span className="vp-schonung-main">
+            <span className="vp-schonung-label">Lastspitzenkappung</span>
+            <span className="vp-schonung-sentence">
+              Für Gewerbe mit Leistungsmessung: die Batterie kappt Ihre Bezugsspitze – oft
+              mehrere tausend Euro Leistungspreis im Jahr.
+            </span>
+          </span>
+        </label>
+        {lastspitzen && !adminFields && (
+          <p className="vp-note" style={{ margin: 0 }}>
+            {LASTSPITZEN_CUSTOMER_INFO}
+          </p>
+        )}
+        {lastspitzen && adminFields && (
+          <div className="vp-form-stack" style={{ marginTop: 8 }}>
+            <Input
+              label="Leistungspreis (€/kW) *"
+              placeholder="z. B. 120"
+              inputMode="decimal"
+              value={lp}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLp(e.target.value)}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <label htmlFor="nutzung-abrechnung" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                Abrechnung
+              </label>
+              <select
+                id="nutzung-abrechnung"
+                className="vp-select"
+                value={abrechnung}
+                onChange={(e) => setAbrechnung(e.target.value as LeistungspreisAbrechnung)}
+              >
+                <option value="jahr">Jahresleistungspreis</option>
+                <option value="monat">Monatsleistungspreis</option>
+              </select>
+            </div>
+            <Input
+              label="Reserve (kW)"
+              placeholder="optional"
+              inputMode="decimal"
+              value={reserve}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReserve(e.target.value)}
+              hint="Sicherheitsabstand unter der Zielspitze. Leer lassen für den Standard."
+            />
+          </div>
+        )}
+      </fieldset>
+
+      <Button
+        variant="primary"
+        size="lg"
+        fullWidth
+        onClick={next}
+        disabled={busy}
+        style={{ marginTop: 20 }}
+      >
+        {busy ? 'Speichere…' : 'Weiter'}
+      </Button>
+      <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
+        <button type="button" className="vp-linklike" onClick={onNext}>
+          Überspringen - später festlegen
+        </button>
+      </p>
+      {err && <div className="vp-alert vp-alert-err">{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * Step 4 · Gerät: connect the VoltPilot device by its Geräte-ID. Skippable -
  * the Anlage exists either way and the resume banner keeps the way back in.
  */
 function GeraetStep({
