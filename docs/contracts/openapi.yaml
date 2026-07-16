@@ -1951,6 +1951,70 @@ components:
             properties:
               month: { type: string, format: date, description: First day of the Berlin month. }
               gesamtertragEur: { type: number }
+        peakShaving:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/PeakShaving" }]
+          description: >
+            The Lastspitzenkappung proof (PS-4) - present exactly when the
+            site's peak-shaving module is active (non-null
+            site.leistungspreis_eur_kw); null otherwise. Range-independent:
+            always describes the RUNNING Europe/Berlin billing period.
+    PeakShaving:
+      type: object
+      description: >
+        Peak-shaving proof of a module-active site: the running billing
+        period's measured grid-import peak vs. the counterfactual no-battery
+        peak (both the max 15-min mean import from the telemetry rollups; the
+        counterfactual re-adds the battery's dispatch per bucket -
+        "dieselbe Anlage ohne Speichereinsatz"). avoidedKw =
+        max(0, baselinePeakKw - peakKw); avoidedEur = avoidedKw ×
+        leistungspreisEurKw, NOT pro-rated - the Leistungspreis bills the
+        period's single highest 15-min mean, so mid-period the number is the
+        current standing (final only once the period closes).
+      properties:
+        leistungspreisEurKw:
+          type: number
+          description: The configured Leistungspreis (EUR per kW per billing period).
+        abrechnung:
+          type: string
+          enum: [jahr, monat]
+          description: Billing period kind (Europe/Berlin calendar year or month).
+        periodStart:
+          type: string
+          format: date
+          description: First Berlin day of the running billing period.
+        peakKw:
+          type: number
+          nullable: true
+          description: >
+            Measured peak of the running period (max 15-min mean grid import,
+            kW). Null while the period has no measured import bucket yet.
+        baselinePeakKw:
+          type: number
+          nullable: true
+          description: Counterfactual no-battery peak of the running period (kW).
+        avoidedKw:
+          type: number
+          nullable: true
+          description: max(0, baselinePeakKw - peakKw).
+        avoidedEur:
+          type: number
+          nullable: true
+          description: avoidedKw × leistungspreisEurKw (the period's standing saving).
+        history:
+          type: array
+          description: >
+            The last 12 billing periods with measured import data (ascending,
+            incl. the running one); the current contract price is applied to
+            past periods too.
+          items:
+            type: object
+            properties:
+              periodStart: { type: string, format: date }
+              peakKw: { type: number }
+              baselinePeakKw: { type: number }
+              avoidedKw: { type: number }
+              avoidedEur: { type: number }
     EarningsTotals:
       type: object
       description: >

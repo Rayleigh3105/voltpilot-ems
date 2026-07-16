@@ -1982,6 +1982,146 @@ class PortalApiTest {
     }
 
     /**
+     * The PS-4 peak-shaving proof on the earnings response ("Vermiedene
+     * Spitze: X kW × Y €/kW = Z €"): for a module-active site (non-NULL
+     * Leistungspreis, migration V20260716020000) the RUNNING Europe/Berlin
+     * billing period's MEASURED grid-import peak (max 15-min mean from the
+     * rollups, kWh × 4) vs. the COUNTERFACTUAL no-battery peak (per bucket
+     * {@code max(0, import - export + discharge - charge)} × 4 - the same
+     * plant with the battery idle), avoided kW/EUR and the per-period history.
+     *
+     * <p>Hand-computed properties proven: the per-period max semantics
+     * (measured 8 kW and baseline 12 kW both peak in bucket A while bucket B's
+     * battery-raised import moves neither), PRICE-independence (no day-ahead
+     * price is seeded for these buckets - the peak block computes regardless
+     * of the money fields' price coverage), buckets without a measured
+     * grid_import are skipped (never zeroed), the avoided floor at 0 (a jahr
+     * site whose battery grid-charged INTO the period peak reads 0 avoided,
+     * never a negative "saving"), monat vs jahr period windows + history
+     * (current price applied to the closed previous period), the honest
+     * no-measurement state (config echoed, peaks null, history empty), null
+     * for non-module sites, and RLS.
+     *
+     * <p>Seeded now()-relative at the current Berlin MONTH start (+10/11 h -
+     * always inside the running month AND year) in fresh CH sites, so nothing
+     * collides with the dev seed or other tests' pinned rollup contents.
+     */
+    @Test
+    void earningsExposeThePeakShavingProofPerBillingPeriod() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String monat = createSite(demo, "PS Werk Monat", "CH", "eigenverbrauch");
+        String jahr = createSite(demo, "PS Werk Jahr", "CH", "eigenverbrauch");
+        String unmeasured = createSite(demo, "PS Werk Frisch", "CH", "eigenverbrauch");
+        String plain = createSite(demo, "PS Ohne Vertrag", "CH", "eigenverbrauch");
+
+        // The module contract is ADMIN-configured (optimizer-config endpoint,
+        // covered by AdminApiTest) - seed the columns directly here.
+        exec("UPDATE site SET leistungspreis_eur_kw = 120, abrechnung_leistung = 'monat' "
+                + "WHERE id = '" + monat + "'");
+        exec("UPDATE site SET leistungspreis_eur_kw = 100, abrechnung_leistung = 'jahr' "
+                + "WHERE id IN ('" + jahr + "', '" + unmeasured + "')");
+
+        // monat site, current month (all consistent with the power balance):
+        //   A: import 2.0, discharge 1.0 -> measured 8 kW,
+        //      baseline (2.0 - 0 + 1.0 - 0)*4 = 12 kW  (the period max of BOTH)
+        //   B: import 1.0, charge 0.5    -> measured 4 kW, baseline 2 kW
+        //   C: grid_import NULL           -> skipped, never zeroed
+        // Previous month: import 3.0, discharge 0.5 -> measured 12, baseline 14
+        //   -> avoided 2 kW × 120 = 240 € (closed period, current price).
+        String bA = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '10 hours') AT TIME ZONE 'Europe/Berlin'";
+        String bB = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '11 hours') AT TIME ZONE 'Europe/Berlin'";
+        String bC = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
+        String bPrev = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " - interval '10 days' + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                + "(" + bA + ", '" + tenantA + "', '" + monat + "', 0.0, 3.0, 2.0, 0.0, 0.0, 1.0, 90), "
+                + "(" + bB + ", '" + tenantA + "', '" + monat + "', 0.0, 0.5, 1.0, 0.0, 0.5, 0.0, 90), "
+                + "(" + bC + ", '" + tenantA + "', '" + monat + "', 1.0, NULL, NULL, NULL, NULL, NULL, 90), "
+                + "(" + bPrev + ", '" + tenantA + "', '" + monat + "', 0.0, 3.5, 3.0, 0.0, 0.0, 0.5, 90), "
+                // jahr site: the battery grid-charged INTO the year's peak -
+                // measured 20 kW vs baseline (5.0 - 2.0)*4 = 12 kW.
+                + "(" + bA + ", '" + tenantA + "', '" + jahr + "', 0.0, 3.0, 5.0, 0.0, 2.0, 0.0, 90) "
+                + "ON CONFLICT DO NOTHING");
+
+        java.time.LocalDate today =
+                java.time.LocalDate.now(com.voltpilot.api.history.HistoryRange.ZONE);
+        String monthStart = today.withDayOfMonth(1).toString();
+        String prevMonthStart = today.withDayOfMonth(1).minusMonths(1).toString();
+        String yearStart = today.withDayOfYear(1).toString();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+
+        Map<String, Object> monatPeak = map(siteRow(body, monat), "peakShaving");
+        assertThat(monatPeak).containsEntry("abrechnung", "monat")
+                .containsEntry("periodStart", monthStart);
+        assertThat(num(monatPeak, "leistungspreisEurKw")).isCloseTo(120.0, eps);
+        assertThat(num(monatPeak, "peakKw")).isCloseTo(8.0, eps);
+        assertThat(num(monatPeak, "baselinePeakKw")).isCloseTo(12.0, eps);
+        assertThat(num(monatPeak, "avoidedKw")).isCloseTo(4.0, eps);
+        assertThat(num(monatPeak, "avoidedEur")).isCloseTo(480.0, eps);
+        // History: previous + running month, ascending, priced at the current
+        // contract; the NULL-import bucket never fabricated a period.
+        List<Map<String, Object>> history = list(monatPeak, "history");
+        assertThat(history).hasSize(2);
+        assertThat(history.get(0)).containsEntry("periodStart", prevMonthStart);
+        assertThat(num(history.get(0), "peakKw")).isCloseTo(12.0, eps);
+        assertThat(num(history.get(0), "baselinePeakKw")).isCloseTo(14.0, eps);
+        assertThat(num(history.get(0), "avoidedKw")).isCloseTo(2.0, eps);
+        assertThat(num(history.get(0), "avoidedEur")).isCloseTo(240.0, eps);
+        assertThat(history.get(1)).containsEntry("periodStart", monthStart);
+        assertThat(num(history.get(1), "avoidedEur")).isCloseTo(480.0, eps);
+
+        // The jahr site: year window, and the avoided peak FLOORS at 0 when
+        // the battery raised the period peak - never a negative "saving".
+        Map<String, Object> jahrPeak = map(siteRow(body, jahr), "peakShaving");
+        assertThat(jahrPeak).containsEntry("abrechnung", "jahr")
+                .containsEntry("periodStart", yearStart);
+        assertThat(num(jahrPeak, "peakKw")).isCloseTo(20.0, eps);
+        assertThat(num(jahrPeak, "baselinePeakKw")).isCloseTo(12.0, eps);
+        assertThat(num(jahrPeak, "avoidedKw")).isCloseTo(0.0, eps);
+        assertThat(num(jahrPeak, "avoidedEur")).isCloseTo(0.0, eps);
+
+        // Module active but nothing measured yet: config echoed, peaks null,
+        // history empty - never fabricated zeros.
+        Map<String, Object> freshPeak = map(siteRow(body, unmeasured), "peakShaving");
+        assertThat(num(freshPeak, "leistungspreisEurKw")).isCloseTo(100.0, eps);
+        assertThat(freshPeak).containsEntry("periodStart", yearStart)
+                .containsEntry("peakKw", null)
+                .containsEntry("baselinePeakKw", null)
+                .containsEntry("avoidedKw", null)
+                .containsEntry("avoidedEur", null);
+        assertThat(list(freshPeak, "history")).isEmpty();
+
+        // No Leistungspreis = module off = no block, on every range.
+        assertThat(siteRow(body, plain)).containsEntry("peakShaving", null);
+        ResponseEntity<Map<String, Object>> all = rest.exchange(
+                url("/api/v1/earnings?range=all"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        // Range-independent: the same running-period numbers under range=all.
+        assertThat(num(map(siteRow(all.getBody(), monat), "peakShaving"), "avoidedEur"))
+                .isCloseTo(480.0, eps);
+
+        // RLS: tenant B never sees these sites (or their peaks).
+        ResponseEntity<Map<String, Object>> other = rest.exchange(
+                url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(list(other.getBody(), "sites")).extracting(x -> x.get("id"))
+                .doesNotContain(monat, jahr, unmeasured, plain);
+    }
+
+    /**
      * The DYNAMIC Marktprämie (captain domain fix 2026-07-07): fixed is the
      * plant's ANZULEGENDER WERT; the premium per exported kWh in month M is
      * {@code max(0, anzulegender Wert - Monatsmarktwert Solar(M))}, credited on

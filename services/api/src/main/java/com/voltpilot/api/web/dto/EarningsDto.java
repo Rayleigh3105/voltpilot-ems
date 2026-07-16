@@ -103,6 +103,14 @@ public record EarningsDto(
      * say "nächste N h". All four are null when there is no forward PV forecast
      * or no forward price coverage - the portal then hides the figure (never a
      * fabricated 0).
+     *
+     * <p><b>Peak shaving (PS-4).</b> {@code peakShaving} is the
+     * Lastspitzenkappung proof block - present exactly when the site's
+     * peak-shaving module is active ({@code site.leistungspreis_eur_kw}
+     * non-NULL); null for every other site. Like the forward benchmark it is
+     * RANGE-INDEPENDENT: it always describes the RUNNING Europe/Berlin billing
+     * period (per {@code abrechnung}), never the selected earnings window. See
+     * {@link PeakShavingDto}.
      */
     public record EarningsSiteDto(
             UUID id,
@@ -134,7 +142,58 @@ public record EarningsDto(
             Instant expectedMarketValueTo,
             Long expectedMarketValueSlots,
             List<EarningsSeriesPointDto> series,
-            List<EarningsMonthDto> monthlyStrip) {
+            List<EarningsMonthDto> monthlyStrip,
+            PeakShavingDto peakShaving) {
+    }
+
+    /**
+     * The Lastspitzenkappung proof of a peak-module site ("Vermiedene Spitze:
+     * X kW × Y €/kW = Z €"): the RUNNING Europe/Berlin billing period's
+     * measured grid-import peak vs. the counterfactual no-battery peak, both
+     * the max 15-min mean import from {@code telemetry_rollup_15m} (the exact
+     * math + its documented approximations: PeakShavingRepository).
+     *
+     * <p>{@code leistungspreisEurKw}/{@code abrechnung} echo the configured
+     * contract (EUR per kW per billing period; {@code jahr} | {@code monat});
+     * {@code periodStart} is the running period's first Berlin day.
+     * {@code peakKw} (measured), {@code baselinePeakKw} (counterfactual),
+     * {@code avoidedKw} and {@code avoidedEur} are null when the running
+     * period has no measured import bucket yet - never fabricated.
+     *
+     * <p><b>Semantics of the euro number, explicitly.</b>
+     * {@code avoidedKw = max(0, baselinePeakKw - peakKw)} - floored at 0, so a
+     * battery-CAUSED higher peak (e.g. legacy grid charging into a new period
+     * peak) reads as 0 avoided, never as a negative "saving".
+     * {@code avoidedEur = avoidedKw × leistungspreisEurKw} with NO pro-rating:
+     * the Leistungspreis bills the period's single highest 15-min mean, so an
+     * avoided peak is worth the full period price PROVIDED the standing holds
+     * to the period end - mid-period it is the current standing (the portal's
+     * wording carries that caveat), for the closed {@code history} periods it
+     * is final. The CURRENT contract price is applied to history periods too
+     * (no historical contract tracking - the netzladen-flag discipline).
+     *
+     * <p>{@code history} lists the last 12 billing periods (ascending,
+     * including the running one) that have at least one measured import
+     * bucket - the data behind a later per-period chart.
+     */
+    public record PeakShavingDto(
+            BigDecimal leistungspreisEurKw,
+            String abrechnung,
+            LocalDate periodStart,
+            BigDecimal peakKw,
+            BigDecimal baselinePeakKw,
+            BigDecimal avoidedKw,
+            BigDecimal avoidedEur,
+            List<PeakPeriodDto> history) {
+    }
+
+    /** One closed-or-running billing period of the peak-shaving history. */
+    public record PeakPeriodDto(
+            LocalDate periodStart,
+            BigDecimal peakKw,
+            BigDecimal baselinePeakKw,
+            BigDecimal avoidedKw,
+            BigDecimal avoidedEur) {
     }
 
     /** One bucket of the Ertrag chart: its Berlin start + the Gesamtertrag. */
