@@ -117,6 +117,11 @@ class BatterySite:
     (``site.netzladen_erlaubt``, DB default FALSE): False = EEG mode, the
     battery charges only from PV surplus; True = merchant mode (arbitrage).
 
+    ``max_feed_in_kw`` (FK1) is the site's static feed-in cap at the grid
+    connection point (``site.max_feed_in_kw``, nullable master data) - a hard
+    EXPORT-ONLY cap in the MILP, separate from the telemetry-driven §14a
+    ``grid_limit_kw``.
+
     ``latitude``/``longitude`` are the site's WGS84 coordinates
     (``site.latitude``/``site.longitude``, nullable) - used to night-floor the
     PV input so the persistence fallback can never fabricate night "solar" (see
@@ -136,6 +141,7 @@ class BatterySite:
     netzladen_erlaubt: bool
     latitude: float | None = None
     longitude: float | None = None
+    max_feed_in_kw: float | None = None
     tariff: SiteTariff = SiteTariff()
 
 
@@ -158,7 +164,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                    s.anzulegender_wert_ct_kwh,
                    pv.commissioned_on, pv.pv_capacity_kwp,
                    s.backup_reserve_soc_pct,
-                   a.soc_min_pct, a.soc_max_pct
+                   a.soc_min_pct, a.soc_max_pct,
+                   s.max_feed_in_kw
             FROM asset a
             JOIN site s ON s.id = a.site_id
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv'
@@ -172,7 +179,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                 netzladen, lat, lon, wear_ct,
                 plant_kind, tarif_art, tarif_param, anzulegender_wert,
                 commissioned_on, pv_kwp, backup_reserve,
-                soc_min_pct, soc_max_pct,
+                soc_min_pct, soc_max_pct, max_feed_in,
             ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
@@ -211,6 +218,9 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                     netzladen_erlaubt=bool(netzladen),
                     latitude=float(lat) if lat is not None else None,
                     longitude=float(lon) if lon is not None else None,
+                    max_feed_in_kw=(
+                        float(max_feed_in) if max_feed_in is not None else None
+                    ),
                     tariff=SiteTariff(
                         plant_kind=(
                             str(plant_kind) if plant_kind is not None
@@ -354,6 +364,7 @@ def gather_inputs(
         initial_soc_kwh=float(soc_pct) / 100.0 * site.battery.capacity_kwh,
         netzladen_erlaubt=site.netzladen_erlaubt,
         grid_limit_kw=float(grid_limit) if grid_limit is not None else None,
+        max_feed_in_kw=site.max_feed_in_kw,
         import_price_eur_mwh=import_series,
         export_value_eur_mwh=export_series,
         # P3: None = derive the terminal energy value from the horizon's own

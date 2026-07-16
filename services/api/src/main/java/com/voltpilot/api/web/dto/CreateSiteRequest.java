@@ -44,6 +44,11 @@ import java.math.BigDecimal;
  * the portal form carries the Ausschließlichkeitsprinzip warning so nobody
  * flips it uninformed. An omitted field leaves the DB default FALSE
  * ("Nur Solarladen (EEG)").
+ *
+ * <p>{@code maxFeedInKw} (FK1) is the optional static feed-in cap at the grid
+ * connection point (Einspeisegrenze am Netzanschlusspunkt, kW, strictly
+ * positive); omit/null = no connection-point limit. The optimizer enforces it
+ * export-only.
  */
 public record CreateSiteRequest(
         @NotBlank String name,
@@ -69,7 +74,12 @@ public record CreateSiteRequest(
         @Digits(integer = 5, fraction = 3,
                 message = "tarifParamCtKwh must have at most 3 decimal places")
                 BigDecimal tarifParamCtKwh,
-        Boolean netzladenErlaubt) {
+        Boolean netzladenErlaubt,
+        @DecimalMin(value = "0", inclusive = false,
+                message = "maxFeedInKw must be positive")
+        @Digits(integer = 6, fraction = 2,
+                message = "maxFeedInKw must have at most 2 decimal places")
+                BigDecimal maxFeedInKw) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;

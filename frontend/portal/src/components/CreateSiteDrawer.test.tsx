@@ -42,6 +42,7 @@ const createdSite: Site = {
   tarifArt: 'ohne',
   tarifParamCtKwh: null,
   netzladenErlaubt: true,
+  maxFeedInKw: null,
 };
 
 describe('CreateSiteDrawer (netzladen switch, captain revision 2026-07-07)', () => {

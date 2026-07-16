@@ -34,6 +34,11 @@ import java.util.UUID;
  * "Netzladen aktiv", grid arbitrage allowed. Editable by the site owner and
  * by Portal-Admins (captain revision 2026-07-07 of decision 3); the portal
  * form carries the Ausschließlichkeitsprinzip warning.
+ * {@code maxFeedInKw} (migration V20260716000000, FK1) is the site's static
+ * feed-in cap at the grid connection point (Einspeisegrenze am
+ * Netzanschlusspunkt, kW &gt; 0); null = no connection-point limit. The
+ * optimizer enforces it as a hard cap on grid EXPORT ONLY - unlike the
+ * telemetry-driven §14a limit, which is symmetric.
  */
 public record SiteDto(
         UUID id,
@@ -46,5 +51,6 @@ public record SiteDto(
         BigDecimal marktpraemieCtKwh,
         String tarifArt,
         BigDecimal tarifParamCtKwh,
-        boolean netzladenErlaubt) {
+        boolean netzladenErlaubt,
+        BigDecimal maxFeedInKw) {
 }

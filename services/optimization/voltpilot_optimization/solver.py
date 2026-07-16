@@ -23,6 +23,8 @@ Formulation (per slot t, dt = 0.25 h):
                                                                     floor, raised by the P11
                                                                     backup reserve, see below)
                import_t <= grid_limit, export_t <= grid_limit      (observed §14a, hard cap)
+               export_t <= max_feed_in_kw                          (static connection-point
+                                                                    feed-in cap, EXPORT ONLY)
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t - load_t, 0)                   (charge from PV surplus only)
                import_t <= M_imp_t * (1 - is_charging_t)           (never import while charging)
@@ -326,6 +328,20 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         # fixed the STALENESS of the reading (inputs._fresh_measurement).
         m.grid_export_cap = Constraint(
             m.T, rule=lambda model, t: model.grid_export[t] <= inp.grid_limit_kw
+        )
+    if inp.max_feed_in_kw is not None:
+        # FK1: the site's STATIC feed-in cap at the grid connection point
+        # (site.max_feed_in_kw master data, the Excel reference spec's "Max
+        # Einspeisung am Netzpunkt") - EXPORT ONLY, import is never capped by
+        # it. Separate from the symmetric, telemetry-driven §14a cap above;
+        # when both exist the tighter one wins on export (two <= constraints).
+        # Deliberately NOT behind enforce_grid_limit: curtailment can always
+        # bring export to zero, so this cap can never make the model
+        # infeasible - the infeasible-§14a fallback build must respect the
+        # physical connection limit too (a 100-kW-PV plant on a 75-kW
+        # connection must plan curtailment/charge, never an impossible export).
+        m.feed_in_cap = Constraint(
+            m.T, rule=lambda model, t: model.grid_export[t] <= inp.max_feed_in_kw
         )
     # Real degradation cost per AC-side kWh in each direction (see module
     # docstring); the epsilon tie-break below stays for the c_wear = 0 case.

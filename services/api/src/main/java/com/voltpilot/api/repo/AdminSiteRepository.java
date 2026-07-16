@@ -24,7 +24,8 @@ public class AdminSiteRepository {
 
     private static final String COLUMNS =
             "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
-                    + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt";
+                    + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
+                    + " max_feed_in_kw";
 
     private final JdbcTemplate jdbc;
 
@@ -41,13 +42,14 @@ public class AdminSiteRepository {
     public SiteDto create(UUID tenantId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
             BigDecimal anzulegenderWertCtKwh, String tarifArt, BigDecimal tarifParamCtKwh,
-            Boolean netzladenErlaubt) {
+            Boolean netzladenErlaubt, BigDecimal maxFeedInKw) {
         return jdbc.queryForObject(
                 "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind,"
-                        + " anzulegender_wert_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ohne'), ?, COALESCE(?, FALSE)) "
+                        + " anzulegender_wert_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
+                        + " max_feed_in_kw) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ohne'), ?, COALESCE(?, FALSE), ?) "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind,
-                anzulegenderWertCtKwh, tarifArt, tarifParamCtKwh, netzladenErlaubt);
+                anzulegenderWertCtKwh, tarifArt, tarifParamCtKwh, netzladenErlaubt, maxFeedInKw);
     }
 }

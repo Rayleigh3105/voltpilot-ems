@@ -42,6 +42,7 @@ def make_input(
     battery: BatteryParams = BATTERY,
     soc0_kwh: float = 5.0,
     grid_limit_kw: float | None = None,
+    max_feed_in_kw: float | None = None,
     netzladen_erlaubt: bool = True,
 ) -> OptimizationInput:
     # netzladen_erlaubt defaults to True (merchant mode) HERE, deliberately:
@@ -61,6 +62,7 @@ def make_input(
         initial_soc_kwh=soc0_kwh,
         netzladen_erlaubt=netzladen_erlaubt,
         grid_limit_kw=grid_limit_kw,
+        max_feed_in_kw=max_feed_in_kw,
     )
 
 
@@ -182,6 +184,102 @@ def test_grid_limit_is_a_hard_cap_on_import_and_export():
         assert abs(slot.grid_kw) <= 6.0 + 1e-6
     # The battery still cycles (within the envelope): the plan is not degenerate.
     assert any(s.battery_kw > 1e-3 for s in plan.slots)
+
+
+# ---- FK1: static feed-in cap at the grid connection point -------------------
+
+
+def test_feed_in_cap_constraint_exists_in_both_builds_export_only():
+    # The static connection-point cap (site master data) must be present in the
+    # primary build AND the infeasible-§14a fallback rebuild - unlike the
+    # telemetry-driven grid_limit_kw it is never dropped (curtailment can
+    # always satisfy it, so it can never cause infeasibility). And it is
+    # EXPORT ONLY: no import-side twin.
+    for enforce in (True, False):
+        model = build_model(
+            make_input([50.0] * 96, max_feed_in_kw=40.0),
+            enforce_grid_limit=enforce,
+        )
+        assert hasattr(model, "feed_in_cap")
+        assert not hasattr(model, "grid_import_cap")
+    # Unconfigured -> no constraint (the pre-FK1 model, byte-identical).
+    model = build_model(make_input([50.0] * 96))
+    assert not hasattr(model, "feed_in_cap")
+
+
+@needs_highs
+def test_pv_surplus_beyond_the_feed_in_cap_caps_export_instead_of_infeasible():
+    # A 100-kW PV forecast against a 40-kW connection: the plan must stay
+    # feasible and hold export at/below the cap - absorbing the surplus into
+    # the battery and/or curtailing the rest (the model's lever), never
+    # exporting beyond the physical connection.
+    n = 96
+    plan = solve(
+        make_input(
+            [80.0] * n,
+            load=5.0,
+            pv=[100.0] * n,
+            soc0_kwh=BATTERY.soc_min_kwh,
+            max_feed_in_kw=40.0,
+        )
+    )
+    for slot in plan.slots:
+        export_kw = max(-slot.grid_kw, 0.0)
+        assert export_kw <= 40.0 + 1e-6
+    # 100 pv - 5 load - 5 max charge = 90 kW surplus vs a 40 kW cap: the
+    # remainder MUST be curtailed (at a positive price - forced by physics,
+    # not economics).
+    assert any(s.curtail_kw > 1.0 for s in plan.slots)
+
+
+@needs_highs
+def test_feed_in_cap_never_caps_import():
+    # EXPORT ONLY: a 3-kW feed-in cap must not stop a 5-kW load from importing
+    # (plus charging on top in the cheap window).
+    plan = solve(make_input(arbitrage_prices(), load=5.0, max_feed_in_kw=3.0))
+    assert any(s.grid_kw > 5.0 + 1e-3 for s in plan.slots), (
+        "import (load + charge) must exceed the feed-in cap untouched"
+    )
+
+
+@needs_highs
+def test_tighter_of_feed_in_cap_and_grid_limit_wins_on_export():
+    # Full battery discharging into the expensive evening with zero load:
+    # export comes from the battery, bounded by BOTH caps - the tighter one
+    # binds. (An arbitrage curve, not a flat one: on a flat curve the terminal
+    # value ties with discharging and the plan correctly stays idle.)
+    prices = arbitrage_prices()
+
+    def max_export(plan) -> float:
+        return max(max(-s.grid_kw, 0.0) for s in plan.slots)
+
+    tight_feed_in = solve(
+        make_input(prices, load=0.0, soc0_kwh=9.5,
+                   grid_limit_kw=4.0, max_feed_in_kw=2.0)
+    )
+    assert max_export(tight_feed_in) <= 2.0 + 1e-6
+    assert max_export(tight_feed_in) > 1.0  # it does discharge-export
+
+    tight_14a = solve(
+        make_input(prices, load=0.0, soc0_kwh=9.5,
+                   grid_limit_kw=2.0, max_feed_in_kw=4.0)
+    )
+    assert max_export(tight_14a) <= 2.0 + 1e-6
+
+
+@needs_highs
+def test_feed_in_cap_survives_the_infeasible_grid_limit_fallback():
+    # When the §14a cap is infeasible and the engine retries without it, the
+    # STATIC connection-point cap must still be enforced in the fallback plan.
+    from voltpilot_optimization.solver import optimize_ignoring_grid_limit
+
+    inp = make_input(
+        [100.0] * 96, load=50.0, pv=[120.0] * 96,
+        grid_limit_kw=1.0, max_feed_in_kw=30.0,
+    )
+    plan = optimize_ignoring_grid_limit(inp, plan_id=uuid4(), generated_at=T0)
+    for slot in plan.slots:
+        assert max(-slot.grid_kw, 0.0) <= 30.0 + 1e-6
 
 
 @needs_highs

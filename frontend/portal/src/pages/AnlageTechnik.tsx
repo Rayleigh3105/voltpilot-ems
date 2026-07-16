@@ -15,7 +15,7 @@ import {
   type SiteDeletionPreview,
   type TarifArt,
 } from '../api';
-import { BATTERY_NO_DEVICE_WARNING, parsePremiumInput, premiumInputText, tarifArtLabel } from '../fleet';
+import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, parsePremiumInput, premiumInputText, tarifArtLabel } from '../fleet';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { LocationMap } from '../components/LocationMap';
 import { TariffFields } from '../components/TariffFields';
@@ -604,6 +604,23 @@ export function TechnikSection({
                 <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
               </dd>
             </div>
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">
+                Maximale Einspeiseleistung
+                <InfoTip title="Maximale Einspeiseleistung am Netzanschlusspunkt">
+                  Die Leistungsgrenze, bis zu der Ihre Anlage am Netzanschlusspunkt
+                  einspeisen darf. Der Fahrplan hält sie automatisch ein - der Bezug
+                  aus dem Netz ist davon nicht betroffen.
+                </InfoTip>
+              </dt>
+              <dd className="vp-kv-v">
+                {site.maxFeedInKw != null ? (
+                  fmtNum(site.maxFeedInKw, 'kW', 1)
+                ) : (
+                  <span className="vp-muted">keine Grenze hinterlegt</span>
+                )}
+              </dd>
+            </div>
           </dl>
           <p className="vp-tech-miniexp">
             {isDv
@@ -772,6 +789,7 @@ function buildSitePayload(site: Site, overrides: Partial<CreateSiteInput>): Crea
     tarifArt: site.tarifArt,
     tarifParamCtKwh: site.tarifParamCtKwh,
     netzladenErlaubt: site.netzladenErlaubt,
+    maxFeedInKw: site.maxFeedInKw,
     ...overrides,
   };
 }
@@ -913,6 +931,7 @@ export function VerguetungEditForm({
   const [praemie, setPraemie] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
   const [tarifArt, setTarifArt] = useState<TarifArt>(site.tarifArt ?? 'ohne');
   const [tarifParam, setTarifParam] = useState(premiumInputText(site.tarifParamCtKwh ?? null));
+  const [maxFeedIn, setMaxFeedIn] = useState(premiumInputText(site.maxFeedInKw ?? null));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -931,6 +950,11 @@ export function VerguetungEditForm({
       );
       return;
     }
+    const maxFeedInValue = parseFeedInCapInput(maxFeedIn);
+    if (maxFeedInValue === undefined) {
+      setError('Bitte geben Sie die maximale Einspeiseleistung als Zahl in kW an, z. B. 75.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -941,6 +965,10 @@ export function VerguetungEditForm({
           tarifArt,
           tarifParamCtKwh: tarifParamValue,
           netzladenErlaubt: netzladen,
+          // Empty input = null = keep the stored value (the backend's
+          // netzladenErlaubt COALESCE pattern); the payload's carried
+          // site.maxFeedInKw is overridden either way.
+          maxFeedInKw: maxFeedInValue,
         }),
       );
       onSaved(updated);
@@ -999,6 +1027,20 @@ export function VerguetungEditForm({
             EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
             (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
             EEG-Vergütung bezieht.
+          </p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <Input
+            label="Maximale Einspeiseleistung am Netzanschlusspunkt (kW)"
+            placeholder="z. B. 75"
+            inputMode="decimal"
+            value={maxFeedIn}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxFeedIn(e.target.value)}
+          />
+          <p className="vp-note" style={{ margin: 0 }}>
+            Steht in Ihrer Netzanschluss-Zusage bzw. im Einspeisevertrag. Optional -
+            wenn angegeben, plant VoltPilot die Einspeisung nie über diese Grenze
+            hinaus. Ihr Bezug aus dem Netz ist davon nicht betroffen.
           </p>
         </div>
       </div>

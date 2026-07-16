@@ -52,6 +52,12 @@ export interface Site {
    * Ausschließlichkeitsprinzip warning.
    */
   netzladenErlaubt: boolean;
+  /**
+   * Static feed-in cap at the grid connection point (Einspeisegrenze am
+   * Netzanschlusspunkt, kW > 0); null = no connection-point limit. The
+   * optimizer enforces it export-only (FK1).
+   */
+  maxFeedInKw: number | null;
 }
 
 export interface CreateSiteInput {
@@ -73,6 +79,12 @@ export interface CreateSiteInput {
    * update.
    */
   netzladenErlaubt?: boolean;
+  /**
+   * Static feed-in cap at the grid connection point (kW, strictly positive).
+   * Omitted/null = no limit on create / keep the stored value on update
+   * (the netzladenErlaubt pattern).
+   */
+  maxFeedInKw?: number | null;
 }
 
 export interface PricePoint {

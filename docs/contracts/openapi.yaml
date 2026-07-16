@@ -1489,6 +1489,18 @@ components:
             "Netzladen aktiv": grid arbitrage allowed. Editable by the site
             owner and by Portal-Admins (the portal form carries the
             Ausschließlichkeitsprinzip warning).
+        maxFeedInKw:
+          type: number
+          nullable: true
+          exclusiveMinimum: 0
+          example: 75.0
+          description: >
+            Static feed-in cap at the grid connection point (Einspeisegrenze
+            am Netzanschlusspunkt, kW; FK1). null = no connection-point
+            limit. The optimizer enforces it as a hard cap on grid EXPORT
+            ONLY - import is never limited by it (unlike the telemetry-driven
+            §14a limit, which is symmetric); when both exist the tighter one
+            wins on export.
     SiteAsset:
       type: object
       description: One asset row incl. registry provenance; null = not set.
@@ -1970,6 +1982,14 @@ components:
             Grid-charging switch, settable by the site owner and by
             Portal-Admins; omitted = the safe default false ("Nur
             Solarladen (EEG)").
+        maxFeedInKw:
+          type: number
+          nullable: true
+          exclusiveMinimum: 0
+          description: >
+            Optional static feed-in cap at the grid connection point (kW,
+            strictly positive, at most 2 decimals); omit/null = no
+            connection-point limit. Enforced export-only by the optimizer.
     UpdateSiteRequest:
       type: object
       required: [name]
@@ -2005,6 +2025,15 @@ components:
             Grid-charging switch, settable by the site owner and by
             Portal-Admins; null keeps the stored value (a form that omits
             the field never flips it).
+        maxFeedInKw:
+          type: number
+          nullable: true
+          exclusiveMinimum: 0
+          description: >
+            Static feed-in cap at the grid connection point (kW, strictly
+            positive, at most 2 decimals); null keeps the stored value (a
+            form that omits the field never clears the cap - the
+            netzladenErlaubt pattern).
     SiteDeletionPreview:
       type: object
       description: What deleting a site would remove (drives the confirm dialog).
