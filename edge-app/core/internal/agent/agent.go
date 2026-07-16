@@ -747,6 +747,17 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		slog.Warn("local telemetry carried no known measurement; skipped")
 		return
 	}
+	// The PRIMARY inverter's OWN reading, captured BEFORE the multi-source
+	// aggregation below folds Erzeuger PV / a Netz meter's grid into the
+	// composite: the setup page's "Zuletzt gelesen" line shows per-DEVICE
+	// values, and with additional sources the composite would misattribute
+	// their share to the primary. Committed into the state snapshot only after
+	// the gates below KEEP the sample; a gated channel is held to its last
+	// accepted primary value there (the same display policy as the composite).
+	primary := make(map[string]float64, len(measurements))
+	for k, v := range measurements {
+		primary[k] = v
+	}
 	// The measured battery power stays OUT of the measurements map: it feeds
 	// only the house-load balance below, never the cloud buffer / history ring /
 	// state snapshot (the published contract keeps deriving battery from the
@@ -919,6 +930,21 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		s.LastTelemetry = ts
 		s.BufferPending = a.buf.Pending()
 		s.BufferDataLoss = a.buf.DataLoss()
+		// Commit the primary's own reading for the "Zuletzt gelesen" display.
+		// A channel a gate rejected THIS sample holds its last accepted primary
+		// value (hold-last, like the composite); with no last-good yet it stays
+		// absent - the raw spike value is never displayed.
+		for _, d := range drops {
+			if _, ok := primary[d.Channel]; !ok {
+				continue
+			}
+			if prev, ok := s.LastReading[d.Channel]; ok {
+				primary[d.Channel] = prev
+			} else {
+				delete(primary, d.Channel)
+			}
+		}
+		s.LastReading = primary
 		if v, ok := measurements["soc_pct"]; ok {
 			s.SocPct = v
 		}
@@ -1635,6 +1661,32 @@ func (a *Agent) SourceStatuses() map[string]string {
 			out[s.ID] = "ok"
 		} else {
 			out[s.ID] = "warn"
+		}
+	}
+	return out
+}
+
+// SourceLastReadings maps each configured source id to its most recent accepted
+// reading (per-channel value + wall-clock receive time) for the setup page's
+// "Zuletzt gelesen" line - the freshness machinery (srcReadings) already tracks
+// exactly this, so this only surfaces it. A source that never delivered is
+// ABSENT from the map (the page keeps its honest "Wartet auf erste Daten"
+// state, never a fabricated value); a stale reading stays included - its
+// timestamp says how old it is, and SourceStatuses already flags it "warn".
+// Read-only display data; nothing downstream consumes it.
+func (a *Agent) SourceLastReadings() map[string]sources.LastReading {
+	a.srcMu.Lock()
+	defer a.srcMu.Unlock()
+	out := make(map[string]sources.LastReading, len(a.srcReadings))
+	for _, s := range a.srcs {
+		r, ok := a.srcReadings[s.ID]
+		if !ok {
+			continue
+		}
+		out[s.ID] = sources.LastReading{
+			PvKw:     r.pv,
+			PowerKw:  r.grid,
+			ReadAtMs: r.recv.UnixMilli(),
 		}
 	}
 	return out

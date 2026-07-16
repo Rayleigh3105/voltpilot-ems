@@ -73,6 +73,17 @@ type Snapshot struct {
 	LoadKw      float64 `json:"load_kw"`
 	GridLimitKw float64 `json:"grid_limit_kw"`
 
+	// LastReading is the PRIMARY inverter's most recent accepted reading, per
+	// channel (pv_power_kw / load_kw / power_kw / soc_pct / grid_limit_kw),
+	// captured BEFORE the multi-source aggregation so the setup page's
+	// "Zuletzt gelesen" line shows the device's OWN values, not the composite
+	// site reading (with additional Erzeuger/Netz sources the composite would
+	// misattribute their share to the primary). A channel the device never
+	// delivered is absent - never a fabricated 0; a gated (despiked/envelope)
+	// channel holds its last accepted value like every other display path.
+	// Timestamp = LastTelemetry. Display-only; nothing consumes it downstream.
+	LastReading map[string]float64 `json:"last_reading,omitempty"`
+
 	// DespikedDropped is the running count of transient garbage samples the
 	// despike gate has rejected (drop-don't-fabricate). Exposed for field
 	// diagnosis - a steadily climbing count points at a flaky Layer-1 read.

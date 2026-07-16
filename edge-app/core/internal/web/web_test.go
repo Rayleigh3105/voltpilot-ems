@@ -115,6 +115,7 @@ func (f *fakePlan) CurrentPlan() (plan.View, bool) {
 type fakeSources struct {
 	list     []sources.Source
 	statuses map[string]string
+	readings map[string]sources.LastReading
 	addErr   error
 	delErr   error
 	bal      sources.BalanceSettings
@@ -134,6 +135,8 @@ func (f *fakeSources) SetBalance(cfg sources.BalanceSettings) (sources.BalanceSe
 }
 
 func (f *fakeSources) SourceStatuses() map[string]string { return f.statuses }
+
+func (f *fakeSources) SourceLastReadings() map[string]sources.LastReading { return f.readings }
 
 func (f *fakeSources) AddSource(req sources.Request) (sources.Source, error) {
 	if f.addErr != nil {
@@ -745,6 +748,8 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		// group + the Erzeuger/Netz groups + the add-source CTA.
 		`id="anlageCard"`, `id="invGroup"`, `id="invRows"`, `id="invEmpty"`,
 		`id="erzList"`, `id="netzList"`, `id="srcAddToggle"`,
+		// The "Zuletzt gelesen" line of the Wechselrichter summary row.
+		`id="invRead"`,
 		// The "Verbindung testen" buttons + result panels (inverter form + drawer).
 		`id="invTestBtn"`, `id="invVerify"`, `id="srcTestBtn"`, `id="srcVerify"`,
 		`href="dashboard.css"`, `href="inverter.css"`, `src="verify.js"`, `src="inverter.js"`,
@@ -1235,6 +1240,106 @@ func TestSourcesListReturnsPerSourceStatus(t *testing.T) {
 	}
 	if body.Statuses["src-a"] != "ok" || body.Statuses["src-b"] != "pending" {
 		t.Fatalf("per-source status wrong: %+v", body.Statuses)
+	}
+}
+
+// The sources listing carries each source's last accepted reading + when it was
+// read ("Zuletzt gelesen"), plus the device clock so the page computes honest
+// "vor X" ages. A source that never delivered is ABSENT from the map - the page
+// keeps its "Wartet auf erste Daten" state instead of a fabricated value.
+func TestSourcesListReturnsLastReadingsWithServerClock(t *testing.T) {
+	pv := 20.1
+	grid := -3.4
+	readAt := time.Now().Add(-12 * time.Second).UnixMilli()
+	fs := &fakeSources{
+		list: []sources.Source{
+			{ID: "src-a", Role: sources.RoleErzeuger, Brand: "generic_modbus"},
+			{ID: "src-b", Role: sources.RoleNetz, Brand: "generic_modbus"},
+			{ID: "src-c", Role: sources.RoleErzeuger, Brand: "generic_modbus"}, // never read
+		},
+		readings: map[string]sources.LastReading{
+			"src-a": {PvKw: &pv, ReadAtMs: readAt},
+			"src-b": {PowerKw: &grid, ReadAtMs: readAt},
+		},
+	}
+	srv := sourcesServer(t, fs)
+	resp, err := http.Get(srv.URL + "/api/sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Readings    map[string]sources.LastReading `json:"readings"`
+		ServerNowMs int64                          `json:"server_now_ms"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Readings == nil {
+		t.Fatalf("readings should be a (possibly empty) map, not null")
+	}
+	a := body.Readings["src-a"]
+	if a.PvKw == nil || *a.PvKw != 20.1 || a.ReadAtMs != readAt || a.PowerKw != nil {
+		t.Fatalf("Erzeuger reading wrong: %+v", a)
+	}
+	b := body.Readings["src-b"]
+	if b.PowerKw == nil || *b.PowerKw != -3.4 || b.ReadAtMs != readAt || b.PvKw != nil {
+		t.Fatalf("Netz reading wrong: %+v", b)
+	}
+	if _, ok := body.Readings["src-c"]; ok {
+		t.Fatalf("never-read source must be absent, never a fabricated value")
+	}
+	if body.ServerNowMs <= 0 {
+		t.Fatalf("server_now_ms missing (the page needs the device clock for ages)")
+	}
+}
+
+// The state envelope carries the PRIMARY inverter's last accepted reading with
+// per-channel presence (last_reading), so the setup page shows the device's own
+// values + LastTelemetry timestamp. Absent channels (a batteryless inverter's
+// SoC) stay absent; before any telemetry the key is omitted entirely.
+func TestStateExposesPrimaryLastReading(t *testing.T) {
+	st := state.New("edge-test", "test")
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()},
+		&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
+	t.Cleanup(srv.Close)
+
+	getState := func() map[string]any {
+		t.Helper()
+		resp, err := http.Get(srv.URL + "/api/state")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+
+	if _, ok := getState()["last_reading"]; ok {
+		t.Fatalf("last_reading must be omitted before any telemetry (honest empty state)")
+	}
+
+	ts := time.Now().UTC().Truncate(time.Second)
+	st.Update(func(s *state.Snapshot) {
+		s.LastTelemetry = ts
+		s.LastReading = map[string]float64{"pv_power_kw": 4.2, "power_kw": -1.1}
+	})
+	body := getState()
+	lr, ok := body["last_reading"].(map[string]any)
+	if !ok {
+		t.Fatalf("last_reading missing: %v", body["last_reading"])
+	}
+	if lr["pv_power_kw"] != 4.2 || lr["power_kw"] != -1.1 {
+		t.Fatalf("last_reading values wrong: %+v", lr)
+	}
+	if _, ok := lr["soc_pct"]; ok {
+		t.Fatalf("never-delivered channel must stay absent, never a fabricated 0")
+	}
+	if body["last_telemetry"] == nil {
+		t.Fatalf("last_telemetry timestamp missing alongside the reading")
 	}
 }
 

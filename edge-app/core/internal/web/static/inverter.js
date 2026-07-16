@@ -22,6 +22,9 @@
   var catalog = null;      // {schema_version, brands:[...]}
   var selection = null;    // current selection or null
   var invConnected = false; // whether the inverter has delivered telemetry (live status)
+  var lastReading = null;   // the primary's own last accepted reading (per channel)
+  var lastTelemetryMs = 0;  // when it was read (epoch ms)
+  var stateNowMs = 0;       // device clock at fetch time (honest "vor X")
 
   var chosenModel = null;  // picked model id for the current brand (or null)
   var visible = [];        // models currently rendered, in list order (keyboard nav)
@@ -399,6 +402,38 @@
     pill.appendChild(window.VP.el("span", { class: "dot" }));
     pill.appendChild(document.createTextNode(st.label));
     badge.appendChild(pill);
+    renderLastRead();
+  }
+
+  // The primary's channels for the "Zuletzt gelesen" line, in display order.
+  // Only channels the device actually delivered render (last_reading carries
+  // per-channel presence - a batteryless inverter never shows "Speicher 0 %").
+  var READ_FIELDS = [
+    { key: "pv_power_kw", label: "PV", unit: "kW" },
+    { key: "load_kw", label: "Last", unit: "kW" },
+    { key: "power_kw", grid: true },
+    { key: "soc_pct", label: "Speicher", unit: "%" },
+  ];
+
+  function primaryReadingParts() {
+    var parts = [];
+    if (!lastReading) return parts;
+    READ_FIELDS.forEach(function (f) {
+      var v = lastReading[f.key];
+      if (typeof v !== "number" || !isFinite(v)) return;
+      parts.push(f.grid ? window.VP.gridPart(v) : f.label + " " + window.VP.fmtVal(v, f.unit));
+    });
+    return parts;
+  }
+
+  // renderLastRead paints the "Zuletzt gelesen" line under the summary meta: the
+  // last accepted values + when they were read. No reading yet -> no line (the
+  // pill already says "Wartet auf erste Daten"); never a fabricated value.
+  function renderLastRead() {
+    var read = $("invRead");
+    var line = window.VP.lastReadLine(primaryReadingParts(), lastTelemetryMs, stateNowMs);
+    read.hidden = !line;
+    read.textContent = line;
   }
 
   // buildForm fills the form inputs (brand list, model picker, connection fields)
@@ -432,7 +467,13 @@
   function loadStatus() {
     fetch("/api/state", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (s) { invConnected = !!(s && s.inverter_connected); renderSummary(); })
+      .then(function (s) {
+        invConnected = !!(s && s.inverter_connected);
+        lastReading = (s && s.last_reading) || null;
+        lastTelemetryMs = s && s.last_telemetry ? Date.parse(s.last_telemetry) || 0 : 0;
+        stateNowMs = (s && s.server_now_ms) || 0;
+        renderSummary();
+      })
       .catch(function () { /* status is best-effort; the summary still renders */ });
   }
 
@@ -530,4 +571,10 @@
   });
 
   load();
+  // Keep the summary's status pill + "Zuletzt gelesen" line live while the
+  // page is open. Skipped while the edit form is open - renderSummary would
+  // unhide the summary row underneath it.
+  setInterval(function () {
+    if ($("form").hidden) loadStatus();
+  }, 10000);
 })();

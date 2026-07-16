@@ -52,6 +52,10 @@ type SourcesController interface {
 	// SourceStatuses maps each source id to its live delivery status
 	// ("ok"|"warn"|"pending"), so the web app can show a status dot per source.
 	SourceStatuses() map[string]string
+	// SourceLastReadings maps each source id to its most recent accepted
+	// reading (per-channel value + receive time) for the "Zuletzt gelesen"
+	// line; a source that never delivered is absent from the map.
+	SourceLastReadings() map[string]sources.LastReading
 	AddSource(sources.Request) (sources.Source, error)
 	DeleteSource(id string) error
 	// Balance settings: the operator-declared "primary grid CT measures the
@@ -335,11 +339,20 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		if statuses == nil {
 			statuses = map[string]string{}
 		}
+		readings := src.SourceLastReadings()
+		if readings == nil {
+			readings = map[string]sources.LastReading{}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"sources":  list,
 			"statuses": statuses,
-			"catalog":  inv.InverterCatalog(),
-			"balance":  src.GetBalance(),
+			// readings carries each source's last accepted value + read time
+			// ("Zuletzt gelesen"); server_now_ms lets the page compute an honest
+			// "vor X" age against the DEVICE clock, browser skew notwithstanding.
+			"readings":      readings,
+			"server_now_ms": time.Now().UnixMilli(),
+			"catalog":       inv.InverterCatalog(),
+			"balance":       src.GetBalance(),
 		})
 	})
 
