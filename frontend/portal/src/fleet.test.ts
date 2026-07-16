@@ -12,6 +12,7 @@ import {
   fleetKind,
   fleetPvKw,
   notComputableHint,
+  parseFeedInCapInput,
   parsePremiumInput,
   marktwertBenchmark,
   premiumDetail,
@@ -374,6 +375,25 @@ describe('parsePremiumInput / premiumInputText (anzulegender-Wert form field)', 
     expect(premiumInputText(0.6)).toBe('0,6');
     expect(premiumInputText(null)).toBe('');
     expect(parsePremiumInput(premiumInputText(1.25))).toBe(1.25);
+  });
+});
+
+describe('parseFeedInCapInput (maximale Einspeiseleistung form field, FK1)', () => {
+  it('accepts German comma and dot decimals', () => {
+    expect(parseFeedInCapInput('75')).toBe(75);
+    expect(parseFeedInCapInput('75,5')).toBe(75.5);
+    expect(parseFeedInCapInput(' 30.25 ')).toBe(30.25);
+  });
+
+  it('empty means no cap / keep the stored value (null)', () => {
+    expect(parseFeedInCapInput('')).toBeNull();
+    expect(parseFeedInCapInput('   ')).toBeNull();
+  });
+
+  it('rejects garbage, zero and negative values (undefined = form error)', () => {
+    expect(parseFeedInCapInput('abc')).toBeUndefined();
+    expect(parseFeedInCapInput('0')).toBeUndefined();
+    expect(parseFeedInCapInput('-75')).toBeUndefined();
   });
 });
 

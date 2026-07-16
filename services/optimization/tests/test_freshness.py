@@ -164,15 +164,33 @@ def test_no_reading_at_all_keeps_the_old_defaults(readings):
     assert inp.initial_soc_kwh == pytest.approx(5.0)
 
 
+def test_site_max_feed_in_flows_into_the_optimization_input(readings):
+    # FK1: the static connection-point feed-in cap is master data, not
+    # telemetry - it flows through gather_inputs unconditionally (no
+    # freshness window) and stays None when unconfigured.
+    import dataclasses
+
+    inp = gather_inputs("postgresql://fake", _site(), NOW, SLOTS)
+    assert inp.max_feed_in_kw is None
+
+    capped = dataclasses.replace(_site(), max_feed_in_kw=75.0)
+    inp = gather_inputs("postgresql://fake", capped, NOW, SLOTS)
+    assert inp.max_feed_in_kw == 75.0
+
+
 # ---- per-asset wear override resolution (load_battery_sites) -----------------
 
 
 class _SitesCursor:
-    def __init__(self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None) -> None:
+    def __init__(
+        self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
+        max_feed_in=None,
+    ) -> None:
         self._wear_ct = wear_ct
         self._backup_reserve = backup_reserve
         self._soc_min = soc_min
         self._soc_max = soc_max
+        self._max_feed_in = max_feed_in
         self._rows: list = []
 
     def __enter__(self):
@@ -188,6 +206,7 @@ class _SitesCursor:
         assert "s.tarif_art" in sql  # the P1 pricing master data is read too
         assert "s.backup_reserve_soc_pct" in sql  # the P11 reserve is read too
         assert "a.soc_min_pct" in sql  # the admin-tunable SoC band is read too
+        assert "s.max_feed_in_kw" in sql  # the FK1 feed-in cap is read too
         self._rows = [
             (
                 TENANT, SITE, uuid4(), "DE-LU",
@@ -195,6 +214,7 @@ class _SitesCursor:
                 "eigenverbrauch", "ohne", None, None, None, None,
                 self._backup_reserve,
                 self._soc_min, self._soc_max,
+                self._max_feed_in,
             )
         ]
 
@@ -202,7 +222,10 @@ class _SitesCursor:
         return self._rows
 
 
-def _wire_sites(monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None):
+def _wire_sites(
+    monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
+    max_feed_in=None,
+):
     class _Conn:
         def __enter__(self):
             return self
@@ -211,7 +234,7 @@ def _wire_sites(monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max
             return False
 
         def cursor(self):
-            return _SitesCursor(wear_ct, backup_reserve, soc_min, soc_max)
+            return _SitesCursor(wear_ct, backup_reserve, soc_min, soc_max, max_feed_in)
 
     monkeypatch.setitem(
         sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: _Conn())
@@ -234,6 +257,18 @@ def test_asset_wear_override_beats_the_platform_default(monkeypatch):
     monkeypatch.setenv("OPTIMIZER_WEAR_COST_CT_PER_KWH", "2.5")
     [site] = load_battery_sites("postgresql://fake")
     assert site.battery.wear_cost_ct_per_kwh == 7.75
+
+
+def test_max_feed_in_column_resolves_to_the_battery_site(monkeypatch):
+    # NULL column -> no connection-point feed-in cap (FK1).
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.max_feed_in_kw is None
+
+    # A configured site.max_feed_in_kw lands on the BatterySite.
+    _wire_sites(monkeypatch, None, max_feed_in=75.0)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.max_feed_in_kw == 75.0
 
 
 def test_backup_reserve_column_resolves_to_the_battery_params(monkeypatch):

@@ -27,6 +27,11 @@ import java.math.BigDecimal;
  * the portal form carries the Ausschließlichkeitsprinzip warning. Null leaves
  * the stored value untouched (a form that omits the field never flips the
  * flag). Admins keep working through the tenant switcher.
+ *
+ * <p>{@code maxFeedInKw} (FK1, the static connection-point feed-in cap, kW,
+ * strictly positive) follows the same null-keeps-stored pattern as
+ * {@code netzladenErlaubt}: null leaves the stored value untouched, so a form
+ * that omits the field never clears the cap.
  */
 public record UpdateSiteRequest(
         @NotBlank String name,
@@ -52,7 +57,12 @@ public record UpdateSiteRequest(
         @Digits(integer = 5, fraction = 3,
                 message = "tarifParamCtKwh must have at most 3 decimal places")
                 BigDecimal tarifParamCtKwh,
-        Boolean netzladenErlaubt) {
+        Boolean netzladenErlaubt,
+        @DecimalMin(value = "0", inclusive = false,
+                message = "maxFeedInKw must be positive")
+        @Digits(integer = 6, fraction = 2,
+                message = "maxFeedInKw must have at most 2 decimal places")
+                BigDecimal maxFeedInKw) {
 
     public String biddingZoneOrDefault() {
         return biddingZone == null || biddingZone.isBlank() ? "DE-LU" : biddingZone;

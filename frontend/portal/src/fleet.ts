@@ -309,6 +309,20 @@ export function premiumInputText(anzulegenderWertCtKwh: number | null): string {
 }
 
 /**
+ * Parse the "Maximale Einspeiseleistung am Netzanschlusspunkt" form input into
+ * kW: German comma or dot decimals ("75" / "75,5"), empty = null (no cap set /
+ * keep the stored value on update), anything invalid or not strictly positive
+ * = undefined (the form shows a German error and blocks the submit - a
+ * connection-point limit must be a positive power).
+ */
+export function parseFeedInCapInput(text: string): number | null | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed.replace(',', '.'));
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
  * The read-only Stromtarif label for the Technik view: names the art and, when
  * set, its ct/kWh parameter in plain German ("Dynamisch (Börsenpreis + 18
  * ct/kWh Aufschlag)", "Fest: 32,5 ct/kWh", "Ohne Angabe").

@@ -1541,6 +1541,65 @@ class PortalApiTest {
         assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    /**
+     * max_feed_in_kw (FK1, the static connection-point feed-in cap): defaults
+     * to null, settable on create and update, null on update KEEPS the stored
+     * value (the netzladenErlaubt COALESCE pattern - a form that omits the
+     * field never clears the cap), and zero/negative values are refused.
+     */
+    @Test
+    void siteMaxFeedInKwIsOptionalKeptOnOmittedUpdateAndValidatedPositive() {
+        String demo = token("demo", "demo");
+
+        // Default: no connection-point limit.
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Einspeisegrenze Test"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody().get("maxFeedInKw")).isNull();
+        String siteId = (String) created.getBody().get("id");
+
+        // Set the cap via update.
+        ResponseEntity<Map<String, Object>> updated = rest.exchange(
+                url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Einspeisegrenze Test",
+                        "maxFeedInKw", 75.5), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) updated.getBody().get("maxFeedInKw")).doubleValue())
+                .isEqualTo(75.5);
+
+        // An update WITHOUT the field keeps the stored cap (COALESCE pattern).
+        ResponseEntity<Map<String, Object>> omitted = rest.exchange(
+                url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Einspeisegrenze Test"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(omitted.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Number) omitted.getBody().get("maxFeedInKw")).doubleValue())
+                .isEqualTo(75.5);
+
+        // Settable on create too.
+        ResponseEntity<Map<String, Object>> capped = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Einspeisegrenze Direkt",
+                        "maxFeedInKw", 30), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(capped.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(((Number) capped.getBody().get("maxFeedInKw")).doubleValue())
+                .isEqualTo(30.0);
+
+        // Strictly positive: 0 and negative are refused.
+        for (Object bad : new Object[] {0, -5}) {
+            ResponseEntity<String> invalid = rest.exchange(
+                    url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("name", "Einspeisegrenze Test",
+                            "maxFeedInKw", bad), bearer(demo)),
+                    String.class);
+            assertThat(invalid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+    }
+
     // ---- realized earnings ---------------------------------------------------
 
     /**

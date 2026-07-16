@@ -42,6 +42,7 @@ const site: Site = {
   tarifArt: 'ohne',
   tarifParamCtKwh: null,
   netzladenErlaubt: false,
+  maxFeedInKw: null,
 };
 
 const device: Device = {

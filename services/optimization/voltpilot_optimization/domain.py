@@ -143,6 +143,13 @@ class OptimizationInput:
     ``None`` means unconstrained. ``initial_soc_kwh`` is the battery state at
     the start of the first slot.
 
+    ``max_feed_in_kw`` (FK1, the Excel reference spec's "Max Einspeisung am
+    Netzpunkt") is the site's STATIC feed-in cap at the grid connection point
+    (``site.max_feed_in_kw`` master data): a hard cap on EXPORT ONLY - import
+    is never limited by it. It is separate from (and composes with) the
+    telemetry-driven §14a ``grid_limit_kw``: when both exist the tighter one
+    wins on export. ``None`` means no connection-point limit.
+
     ``netzladen_erlaubt`` mirrors ``site.netzladen_erlaubt`` (the per-site
     grid-charging switch, captain decision 2026-07-07): ``True`` = merchant
     mode, the battery may charge from the grid (price arbitrage); ``False`` =
@@ -180,6 +187,7 @@ class OptimizationInput:
     initial_soc_kwh: float
     netzladen_erlaubt: bool
     grid_limit_kw: float | None = None
+    max_feed_in_kw: float | None = None
     slot_minutes: int = SLOT_MINUTES
     import_price_eur_mwh: list[float] | None = None
     export_value_eur_mwh: list[float] | None = None
@@ -200,6 +208,8 @@ class OptimizationInput:
             raise ValueError("slot_minutes must be positive")
         if self.grid_limit_kw is not None and self.grid_limit_kw <= 0:
             raise ValueError("grid_limit_kw must be positive when set")
+        if self.max_feed_in_kw is not None and self.max_feed_in_kw <= 0:
+            raise ValueError("max_feed_in_kw must be positive when set")
         if self.terminal_value_eur_per_kwh is not None and not (
             math.isfinite(self.terminal_value_eur_per_kwh)
             and self.terminal_value_eur_per_kwh >= 0.0

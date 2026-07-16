@@ -28,7 +28,7 @@ import {
   validateSeeNummer,
   zoneForCountry,
 } from '../anlageFlow';
-import { parsePremiumInput } from '../fleet';
+import { parseFeedInCapInput, parsePremiumInput } from '../fleet';
 import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
 import { TariffFields } from './TariffFields';
@@ -317,6 +317,7 @@ function AnlageStep({
   const [praemie, setPraemie] = useState('');
   const [tarifArt, setTarifArt] = useState<TarifArt>('ohne');
   const [tarifParam, setTarifParam] = useState('');
+  const [maxFeedIn, setMaxFeedIn] = useState('');
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -364,6 +365,11 @@ function AnlageStep({
       );
       return;
     }
+    const maxFeedInValue = parseFeedInCapInput(maxFeedIn);
+    if (maxFeedInValue === undefined) {
+      setErr('Bitte geben Sie die maximale Einspeiseleistung als Zahl in kW an, z. B. 75.');
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -377,6 +383,7 @@ function AnlageStep({
         tarifArt,
         tarifParamCtKwh: tarifParamValue,
         netzladenErlaubt: netzladen,
+        maxFeedInKw: maxFeedInValue,
       });
       onCreated(site);
     } catch (e) {
@@ -475,8 +482,8 @@ function AnlageStep({
           </button>
           {!advanced && (
             <p className="vp-note" style={{ margin: '4px 0 0' }}>
-              Stromtarif, Vergütung und Netzladen - jetzt oder später unter
-              „Technik &amp; Einstellungen".
+              Stromtarif, Vergütung, Netzladen und Einspeisegrenze - jetzt oder
+              später unter „Technik &amp; Einstellungen".
             </p>
           )}
         </div>
@@ -523,6 +530,22 @@ function AnlageStep({
                 EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
                 (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
                 EEG-Vergütung bezieht.
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              <Input
+                label="Maximale Einspeiseleistung am Netzanschlusspunkt (kW)"
+                placeholder="z. B. 75"
+                inputMode="decimal"
+                value={maxFeedIn}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setMaxFeedIn(e.target.value)
+                }
+              />
+              <p className="vp-note" style={{ margin: 0 }}>
+                Steht in Ihrer Netzanschluss-Zusage bzw. im Einspeisevertrag. Optional -
+                wenn angegeben, plant VoltPilot die Einspeisung nie über diese Grenze
+                hinaus. Ihr Bezug aus dem Netz ist davon nicht betroffen.
               </p>
             </div>
           </>

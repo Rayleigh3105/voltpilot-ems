@@ -42,6 +42,7 @@ const eegSite: Site = {
   tarifArt: 'ohne',
   tarifParamCtKwh: null,
   netzladenErlaubt: false,
+  maxFeedInKw: null,
 };
 
 describe('VerguetungEditForm (netzladen switch, captain revision 2026-07-07)', () => {
@@ -75,6 +76,35 @@ describe('VerguetungEditForm (netzladen switch, captain revision 2026-07-07)', (
     expect(updateSite).toHaveBeenCalledWith(
       eegSite.id,
       expect.objectContaining({ netzladenErlaubt: true, name: eegSite.name, plantKind: 'eigenverbrauch' }),
+    );
+    updateSite.mockRestore();
+  });
+
+  it('sends the maximale Einspeiseleistung (FK1) on save and rejects garbage', async () => {
+    const updateSite = vi
+      .spyOn(api, 'updateSite')
+      .mockResolvedValue({ ...eegSite, maxFeedInKw: 75.5 });
+    const onSaved = vi.fn();
+    render(<VerguetungEditForm site={eegSite} onCancel={() => {}} onSaved={onSaved} />);
+    const field = screen.getByLabelText(
+      'Maximale Einspeiseleistung am Netzanschlusspunkt (kW)',
+    );
+
+    // Garbage blocks the submit with a German error, nothing is sent.
+    fireEvent.change(field, { target: { value: 'abc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+    expect(
+      await screen.findByText(/maximale Einspeiseleistung als Zahl in kW/),
+    ).toBeInTheDocument();
+    expect(updateSite).not.toHaveBeenCalled();
+
+    // A German-comma value is parsed and sent.
+    fireEvent.change(field, { target: { value: '75,5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(updateSite).toHaveBeenCalledWith(
+      eegSite.id,
+      expect.objectContaining({ maxFeedInKw: 75.5 }),
     );
     updateSite.mockRestore();
   });

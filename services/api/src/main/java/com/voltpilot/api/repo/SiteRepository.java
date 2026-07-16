@@ -17,7 +17,8 @@ public class SiteRepository {
 
     private static final String COLUMNS =
             "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
-                    + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt";
+                    + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
+                    + " max_feed_in_kw";
 
     private final JdbcTemplate jdbc;
 
@@ -50,14 +51,15 @@ public class SiteRepository {
     public SiteDto create(UUID tenantId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
             BigDecimal anzulegenderWertCtKwh, String tarifArt, BigDecimal tarifParamCtKwh,
-            Boolean netzladenErlaubt) {
+            Boolean netzladenErlaubt, BigDecimal maxFeedInKw) {
         return jdbc.queryForObject(
                 "INSERT INTO site (tenant_id, name, bidding_zone, latitude, longitude, plant_kind,"
-                        + " anzulegender_wert_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ohne'), ?, COALESCE(?, FALSE)) "
+                        + " anzulegender_wert_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
+                        + " max_feed_in_kw) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, 'ohne'), ?, COALESCE(?, FALSE), ?) "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, tenantId, name, biddingZone, latitude, longitude, plantKind,
-                anzulegenderWertCtKwh, tarifArt, tarifParamCtKwh, netzladenErlaubt);
+                anzulegenderWertCtKwh, tarifArt, tarifParamCtKwh, netzladenErlaubt, maxFeedInKw);
     }
 
     /**
@@ -68,23 +70,25 @@ public class SiteRepository {
     public SiteDto update(UUID siteId, String name, String biddingZone,
             BigDecimal latitude, BigDecimal longitude, String plantKind,
             BigDecimal anzulegenderWertCtKwh, String tarifArt, BigDecimal tarifParamCtKwh,
-            Boolean netzladenErlaubt) {
+            Boolean netzladenErlaubt, BigDecimal maxFeedInKw) {
         // tarif_art is a full-representation field like plant_kind (the controller
         // fills the 'ohne' default), so it overwrites; tarif_param_ct_kwh is set
         // directly (null clears it - the controller already nulls it for 'ohne').
-        // netzladen_erlaubt: null = keep the stored value, so a caller that omits
-        // the field never flips the flag by accident. The deprecated
-        // marktpraemie_ct_kwh column is deliberately untouched (kept one release
-        // for manual recovery, then dropped).
+        // netzladen_erlaubt and max_feed_in_kw: null = keep the stored value, so
+        // a caller that omits either field never flips the flag / clears the cap
+        // by accident. The deprecated marktpraemie_ct_kwh column is deliberately
+        // untouched (kept one release for manual recovery, then dropped).
         List<SiteDto> updated = jdbc.query(
                 "UPDATE site SET name = ?, bidding_zone = ?, latitude = ?, longitude = ?, plant_kind = ?,"
                         + " anzulegender_wert_ct_kwh = ?, tarif_art = COALESCE(?, 'ohne'),"
                         + " tarif_param_ct_kwh = ?,"
-                        + " netzladen_erlaubt = COALESCE(?, netzladen_erlaubt) "
+                        + " netzladen_erlaubt = COALESCE(?, netzladen_erlaubt),"
+                        + " max_feed_in_kw = COALESCE(?, max_feed_in_kw) "
                         + "WHERE id = ? "
                         + "RETURNING " + COLUMNS,
                 SiteRepository::mapSite, name, biddingZone, latitude, longitude, plantKind,
-                anzulegenderWertCtKwh, tarifArt, tarifParamCtKwh, netzladenErlaubt, siteId);
+                anzulegenderWertCtKwh, tarifArt, tarifParamCtKwh, netzladenErlaubt, maxFeedInKw,
+                siteId);
         return updated.isEmpty() ? null : updated.get(0);
     }
 
@@ -116,6 +120,7 @@ public class SiteRepository {
                 rs.getBigDecimal("marktpraemie_ct_kwh"),
                 rs.getString("tarif_art"),
                 rs.getBigDecimal("tarif_param_ct_kwh"),
-                rs.getBoolean("netzladen_erlaubt"));
+                rs.getBoolean("netzladen_erlaubt"),
+                rs.getBigDecimal("max_feed_in_kw"));
     }
 }
