@@ -181,20 +181,38 @@ public final class SlotEconomics {
         return values;
     }
 
+    /** Mirrors frontend/portal src/schedule.ts PV_SOURCE_DEADBAND_KW. */
+    public static final double PV_SOURCE_DEADBAND_KW = 0.1;
+
     /**
      * What the slot does with the battery - the server-side twin of
-     * frontend/portal src/schedule.ts {@code chargeKind} (same deadband, same
+     * frontend/portal src/schedule.ts {@code chargeKind} (same deadbands, same
      * energy-source-honest netzladen derivation): {@code solarladen} |
      * {@code netzladen} | {@code entladen} | {@code ruhe}.
+     *
+     * <p>PV-aware since FK3 (PV-bus semantics): an EEG site legitimately
+     * charges solar WHILE the house imports its load, so a charging slot is
+     * {@code netzladen} only when the charge EXCEEDS the slot's available PV
+     * ({@code pv - curtail}) - the solver's own solar-only bound. Without a PV
+     * value the old, coarser charging-while-importing rule applies.
      */
-    public static String decisionLabel(Double batteryKw, Double gridKw) {
+    public static String decisionLabel(Double batteryKw, Double gridKw, Double pvKw,
+            Double curtailKw) {
         if (batteryKw == null || Math.abs(batteryKw) <= SLOT_DEADBAND_KW) {
             return "ruhe";
         }
         if (batteryKw < 0) {
             return "entladen";
         }
-        return gridKw != null && gridKw > SLOT_DEADBAND_KW ? "netzladen" : "solarladen";
+        // Grid energy can only flow INTO the battery while the slot net-imports.
+        if (gridKw == null || gridKw <= SLOT_DEADBAND_KW) {
+            return "solarladen";
+        }
+        if (pvKw == null) {
+            return "netzladen"; // no PV data: the pre-pvKw fallback
+        }
+        double available = Math.max(pvKw - Math.max(curtailKw == null ? 0 : curtailKw, 0), 0);
+        return batteryKw > available + PV_SOURCE_DEADBAND_KW ? "netzladen" : "solarladen";
     }
 
     /**

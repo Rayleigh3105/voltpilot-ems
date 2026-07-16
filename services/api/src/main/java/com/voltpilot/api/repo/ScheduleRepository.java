@@ -48,7 +48,8 @@ public class ScheduleRepository {
             return null;
         }
         List<ScheduleSlotDto> slots = jdbc.query(
-                "SELECT time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw "
+                "SELECT time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, "
+                        + "curtail_kw, pv_kw "
                         + "FROM schedule WHERE site_id = ? AND generated_at = ? "
                         + "ORDER BY time ASC",
                 (rs, i) -> new ScheduleSlotDto(
@@ -59,7 +60,8 @@ public class ScheduleRepository {
                         rs.getBigDecimal("price_eur_mwh"),
                         rs.getBigDecimal("cost_eur"),
                         rs.getBigDecimal("baseline_cost_eur"),
-                        rs.getBigDecimal("curtail_kw")),
+                        rs.getBigDecimal("curtail_kw"),
+                        rs.getBigDecimal("pv_kw")),
                 siteId, Timestamp.from(generatedAt));
         List<Object[]> meta = jdbc.query(
                 "SELECT plan_id, device_id, terminal_value_eur_per_kwh FROM schedule "

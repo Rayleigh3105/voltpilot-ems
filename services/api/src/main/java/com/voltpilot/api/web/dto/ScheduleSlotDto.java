@@ -15,6 +15,13 @@ import java.time.Instant;
  * so the plant does not pay to export, and the portal surfaces the avoided loss
  * ("heute X kWh abgeregelt, Y € Verlust vermieden"). Null on runs that predate
  * the curtailment column or slots without curtailment data.
+ *
+ * <p>{@code pvKw} is the PV forecast input the slot planned with
+ * ({@code schedule.pv_kw}). It feeds the portal's pv-aware "Laden aus dem
+ * Netz" derivation: since FK3 (PV-bus semantics) an EEG site legitimately
+ * charges solar while the house imports its load, so grid-charging is only
+ * charge BEYOND the slot's available PV - not merely charging while
+ * importing. Null on rows without a persisted PV input.
  */
 public record ScheduleSlotDto(
         Instant start,
@@ -24,5 +31,6 @@ public record ScheduleSlotDto(
         BigDecimal priceEurMwh,
         BigDecimal costEur,
         BigDecimal baselineCostEur,
-        BigDecimal curtailKw) {
+        BigDecimal curtailKw,
+        BigDecimal pvKw) {
 }

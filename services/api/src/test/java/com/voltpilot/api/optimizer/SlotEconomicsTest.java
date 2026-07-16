@@ -198,13 +198,34 @@ class SlotEconomicsTest {
 
     @Test
     void decisionLabelMirrorsChargeKind() {
-        assertThat(SlotEconomics.decisionLabel(null, null)).isEqualTo("ruhe");
-        assertThat(SlotEconomics.decisionLabel(0.04, 5.0)).isEqualTo("ruhe");
-        assertThat(SlotEconomics.decisionLabel(-3.0, -2.0)).isEqualTo("entladen");
-        assertThat(SlotEconomics.decisionLabel(5.0, 8.0)).isEqualTo("netzladen");
-        assertThat(SlotEconomics.decisionLabel(5.0, -1.0)).isEqualTo("solarladen");
-        assertThat(SlotEconomics.decisionLabel(5.0, null)).isEqualTo("solarladen");
-        assertThat(SlotEconomics.decisionLabel(5.0, 0.04)).isEqualTo("solarladen");
+        assertThat(SlotEconomics.decisionLabel(null, null, null, null)).isEqualTo("ruhe");
+        assertThat(SlotEconomics.decisionLabel(0.04, 5.0, null, null)).isEqualTo("ruhe");
+        assertThat(SlotEconomics.decisionLabel(-3.0, -2.0, null, null)).isEqualTo("entladen");
+        assertThat(SlotEconomics.decisionLabel(5.0, 8.0, null, null)).isEqualTo("netzladen");
+        assertThat(SlotEconomics.decisionLabel(5.0, -1.0, null, null)).isEqualTo("solarladen");
+        assertThat(SlotEconomics.decisionLabel(5.0, null, null, null)).isEqualTo("solarladen");
+        assertThat(SlotEconomics.decisionLabel(5.0, 0.04, null, null)).isEqualTo("solarladen");
+    }
+
+    /**
+     * The pv-aware half of the twin (FK3 PV-bus semantics): an EEG cloudy-day
+     * slot charges solar WHILE the house imports - grid never feeds the
+     * battery, so it must NOT read netzladen; only charge beyond the slot's
+     * available PV (pv - curtail) is grid-fed.
+     */
+    @Test
+    void decisionLabelIsPvAwareSinceFk3() {
+        // FK3 cloudy day: charge 3 kW == pv 3 kW while the house imports 1 kW.
+        assertThat(SlotEconomics.decisionLabel(3.0, 1.0, 3.0, null)).isEqualTo("solarladen");
+        // Real grid charge: charge 5 kW against 1 kW of PV.
+        assertThat(SlotEconomics.decisionLabel(5.0, 4.5, 1.0, null)).isEqualTo("netzladen");
+        // Within the PV deadband stays solar (forecast jitter must not flicker).
+        assertThat(SlotEconomics.decisionLabel(3.05, 1.0, 3.0, null)).isEqualTo("solarladen");
+        assertThat(SlotEconomics.decisionLabel(3.2, 1.0, 3.0, null)).isEqualTo("netzladen");
+        // A fully curtailed slot has NO available PV: its charge is grid-fed.
+        assertThat(SlotEconomics.decisionLabel(5.0, 5.0, 10.0, 10.0)).isEqualTo("netzladen");
+        // No PV data (pre-pvKw rows): the old import-based fallback.
+        assertThat(SlotEconomics.decisionLabel(4.0, 6.0, null, null)).isEqualTo("netzladen");
     }
 
     // ---- whyText ---------------------------------------------------------------

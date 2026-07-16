@@ -85,7 +85,7 @@ export function OptimizerPlanChart({
                 hour: '2-digit',
                 minute: '2-digit',
               });
-              const kind = chargeKind(s.batteryKw, s.gridKw);
+              const kind = chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw);
               const label =
                 kind === 'netzladen'
                   ? 'lädt aus dem Netz'
@@ -167,7 +167,9 @@ export function OptimizerPlanChart({
                 borderRadius: 2,
                 color: (p: { dataIndex: number; value: number | null }) => {
                   const slot = slots[p.dataIndex];
-                  if (slot && chargeKind(slot.batteryKw, slot.gridKw) === 'netzladen') {
+                  const kind =
+                    slot && chargeKind(slot.batteryKw, slot.gridKw, slot.pvKw, slot.curtailKw);
+                  if (kind === 'netzladen') {
                     return t.gridCharge;
                   }
                   return Number(p.value) >= 0 ? t.charge : t.discharge;

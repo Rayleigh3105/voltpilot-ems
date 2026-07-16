@@ -90,7 +90,8 @@ public class OptimizerDiagnosticsService {
             Double batteryKw = toDouble(row.batteryKw());
             Double gridKw = toDouble(row.gridKw());
             Double curtailKw = toDouble(row.curtailKw());
-            String label = SlotEconomics.decisionLabel(batteryKw, gridKw);
+            String label = SlotEconomics.decisionLabel(batteryKw, gridKw,
+                    toDouble(row.pvKw()), curtailKw);
             slots.add(new OptimizerDiagnosticsSlotDto(
                     row.time(),
                     row.batteryKw(),

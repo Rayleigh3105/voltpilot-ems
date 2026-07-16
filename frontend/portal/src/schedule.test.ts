@@ -9,6 +9,7 @@ import {
   horizonHint,
   planHourBars,
   planSentence,
+  PV_SOURCE_DEADBAND_KW,
   savingsTodayEur,
   SLOT_DEADBAND_KW,
   todaySlots,
@@ -16,14 +17,18 @@ import {
 import { NBSP } from './format';
 
 /**
- * Fahrplan slot-kind derivation: a charging slot that net-imports is a
- * grid-charge slot ("Laden aus dem Netz", türkis). On an EEG plan
- * (charge <= PV surplus enforced by the optimizer) that kind can never occur -
- * the chart legend must then not advertise the color.
+ * Fahrplan slot-kind derivation: a charging slot whose charge EXCEEDS the
+ * slot's available PV is a grid-charge slot ("Laden aus dem Netz", türkis).
+ * On an EEG plan (charge <= pv - curtail enforced by the optimizer) that kind
+ * can never occur - the chart legend must then not advertise the color. Since
+ * FK3 (PV-bus semantics) an EEG site legitimately charges solar WHILE the
+ * house imports its load, so charging-while-importing alone is NOT cyan;
+ * slots without a PV value keep the old import-based fallback.
  */
 describe('chargeKind', () => {
-  it('charging while net-importing is Netzladen (türkis)', () => {
+  it('charging while net-importing is Netzladen when no PV data exists (fallback)', () => {
     expect(chargeKind(4.0, 6.5)).toBe('netzladen');
+    expect(chargeKind(4.0, 6.5, null)).toBe('netzladen');
   });
 
   it('charging while exporting or balanced is Solarladen (PV surplus)', () => {
@@ -31,6 +36,37 @@ describe('chargeKind', () => {
     expect(chargeKind(4.0, 0)).toBe('solarladen');
     // Import inside the deadband is solver noise, not a grid charge.
     expect(chargeKind(4.0, SLOT_DEADBAND_KW)).toBe('solarladen');
+  });
+
+  it('FK3 cloudy day: charging solar while the house imports is NOT Netzladen', () => {
+    // EEG site, cloudy day: the battery charges the full 3 kW PV production
+    // while the house imports its 1 kW load - grid never feeds the battery.
+    expect(chargeKind(3.0, 1.0, 3.0)).toBe('solarladen');
+    // Charge below the available PV while importing stays solar too.
+    expect(chargeKind(2.0, 4.0, 3.0)).toBe('solarladen');
+  });
+
+  it('charge beyond the available PV is Netzladen (grid energy enters the battery)', () => {
+    expect(chargeKind(5.0, 4.5, 1.0)).toBe('netzladen');
+    // Night grid charge: no PV at all.
+    expect(chargeKind(6.0, 7.0, 0)).toBe('netzladen');
+  });
+
+  it('keeps a deadband so forecast jitter does not flicker the color', () => {
+    expect(chargeKind(3.0 + PV_SOURCE_DEADBAND_KW, 1.0, 3.0)).toBe('solarladen');
+    expect(chargeKind(3.0 + PV_SOURCE_DEADBAND_KW + 0.01, 1.0, 3.0)).toBe('netzladen');
+  });
+
+  it('a curtailed slot has less PV available for charging', () => {
+    // 10 kW PV fully curtailed: the 5 kW charge can only come from the grid.
+    expect(chargeKind(5.0, 5.0, 10.0, 10.0)).toBe('netzladen');
+    // Partially curtailed: 10 - 6 = 4 kW available still covers a 3 kW charge.
+    expect(chargeKind(3.0, 1.0, 10.0, 6.0)).toBe('solarladen');
+  });
+
+  it('an exporting slot never reads Netzladen even when charge exceeds the PV value', () => {
+    // Export means the site has surplus - grid energy cannot flow inward.
+    expect(chargeKind(5.0, -1.0, 1.0)).toBe('solarladen');
   });
 
   it('negative battery power is Entladen regardless of grid direction', () => {
@@ -71,6 +107,25 @@ describe('hasGridCharge (legend gate)', () => {
       ]),
     ).toBe(false);
   });
+
+  it('false for an FK3 EEG cloudy-day plan (solar charge while the house imports)', () => {
+    expect(
+      hasGridCharge([
+        { batteryKw: 3.0, gridKw: 1.0, pvKw: 3.0, curtailKw: 0 },
+        { batteryKw: 2.5, gridKw: 0.5, pvKw: 2.5, curtailKw: null },
+        { batteryKw: -2.0, gridKw: 3.0, pvKw: 0, curtailKw: 0 },
+      ]),
+    ).toBe(false);
+  });
+
+  it('true when a slot charges beyond its available PV', () => {
+    expect(
+      hasGridCharge([
+        { batteryKw: 3.0, gridKw: 1.0, pvKw: 3.0 },
+        { batteryKw: 5.0, gridKw: 4.5, pvKw: 1.0 },
+      ]),
+    ).toBe(true);
+  });
 });
 
 // ---- Anlagen-Seite mini preview -------------------------------------------
@@ -85,11 +140,13 @@ function slot(
   batteryKw: number | null,
   gridKw: number | null = null,
   dayOffset = 0,
-): { start: string; batteryKw: number | null; gridKw: number | null } {
+  pvKw: number | null = null,
+): { start: string; batteryKw: number | null; gridKw: number | null; pvKw: number | null } {
   return {
     start: new Date(2026, 6, 7 + dayOffset, hour, minute).toISOString(),
     batteryKw,
     gridKw,
+    pvKw,
   };
 }
 
@@ -99,10 +156,11 @@ function hours(
   toH: number,
   batteryKw: number,
   gridKw: number | null = null,
+  pvKw: number | null = null,
 ): ReturnType<typeof slot>[] {
   const out: ReturnType<typeof slot>[] = [];
   for (let h = fromH; h < toH; h++) {
-    for (const m of [0, 15, 30, 45]) out.push(slot(h, m, batteryKw, gridKw));
+    for (const m of [0, 15, 30, 45]) out.push(slot(h, m, batteryKw, gridKw, 0, pvKw));
   }
   return out;
 }
@@ -142,9 +200,18 @@ describe('planSentence', () => {
   });
 
   it('calls a mostly grid-fed charge window "günstig laden"', () => {
-    const slots = [...hours(2, 4, 6, 7), ...hours(18, 20, -5, -5)];
+    // Night charge: no PV, all grid - explicit pv 0 exercises the FK3 rule.
+    const slots = [...hours(2, 4, 6, 7, 0), ...hours(18, 20, -5, -5)];
     expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
       'Nachts günstig laden, abends verkaufen (18–20 Uhr).',
+    );
+  });
+
+  it('an FK3 cloudy-day solar charge with parallel house import says plain "laden"', () => {
+    // Charge == PV while the house imports its load: solar, never "günstig".
+    const slots = [...hours(11, 14, 3, 1, 3), ...hours(18, 20, -5, -5)];
+    expect(planSentence(slots, 'direktvermarktung', NOW)).toBe(
+      'Mittags laden, abends verkaufen (18–20 Uhr).',
     );
   });
 
@@ -201,12 +268,30 @@ describe('planHourBars', () => {
     expect(bars[0].kw).toBeNull();
   });
 
-  it('marks an hour cyan when most of its charge energy net-imports', () => {
+  it('marks an hour cyan when most of its charge energy is grid-fed', () => {
     const bars = planHourBars(
-      [slot(3, 0, 6, 7), slot(3, 15, 6, 7), slot(3, 30, 6, 7), slot(3, 45, 1, -1)],
+      [
+        slot(3, 0, 6, 7, 0, 0),
+        slot(3, 15, 6, 7, 0, 0),
+        slot(3, 30, 6, 7, 0, 0),
+        slot(3, 45, 1, -1, 0, 1),
+      ],
       NOW,
     );
     expect(bars[3].kind).toBe('netzladen');
+  });
+
+  it('keeps an FK3 cloudy-day hour green (solar charge while the house imports)', () => {
+    const bars = planHourBars(
+      [
+        slot(12, 0, 3, 1, 0, 3),
+        slot(12, 15, 3, 1, 0, 3),
+        slot(12, 30, 3, 1, 0, 3),
+        slot(12, 45, 3, 1, 0, 3),
+      ],
+      NOW,
+    );
+    expect(bars[12]).toEqual({ hour: 12, kind: 'solarladen', kw: 3 });
   });
 
   it('renders a planned-idle hour as ruhe with kw 0', () => {
