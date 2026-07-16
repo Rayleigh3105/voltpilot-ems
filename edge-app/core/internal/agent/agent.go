@@ -1151,7 +1151,8 @@ func (a *Agent) applySetpoint(now time.Time) {
 
 	// P5 EEG execution gap: a plan carrying grid_charge_allowed=false (the
 	// site is EEG-funded, site.netzladen_erlaubt) demands the solar-only
-	// clamp - charge <= MEASURED pv - load - on every commanded setpoint.
+	// clamp - charge <= MEASURED pv (PV-bus semantics since FK3: the house
+	// may import its load in parallel) - on every commanded setpoint.
 	// FAIL-SAFE: the field ABSENT (legacy/hand-crafted payload) or no plan at
 	// all also clamps - only an explicit true releases it (the optimizer
 	// always publishes the field, so a merchant site's plan is unaffected).

@@ -113,26 +113,35 @@ func TestClampCombinedSocAndGrid(t *testing.T) {
 }
 
 // --- EEG solar-only charge (P5): the on-device twin of the cloud MILP's
-// charge <= max(pv - load, 0) constraint, on MEASURED values. ---
+// charge <= pv - curtail constraint, on MEASURED values - PV-bus semantics
+// since FK3 (charge up to the ACTUAL production, the house may import its
+// load in parallel; measured pv is already post-curtailment). ---
 
 var solarOnlyLimits = Limits{MaxChargeKw: 50, MaxDischargeKw: 40, SocMinPct: 5, SocMaxPct: 95, SolarOnlyCharge: true}
 
-func TestClampSolarOnlyChargeNoSurplusBlocksGridCharge(t *testing.T) {
-	// pv 5 < load 10: no surplus -> a commanded charge would be pure grid
-	// import while charging (the F5 violation) and must clamp to 0.
-	if got := Clamp(20, solarOnlyLimits, reading(50, 5, 10, math.NaN())); got != 0 {
-		t.Errorf("charge without surplus must clamp to 0, got %v", got)
+func TestClampSolarOnlyChargeNoProductionBlocksGridCharge(t *testing.T) {
+	// pv 0: nothing is produced -> a commanded charge would be pure grid
+	// import (the F5 violation) and must clamp to 0.
+	if got := Clamp(20, solarOnlyLimits, reading(50, 0, 10, math.NaN())); got != 0 {
+		t.Errorf("charge without production must clamp to 0, got %v", got)
 	}
 }
 
-func TestClampSolarOnlyChargeCapsAtMeasuredSurplus(t *testing.T) {
-	// pv 15, load 5: surplus 10 -> a 20 kW command caps at 10.
-	if got := Clamp(20, solarOnlyLimits, reading(50, 15, 5, math.NaN())); got != 10 {
-		t.Errorf("charge beyond surplus must cap at surplus, got %v, want 10", got)
+func TestClampSolarOnlyChargeCapsAtMeasuredProduction(t *testing.T) {
+	// pv 15, load 5: PV-bus semantics cap the 20 kW command at the FULL
+	// production 15 (not the pre-FK3 surplus 10 - the house imports the load
+	// in parallel).
+	if got := Clamp(20, solarOnlyLimits, reading(50, 15, 5, math.NaN())); got != 15 {
+		t.Errorf("charge beyond production must cap at pv, got %v, want 15", got)
 	}
-	// Within the surplus the command passes untouched.
+	// Within the production the command passes untouched.
 	if got := Clamp(3, solarOnlyLimits, reading(50, 15, 5, math.NaN())); got != 3 {
-		t.Errorf("charge within surplus must pass, got %v, want 3", got)
+		t.Errorf("charge within production must pass, got %v, want 3", got)
+	}
+	// The cloudy-day case the pre-FK3 Zähler clamp forbade: pv 5 < load 10
+	// (zero surplus) still charges up to the produced 5 kW.
+	if got := Clamp(20, solarOnlyLimits, reading(50, 5, 10, math.NaN())); got != 5 {
+		t.Errorf("cloudy-day charge must cap at produced pv, got %v, want 5", got)
 	}
 }
 
@@ -142,14 +151,20 @@ func TestClampSolarOnlyChargeNeverTouchesDischarge(t *testing.T) {
 	}
 }
 
-func TestClampSolarOnlyChargeUnknownReadingsBlockCharge(t *testing.T) {
-	// A compliance clamp must not charge blind: unknown pv/load = surplus 0.
+func TestClampSolarOnlyChargeUnknownPvBlocksCharge(t *testing.T) {
+	// A compliance clamp must not charge blind: unknown pv = production 0.
 	r := Reading{SocPct: 50, PvKw: Unknown(), LoadKw: Unknown(), GridLimitKw: Unknown()}
 	if got := Clamp(20, solarOnlyLimits, r); got != 0 {
 		t.Errorf("charging blind must clamp to 0, got %v", got)
 	}
 	if got := Clamp(-10, solarOnlyLimits, r); got != -10 {
 		t.Errorf("discharge stays allowed on unknown readings, got %v", got)
+	}
+	// An unknown LOAD no longer blocks (the PV-bus formula needs only pv);
+	// the charge still caps at the measured production.
+	rl := Reading{SocPct: 50, PvKw: 5, LoadKw: Unknown(), GridLimitKw: Unknown()}
+	if got := Clamp(20, solarOnlyLimits, rl); got != 5 {
+		t.Errorf("known pv with unknown load must cap at pv, got %v, want 5", got)
 	}
 }
 
@@ -161,23 +176,24 @@ func TestClampSolarOnlyOffIsByteIdenticalToBefore(t *testing.T) {
 }
 
 func TestClampSolarOnlyComposesWithExistingGuards(t *testing.T) {
-	// Rated band still caps a huge surplus: pv 100, load 0 -> surplus 100,
+	// Rated band still caps a huge production: pv 100, load 0 -> bound 100,
 	// but MaxChargeKw is 50.
 	if got := Clamp(120, solarOnlyLimits, reading(50, 100, 0, math.NaN())); got != 50 {
 		t.Errorf("rated band must still cap, got %v, want 50", got)
 	}
-	// SoC full still blocks charging even with surplus.
+	// SoC full still blocks charging even with production available.
 	if got := Clamp(20, solarOnlyLimits, reading(95, 30, 0, math.NaN())); got != 0 {
 		t.Errorf("SocMax must still block, got %v", got)
 	}
-	// §14a import cap composes: surplus clamps 20 -> 0 first (pv 0, load 10),
-	// predicted import 10 stays inside limit 15 -> final 0, never grid charge.
+	// §14a import cap composes: no production clamps 20 -> 0 first (pv 0,
+	// load 10), predicted import 10 stays inside limit 15 -> final 0, never
+	// grid charge.
 	if got := Clamp(20, solarOnlyLimits, reading(50, 0, 10, 15)); got != 0 {
 		t.Errorf("§14a + solar-only: got %v, want 0", got)
 	}
 	// §14a EXPORT correction may raise charge, but its target
-	// pv - load - limit (30 - 0 - 15 = 15) is always <= the surplus (30),
-	// so absorbing own PV export never violates solar-only.
+	// pv - load - limit (30 - 0 - 15 = 15) is always <= pv (30), so
+	// absorbing own PV export never violates solar-only.
 	if got := Clamp(0, solarOnlyLimits, reading(50, 30, 0, 15)); got != 15 {
 		t.Errorf("§14a export absorption stays solar: got %v, want 15", got)
 	}

@@ -22,12 +22,16 @@ type Limits struct {
 	// SolarOnlyCharge enforces the EEG Ausschliesslichkeitsprinzip at
 	// EXECUTION time (P5, the on-device twin of the cloud MILP's
 	// solar-only-charge constraint): commanded CHARGE is clamped to the
-	// MEASURED PV surplus max(pv - load, 0), so a PV forecast overshoot can
-	// never turn a planned "solar" charge into real grid import on an
-	// EEG-funded plant. Set from the plan's grid_charge_allowed=false (the
-	// schedule contract's optional field mirroring site.netzladen_erlaubt).
-	// Zero value (false) = no extra clamp = pre-P5 behavior. Discharge is
-	// never affected.
+	// MEASURED PV production max(pv, 0) - PV-bus Bilanzierung (FK3, captain
+	// decision 2026-07-16: the battery may charge up to the full actual PV
+	// while the house imports its load in parallel; measured PV is the
+	// inverter's ACTUAL output, i.e. already post-curtailment, so this is the
+	// measured twin of the solver's charge <= pv - curtail). A PV forecast
+	// overshoot can still never turn a planned "solar" charge into real grid
+	// import on an EEG-funded plant. Set from the plan's
+	// grid_charge_allowed=false (the schedule contract's optional field
+	// mirroring site.netzladen_erlaubt). Zero value (false) = no extra clamp.
+	// Discharge is never affected.
 	SolarOnlyCharge bool
 }
 
@@ -52,11 +56,11 @@ func known(v float64) bool { return !math.IsNaN(v) }
 //  1. clamp to the rated charge/discharge band,
 //  2. SoC bounds: no charging at/above SocMax, no discharging at/below SocMin,
 //  3. EEG solar-only charge (when Limits.SolarOnlyCharge): charge <=
-//     max(measured pv - load, 0). Unknown pv/load clamps charge to 0 - a
-//     compliance guard must not charge blind (unlike the advisory guards,
-//     which skip on missing data). The later §14a export correction can only
-//     ever raise charge to pv - load - limit <= the surplus, so it never
-//     re-violates this clamp,
+//     max(measured pv, 0) - the FK3 PV-bus clamp; the house may import its
+//     load in parallel. Unknown pv clamps charge to 0 - a compliance guard
+//     must not charge blind (unlike the advisory guards, which skip on
+//     missing data). The later §14a export correction can only ever raise
+//     charge to pv - load - limit <= pv, so it never re-violates this clamp,
 //  4. observed §14a envelope: predicted grid power (load + battery - pv,
 //     + = import) must stay within [-gridLimit, +gridLimit],
 //  5. re-apply the rated band LAST - the §14a correction can otherwise push
@@ -86,15 +90,16 @@ func Clamp(commandKw float64, l Limits, r Reading) float64 {
 		}
 	}
 
-	// 3) EEG solar-only charge: never charge beyond the MEASURED PV surplus.
-	// Charging without a usable pv/load reading clamps to 0 - grid-charging
-	// blind is exactly the violation this guard exists to exclude.
+	// 3) EEG solar-only charge: never charge beyond the MEASURED PV
+	// production (FK3 PV-bus semantics - the house may import in parallel).
+	// Charging without a usable pv reading clamps to 0 - grid-charging blind
+	// is exactly the violation this guard exists to exclude.
 	if l.SolarOnlyCharge && kw > 0 {
-		surplus := 0.0
-		if known(r.PvKw) && known(r.LoadKw) {
-			surplus = math.Max(r.PvKw-r.LoadKw, 0)
+		produced := 0.0
+		if known(r.PvKw) {
+			produced = math.Max(r.PvKw, 0)
 		}
-		kw = math.Min(kw, surplus)
+		kw = math.Min(kw, produced)
 	}
 
 	// 4) observed §14a envelope, both directions. predictedGrid > 0 = import.

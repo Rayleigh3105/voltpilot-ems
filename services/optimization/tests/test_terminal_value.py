@@ -96,7 +96,7 @@ def test_f3_eeg_site_discharges_its_full_battery_into_the_evening_peak():
     peak = plan.slots[80:]
     discharged_kwh = -sum(min(s.battery_kw, 0.0) for s in peak) * 0.25
     assert discharged_kwh > 5.0, "the frozen battery must discharge into the peak"
-    # EEG mode still never charges (no PV surplus exists).
+    # EEG mode still never charges (no PV is produced at all).
     assert all(s.battery_kw <= 1e-6 for s in plan.slots)
     # The horizon ends BELOW the start SoC - exactly what the old hard floor
     # forbade and what P3 legalizes.

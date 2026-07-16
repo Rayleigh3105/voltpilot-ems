@@ -405,13 +405,16 @@ def test_fallback_build_curtails_too():
 
 
 # ---- Per-site grid-charging switch (netzladen_erlaubt, EEG mode) -------------
-# EEG mode (netzladen_erlaubt=False) enforces the Ausschliesslichkeitsprinzip:
-# the battery charges ONLY from the site's own PV surplus, never from the grid.
-# Merchant mode (True) is byte-identical to the pre-switch model - the untouched
-# tests above are that regression proof; the structural test below pins it.
+# EEG mode (netzladen_erlaubt=False) enforces the Ausschliesslichkeitsprinzip
+# with PV-bus Bilanzierung (FK3, captain decision 2026-07-16): the battery
+# charges ONLY from PV the site actually produces (charge <= pv - curtail) -
+# the house may import its load in parallel, but grid energy can never enter
+# the battery. Merchant mode (True) is byte-identical to the pre-switch model -
+# the untouched tests above are that regression proof; the structural test
+# below pins it.
 
 
-def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
+def test_eeg_constraint_exists_only_in_eeg_mode_and_in_both_builds():
     # Merchant build: same constraint/variable counts as before the EEG switch,
     # no EEG constraint objects (the regression guarantee).
     merchant = build_model(make_input(arbitrage_prices(), grid_limit_kw=30.0))
@@ -419,9 +422,11 @@ def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
     assert not hasattr(merchant, "solar_only_charge")
     assert not hasattr(merchant, "no_import_while_charging")
 
-    # EEG build: the two extra constraint families - and they must survive the
-    # infeasible-§14a fallback rebuild (enforce_grid_limit=False) too, so a
-    # degraded plan can never fall back into grid charging.
+    # EEG build: exactly ONE extra constraint family (FK3 removed the pre-FK3
+    # no-import-while-charging ban; the pv - curtail bound carries the
+    # Graustrom protection alone) - and it must survive the infeasible-§14a
+    # fallback rebuild (enforce_grid_limit=False) too, so a degraded plan can
+    # never fall back into grid charging.
     for enforce in (True, False):
         eeg = build_model(
             make_input(
@@ -430,8 +435,8 @@ def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
             enforce_grid_limit=enforce,
         )
         assert hasattr(eeg, "solar_only_charge")
-        assert hasattr(eeg, "no_import_while_charging")
-        expected = 96 * 10 if enforce else 96 * 8
+        assert not hasattr(eeg, "no_import_while_charging")
+        expected = 96 * 9 if enforce else 96 * 7
         assert eeg.nconstraints() == expected
 
 
@@ -439,7 +444,7 @@ def test_eeg_constraints_exist_only_in_eeg_mode_and_in_both_builds():
 def test_eeg_mode_never_charges_from_grid_even_under_extreme_spread():
     # The hardest temptation: a free night (price 0) before a 500 EUR/MWh
     # evening, and NO PV at all. Merchant mode fills the battery from the grid;
-    # EEG mode has no PV surplus, so NOTHING may charge - but since P3 the
+    # EEG mode produces no PV, so NOTHING may charge - but since P3 the
     # stored energy it already holds legitimately discharges into the 500 peak
     # (pre-P3, the hard terminal floor froze it completely - critique F3; the
     # dedicated F3 tests live in test_terminal_value.py).
@@ -457,45 +462,58 @@ def test_eeg_mode_never_charges_from_grid_even_under_extreme_spread():
 
 
 @needs_highs
-def test_eeg_mode_charges_only_from_pv_surplus():
-    # Cheap night, sunny midday, expensive evening. EEG mode must ignore the
-    # cheap night (no PV) and charge exactly out of the midday surplus, never
-    # more than pv - load in any slot - then discharge into the evening peak.
+def test_eeg_mode_cloudy_day_charges_up_to_produced_pv_while_the_house_imports():
+    # The FK3 headline proof (PV-bus Bilanzierung, captain decision 2026-07-16):
+    # a cloudy day where load > pv in EVERY slot. The pre-FK3 Zähler semantics
+    # (charge <= max(pv - load, 0) = 0) forbade ALL charging here; PV-bus mode
+    # charges up to the PV actually produced while the house draws its load
+    # from the grid in parallel (DC-hybrid physics) - and never beyond the PV.
     n = 96
     prices = [20.0] * 48 + [60.0] * 16 + [250.0] * 32
-    pv = [0.0] * 48 + [8.0] * 16 + [0.0] * 32
-    plan = solve(make_input(prices, load=2.0, pv=pv, netzladen_erlaubt=False))
+    pv = [0.0] * 48 + [3.0] * 16 + [0.0] * 32  # cloudy: pv < load (4) all day
+    plan = solve(make_input(prices, load=4.0, pv=pv, netzladen_erlaubt=False))
     for i, slot in enumerate(plan.slots):
-        surplus = max(pv[i] - 2.0, 0.0)
         charge = max(slot.battery_kw, 0.0)
-        assert charge <= surplus + 1e-6, f"slot {i} charges beyond the PV surplus"
+        assert charge <= pv[i] + 1e-6, f"slot {i} charges beyond the produced PV"
     night = plan.slots[:48]
     midday = plan.slots[48:64]
     evening = plan.slots[64:]
     assert all(s.battery_kw <= 1e-6 for s in night), "no grid charging at night"
-    assert sum(s.battery_kw for s in midday) > 1.0, "midday surplus is stored"
+    # The old surplus rule bounded every midday charge at max(3 - 4, 0) = 0;
+    # PV-bus mode stores real solar energy on this cloudy day.
+    assert sum(s.battery_kw for s in midday) > 1.0, "cloudy-day PV is stored"
+    # ... and the charging slots legitimately IMPORT the house load in
+    # parallel (the flow the pre-FK3 import ban forbade).
+    assert any(
+        s.battery_kw > 0.5 and s.grid_kw > 0.5 for s in midday
+    ), "the house must be allowed to import while the battery charges from PV"
     assert sum(s.battery_kw for s in evening) < -1.0, "stored solar covers the peak"
     assert plan.savings_eur > 0.5
 
 
 @needs_highs
-def test_eeg_mode_never_imports_while_charging_even_at_negative_prices():
-    # The curtailment loophole (and the portal's "Türkis kommt nie vor" proof):
-    # at negative prices the model earns by importing, and with the headline
-    # surplus rule alone it could curtail the PV fully while "charging from
-    # PV" - the balance then feeds the battery from paid grid import. No slot
-    # of an EEG plan may ever charge AND net-import at the same time; merchant
-    # mode on the identical curve happily does (that contrast is exactly what
-    # the Fahrplan chart colors).
+def test_eeg_fully_curtailed_pv_cannot_charge_and_grid_never_feeds_the_battery():
+    # The Graustrom loophole test, FK3 edition: at negative prices the model
+    # earns by importing, and WITHOUT the curtail term in the bound it could
+    # curtail the PV fully while "charging from PV" - the balance then feeds
+    # the battery from paid grid import. With charge <= pv - curtail the
+    # charge power is always covered by uncurtailed PV, so via the grid
+    # balance a charging slot's import can never exceed the LOAD - grid energy
+    # never enters the battery, however profitable importing is.
     n = 96
     prices = [-80.0] * (n // 2) + [120.0] * (n - n // 2)
     eeg = solve(
         make_input(prices, load=2.0, pv=6.0, soc0_kwh=1.0, netzladen_erlaubt=False)
     )
     for i, slot in enumerate(eeg.slots):
-        assert not (slot.battery_kw > 1e-6 and slot.grid_kw > 1e-6), (
-            f"slot {i} charges from the grid (battery {slot.battery_kw} kW "
-            f"while importing {slot.grid_kw} kW)"
+        charge = max(slot.battery_kw, 0.0)
+        assert charge <= 6.0 - slot.curtail_kw + 1e-6, (
+            f"slot {i} charges curtailed PV (charge {charge} kW, "
+            f"curtail {slot.curtail_kw} kW)"
+        )
+        assert slot.grid_kw <= 2.0 + 1e-6, (
+            f"slot {i} imports beyond the load (grid {slot.grid_kw} kW) - "
+            f"grid power is feeding the battery"
         )
     # Curtailment itself stays available to EEG plants (it limits feed-in, not
     # charge availability): the negative half still discards surplus PV.
@@ -503,8 +521,8 @@ def test_eeg_mode_never_imports_while_charging_even_at_negative_prices():
 
     merchant = solve(make_input(prices, load=2.0, pv=6.0, soc0_kwh=1.0))
     assert any(
-        s.battery_kw > 1e-3 and s.grid_kw > 1e-3 for s in merchant.slots
-    ), "merchant mode should grid-charge in the paid-import half"
+        s.battery_kw > 1e-3 and s.grid_kw > 2.0 + 1e-3 for s in merchant.slots
+    ), "merchant mode should grid-charge (import beyond the load) when paid"
 
 
 @needs_highs
@@ -527,10 +545,10 @@ def test_eeg_mode_respects_the_14a_grid_limit_and_fallback_stays_eeg_clean():
     )
     for i, slot in enumerate(plan.slots):
         assert abs(slot.grid_kw) <= 4.0 + 1e-6
-        assert max(slot.battery_kw, 0.0) <= max(pv[i] - 2.0, 0.0) + 1e-6
+        assert max(slot.battery_kw, 0.0) <= pv[i] - slot.curtail_kw + 1e-6
 
-    # Infeasible cap (load 50 kW against 1 kW): the EEG rules survive the
-    # fallback rebuild - the degraded plan still never charges (no surplus).
+    # Infeasible cap (load 50 kW against 1 kW): the EEG rule survives the
+    # fallback rebuild - the degraded plan still never charges (no PV at all).
     inp = make_input(
         [0.0] * 48 + [500.0] * 48, load=50.0, grid_limit_kw=1.0,
         netzladen_erlaubt=False,
