@@ -380,6 +380,9 @@ services:
       VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED: "true"
       # Inverter-control confirmation ingestion (portal "Steuerung" strip).
       VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
+      # Ersparnis-Simulation: the internal simulation service (see the
+      # `simulation` service below); the api proxies async jobs there.
+      VOLTPILOT_SIMULATION_BASE_URL: ${VOLTPILOT_SIMULATION_BASE_URL:-http://simulation:8095}
     volumes:
       # Device-CA working dir (created by tools/pki/voltpilot-ca.sh init-ca in
       # this clone). READ-WRITE on purpose: issuance advances the CA's
@@ -615,6 +618,31 @@ services:
       OPTIMIZER_WEAR_COST_CT_PER_KWH: ${OPTIMIZER_WEAR_COST_CT_PER_KWH:-4.0}
       OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES: ${OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES:-60}
       OPTIMIZER_SOC_MAX_AGE_MINUTES: ${OPTIMIZER_SOC_MAX_AGE_MINUTES:-120}
+
+  # Ersparnis-Simulation service: the SAME optimization image with a different
+  # entrypoint (the weather-collector pattern). Internal-only (NO public port -
+  # the api proxies + owns all auth/tenancy); a cpus limit isolates the
+  # minutes-long solve bursts so the production optimizer never starves.
+  # One-time prerequisite per reference year (idempotent, safe to re-run):
+  #   docker compose -f docker-compose.prod.yml run --rm market-data backfill --year 2025 --persist
+  simulation:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/optimization:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: services/optimization/Dockerfile
+    restart: unless-stopped
+    command: ["simulate-serve"]
+    cpus: "3.0"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: timescaledb
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-voltpilot}
+      POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      SIM_MAX_WORKERS: ${SIM_MAX_WORKERS:-3}
 
   # ---------------------------------------------------------------------------
   # Frontend: the built SPA on nginx, and the SINGLE public HTTP entry point the
