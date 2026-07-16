@@ -45,7 +45,11 @@ from voltpilot_market_data.persistence import (
     TimescaleDayAheadPriceRepository,
 )
 from voltpilot_market_data.resilience import ResilientPriceSource
-from voltpilot_market_data.service import fetch_and_store, next_delivery_day
+from voltpilot_market_data.service import (
+    backfill_range,
+    fetch_and_store,
+    next_delivery_day,
+)
 
 # Keyless default so data flows without a secret; ENTSO-E is opt-in.
 DEFAULT_SOURCE = "energy-charts"
@@ -136,6 +140,24 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="stop after N refresh cycles (0 = run forever; used by tests)",
+    )
+
+    backfill = sub.add_parser(
+        "backfill",
+        help="fetch a whole historical day range into day_ahead_prices "
+        "(one-shot; the Ersparnis-Simulation's reference-year prerequisite)",
+    )
+    _add_common_source_args(backfill)
+    backfill.add_argument(
+        "--year",
+        type=int,
+        help="backfill one full calendar year (shorthand for --from/--to)",
+    )
+    backfill.add_argument(
+        "--from", dest="from_day", help="first delivery day YYYY-MM-DD (inclusive)"
+    )
+    backfill.add_argument(
+        "--to", dest="to_day", help="last delivery day YYYY-MM-DD (inclusive)"
     )
 
     market_values = sub.add_parser(
@@ -233,6 +255,25 @@ def main(argv: list[str] | None = None) -> int:
         source = _build_source(env, args.source)
         repository = _repository_for(env, args.persist)
         print(_fetch_one(source, args.zone, day, repository))
+        return 0
+
+    if args.command == "backfill":
+        if args.year is not None:
+            first, last = date(args.year, 1, 1), date(args.year, 12, 31)
+        elif args.from_day and args.to_day:
+            first, last = date.fromisoformat(args.from_day), date.fromisoformat(args.to_day)
+        else:
+            raise SystemExit("backfill needs --year or both --from and --to")
+        source = _build_source(env, args.source)
+        repository = _repository_for(env, args.persist)
+        results = backfill_range(source, args.zone, first, last, repository)
+        points = sum(len(r.series) for r in results)
+        rows = sum(r.rows_written for r in results)
+        print(
+            f"voltpilot-market-data: backfill {args.zone} "
+            f"{first.isoformat()}..{last.isoformat()} - {len(results)} chunks, "
+            f"{points} price points, rows_written={rows}"
+        )
         return 0
 
     if args.command == "market-values":

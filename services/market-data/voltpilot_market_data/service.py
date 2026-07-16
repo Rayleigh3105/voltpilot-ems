@@ -44,6 +44,54 @@ class FetchResult:
     rows_written: int
 
 
+# Backfill chunk size: energy-charts serves arbitrary ranges, so a year is
+# four quarter-sized calls (verified in the vp-sim-design-t6 scout run).
+BACKFILL_CHUNK_DAYS = 92
+
+
+def backfill_range(
+    source: DayAheadPriceSource,
+    zone: str,
+    first_day: date,
+    last_day: date,
+    repository: DayAheadPriceRepository | None = None,
+    tz: ZoneInfo = MARKET_TZ,
+) -> list[FetchResult]:
+    """Fetch + persist a whole historical day range (both bounds inclusive),
+    chunked into :data:`BACKFILL_CHUNK_DAYS` windows.
+
+    The Ersparnis-Simulation's prerequisite: ``day_ahead_prices`` only grows
+    forward (the collector fetches today+tomorrow), so a reference year must
+    be backfilled once per zone. The upsert is idempotent - re-running a
+    backfill (or overlapping the collector's rows) never duplicates or
+    corrupts anything; collector rows are simply overwritten with the same
+    values.
+    """
+    if last_day < first_day:
+        raise ValueError("backfill range is empty (--to before --from)")
+    results: list[FetchResult] = []
+    chunk_start = first_day
+    while chunk_start <= last_day:
+        chunk_end = min(chunk_start + timedelta(days=BACKFILL_CHUNK_DAYS - 1), last_day)
+        start, _ = delivery_day_window(chunk_start, tz)
+        _, end = delivery_day_window(chunk_end, tz)
+        logger.info(
+            "backfill.chunk",
+            extra={
+                "context": {
+                    "zone": zone,
+                    "from": chunk_start.isoformat(),
+                    "to": chunk_end.isoformat(),
+                }
+            },
+        )
+        series = source.fetch_day_ahead_prices(zone, start, end)
+        rows = repository.upsert_series(series) if repository is not None else 0
+        results.append(FetchResult(series=series, rows_written=rows))
+        chunk_start = chunk_end + timedelta(days=1)
+    return results
+
+
 def fetch_and_store(
     source: DayAheadPriceSource,
     zone: str,
