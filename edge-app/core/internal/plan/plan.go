@@ -51,7 +51,8 @@ type Plan struct {
 	ReceivedAt time.Time `json:"received_at"`
 	// GridChargeAllowed is the OPTIONAL contract field mirroring the site's
 	// netzladen_erlaubt (P5). false = the setpoint executor must clamp charge
-	// to the MEASURED PV surplus (guards.Limits.SolarOnlyCharge). nil = field
+	// to the MEASURED PV production (guards.Limits.SolarOnlyCharge; PV-bus
+	// semantics since FK3, captain decision 2026-07-16). nil = field
 	// absent (a pre-P5 cloud / hand-crafted payload): the edge treats that as
 	// MOST RESTRICTIVE and clamps too - a fail-SAFE deviation from the
 	// contract's absent=allowed reading, chosen deliberately: the updated
@@ -65,8 +66,9 @@ type Plan struct {
 // clamp. Fail-safe: only an EXPLICIT grid_charge_allowed=true releases the
 // clamp; an absent field - or no plan at all - keeps the most restrictive
 // posture (see GridChargeAllowed). The clamp composes into the
-// self-consumption fallback as a no-op (pv - load never exceeds the surplus),
-// so a nil/legacy plan on a merchant site costs nothing on the fallback path.
+// self-consumption fallback as a no-op (pv - load never exceeds pv for a
+// non-negative load), so a nil/legacy plan on a merchant site costs nothing
+// on the fallback path.
 func (p *Plan) SolarOnlyCharge() bool {
 	return p == nil || p.GridChargeAllowed == nil || !*p.GridChargeAllowed
 }

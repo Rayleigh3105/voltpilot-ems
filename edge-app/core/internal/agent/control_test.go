@@ -137,11 +137,13 @@ func TestSetpointKillSwitchOffByDefault(t *testing.T) {
 }
 
 // TestSetpointEegSolarOnlyClamp: a plan carrying grid_charge_allowed=false
-// (EEG site, P5) clamps the commanded charge to the MEASURED PV surplus
-// before the setpoint is published, and turns the forwarded adapter-level
-// grid_charge_allowed off even when the device-local config permits it. A
-// plan WITHOUT the field (legacy/hand-crafted payload) clamps too - fail-safe,
-// only an explicit grid_charge_allowed=true releases the clamp.
+// (EEG site, P5) clamps the commanded charge to the MEASURED PV production
+// (PV-bus semantics since FK3: charge up to the full actual PV, the house
+// may import its load in parallel) before the setpoint is published, and
+// turns the forwarded adapter-level grid_charge_allowed off even when the
+// device-local config permits it. A plan WITHOUT the field (legacy/
+// hand-crafted payload) clamps too - fail-safe, only an explicit
+// grid_charge_allowed=true releases the clamp.
 func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
@@ -152,7 +154,9 @@ func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 	now := time.Now().UTC()
 	eegFalse := false
 
-	// EEG plan commands +20 kW charge; measured pv 5 / load 4 -> surplus 1.
+	// EEG plan commands +20 kW charge; measured pv 5 / load 4 -> the PV-bus
+	// clamp caps at the full production 5 (NOT the pre-FK3 surplus 1 - the
+	// house imports its 4 kW load in parallel).
 	p := freshPlan(now, 20, nil)
 	p.GridChargeAllowed = &eegFalse
 	a.mu.Lock()
@@ -163,26 +167,26 @@ func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 
 	waitFor(t, 5*time.Second, "EEG-clamped setpoint", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 1.0
+		return ok && m["battery_setpoint_kw"] == 5.0
 	})
 	m, _ := sub.latest()
-	if m["battery_setpoint_kw"] != 1.0 {
-		t.Fatalf("EEG charge must clamp to the measured surplus: %v", m["battery_setpoint_kw"])
+	if m["battery_setpoint_kw"] != 5.0 {
+		t.Fatalf("EEG charge must clamp to the measured production: %v", m["battery_setpoint_kw"])
 	}
 	if m["grid_charge_allowed"] != false {
 		t.Fatalf("plan grid_charge_allowed=false must gate the adapter bit: %v", m)
 	}
-	if a.State.Get().SetpointKw != 1.0 {
+	if a.State.Get().SetpointKw != 5.0 {
 		t.Fatalf("snapshot setpoint: %v", a.State.Get().SetpointKw)
 	}
 
-	// Zero surplus (pv 2 < load 4): the same command clamps to 0 - never a
-	// grid charge on an EEG site, whatever the schedule says.
+	// No production (pv 0): the same command clamps to 0 - never a grid
+	// charge on an EEG site, whatever the schedule says.
 	a.mu.Lock()
-	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 4, GridLimitKw: guards.Unknown()}
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 0, LoadKw: 4, GridLimitKw: guards.Unknown()}
 	a.mu.Unlock()
 	a.applySetpoint(now)
-	waitFor(t, 5*time.Second, "zero-surplus clamp", func() bool {
+	waitFor(t, 5*time.Second, "zero-production clamp", func() bool {
 		m, ok := sub.latest()
 		return ok && m["battery_setpoint_kw"] == 0.0
 	})
@@ -191,7 +195,7 @@ func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 	// plan (only an explicit grid_charge_allowed=true releases the clamp; the
 	// optimizer always publishes the field, so only legacy/hand-crafted
 	// payloads take this path). pv 5 / load 4 -> the +20 kW command clamps to
-	// the 1 kW surplus and the adapter bit stays off.
+	// the 5 kW production and the adapter bit stays off.
 	a.mu.Lock()
 	a.currentPlan = freshPlan(now, 20, nil)
 	a.lastReading = guards.Reading{SocPct: 60, PvKw: 5, LoadKw: 4, GridLimitKw: guards.Unknown()}
@@ -199,7 +203,7 @@ func TestSetpointEegSolarOnlyClamp(t *testing.T) {
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "legacy plan clamped fail-safe", func() bool {
 		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 1.0
+		return ok && m["battery_setpoint_kw"] == 5.0
 	})
 	m, _ = sub.latest()
 	if m["grid_charge_allowed"] != false {

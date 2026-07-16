@@ -296,7 +296,7 @@ def test_eeg_night_charge_loophole_closed_by_floor():
     )
 
     # The FIX: with PV floored to 0 at night, solar_only_charge requires
-    # charge <= max(pv - load, 0) = 0, so no night charge is feasible at all.
+    # charge <= pv - curtail = 0, so no night charge is feasible at all.
     fixed = optimize(_make_input(slot_starts, floored, False), uuid4(), NIGHT_START)
     assert not _night_charge_slots(fixed), (
         "night-floored PV leaves no phantom surplus, so the EEG constraint can "

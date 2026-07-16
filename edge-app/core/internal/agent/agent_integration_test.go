@@ -557,8 +557,8 @@ func TestFullLoopEnrollExecuteBufferReplay(t *testing.T) {
 		"horizon_slots":  2,
 		"slot_minutes":   15,
 		// The optimizer always publishes this field; without it the edge
-		// fail-safes into the EEG solar-only clamp (charge <= pv surplus),
-		// which would mask the rated-band clamp this step asserts.
+		// fail-safes into the EEG solar-only clamp (charge <= measured pv,
+		// FK3 PV-bus), which would mask the rated-band clamp this step asserts.
 		"grid_charge_allowed": true,
 		"slots": []map[string]any{
 			{"start": slotStart.Format(time.RFC3339), "battery_setpoint_kw": 999.0},

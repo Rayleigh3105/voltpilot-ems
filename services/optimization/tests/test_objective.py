@@ -348,8 +348,10 @@ def test_premium_export_revenue_shows_up_in_cost_and_savings():
 @needs_highs
 def test_eeg_mode_still_never_grid_charges_under_a_juicy_export_premium():
     """A big export premium makes grid-charge -> export tempting (import 100,
-    export 250 clears wear + losses comfortably); the EEG constraint pair must
-    still forbid it - the premium may only ever flow through solar energy."""
+    export 250 clears wear + losses comfortably); the EEG solar-only-charge
+    bound (charge <= pv - curtail, zero with no PV - FK3 PV-bus semantics)
+    must still forbid it - the premium may only ever flow through solar
+    energy."""
     n = 96
     spot = [100.0] * n
     plan = solve(

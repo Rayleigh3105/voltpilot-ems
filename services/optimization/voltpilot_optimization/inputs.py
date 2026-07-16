@@ -115,7 +115,8 @@ class BatterySite:
 
     ``netzladen_erlaubt`` is the per-site grid-charging switch
     (``site.netzladen_erlaubt``, DB default FALSE): False = EEG mode, the
-    battery charges only from PV surplus; True = merchant mode (arbitrage).
+    battery charges only from produced PV (charge <= pv - curtail, PV-bus
+    Bilanzierung per FK3); True = merchant mode (arbitrage).
 
     ``max_feed_in_kw`` (FK1) is the site's static feed-in cap at the grid
     connection point (``site.max_feed_in_kw``, nullable master data) - a hard
