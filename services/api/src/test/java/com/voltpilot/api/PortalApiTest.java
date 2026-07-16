@@ -2343,6 +2343,87 @@ class PortalApiTest {
     }
 
     @Test
+    void speicherschonungPresetsWriteExactlyTheWearColumnAndDeriveHonestly() {
+        String demo = token("demo", "demo");
+        String site = createSite(demo, "Schonung Site", "DE-LU", "eigenverbrauch");
+        Map<String, Object> params = Map.of(
+                "capacityKwh", 10, "maxChargeKw", 5, "maxDischargeKw", 5);
+
+        // A fresh battery without a preset stores NULL wear (platform default),
+        // which derives as the "ausgewogen" preset (NULL = default = 4 ct).
+        assertThat(batteryOf(saveBattery(demo, site, params)).get("speicherschonung"))
+                .isEqualTo("ausgewogen");
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + site
+                + "' AND type = 'battery' AND wear_cost_ct_per_kwh IS NULL")).isEqualTo(1);
+
+        // Seed the OTHER admin optimizer overrides (SoC band on the same asset
+        // row + the site's backup reserve) so the preset writes below can prove
+        // they touch ONLY the wear column.
+        exec("UPDATE asset SET soc_min_pct = 10, soc_max_pct = 90 WHERE site_id = '"
+                + site + "' AND type = 'battery'");
+        exec("UPDATE site SET backup_reserve_soc_pct = 30 WHERE id = '" + site + "'");
+
+        // "schonend" lands exactly 8 ct on the column the optimizer's inputs.py
+        // reads (asset.wear_cost_ct_per_kwh) - no new column, no other write.
+        Map<String, Object> schonend = new java.util.HashMap<>(params);
+        schonend.put("speicherschonung", "schonend");
+        assertThat(batteryOf(saveBattery(demo, site, schonend)).get("speicherschonung"))
+                .isEqualTo("schonend");
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + site
+                + "' AND type = 'battery' AND wear_cost_ct_per_kwh = 8")).isEqualTo(1);
+
+        // A save WITHOUT the field keeps the stored value (never flips it).
+        assertThat(batteryOf(saveBattery(demo, site, params)).get("speicherschonung"))
+                .isEqualTo("schonend");
+
+        // "aggressiv" -> 1 ct.
+        Map<String, Object> aggressiv = new java.util.HashMap<>(params);
+        aggressiv.put("speicherschonung", "aggressiv");
+        assertThat(batteryOf(saveBattery(demo, site, aggressiv)).get("speicherschonung"))
+                .isEqualTo("aggressiv");
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + site
+                + "' AND type = 'battery' AND wear_cost_ct_per_kwh = 1")).isEqualTo(1);
+
+        // None of the preset writes clobbered the SoC band or backup reserve.
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + site
+                + "' AND type = 'battery' AND soc_min_pct = 10 AND soc_max_pct = 90"))
+                .isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + site
+                + "' AND backup_reserve_soc_pct = 30")).isEqualTo(1);
+
+        // An admin-configured custom value (outside the ladder) derives as
+        // "individuell" - the portal shows it honestly...
+        exec("UPDATE asset SET wear_cost_ct_per_kwh = 2.5 WHERE site_id = '"
+                + site + "' AND type = 'battery'");
+        assertThat(batteryAsset(demo, site).get("speicherschonung")).isEqualTo("individuell");
+
+        // ...and a customer preset pick simply overwrites it.
+        Map<String, Object> ausgewogen = new java.util.HashMap<>(params);
+        ausgewogen.put("speicherschonung", "ausgewogen");
+        assertThat(batteryOf(saveBattery(demo, site, ausgewogen)).get("speicherschonung"))
+                .isEqualTo("ausgewogen");
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + site
+                + "' AND type = 'battery' AND wear_cost_ct_per_kwh = 4")).isEqualTo(1);
+
+        // An unknown preset name -> 400; a foreign site (RLS) -> 404.
+        Map<String, Object> bogus = new java.util.HashMap<>(params);
+        bogus.put("speicherschonung", "extrem");
+        assertThat(rest.exchange(url("/api/v1/sites/" + site + "/battery"),
+                HttpMethod.PUT, new HttpEntity<>(bogus, bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(url("/api/v1/sites/" + HAMBURG_SITE + "/battery"),
+                HttpMethod.PUT, new HttpEntity<>(schonend, bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // A pv asset row never carries a preset (battery-only derivation).
+        createMeasurementPoint(demo, site, Map.of(
+                "role", "pv-generation", "label", "AC-PV", "capacityKwp", 5));
+        assertThat(siteAssets(demo, site).stream()
+                .filter(a -> "pv".equals(a.get("type"))).findFirst()
+                .orElseThrow().get("speicherschonung")).isNull();
+    }
+
+    @Test
     void backfillLinksSingleDeviceSitesButLeavesMultiDeviceSitesUnlinked() {
         // Seed pre-hook rows directly (superuser, bypassing RLS + the auto-link
         // hooks) to prove the migration's backfill rule in isolation.
@@ -2510,14 +2591,30 @@ class PortalApiTest {
         return res.getBody();
     }
 
-    /** The site's battery-asset device_id via GET /assets (null when unlinked). */
-    private String batteryDeviceId(String token, String siteId) {
+    /** GET /assets for a site as the given user. */
+    private List<Map<String, Object>> siteAssets(String token, String siteId) {
         ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
                 url("/api/v1/sites/" + siteId + "/assets"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
-        return res.getBody().stream()
+        return res.getBody();
+    }
+
+    /** The battery row of an asset list. */
+    private static Map<String, Object> batteryOf(List<Map<String, Object>> assets) {
+        return assets.stream()
+                .filter(a -> "battery".equals(a.get("type"))).findFirst().orElseThrow();
+    }
+
+    /** The site's battery asset row via GET /assets. */
+    private Map<String, Object> batteryAsset(String token, String siteId) {
+        return batteryOf(siteAssets(token, siteId));
+    }
+
+    /** The site's battery-asset device_id via GET /assets (null when unlinked). */
+    private String batteryDeviceId(String token, String siteId) {
+        return siteAssets(token, siteId).stream()
                 .filter(a -> "battery".equals(a.get("type"))).findFirst()
                 .map(a -> (String) a.get("deviceId")).orElse(null);
     }

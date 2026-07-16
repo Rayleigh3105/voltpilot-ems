@@ -865,6 +865,18 @@ paths:
                   format: uuid
                   nullable: true
                   description: The controlling device; omit to auto-link the site's single device.
+                speicherschonung:
+                  type: string
+                  enum: [aggressiv, ausgewogen, schonend]
+                  nullable: true
+                  description: >
+                    The customer's "Umgang mit dem Speicher" preset, mapped
+                    server-side onto the battery's wear cost (aggressiv 1 ct /
+                    ausgewogen 4 ct / schonend 8 ct per kWh cycled) - the
+                    optimizer reads it on its next 15-min cycle. Omit to keep
+                    the stored value. The raw ct value stays admin-only
+                    (optimizer-config); a preset pick overwrites an
+                    admin-configured custom value.
       responses:
         "200":
           description: The site's asset rows after the save.
@@ -1507,6 +1519,15 @@ components:
         maxChargeKw: { type: number, nullable: true }
         maxDischargeKw: { type: number, nullable: true }
         roundtripEfficiencyPct: { type: number, nullable: true, description: Round-trip efficiency percent; platform default 92. }
+        speicherschonung:
+          type: string
+          enum: [aggressiv, ausgewogen, schonend, individuell]
+          nullable: true
+          description: >
+            Battery only: the EFFECTIVE "Umgang mit dem Speicher" preset,
+            derived server-side from the stored wear cost (NULL = platform
+            default = ausgewogen; individuell = an admin configured a custom
+            value via optimizer-config). Null for non-battery assets.
         pvCapacityKwp: { type: number, nullable: true }
         moduleCount: { type: integer, nullable: true }
         azimuthDeg: { type: number, nullable: true, description: Clockwise from North; 180 = South. }
