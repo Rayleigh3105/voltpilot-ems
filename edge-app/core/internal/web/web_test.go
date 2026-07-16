@@ -1020,6 +1020,101 @@ func TestSteuerungSectionServed(t *testing.T) {
 	}
 }
 
+// The "Betrieb" card (PS-3: Marktoptimierung + Spitzen-Wache) is built by
+// betrieb.js against fixed element ids and fed by the additive peak fields on
+// /api/state; pin the embedded page + asset so a static/ edit that forgets the
+// //go:embed rebuild fails here.
+func TestBetriebSectionServed(t *testing.T) {
+	srv := serveHandler(t, &fakePlan{})
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	page := get("/index.html")
+	for _, want := range []string{
+		`id="btMarkt"`, `id="btWache"`, `id="btMeanRow"`, `id="btMean"`,
+		`id="btReserveRow"`, `id="btReserve"`, `id="btOffline"`,
+		`Spitzen-Wache`, `Marktoptimierung`, `Bei Cloud-Ausfall`, `src="betrieb.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing %s", want)
+		}
+	}
+	js := get("/betrieb.js")
+	if !strings.Contains(js, "VPBetrieb") {
+		t.Error("betrieb.js: does not expose the VPBetrieb hook dashboard.js calls")
+	}
+	for _, want := range []string{"peak_target_kw", "peak_quarter_mean_kw", "peak_reserve_soc_pct", "peak_guard_active", "wartet auf Netz-Messwerte"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("betrieb.js: missing %s", want)
+		}
+	}
+	dash := get("/dashboard.js")
+	if !strings.Contains(dash, "VPBetrieb") {
+		t.Error("dashboard.js: does not hand state to VPBetrieb")
+	}
+}
+
+// The additive PS-3 peak fields flow through the /api/state envelope (present
+// when the module is on, omitted when off - never a fabricated 0).
+func TestStateEnvelopeCarriesPeakGuardFields(t *testing.T) {
+	st := state.New("edge-test", "test")
+	target, mean, reserve := 62.5, 44.2, 25.0
+	st.Update(func(s *state.Snapshot) {
+		s.PeakTargetKw = &target
+		s.PeakQuarterMeanKw = &mean
+		s.PeakReserveSocPct = &reserve
+		s.PeakGuardActive = true
+	})
+	srv := httptest.NewServer(Handler(st,
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got["peak_target_kw"] != 62.5 || got["peak_quarter_mean_kw"] != 44.2 ||
+		got["peak_reserve_soc_pct"] != 25.0 || got["peak_guard_active"] != true {
+		t.Fatalf("peak fields missing/wrong in envelope: %v", got)
+	}
+
+	// Module off: the optional fields are omitted entirely.
+	off := state.New("edge-test", "test")
+	srv2 := httptest.NewServer(Handler(off,
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
+	t.Cleanup(srv2.Close)
+	resp2, err := http.Get(srv2.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	raw, _ := io.ReadAll(resp2.Body)
+	for _, absent := range []string{"peak_target_kw", "peak_quarter_mean_kw", "peak_reserve_soc_pct"} {
+		if strings.Contains(string(raw), absent) {
+			t.Errorf("module off must omit %s: %s", absent, raw)
+		}
+	}
+}
+
 // --- /api/sources (additional read-only Erzeuger measurement points) ---------
 
 func sourcesServer(t *testing.T, fs *fakeSources) *httptest.Server {

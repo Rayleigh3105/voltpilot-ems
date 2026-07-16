@@ -46,6 +46,19 @@ type Snapshot struct {
 	PlanReceived time.Time `json:"plan_received,omitzero"`
 	PlanSlots    int       `json:"plan_slots"`
 
+	// Peak guard (PS-3 "Spitzen-Wache") - the :8484 "Betrieb" card. All nil/
+	// false while the site's peak-shaving module is off (the plan never carried
+	// grid_import_limit_kw). PeakTargetKw/PeakReserveSocPct echo the LAST
+	// plan-carried values (they survive a stale plan - the guard keeps defending
+	// the last known target on a dead cloud link); PeakGuardActive is true only
+	// while the guard can actually regulate (target known AND a fresh grid
+	// measurement feeds the quarter tracker); PeakQuarterMeanKw is the running
+	// wall-clock quarter hour's mean grid import so far.
+	PeakTargetKw      *float64 `json:"peak_target_kw,omitempty"`
+	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct,omitempty"`
+	PeakGuardActive   bool     `json:"peak_guard_active"`
+	PeakQuarterMeanKw *float64 `json:"peak_quarter_mean_kw,omitempty"`
+
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`
 

@@ -386,6 +386,9 @@
     // Hand the state to the "Steuerung & Bestätigung" card (register-level
     // control readback fed by state.control).
     if (window.VPControl) window.VPControl.onState(s);
+    // Hand the state to the "Betrieb" card (market optimization + PS-3 peak
+    // guard: target, running quarter mean, reserve).
+    if (window.VPBetrieb) window.VPBetrieb.onState(s);
   }
 
   // ---------- data purge ("Datenaufzeichnungen löschen") ----------

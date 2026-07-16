@@ -60,6 +60,19 @@ type Plan struct {
 	// true and is unaffected), so only legacy/hand-crafted payloads change
 	// behavior, and an EEG site behind such a payload must never grid-charge.
 	GridChargeAllowed *bool `json:"grid_charge_allowed,omitempty"`
+	// GridImportLimitKw is the OPTIONAL run-level billing-period peak target
+	// (PS-1/PS-3, kW >= 0): the highest 15-min mean grid IMPORT the optimizer
+	// planned for. nil = the site's peak-shaving module is off - byte-for-byte
+	// pre-PS behavior. The edge peak guard (guards.PeakTracker/PeakShave)
+	// defends this target against a forming quarter-hour import peak; it is
+	// restrict-only (raise discharge / lower charge) and import-side only.
+	GridImportLimitKw *float64 `json:"grid_import_limit_kw,omitempty"`
+	// PeakReserveSocPct is the OPTIONAL peak-shaving SoC reserve (PS-2, percent
+	// 0..100), only ever present alongside GridImportLimitKw. In the stale-plan
+	// self-consumption fallback, ordinary discharge stops at this floor so the
+	// reserve survives for peak defense (which alone may go below it, down to
+	// the technical SoC floor). nil = no reserve - fallback behaves as before.
+	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct,omitempty"`
 }
 
 // SolarOnlyCharge reports whether the plan demands the EEG solar-only-charge
@@ -73,13 +86,41 @@ func (p *Plan) SolarOnlyCharge() bool {
 	return p == nil || p.GridChargeAllowed == nil || !*p.GridChargeAllowed
 }
 
+// PeakImportLimit returns the plan-carried billing-period peak target (kW), or
+// nil when the peak-shaving module is off (field absent / no plan). It is
+// DELIBERATELY independent of Fresh(): the billing peak is a 15-min MEAN the
+// cloud MPC can only plan, never catch - the edge guard is the closed loop, and
+// on a dead cloud link it keeps defending the LAST KNOWN target (PS-3 fallback
+// composition; restrict-only, so a stale target can never widen anything). A
+// NEW plan without the field clears it, per the contract's x-failsafe.
+func (p *Plan) PeakImportLimit() *float64 {
+	if p == nil || p.GridImportLimitKw == nil {
+		return nil
+	}
+	v := *p.GridImportLimitKw
+	return &v
+}
+
+// PeakReserveSoc returns the plan-carried peak-shaving SoC reserve (percent),
+// or nil when none is configured. Like PeakImportLimit it survives staleness:
+// the reserve exists precisely FOR the offline fallback.
+func (p *Plan) PeakReserveSoc() *float64 {
+	if p == nil || p.PeakReserveSocPct == nil {
+		return nil
+	}
+	v := *p.PeakReserveSocPct
+	return &v
+}
+
 // wire mirrors the contract JSON (RFC 3339 strings).
 type wire struct {
-	SchemaVersion     string `json:"schema_version"`
-	PlanID            string `json:"plan_id"`
-	GeneratedAt       string `json:"generated_at"`
-	SlotMinutes       int    `json:"slot_minutes"`
-	GridChargeAllowed *bool  `json:"grid_charge_allowed"`
+	SchemaVersion     string   `json:"schema_version"`
+	PlanID            string   `json:"plan_id"`
+	GeneratedAt       string   `json:"generated_at"`
+	SlotMinutes       int      `json:"slot_minutes"`
+	GridChargeAllowed *bool    `json:"grid_charge_allowed"`
+	GridImportLimitKw *float64 `json:"grid_import_limit_kw"`
+	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct"`
 	Slots             []struct {
 		Start             string   `json:"start"`
 		BatterySetpointKw float64  `json:"battery_setpoint_kw"`
@@ -112,6 +153,21 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 	if w.GridChargeAllowed != nil {
 		v := *w.GridChargeAllowed
 		p.GridChargeAllowed = &v
+	}
+	// Peak-shaving fields (PS-3): keep only a valid, finite, non-negative
+	// target; the reserve is accepted only ALONGSIDE a valid target (the
+	// contract publishes it that way, and a reserve without a peak module must
+	// never restrict the fallback) and only within 0..100.
+	if w.GridImportLimitKw != nil && !math.IsNaN(*w.GridImportLimitKw) &&
+		!math.IsInf(*w.GridImportLimitKw, 0) && *w.GridImportLimitKw >= 0 {
+		v := *w.GridImportLimitKw
+		p.GridImportLimitKw = &v
+		if w.PeakReserveSocPct != nil && !math.IsNaN(*w.PeakReserveSocPct) &&
+			!math.IsInf(*w.PeakReserveSocPct, 0) &&
+			*w.PeakReserveSocPct >= 0 && *w.PeakReserveSocPct <= 100 {
+			r := *w.PeakReserveSocPct
+			p.PeakReserveSocPct = &r
+		}
 	}
 	if t, err := time.Parse(time.RFC3339, w.GeneratedAt); err == nil {
 		p.GeneratedAt = t

@@ -58,8 +58,12 @@ type Agent struct {
 	lastReading guards.Reading
 	lastRawSoc  *float64
 
-	despiker       *guards.Despiker
-	envelope       *guards.Envelope
+	despiker *guards.Despiker
+	envelope *guards.Envelope
+	// peak tracks the running wall-clock quarter hour's mean grid import for
+	// the PS-3 peak guard (fed with the gated composite power_kw at
+	// onLocalTelemetry, read at applySetpoint). Concurrency-safe internally.
+	peak           *guards.PeakTracker
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
@@ -236,6 +240,7 @@ func New(cfg config.Config) (*Agent, error) {
 		testReads:    map[string]chan testconn.Result{},
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
+		peak:         guards.NewPeakTracker(),
 		despikeStore: ds,
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
@@ -901,6 +906,15 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	}
 	a.mu.Unlock()
 
+	// Feed the PS-3 peak tracker with the gated composite site grid (a despiked
+	// channel already carries its last accepted value, so a spike can never
+	// poison the quarter mean). A sample without power_kw feeds nothing - the
+	// tracker goes stale and the peak guard turns inactive rather than
+	// regulating blind.
+	if g, ok := measurements["power_kw"]; ok {
+		a.peak.Add(ts, g)
+	}
+
 	// While the device is removed (unclaimed) in the cloud, the local dashboard
 	// stays fully alive (guard reading, history ring, KPIs below) but the
 	// store-and-forward buffer is NOT grown: there is no claimed identity to
@@ -1160,6 +1174,14 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// so the clamp composing into it is a no-op there.
 	solarOnly := p.SolarOnlyCharge()
 
+	// PS-3 peak shaving: the LAST plan-carried target/reserve, deliberately
+	// surviving plan staleness (the billing peak is a 15-min mean only the edge
+	// can defend in closed loop; on a dead cloud link the guard keeps working
+	// against the last known target - restrict-only, so it can never widen
+	// anything). nil = module off = byte-for-byte pre-PS behavior.
+	peakTarget := p.PeakImportLimit()
+	peakReserve := p.PeakReserveSoc()
+
 	limits := guards.Limits{
 		MaxChargeKw:     a.Cfg.MaxChargeKw,
 		MaxDischargeKw:  a.Cfg.MaxDischargeKw,
@@ -1186,13 +1208,54 @@ func (a *Agent) applySetpoint(now time.Time) {
 			pvLimit = &v
 		}
 	} else if hasReading {
-		kw = guards.Clamp(guards.SelfConsumption(r), limits, r)
+		fallback := guards.SelfConsumption(r)
+		// PS-3 reserve composition: on a stale/absent plan whose last version
+		// carried a peak reserve, ORDINARY self-consumption discharge stops at
+		// that floor - the old fallback burned the whole battery on ordinary
+		// load in the first hours of an outage and left nothing for the real
+		// peak. Peak DEFENSE (the PeakShave below) may still discharge below
+		// the reserve down to the technical SoC floor: the reserve exists for
+		// exactly that. Unknown SoC leaves the fallback untouched (the guards'
+		// never-regulate-blind convention); charging is never affected.
+		if peakReserve != nil && fallback < 0 && !math.IsNaN(r.SocPct) && r.SocPct <= *peakReserve {
+			fallback = 0
+		}
+		kw = guards.Clamp(fallback, limits, r)
 		mode, source = state.ModeSelfConsume, "default"
 	} else {
 		// No inverter reading at all: publish nothing (mirrors the Node-RED
-		// watchdog, which does not write without a reading).
-		a.State.Update(func(s *state.Snapshot) { s.Mode = state.ModeNoReading })
+		// watchdog, which does not write without a reading). The peak module's
+		// display state stays honest: target/reserve are known from the plan,
+		// but without a reading the guard cannot be active.
+		a.State.Update(func(s *state.Snapshot) {
+			s.Mode = state.ModeNoReading
+			s.PeakTargetKw = peakTarget
+			s.PeakReserveSocPct = peakReserve
+			s.PeakGuardActive = false
+			s.PeakQuarterMeanKw = nil
+		})
 		return
+	}
+
+	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
+	// wall-clock quarter hour's projected mean import threatens the target,
+	// lower the setpoint (raise discharge / reduce charge) so the 15-min mean
+	// holds - the local closed loop the 15-min cloud MPC cannot provide. Runs
+	// AFTER every compliance clamp and only ever lowers the setpoint, so §14a,
+	// EEG solar-only, SoC floor and the rated band are never violated. With no
+	// fresh grid measurement the tracker reports inactive - never regulate
+	// blind; a missed quarter only costs money, never safety.
+	peakActive := false
+	var quarterMean *float64
+	if peakTarget != nil {
+		if allowed, ok := a.peak.AllowedImport(now, *peakTarget); ok {
+			kw = guards.PeakShave(kw, allowed, limits, r)
+			peakActive = true
+		}
+		if mean, ok := a.peak.QuarterMean(now); ok {
+			m := math.Round(mean*1000) / 1000
+			quarterMean = &m
+		}
 	}
 
 	// Control gate (report §6.6/§6.7): the setpoint carries the core's kill-switch
@@ -1241,6 +1304,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.SlotStart = slotStart
 		s.ControlEnabled = controlEnabled
 		s.ControlCertified = certified
+		s.PeakTargetKw = peakTarget
+		s.PeakReserveSocPct = peakReserve
+		s.PeakGuardActive = peakActive
+		s.PeakQuarterMeanKw = quarterMean
 	})
 }
 
