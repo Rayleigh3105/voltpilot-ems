@@ -24,7 +24,7 @@ import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
 import { hoursAhead, nextHourIndex } from '../weather';
 import { ScheduleChart } from '../ScheduleChart';
-import { hasGridCharge } from '../schedule';
+import { bankedValueLine, hasGridCharge, horizonHint } from '../schedule';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
 function useSiteData<T>(
@@ -435,17 +435,33 @@ export function FahrplanSection({ site }: { site: Site }) {
         minute: '2-digit',
       })
     : null;
+  // FK2: banked terminal value + horizon-edge hint (pure derivations).
+  const banked = bankedValueLine(plan?.bankedValueEur);
+  const horizonNote = horizonHint(slots, new Date(), plan?.slotMinutes ?? 15);
 
   return (
     <>
       {/* Money-first headline: today's planned saving leads (captain: Geld führt). */}
       {!loading && !err && slots.length > 0 && (
-        <section className="vp-kpis" aria-label="Fahrplan-Kennzahlen" style={{ marginBottom: 'var(--vp-space-5)' }}>
+        <section className="vp-kpis" aria-label="Fahrplan-Kennzahlen" style={{ marginBottom: banked ? 'var(--vp-space-2)' : 'var(--vp-space-5)' }}>
           <KpiCard
             icon={<Icon name="euro" size={20} />}
             category="dynamic"
             value={eurAmount(savingsToday)}
-            label="Heute geplant gespart"
+            label={
+              <>
+                Heute geplant gespart
+                <InfoTip title="Wie diese Zahl zu lesen ist">
+                  Verglichen wird mit einem Betrieb ganz ohne Batteriespeicher.
+                  Energie, die der Fahrplan über den Tag hinaus im Speicher
+                  lässt, ist hier noch nicht mitgezählt: sie wird mit ihrem
+                  erwarteten Nutzen am Folgetag bewertet und als eigene Zeile
+                  ausgewiesen. An Tagen, an denen viel Energie für den Folgetag
+                  gespeichert wird, kann die Zahl deshalb klein oder sogar
+                  negativ sein – der gespeicherte Wert kommt morgen zurück.
+                </InfoTip>
+              </>
+            }
             title="Gegenüber einem Betrieb ganz ohne Batteriespeicher"
           />
           <KpiCard
@@ -463,6 +479,11 @@ export function FahrplanSection({ site }: { site: Site }) {
             title="Summe der geplanten Entladeenergie über den Planungszeitraum"
           />
         </section>
+      )}
+      {/* The banked-value line under the savings stat (FK2): on bank days the
+          savings alone would make a CORRECT plan look broken. */}
+      {!loading && !err && banked && (
+        <p className="vp-note" style={{ margin: '0 0 var(--vp-space-5)' }}>{banked}</p>
       )}
 
       <Card padding="lg" radius="lg">
@@ -508,6 +529,11 @@ export function FahrplanSection({ site }: { site: Site }) {
         {!loading && !err && slots.length > 0 && (
           <>
             <ScheduleChart plan={plan!} />
+            {/* Horizon-edge honesty (FK2): the morning plan legitimately ends at
+                midnight until tomorrow's prices publish - say so, calmly. */}
+            {horizonNote && (
+              <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>{horizonNote}</p>
+            )}
             <p className="vp-note" style={{ marginTop: 'var(--vp-space-4)' }}>
               Kostenoptimaler Batterie-Fahrplan in 15-Minuten-Schritten aus Börsenpreisen
               und Last-/PV-Prognose{generatedAt ? `, erstellt am ${generatedAt} Uhr` : ''}.

@@ -449,4 +449,9 @@ def _extract_plan(
         # P5: hand the site's EEG posture to the edge so the solar-only-charge
         # rule is also enforced against MEASURED values, not just the forecast.
         grid_charge_allowed=inp.netzladen_erlaubt,
+        # FK2: what the objective actually credited per stored kWh - persisted
+        # so the portal can show the banked value on bank days.
+        terminal_value_eur_per_kwh=round(
+            inp.effective_terminal_value_eur_per_kwh(), 6
+        ),
     )

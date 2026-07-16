@@ -3,6 +3,7 @@ package com.voltpilot.api.repo;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.ScheduleSlotDto;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -19,6 +20,13 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class ScheduleRepository {
+
+    /**
+     * The optimizer's default AC round-trip efficiency when the asset carries
+     * none - MUST mirror services/optimization {@code inputs.load_battery_sites}
+     * (0.92), so the reconstructed plan-start SoC matches the solver's.
+     */
+    private static final double DEFAULT_ROUNDTRIP_EFFICIENCY = 0.92;
 
     private final JdbcTemplate jdbc;
 
@@ -54,19 +62,93 @@ public class ScheduleRepository {
                         rs.getBigDecimal("curtail_kw")),
                 siteId, Timestamp.from(generatedAt));
         List<Object[]> meta = jdbc.query(
-                "SELECT plan_id, device_id FROM schedule "
+                "SELECT plan_id, device_id, terminal_value_eur_per_kwh FROM schedule "
                         + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
                 (rs, i) -> new Object[] {
                         rs.getObject("plan_id", UUID.class),
-                        rs.getObject("device_id", UUID.class)
+                        rs.getObject("device_id", UUID.class),
+                        rs.getBigDecimal("terminal_value_eur_per_kwh")
                 },
                 siteId, Timestamp.from(generatedAt));
         UUID planId = meta.isEmpty() ? null : (UUID) meta.get(0)[0];
         UUID deviceId = meta.isEmpty() ? null : (UUID) meta.get(0)[1];
+        BigDecimal terminalValue = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[2];
         BigDecimal savings = slots.stream()
                 .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings, slots);
+        Banked banked = bankedValue(siteId, slots, terminalValue, 15);
+        return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
+                banked.valueEur(), banked.socStartPct(), banked.socEndPct(), slots);
+    }
+
+    private record Banked(BigDecimal valueEur, BigDecimal socStartPct, BigDecimal socEndPct) {
+        static final Banked NONE = new Banked(null, null, null);
+    }
+
+    /**
+     * The run's banked terminal value (FK2, audit vp-solver-xlsx-f2 §4.3):
+     * {@code terminal_value_eur_per_kwh x (SoC_end - SoC_start)} in EUR - the
+     * value the optimizer credits for energy stored INTO (positive) or drawn
+     * OUT OF (negative) the horizon. On bank days the headline savings read
+     * negative although real value was stored; this is the honest companion
+     * line.
+     *
+     * <p>The schedule table persists SoC only at slot END, so the plan-START
+     * SoC is reconstructed by reversing the solver's first-slot dynamics
+     * ({@code soc[1] = soc[0] + (eta*charge - discharge/eta) * dt}, solver.py)
+     * with the battery asset's efficiency - exact up to the persisted
+     * rounding, and identical to the {@code soc0} the objective credited
+     * against. Null whenever honestly not computable: pre-FK2 runs (no
+     * terminal value), no battery asset / capacity, or missing SoC data -
+     * never a fabricated number.
+     */
+    private Banked bankedValue(
+            UUID siteId, List<ScheduleSlotDto> slots, BigDecimal terminalValue, int slotMinutes) {
+        if (slots.isEmpty()) {
+            return Banked.NONE;
+        }
+        ScheduleSlotDto first = slots.get(0);
+        ScheduleSlotDto last = slots.get(slots.size() - 1);
+        if (first.socPct() == null || last.socPct() == null) {
+            return Banked.NONE;
+        }
+        List<Object[]> battery = jdbc.query(
+                "SELECT capacity_kwh, roundtrip_efficiency_pct FROM asset "
+                        + "WHERE site_id = ? AND type = 'battery'",
+                (rs, i) -> new Object[] {
+                        rs.getBigDecimal("capacity_kwh"),
+                        rs.getBigDecimal("roundtrip_efficiency_pct")
+                },
+                siteId);
+        BigDecimal capacity = battery.isEmpty() ? null : (BigDecimal) battery.get(0)[0];
+        if (capacity == null || capacity.signum() <= 0) {
+            return Banked.NONE;
+        }
+        BigDecimal efficiencyPct = battery.isEmpty() ? null : (BigDecimal) battery.get(0)[1];
+        double roundtrip = efficiencyPct == null
+                ? DEFAULT_ROUNDTRIP_EFFICIENCY
+                : efficiencyPct.doubleValue() / 100.0;
+        double eta = Math.sqrt(roundtrip);
+        double batteryKw = first.batteryKw() == null ? 0.0 : first.batteryKw().doubleValue();
+        double chargeKw = Math.max(batteryKw, 0.0);
+        double dischargeKw = Math.max(-batteryKw, 0.0);
+        double dtHours = slotMinutes / 60.0;
+        double capacityKwh = capacity.doubleValue();
+        double firstSlotDeltaPct =
+                (eta * chargeKw - dischargeKw / eta) * dtHours / capacityKwh * 100.0;
+        double socStartPct = first.socPct().doubleValue() - firstSlotDeltaPct;
+        double socEndPct = last.socPct().doubleValue();
+        BigDecimal socStart = BigDecimal.valueOf(socStartPct).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal socEnd = last.socPct();
+        if (terminalValue == null) {
+            // SoC bounds are still honest to show; the euro line needs V_end.
+            return new Banked(null, socStart, socEnd);
+        }
+        double bankedEur = terminalValue.doubleValue()
+                * (socEndPct - socStartPct) / 100.0 * capacityKwh;
+        return new Banked(
+                BigDecimal.valueOf(bankedEur).setScale(4, RoundingMode.HALF_UP),
+                socStart, socEnd);
     }
 
     private static BigDecimal nz(BigDecimal v) {
