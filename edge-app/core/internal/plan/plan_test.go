@@ -122,6 +122,84 @@ func TestParseGridChargeAllowed(t *testing.T) {
 	}
 }
 
+// The optional PS-1/PS-2 peak fields (grid_import_limit_kw +
+// peak_reserve_soc_pct) are parsed, validated, exposed independent of
+// freshness (the PS-3 guard defends the LAST KNOWN target on a dead cloud
+// link) and survive the disk round-trip; absent fields = nil = module off.
+func TestParsePeakShavingFields(t *testing.T) {
+	slot := `{ "start": "2026-07-01T09:00:00Z", "battery_setpoint_kw": 5.0 }`
+
+	peak, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,
+		"grid_import_limit_kw":62.5,"peak_reserve_soc_pct":25,"slots":[`+slot+`]}`), time.Now())
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if lim := peak.PeakImportLimit(); lim == nil || *lim != 62.5 {
+		t.Errorf("peak target not kept: %v", lim)
+	}
+	if res := peak.PeakReserveSoc(); res == nil || *res != 25 {
+		t.Errorf("peak reserve not kept: %v", res)
+	}
+
+	// Absent fields = module off (byte-for-byte pre-PS behavior).
+	legacy := mustParse(t, time.Now())
+	if legacy.PeakImportLimit() != nil || legacy.PeakReserveSoc() != nil {
+		t.Errorf("absent fields must stay nil: %+v %+v", legacy.GridImportLimitKw, legacy.PeakReserveSocPct)
+	}
+	var nilPlan *Plan
+	if nilPlan.PeakImportLimit() != nil || nilPlan.PeakReserveSoc() != nil {
+		t.Error("nil plan must expose no peak fields")
+	}
+
+	// Invalid values are dropped, never latched: a negative target, and a
+	// reserve without a (valid) target or outside 0..100.
+	bad, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,
+		"grid_import_limit_kw":-3,"peak_reserve_soc_pct":25,"slots":[`+slot+`]}`), time.Now())
+	if err != nil {
+		t.Fatalf("Parse bad: %v", err)
+	}
+	if bad.PeakImportLimit() != nil {
+		t.Errorf("negative target must be dropped: %v", bad.GridImportLimitKw)
+	}
+	if bad.PeakReserveSoc() != nil {
+		t.Errorf("reserve without a valid target must be dropped: %v", bad.PeakReserveSocPct)
+	}
+	badRes, err := Parse([]byte(`{"schema_version":"1.0","slot_minutes":15,
+		"grid_import_limit_kw":60,"peak_reserve_soc_pct":140,"slots":[`+slot+`]}`), time.Now())
+	if err != nil {
+		t.Fatalf("Parse badRes: %v", err)
+	}
+	if badRes.PeakImportLimit() == nil || badRes.PeakReserveSoc() != nil {
+		t.Errorf("out-of-range reserve must be dropped, target kept: %v %v",
+			badRes.GridImportLimitKw, badRes.PeakReserveSocPct)
+	}
+
+	// The accessors deliberately ignore staleness: a stale plan still answers.
+	peak.ReceivedAt = time.Now().Add(-2 * time.Hour)
+	if !peak.Fresh(time.Now()) && peak.PeakImportLimit() == nil {
+		t.Error("stale plan must still expose the last known target (PS-3 fallback)")
+	}
+
+	// Disk round-trip keeps the module state (reboot-without-network case).
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.Save(peak); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if lim := loaded.PeakImportLimit(); lim == nil || *lim != 62.5 {
+		t.Errorf("persisted plan lost the peak target: %v", loaded.GridImportLimitKw)
+	}
+	if res := loaded.PeakReserveSoc(); res == nil || *res != 25 {
+		t.Errorf("persisted plan lost the peak reserve: %v", loaded.PeakReserveSocPct)
+	}
+}
+
 // BuildView marks the executing slot (only while fresh) and flags curtailed
 // slots, so the local Fahrplan view can render freshness + the active bar.
 func TestBuildViewMarksActiveAndCurtailed(t *testing.T) {

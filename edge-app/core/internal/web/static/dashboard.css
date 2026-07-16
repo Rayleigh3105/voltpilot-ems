@@ -559,3 +559,16 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .ctrl-verdict { font-weight: 650; white-space: nowrap; }
 .ctrl-verdict.ok { color: var(--batt); }
 .ctrl-verdict.bad { color: var(--warn); }
+
+/* --- Betrieb (PS-3: market optimization + peak guard) -------------------- */
+.betrieb-rows { display: flex; flex-direction: column; }
+.betrieb-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 16px; padding: 10px 2px; border-bottom: 1px solid var(--line);
+  font-size: 13.5px;
+}
+.betrieb-row:last-child { border-bottom: none; }
+.betrieb-row .bt-label { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.betrieb-row .bt-value { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+.betrieb-row .bt-value.ok { color: var(--ok); }
+.betrieb-row .bt-value.bt-plain { font-weight: 500; color: var(--muted); }

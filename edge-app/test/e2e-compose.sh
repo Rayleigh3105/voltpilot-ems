@@ -71,6 +71,7 @@ docker run --rm --network "$NET" eclipse-mosquitto:2 \
     \"plan_id\":\"e2e00000-0000-0000-0000-000000000001\",
     \"generated_at\":\"$START\",
     \"horizon_slots\":2,\"slot_minutes\":15,
+    \"grid_import_limit_kw\":60.0,\"peak_reserve_soc_pct\":25,
     \"slots\":[
       {\"start\":\"$START\",\"battery_setpoint_kw\":-25.0},
       {\"start\":\"$(python3 -c "from datetime import datetime,timedelta,timezone;print((datetime.strptime('$START','%Y-%m-%dT%H:%M:%SZ')+timedelta(minutes=15)).strftime('%Y-%m-%dT%H:%M:%SZ'))")\",\"battery_setpoint_kw\":-25.0}
@@ -85,9 +86,13 @@ for i in $(seq 1 30); do
   sleep 2
 done
 
-echo "--- core state shows Fahrplan mode"
+echo "--- core state shows Fahrplan mode + the PS-3 peak module"
 STATE=$(curl -fsS "http://127.0.0.1:${VP_WEB_PORT}/api/state")
 echo "$STATE" | grep -q '"mode":"fahrplan"' || fail "core not in fahrplan mode: $STATE"
+# The plan-carried peak target/reserve surface on /api/state (Betrieb card);
+# the sim's import mean sits far below 60 kW, so the -25 setpoint is unshaved.
+echo "$STATE" | grep -q '"peak_target_kw":60' || fail "peak target not exposed: $STATE"
+echo "$STATE" | grep -q '"peak_reserve_soc_pct":25' || fail "peak reserve not exposed: $STATE"
 echo "$STATE" | grep -q '"inverter_link":"up"' || fail "inverter link not reported up: $STATE"
 
 echo "--- control write -> readback -> match (sim control adapter writes reg 40/41/42, reads them back)"

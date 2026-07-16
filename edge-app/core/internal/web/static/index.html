@@ -300,6 +300,22 @@
       </div>
     </section>
 
+    <!-- Betrieb (PS-3): market optimization + peak guard, the technician's
+         at-a-glance operating state. Fed by betrieb.js from /api/state. -->
+    <div class="section-title">Betrieb</div>
+    <section class="card betrieb-card">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--ok-soft);color:var(--ok)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Marktoptimierung &amp; Spitzen-Wache</h3>
+      </div>
+      <div class="betrieb-rows">
+        <div class="betrieb-row"><span class="bt-label">Marktoptimierung</span><span class="bt-value" id="btMarkt">–</span></div>
+        <div class="betrieb-row"><span class="bt-label">Spitzen-Wache</span><span class="bt-value" id="btWache">inaktiv</span></div>
+        <div class="betrieb-row" id="btMeanRow" hidden><span class="bt-label">Aktuelles 15-min-Mittel</span><span class="bt-value" id="btMean">–</span></div>
+        <div class="betrieb-row" id="btReserveRow" hidden><span class="bt-label">Spitzen-Reserve</span><span class="bt-value" id="btReserve">–</span></div>
+        <div class="betrieb-row"><span class="bt-label">Bei Cloud-Ausfall</span><span class="bt-value bt-plain" id="btOffline">–</span></div>
+      </div>
+    </section>
+
     <!-- Live power chart -->
     <div class="section-title">Verlauf</div>
     <section class="card chart-card">
@@ -388,6 +404,7 @@
   <script src="charts.js"></script>
   <script src="plan.js"></script>
   <script src="control.js"></script>
+  <script src="betrieb.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>
