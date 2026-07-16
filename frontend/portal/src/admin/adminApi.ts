@@ -1,4 +1,5 @@
 import { request, type CreateSiteInput, type Site } from '../api';
+import type { SimulationRequestInput, SimulationStatus } from '../simulation';
 
 export type { CreateSiteInput, Site } from '../api';
 
@@ -168,4 +169,14 @@ export const adminApi = {
     request<void>(`/api/v1/admin/provisioned-devices/${encodeURIComponent(externalRef)}`, {
       method: 'DELETE',
     }),
+
+  // Ersparnis-Rechner (prospect simulation): explicit inputs, no site/tenant,
+  // nothing persisted - the async job lives in the simulation service.
+  startProspectSimulation: (input: SimulationRequestInput) =>
+    request<{ simulationId: string }>('/api/v1/admin/simulation', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  prospectSimulationStatus: (simulationId: string) =>
+    request<SimulationStatus>(`/api/v1/admin/simulation/${simulationId}`),
 };

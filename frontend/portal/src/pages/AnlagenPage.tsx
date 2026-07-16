@@ -43,6 +43,7 @@ import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
 import { LiveSection } from './LiveSection';
+import { SimulationSection } from '../components/SimulationView';
 import { TechnikSection } from './AnlageTechnik';
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
@@ -282,6 +283,11 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     title: 'Optimierung',
     subtitle: 'Was VoltPilot für Ihre Anlage steuert - was aktiv ist, was es bewirkt und was noch möglich ist.',
   },
+  simulation: {
+    title: 'Ersparnis-Simulation',
+    subtitle:
+      'Was hätte Ihre Anlage im letzten Jahr gebracht - ohne Speicher, mit Standard-Speicher und mit VoltPilot?',
+  },
 };
 
 /** One deep view of an Anlage, with the way back always in sight. */
@@ -320,6 +326,7 @@ function AnlagenSubPage({
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
       {sub === 'optimierung' && <OptimierungSection site={site} isAdmin={isAdmin} />}
+      {sub === 'simulation' && <SimulationSection site={site} />}
       {sub === 'technik' && (
         <TechnikSection
           site={site}
@@ -792,6 +799,13 @@ export function AnlageSeite({
               title="Technik & Einstellungen"
               line="Wechselrichter, Speicher, Tarif und Standort."
               onOpen={() => onOpenSub('technik')}
+            />
+            <DetailCard
+              icon="euro"
+              category="primary"
+              title="Ersparnis-Simulation"
+              line="Was brächte Ihr Speicher mit VoltPilot - gerechnet übers letzte Jahr?"
+              onOpen={() => onOpenSub('simulation')}
             />
           </div>
         </div>

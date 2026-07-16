@@ -1,4 +1,5 @@
 import { AuthRedirectError, freshToken } from './auth';
+import type { SimulationRequestInput, SimulationStatus } from './simulation';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
@@ -1002,4 +1003,13 @@ export const api = {
   /** at = any ISO date (YYYY-MM-DD) inside the wanted period, Europe/Berlin. */
   history: (siteId: string, range: HistoryRange, at: string) =>
     request<History>(`/api/v1/sites/${siteId}/history?range=${range}&at=${at}`),
+  /** Ersparnis-Simulation: async job - POST starts (defaults from the site's
+   * master data, body fields override), GET polls every ~2 s. */
+  startSimulation: (siteId: string, input: SimulationRequestInput) =>
+    request<{ simulationId: string }>(`/api/v1/sites/${siteId}/simulation`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  simulationStatus: (siteId: string, simulationId: string) =>
+    request<SimulationStatus>(`/api/v1/sites/${siteId}/simulation/${simulationId}`),
 };

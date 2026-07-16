@@ -109,6 +109,12 @@ voltpilot:
     terminal-value-quantile: ${OPTIMIZER_TERMINAL_VALUE_QUANTILE:0.3}
     terminal-value-ct-per-kwh: ${OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH:}
     eeg-rates-json: ${OPTIMIZER_EEG_RATES_JSON:}
+  # Ersparnis-Simulation: the internal Python simulation service (the
+  # optimization image's simulate-serve entrypoint, compose service
+  # "simulation"). The api owns auth/tenancy/master-data resolution and
+  # proxies async jobs; the service itself knows neither tenants nor tokens.
+  simulation:
+    base-url: ${VOLTPILOT_SIMULATION_BASE_URL:http://simulation:8095}
   # Marktstammdatenregister lookups ("Anlage verknuepfen"). Dual-source: with
   # the captain's Webdienstnutzer credentials set, the official SOAP webservice
   # is used; with the BLANK defaults, the keyless public JSON backend serves

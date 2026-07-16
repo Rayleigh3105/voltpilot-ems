@@ -22,12 +22,22 @@ export type PageId =
   | 'mandanten'
   | 'benutzer'
   | 'geraete-registry'
-  | 'optimizer';
+  | 'optimizer'
+  | 'ersparnis-rechner';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
-export type AnlagenSub = 'live' | 'fahrplan' | 'historie' | 'wetter' | 'technik' | 'optimierung';
+export type AnlagenSub =
+  | 'live'
+  | 'fahrplan'
+  | 'historie'
+  | 'wetter'
+  | 'technik'
+  | 'optimierung'
+  | 'simulation';
 
-const SUBS = new Set<string>(['live', 'fahrplan', 'historie', 'wetter', 'technik', 'optimierung']);
+const SUBS = new Set<string>([
+  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'optimierung', 'simulation',
+]);
 
 /**
  * One navigation state. `siteId`/`sub` only carry meaning for page 'anlagen':
@@ -64,6 +74,7 @@ export const PLATFORM_PAGES: PageDef[] = [
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
   { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
   { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
+  { id: 'ersparnis-rechner', label: 'Ersparnis-Rechner', icon: 'euro', adminOnly: true },
 ];
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */
