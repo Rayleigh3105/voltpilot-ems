@@ -3,6 +3,7 @@ package com.voltpilot.api.web.dto;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -17,11 +18,17 @@ import java.util.UUID;
  * device that controls this battery - optional: when omitted the api auto-links
  * the site's single device (if there is exactly one), which is the common case;
  * on a multi-device site the owner passes it explicitly.
+ *
+ * <p>{@code speicherschonung} is the customer's "Umgang mit dem Speicher"
+ * preset (FK4), mapped server-side onto {@code asset.wear_cost_ct_per_kwh} via
+ * {@link com.voltpilot.api.web.Speicherschonung}. Null/absent = keep the stored
+ * value (so a form that omits the field never flips it).
  */
 public record SaveBatteryRequest(
         @NotNull @Positive BigDecimal capacityKwh,
         @NotNull @Positive BigDecimal maxChargeKw,
         @NotNull @Positive BigDecimal maxDischargeKw,
         @DecimalMin("1.0") @DecimalMax("100.0") BigDecimal roundtripEfficiencyPct,
-        UUID deviceId) {
+        UUID deviceId,
+        @Pattern(regexp = "aggressiv|ausgewogen|schonend") String speicherschonung) {
 }

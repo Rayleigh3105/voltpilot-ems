@@ -373,6 +373,13 @@ export interface SiteAsset {
   maxChargeKw: number | null;
   maxDischargeKw: number | null;
   roundtripEfficiencyPct: number | null;
+  /**
+   * Battery only: the EFFECTIVE "Umgang mit dem Speicher" preset, derived
+   * server-side from the stored wear cost - 'aggressiv' | 'ausgewogen' (also
+   * for the platform default) | 'schonend', or 'individuell' when an admin
+   * configured a custom value. Null for non-battery assets.
+   */
+  speicherschonung: string | null;
   pvCapacityKwp: number | null;
   moduleCount: number | null;
   azimuthDeg: number | null;
@@ -447,6 +454,11 @@ export interface SaveBatteryInput {
   roundtripEfficiencyPct?: number | null;
   /** The controlling device; omit to auto-link the site's single device. */
   deviceId?: string | null;
+  /**
+   * "Umgang mit dem Speicher" preset (FK4), mapped server-side onto the
+   * battery's wear cost. Omit to keep the stored value.
+   */
+  speicherschonung?: 'aggressiv' | 'ausgewogen' | 'schonend';
 }
 
 export interface MastrApplyInput {

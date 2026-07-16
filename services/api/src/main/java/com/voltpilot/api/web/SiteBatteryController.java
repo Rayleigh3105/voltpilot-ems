@@ -57,6 +57,11 @@ public class SiteBatteryController {
      * this site and linked; when omitted the auto-link claims the site's single
      * device (the self-maintaining rule) - a multi-device site with no explicit
      * choice is simply left unlinked, and the portal warns.
+     *
+     * <p>Speicherschonung (FK4): a given preset is mapped onto the battery's
+     * {@code wear_cost_ct_per_kwh} - and ONLY that column; the admin SoC-band /
+     * backup-reserve overrides are never part of a preset write. Null/absent
+     * keeps the stored value.
      */
     @Transactional
     @PutMapping("/battery")
@@ -66,6 +71,10 @@ public class SiteBatteryController {
         UUID tenantId = TenantContext.get();
         assets.saveBattery(tenantId, siteId, request.capacityKwh(), request.maxChargeKw(),
                 request.maxDischargeKw(), request.roundtripEfficiencyPct());
+        if (request.speicherschonung() != null) {
+            assets.setBatteryWearCost(siteId,
+                    Speicherschonung.wearCtFor(request.speicherschonung()));
+        }
         if (request.deviceId() != null) {
             DeviceDto device = devices.findById(request.deviceId())
                     .filter(d -> d.siteId().equals(siteId))

@@ -89,6 +89,7 @@ function battery(over: Partial<SiteAsset> = {}): SiteAsset {
     maxChargeKw: 5,
     maxDischargeKw: 5,
     roundtripEfficiencyPct: null,
+    speicherschonung: 'ausgewogen',
     pvCapacityKwp: null,
     moduleCount: null,
     azimuthDeg: null,
@@ -179,6 +180,66 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
       roundtripEfficiencyPct: null,
       deviceId: 'd-2',
     });
+    saveBattery.mockRestore();
+  });
+
+  it('shows the effective Speicherschonung read-first and sends a changed preset', async () => {
+    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
+    const onSaved = vi.fn();
+    render(
+      <BatteryControlSection
+        siteId="s-1"
+        battery={battery({ deviceId: 'd-1', speicherschonung: 'ausgewogen' })}
+        devices={[device({ id: 'd-1' })]}
+        onSaved={onSaved}
+      />,
+    );
+    // Read view: the customer's setting is visible without any disclosure.
+    expect(screen.getByText('Umgang mit dem Speicher')).toBeInTheDocument();
+    expect(screen.getByText('Ausgewogen (empfohlen)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Speicher bearbeiten/ }));
+    // The effective preset is pre-selected; picking Schonend sends it.
+    const ausgewogen = screen.getByRole('radio', { name: /Ausgewogen/ }) as HTMLInputElement;
+    expect(ausgewogen.checked).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: /Schonend/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(saveBattery).toHaveBeenCalledWith(
+      's-1',
+      expect.objectContaining({ speicherschonung: 'schonend' }),
+    );
+    saveBattery.mockRestore();
+  });
+
+  it('names an admin-configured custom value honestly and keeps it on an untouched save', async () => {
+    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
+    const onSaved = vi.fn();
+    render(
+      <BatteryControlSection
+        siteId="s-1"
+        battery={battery({ deviceId: 'd-1', speicherschonung: 'individuell' })}
+        devices={[device({ id: 'd-1' })]}
+        onSaved={onSaved}
+      />,
+    );
+    expect(screen.getByText('Individuell (durch VoltPilot konfiguriert)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Speicher bearbeiten/ }));
+    // Nothing pre-selected; the note explains that picking replaces the value.
+    expect(
+      (screen.getAllByRole('radio') as HTMLInputElement[]).filter((r) => r.checked),
+    ).toHaveLength(0);
+    expect(screen.getByText(/Die Auswahl einer Option ersetzt/)).toBeInTheDocument();
+    // An untouched save never sends the field (the custom value is kept).
+    fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(saveBattery).toHaveBeenCalledWith(
+      's-1',
+      expect.not.objectContaining({ speicherschonung: expect.anything() }),
+    );
     saveBattery.mockRestore();
   });
 });

@@ -25,6 +25,13 @@ import { ErzeugerSourcesPanel } from '../components/ErzeugerSourcesPanel';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { InfoTip } from '../components/InfoTip';
 import { MastrDrawer } from '../components/MastrDrawer';
+import {
+  presetOf,
+  SPEICHERSCHONUNG_INDIVIDUELL_LABEL,
+  SPEICHERSCHONUNG_OPTIONS,
+  speicherschonungLabel,
+  type SpeicherschonungPreset,
+} from '../speicherschonung';
 import { ErrorState, TextSkeleton } from '../components/States';
 
 /**
@@ -1100,6 +1107,17 @@ export function BatteryControlSection({
             {battery.capacityKwh != null ? fmtNum(battery.capacityKwh, 'kWh', 1) : '-'}
           </dd>
         </div>
+        <div className="vp-kv-row">
+          <dt className="vp-kv-k">
+            Umgang mit dem Speicher
+            <InfoTip title="Umgang mit dem Speicher">
+              Wie stark der Fahrplan Ihren Speicher arbeiten lässt. „Schonend“ nutzt nur deutlich
+              lohnende Gelegenheiten, „Aggressiv“ jede - Sie wählen die Balance zwischen Ertrag und
+              Lebensdauer.
+            </InfoTip>
+          </dt>
+          <dd className="vp-kv-v">{speicherschonungLabel(battery.speicherschonung)}</dd>
+        </div>
       </dl>
       <TechnischeDetails hint="Lade-/Entladeleistung, Wirkungsgrad, steuerndes Gerät">
         <dl className="vp-kv">
@@ -1182,6 +1200,10 @@ function BatteryEditForm({
   const [maxDischarge, setMaxDischarge] = useState(numText(battery?.maxDischargeKw));
   const [efficiency, setEfficiency] = useState(numText(battery?.roundtripEfficiencyPct));
   const [deviceId, setDeviceId] = useState(battery?.deviceId ?? '');
+  // Pre-select the effective preset; 'individuell' (admin-configured custom
+  // value) selects nothing - picking a preset then overwrites it.
+  const initialSchonung = presetOf(battery?.speicherschonung);
+  const [schonung, setSchonung] = useState<SpeicherschonungPreset | null>(initialSchonung);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1207,6 +1229,11 @@ function BatteryEditForm({
         maxDischargeKw: dis,
         roundtripEfficiencyPct: eff,
         deviceId: deviceId || null,
+        // Only an actively changed choice is sent; an untouched form keeps the
+        // stored value (incl. an admin-configured custom one).
+        ...(schonung != null && schonung !== initialSchonung
+          ? { speicherschonung: schonung }
+          : {}),
       });
       onSaved(assets);
     } catch (e) {
@@ -1252,6 +1279,36 @@ function BatteryEditForm({
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEfficiency(e.target.value)}
           hint="Round-Trip-Wirkungsgrad. Leer lassen für den Standardwert (92 %)."
         />
+        <fieldset className="vp-schonung">
+          <legend className="vp-schonung-legend">Umgang mit dem Speicher</legend>
+          {SPEICHERSCHONUNG_OPTIONS.map((o) => (
+            <label
+              key={o.value}
+              className={'vp-schonung-opt' + (schonung === o.value ? ' selected' : '')}
+            >
+              <input
+                type="radio"
+                name="speicherschonung"
+                value={o.value}
+                checked={schonung === o.value}
+                onChange={() => setSchonung(o.value)}
+              />
+              <span className="vp-schonung-main">
+                <span className="vp-schonung-label">
+                  {o.label}
+                  {o.recommended ? ' (empfohlen)' : ''}
+                </span>
+                <span className="vp-schonung-sentence">{o.sentence}</span>
+              </span>
+            </label>
+          ))}
+          {battery?.speicherschonung === 'individuell' && schonung == null && (
+            <p className="vp-note" style={{ margin: 0 }}>
+              Aktuell: {SPEICHERSCHONUNG_INDIVIDUELL_LABEL}. Die Auswahl einer Option ersetzt
+              diese Einstellung.
+            </p>
+          )}
+        </fieldset>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="battery-device" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
             Steuerndes Gerät

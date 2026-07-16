@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.web.Speicherschonung;
 import com.voltpilot.api.web.dto.MastrApplyRequest;
 import com.voltpilot.api.web.dto.SiteAssetDto;
 import java.math.BigDecimal;
@@ -24,8 +25,8 @@ import org.springframework.stereotype.Repository;
 public class AssetRepository {
 
     private static final String COLUMNS = "id, type, device_id, capacity_kwh, max_charge_kw, "
-            + "max_discharge_kw, roundtrip_efficiency_pct, pv_capacity_kwp, module_count, "
-            + "azimuth_deg, tilt_deg, commissioned_on, registry, registry_unit_id, "
+            + "max_discharge_kw, roundtrip_efficiency_pct, wear_cost_ct_per_kwh, pv_capacity_kwp, "
+            + "module_count, azimuth_deg, tilt_deg, commissioned_on, registry, registry_unit_id, "
             + "registry_fetched_at";
 
     private final JdbcTemplate jdbc;
@@ -114,6 +115,21 @@ public class AssetRepository {
     }
 
     /**
+     * Set the battery's wear cost from a customer Speicherschonung preset (FK4).
+     * Deliberately touches ONLY {@code wear_cost_ct_per_kwh} - the other admin
+     * optimizer overrides on the same row ({@code soc_min_pct}/{@code
+     * soc_max_pct}) and the site's backup reserve are never part of a preset
+     * write (unlike the full-representation admin optimizer-config PUT). The
+     * optimizer reads exactly this column per 15-min cycle, so the preset takes
+     * effect on the next plan. RLS-scoped like every write here.
+     */
+    public boolean setBatteryWearCost(UUID siteId, BigDecimal wearCostCtPerKwh) {
+        return jdbc.update(
+                "UPDATE asset SET wear_cost_ct_per_kwh = ? WHERE site_id = ? AND type = 'battery'",
+                wearCostCtPerKwh, siteId) > 0;
+    }
+
+    /**
      * Explicitly link the site's battery asset to a device the caller chose (the
      * multi-device case, where the auto-link deliberately doesn't guess). RLS
      * scopes both the asset and - since the device id is validated to belong to
@@ -185,14 +201,19 @@ public class AssetRepository {
     private static SiteAssetDto mapAsset(ResultSet rs, int rowNum) throws SQLException {
         Timestamp fetched = rs.getTimestamp("registry_fetched_at");
         java.sql.Date commissioned = rs.getDate("commissioned_on");
+        String type = rs.getString("type");
         return new SiteAssetDto(
                 rs.getObject("id", UUID.class),
-                rs.getString("type"),
+                type,
                 rs.getObject("device_id", UUID.class),
                 rs.getBigDecimal("capacity_kwh"),
                 rs.getBigDecimal("max_charge_kw"),
                 rs.getBigDecimal("max_discharge_kw"),
                 rs.getBigDecimal("roundtrip_efficiency_pct"),
+                // The effective customer preset; the raw ct value stays admin-only.
+                "battery".equals(type)
+                        ? Speicherschonung.presetFor(rs.getBigDecimal("wear_cost_ct_per_kwh"))
+                        : null,
                 rs.getBigDecimal("pv_capacity_kwp"),
                 rs.getObject("module_count", Integer.class),
                 rs.getBigDecimal("azimuth_deg"),
