@@ -5,7 +5,7 @@
  * Ersparnis-Rechner reuses SimulationRunView/SimulationResultView with its
  * own form. All wording/derivation is the pure src/simulation.ts.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -401,10 +401,14 @@ export function SimulationSection({ site }: { site: Site }) {
   const [capacityKwh, setCapacityKwh] = useState('');
   const [pvKwp, setPvKwp] = useState('');
   const [netzladenWhatIf, setNetzladenWhatIf] = useState(false);
-  const job = useSimulationJob({
-    start: (input) => api.startSimulation(site.id, input),
-    poll: (id) => api.simulationStatus(site.id, id),
-  });
+  const jobApi = useMemo<SimulationJobApi>(
+    () => ({
+      start: (input) => api.startSimulation(site.id, input),
+      poll: (id) => api.simulationStatus(site.id, id),
+    }),
+    [site.id],
+  );
+  const job = useSimulationJob(jobApi);
 
   const submit = () => {
     const input: SimulationRequestInput = {

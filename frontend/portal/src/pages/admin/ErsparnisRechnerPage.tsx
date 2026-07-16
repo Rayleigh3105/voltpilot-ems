@@ -5,7 +5,7 @@
  * design (V1): nothing about the prospect is stored; the result lives in
  * the simulation service's job cache. Reuses the shared result view.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card } from '../../../designsystem/components/core/Card';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
@@ -32,10 +32,14 @@ export function ErsparnisRechnerPage() {
   const [speicherschonung, setSpeicherschonung] = useState('ausgewogen');
   const [formError, setFormError] = useState<string | null>(null);
 
-  const job = useSimulationJob({
-    start: (input) => adminApi.startProspectSimulation(input),
-    poll: (id) => adminApi.prospectSimulationStatus(id),
-  });
+  const jobApi = useMemo(
+    () => ({
+      start: (input: SimulationRequestInput) => adminApi.startProspectSimulation(input),
+      poll: (id: string) => adminApi.prospectSimulationStatus(id),
+    }),
+    [],
+  );
+  const job = useSimulationJob(jobApi);
 
   const submit = () => {
     if (place == null) {
