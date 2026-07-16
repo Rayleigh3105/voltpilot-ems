@@ -25,9 +25,9 @@ export type PageId =
   | 'optimizer';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
-export type AnlagenSub = 'live' | 'fahrplan' | 'historie' | 'wetter' | 'technik';
+export type AnlagenSub = 'live' | 'fahrplan' | 'historie' | 'wetter' | 'technik' | 'optimierung';
 
-const SUBS = new Set<string>(['live', 'fahrplan', 'historie', 'wetter', 'technik']);
+const SUBS = new Set<string>(['live', 'fahrplan', 'historie', 'wetter', 'technik', 'optimierung']);
 
 /**
  * One navigation state. `siteId`/`sub` only carry meaning for page 'anlagen':

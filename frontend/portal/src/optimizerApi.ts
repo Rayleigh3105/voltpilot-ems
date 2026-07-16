@@ -91,8 +91,24 @@ export interface OptimizerPlatformDefaults {
   terminalValueCtPerKwh: number | null;
 }
 
+/** Billing period of a Lastspitzenkappung Leistungspreis contract. */
+export type LeistungspreisAbrechnung = 'jahr' | 'monat';
+
+/**
+ * Peak-shaving (Lastspitzenkappung) contract fields - DEFENSIVELY OPTIONAL:
+ * the sibling backend task (vp-peakshave-core-p1) is adding them to the
+ * optimizer-config DTOs. Until it ships the GET response omits them; the
+ * portal probes presence (`supportsLastspitzenConfig` in moduleSurface.ts)
+ * and hides the admin editing block when absent - never PUTs guessed fields.
+ */
+export interface LastspitzenConfigFields {
+  leistungspreisEurKw?: number | null;
+  leistungspreisAbrechnung?: LeistungspreisAbrechnung | null;
+  lastspitzenReserveKw?: number | null;
+}
+
 /** The nullable per-site/per-asset override columns (null = default applies). */
-export interface OptimizerOverrides {
+export interface OptimizerOverrides extends LastspitzenConfigFields {
   wearCostCtPerKwh: number | null;
   socMinPct: number | null;
   socMaxPct: number | null;
@@ -131,7 +147,7 @@ export interface OptimizerConfig {
  * SoC band) need a battery asset -> 409; an effective SoC band with min >= max
  * -> 400.
  */
-export interface UpdateOptimizerConfig {
+export interface UpdateOptimizerConfig extends LastspitzenConfigFields {
   wearCostCtPerKwh: number | null;
   socMinPct: number | null;
   socMaxPct: number | null;
@@ -163,5 +179,21 @@ export const optimizerApi = {
       method: 'PUT',
       body: JSON.stringify(body),
       ...tenantHeaders(tenantId),
+    }),
+
+  /**
+   * Switcher-context variants (no explicit tenant): the shell's module-global
+   * X-Tenant-Id override applies, exactly like every other admin-reads-
+   * customer-data surface. Used where a platform-admin acts INSIDE a customer
+   * page (the Optimierung subpage, the Anlage-anlegen wizard). Callers must
+   * fail soft - a customer token or a missing tenant selection gets 403/404.
+   */
+  configViaSwitcher: (siteId: string) =>
+    request<OptimizerConfig>(`/api/v1/admin/sites/${siteId}/optimizer-config`),
+
+  updateConfigViaSwitcher: (siteId: string, body: UpdateOptimizerConfig) =>
+    request<OptimizerConfig>(`/api/v1/admin/sites/${siteId}/optimizer-config`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
     }),
 };

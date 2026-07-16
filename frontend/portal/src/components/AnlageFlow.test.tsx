@@ -1,7 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
-import { api, ApiError, type Device, type MastrPreview, type Site } from '../api';
+import { api, ApiError, type Device, type MastrPreview, type Site, type SiteAsset } from '../api';
+
+// The Nutzung step reads isPlatformAdmin() (admin contract fields); the flow
+// tests exercise the CUSTOMER path - keycloak stays out of jsdom.
+vi.mock('../auth', () => ({ isPlatformAdmin: () => false }));
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
 // mock it like LocationMap.test.tsx does; the map itself is not under test.
@@ -108,6 +112,34 @@ function storagePreview(overrides: Partial<MastrPreview> = {}): MastrPreview {
   };
 }
 
+/** A complete battery asset row (what the Register/manual step leaves behind). */
+function batteryAsset(overrides: Partial<SiteAsset> = {}): SiteAsset {
+  return {
+    id: 'a-1',
+    type: 'battery',
+    deviceId: null,
+    capacityKwh: 10,
+    maxChargeKw: 5,
+    maxDischargeKw: 5,
+    roundtripEfficiencyPct: 92,
+    speicherschonung: 'ausgewogen',
+    pvCapacityKwp: null,
+    moduleCount: null,
+    azimuthDeg: null,
+    tiltDeg: null,
+    commissionedOn: null,
+    registry: null,
+    registryUnitId: null,
+    registryFetchedAt: null,
+    ...overrides,
+  };
+}
+
+/** Pass the Nutzung step (design update 2026-07-16) without changing anything. */
+async function skipNutzung() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später festlegen' }));
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
 });
@@ -121,6 +153,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
         nummer === 'SEE900000012345' ? pvPreview() : storagePreview(),
       );
     const mastrApply = vi.spyOn(api, 'mastrApply').mockResolvedValue([]);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
     const claimDevice = vi.spyOn(api, 'claimDevice').mockResolvedValue(device);
     const onDone = vi.fn();
 
@@ -157,7 +190,13 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(applied.pv?.mastrNummer).toBe('SEE900000012345');
     expect(applied.storage?.mastrNummer).toBe('SEE900000067890');
 
-    // Step 3: Gerät.
+    // Step 3: Nutzung - the setup-time "Wie soll Ihr Speicher arbeiten?"
+    // (design update 2026-07-16); Marktoptimierung is always on.
+    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
+    expect(screen.getByText('Marktoptimierung (immer aktiv)')).toBeInTheDocument();
+    await skipNutzung();
+
+    // Step 4: Gerät.
     expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
     fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
@@ -174,6 +213,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
   it('keeps the manual fallback fully functional (Balkonkraftwerk / no number)', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
     const mastrLookup = vi.spyOn(api, 'mastrLookup');
     const onDone = vi.fn();
 
@@ -196,7 +236,8 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     // The register was never queried on the manual path.
     expect(mastrLookup).not.toHaveBeenCalled();
 
-    // Skip the device step - honest summary of what exists.
+    // Pass the Nutzung step, then skip the device step - honest summary.
+    await skipNutzung();
     fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(screen.getByText('manuell hinterlegt')).toBeInTheDocument();
@@ -205,6 +246,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
   it('keeps every step past the first skippable and dead-end-free', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     const claimDevice = vi.spyOn(api, 'claimDevice');
     const mastrApply = vi.spyOn(api, 'mastrApply');
     const onDone = vi.fn();
@@ -213,8 +255,9 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
-    // Skip the Register step, then the Gerät step.
+    // Skip the Register step, the Nutzung step, then the Gerät step.
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    await skipNutzung();
     fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
 
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
@@ -233,12 +276,14 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
   it('maps the 422 claim refusal to the shared unknown-ID message', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     vi.spyOn(api, 'claimDevice').mockRejectedValue(new ApiError(422, 'unknown'));
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    await skipNutzung();
     fireEvent.change(await screen.findByLabelText('Geräte-ID'), {
       target: { value: 'edge-tippfehla' },
     });
@@ -274,5 +319,67 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
     expect(screen.getByLabelText('Name der Anlage')).toBeInTheDocument();
     expect(screen.queryByText(/Name des Standorts/)).not.toBeInTheDocument();
+  });
+});
+
+describe('NutzungStep - the usage choice at setup time (design update 2026-07-16)', () => {
+  it('saves a changed Speicherschonung preset carrying the battery master data through', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+
+    // Resume at Register, skip into Nutzung.
+    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
+
+    // The battery exists, so the Umgang choice is offered; pick Schonend.
+    fireEvent.click(await screen.findByRole('radio', { name: /Schonend/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() =>
+      expect(saveBattery).toHaveBeenCalledWith(
+        's-1',
+        expect.objectContaining({
+          capacityKwh: 10,
+          maxChargeKw: 5,
+          maxDischargeKw: 5,
+          speicherschonung: 'schonend',
+        }),
+      ),
+    );
+    expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+  });
+
+  it('writes nothing when untouched; the Lastspitzen intent shows only the honest customer info', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    const saveBattery = vi.spyOn(api, 'saveBattery');
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
+
+    // Marktoptimierung is always on and not deselectable.
+    const markt = await screen.findByRole('checkbox', { name: /Marktoptimierung/ });
+    expect(markt).toBeChecked();
+    expect(markt).toBeDisabled();
+
+    // Selecting Lastspitzenkappung as a customer shows the calm info - no
+    // contract fields, no button, nothing persisted (Vertrieb läuft persönlich).
+    fireEvent.click(screen.getByRole('checkbox', { name: /Lastspitzenkappung/ }));
+    expect(
+      screen.getByText('Richten wir gemeinsam mit Ihnen ein – Einrichtung durch VoltPilot.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Leistungspreis (€/kW) *')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+    expect(saveBattery).not.toHaveBeenCalled();
+  });
+
+  it('hides the Umgang choice when the Anlage has no battery', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
+    expect(screen.queryByText('Umgang mit dem Speicher')).not.toBeInTheDocument();
   });
 });
