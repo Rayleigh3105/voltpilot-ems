@@ -83,6 +83,12 @@ def small_year(monkeypatch):
     return slots
 
 
+def use_year(monkeypatch, days: int):
+    slots = small_year_starts(days=days)
+    monkeypatch.setattr(runner_mod, "year_slot_starts", lambda year: slots)
+    return slots
+
+
 def make_deps(slots, max_workers: int = 1) -> SimulationDeps:
     class FakeWeather:
         def hourly_irradiance(self, latitude, longitude, year):
@@ -121,12 +127,12 @@ def test_month_chunking_splits_at_the_berlin_month_boundary(small_year):
     assert ranges == [(0, 2), (2, 4)]
 
 
-def test_chunked_run_matches_the_sequential_gold_chain(small_year):
+def assert_chunked_matches_gold(slots) -> None:
     """The load-bearing method fact: month chunks with warmup days reproduce
     the single sequential chain (report §1.2 measured -0.03 % on the full
     year; on this small window the tolerance is a few euro cents)."""
     request = base_request()
-    deps = make_deps(small_year)
+    deps = make_deps(slots)
     data = assemble_year_data(request, deps)
 
     chunked = run_milp_year(data, request.battery, False, max_workers=1)
@@ -171,6 +177,32 @@ def test_chunked_run_matches_the_sequential_gold_chain(small_year):
     assert cost_chunked == pytest.approx(cost_gold, abs=0.05)
 
 
+@pytest.mark.slow
+def test_chunked_run_matches_the_sequential_gold_chain(small_year):
+    assert_chunked_matches_gold(small_year)
+
+
+def test_chaining_smoke_three_days_match_the_gold_chain(monkeypatch):
+    """CI smoke twin of the slow gold test: 3 chained days across a month
+    boundary, so the warmup/commit chunking artefact protection stays guarded
+    in the default (`-m 'not slow'`) selection."""
+    assert_chunked_matches_gold(use_year(monkeypatch, days=3))
+
+
+def test_effective_workers_bound_by_chunks_and_cpus(monkeypatch):
+    from voltpilot_optimization.simulation.runner import effective_workers
+
+    monkeypatch.setattr(runner_mod, "_available_cpus", lambda: 8)
+    assert effective_workers(3, 12) == 3
+    assert effective_workers(16, 2) == 2  # never more workers than chunks
+    monkeypatch.setattr(runner_mod, "_available_cpus", lambda: 1)
+    # A low-core container degrades to the serial path (no pool at all).
+    assert effective_workers(3, 12) == 1
+
+
+# Hard cap: a deadlocked pool must FAIL loudly, never wedge the CI runner
+# (the pre-spawn fork pool livelocked exactly here - CI job 2587, >2.5 h).
+@pytest.mark.timeout(120)
 def test_parallel_chunks_equal_sequential_execution(small_year):
     request = base_request()
     deps = make_deps(small_year)
@@ -269,9 +301,12 @@ def test_scenario_a_is_exact_arithmetic(small_year):
     assert outcome.monatlich[-1]["monat"] == "2025-02"
 
 
+@pytest.mark.slow
 def test_netzladen_variant_grid_charges_when_profitable(small_year):
     """With a huge night/evening spread and merchant export, the Netzladen
-    variant must actually use the grid to charge (the base EEG run cannot)."""
+    variant must actually use the grid to charge (the base EEG run cannot).
+    Slow: a second full run_simulation; the variant's presence + headline
+    identity stay guarded in CI by the result-shape test above."""
     request = base_request(tarifArt="ohne")  # spot-settled: full spread visible
     deps = make_deps(small_year)
     result = run_simulation(request, deps)

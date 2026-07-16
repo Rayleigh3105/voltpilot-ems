@@ -23,6 +23,8 @@ jobs:
   build:
     name: Build & Push ${{ matrix.component }}
     runs-on: ubuntu-latest-mo
+    # Multi-arch QEMU builds are slow but bounded; never wedge the runner.
+    timeout-minutes: 90
 
     strategy:
       matrix:

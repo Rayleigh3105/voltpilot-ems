@@ -25,6 +25,8 @@ Everything here is pure computation over injected data
 from __future__ import annotations
 
 import logging
+import multiprocessing
+import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -337,6 +339,23 @@ def chunk_payloads(
     return payloads
 
 
+def _available_cpus() -> int:
+    """CPUs this process may actually use. ``sched_getaffinity`` respects a
+    container cpuset (the CI runner / prod compose case); plain ``cpu_count``
+    is the portable fallback (macOS has no affinity API)."""
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def effective_workers(requested: int, chunks: int) -> int:
+    """Bound the solver pool: never more workers than chunks or usable CPUs.
+    On a low-core container this degrades to 1 = the serial path (no pool at
+    all), which is both faster there and immune to pool pathologies."""
+    return max(1, min(requested, chunks, _available_cpus()))
+
+
 def run_milp_year(
     data: YearData,
     battery: BatteryParams,
@@ -373,14 +392,22 @@ def run_milp_year(
             dispatch.wear_eur[i] = result["wear_eur"][offset]
 
     done = 0
-    if max_workers <= 1:
+    workers = effective_workers(max_workers, len(payloads))
+    if workers <= 1:
         for payload in payloads:
             _merge(solve_chunk(payload))
             done += 1
             if on_chunk:
                 on_chunk(done, len(payloads), dispatch)
     else:
-        with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        # SPAWN, never fork: by the time a year run starts, this process has
+        # live threads (HiGHS/OpenMP from earlier solves, the job-store worker
+        # thread). Linux's default fork start method can then deadlock the
+        # child on an inherited lock - a real CI wedge (job 2587 ran >2.5 h);
+        # spawned children start clean. solve_chunk + its payloads are
+        # module-level/picklable, so spawn is a drop-in.
+        ctx = multiprocessing.get_context("spawn")
+        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
             futures = [pool.submit(solve_chunk, p) for p in payloads]
             for future in as_completed(futures):
                 _merge(future.result())

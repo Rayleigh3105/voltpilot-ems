@@ -36,9 +36,12 @@ convert = [
     "openpyxl>=3.1",
 ]
 # jsonschema validates published payloads against the frozen contract in tests;
-# openpyxl lets the bdew-convert tests build their synthetic workbooks.
+# openpyxl lets the bdew-convert tests build their synthetic workbooks;
+# pytest-timeout turns any wedged test (e.g. a deadlocked process pool) into a
+# loud failure instead of hanging the CI runner for hours.
 dev = [
     "pytest>=8.0",
+    "pytest-timeout>=2.3",
     "jsonschema>=4.21",
     "openpyxl>=3.1",
 ]
@@ -56,3 +59,10 @@ include = ["voltpilot_optimization*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Hard per-test ceiling (pytest-timeout): a deadlock FAILS the run instead of
+# wedging the single CI runner. Generous on purpose - the whole suite runs in
+# seconds; only a genuine hang ever hits this.
+timeout = 300
+markers = [
+    "slow: heavy multi-solve year runs (gold-equivalence chains); excluded in the CI gate via `pytest -m 'not slow'`, included in a plain local `pytest`",
+]
