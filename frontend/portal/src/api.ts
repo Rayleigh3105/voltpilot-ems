@@ -727,6 +727,47 @@ export interface EarningsSite {
   expectedMarketValueSlots: number | null;
   series: EarningsSeriesPoint[];
   monthlyStrip: EarningsMonth[];
+  /**
+   * The Lastspitzenkappung proof (PS-4): present exactly when the site's
+   * peak-shaving module is active (a Leistungspreis is configured); null
+   * otherwise. Range-independent - always the RUNNING billing period.
+   * Optional so the portal ships against an older backend (absent reads the
+   * same as null - no proof shown).
+   */
+  peakShaving?: PeakShaving | null;
+}
+
+/**
+ * Peak-shaving proof of a module-active site: the running Europe/Berlin
+ * billing period's measured grid-import peak vs. the counterfactual
+ * no-battery peak (max 15-min mean import; the counterfactual is the same
+ * plant with the battery idle). `avoidedKw = max(0, baseline - measured)`;
+ * `avoidedEur = avoidedKw × leistungspreisEurKw` - NOT pro-rated, mid-period
+ * it is the current standing. The peak fields are null while the running
+ * period has no measured import bucket yet - never fabricated.
+ */
+export interface PeakShaving {
+  /** EUR per kW per billing period (the module flag - always present here). */
+  leistungspreisEurKw: number;
+  /** Billing period kind: Europe/Berlin calendar year or month. */
+  abrechnung: 'jahr' | 'monat';
+  /** First Berlin day of the running billing period (ISO date). */
+  periodStart: string;
+  peakKw: number | null;
+  baselinePeakKw: number | null;
+  avoidedKw: number | null;
+  avoidedEur: number | null;
+  /** Last 12 billing periods with measured data, ascending (incl. running). */
+  history: PeakShavingPeriod[];
+}
+
+/** One billing period of the peak-shaving history. */
+export interface PeakShavingPeriod {
+  periodStart: string;
+  peakKw: number;
+  baselinePeakKw: number;
+  avoidedKw: number;
+  avoidedEur: number;
 }
 
 export interface EarningsTotals {

@@ -5,12 +5,13 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type Site, type SiteAsset } from '../api';
+import { api, ApiError, type PeakShaving, type Site, type SiteAsset } from '../api';
 import {
   AUTOMATIC_MODULES,
   OPTIMIERUNG_INTRO,
   buildLastspitzenUpdate,
   lastspitzenkappungCard,
+  lastspitzenProof,
   marktoptimierungCard,
   parseLastspitzenForm,
   supportsLastspitzenConfig,
@@ -48,7 +49,27 @@ const CARD_ICON: Record<ModuleCardView['id'], { icon: IconName; category: IconCa
 export function OptimierungSection({ site, isAdmin = false }: { site: Site; isAdmin?: boolean }) {
   const [battery, setBattery] = useState<SiteAsset | null>(null);
   const [adminConfig, setAdminConfig] = useState<OptimizerConfig | null>(null);
+  const [peak, setPeak] = useState<PeakShaving | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // The PS-4 proof numbers of the active Lastspitzenkappung card come from
+  // the earnings response's range-independent peakShaving block - fail-soft:
+  // a failed fetch, an older backend or an inactive module simply keeps the
+  // card without numbers (never fabricated zeros).
+  useEffect(() => {
+    let active = true;
+    api.earnings('month').then(
+      (e) => {
+        if (active) setPeak(e.sites.find((s) => s.id === site.id)?.peakShaving ?? null);
+      },
+      () => {
+        if (active) setPeak(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
 
   // The battery asset (Speicherschonung read + edit) - fail-soft: no battery
   // or a failed fetch simply omits the sub-line and the editor.
@@ -99,6 +120,7 @@ export function OptimierungSection({ site, isAdmin = false }: { site: Site; isAd
     battery != null,
   );
   const lastspitzen = lastspitzenkappungCard(leistungspreis);
+  const proof = lastspitzen.active ? lastspitzenProof(peak) : null;
   const adminEditable = isAdmin && supportsLastspitzenConfig(adminConfig?.overrides);
 
   return (
@@ -117,6 +139,26 @@ export function OptimierungSection({ site, isAdmin = false }: { site: Site; isAd
             )}
           </ModulCard>
           <ModulCard card={lastspitzen}>
+            {proof &&
+              (proof.note ? (
+                <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+                  {proof.note}
+                </p>
+              ) : (
+                <div className="vp-modul-stats">
+                  {proof.rows.map((row) => (
+                    <p className="vp-modul-stat" key={row.label}>
+                      <span className="t">
+                        {row.label}
+                        {row.tip && (
+                          <InfoTip label={`${row.label} erklären`}>{row.tip}</InfoTip>
+                        )}
+                      </span>
+                      <span className="v">{row.value}</span>
+                    </p>
+                  ))}
+                </div>
+              ))}
             {adminEditable && adminConfig && (
               <LastspitzenAdminEditor
                 siteId={site.id}

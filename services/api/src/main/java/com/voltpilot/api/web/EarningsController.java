@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.EarningsRepository;
+import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.EarningsDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsDailyDto;
@@ -9,6 +10,8 @@ import com.voltpilot.api.web.dto.EarningsDto.EarningsMonthDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsSeriesPointDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsSiteDto;
 import com.voltpilot.api.web.dto.EarningsDto.EarningsTotalsDto;
+import com.voltpilot.api.web.dto.EarningsDto.PeakPeriodDto;
+import com.voltpilot.api.web.dto.EarningsDto.PeakShavingDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -58,13 +61,16 @@ public class EarningsController {
 
     private final SiteRepository sites;
     private final EarningsRepository earnings;
+    private final PeakShavingRepository peaks;
     private final String activePvModel;
 
     public EarningsController(SiteRepository sites, EarningsRepository earnings,
+            PeakShavingRepository peaks,
             @org.springframework.beans.factory.annotation.Value(
                     "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
+        this.peaks = peaks;
         this.activePvModel = activePvModel;
     }
 
@@ -99,6 +105,10 @@ public class EarningsController {
         Map<UUID, List<EarningsRepository.DailySaved>> daily = earnings.dailySavedPerSite(
                 HistoryRange.DAY.window(today.minusDays(DAILY_SAVED_DAYS - 1)).from(),
                 HistoryRange.DAY.window(today).to());
+        // The peak-shaving proof (PS-4) is range-independent like the forward
+        // market value: always the RUNNING billing period, anchored on today.
+        Map<UUID, List<PeakShavingRepository.PeriodPeak>> peakPeriods =
+                peaks.peaksByPeriod(today);
 
         // The Ertrag chart series over the SELECTED range: hourly for a day,
         // daily for a month, monthly for a year / "Gesamt".
@@ -223,7 +233,8 @@ public class EarningsController {
                     exp == null ? null : exp.to(),
                     exp == null ? null : exp.slots(),
                     siteSeries,
-                    siteStrip));
+                    siteStrip,
+                    peakShaving(site, today, peakPeriods.get(site.id()))));
         }
 
         // "Gesamt" honestly starts at the first covered slot, not at the epoch.
@@ -266,6 +277,52 @@ public class EarningsController {
             return "no_data";
         }
         return agg.channelBuckets() == 0 ? "missing_channels" : "no_prices";
+    }
+
+    /**
+     * The peak-shaving proof block of one site (PS-4): null unless the site's
+     * module is active (non-NULL Leistungspreis - the module flag, migration
+     * V20260716020000). The running Europe/Berlin billing period is derived
+     * from {@code abrechnung_leistung} (first of the current month resp.
+     * year); its measured/counterfactual peaks come from the repository rows,
+     * and stay null when the period has no measured import bucket yet. The
+     * avoided-kW floor and the no-pro-rating euro semantics are documented on
+     * {@link PeakShavingDto}.
+     */
+    private static PeakShavingDto peakShaving(SiteDto site, LocalDate today,
+            List<PeakShavingRepository.PeriodPeak> rows) {
+        BigDecimal leistungspreis = site.leistungspreisEurKw();
+        if (leistungspreis == null) {
+            return null;
+        }
+        boolean monthly = "monat".equals(site.abrechnungLeistung());
+        LocalDate periodStart = monthly ? today.withDayOfMonth(1) : today.withDayOfYear(1);
+
+        List<PeakPeriodDto> history = (rows == null ? List.<PeakShavingRepository.PeriodPeak>of() : rows)
+                .stream()
+                .map(r -> {
+                    BigDecimal avoidedKw = r.baselinePeakKw().subtract(r.peakKw()).max(BigDecimal.ZERO);
+                    return new PeakPeriodDto(
+                            r.periodStart(),
+                            r.peakKw(),
+                            r.baselinePeakKw(),
+                            avoidedKw,
+                            avoidedKw.multiply(leistungspreis));
+                })
+                .toList();
+        PeakPeriodDto current = history.stream()
+                .filter(p -> p.periodStart().equals(periodStart))
+                .findFirst()
+                .orElse(null);
+        return new PeakShavingDto(
+                leistungspreis,
+                site.abrechnungLeistung(),
+                periodStart,
+                current == null ? null : current.peakKw(),
+                current == null ? null : current.baselinePeakKw(),
+                current == null ? null : current.avoidedKw(),
+                current == null ? null : current.avoidedEur(),
+                history);
     }
 
     /**

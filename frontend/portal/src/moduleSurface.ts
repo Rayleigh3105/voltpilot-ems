@@ -17,9 +17,9 @@
  * persönlich).
  */
 
-import type { PlantKind, TarifArt } from './api';
+import type { PeakShaving, PlantKind, TarifArt } from './api';
 import { parseDecimal } from './anlageFlow';
-import { eur, NBSP } from './format';
+import { eur, eurAmount, fmtNum, NBSP } from './format';
 import { speicherschonungLabel } from './speicherschonung';
 import type {
   LeistungspreisAbrechnung,
@@ -131,6 +131,96 @@ export function lastspitzenkappungCard(
 /** Present-and-positive gate for the (possibly still absent) Leistungspreis field. */
 export function isLeistungspreisActive(value: number | null | undefined): boolean {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+// --- The PS-4 proof: real numbers on the active Lastspitzenkappung card -----
+
+/**
+ * Below this avoided peak the proof reads as noise, not a result (the same
+ * 0.05 kW deadband the live surfaces use), so the hero line stays hidden.
+ */
+const AVOIDED_NOISE_KW = 0.05;
+
+/** "pro Jahr" / "pro Monat" for the configured billing-period kind. */
+export function abrechnungLabel(abrechnung: PeakShaving['abrechnung']): string {
+  return abrechnung === 'monat' ? 'pro Monat' : 'pro Jahr';
+}
+
+/**
+ * The ONE German sentence explaining the counterfactual behind the avoided
+ * peak (rendered as the InfoTip on both surfaces).
+ */
+export function peakCounterfactualTip(peak: PeakShaving): string {
+  return (
+    'Verglichen wird die höchste Viertelstunden-Bezugsspitze der laufenden ' +
+    'Abrechnungsperiode mit derselben Anlage ohne Speichereinsatz; die ' +
+    `Ersparnis ist die vermiedene Spitze × Leistungspreis (${eur(peak.leistungspreisEurKw)}${NBSP}€/kW ` +
+    `${abrechnungLabel(peak.abrechnung)}) und gilt, solange die Spitze bis zum Periodenende gehalten wird.`
+  );
+}
+
+/** The proof numbers of the ACTIVE Lastspitzenkappung card, render-ready. */
+export interface LastspitzenProof {
+  /**
+   * Label/value pairs; empty while the running period has no measurement.
+   * The "Vermiedene Spitze" row carries the counterfactual InfoTip sentence.
+   */
+  rows: { label: string; value: string; tip?: string }[];
+  /** Calm note instead of rows when nothing is measured yet; null otherwise. */
+  note: string | null;
+}
+
+/**
+ * Derive the card's proof rows from the earnings response's peakShaving
+ * block. Null when the block is absent (module inactive, or an older backend
+ * without the field) - the card then stays as it was. A module site whose
+ * RUNNING period has no measured import bucket yet gets the honest note
+ * instead of fabricated zeros.
+ */
+export function lastspitzenProof(peak: PeakShaving | null | undefined): LastspitzenProof | null {
+  if (peak == null) return null;
+  if (peak.peakKw == null || peak.avoidedKw == null || peak.avoidedEur == null) {
+    return {
+      rows: [],
+      note: 'In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.',
+    };
+  }
+  return {
+    rows: [
+      { label: 'Gehaltene Spitze diese Periode', value: fmtNum(peak.peakKw, 'kW') },
+      {
+        label: 'Vermiedene Spitze',
+        value: fmtNum(peak.avoidedKw, 'kW'),
+        tip: peakCounterfactualTip(peak),
+      },
+      {
+        label: 'Ersparte Leistungskosten',
+        value: `${peak.avoidedEur >= 0 ? '+' : ''}${eurAmount(peak.avoidedEur)}`,
+      },
+    ],
+    note: null,
+  };
+}
+
+/**
+ * The ONE calm money-hero line of a peak site: "Vermiedene Lastspitze:
+ * X kW × Y €/kW = Z €". Null when there is nothing meaningful to show - no
+ * module, no measurement yet, or an avoided peak below the noise deadband
+ * (the Optimierung card still shows the honest small numbers; the hero only
+ * carries a real result).
+ */
+export function vermiedeneSpitzeLine(
+  peak: PeakShaving | null | undefined,
+): { label: string; value: string; tip: string } | null {
+  if (peak == null || peak.avoidedKw == null || peak.avoidedEur == null) return null;
+  if (peak.avoidedKw <= AVOIDED_NOISE_KW) return null;
+  return {
+    label: 'Vermiedene Lastspitze',
+    value:
+      `${fmtNum(peak.avoidedKw, 'kW')} × ${eur(peak.leistungspreisEurKw)}${NBSP}€/kW` +
+      ` = ${eurAmount(peak.avoidedEur)}`,
+    tip: peakCounterfactualTip(peak),
+  };
 }
 
 /**

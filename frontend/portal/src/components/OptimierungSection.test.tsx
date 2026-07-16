@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { OptimierungSection } from './OptimierungSection';
-import { api, type Site, type SiteAsset } from '../api';
+import { api, type Earnings, type PeakShaving, type Site, type SiteAsset } from '../api';
 import { optimizerApi, type OptimizerConfig } from '../optimizerApi';
 
 const site: Site = {
@@ -69,8 +69,64 @@ function config(overrides: Partial<OptimizerConfig['overrides']> = {}): Optimize
   };
 }
 
+/** Minimal earnings response carrying (only) the PS-4 peakShaving block. */
+function earningsWithPeak(peakShaving: PeakShaving | null): Earnings {
+  return {
+    range: 'month',
+    from: '2026-07-01T00:00:00Z',
+    to: '2026-08-01T00:00:00Z',
+    sites: [
+      {
+        id: 's-1',
+        name: 'Hof Sonnenfeld',
+        plantKind: 'eigenverbrauch',
+        anzulegenderWertCtKwh: null,
+        realizedExportCtKwh: null,
+        marketValueSolarCtKwh: null,
+        marketValueProvisional: null,
+        baselineEur: null,
+        actualEur: null,
+        savedEur: null,
+        arbitrageEur: null,
+        pvShiftEur: null,
+        coveredSlots: 0,
+        firstCoveredDate: null,
+        reason: 'no_data',
+        dailySaved: [],
+        tarifArt: 'dynamisch',
+        tarifParamCtKwh: 18,
+        einspeiseErloesEur: null,
+        eigenverbrauchsWertEur: null,
+        gesamtertragEur: null,
+        selbstverbrauchKwh: null,
+        eingespeistKwh: null,
+        batterieBewegtKwh: null,
+        expectedMarketValueSolarCtKwh: null,
+        expectedMarketValueFrom: null,
+        expectedMarketValueTo: null,
+        expectedMarketValueSlots: null,
+        series: [],
+        monthlyStrip: [],
+        peakShaving,
+      },
+    ],
+    totals: {
+      baselineEur: null,
+      actualEur: null,
+      savedEur: null,
+      arbitrageEur: null,
+      pvShiftEur: null,
+      coveredSlots: 0,
+      firstCoveredDate: null,
+    },
+  };
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
+  // The PS-4 proof fetch is fail-soft; default to "no block" so the existing
+  // card behavior stays the baseline of every test.
+  vi.spyOn(api, 'earnings').mockResolvedValue(earningsWithPeak(null));
 });
 
 describe('OptimierungSection (the customer module surface subpage)', () => {
@@ -110,6 +166,54 @@ describe('OptimierungSection (the customer module surface subpage)', () => {
     expect(screen.getByText('Von VoltPilot für Sie eingerichtet.')).toBeInTheDocument();
     expect(screen.getByText(/Leistungspreis: 120,00/)).toBeInTheDocument();
     expect(screen.queryByText('Verfügbar')).not.toBeInTheDocument();
+  });
+
+  it('shows the PS-4 proof rows on the active card once the earnings carry the block', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    vi.spyOn(api, 'earnings').mockResolvedValue(
+      earningsWithPeak({
+        leistungspreisEurKw: 120,
+        abrechnung: 'monat',
+        periodStart: '2026-07-01',
+        peakKw: 62.4,
+        baselinePeakKw: 74.4,
+        avoidedKw: 12,
+        avoidedEur: 1440,
+        history: [],
+      }),
+    );
+    render(<OptimierungSection site={{ ...site, leistungspreisEurKw: 120 }} />);
+
+    expect(await screen.findByText('Gehaltene Spitze diese Periode')).toBeInTheDocument();
+    expect(screen.getByText(/62,4/)).toBeInTheDocument();
+    expect(screen.getByText('Vermiedene Spitze')).toBeInTheDocument();
+    expect(screen.getByText(/12,0/)).toBeInTheDocument();
+    expect(screen.getByText('Ersparte Leistungskosten')).toBeInTheDocument();
+    expect(screen.getByText(/\+1\.440,00/)).toBeInTheDocument();
+    // The counterfactual is one tap away (InfoTip on the avoided row).
+    expect(screen.getByRole('button', { name: 'Vermiedene Spitze erklären' })).toBeInTheDocument();
+  });
+
+  it('says honestly when the running period has no measurements yet', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    vi.spyOn(api, 'earnings').mockResolvedValue(
+      earningsWithPeak({
+        leistungspreisEurKw: 120,
+        abrechnung: 'jahr',
+        periodStart: '2026-01-01',
+        peakKw: null,
+        baselinePeakKw: null,
+        avoidedKw: null,
+        avoidedEur: null,
+        history: [],
+      }),
+    );
+    render(<OptimierungSection site={{ ...site, leistungspreisEurKw: 120 }} />);
+
+    expect(
+      await screen.findByText('In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Gehaltene Spitze diese Periode')).not.toBeInTheDocument();
   });
 
   it('lists the automatic protections (§ 14a, Negativpreise)', () => {

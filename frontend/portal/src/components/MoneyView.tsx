@@ -12,6 +12,7 @@ import {
   type StripSlot,
 } from '../anlage';
 import { marktwertBenchmark } from '../fleet';
+import { vermiedeneSpitzeLine } from '../moduleSurface';
 import { eurAmount } from '../format';
 import { InfoTip } from './InfoTip';
 import { useCountUp } from './FleetOverview';
@@ -231,6 +232,11 @@ export function AnlageHero({
   // Forward-looking expected Marktwert Solar (captain 2026-07-09) - one calm
   // line, hidden when there is no forward PV forecast / price coverage.
   const forward = money ? expectedMarketValueLine(money) : null;
+  // Peak-shaving proof (PS-4): the one calm "Vermiedene Lastspitze:
+  // X kW × Y €/kW = Z €" line of a peak-module site - hidden without a real
+  // avoided peak in the running billing period. The euro is NOT part of the
+  // Gesamtertrag above (the Leistungspreis is a separate bill line).
+  const peakLine = vermiedeneSpitzeLine(money?.peakShaving);
 
   return (
     <section className="vp-fleet-hero vp-money-hero" aria-label={`Gesamtertrag ${period}`}>
@@ -275,6 +281,13 @@ export function AnlageHero({
               <span>Erwarteter Marktwert Solar ({forward.horizon}):</span>
               <span className="v">{forward.value}</span>
               <InfoTip label="Erwarteter Marktwert Solar">{forward.info}</InfoTip>
+            </p>
+          )}
+          {peakLine && (
+            <p className="vp-money-forward">
+              <span>{peakLine.label}:</span>
+              <span className="v">{peakLine.value}</span>
+              <InfoTip label={peakLine.label}>{peakLine.tip}</InfoTip>
             </p>
           )}
           {provisional && (

@@ -5,14 +5,18 @@ import {
   LASTSPITZEN_CUSTOMER_INFO,
   NUTZUNG_QUESTION,
   OPTIMIERUNG_INTRO,
+  abrechnungLabel,
   buildLastspitzenUpdate,
   isLeistungspreisActive,
   lastspitzenkappungCard,
+  lastspitzenProof,
   marktoptimierungCard,
   marktoptimierungLine,
   parseLastspitzenForm,
   supportsLastspitzenConfig,
+  vermiedeneSpitzeLine,
 } from './moduleSurface';
+import type { PeakShaving } from './api';
 import type { OptimizerOverrides } from './optimizerApi';
 import { NBSP } from './format';
 
@@ -73,6 +77,76 @@ describe('lastspitzenkappungCard (Tier 2: active vs the honest offer)', () => {
   });
 });
 
+describe('PS-4 proof (real numbers on the active card + the money-hero line)', () => {
+  const peak: PeakShaving = {
+    leistungspreisEurKw: 120,
+    abrechnung: 'jahr',
+    periodStart: '2026-01-01',
+    peakKw: 62.4,
+    baselinePeakKw: 74.4,
+    avoidedKw: 12,
+    avoidedEur: 1440,
+    history: [],
+  };
+
+  it('lastspitzenProof renders the three German rows with de-DE numbers', () => {
+    const proof = lastspitzenProof(peak);
+    expect(proof).not.toBeNull();
+    expect(proof!.note).toBeNull();
+    expect(proof!.rows).toEqual([
+      {
+        label: 'Gehaltene Spitze diese Periode',
+        value: `62,4${NBSP}kW`,
+      },
+      {
+        label: 'Vermiedene Spitze',
+        value: `12,0${NBSP}kW`,
+        tip: expect.stringContaining('ohne Speichereinsatz'),
+      },
+      { label: 'Ersparte Leistungskosten', value: `+1.440,00${NBSP}€` },
+    ]);
+    // The counterfactual tip names the configured price + period kind.
+    expect(proof!.rows[1].tip).toContain(`120,00${NBSP}€/kW pro Jahr`);
+  });
+
+  it('is absent without the block and honest without measurements', () => {
+    expect(lastspitzenProof(null)).toBeNull();
+    expect(lastspitzenProof(undefined)).toBeNull();
+    const empty = lastspitzenProof({
+      ...peak,
+      peakKw: null,
+      baselinePeakKw: null,
+      avoidedKw: null,
+      avoidedEur: null,
+    });
+    expect(empty!.rows).toEqual([]);
+    expect(empty!.note).toBe(
+      'In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.',
+    );
+  });
+
+  it('vermiedeneSpitzeLine renders "X kW × Y €/kW = Z €" and hides noise', () => {
+    const line = vermiedeneSpitzeLine(peak);
+    expect(line).toEqual({
+      label: 'Vermiedene Lastspitze',
+      value: `12,0${NBSP}kW × 120,00${NBSP}€/kW = 1.440,00${NBSP}€`,
+      tip: expect.stringContaining('ohne Speichereinsatz'),
+    });
+    // No block / no measurement / a floored-to-zero or noise-level avoidance
+    // all stay silent - the hero only carries a real result.
+    expect(vermiedeneSpitzeLine(null)).toBeNull();
+    expect(vermiedeneSpitzeLine(undefined)).toBeNull();
+    expect(vermiedeneSpitzeLine({ ...peak, avoidedKw: null, avoidedEur: null })).toBeNull();
+    expect(vermiedeneSpitzeLine({ ...peak, avoidedKw: 0, avoidedEur: 0 })).toBeNull();
+    expect(vermiedeneSpitzeLine({ ...peak, avoidedKw: 0.04, avoidedEur: 4.8 })).toBeNull();
+  });
+
+  it('abrechnungLabel speaks the billing period', () => {
+    expect(abrechnungLabel('jahr')).toBe('pro Jahr');
+    expect(abrechnungLabel('monat')).toBe('pro Monat');
+  });
+});
+
 describe('wording discipline (outcome language, zero internals)', () => {
   it('never says Modul/MILP/Optimizer/Solver in customer copy', () => {
     const copy = [
@@ -86,6 +160,30 @@ describe('wording discipline (outcome language, zero internals)', () => {
       OPTIMIERUNG_INTRO,
       NUTZUNG_QUESTION,
       LASTSPITZEN_CUSTOMER_INFO,
+      JSON.stringify(
+        lastspitzenProof({
+          leistungspreisEurKw: 120,
+          abrechnung: 'monat',
+          periodStart: '2026-07-01',
+          peakKw: 10,
+          baselinePeakKw: 12,
+          avoidedKw: 2,
+          avoidedEur: 240,
+          history: [],
+        }),
+      ),
+      JSON.stringify(
+        vermiedeneSpitzeLine({
+          leistungspreisEurKw: 120,
+          abrechnung: 'jahr',
+          periodStart: '2026-01-01',
+          peakKw: 10,
+          baselinePeakKw: 12,
+          avoidedKw: 2,
+          avoidedEur: 240,
+          history: [],
+        }),
+      ),
     ].join(' ');
     expect(copy).not.toMatch(/Modul|MILP|Optimizer|Solver|Config/i);
   });
