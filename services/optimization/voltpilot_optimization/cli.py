@@ -83,6 +83,24 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0,
         help="stop after N cycles (0 = run forever; used by tests)",
     )
+
+    sim = sub.add_parser(
+        "simulate-serve",
+        help="run the Ersparnis-Simulation HTTP service (internal, async jobs)",
+    )
+    sim.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("SIM_PORT", "8095")),
+        help="HTTP port (default SIM_PORT, else 8095)",
+    )
+    sim.add_argument(
+        "--max-workers",
+        type=int,
+        default=int(os.environ.get("SIM_MAX_WORKERS", "3")),
+        help="parallel solver processes per job (default SIM_MAX_WORKERS, else 3)",
+    )
+    sim.add_argument("--log-level", default="INFO", help="logging level (default INFO)")
     return parser
 
 
@@ -110,6 +128,36 @@ def _run_one(args, env: dict[str, str]) -> None:
     print(summary.line())
 
 
+def _simulate_serve(args, env: dict[str, str]) -> int:
+    """Assemble + run the Ersparnis-Simulation service (design report §2):
+    DB-backed prices/market values, keyless Open-Meteo archive weather, the
+    production solver chained per chunk - behind an async job HTTP surface."""
+    from voltpilot_optimization.simulation import data as sim_data
+    from voltpilot_optimization.simulation.archive import ArchiveWeatherSource
+    from voltpilot_optimization.simulation.jobs import JobStore
+    from voltpilot_optimization.simulation.runner import (
+        SimulationDeps,
+        run_simulation,
+    )
+    from voltpilot_optimization.simulation.server import serve
+
+    dsn = _dsn_from_env(env)
+    deps = SimulationDeps(
+        load_prices=lambda zone, slots: sim_data.load_year_prices(dsn, zone, slots),
+        load_market_values=lambda months: sim_data.load_market_values(dsn, months),
+        weather=ArchiveWeatherSource(),
+        max_workers=max(args.max_workers, 1),
+    )
+    store = JobStore(lambda request, publish: run_simulation(request, deps, publish))
+    httpd = serve(store, args.port)
+    logger.info(
+        "simulate_serve.start",
+        extra={"context": {"port": args.port, "max_workers": args.max_workers}},
+    )
+    httpd.serve_forever()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -119,6 +167,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         _run_one(args, env)
         return 0
+
+    if args.command == "simulate-serve":
+        return _simulate_serve(args, env)
 
     if args.command == "serve":
         logger.info(
