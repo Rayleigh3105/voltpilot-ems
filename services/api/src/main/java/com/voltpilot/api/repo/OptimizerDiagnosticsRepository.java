@@ -57,6 +57,9 @@ public class OptimizerDiagnosticsRepository {
             BigDecimal tarifParamCtKwh,
             BigDecimal anzulegenderWertCtKwh,
             BigDecimal backupReserveSocPct,
+            BigDecimal leistungspreisEurKw,
+            String abrechnungLeistung,
+            BigDecimal peakReserveSocPct,
             boolean hasBattery,
             BigDecimal batteryCapacityKwh,
             BigDecimal roundtripEfficiencyPct,
@@ -79,6 +82,8 @@ public class OptimizerDiagnosticsRepository {
                 "SELECT s.id, s.plant_kind, s.netzladen_erlaubt, s.tarif_art,"
                         + " s.tarif_param_ct_kwh, s.anzulegender_wert_ct_kwh,"
                         + " s.backup_reserve_soc_pct,"
+                        + " s.leistungspreis_eur_kw, s.abrechnung_leistung,"
+                        + " s.peak_reserve_soc_pct,"
                         + " b.id AS battery_id, b.capacity_kwh, b.roundtrip_efficiency_pct,"
                         + " b.wear_cost_ct_per_kwh, b.soc_min_pct, b.soc_max_pct,"
                         + " pv.commissioned_on, pv.pv_capacity_kwp "
@@ -180,6 +185,9 @@ public class OptimizerDiagnosticsRepository {
                 rs.getBigDecimal("tarif_param_ct_kwh"),
                 rs.getBigDecimal("anzulegender_wert_ct_kwh"),
                 rs.getBigDecimal("backup_reserve_soc_pct"),
+                rs.getBigDecimal("leistungspreis_eur_kw"),
+                rs.getString("abrechnung_leistung"),
+                rs.getBigDecimal("peak_reserve_soc_pct"),
                 rs.getObject("battery_id", UUID.class) != null,
                 rs.getBigDecimal("capacity_kwh"),
                 rs.getBigDecimal("roundtrip_efficiency_pct"),

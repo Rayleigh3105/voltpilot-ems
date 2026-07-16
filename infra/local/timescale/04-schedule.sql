@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS schedule (
     curtail_kw        NUMERIC(12, 4),           -- planned PV curtailment (V20260706040000)
     wear_cost_eur     NUMERIC(12, 6),           -- priced battery degradation of the slot (V20260710000000)
     terminal_value_eur_per_kwh NUMERIC(12, 6),  -- run's P3 terminal value per stored kWh (V20260716010000)
+    peak_target_kw    NUMERIC(12, 4),           -- run's PS-1 planned billing-period peak target (V20260716020000)
     PRIMARY KEY (site_id, generated_at, time)
 );
 

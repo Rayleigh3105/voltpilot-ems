@@ -112,6 +112,10 @@ public class AdminOptimizerController {
                     request.socMinPct(), request.socMaxPct());
         }
         config.updateBackupReserve(siteId, request.backupReserveSocPct());
+        // Peak shaving (PS-1/PS-2): admin-only by construction - these fields
+        // exist ONLY on this endpoint, never on the customer site requests.
+        config.updatePeakShaving(siteId, request.leistungspreisEurKw(),
+                request.abrechnungLeistung(), request.peakReserveSocPct());
         return toConfigDto(requireSite(siteId));
     }
 
@@ -171,6 +175,10 @@ public class AdminOptimizerController {
                         site.backupReserveSocPct()),
                 new OptimizerConfigDto.Effective(
                         effWear, effMin, effMax, site.backupReserveSocPct()),
+                new OptimizerConfigDto.PeakShaving(
+                        site.leistungspreisEurKw(),
+                        site.abrechnungLeistung(),
+                        site.peakReserveSocPct()),
                 new OptimizerConfigDto.SiteLevers(
                         site.netzladenErlaubt(),
                         site.plantKind(),

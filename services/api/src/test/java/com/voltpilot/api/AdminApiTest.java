@@ -1111,6 +1111,112 @@ class AdminApiTest {
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * Peak shaving (PS-1/PS-2, V20260716020000) is configured ADMIN-ONLY via
+     * optimizer-config (captain decision: vertragsnahe Module richtet
+     * VoltPilot ein, nicht der Kunde): the PUT lands on the exact site
+     * columns the optimizer reads, the full-representation clear works, the
+     * fields are echoed READ-ONLY on the customer SiteDto, and the customer
+     * site-update path cannot touch them. Auth + tenancy as everywhere.
+     */
+    @Test
+    void peakShavingModuleIsAdminConfiguredAndEchoedReadOnlyOnTheSite() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Lastspitzen GmbH", "CI").get("id");
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "RLM Halle", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+        String configUrl = url("/api/v1/admin/sites/" + siteId + "/optimizer-config");
+
+        // Fresh site: module off, billing period at the 'jahr' default.
+        ResponseEntity<Map<String, Object>> initial = rest.exchange(configUrl, HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(initial.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> off = (Map<String, Object>) initial.getBody().get("peakShaving");
+        assertThat(off.get("leistungspreisEurKw")).isNull();
+        assertThat(off).containsEntry("abrechnungLeistung", "jahr");
+        assertThat(off.get("peakReserveSocPct")).isNull();
+
+        // Activate the module (no battery asset needed - the site-level
+        // fields are like backupReserveSocPct).
+        ResponseEntity<Map<String, Object>> written = rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("leistungspreisEurKw", 120.5,
+                        "abrechnungLeistung", "monat", "peakReserveSocPct", 40), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(written.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> on = (Map<String, Object>) written.getBody().get("peakShaving");
+        assertThat(num(on, "leistungspreisEurKw")).isEqualTo(120.5);
+        assertThat(on).containsEntry("abrechnungLeistung", "monat");
+        assertThat(num(on, "peakReserveSocPct")).isEqualTo(40.0);
+        // ...and it landed on the exact columns the OPTIMIZER reads
+        // (inputs.load_battery_sites), not a parallel store.
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + siteId
+                + "' AND leistungspreis_eur_kw = 120.5 AND abrechnung_leistung = 'monat' "
+                + "AND peak_reserve_soc_pct = 40")).isEqualTo(1);
+
+        // The customer-facing SiteDto echoes the module READ-ONLY...
+        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+                url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<>() {});
+        Map<String, Object> siteDto = sites.getBody().stream()
+                .filter(s -> siteId.equals(s.get("id"))).findFirst().orElseThrow();
+        assertThat(num(siteDto, "leistungspreisEurKw")).isEqualTo(120.5);
+        assertThat(siteDto).containsEntry("abrechnungLeistung", "monat");
+        assertThat(num(siteDto, "peakReserveSocPct")).isEqualTo(40.0);
+        // ...and the customer site-update path cannot touch it: the fields do
+        // not exist on UpdateSiteRequest, so a crafted body is simply ignored.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "RLM Halle", "biddingZone", "DE-LU",
+                        "leistungspreisEurKw", 0.01, "peakReserveSocPct", 1), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + siteId
+                + "' AND leistungspreis_eur_kw = 120.5 AND peak_reserve_soc_pct = 40"))
+                .isEqualTo(1);
+
+        // Validation: negative LP, unknown billing period, reserve > 100.
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("leistungspreisEurKw", -1), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("abrechnungLeistung", "quartal"), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("peakReserveSocPct", 101), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // Full-representation PUT with nothing set switches the module OFF
+        // and resets the billing period to its 'jahr' default.
+        ResponseEntity<Map<String, Object>> cleared = rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of(), adminTenant), new ParameterizedTypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        Map<String, Object> clearedPeak =
+                (Map<String, Object>) cleared.getBody().get("peakShaving");
+        assertThat(clearedPeak.get("leistungspreisEurKw")).isNull();
+        assertThat(clearedPeak).containsEntry("abrechnungLeistung", "jahr");
+        assertThat(clearedPeak.get("peakReserveSocPct")).isNull();
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + siteId
+                + "' AND leistungspreis_eur_kw IS NULL AND abrechnung_leistung = 'jahr' "
+                + "AND peak_reserve_soc_pct IS NULL")).isEqualTo(1);
+
+        // Auth + tenancy: customer 403 on the ONLY writable surface; admin
+        // without / with the wrong tenant 404.
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("leistungspreisEurKw", 99), bearer(token("demo", "demo"))),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("leistungspreisEurKw", 99), bearer(admin)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(configUrl, HttpMethod.PUT,
+                new HttpEntity<>(Map.of("leistungspreisEurKw", 99),
+                        withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private static double num(Map<String, Object> map, String key) {

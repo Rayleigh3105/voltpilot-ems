@@ -25,7 +25,8 @@ public class AdminSiteRepository {
     private static final String COLUMNS =
             "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
                     + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
-                    + " max_feed_in_kw";
+                    + " max_feed_in_kw, leistungspreis_eur_kw, abrechnung_leistung,"
+                    + " peak_reserve_soc_pct";
 
     private final JdbcTemplate jdbc;
 

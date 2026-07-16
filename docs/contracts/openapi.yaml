@@ -1513,6 +1513,39 @@ components:
             ONLY - import is never limited by it (unlike the telemetry-driven
             §14a limit, which is symmetric); when both exist the tighter one
             wins on export.
+        leistungspreisEurKw:
+          type: number
+          nullable: true
+          minimum: 0
+          example: 120.0
+          readOnly: true
+          description: >
+            READ-ONLY echo of the peak-shaving module (PS-1, Lastspitzenkappung):
+            the RLM Leistungspreis in EUR per kW per billing period. Non-null =
+            the module is ACTIVE (there is no separate flag). Configured
+            exclusively by Portal-Admins via
+            PUT /api/v1/admin/sites/{siteId}/optimizer-config - never accepted
+            on the customer site create/update requests.
+        abrechnungLeistung:
+          type: string
+          enum: [jahr, monat]
+          readOnly: true
+          description: >
+            READ-ONLY echo (PS-1): the Leistungspreis billing period -
+            Jahres- vs. Monatsleistungspreis (Europe/Berlin calendar periods).
+            Defaults to 'jahr'. Admin-configured via optimizer-config.
+        peakReserveSocPct:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+          readOnly: true
+          description: >
+            READ-ONLY echo (PS-2): the peak-shaving SoC reserve in percent -
+            a HARD floor the dispatch never discharges below, held back for
+            load peaks beyond the 24h planning horizon. Stacks with the
+            backup reserve (the highest configured absolute floor binds).
+            null = no peak reserve. Admin-configured via optimizer-config.
     SiteAsset:
       type: object
       description: One asset row incl. registry provenance; null = not set.
@@ -2614,6 +2647,34 @@ components:
             socMinPct: { type: number, nullable: true }
             socMaxPct: { type: number, nullable: true }
             backupReserveSocPct: { type: number, nullable: true }
+        peakShaving:
+          type: object
+          description: >
+            The peak-shaving module (PS-1/PS-2, Lastspitzenkappung) - the ONE
+            writable surface for it (captain decision: vertragsnahe Module
+            richtet VoltPilot ein, nicht der Kunde). A non-null
+            leistungspreisEurKw IS the module-active flag; the optimizer then
+            prices the billing period's 15-min import peak economically
+            (epigraph + peak_so_far anchor) and publishes the planned peak
+            target to the edge. Echoed read-only on the customer Site.
+          properties:
+            leistungspreisEurKw:
+              type: number
+              nullable: true
+              minimum: 0
+              description: EUR per kW per billing period; null = module off.
+            abrechnungLeistung:
+              type: string
+              enum: [jahr, monat]
+              description: Billing period of the Leistungspreis (Europe/Berlin calendar).
+            peakReserveSocPct:
+              type: number
+              nullable: true
+              minimum: 0
+              maximum: 100
+              description: >
+                Hard SoC floor reserved for out-of-horizon peaks; stacks with
+                the backup reserve (highest absolute floor binds). null = none.
         site:
           type: object
           description: Read-only echo of the levers editable via PUT /api/v1/sites/{siteId}.
@@ -2629,9 +2690,26 @@ components:
         Full-representation override write: a null/absent field clears that
         override back to the platform default. wearCostCtPerKwh/socMinPct/
         socMaxPct live on the battery asset (409 without one);
-        backupReserveSocPct on the site.
+        backupReserveSocPct and the peak-shaving module fields on the site.
+        A null/absent abrechnungLeistung resets to 'jahr' (the column default).
       properties:
         wearCostCtPerKwh: { type: number, nullable: true, minimum: 0 }
         socMinPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
         socMaxPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
         backupReserveSocPct: { type: number, nullable: true, minimum: 0, maximum: 100 }
+        leistungspreisEurKw:
+          type: number
+          nullable: true
+          minimum: 0
+          description: PS-1 Leistungspreis (EUR/kW per billing period); null switches the module off.
+        abrechnungLeistung:
+          type: string
+          nullable: true
+          enum: [jahr, monat]
+          description: Billing period; null resets to 'jahr'.
+        peakReserveSocPct:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: PS-2 peak-shaving SoC reserve; null clears it.

@@ -28,6 +28,11 @@ Formulation (per slot t, dt = 0.25 h):
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t, 0) - curtail_t                (charge from produced PV only,
                                                                     PV-bus Bilanzierung - FK3)
+    and, ONLY when leistungspreis_eur_kw is set (peak shaving, PS-1, see below):
+               peak >= grid_import_t,  peak >= peak_so_far         (epigraph over the billing
+               peak_below >= grid_import_t                          period's import peak)
+    with objective +=  LP * (peak - peak_so_far)                   (the Leistungspreis, exact)
+                     + peak_ratchet_eur_per_kw(LP) * peak_below    (the shave-target ratchet)
 
 Design decisions, deliberately:
 
@@ -169,6 +174,40 @@ Design decisions, deliberately:
   LOAD remains a legitimate (and EEG-clean) negative-price play; a fully
   curtailed slot simply cannot charge.
 
+- **Peak shaving is priced ECONOMICALLY, never enforced as a hard cap (PS-1,
+  scout vp-battery-models-b9 Teil 3 b/c).** An RLM site's Leistungspreis
+  (``leistungspreis_eur_kw``, EUR per kW per billing period) applies to the
+  highest 15-min mean grid IMPORT of the period. The standard epigraph
+  ``peak >= grid_import_t`` for all t plus the anchor ``peak >= peak_so_far``
+  (the period's measured peak so far, computed fresh per cycle) makes the
+  objective term ``LP * (peak - peak_so_far)`` EXACT: exceeding the period
+  peak by Δ kW costs precisely LP·Δ, and the solver weighs that against
+  arbitrage/self-consumption gains on its own - no hard cap, so there is NO
+  new infeasibility path (the §14a fallback machinery is untouched, and the
+  term lives in BOTH builds: an advisory plan for an infeasible §14a site
+  must still shave its peak). Below ``peak_so_far`` the marginal term is
+  genuinely zero (nothing left to save in this period), which is where the
+  **shave-target ratchet** comes in: a weak secondary term
+  ``peak_ratchet_eur_per_kw(LP) * peak_below`` on the plain horizon peak
+  (``peak_below >= grid_import_t``, no anchor) keeps the battery shaving
+  after a torn peak and at period start (a torn peak may be a measurement
+  artifact; the 1st-of-January 00:15 must not define the year's maximum).
+  Deliberately wear-scale, never epsilon-scale - and CAPPED so it never
+  dominates real arbitrage; the weight derivation and the trade-off
+  discussion live in :mod:`voltpilot_optimization.config`. (Note the ratchet
+  also adds its small weight on TOP of the full LP above the anchor - a
+  documented, negligible overshoot inherent in the two-epigraph form.) The
+  solved ``peak`` is published as the plan's ``grid_import_limit_kw`` (the
+  edge peak-guard's target) and persisted as ``schedule.peak_target_kw``.
+- **The peak-shaving reserve is a HARD SoC floor (PS-2).** The 24h horizon
+  never sees the whole billing period, so the epigraph alone would let the
+  evening arbitrage drain the battery before an out-of-horizon Monday-morning
+  peak (reserve myopia, report (c)1). ``BatteryParams.peak_reserve_pct``
+  joins the reservation stack (technical < backup < peak-reserve, highest
+  configured absolute floor binds) through the same
+  :meth:`BatteryParams.soc_floor_kwh` machinery as the P11 backup reserve,
+  including the below-floor-start relaxation - hard, never soft.
+
 The solver toolchain is Pyomo + HiGHS via ``highspy`` (the repo-wide choice,
 see AGENTS.md); ``highspy`` stays a lazy import behind the optional ``solver``
 extra so the package imports (and non-solver tests run) without the wheel.
@@ -191,6 +230,7 @@ from pyomo.environ import (
     value,
 )
 
+from voltpilot_optimization.config import peak_ratchet_eur_per_kw
 from voltpilot_optimization.domain import (
     OptimizationInput,
     PlanSlot,
@@ -348,6 +388,23 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.feed_in_cap = Constraint(
             m.T, rule=lambda model, t: model.grid_export[t] <= inp.max_feed_in_kw
         )
+    if inp.leistungspreis_eur_kw is not None:
+        # Peak shaving (PS-1, see module docstring): epigraph over the
+        # billing period's 15-min import peak. Economic term, never a hard
+        # cap - present in BOTH builds (deliberately not behind
+        # enforce_grid_limit: it cannot cause infeasibility, and the §14a
+        # fallback plan must still shave). peak carries the Leistungspreis
+        # above the measured period anchor; peak_below is the plain horizon
+        # peak carrying the weak shave-target ratchet.
+        m.peak = Var(domain=NonNegativeReals)
+        m.peak_epigraph = Constraint(
+            m.T, rule=lambda model, t: model.peak >= model.grid_import[t]
+        )
+        m.peak_anchor = Constraint(expr=m.peak >= inp.peak_so_far_kw)
+        m.peak_below = Var(domain=NonNegativeReals)
+        m.peak_below_epigraph = Constraint(
+            m.T, rule=lambda model, t: model.peak_below >= model.grid_import[t]
+        )
     # Real degradation cost per AC-side kWh in each direction (see module
     # docstring); the epsilon tie-break below stays for the c_wear = 0 case.
     wear_eur_per_kwh = p.wear_cost_eur_per_kwh_each_way
@@ -358,6 +415,16 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
     # docstring - this is what un-freezes an EEG battery on low-PV days while
     # keeping end-of-horizon dumps unattractive).
     v_end = inp.effective_terminal_value_eur_per_kwh()
+    peak_cost = 0.0
+    if inp.leistungspreis_eur_kw is not None:
+        # EUR per kW per billing period - a per-POWER price, so no dt factor.
+        # The full LP prices the period peak above the anchor EXACTLY; the
+        # weak (capped, wear-scale) ratchet prices the plain horizon peak so
+        # shaving continues below the anchor (see config.py).
+        peak_cost = (
+            inp.leistungspreis_eur_kw * (m.peak - inp.peak_so_far_kw)
+            + peak_ratchet_eur_per_kw(inp.leistungspreis_eur_kw) * m.peak_below
+        )
     m.total_cost = Objective(
         expr=sum(
             (
@@ -371,6 +438,7 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             + BATTERY_WEAR_TIEBREAK_EUR_PER_KW * (m.charge[t] + m.discharge[t])
             for t in m.T
         )
+        + peak_cost
         - v_end * (m.soc[n] - soc0),
         sense=minimize,
     )
@@ -474,5 +542,13 @@ def _extract_plan(
         # so the portal can show the banked value on bank days.
         terminal_value_eur_per_kwh=round(
             inp.effective_terminal_value_eur_per_kwh(), 6
+        ),
+        # PS-1: the solved billing-period peak target - the edge peak-guard's
+        # grid_import_limit_kw and the persisted schedule.peak_target_kw.
+        # None when the peak module is off (no m.peak variable exists then).
+        peak_target_kw=(
+            round(float(value(model.peak)), 4)
+            if inp.leistungspreis_eur_kw is not None
+            else None
         ),
     )

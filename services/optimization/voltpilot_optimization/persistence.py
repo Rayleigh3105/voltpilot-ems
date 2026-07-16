@@ -60,8 +60,8 @@ INSERT INTO schedule
     (time, tenant_id, site_id, device_id, plan_id, generated_at,
      battery_kw, grid_kw, soc_pct, load_kw, pv_kw,
      price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur,
-     terminal_value_eur_per_kwh)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+     terminal_value_eur_per_kwh, peak_target_kw)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -76,17 +76,20 @@ DO UPDATE SET
     baseline_cost_eur = EXCLUDED.baseline_cost_eur,
     curtail_kw        = EXCLUDED.curtail_kw,
     wear_cost_eur     = EXCLUDED.wear_cost_eur,
-    terminal_value_eur_per_kwh = EXCLUDED.terminal_value_eur_per_kwh;
+    terminal_value_eur_per_kwh = EXCLUDED.terminal_value_eur_per_kwh,
+    peak_target_kw    = EXCLUDED.peak_target_kw;
 """
 
 
 def plan_rows(plan: SchedulePlan) -> list[tuple]:
     """The per-slot parameter tuples for :data:`_UPSERT_SQL` (one per slot).
 
-    ``terminal_value_eur_per_kwh`` is a RUN-level fact (the P3 credit per
-    stored kWh at the horizon end, FK2) repeated on every slot row of the run -
-    the schedule table has no run-level sibling, and the existing upsert keeps
-    working unchanged. NULL on plans that predate the field.
+    ``terminal_value_eur_per_kwh`` and ``peak_target_kw`` are RUN-level facts
+    (the P3 credit per stored kWh at the horizon end, FK2; the PS-1 planned
+    billing-period peak target) repeated on every slot row of the run - the
+    schedule table has no run-level sibling, and the existing upsert keeps
+    working unchanged. NULL on plans that predate the fields (peak_target_kw
+    also NULL whenever the site's peak-shaving module is off).
     """
     return [
         (
@@ -107,6 +110,7 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             slot.curtail_kw,
             slot.wear_cost_eur,
             plan.terminal_value_eur_per_kwh,
+            plan.peak_target_kw,
         )
         for slot in plan.slots
     ]
