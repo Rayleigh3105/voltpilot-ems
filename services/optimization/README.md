@@ -129,6 +129,20 @@ Config via env (same names as the sibling collectors): `POSTGRES_HOST/PORT/DB/US
 
 In compose the service runs under the **`optimize` profile** (`docker compose --profile optimize up -d --build optimizer`); its Docker build context is the **repo root** (it installs `services/forecast` alongside - see the Dockerfile header).
 
+## Ersparnis-Simulation: BDEW-Profil-Konverter (`bdew-convert`)
+
+The Ersparnis-Simulation's load profile can be the official **BDEW H25** dynamic standard load profile instead of the synthetic household shape - but the BDEW publication ("Repräsentative Profile BDEW H25 G25 L25 P25 S25", free download at bdew.de → Standardlastprofile Strom) carries **no clear redistribution grant** (downloads are limited to private/non-commercial use; redistribution needs BDEW's written consent). So the repo ships **only this converter, never the data**: the operator downloads the official xlsx themself and converts it locally.
+
+```bash
+pip install -e '.[convert]'   # openpyxl, kept out of the runtime image
+python -m voltpilot_optimization bdew-convert /pfad/zur/BDEW_H25.xlsx \
+    --profile H25 --year 2025 --out /srv/voltpilot/bdew-h25-2025.json
+# then point the simulation service at it:
+#   SIM_BDEW_H25_JSON=/srv/voltpilot/bdew-h25-2025.json
+```
+
+`--year` must be the simulation's **reference year** (the profile is expanded onto that year's real calendar: day types incl. bundesweite Feiertage, Dynamisierung, DST, leap years). The command validates the result (slot count, non-negativity, the expanded year must reproduce the publication's 1-Mio-kWh normalization) and prints a short report (min/max/mean weight, weekday-vs-Sunday ratio, day-type counts). All expansion semantics - sheet layout, the SA/FT/WT day-type mapping incl. the classic Dec-24/31-as-Samstag rule, the VDEW-H0 Dynamisierungsfunktion (applied to H25/P25/S25, not G25/L25), wall-clock slot indexing across DST - are documented in [`voltpilot_optimization/simulation/bdew_convert.py`](voltpilot_optimization/simulation/bdew_convert.py). **Never commit the xlsx or the generated JSON** - both derive from the BDEW publication.
+
 ## Status
 
 **Built:** the full loop above, verified by offline tests (economic behavior on synthetic curves, constraint compliance, contract conformance, engine orchestration). **Built too:** the per-site grid-charging switch (see its section above), priced battery degradation (P2) and the telemetry freshness windows (F4 freshness half) - Stage 1 of the market-revenue optimizer redesign - **the P1 tariff/Marktprämie-aware market-revenue objective (Stage 2, see the P1 section above)**: import/export split with per-slot asymmetric pricing, Marktprämie + feste EEG-Vergütung on the export side, the supply tariff on the import side, everything-missing-degrades-to-spot - and **Stage 3: the P3 terminal energy value** (replaces the hard `SoC_end ≥ SoC_start` floor; fixes the F3 EEG winter-freeze and merchant forced buy-backs, see its section above) **plus the P11 customer backup-reserve SoC floor** (`site.backup_reserve_soc_pct`, a hard constraint). **Future work:** the §14a export-cap semantics question (D5 - the observed import envelope is still mirrored onto export, deliberately unchanged), the portal/admin UI for the backup reserve, horizon extension to all priced slots (P8a), peak-shaving / capacity tariffs, multi-battery sites, plan-vs-actual KPIs from the persisted schedules; the pre-2022 feste-Vergütung anchors are documented approximations awaiting captain-confirmed rates (D2), and a merchant-mode DV site deliberately earns NO premium in the objective pending a Messkonzept concept (see the P1 section).

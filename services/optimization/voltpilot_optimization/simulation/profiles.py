@@ -7,12 +7,16 @@ Honest label in the UI: "typisches Haushaltsprofil" - it is a plausible
 shape, not a measured one.
 
 The official BDEW H25 dynamic standard load profile stays behind an explicit
-opt-in (``SIM_BDEW_H25_JSON`` pointing at a locally provided JSON file) until
-its redistribution license is settled - BDEW publishes the profiles for free
-use but without an explicit redistribution grant, so the repo must not bundle
-the data silently (captain instruction 2026-07-16). The adapter accepts the
-BDEW publication converted to JSON: ``{"slots": [w0, w1, ...]}`` with one
-weight per 15-min slot of the profile year, applied by slot-of-year and
+opt-in (``SIM_BDEW_H25_JSON`` pointing at a locally provided JSON file) -
+BDEW publishes the profiles for free use but without an explicit
+redistribution grant, so the repo must not bundle the data (captain
+instruction 2026-07-16). The operator converts their own download of the
+official publication with the shipped ``bdew-convert`` CLI (see
+:mod:`voltpilot_optimization.simulation.bdew_convert`, which also documents
+the publication structure, day-type mapping, Dynamisierung and DST
+semantics). The adapter accepts ``{"slots": [w0, w1, ...]}`` with one weight
+per WALL-CLOCK 15-min slot of the profile year (``(day_of_year - 1) * 96 +
+quarter_of_day`` - that is what the same-tzinfo subtraction below computes),
 scaled to the annual consumption like the synthetic profile.
 """
 
@@ -95,9 +99,13 @@ def _bdew_h25_weights(
 ) -> list[float]:
     """Weights from a locally provided BDEW H25 JSON (see module docstring).
 
-    The file carries one weight per 15-min slot of a profile year, indexed by
-    slot-of-year in Berlin local time; simulation years of a different length
-    (leap years) wrap the profile cyclically - a documented approximation.
+    The file carries one weight per WALL-CLOCK 15-min slot of a profile year:
+    the same-tzinfo ``local - year_start`` subtraction below is naive, so the
+    index is ``(day_of_year - 1) * 96 + quarter_of_day`` - on the DST
+    spring-forward day the 02:00-02:45 entries are never read, on the
+    fall-back day they are read twice (the converter emits exactly this
+    layout). Simulation years of a different length (leap years) wrap the
+    profile cyclically - a documented approximation.
     """
     path = env.get(BDEW_H25_ENV, "").strip()
     if not path:

@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
 import time
 from urllib.parse import quote
 
@@ -101,6 +102,32 @@ def _build_parser() -> argparse.ArgumentParser:
         help="parallel solver processes per job (default SIM_MAX_WORKERS, else 3)",
     )
     sim.add_argument("--log-level", default="INFO", help="logging level (default INFO)")
+
+    convert = sub.add_parser(
+        "bdew-convert",
+        help="convert the operator-provided official BDEW profile xlsx into "
+        "the simulation's SIM_BDEW_H25_JSON file (the workbook is never "
+        "bundled - see simulation/bdew_convert.py)",
+    )
+    convert.add_argument("xlsx", help="path to the official BDEW publication xlsx")
+    convert.add_argument(
+        "--profile",
+        default="H25",
+        choices=["H25", "G25", "L25", "P25", "S25"],
+        help="profile sheet to convert (default H25)",
+    )
+    convert.add_argument(
+        "--year",
+        type=int,
+        required=True,
+        help="target calendar year to expand onto (the simulation's reference year)",
+    )
+    convert.add_argument(
+        "--out",
+        required=True,
+        help="output JSON path ('-' = stdout); point SIM_BDEW_H25_JSON at it",
+    )
+    convert.add_argument("--log-level", default="INFO", help="logging level (default INFO)")
     return parser
 
 
@@ -167,6 +194,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         _run_one(args, env)
         return 0
+
+    if args.command == "bdew-convert":
+        from voltpilot_optimization.simulation.bdew_convert import (
+            BdewConvertError,
+            run as bdew_run,
+        )
+
+        try:
+            return bdew_run(args.xlsx, args.profile, args.year, args.out)
+        except (BdewConvertError, OSError) as exc:
+            print(f"bdew-convert: {exc}", file=sys.stderr)
+            return 2
 
     if args.command == "simulate-serve":
         return _simulate_serve(args, env)
