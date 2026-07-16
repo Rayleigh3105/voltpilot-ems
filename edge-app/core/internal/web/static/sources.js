@@ -22,6 +22,8 @@
 
   var catalog = null;
   var statuses = {};       // source id -> "ok"|"warn"|"pending"
+  var readings = {};       // source id -> {pv_kw?, power_kw?, read_at_ms} ("Zuletzt gelesen")
+  var serverNowMs = 0;     // device clock at fetch time (honest "vor X" ages)
   var hasNetz = false;     // whether a Netz-Zähler already exists (role-lock)
   var currentRole = ROLE_ERZEUGER;
 
@@ -43,6 +45,23 @@
 
   /* ---------------- list (grouped by role) ---------------- */
 
+  // readingParts renders a source's last accepted reading as German value
+  // chips: PV generation for an Erzeuger, Bezug/Einspeisung for a Netz meter.
+  // Only channels the source actually delivered appear - never a fabricated 0.
+  function readingParts(lr) {
+    var parts = [];
+    if (!lr) return parts;
+    if (typeof lr.pv_kw === "number" && isFinite(lr.pv_kw)) {
+      parts.push("PV " + window.VP.fmtVal(lr.pv_kw, "kW"));
+    }
+    if (typeof lr.power_kw === "number" && isFinite(lr.power_kw)) {
+      parts.push(window.VP.gridPart(lr.power_kw));
+    }
+    return parts;
+  }
+
+  function readAtMs(lr) { return lr && lr.read_at_ms ? lr.read_at_ms : 0; }
+
   // buildRow renders one source row: status dot + name + meta + status pill +
   // an "Entfernen" (unclaim) action. There is no per-source edit (the edge has
   // no source-edit endpoint - identity/transport is set at add time).
@@ -58,6 +77,11 @@
     meta.push(commLabel(s.communication));
     if (s.connection && s.connection.ip) meta.push(s.connection.ip);
     main.appendChild(el("span", { class: "row-meta" }, meta.join(" · ")));
+    // "Zuletzt gelesen": the source's last accepted value + when it was read.
+    // No reading yet -> no line at all (the pill already says "Wartet auf
+    // erste Daten"); a stale one keeps showing with its honest age.
+    var line = window.VP.lastReadLine(readingParts(readings[s.id]), readAtMs(readings[s.id]), serverNowMs);
+    if (line) main.appendChild(el("span", { class: "row-meta row-read" }, line));
     li.appendChild(main);
 
     var badge = el("span", { class: "row-badge" });
@@ -111,6 +135,9 @@
   var balance = { primary_grid_is_site_total: false };
 
   function renderBalance() {
+    // A save is in flight (toggle disabled): don't let a periodic refresh
+    // visually flip the checkbox back; the save response re-renders.
+    if ($("primGridToggle").disabled) return;
     $("primGridToggle").checked = !!balance.primary_grid_is_site_total;
     $("primGridHelp").textContent = hasNetz
       ? "Ihr Netz-Zähler hat Vorrang – diese Einstellung wirkt nur, solange kein aktueller Zähler-Messwert vorliegt. " + BALANCE_HELP
@@ -320,6 +347,8 @@
     fetch("/api/sources").then(function (r) { return r.json(); }).then(function (data) {
       catalog = data.catalog;
       statuses = data.statuses || {};
+      readings = data.readings || {};
+      serverNowMs = data.server_now_ms || 0;
       if (data.balance) balance = data.balance;
       renderGroups(data.sources || []);
     }).catch(function () { /* keep the page usable; the inverter form still works */ });
@@ -345,5 +374,9 @@
       });
     });
     load();
+    // Keep the status pills + "Zuletzt gelesen" lines live while the page is
+    // open. Same GET the initial load does; renderBalance skips an in-flight
+    // toggle save, and the add drawer is untouched by a list re-render.
+    setInterval(load, 10000);
   });
 })();

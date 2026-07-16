@@ -100,6 +100,18 @@ type Source struct {
 	CreatedAt      time.Time           `json:"created_at"`
 }
 
+// LastReading is a source's most recent accepted reading, surfaced read-only on
+// the setup page's "Zuletzt gelesen" line: the per-channel values and the
+// wall-clock time they arrived (epoch ms, comparable to the endpoint's
+// server_now_ms so the page computes an honest "vor X" against the DEVICE
+// clock). A channel the source never delivered stays absent - never a
+// fabricated 0. Pure display data; it drives no aggregation or control.
+type LastReading struct {
+	PvKw     *float64 `json:"pv_kw,omitempty"`    // Erzeuger generation (kW)
+	PowerKw  *float64 `json:"power_kw,omitempty"` // Netz signed grid power (kW, +Bezug/-Einspeisung)
+	ReadAtMs int64    `json:"read_at_ms"`
+}
+
 // Request is what POST /api/sources accepts (the local web form). Role defaults
 // to Erzeuger; communication/family/label are DERIVED from the catalog, so a
 // client can never send an inconsistent transport (same guarantee as the

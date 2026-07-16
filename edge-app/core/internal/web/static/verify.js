@@ -8,6 +8,10 @@
 //   VP.statusPill(status)          {dot, pill, label} for "ok"|"warn"|"pending"
 //   VP.testConnection(opts)        POST /api/test-connection + render the panel
 //   VP.clearVerify(panel)          hide/empty a verify panel
+//   VP.fmtVal(n, unit)             German number + unit ("20,1 kW")
+//   VP.gridPart(kw)                signed grid kW -> "Netzbezug/Einspeisung X kW"
+//   VP.lastReadLine(parts, readAtMs, serverNowMs)
+//                                  the shared "Zuletzt gelesen: … · vor X (HH:MM:SS)" line
 (function () {
   "use strict";
 
@@ -135,5 +139,44 @@
     return { dot: "off", pill: "off", label: "Wartet auf erste Daten" };
   }
 
-  window.VP = { el: el, statusPill: statusPill, testConnection: testConnection, clearVerify: clearVerify };
+  /* ---- "Zuletzt gelesen" (last-read line per device/source) ---- */
+
+  // gridPart renders a signed grid power (+Bezug/-Einspeisung) as honest German
+  // instead of a bare signed number. Shared by the primary row and a Netz row.
+  function gridPart(kw) {
+    return kw < 0 ? "Einspeisung " + fmt(-kw, "kW") : "Netzbezug " + fmt(kw, "kW");
+  }
+
+  // fmtAgo renders a relative age. The age is computed by the CALLER against
+  // the device clock (server_now_ms), so browser clock skew never lies here.
+  function fmtAgo(ageMs) {
+    var s = Math.max(0, Math.round(ageMs / 1000));
+    if (s < 5) return "gerade eben";
+    if (s < 60) return "vor " + s + " s";
+    if (s < 3600) return "vor " + Math.round(s / 60) + " Min.";
+    return "vor " + Math.round(s / 3600) + " Std.";
+  }
+
+  // lastReadLine builds the shared "Zuletzt gelesen" line: the value parts, a
+  // relative age against the device clock and the absolute local time. Returns
+  // "" when there is nothing honest to show (no reading yet) - the caller then
+  // renders nothing and the status pill keeps saying "Wartet auf erste Daten".
+  function lastReadLine(parts, readAtMs, serverNowMs) {
+    if (!parts || !parts.length || !readAtMs) return "";
+    var now = typeof serverNowMs === "number" && serverNowMs > 0 ? serverNowMs : Date.now();
+    var clock = new Date(readAtMs).toLocaleTimeString("de-DE",
+      { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return "Zuletzt gelesen: " + parts.join(" · ") + " – " + fmtAgo(now - readAtMs) + " (" + clock + " Uhr)";
+  }
+
+  window.VP = {
+    el: el,
+    statusPill: statusPill,
+    testConnection: testConnection,
+    clearVerify: clearVerify,
+    fmtVal: fmt,
+    gridPart: gridPart,
+    fmtAgo: fmtAgo,
+    lastReadLine: lastReadLine,
+  };
 })();
