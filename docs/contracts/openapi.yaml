@@ -61,6 +61,17 @@ tags:
       customer-confirmed values onto the site's assets. Tenant-scoped like all
       site endpoints (foreign site = 404 via RLS).
   - name: kpis
+  - name: simulation
+    description: >
+      Ersparnis-Simulation: asynchronous what-if jobs over a full historical
+      reference year (3 scenarios - ohne Speicher / Standard-Speicher /
+      VoltPilot - plus a battery-size sweep and the Netzladen variant),
+      computed by the internal simulation service with the UNCHANGED
+      production optimizer. The customer route is tenant-scoped like every
+      site endpoint (defaults from the site's master data, body fields
+      override them, foreign site = 404 via RLS); the prospect route is
+      platform-admin-only with explicit inputs and persists nothing (V1 is
+      stateless - results live in the service's job cache for ~1 h).
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -888,6 +899,102 @@ paths:
         "400": { description: Missing/invalid battery values. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS), or the chosen device is not at this site. }
+  /api/v1/sites/{siteId}/simulation:
+    post:
+      tags: [simulation]
+      summary: Start an Ersparnis-Simulation for this Anlage (async job).
+      description: >
+        Submits a simulation over the reference year (default: the last full
+        calendar year). Every input defaults from the site's master data
+        (tariff, plant kind, anzulegender Wert, coordinates, battery asset
+        incl. Speicherschonung, PV asset) and every body field OVERRIDES its
+        default - the what-if instrument. Requires backfilled day-ahead
+        prices for the reference year (`voltpilot-market-data backfill`).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SimulationRequest" }
+      responses:
+        "202":
+          description: Job accepted; poll the status route.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  simulationId: { type: string }
+        "400": { description: Invalid inputs (German message), incl. missing coordinates/battery or a not-backfilled price year. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "429": { description: Too many concurrent simulations (German message). }
+        "502": { description: Simulation service unreachable. }
+  /api/v1/sites/{siteId}/simulation/{simulationId}:
+    get:
+      tags: [simulation]
+      summary: Poll a running/finished simulation of this Anlage.
+      description: >
+        Relays the simulation service's job document
+        `{status: queued|running|done|failed, progress, result?, error?}`.
+        `result` grows progressively (scenarios (a)/(b) after seconds, the
+        VoltPilot months as their chunks solve); jobs expire after ~1 h. Only
+        jobs STARTED through this site's route are visible here.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: simulationId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The job document (see SimulationResult for `result`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SimulationStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or simulation not found (also after expiry/api restart - simply start a new run; the input cache makes it instant). }
+  /api/v1/admin/simulation:
+    post:
+      tags: [simulation]
+      summary: Start a prospect simulation (Vertrieb "Ersparnis-Rechner").
+      description: >
+        Platform-admin only. All inputs explicit (plant incl. coordinates,
+        consumption, battery are required by the simulation service); nothing
+        about the prospect is persisted (V1 stateless). The Speicherschonung
+        preset maps onto the wear cost server-side.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SimulationRequest" }
+      responses:
+        "202":
+          description: Job accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  simulationId: { type: string }
+        "400": { description: Invalid/missing inputs (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Caller is not a platform admin. }
+        "429": { description: Too many concurrent simulations. }
+        "502": { description: Simulation service unreachable. }
+  /api/v1/admin/simulation/{simulationId}:
+    get:
+      tags: [simulation]
+      summary: Poll a prospect simulation.
+      parameters:
+        - { name: simulationId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The job document.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SimulationStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Caller is not a platform admin. }
+        "404": { description: Simulation not found (expired, or not an admin job). }
   /api/v1/sites/{siteId}/kpis:
     get:
       tags: [kpis]
@@ -1374,6 +1481,93 @@ components:
     Forbidden:
       description: Authenticated, but lacking the required role (e.g. a customer calling an admin endpoint).
   schemas:
+    SimulationRequest:
+      type: object
+      description: >
+        Simulation inputs. On the customer route every field is optional
+        (defaults from the site's master data); on the admin/prospect route
+        plant (incl. pvKwp + coordinates), consumption.annualKwh and
+        battery.capacityKwh are required by the simulation service.
+      properties:
+        year:
+          type: integer
+          nullable: true
+          description: Reference calendar year; default = the last FULL year.
+        zone:
+          type: string
+          nullable: true
+          description: Bidding zone (admin route; customers get the site's). Default DE-LU.
+        plant:
+          type: object
+          nullable: true
+          properties:
+            pvKwp: { type: number, nullable: true }
+            latitude: { type: number, nullable: true }
+            longitude: { type: number, nullable: true }
+            azimuthDeg: { type: number, nullable: true, description: 180 = Süd (default). }
+            tiltDeg: { type: number, nullable: true, description: Default 30. }
+        consumption:
+          type: object
+          nullable: true
+          properties:
+            annualKwh: { type: number, nullable: true, description: Customer route defaults to 4500. }
+            profile:
+              type: string
+              nullable: true
+              description: Load profile id; v1 ships "haushalt" (synthetic typical household).
+        tariff:
+          type: object
+          nullable: true
+          properties:
+            plantKind: { type: string, nullable: true, enum: [direktvermarktung, eigenverbrauch] }
+            tarifArt: { type: string, nullable: true, enum: [dynamisch, fest, ohne] }
+            tarifParamCtKwh: { type: number, nullable: true }
+            anzulegenderWertCtKwh: { type: number, nullable: true }
+            commissionedOn: { type: string, format: date, nullable: true }
+            netzladenErlaubt: { type: boolean, nullable: true }
+        battery:
+          type: object
+          nullable: true
+          properties:
+            capacityKwh: { type: number, nullable: true }
+            maxChargeKw: { type: number, nullable: true, description: Default capacity/2. }
+            maxDischargeKw: { type: number, nullable: true, description: Default capacity/2. }
+            roundtripEfficiencyPct: { type: number, nullable: true, description: Default 92. }
+            speicherschonung:
+              type: string
+              nullable: true
+              enum: [aggressiv, ausgewogen, schonend]
+              description: Mapped server-side onto the wear ct/kWh (1/4/8).
+        sizeSweep:
+          type: array
+          nullable: true
+          items: { type: number }
+          description: >
+            Battery capacities (kWh) for the Kaufberatungs-Kurve; omitted =
+            0.5/1/1.5/2 x the base capacity, [] = base size only. The base
+            size is always included.
+    SimulationStatus:
+      type: object
+      description: >
+        Async job document. `result` is present while running (progressive:
+        scenarios ohneSpeicher/standardSpeicher appear after seconds, the
+        voltpilot months fill as their chunks solve) and final when status is
+        `done`; German keys per the design contract - scenarios
+        (ohneSpeicher/standardSpeicher/voltpilot with kostenEur/wearEur/
+        vollzyklen/monatlich), headline (gesamtVorteilEur incl. -Netto,
+        speicherVorteilEur, voltpilotVorteilEur incl. -Netto), sizeSweep,
+        netzladenVariante (null when the site already grid-charges),
+        beispielTage (typisch/bester with per-slot dispatch of BOTH batteries)
+        and annahmen (preisjahr/zone/wetter/profil/hinweis). Nothing
+        computable is ever a fabricated 0 - absent/null with a reason instead.
+      properties:
+        status: { type: string, enum: [queued, running, done, failed] }
+        progress: { type: number, minimum: 0, maximum: 1 }
+        result:
+          type: object
+          nullable: true
+          additionalProperties: true
+        error: { type: string, nullable: true, description: German failure reason. }
     RegistrationRequest:
       type: object
       required: [name, email, password]
