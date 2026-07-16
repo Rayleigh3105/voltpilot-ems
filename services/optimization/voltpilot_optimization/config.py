@@ -102,6 +102,47 @@ pricing layer zeroes their export value there. Older plants keep the fixed
 rate regardless of spot (critique F6: curtailing them at negative prices
 burns real revenue - with the rate as the export value, the optimizer now
 gets that right on its own).
+
+Peak shaving / Lastspitzenkappung (PS-1/PS-2, scout vp-battery-models-b9 Teil 3)
+--------------------------------------------------------------------------------
+
+RLM-metered sites pay a **Leistungspreis** (EUR per kW per billing period) on
+the highest 15-min mean grid IMPORT of the period (``site.leistungspreis_eur_kw``,
+NULL = module off; ``site.abrechnung_leistung`` = ``jahr``/``monat``). The
+solver prices it ECONOMICALLY via a standard epigraph over the horizon's
+import plus the billing period's ``peak_so_far`` anchor - never a hard cap,
+so no new infeasibility path exists (see solver.py).
+
+``PEAK_RATCHET_FRACTION`` + ``PEAK_RATCHET_CAP_EUR_PER_KW`` form the
+*Shave-Target-Ratchet* (report (c)2): the marginal incentive under
+``peak_so_far`` is genuinely zero for the period (nothing left to save
+there), but the product must keep shaving after a torn peak / at period
+start - a torn peak may be a measurement artifact, the monthly system
+resets, and the customer SEES the shaving as the promise. So a weak
+secondary term prices the plain horizon peak too:
+``min(PEAK_RATCHET_FRACTION * Leistungspreis, PEAK_RATCHET_CAP_EUR_PER_KW)``
+per kW of horizon peak, per plan. The report's binding requirements are
+"groß genug, dass die Batterie in Form bleibt" (must beat the wear cost of
+shaving an ordinary spike: ~0.02-0.08 EUR per kW-hour shaved) and "klein
+genug, um echte Arbitrage nie zu dominieren" - the ~3% fraction (the
+report's "z. B." value) satisfies both at MONATS-Leistungspreis scale
+(10-17 EUR/kW -> 0.30-0.51 EUR/kW), but applied uncapped to a JAHRES-LP of
+100-200 EUR/kW it would be 3-6 EUR per kW of horizon peak and PROVABLY
+dominate real arbitrage (a 400-EUR/MWh spread over a 2h window earns only
+~0.6 EUR per kW of charge power - the solver would burn the spread to
+flatten ordinary load below the anchor, verified in an early
+test_peak_shaving run). Hence the absolute cap at wear scale: 0.30 EUR/kW
+beats the wear of shaving (the battery stays in form on flat days), while
+any genuine price opportunity beyond ~0.3 EUR/kWh rolls over it. The FULL
+Leistungspreis term above the anchor is exact and deliberately uncapped.
+
+``PEAK_SPIKE_FACTOR`` guards ``peak_so_far`` against poisoning (report (a)):
+old edge builds shipped unfiltered telemetry spikes, and ONE garbage 15-min
+bucket must not anchor the whole year's peak term. The 15-min rollup
+averaging already damps single-sample spikes strongly; on top, when the
+period's highest bucket exceeds this factor times the second-highest, the
+second-highest is used instead (logged). A real recurring peak produces
+similar top buckets and always survives; only an isolated outlier is dropped.
 """
 
 from __future__ import annotations
@@ -132,6 +173,29 @@ TERMINAL_VALUE_QUANTILE_ENV = "OPTIMIZER_TERMINAL_VALUE_QUANTILE"
 #: Fixed platform override of the terminal energy value (ct per stored kWh);
 #: unset/blank = derive from the horizon's prices.
 TERMINAL_VALUE_OVERRIDE_ENV = "OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH"
+
+#: Shave-Target-Ratchet: fraction of the Leistungspreis priced on the plain
+#: horizon peak (below the peak_so_far anchor too) - see module docstring.
+PEAK_RATCHET_FRACTION = 0.03
+
+#: Absolute cap on the ratchet weight (EUR per kW of horizon peak, per plan):
+#: keeps a Jahres-Leistungspreis ratchet from dominating real arbitrage while
+#: staying well above the wear cost of shaving - see module docstring.
+PEAK_RATCHET_CAP_EUR_PER_KW = 0.30
+
+
+def peak_ratchet_eur_per_kw(leistungspreis_eur_kw: float) -> float:
+    """The shave-target-ratchet weight for a site's Leistungspreis (EUR per
+    kW of horizon peak, per plan): the fraction of the LP, capped at wear
+    scale (see module docstring)."""
+    return min(
+        PEAK_RATCHET_FRACTION * leistungspreis_eur_kw, PEAK_RATCHET_CAP_EUR_PER_KW
+    )
+
+#: peak_so_far plausibility gate: the period's top 15-min import bucket is
+#: discarded (second-highest used) when it exceeds this factor times the
+#: second-highest - see module docstring.
+PEAK_SPIKE_FACTOR = 3.0
 
 #: Solarspitzengesetz (§51a EEG) entry into force: plants commissioned on/after
 #: this date earn NO feste Vergütung in negative-price slots.

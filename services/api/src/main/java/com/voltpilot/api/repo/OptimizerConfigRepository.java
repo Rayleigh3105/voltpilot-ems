@@ -44,4 +44,19 @@ public class OptimizerConfigRepository {
                 "UPDATE site SET backup_reserve_soc_pct = ? WHERE id = ?",
                 backupReserveSocPct, siteId) > 0;
     }
+
+    /**
+     * Set (or clear) the site's peak-shaving module (PS-1/PS-2,
+     * V20260716020000): null {@code leistungspreisEurKw} switches the module
+     * off, null {@code abrechnungLeistung} resets the NOT-NULL column to its
+     * {@code jahr} default. False when RLS hides the site.
+     */
+    public boolean updatePeakShaving(UUID siteId, BigDecimal leistungspreisEurKw,
+            String abrechnungLeistung, BigDecimal peakReserveSocPct) {
+        return jdbc.update(
+                "UPDATE site SET leistungspreis_eur_kw = ?,"
+                        + " abrechnung_leistung = COALESCE(?, 'jahr'),"
+                        + " peak_reserve_soc_pct = ? WHERE id = ?",
+                leistungspreisEurKw, abrechnungLeistung, peakReserveSocPct, siteId) > 0;
+    }
 }

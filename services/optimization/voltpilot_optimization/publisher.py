@@ -49,6 +49,18 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
     # forecast space). None keeps the legacy payload shape byte-identical.
     if plan.grid_charge_allowed is not None:
         payload["grid_charge_allowed"] = plan.grid_charge_allowed
+    # OPTIONAL per the contract (PS-1/PS-2, additive - schema_version stays
+    # 1.0): present only when the site's peak-shaving module is active
+    # (site.leistungspreis_eur_kw set), so every other payload stays
+    # byte-identical. grid_import_limit_kw is the run's planned peak target
+    # (the solved epigraph variable) - the edge peak-guard's target (PS-3
+    # sibling task; an old edge ignores both fields safely).
+    if plan.peak_target_kw is not None:
+        payload["grid_import_limit_kw"] = round(plan.peak_target_kw, 3)
+        if plan.battery.peak_reserve_pct is not None:
+            payload["peak_reserve_soc_pct"] = round(
+                plan.battery.peak_reserve_pct, 2
+            )
     return payload
 
 

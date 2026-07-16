@@ -39,6 +39,15 @@ import java.util.UUID;
  * Netzanschlusspunkt, kW &gt; 0); null = no connection-point limit. The
  * optimizer enforces it as a hard cap on grid EXPORT ONLY - unlike the
  * telemetry-driven §14a limit, which is symmetric.
+ * {@code leistungspreisEurKw}/{@code abrechnungLeistung}/{@code peakReserveSocPct}
+ * (migration V20260716020000, PS-1/PS-2 peak shaving) are echoed READ-ONLY
+ * here: the peak-shaving module is configured by Portal-Admins via the
+ * optimizer-config endpoint, never through the customer site forms (captain
+ * decision: VoltPilot richtet vertragsnahe Module ein). A non-null
+ * {@code leistungspreisEurKw} (EUR per kW per billing period) IS the
+ * module-active flag; {@code abrechnungLeistung} is {@code jahr} |
+ * {@code monat}; {@code peakReserveSocPct} is the hard SoC floor reserved
+ * for out-of-horizon peaks (null = none).
  */
 public record SiteDto(
         UUID id,
@@ -52,5 +61,8 @@ public record SiteDto(
         String tarifArt,
         BigDecimal tarifParamCtKwh,
         boolean netzladenErlaubt,
-        BigDecimal maxFeedInKw) {
+        BigDecimal maxFeedInKw,
+        BigDecimal leistungspreisEurKw,
+        String abrechnungLeistung,
+        BigDecimal peakReserveSocPct) {
 }

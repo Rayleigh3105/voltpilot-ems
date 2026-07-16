@@ -32,10 +32,12 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from voltpilot_optimization.config import (
+    PEAK_SPIKE_FACTOR,
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
     soc_max_age,
@@ -49,6 +51,7 @@ from voltpilot_optimization.domain import (
     SLOT_MINUTES,
     SLOTS_24H,
     ensure_utc,
+    floor_to_slot,
     horizon_slot_starts,
 )
 from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
@@ -71,6 +74,11 @@ MIN_HORIZON_SLOTS = 16
 FALLBACK_HISTORY = timedelta(days=3)
 
 DEFAULT_SOC_PCT = 50.0
+
+# Billing-period boundaries for the Leistungspreis peak follow the platform
+# timezone discipline (Europe/Berlin calendar periods, the HistoryRange.ZONE
+# rule on the api side).
+BERLIN = ZoneInfo("Europe/Berlin")
 
 # Shadow-mode forecasting (docs/forecasting.md): the forecast hypertable holds
 # every model's runs, tagged with a model id; the optimizer consumes ONLY the
@@ -132,6 +140,14 @@ class BatterySite:
     tarif_art/param, anzulegender Wert, the PV asset's commissioning date +
     kWp) feeding the asymmetric import/export pricing; the default reproduces
     the symmetric bare-spot model.
+
+    ``leistungspreis_eur_kw`` (PS-1; ``site.leistungspreis_eur_kw``, nullable)
+    is the RLM Leistungspreis in EUR per kW per billing period - non-NULL IS
+    the peak-shaving module flag (the max_feed_in philosophy: one knob).
+    ``abrechnung_leistung`` (``site.abrechnung_leistung``, ``jahr``/``monat``)
+    picks the billing period the peak anchor is computed over. The PS-2
+    ``site.peak_reserve_soc_pct`` reserve lives on :class:`BatteryParams`
+    (``peak_reserve_pct``) with the rest of the SoC-floor machinery.
     """
 
     tenant_id: UUID
@@ -144,6 +160,8 @@ class BatterySite:
     longitude: float | None = None
     max_feed_in_kw: float | None = None
     tariff: SiteTariff = SiteTariff()
+    leistungspreis_eur_kw: float | None = None
+    abrechnung_leistung: str = "jahr"
 
 
 def load_battery_sites(dsn: str) -> list[BatterySite]:
@@ -166,7 +184,9 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                    pv.commissioned_on, pv.pv_capacity_kwp,
                    s.backup_reserve_soc_pct,
                    a.soc_min_pct, a.soc_max_pct,
-                   s.max_feed_in_kw
+                   s.max_feed_in_kw,
+                   s.leistungspreis_eur_kw, s.abrechnung_leistung,
+                   s.peak_reserve_soc_pct
             FROM asset a
             JOIN site s ON s.id = a.site_id
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv'
@@ -181,6 +201,7 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                 plant_kind, tarif_art, tarif_param, anzulegender_wert,
                 commissioned_on, pv_kwp, backup_reserve,
                 soc_min_pct, soc_max_pct, max_feed_in,
+                leistungspreis, abrechnung, peak_reserve,
             ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
@@ -215,12 +236,23 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                             if backup_reserve is not None
                             else None
                         ),
+                        peak_reserve_pct=(
+                            float(peak_reserve)
+                            if peak_reserve is not None
+                            else None
+                        ),
                     ),
                     netzladen_erlaubt=bool(netzladen),
                     latitude=float(lat) if lat is not None else None,
                     longitude=float(lon) if lon is not None else None,
                     max_feed_in_kw=(
                         float(max_feed_in) if max_feed_in is not None else None
+                    ),
+                    leistungspreis_eur_kw=(
+                        float(leistungspreis) if leistungspreis is not None else None
+                    ),
+                    abrechnung_leistung=(
+                        str(abrechnung) if abrechnung is not None else "jahr"
                     ),
                     tariff=SiteTariff(
                         plant_kind=(
@@ -353,6 +385,16 @@ def gather_inputs(
         site_id=site.site_id,
     )
 
+    # PS-1: the billing period's measured import peak anchors the
+    # Leistungspreis epigraph. Computed fresh per cycle (never a stored
+    # column - the freshness principle), and only for module-active sites so
+    # everyone else pays zero extra queries.
+    peak_so_far = 0.0
+    if site.leistungspreis_eur_kw is not None:
+        peak_so_far = _peak_so_far_kw(
+            dsn, site.site_id, now, site.abrechnung_leistung
+        )
+
     return OptimizationInput(
         tenant_id=site.tenant_id,
         site_id=site.site_id,
@@ -371,7 +413,108 @@ def gather_inputs(
         # P3: None = derive the terminal energy value from the horizon's own
         # prices; only an explicit platform override pins it.
         terminal_value_eur_per_kwh=terminal_value_override_eur_per_kwh(),
+        leistungspreis_eur_kw=site.leistungspreis_eur_kw,
+        peak_so_far_kw=peak_so_far,
     )
+
+
+def billing_period_start(now: datetime, abrechnung_leistung: str) -> datetime:
+    """The UTC start of the Leistungspreis billing period containing ``now``.
+
+    Periods are Europe/Berlin calendar periods (the platform's timezone
+    discipline, api ``HistoryRange.ZONE``): ``jahr`` = the calendar year,
+    ``monat`` = the calendar month. Any unexpected value falls back to
+    ``jahr`` (the DB default and the conservative choice - a longer period
+    can only RAISE the anchor, never fabricate peak headroom).
+    """
+    local = ensure_utc(now).astimezone(BERLIN)
+    if abrechnung_leistung == "monat":
+        start_local = local.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+    else:
+        start_local = local.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+    return start_local.astimezone(timezone.utc)
+
+
+def plausible_peak(buckets_desc: list[float]) -> tuple[float, bool]:
+    """The plausibility-gated period peak from the top import buckets
+    (descending kW). Returns ``(peak_kw, spike_discarded)``.
+
+    One poisoned 15-min bucket (an unfiltered telemetry spike from an old
+    edge build) must not anchor the whole billing period's peak term - so
+    when the highest bucket exceeds :data:`PEAK_SPIKE_FACTOR` times the
+    second-highest, the second-highest is used instead. A REAL recurring peak
+    produces similar top buckets and always survives; with a single bucket
+    there is nothing to compare against, so it is trusted (the 15-min rollup
+    averaging already damps single-sample spikes strongly).
+    """
+    positive = [b for b in buckets_desc if b > 0.0]
+    if not positive:
+        return 0.0, False
+    top = positive[0]
+    if len(positive) >= 2 and top > PEAK_SPIKE_FACTOR * positive[1]:
+        return positive[1], True
+    return top, False
+
+
+def _peak_so_far_kw(
+    dsn: str, site_id: UUID, now: datetime, abrechnung_leistung: str
+) -> float:
+    """The billing period's highest 15-min mean grid import so far (kW).
+
+    Sources, blended by max: (a) the completed 15-min buckets from
+    ``telemetry_rollup_15m`` - ``grid_import_kwh * 4.0`` is the bucket's mean
+    import power, exactly the RLM billing quantity - gated through
+    :func:`plausible_peak`; (b) the RUNNING quarter hour's mean import from
+    raw telemetry (``avg(greatest(power_kw, 0))`` over the slot in progress,
+    the same per-sample import split the rollups use), because the rollup
+    refresh lags up to 15 min and the plan must never look "under" a peak
+    that is forming right now. The raw blend is ungated - a spike there
+    distorts at most ONE cycle (peak_so_far is recomputed fresh every 15 min,
+    and the completed bucket is gated on the next cycle).
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    now = ensure_utc(now)
+    period_start = billing_period_start(now, abrechnung_leistung)
+    slot_start = floor_to_slot(now)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT grid_import_kwh * 4.0 FROM telemetry_rollup_15m
+            WHERE site_id = %s AND bucket >= %s AND grid_import_kwh IS NOT NULL
+            ORDER BY grid_import_kwh DESC LIMIT 2
+            """,
+            (site_id, period_start),
+        )
+        buckets = [float(r[0]) for r in cur.fetchall()]
+        cur.execute(
+            """
+            SELECT avg(greatest(power_kw, 0)) FROM telemetry
+            WHERE site_id = %s AND power_kw IS NOT NULL
+              AND time >= %s AND time <= %s
+            """,
+            (site_id, max(slot_start, period_start), now),
+        )
+        row = cur.fetchone()
+        running = float(row[0]) if row is not None and row[0] is not None else 0.0
+    rollup_peak, spiked = plausible_peak(buckets)
+    if spiked:
+        logger.warning(
+            "peak_so_far.spike_bucket_discarded",
+            extra={
+                "context": {
+                    "site_id": str(site_id),
+                    "top_bucket_kw": round(buckets[0], 3),
+                    "used_kw": round(rollup_peak, 3),
+                    "factor": PEAK_SPIKE_FACTOR,
+                }
+            },
+        )
+    return max(rollup_peak, running, 0.0)
 
 
 def _load_prices(

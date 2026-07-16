@@ -50,6 +50,18 @@
       "type": "boolean",
       "description": "OPTIONAL (added 2026-07, P5 EEG execution gap; ADDITIVE - schema_version stays 1.0 and an edge that ignores unknown optional fields keeps working unchanged). Mirrors site.netzladen_erlaubt at plan time. false = the plant is EEG-funded (Ausschliesslichkeitsprinzip): the edge MUST clamp any commanded battery CHARGE to max(measured_pv, 0) before a register write - PV-bus Bilanzierung (FK3, captain decision 2026-07-16): the battery may charge up to the full ACTUAL PV production while the house draws its load from the grid in parallel (DC-hybrid physics); measured PV is the inverter's actual output (already post-curtailment), making this the on-device twin of the optimizer's charge <= pv - curtail constraint, applied to MEASURED values so a PV forecast overshoot can never turn a planned solar charge into real grid import. Unknown/missing PV reading clamps charge to 0 (never charge blind). true = grid charging is permitted (merchant mode), no extra clamp. ABSENT = treat as allowed (pre-P5 behavior; a legacy payload must not suddenly clamp a merchant site - the optimizer always publishes the field, so absence only occurs from an old cloud, where the edge behaves exactly as before). Discharge is never affected. SAFETY: this field can only ever RESTRICT charging, never widen any other guard."
     },
+    "grid_import_limit_kw": {
+      "type": "number",
+      "minimum": 0,
+      "description": "OPTIONAL (added 2026-07, PS-1 peak shaving / Lastspitzenkappung; ADDITIVE - schema_version stays 1.0 and an edge that ignores unknown optional fields keeps working unchanged, which IS the failsafe for old edge builds). The run's planned billing-period peak target in kW: the highest 15-min mean grid IMPORT the optimizer planned for (the solved peak-epigraph variable, >= the period's measured peak so far). Present ONLY while the site's peak-shaving module is active (site.leistungspreis_eur_kw configured); absent = no peak module - an edge MUST treat absent/unknown as 'no import target' and MUST clear any previously applied peak-guard target when the field is absent or the schedule goes stale (x-failsafe: a dead optimizer's peak target must not outlive its plan; the stale-plan fallback behaves exactly as before this field existed). The target is ADVISORY like every setpoint: the edge-side peak guard (PS-3) discharges against a forming 15-min import peak up to its guard-clamped limits - it never widens any battery/SoC/§14a guard, and never curtails load. Import-side ONLY: export is never affected.",
+      "x-failsafe": "Absent field, stale schedule, or fallback => no peak-guard target (clear any latch). The Leistungspreis economics are re-anchored by the cloud every 15 min from measured rollups, so a missed window only costs money, never safety."
+    },
+    "peak_reserve_soc_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "OPTIONAL (added 2026-07, PS-2 peak-shaving reserve; ADDITIVE - schema_version stays 1.0). Mirrors site.peak_reserve_soc_pct: the SoC floor (percent of capacity) reserved for peak shaving, so the edge's OWN fallback (self-consumption on a dead cloud link) can stop discharging ordinary load at this floor and keep the reserve for a real peak (PS-3 sibling task consumes it). Present only alongside grid_import_limit_kw (module active) and only when the reserve is configured. SAFETY: this field can only ever RESTRICT discharge (raise a floor), never widen any guard; an edge without support ignores it safely."
+    },
     "slots": {
       "type": "array",
       "minItems": 1,

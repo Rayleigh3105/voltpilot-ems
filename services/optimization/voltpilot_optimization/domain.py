@@ -56,6 +56,17 @@ class BatteryParams:
     discharges below it - a HARD constraint, never a soft preference. ``None``
     (the default) means the platform 5% technical floor applies unchanged;
     a value below the technical floor is ineffective (the floor wins).
+
+    ``peak_reserve_pct`` (PS-2; ``site.peak_reserve_soc_pct``, nullable) is
+    the peak-shaving reserve: SoC headroom held back for shaving a load spike
+    BEYOND the 24h horizon (the MPC never sees the whole billing period, so
+    the epigraph term alone would let arbitrage drain the battery the evening
+    before the expensive Monday-morning peak). It joins the reservation STACK
+    (multi-use Stufe 2): each reservation is an ABSOLUTE SoC floor, ordered
+    technical < backup < peak-reserve, and the highest configured floor binds
+    (``max``, never additive - a peak reserve below the backup reserve is
+    simply ineffective). Hard like the backup reserve, with the same
+    below-floor-start relaxation.
     """
 
     capacity_kwh: float
@@ -66,6 +77,7 @@ class BatteryParams:
     soc_max_fraction: float = DEFAULT_SOC_MAX_FRACTION
     wear_cost_ct_per_kwh: float = DEFAULT_WEAR_COST_CT_PER_KWH
     backup_reserve_pct: float | None = None
+    peak_reserve_pct: float | None = None
 
     def __post_init__(self) -> None:
         if self.capacity_kwh <= 0:
@@ -81,11 +93,12 @@ class BatteryParams:
             and self.wear_cost_ct_per_kwh >= 0.0
         ):
             raise ValueError("wear_cost_ct_per_kwh must be finite and >= 0")
-        if self.backup_reserve_pct is not None and not (
-            math.isfinite(self.backup_reserve_pct)
-            and 0.0 <= self.backup_reserve_pct <= 100.0
-        ):
-            raise ValueError("backup_reserve_pct must be within [0, 100] when set")
+        for name in ("backup_reserve_pct", "peak_reserve_pct"):
+            reserve = getattr(self, name)
+            if reserve is not None and not (
+                math.isfinite(reserve) and 0.0 <= reserve <= 100.0
+            ):
+                raise ValueError(f"{name} must be within [0, 100] when set")
 
     @property
     def one_way_efficiency(self) -> float:
@@ -118,18 +131,21 @@ class BatteryParams:
         """The effective SoC lower bound of a plan starting at
         ``initial_soc_kwh`` (already clamped into the technical band).
 
-        The backup reserve (P11) raises the technical floor - hard, never
-        soft - but is RELAXED to the actual start when the battery currently
-        sits below it: a below-reserve battery must still yield a feasible
-        plan, and "never discharge any further" is the correct hard property
-        there (recovery charging follows from the economics/PV; each 15-min
-        MPC re-plan then ratchets the floor up as the battery recovers).
-        Capped at ``soc_max_kwh`` so a 100% reserve pins the battery full
-        instead of going infeasible."""
+        The reservation STACK (P11 backup reserve + PS-2 peak-shaving
+        reserve) raises the technical floor - hard, never soft: each
+        configured reservation is an absolute SoC level and the highest one
+        binds. The floor is RELAXED to the actual start when the battery
+        currently sits below it: a below-reserve battery must still yield a
+        feasible plan, and "never discharge any further" is the correct hard
+        property there (recovery charging follows from the economics/PV; each
+        15-min MPC re-plan then ratchets the floor back up as the battery
+        recovers). Capped at ``soc_max_kwh`` so a 100% reserve pins the
+        battery full instead of going infeasible."""
         floor = self.soc_min_kwh
-        if self.backup_reserve_pct is not None:
-            reserve_kwh = self.capacity_kwh * self.backup_reserve_pct / 100.0
-            floor = min(max(floor, reserve_kwh), self.soc_max_kwh)
+        for reserve_pct in (self.backup_reserve_pct, self.peak_reserve_pct):
+            if reserve_pct is not None:
+                reserve_kwh = self.capacity_kwh * reserve_pct / 100.0
+                floor = min(max(floor, reserve_kwh), self.soc_max_kwh)
         return min(floor, initial_soc_kwh)
 
 
@@ -176,6 +192,14 @@ class OptimizationInput:
     horizon's own prices (:meth:`effective_terminal_value_eur_per_kwh`);
     ``gather_inputs`` sets an explicit value only when the platform override
     ``OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH`` is configured.
+
+    **Peak shaving (PS-1):** ``leistungspreis_eur_kw`` is the site's
+    Leistungspreis (EUR per kW per billing period, ``site.leistungspreis_eur_kw``);
+    ``None`` (the default) = the module is off and the model is byte-identical
+    to before. ``peak_so_far_kw`` is the billing period's highest 15-min mean
+    grid import measured SO FAR (computed fresh per cycle by
+    ``inputs._peak_so_far_kw``; 0 at period start) - the anchor the epigraph
+    term charges the Leistungspreis above (see solver.py).
     """
 
     tenant_id: UUID
@@ -194,6 +218,8 @@ class OptimizationInput:
     import_price_eur_mwh: list[float] | None = None
     export_value_eur_mwh: list[float] | None = None
     terminal_value_eur_per_kwh: float | None = None
+    leistungspreis_eur_kw: float | None = None
+    peak_so_far_kw: float = 0.0
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -219,6 +245,13 @@ class OptimizationInput:
             raise ValueError(
                 "terminal_value_eur_per_kwh must be finite and >= 0 when set"
             )
+        if self.leistungspreis_eur_kw is not None and not (
+            math.isfinite(self.leistungspreis_eur_kw)
+            and self.leistungspreis_eur_kw >= 0.0
+        ):
+            raise ValueError("leistungspreis_eur_kw must be finite and >= 0 when set")
+        if not (math.isfinite(self.peak_so_far_kw) and self.peak_so_far_kw >= 0.0):
+            raise ValueError("peak_so_far_kw must be finite and >= 0")
 
     @property
     def slots(self) -> int:
@@ -359,6 +392,14 @@ class SchedulePlan:
     # on bank days (FK2), where savings_eur alone would look broken. None =
     # unknown (pre-FK2 plans); the display then degrades gracefully.
     terminal_value_eur_per_kwh: float | None = None
+    # PS-1: the solved peak variable = the run's planned billing-period peak
+    # target (max of the horizon's planned import and peak_so_far, kW).
+    # Published as the OPTIONAL grid_import_limit_kw contract field (the edge
+    # peak-guard's target, PS-3 sibling task) and persisted per run
+    # (schedule.peak_target_kw) for the reporting increment. None = the peak
+    # module is off (site.leistungspreis_eur_kw NULL) - both consumers then
+    # omit/NULL the field, never a fabricated number.
+    peak_target_kw: float | None = None
 
     @property
     def cost_eur(self) -> float:

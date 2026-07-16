@@ -18,7 +18,8 @@ public class SiteRepository {
     private static final String COLUMNS =
             "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
                     + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
-                    + " max_feed_in_kw";
+                    + " max_feed_in_kw, leistungspreis_eur_kw, abrechnung_leistung,"
+                    + " peak_reserve_soc_pct";
 
     private final JdbcTemplate jdbc;
 
@@ -121,6 +122,11 @@ public class SiteRepository {
                 rs.getString("tarif_art"),
                 rs.getBigDecimal("tarif_param_ct_kwh"),
                 rs.getBoolean("netzladen_erlaubt"),
-                rs.getBigDecimal("max_feed_in_kw"));
+                rs.getBigDecimal("max_feed_in_kw"),
+                // Peak-shaving master data (V20260716020000): read-only echo -
+                // written ONLY via the admin optimizer-config endpoint.
+                rs.getBigDecimal("leistungspreis_eur_kw"),
+                rs.getString("abrechnung_leistung"),
+                rs.getBigDecimal("peak_reserve_soc_pct"));
     }
 }

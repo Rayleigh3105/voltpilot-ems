@@ -26,6 +26,12 @@ import java.util.UUID;
  * <p>{@code hasBattery} is false for sites without a battery asset: the
  * optimizer never plans them and the battery overrides cannot be written
  * (409 on the PUT).
+ *
+ * <p>{@code peakShaving} (PS-1/PS-2, migration V20260716020000) is the
+ * Lastspitzenkappung module: a non-null {@code leistungspreisEurKw} IS the
+ * module-active flag. Configured HERE (admin-only, captain decision:
+ * VoltPilot richtet vertragsnahe Module ein, nicht der Kunde) and echoed
+ * read-only on the customer {@code SiteDto}.
  */
 public record OptimizerConfigDto(
         UUID siteId,
@@ -33,6 +39,7 @@ public record OptimizerConfigDto(
         PlatformDefaults defaults,
         Overrides overrides,
         Effective effective,
+        PeakShaving peakShaving,
         SiteLevers site) {
 
     /** The optimizer's platform-wide tunables (env-level; read-only here). */
@@ -62,6 +69,23 @@ public record OptimizerConfigDto(
             Double socMinPct,
             Double socMaxPct,
             BigDecimal backupReserveSocPct) {
+    }
+
+    /**
+     * The peak-shaving module (Lastspitzenkappung, PS-1/PS-2).
+     * {@code leistungspreisEurKw} is the RLM Leistungspreis in EUR per kW per
+     * billing period - null = module OFF (no separate flag, the
+     * max_feed_in_kw philosophy). {@code abrechnungLeistung} is
+     * {@code jahr} | {@code monat} (the Europe/Berlin calendar period the
+     * peak anchor spans; the DB default is {@code jahr}).
+     * {@code peakReserveSocPct} is the PS-2 hard SoC floor reserved for
+     * out-of-horizon peaks (stacks with the backup reserve: the highest
+     * configured absolute floor binds); null = no peak reserve.
+     */
+    public record PeakShaving(
+            BigDecimal leistungspreisEurKw,
+            String abrechnungLeistung,
+            BigDecimal peakReserveSocPct) {
     }
 
     /** Read-only echo of the site levers editable via PUT /api/v1/sites/{id}. */

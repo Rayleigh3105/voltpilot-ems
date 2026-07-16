@@ -184,13 +184,17 @@ def test_site_max_feed_in_flows_into_the_optimization_input(readings):
 class _SitesCursor:
     def __init__(
         self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
-        max_feed_in=None,
+        max_feed_in=None, leistungspreis=None, abrechnung="jahr",
+        peak_reserve=None,
     ) -> None:
         self._wear_ct = wear_ct
         self._backup_reserve = backup_reserve
         self._soc_min = soc_min
         self._soc_max = soc_max
         self._max_feed_in = max_feed_in
+        self._leistungspreis = leistungspreis
+        self._abrechnung = abrechnung
+        self._peak_reserve = peak_reserve
         self._rows: list = []
 
     def __enter__(self):
@@ -207,6 +211,8 @@ class _SitesCursor:
         assert "s.backup_reserve_soc_pct" in sql  # the P11 reserve is read too
         assert "a.soc_min_pct" in sql  # the admin-tunable SoC band is read too
         assert "s.max_feed_in_kw" in sql  # the FK1 feed-in cap is read too
+        assert "s.leistungspreis_eur_kw" in sql  # the PS-1 module is read too
+        assert "s.peak_reserve_soc_pct" in sql  # the PS-2 reserve is read too
         self._rows = [
             (
                 TENANT, SITE, uuid4(), "DE-LU",
@@ -215,6 +221,7 @@ class _SitesCursor:
                 self._backup_reserve,
                 self._soc_min, self._soc_max,
                 self._max_feed_in,
+                self._leistungspreis, self._abrechnung, self._peak_reserve,
             )
         ]
 
@@ -224,7 +231,7 @@ class _SitesCursor:
 
 def _wire_sites(
     monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
-    max_feed_in=None,
+    max_feed_in=None, leistungspreis=None, abrechnung="jahr", peak_reserve=None,
 ):
     class _Conn:
         def __enter__(self):
@@ -234,7 +241,10 @@ def _wire_sites(
             return False
 
         def cursor(self):
-            return _SitesCursor(wear_ct, backup_reserve, soc_min, soc_max, max_feed_in)
+            return _SitesCursor(
+                wear_ct, backup_reserve, soc_min, soc_max, max_feed_in,
+                leistungspreis, abrechnung, peak_reserve,
+            )
 
     monkeypatch.setitem(
         sys.modules, "psycopg", SimpleNamespace(connect=lambda dsn: _Conn())
@@ -269,6 +279,26 @@ def test_max_feed_in_column_resolves_to_the_battery_site(monkeypatch):
     _wire_sites(monkeypatch, None, max_feed_in=75.0)
     [site] = load_battery_sites("postgresql://fake")
     assert site.max_feed_in_kw == 75.0
+
+
+def test_peak_shaving_columns_resolve_to_site_and_battery_params(monkeypatch):
+    # NULL leistungspreis -> module off, defaults everywhere (PS-1/PS-2).
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.leistungspreis_eur_kw is None
+    assert site.abrechnung_leistung == "jahr"
+    assert site.battery.peak_reserve_pct is None
+
+    # Configured module: LP + billing period on the site, the PS-2 reserve
+    # on the BatteryParams (the SoC-floor machinery).
+    _wire_sites(
+        monkeypatch, None,
+        leistungspreis=120.0, abrechnung="monat", peak_reserve=40.0,
+    )
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.leistungspreis_eur_kw == 120.0
+    assert site.abrechnung_leistung == "monat"
+    assert site.battery.peak_reserve_pct == 40.0
 
 
 def test_backup_reserve_column_resolves_to_the_battery_params(monkeypatch):
