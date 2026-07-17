@@ -646,6 +646,26 @@ a:focus-visible,
   color: var(--vp-text-muted);
   margin: 0 0 var(--vp-space-6);
 }
+/* Boot splash spinner (rendered synchronously while initAuth() runs). */
+.vp-boot-spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto var(--vp-space-4);
+  border-radius: 50%;
+  border: 3px solid var(--vp-border);
+  border-top-color: var(--vp-action);
+  animation: vp-boot-spin 0.9s linear infinite;
+}
+@keyframes vp-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vp-boot-spinner {
+    animation: none;
+  }
+}
 
 /* States */
 .vp-muted {

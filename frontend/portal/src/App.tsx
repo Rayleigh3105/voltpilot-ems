@@ -33,12 +33,18 @@ import { OptimizerPage } from './pages/admin/OptimizerPage';
 export default function App({
   initialAuth,
   authError = false,
+  authTimeout = false,
+  rateLimited = false,
   sessionExpired = false,
   redirecting = false,
   initialView = 'login',
 }: {
   initialAuth: boolean;
   authError?: boolean;
+  /** True when the auth bootstrap hit the hard boot timeout (init hung). */
+  authTimeout?: boolean;
+  /** True when the token endpoint refused with 429/brute-force lockout. */
+  rateLimited?: boolean;
   sessionExpired?: boolean;
   /** True while main.tsx is navigating to the Keycloak login (no pre-step). */
   redirecting?: boolean;
@@ -49,6 +55,8 @@ export default function App({
     return (
       <LoginScreen
         authError={authError}
+        authTimeout={authTimeout}
+        rateLimited={rateLimited}
         sessionExpired={sessionExpired}
         redirecting={redirecting}
         initialView={initialView}
@@ -63,11 +71,15 @@ export default function App({
 
 function LoginScreen({
   authError,
+  authTimeout = false,
+  rateLimited = false,
   sessionExpired = false,
   redirecting = false,
   initialView = 'login',
 }: {
   authError: boolean;
+  authTimeout?: boolean;
+  rateLimited?: boolean;
   sessionExpired?: boolean;
   redirecting?: boolean;
   initialView?: 'login' | 'register';
@@ -144,7 +156,18 @@ function LoginScreen({
           // in-portal login pre-step anymore).
           <RegisterForm onBack={() => login()} />
         )}
-        {sessionExpired && !authError && view === 'login' && (
+        {rateLimited && !authError && view === 'login' && (
+          <div className="vp-alert vp-alert-err">
+            Zu viele Anmeldeversuche. Bitte versuchen Sie es in ein paar Minuten
+            erneut.
+          </div>
+        )}
+        {authTimeout && !rateLimited && !authError && view === 'login' && (
+          <div className="vp-alert vp-alert-err">
+            Die Anmeldung dauert ungewöhnlich lange. Bitte versuchen Sie es erneut.
+          </div>
+        )}
+        {sessionExpired && !rateLimited && !authTimeout && !authError && view === 'login' && (
           <div className="vp-alert vp-alert-err">
             Ihre Sitzung ist abgelaufen, bitte erneut anmelden.
           </div>
