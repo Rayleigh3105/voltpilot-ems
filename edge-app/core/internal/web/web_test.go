@@ -331,11 +331,13 @@ func TestStateEnvelopeCarriesServerClock(t *testing.T) {
 	}
 }
 
-func TestHistoryReturnsRecentSamplesWithDerivedBattery(t *testing.T) {
+func TestHistoryReturnsRecentSamplesWithMeasuredBattery(t *testing.T) {
 	srv, _, h := newServerWithHistory(t)
 	now := time.Now()
-	// pv 3, load 1, grid -2 -> battery = grid - load + pv = 0 (self-balanced).
-	h.Add(history.Sample{Ts: now.Add(-30 * time.Second), PvKw: ptr(3), LoadKw: ptr(1), GridKw: ptr(-2), SocPct: ptr(74.5)})
+	// The wire `batt` is the MEASURED battery register (2026-07-17 standard):
+	// here 0 kW measured while charging nothing; the balance derivation is
+	// never emitted.
+	h.Add(history.Sample{Ts: now.Add(-30 * time.Second), PvKw: ptr(3), LoadKw: ptr(1), GridKw: ptr(-2), SocPct: ptr(74.5), BattKw: ptr(0)})
 	// An old sample outside the window must be excluded.
 	h.Add(history.Sample{Ts: now.Add(-3 * time.Hour), PvKw: ptr(9)})
 
@@ -364,7 +366,7 @@ func TestHistoryReturnsRecentSamplesWithDerivedBattery(t *testing.T) {
 		t.Fatalf("pv: %+v", s.Pv)
 	}
 	if s.Batt == nil || *s.Batt != 0 {
-		t.Fatalf("derived battery should be 0, got %+v", s.Batt)
+		t.Fatalf("measured battery should be 0, got %+v", s.Batt)
 	}
 	if s.Soc == nil || *s.Soc != 74.5 {
 		t.Fatalf("soc: %+v", s.Soc)
@@ -806,7 +808,7 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		!strings.Contains(srcJs, "grid-meter") {
 		t.Error("sources.js: does not drive the /api/sources Erzeuger + Netz surface")
 	}
-	if !strings.Contains(srcJs, "/api/balance") || !strings.Contains(srcJs, "primary_grid_is_site_total") {
+	if !strings.Contains(srcJs, "/api/balance") || !strings.Contains(srcJs, "primary_grid_not_site_total") {
 		t.Error("sources.js: does not drive the /api/balance toggle")
 	}
 }
@@ -1156,9 +1158,10 @@ func TestSourcesListReturnsSourcesAndCatalog(t *testing.T) {
 	}
 }
 
-// The "Primär misst den gesamten Netzübergang" toggle: GET /api/sources
-// carries the persisted settings (so the page renders them without a second
-// call) and POST /api/balance writes them; malformed JSON is a 400.
+// The expert opt-out ("Die Netzmessung des Wechselrichters sitzt NICHT am
+// Hausanschluss"): GET /api/sources carries the persisted settings (so the
+// page renders them without a second call) and POST /api/balance writes them;
+// malformed JSON is a 400.
 func TestBalanceToggleRoundTrip(t *testing.T) {
 	fs := &fakeSources{}
 	srv := sourcesServer(t, fs)
@@ -1176,15 +1179,15 @@ func TestBalanceToggleRoundTrip(t *testing.T) {
 		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		return body.Balance.PrimaryGridIsSiteTotal
+		return body.Balance.PrimaryGridNotSiteTotal
 	}
 
 	if readBalance() {
-		t.Fatal("toggle must default to false")
+		t.Fatal("opt-out must default to false (the standard is ON by default)")
 	}
 
 	resp, err := http.Post(srv.URL+"/api/balance", "application/json",
-		strings.NewReader(`{"primary_grid_is_site_total": true}`))
+		strings.NewReader(`{"primary_grid_not_site_total": true}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1198,11 +1201,11 @@ func TestBalanceToggleRoundTrip(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
 		t.Fatal(err)
 	}
-	if !set.Balance.PrimaryGridIsSiteTotal || !fs.bal.PrimaryGridIsSiteTotal {
+	if !set.Balance.PrimaryGridNotSiteTotal || !fs.bal.PrimaryGridNotSiteTotal {
 		t.Fatalf("toggle not applied: resp %+v, fake %+v", set.Balance, fs.bal)
 	}
 	if !readBalance() {
-		t.Fatal("GET /api/sources does not echo the new toggle state")
+		t.Fatal("GET /api/sources does not echo the new opt-out state")
 	}
 
 	bad, err := http.Post(srv.URL+"/api/balance", "application/json", strings.NewReader(`{nope`))

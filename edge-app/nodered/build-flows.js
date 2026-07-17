@@ -62,9 +62,10 @@ const routerFunc = [
   "  string:    [{ start: 0x0050, count: 0x0002 }],",
   "  hybrid_1p: [{ start: 0x00a9, count: 0x0016 }],",
   // hybrid_3p: device-identity register 0x0000 (LV/HV scale class) + the widened
-  // measurement block 0x024C..0x02B2 (103 regs) covering the 32-bit grid/load.
+  // measurement block 0x024C..0x02C4 (121 regs) covering the External-CT grid
+  // pair 0x026B/0x02C4 (the connection point) plus the 32-bit alias/load words.
   // Must equal deye-decode.planReads({family:'hybrid_3p'}) (flows-sync guard).
-  "  hybrid_3p: [{ start: 0x0000, count: 0x0001 }, { start: 0x024c, count: 0x0067 }],",
+  "  hybrid_3p: [{ start: 0x0000, count: 0x0001 }, { start: 0x024c, count: 0x0079 }],",
   "  micro:     [{ start: 0x0056, count: 0x0002 }]",
   "};",
   "const MODBUS_PROFILES = { sunspec: { fc: 3, addr: 0, count: 9 } };",

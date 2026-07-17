@@ -165,7 +165,7 @@ test('hybrid_3p decode: high-map registers, PV summed, SoC & signs', () => {
   assert.strictEqual(batt_kw, 0.5);
 });
 
-test('hybrid_3p read plan is [device 0x0000, measurement 0x024C..0x02B2]', () => {
+test('hybrid_3p read plan is [device 0x0000, measurement 0x024C..0x02C4]', () => {
   const reads = D.planReads({ family: 'hybrid_3p' });
   assert.strictEqual(reads.length, 2, 'device-identity block + measurement block');
   assert.deepStrictEqual(reads[0], { start: 0x0000, count: 0x0001 }, 'device register 0x0000');
@@ -174,8 +174,51 @@ test('hybrid_3p read plan is [device 0x0000, measurement 0x024C..0x02B2]', () =>
   assert.ok(m.count <= 125, 'must not exceed the Modbus fn-0x03 register limit');
   const last = m.start + m.count - 1;
   assert.ok(last >= 0x02a3, 'read block must reach PV4 at 0x02A3');
-  assert.ok(last >= 0x02b2, 'read block must reach the 32-bit Grid high word at 0x02B2');
+  assert.ok(last >= 0x02c4, 'read block must reach the External-CT high word at 0x02C4');
+  assert.ok(last >= 0x02b2, 'read block must cover the fallback Grid-alias high word at 0x02B2');
   assert.ok(last >= 0x0293, 'read block must reach the 32-bit Load high word at 0x0293');
+});
+
+// --- the connection-point grid register (captain's live falsification) -------
+// deye_p3.yaml carries THREE grid measurements: "Internal Power" 0x025F/0x02BF
+// (inverter-side), "External Power" 0x026B/0x02C4 (the external CT at the
+// point of common coupling), and "Grid Power" 0x0271/0x02B2 under the comment
+// "The following three (four) registers change according to the built-in and
+// external settings" - a CONFIG-DEPENDENT alias. On the captain's SUN-30K
+// (2026-07-17) the alias read −23,7 kW (exactly the Deye's own PV = the
+// inverter-side value) while the true connection-point export was 54,2 kW
+// (whole site incl. ~49 kW AC-coupled Fronius; the Deye's own load register
+// −30,5 = 23,7 − 54,2 proves the device itself used the external CT). The
+// decode must therefore report the EXTERNAL CT total as power_kw.
+test('hybrid_3p grid comes from the External CT (0x026B/0x02C4), not the alias', () => {
+  const b = block(0x024c, 0x79, {
+    0x024c: 53, // SoC 53 %
+    0x024e: 0, // battery register 0 (idle) - the measured house-balance term
+    0x026b: (-54200 & 0xffff), // External CT low word ...
+    0x02c4: 0xffff, // ... + high word -> s32 −54 200 W = the true site export
+    0x0271: (-23700 & 0xffff), // the alias reads the inverter-side −23,7 kW
+    0x02b2: 0xffff,
+    0x028d: (-30500 & 0xffff), // the Deye's own internally-netted load −30,5 kW
+    0x0293: 0xffff,
+    0x02a0: 23700, // the Deye's own PV 23,7 kW
+  });
+  const { reading, batt_kw } = D.decode([b], { family: 'hybrid_3p', power_scale: 1 });
+  assert.strictEqual(reading.power_kw, -54.2, 'connection-point export, never the alias −23,7');
+  assert.strictEqual(reading.pv_power_kw, 23.7);
+  assert.strictEqual(reading.load_kw, -30.5, 'raw load forwarded for the fold to judge');
+  assert.strictEqual(batt_kw, 0, 'measured battery register (read, never derived)');
+});
+
+// A read that does not cover the external pair (a stale flow still reading the
+// pre-standard 0x024C..0x02B2 block) falls back to the alias instead of losing
+// the grid channel entirely.
+test('hybrid_3p grid falls back to the 0x0271 alias on the old narrower block', () => {
+  const b = block(0x024c, 0x67, {
+    0x024c: 53,
+    0x0271: 4000, // alias import 4 kW; external high word 0x02C4 not in block
+  });
+  const { reading } = D.decode([b], { family: 'hybrid_3p' });
+  assert.strictEqual(reading.power_kw, 4, 'alias fallback keeps the grid channel alive');
 });
 
 // --- SG01HP3 (HV, 3-4 MPPT) - the confirmed captain device -------------------

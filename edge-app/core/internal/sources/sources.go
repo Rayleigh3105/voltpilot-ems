@@ -341,18 +341,20 @@ func (s *Store) Load() ([]Source, bool, error) {
 // topology - facts the agent cannot measure itself but needs to derive the
 // true house consumption.
 type BalanceSettings struct {
-	// PrimaryGridIsSiteTotal declares that the PRIMARY inverter's own grid
-	// measurement (its CT) sits at the point of common coupling and therefore
-	// measures the WHOLE site's grid exchange - INCLUDING the feed-in of any
-	// additional AC-coupled Erzeuger sources. When true (and no dedicated Netz
-	// meter is authoritative) the agent derives the house load from the site
-	// power balance using the primary's grid reading; when false (the DEFAULT -
-	// safe for installs where the primary CT does NOT see the AC-coupled PV,
-	// where the balance would over-count) the existing Erzeuger estimate
-	// max(0, load - Σpv) stays byte-for-byte unchanged. Topology-dependent:
-	// verify on the device (a dedicated Netz meter is the fail-safe
-	// alternative and always takes precedence).
-	PrimaryGridIsSiteTotal bool `json:"primary_grid_is_site_total"`
+	// PrimaryGridNotSiteTotal is the expert OPT-OUT from the house-consumption
+	// standard (captain decree 2026-07-17: house = pv_total + grid − battery is
+	// THE rule whenever a site grid value exists). By DEFAULT (false) the
+	// primary inverter's own grid measurement (its CT) is taken to sit at the
+	// point of common coupling and to measure the WHOLE site's grid exchange -
+	// including the feed-in of any additional AC-coupled Erzeuger sources - so
+	// the standard balance runs off it whenever no dedicated Netz meter is
+	// authoritative (a single inverter with no sources trivially IS the
+	// connection point). Setting true declares the genuinely different
+	// topology "Die Netzmessung des Wechselrichters sitzt NICHT am
+	// Hausanschluss": the primary's grid reading then never serves as the site
+	// grid and the raw-load fallback path applies instead. A dedicated Netz
+	// meter always takes precedence over both.
+	PrimaryGridNotSiteTotal bool `json:"primary_grid_not_site_total"`
 }
 
 // BalanceStore persists the balance settings, mirroring Store's atomic write.
@@ -380,6 +382,15 @@ func (s *BalanceStore) Save(cfg BalanceSettings) error {
 }
 
 // Load returns the persisted settings, ok=false if none exist yet.
+//
+// Migration of the pre-standard balance.json (opt-IN era): the file used to
+// carry `primary_grid_is_site_total` (default false = the old estimate). Under
+// the captain-decreed standard the balance is ON by default, so a legacy file
+// migrates to opt-out=false REGARDLESS of the old value - an explicit legacy
+// ON stays on, and a legacy false was almost always just the old default, not
+// a topology statement (the genuinely different topology is re-declared once
+// via the new expert opt-out on the setup page). A file that already carries
+// the new key uses it verbatim.
 func (s *BalanceStore) Load() (BalanceSettings, bool, error) {
 	raw, err := os.ReadFile(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -388,9 +399,18 @@ func (s *BalanceStore) Load() (BalanceSettings, bool, error) {
 	if err != nil {
 		return BalanceSettings{}, false, err
 	}
-	var cfg BalanceSettings
-	if err := json.Unmarshal(raw, &cfg); err != nil {
+	// A legacy `primary_grid_is_site_total` key in the raw file is simply not
+	// mapped (unknown keys are ignored): its value is deliberately NOT honored
+	// as an opt-out - see the migration rule above.
+	var stored struct {
+		NotSiteTotal *bool `json:"primary_grid_not_site_total"`
+	}
+	if err := json.Unmarshal(raw, &stored); err != nil {
 		return BalanceSettings{}, false, fmt.Errorf("gespeicherte Bilanz-Einstellungen beschädigt: %w", err)
+	}
+	var cfg BalanceSettings
+	if stored.NotSiteTotal != nil {
+		cfg.PrimaryGridNotSiteTotal = *stored.NotSiteTotal
 	}
 	return cfg, true, nil
 }

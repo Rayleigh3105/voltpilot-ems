@@ -378,9 +378,10 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	})
 
 	// POST /api/balance - the site power-balance settings (today the single
-	// "primary inverter measures the whole grid connection" toggle). Persisted
-	// and applied live; a dedicated Netz meter always takes precedence over the
-	// toggle, so flipping it can never override a working meter.
+	// expert OPT-OUT "Die Netzmessung des Wechselrichters sitzt NICHT am
+	// Hausanschluss" from the default-on house-consumption standard). Persisted
+	// and applied live; a dedicated Netz meter always takes precedence, so
+	// flipping it can never override a working meter.
 	mux.HandleFunc("POST /api/balance", func(w http.ResponseWriter, r *http.Request) {
 		var req sources.BalanceSettings
 		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))

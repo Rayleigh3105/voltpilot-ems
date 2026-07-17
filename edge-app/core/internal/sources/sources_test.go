@@ -2,6 +2,8 @@ package sources
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -228,4 +230,68 @@ func asValidation(err error, target **ValidationError) bool {
 		*target = ve
 	}
 	return ok
+}
+
+// --- BalanceStore: persistence + the 2026-07-17 legacy migration -------------
+
+// The store persists the expert opt-out; a legacy (opt-in era) balance.json
+// carrying only `primary_grid_is_site_total` migrates to opt-out=false
+// (standard ON) REGARDLESS of the stored value: a legacy explicit ON stays on,
+// and a legacy false was the old opt-in default, not a topology statement.
+func TestBalanceStoreRoundTripAndLegacyMigration(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := NewBalanceStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fresh: no file yet.
+	if _, ok, err := bs.Load(); err != nil || ok {
+		t.Fatalf("fresh load = ok=%v err=%v, want absent", ok, err)
+	}
+
+	// Round trip of the new opt-out key.
+	if err := bs.Save(BalanceSettings{PrimaryGridNotSiteTotal: true}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := bs.Load()
+	if err != nil || !ok || !got.PrimaryGridNotSiteTotal {
+		t.Fatalf("round trip = %+v ok=%v err=%v", got, ok, err)
+	}
+
+	// Legacy files: both values migrate to opt-out=false.
+	for _, legacy := range []string{
+		`{"primary_grid_is_site_total": true}`,
+		`{"primary_grid_is_site_total": false}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "balance.json"), []byte(legacy), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, err := bs.Load()
+		if err != nil || !ok {
+			t.Fatalf("legacy load (%s): ok=%v err=%v", legacy, ok, err)
+		}
+		if got.PrimaryGridNotSiteTotal {
+			t.Fatalf("legacy %s must migrate to opt-out=false (standard ON)", legacy)
+		}
+	}
+
+	// A file that carries the NEW key uses it verbatim, even next to a stale
+	// legacy key.
+	mixed := `{"primary_grid_is_site_total": false, "primary_grid_not_site_total": true}`
+	if err := os.WriteFile(filepath.Join(dir, "balance.json"), []byte(mixed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err = bs.Load()
+	if err != nil || !ok || !got.PrimaryGridNotSiteTotal {
+		t.Fatalf("mixed-key load = %+v ok=%v err=%v, want opt-out=true", got, ok, err)
+	}
+
+	// Corrupt file: loud error, never silent defaults pretending to be stored.
+	if err := os.WriteFile(filepath.Join(dir, "balance.json"), []byte(`{nope`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := bs.Load(); err == nil {
+		t.Fatal("corrupt balance.json must surface an error")
+	}
 }
