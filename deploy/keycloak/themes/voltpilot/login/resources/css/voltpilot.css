@@ -1,21 +1,30 @@
 /*
- * VoltPilot Login-Theme.
+ * VoltPilot Login-Theme - die geteilte Marken-Ansicht (Captain-Redesign).
  *
- * Restyle der keycloak.v2-Anmeldeseite (PatternFly v5, Klassen pf-v5-*) auf die
- * VoltPilot-Design-System-Tokens (frontend/portal/designsystem/tokens/*.css).
- * Wir faerben die PatternFly-Global-Tokens um (Buttons, Links, Fokus an einer
- * Stelle) und ergaenzen gezielte Regeln fuer Flaeche, Karte, Wortmarke und
- * Eingabefelder - dieselbe Technik wie das saalo-Theme.
+ * Layout kommt aus dem template.ftl-Override: links die pure Marke auf dem
+ * --vp-grad-hero-Verlauf mit der ORIGINAL-voltpilot.de-Orbit-Animation und
+ * dem Logo auf einer mattierten GLAS-Plakette, rechts das ruhige Formular
+ * (die geerbte keycloak.v2/PatternFly-v5-Struktur, hier umgefaerbt).
+ * Alle Flows (Fehler, OTP, ...) rendern ihre Karte in der rechten Spalte.
  *
- * Verbindliche Werte aus tokens/colors.css / typography.css / effects.css:
+ * Verbindliche Werte aus dem Portal-Design-System
+ * (frontend/portal/designsystem/tokens/*.css) - das Theme hat keine
+ * Token-Dateien, deshalb stehen die Hex-Werte hier mit Token-Kommentar:
  *   primary       #95B9FF   primary-dark #7BA3F7   primary-deep #5A8DE8
+ *   primary-light #B8D4FF   navy #1E3A5F           action/navy-2 #2C5282
  *   text-dark     #1A1A1A   text-gray    #6C757D
  *   bg-light      #F8F9FA   surface      #FFFFFF
  *   border        #E9ECEF   gray (input) #CED4DA
- *   danger        #C62828 (industry-end - dunkelste Fehlerstufe der Palette)
- *   radius-sm 10px (Inputs)  radius-btn 12px  radius-md 16px (Karte)
- *   grad-button   linear-gradient(135deg, #95B9FF, #7BA3F7)
+ *   danger        #C62828
+ *   radius-sm 10px  radius-btn 12px  radius-md 16px
+ *   grad-hero     linear-gradient(135deg, #95B9FF 0%, #7BA3F7 50%, #5A8DE8 100%)
+ *   shadow-btn    0 4px 20px rgba(149, 185, 255, 0.4)
  *   focus-ring    rgba(149, 185, 255, 0.15)
+ *   Kategorien:   solar #FF9800  battery #9C27B0  ev #4CAF50
+ *                 home #2196F3   industry #F44336  grid #607D8B
+ *
+ * Die SPA-Seiten (Boot/Registrierung, frontend/portal src/index.css
+ * ".vp-auth"-Block) tragen dieselbe Buehne - beide zusammen aendern.
  */
 
 /* Portal-Schriften (tokens/fonts.css laedt dieselben Schnitte von Google Fonts). */
@@ -56,18 +65,12 @@ html.login-pf,
 body#keycloak-bg {
   font-family:
     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  /* Das Theme ist hell (Design-System hat keine Dark-Tokens). Ohne dies rendert
-     ein Browser im OS-Dunkelmodus NATIVE Controls (Sprachauswahl-<select>,
-     Passwort-Auge-Button) als dunkle Kacheln auf der hellen Karte. */
   color-scheme: light;
+  margin: 0;
 }
 
 body#keycloak-bg {
-  /* bg-light mit einem sehr dezenten Brand-Verlauf oben (paleblue-Tokens),
-     damit die Seite nach Portal aussieht statt nach PatternFly-Grau. */
-  background:
-    linear-gradient(180deg, #f0f4ff 0%, #f8f9fa 320px) no-repeat,
-    #f8f9fa;
+  background: #ffffff; /* surface - die rechte Formularseite */
   color: #1a1a1a; /* text-dark */
 }
 
@@ -78,49 +81,263 @@ body#keycloak-bg {
   background-image: none !important;
 }
 
-/* --- Karte: weisse Flaeche, border + radius-md + shadow-md (Design-System) --- */
-.pf-v5-c-login__main {
-  background: #ffffff; /* surface */
-  border: 1px solid #e9ecef; /* border */
-  border-radius: 16px; /* radius-md (Karten) */
-  box-shadow: 0 4px 20px rgb(0 0 0 / 0.08); /* shadow-md */
+/* ============================================================================
+   Die geteilte Ansicht (vp-split aus template.ftl)
+   ============================================================================ */
+.vp-split {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1.08fr 1fr;
 }
 
-/* keycloak.v2 zeichnet einen farbigen Akzentstreifen am Kartenkopf -
-   VoltPilot-Karten tragen keinen; Tiefe kommt aus Rand + Schatten. */
-.pf-v5-c-login__main-header {
+/* --- Links: pure Marke auf dem Hero-Verlauf ---------------------------------- */
+.vp-brand {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 46px;
+  /* Dezente Echo-Kreise + weiches Licht oben links ueber dem grad-hero. */
+  background:
+    radial-gradient(
+      circle at 82% 88%,
+      rgba(255, 255, 255, 0) 90px,
+      rgba(255, 255, 255, 0.28) 91px,
+      rgba(255, 255, 255, 0) 93px
+    ),
+    radial-gradient(
+      circle at 82% 88%,
+      rgba(255, 255, 255, 0) 130px,
+      rgba(255, 255, 255, 0.2) 131px,
+      rgba(255, 255, 255, 0) 133px
+    ),
+    radial-gradient(circle at 12% 10%, rgba(255, 255, 255, 0.18), transparent 240px),
+    linear-gradient(135deg, #95b9ff 0%, #7ba3f7 50%, #5a8de8 100%); /* grad-hero */
+}
+.vp-brandstage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  min-width: 0;
+}
+
+/* --- Orbit (Original voltpilot.de): 3 Ringe, 6 Kategorie-Knoten, Energie-Kern */
+.vp-orbit-shell {
+  width: 380px;
+  height: 380px;
+  max-width: 100%;
+  display: grid;
+  place-items: center;
+}
+.vp-orbit {
+  position: relative;
+  width: 380px;
+  height: 380px;
+  flex: none;
+}
+.vp-orbit-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100px;
+  height: 100px;
+  background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%); /* navy -> navy-2 */
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+.vp-orbit-center-inner {
+  width: 70px;
+  height: 70px;
+  background: linear-gradient(135deg, #b8d4ff 0%, #95b9ff 100%); /* primary-light -> primary */
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(149, 185, 255, 0.5);
+}
+.vp-orbit-center-inner svg {
+  width: 30px;
+  height: 30px;
+  stroke: #fff;
+  stroke-width: 2;
+  fill: #fff;
+  stroke-linejoin: round;
+}
+.vp-orbit-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+}
+.vp-orbit-ring-1 {
+  width: 180px;
+  height: 180px;
+  margin: -90px 0 0 -90px;
+  animation: vp-orbit-rotate 15s linear infinite;
+}
+.vp-orbit-ring-2 {
+  width: 260px;
+  height: 260px;
+  margin: -130px 0 0 -130px;
+  animation: vp-orbit-rotate 20s linear infinite reverse;
+}
+.vp-orbit-ring-3 {
+  width: 320px;
+  height: 320px;
+  margin: -160px 0 0 -160px;
+  border-style: dashed;
+  animation: vp-orbit-rotate 25s linear infinite;
+}
+.vp-orbit-node {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+  /* Gegenrotation haelt die Icons aufrecht; die Dauer MUSS zum tragenden
+     Ring passen (Ring 2 laeuft rueckwaerts). */
+  animation: vp-orbit-counter 15s linear infinite;
+}
+.vp-orbit-node svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vp-orbit-node.n-top { top: -22px; left: 50%; margin-left: -22px; }
+.vp-orbit-node.n-bot { bottom: -22px; left: 50%; margin-left: -22px; }
+.vp-orbit-node.n-left { left: -22px; top: 50%; margin-top: -22px; }
+.vp-orbit-node.n-right { right: -22px; top: 50%; margin-top: -22px; }
+.vp-orbit-node.ring2 {
+  animation-duration: 20s;
+  animation-direction: reverse;
+}
+.vp-orbit-node.ring3 {
+  animation-duration: 25s;
+}
+/* Kategorie-Farben (voltpilot.de-Kategorie-Tokens). */
+.vp-orbit-node.pv svg { stroke: #ff9800; } /* solar */
+.vp-orbit-node.battery svg { stroke: #9c27b0; } /* battery */
+.vp-orbit-node.car svg { stroke: #4caf50; } /* ev */
+.vp-orbit-node.home svg { stroke: #2196f3; } /* home */
+.vp-orbit-node.industry svg { stroke: #f44336; } /* industry */
+.vp-orbit-node.grid svg { stroke: #607d8b; } /* grid */
+@keyframes vp-orbit-rotate {
+  from { transform: rotate(0); }
+  to { transform: rotate(360deg); }
+}
+@keyframes vp-orbit-counter {
+  from { transform: rotate(0); }
+  to { transform: rotate(-360deg); }
+}
+
+/* --- Logo auf der mattierten Glas-Plakette (Captain-Update: Glas, keine
+       weisse Karte). backdrop-filter braucht das -webkit-Prefix (Safari). --- */
+.vp-brand-glass {
+  background: rgba(255, 255, 255, 0.3);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 20px;
+  padding: 18px 30px;
+  box-shadow:
+    0 16px 44px rgba(20, 40, 70, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.vp-brand-logo {
+  display: block;
+  height: 48px;
+  width: auto;
+}
+
+/* --- Rechts: das ruhige Formular --------------------------------------------- */
+.vp-formside {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 48px;
+  min-width: 0;
+  background: #ffffff; /* surface */
+}
+/* Die geerbte PatternFly-Login-Huelle wird zur schlichten Spalte: kein
+   eigener Viewport-Grid, keine Karte - die rechte Seite IST die Flaeche. */
+.vp-formside .pf-v5-c-login {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  background: none;
+}
+.vp-formside .pf-v5-c-login__container {
+  display: block;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 0;
+}
+.vp-formside .pf-v5-c-login__main {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+.vp-formside .pf-v5-c-login__main-header,
+.vp-formside .pf-v5-c-login__main-body,
+.vp-formside .pf-v5-c-login__main-footer {
+  padding-left: 0;
+  padding-right: 0;
+}
+.vp-formside .pf-v5-c-login__main-header {
   border-top: 0;
 }
 
-/* --- Wortmarke: das VoltPilot-Logo (identisch zum Portal-Header) ------------- */
-/* Realm-Anzeigename ausblenden und das Logo-PNG (transparenter Hintergrund,
-   2040x816) als Bildmarke rendern. */
-#kc-header-wrapper {
-  font-size: 0; /* versteckt den geerbten Realm-Text als Fallback */
-  line-height: 0;
-}
-#kc-header-wrapper::before {
-  content: '';
-  display: block;
-  width: 260px;
-  height: 104px; /* Logo-Seitenverhaeltnis 2.5:1 */
-  max-width: 80%;
-  margin: 0 auto;
-  background-image: url('../img/voltpilot-logo.png');
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
+/* Marke/Realm-Name: die Identitaet steckt links im Verlauf; der geerbte
+   Header bleibt fuer Screenreader erhalten, verschwindet aber visuell. */
+#kc-header {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-/* --- Seitentitel (h1): Inter Tight, tracking-tight --------------------------- */
+/* --- Seitentitel (h1): "Willkommen zurueck", Inter Tight ---------------------- */
 #kc-page-title {
   font-family:
     'Inter Tight', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
     sans-serif;
-  font-size: 22px;
-  font-weight: 600;
+  font-size: 1.55rem;
+  font-weight: 700;
   letter-spacing: -0.4px; /* tracking-tight */
   color: #1a1a1a;
+  margin: 0;
+}
+/* Hinweiszeile unter dem Titel (login.ftl). */
+.vp-login-hint {
+  color: #6c757d; /* text-gray */
+  font-size: 0.95rem;
+  margin: 4px 0 22px;
 }
 
 /* --- Labels ------------------------------------------------------------------ */
@@ -129,10 +346,10 @@ body#keycloak-bg {
 #kc-form label {
   color: #1a1a1a;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
-/* --- Eingabefelder: gray-Rand, radius-sm (10px) ------------------------------- */
+/* --- Eingabefelder: gray-Rand, radius-sm (10px), >=44px Touch-Ziel ------------ */
 .pf-v5-c-form-control,
 .pf-v5-c-form-control > input,
 input.pf-v5-c-form-control,
@@ -143,6 +360,7 @@ input.pf-v5-c-form-control,
   border-radius: 10px; /* radius-sm (Inputs) */
   background: #ffffff;
   color: #1a1a1a;
+  min-height: 44px;
 }
 ::placeholder {
   color: #6c757d; /* text-gray */
@@ -154,8 +372,8 @@ input.pf-v5-c-form-control,
 #kc-form input:focus-visible,
 .pf-v5-c-form-control:focus-within {
   outline: none;
-  border-color: #95b9ff; /* primary */
-  box-shadow: 0 0 0 4px rgb(149 185 255 / 0.15); /* focus-ring */
+  border-color: #5a8de8; /* primary-deep */
+  box-shadow: 0 0 0 3px rgb(149 185 255 / 0.15); /* focus-ring */
 }
 .pf-v5-c-button:focus-visible,
 a:focus-visible,
@@ -164,21 +382,24 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
-/* --- Primaerbutton: Brand-Gradient, weisser Text, radius-btn (12px) ----------- */
+/* --- Primaerbutton: action-Navy, weiss, radius-btn, shadow-btn ---------------- */
 .pf-v5-c-button.pf-m-primary,
 #kc-login {
-  background: linear-gradient(135deg, #95b9ff, #7ba3f7); /* grad-button */
+  background: #2c5282; /* action (= Portal-Primary-Button) */
   color: #ffffff;
   border: 0;
   border-radius: 12px; /* radius-btn */
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 1rem;
+  min-height: 46px;
   box-shadow: 0 4px 20px rgb(149 185 255 / 0.4); /* shadow-btn */
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .pf-v5-c-button.pf-m-primary:hover,
 #kc-login:hover {
-  background: linear-gradient(135deg, #7ba3f7, #5a8de8); /* eine Stufe tiefer */
+  background: #1e3a5f; /* navy - eine Stufe tiefer */
   color: #ffffff;
+  box-shadow: 0 12px 48px rgba(149, 185, 255, 0.25); /* shadow-hover */
 }
 
 /* Sekundaer-/Control-Buttons (Passwort-Sichtbarkeit) und die Sprachauswahl
@@ -203,10 +424,10 @@ html .pf-v5-c-button.pf-m-control:hover {
 /* --- Links -------------------------------------------------------------------- */
 a,
 #kc-form a {
-  color: #5a8de8; /* link = primary-deep */
+  color: #2c5282; /* link = action (AA auf weiss) */
 }
 a:hover {
-  color: #7ba3f7; /* link-hover = primary-dark */
+  color: #1e3a5f; /* navy */
 }
 
 /* --- Fehler/Validierung ------------------------------------------------------- */
@@ -230,9 +451,101 @@ input.pf-m-error {
 #vp-register-link {
   margin-top: 20px;
   text-align: center;
-  font-size: 14px;
+  font-size: 0.9rem;
   color: #6c757d; /* text-gray */
 }
 #vp-register-link a {
   font-weight: 600;
+  text-decoration: none;
+}
+
+/* --- Passwort-vergessen-Hinweis (kein SMTP -> Support setzt zurueck) ---------- */
+.vp-forgot-note {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #6c757d; /* text-gray */
+}
+
+/* --- Vertrauenszeile ---------------------------------------------------------- */
+.vp-trust {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid #e9ecef; /* border */
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: #6c757d; /* text-gray */
+}
+.vp-trust span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.vp-trust svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ============================================================================
+   Handy (<= 799px): der Verlauf wird zum kompakten Kopfband mit Mini-Orbit
+   und kleiner Glas-Plakette, das Formular folgt darunter. Der Anmelden-Knopf
+   bleibt ueber der Tastatur, weil das Band kurz ist und die Seite normal
+   scrollt; alle Ziele >= 44px.
+   ============================================================================ */
+@media (max-width: 799px) {
+  .vp-split {
+    grid-template-columns: 1fr;
+    align-content: start;
+  }
+  .vp-brand {
+    padding: 26px 16px 20px;
+  }
+  .vp-brandstage {
+    gap: 12px;
+  }
+  /* Mini-Orbit: explizite Groessen (die Handy-Variante des Mockups) - eine
+     transform-Skalierung behielte die 380px-Layoutbox und verschoebe das Band. */
+  .vp-orbit-shell,
+  .vp-orbit {
+    width: 150px;
+    height: 150px;
+  }
+  .vp-orbit-ring-1 { width: 76px; height: 76px; margin: -38px 0 0 -38px; }
+  .vp-orbit-ring-2 { width: 112px; height: 112px; margin: -56px 0 0 -56px; }
+  .vp-orbit-ring-3 { width: 146px; height: 146px; margin: -73px 0 0 -73px; }
+  .vp-orbit-center { width: 44px; height: 44px; }
+  .vp-orbit-center-inner { width: 30px; height: 30px; }
+  .vp-orbit-center-inner svg { width: 14px; height: 14px; }
+  .vp-orbit-node { width: 22px; height: 22px; }
+  .vp-orbit-node svg { width: 11px; height: 11px; }
+  .vp-orbit-node.n-top { top: -11px; margin-left: -11px; }
+  .vp-orbit-node.n-bot { bottom: -11px; margin-left: -11px; }
+  .vp-orbit-node.n-left { left: -11px; margin-top: -11px; }
+  .vp-orbit-node.n-right { right: -11px; margin-top: -11px; }
+  .vp-brand-glass {
+    padding: 10px 18px;
+    border-radius: 16px;
+  }
+  .vp-brand-logo {
+    height: 26px;
+  }
+  .vp-formside {
+    padding: 24px 18px 32px;
+    align-items: flex-start;
+  }
+  .vp-login-hint {
+    margin-bottom: 16px;
+  }
+}
+
+/* Reduzierte Bewegung: Ringe und Knoten stehen still (statische Ringe). */
+@media (prefers-reduced-motion: reduce) {
+  .vp-orbit-ring,
+  .vp-orbit-node {
+    animation: none;
+  }
 }
