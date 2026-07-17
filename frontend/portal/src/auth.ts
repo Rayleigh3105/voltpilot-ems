@@ -74,10 +74,40 @@ export function wasSessionExpired(): boolean {
   return storedSessionExpired;
 }
 
+// Set when the token endpoint refused a boot-path grant with 429 (throttling)
+// or a Keycloak brute-force lockout: the login screen then shows the German
+// "zu viele Anmeldeversuche" card instead of redirecting or going blank.
+let authRateLimited = false;
+
+/** True when a boot-path token grant was refused as throttled/locked out. */
+export function wasRateLimited(): boolean {
+  return authRateLimited;
+}
+
 interface TokenSet {
   access_token: string;
   refresh_token: string;
   id_token?: string;
+}
+
+/** Per-request ceiling for direct token-endpoint calls (the boot is bounded on top). */
+const TOKEN_GRANT_TIMEOUT_MS = 6_000;
+
+/** A refused token grant, carrying the HTTP status + Keycloak error fields. */
+export class TokenGrantError extends Error {
+  constructor(
+    readonly status: number,
+    readonly errorCode?: string,
+    readonly errorDescription?: string,
+  ) {
+    super(`token grant failed: ${status}${errorCode ? ` (${errorCode})` : ''}`);
+    this.name = 'TokenGrantError';
+  }
+
+  /** 429 throttling or a Keycloak brute-force "temporarily disabled" lockout. */
+  get throttled(): boolean {
+    return this.status === 429 || /temporarily disabled/i.test(this.errorDescription ?? '');
+  }
 }
 
 function tokenEndpoint(): string {
@@ -85,12 +115,25 @@ function tokenEndpoint(): string {
 }
 
 async function tokenGrant(form: Record<string, string>): Promise<TokenSet> {
+  // Bounded: a hanging token endpoint must never hang the boot (white page).
   const res = await fetch(tokenEndpoint(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ client_id: KC_CLIENT_ID, scope: 'openid', ...form }),
+    signal: AbortSignal.timeout(TOKEN_GRANT_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`token grant failed: ${res.status}`);
+  if (!res.ok) {
+    let code: string | undefined;
+    let description: string | undefined;
+    try {
+      const body = (await res.json()) as { error?: string; error_description?: string };
+      code = body.error;
+      description = body.error_description;
+    } catch {
+      // Non-JSON error body (proxy error page) - the status alone suffices.
+    }
+    throw new TokenGrantError(res.status, code, description);
+  }
   return (await res.json()) as TokenSet;
 }
 
@@ -113,7 +156,13 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
   let stored: TokenSet;
   try {
     stored = JSON.parse(raw) as TokenSet;
-  } catch {
+    if (typeof stored?.refresh_token !== 'string' || stored.refresh_token === '') {
+      throw new Error('stored token set has no refresh_token');
+    }
+  } catch (e) {
+    // Corrupt store must never break the boot - treat it as "no session".
+    // eslint-disable-next-line no-console
+    console.warn('Gespeicherte Sitzung ist unlesbar und wird verworfen.', e);
     clearStoredTokens();
     return null;
   }
@@ -128,7 +177,22 @@ async function refreshStoredTokens(): Promise<TokenSet | null> {
       });
       storeTokens(fresh);
       return fresh;
-    } catch {
+    } catch (e) {
+      if (e instanceof TokenGrantError && e.throttled) {
+        // Throttled/locked out: KEEP the stored tokens (they may still be
+        // valid once the window passes - wiping them would force a fresh
+        // credential entry) and surface the German rate-limit card instead of
+        // hammering the endpoint with a retry.
+        authRateLimited = true;
+        return null;
+      }
+      if (e instanceof TokenGrantError && e.status >= 400 && e.status < 500) {
+        // A definitive refusal (expired/revoked refresh token) - retrying the
+        // identical grant cannot succeed and only adds token-endpoint load.
+        storedSessionExpired = true;
+        clearStoredTokens();
+        return null;
+      }
       if (attempt === 1) {
         // A stored session existed but could not be refreshed - the session is
         // truly gone. Flag it so the login screen says "Sitzung abgelaufen".
@@ -191,6 +255,13 @@ export async function initAuth(): Promise<boolean> {
     onLoad: 'check-sso',
     silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
     pkceMethod: 'S256',
+    // The login-status iframe (default ON) is a proven white-page hang: its
+    // load event fires even for a proxy/Keycloak ERROR page, but keycloak-js
+    // then waits UNBOUNDED for a postMessage the error page never sends - and
+    // on the ?code callback path the iframe even gates the code exchange.
+    // Cross-tab logout detection degrades gracefully without it: the next
+    // token refresh fails and freshToken() redirects to a fresh login.
+    checkLoginIframe: false,
     // Auth-code response in the query string, NOT the fragment: the portal uses
     // the URL hash for navigation (#/geraete etc.), so the default fragment
     // response mode would clobber the current page on every login redirect.
