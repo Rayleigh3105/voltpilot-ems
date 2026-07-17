@@ -1,23 +1,21 @@
 import React from 'react';
 import { Button } from '../../designsystem/components/core/Button';
-import { Card } from '../../designsystem/components/core/Card';
-import logoUrl from '../../designsystem/assets/voltpilot-logo.png';
+import { AuthScreen } from './AuthScreen';
 
 /**
  * Synchronously rendered boot state (white-page fix): shown the moment the
  * bundle runs, BEFORE/WHILE initAuth() awaits Keycloak. Whatever hangs or
- * throws afterwards, the customer never looks at an empty page.
+ * throws afterwards, the customer never looks at an empty page. Rendered in
+ * the same split-view brand language as login/register (AuthScreen).
  */
 export function BootSplash() {
   return (
-    <div className="vp-login">
-      <Card padding="lg" radius="lg" className="vp-login-card">
-        <img src={logoUrl} alt="VoltPilot" />
-        <h1>VoltPilot EMS</h1>
-        <div className="vp-boot-spinner" aria-hidden="true" />
-        <p role="status">Anmeldung wird geprüft …</p>
-      </Card>
-    </div>
+    <AuthScreen>
+      <div className="vp-boot-spinner" aria-hidden="true" />
+      <p role="status" style={{ textAlign: 'center' }}>
+        Anmeldung wird geprüft …
+      </p>
+    </AuthScreen>
   );
 }
 
@@ -44,21 +42,20 @@ export class BootErrorBoundary extends React.Component<
   render(): React.ReactNode {
     if (!this.state.failed) return this.props.children;
     return (
-      <div className="vp-login">
-        <Card padding="lg" radius="lg" className="vp-login-card">
-          <img src={logoUrl} alt="VoltPilot" />
-          <h1>VoltPilot EMS</h1>
-          <p>Es ist ein unerwarteter Fehler aufgetreten. Bitte laden Sie die Seite neu.</p>
-          <Button
-            variant="primary"
-            size="lg"
-            fullWidth
-            onClick={() => window.location.reload()}
-          >
-            Neu laden
-          </Button>
-        </Card>
-      </div>
+      <AuthScreen>
+        <h1>VoltPilot EMS</h1>
+        <p className="vp-auth-hint">
+          Es ist ein unerwarteter Fehler aufgetreten. Bitte laden Sie die Seite neu.
+        </p>
+        <Button
+          variant="primary"
+          size="lg"
+          fullWidth
+          onClick={() => window.location.reload()}
+        >
+          Neu laden
+        </Button>
+      </AuthScreen>
     );
   }
 }

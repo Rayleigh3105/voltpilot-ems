@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../designsystem/components/core/Button';
 import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
-import logoUrl from '../designsystem/assets/voltpilot-logo.png';
 import { Input } from '../designsystem/components/forms/Input';
+import { AuthScreen, TrustRow } from './components/AuthScreen';
 import { isPlatformAdmin, login, loginWithCredentials } from './auth';
 import { api, ApiError, register, setTenantOverride, type Device, type Site } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
@@ -92,94 +92,87 @@ function LoginScreen({
     window.location.hash = v === 'register' ? '#register' : '';
   }
   if (redirecting) {
-    // The Keycloak redirect is already underway (no pre-step). The card is
+    // The Keycloak redirect is already underway (no pre-step). The panel is
     // only a fallback if the navigation is interrupted.
     return (
-      <div className="vp-login">
-        <Card padding="lg" radius="lg" className="vp-login-card">
-          <img src={logoUrl} alt="VoltPilot" />
-          <h1>VoltPilot EMS</h1>
-          <p>Sie werden zur Anmeldung weitergeleitet …</p>
-          <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
-            Zur Anmeldung
-          </Button>
-        </Card>
-      </div>
+      <AuthScreen>
+        <h1>Willkommen zurück</h1>
+        <p className="vp-auth-hint">Sie werden zur Anmeldung weitergeleitet …</p>
+        <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
+          Zur Anmeldung
+        </Button>
+        <TrustRow />
+      </AuthScreen>
     );
   }
   return (
-    <div className="vp-login">
-      <Card padding="lg" radius="lg" className="vp-login-card">
-        <img src={logoUrl} alt="VoltPilot" />
-        {view === 'login' ? (
-          <>
-            <h1>VoltPilot EMS</h1>
-            <p>
-              Ihr Energiemanagement-Portal - Ihre Anlage, Börsenpreise und
-              Batterie-Fahrplan auf einen Blick.
+    <AuthScreen>
+      {view === 'login' ? (
+        <>
+          <h1>Willkommen zurück</h1>
+          <p className="vp-auth-hint">Melden Sie sich an Ihrer Anlage an.</p>
+          {authError ? (
+            // Keycloak is unreachable: sending the user to keycloak.login()
+            // would just redirect to the same dead host, OUTSIDE the SPA, with
+            // no way back. Offer a plain in-app retry instead (M4).
+            <Button
+              variant="primary"
+              size="lg"
+              fullWidth
+              iconLeft={<Icon name="refresh-cw" size={18} />}
+              onClick={() => window.location.reload()}
+            >
+              Erneut versuchen
+            </Button>
+          ) : (
+            <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
+              Anmelden
+            </Button>
+          )}
+          {/* Registration also needs a reachable Keycloak, so hide it while
+              the auth service is down - it would be a second dead path (M4). */}
+          {!authError && (
+            <p className="vp-auth-note">
+              Neu bei VoltPilot?{' '}
+              <button type="button" className="vp-linklike" onClick={() => setView('register')}>
+                Konto erstellen
+              </button>
             </p>
-            {authError ? (
-              // Keycloak is unreachable: sending the user to keycloak.login()
-              // would just redirect to the same dead host, OUTSIDE the SPA, with
-              // no way back. Offer a plain in-app retry instead (M4).
-              <Button
-                variant="primary"
-                size="lg"
-                fullWidth
-                iconLeft={<Icon name="refresh-cw" size={18} />}
-                onClick={() => window.location.reload()}
-              >
-                Erneut versuchen
-              </Button>
-            ) : (
-              <Button variant="primary" size="lg" fullWidth onClick={() => login()}>
-                Anmelden
-              </Button>
-            )}
-            {/* Registration also needs a reachable Keycloak, so hide it while
-                the auth service is down - it would be a second dead path (M4). */}
-            {!authError && (
-              <p className="vp-note" style={{ marginTop: 16 }}>
-                Neu bei VoltPilot?{' '}
-                <button type="button" className="vp-linklike" onClick={() => setView('register')}>
-                  Konto erstellen
-                </button>
-              </p>
-            )}
-            {/* No self-service reset without SMTP - point at support (m8). */}
-            <p className="vp-note" style={{ marginTop: authError ? 16 : 8 }}>
-              Passwort vergessen? Bitte kontaktieren Sie unseren Support.
-            </p>
-          </>
-        ) : (
-          // "Zur Anmeldung" goes straight to the Keycloak login (there is no
-          // in-portal login pre-step anymore).
-          <RegisterForm onBack={() => login()} />
-        )}
-        {rateLimited && !authError && view === 'login' && (
-          <div className="vp-alert vp-alert-err">
-            Zu viele Anmeldeversuche. Bitte versuchen Sie es in ein paar Minuten
-            erneut.
-          </div>
-        )}
-        {authTimeout && !rateLimited && !authError && view === 'login' && (
-          <div className="vp-alert vp-alert-err">
-            Die Anmeldung dauert ungewöhnlich lange. Bitte versuchen Sie es erneut.
-          </div>
-        )}
-        {sessionExpired && !rateLimited && !authTimeout && !authError && view === 'login' && (
-          <div className="vp-alert vp-alert-err">
-            Ihre Sitzung ist abgelaufen, bitte erneut anmelden.
-          </div>
-        )}
-        {authError && (
-          <div className="vp-alert vp-alert-err">
-            Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in
-            wenigen Minuten erneut.
-          </div>
-        )}
-      </Card>
-    </div>
+          )}
+          {/* No self-service reset without SMTP - point at support (m8). */}
+          <p className="vp-auth-note" style={{ marginTop: authError ? 16 : 8 }}>
+            Passwort vergessen? Bitte kontaktieren Sie unseren Support.
+          </p>
+        </>
+      ) : (
+        // "Zur Anmeldung" goes straight to the Keycloak login (there is no
+        // in-portal login pre-step anymore).
+        <RegisterForm onBack={() => login()} />
+      )}
+      {rateLimited && !authError && view === 'login' && (
+        <div className="vp-alert vp-alert-err">
+          Zu viele Anmeldeversuche. Bitte versuchen Sie es in ein paar Minuten
+          erneut.
+        </div>
+      )}
+      {authTimeout && !rateLimited && !authError && view === 'login' && (
+        <div className="vp-alert vp-alert-err">
+          Die Anmeldung dauert ungewöhnlich lange. Bitte versuchen Sie es erneut.
+        </div>
+      )}
+      {sessionExpired && !rateLimited && !authTimeout && !authError && view === 'login' && (
+        <div className="vp-alert vp-alert-err">
+          Ihre Sitzung ist abgelaufen, bitte erneut anmelden.
+        </div>
+      )}
+      {authError && (
+        <div className="vp-alert vp-alert-err">
+          Der Anmeldedienst ist zurzeit nicht erreichbar. Bitte versuchen Sie es in
+          wenigen Minuten erneut.
+        </div>
+      )}
+      {view === 'login' && <TrustRow />}
+    </AuthScreen>
   );
 }
 
@@ -250,7 +243,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
     return (
       <>
         <h1>Ihr Konto ist bereit</h1>
-        <p>
+        <p className="vp-auth-hint">
           Willkommen bei VoltPilot! Melden Sie sich jetzt mit Ihrer E-Mail-Adresse an -
           danach legen Sie Ihre Anlage an und verbinden Ihr Gerät.
         </p>
@@ -270,7 +263,9 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
       noValidate
     >
       <h1>Konto erstellen</h1>
-      <p>In einer Minute startklar: Konto anlegen, Anlage benennen, Gerät verbinden.</p>
+      <p className="vp-auth-hint">
+        In einer Minute startklar: Konto anlegen, Anlage benennen, Gerät verbinden.
+      </p>
       <div style={{ display: 'grid', gap: 12, textAlign: 'left' }}>
         <Input
           ref={nameRef}
@@ -361,7 +356,7 @@ function RegisterForm({ onBack }: { onBack: () => void }) {
         {busy ? 'Erstelle Konto…' : 'Konto erstellen'}
       </Button>
       {err && <div className="vp-alert vp-alert-err">{err}</div>}
-      <p className="vp-note" style={{ marginTop: 16 }}>
+      <p className="vp-auth-note">
         Schon ein Konto?{' '}
         <button type="button" className="vp-linklike" onClick={onBack}>
           Zur Anmeldung
