@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:csp": "test/csp-smoke.sh"
   },
   "dependencies": {
     "echarts": "^5.5.1",

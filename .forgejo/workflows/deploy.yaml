@@ -109,6 +109,16 @@ jobs:
           npm install
           npm run build
 
+      # CSP smoke: runs the REAL built nginx image and asserts its security
+      # headers never break the silent-SSO login flow (inline scripts under
+      # script-src 'self' = the 2026-07-17 prod login outage). The in-script
+      # Chrome check self-skips when no browser is on the runner; the static
+      # header/content checks still gate the outage class.
+      - name: CSP smoke (built nginx image + silent-SSO)
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run test:csp
+
   # Build + push every deployed image in parallel. The deploy job waits for the
   # whole matrix. Tags: :latest and :${{ github.sha }} (the rollout pins the SHA).
   build:

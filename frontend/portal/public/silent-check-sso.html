@@ -1,10 +1,13 @@
 <!doctype html>
 <!-- Keycloak silent SSO check target. keycloak-js loads this in a hidden iframe
-     to detect an existing session without a full-page redirect. -->
+     to detect an existing session without a full-page redirect.
+     The postMessage MUST live in the external silent-check-sso.js: the prod
+     nginx CSP is script-src 'self' without 'unsafe-inline', so an inline script
+     here is silently blocked, the postMessage never fires, keycloak-js init
+     never settles and every visitor hits the boot timeout (real prod login
+     outage, 2026-07-17). Keep it external. -->
 <html>
   <body>
-    <script>
-      parent.postMessage(location.href, location.origin);
-    </script>
+    <script src="/silent-check-sso.js"></script>
   </body>
 </html>
