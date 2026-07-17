@@ -43,6 +43,12 @@ type Result struct {
 	// copy in the UI.
 	Message string   `json:"message,omitempty"`
 	Reading *Reading `json:"reading,omitempty"`
+	// FoundUnits is set only by the multi-inverter unit-ID probe (POST
+	// /api/probe-units, fronius_sunspec only): every Modbus unit id at the
+	// probed address that presented a SunSpec device (a Fronius Datamanager
+	// exposes one unit id per inverter; convention: inverter number = unit id).
+	// Empty/absent on the plain test-connection round trip.
+	FoundUnits []int `json:"found_units,omitempty"`
 }
 
 // Error codes (kept in sync with the Node-RED test-read classification and the

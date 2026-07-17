@@ -288,6 +288,149 @@ function makeReadOnce(deps) {
   };
 }
 
+// --- multi-inverter unit-ID enumeration (Fronius Datamanager) ----------------
+//
+// A Fronius Datamanager exposes SEVERAL inverters on ONE IP, one Modbus unit id
+// per inverter (Datamanager convention: inverter number = unit id, e.g. the
+// captain's site "Asbeck Büro Isaraue": two Eco 27.0-3-S as Nr 1 "ost" / Nr 2
+// "west" -> unit ids 1 / 2). A source configured with the default unit_id 1
+// silently reads ONLY inverter 1 - so the add/test UX probes the same address
+// for FURTHER unit ids and offers to create a source per found inverter.
+//
+// makeProbeUnits(deps) returns probeUnits(selection) -> Promise<Result>:
+//   { ok:true, found_units:[1,2] }  - every unit id (1..max) presenting a
+//                                     SunSpec SID marker ("SunS") at this address
+//   { ok:false, error_code, message? } - invalid form / host unreachable
+//
+// Bounded + read-only by construction: ONE TCP connection, one 2-register FC3
+// SID read per (unit id, base), a short per-id timeout, and a hard overall
+// budget after which whatever was found so far is returned (never a hang, never
+// a write). A present unit answers its SID in one round trip; an absent unit on
+// a Datamanager answers a fast Modbus exception (gateway target failed). Once
+// any unit answered at a base, that base is locked for the rest of the scan
+// (a Datamanager serves all inverters at the same base, 40000). fronius_sunspec
+// only - the other transports have no unit-id fan-out worth scanning.
+const PROBE_MAX_UNIT_ID = 10;
+const DEFAULT_PROBE_ID_TIMEOUT_MS = 1500;
+const DEFAULT_PROBE_OVERALL_MS = 12000;
+const PROBE_BASES = [40000, 50000, 0];
+
+function makeProbeUnits(deps) {
+  const net = deps.net;
+  const CONNECT_TIMEOUT_MS = deps.connectTimeoutMs || DEFAULT_CONNECT_TIMEOUT_MS;
+  const PER_ID_TIMEOUT_MS = deps.probeIdTimeoutMs || DEFAULT_PROBE_ID_TIMEOUT_MS;
+  const OVERALL_TIMEOUT_MS = deps.probeOverallMs || DEFAULT_PROBE_OVERALL_MS;
+  const MAX_UNIT_ID = deps.probeMaxUnitId || PROBE_MAX_UNIT_ID;
+  const SUNS_HI = 0x5375;
+  const SUNS_LO = 0x6e53;
+
+  return function probeUnits(selection) {
+    const sel = selection || {};
+    const conn = sel.connection || {};
+    const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
+    if (sel.communication !== 'fronius_sunspec') {
+      return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: 'Die Suche nach weiteren Wechselrichtern gibt es nur für SunSpec (Modbus TCP).' });
+    }
+    if (!ip) return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: 'keine IP-Adresse' });
+    const port = num(conn.port, 502);
+
+    return new Promise((resolve) => {
+      const sock = new net.Socket();
+      sock.setNoDelay(true);
+      let settled = false;
+      let acc = Buffer.alloc(0);
+      let txid = 0;
+      let pending = null; // { wantTxid, res } - res({regs}|{exception}|{timeout})
+      let idTimer = null;
+      const found = [];
+
+      const done = (res) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(connectTimer);
+        clearTimeout(overallTimer);
+        clearTimeout(idTimer);
+        try { sock.destroy(); } catch (e) { /* ignore */ }
+        resolve(res);
+      };
+      const finishOk = () => done({ ok: true, found_units: found.slice() });
+
+      const connectTimer = setTimeout(() => done({ ok: false, error_code: ERR_UNREACHABLE }), CONNECT_TIMEOUT_MS);
+      // The hard budget: a scan NEVER outlives this - return what was found.
+      const overallTimer = setTimeout(finishOk, OVERALL_TIMEOUT_MS);
+      sock.once('error', () => {
+        if (found.length) finishOk();
+        else done({ ok: false, error_code: ERR_UNREACHABLE });
+      });
+
+      // One FC3 read of the 2-register SID at `addr` for `unitId`. Resolves
+      // { regs } on data, { exception:true } on a Modbus exception (absent unit,
+      // fast - try the next base), { timeout:true } when the gateway stays
+      // silent (skip the remaining bases for this id - more probes would only
+      // burn more timeouts).
+      const readSid = (unitId, addr) => new Promise((res) => {
+        txid = (txid + 1) & 0xffff;
+        const wantTxid = txid;
+        const buf = Buffer.alloc(12);
+        buf.writeUInt16BE(wantTxid, 0);
+        buf.writeUInt16BE(0, 2);
+        buf.writeUInt16BE(6, 4);
+        buf[6] = unitId & 0xff;
+        buf[7] = 0x03;
+        buf.writeUInt16BE(addr & 0xffff, 8);
+        buf.writeUInt16BE(2, 10);
+        pending = { wantTxid, res };
+        clearTimeout(idTimer);
+        idTimer = setTimeout(() => {
+          if (pending && pending.wantTxid === wantTxid) { pending = null; res({ timeout: true }); }
+        }, PER_ID_TIMEOUT_MS);
+        sock.write(buf);
+      });
+
+      sock.on('data', (chunk) => {
+        acc = Buffer.concat([acc, chunk]);
+        while (acc.length >= 6) {
+          const need = 6 + acc.readUInt16BE(4);
+          if (acc.length < need) return;
+          const frame = acc.slice(0, need);
+          acc = acc.slice(need);
+          if (!pending) continue; // stray frame
+          if (frame.readUInt16BE(0) !== pending.wantTxid) continue; // late answer to a timed-out probe - drop
+          const p = pending;
+          pending = null;
+          clearTimeout(idTimer);
+          const fn = frame[7];
+          if (fn & 0x80) { p.res({ exception: true }); continue; }
+          if (fn !== 0x03 || frame[8] < 4 || frame.length < 13) { p.res({ exception: true }); continue; }
+          p.res({ regs: [frame.readUInt16BE(9), frame.readUInt16BE(11)] });
+        }
+      });
+
+      sock.connect(port, ip, async () => {
+        clearTimeout(connectTimer);
+        try {
+          let bases = PROBE_BASES.slice();
+          for (let unitId = 1; unitId <= MAX_UNIT_ID && !settled; unitId++) {
+            for (const base of bases) {
+              const out = await readSid(unitId, base);
+              if (settled) return;
+              if (out.regs && out.regs[0] === SUNS_HI && out.regs[1] === SUNS_LO) {
+                found.push(unitId);
+                bases = [base]; // every inverter on a Datamanager sits at the same base
+                break;
+              }
+              if (out.timeout) break; // silent gateway for this id - don't burn more timeouts
+            }
+          }
+          finishOk();
+        } catch (e) {
+          finishOk();
+        }
+      });
+    });
+  };
+}
+
 module.exports = {
   ERR_INVALID_REQUEST,
   ERR_UNREACHABLE,
@@ -295,6 +438,8 @@ module.exports = {
   ERR_INVALID_RESPONSE,
   ERR_IMPLAUSIBLE,
   ERR_FRONIUS_API,
+  PROBE_MAX_UNIT_ID,
   toReading,
   makeReadOnce,
+  makeProbeUnits,
 };

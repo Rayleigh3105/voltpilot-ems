@@ -51,10 +51,12 @@ func (f *fakeDespike) SetDespike(req guards.DespikeSettings) (guards.DespikeStat
 
 // fakeInverter is an in-memory InverterController for the HTTP-layer test.
 type fakeInverter struct {
-	cat        inverter.Catalog
-	sel        *inverter.Selection
-	testResult testconn.Result   // returned by TestConnection
-	testReq    *testconn.Request // captured last TestConnection request
+	cat         inverter.Catalog
+	sel         *inverter.Selection
+	testResult  testconn.Result   // returned by TestConnection
+	testReq     *testconn.Request // captured last TestConnection request
+	probeResult testconn.Result   // returned by ProbeUnits
+	probeReq    *testconn.Request // captured last ProbeUnits request
 }
 
 func (f *fakeInverter) InverterCatalog() inverter.Catalog { return f.cat }
@@ -63,6 +65,12 @@ func (f *fakeInverter) TestConnection(req testconn.Request) testconn.Result {
 	r := req
 	f.testReq = &r
 	return f.testResult
+}
+
+func (f *fakeInverter) ProbeUnits(req testconn.Request) testconn.Result {
+	r := req
+	f.probeReq = &r
+	return f.probeResult
 }
 
 func (f *fakeInverter) GetInverter() (inverter.Selection, bool) {
@@ -1469,6 +1477,38 @@ func TestTestConnectionReturnsControllerResult(t *testing.T) {
 	// The controller saw the unsaved form (role + brand carried through).
 	if fi.testReq == nil || fi.testReq.Role != "pv-generation" || fi.testReq.Brand != "generic_modbus" {
 		t.Fatalf("TestConnection did not receive the form: %+v", fi.testReq)
+	}
+}
+
+// POST /api/probe-units passes the unsaved form to ProbeUnits and returns the
+// found unit ids verbatim (multi-inverter at one Datamanager auto-detection).
+func TestProbeUnitsReturnsControllerResult(t *testing.T) {
+	fi := &fakeInverter{
+		cat:         inverter.DefaultCatalog(),
+		probeResult: testconn.Result{OK: true, FoundUnits: []int{1, 2}},
+	}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}))
+	t.Cleanup(srv.Close)
+
+	reqBody := `{"brand":"fronius_sunspec","model":"fronius-eco-27-3-s","connection":{"ip":"192.168.210.40","unit_id":1}}`
+	resp, err := http.Post(srv.URL+"/api/probe-units", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var res testconn.Result
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK || len(res.FoundUnits) != 2 || res.FoundUnits[0] != 1 || res.FoundUnits[1] != 2 {
+		t.Fatalf("probe result not returned verbatim: %+v", res)
+	}
+	if fi.probeReq == nil || fi.probeReq.Brand != "fronius_sunspec" {
+		t.Fatalf("ProbeUnits did not receive the form: %+v", fi.probeReq)
 	}
 }
 

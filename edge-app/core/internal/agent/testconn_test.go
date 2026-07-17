@@ -24,8 +24,10 @@ func startTestConnAgent(t *testing.T, cfg config.Config) (*Agent, string) {
 }
 
 // nodeRedStub plays Node-RED: it subscribes edge/test-read/request and answers
-// on edge/test-read/result with the request's id and a canned outcome.
-func nodeRedStub(t *testing.T, busAddr string, answer func(reqID string) testconn.Result) {
+// on edge/test-read/result with the request's id and a canned outcome. The
+// answer callback also sees whether the request asked for the multi-inverter
+// unit-id probe (probe_units=true).
+func nodeRedStub(t *testing.T, busAddr string, answer func(reqID string, probe bool) testconn.Result) {
 	t.Helper()
 	opts := pahomqtt.NewClientOptions().
 		AddBroker("tcp://" + busAddr).
@@ -38,24 +40,27 @@ func nodeRedStub(t *testing.T, busAddr string, answer func(reqID string) testcon
 	t.Cleanup(func() { client.Disconnect(100) })
 	if tok := client.Subscribe(localbus.TopicTestReadRequest, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
 		var req struct {
-			RequestID string `json:"request_id"`
+			RequestID  string `json:"request_id"`
+			ProbeUnits bool   `json:"probe_units"`
 		}
 		if json.Unmarshal(msg.Payload(), &req) != nil || req.RequestID == "" {
 			return
 		}
-		res := answer(req.RequestID)
+		res := answer(req.RequestID, req.ProbeUnits)
 		var out struct {
-			RequestID string            `json:"request_id"`
-			OK        bool              `json:"ok"`
-			ErrorCode string            `json:"error_code,omitempty"`
-			Message   string            `json:"message,omitempty"`
-			Reading   *testconn.Reading `json:"reading,omitempty"`
+			RequestID  string            `json:"request_id"`
+			OK         bool              `json:"ok"`
+			ErrorCode  string            `json:"error_code,omitempty"`
+			Message    string            `json:"message,omitempty"`
+			Reading    *testconn.Reading `json:"reading,omitempty"`
+			FoundUnits []int             `json:"found_units,omitempty"`
 		}
 		out.RequestID = req.RequestID
 		out.OK = res.OK
 		out.ErrorCode = res.ErrorCode
 		out.Message = res.Message
 		out.Reading = res.Reading
+		out.FoundUnits = res.FoundUnits
 		raw, _ := json.Marshal(out)
 		client.Publish(localbus.TopicTestReadResult, 1, false, raw)
 	}); !tok.WaitTimeout(5*time.Second) || tok.Error() != nil {
@@ -70,7 +75,7 @@ func fptr(v float64) *float64 { return &v }
 // reading correlated to that request.
 func TestTestConnectionRoundTripCorrelatesResult(t *testing.T) {
 	a, addr := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
-	nodeRedStub(t, addr, func(reqID string) testconn.Result {
+	nodeRedStub(t, addr, func(reqID string, _ bool) testconn.Result {
 		return testconn.Result{OK: true, Reading: &testconn.Reading{PvKw: fptr(4.8), SocPct: fptr(62)}}
 	})
 
@@ -88,7 +93,7 @@ func TestTestConnectionRoundTripCorrelatesResult(t *testing.T) {
 // A classified error from Node-RED (e.g. unreachable) is passed through verbatim.
 func TestTestConnectionPassesThroughClassifiedError(t *testing.T) {
 	a, addr := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
-	nodeRedStub(t, addr, func(reqID string) testconn.Result {
+	nodeRedStub(t, addr, func(reqID string, _ bool) testconn.Result {
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrUnreachable}
 	})
 
@@ -132,5 +137,60 @@ func TestTestConnectionRejectsInvalidFormWithoutIO(t *testing.T) {
 	})
 	if res.OK || res.ErrorCode != testconn.ErrInvalidRequest || res.Message == "" {
 		t.Fatalf("expected invalid_request with a message, got %+v", res)
+	}
+}
+
+// --- multi-inverter unit-ID probe (ProbeUnits) ---
+
+// The probe round trip: the request carries probe_units=true (so the flow scans
+// instead of reading once) and the found unit ids come back correlated.
+func TestProbeUnitsRoundTripCarriesFlagAndFoundUnits(t *testing.T) {
+	a, addr := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	nodeRedStub(t, addr, func(reqID string, probe bool) testconn.Result {
+		if !probe {
+			return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidResponse, Message: "probe_units flag missing"}
+		}
+		return testconn.Result{OK: true, FoundUnits: []int{1, 2}}
+	})
+
+	res := a.ProbeUnits(testconn.Request{
+		Brand: "fronius_sunspec", Model: "fronius-eco-27-3-s",
+		Connection: testconn.Connection{"ip": "192.168.210.40", "unit_id": 1},
+	})
+	if !res.OK || len(res.FoundUnits) != 2 || res.FoundUnits[0] != 1 || res.FoundUnits[1] != 2 {
+		t.Fatalf("probe round-trip wrong: %+v", res)
+	}
+}
+
+// The probe only exists for fronius_sunspec: any other transport is refused
+// before any I/O (there is no unit-id fan-out to scan).
+func TestProbeUnitsRejectsNonSunspecTransport(t *testing.T) {
+	a, _ := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	res := a.ProbeUnits(testconn.Request{
+		Brand: "generic_modbus", Model: "sunspec",
+		Connection: testconn.Connection{"ip": "192.168.0.70"},
+	})
+	if res.OK || res.ErrorCode != testconn.ErrInvalidRequest || res.Message == "" {
+		t.Fatalf("expected invalid_request with a message, got %+v", res)
+	}
+}
+
+// With no responder the probe is bounded and classified as a timeout.
+func TestProbeUnitsTimesOutWhenNoResponder(t *testing.T) {
+	old := probeUnitsTimeout
+	probeUnitsTimeout = 250 * time.Millisecond
+	t.Cleanup(func() { probeUnitsTimeout = old })
+
+	a, _ := startTestConnAgent(t, config.Config{DataDir: t.TempDir()})
+	start := time.Now()
+	res := a.ProbeUnits(testconn.Request{
+		Brand: "fronius_sunspec", Model: "fronius-eco-27-3-s",
+		Connection: testconn.Connection{"ip": "192.168.210.40"},
+	})
+	if res.OK || res.ErrorCode != testconn.ErrTimeout {
+		t.Fatalf("expected timeout, got %+v", res)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("timeout not bounded: %v", elapsed)
 	}
 }

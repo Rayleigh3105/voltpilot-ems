@@ -73,8 +73,13 @@ function simImage(pvKw, gridKw) {
   return img;
 }
 
-// A Modbus-TCP server over a register image; Modbus exception past the image end.
+// A Modbus-TCP server over a register image; Modbus exception past the image
+// end. `img` is one Map (every unit id answers it) or a per-unit-id object
+// {1: MapA, 2: MapB} - a Fronius Datamanager exposing several inverters on one
+// IP, one Modbus unit id per inverter; an unknown unit id answers exception
+// 0x0B (gateway target device failed to respond).
 function startModbusServer(img) {
+  const imgFor = (unit) => (img instanceof Map ? img : img[unit]);
   return new Promise((resolve) => {
     const server = net.createServer((sock) => {
       let acc = Buffer.alloc(0);
@@ -85,17 +90,20 @@ function startModbusServer(img) {
           const txid = req.readUInt16BE(0);
           const addr = req.readUInt16BE(8);
           const count = req.readUInt16BE(10);
+          const unitImg = imgFor(req[6]);
+          const ex = (code) => {
+            const e = Buffer.alloc(9);
+            e.writeUInt16BE(txid, 0); e.writeUInt16BE(3, 4); e[6] = req[6]; e[7] = 0x83; e[8] = code;
+            sock.write(e);
+          };
+          if (!unitImg) { ex(0x0b); continue; }
           let ok = true;
-          for (let i = 0; i < count; i++) if (!img.has(addr + i)) { ok = false; break; }
-          if (!ok) {
-            const ex = Buffer.alloc(9);
-            ex.writeUInt16BE(txid, 0); ex.writeUInt16BE(3, 4); ex[6] = req[6]; ex[7] = 0x83; ex[8] = 0x02;
-            sock.write(ex); continue;
-          }
+          for (let i = 0; i < count; i++) if (!unitImg.has(addr + i)) { ok = false; break; }
+          if (!ok) { ex(0x02); continue; }
           const bc = count * 2;
           const resp = Buffer.alloc(9 + bc);
           resp.writeUInt16BE(txid, 0); resp.writeUInt16BE(3 + bc, 4); resp[6] = req[6]; resp[7] = 0x03; resp[8] = bc;
-          for (let i = 0; i < count; i++) resp.writeUInt16BE((img.get(addr + i) || 0) & 0xffff, 9 + i * 2);
+          for (let i = 0; i < count; i++) resp.writeUInt16BE((unitImg.get(addr + i) || 0) & 0xffff, 9 + i * 2);
           sock.write(resp);
         }
       });
@@ -133,6 +141,7 @@ async function runFunctionNode(func, { msg = {}, flow = {}, sends = [], warns = 
 // 5-s polls each stacking a fresh connection onto a walk that outlives the
 // interval, so NO walk ever completes while the poll keeps running.
 function startSlowSingleSessionServer(img, { latencyMs }) {
+  const imgFor = (unit) => (img instanceof Map ? img : img[unit]);
   return new Promise((resolve) => {
     let active = null;
     let concurrent = 0;
@@ -158,17 +167,20 @@ function startSlowSingleSessionServer(img, { latencyMs }) {
           const count = req.readUInt16BE(10);
           setTimeout(() => {
             if (sock.destroyed) return;
+            const unitImg = imgFor(req[6]);
+            const ex = (code) => {
+              const e = Buffer.alloc(9);
+              e.writeUInt16BE(txid, 0); e.writeUInt16BE(3, 4); e[6] = req[6]; e[7] = 0x83; e[8] = code;
+              sock.write(e);
+            };
+            if (!unitImg) { ex(0x0b); return; }
             let ok = true;
-            for (let i = 0; i < count; i++) if (!img.has(addr + i)) { ok = false; break; }
-            if (!ok) {
-              const ex = Buffer.alloc(9);
-              ex.writeUInt16BE(txid, 0); ex.writeUInt16BE(3, 4); ex[6] = req[6]; ex[7] = 0x83; ex[8] = 0x02;
-              sock.write(ex); return;
-            }
+            for (let i = 0; i < count; i++) if (!unitImg.has(addr + i)) { ok = false; break; }
+            if (!ok) { ex(0x02); return; }
             const bc = count * 2;
             const resp = Buffer.alloc(9 + bc);
             resp.writeUInt16BE(txid, 0); resp.writeUInt16BE(3 + bc, 4); resp[6] = req[6]; resp[7] = 0x03; resp[8] = bc;
-            for (let i = 0; i < count; i++) resp.writeUInt16BE((img.get(addr + i) || 0) & 0xffff, 9 + i * 2);
+            for (let i = 0; i < count; i++) resp.writeUInt16BE((unitImg.get(addr + i) || 0) & 0xffff, 9 + i * 2);
             sock.write(resp);
           }, latencyMs);
         }
@@ -279,6 +291,55 @@ test('overlapping polls on a slow single-session Fronius are skipped, reads stay
     assert.equal(srv.maxConcurrent(), 1, 'never more than ONE concurrent connection to the device (serialized polls)');
   } finally {
     srv.server.close();
+  }
+});
+
+// MULTI-INVERTER AT ONE DATAMANAGER (the captain's site "Asbeck Büro Isaraue"):
+// TWO Fronius Eco 27.0-3-S behind ONE Datamanager IP (192.168.210.40), exposed
+// as Modbus unit ids 1 ("(1) ost") and 2 ("(2) west"). Two fronius_sunspec
+// sources with the same IP and different unit_ids must BOTH be read through the
+// sequential per-source loop - each publishing its own value on its own topic -
+// and NEVER overlap each other on the slow single-session device (a second
+// concurrent connection would displace the running walk, see the 2026-07-13
+// device-down). The live figures are the fixture: ost 22.11 kW, west 26.14 kW.
+test('two fronius_sunspec sources at ONE Datamanager IP (unit ids 1+2) are both read, serialized', async () => {
+  const srv = await startSlowSingleSessionServer({
+    1: sunspecImage(40000, { wWatts: 22110, extraModels: 2 }),
+    2: sunspecImage(40000, { wWatts: 26140, extraModels: 2 }),
+  }, { latencyMs: 25 });
+  try {
+    const { flow, sends } = await storeAndRead([
+      froniusSource(srv.port, { id: 'src-ost', connection: { ip: '127.0.0.1', port: srv.port, unit_id: 1, model_type: 'auto', invert_grid_sign: false } }),
+      froniusSource(srv.port, { id: 'src-west', connection: { ip: '127.0.0.1', port: srv.port, unit_id: 2, model_type: 'auto', invert_grid_sign: false } }),
+    ]);
+    assert.equal(flow.source_plans.length, 2, 'both same-IP sources planned');
+    assert.equal(sends.length, 2, 'each source publishes its own reading');
+    assert.equal(sends[0][0].source_id, 'src-ost');
+    assert.equal(sends[0][0].payload.pv_power_kw, 22.11);
+    assert.equal(sends[1][0].source_id, 'src-west');
+    assert.equal(sends[1][0].payload.pv_power_kw, 26.14);
+    assert.equal(srv.maxConcurrent(), 1, 'never more than ONE concurrent connection to the Datamanager');
+  } finally {
+    srv.server.close();
+  }
+});
+
+test('a wrong unit id on a Datamanager fails loudly while the right one keeps delivering', async () => {
+  // Only unit 1 exists; the second source asks unit 5 -> Modbus exception 0x0B
+  // per request, the walk finds no SunSpec device, the source is warned - and
+  // the healthy unit is unaffected.
+  const { server, port } = await startModbusServer({ 1: sunspecImage(40000, { wWatts: 22110 }) });
+  try {
+    const { sends, warns } = await storeAndRead([
+      froniusSource(port, { id: 'src-ok', connection: { ip: '127.0.0.1', port, unit_id: 1, model_type: 'auto', invert_grid_sign: false } }),
+      froniusSource(port, { id: 'src-wrong', connection: { ip: '127.0.0.1', port, unit_id: 5, model_type: 'auto', invert_grid_sign: false } }),
+    ]);
+    assert.equal(sends.length, 1, 'only the correct unit publishes');
+    assert.equal(sends[0][0].source_id, 'src-ok');
+    assert.equal(sends[0][0].payload.pv_power_kw, 22.11);
+    assert.ok(warns.some((w) => w.includes('src-wrong')), 'the wrong-unit source is named in a warn: ' + JSON.stringify(warns));
+  } finally {
+    server.close();
   }
 });
 

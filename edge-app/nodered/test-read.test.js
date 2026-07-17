@@ -53,7 +53,14 @@ function sunspecEcoImage(base, wWatts) {
 }
 
 // A Modbus-TCP server serving a SunSpec image, exception past the image end.
-function startSunspecServer(img) {
+// `img` is either ONE Map (every unit id answers it) or a per-unit-id object
+// {1: MapA, 2: MapB} - a Fronius Datamanager exposing several inverters on one
+// IP. A unit id without an image answers a Modbus exception 0x0B (gateway
+// target device failed to respond) unless opts.silentUnknown, which makes an
+// unknown unit answer NOTHING (a gateway that just swallows the request).
+function startSunspecServer(img, opts) {
+  const silentUnknown = !!(opts && opts.silentUnknown);
+  const imgFor = (unit) => (img instanceof Map ? img : img[unit]);
   return new Promise((resolve) => {
     const server = net.createServer((sock) => {
       let acc = Buffer.alloc(0);
@@ -64,17 +71,23 @@ function startSunspecServer(img) {
           const txid = req.readUInt16BE(0);
           const addr = req.readUInt16BE(8);
           const count = req.readUInt16BE(10);
-          let ok = true;
-          for (let i = 0; i < count; i++) if (!img.has(addr + i)) { ok = false; break; }
-          if (!ok) {
-            const ex = Buffer.alloc(9);
-            ex.writeUInt16BE(txid, 0); ex.writeUInt16BE(3, 4); ex[6] = req[6]; ex[7] = 0x83; ex[8] = 0x02;
-            sock.write(ex); continue;
+          const unitImg = imgFor(req[6]);
+          const ex = (code) => {
+            const e = Buffer.alloc(9);
+            e.writeUInt16BE(txid, 0); e.writeUInt16BE(3, 4); e[6] = req[6]; e[7] = 0x83; e[8] = code;
+            sock.write(e);
+          };
+          if (!unitImg) {
+            if (!silentUnknown) ex(0x0b);
+            continue;
           }
+          let ok = true;
+          for (let i = 0; i < count; i++) if (!unitImg.has(addr + i)) { ok = false; break; }
+          if (!ok) { ex(0x02); continue; }
           const bc = count * 2;
           const resp = Buffer.alloc(9 + bc);
           resp.writeUInt16BE(txid, 0); resp.writeUInt16BE(3 + bc, 4); resp[6] = req[6]; resp[7] = 0x03; resp[8] = bc;
-          for (let i = 0; i < count; i++) resp.writeUInt16BE((img.get(addr + i) || 0) & 0xffff, 9 + i * 2);
+          for (let i = 0; i < count; i++) resp.writeUInt16BE((unitImg.get(addr + i) || 0) & 0xffff, 9 + i * 2);
           sock.write(resp);
         }
       });
@@ -235,6 +248,90 @@ test('fronius_sunspec: a connected non-SunSpec host classifies as invalid_respon
   } finally {
     server.close();
   }
+});
+
+/* ---- multi-inverter unit-ID enumeration (Fronius Datamanager) ---- */
+
+test('probe finds BOTH inverters at one Datamanager IP (the captain\'s site: unit ids 1 + 2)', async () => {
+  // Two Eco 27.0-3-S behind one Datamanager: "(1) ost" = unit 1, "(2) west" =
+  // unit 2 (Datamanager convention: inverter number = Modbus unit id).
+  const { server, port } = await startSunspecServer({ 1: sunspecEcoImage(40000, 22110), 2: sunspecEcoImage(40000, 26140) });
+  try {
+    const probeUnits = testRead.makeProbeUnits(deps());
+    const res = await probeUnits({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port, unit_id: 1 } });
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.deepStrictEqual(res.found_units, [1, 2]);
+  } finally {
+    server.close();
+  }
+});
+
+test('probe with a single inverter returns exactly [1] (absent unit ids answer fast exceptions)', async () => {
+  const { server, port } = await startSunspecServer({ 1: sunspecEcoImage(40000, 26500) });
+  try {
+    const probeUnits = testRead.makeProbeUnits(deps());
+    const res = await probeUnits({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port } });
+    assert.strictEqual(res.ok, true);
+    assert.deepStrictEqual(res.found_units, [1]);
+  } finally {
+    server.close();
+  }
+});
+
+test('probe locks the discovered base: devices at base 0 are still enumerated', async () => {
+  const { server, port } = await startSunspecServer({ 1: sunspecEcoImage(0, 8000), 2: sunspecEcoImage(0, 9000) });
+  try {
+    const probeUnits = testRead.makeProbeUnits(deps());
+    const res = await probeUnits({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port } });
+    assert.strictEqual(res.ok, true);
+    assert.deepStrictEqual(res.found_units, [1, 2]);
+  } finally {
+    server.close();
+  }
+});
+
+test('probe on a refused connect classifies as unreachable', async () => {
+  const probeUnits = testRead.makeProbeUnits(deps({ connectTimeoutMs: 500 }));
+  const res = await probeUnits({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port: 1 } });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.error_code, testRead.ERR_UNREACHABLE);
+});
+
+test('probe skips a SILENT unknown unit within its per-id budget and still returns the found ones', async () => {
+  // A gateway that swallows requests for unknown unit ids (no exception): the
+  // scan must not hang - each silent id costs at most one per-id timeout.
+  const { server, port } = await startSunspecServer({ 1: sunspecEcoImage(40000, 26500) }, { silentUnknown: true });
+  try {
+    const probeUnits = testRead.makeProbeUnits(deps({ probeIdTimeoutMs: 150, probeMaxUnitId: 3 }));
+    const started = Date.now();
+    const res = await probeUnits({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port } });
+    assert.strictEqual(res.ok, true);
+    assert.deepStrictEqual(res.found_units, [1]);
+    assert.ok(Date.now() - started < 2000, 'silent ids are bounded by the per-id timeout');
+  } finally {
+    server.close();
+  }
+});
+
+test('probe is bounded by the overall budget and returns what it found so far', async () => {
+  const { server, port } = await startSunspecServer({ 1: sunspecEcoImage(40000, 26500) }, { silentUnknown: true });
+  try {
+    const probeUnits = testRead.makeProbeUnits(deps({ probeIdTimeoutMs: 400, probeOverallMs: 600 }));
+    const started = Date.now();
+    const res = await probeUnits({ communication: 'fronius_sunspec', family: 'sunspec_live', connection: { ip: '127.0.0.1', port } });
+    assert.strictEqual(res.ok, true);
+    assert.deepStrictEqual(res.found_units, [1]);
+    assert.ok(Date.now() - started < 1500, 'the overall budget caps the scan');
+  } finally {
+    server.close();
+  }
+});
+
+test('probe rejects a non-SunSpec selection before any I/O', async () => {
+  const probeUnits = testRead.makeProbeUnits(deps());
+  const res = await probeUnits({ communication: 'modbus_tcp', family: 'sunspec', connection: { ip: '127.0.0.1', port: 502 } });
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.error_code, testRead.ERR_INVALID_REQUEST);
 });
 
 test('fronius: a non-answering host classifies as fronius_api', async () => {

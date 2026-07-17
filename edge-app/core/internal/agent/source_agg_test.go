@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -293,6 +294,220 @@ func TestDeleteSourceStopsAggregatingAndNarrowsEnvelope(t *testing.T) {
 	if snap := a.State.Get(); snap.PvKw != 20 {
 		t.Fatalf("removed source still aggregated: pv=%v", snap.PvKw)
 	}
+}
+
+// --- Multi-inverter-at-one-Datamanager aggregation regressions -----------------
+//
+// Live evidence from the captain's site "Asbeck Büro Isaraue" (2026-07-17):
+// primary Deye SUN-30K (pv 23,7 / load −30,5 / Einspeisung 23,7 / SoC 53) plus
+// TWO Fronius Eco Erzeuger sources behind ONE Datamanager (WR1 "ost" 22 kW,
+// WR2 "west" 26,9 kW, no kWp entered). The dashboard PV tile froze at 45,4 kW
+// (primary + WR1) although WR2 showed "Liefert Daten": the fixed 60-s freshness
+// window dropped the slowly-read WR2 in and out of the sum, and every flip
+// reset the despiker's confirmation candidate (the captain runs "Streng"), so
+// the composite step was held forever. These tests pin all four fixes.
+
+func approx(t *testing.T, got, want float64, what string) {
+	t.Helper()
+	if diff := got - want; diff > 1e-9 || diff < -1e-9 {
+		t.Fatalf("%s = %v, want %v", what, got, want)
+	}
+}
+
+// feedPrimaryAt feeds a primary sample with an explicit observation timestamp,
+// so the despiker's rate window sees controlled spacing between samples.
+func feedPrimaryAt(a *Agent, ts time.Time, pv, load, grid, soc float64) {
+	a.onLocalTelemetry(localbus.TopicTelemetry, []byte(fmt.Sprintf(
+		`{"ts": %q, "pv_power_kw": %v, "load_kw": %v, "power_kw": %v, "soc_pct": %v}`,
+		ts.Format(time.RFC3339), pv, load, grid, soc)))
+}
+
+// setReading rewrites a source's stored reading (age + achieved period) so the
+// freshness machinery can be exercised deterministically.
+func setReading(a *Agent, id string, age, period time.Duration) {
+	a.srcMu.Lock()
+	r := a.srcReadings[id]
+	r.recv = time.Now().UTC().Add(-age)
+	r.period = period
+	a.srcReadings[id] = r
+	a.srcMu.Unlock()
+}
+
+func strengPreset(t *testing.T, a *Agent) {
+	t.Helper()
+	if _, err := a.SetDespike(guards.DespikeSettings{Preset: guards.PresetStrict}); err != nil {
+		t.Fatalf("SetDespike(streng): %v", err)
+	}
+}
+
+// The freshness window follows the ACHIEVED cadence: a source the sequential
+// Datamanager loop only manages to read every ~45 s stays in the sum well past
+// the 60-s floor, while a source with no achieved-period history still goes
+// stale at the floor, and the cap bounds even a huge observed period.
+func TestSlowlyReadSourceStaysFreshViaAchievedCadence(t *testing.T) {
+	a := newGateTestAgent(t)
+	s := addErzeuger(t, a, 70)
+	feedSource(a, s.ID, 26.9)
+
+	// 100 s old with an achieved 45-s period: window = 3*45 = 135 s -> fresh.
+	setReading(a, s.ID, 100*time.Second, 45*time.Second)
+	feedPrimary(a, 23.7, 50, -20, 53)
+	approx(t, a.State.Get().PvKw, 50.6, "site PV with a slowly-read but delivering source")
+
+	// Same age with NO achieved period: the 60-s floor applies -> stale.
+	setReading(a, s.ID, 100*time.Second, 0)
+	feedPrimary(a, 23.7, 50, -20, 53)
+	approx(t, a.State.Get().PvKw, 23.7, "site PV once the floor window applies")
+
+	// A huge observed period is capped: 16 min old with a 10-min period -> stale.
+	setReading(a, s.ID, 16*time.Minute, 10*time.Minute)
+	feedPrimary(a, 23.7, 50, -20, 53)
+	approx(t, a.State.Get().PvKw, 23.7, "site PV past the staleness cap")
+}
+
+// The achieved period is recorded from consecutive receipts (the live path of
+// the window widening above).
+func TestSourceReadingRecordsAchievedPeriod(t *testing.T) {
+	a := newGateTestAgent(t)
+	s := addErzeuger(t, a, 70)
+	feedSource(a, s.ID, 22)
+	setReading(a, s.ID, 40*time.Second, 0) // first reading arrived 40 s ago
+	feedSource(a, s.ID, 22.5)              // second reading now
+	a.srcMu.Lock()
+	period := a.srcReadings[s.ID].period
+	a.srcMu.Unlock()
+	if period < 39*time.Second || period > 42*time.Second {
+		t.Fatalf("achieved period = %v, want ~40s", period)
+	}
+}
+
+// Adding the second Fronius steps the composite by +26,9 kW - an EXPLAINED
+// configuration change that must be adopted IMMEDIATELY even on the strict
+// despike preset (before the fix, "Streng" held the PV tile at the old level
+// and an oscillating composition never confirmed the new one).
+func TestSecondErzeugerJoinsTheSumImmediatelyOnStrengPreset(t *testing.T) {
+	a := newGateTestAgent(t)
+	strengPreset(t, a)
+	wr1 := addErzeuger(t, a, 70)
+	wr2 := addErzeuger(t, a, 0) // the captain's WR2: no kWp entered
+
+	base := time.Now().UTC().Truncate(time.Second)
+	feedSource(a, wr1.ID, 22)
+	feedPrimaryAt(a, base, 23.7, 50, -20, 53)
+	feedPrimaryAt(a, base.Add(10*time.Second), 23.7, 50, -20, 53)
+	approx(t, a.State.Get().PvKw, 45.7, "established primary+WR1 level")
+
+	// WR2 starts delivering: the very next fold must show the full sum.
+	feedSource(a, wr2.ID, 26.9)
+	feedPrimaryAt(a, base.Add(20*time.Second), 23.7, 50, -20, 53)
+	approx(t, a.State.Get().PvKw, 72.6, "composite adopts WR2 immediately (no despike hold)")
+}
+
+// A source flapping fresh<->stale (the pre-fix 60-s-window symptom) must never
+// FREEZE the tile: every sample honestly reflects the sources that currently
+// contribute - the partial sum while WR2 is out, the full sum the moment it is
+// back - instead of the despiker holding one stale level forever.
+func TestFlappingSourceCompositionNeverFreezesThePvTile(t *testing.T) {
+	a := newGateTestAgent(t)
+	strengPreset(t, a)
+	wr1 := addErzeuger(t, a, 70)
+	wr2 := addErzeuger(t, a, 0)
+
+	base := time.Now().UTC().Truncate(time.Second)
+	feedSource(a, wr1.ID, 22)
+	feedSource(a, wr2.ID, 26.9)
+	feedPrimaryAt(a, base, 23.7, 50, -20, 53)
+	approx(t, a.State.Get().PvKw, 72.6, "both sources in the sum")
+
+	steps := []struct {
+		stale bool
+		want  float64
+	}{
+		{true, 45.7},  // WR2 drops out -> honest partial sum, not a held 72,6
+		{false, 72.6}, // back -> full sum again, immediately
+		{true, 45.7},
+		{false, 72.6},
+	}
+	for i, st := range steps {
+		if st.stale {
+			setReading(a, wr2.ID, 10*time.Minute, 0)
+		} else {
+			setReading(a, wr2.ID, 0, 0)
+		}
+		feedPrimaryAt(a, base.Add(time.Duration(i+1)*10*time.Second), 23.7, 50, -20, 53)
+		approx(t, a.State.Get().PvKw, st.want, fmt.Sprintf("step %d (stale=%v)", i, st.stale))
+	}
+}
+
+// The captain's exact live sample: primary Deye load −30,5 kW with 48,9 kW of
+// AC-coupled Fronius. A meaningfully negative load figure proves the primary's
+// load already nets the AC PV out (load = house − Σac), so the derivable house
+// is load + Σac = 18,4 kW - NOT the fabricated 0 the subtraction branch
+// produced. Plain noise around zero stays on the established branch.
+func TestNegativeLoadWithAcCoupledSourcesDerivesHouseInsteadOfZero(t *testing.T) {
+	a := newGateTestAgent(t)
+	wr1 := addErzeuger(t, a, 70)
+	wr2 := addErzeuger(t, a, 0)
+	feedSource(a, wr1.ID, 22)
+	feedSource(a, wr2.ID, 26.9)
+
+	// Samples are spaced 60 s apart so the (default-preset) despiker's rate
+	// window never interferes with what this test pins: the fold's branch.
+	base := time.Now().UTC().Truncate(time.Second)
+	feedPrimaryAt(a, base, 23.7, -30.5, -23.7, 53)
+	snap := a.State.Get()
+	approx(t, snap.PvKw, 72.6, "site PV")
+	approx(t, snap.LoadKw, 18.4, "derived house load (−30,5 + 48,9)")
+
+	// Noise-negative load (−0,3): NOT proof of the netting topology - the
+	// established subtraction branch clamps to 0 as before.
+	feedPrimaryAt(a, base.Add(60*time.Second), 23.7, -0.3, -23.7, 53)
+	approx(t, a.State.Get().LoadKw, 0, "noise-negative load keeps the established branch")
+
+	// Non-negative load keeps the established subtraction unchanged.
+	feedPrimaryAt(a, base.Add(120*time.Second), 23.7, 60, -23.7, 53)
+	approx(t, a.State.Get().LoadKw, 11.1, "positive load keeps load − Σpv")
+}
+
+// An Erzeuger without a nameplate contributes REAL power the PV bound cannot
+// account for, so no honest PV bound exists while one is configured - the
+// envelope must not clip (hold) a legitimate composite. The battery bound
+// stays in force; entering/removing the kWp restores the PV bound.
+func TestKwpLessErzeugerDisablesThePvEnvelopeBound(t *testing.T) {
+	a := newGateTestAgent(t)
+	if _, err := a.SetInverter(inverter.SelectionRequest{
+		Brand:      inverter.BrandDeye,
+		Model:      "sun-12k-sg04lp3",
+		Connection: inverter.Connection{IP: "192.168.0.28", Serial: "2985159064"},
+	}); err != nil {
+		t.Fatalf("SetInverter: %v", err)
+	}
+	_, battBound := a.envelope.Bounds()
+
+	kwpLess := addErzeuger(t, a, 0)
+	pv, batt := a.envelope.Bounds()
+	if pv != 0 {
+		t.Fatalf("PV bound with a kWp-less Erzeuger = %v, want 0 (no honest bound)", pv)
+	}
+	if batt != battBound {
+		t.Fatalf("battery bound changed: %v -> %v", battBound, batt)
+	}
+
+	// A second, kWp-carrying source does not restore the bound while the
+	// kWp-less one remains.
+	known := addErzeuger(t, a, 70)
+	if pv, _ := a.envelope.Bounds(); pv != 0 {
+		t.Fatalf("PV bound = %v, want 0 while any Erzeuger lacks kWp", pv)
+	}
+
+	// Removing the kWp-less source restores the stated bound.
+	if err := a.DeleteSource(kwpLess.ID); err != nil {
+		t.Fatalf("DeleteSource: %v", err)
+	}
+	if pv, _ := a.envelope.Bounds(); pv != 166 { // (12 + 70)*2 + 2
+		t.Fatalf("restored PV bound = %v, want 166", pv)
+	}
+	_ = known
 }
 
 // B9: a failed persist must roll the in-memory removal back (mirroring
