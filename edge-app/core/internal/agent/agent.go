@@ -81,6 +81,18 @@ type Agent struct {
 	srcMu       sync.Mutex
 	srcs        []sources.Source
 	srcReadings map[string]sourceReading
+	// lastPvMix / lastGridMix are the source-composition signatures of the last
+	// fold (which sources actually contributed PV / the grid override). When the
+	// composition changes - a source added/removed or flipping fresh<->stale -
+	// the composite series legitimately STEPS (e.g. +26,9 kW when a second
+	// Fronius starts contributing); the despiker/envelope baselines for the
+	// affected channels are reset so the explained step is adopted immediately
+	// instead of being held as a suspected spike (an oscillating composition
+	// would otherwise keep resetting the despiker's confirmation candidate and
+	// freeze the displayed value forever - the captain's 45,4-kW tile). Guarded
+	// by srcMu.
+	lastPvMix   string
+	lastGridMix string
 
 	// Site power-balance settings (operator-declared topology facts, persisted
 	// in data-dir/balance.json): today the single "primary grid CT measures the
@@ -783,11 +795,30 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// 0), so with zero sources this is a no-op and the single-source path stays
 	// byte-for-byte unchanged. See report §3.2 balance option (A) for the Erzeuger
 	// case; the exact load correction is install-specific (report Q1).
-	if extraPv := a.aggregateSourcePv(); extraPv > 0 {
+	extraPv, pvMix := a.aggregateSourcePv()
+	if extraPv > 0 {
 		base := measurements["pv_power_kw"] // 0 when the primary reports no PV
 		measurements["pv_power_kw"] = base + extraPv
 		if load, ok := measurements["load_kw"]; ok {
+			// Which way to correct depends on where the primary's load figure comes
+			// from - two real topologies exist:
+			//   (+) the primary misattributes the AC PV's production TO load
+			//       (load_reg = house + Σac, the original 46,7-kW bug) -> subtract;
+			//   (−) the primary's grid CT sits at the site coupling point, so its
+			//       internally-balanced load figure already NETS the AC PV OUT
+			//       (load_reg = pv_p + grid_site − batt = house − Σac) -> ADD.
+			// A load figure ≥ 0 is ambiguous between the two (only a Netz meter or
+			// the site-total toggle resolves it - the balance override below); the
+			// established subtraction stays. But a MEANINGFULLY NEGATIVE load figure
+			// falsifies (+) outright (house + Σac can never be negative) and proves
+			// (−): the derivable house is load + Σac. Before this, the captain's
+			// Deye (load −30,5 with 48,9 kW Fronius) had its true ~18,4 kW house
+			// clamped to a fabricated 0. The 1-kW deadband keeps plain measurement
+			// noise around zero on the established branch.
 			corrected := load - extraPv
+			if load < -negLoadProofKw {
+				corrected = load + extraPv
+			}
 			if corrected < 0 {
 				corrected = 0
 			}
@@ -803,7 +834,8 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// degradation), so with zero Netz sources this is a no-op and every existing
 	// path stays byte-for-byte unchanged. Battery derives downstream from the
 	// now-correct grid (history.go), no change there.
-	if g := a.authoritativeGrid(); g != nil {
+	g, gridMix := a.authoritativeGrid()
+	if g != nil {
 		measurements["power_kw"] = *g
 		// House load from the true site power balance: with an authoritative grid
 		// measurement the Erzeuger load-subtraction above (which clamps to 0 and
@@ -835,6 +867,10 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 			}
 		}
 	}
+	// A changed source composition (added/removed source, fresh<->stale flip)
+	// resets the spike-gate baselines of the folded channels BEFORE the gates
+	// run: the resulting step is explained by configuration, not the device.
+	a.noteSourceMix(pvMix, gridMix)
 	// SoC plausibility gate (drop-don't-fabricate), the same policy as the Deye
 	// decoder's socPlausible(): an out-of-band SoC marks the WHOLE read as
 	// untrustworthy (degraded logger answer / misaligned frame), so nothing may
@@ -1446,18 +1482,31 @@ func (a *Agent) applyEnvelope(sel *inverter.Selection) {
 			_, maxBatt = guards.EnvelopeFor(rated, inverter.FamilyHasBattery(sel.Family))
 		}
 	}
+	unknownKwp := false
 	a.srcMu.Lock()
 	for _, s := range a.srcs {
-		if s.Role == sources.RoleErzeuger && s.CapacityKwp > 0 {
+		if s.Role != sources.RoleErzeuger {
+			continue
+		}
+		if s.CapacityKwp > 0 {
 			pvRated += s.CapacityKwp
+		} else {
+			// An Erzeuger without a nameplate contributes REAL power the bound
+			// cannot account for - a stated bound would clip a legitimate
+			// composite (hold a delivering source's share). No honest PV bound
+			// exists then; the operator enters the source's kWp to restore it.
+			unknownKwp = true
 		}
 	}
 	nSrc := len(a.srcs)
 	a.srcMu.Unlock()
 	maxPv := guards.EnvelopePvBound(pvRated)
+	if unknownKwp {
+		maxPv = 0
+	}
 	a.envelope.SetBounds(maxPv, maxBatt)
 	slog.Info("physical envelope configured", "max_pv_kw", maxPv, "max_battery_kw", maxBatt,
-		"sources", nSrc)
+		"sources", nSrc, "erzeuger_without_kwp", unknownKwp)
 }
 
 // publishInverterConfig publishes the current selection retained on the local
@@ -1485,13 +1534,28 @@ type sourceReading struct {
 	pv   *float64
 	grid *float64
 	recv time.Time
+	// period is the ACHIEVED read cadence: the wall-clock spacing between this
+	// reading and the previous one (0 until a second reading arrived). The
+	// freshness window derives from it, because the configured interval_s is a
+	// wish, not reality: two SunSpec sources behind one slow Fronius Datamanager
+	// are read strictly sequentially with a full model-discovery walk each, so
+	// the real cadence can be 30-60+ s - far beyond 3*interval_s - and a fixed
+	// window would drop a perfectly delivering source in and out of the
+	// aggregation (the captain's WR2 missing from the PV tile).
+	period time.Duration
 }
 
 // sourceStaleFloor is the minimum freshness window: a source whose last reading
-// is older than max(3*interval, this) is treated as absent (contributes
-// nothing), so one dead AC-PV inverter never blanks the composite - it just
-// stops adding its share.
+// is older than max(3*interval, 3*achieved period, this) is treated as absent
+// (contributes nothing), so one dead AC-PV inverter never blanks the composite -
+// it just stops adding its share.
 const sourceStaleFloor = 60 * time.Second
+
+// sourceStaleCap bounds the achieved-cadence widening of the freshness window: a
+// source is never considered fresh longer than this after its last reading, so
+// even a source whose last observed period was huge (an outage between two
+// reads) goes honestly stale within a bounded time once it truly dies.
+const sourceStaleCap = 15 * time.Minute
 
 // onSourceTelemetry ingests one additional source's reading (edge/sources/{id}/
 // telemetry): keep the latest PV and/or signed grid power per source, by role.
@@ -1523,14 +1587,30 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	if pv == nil && grid == nil {
 		return // nothing usable in this reading
 	}
+	now := time.Now().UTC()
 	a.srcMu.Lock()
-	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, recv: time.Now().UTC()}
+	var period time.Duration
+	if prev, ok := a.srcReadings[id]; ok && !prev.recv.IsZero() {
+		period = now.Sub(prev.recv) // the ACHIEVED cadence, feeds the freshness window
+	}
+	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, recv: now, period: period}
 	a.srcMu.Unlock()
 }
 
 // sourceFresh reports whether a source's last reading is within its freshness
-// window (max(3*interval, sourceStaleFloor)); ok=false when there is no reading
-// yet. Callers hold a.srcMu.
+// window; ok=false when there is no reading yet. Callers hold a.srcMu.
+//
+// The window is max(3*interval_s, 3*achieved period, sourceStaleFloor), capped
+// at sourceStaleCap. The achieved-period term is load-bearing (real prod bug,
+// captain's site 2026-07-17): two fronius_sunspec sources behind ONE slow
+// Datamanager are read strictly sequentially with a full SunSpec walk each, so
+// the real per-source cadence can far exceed the configured interval; with a
+// fixed 60-s window a DELIVERING source flapped in and out of the aggregation,
+// the composite PV oscillated (72,6 <-> 45,7 kW), the despiker's confirmation
+// candidate kept resetting, and the dashboard tile froze at primary+WR1 while
+// WR2's 26,9 kW silently vanished from the sum. A delivering source must NEVER
+// be dropped for merely being read slowly - the window follows the cadence the
+// reads actually achieve, and staleness means "missed ~3 of its own reads".
 func (a *Agent) sourceFresh(s sources.Source, now time.Time) (sourceReading, bool) {
 	r, ok := a.srcReadings[s.ID]
 	if !ok {
@@ -1540,6 +1620,12 @@ func (a *Agent) sourceFresh(s sources.Source, now time.Time) (sourceReading, boo
 	if window < sourceStaleFloor {
 		window = sourceStaleFloor
 	}
+	if achieved := 3 * r.period; achieved > window {
+		window = achieved
+	}
+	if window > sourceStaleCap {
+		window = sourceStaleCap
+	}
 	if now.Sub(r.recv) > window {
 		return sourceReading{}, false
 	}
@@ -1547,12 +1633,19 @@ func (a *Agent) sourceFresh(s sources.Source, now time.Time) (sourceReading, boo
 }
 
 // aggregateSourcePv sums the PV of every fresh Erzeuger source. A source with no
-// reading yet, or a stale one, is skipped (absent, not zero).
-func (a *Agent) aggregateSourcePv() float64 {
+// reading yet, or a stale one, is skipped (absent, not zero). The second return
+// is the composition signature - which source ids actually contributed - so the
+// caller can detect a composition CHANGE (a step in the composite that is
+// explained by configuration/freshness, not by the device) and reset the
+// despiker/envelope baselines for the affected channels. The sum deliberately
+// never depends on capacity_kwp - a kWp-less source contributes its full
+// measured PV (kWp only feeds the physical-envelope bound).
+func (a *Agent) aggregateSourcePv() (float64, string) {
 	now := time.Now().UTC()
 	a.srcMu.Lock()
 	defer a.srcMu.Unlock()
 	var sum float64
+	var mix []string
 	for _, s := range a.srcs {
 		if s.Role != sources.RoleErzeuger {
 			continue
@@ -1562,8 +1655,9 @@ func (a *Agent) aggregateSourcePv() float64 {
 			continue
 		}
 		sum += *r.pv
+		mix = append(mix, s.ID)
 	}
-	return sum
+	return sum, strings.Join(mix, ",")
 }
 
 // authoritativeGrid returns the signed grid power (kW, +import/-export) from the
@@ -1574,11 +1668,12 @@ func (a *Agent) aggregateSourcePv() float64 {
 // degradation, never a fabricated value). With 0-1 Netz per site (enforced in
 // the portal) "newest" is a safety net for a misconfigured pair, not a real
 // aggregation.
-func (a *Agent) authoritativeGrid() *float64 {
+func (a *Agent) authoritativeGrid() (*float64, string) {
 	now := time.Now().UTC()
 	a.srcMu.Lock()
 	defer a.srcMu.Unlock()
 	var best *sourceReading
+	var bestID string
 	for _, s := range a.srcs {
 		if s.Role != sources.RoleNetz {
 			continue
@@ -1590,12 +1685,53 @@ func (a *Agent) authoritativeGrid() *float64 {
 		if best == nil || r.recv.After(best.recv) {
 			rr := r
 			best = &rr
+			bestID = s.ID
 		}
 	}
 	if best == nil {
-		return nil
+		return nil, ""
 	}
-	return best.grid
+	return best.grid, bestID
+}
+
+// noteSourceMix compares the fold's source-composition signatures with the last
+// fold's and, on a CHANGE, resets the despiker + envelope baselines of the
+// channels the changed composition rewrites (PV mix -> pv_power_kw + load_kw;
+// grid mix -> power_kw + load_kw). A composition change is an EXPLAINED
+// discontinuity - a source was added/removed or flipped fresh<->stale - not a
+// device spike: without the reset a strict despike preset holds the new
+// composite level, and an oscillating composition keeps restarting the
+// confirmation candidate so the displayed value can freeze forever (the
+// captain's PV tile stuck at 45,4 kW while WR2 delivered 26,9 kW).
+func (a *Agent) noteSourceMix(pvMix, gridMix string) {
+	a.srcMu.Lock()
+	pvChanged := pvMix != a.lastPvMix
+	gridChanged := gridMix != a.lastGridMix
+	a.lastPvMix = pvMix
+	a.lastGridMix = gridMix
+	a.srcMu.Unlock()
+	if !pvChanged && !gridChanged {
+		return
+	}
+	chans := map[string]bool{"load_kw": true}
+	if pvChanged {
+		chans["pv_power_kw"] = true
+	}
+	if gridChanged {
+		chans["power_kw"] = true
+	}
+	keys := make([]string, 0, len(chans))
+	for k := range chans {
+		keys = append(keys, k)
+	}
+	if a.despiker != nil {
+		a.despiker.ResetChannels(keys...)
+	}
+	if a.envelope != nil {
+		a.envelope.ResetChannels(keys...)
+	}
+	slog.Info("source composition changed; spike-gate baselines reset",
+		"pv_mix", pvMix, "grid_mix", gridMix, "channels", keys)
 }
 
 // houseFromBalance computes the TRUE house consumption from the site power
@@ -1659,6 +1795,11 @@ func (a *Agent) houseFromBalance(measurements map[string]float64, grid float64, 
 
 // balanceLogInterval rate-limits the house-balance fallback warning.
 const balanceLogInterval = 5 * time.Minute
+
+// negLoadProofKw: a primary load figure below -this (with Erzeuger PV present)
+// PROVES the primary's load figure nets the AC PV out (see the fold's topology
+// comment); mere noise around zero stays on the established subtraction branch.
+const negLoadProofKw = 1.0
 
 // primaryBatteryless reports whether the configured primary inverter PROVABLY
 // has no battery (see inverter.FamilyBatteryless). No selection = unknown,
@@ -1792,6 +1933,51 @@ func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 		}
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest, Message: msg}
 	}
+	return a.testReadExchange(sel, req.Role, false, testReadTimeout)
+}
+
+// probeUnitsTimeout bounds the multi-inverter unit-ID probe round-trip. Wider
+// than testReadTimeout: the flow scans up to 10 unit ids (one SID read each,
+// short per-id timeout, 12-s overall flow budget) instead of one read.
+// A var (not const) so tests can shorten it.
+var probeUnitsTimeout = 15 * time.Second
+
+// ProbeUnits scans the UNSAVED connection form's address for FURTHER SunSpec
+// inverter unit ids (multi-inverter at one Fronius Datamanager; convention:
+// inverter number = Modbus unit id). Bounded, read-only, never persists
+// anything; only meaningful for fronius_sunspec connections - every other
+// transport is refused as invalid_request before any I/O. The scan itself runs
+// in Node-RED (edge/test-read/request with probe_units=true), reusing the
+// one-shot test-read machinery and correlation.
+func (a *Agent) ProbeUnits(req testconn.Request) testconn.Result {
+	connRaw, _ := json.Marshal(req.Connection)
+	var conn inverter.Connection
+	_ = json.Unmarshal(connRaw, &conn)
+	sel, err := a.invCat.Normalize(inverter.SelectionRequest{
+		Brand:      req.Brand,
+		Model:      req.Model,
+		Family:     req.Family,
+		Connection: conn,
+	}, time.Now())
+	if err != nil {
+		msg := "Die Verbindungsdaten sind unvollständig."
+		var ve *inverter.ValidationError
+		if errors.As(err, &ve) {
+			msg = ve.Msg
+		}
+		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest, Message: msg}
+	}
+	if sel.Communication != inverter.CommFroniusSunSpec {
+		return testconn.Result{OK: false, ErrorCode: testconn.ErrInvalidRequest,
+			Message: "Die Suche nach weiteren Wechselrichtern gibt es nur für SunSpec (Modbus TCP)."}
+	}
+	return a.testReadExchange(sel, req.Role, true, probeUnitsTimeout)
+}
+
+// testReadExchange runs one correlated request/response round trip over the
+// local bus test-read topics (shared by TestConnection and ProbeUnits; probe
+// adds probe_units=true so the flow scans unit ids instead of reading once).
+func (a *Agent) testReadExchange(sel inverter.Selection, role string, probe bool, timeout time.Duration) testconn.Result {
 	if a.Bus == nil {
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrTimeout, Message: "Die Prüfung ist derzeit nicht möglich."}
 	}
@@ -1807,13 +1993,14 @@ func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 		a.testMu.Unlock()
 	}()
 
-	// The request payload is the same selection shape route() consumes, plus the
-	// correlation id and the display-only role (a source may carry one).
 	var payload map[string]any
 	_ = json.Unmarshal(sel.BusPayload(), &payload)
 	payload["request_id"] = id
-	if role := strings.TrimSpace(req.Role); role != "" {
+	if role = strings.TrimSpace(role); role != "" {
 		payload["role"] = role
+	}
+	if probe {
+		payload["probe_units"] = true
 	}
 	raw, _ := json.Marshal(payload)
 	if err := a.Bus.Publish(localbus.TopicTestReadRequest, raw, false); err != nil {
@@ -1823,22 +2010,23 @@ func (a *Agent) TestConnection(req testconn.Request) testconn.Result {
 	select {
 	case res := <-ch:
 		return res
-	case <-time.After(testReadTimeout):
+	case <-time.After(timeout):
 		return testconn.Result{OK: false, ErrorCode: testconn.ErrTimeout}
 	}
 }
 
 // onTestReadResult routes a one-shot test-read result from Node-RED to the
-// waiting TestConnection call by request id. Unknown/expired ids are dropped
-// (the handler already timed out and left); the buffered channel + non-blocking
-// send mean this never blocks the bus.
+// waiting TestConnection/ProbeUnits call by request id. Unknown/expired ids are
+// dropped (the handler already timed out and left); the buffered channel +
+// non-blocking send mean this never blocks the bus.
 func (a *Agent) onTestReadResult(_ string, payload []byte) {
 	var m struct {
-		RequestID string            `json:"request_id"`
-		OK        bool              `json:"ok"`
-		ErrorCode string            `json:"error_code"`
-		Message   string            `json:"message"`
-		Reading   *testconn.Reading `json:"reading"`
+		RequestID  string            `json:"request_id"`
+		OK         bool              `json:"ok"`
+		ErrorCode  string            `json:"error_code"`
+		Message    string            `json:"message"`
+		Reading    *testconn.Reading `json:"reading"`
+		FoundUnits []int             `json:"found_units"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil || m.RequestID == "" {
 		slog.Warn("test-read result malformed; skipped")
@@ -1851,7 +2039,7 @@ func (a *Agent) onTestReadResult(_ string, payload []byte) {
 		return // unknown / already-timed-out request
 	}
 	select {
-	case ch <- testconn.Result{OK: m.OK, ErrorCode: m.ErrorCode, Message: m.Message, Reading: m.Reading}:
+	case ch <- testconn.Result{OK: m.OK, ErrorCode: m.ErrorCode, Message: m.Message, Reading: m.Reading, FoundUnits: m.FoundUnits}:
 	default:
 	}
 }

@@ -40,6 +40,12 @@ type InverterController interface {
 	// the add-source drawer (they share the brand/model/connection shape) and
 	// never persists anything - it is a confidence check, never a save gate.
 	TestConnection(testconn.Request) testconn.Result
+	// ProbeUnits scans the form's address for FURTHER SunSpec inverter unit ids
+	// (multi-inverter at one Fronius Datamanager: inverter number = unit id).
+	// Bounded + read-only; fronius_sunspec only. The UI uses the result to say
+	// "An dieser Adresse wurden N Wechselrichter gefunden" and OFFER creating a
+	// source per found unit - never a silent auto-add.
+	ProbeUnits(testconn.Request) testconn.Result
 }
 
 // SourcesController backs the "Energiequellen" surface: the ADDITIONAL read-only
@@ -325,6 +331,21 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			return
 		}
 		writeJSON(w, http.StatusOK, inv.TestConnection(req))
+	})
+
+	// POST /api/probe-units - multi-inverter auto-detection: scan the (unsaved)
+	// fronius_sunspec connection's address for further inverter unit ids
+	// (Fronius Datamanager: inverter number = Modbus unit id). Read-only and
+	// bounded; the UI offers to create a source per found unit, the operator
+	// confirms. Same body shape and always-200 semantics as test-connection.
+	mux.HandleFunc("POST /api/probe-units", func(w http.ResponseWriter, r *http.Request) {
+		var req testconn.Request
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		writeJSON(w, http.StatusOK, inv.ProbeUnits(req))
 	})
 
 	// GET /api/sources - the ADDITIONAL read-only measurement points (Phase 1:

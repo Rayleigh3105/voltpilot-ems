@@ -106,9 +106,49 @@
     renderErr(panel, m.title, body);
   }
 
+  /* ---- multi-inverter unit-ID probe (Fronius Datamanager) ---- */
+
+  // probeUnits asks the edge to scan the (unsaved) fronius_sunspec connection's
+  // address for further inverter unit ids (Datamanager convention: inverter
+  // number = Modbus unit id). Resolves the found unit-id array or null on any
+  // failure - idle-safe, callers just skip the hint then.
+  function probeUnits(payload) {
+    return fetch("/api/probe-units", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        return res && res.ok && Array.isArray(res.found_units) ? res.found_units : null;
+      })
+      .catch(function () { return null; });
+  }
+
+  // foundUnitsLine renders the honest multi-inverter hint; "" when there is
+  // nothing worth saying (probe failed, or at most one inverter found).
+  function foundUnitsLine(found) {
+    if (!found || found.length < 2) return "";
+    return "An dieser Adresse wurden " + found.length + " Wechselrichter gefunden (Unit-IDs " + found.join(", ") + ").";
+  }
+
+  // appendPanelNote appends one extra line to a currently-shown OK panel (used
+  // for the async multi-inverter hint after the test result already rendered).
+  function appendPanelNote(panel, text) {
+    if (!panel || panel.hidden || panel.className.indexOf("ok") < 0) return;
+    var body = panel.lastElementChild;
+    if (!body) return;
+    body.appendChild(el("p", { class: "vp-body vp-units" }, text));
+  }
+
   // testConnection posts the current (unsaved) form to the test endpoint and
   // renders the result panel. It NEVER blocks Speichern. opts:
   //   { payload, panel, button }  panel = the .verify-panel element.
+  //   probePayload  (optional) when set and the test succeeds, the same form is
+  //                 probed for FURTHER inverter unit ids at that address and the
+  //                 hint line is appended to the OK panel (fronius_sunspec only
+  //                 - callers pass it only for that brand).
+  //   onUnitsFound  (optional) callback receiving the found unit-id array.
   function testConnection(opts) {
     var panel = opts.panel;
     var btn = opts.button;
@@ -120,7 +160,16 @@
       body: JSON.stringify(opts.payload),
     })
       .then(function (r) { return r.json(); })
-      .then(function (res) { renderResult(panel, res); })
+      .then(function (res) {
+        renderResult(panel, res);
+        if (res && res.ok && opts.probePayload) {
+          probeUnits(opts.probePayload).then(function (found) {
+            var line = foundUnitsLine(found);
+            if (line) appendPanelNote(panel, line);
+            if (opts.onUnitsFound) opts.onUnitsFound(found || []);
+          });
+        }
+      })
       .catch(function () { renderResult(panel, { ok: false, error_code: "timeout" }); })
       .then(function () { if (btn) { btn.disabled = false; btn.classList.remove("is-busy"); } });
   }
@@ -173,6 +222,8 @@
     el: el,
     statusPill: statusPill,
     testConnection: testConnection,
+    probeUnits: probeUnits,
+    foundUnitsLine: foundUnitsLine,
     clearVerify: clearVerify,
     fmtVal: fmt,
     gridPart: gridPart,

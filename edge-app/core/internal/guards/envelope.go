@@ -247,6 +247,20 @@ func derivedBattery(m map[string]float64) (float64, bool) {
 	return grid - load + pv, true
 }
 
+// ResetChannels forgets the last in-envelope baselines of the given channels,
+// so the next reading establishes a fresh one. The multi-source twin of
+// Despiker.ResetChannels: a changed source composition steps the composite for
+// an explained reason, and a stale baseline would misattribute the step to a
+// spike (offender-by-jump) or substitute an outdated hold value.
+func (e *Envelope) ResetChannels(keys ...string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, k := range keys {
+		delete(e.states, k)
+		delete(e.haveVal, k)
+	}
+}
+
 // DroppedTotal is the running count of envelope rejections since start.
 func (e *Envelope) DroppedTotal() int {
 	e.mu.Lock()

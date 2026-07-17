@@ -212,6 +212,20 @@ func (d *Despiker) Accept(m map[string]float64, now time.Time) []Drop {
 	return drops
 }
 
+// ResetChannels forgets the accepted level + confirmation candidate of the
+// given channels, so the NEXT reading baseline-accepts. Called when a channel's
+// composition changed for an EXPLAINED reason (a multi-source Erzeuger/Netz
+// contribution appeared or disappeared): the resulting step is configuration,
+// not a device spike, and holding it - or letting an oscillating composition
+// keep restarting the candidate - would freeze the displayed value.
+func (d *Despiker) ResetChannels(keys ...string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, k := range keys {
+		delete(d.states, k)
+	}
+}
+
 // DroppedTotal is the running count of samples the despiker has rejected since
 // start (cheap, exposed in the state snapshot for field diagnosis).
 func (d *Despiker) DroppedTotal() int {

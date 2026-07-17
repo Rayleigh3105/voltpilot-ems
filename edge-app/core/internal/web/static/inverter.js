@@ -563,10 +563,16 @@
       $("picker").classList.add("invalid");
       return;
     }
+    var payload = collect();
+    var b = brandById(payload.brand);
     window.VP.testConnection({
-      payload: collect(),
+      payload: payload,
       panel: $("invVerify"),
       button: $("invTestBtn"),
+      // Multi-inverter hint (Fronius Datamanager): a successful SunSpec test
+      // also scans the address for further inverter unit ids - the further
+      // devices belong on the "Meine Anlage" card as eigene Erzeuger-Quellen.
+      probePayload: b && b.communication === "fronius_sunspec" ? payload : null,
     });
   });
 

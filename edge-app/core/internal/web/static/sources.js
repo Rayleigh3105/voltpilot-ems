@@ -26,6 +26,7 @@
   var serverNowMs = 0;     // device clock at fetch time (honest "vor X" ages)
   var hasNetz = false;     // whether a Netz-Zähler already exists (role-lock)
   var currentRole = ROLE_ERZEUGER;
+  var currentList = [];    // the sources as last loaded (for the unit-id offer)
 
   function brandById(id) {
     if (!catalog) return null;
@@ -101,6 +102,7 @@
   }
 
   function renderGroups(list) {
+    currentList = list || [];
     var erz = [], netz = [];
     (list || []).forEach(function (s) {
       if (s.role === ROLE_NETZ) netz.push(s); else erz.push(s);
@@ -306,15 +308,74 @@
     document.body.classList.remove("drawer-open");
   }
 
+  // isSunspecBrand: only fronius_sunspec sources have a unit-id fan-out worth
+  // probing (a Datamanager exposes one Modbus unit id per inverter).
+  function isSunspecBrand(brandId) {
+    var b = brandById(brandId);
+    return !!(b && b.communication === "fronius_sunspec");
+  }
+
+  /* ---- multi-inverter auto-detection (Fronius Datamanager) ----
+     After adding a fronius_sunspec Erzeuger, the same address is probed for
+     FURTHER inverter unit ids (bounded scan, read-only). If more inverters
+     exist than are configured, the operator is asked - never a silent
+     auto-add - and on confirmation one source per further unit is created
+     (name suffix "(Unit-ID n)"; the entered kWp is per-inverter and copied). */
+
+  function configuredUnitsAt(ip) {
+    var units = {};
+    currentList.forEach(function (s) {
+      if (s.connection && s.connection.ip === ip) {
+        var u = Number(s.connection.unit_id);
+        units[u > 0 ? u : 1] = true;
+      }
+    });
+    return units;
+  }
+
+  function offerFurtherUnits(req) {
+    if (req.role !== ROLE_ERZEUGER || !isSunspecBrand(req.brand)) return;
+    var ip = req.connection && req.connection.ip;
+    if (!ip) return;
+    window.VP.probeUnits(req).then(function (found) {
+      if (!found || found.length < 2) return;
+      var configured = configuredUnitsAt(ip);
+      var own = Number(req.connection.unit_id);
+      configured[own > 0 ? own : 1] = true;
+      var extras = found.filter(function (u) { return !configured[u]; });
+      if (!extras.length) return;
+      var kwpNote = req.capacity_kwp
+        ? "\n\nDie eingetragene Leistung (" + fmtKwp(req.capacity_kwp) + " kWp) wird je Wechselrichter übernommen – bitte je Wechselrichter die eigene Leistung angeben, nicht die Gesamtleistung."
+        : "";
+      var msg = "An dieser Adresse wurden " + found.length + " Wechselrichter gefunden (Unit-IDs " + found.join(", ") + ").\n" +
+        "Sollen die weiteren Wechselrichter (Unit-ID " + extras.join(", ") + ") jetzt als eigene Quellen angelegt werden?" + kwpNote;
+      if (!window.confirm(msg)) return;
+      var baseLabel = req.label || (brandById(req.brand) || {}).label || "Wechselrichter";
+      extras.reduce(function (p, u) {
+        return p.then(function () {
+          var extraReq = JSON.parse(JSON.stringify(req));
+          extraReq.connection.unit_id = u;
+          extraReq.label = baseLabel + " (Unit-ID " + u + ")";
+          return fetch("/api/sources", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(extraReq),
+          }).catch(function () { /* idle-safe: skip, the operator can add manually */ });
+        });
+      }, Promise.resolve()).then(load);
+    });
+  }
+
   function addSource(ev) {
     ev.preventDefault();
     showError(null);
     var save = $("srcSave");
     save.disabled = true;
+    var req = collect();
     fetch("/api/sources", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(collect()),
+      body: JSON.stringify(req),
     }).then(function (r) {
       return r.json().then(function (body) { return { ok: r.ok, body: body }; });
     }).then(function (res) {
@@ -325,6 +386,7 @@
       }
       closeDrawer();
       load();
+      offerFurtherUnits(req);
     }).catch(function () {
       save.disabled = false;
       showError("Netzwerkfehler. Bitte erneut versuchen.");
@@ -367,10 +429,15 @@
     $("srcForm").addEventListener("submit", addSource);
     $("primGridToggle").addEventListener("change", saveBalance);
     $("srcTestBtn").addEventListener("click", function () {
+      var payload = collect();
       window.VP.testConnection({
-        payload: collect(),
+        payload: payload,
         panel: $("srcVerify"),
         button: $("srcTestBtn"),
+        // Multi-inverter hint: a successful SunSpec test also scans the address
+        // for further inverter unit ids ("An dieser Adresse wurden N
+        // Wechselrichter gefunden ...").
+        probePayload: isSunspecBrand(payload.brand) ? payload : null,
       });
     });
     load();

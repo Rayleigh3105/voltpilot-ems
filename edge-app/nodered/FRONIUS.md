@@ -151,10 +151,10 @@ hier **nur lesend** (FC3, schreibt nie).
   auf dieser Anlage NICHT verdrahtet (der Eco-Standort hat keinen Fronius Smart
   Meter) und **nicht am Gerät verifiziert**. Ohne Zähler ist ein reiner
   `pv_power_kw`-Messwert ein ehrlicher Teil-Read.
-- **Umfang (Increment 1):** genau **ein** `(IP, Unit-ID)`-SunSpec-Read. Zwei Eco
-  an einem Datamanager bzw. an zwei IPs zu einer Anlage zu aggregieren ist ein
-  Folge-Increment (das Rollen-/Multi-Source-Modell), ebenso ein Zähler als
-  eigener Messpunkt.
+- **Umfang:** ein SunSpec-Read pro `(IP, Unit-ID)`. **Mehrere Wechselrichter an
+  EINEM Datamanager (eine IP, mehrere Unit-IDs) sind first-class** - je
+  Wechselrichter eine eigene Erzeuger-Quelle, inkl. Auto-Erkennung weiterer
+  Unit-IDs beim Hinzufügen/Testen; siehe Abschnitt 5c.
 - **AM GERÄT ZU PRÜFEN (Captain-Follow-up):** dass `W → pv_power_kw` auf dem
   echten Eco stimmt, `St`/`Evt1` plausibel sind und - falls je ein Zähler dazu
   kommt - dessen `W`-Vorzeichen (`invert_grid_sign`). Hier ist alles gegen
@@ -165,6 +165,54 @@ Einrichten: im `:8484`-Portal Marke **„Fronius (Modbus / SunSpec)"** wählen, 
 beweisen, speichern - der Selbstverdrahtungs-Tab fährt den SunSpec-Lesepfad dann
 automatisch an (`communication: fronius_sunspec`, siehe
 [`../INVERTER-CONFIG.md`](../INVERTER-CONFIG.md)).
+
+## 5c. Mehrere Wechselrichter an EINEM Datamanager (Multi-Inverter)
+
+Ein Fronius **Datamanager** stellt alle an ihm hängenden Wechselrichter unter
+**einer IP** auf Modbus TCP 502 bereit - **ein Wechselrichter = eine
+Modbus-Unit-ID**, und die Konvention ist schlicht: **Wechselrichter-Nummer =
+Unit-ID** (die Nummer aus der Datamanager-Übersicht bzw. dem Display). Der
+„String Control Adress-Offset" (z. B. 101) betrifft nur String-Controls, nicht
+die Wechselrichter-Unit-IDs.
+
+**Gelebtes Beispiel (Referenzanlage „Asbeck Büro Isaraue"):** Datamanager
+`192.168.210.40`, zwei **Fronius Eco 27.0-3-S** à 32,4 kWp - „(1) ost" =
+Unit-ID 1, „(2) west" = Unit-ID 2. Eine einzelne Quelle mit der Standard-
+Unit-ID 1 liest NUR „ost"; „west" fehlt still in der Anlagen-PV (live
+bestätigt: Quelle 22,3 kW bei ost = 22,11 und west = 26,14 kW).
+
+**Einrichtung: je Wechselrichter EINE Erzeuger-Quelle** (`:8484` → „Meine
+Anlage" → Erzeuger hinzufügen), gleiche IP, unterschiedliche Unit-ID:
+
+1. Erste Quelle anlegen (IP + Unit-ID 1). **Auto-Erkennung:** beim
+   „Verbindung testen" und nach dem Speichern tastet der Edge dieselbe Adresse
+   nach WEITEREN Unit-IDs ab (1..10, ein kurzer SID-Read je ID, nur lesend,
+   begrenzt). Findet er mehr Wechselrichter als konfiguriert, sagt die
+   Oberfläche ehrlich „An dieser Adresse wurden 2 Wechselrichter gefunden
+   (Unit-IDs 1, 2)." und **bietet an**, je weiterer Unit-ID eine eigene Quelle
+   anzulegen (Namenszusatz „(Unit-ID n)") - **nie stilles Auto-Anlegen**, der
+   Betreiber bestätigt.
+2. **kWp JE WECHSELRICHTER eintragen, nicht die Anlagen-Gesamtleistung** (im
+   Beispiel: 32,4 je Quelle, nicht 64,8): die physikalische Plausibilitäts-
+   Hülle (PV-Bound) summiert die kWp aller Erzeuger - eine Quelle OHNE kWp
+   deaktiviert den PV-Bound ehrlich (eine Hülle, die den unbekannten Anteil
+   nicht kennt, würde sonst echte Leistung kappen). Beim bestätigten
+   Auto-Anlegen wird die eingetragene (Je-Wechselrichter-)Leistung übernommen.
+
+**Robustheit (eingebaut, nichts zu konfigurieren):**
+
+- Die Quellen werden **streng sequenziell** gelesen (nie zwei Verbindungen
+  gleichzeitig auf den trägen, faktisch Single-Session-Datamanager), mit einer
+  kurzen Atempause zwischen zwei Lesungen auf dieselbe IP.
+- Jede Quelle behält ihren **eigenen** Status („Liefert Daten") und ihre eigene
+  „Zuletzt gelesen"-Zeile.
+- Das **Frische-Fenster folgt der tatsächlich erreichten Lese-Kadenz**: zwei
+  volle SunSpec-Walks hintereinander können deutlich länger dauern als das
+  Poll-Intervall - eine liefernde Quelle fällt deshalb nie still aus der
+  PV-Summe, nur weil sie langsam gelesen wird (Staleness heißt „~3 eigene
+  Lesezyklen verpasst").
+- Eine falsche Unit-ID meldet sich laut im Log (`docker compose logs nodered`),
+  die übrigen Quellen liefern weiter.
 
 ## 6. Steuerung (Curtailment + Batterie) - SunSpec Modbus, NUR GEPLANT
 
