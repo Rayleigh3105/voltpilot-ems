@@ -11,6 +11,7 @@ import com.voltpilot.api.web.dto.OptimizerDiagnosticsSlotDto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +33,9 @@ public class OptimizerDiagnosticsService {
     /** 15-min platform slot grid (domain.py SLOT_MINUTES). */
     static final int SLOT_MINUTES = 15;
     private static final double SLOT_HOURS = SLOT_MINUTES / 60.0;
-    private static final int MAX_AVAILABLE_RUNS = 30;
+
+    /** The v1 platform timezone for run-day navigation (the HistoryRange rule). */
+    private static final ZoneId BERLIN = ZoneId.of("Europe/Berlin");
 
     private final OptimizerDiagnosticsRepository repo;
     private final OptimizerProperties properties;
@@ -58,18 +61,51 @@ public class OptimizerDiagnosticsService {
     }
 
     /**
-     * The diagnostics of one run: {@code generatedAt} null = the latest run.
-     * Returns null when the requested run does not exist for this site; a site
-     * without any plan yields an empty (but well-formed) DTO.
+     * The diagnostics of one run, with the run list scoped to ONE Berlin day
+     * (the {@code schedule} hypertable keeps every 15-min run, so an unscoped
+     * list only ever reached ~7.5 hours back):
+     * <ul>
+     * <li>{@code generatedAt} set: that exact run (null return = 404 upstream);
+     * {@code availableRuns} covers the run's Berlin day unless {@code date}
+     * pins another one.</li>
+     * <li>{@code date} set (no {@code generatedAt}): that Berlin day's newest
+     * run; a day without runs yields an empty (but well-formed) DTO - the
+     * picker range only bounds first/last, gaps inside stay possible.</li>
+     * <li>neither set: the latest run + its day's runs (the pre-date-param
+     * default, now day-scoped).</li>
+     * </ul>
+     * {@code firstRunDate}/{@code lastRunDate} always carry the site's covered
+     * Berlin run-day range so the UI can bound its date picker; a site without
+     * any plan yields an empty DTO with null range.
      */
-    public OptimizerDiagnosticsDto diagnose(SiteContext site, Instant generatedAt) {
-        Instant run = repo.resolveRun(site.siteId(), generatedAt);
-        if (run == null && generatedAt != null) {
-            return null; // the requested run does not exist
+    public OptimizerDiagnosticsDto diagnose(SiteContext site, Instant generatedAt, LocalDate date) {
+        UUID siteId = site.siteId();
+        Instant run = null;
+        if (generatedAt != null) {
+            run = repo.resolveRun(siteId, generatedAt);
+            if (run == null) {
+                return null; // the requested run does not exist
+            }
         }
-        List<Instant> availableRuns = repo.availableRuns(site.siteId(), MAX_AVAILABLE_RUNS);
+        Instant latest = repo.resolveRun(siteId, null);
+        Instant first = repo.firstRun(siteId);
+        LocalDate firstRunDate = first == null ? null : berlinDay(first);
+        LocalDate lastRunDate = latest == null ? null : berlinDay(latest);
+        LocalDate day = date != null ? date
+                : run != null ? berlinDay(run)
+                : lastRunDate;
+        List<Instant> availableRuns = day == null ? List.of()
+                : repo.runsBetween(siteId,
+                        day.atStartOfDay(BERLIN).toInstant(),
+                        day.plusDays(1).atStartOfDay(BERLIN).toInstant());
         if (run == null) {
-            return dto(site, null, null, availableRuns, List.of());
+            // No explicit run: the picked day's newest, else the latest overall.
+            run = date != null
+                    ? (availableRuns.isEmpty() ? null : availableRuns.get(0))
+                    : latest;
+        }
+        if (run == null) {
+            return dto(site, null, null, day, firstRunDate, lastRunDate, availableRuns, List.of());
         }
         List<SlotRow> rows = repo.slots(site.siteId(), run);
         Map<LocalDate, MarketValue> marketValues = marketValuesFor(site, rows);
@@ -114,10 +150,16 @@ public class OptimizerDiagnosticsService {
                     SlotEconomics.whyText(label, batteryKw, gridKw, curtailKw,
                             importCt.get(i), exportCt.get(i), storedCt.get(i))));
         }
-        return dto(site, repo.planId(site.siteId(), run), run, availableRuns, slots);
+        return dto(site, repo.planId(site.siteId(), run), run, day, firstRunDate, lastRunDate,
+                availableRuns, slots);
+    }
+
+    private static LocalDate berlinDay(Instant instant) {
+        return instant.atZone(BERLIN).toLocalDate();
     }
 
     private OptimizerDiagnosticsDto dto(SiteContext site, UUID planId, Instant run,
+            LocalDate availableRunsDate, LocalDate firstRunDate, LocalDate lastRunDate,
             List<Instant> availableRuns, List<OptimizerDiagnosticsSlotDto> slots) {
         return new OptimizerDiagnosticsDto(
                 site.siteId(),
@@ -125,6 +167,9 @@ public class OptimizerDiagnosticsService {
                 run,
                 SLOT_MINUTES,
                 availableRuns,
+                availableRunsDate,
+                firstRunDate,
+                lastRunDate,
                 site.plantKind(),
                 site.netzladenErlaubt(),
                 site.tarifArt(),

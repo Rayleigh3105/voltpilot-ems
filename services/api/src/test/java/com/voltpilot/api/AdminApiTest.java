@@ -849,9 +849,13 @@ class AdminApiTest {
 
         // Two DV runs: an older single-slot run (must NOT be the default) and
         // the latest run with hand-computable slots. Wear 0.02 EUR on 4 kW *
-        // 15 min = 1 kWh throughput => 2.0 ct/kWh.
-        java.time.Instant genNew = java.time.Instant.now()
-                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        // 15 min = 1 kWh throughput => 2.0 ct/kWh. Anchored at noon Berlin
+        // TODAY (not now()): availableRuns is day-scoped since the date-nav
+        // increment, so both runs must share one Berlin day even when CI runs
+        // shortly after midnight.
+        java.time.ZoneId berlin = java.time.ZoneId.of("Europe/Berlin");
+        java.time.Instant genNew = java.time.LocalDate.now(berlin)
+                .atTime(12, 0).atZone(berlin).toInstant();
         java.time.Instant genOld = genNew.minusSeconds(3600);
         java.time.Instant slot1 = genNew.plusSeconds(900);
         java.time.Instant slot2 = genNew.plusSeconds(1800);
@@ -980,6 +984,103 @@ class AdminApiTest {
                 url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * The run picker is DATE-navigable (Europe/Berlin days): availableRuns
+     * lists ONE day's runs (the schedule hypertable keeps every run, so the
+     * former newest-30 list only reached ~7.5 h back at the 15-min cadence),
+     * the response carries the site's covered run-date range to bound the UI
+     * date picker, and the BERLIN midnight decides which day a run belongs
+     * to. Seeded across three Berlin days in June (CEST = UTC+2) with a run
+     * at exactly 00:00 Berlin as the boundary proof.
+     */
+    @Test
+    void optimizerDiagnosticsRunListIsDateNavigableAcrossBerlinDays() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Optimizer Tage GmbH", "CI").get("id");
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Tage Anlage", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        // Five runs on three Berlin days (all UTC literals):
+        //   2026-06-10 Berlin: 09:00 + 23:45 Berlin  = 07:00Z + 21:45Z
+        //   2026-06-11 Berlin: 00:00 Berlin          = 2026-06-10T22:00Z (boundary)
+        //   2026-06-15 Berlin: 10:00 + 10:15 Berlin  = 08:00Z + 08:15Z (newest day)
+        String[] runs = {"2026-06-10T07:00:00Z", "2026-06-10T21:45:00Z",
+                "2026-06-10T22:00:00Z", "2026-06-15T08:00:00Z", "2026-06-15T08:15:00Z"};
+        for (String gen : runs) {
+            java.time.Instant g = java.time.Instant.parse(gen);
+            exec("INSERT INTO schedule (time, tenant_id, site_id, plan_id, generated_at, "
+                    + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
+                    + "baseline_cost_eur) VALUES ('" + g.plusSeconds(900) + "', '" + tenantId
+                    + "', '" + siteId + "', 'cccccccc-0000-0000-0000-00000000000"
+                    + (java.util.Arrays.asList(runs).indexOf(gen) + 1) + "', '" + g
+                    + "', 1, 0, 50, 1, 2, 100, 0.1, 0.2)");
+        }
+
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+        String base = url("/api/v1/admin/sites/" + siteId + "/optimizer-diagnostics");
+
+        // Default (no params): the latest run, its day's runs ONLY, plus the
+        // full covered run-date range for the picker bounds.
+        ResponseEntity<Map<String, Object>> latest = rest.exchange(base, HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(latest.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(latest.getBody()).containsEntry("generatedAt", "2026-06-15T08:15:00Z");
+        @SuppressWarnings("unchecked")
+        List<Object> latestRuns = (List<Object>) latest.getBody().get("availableRuns");
+        assertThat(latestRuns).containsExactly("2026-06-15T08:15:00Z", "2026-06-15T08:00:00Z");
+        assertThat(latest.getBody()).containsEntry("availableRunsDate", "2026-06-15");
+        assertThat(latest.getBody()).containsEntry("firstRunDate", "2026-06-10");
+        assertThat(latest.getBody()).containsEntry("lastRunDate", "2026-06-15");
+
+        // date=2026-06-10: that Berlin day's newest run; the 00:00-Berlin run
+        // of the NEXT day (2026-06-10T22:00Z) is excluded by the boundary.
+        ResponseEntity<Map<String, Object>> day10 = rest.exchange(base + "?date=2026-06-10",
+                HttpMethod.GET, new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(day10.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(day10.getBody()).containsEntry("generatedAt", "2026-06-10T21:45:00Z");
+        @SuppressWarnings("unchecked")
+        List<Object> day10Runs = (List<Object>) day10.getBody().get("availableRuns");
+        assertThat(day10Runs).containsExactly("2026-06-10T21:45:00Z", "2026-06-10T07:00:00Z");
+        assertThat(day10.getBody()).containsEntry("availableRunsDate", "2026-06-10");
+        assertThat((List<?>) day10.getBody().get("slots")).hasSize(1);
+
+        // date=2026-06-11: exactly the midnight-Berlin run (22:00Z the day before).
+        ResponseEntity<Map<String, Object>> day11 = rest.exchange(base + "?date=2026-06-11",
+                HttpMethod.GET, new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(day11.getBody()).containsEntry("generatedAt", "2026-06-10T22:00:00Z");
+        @SuppressWarnings("unchecked")
+        List<Object> day11Runs = (List<Object>) day11.getBody().get("availableRuns");
+        assertThat(day11Runs).containsExactly("2026-06-10T22:00:00Z");
+
+        // A day INSIDE the range without runs: 200 with an empty well-formed
+        // body (never 404 - gaps inside the covered range are legitimate).
+        ResponseEntity<Map<String, Object>> gap = rest.exchange(base + "?date=2026-06-13",
+                HttpMethod.GET, new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(gap.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(gap.getBody().get("generatedAt")).isNull();
+        assertThat((List<?>) gap.getBody().get("availableRuns")).isEmpty();
+        assertThat((List<?>) gap.getBody().get("slots")).isEmpty();
+        assertThat(gap.getBody()).containsEntry("availableRunsDate", "2026-06-13");
+        assertThat(gap.getBody()).containsEntry("firstRunDate", "2026-06-10");
+        assertThat(gap.getBody()).containsEntry("lastRunDate", "2026-06-15");
+
+        // Explicit generatedAt still selects the exact run; without a date
+        // param the run list follows THAT run's Berlin day.
+        ResponseEntity<Map<String, Object>> exact = rest.exchange(
+                base + "?generatedAt=2026-06-10T07:00:00Z", HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(exact.getBody()).containsEntry("generatedAt", "2026-06-10T07:00:00Z");
+        assertThat(exact.getBody()).containsEntry("availableRunsDate", "2026-06-10");
+
+        // A malformed date is a 400, never silently ignored.
+        assertThat(rest.exchange(base + "?date=morgen", HttpMethod.GET,
+                new HttpEntity<>(adminTenant), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     /**

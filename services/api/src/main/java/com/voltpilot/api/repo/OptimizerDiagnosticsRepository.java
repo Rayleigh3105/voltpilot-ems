@@ -118,13 +118,30 @@ public class OptimizerDiagnosticsRepository {
         return latest.isEmpty() ? null : latest.get(0);
     }
 
-    /** Recent run timestamps (newest first) - the UI's run/date picker. */
-    public List<Instant> availableRuns(UUID siteId, int limit) {
+    /**
+     * All run timestamps within {@code [from, to)} (newest first) - one Berlin
+     * day's run list for the UI picker. Bounded by construction: a day at the
+     * 15-min MPC cadence holds at most ~96 runs.
+     */
+    public List<Instant> runsBetween(UUID siteId, Instant from, Instant to) {
         return jdbc.query(
                 "SELECT DISTINCT generated_at FROM schedule WHERE site_id = ? "
-                        + "ORDER BY generated_at DESC LIMIT ?",
+                        + "AND generated_at >= ? AND generated_at < ? "
+                        + "ORDER BY generated_at DESC",
                 (rs, i) -> rs.getTimestamp("generated_at").toInstant(),
-                siteId, limit);
+                siteId, Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /** The site's OLDEST run timestamp (null without any plan) - bounds the date picker. */
+    public Instant firstRun(UUID siteId) {
+        List<Instant> first = jdbc.query(
+                "SELECT min(generated_at) AS generated_at FROM schedule WHERE site_id = ?",
+                (rs, i) -> {
+                    Timestamp ts = rs.getTimestamp("generated_at");
+                    return ts == null ? null : ts.toInstant();
+                },
+                siteId);
+        return first.isEmpty() ? null : first.get(0);
     }
 
     /** The run's slots in time order, with every persisted economics column. */

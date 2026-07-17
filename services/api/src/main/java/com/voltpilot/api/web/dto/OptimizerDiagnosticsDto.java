@@ -2,6 +2,7 @@ package com.voltpilot.api.web.dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,6 +28,14 @@ import java.util.UUID;
  * run used is likewise not persisted (an honest gap, not a null-able field
  * here). {@code storedEnergyValueIsApproximation} is always true: the value is
  * the forward best-use heuristic, not a MILP shadow price.
+ *
+ * <p>Run navigation is DAY-scoped (Europe/Berlin, the platform timezone):
+ * {@code availableRuns} lists ONE day's runs ({@code availableRunsDate} - the
+ * requested {@code date} or the shown run's day), and
+ * {@code firstRunDate}/{@code lastRunDate} carry the site's covered run-day
+ * range so the UI can bound its date picker (all three null for a site
+ * without any plan). The hypertable keeps every run - the former unscoped
+ * newest-30 list only ever reached ~7.5 hours back at the 15-min MPC cadence.
  */
 public record OptimizerDiagnosticsDto(
         UUID siteId,
@@ -34,6 +43,9 @@ public record OptimizerDiagnosticsDto(
         Instant generatedAt,
         int slotMinutes,
         List<Instant> availableRuns,
+        LocalDate availableRunsDate,
+        LocalDate firstRunDate,
+        LocalDate lastRunDate,
         String plantKind,
         boolean netzladenErlaubt,
         String tarifArt,
