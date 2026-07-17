@@ -123,33 +123,49 @@ const FAMILIES = {
   // registers (an absent PV3/PV4 reads 0 and is harmless).
   // Addresses are authoritative from davidrapan/ha-solarman deye_p3.yaml (SG0*LP3
   // LV + SG0*HP3 HV): SOC 0x024C, Battery Power 0x024E (scale [1,10]), PV Power =
-  // sum of 0x02A0..0x02A3 (scale [1,10]); Grid Power = 0x0271(low)+0x02B2(high)
-  // and Load Consumption Power = 0x028D(low)+0x0293(high), both signed 32-bit
-  // (rule 4) and always plain watts (NO scale). Device-identity register 0x0000
-  // selects the LV/HV scale for PV + battery (see DEVICE_TYPES_* above).
-  // HV/LV SCALE is now AUTO-DETECTED from 0x0000; `power_scale` is only a manual
-  // override / fallback. Signs (invert_grid_sign/invert_batt_sign) stay
-  // VERIFY-on-device.
+  // sum of 0x02A0..0x02A3 (scale [1,10]); Load Consumption Power =
+  // 0x028D(low)+0x0293(high), signed 32-bit (rule 4), always plain watts.
+  //
+  // GRID = the EXTERNAL CT total 0x026B(low)+0x02C4(high) ("Grid external - The
+  // power", deye_p3.yaml "External Power") - the clamp at the point of common
+  // coupling, i.e. the site's true grid exchange. The previously-used "Grid
+  // Power" 0x0271(low)+0x02B2(high) sits under deye_p3.yaml's comment "The
+  // following three (four) registers change according to the built-in and
+  // external settings": it is a CONFIG-DEPENDENT alias that can resolve to the
+  // inverter-side (internal CT 0x025F) measurement instead of the connection
+  // point. Proven live on the captain's SUN-30K-SG01HP3 (2026-07-17): the alias
+  // read −23,7 kW = exactly the Deye's own PV while the device's own load
+  // register showed −30,5 = 23,7 − 54,2, i.e. the Deye internally used the
+  // external CT's −54,2 kW - the true site export (whole site incl. ~49 kW
+  // AC-coupled Fronius). The alias is kept as a FALLBACK for reads that do not
+  // cover the external high word (e.g. a stale flow still reading the old
+  // narrower block). Device-identity register 0x0000 selects the LV/HV scale
+  // for PV + battery (see DEVICE_TYPES_* above); grid/load are always plain
+  // watts. Signs (invert_grid_sign/invert_batt_sign) stay VERIFY-on-device -
+  // and so does the external CT itself (an install without the external CT
+  // clamps would read 0 here; verify import/export at a known state).
   hybrid_3p: {
     label: 'Hybrid 3-phasig (SG04LP3 LV / SG01HP3 HV, high map, bis 4 MPPT)',
     hasBattery: true,
-    // Two blocks: the device-identity register 0x0000 (LV/HV scale class) and the
-    // measurement block 0x024C..0x02B2 (103 regs, still under the 125-reg fn-0x03
-    // limit) - now wide enough to include the 32-bit Grid high word at 0x02B2
-    // (the Load high word 0x0293 already sat inside the old block).
+    // Two blocks: the device-identity register 0x0000 (LV/HV scale class) and
+    // the measurement block 0x024C..0x02C4 (121 regs, still under the 125-reg
+    // fn-0x03 limit) - wide enough to include the External-CT high word at
+    // 0x02C4 (and the alias high word 0x02B2 for the fallback).
     reads: [
       { start: DEVICE_REG, count: 0x0001 },
-      { start: 0x024c, count: 0x0067 },
+      { start: 0x024c, count: 0x0079 },
     ],
     // The register whose device-type code drives the LV/HV PV+battery scale.
     scaleReg: DEVICE_REG,
     fields: {
       soc: { addr: 0x024c, bits: 16, signed: false, scale: 1, kind: 'pct' }, // %
       // PV + battery carry the ha-solarman [1,10] LV/HV scale -> hvScale flag.
-      batt: { addr: 0x024e, bits: 16, signed: true, hvScale: true }, // W (calibration only)
-      // Grid + load: 32-bit low+high word, signed, ALWAYS plain watts (no scale).
-      grid: { addrs: [0x0271, 0x02b2], bits: 32, signed: true }, // + import / - export
-      load: { addrs: [0x028d, 0x0293], bits: 32, signed: true }, // house load
+      batt: { addr: 0x024e, bits: 16, signed: true, hvScale: true }, // W (house-balance battery term + calibration)
+      // Grid: External CT total = the connection point (+ import / - export).
+      grid: { addrs: [0x026b, 0x02c4], bits: 32, signed: true },
+      // Fallback grid: the config-dependent "Grid Power" alias (see above).
+      gridFallback: { addrs: [0x0271, 0x02b2], bits: 32, signed: true },
+      load: { addrs: [0x028d, 0x0293], bits: 32, signed: true }, // house load (inverter's own view)
       // PV1..PV4 power (BM3 uses 3, BM4 uses 4; PV4=0 on LV/BM3).
       pv: { addrs: [0x02a0, 0x02a1, 0x02a2, 0x02a3], bits: 16, signed: false, sum: true, hvScale: true },
     },
@@ -348,7 +364,11 @@ function decode(blocks, config) {
     if (kw !== undefined) reading.load_kw = kw;
   }
   if (f.grid) {
-    const kw = toKw(f.grid, config.invert_grid_sign);
+    // Prefer the connection-point register; fall back to the config-dependent
+    // alias when the read block does not cover the external pair (see the
+    // hybrid_3p map comment).
+    let kw = toKw(f.grid, config.invert_grid_sign);
+    if (kw === undefined && f.gridFallback) kw = toKw(f.gridFallback, config.invert_grid_sign);
     if (kw !== undefined) reading.power_kw = kw;
   }
   if (socPct !== undefined) reading.soc_pct = socPct;

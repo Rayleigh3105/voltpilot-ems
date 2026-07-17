@@ -28,8 +28,12 @@ func TestBatteryKwFromPowerBalance(t *testing.T) {
 	}
 }
 
-func TestMarshalOmitsMissingAndFoldsBattery(t *testing.T) {
+func TestMarshalOmitsMissingAndEmitsMeasuredBattery(t *testing.T) {
 	ts := time.UnixMilli(1_700_000_000_000)
+	// grid/load/pv all present but NO measured battery: since the 2026-07-17
+	// house-consumption standard the wire `batt` is the MEASURED register only
+	// - the balance derivation (here -2 - 1 + 3.14159) must NOT be emitted
+	// (honest gap; BatteryKw() stays available as an internal diagnostic).
 	raw, err := json.Marshal(Sample{Ts: ts, PvKw: f(3.14159), LoadKw: f(1), GridKw: f(-2)})
 	if err != nil {
 		t.Fatal(err)
@@ -47,9 +51,21 @@ func TestMarshalOmitsMissingAndFoldsBattery(t *testing.T) {
 	if _, ok := m["soc"]; ok {
 		t.Fatal("absent soc must be omitted, not zero")
 	}
-	// battery = grid - load + pv = -2 - 1 + 3.14159 = 0.14159 -> 0.142.
-	if m["batt"].(float64) != 0.142 {
-		t.Fatalf("batt: %v", m["batt"])
+	if _, ok := m["batt"]; ok {
+		t.Fatalf("derived battery must never be emitted; got batt=%v", m["batt"])
+	}
+
+	// With the measured register present, `batt` is exactly that value - even
+	// when it disagrees with the balance derivation (measured wins).
+	raw, err = json.Marshal(Sample{Ts: ts, PvKw: f(3), LoadKw: f(1), GridKw: f(-2), BattKw: f(-8.5004)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["batt"].(float64) != -8.5 { // rounded, and NOT the derived 0
+		t.Fatalf("batt: %v, want the measured -8.5", m["batt"])
 	}
 }
 

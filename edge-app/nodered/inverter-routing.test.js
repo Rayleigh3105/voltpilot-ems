@@ -94,10 +94,11 @@ test('route: solarman_v5 -> Deye reader with family register plan', () => {
   assert.strictEqual(r.connection.mb_slave_id, 1);
   assert.strictEqual(r.connection.power_scale, 1);
   // hybrid_3p reads the device-identity register 0x0000 (LV/HV scale class) plus
-  // the widened 103-register measurement block starting at 0x024c.
+  // the 121-register measurement block starting at 0x024c (wide enough for the
+  // External-CT grid pair 0x026B/0x02C4 - the connection point).
   assert.deepStrictEqual(r.reads, [
     { start: 0x0000, count: 0x0001 },
-    { start: 0x024c, count: 0x0067 },
+    { start: 0x024c, count: 0x0079 },
   ]);
 });
 

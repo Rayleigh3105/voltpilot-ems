@@ -67,6 +67,7 @@ type Agent struct {
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
+	lastDriftLog   time.Time // rate-limits the battery cross-check drift log
 
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
@@ -95,10 +96,10 @@ type Agent struct {
 	lastGridMix string
 
 	// Site power-balance settings (operator-declared topology facts, persisted
-	// in data-dir/balance.json): today the single "primary grid CT measures the
-	// whole site connection" toggle that lets the house-balance derivation run
-	// off the primary's own grid reading when no dedicated Netz meter exists.
-	// Guarded by srcMu (read on the telemetry hot path together with srcs).
+	// in data-dir/balance.json): today the single expert OPT-OUT from the
+	// default-on house-consumption standard ("primary grid CT does NOT sit at
+	// the site connection"). Guarded by srcMu (read on the telemetry hot path
+	// together with srcs).
 	balStore *sources.BalanceStore
 	bal      sources.BalanceSettings
 
@@ -282,11 +283,12 @@ func New(cfg config.Config) (*Agent, error) {
 		slog.Warn("stored measurement points unreadable; starting without", "err", err)
 	}
 	// Restore the site power-balance settings. A corrupt/missing file falls back
-	// to the safe defaults (toggle OFF = the existing estimate behavior).
+	// to the defaults (opt-out OFF = the house-consumption standard runs; a
+	// legacy opt-in balance.json migrates to the same, see BalanceStore.Load).
 	if cfg, ok, err := bs.Load(); err == nil && ok {
 		a.bal = cfg
-		if cfg.PrimaryGridIsSiteTotal {
-			slog.Info("primary grid CT declared site-total; house load derives from the power balance")
+		if cfg.PrimaryGridNotSiteTotal {
+			slog.Info("expert opt-out active: primary grid CT declared NOT at the site connection; house load stays on the raw-load fallback path")
 		}
 	} else if err != nil {
 		slog.Warn("stored balance settings unreadable; using defaults", "err", err)
@@ -776,96 +778,109 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		primary[k] = v
 	}
 	// The measured battery power stays OUT of the measurements map: it feeds
-	// only the house-load balance below, never the cloud buffer / history ring /
-	// state snapshot (the published contract keeps deriving battery from the
-	// power balance - which, with a balance-derived load, resolves to exactly
-	// this measured value).
+	// the house-load balance below and the LOCAL history ring's battery line
+	// (measured, never derived - the decree), but never the cloud buffer or a
+	// published measurement channel (the cloud contract keeps deriving battery
+	// from the power balance - which, with a balance-derived load, resolves to
+	// exactly this measured value).
 	battKw := m.BatteryPowerKw
 	if battKw != nil && (math.IsNaN(*battKw) || math.IsInf(*battKw, 0)) {
 		battKw = nil
 	}
-	// Multi-source aggregation (Phase 1): fold every FRESH additional Erzeuger
-	// source's PV into the composite site reading BEFORE the guards run (so the
-	// physical envelope, widened to Σ generation nameplate, sees the composite,
-	// and the despiker acts on the site total). This is where the "AC-coupled PV
-	// invisible -> garbage load" bug is fixed: the primary battery-hybrid
-	// misattributes the separate PV's production to load, so once that PV is
-	// measured explicitly we ADD it to site PV and REMOVE it from the primary's
-	// load reading. A stale/absent source contributes nothing (never a fabricated
-	// 0), so with zero sources this is a no-op and the single-source path stays
-	// byte-for-byte unchanged. See report §3.2 balance option (A) for the Erzeuger
-	// case; the exact load correction is install-specific (report Q1).
+	// Register-level cross-check (diagnostic ONLY, never displayed): the
+	// balance-derived battery from the primary's own raw registers
+	// (grid − load + pv) should agree with the hybrid's measured battery
+	// register. A persistent large drift is the signature of a wrong grid
+	// register - the captain's hybrid_3p read the config-dependent "Grid
+	// Power" alias (inverter-side −23,7) instead of the external CT (−54,2),
+	// so the derived battery read 30,5 kW against a measured 0. Rate-limited.
+	if battKw != nil {
+		pv, okP := primary["pv_power_kw"]
+		load, okL := primary["load_kw"]
+		grid, okG := primary["power_kw"]
+		if okP && okL && okG {
+			if drift := grid - load + pv - *battKw; drift > battDriftLogKw || drift < -battDriftLogKw {
+				a.mu.Lock()
+				quiet := time.Since(a.lastDriftLog) < balanceLogInterval
+				if !quiet {
+					a.lastDriftLog = time.Now()
+				}
+				a.mu.Unlock()
+				if !quiet {
+					slog.Debug("battery cross-check drift: primary's balance-derived battery deviates from the measured register (wrong grid register / sign?)",
+						"derived_kw", grid-load+pv, "measured_kw", *battKw)
+				}
+			}
+		}
+	}
+	// ---- ONE fold order (captain decree 2026-07-17): pv-sum → grid
+	// precedence → measured battery → house. -------------------------------
+	//
+	// Step 1, pv-sum: fold every FRESH additional Erzeuger source's PV into
+	// the composite site reading BEFORE the guards run (so the physical
+	// envelope, widened to Σ generation nameplate, sees the composite, and the
+	// despiker acts on the site total). A stale/absent source contributes
+	// nothing (never a fabricated 0), so with zero sources this is a no-op and
+	// the single-source path stays byte-for-byte unchanged.
 	extraPv, pvMix := a.aggregateSourcePv()
 	if extraPv > 0 {
 		base := measurements["pv_power_kw"] // 0 when the primary reports no PV
 		measurements["pv_power_kw"] = base + extraPv
-		if load, ok := measurements["load_kw"]; ok {
-			// Which way to correct depends on where the primary's load figure comes
-			// from - two real topologies exist:
-			//   (+) the primary misattributes the AC PV's production TO load
-			//       (load_reg = house + Σac, the original 46,7-kW bug) -> subtract;
-			//   (−) the primary's grid CT sits at the site coupling point, so its
-			//       internally-balanced load figure already NETS the AC PV OUT
-			//       (load_reg = pv_p + grid_site − batt = house − Σac) -> ADD.
-			// A load figure ≥ 0 is ambiguous between the two (only a Netz meter or
-			// the site-total toggle resolves it - the balance override below); the
-			// established subtraction stays. But a MEANINGFULLY NEGATIVE load figure
-			// falsifies (+) outright (house + Σac can never be negative) and proves
-			// (−): the derivable house is load + Σac. Before this, the captain's
-			// Deye (load −30,5 with 48,9 kW Fronius) had its true ~18,4 kW house
-			// clamped to a fabricated 0. The 1-kW deadband keeps plain measurement
-			// noise around zero on the established branch.
-			corrected := load - extraPv
-			if load < -negLoadProofKw {
-				corrected = load + extraPv
-			}
-			if corrected < 0 {
-				corrected = 0
-			}
-			measurements["load_kw"] = corrected
-		}
 	}
-	// Grid-authoritative override (Increment 1): a dedicated Netz meter at the
-	// point of common coupling measures site_grid directly, so its signed value
-	// (+import/-export) REPLACES the primary hybrid inverter's CT-derived
-	// power_kw. This makes the money channel (grid import/export drives earnings
-	// and the optimizer) install-independent instead of relying on the primary's
-	// CT. A stale/absent meter falls back to the primary CT (graceful
-	// degradation), so with zero Netz sources this is a no-op and every existing
-	// path stays byte-for-byte unchanged. Battery derives downstream from the
-	// now-correct grid (history.go), no change there.
+	// Step 2, grid precedence: the site grid value for the standard house
+	// balance. A FRESH dedicated Netz meter at the point of common coupling
+	// measures site_grid directly, so its signed value (+import/-export)
+	// REPLACES the primary inverter's CT-derived power_kw (the money channel
+	// stays install-independent). Without a meter, the primary's own grid
+	// reading IS the site grid BY DEFAULT - the standard: a single inverter
+	// with no sources trivially measures the connection point, and on the
+	// captain's multi-source site the hybrid's external CT sees the AC-coupled
+	// Erzeugers' feed-in too. The expert OPT-OUT (sources.BalanceSettings
+	// PrimaryGridNotSiteTotal, "Die Netzmessung des Wechselrichters sitzt
+	// NICHT am Hausanschluss") declares the genuinely different topology and
+	// withdraws the primary's reading from site-grid duty (the raw-load
+	// fallback path below applies then).
 	g, gridMix := a.authoritativeGrid()
 	if g != nil {
 		measurements["power_kw"] = *g
-		// House load from the true site power balance: with an authoritative grid
-		// measurement the Erzeuger load-subtraction above (which clamps to 0 and
-		// masked the captain's real consumption behind a large AC-coupled PV) is
-		// replaced by
-		//   house = pv_total + grid - battery      (battery: + charge/- discharge)
-		// i.e. everything generated/imported that did not go into the battery is
-		// being consumed. Meter-gated: this runs ONLY inside a fresh Netz reading;
-		// and it degrades honestly - a missing composite PV or an unknown battery
-		// power keeps the estimate above instead of fabricating a wrong house.
-		if house, ok := a.houseFromBalance(measurements, *g, battKw); ok {
-			measurements["load_kw"] = house
-		}
-	} else if a.primaryGridSiteTotal() {
-		// No (fresh) dedicated Netz meter, but the operator DECLARED that the
-		// primary inverter's own grid CT sits at the point of common coupling and
-		// measures the whole site's grid exchange - including any AC-coupled
-		// Erzeuger's feed-in (the captain's Deye: its CT "sees everything", so
-		// PV 35 + discharge 8.5 ≈ export 43.6 closes the balance). Then this very
-		// sample's power_kw IS the true site grid and the SAME balance applies,
-		// with no meter hardware needed. Explicitly opt-in (default OFF): on an
-		// install where the primary CT does NOT see the AC-coupled PV the balance
-		// would over-count, so the safe default keeps the estimate above. A fresh
-		// Netz meter always takes precedence (the branch order); the same honest
-		// degradation applies - missing grid/PV/battery keeps the estimate.
+	}
+	siteGrid := g
+	if siteGrid == nil && !a.primaryGridNotSiteTotal() {
 		if grid, ok := measurements["power_kw"]; ok {
-			if house, ok := a.houseFromBalance(measurements, grid, battKw); ok {
-				measurements["load_kw"] = house
-			}
+			grid := grid
+			siteGrid = &grid
 		}
+	}
+	// Steps 3+4, measured battery → house: with a site-authoritative grid the
+	// house consumption is THE standard
+	//
+	//	house = pv_total + grid - battery      (battery: + charge/- discharge)
+	//
+	// i.e. everything generated/imported that did not go into the battery is
+	// being consumed. The battery term is the hybrid's MEASURED register
+	// (battery_power_kw), never derived from the balance ("Register lesen …
+	// nicht berechnen!" - the decree). Honest degradation, per class:
+	//   - battery measured, or the primary is PROVABLY batteryless -> the
+	//     standard runs;
+	//   - a PROVABLE hybrid (FamilyHasBattery) whose standard inputs are
+	//     missing this sample (battery register unreadable, no PV) -> the
+	//     house is honestly NOT measurable: load_kw is dropped (chart gap),
+	//     never an estimate that silently pretends battery = 0;
+	//   - an unknown family (no selection, generic Modbus, Fronius Solar API
+	//     without a verified battery reading) -> the raw-load fallback path
+	//     (the pre-standard estimate), loud-but-rate-limited warned.
+	// Without any usable site grid (no meter + opt-out, or a sample without
+	// power_kw) the raw-load fallback path applies too.
+	if siteGrid != nil {
+		if house, ok := a.houseFromBalance(measurements, *siteGrid, battKw); ok {
+			measurements["load_kw"] = house
+		} else if a.primaryProvableBattery() {
+			delete(measurements, "load_kw")
+		} else {
+			a.fallbackLoad(measurements, extraPv)
+		}
+	} else {
+		a.fallbackLoad(measurements, extraPv)
 	}
 	// A changed source composition (added/removed source, fresh<->stale flip)
 	// resets the spike-gate baselines of the folded channels BEFORE the gates
@@ -967,7 +982,16 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// Feed the in-memory live-chart ring (local dashboard only). An absent
 	// measurement stays absent (nil) on the chart, never coerced to 0; a despiked
 	// one already carries its last-good value (hold-last), so the line is
-	// continuous.
+	// continuous. The battery line is the MEASURED register (or a physical 0 on
+	// a provably batteryless primary) - never the balance derivation; a hybrid
+	// whose register is unreadable this sample leaves an honest gap.
+	var histBatt *float64
+	if battKw != nil {
+		histBatt = battKw
+	} else if a.primaryBatteryless() {
+		zero := 0.0
+		histBatt = &zero
+	}
 	a.hist.Add(history.Sample{
 		Ts:          ts,
 		PvKw:        ptr("pv_power_kw"),
@@ -975,6 +999,7 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		GridKw:      ptr("power_kw"),
 		SocPct:      ptr("soc_pct"),
 		GridLimitKw: ptr("grid_limit_kw"),
+		BattKw:      histBatt,
 	})
 	a.State.Update(func(s *state.Snapshot) {
 		s.LastTelemetry = ts
@@ -1734,11 +1759,50 @@ func (a *Agent) noteSourceMix(pvMix, gridMix string) {
 		"pv_mix", pvMix, "grid_mix", gridMix, "channels", keys)
 }
 
+// fallbackLoad is the raw-load path - the ONLY surviving consumer of the
+// primary's own load register: without a usable site grid value (expert
+// opt-out with no meter, or a sample without power_kw), or when the standard's
+// inputs are honestly unavailable on a primary that merely MAY have a battery,
+// the primary's load reading is the best available estimate. With additional
+// Erzeuger sources it is corrected (the #155 netting) - which way depends on
+// where the primary's load figure comes from, two real topologies:
+//
+//	(+) the primary misattributes the AC PV's production TO load
+//	    (load_reg = house + Σac, the original 46,7-kW bug) -> subtract;
+//	(−) the primary's grid CT sits at the site coupling point, so its
+//	    internally-balanced load figure already NETS the AC PV OUT
+//	    (load_reg = pv_p + grid_site − batt = house − Σac) -> ADD.
+//
+// A load figure ≥ 0 is ambiguous between the two (only a Netz meter or the
+// standard balance resolves it); the established subtraction stays. But a
+// MEANINGFULLY NEGATIVE load figure falsifies (+) outright (house + Σac can
+// never be negative) and proves (−): the derivable house is load + Σac. The
+// 1-kW deadband keeps plain measurement noise around zero on the established
+// branch. Without sources the raw load passes through unchanged (the plain
+// single-inverter case, where the register IS the best local truth).
+func (a *Agent) fallbackLoad(measurements map[string]float64, extraPv float64) {
+	if extraPv <= 0 {
+		return
+	}
+	load, ok := measurements["load_kw"]
+	if !ok {
+		return
+	}
+	corrected := load - extraPv
+	if load < -negLoadProofKw {
+		corrected = load + extraPv
+	}
+	if corrected < 0 {
+		corrected = 0
+	}
+	measurements["load_kw"] = corrected
+}
+
 // houseFromBalance computes the TRUE house consumption from the site power
 // balance once a site-authoritative grid value exists - either a fresh Netz
-// (grid-meter) reading, or (opt-in, sources.BalanceSettings
-// PrimaryGridIsSiteTotal) the primary inverter's own grid CT declared to sit at
-// the point of common coupling:
+// (grid-meter) reading, or (the default-on standard, opt-out via
+// sources.BalanceSettings PrimaryGridNotSiteTotal) the primary inverter's own
+// grid CT at the point of common coupling:
 //
 //	house = pv_total + grid - battery
 //
@@ -1748,9 +1812,10 @@ func (a *Agent) noteSourceMix(pvMix, gridMix string) {
 // battery-hybrid primary PLUS a separate AC-coupled PV, NEITHER device measures
 // the house directly and the Erzeuger load-subtraction clamps to 0 behind a
 // large AC PV ("Hausverbrauch 0,0 kW" masking real consumption) - a grid value
-// that truly covers the whole site closes the balance. ok=false degrades to the
-// caller's existing estimate when a needed signal is honestly unavailable: no
-// composite PV in the sample, or an UNKNOWN battery power (battery power
+// that truly covers the whole site closes the balance. ok=false leaves the
+// house to the caller's honesty policy (dropped for a provable hybrid,
+// raw-load fallback otherwise) when a needed signal is honestly unavailable:
+// no composite PV in the sample, or an UNKNOWN battery power (battery power
 // missing while the primary is not provably batteryless - only
 // string/micro/SunSpec-live families count battery as a physical 0). Small
 // negative results are measurement noise around a balanced node and clamp to 0;
@@ -1796,6 +1861,12 @@ func (a *Agent) houseFromBalance(measurements map[string]float64, grid float64, 
 // balanceLogInterval rate-limits the house-balance fallback warning.
 const balanceLogInterval = 5 * time.Minute
 
+// battDriftLogKw: the tolerance of the battery cross-check diagnostic - a
+// primary whose balance-derived battery deviates from the measured register by
+// more than this is flagged (rate-limited debug). Generous enough for register
+// rounding + phase-timing skew between the read blocks.
+const battDriftLogKw = 2.0
+
 // negLoadProofKw: a primary load figure below -this (with Erzeuger PV present)
 // PROVES the primary's load figure nets the AC PV out (see the fold's topology
 // comment); mere noise around zero stays on the established subtraction branch.
@@ -1810,14 +1881,25 @@ func (a *Agent) primaryBatteryless() bool {
 	return a.inv != nil && inverter.FamilyBatteryless(a.inv.Family)
 }
 
-// primaryGridSiteTotal reports the operator-declared topology fact that the
-// primary inverter's grid CT measures the whole site connection (PCC), so its
-// power_kw may serve as the site grid in the house balance when no dedicated
-// Netz meter is authoritative. Default false = the existing estimate.
-func (a *Agent) primaryGridSiteTotal() bool {
+// primaryProvableBattery reports whether the configured primary inverter
+// PROVABLY has a battery (a hybrid register-map family). For such a device the
+// battery power is a register to READ; when the sample does not carry it, the
+// house is honestly not measurable - never estimated (see the fold).
+func (a *Agent) primaryProvableBattery() bool {
+	a.invMu.Lock()
+	defer a.invMu.Unlock()
+	return a.inv != nil && inverter.FamilyHasBattery(a.inv.Family)
+}
+
+// primaryGridNotSiteTotal reports the operator-declared EXPERT OPT-OUT from
+// the house-consumption standard: the primary inverter's grid CT does NOT sit
+// at the site connection point, so its power_kw must not serve as the site
+// grid. Default false = the standard runs off the primary's grid reading
+// whenever no dedicated Netz meter is authoritative.
+func (a *Agent) primaryGridNotSiteTotal() bool {
 	a.srcMu.Lock()
 	defer a.srcMu.Unlock()
-	return a.bal.PrimaryGridIsSiteTotal
+	return a.bal.PrimaryGridNotSiteTotal
 }
 
 // GetBalance returns the site power-balance settings (web.SourcesController).
@@ -1836,7 +1918,7 @@ func (a *Agent) SetBalance(cfg sources.BalanceSettings) (sources.BalanceSettings
 	a.srcMu.Lock()
 	a.bal = cfg
 	a.srcMu.Unlock()
-	slog.Info("balance settings updated", "primary_grid_is_site_total", cfg.PrimaryGridIsSiteTotal)
+	slog.Info("balance settings updated", "primary_grid_not_site_total", cfg.PrimaryGridNotSiteTotal)
 	return cfg, nil
 }
 

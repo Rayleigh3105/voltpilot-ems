@@ -87,46 +87,51 @@ into the store node, bypassing the palette parse. Rules now baked in:
   machine temp-rewrite it to registry.npmjs.org, `npm ci`, then
   `git checkout package-lock.json`.
 
-## House load from the site power balance (Netz-Zähler) + battery-power sourcing
+## House-consumption STANDARD (captain decree 2026-07-17) + battery-power sourcing
 
-With a battery-hybrid primary PLUS a separate AC-coupled PV, NEITHER device
-measures the true house load; the Erzeuger estimate `max(0, load − Σpv)` clamps
-to 0 behind a large AC PV. Once a FRESH Netz (grid-meter) source is
-authoritative, `agent.go onLocalTelemetry` derives
-`house = pv_total + grid − battery` (grid +import/−export, battery
-+charge/−discharge) and overwrites `load_kw` BEFORE the guards. **The same
-balance also runs WITHOUT a meter** via the opt-in
-`primary_grid_is_site_total` toggle (`sources.BalanceSettings`, persisted in
-`data_dir/balance.json`; `:8484` "Meine Anlage" → Netz-Zähler group; write
-`POST /api/balance`, state echoed in `GET /api/sources`): the operator
-declares the PRIMARY inverter's grid CT sits at the PCC and already measures
-the whole site exchange incl. AC-coupled Erzeugers' feed-in (the captain's
-Deye: PV 35 + discharge 8.5 ≈ export 43.6 only closes if so), so the sample's
-own `power_kw` serves as the site grid. Default OFF = the estimate
-byte-for-byte (a primary CT that does NOT see the AC PV would over-count —
-topology fact, verify on device); a FRESH Netz meter always takes precedence,
-a stale one falls back to the toggle path before the estimate. Rules:
+`Haus = Erzeugung − Einspeisung − Batterie` is THE rule for every vendor:
+`agent.go onLocalTelemetry` folds in ONE order — pv-sum (Σ fresh Erzeuger) →
+grid precedence (fresh Netz-Zähler > primary inverter grid reading) → measured
+battery → `house = pv_total + grid − battery` overwrites `load_kw` BEFORE the
+gates. It is **ON BY DEFAULT** (a single inverter trivially measures the
+connection point; the captain's hybrid_3p External CT sees AC-coupled
+Erzeugers too); `sources.BalanceSettings.PrimaryGridNotSiteTotal`
+(`data_dir/balance.json`, `POST /api/balance`, `:8484` Netz-Zähler group) is
+the expert OPT-OUT ("CT sitzt NICHT am Hausanschluss") — a legacy opt-in-era
+balance.json migrates to standard-ON regardless of its value
+(`BalanceStore.Load`). Rules:
 
-- **Gated + never fabricate:** no/stale Netz meter AND toggle off, missing
-  composite PV, missing primary `power_kw` (toggle path),
-  or UNKNOWN battery power → the old estimate, byte-for-byte. Battery power is
-  known when the sample carries `battery_power_kw`, or 0 when the primary
-  family is PROVABLY batteryless (`inverter.FamilyBatteryless`: string / micro /
-  sunspec_live - deliberately NOT the complement of `FamilyHasBattery`; generic
-  Modbus + Fronius Solar API MAY carry a battery and fall back).
-- **`battery_power_kw` is a LOCAL-BUS-ONLY optional field on `edge/telemetry`**
-  (+charge/−discharge, matching `edge/setpoint`): the flow decode nodes
-  (Deye `auto-deye-decode`, generic Modbus, sim tab) forward the already-decoded
-  calibration `batt_kw`; `vp-telemetrie.shape()` whitelists it. The Go agent
-  keeps it OUT of the `measurements` map, so it never reaches the cloud buffer /
-  history ring / snapshot - the cloud contract still derives battery from the
-  balance (which, with the balance-derived load, resolves to the measured
-  value). The Fronius branch deliberately does NOT forward `P_Akku` (sign
-  verify-on-device) → falls back to the estimate there.
-- Tests: core `agent/house_balance_test.go` (the captain's topology
-  numerically, all sign cases, every fallback), `flows-sync.test.js` pins the
-  flow↔module battery forwarding, vp-palette `nodes_spec.js` the shape
-  whitelist. Docs: `nodered/CUSTOM-INVERTER.md` §1.3 (field table).
+- **Battery is READ, never computed** ("Register lesen … nicht berechnen!"):
+  the balance term and the `:8484` battery line (history ring `Sample.BattKw`,
+  wire key `batt`) are the measured `battery_power_kw` — or a physical 0 for a
+  provably batteryless family (`inverter.FamilyBatteryless`). The balance
+  derivation `BatteryKw()` survives ONLY as a drift-logged internal
+  cross-check (`battDriftLogKw`; a persistent drift flags a wrong grid
+  register — exactly how the captain's hybrid_3p alias bug showed).
+- **Honesty per class** when the battery reading is missing: a PROVABLE hybrid
+  (`FamilyHasBattery`) drops `load_kw` outright (chart gap — never pretend
+  battery=0); an unknown family (no selection, generic Modbus, Fronius Solar
+  API — P_Akku sign still verify-on-device, battery not forwarded) falls back
+  to the raw-load path. The raw-load path (primary load register, with the
+  #155 netting correction when Erzeuger exist: `load < −1 kW` proves
+  netting → `load + Σac`, else `max(0, load − Σpv)`) survives ONLY without a
+  usable site grid or for those unknown-family primaries.
+- **`battery_power_kw` stays a LOCAL-BUS-ONLY field on `edge/telemetry`**
+  (+charge/−discharge; flow decodes forward it, `vp-telemetrie.shape()`
+  whitelists it): never a cloud measurement channel — the cloud keeps deriving
+  battery from the balance, which with the standard house resolves to the
+  measured value. Surfacing the register cloud-side = additive-field
+  follow-up.
+- **hybrid_3p grid = the External CT `0x026B`/`0x02C4`** (connection point;
+  `0x0271` "Grid Power" is a config-dependent alias kept only as decode
+  fallback) — rationale + captain's live falsification in
+  `nodered/DEYE.md` §hybrid_3p.
+- Tests: core `agent/house_balance_test.go` (the captain's live site as the
+  canonical fixture: pv 23,7+22+26,9 = 72,6, grid −54,2, batt 0 → house 18,4;
+  meter precedence, opt-out, per-class honesty, migration),
+  `internal/history`, `deye/deye-decode.test.js` + `flows-sync.test.js`
+  (External-CT decode + alias fallback). Docs: `nodered/CUSTOM-INVERTER.md`
+  §1.3 (field table).
 
 ## Multi-source fold: composition changes are EXPLAINED steps (3rd real device bug 2026-07-17)
 
@@ -149,7 +154,8 @@ level. Rules now baked into `core/internal/agent/agent.go` (pinned by
 - **A meaningfully negative primary load (< −1 kW) with Erzeuger PV proves the
   netting topology** (`load_reg = house − Σac`, the site-total-CT algebra) →
   house = load + Σac; the established `max(0, load − Σpv)` branch stays for
-  load ≥ 0 (ambiguous - only a Netz meter / the site-total toggle resolves it).
+  load ≥ 0 (ambiguous). Both live ONLY on the raw-load fallback path since the
+  2026-07-17 standard (see the house-consumption-standard section above).
 - **A kWp-less Erzeuger disables the PV envelope bound** (no honest bound
   exists; a stated one would clip real power). Enter per-inverter kWp.
 - The multi-inverter unit-ID auto-detection (`/api/probe-units` →

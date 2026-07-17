@@ -24,12 +24,24 @@ type Sample struct {
 	GridKw      *float64 // power_kw at the grid coupling point: + import / - export
 	SocPct      *float64 // soc_pct (hybrids only)
 	GridLimitKw *float64 // observed §14a envelope, if reported
+	// BattKw is the MEASURED battery power (+ charge / - discharge) read from
+	// the hybrid inverter's register, or a physical 0 for a provably
+	// batteryless primary. It is what the dashboard's battery line renders
+	// (captain decree 2026-07-17: battery is read, never computed). nil = the
+	// register was not readable this sample -> honest chart gap.
+	BattKw *float64
 }
 
-// BatteryKw derives the actual battery power from the power balance
+// BatteryKw derives the battery power from the power balance
 // (grid = load - pv + battery), so battery = grid - load + pv. Positive means
 // charging (drawing power in), negative means discharging. It is only defined
 // when grid, load and pv are all present. The second return is false otherwise.
+//
+// DIAGNOSTIC ONLY: the displayed battery line is the measured BattKw - this
+// derivation exists as an internal cross-check (the agent logs the drift
+// between the two; a persistent deviation flags a wrong grid register) and is
+// deliberately NOT rendered anywhere since the 2026-07-17 house-consumption
+// standard.
 func (s Sample) BatteryKw() (float64, bool) {
 	if s.GridKw == nil || s.LoadKw == nil || s.PvKw == nil {
 		return 0, false
@@ -38,8 +50,9 @@ func (s Sample) BatteryKw() (float64, bool) {
 }
 
 // MarshalJSON renders the compact wire shape the frontend charts consume:
-// millisecond epoch plus short keys, with the derived battery power folded in.
-// Absent measurements are omitted (JSON null on the wire), never coerced to 0.
+// millisecond epoch plus short keys. `batt` is the MEASURED battery power
+// (BattKw) - the balance derivation is never emitted (diagnostic only). Absent
+// measurements are omitted (JSON null on the wire), never coerced to 0.
 func (s Sample) MarshalJSON() ([]byte, error) {
 	m := map[string]any{"t": s.Ts.UnixMilli()}
 	if s.PvKw != nil {
@@ -57,8 +70,8 @@ func (s Sample) MarshalJSON() ([]byte, error) {
 	if s.GridLimitKw != nil {
 		m["limit"] = round3(*s.GridLimitKw)
 	}
-	if b, ok := s.BatteryKw(); ok {
-		m["batt"] = round3(b)
+	if s.BattKw != nil {
+		m["batt"] = round3(*s.BattKw)
 	}
 	return json.Marshal(m)
 }

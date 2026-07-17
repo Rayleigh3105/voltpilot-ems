@@ -233,11 +233,13 @@ Deckt zwei Baureihen mit **derselben** high-map ab:
 | Geräte-Kennung (LV/HV) | `0x0000` (0) | 16-Bit | - | ha-solarman `deye_p3.yaml` ("Device"), `const.py` `AUTODETECTION_DEYE` |
 | `soc_pct` | `0x024C` (588) | 16-Bit (%) | 1 | ha-solarman `deye_p3.yaml` |
 | `pv_power_kw` | `0x02A0`..`0x02A3` (672-675, **Summe PV1..PV4**) | 16-Bit je | **`[1,10]` LV/HV** | ha-solarman + Deye-Modbus-Manual |
-| `power_kw` (Netz) | `0x0271` (625, low) + `0x02B2` (690, high) | **32-Bit**, vorzeichenbehaftet | 1 (immer W) | ha-solarman ("Grid Power", rule 4) |
+| `power_kw` (Netz) | `0x026B` (619, low) + `0x02C4` (708, high) - **externer CT am Hausanschluss**; Rückfall `0x0271`/`0x02B2` (625/690) | **32-Bit**, vorzeichenbehaftet | 1 (immer W) | ha-solarman ("External Power" / "Grid Power", rule 4) |
 | `load_kw` | `0x028D` (653, low) + `0x0293` (659, high) | **32-Bit**, vorzeichenbehaftet | 1 (immer W) | ha-solarman ("Load Consumption Power", rule 4) |
 | `batt` (nur Kalibrierung) | `0x024E` (590) | 16-Bit, vorzeichenbehaftet | **`[1,10]` LV/HV** | ha-solarman ("Battery Power") |
 
-Zwei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000) und `-xmb 024C0067` (0x024C..0x02B2, 103 Register - deckt SoC bis PV4 **und** die 32-Bit-Netz/Last-Highwords ab, weiter unter dem 125-Register-Limit).
+Zwei Leseblöcke: `-xmb 00000001` (Geräte-Kennung 0x0000) und `-xmb 024C0079` (0x024C..0x02C4, 121 Register - deckt SoC bis PV4, die 32-Bit-Last-Highwords **und** das externe CT-Paar `0x026B`/`0x02C4` ab, weiter unter dem 125-Register-Limit).
+
+> **Warum der externe CT und nicht "Grid Power" (`0x0271`)?** `deye_p3.yaml` führt DREI Netz-Messungen: **Internal Power** `0x025F`/`0x02BF` (wechselrichterseitig), **External Power** `0x026B`/`0x02C4` (der externe CT am Netzverknüpfungspunkt) und **Grid Power** `0x0271`/`0x02B2` unter dem Kommentar *"The following three (four) registers change according to the built-in and external settings"* - ein **konfigurationsabhängiger Alias**. Live am Captain-`SUN-30K-SG01HP3` falsifiziert (2026-07-17): der Alias las **−23,7 kW** (exakt die eigene Deye-PV = der wechselrichterseitige Wert), während der wahre Export am Hausanschluss **54,2 kW** betrug (ganze Anlage inkl. ~49 kW AC-gekoppelter Fronius; das eigene Last-Register −30,5 = 23,7 − 54,2 beweist, dass der Deye intern selbst den externen CT nutzt). Der Decoder liest daher den externen CT als `power_kw`; der Alias bleibt **Rückfall** für Lesungen, die das externe Highword nicht abdecken (alter, schmalerer Block). **VERIFY-on-device bleibt:** eine Installation **ohne** externe CT-Klemmen liest hier 0 - Import/Export bei bekanntem Zustand prüfen (Vorzeichen-Kalibrierung wie gehabt).
 
 Die **PV-Summe umfasst alle vier MPPT-Register** (BM3 nutzt 3, BM4 nutzt 4). Ein nicht bestücktes PV3/PV4 liest `0` und stört die Summe nicht.
 

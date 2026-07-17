@@ -176,12 +176,13 @@
         <div class="balance-toggle" id="primGridBlock">
           <label class="checkbox-row" for="primGridToggle">
             <input type="checkbox" id="primGridToggle">
-            <span>Der Primär-Wechselrichter misst den gesamten Netzübergang (inkl. zusätzlicher Erzeuger)</span>
+            <span>Die Netzmessung des Wechselrichters sitzt NICHT am Hausanschluss (Experten-Ausnahme)</span>
           </label>
-          <p class="field-help" id="primGridHelp">Nur aktivieren, wenn der Messwandler (CT) des Wechselrichters am
-            Hausanschluss sitzt und dadurch auch die Einspeisung zusätzlicher Erzeuger erfasst – dann wird der echte
-            Hausverbrauch ohne eigenen Netz-Zähler aus der Leistungsbilanz berechnet. Bitte am Gerät prüfen
-            (Vorzeichen/Einbauort); ein eigener Netz-Zähler ist die sichere Alternative und hat immer Vorrang.</p>
+          <p class="field-help" id="primGridHelp">Standardmäßig wird der Hausverbrauch aus der Leistungsbilanz
+            berechnet: Erzeugung + Netz − Batterie. Die Netzmessung des Wechselrichters gilt dabei als Messung am
+            Hausanschluss (inkl. der Einspeisung zusätzlicher Erzeuger). Nur aktivieren, wenn der Messwandler (CT)
+            des Wechselrichters bei Ihnen NICHT am Hausanschluss sitzt – dann wird wieder die Last-Anzeige des
+            Wechselrichters verwendet. Ein eigener Netz-Zähler ist die sichere Alternative und hat immer Vorrang.</p>
         </div>
       </div>
 

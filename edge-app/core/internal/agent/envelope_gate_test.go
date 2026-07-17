@@ -44,6 +44,12 @@ func derivedBattery(grid, load, pv float64) float64 { return grid - load + pv }
 func TestAgentEnvelopeHoldsCaptainsGridSpikeAtAnyPreset(t *testing.T) {
 	a := newGateTestAgent(t)
 	select12kHybrid(t, a)
+	// The samples below carry no battery_power_kw, so under the default-on
+	// house-consumption standard a hybrid would drop its load channel (honest
+	// absence) and the derived-battery bound could not compute. This test
+	// exercises exactly the RAW-LOAD path's protection (the derived battery is
+	// display-era legacy kept as a diagnostic), so declare the expert opt-out.
+	optOut(t, a)
 	// Use "Aus" so the rate gate is fully OFF: whatever catches the spike is the
 	// physical envelope alone, proving it is preset-independent.
 	if _, err := a.SetDespike(guards.DespikeSettings{Preset: guards.PresetOff}); err != nil {

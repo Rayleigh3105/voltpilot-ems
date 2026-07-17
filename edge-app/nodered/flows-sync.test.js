@@ -175,6 +175,34 @@ test('flow Deye decoder matches deye-decode.decode() for a real hybrid_3p read',
   assert.strictEqual(flowReading.soc_pct, 57);
 });
 
+// The connection-point grid register (captain's live falsification 2026-07-17):
+// the inline copy must read the External CT total 0x026B/0x02C4 as power_kw -
+// never the config-dependent "Grid Power" alias 0x0271 (which read −23,7 =
+// exactly the Deye's own PV while the true site export was 54,2 kW) - and must
+// fall back to the alias when the read block does not cover the external pair.
+test('flow Deye decoder reads the External CT grid, alias only as fallback, like the module', () => {
+  const cfg = { family: 'hybrid_3p', power_scale: 1 };
+  const wide = new Array(0x79).fill(0);
+  const put = (addr, val) => { wide[addr - 0x024c] = val & 0xffff; };
+  put(0x024c, 53); // SoC
+  put(0x026b, -54200); put(0x02c4, 0xffff); // External CT: −54,2 kW site export
+  put(0x0271, -23700); put(0x02b2, 0xffff); // the alias: inverter-side −23,7
+  put(0x028d, -30500); put(0x0293, 0xffff); // the Deye's own netted load −30,5
+  put(0x02a0, 23700); // own PV 23,7 kW
+  const blocks = [{ start: 0x024c, regs: wide }];
+  const { ret } = runDeyeDecode(cfg, blocks);
+  const flowReading = ret[0].payload;
+  assert.strictEqual(flowReading.power_kw, -54.2, 'connection point, never the alias');
+  const expected = deyeDecode.decode(blocks, cfg);
+  assert.strictEqual(expected.reading.power_kw, -54.2, 'module agrees');
+
+  // Old narrower block (0x024C..0x02B2): external high word missing -> alias.
+  const narrow = [{ start: 0x024c, regs: wide.slice(0, 0x67) }];
+  const { ret: retNarrow } = runDeyeDecode(cfg, narrow);
+  assert.strictEqual(retNarrow[0].payload.power_kw, -23.7, 'flow falls back to the alias');
+  assert.strictEqual(deyeDecode.decode(narrow, cfg).reading.power_kw, -23.7, 'module agrees on the fallback');
+});
+
 test('flow Deye decoder DROPS an all-zero (unanswered) hybrid_3p read, like the module', () => {
   const cfg = { family: 'hybrid_3p' };
   const blocks = [{ start: 0x024c, regs: new Array(0x58).fill(0) }];

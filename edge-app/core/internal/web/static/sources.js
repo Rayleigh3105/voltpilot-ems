@@ -121,26 +121,29 @@
     renderBalance();
   }
 
-  /* ---- "Primär misst den gesamten Netzübergang" toggle (Netz group) ----
-     The meter-less alternative: when the primary inverter's CT sits at the
-     point of common coupling (and therefore already measures additional
-     Erzeugers' feed-in), the core derives the true house consumption from the
-     power balance using the primary's own grid reading. Persisted on the edge
-     (POST /api/balance); a configured Netz-Zähler always takes precedence. */
+  /* ---- expert OPT-OUT from the house-consumption standard (Netz group) ----
+     The standard (default ON, captain decree 2026-07-17): house = pv_total +
+     grid − battery, with the primary inverter's own grid reading serving as
+     the site grid when no dedicated Netz-Zähler is configured. The checkbox is
+     the expert opt-out for the genuinely different topology where the
+     primary's CT does NOT sit at the point of common coupling. Persisted on
+     the edge (POST /api/balance); a configured Netz-Zähler always takes
+     precedence over both. */
 
   var BALANCE_HELP =
-    "Nur aktivieren, wenn der Messwandler (CT) des Wechselrichters am Hausanschluss sitzt und dadurch auch die " +
-    "Einspeisung zusätzlicher Erzeuger erfasst – dann wird der echte Hausverbrauch ohne eigenen Netz-Zähler aus der " +
-    "Leistungsbilanz berechnet. Bitte am Gerät prüfen (Vorzeichen/Einbauort); ein eigener Netz-Zähler ist die " +
+    "Standardmäßig wird der Hausverbrauch aus der Leistungsbilanz berechnet: Erzeugung + Netz − Batterie. Die " +
+    "Netzmessung des Wechselrichters gilt dabei als Messung am Hausanschluss (inkl. der Einspeisung zusätzlicher " +
+    "Erzeuger). Nur aktivieren, wenn der Messwandler (CT) des Wechselrichters bei Ihnen NICHT am Hausanschluss " +
+    "sitzt – dann wird wieder die Last-Anzeige des Wechselrichters verwendet. Ein eigener Netz-Zähler ist die " +
     "sichere Alternative und hat immer Vorrang.";
 
-  var balance = { primary_grid_is_site_total: false };
+  var balance = { primary_grid_not_site_total: false };
 
   function renderBalance() {
     // A save is in flight (toggle disabled): don't let a periodic refresh
     // visually flip the checkbox back; the save response re-renders.
     if ($("primGridToggle").disabled) return;
-    $("primGridToggle").checked = !!balance.primary_grid_is_site_total;
+    $("primGridToggle").checked = !!balance.primary_grid_not_site_total;
     $("primGridHelp").textContent = hasNetz
       ? "Ihr Netz-Zähler hat Vorrang – diese Einstellung wirkt nur, solange kein aktueller Zähler-Messwert vorliegt. " + BALANCE_HELP
       : BALANCE_HELP;
@@ -148,7 +151,7 @@
 
   function saveBalance() {
     var toggle = $("primGridToggle");
-    var next = { primary_grid_is_site_total: toggle.checked };
+    var next = { primary_grid_not_site_total: toggle.checked };
     toggle.disabled = true;
     fetch("/api/balance", {
       method: "POST",
