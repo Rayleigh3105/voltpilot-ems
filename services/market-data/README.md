@@ -28,6 +28,25 @@ that is the whole point of the port below (architecture section 13).
 > In compose it runs as the `market-data` service in the `feeds` profile
 > (`docker compose --profile feeds up -d --build market-data`).
 
+> **Coverage-aware publication retry (`refresh.py`).** EPEX publishes tomorrow's
+> prices ~12:45 market time (Europe/Berlin); a fixed 6-h cadence with an unlucky
+> phase (refresh 12:50 -> next 18:50) missed that by hours, and every 15-min
+> optimizer replan in between truncated its horizon at today's midnight (the
+> captain's Fahrplan ended at 24:00). So `serve` is now **coverage-aware**: when
+> TOMORROW's Berlin delivery day is not fully covered for the served zone
+> (count/period check over the fetched series - the resilient source serves the
+> DB-primed last-good cache, so coverage survives restarts/outages) and local
+> time is past `MARKET_DATA_PUBLICATION_HOUR` (decimal hours, default `12.75` =
+> 12:45), it polls every `MARKET_DATA_FAST_REFRESH_SECONDS` (default `900` =
+> 15 min) until coverage lands, then falls back to the baseline cadence. The
+> fast polling is **bounded at local midnight** (one loud WARN if tomorrow never
+> published, never an all-night hammer), and an uncovered pre-threshold cycle
+> caps its sleep at the threshold so the unlucky phase cannot re-appear one
+> baseline period later. Enter/land/expire are each logged once
+> (`refresh.fast_poll_start` / `refresh.coverage_landed` with the slot count /
+> `refresh.fast_poll_expired`). The optimizer needs no change - it replans every
+> 15 min and extends automatically once prices exist.
+
 > **Monatsmarktwert Solar (netztransparenz.de, also KEYLESS).** The dynamic
 > EEG Marktprämie needs the monthly market value: `netztransparenz.py`
 > implements `MarketValueSource` (`market_value.py`) against the JSON endpoint
