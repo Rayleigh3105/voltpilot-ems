@@ -448,6 +448,10 @@ services:
       MARKET_DATA_SOURCE: ${MARKET_DATA_SOURCE:-energy-charts}
       MARKET_DATA_ZONE: ${MARKET_DATA_ZONE:-DE-LU}
       MARKET_DATA_REFRESH_SECONDS: ${MARKET_DATA_REFRESH_SECONDS:-21600}
+      # Coverage-aware retry: past ~12:45 Berlin, poll every 15 min until
+      # tomorrow's prices land (bounded at midnight), then back to baseline.
+      MARKET_DATA_FAST_REFRESH_SECONDS: ${MARKET_DATA_FAST_REFRESH_SECONDS:-900}
+      MARKET_DATA_PUBLICATION_HOUR: ${MARKET_DATA_PUBLICATION_HOUR:-12.75}
 
   # Weather forecast (hourly, coming days) from Open-Meteo (EU-hosted, no API
   # key). Reads sites' lat/lon, fetches per site, upserts into weather_forecast.

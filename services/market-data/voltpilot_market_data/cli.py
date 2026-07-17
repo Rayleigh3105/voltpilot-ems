@@ -44,9 +44,17 @@ from voltpilot_market_data.persistence import (
     DayAheadPriceRepository,
     TimescaleDayAheadPriceRepository,
 )
+from voltpilot_market_data.refresh import (
+    CoverageAwareScheduler,
+    RefreshPolicy,
+    covered_slot_count,
+    day_fully_covered,
+)
 from voltpilot_market_data.resilience import ResilientPriceSource
 from voltpilot_market_data.service import (
+    FetchResult,
     backfill_range,
+    delivery_day_window,
     fetch_and_store,
     next_delivery_day,
 )
@@ -82,8 +90,12 @@ def _build_source(env: dict[str, str], source_name: str) -> ResilientPriceSource
     return ResilientPriceSource(delegate=delegate)
 
 
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _today_utc() -> date:
-    return datetime.now(timezone.utc).date()
+    return _now_utc().date()
 
 
 def _add_common_source_args(sub: argparse.ArgumentParser) -> None:
@@ -229,8 +241,7 @@ def _refresh_market_values_once(env: dict[str, str], persist: bool) -> str:
     )
 
 
-def _fetch_one(source, zone: str, day: date, repository) -> str:
-    result = fetch_and_store(source, zone, day, repository)
+def _describe_fetch(zone: str, day: date, result: FetchResult) -> str:
     prices = result.series.prices()
     return (
         f"voltpilot-market-data: {zone} {day.isoformat()} "
@@ -238,6 +249,10 @@ def _fetch_one(source, zone: str, day: date, repository) -> str:
         f"min={min(prices):.2f} max={max(prices):.2f} EUR/MWh, "
         f"rows_written={result.rows_written}"
     )
+
+
+def _fetch_one(source, zone: str, day: date, repository) -> str:
+    return _describe_fetch(zone, day, fetch_and_store(source, zone, day, repository))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -283,22 +298,31 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         source = _build_source(env, args.source)
         repository = _repository_for(env, args.persist)
+        policy = RefreshPolicy.from_env(env, baseline_seconds=args.interval_seconds)
+        scheduler = CoverageAwareScheduler(policy=policy, zone=args.zone)
         logging.getLogger("voltpilot.market_data").info(
             "serve.start",
             extra={"context": {
                 "zone": args.zone,
                 "source": args.source,
                 "interval_seconds": args.interval_seconds,
+                "fast_seconds": policy.fast_seconds,
+                "publication_hour": policy.publication_hour,
             }},
         )
         cycle = 0
         while True:
             today = _today_utc()
+            tomorrow = today + timedelta(days=1)
             # Refresh both today (already published) and tomorrow (published
             # ~13:00) so the portal always has a full today+tomorrow curve.
-            for day in (today, today + timedelta(days=1)):
+            tomorrow_series = None
+            for day in (today, tomorrow):
                 try:
-                    print(_fetch_one(source, args.zone, day, repository))
+                    result = fetch_and_store(source, args.zone, day, repository)
+                    print(_describe_fetch(args.zone, day, result))
+                    if day == tomorrow:
+                        tomorrow_series = result.series
                 except Exception as exc:  # keep the loop alive across a bad day
                     logging.getLogger("voltpilot.market_data").warning(
                         "serve.fetch_failed",
@@ -319,7 +343,18 @@ def main(argv: list[str] | None = None) -> int:
             cycle += 1
             if args.max_cycles and cycle >= args.max_cycles:
                 return 0
-            time.sleep(args.interval_seconds)
+            # Coverage-aware cadence: fast-poll after the ~12:45 publication
+            # threshold until tomorrow's prices land (bounded at midnight),
+            # baseline otherwise. The fetched series is the coverage source -
+            # the resilient wrapper serves the DB-primed last-good cache on
+            # upstream failure, so a covered day stays covered.
+            window_start, window_end = delivery_day_window(tomorrow)
+            delay = scheduler.next_delay_seconds(
+                now=_now_utc(),
+                covered=day_fully_covered(tomorrow_series, window_start, window_end),
+                slots=covered_slot_count(tomorrow_series, window_start, window_end),
+            )
+            time.sleep(delay)
 
     return 2
 
