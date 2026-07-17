@@ -25,6 +25,7 @@ import {
   modeBadge,
   notableSlots,
   objectiveTotals,
+  runDateLabel,
   runLabel,
   slotTimeLabel,
   slotWaterfall,
@@ -49,6 +50,7 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
   const [siteId, setSiteId] = useState<string | null>(null);
 
   const [runAt, setRunAt] = useState<string | null>(null); // null = latest
+  const [runDate, setRunDate] = useState<string | null>(null); // Berlin day of the run list
   const [diag, setDiag] = useState<OptimizerDiagnostics | null>(null);
   const [diagState, setDiagState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [diagError, setDiagError] = useState<string>('');
@@ -83,15 +85,16 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
   }, [tenantId]);
 
   const loadDiagnostics = useCallback(
-    (gen: string | null) => {
+    (gen: string | null, date: string | null = null) => {
       if (!tenantId || !siteId) return;
       setDiagState('loading');
       setDiagError('');
       optimizerApi
-        .diagnostics(tenantId, siteId, gen)
+        .diagnostics(tenantId, siteId, gen, date)
         .then((d) => {
           setDiag(d);
           setRunAt(d.generatedAt);
+          setRunDate(d.availableRunsDate);
           setSelectedSlot(defaultSlotIndex(d.slots));
           setDiagState('idle');
         })
@@ -182,22 +185,43 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
           </select>
         </div>
 
-        {diag && diag.availableRuns.length > 0 && (
-          <div className="vp-optim-picker">
-            <label htmlFor="optim-run">Lauf</label>
-            <select
-              id="optim-run"
-              className="vp-select"
-              value={runAt ?? ''}
-              onChange={(e) => loadDiagnostics(e.target.value || null)}
-            >
-              {diag.availableRuns.map((r) => (
-                <option key={r} value={r}>
-                  {runLabel(r)}
-                </option>
-              ))}
-            </select>
-          </div>
+        {diag && diag.lastRunDate != null && (
+          <>
+            <div className="vp-optim-picker">
+              <label htmlFor="optim-run-date">Tag</label>
+              <input
+                id="optim-run-date"
+                type="date"
+                className="vp-select"
+                value={runDate ?? ''}
+                min={diag.firstRunDate ?? undefined}
+                max={diag.lastRunDate ?? undefined}
+                onChange={(e) => {
+                  if (e.target.value) loadDiagnostics(null, e.target.value);
+                }}
+              />
+            </div>
+            <div className="vp-optim-picker">
+              <label htmlFor="optim-run">Lauf</label>
+              <select
+                id="optim-run"
+                className="vp-select"
+                value={runAt ?? ''}
+                disabled={diag.availableRuns.length === 0}
+                onChange={(e) => loadDiagnostics(e.target.value || null, runDate)}
+              >
+                {diag.availableRuns.length === 0 ? (
+                  <option value="">Keine Läufe an diesem Tag</option>
+                ) : (
+                  diag.availableRuns.map((r) => (
+                    <option key={r} value={r}>
+                      {runLabel(r)}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </>
         )}
 
         {diag && (
@@ -236,15 +260,24 @@ export function OptimizerPage({ tenants }: { tenants: Tenant[] }) {
           <ChartCardSkeleton stats={4} />
         </Card>
       ) : diagState === 'error' ? (
-        <ErrorState message={diagError} onRetry={() => loadDiagnostics(runAt)} />
+        <ErrorState message={diagError} onRetry={() => loadDiagnostics(runAt, runDate)} />
       ) : diag && diag.slots.length === 0 ? (
         <Card padding="lg" radius="lg">
-          <EmptyState
-            icon="calendar"
-            category="dynamic"
-            title="Noch kein Fahrplan"
-            description="Für diese Anlage liegt noch kein Optimizer-Lauf vor. Sobald Preise und Prognosen für den Planungshorizont vorhanden sind, erscheint hier der Fahrplan."
-          />
+          {diag.lastRunDate == null ? (
+            <EmptyState
+              icon="calendar"
+              category="dynamic"
+              title="Noch kein Fahrplan"
+              description="Für diese Anlage liegt noch kein Optimizer-Lauf vor. Sobald Preise und Prognosen für den Planungshorizont vorhanden sind, erscheint hier der Fahrplan."
+            />
+          ) : (
+            <EmptyState
+              icon="calendar"
+              category="dynamic"
+              title="Keine Läufe an diesem Tag"
+              description={`Für den gewählten Tag liegen keine Optimizer-Läufe vor. Läufe gibt es zwischen dem ${runDateLabel(diag.firstRunDate ?? diag.lastRunDate)} und dem ${runDateLabel(diag.lastRunDate)} - wählen Sie oben einen anderen Tag.`}
+            />
+          )}
         </Card>
       ) : diag ? (
         <div className="vp-optim-body">

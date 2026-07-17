@@ -10,6 +10,7 @@ import com.voltpilot.api.web.dto.UpdateOptimizerConfigRequest;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -66,16 +67,22 @@ public class AdminOptimizerController {
      * €-decomposition (import price per tariff, export value incl.
      * Marktprämie/feste Vergütung, persisted wear, approximate stored-energy
      * value, decision label, German rationale). {@code generatedAt} selects a
-     * historical run; omitted = the latest. A site with no plan yet returns an
-     * empty well-formed body; an unknown run is 404.
+     * historical run; {@code date} (a Europe/Berlin day) scopes the
+     * {@code availableRuns} navigation list to that day and, without an
+     * explicit {@code generatedAt}, shows the day's newest run; neither =
+     * the latest run + its day's list. A site with no plan yet (and a picked
+     * day without runs) returns an empty well-formed body; an unknown run is
+     * 404.
      */
     @GetMapping("/optimizer-diagnostics")
     public OptimizerDiagnosticsDto optimizerDiagnostics(
             @PathVariable UUID siteId,
             @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant generatedAt) {
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant generatedAt,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         SiteContext site = requireSite(siteId);
-        OptimizerDiagnosticsDto dto = diagnostics.diagnose(site, generatedAt);
+        OptimizerDiagnosticsDto dto = diagnostics.diagnose(site, generatedAt, date);
         if (dto == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
                     "No optimizer run at " + generatedAt + " for this site");

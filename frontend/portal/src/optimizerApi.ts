@@ -67,8 +67,14 @@ export interface OptimizerDiagnostics {
   planId: string | null;
   generatedAt: string | null;
   slotMinutes: number;
-  /** Recent runs for the run/date picker (newest first). */
+  /** ONE Berlin day's runs (newest first) - the day the `date` param picked, else the shown run's day. */
   availableRuns: string[];
+  /** The Berlin day (YYYY-MM-DD) availableRuns covers; null without any plan. */
+  availableRunsDate: string | null;
+  /** Berlin day of the site's oldest run - lower bound for the date picker (null: no plan). */
+  firstRunDate: string | null;
+  /** Berlin day of the site's newest run - upper bound for the date picker (null: no plan). */
+  lastRunDate: string | null;
   plantKind: string;
   netzladenErlaubt: boolean;
   tarifArt: string;
@@ -159,14 +165,26 @@ function tenantHeaders(tenantId: string): RequestInit {
 }
 
 export const optimizerApi = {
-  /** One persisted run's "why" view; omit generatedAt for the latest run. */
-  diagnostics: (tenantId: string, siteId: string, generatedAt?: string | null) =>
-    request<OptimizerDiagnostics>(
-      `/api/v1/admin/sites/${siteId}/optimizer-diagnostics${
-        generatedAt ? `?generatedAt=${encodeURIComponent(generatedAt)}` : ''
-      }`,
+  /**
+   * One persisted run's "why" view. Omit generatedAt for the latest run;
+   * `date` (YYYY-MM-DD, Europe/Berlin) scopes `availableRuns` to that day and
+   * - without generatedAt - shows the day's newest run.
+   */
+  diagnostics: (
+    tenantId: string,
+    siteId: string,
+    generatedAt?: string | null,
+    date?: string | null,
+  ) => {
+    const params = new URLSearchParams();
+    if (generatedAt) params.set('generatedAt', generatedAt);
+    if (date) params.set('date', date);
+    const query = params.toString();
+    return request<OptimizerDiagnostics>(
+      `/api/v1/admin/sites/${siteId}/optimizer-diagnostics${query ? `?${query}` : ''}`,
       tenantHeaders(tenantId),
-    ),
+    );
+  },
 
   config: (tenantId: string, siteId: string) =>
     request<OptimizerConfig>(

@@ -1388,8 +1388,21 @@ paths:
           schema: { type: string, format: date-time }
           description: >
             Select a historical run by its exact generated_at; omitted = the
-            latest run. An unknown timestamp is a 404 (never silently the
-            latest); `availableRuns` in the response lists recent choices.
+            latest run (or, with `date`, that day's newest run). An unknown
+            timestamp is a 404 (never silently the latest); `availableRuns`
+            in the response lists the day's choices.
+        - name: date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: >
+            A Europe/Berlin calendar day: scopes `availableRuns` to that day's
+            runs (the schedule hypertable keeps every run, so navigation is
+            per day) and, without an explicit `generatedAt`, shows the day's
+            newest run. A day without runs returns an empty well-formed body
+            (not 404 - gaps inside the covered range are possible). Omitted =
+            the shown run's day. `firstRunDate`/`lastRunDate` in the response
+            bound the picker.
       responses:
         "200":
           description: >
@@ -2822,7 +2835,24 @@ components:
         availableRuns:
           type: array
           items: { type: string, format: date-time }
-          description: Recent run timestamps (newest first) for the run picker.
+          description: >
+            The run timestamps (newest first) of ONE Europe/Berlin day - the
+            `date` query param's day, else the shown run's day.
+        availableRunsDate:
+          type: string
+          format: date
+          nullable: true
+          description: The Berlin day `availableRuns` covers; null without any plan.
+        firstRunDate:
+          type: string
+          format: date
+          nullable: true
+          description: Berlin day of the site's OLDEST persisted run - lower bound for the date picker.
+        lastRunDate:
+          type: string
+          format: date
+          nullable: true
+          description: Berlin day of the site's NEWEST persisted run - upper bound for the date picker.
         plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
         netzladenErlaubt: { type: boolean }
         tarifArt: { type: string, enum: [dynamisch, fest, ohne] }

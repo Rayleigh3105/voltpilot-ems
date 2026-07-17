@@ -51,6 +51,9 @@ function makeDiag(over: Partial<OptimizerDiagnostics> = {}): OptimizerDiagnostic
     generatedAt: '2026-06-12T00:00:00Z',
     slotMinutes: 15,
     availableRuns: ['2026-06-12T00:00:00Z'],
+    availableRunsDate: '2026-06-12',
+    firstRunDate: '2026-06-10',
+    lastRunDate: '2026-06-12',
     plantKind: 'eigenverbrauch',
     netzladenErlaubt: false,
     tarifArt: 'dynamisch',
@@ -149,7 +152,7 @@ describe('OptimizerPage - diagnostics rendering', () => {
     fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
     await screen.findByRole('option', { name: 'Hof Lindenberg' });
     fireEvent.change(screen.getByLabelText('Anlage'), { target: { value: 's-1' } });
-    await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null));
+    await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, null));
   }
 
   it('renders verdict, plan, slot breakdown and objective KPIs', async () => {
@@ -174,8 +177,91 @@ describe('OptimizerPage - diagnostics rendering', () => {
   });
 
   it('shows the empty-run state when a site has no plan', async () => {
-    await openSite(makeDiag({ slots: [], availableRuns: [] }));
+    await openSite(
+      makeDiag({
+        slots: [],
+        availableRuns: [],
+        availableRunsDate: null,
+        firstRunDate: null,
+        lastRunDate: null,
+        generatedAt: null,
+        planId: null,
+      }),
+    );
     expect(await screen.findByText(/noch kein Optimizer-Lauf/)).toBeInTheDocument();
+    // Without any run there is no day to navigate - no date picker.
+    expect(screen.queryByLabelText('Tag')).not.toBeInTheDocument();
+  });
+});
+
+describe('OptimizerPage - date-navigable run picker', () => {
+  async function openSite(diag: OptimizerDiagnostics) {
+    listSites.mockResolvedValue(sites);
+    diagnostics.mockResolvedValue(diag);
+    config.mockResolvedValue(makeConfig());
+    render(<OptimizerPage tenants={tenants} />);
+    fireEvent.change(screen.getByLabelText('Mandant'), { target: { value: 't-1' } });
+    await screen.findByRole('option', { name: 'Hof Lindenberg' });
+    fireEvent.change(screen.getByLabelText('Anlage'), { target: { value: 's-1' } });
+    await waitFor(() => expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, null));
+  }
+
+  it('bounds the Tag picker by the run-date range and loads the picked day', async () => {
+    await openSite(makeDiag());
+    const dayInput = (await screen.findByLabelText('Tag')) as HTMLInputElement;
+    expect(dayInput.value).toBe('2026-06-12');
+    expect(dayInput.min).toBe('2026-06-10');
+    expect(dayInput.max).toBe('2026-06-12');
+
+    // Picking an older day fetches THAT day's newest run + run list.
+    diagnostics.mockResolvedValue(
+      makeDiag({
+        generatedAt: '2026-06-10T10:00:00Z',
+        availableRuns: ['2026-06-10T10:00:00Z', '2026-06-10T09:45:00Z'],
+        availableRunsDate: '2026-06-10',
+      }),
+    );
+    fireEvent.change(dayInput, { target: { value: '2026-06-10' } });
+    await waitFor(() =>
+      expect(diagnostics).toHaveBeenCalledWith('t-1', 's-1', null, '2026-06-10'),
+    );
+    const runSelect = (await screen.findByLabelText('Lauf')) as HTMLSelectElement;
+    await waitFor(() => expect(runSelect.options).toHaveLength(2));
+    expect(runSelect.value).toBe('2026-06-10T10:00:00Z');
+
+    // Picking one of the day's runs keeps the day scope.
+    fireEvent.change(runSelect, { target: { value: '2026-06-10T09:45:00Z' } });
+    await waitFor(() =>
+      expect(diagnostics).toHaveBeenCalledWith(
+        't-1',
+        's-1',
+        '2026-06-10T09:45:00Z',
+        '2026-06-10',
+      ),
+    );
+  });
+
+  it('shows an honest empty state for a day without runs, keeping the picker usable', async () => {
+    await openSite(makeDiag());
+    diagnostics.mockResolvedValue(
+      makeDiag({
+        generatedAt: null,
+        planId: null,
+        slots: [],
+        availableRuns: [],
+        availableRunsDate: '2026-06-11',
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('Tag'), { target: { value: '2026-06-11' } });
+    // Both the EmptyState heading and the disabled select's placeholder
+    // option carry the phrase - target the heading.
+    expect(
+      await screen.findByRole('heading', { name: 'Keine Läufe an diesem Tag' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/zwischen dem 10\.06\.2026 und dem 12\.06\.2026/)).toBeInTheDocument();
+    // The date picker stays rendered so the admin can navigate away.
+    expect(screen.getByLabelText('Tag')).toBeInTheDocument();
+    expect(screen.getByLabelText('Lauf')).toBeDisabled();
   });
 });
 

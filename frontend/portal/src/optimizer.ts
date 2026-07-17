@@ -233,6 +233,16 @@ export function slotTimeLabel(iso: string): string {
   return `${day} ${time} Uhr`;
 }
 
+/**
+ * German date label "12.06.2026" for a run-day ISO date (YYYY-MM-DD).
+ * Pure string re-ordering - `new Date('YYYY-MM-DD')` would parse as UTC
+ * midnight and shift the day west of Greenwich.
+ */
+export function runDateLabel(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}.${m}.${y}`;
+}
+
 /** Full run-label "Do. 12.06., 13:00 Uhr" for the run picker. */
 export function runLabel(iso: string): string {
   const d = new Date(iso);
