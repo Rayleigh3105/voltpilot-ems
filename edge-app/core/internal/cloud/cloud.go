@@ -31,6 +31,8 @@ type Link struct {
 	onSchedule func(payload []byte)
 	onCommand  func(payload []byte)
 	onEntities func(payload []byte)
+	onPlanV2   func(payload []byte)
+	onFlows    func(payload []byte)
 	onConnect  func(connected bool)
 }
 
@@ -54,6 +56,14 @@ type Options struct {
 	// payload is delivered too - it clears the registry (retained-clear). nil
 	// = the v2 entity layer is not wired (pure v1 build behavior).
 	OnEntities func(payload []byte)
+	// OnPlanV2 receives the retained multi-entity plan on .../v2/plan
+	// (docs/contracts/v2/mqtt-schedule-2.0.md). Empty payload = retained
+	// clear. nil = the v2 plan executor is not wired.
+	OnPlanV2 func(payload []byte)
+	// OnFlows receives the retained flow deployment set on .../v2/flows
+	// (docs/contracts/v2/flow-artifact.md §3). Empty payload = retained
+	// clear (every artifact tab removed). nil = flow deployment not wired.
+	OnFlows func(payload []byte)
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -70,7 +80,8 @@ func (o Options) brokerURL() string {
 // New builds (but does not connect) the link.
 func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, onSchedule: o.OnSchedule, onCommand: o.OnCommand,
-		onEntities: o.OnEntities, onConnect: o.OnConnect}
+		onEntities: o.OnEntities, onPlanV2: o.OnPlanV2, onFlows: o.OnFlows,
+		onConnect: o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -130,6 +141,25 @@ func New(o Options) (*Link, error) {
 				l.onEntities(msg.Payload())
 			}); tok.Wait() && tok.Error() != nil {
 				slog.Error("v2 entities subscribe failed", "topic", entTopic, "err", tok.Error())
+			}
+		}
+		// The retained schedule-2.0 plan and the retained flow deployment set
+		// live in the same v2/# subtree (D-2); empty payloads ARE forwarded
+		// (retained-clear semantics).
+		if l.onPlanV2 != nil {
+			planTopic := l.topic("v2/plan")
+			if tok := c.Subscribe(planTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				l.onPlanV2(msg.Payload())
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 plan subscribe failed", "topic", planTopic, "err", tok.Error())
+			}
+		}
+		if l.onFlows != nil {
+			flowsTopic := l.topic("v2/flows")
+			if tok := c.Subscribe(flowsTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				l.onFlows(msg.Payload())
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 flows subscribe failed", "topic", flowsTopic, "err", tok.Error())
 			}
 		}
 		if l.onConnect != nil {
@@ -243,6 +273,40 @@ type EntitiesSummary struct {
 	AppliedAt string   `json:"applied_at"`
 	Count     int      `json:"count"`
 	IDs       []string `json:"ids"`
+	// Arbitration is the E2 extension (edge-desired-arbitration.md §6 sink 3):
+	// per entity the holder source, the granted command and the latest
+	// readback verdict. Additive; absent for entities without a decision.
+	Arbitration map[string]EntityArbitration `json:"arbitration,omitempty"`
+}
+
+// EntityArbitration is one entity's decision summary in the heartbeat.
+type EntityArbitration struct {
+	// Holder is the holder's source kind ("" = registry failsafe).
+	Holder string `json:"holder,omitempty"`
+	// Source is the command-topic vocabulary: plan | desired | failsafe.
+	Source string `json:"source,omitempty"`
+	// GrantedSetpointKw echoes the granted setpoint when one is commanded.
+	GrantedSetpointKw *float64 `json:"granted_setpoint_kw,omitempty"`
+	// AllMatch is the latest per-entity readback verdict (nil = none yet).
+	AllMatch *bool `json:"all_match,omitempty"`
+}
+
+// FlowsSummary is the additive status-heartbeat block acknowledging the
+// applied flow deployment set (flow-artifact.md §5). nil = flow deployment
+// not wired / nothing ever deployed (block omitted).
+type FlowsSummary struct {
+	PaletteVersion string        `json:"palette_version,omitempty"`
+	CoreVersion    string        `json:"core_version,omitempty"`
+	Applied        []AppliedFlow `json:"applied"`
+}
+
+// AppliedFlow acknowledges one artifact: state active | error | unsupported.
+type AppliedFlow struct {
+	FlowID      string `json:"flow_id"`
+	FlowVersion int    `json:"flow_version"`
+	ContentHash string `json:"content_hash"`
+	State       string `json:"state"`
+	Detail      string `json:"detail,omitempty"`
 }
 
 // ControlSummary is the compact inverter-control confirmation folded into the
@@ -264,9 +328,10 @@ type ControlSummary struct {
 // schema; mirrors the Node-RED edge's shape). Fire-and-forget semantics:
 // errors are returned but the caller does not retry status. `control` is the
 // optional control confirmation, `entities` the optional v2 entity-registry
-// ack (nil = omit the block - both additive, schema_version stays "1.0").
+// ack, `flows` the optional flow-deployment ack (nil = omit the block - all
+// additive, schema_version stays "1.0").
 func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
-	entities *EntitiesSummary) error {
+	entities *EntitiesSummary, flows *FlowsSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -282,6 +347,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if entities != nil {
 		payload["entities"] = entities
+	}
+	if flows != nil {
+		payload["flows"] = flows
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

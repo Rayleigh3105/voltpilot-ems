@@ -95,6 +95,16 @@ type Config struct {
 	// UnclaimConfirmPolls is the minimum number of consecutive clean-404 polls.
 	UnclaimConfirmPolls int `json:"unclaim_confirm_polls"`
 
+	// NodeRedAdminURL is the Node-RED Admin API base for E2 flow deployment
+	// (e.g. "http://nodered:1880"). EMPTY = flow deployment disabled: a
+	// received deployment set is verified + persisted but acked 'error' with a
+	// German detail naming this setting, never silently dropped.
+	NodeRedAdminURL string `json:"nodered_admin_url"`
+	// NodeRedUser/NodeRedPassword are the Admin API credentials (the same
+	// adminAuth the compose passes the nodered service).
+	NodeRedUser     string `json:"nodered_user"`
+	NodeRedPassword string `json:"nodered_password"`
+
 	// Dev-only escape hatches (mirrors tools/edge-simulator): a fixed
 	// identity skips enrollment, and a plain-MQTT cloud URL skips mTLS.
 	// NEVER set these on a customer device.
@@ -126,6 +136,7 @@ func Defaults() Config {
 		ControlEnabled:           false,
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
+		NodeRedUser:              "voltpilot",
 	}
 }
 
@@ -244,6 +255,9 @@ func applyEnv(cfg *Config) {
 	}
 	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
 	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
+	str("VP_NODERED_ADMIN_URL", &cfg.NodeRedAdminURL)
+	str("VP_NODERED_USER", &cfg.NodeRedUser)
+	str("VP_NODERED_PASSWORD", &cfg.NodeRedPassword)
 	if v := os.Getenv("VP_CONTROL_CERTIFIED_FAMILIES"); v != "" {
 		var fams []string
 		for _, f := range strings.Split(v, ",") {
