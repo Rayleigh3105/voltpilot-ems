@@ -41,6 +41,18 @@
 //	edge/test-read/result   Layer 1 -> core   NOT retained. The one-shot result:
 //	                {request_id, ok, error_code?, reading?{pv_kw?,load_kw?,
 //	                 grid_kw?,soc_pct?}}. Correlated to the request by request_id.
+//
+// v2 entity topic family (E1a; CONTRACT-grade, unlike the versionless v1
+// namespace above - docs/contracts/v2/edge-desired-arbitration.md §1 +
+// edge-entity-config.md; topic helpers in internal/entities):
+//
+//	edge/entities/{id}/config     core -> Layer 1/flows  RETAINED per-entity
+//	                registry descriptor (empty payload clears = removed).
+//	edge/entities/{id}/telemetry  Layer 1 -> core   per-entity channels.
+//	edge/entities/{id}/command    core -> Layer 1   RETAINED guard-clamped
+//	                command (core-owned; the edge/setpoint successor).
+//	edge/entities/{id}/readback   Layer 1 -> core   v1 readback shape per
+//	                entity. desired/arbitration land with E2.
 package localbus
 
 import (

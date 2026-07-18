@@ -23,6 +23,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
@@ -113,6 +114,18 @@ type Agent struct {
 	link       *cloud.Link
 	linkCancel context.CancelFunc // cancels the current link's heartbeat goroutine
 	linkMu     sync.Mutex
+
+	// v2 entity layer (agent/entities.go; contract docs/contracts/v2/
+	// edge-entity-config.md): the applied registry, its persistence, the
+	// latest per-entity readings and the live v2 uplink queue. Empty registry
+	// = byte-for-byte v1 behavior.
+	entMu        sync.Mutex
+	entStore     *entities.Store
+	entRegistry  entities.Registry
+	entIdentity  entities.Identity
+	entAppliedAt time.Time
+	entReadings  map[string]entReading
+	entUplink    chan entities.Telemetry
 
 	// cloudRemoved is true while the device is in the geraet_entfernt state: a
 	// SUSTAINED run of definitive clean-404 "not claimed" answers confirmed the
@@ -231,6 +244,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	es, err := entities.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	// Restore the operator's despike (Ausreißer-Filter) settings, or fall back
 	// to the safe defaults. A corrupt file must not stop the agent booting.
 	despikeCfg := guards.DefaultSettings()
@@ -250,6 +267,8 @@ func New(cfg config.Config) (*Agent, error) {
 		srcStore:     ss,
 		balStore:     bs,
 		srcReadings:  map[string]sourceReading{},
+		entReadings:  map[string]entReading{},
+		entUplink:    make(chan entities.Telemetry, 64),
 		testReads:    map[string]chan testconn.Result{},
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
@@ -293,6 +312,10 @@ func New(cfg config.Config) (*Agent, error) {
 	} else if err != nil {
 		slog.Warn("stored balance settings unreadable; using defaults", "err", err)
 	}
+	// Restore the applied v2 entity registry (persisted across restarts); its
+	// per-entity retained configs are re-published once the bus is up in Start.
+	a.entStore = es
+	a.restoreEntities()
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
@@ -351,6 +374,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.publishInverterConfig()
 	// Same for the additional-source config: Node-RED self-wires a read of each.
 	a.publishSourcesConfig()
+
+	// v2 entity layer: telemetry wildcard subscription (id 6), boot republish
+	// of the per-entity retained configs, and the live uplink loop.
+	if err := a.startEntityLayer(ctx); err != nil {
+		return err
+	}
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
@@ -644,6 +673,8 @@ func (a *Agent) pokeReconcile() {
 }
 
 func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string) error {
+	// The v2 entity-registry push must match this identity (topic==payload).
+	a.setEntityIdentity(id.TenantID, id.SiteID, id.DeviceID)
 	link, err := cloud.New(cloud.Options{
 		Identity:    id,
 		KeyPath:     keyPath,
@@ -653,6 +684,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		DevInsecure: a.Cfg.DevInsecure,
 		OnSchedule:  a.onSchedule,
 		OnCommand:   a.onPurgeCommand,
+		OnEntities:  a.onEntityRegistryPush,
 		OnConnect: func(connected bool) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected
@@ -712,7 +744,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.mu.Lock()
 				soc := a.lastRawSoc
 				a.mu.Unlock()
-				if err := link.PublishStatus(src, soc, controlSummary(snap)); err != nil {
+				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():
@@ -1359,6 +1391,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 		slog.Error("setpoint publish failed", "err", err)
 		return
 	}
+	// E1a bridge: mirror the executed command onto the battery-hybrid entity's
+	// retained per-entity command, re-clamped through ITS registry-derived
+	// guard chain (most restrictive wins). No-op without a pushed registry.
+	a.mirrorEntityCommand(now, kw, pvLimit, source, controlEnabled)
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
 		s.SetpointKw = kw

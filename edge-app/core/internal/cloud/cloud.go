@@ -30,6 +30,7 @@ type Link struct {
 
 	onSchedule func(payload []byte)
 	onCommand  func(payload []byte)
+	onEntities func(payload []byte)
 	onConnect  func(connected bool)
 }
 
@@ -48,6 +49,11 @@ type Options struct {
 	// OnCommand receives every (retained) ad-hoc command payload, e.g. the
 	// purge_data command (docs/contracts/mqtt-data-purge.schema.json).
 	OnCommand func(payload []byte)
+	// OnEntities receives the retained v2 entity-registry push on
+	// .../v2/entities (docs/contracts/v2/edge-entity-config.md §1). An EMPTY
+	// payload is delivered too - it clears the registry (retained-clear). nil
+	// = the v2 entity layer is not wired (pure v1 build behavior).
+	OnEntities func(payload []byte)
 	// OnConnect is called with the connection state on every transition.
 	OnConnect func(connected bool)
 	// ClientID override for dev; production leaves it to the broker (CN).
@@ -64,7 +70,7 @@ func (o Options) brokerURL() string {
 // New builds (but does not connect) the link.
 func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, onSchedule: o.OnSchedule, onCommand: o.OnCommand,
-		onConnect: o.OnConnect}
+		onEntities: o.OnEntities, onConnect: o.OnConnect}
 
 	opts := pahomqtt.NewClientOptions().
 		AddBroker(o.brokerURL()).
@@ -114,6 +120,17 @@ func New(o Options) (*Link, error) {
 			}
 		}); tok.Wait() && tok.Error() != nil {
 			slog.Error("command subscribe failed", "topic", cmdTopic, "err", tok.Error())
+		}
+		// The retained v2 entity-registry push (only when the entity layer is
+		// wired): retained delivery makes every (re)connect converge; an empty
+		// payload IS forwarded - it clears the registry.
+		if l.onEntities != nil {
+			entTopic := l.topic("v2/entities")
+			if tok := c.Subscribe(entTopic, 1, func(_ pahomqtt.Client, msg pahomqtt.Message) {
+				l.onEntities(msg.Payload())
+			}); tok.Wait() && tok.Error() != nil {
+				slog.Error("v2 entities subscribe failed", "topic", entTopic, "err", tok.Error())
+			}
 		}
 		if l.onConnect != nil {
 			l.onConnect(true)
@@ -190,6 +207,44 @@ func (l *Link) PublishTelemetry(e buffer.Entry) error {
 	return tok.Error()
 }
 
+// PublishTelemetryV2 publishes one per-entity reading as a contract-exact
+// mqtt-telemetry-2.0 payload on .../v2/telemetry (QoS1, not retained) and
+// waits for the ack. E1a scope: live-only forwarding - no store-and-forward
+// for the v2 uplink yet (the caller drops on failure); the v1 buffered
+// telemetry path is untouched.
+func (l *Link) PublishTelemetryV2(entityID string, ts time.Time, channels map[string]float64) error {
+	payload := map[string]any{
+		"schema_version": "2.0",
+		"tenant_id":      l.identity.TenantID,
+		"site_id":        l.identity.SiteID,
+		"device_id":      l.identity.DeviceID,
+		"ts":             ts.UTC().Format(time.RFC3339Nano),
+		"entities": map[string]any{
+			entityID: map[string]any{"channels": channels},
+		},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	tok := l.client.Publish(l.topic("v2/telemetry"), 1, false, raw)
+	if !tok.WaitTimeout(30 * time.Second) {
+		return fmt.Errorf("v2 telemetry publish timed out")
+	}
+	return tok.Error()
+}
+
+// EntitiesSummary is the additive status-heartbeat block acknowledging the
+// applied v2 entity registry (edge-entity-config.md §5): the cloud compares
+// Revision against its latest push to verify convergence. nil = no v2
+// entities on this device (the block is omitted; pure v1 heartbeat).
+type EntitiesSummary struct {
+	Revision  string   `json:"revision"`
+	AppliedAt string   `json:"applied_at"`
+	Count     int      `json:"count"`
+	IDs       []string `json:"ids"`
+}
+
 // ControlSummary is the compact inverter-control confirmation folded into the
 // status heartbeat (report §5.3), so the cloud sees "Fahrplan sagt X ->
 // Wechselrichter bestätigt Y" without register-level detail. Additive; the
@@ -208,8 +263,10 @@ type ControlSummary struct {
 // PublishStatus sends the lightweight heartbeat on .../status (no frozen
 // schema; mirrors the Node-RED edge's shape). Fire-and-forget semantics:
 // errors are returned but the caller does not retry status. `control` is the
-// optional control confirmation (nil = omit the block).
-func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary) error {
+// optional control confirmation, `entities` the optional v2 entity-registry
+// ack (nil = omit the block - both additive, schema_version stays "1.0").
+func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
+	entities *EntitiesSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -222,6 +279,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if control != nil {
 		payload["control"] = control
+	}
+	if entities != nil {
+		payload["entities"] = entities
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
