@@ -219,6 +219,8 @@ class EnrollmentServiceStartupReloadTest {
                 + base + "/status\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/schedule\", \""
                 + base + "/command\", \"" + base + "/config\"]}.\n"
+                + "{allow, {username, \"" + device + "\"}, publish,   [\"" + base + "/v2/#\"]}.\n"
+                + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/v2/#\"]}.\n"
                 + "%%<<end device " + device + ">>\n";
     }
 

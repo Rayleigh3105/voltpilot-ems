@@ -248,6 +248,11 @@ class AclRegenerateReloadBrokerE2eTest {
                 + "{allow, all}.\n";
     }
 
+    /**
+     * The CURRENT api-written block shape (incl. the two v2/# wildcard lines,
+     * D-2): scenario (b)'s "an earlier api boot already fixed the file" premise
+     * requires the fixture to match what regenerateGrants would emit today.
+     */
     private static String grantBlock(String tenant, String site, String device) {
         String base = "ems/" + tenant + "/" + site + "/" + device;
         return "%%<<device " + device + " tenant " + tenant + " site " + site + ">>\n"
@@ -255,6 +260,8 @@ class AclRegenerateReloadBrokerE2eTest {
                 + base + "/status\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/schedule\", \""
                 + base + "/command\", \"" + base + "/config\"]}.\n"
+                + "{allow, {username, \"" + device + "\"}, publish,   [\"" + base + "/v2/#\"]}.\n"
+                + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/v2/#\"]}.\n"
                 + "%%<<end device " + device + ">>\n";
     }
 }
