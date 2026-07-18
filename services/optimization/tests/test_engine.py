@@ -222,3 +222,81 @@ def test_infeasible_grid_limit_degrades_to_unconstrained_plan(monkeypatch):
         "dsn://ignored", InMemoryScheduleRepository(), None, now=NOW
     )
     assert len(summary.planned) == 1  # degraded, not failed
+
+
+def test_v2_shadow_publishes_only_for_flagged_sites(wired, monkeypatch):
+    """E13a shadow phase: a site flagged via VOLTPILOT_V2_PLAN_SITES gets an
+    ADDITIONAL co-optimized plan retained on the v2 topic; the v1 publish
+    stays byte-identical for every site, and unflagged sites see no v2
+    traffic at all."""
+    from voltpilot_optimization.publisher_v2 import RecordingPlanV2Publisher
+
+    flagged = wired[0]  # the site WITH a device
+    monkeypatch.setenv("VOLTPILOT_V2_PLAN_SITES", str(flagged.site_id))
+
+    v1_pub = RecordingSchedulePublisher()
+    v2_pub = RecordingPlanV2Publisher()
+    summary = engine.run_cycle(
+        "dsn://ignored",
+        InMemoryScheduleRepository(),
+        v1_pub,
+        now=NOW,
+        v2_publisher=v2_pub,
+    )
+    assert len(summary.planned) == 2
+    # v1 path unchanged: still exactly one publish, same topic as ever.
+    assert len(v1_pub.published) == 1
+    assert v1_pub.published[0][0].endswith("/schedule")
+    # v2 shadow: exactly the flagged site, on the separate v2 subtree.
+    assert len(v2_pub.published) == 1
+    topic, payload = v2_pub.published[0]
+    assert topic == (
+        f"ems/{flagged.tenant_id}/{flagged.site_id}"
+        f"/{flagged.device_id}/v2/plan"
+    )
+    assert payload["schema_version"] == "2.0"
+    # The shadow plan mirrors the v1 decisions (the golden-suite guarantee):
+    # same first-slot battery setpoint on the storage entity.
+    (entity,) = payload["entities"]
+    v1_payload = v1_pub.published[0][1]
+    assert entity["slots"][0]["commands"]["setpoint_kw"] == pytest.approx(
+        v1_payload["slots"][0]["battery_setpoint_kw"], abs=1e-3
+    )
+    # D-8: the merchant site's permission is explicit, never implied.
+    assert entity["charge_from_grid_allowed"] is True
+
+
+def test_v2_shadow_stays_silent_without_the_flag(wired):
+    from voltpilot_optimization.publisher_v2 import RecordingPlanV2Publisher
+
+    v2_pub = RecordingPlanV2Publisher()
+    engine.run_cycle(
+        "dsn://ignored",
+        InMemoryScheduleRepository(),
+        RecordingSchedulePublisher(),
+        now=NOW,
+        v2_publisher=v2_pub,
+    )
+    assert v2_pub.published == []
+
+
+def test_v2_shadow_failure_never_sinks_the_v1_cycle(wired, monkeypatch):
+    flagged = wired[0]
+    monkeypatch.setenv("VOLTPILOT_V2_PLAN_SITES", str(flagged.site_id))
+
+    class ExplodingV2Publisher:
+        def publish(self, plan):
+            raise RuntimeError("broker down")
+
+    v1_pub = RecordingSchedulePublisher()
+    summary = engine.run_cycle(
+        "dsn://ignored",
+        InMemoryScheduleRepository(),
+        v1_pub,
+        now=NOW,
+        v2_publisher=ExplodingV2Publisher(),
+    )
+    # The v1 plan of the flagged site still planned + published.
+    assert len(summary.planned) == 2
+    assert not summary.skipped
+    assert len(v1_pub.published) == 1

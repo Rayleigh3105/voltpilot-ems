@@ -22,9 +22,11 @@ import sys
 import time
 from urllib.parse import quote
 
+from voltpilot_optimization.config import v2_plan_site_ids
 from voltpilot_optimization.engine import run_cycle
 from voltpilot_optimization.persistence import TimescaleScheduleRepository
 from voltpilot_optimization.publisher import MqttSchedulePublisher
+from voltpilot_optimization.publisher_v2 import MqttPlanV2Publisher
 
 logger = logging.getLogger("voltpilot.optimization")
 
@@ -150,8 +152,19 @@ def _run_one(args, env: dict[str, str]) -> None:
     dsn = _dsn_from_env(env)
     repository = None if args.no_persist else TimescaleScheduleRepository(dsn)
     publisher = None if args.no_publish else MqttSchedulePublisher.from_env(env)
+    # v2 shadow publisher (E13a): only worth constructing when at least one
+    # site is flagged via VOLTPILOT_V2_PLAN_SITES - and never for --no-publish.
+    v2_publisher = None
+    if not args.no_publish and v2_plan_site_ids(env):
+        v2_publisher = MqttPlanV2Publisher.from_env(env)
     horizon_slots = round(args.horizon_hours * 4)
-    summary = run_cycle(dsn, repository, publisher, horizon_slots=horizon_slots)
+    summary = run_cycle(
+        dsn,
+        repository,
+        publisher,
+        horizon_slots=horizon_slots,
+        v2_publisher=v2_publisher,
+    )
     print(summary.line())
 
 
