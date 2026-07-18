@@ -70,6 +70,11 @@ export function useSimulationJob(jobApi: SimulationJobApi) {
   );
 
   useEffect(() => {
+    // `status` is deliberately a dependency: on the FIRST run this effect
+    // fires when `busy` flips - BEFORE the start POST resolved and set
+    // jobRef - and would otherwise never re-arm (jobRef is a ref, not
+    // state). start() sets the first status right after jobRef, so the
+    // status dep re-runs the effect once the job id exists.
     if (!busy || jobRef.current == null) return;
     let active = true;
     const timer = setInterval(async () => {
@@ -93,7 +98,7 @@ export function useSimulationJob(jobApi: SimulationJobApi) {
       active = false;
       clearInterval(timer);
     };
-  }, [busy, jobApi]);
+  }, [busy, jobApi, status]);
 
   return { status, error, busy, start };
 }

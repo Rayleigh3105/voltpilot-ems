@@ -32,6 +32,11 @@ const GROUP_COLOR: Record<string, string> = {
   aktion: 'var(--vp-chart-charge, #2E9E5B)',
 };
 
+/** SVG text does not clip at the node rect - truncate with an ellipsis. */
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 export interface CanvasSelection {
   kind: 'node' | 'edge';
   id: string;
@@ -121,7 +126,7 @@ export function FlowCanvas({
           const color = GROUP_COLOR[type?.group ?? 'logik'] ?? '#78909C';
           const isSelected = selection?.kind === 'node' && selection.id === node.id;
           const isError = errorNodeIds.has(node.id);
-          const subtitle = type ? nodeSubtitle(node, entities) : node.type;
+          const subtitle = truncate(type ? nodeSubtitle(node, entities) : node.type, 26);
           return (
             <g
               key={node.id}
@@ -142,7 +147,7 @@ export function FlowCanvas({
               />
               <rect x={box.x} y={box.y + 6} width={4} height={box.h - 12} rx={2} fill={color} />
               <text x={box.x + 14} y={box.y + 20} className="vp-flownode-title">
-                {node.label ?? type?.label ?? node.type}
+                {truncate(node.label ?? type?.label ?? node.type, 22)}
               </text>
               <text x={box.x + 14} y={box.y + 37} className="vp-flownode-sub">
                 {subtitle}

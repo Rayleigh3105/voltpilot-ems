@@ -4126,6 +4126,7 @@ button.vp-tech-card-h.toggle {
   flex: 0 0 auto;
   margin-top: 2px;
   color: var(--vp-action, #2c5282);
+}
 
 /* ---- Ersparnis-Simulation (customer subpage + admin Rechner) ------------ */
 .vp-sim-intro {

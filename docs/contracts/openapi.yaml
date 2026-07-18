@@ -1317,6 +1317,206 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/flow-catalog:
+    get:
+      tags: [admin]
+      summary: The VoltPilot node catalog the flow editor palettes/validates against.
+      description: >
+        E3a flow editor. ONE catalog truth (services/api flowcatalog/catalog.json,
+        mirrored as the portal's synced copy): typed port signatures, parameter
+        specs, runtime support and D-13 claim templates per node type. Adding a
+        node type is additive.
+      responses:
+        "200":
+          description: The catalog document ({catalog_version, types[]}).
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/sites/{siteId}/flows:
+    get:
+      tags: [admin]
+      summary: List a site's flows (E3a flow editor).
+      description: >
+        Platform-admin via the X-Tenant-Id switcher over the RLS path (no or
+        wrong tenant => 404). One summary per flow with its version spine;
+        documents follow docs/contracts/v2/flow-graph.schema.json.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's flows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FlowSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+    post:
+      tags: [admin]
+      summary: Create a flow (version 1, draft).
+      description: >
+        The server stamps ALL identity (flow_id, flow_version, site_id,
+        tenant_id) into the stored document - clients never pick ids. Without a
+        document a skeleton with one slot-boundary trigger is created.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveFlowRequest" }
+      responses:
+        "201":
+          description: The created draft version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowVersion" }
+        "400": { description: Missing/overlong name. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/flows/{flowId}:
+    delete:
+      tags: [admin]
+      summary: Delete a whole flow (all versions; draft cleanup).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Deleted. }
+        "409": { description: A version is active - retire first. }
+        "404": { description: Flow/site not found. }
+  /api/v1/admin/sites/{siteId}/flows/{flowId}/versions/{version}:
+    get:
+      tags: [admin]
+      summary: One flow version (document + lifecycle + recorded dry-run).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowVersion" }
+        "404": { description: Not found. }
+    put:
+      tags: [admin]
+      summary: Save a flow version.
+      description: >
+        A DRAFT is updated in place; saving onto a simulated/active version
+        creates a NEW draft version (flow-graph contract paragraph 5 - the
+        response carries the resulting version). Retired versions are
+        read-only (409).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveFlowRequest" }
+      responses:
+        "200":
+          description: The saved (possibly NEW) version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowVersion" }
+        "409": { description: Version is retired. }
+        "404": { description: Not found. }
+  /api/v1/admin/sites/{siteId}/flows/{flowId}/versions/{version}/validate:
+    post:
+      tags: [admin]
+      summary: Validate a version against the platform validator (V-1..V-8).
+      description: >
+        Machine-readable findings per docs/contracts/v2/flow-graph.md paragraph
+        4 - rule id, offending node/edge ids, German message. Includes the
+        cross-flow exclusive-resource check against the site's ACTIVE flows and
+        the capability match against the v2 entity registry.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Findings + blocking verdict.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowValidationResult" }
+        "404": { description: Not found. }
+  /api/v1/admin/sites/{siteId}/flows/{flowId}/versions/{version}/simulate:
+    post:
+      tags: [admin]
+      summary: Start the flow dry-run (Ersparnis-Simulation mapping).
+      description: >
+        Compiles the flow to its deterministic simulation mapping (market
+        strategy -> the voltpilot scenario incl. its Speicherschonung,
+        selfconsumption -> standardSpeicher) and submits an
+        Ersparnis-Simulation job over the site's real master data. 422 with a
+        German reason for an invalid flow or one without a battery strategy.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "202":
+          description: Job accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  simulationId: { type: string }
+                  flowScenario: { type: string, enum: [voltpilot, standardSpeicher] }
+        "422": { description: Invalid or not simulierbar (German message). }
+        "404": { description: Not found. }
+  /api/v1/admin/sites/{siteId}/flows/{flowId}/versions/{version}/simulation/{simulationId}:
+    get:
+      tags: [admin]
+      summary: Poll the flow dry-run; completion flips draft -> simulated.
+      description: >
+        Relays the simulation job document plus flowScenario. When the job
+        reports done, the version's lifecycle flips draft -> simulated and the
+        summary (scenario, headline, price year) is recorded on the version.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+        - { name: simulationId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The job status (+ flowScenario).
+          content: { application/json: { schema: { type: object } } }
+        "404": { description: Job/version not found (api restart forgets jobs). }
+  /api/v1/admin/sites/{siteId}/flows/{flowId}/versions/{version}/activate:
+    post:
+      tags: [admin]
+      summary: Activate a simulated version (compile + D-11 rollout).
+      description: >
+        Strict validation, the D1 safety gate (a draft must be simulated
+        first), then compile + retire-previous + mark-active + publish the
+        COMPLETE retained deployment set on ems/{t}/{s}/{d}/v2/flows
+        (docs/contracts/v2/flow-artifact.md). Until the E2 compiler module
+        lands the activation answers HONESTLY with activated=false,
+        reason=compiler_missing ("Compiler folgt") and publishes nothing; with
+        a compiler present the feature flag
+        VOLTPILOT_FLOWS_ACTIVATION_ENABLED (default OFF, simulator-rig only)
+        still gates the rollout.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Activation outcome (activated, reason, message, published).
+          content: { application/json: { schema: { type: object } } }
+        "409": { description: Already active / draft not simulated yet. }
+        "422": { description: Validation errors (message + findings). }
+        "404": { description: Not found. }
   /api/v1/admin/tenants/{tenantId}/users/{userId}:
     put:
       tags: [admin]
