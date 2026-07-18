@@ -23,7 +23,8 @@ export type PageId =
   | 'benutzer'
   | 'geraete-registry'
   | 'optimizer'
-  | 'ersparnis-rechner';
+  | 'ersparnis-rechner'
+  | 'flows';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
 export type AnlagenSub =
@@ -74,6 +75,7 @@ export const PLATFORM_PAGES: PageDef[] = [
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
   { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
   { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
+  { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
   { id: 'ersparnis-rechner', label: 'Ersparnis-Rechner', icon: 'euro', adminOnly: true },
 ];
 
