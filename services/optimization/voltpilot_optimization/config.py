@@ -359,3 +359,42 @@ def soc_max_age(env=None) -> timedelta:
         env, SOC_MAX_AGE_ENV, DEFAULT_SOC_MAX_AGE_MINUTES, 0.0, allow_equal=False
     )
     return timedelta(minutes=minutes)
+
+
+# ---------------------------------------------------------------------------
+# v2 plan shadow publishing (E4-Basis / E13a).
+#
+# Which sites additionally get their plan co-optimized and published per
+# mqtt-schedule 2.0 on the retained v2 topic (ems/.../v2/plan). An ENV FLIP,
+# not a DB column, deliberately (the VOLTPILOT_ACTIVE_*_MODEL promotion
+# pattern): no migration, default empty = no site is v2-flagged, and rollback
+# is unsetting the variable. The v1 publish path is UNTOUCHED for every site -
+# flagged sites dual-publish (E13a shadow: v2 publishes, v1 controls).
+# ---------------------------------------------------------------------------
+
+V2_PLAN_SITES_ENV = "VOLTPILOT_V2_PLAN_SITES"
+
+
+def v2_plan_site_ids(env=None) -> frozenset:
+    """Site UUIDs flagged for v2 plan shadow publishing (comma-separated in
+    ``VOLTPILOT_V2_PLAN_SITES``; empty/unset = none). A malformed entry fails
+    loudly - a typo must never silently un-flag a site."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    raw = env.get(V2_PLAN_SITES_ENV)
+    if raw is None or raw.strip() == "":
+        return frozenset()
+    ids = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ids.add(UUID(part))
+        except ValueError as exc:
+            raise ValueError(
+                f"{V2_PLAN_SITES_ENV} must be comma-separated site UUIDs, "
+                f"got {part!r}"
+            ) from exc
+    return frozenset(ids)

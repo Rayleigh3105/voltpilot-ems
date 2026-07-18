@@ -60,3 +60,21 @@ def test_blank_env_value_means_default():
     assert grid_limit_max_age(
         {"OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES": " "}
     ) == timedelta(minutes=60)
+
+
+def test_v2_plan_site_ids_parse_and_fail_loudly():
+    from uuid import UUID
+
+    from voltpilot_optimization.config import v2_plan_site_ids
+
+    a = "00000000-0000-0000-0000-000000000001"
+    b = "00000000-0000-0000-0000-000000000002"
+    assert v2_plan_site_ids({}) == frozenset()
+    assert v2_plan_site_ids({"VOLTPILOT_V2_PLAN_SITES": ""}) == frozenset()
+    assert v2_plan_site_ids({"VOLTPILOT_V2_PLAN_SITES": a}) == {UUID(a)}
+    assert v2_plan_site_ids(
+        {"VOLTPILOT_V2_PLAN_SITES": f" {a}, {b} ,"}
+    ) == {UUID(a), UUID(b)}
+    # A typo must never silently un-flag a site.
+    with pytest.raises(ValueError):
+        v2_plan_site_ids({"VOLTPILOT_V2_PLAN_SITES": "not-a-uuid"})
