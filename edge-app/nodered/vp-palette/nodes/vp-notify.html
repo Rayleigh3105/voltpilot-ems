@@ -1,0 +1,33 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-notify', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true },
+      message: { value: '' }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-notify'; },
+    paletteLabel: 'vp-notify'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-notify">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-notify">
+  <p>Sendet eine Benachrichtigung auf <code>edge/notify</code>, wenn der
+  Eingang von falsch auf wahr wechselt (Flankensteuerung). Der Text kommt aus
+  der Knoten-Konfiguration (vom Compiler gestempelt).</p>
+</script>

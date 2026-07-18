@@ -1,0 +1,115 @@
+{
+  "schema_version": "1.0",
+  "kind": "artifact",
+  "artifact_id": "60547874-22e6-441d-8921-f401a292a079",
+  "flow_id": "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
+  "flow_version": 7,
+  "runtime": "edge",
+  "content_hash": "sha256:8fca402b2a98759b8589ac1cbbc85b65ca07bce3684464db2f47715363e4f93d",
+  "compiled_at": "2026-07-18T12:00:00Z",
+  "compiler_version": "1.0.0",
+  "min_palette_version": "0.2.0",
+  "min_core_version": "0.1.0",
+  "required_entities": [
+    {
+      "entity_id": "grid-meter-1",
+      "capabilities": [
+        "measure:power_kw"
+      ]
+    },
+    {
+      "entity_id": "heatrod-cellar",
+      "capabilities": [
+        "actuate:on_off"
+      ]
+    }
+  ],
+  "bundle": {
+    "format": "nodered-tabs",
+    "tab_ids": [
+      "vpflow-4e1c2b3a-v7"
+    ],
+    "nodered_flows": [
+      {
+        "id": "vpflow-4e1c2b3a-v7",
+        "type": "tab",
+        "label": "VP Flow: Heizstab bei PV-Überschuss (v7)",
+        "info": "@vp-flow flow_id=4e1c2b3a-5d6e-4f70-8123-456789abcdef flow_version=7"
+      },
+      {
+        "id": "vpflow-4e1c2b3a-v7-n2",
+        "type": "vp-entity-read",
+        "z": "vpflow-4e1c2b3a-v7",
+        "name": "Netz-Leistung",
+        "core": "cfg-vp-core",
+        "entity": "grid-meter-1",
+        "channel": "power_kw",
+        "deadband": 0.5,
+        "x": 140,
+        "y": 80,
+        "wires": [
+          [
+            "vpflow-4e1c2b3a-v7-n5"
+          ]
+        ]
+      },
+      {
+        "id": "vpflow-4e1c2b3a-v7-n5",
+        "type": "function",
+        "z": "vpflow-4e1c2b3a-v7",
+        "name": "Einspeisung > 3 kW",
+        "func": "// generiert von flowc - NICHT von Hand bearbeiten\nconst P = {\"threshold\":-3,\"hysteresis\":0.5,\"direction\":\"below\"};\nlet on = context.get(\"on\") || false;\nconst v = Number(msg.payload);\nif (!isFinite(v)) return null;\nif (P.direction === \"below\") {\n  if (v < P.threshold) on = true;\n  else if (v > P.threshold + P.hysteresis) on = false;\n} else {\n  if (v > P.threshold) on = true;\n  else if (v < P.threshold - P.hysteresis) on = false;\n}\ncontext.set(\"on\", on);\nmsg.payload = on;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 80,
+        "wires": [
+          [
+            "vpflow-4e1c2b3a-v7-n7"
+          ]
+        ]
+      },
+      {
+        "id": "vpflow-4e1c2b3a-v7-n7",
+        "type": "vp-desired",
+        "z": "vpflow-4e1c2b3a-v7",
+        "name": "Heizstab schalten",
+        "core": "cfg-vp-core",
+        "entity": "heatrod-cellar",
+        "command": "on_off",
+        "ttl_s": 180,
+        "override": false,
+        "flowId": "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
+        "flowVersion": 7,
+        "nodeId": "n7",
+        "x": 580,
+        "y": 80,
+        "wires": [
+          []
+        ]
+      },
+      {
+        "id": "vpflow-4e1c2b3a-v7-trig1",
+        "type": "inject",
+        "z": "vpflow-4e1c2b3a-v7",
+        "name": "alle 60 s",
+        "props": [],
+        "repeat": "60",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 1,
+        "topic": "",
+        "x": 800,
+        "y": 80,
+        "wires": [
+          [
+            "vpflow-4e1c2b3a-v7-n2"
+          ]
+        ]
+      }
+    ]
+  }
+}
