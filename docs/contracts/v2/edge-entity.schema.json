@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/edge-entity.schema.json",
+  "title": "VoltPilot v2 Entity Config / Telemetry / Command Payloads",
+  "description": "The E1a half of the v2 entity topic family (edge-desired-arbitration.md owns desired + arbitration): the per-entity retained CONFIG the Go core publishes on the local bus, the per-entity local TELEMETRY Layer 1 publishes, the core-owned retained COMMAND, and the cloud->edge entity-registry PUSH that transports the config set to the device. A brand-new contract, so schema_version starts at 1.0 (v2 README coexistence philosophy #4). The entity descriptor is the wire form of the cloud entity registry (measurement_point rows carrying entity_type/capabilities/guard config); capabilities follow the D-14 command vocabulary and guard limits + failsafe live HERE, in registry config, per decision D-9 - a failsafe carried only in a plan would die with the plan.",
+  "x-topics": {
+    "registry-push": "ems/{tenant_id}/{site_id}/{device_id}/v2/entities  (Cloud -> Edge, QoS1, RETAINED - one message carrying the device's full entity set; the proven inverter-config/sources-config pattern. An empty entities array removes every entity; an empty payload clears the retained slot outright (device unclaimed - the provisioning clearRetained precedent).)",
+    "config": "edge/entities/{entity_id}/config  (core -> Layer 1 / flows, RETAINED per entity - $defs/config. Publishing an empty payload clears the retained config = entity removed.)",
+    "telemetry": "edge/entities/{entity_id}/telemetry  (Layer 1 -> core, QoS1, NOT retained - $defs/telemetry.)",
+    "command": "edge/entities/{entity_id}/command  (core -> Layer 1, RETAINED per entity - $defs/command. Published ONLY by the core after arbitration + guards; the successor of the retained edge/setpoint. An empty payload clears the retained command = nothing commanded.)"
+  },
+  "x-semantics": {
+    "identity": "The entity_id in every payload MUST equal the {entity_id} topic segment; consumers ignore mismatches (the v1 topic==payload identity rule).",
+    "failsafe": "guards.failsafe.behavior is what the entity falls back to when nothing commands it (no active desired, stale plan - decision D-9): 'self-consumption' (storage: the v1 guards.SelfConsumption fallback), 'off' (consumers: safe state), 'release' (return the device to its native behavior, clear limits), 'measure-only' (entity is never actuated at all - grid meters, uncontrolled producers).",
+    "charge_from_grid_allowed": "Storage guard posture per decision D-8: false OR ABSENT = the entity must never charge from the grid (commanded charge clamped to measured available PV; unknown PV blocks charge entirely). Only an explicit true releases the clamp.",
+    "signs": "Shared with mqtt-telemetry-2.0 and the command vocabulary: storage setpoint_kw/battery_power_kw + = charge, - = discharge; grid power_kw + = import, - = export; generation is only ever capped (limit_kw/limit_pct reduce-only), never commanded to produce."
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/config" },
+    { "$ref": "#/$defs/telemetry" },
+    { "$ref": "#/$defs/command" },
+    { "$ref": "#/$defs/registry_push" }
+  ],
+  "$defs": {
+    "entity_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      "description": "Entity id, MQTT-topic-safe (the provisioning ref pattern). The cloud entity registry row UUID is the recommended form."
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": ["battery-hybrid", "producer", "grid-meter"],
+      "description": "Domain type on top of the capability model (plan decision D10). E1a ships the three pilot types; further types (wallbox, heat-rod, load) join additively in later increments."
+    },
+    "channels": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Flat numeric readings keyed by channel name (snake_case). Values are always numbers; a boolean state is 0/1.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+      "additionalProperties": { "type": "number" }
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "What the entity can report (measure) and what it may be commanded (actuate). The actuate command names are the D-14 vocabulary shared with edge-desired and mqtt-schedule-2.0. A measure-only entity (grid meter) simply has no actuate list.",
+      "additionalProperties": false,
+      "properties": {
+        "measure": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["channel"],
+            "additionalProperties": false,
+            "properties": {
+              "channel": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+              "unit": { "type": "string", "maxLength": 16 }
+            }
+          }
+        },
+        "actuate": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["command"],
+            "additionalProperties": false,
+            "properties": {
+              "command": { "type": "string", "enum": ["setpoint_kw", "on_off", "limit_pct", "limit_kw", "mode"] },
+              "min": { "type": "number", "description": "Lower bound for numeric commands (e.g. setpoint_kw: -max_discharge)." },
+              "max": { "type": "number", "description": "Upper bound for numeric commands." },
+              "modes": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+                "description": "The declared mode set (command 'mode' only)."
+              }
+            }
+          }
+        }
+      }
+    },
+    "guard_limits": {
+      "type": "object",
+      "description": "Per-entity guard chain inputs (decision D-9: limits live in registry config, not in plans; the generalization of the v1 env-derived guards.Limits). All optional - an absent limit skips that clamp, EXCEPT charge_from_grid_allowed where absent = NOT allowed (D-8).",
+      "additionalProperties": false,
+      "properties": {
+        "max_charge_kw": { "type": "number", "minimum": 0, "description": "Storage rated charge bound (kW)." },
+        "max_discharge_kw": { "type": "number", "minimum": 0, "description": "Storage rated discharge bound (kW, magnitude)." },
+        "soc_min_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "soc_max_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "charge_from_grid_allowed": { "type": "boolean", "description": "D-8: absent = NOT allowed; only explicit true releases the solar-only-charge clamp." },
+        "max_generation_kw": { "type": "number", "minimum": 0, "description": "Producer nameplate cap: a limit_kw command is additionally clamped to [0, max_generation_kw]; limits only ever reduce." }
+      }
+    },
+    "failsafe": {
+      "type": "object",
+      "required": ["behavior"],
+      "additionalProperties": false,
+      "properties": {
+        "behavior": { "type": "string", "enum": ["self-consumption", "off", "release", "measure-only"] }
+      }
+    },
+    "guards": {
+      "type": "object",
+      "required": ["failsafe"],
+      "additionalProperties": false,
+      "properties": {
+        "limits": { "$ref": "#/$defs/guard_limits" },
+        "failsafe": { "$ref": "#/$defs/failsafe" }
+      }
+    },
+    "descriptor": {
+      "type": "object",
+      "description": "One entity as the registry knows it. driver is an OPTIONAL opaque connection block for Layer-1 self-wiring (brand/model/family/communication/connection in the v1 sources busEntry shape); E1a carries it through verbatim, the v2 driver layer consumes it in a later increment.",
+      "required": ["entity_id", "entity_type", "capabilities", "guards"],
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": { "$ref": "#/$defs/entity_id" },
+        "entity_type": { "$ref": "#/$defs/entity_type" },
+        "label": { "type": "string", "maxLength": 200 },
+        "capabilities": { "$ref": "#/$defs/capabilities" },
+        "guards": { "$ref": "#/$defs/guards" },
+        "driver": { "type": "object" }
+      }
+    },
+    "config": {
+      "type": "object",
+      "title": "edge/entities/{entity_id}/config payload",
+      "description": "The retained per-entity config: the registry descriptor plus schema_version and the registry revision it came from.",
+      "required": ["schema_version", "entity_id", "entity_type", "capabilities", "guards"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "entity_id": { "$ref": "#/$defs/entity_id" },
+        "entity_type": { "$ref": "#/$defs/entity_type" },
+        "label": { "type": "string", "maxLength": 200 },
+        "capabilities": { "$ref": "#/$defs/capabilities" },
+        "guards": { "$ref": "#/$defs/guards" },
+        "driver": { "type": "object" },
+        "revision": { "type": "string", "maxLength": 128, "description": "The registry push revision this config was applied from (echoed in the status heartbeat)." }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "title": "edge/entities/{entity_id}/telemetry payload",
+      "required": ["schema_version", "entity_id", "channels"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "entity_id": { "$ref": "#/$defs/entity_id" },
+        "ts": { "type": "string", "format": "date-time", "description": "Observation time (RFC 3339, UTC); absent = receive time." },
+        "channels": { "$ref": "#/$defs/channels" }
+      }
+    },
+    "command": {
+      "type": "object",
+      "title": "edge/entities/{entity_id}/command payload",
+      "description": "The guard-clamped command state the driver layer executes - core-owned, retained, re-derived continuously (the edge/setpoint successor). commands carries the granted values keyed by the D-14 vocabulary; an absent limit_kw/limit_pct means NO limit and MUST clear any previously applied limit (the 1.0 pv_limit_kw clearing rule).",
+      "required": ["schema_version", "entity_id", "ts", "control_enabled", "commands"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "entity_id": { "$ref": "#/$defs/entity_id" },
+        "ts": { "type": "string", "format": "date-time" },
+        "control_enabled": {
+          "type": "boolean",
+          "description": "The v1 two-gate posture carried per entity: false = the driver layer must not write (readbacks still run so the UI shows actual state)."
+        },
+        "source": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Who the granted command came from - documented values: 'plan' (market desire from the plan executor), 'desired' (arbitration winner), 'failsafe' (registry failsafe active). Open set."
+        },
+        "commands": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "setpoint_kw": { "type": "number" },
+            "limit_kw": { "type": "number", "minimum": 0 },
+            "limit_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+            "on_off": { "type": "boolean" },
+            "mode": { "type": "string", "minLength": 1, "maxLength": 64 }
+          }
+        }
+      }
+    },
+    "registry_push": {
+      "type": "object",
+      "title": "ems/{t}/{s}/{d}/v2/entities payload (entity-registry push)",
+      "description": "The cloud entity registry pushed to the device, retained: the device's FULL entity set in one message (subscribe = converge, reconnect = re-converge; the retained-config pattern proven three times over, D-11 rationale). The edge diffs against its persisted set: new/changed entities are (re)published as per-entity retained configs, removed entities get their retained config + command cleared.",
+      "required": ["schema_version", "tenant_id", "site_id", "device_id", "revision", "published_at", "entities"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "tenant_id": { "type": "string", "format": "uuid" },
+        "site_id": { "type": "string", "format": "uuid" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Opaque registry revision (the api uses the push's published_at instant). The edge echoes the applied revision in its status heartbeat 'entities' block, so the cloud can verify convergence."
+        },
+        "published_at": { "type": "string", "format": "date-time" },
+        "entities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/descriptor" },
+          "description": "May be empty: the device has no v2 entities (all local per-entity configs are cleared)."
+        }
+      }
+    }
+  }
+}

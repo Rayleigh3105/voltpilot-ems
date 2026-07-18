@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/mqtt-telemetry-2.0.schema.json",
+  "title": "VoltPilot MQTT Multi-Entity Telemetry Payload (telemetry 2.0)",
+  "description": "The v2 per-entity telemetry uplink published by a v2 edge on ems/{tenant_id}/{site_id}/{device_id}/v2/telemetry (QoS1, NOT retained). Successor of the FROZEN mqtt-telemetry.schema.json (1.0), which stays untouched on its own topic - coexistence is by SEPARATE TOPIC in the per-device v2/# subtree (README decision D-2; dual-CONSUME cloud-side, never dual-publish on old devices). Instead of the frozen 5-channel measurement whitelist, 2.0 carries N entities, each with free-form numeric channels declared by the entity's registry capabilities (edge/entities/{id}/config). The cloud ingest validates the ENVELOPE ONLY: identity (topic == payload), id formats, timestamps, and the structural shape - channel NAMES are deliberately not validated against the registry (the capability set is edge/portal concern; an unknown channel is data, not an error).",
+  "type": "object",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/telemetry  (Edge -> Cloud, QoS1, not retained; the device_id is the edge GATEWAY device carrying the mTLS identity - entities live under it)",
+  "x-channels": "Channel values are ALWAYS numbers (a boolean state is 0/1). Sign conventions are fixed per capability, shared with the command vocabulary: storage battery_power_kw + = charge / - = discharge; grid power_kw + = import / - = export; generation (pv_power_kw) >= 0. The per-entity channel vocabulary is declared in the entity registry; the pilot entity types ship battery-hybrid (soc_pct, battery_power_kw, pv_power_kw), producer (pv_power_kw) and grid-meter (power_kw).",
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "ts", "entities"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2.0",
+      "description": "Payload contract version. 2.0 = the multi-entity successor of mqtt-telemetry 1.0."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Observation timestamp (RFC 3339, UTC) for every entity that does not carry its own ts. Original at emission time; a store-and-forward edge replays with ORIGINAL timestamps (the v1 rule - the cloud writer keys liveness on arrival time, not this field)."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic per-device sequence number for gap detection (the v1 field, optional)."
+    },
+    "entities": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Per-entity channel readings, keyed by entity id from the entity registry. An entity with nothing to report is simply absent - never fabricated zeros (the v1 sources discipline).",
+      "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["channels"],
+        "additionalProperties": false,
+        "properties": {
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "description": "OPTIONAL per-entity observation time overriding the top-level ts (entities read at different cadences may share one uplink message)."
+          },
+          "channels": {
+            "type": "object",
+            "minProperties": 1,
+            "description": "Flat numeric readings, keyed by channel name (snake_case, the v1 measurement-key style).",
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+            "additionalProperties": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}

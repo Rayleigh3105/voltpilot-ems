@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/telemetry-v2-raw.event.schema.json",
+  "title": "VoltPilot Redpanda telemetry-v2.raw Event",
+  "description": "Event written by the Ingest service to the Redpanda topic `telemetry-v2.raw` after ENVELOPE-validating an inbound mqtt-telemetry-2.0 payload (see mqtt-telemetry-2.0.md). Consumed by the TimescaleDB-Writer's v2 listener, which explodes it into generic (entity_id, channel, value) rows in the `telemetry_v2` hypertable. Lives NEXT TO the v1 `telemetry.raw` topic (dual-consume, coexistence philosophy #2 - the v1 event contract telemetry-raw.event.schema.json is untouched). A brand-new event contract, so schema_version starts at 1.0.",
+  "type": "object",
+  "x-kafka": {
+    "topic": "telemetry-v2.raw",
+    "key": "{tenant_id}:{site_id}",
+    "partitioning": "by tenant_id/site_id for ordered per-site processing (the v1 rule)"
+  },
+  "required": ["schema_version", "event_id", "tenant_id", "site_id", "device_id", "observed_at", "ingested_at", "entities"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id assigned by Ingest, for traceability. Idempotency downstream keys on (entity_id, channel, time), not on this id."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The payload's top-level ts. An entity carrying its own ts overrides this for that entity's rows."
+    },
+    "ingested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time the Ingest service accepted the message; becomes received_at on every exploded row (liveness derives from arrival time, never observed_at)."
+    },
+    "source_topic": { "type": "string", "description": "Originating MQTT topic, for traceability." },
+    "entities": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "The validated entities block, carried through unchanged from the MQTT payload (see mqtt-telemetry-2.0.schema.json).",
+      "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["channels"],
+        "additionalProperties": false,
+        "properties": {
+          "ts": { "type": "string", "format": "date-time" },
+          "channels": {
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+            "additionalProperties": { "type": "number" }
+          }
+        }
+      }
+    }
+  }
+}
