@@ -292,7 +292,9 @@ func TestEntityLayerRegistryToConfigGuardsAndV2Telemetry(t *testing.T) {
 			return false
 		}
 	})
-	if cmd.EntityID != entBattery || cmd.Source != "default" {
+	// Contract vocabulary: the self-consumption fallback surfaces as source
+	// "failsafe" (edge-entity-config.md §4), not the v1 "default".
+	if cmd.EntityID != entBattery || cmd.Source != "failsafe" {
 		t.Fatalf("entity command identity wrong: %+v", cmd)
 	}
 	if *cmd.Commands.SetpointKw != 2 {

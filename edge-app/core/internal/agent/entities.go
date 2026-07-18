@@ -236,8 +236,23 @@ func (a *Agent) mirrorEntityCommand(now time.Time, setpointKw float64, pvLimit *
 	if granted.Empty() {
 		return
 	}
-	payload := entities.CommandPayload(battery.ID, now, controlEnabled, source, granted)
+	payload := entities.CommandPayload(battery.ID, now, controlEnabled,
+		entityCommandSource(source), granted)
 	a.publishEntityRetained(entities.CommandTopic(battery.ID), payload)
+}
+
+// entityCommandSource maps the v1 execution-path source strings onto the
+// entity-command contract vocabulary (edge-entity-config.md §4): the cloud
+// plan slot = "plan", the self-consumption fallback = the registry failsafe.
+func entityCommandSource(v1Source string) string {
+	switch v1Source {
+	case "schedule":
+		return "plan"
+	case "default":
+		return "failsafe"
+	default:
+		return v1Source
+	}
 }
 
 // restoreEntities loads the persisted registry at boot (before Start

@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.enrollment.EnrollmentService;
+import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
 import com.voltpilot.api.purge.DevicePurgeService;
@@ -55,13 +56,15 @@ public class DeviceController {
     private final DevicePurgeService purge;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
     private final ObjectProvider<EnrollmentService> enrollment;
+    private final ObjectProvider<EntityRegistryPublisher> entityRegistry;
 
     public DeviceController(DeviceRepository devices, SiteRepository sites,
             SeriesRepository series, AssetRepository assets,
             ProvisionedDeviceRepository provisioned,
             DevicePurgeService purge,
             ObjectProvider<ProvisioningPublisher> provisioning,
-            ObjectProvider<EnrollmentService> enrollment) {
+            ObjectProvider<EnrollmentService> enrollment,
+            ObjectProvider<EntityRegistryPublisher> entityRegistry) {
         this.devices = devices;
         this.sites = sites;
         this.series = series;
@@ -70,6 +73,7 @@ public class DeviceController {
         this.purge = purge;
         this.provisioning = provisioning;
         this.enrollment = enrollment;
+        this.entityRegistry = entityRegistry;
     }
 
     @GetMapping
@@ -211,6 +215,11 @@ public class DeviceController {
         }
         provisioning.ifAvailable(p ->
                 p.clearRetained(device.externalRef(), tenantId, device.siteId(), device.id()));
+        // v2 hygiene: the retained entity-registry slot dies with the device
+        // (a re-claim mints a NEW device id, so the old subtree would otherwise
+        // keep an orphaned retained push forever). Best-effort like the rest.
+        entityRegistry.ifAvailable(p ->
+                p.clearRegistry(tenantId, device.siteId(), device.id()));
         // First-boot enrollment counterpart: drop the device's broker ACL grant
         // so an issued mTLS certificate loses topic access (best-effort; CRL
         // revocation stays the operator-run cryptographic backstop).
