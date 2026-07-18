@@ -60,6 +60,9 @@ class IngestPipeTest {
     private static final String DEVICE = "00000000-0000-0000-0000-000000000003";
     private static final String TOPIC = "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/telemetry";
     private static final String RAW_TOPIC = "telemetry.raw";
+    private static final String V2_TOPIC =
+            "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/v2/telemetry";
+    private static final String V2_RAW_TOPIC = "telemetry-v2.raw";
 
     @Container
     static final GenericContainer<?> EMQX = new GenericContainer<>(DockerImageName.parse("emqx/emqx:5.8.3"))
@@ -118,9 +121,48 @@ class IngestPipeTest {
         }
     }
 
+    /**
+     * The v2 leg (dual-consume): the CONTRACT FIXTURE
+     * mqtt-telemetry-2.0.valid.three-entities.json - which carries the same
+     * tenant/site/device identity as this test - published verbatim on the v2
+     * topic lands as a telemetry-v2.raw event on its OWN Kafka topic, entities
+     * carried through unchanged. The v1 flow above is byte-identical untouched
+     * (the v1 single-level wildcard never matches the 6-segment v2 topic).
+     */
+    @Test
+    void mqttV2TelemetryFlowsToItsOwnRawTopic() throws Exception {
+        createTopic(V2_RAW_TOPIC);
+        String payload = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../../docs/contracts/v2/examples/mqtt-telemetry-2.0.valid.three-entities.json"));
+
+        try (KafkaConsumer<String, String> consumer = consumer()) {
+            consumer.subscribe(List.of(V2_RAW_TOPIC));
+            ConsumerRecord<String, String> record =
+                    publishUntilReceived(V2_TOPIC, payload, consumer, V2_RAW_TOPIC);
+
+            assertThat(record.key()).isEqualTo(TENANT + ":" + SITE);
+            JsonNode event = mapper.readTree(record.value());
+            assertThat(event.get("schema_version").asText()).isEqualTo("1.0");
+            assertThat(event.get("tenant_id").asText()).isEqualTo(TENANT);
+            assertThat(event.get("site_id").asText()).isEqualTo(SITE);
+            assertThat(event.get("device_id").asText()).isEqualTo(DEVICE);
+            assertThat(event.get("source_topic").asText()).isEqualTo(V2_TOPIC);
+            JsonNode entities = event.get("entities");
+            assertThat(entities.size()).isEqualTo(3);
+            assertThat(entities.get("5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f")
+                    .get("channels").get("soc_pct").asDouble()).isEqualTo(62.5);
+            assertThat(entities.get("7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071")
+                    .get("channels").get("power_kw").asDouble()).isEqualTo(-49.7);
+        }
+    }
+
     private void createTopic() throws Exception {
+        createTopic(RAW_TOPIC);
+    }
+
+    private void createTopic(String name) throws Exception {
         try (Admin admin = Admin.create(Map.of("bootstrap.servers", REDPANDA.getBootstrapServers()))) {
-            admin.createTopics(List.of(new NewTopic(RAW_TOPIC, 3, (short) 1))).all().get();
+            admin.createTopics(List.of(new NewTopic(name, 3, (short) 1))).all().get();
         } catch (ExecutionException e) {
             // Redpanda may auto-create the topic under the producer; that's fine.
             if (!(e.getCause() instanceof TopicExistsException)) {
@@ -131,18 +173,24 @@ class IngestPipeTest {
 
     private ConsumerRecord<String, String> publishUntilReceived(
             String payload, KafkaConsumer<String, String> consumer) throws Exception {
+        return publishUntilReceived(TOPIC, payload, consumer, RAW_TOPIC);
+    }
+
+    private ConsumerRecord<String, String> publishUntilReceived(String mqttTopic,
+            String payload, KafkaConsumer<String, String> consumer, String rawTopic)
+            throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(60).toNanos();
         while (System.nanoTime() < deadline) {
-            publish(payload);
+            publish(mqttTopic, payload);
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
             if (!records.isEmpty()) {
                 return records.iterator().next();
             }
         }
-        throw new AssertionError("telemetry.raw event never arrived within timeout");
+        throw new AssertionError(rawTopic + " event never arrived within timeout");
     }
 
-    private void publish(String payload) throws Exception {
+    private void publish(String mqttTopic, String payload) throws Exception {
         String url = "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883);
         MqttClient client = new MqttClient(url, "it-pub-" + UUID.randomUUID(), new MemoryPersistence());
         try {
@@ -151,7 +199,7 @@ class IngestPipeTest {
             client.connect(opts);
             MqttMessage msg = new MqttMessage(payload.getBytes());
             msg.setQos(1);
-            client.publish(TOPIC, msg);
+            client.publish(mqttTopic, msg);
         } finally {
             if (client.isConnected()) {
                 client.disconnect();

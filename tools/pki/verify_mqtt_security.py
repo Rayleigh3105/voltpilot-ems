@@ -304,6 +304,14 @@ def verify_acl() -> None:
           evaluate(rules, dev, "publish", f"{own}/schedule") == "deny")
     check("B5 device tries a non-ems topic -> deny",
           evaluate(rules, dev, "publish", "foo/bar") == "deny")
+    check("B5v2a device subscribes its own v2 subtree (v2/plan, v2/entities) -> allow",
+          evaluate(rules, dev, "subscribe", f"{own}/v2/plan") == "allow"
+          and evaluate(rules, dev, "subscribe", f"{own}/v2/entities") == "allow")
+    check("B5v2b device publishes its own v2/telemetry -> allow",
+          evaluate(rules, dev, "publish", f"{own}/v2/telemetry") == "allow")
+    check("B5v2c device touches ANOTHER device's v2 subtree -> deny",
+          evaluate(rules, dev, "publish", f"{other}/v2/telemetry") == "deny"
+          and evaluate(rules, dev, "subscribe", f"{other}/v2/plan") == "deny")
 
     ungranted = {"username": DEVICE_B, "clientid": DEVICE_B, "ipaddr": "203.0.113.9"}
     check("B5b revoked/ungranted device UUID -> denied everything",

@@ -22,6 +22,16 @@ export function sourceSummary(p: MeasurementPoint): string {
   return bits.join(' · ');
 }
 
+/**
+ * Only the read-only SOURCE roles belong in this panel. A `battery-hybrid`
+ * measurement point (the v2 entity-registry row the admin bootstrap creates for
+ * the primary inverter) is deliberately hidden here - it is not a "weitere
+ * Energiequelle" and is managed platform-side.
+ */
+function sourceRolesOnly(list: MeasurementPoint[]): MeasurementPoint[] {
+  return list.filter((p) => p.role === 'pv-generation' || p.role === 'grid-meter');
+}
+
 export function ErzeugerSourcesPanel({ siteId }: { siteId: string }) {
   const [points, setPoints] = useState<MeasurementPoint[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -37,7 +47,7 @@ export function ErzeugerSourcesPanel({ siteId }: { siteId: string }) {
     api
       .measurementPoints(siteId)
       .then((list) => {
-        if (alive) setPoints(list);
+        if (alive) setPoints(sourceRolesOnly(list));
       })
       .catch(() => {
         if (alive) setFailed(true);
@@ -70,7 +80,7 @@ export function ErzeugerSourcesPanel({ siteId }: { siteId: string }) {
         capacityKwp: kwpNum,
         registryUnitId: see.trim() || undefined,
       });
-      setPoints(list);
+      setPoints(sourceRolesOnly(list));
       setAdding(false);
       resetForm();
     } catch (e) {
@@ -83,7 +93,7 @@ export function ErzeugerSourcesPanel({ siteId }: { siteId: string }) {
   async function remove(id: string) {
     try {
       const list = await api.deleteMeasurementPoint(siteId, id);
-      setPoints(list);
+      setPoints(sourceRolesOnly(list));
     } catch {
       // leave the list; a reload re-syncs
     }

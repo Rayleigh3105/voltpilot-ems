@@ -21,7 +21,8 @@ import org.springframework.stereotype.Repository;
 public class MeasurementPointRepository {
 
     private static final String COLUMNS =
-            "id, role, label, brand, model, capacity_kwp, registry_unit_id, control, created_at";
+            "id, role, label, brand, model, capacity_kwp, registry_unit_id, control, created_at, "
+                    + "entity_type";
 
     private final JdbcTemplate jdbc;
 
@@ -61,6 +62,26 @@ public class MeasurementPointRepository {
         return caps.isEmpty() ? null : caps.get(0);
     }
 
+    /**
+     * The role + v2 entity_type of one point of this site (null when absent /
+     * foreign). Lets the delete path refuse the battery-hybrid control row and
+     * know whether a v2 registry re-push is due.
+     */
+    public RoleAndEntityType roleAndEntityType(UUID siteId, UUID id) {
+        List<RoleAndEntityType> rows = jdbc.query(
+                "SELECT role, entity_type FROM measurement_point WHERE id = ? AND site_id = ?",
+                (rs, n) -> new RoleAndEntityType(rs.getString("role"), rs.getString("entity_type")),
+                id, siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** See {@link #roleAndEntityType}. */
+    public record RoleAndEntityType(String role, String entityType) {
+        public boolean isEntity() {
+            return entityType != null;
+        }
+    }
+
     /** How many measurement points of a given role the site already has. */
     public int countByRole(UUID siteId, String role) {
         Integer n = jdbc.queryForObject(
@@ -89,6 +110,7 @@ public class MeasurementPointRepository {
                 rs.getBigDecimal("capacity_kwp"),
                 rs.getString("registry_unit_id"),
                 rs.getBoolean("control"),
-                created != null ? created.toInstant() : null);
+                created != null ? created.toInstant() : null,
+                rs.getString("entity_type"));
     }
 }

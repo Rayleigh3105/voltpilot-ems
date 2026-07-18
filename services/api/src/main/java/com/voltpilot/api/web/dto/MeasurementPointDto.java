@@ -23,5 +23,11 @@ public record MeasurementPointDto(
         BigDecimal capacityKwp,
         String registryUnitId,
         boolean control,
-        Instant createdAt) {
+        Instant createdAt,
+        /**
+         * v2 entity registry: the pilot domain type (battery-hybrid | producer |
+         * grid-meter) when this row IS a v2 entity, else null. Set by the admin
+         * bootstrap, never by the customer paths (E1a).
+         */
+        String entityType) {
 }

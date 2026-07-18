@@ -68,3 +68,31 @@ DROP POLICY IF EXISTS device_isolation ON device;
 CREATE POLICY device_isolation ON device
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
+-- v2 entity telemetry (mirrors api migration V20260718010000): the generic
+-- (entity_id, channel, value) hypertable the v2 listener writes. Same RLS +
+-- unique-index discipline as v1; the rollup table is NOT mirrored here (the
+-- writer never touches it - it is refreshed by the api-owned background job).
+CREATE TABLE IF NOT EXISTS telemetry_v2 (
+    time        TIMESTAMPTZ NOT NULL,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    tenant_id   UUID        NOT NULL,
+    site_id     UUID        NOT NULL,
+    device_id   UUID        NOT NULL,
+    entity_id   TEXT        NOT NULL,
+    channel     TEXT        NOT NULL,
+    value       DOUBLE PRECISION NOT NULL
+);
+
+SELECT create_hypertable('telemetry_v2', 'time', if_not_exists => TRUE);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_telemetry_v2_entity_channel_time
+    ON telemetry_v2 (entity_id, channel, time);
+
+GRANT SELECT, INSERT ON telemetry_v2 TO voltpilot_app;
+
+ALTER TABLE telemetry_v2 ENABLE ROW LEVEL SECURITY;
+ALTER TABLE telemetry_v2 FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS telemetry_v2_isolation ON telemetry_v2;
+CREATE POLICY telemetry_v2_isolation ON telemetry_v2
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);

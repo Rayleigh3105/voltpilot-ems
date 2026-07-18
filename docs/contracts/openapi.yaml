@@ -1252,6 +1252,71 @@ paths:
                 items: { $ref: "#/components/schemas/PendingEnrollment" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/sites/{siteId}/v2-entities:
+    get:
+      tags: [admin]
+      summary: List a site's v2 entity registry rows (E1a pilot).
+      description: >
+        Platform-admin, through the RLS-scoped path via the X-Tenant-Id
+        switcher (no or wrong tenant selected => 404). Entities are
+        measurement_point rows with a non-null entityType; capabilities and
+        guards carry the docs/contracts/v2/edge-entity.schema.json objects
+        verbatim.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's v2 entities.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/V2Entity" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/bootstrap:
+    post:
+      tags: [admin]
+      summary: Create/refresh the three pilot entities from the site's v1 master data.
+      description: >
+        The E1a pilot-mapping utility (used by the E13a cutover; nothing
+        converts automatically): battery asset -> battery-hybrid entity (creates
+        the site's control measurement_point row when absent), pv-generation
+        points -> producer entities, the grid-meter point -> grid-meter entity.
+        Idempotent - re-running refreshes capabilities/guard config from the
+        current master data. Afterwards the registry is pushed BEST-EFFORT as
+        one retained message on ems/{t}/{s}/{d}/v2/entities (the response's
+        push block reports whether it went out).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Resulting entities + skipped notes + push outcome.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2EntityBootstrapResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/push:
+    post:
+      tags: [admin]
+      summary: Re-push the stored v2 entity registry to the gateway device.
+      description: >
+        Composes the current registry push payload and publishes it retained
+        (best-effort; e.g. after a broker outage or a device re-claim).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Current entities + push outcome.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2EntityBootstrapResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
   /api/v1/admin/tenants/{tenantId}/users/{userId}:
     put:
       tags: [admin]
@@ -1806,6 +1871,44 @@ components:
         registryUnitId: { type: string, nullable: true, example: SEE900000000001 }
         control: { type: boolean, description: Always false for the roles recorded here. }
         createdAt: { type: string, format: date-time, nullable: true }
+        entityType:
+          type: string
+          nullable: true
+          enum: [battery-hybrid, producer, grid-meter, null]
+          description: >
+            v2 entity registry (E1a): the pilot domain type when this row is a
+            v2 entity, else null. Set by the admin bootstrap only.
+    V2Entity:
+      type: object
+      description: >
+        One v2 entity-registry row (E1a). capabilities/guards are the
+        docs/contracts/v2/edge-entity.schema.json $defs objects verbatim.
+      properties:
+        id: { type: string, format: uuid }
+        entityType: { type: string, enum: [battery-hybrid, producer, grid-meter] }
+        role: { type: string, example: battery-hybrid }
+        label: { type: string, nullable: true }
+        deviceId: { type: string, format: uuid, nullable: true }
+        capabilities: { type: object, nullable: true }
+        guards: { type: object, nullable: true }
+    V2EntityBootstrapResult:
+      type: object
+      properties:
+        entities:
+          type: array
+          items: { $ref: "#/components/schemas/V2Entity" }
+        skipped:
+          type: array
+          items: { type: string }
+          description: Honest notes about entity types that could not be created (e.g. no battery asset).
+        push:
+          type: object
+          description: Outcome of the best-effort retained registry publish.
+          properties:
+            attempted: { type: boolean }
+            published: { type: boolean }
+            reason: { type: string, nullable: true, enum: [mqtt_not_configured, no_gateway_device, publish_failed, null] }
+            deviceId: { type: string, format: uuid, nullable: true }
     MastrPreview:
       type: object
       description: >

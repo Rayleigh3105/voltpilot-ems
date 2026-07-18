@@ -25,6 +25,13 @@ const ajv = new Ajv2020({ strict: false });
 | `flow-artifact.valid.artifact.json` | flow-artifact | valid — one compiled artifact (manifest + nodered-tabs bundle with `@vp-flow` tab marker) |
 | `flow-artifact.valid.deployment.json` | flow-artifact | valid — retained deployment set for one device carrying that artifact |
 | `flow-artifact.invalid.bad-hash.json` | flow-artifact | **invalid** — `content_hash` is not `sha256:<64 hex>` (md5 prefix) |
+| `mqtt-telemetry-2.0.valid.three-entities.json` | mqtt-telemetry-2.0 | valid — the three pilot entities (battery-hybrid + producer + grid-meter), per-entity ts override |
+| `mqtt-telemetry-2.0.valid.single-entity.json` | mqtt-telemetry-2.0 | valid — minimal single grid-meter uplink |
+| `mqtt-telemetry-2.0.invalid.string-channel.json` | mqtt-telemetry-2.0 | **invalid** — channel value is a string (channels are always numbers) |
+| `edge-entity.valid.config-battery.json` | edge-entity | valid — retained per-entity config for a battery-hybrid (guard limits + self-consumption failsafe) |
+| `edge-entity.valid.registry-push.json` | edge-entity | valid — full `…/v2/entities` push carrying the three pilot entity descriptors |
+| `edge-entity.valid.telemetry-producer.json` | edge-entity | valid — local per-entity telemetry of a producer |
+| `edge-entity.invalid.unknown-entity-type.json` | edge-entity | **invalid** — `entity_type: "wallbox"` is not a pilot type (fails every oneOf branch) |
 
 The invalid fixtures fail at the JSON-Schema level by design (an ajv run proves it). Semantic
 validator rules that JSON Schema cannot express (port type compatibility, cycles, exclusive

@@ -50,17 +50,12 @@ class AclGrantWriterTest {
     void writesTheExactShellToolGrantBlockAboveTheEndAnchor() throws Exception {
         writer.writeGrant(TENANT, SITE, DEVICE);
 
-        String base = "ems/" + TENANT + "/" + SITE + "/" + DEVICE;
         String content = Files.readString(aclFile);
-        // Byte-identical block shape to voltpilot-ca.sh write_acl_grant.
-        assertThat(content).contains(
-                "%%<<device " + DEVICE + " tenant " + TENANT + " site " + SITE + ">>\n"
-                + "{allow, {username, \"" + DEVICE + "\"}, publish,   [\"" + base
-                + "/telemetry\", \"" + base + "/status\"]}.\n"
-                + "{allow, {username, \"" + DEVICE + "\"}, subscribe, [\"" + base
-                + "/schedule\", \"" + base + "/command\", \"" + base + "/config\"]}.\n"
-                + "%%<<end device " + DEVICE + ">>\n"
-                + "%%<<END GENERATED DEVICE GRANTS>>");
+        // Byte-identical block shape to voltpilot-ca.sh write_acl_grant. The
+        // SAME fixed vector (tenant ...0001 / site ...0002 / device ...0003)
+        // is pinned shell-side in tools/pki/test-acl-grants.sh - change both
+        // together (the EdgeRef shared-vector discipline).
+        assertThat(content).contains(block(DEVICE) + "%%<<END GENERATED DEVICE GRANTS>>");
         // The surrounding policy is untouched.
         assertThat(content).contains("vp-internal").contains("{allow, all}.");
     }
@@ -495,6 +490,8 @@ class AclGrantWriterTest {
                 + "/telemetry\", \"" + base + "/status\"]}.\n"
                 + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base
                 + "/schedule\", \"" + base + "/command\", \"" + base + "/config\"]}.\n"
+                + "{allow, {username, \"" + device + "\"}, publish,   [\"" + base + "/v2/#\"]}.\n"
+                + "{allow, {username, \"" + device + "\"}, subscribe, [\"" + base + "/v2/#\"]}.\n"
                 + "%%<<end device " + device + ">>\n";
     }
 

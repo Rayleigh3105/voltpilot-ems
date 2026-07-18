@@ -12,6 +12,9 @@ platform (E0 "Contract-Artefakte"). Everything under `docs/contracts/` (the 1.0 
 | [`flow-graph.md`](./flow-graph.md) + [`flow-graph.schema.json`](./flow-graph.schema.json) | The typed flow model: catalog node instances, typed ports, edges, triggers, validation rules, lifecycle. |
 | [`flow-artifact.md`](./flow-artifact.md) + [`flow-artifact.schema.json`](./flow-artifact.schema.json) | The deployable compiled flow: manifest (hash, version gates, capability requirements), Node-RED tab bundle, retained deployment set on `…/v2/flows`, heartbeat ack, rollback, reseed coexistence. |
 | [`edge-simulator-v2.md`](./edge-simulator-v2.md) | The hardware-free test rig proving Flow → desired → arbitration → guards → write-readback; reused v1 assets vs. new components. |
+| [`mqtt-telemetry-2.0.md`](./mqtt-telemetry-2.0.md) + [`mqtt-telemetry-2.0.schema.json`](./mqtt-telemetry-2.0.schema.json) | Multi-entity telemetry Edge → Cloud on `ems/{t}/{s}/{d}/v2/telemetry` (E1a): per-entity numeric channels; envelope-only cloud validation. |
+| [`edge-entity-config.md`](./edge-entity-config.md) + [`edge-entity.schema.json`](./edge-entity.schema.json) | The E1a half of the entity topic family: retained per-entity config, local per-entity telemetry, core-owned retained command, and the cloud → edge entity-registry push on `…/v2/entities`. |
+| [`telemetry-v2-raw.event.schema.json`](./telemetry-v2-raw.event.schema.json) | Redpanda `telemetry-v2.raw` event (Ingest → Writer, next to the untouched v1 `telemetry.raw`). |
 | [`examples/`](./examples/) | ajv-validated fixtures: ≥ 2 valid + 1 invalid per schema ([`examples/README.md`](./examples/README.md)). |
 
 ## v1 / v2 coexistence philosophy

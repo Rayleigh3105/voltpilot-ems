@@ -174,7 +174,7 @@ EOF
 # ---------------------------------------------------------------------------
 # ACL grant management. Each device owns a marked block:
 #   %%<<device <id> tenant <t> site <s>>>
-#   ...two rules...
+#   ...four rules (v1 topics + the two v2/# wildcard lines)...
 #   %%<<end device <id>>>
 #
 # EMQX's file authorizer is FIRST-MATCH: a per-device grant is only reachable
@@ -194,11 +194,17 @@ write_acl_grant() {
   grep -qF '%%<<END GENERATED DEVICE GRANTS>>' "$ACL_FILE" \
     || die "ACL anchor '%%<<END GENERATED DEVICE GRANTS>>' missing in ${ACL_FILE}"
 
+  # Template MUST stay byte-identical to AclGrantWriter.grantBlock (Java twin);
+  # both sides pin the same vector in their tests. The two v2/# wildcard lines
+  # are decision D-2 (docs/contracts/v2/mqtt-schedule-2.0.md #1): one per-device
+  # v2 subtree covers every current and future v2 topic kind.
   local blockfile; blockfile="$(mktemp)"
   cat > "$blockfile" <<EOF
 %%<<device ${device} tenant ${tenant} site ${site}>>
 {allow, {username, "${device}"}, publish,   ["${base}/telemetry", "${base}/status"]}.
 {allow, {username, "${device}"}, subscribe, ["${base}/schedule", "${base}/command", "${base}/config"]}.
+{allow, {username, "${device}"}, publish,   ["${base}/v2/#"]}.
+{allow, {username, "${device}"}, subscribe, ["${base}/v2/#"]}.
 %%<<end device ${device}>>
 EOF
 
