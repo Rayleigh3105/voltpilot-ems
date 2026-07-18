@@ -50,6 +50,15 @@ DATA_DIR="${VP_DATA_DIR:-/data}"
 RUN_USER="${VP_RUN_USER:-node-red:node-red}"
 MARKER="${DATA_DIR}/.vp-template-version"
 VERSION_FILE="${TEMPLATE_DIR}/.vp-template-version"
+# The @vp-flow merge helper: baked next to this script in the image
+# (vp-reseed-merge-flows.js); in the repo it sits next to this script under
+# its source name. VP_MERGE_SCRIPT overrides for tests.
+MERGE_SCRIPT="${VP_MERGE_SCRIPT:-}"
+if [ -z "$MERGE_SCRIPT" ]; then
+  for cand in "$(dirname "$0")/vp-reseed-merge-flows.js" "$(dirname "$0")/reseed-merge-flows.js"; do
+    if [ -f "$cand" ]; then MERGE_SCRIPT="$cand"; break; fi
+  done
+fi
 
 # Set to 1 by reseed_template when it actually replaced anything, so the
 # (recursive, thousands-of-files in node_modules) chown below runs ONLY when
@@ -75,10 +84,38 @@ reseed_template() {
     log "template UPDATED ${have} -> ${want}; re-seeding flows.json, settings.js, package.json, vp-palette, node_modules"
   fi
 
-  # Template FILES: overwrite outright - the image is the source of truth.
-  for f in flows.json settings.js package.json; do
+  # Template FILES: settings/package are overwritten outright - the image is
+  # the source of truth for them.
+  for f in settings.js package.json; do
     [ -e "$TEMPLATE_DIR/$f" ] && cp -f "$TEMPLATE_DIR/$f" "$DATA_DIR/$f"
   done
+
+  # flows.json is MERGED, not replaced (D-12 reseed coexistence, contract
+  # docs/contracts/v2/flow-artifact.md §4): the VENDOR tab group comes from
+  # the image, while user-flow ARTIFACT tabs (info starts with "@vp-flow") in
+  # the existing file survive byte-for-byte together with their nodes. When
+  # the merge cannot run (no node binary, corrupt existing file) we fall back
+  # to the pre-E2 wholesale copy with a LOUD warning - safe either way: the
+  # core re-applies the retained deployment set and restores dropped artifact
+  # tabs (the contract's "self-healing either way").
+  if [ -e "$TEMPLATE_DIR/flows.json" ]; then
+    merged=0
+    if [ -f "$DATA_DIR/flows.json" ] && [ -f "$MERGE_SCRIPT" ] && command -v node >/dev/null 2>&1; then
+      if node "$MERGE_SCRIPT" "$TEMPLATE_DIR/flows.json" "$DATA_DIR/flows.json" \
+           > "$DATA_DIR/.vp-flows-merged.json" 2> "$DATA_DIR/.vp-flows-merge.log"; then
+        mv "$DATA_DIR/.vp-flows-merged.json" "$DATA_DIR/flows.json"
+        merged=1
+        while IFS= read -r line; do log "flows-merge: $line"; done < "$DATA_DIR/.vp-flows-merge.log"
+      fi
+      rm -f "$DATA_DIR/.vp-flows-merged.json" "$DATA_DIR/.vp-flows-merge.log"
+    fi
+    if [ "$merged" = "0" ]; then
+      if [ -f "$DATA_DIR/flows.json" ]; then
+        log "WARN: flows.json wholesale-seeded (merge unavailable or existing file unreadable); @vp-flow artifact tabs self-heal from the retained deployment"
+      fi
+      cp -f "$TEMPLATE_DIR/flows.json" "$DATA_DIR/flows.json"
+    fi
+  fi
 
   # Template DIRS: replace outright so removed nodes/deps never linger. The
   # rm -rf can only remove root-owned dirs left by an OLDER image because the

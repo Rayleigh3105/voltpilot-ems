@@ -203,7 +203,9 @@ services:
     ports: !reset []
     environment:
       VP_NODERED_USER: ${VP_NODERED_USER:-voltpilot}
-      VP_NODERED_PASSWORD: ${VP_NODERED_PASSWORD:-voltpilot}
+      # Kein Standard-Passwort (fail closed): unset/'voltpilot' verweigert
+      # settings.js den Editor-Start. Wert in der .env setzen (install.sh).
+      VP_NODERED_PASSWORD: ${VP_NODERED_PASSWORD:-}
       # Auf dem Host-Netz ist der Compose-Dienstname "core" nicht mehr
       # aufloesbar. Der Core gibt den lokalen Bus per Host-Loopback frei
       # (127.0.0.1:${VP_BUS_PORT:-1884} -> core:1883), also zeigen die vp-Knoten

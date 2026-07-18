@@ -291,6 +291,11 @@ func (e Entity) allows(command string) bool {
 	return false
 }
 
+// Supports is the exported capability gate: whether the registry declared the
+// command actuatable on this entity (the desired contract's
+// capability:unsupported_command check runs against this).
+func (e Entity) Supports(command string) bool { return e.allows(command) }
+
 // GuardChainLimits builds the v1 guard-chain inputs from the entity's registry
 // guard config. Absent bounds disable that clamp (infinite band / open SoC
 // window) - EXCEPT charge_from_grid_allowed, where absent means NOT allowed
@@ -326,19 +331,45 @@ func (e Entity) GuardChainLimits() guards.Limits {
 // only ever restrict; a grid meter (measure-only failsafe, no actuate
 // capabilities) yields nothing.
 func (e Entity) ClampCommands(c Commands, r guards.Reading) Commands {
+	out, _ := e.ClampCommandsTraced(c, nil, false, r)
+	return out
+}
+
+// ClampCommandsTraced is ClampCommands with stage attribution (the v2
+// arbitration events' reasons[].stage) and an OPTIONAL extra limits
+// tightening: `extra` composes the v1 device-config band/SoC window into the
+// chain (most restrictive wins - the E1a double-clamp expressed as one traced
+// chain), `extraSolarOnly` ORs the v1 plan-carried solar-only posture in.
+// ClampCommands delegates here, so the two can never drift.
+func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolarOnly bool,
+	r guards.Reading) (Commands, []guards.ClampStage) {
 	out := Commands{}
+	var stages []guards.ClampStage
+	limits := e.GuardChainLimits()
+	if extra != nil {
+		limits = tightenLimits(limits, *extra)
+	}
+	limits.SolarOnlyCharge = limits.SolarOnlyCharge || extraSolarOnly
+	noteLimit := func(stage string, before, after float64) {
+		if after != before {
+			stages = append(stages, guards.ClampStage{Stage: stage, Before: before, After: after})
+		}
+	}
 	switch e.Type {
 	case TypeBatteryHybrid:
 		if c.SetpointKw != nil && e.allows(CmdSetpointKw) {
-			v := guards.Clamp(*c.SetpointKw, e.GuardChainLimits(), r)
+			v, tr := guards.ClampTraced(*c.SetpointKw, limits, r)
+			stages = append(stages, tr...)
 			out.SetpointKw = &v
 		}
 		if c.LimitKw != nil && e.allows(CmdLimitKw) {
 			v := clampLimitKw(*c.LimitKw, e.Guards.Limits.MaxGenerationKw)
+			noteLimit(guards.StageLimitReduceOnly, *c.LimitKw, v)
 			out.LimitKw = &v
 		}
 		if c.LimitPct != nil && e.allows(CmdLimitPct) {
 			v := clampPct(*c.LimitPct)
+			noteLimit(guards.StageLimitReduceOnly, *c.LimitPct, v)
 			out.LimitPct = &v
 		}
 	case TypeProducer:
@@ -346,16 +377,32 @@ func (e Entity) ClampCommands(c Commands, r guards.Reading) Commands {
 		// (limit_* reduce-only, the v1 pv_limit_kw safety posture).
 		if c.LimitKw != nil && e.allows(CmdLimitKw) {
 			v := clampLimitKw(*c.LimitKw, e.Guards.Limits.MaxGenerationKw)
+			noteLimit(guards.StageLimitReduceOnly, *c.LimitKw, v)
 			out.LimitKw = &v
 		}
 		if c.LimitPct != nil && e.allows(CmdLimitPct) {
 			v := clampPct(*c.LimitPct)
+			noteLimit(guards.StageLimitReduceOnly, *c.LimitPct, v)
 			out.LimitPct = &v
 		}
 	case TypeGridMeter:
 		// Measure-only by construction: every command is dropped.
 	}
-	return out
+	return out, stages
+}
+
+// tightenLimits composes two limit sets, most restrictive wins: the narrower
+// band, the tighter SoC window, solar-only if either demands it. This is how
+// the v1 device config (env-derived guards.Limits) and the registry guard
+// config both stay binding on one write path.
+func tightenLimits(a, b guards.Limits) guards.Limits {
+	return guards.Limits{
+		MaxChargeKw:     math.Min(a.MaxChargeKw, b.MaxChargeKw),
+		MaxDischargeKw:  math.Min(a.MaxDischargeKw, b.MaxDischargeKw),
+		SocMinPct:       math.Max(a.SocMinPct, b.SocMinPct),
+		SocMaxPct:       math.Min(a.SocMaxPct, b.SocMaxPct),
+		SolarOnlyCharge: a.SolarOnlyCharge || b.SolarOnlyCharge,
+	}
 }
 
 // clampLimitKw keeps a generation cap non-negative and within the nameplate.

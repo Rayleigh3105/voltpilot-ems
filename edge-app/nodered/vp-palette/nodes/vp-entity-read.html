@@ -1,0 +1,36 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-entity-read', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true },
+      entity: { value: '' },
+      channel: { value: 'power_kw' },
+      deadband: { value: 0 }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-entity-read'; },
+    paletteLabel: 'vp-entity-read'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-entity-read">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-entity-read">
+  <p>Liest EINEN Kanal einer Entitaet von
+  <code>edge/entities/&lt;entity&gt;/telemetry</code> und gibt den Zahlenwert
+  aus. Eine Eingangs-Nachricht (Trigger) sendet den letzten bekannten Wert
+  erneut. Nur Lesen - dieser Knoten veroeffentlicht nichts.</p>
+</script>

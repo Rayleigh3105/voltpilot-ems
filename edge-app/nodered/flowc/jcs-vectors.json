@@ -1,0 +1,115 @@
+{
+  "comment": "Shared RFC 8785 (JCS) vectors pinned by BOTH the Go consumer (edge-app/core/internal/flowdeploy/jcs_test.go) and the JS compiler (edge-app/nodered/flowc/canonicalize.test.js). The two implementations MUST stay byte-identical (the refCheckChar lockstep precedent) - never edit one side alone.",
+  "cases": [
+    {
+      "name": "zero",
+      "input": "0",
+      "canonical": "0"
+    },
+    {
+      "name": "minus zero",
+      "input": "-0",
+      "canonical": "0"
+    },
+    {
+      "name": "integer",
+      "input": "42",
+      "canonical": "42"
+    },
+    {
+      "name": "negative float",
+      "input": "-1.5",
+      "canonical": "-1.5"
+    },
+    {
+      "name": "trailing zeros",
+      "input": "4.50",
+      "canonical": "4.5"
+    },
+    {
+      "name": "two pow 53",
+      "input": "9007199254740992",
+      "canonical": "9007199254740992"
+    },
+    {
+      "name": "large decimal boundary",
+      "input": "1e20",
+      "canonical": "100000000000000000000"
+    },
+    {
+      "name": "exp boundary high",
+      "input": "1e21",
+      "canonical": "1e+21"
+    },
+    {
+      "name": "small decimal boundary",
+      "input": "0.000001",
+      "canonical": "0.000001"
+    },
+    {
+      "name": "exp boundary low",
+      "input": "1e-7",
+      "canonical": "1e-7"
+    },
+    {
+      "name": "rfc example precision",
+      "input": "333333333.33333329",
+      "canonical": "333333333.3333333"
+    },
+    {
+      "name": "rfc 1e30",
+      "input": "1E30",
+      "canonical": "1e+30"
+    },
+    {
+      "name": "rfc 2e-3",
+      "input": "2e-3",
+      "canonical": "0.002"
+    },
+    {
+      "name": "rfc tiny",
+      "input": "0.000000000000000000000000001",
+      "canonical": "1e-27"
+    },
+    {
+      "name": "denormal min",
+      "input": "5e-324",
+      "canonical": "5e-324"
+    },
+    {
+      "name": "literals",
+      "input": "[null,true,false]",
+      "canonical": "[null,true,false]"
+    },
+    {
+      "name": "key sort ascii",
+      "input": "{\"b\":1,\"a\":2}",
+      "canonical": "{\"a\":2,\"b\":1}"
+    },
+    {
+      "name": "rfc 8785 string escapes",
+      "input": "{\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}",
+      "canonical": "{\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"
+    },
+    {
+      "name": "rfc 8785 utf16 key order",
+      "input": "{\"€\":\"Euro Sign\",\"\\r\":\"Carriage Return\",\"｡\":\"Halfwidth Ideographic Full Stop\",\"1\":\"One\",\"😀\":\"Emoji: Grinning Face\",\"\\u0080\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\"}",
+      "canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"｡\":\"Halfwidth Ideographic Full Stop\"}"
+    },
+    {
+      "name": "nested mixed",
+      "input": "{\"numbers\":[333333333.33333329,1E30,4.50,2e-3,0.000000000000000000000000001],\"literals\":[null,true,false]}",
+      "canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27]}"
+    },
+    {
+      "name": "empty structures",
+      "input": "{\"a\":[],\"o\":{}}",
+      "canonical": "{\"a\":[],\"o\":{}}"
+    },
+    {
+      "name": "unicode literal kept",
+      "input": "{\"s\":\"ü€😀\"}",
+      "canonical": "{\"s\":\"ü€😀\"}"
+    }
+  ]
+}

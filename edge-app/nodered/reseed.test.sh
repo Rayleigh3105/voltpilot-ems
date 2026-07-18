@@ -101,5 +101,44 @@ grep -q 'su-exec' "$ENTRY"   || fail "entrypoint lost the su-exec privilege drop
 grep -q 'chown -R' "$ENTRY"  || fail "entrypoint lost the chown of \$DATA_DIR to the run user"
 pass "entrypoint re-seeds as root, chowns /data, and drops privileges via su-exec (structural guard)"
 
+# --- Case 6: D-12 reseed coexistence (contract flow-artifact.md §4). The
+# volume's flows.json carries a stale VENDOR tab group PLUS a deployed
+# @vp-flow ARTIFACT tab; a template update must replace ONLY the vendor group
+# and keep the artifact tab + its nodes byte-for-byte. ----------------------
+TPL6="$WORK/tpl6"; DATA6="$WORK/data6"
+TPL_FLOWS6='[{"id":"tab-auto","type":"tab","label":"Vorlage NEU"},{"id":"auto-router","type":"function","z":"tab-auto","name":"Router NEU"}]'
+make_template "$TPL6" "placeholder" "v6"
+printf '%s\n' "$TPL_FLOWS6" > "$TPL6/flows.json"
+mkdir -p "$DATA6"
+printf 'v5\n' > "$DATA6/.vp-template-version"
+cat > "$DATA6/flows.json" <<'JSON'
+[{"id":"tab-auto","type":"tab","label":"Vorlage ALT"},
+ {"id":"auto-router","type":"function","z":"tab-auto","name":"Router ALT"},
+ {"id":"vpflow-4e1c2b3a-v7","type":"tab","label":"VP Flow: Heizstab (v7)","info":"@vp-flow flow_id=4e1c2b3a-5d6e-4f70-8123-456789abcdef flow_version=7"},
+ {"id":"vpflow-4e1c2b3a-v7-n7","type":"vp-desired","z":"vpflow-4e1c2b3a-v7","entity":"heatrod-cellar"}]
+JSON
+out6="$(VP_MERGE_SCRIPT="$(pwd)/reseed-merge-flows.js" VP_TEMPLATE_DIR="$TPL6" VP_DATA_DIR="$DATA6" "$ENTRY" true)"
+grep -q 'Router NEU' "$DATA6/flows.json" || fail "vendor tab group was not replaced by the template"
+grep -q 'Router ALT' "$DATA6/flows.json" && fail "stale vendor content survived the re-seed"
+grep -q 'vpflow-4e1c2b3a-v7-n7' "$DATA6/flows.json" || fail "@vp-flow artifact NODES were dropped by the re-seed"
+grep -q '@vp-flow flow_id=4e1c2b3a' "$DATA6/flows.json" || fail "@vp-flow artifact TAB was dropped by the re-seed"
+node -e "JSON.parse(require('fs').readFileSync('$DATA6/flows.json','utf8'))" || fail "merged flows.json is not valid JSON"
+printf '%s\n' "$out6" | grep -q 'preserving 1 @vp-flow artifact tab' || fail "preservation was not logged"
+pass "vendor tab group replaced, @vp-flow artifact tab + nodes preserved (D-12)"
+
+# --- Case 7: merge degradation. An UNREADABLE existing flows.json falls back
+# to the pre-E2 wholesale copy with a LOUD warning (the retained deployment
+# self-heals the artifact tabs). ---------------------------------------------
+TPL7="$WORK/tpl7"; DATA7="$WORK/data7"
+make_template "$TPL7" "WHOLESALE-FLOWS" "v7"
+mkdir -p "$DATA7"
+printf 'v6\n' > "$DATA7/.vp-template-version"
+printf 'NOT-JSON\n' > "$DATA7/flows.json"
+out7="$(VP_MERGE_SCRIPT="$(pwd)/reseed-merge-flows.js" VP_TEMPLATE_DIR="$TPL7" VP_DATA_DIR="$DATA7" "$ENTRY" true)"
+grep -q '^WHOLESALE-FLOWS$' "$DATA7/flows.json" || fail "unreadable flows.json was not wholesale-seeded"
+printf '%s\n' "$out7" | grep -q 'WARN: flows.json wholesale-seeded' || fail "wholesale fallback was not loudly warned"
+pass "unreadable existing flows.json degrades to wholesale copy with a loud warning"
+
 echo "== reseed test OK =="
-echo "(root-owned-volume reproduction: run reseed-perms.docker.test.sh with Docker present)"
+echo "(root-owned-volume reproduction: run reseed-perms.docker.test.sh with Docker present;"
+echo " artifact-tab survival on the real image: reseed-flows.docker.test.sh)"

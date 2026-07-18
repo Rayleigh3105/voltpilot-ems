@@ -84,6 +84,13 @@ func (a *Agent) applyEntityRegistry(reg entities.Registry) {
 			slog.Error("persisting v2 entity registry failed", "err", err)
 		}
 	}
+	// The arbiter's per-entity states follow the registry (desires for
+	// removed entities are dropped; their retained commands were cleared
+	// above).
+	if a.arb != nil {
+		a.arb.SetEntities(reg)
+		a.pokeArbitration()
+	}
 	slog.Info("v2 entity registry applied", "revision", reg.Revision,
 		"entities", len(reg.Entities))
 }
@@ -175,16 +182,20 @@ func (a *Agent) entityUplinkLoop(ctx context.Context) {
 // entitiesSummary builds the additive heartbeat ack block (nil = no entities).
 func (a *Agent) entitiesSummary() *cloud.EntitiesSummary {
 	a.entMu.Lock()
-	defer a.entMu.Unlock()
-	if len(a.entRegistry.Entities) == 0 {
-		return nil
-	}
-	return &cloud.EntitiesSummary{
+	sum := &cloud.EntitiesSummary{
 		Revision:  a.entRegistry.Revision,
 		AppliedAt: a.entAppliedAt.UTC().Format(time.RFC3339),
 		Count:     len(a.entRegistry.Entities),
 		IDs:       a.entRegistry.IDs(),
 	}
+	a.entMu.Unlock()
+	if sum.Count == 0 {
+		return nil
+	}
+	// The E2 per-entity decision map (holder/granted/all_match) is built
+	// outside entMu - it reads the arbiter and the readback records.
+	sum.Arbitration = a.arbitrationSummary()
+	return sum
 }
 
 // entityGuardReading builds the guard context for one entity from ITS latest
@@ -208,51 +219,6 @@ func (a *Agent) entityGuardReading(id string) guards.Reading {
 		r.PvKw = v
 	}
 	return r
-}
-
-// mirrorEntityCommand is the E1a command bridge: whatever the v1 execution
-// path commands (the guard-clamped setpoint + optional pv limit) is ALSO
-// published as the battery-hybrid entity's retained command - re-clamped
-// through the entity's OWN registry-derived guard chain (most restrictive
-// wins), so the per-entity guards are live on a running device before the E2
-// arbitration lands. No battery-hybrid entity = no publish (pure v1).
-func (a *Agent) mirrorEntityCommand(now time.Time, setpointKw float64, pvLimit *float64,
-	source string, controlEnabled bool) {
-	a.entMu.Lock()
-	var battery *entities.Entity
-	if e := a.entRegistry.FirstOfType(entities.TypeBatteryHybrid); e != nil {
-		copied := *e
-		battery = &copied
-	}
-	a.entMu.Unlock()
-	if battery == nil {
-		return
-	}
-	wish := entities.Commands{SetpointKw: &setpointKw}
-	if pvLimit != nil {
-		wish.LimitKw = pvLimit
-	}
-	granted := battery.ClampCommands(wish, a.entityGuardReading(battery.ID))
-	if granted.Empty() {
-		return
-	}
-	payload := entities.CommandPayload(battery.ID, now, controlEnabled,
-		entityCommandSource(source), granted)
-	a.publishEntityRetained(entities.CommandTopic(battery.ID), payload)
-}
-
-// entityCommandSource maps the v1 execution-path source strings onto the
-// entity-command contract vocabulary (edge-entity-config.md §4): the cloud
-// plan slot = "plan", the self-consumption fallback = the registry failsafe.
-func entityCommandSource(v1Source string) string {
-	switch v1Source {
-	case "schedule":
-		return "plan"
-	case "default":
-		return "failsafe"
-	default:
-		return v1Source
-	}
 }
 
 // restoreEntities loads the persisted registry at boot (before Start

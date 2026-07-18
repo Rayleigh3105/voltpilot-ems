@@ -22,13 +22,16 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
@@ -126,6 +129,26 @@ type Agent struct {
 	entAppliedAt time.Time
 	entReadings  map[string]entReading
 	entUplink    chan entities.Telemetry
+
+	// E2 arbitration layer (agent/arbitration.go; contract docs/contracts/v2/
+	// edge-desired-arbitration.md + mqtt-schedule-2.0.md): the desired
+	// arbiter, the cached v2 plan + its staleness-surviving postures, the
+	// plan-executor bookkeeping and per-entity readback verdicts. All no-ops
+	// without a pushed registry.
+	arb        *desired.Arbiter
+	plan2Store *plan2.Store
+	arbMu      sync.Mutex
+	curPlan2   *plan2.Plan
+	peak2      *float64            // v2 site peak target (survives staleness)
+	reserve2   map[string]*float64 // v2 per-entity reserves (survive staleness)
+	planHeld    map[string]string // entity -> "v1"|"v2" currently plan-commanded
+	entReadback map[string]*bool  // per-entity latest readback all_match
+	arbWake     chan struct{}
+
+	// flowDep consumes the retained flow deployment set (agent/flows.go).
+	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
+	// but acks 'error' honestly instead of materializing tabs.
+	flowDep *flowdeploy.Deployer
 
 	// cloudRemoved is true while the device is in the geraet_entfernt state: a
 	// SUSTAINED run of definitive clean-404 "not claimed" answers confirmed the
@@ -248,6 +271,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	p2s, err := plan2.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	// Restore the operator's despike (Ausreißer-Filter) settings, or fall back
 	// to the safe defaults. A corrupt file must not stop the agent booting.
 	despikeCfg := guards.DefaultSettings()
@@ -316,6 +343,31 @@ func New(cfg config.Config) (*Agent, error) {
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
 	a.restoreEntities()
+	// E2 arbitration: the engine is always constructed (no-op without
+	// entities); the persisted v2 plan is restored like the v1 plan cache.
+	a.plan2Store = p2s
+	a.arbWake = make(chan struct{}, 1)
+	a.arb = a.newArbiter()
+	a.flowDep = a.newFlowDeployer()
+	a.entMu.Lock()
+	reg := a.entRegistry
+	a.entMu.Unlock()
+	a.arb.SetEntities(reg)
+	if p2, err := p2s.Load(); err == nil && p2 != nil {
+		a.curPlan2 = p2
+		a.peak2 = p2.GridImportLimitKw
+		reserves := map[string]*float64{}
+		for _, e := range p2.Entities {
+			if e.ReserveSocPct != nil {
+				v := *e.ReserveSocPct
+				reserves[e.ID] = &v
+			}
+		}
+		a.reserve2 = reserves
+		slog.Info("loaded cached v2 plan from disk", "plan_id", p2.PlanID, "entities", len(p2.Entities))
+	} else if err != nil {
+		slog.Warn("cached v2 plan unreadable; starting without", "err", err)
+	}
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
@@ -380,6 +432,19 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := a.startEntityLayer(ctx); err != nil {
 		return err
 	}
+	// E2 arbitration layer: desired + readback wildcard subscriptions (ids
+	// 7/8) and the executor/expiry loop. No-op without a pushed registry.
+	if err := a.startArbitration(ctx); err != nil {
+		return err
+	}
+	// E2 flow deployment: reconcile the persisted set at boot (self-heal from
+	// truth) and keep reconciling periodically.
+	a.flowDep.Reconcile()
+	a.done.Add(1)
+	go func() {
+		defer a.done.Done()
+		a.flowReconcileLoop(ctx)
+	}()
 
 	a.done.Add(2)
 	go a.setpointLoop(ctx)
@@ -685,6 +750,8 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnSchedule:  a.onSchedule,
 		OnCommand:   a.onPurgeCommand,
 		OnEntities:  a.onEntityRegistryPush,
+		OnPlanV2:    a.onPlanV2,
+		OnFlows:     a.onFlows,
 		OnConnect: func(connected bool) {
 			a.State.Update(func(s *state.Snapshot) {
 				s.CloudConnected = connected
@@ -744,7 +811,8 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.mu.Lock()
 				soc := a.lastRawSoc
 				a.mu.Unlock()
-				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary()); err != nil {
+				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
+					a.flowsSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():
@@ -1194,6 +1262,10 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		})
 	}
 	a.State.Update(func(s *state.Snapshot) { s.Control = info })
+	// E2: the register-level proof also surfaces per entity - mirror it onto
+	// the battery entity's readback topic (same payload shape, entity contract
+	// §4) and record the verdict for the heartbeat. No-op without a registry.
+	a.mirrorReadbackToEntity(payload, m.AllMatch)
 }
 
 // onSchedule handles a (retained) schedule payload from the cloud: validate
@@ -1274,6 +1346,15 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// anything). nil = module off = byte-for-byte pre-PS behavior.
 	peakTarget := p.PeakImportLimit()
 	peakReserve := p.PeakReserveSoc()
+	// The v2 plan's site-level target / battery-entity reserve compose in
+	// (tighter wins, both staleness survivors). nil without a v2 plan - the
+	// v1 path is then byte-identical.
+	if t2 := a.peakTargetV2(); t2 != nil && (peakTarget == nil || *t2 < *peakTarget) {
+		peakTarget = t2
+	}
+	if r2 := a.reserveV2ForBattery(); r2 != nil && (peakReserve == nil || *r2 > *peakReserve) {
+		peakReserve = r2
+	}
 
 	limits := guards.Limits{
 		MaxChargeKw:     a.Cfg.MaxChargeKw,
@@ -1328,6 +1409,41 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.PeakQuarterMeanKw = nil
 		})
 		return
+	}
+
+	// E2 arbitration: the entity's HOLDER drives the physical write path. Its
+	// granted value is already clamped through the per-entity guard chain
+	// COMPOSED with the v1 device limits (most restrictive wins,
+	// internal/desired clampFor), so the certified driver only ever sees a
+	// guard-safe value - flows still never write registers. Three cases:
+	//   - no registry (batteryEntityID empty) -> nothing here runs, the v1
+	//     path is byte-identical;
+	//   - holder = plan executor: the injected plan slot (the v1 plan during
+	//     the shadow phase, else the v2 plan) executes as source "schedule" -
+	//     with a v1 plan this equals the v1 computation above, additionally
+	//     bound by the registry guard band (the E1a mirror inconsistency -
+	//     command tighter than setpoint - ends here);
+	//   - holder = a desired (flow/override/cloud-command): it takes over as
+	//     source "desired"; claim unit = the entity, so the plan's pv limit
+	//     no longer applies - the holder's own limit does (absent = cleared,
+	//     the 1.0 pv_limit clearing rule).
+	// The registry FAILSAFE (no holder) deliberately stays with the v1
+	// fallback computation above.
+	if battID := a.batteryEntityID(); battID != "" {
+		if granted, kind, ok := a.arb.HolderCommand(battID); ok && granted.SetpointKw != nil {
+			kw = *granted.SetpointKw
+			if kind == desired.SourcePlanExecutor {
+				mode, source = state.ModeSchedule, "schedule"
+			} else {
+				mode, source = state.ModeDesired, "desired"
+				slotStart = time.Time{}
+			}
+			pvLimit = nil
+			if granted.LimitKw != nil {
+				v := *granted.LimitKw
+				pvLimit = &v
+			}
+		}
 	}
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
@@ -1391,10 +1507,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 		slog.Error("setpoint publish failed", "err", err)
 		return
 	}
-	// E1a bridge: mirror the executed command onto the battery-hybrid entity's
-	// retained per-entity command, re-clamped through ITS registry-derived
-	// guard chain (most restrictive wins). No-op without a pushed registry.
-	a.mirrorEntityCommand(now, kw, pvLimit, source, controlEnabled)
+	// The per-entity retained command is owned by the ARBITER since E2 (the
+	// plan executor injects the plan as market desires, the failsafe is the
+	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is
+	// retired; without a pushed registry neither path publishes anything.
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
 		s.SetpointKw = kw

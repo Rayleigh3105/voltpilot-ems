@@ -57,6 +57,16 @@ platform (E0 "Contract-Artefakte"). Everything under `docs/contracts/` (the 1.0 
 | D-13 | Control claims in the graph | **Explicit `claims` on node instances** (editor-filled from the catalog) | Exclusive-resource validation must work generically, without the validator knowing every node type's parameter schema. ([flow-graph §1](./flow-graph.md)) |
 | D-14 | Command vocabulary | `setpoint_kw`, `on_off`, `limit_pct`, `limit_kw`, `mode` — shared verbatim between desired and plan | `limit_kw` added to the ticket's four: absolute caps are what curtailment/§14a plans emit (v1 `pv_limit_kw` precedent); limits are reduce-only by contract. ([desired §2](./edge-desired-arbitration.md)) |
 
+### E2 implementation clarifications (additive; the contracts above are untouched)
+
+| # | Clarification | Where implemented |
+|---|---|---|
+| E2-a | **Class-per-source enforcement**: `flow` AND `local-ui` sources may claim only class `flow` (the operator surface is flow-level owner intent and may use `override`); `plan-executor` only `market`; `cloud-command` the reserved `grid`/`contract` plus `market`. `safety` is accepted from NO source today — device protection stays a guard clamp until the E8 masters define a producer. | `internal/desired` `classAllowed` |
+| E2-b | **Same-class challengers are rejected, not queued** (D-6 “until the holder's TTL lapses” = the challenger's RE-EMISSION wins after lapse — flows re-emit on triggers anyway). LOWER-class desires ARE kept within their TTL and resume as the contract §5 next-highest rule; a superseded holder resumes likewise. | `internal/desired` `admit`/`selectHolder` |
+| E2-c | **On-device plan precedence during the shadow phase**: while a FRESH v1 plan exists it stays the battery entity's market injection (“v1 controls”); the v2 plan drives every entity the v1 plan does not command, and the battery too once no fresh v1 plan exists. | `internal/agent` `runPlanExecutors` |
+| E2-d | **Source slot = the desired's replace key**: `kind` (+ `flow_id`+`node_id` for flows) — a new desired from the same source replaces its previous one; `request_id` correlates events and refreshes the TTL on re-emission. | `internal/desired` `Source.Key` |
+| E2-e | **Reserved LOCAL feed topics** for compiled data nodes: `edge/prices`, `edge/forecast/pv` (retained, core → flows; fed with E4) and `edge/notify` (flow → core). Local v1-style namespace, documented in `localbus.go`; not cloud contracts. | `vp-feed`/`vp-notify` palette nodes |
+
 ## Discrepancy log (v1 reality vs. planning documents — the CODE wins)
 
 | # | Discrepancy | Consequence here |

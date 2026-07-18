@@ -1,0 +1,43 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-desired', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true },
+      entity: { value: '' },
+      command: { value: 'setpoint_kw' },
+      ttl_s: { value: 180 },
+      override: { value: false },
+      flowId: { value: '' },
+      flowVersion: { value: 1 },
+      nodeId: { value: '' }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-desired'; },
+    paletteLabel: 'vp-desired'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-desired">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-desired">
+  <p>Veroeffentlicht einen WUNSCH (desired) fuer eine Entitaet auf
+  <code>edge/entities/&lt;entity&gt;/desired</code> - der Core-Agent
+  arbitriert, klemmt durch die Guard-Kette und schreibt allein das Kommando.
+  Flows schreiben NIE Register. Der Ausgang liefert die Arbitrierungs-
+  Entscheidungen zu den Wuenschen dieses Knotens (accepted/clamped/...).
+  Die Konfiguration stammt aus dem Flow-Compiler (flowc) und wird nicht von
+  Hand gepflegt.</p>
+</script>
