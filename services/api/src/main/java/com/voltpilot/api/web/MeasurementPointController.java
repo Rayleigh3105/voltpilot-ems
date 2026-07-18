@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
 import com.voltpilot.api.repo.SiteRepository;
@@ -55,12 +56,14 @@ public class MeasurementPointController {
     private final SiteRepository sites;
     private final MeasurementPointRepository points;
     private final AssetRepository assets;
+    private final EntityRegistryService entityRegistry;
 
     public MeasurementPointController(SiteRepository sites, MeasurementPointRepository points,
-            AssetRepository assets) {
+            AssetRepository assets, EntityRegistryService entityRegistry) {
         this.sites = sites;
         this.points = points;
         this.assets = assets;
+        this.entityRegistry = entityRegistry;
     }
 
     @GetMapping
@@ -114,14 +117,31 @@ public class MeasurementPointController {
     public List<MeasurementPointDto> delete(@PathVariable UUID siteId,
             @PathVariable UUID pointId) {
         requireSite(siteId);
+        MeasurementPointRepository.RoleAndEntityType row = points.roleAndEntityType(siteId, pointId);
+        if (row == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Measurement point not found");
+        }
+        // The battery-hybrid row is the primary inverter's v2 entity-registry
+        // entry (control point), platform-managed via the admin bootstrap - the
+        // customer source paths never created it and must not delete it.
+        if ("battery-hybrid".equals(row.role())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Dieser Eintrag gehört zum Wechselrichter Ihrer Anlage und kann hier nicht "
+                            + "entfernt werden.");
+        }
         BigDecimal removedKwp = points.deleteReturningCapacity(siteId, pointId);
         if (removedKwp == null) {
-            // The point either does not exist or is not in this site/tenant.
-            // Distinguish "point absent" from "deleted with null capacity": re-check.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Measurement point not found");
         }
         assets.addPvCapacity(TenantContext.get(), siteId, removedKwp.negate());
-        return points.findForSite(siteId);
+        List<MeasurementPointDto> remaining = points.findForSite(siteId);
+        if (row.isEntity()) {
+            // The deleted row was a v2 entity: re-push the device's registry so
+            // the edge clears its retained per-entity config (best-effort; the
+            // delete itself never fails on a broker outage).
+            entityRegistry.pushRegistryBestEffort(siteId);
+        }
+        return remaining;
     }
 
     private void requireSite(UUID siteId) {

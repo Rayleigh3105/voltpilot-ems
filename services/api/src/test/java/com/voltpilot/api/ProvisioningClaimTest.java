@@ -361,6 +361,81 @@ class ProvisioningClaimTest {
         device.disconnect();
     }
 
+    /**
+     * E1a registry push: the admin bootstrap publishes the site's v2 entity set
+     * as ONE RETAINED message on ems/{t}/{s}/{gateway}/v2/entities (contract
+     * docs/contracts/v2/edge-entity-config.md §1) - a late-subscribing edge
+     * converges from retention alone, exactly like the provisioning config.
+     */
+    @Test
+    void v2EntityBootstrapPublishesTheRetainedRegistryPush() throws Exception {
+        // Fresh site + claimed gateway + battery asset in tenant A (the demo
+        // Berlin site's rows stay untouched for the other tests).
+        HttpHeaders customer = bearer(token("demo", "demo"));
+        String siteId = (String) rest.exchange(
+                url("/api/v1/sites"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "V2 Rig", "biddingZone", "DE-LU"), customer),
+                new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {})
+                .getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + TENANT_A + "', '"
+                + siteId + "', 'battery', 65, 30, 30, 92)");
+        String ref = "v2-rig-" + UUID.randomUUID().toString().substring(0, 8);
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", ref), customer),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        String deviceId = (String) claim.getBody().get("id");
+
+        HttpHeaders admin = bearer(token("admin", "admin"));
+        admin.set("X-Tenant-Id", TENANT_A);
+        ResponseEntity<Map<String, Object>> boot = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"),
+                org.springframework.http.HttpMethod.POST, new HttpEntity<>(admin),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(boot.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> push = (Map<String, Object>) boot.getBody().get("push");
+        assertThat(push.get("published")).isEqualTo(true);
+        assertThat(push.get("deviceId")).isEqualTo(deviceId);
+
+        // A LATE subscriber (the edge reconnecting) receives the set retained.
+        String topic = "ems/" + TENANT_A + "/" + siteId + "/" + deviceId + "/v2/entities";
+        String payload = pollRetained(topic, 15);
+        assertThat(payload).as("retained registry push on " + topic).isNotNull();
+        JsonNode pushNode = mapper.readTree(payload);
+        assertThat(pushNode.get("schema_version").asText()).isEqualTo("1.0");
+        assertThat(pushNode.get("tenant_id").asText()).isEqualTo(TENANT_A);
+        assertThat(pushNode.get("site_id").asText()).isEqualTo(siteId);
+        assertThat(pushNode.get("device_id").asText()).isEqualTo(deviceId);
+        assertThat(pushNode.get("revision").asText()).isNotBlank();
+        assertThat(pushNode.get("entities")).hasSize(1);
+        JsonNode battery = pushNode.get("entities").get(0);
+        assertThat(battery.get("entity_type").asText()).isEqualTo("battery-hybrid");
+        assertThat(battery.get("guards").get("failsafe").get("behavior").asText())
+                .isEqualTo("self-consumption");
+        // D-8: the fresh site has netzladen_erlaubt = FALSE.
+        assertThat(battery.get("guards").get("limits").get("charge_from_grid_allowed").asBoolean())
+                .isFalse();
+    }
+
+    /** Fresh subscriber on an arbitrary topic: the retained payload, or null. */
+    private String pollRetained(String topic, int timeoutSeconds) throws Exception {
+        MqttClient probe = new MqttClient(
+                "tcp://" + EMQX.getHost() + ":" + EMQX.getMappedPort(1883),
+                "probe-" + UUID.randomUUID().toString().substring(0, 8), new MemoryPersistence());
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setCleanSession(true);
+        probe.connect(options);
+        try {
+            BlockingQueue<String> received = new ArrayBlockingQueue<>(4);
+            probe.subscribe(topic, 1, (t, msg) -> received.add(new String(msg.getPayload())));
+            return received.poll(timeoutSeconds, TimeUnit.SECONDS);
+        } finally {
+            probe.disconnect();
+        }
+    }
+
     /** Fresh subscriber: the retained config payload, or null if none arrives. */
     private String pollRetainedConfig(String ref, int timeoutSeconds) throws Exception {
         MqttClient probe = new MqttClient(

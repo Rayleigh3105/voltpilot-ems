@@ -449,6 +449,8 @@ export interface MeasurementPoint {
   registryUnitId: string | null;
   control: boolean;
   createdAt: string | null;
+  /** v2 entity registry: pilot domain type when this row is a v2 entity (admin-managed). */
+  entityType?: string | null;
 }
 
 /** Record a new additional Erzeuger source (master data; no second device claim). */

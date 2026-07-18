@@ -1320,6 +1320,125 @@ class AdminApiTest {
 
     // ---- helpers ------------------------------------------------------------
 
+    /**
+     * E1a pilot mapping: the admin bootstrap composes the three pilot entity
+     * types from a v1 site's existing asset/measurement_point master data -
+     * idempotently, admin-only, tenant-fenced - and the v1 customer surface
+     * cannot delete the platform-managed battery-hybrid control row.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void v2EntityBootstrapCreatesPilotEntitiesFromV1MasterData() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Entitaeten GmbH", "CI").get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Pilotanlage", "biddingZone", "DE-LU",
+                        "netzladenErlaubt", true), bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        // v1 master data: a battery asset (the future battery-hybrid entity),
+        // a claimed gateway device (auto-links to the battery), and the two
+        // customer-recorded source points (producer + grid meter).
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + siteId + "', 'battery', 65, 30, 30, 92)");
+        ResponseEntity<Map<String, Object>> claim = rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "entity-rig-01"),
+                        adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String deviceId = (String) claim.getBody().get("id");
+        rest.exchange(url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("role", "pv-generation", "label", "AC-PV",
+                        "capacityKwp", 27), adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        rest.exchange(url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("role", "grid-meter", "label", "Netzanschluss"),
+                        adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+
+        // Bootstrap: three pilot entities from the v1 rows.
+        ResponseEntity<Map<String, Object>> boot = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"), HttpMethod.POST,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(boot.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> entities =
+                (List<Map<String, Object>>) boot.getBody().get("entities");
+        assertThat(entities).extracting(e -> e.get("entityType"))
+                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter");
+
+        Map<String, Object> battery = entities.stream()
+                .filter(e -> "battery-hybrid".equals(e.get("entityType"))).findFirst().orElseThrow();
+        assertThat(battery.get("deviceId")).as("gateway = the auto-linked device")
+                .isEqualTo(deviceId);
+        Map<String, Object> batteryGuards = (Map<String, Object>) battery.get("guards");
+        Map<String, Object> batteryLimits = (Map<String, Object>) batteryGuards.get("limits");
+        assertThat(num(batteryLimits, "max_charge_kw")).isEqualTo(30.0);
+        assertThat(num(batteryLimits, "max_discharge_kw")).isEqualTo(30.0);
+        assertThat(num(batteryLimits, "soc_min_pct")).isEqualTo(5.0); // platform default
+        assertThat(num(batteryLimits, "soc_max_pct")).isEqualTo(95.0);
+        assertThat(batteryLimits.get("charge_from_grid_allowed"))
+                .as("mirrors site.netzladen_erlaubt").isEqualTo(true);
+        assertThat(((Map<String, Object>) batteryGuards.get("failsafe")).get("behavior"))
+                .isEqualTo("self-consumption");
+
+        Map<String, Object> producer = entities.stream()
+                .filter(e -> "producer".equals(e.get("entityType"))).findFirst().orElseThrow();
+        Map<String, Object> producerGuards = (Map<String, Object>) producer.get("guards");
+        assertThat(num((Map<String, Object>) producerGuards.get("limits"), "max_generation_kw"))
+                .isEqualTo(27.0);
+        assertThat(((Map<String, Object>) producerGuards.get("failsafe")).get("behavior"))
+                .isEqualTo("release");
+
+        Map<String, Object> meter = entities.stream()
+                .filter(e -> "grid-meter".equals(e.get("entityType"))).findFirst().orElseThrow();
+        Map<String, Object> meterGuards = (Map<String, Object>) meter.get("guards");
+        assertThat(((Map<String, Object>) meterGuards.get("failsafe")).get("behavior"))
+                .isEqualTo("measure-only");
+        assertThat(((Map<String, Object>) meter.get("capabilities")).get("actuate"))
+                .as("a grid meter is measure-only").isNull();
+
+        // Push is honest about the missing broker in this context (no MQTT).
+        Map<String, Object> push = (Map<String, Object>) boot.getBody().get("push");
+        assertThat(push.get("published")).isEqualTo(false);
+        assertThat(push.get("reason")).isEqualTo("mqtt_not_configured");
+
+        // Idempotent: a re-run refreshes the SAME rows (still exactly three).
+        ResponseEntity<Map<String, Object>> again = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"), HttpMethod.POST,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        List<Map<String, Object>> entitiesAgain =
+                (List<Map<String, Object>>) again.getBody().get("entities");
+        assertThat(entitiesAgain).hasSize(3);
+        assertThat(entitiesAgain).extracting(e -> e.get("id"))
+                .containsExactlyInAnyOrderElementsOf(
+                        entities.stream().map(e -> e.get("id")).toList());
+
+        // The battery-hybrid registry row is platform-managed: the v1 customer
+        // delete path refuses it (409), while source rows stay deletable.
+        String batteryPointId = (String) battery.get("id");
+        ResponseEntity<String> refuse = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/measurement-points/" + batteryPointId),
+                HttpMethod.DELETE, new HttpEntity<>(adminTenant), String.class);
+        assertThat(refuse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        // Tenant fencing + role gate: wrong tenant selected => 404; a customer
+        // token gets 403 on the admin route.
+        String otherTenant = (String) createTenant(admin, "Fremdentitaet AG", "CI").get("id");
+        ResponseEntity<String> wrongTenant = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"), HttpMethod.POST,
+                new HttpEntity<>(withTenant(bearer(admin), otherTenant)), String.class);
+        assertThat(wrongTenant.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        ResponseEntity<String> customer = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(customer.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
     private static double num(Map<String, Object> map, String key) {
         Object v = map.get(key);
         assertThat(v).as("numeric field '" + key + "'").isInstanceOf(Number.class);
