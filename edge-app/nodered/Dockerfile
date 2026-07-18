@@ -41,7 +41,11 @@ USER root
 RUN apk add --no-cache su-exec
 COPY --from=deye-build /out/deye /usr/local/bin/deye
 COPY reseed-entrypoint.sh /usr/local/bin/vp-nodered-entrypoint.sh
+# The @vp-flow merge helper the entrypoint uses to preserve user-flow artifact
+# tabs across template re-seeds (D-12; docs/contracts/v2/flow-artifact.md §4).
+COPY reseed-merge-flows.js /usr/local/bin/vp-reseed-merge-flows.js
 RUN chmod 0755 /usr/local/bin/deye /usr/local/bin/vp-nodered-entrypoint.sh \
+ && chmod 0644 /usr/local/bin/vp-reseed-merge-flows.js \
  && mkdir -p /opt/vp-template
 
 # The template assets (VoltPilot-owned flows + palette + settings) are baked at
