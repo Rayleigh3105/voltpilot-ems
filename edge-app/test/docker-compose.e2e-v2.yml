@@ -1,0 +1,22 @@
+# E2E v2 overlay (stacked ON TOP of docker-compose.e2e.yml by
+# test/e2e-v2-compose.sh): enables the E2 flow-deployment path - the core
+# talks to the Node-RED Admin API to materialize @vp-flow artifact tabs from
+# the retained deployment set (docs/contracts/v2/flow-artifact.md). The v1
+# e2e (test/e2e-compose.sh) deliberately does NOT use this overlay, proving
+# the default stack stays byte-identical without it.
+services:
+  core:
+    # The rig always runs LOCALLY BUILT images (test/e2e-v2-compose.sh builds
+    # them with plain `docker build` first - hosts with an old buildx cannot
+    # run `compose build`, and the rig must never depend on registry access).
+    pull_policy: never
+    environment:
+      VP_NODERED_ADMIN_URL: "http://nodered:1880"
+      VP_NODERED_USER: ${VP_NODERED_USER:-voltpilot}
+      VP_NODERED_PASSWORD: ${VP_NODERED_PASSWORD:-}
+
+  nodered:
+    pull_policy: never
+
+  edge-sim:
+    pull_policy: never

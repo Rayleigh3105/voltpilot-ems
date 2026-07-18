@@ -67,11 +67,12 @@ func TestCompiledArtifactFromFlowcVerifiesInGo(t *testing.T) {
 	if state != "active" {
 		t.Fatalf("flowc-compiled artifact must deploy: %s (%s)", state, detail)
 	}
-	if _, ok := nr.flows["vpflow-4e1c2b3a-v7"]; !ok {
+	if !nr.tabIDs()["vpflow-4e1c2b3a-v7"] {
 		t.Fatal("tab not materialized")
 	}
 	// The tab carries the ownership marker the reseed contract keys on.
-	rawFlow, _ := json.Marshal(nr.flows["vpflow-4e1c2b3a-v7"])
+	cfg, _ := nr.GetFlows()
+	rawFlow, _ := json.Marshal(cfg)
 	if !strings.Contains(string(rawFlow), OwnershipMarker) {
 		t.Fatal("materialized tab lost the @vp-flow marker")
 	}

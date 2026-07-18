@@ -36,21 +36,47 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
 )
 
-// fakeNRServer is a minimal Node-RED Admin API (auth token + /nodes +
-// per-flow CRUD) backed by a map.
+// fakeNRServer is a minimal Node-RED Admin API (auth token + /nodes with the
+// real content negotiation + the GLOBAL /flows config endpoint) backed by a
+// node array - faithful to the real runtime: /flows honors the caller's node
+// ids (the per-flow POST /flow does NOT, which is why the deployer avoids it).
 type fakeNRServer struct {
-	mu    sync.Mutex
-	flows map[string]json.RawMessage
+	mu     sync.Mutex
+	config []json.RawMessage
+}
+
+func (f *fakeNRServer) tabIDs() map[string]bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]bool{}
+	for _, raw := range f.config {
+		var n struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &n) == nil && n.Type == "tab" {
+			out[n.ID] = true
+		}
+	}
+	return out
 }
 
 func startFakeNR(t *testing.T) (*fakeNRServer, *httptest.Server) {
 	t.Helper()
-	f := &fakeNRServer{flows: map[string]json.RawMessage{}}
+	f := &fakeNRServer{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/token", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "tok"})
 	})
 	mux.HandleFunc("GET /nodes", func(w http.ResponseWriter, r *http.Request) {
+		// Faithful to real Node-RED: /nodes content-negotiates and serves an
+		// HTML/script bundle unless JSON is asked for (caught live by the
+		// September-Gate rig - the client must send Accept: application/json).
+		if !strings.Contains(r.Header.Get("Accept"), "application/json") {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<!DOCTYPE html><script></script>"))
+			return
+		}
 		_ = json.NewEncoder(w).Encode([]map[string]string{
 			{"module": flowdeploy.PaletteModule, "version": "0.2.0"},
 		})
@@ -58,70 +84,26 @@ func startFakeNR(t *testing.T) (*fakeNRServer, *httptest.Server) {
 	mux.HandleFunc("GET /flows", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		var nodes []json.RawMessage
-		for id, raw := range f.flows {
-			var fl struct {
-				Label string `json:"label"`
-				Info  string `json:"info"`
-			}
-			_ = json.Unmarshal(raw, &fl)
-			n, _ := json.Marshal(map[string]string{"id": id, "type": "tab", "label": fl.Label, "info": fl.Info})
-			nodes = append(nodes, n)
-		}
+		nodes := f.config
 		if nodes == nil {
 			nodes = []json.RawMessage{}
 		}
 		_ = json.NewEncoder(w).Encode(nodes)
 	})
-	mux.HandleFunc("GET /flow/{id}", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		raw, ok := f.flows[r.PathValue("id")]
-		f.mu.Unlock()
-		if !ok {
-			http.NotFound(w, r)
+	mux.HandleFunc("POST /flows", func(w http.ResponseWriter, r *http.Request) {
+		var nodes []json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&nodes); err != nil {
+			http.Error(w, "bad config", http.StatusBadRequest)
 			return
 		}
-		_, _ = w.Write(raw)
-	})
-	mux.HandleFunc("POST /flow", func(w http.ResponseWriter, r *http.Request) {
-		var fl struct {
-			ID string `json:"id"`
-		}
-		raw := readBody(r)
-		_ = json.Unmarshal(raw, &fl)
 		f.mu.Lock()
-		f.flows[fl.ID] = raw
-		f.mu.Unlock()
-		_, _ = w.Write([]byte(`{}`))
-	})
-	mux.HandleFunc("PUT /flow/{id}", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		f.flows[r.PathValue("id")] = readBody(r)
-		f.mu.Unlock()
-		_, _ = w.Write([]byte(`{}`))
-	})
-	mux.HandleFunc("DELETE /flow/{id}", func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		delete(f.flows, r.PathValue("id"))
+		f.config = nodes
 		f.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return f, srv
-}
-
-func readBody(r *http.Request) json.RawMessage {
-	var buf strings.Builder
-	raw := make([]byte, 1<<20)
-	for {
-		n, err := r.Body.Read(raw)
-		buf.Write(raw[:n])
-		if err != nil {
-			break
-		}
-	}
-	return json.RawMessage(buf.String())
 }
 
 // planV2 builds a schedule-2.0 payload whose single slot covers "now".
@@ -498,10 +480,7 @@ func TestFlowDeploymentAppliedAndAcked(t *testing.T) {
 
 	// The tab lands in the (fake) flow runtime...
 	waitFor(t, 20*time.Second, "artifact tab materialized", func() bool {
-		nr.mu.Lock()
-		defer nr.mu.Unlock()
-		_, ok := nr.flows[tabID]
-		return ok
+		return nr.tabIDs()[tabID]
 	})
 	// ...and the heartbeat acks it active with the exact hash.
 	waitFor(t, 30*time.Second, "flows ack in heartbeat", func() bool {
@@ -512,9 +491,6 @@ func TestFlowDeploymentAppliedAndAcked(t *testing.T) {
 	// Clearing the retained set removes the tab and empties the ack list.
 	cb.publishRetained(fmt.Sprintf("ems/%s/%s/%s/v2/flows", tTenant, tSite, tDevice), nil)
 	waitFor(t, 20*time.Second, "artifact tab removed on clear", func() bool {
-		nr.mu.Lock()
-		defer nr.mu.Unlock()
-		_, ok := nr.flows[tabID]
-		return !ok
+		return !nr.tabIDs()[tabID]
 	})
 }

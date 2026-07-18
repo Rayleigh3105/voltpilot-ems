@@ -52,7 +52,23 @@
 //	edge/entities/{id}/command    core -> Layer 1   RETAINED guard-clamped
 //	                command (core-owned; the edge/setpoint successor).
 //	edge/entities/{id}/readback   Layer 1 -> core   v1 readback shape per
-//	                entity. desired/arbitration land with E2.
+//	                entity (the core mirrors the v1 control readback onto the
+//	                battery entity's topic).
+//	edge/entities/{id}/desired    flow runtime -> core   NOT retained (D-7).
+//	                A flow's WISH; the core arbitrates (internal/desired),
+//	                clamps the winner and alone publishes .../command.
+//	edge/entities/{id}/arbitration  core -> observers   NOT retained. One
+//	                decision event per state change (accepted/clamped/
+//	                rejected/superseded/expired/released/fallback).
+//
+// RESERVED local topics for compiled flow data nodes (E2 flowc; fed by the
+// core with E4 - until then subscribers stay idle-safe):
+//
+//	edge/prices       core -> flows  RETAINED day-ahead price series.
+//	edge/forecast/pv  core -> flows  RETAINED site PV forecast.
+//	edge/notify       flows -> core  NOT retained; customer notification
+//	                {schema_version, ts, message} (vp-notify; core-side
+//	                consumption/heartbeat forwarding is later work).
 package localbus
 
 import (

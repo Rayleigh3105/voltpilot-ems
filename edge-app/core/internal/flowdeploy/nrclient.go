@@ -11,36 +11,26 @@ import (
 	"time"
 )
 
-// NRClient is the slice of the Node-RED Admin API the deployer needs
-// (runtime deploy via the per-flow endpoints - no container restart).
+// NRClient is the slice of the Node-RED Admin API the deployer needs.
+//
+// Deployment goes through the GLOBAL /flows endpoint, NOT the per-flow API:
+// POST /flow IGNORES client-supplied flow ids (the runtime always generates
+// one - caught live by the September-Gate rig: the tab landed under a
+// generated id and the deployer's own not-in-set sweep removed it again).
+// The full-config roundtrip preserves OUR deterministic tab ids, which is
+// what makes "redeploy replaces instead of duplicating" (flow-artifact.md §2)
+// actually hold; the 'flows' deployment type restarts only changed flows, so
+// vendor tabs keep running untouched.
 type NRClient interface {
 	// PaletteVersion returns the installed @voltpilot/node-red-vp-palette
 	// version (GET /nodes) - the source of truth for the min_palette_version
 	// gate, live from the runtime instead of a hand-maintained env.
 	PaletteVersion() (string, error)
-	// GetFlow returns one flow (tab) by id; found=false on 404.
-	GetFlow(id string) (json.RawMessage, bool, error)
-	CreateFlow(flow NRFlow) error
-	UpdateFlow(id string, flow NRFlow) error
-	DeleteFlow(id string) error
-	// ListTabs enumerates all tabs with their info field (GET /flows), so the
-	// deployer can remove @vp-flow tabs that left the deployment set.
-	ListTabs() ([]TabInfo, error)
-}
-
-// NRFlow is the per-flow API representation (POST/PUT /flow).
-type NRFlow struct {
-	ID    string            `json:"id,omitempty"`
-	Label string            `json:"label"`
-	Info  string            `json:"info,omitempty"`
-	Nodes []json.RawMessage `json:"nodes"`
-}
-
-// TabInfo is one tab from GET /flows.
-type TabInfo struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-	Info  string `json:"info"`
+	// GetFlows returns the full flow configuration (node array, v1 API).
+	GetFlows() ([]json.RawMessage, error)
+	// PostFlows replaces the full flow configuration with deployment type
+	// 'flows' (only modified flows restart).
+	PostFlows(flows []json.RawMessage) error
 }
 
 // PaletteModule is the vp-palette module name looked up in GET /nodes.
@@ -94,7 +84,7 @@ func (c *HTTPNRClient) login() (string, error) {
 }
 
 // do performs one authenticated request, re-logging-in once on 401.
-func (c *HTTPNRClient) do(method, path string, body []byte) (int, []byte, error) {
+func (c *HTTPNRClient) do(method, path string, body []byte, extra map[string]string) (int, []byte, error) {
 	c.mu.Lock()
 	token := c.token
 	c.mu.Unlock()
@@ -118,8 +108,15 @@ func (c *HTTPNRClient) do(method, path string, body []byte) (int, []byte, error)
 			return 0, nil, err
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
+		// Node-RED content-negotiates several admin endpoints (GET /nodes
+		// serves an HTML/script bundle without this - caught live by the
+		// September-Gate rig): always ask for JSON.
+		req.Header.Set("Accept", "application/json")
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
+		}
+		for k, v := range extra {
+			req.Header.Set(k, v)
 		}
 		resp, err := c.Client.Do(req)
 		if err != nil {
@@ -141,7 +138,7 @@ func (c *HTTPNRClient) do(method, path string, body []byte) (int, []byte, error)
 
 // PaletteVersion implements NRClient via GET /nodes.
 func (c *HTTPNRClient) PaletteVersion() (string, error) {
-	status, data, err := c.do(http.MethodGet, "/nodes", nil)
+	status, data, err := c.do(http.MethodGet, "/nodes", nil, nil)
 	if err != nil {
 		return "", err
 	}
@@ -163,92 +160,47 @@ func (c *HTTPNRClient) PaletteVersion() (string, error) {
 	return "", fmt.Errorf("%s ist in der Flow-Runtime nicht installiert", PaletteModule)
 }
 
-// GetFlow implements NRClient.
-func (c *HTTPNRClient) GetFlow(id string) (json.RawMessage, bool, error) {
-	status, data, err := c.do(http.MethodGet, "/flow/"+id, nil)
-	if err != nil {
-		return nil, false, err
-	}
-	switch status {
-	case http.StatusOK:
-		return data, true, nil
-	case http.StatusNotFound:
-		return nil, false, nil
-	default:
-		return nil, false, fmt.Errorf("GET /flow/%s -> HTTP %d", id, status)
-	}
-}
-
-// CreateFlow implements NRClient.
-func (c *HTTPNRClient) CreateFlow(flow NRFlow) error {
-	body, err := json.Marshal(flow)
-	if err != nil {
-		return err
-	}
-	status, data, err := c.do(http.MethodPost, "/flow", body)
-	if err != nil {
-		return err
-	}
-	if status != http.StatusOK {
-		return fmt.Errorf("POST /flow -> HTTP %d: %s", status, truncate(data))
-	}
-	return nil
-}
-
-// UpdateFlow implements NRClient.
-func (c *HTTPNRClient) UpdateFlow(id string, flow NRFlow) error {
-	flow.ID = id
-	body, err := json.Marshal(flow)
-	if err != nil {
-		return err
-	}
-	status, data, err := c.do(http.MethodPut, "/flow/"+id, body)
-	if err != nil {
-		return err
-	}
-	if status != http.StatusOK {
-		return fmt.Errorf("PUT /flow/%s -> HTTP %d: %s", id, status, truncate(data))
-	}
-	return nil
-}
-
-// DeleteFlow implements NRClient.
-func (c *HTTPNRClient) DeleteFlow(id string) error {
-	status, data, err := c.do(http.MethodDelete, "/flow/"+id, nil)
-	if err != nil {
-		return err
-	}
-	if status != http.StatusOK && status != http.StatusNoContent && status != http.StatusNotFound {
-		return fmt.Errorf("DELETE /flow/%s -> HTTP %d: %s", id, status, truncate(data))
-	}
-	return nil
-}
-
-// ListTabs implements NRClient via GET /flows.
-func (c *HTTPNRClient) ListTabs() ([]TabInfo, error) {
-	status, data, err := c.do(http.MethodGet, "/flows", nil)
+// GetFlows implements NRClient (v1 API: the plain node array).
+func (c *HTTPNRClient) GetFlows() ([]json.RawMessage, error) {
+	status, data, err := c.do(http.MethodGet, "/flows", nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("GET /flows -> HTTP %d", status)
 	}
-	var nodes []struct {
-		ID   string `json:"id"`
-		Type string `json:"type"`
-		Label string `json:"label"`
-		Info string `json:"info"`
-	}
+	var nodes []json.RawMessage
 	if err := json.Unmarshal(data, &nodes); err != nil {
-		return nil, err
-	}
-	var tabs []TabInfo
-	for _, n := range nodes {
-		if n.Type == "tab" {
-			tabs = append(tabs, TabInfo{ID: n.ID, Label: n.Label, Info: n.Info})
+		// v2-format response ({rev, flows}) - tolerate it.
+		var v2 struct {
+			Flows []json.RawMessage `json:"flows"`
 		}
+		if err2 := json.Unmarshal(data, &v2); err2 != nil || v2.Flows == nil {
+			return nil, err
+		}
+		nodes = v2.Flows
 	}
-	return tabs, nil
+	return nodes, nil
+}
+
+// PostFlows implements NRClient (v1 API, deployment type 'flows').
+func (c *HTTPNRClient) PostFlows(flows []json.RawMessage) error {
+	if flows == nil {
+		flows = []json.RawMessage{}
+	}
+	body, err := json.Marshal(flows)
+	if err != nil {
+		return err
+	}
+	status, data, err := c.do(http.MethodPost, "/flows", body,
+		map[string]string{"Node-RED-Deployment-Type": "flows"})
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK && status != http.StatusNoContent {
+		return fmt.Errorf("POST /flows -> HTTP %d: %s", status, truncate(data))
+	}
+	return nil
 }
 
 func truncate(b []byte) string {

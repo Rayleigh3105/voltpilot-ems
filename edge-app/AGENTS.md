@@ -162,6 +162,47 @@ level. Rules now baked into `core/internal/agent/agent.go` (pinned by
   `test-read.js makeProbeUnits`, bounded SID scan 1..10) is fronius_sunspec
   only; the UI offers per-unit source creation, never silent auto-add.
 
+## E2 flow platform core: arbitration + flow deployment (fm/vp2-e2-flow-core)
+
+The v2 runtime slice on top of E1a. Read `docs/contracts/v2/` first (binding;
+E2's additive clarifications are logged in its README decision log). The
+authoritative implementations + their proofs:
+
+- **Arbitration** (`core/internal/desired`, wired in `agent/arbitration.go`):
+  desires on `edge/entities/{id}/desired` → priority classes → per-entity
+  guard chain (`entities.ClampCommandsTraced` composing the v1 device limits,
+  most restrictive wins) → retained `…/command` + arbitration events. The
+  ARBITER owns the entity command topic since E2 (the E1a applySetpoint
+  mirror is retired); the entity's HOLDER also drives the physical
+  `edge/setpoint` write (`applySetpoint` consults `arb.HolderCommand`) — the
+  registry FAILSAFE deliberately stays with the v1 fallback computation.
+  Plan injection precedence: a fresh v1 plan controls the battery (shadow
+  phase); the v2 plan (`internal/plan2`, `…/v2/plan`) drives the rest.
+  Proofs: `desired` units, `agent/arbitration_integration_test.go` (P1–P6
+  in-process), `edge-app/test/e2e-v2-compose.sh` (compose rig).
+- **flowc compiler** (`nodered/flowc`): deterministic graph→NR-tabs with an
+  RFC 8785 content hash. THE LOCKSTEP: `canonicalize.js` ⟷
+  `core/internal/flowdeploy/jcs.go` share `flowc/jcs-vectors.json`, and the
+  committed `flowc/testdata/*.artifact.json` is verified by the Go deployer
+  (`crosscheck_test.go`) — never change one side alone. `pinned-hash.txt`
+  pins compiler output; a deliberate output change must update the pin (it
+  invalidates deployed content hashes).
+- **Flow deployment** (`core/internal/flowdeploy`, `agent/flows.go`):
+  retained `…/v2/flows` set → verify (hash / semver gates / capabilities;
+  palette version LIVE from NR `GET /nodes`, never an env) → per-flow Admin
+  API materialization of `@vp-flow` tabs → heartbeat `flows` acks. Needs
+  `VP_NODERED_ADMIN_URL` (+ the NR adminAuth credentials) on the CORE;
+  unset = verified + persisted but acked `error` naming the setting.
+- **Reseed coexistence (D-12)**: `nodered/reseed-merge-flows.js` + the
+  entrypoint merge — vendor tab group from the image, `@vp-flow` tabs
+  byte-identical; degradation to wholesale only with a loud WARN (the
+  retained deployment self-heals). Per the #117/#119 law, changes here need
+  the REAL-image proof: `reseed-flows.docker.test.sh` (+ `reseed.test.sh`
+  cases 6/7, `reseed-merge.test.js`).
+- **Rig host caveat**: `test/e2e-v2-compose.sh` pre-builds images with plain
+  `docker build` (old-buildx hosts cannot run `compose build`) and its
+  overlay pins `pull_policy: never`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

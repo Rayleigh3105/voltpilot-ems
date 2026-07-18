@@ -12,18 +12,19 @@ import (
 
 // --- fake Node-RED admin --------------------------------------------------
 
+// fakeNR models the GLOBAL /flows API: a stored node array that honors the
+// ids the caller supplies (exactly what the real full-config API does, unlike
+// the per-flow POST /flow which generates ids).
 type fakeNR struct {
 	mu      sync.Mutex
 	palette string
-	flows   map[string]NRFlow
-	creates int
-	updates int
-	deletes int
+	config  []json.RawMessage
+	posts   int
 	fail    bool
 }
 
 func newFakeNR() *fakeNR {
-	return &fakeNR{palette: "0.2.0", flows: map[string]NRFlow{}}
+	return &fakeNR{palette: "0.2.0"}
 }
 
 func (f *fakeNR) PaletteVersion() (string, error) {
@@ -33,59 +34,41 @@ func (f *fakeNR) PaletteVersion() (string, error) {
 	return f.palette, nil
 }
 
-func (f *fakeNR) GetFlow(id string) (json.RawMessage, bool, error) {
+func (f *fakeNR) GetFlows() ([]json.RawMessage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fail {
-		return nil, false, fmt.Errorf("runtime down")
+		return nil, fmt.Errorf("runtime down")
 	}
-	fl, ok := f.flows[id]
-	if !ok {
-		return nil, false, nil
-	}
-	raw, _ := json.Marshal(fl)
-	return raw, true, nil
+	return append([]json.RawMessage(nil), f.config...), nil
 }
 
-func (f *fakeNR) CreateFlow(flow NRFlow) error {
+func (f *fakeNR) PostFlows(flows []json.RawMessage) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.fail {
 		return fmt.Errorf("runtime down")
 	}
-	f.creates++
-	f.flows[flow.ID] = flow
+	f.posts++
+	f.config = append([]json.RawMessage(nil), flows...)
 	return nil
 }
 
-func (f *fakeNR) UpdateFlow(id string, flow NRFlow) error {
+// tabIDs returns the ids of tab nodes in the stored config.
+func (f *fakeNR) tabIDs() map[string]bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.fail {
-		return fmt.Errorf("runtime down")
+	out := map[string]bool{}
+	for _, raw := range f.config {
+		var n struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+		}
+		if json.Unmarshal(raw, &n) == nil && n.Type == "tab" {
+			out[n.ID] = true
+		}
 	}
-	f.updates++
-	flow.ID = id
-	f.flows[id] = flow
-	return nil
-}
-
-func (f *fakeNR) DeleteFlow(id string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.deletes++
-	delete(f.flows, id)
-	return nil
-}
-
-func (f *fakeNR) ListTabs() ([]TabInfo, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var tabs []TabInfo
-	for id, fl := range f.flows {
-		tabs = append(tabs, TabInfo{ID: id, Label: fl.Label, Info: fl.Info})
-	}
-	return tabs, nil
+	return out
 }
 
 // --- fixtures ---------------------------------------------------------------
@@ -214,33 +197,38 @@ func TestApplyReplaceAndClear(t *testing.T) {
 	nr := newFakeNR()
 	dep := newDeployer(t, nr)
 
+	// A vendor tab pre-exists in the runtime; it must survive every apply.
+	vendor := json.RawMessage(`{"id":"tab-auto","type":"tab","label":"Vorlage"}`)
+	nr.config = []json.RawMessage{vendor}
+
 	dep.HandleDeployment(makeDeployment(t, makeArtifact(t, 7, nil)))
 	if state, detail := ackOf(t, dep, tFlowID); state != "active" {
 		t.Fatalf("want active, got %s (%s)", state, detail)
 	}
-	if _, ok := nr.flows["vpflow-4e1c2b3a-v7"]; !ok || nr.creates != 1 {
-		t.Fatalf("tab not created: %+v", nr.flows)
+	tabs := nr.tabIDs()
+	if !tabs["vpflow-4e1c2b3a-v7"] || !tabs["tab-auto"] || nr.posts != 1 {
+		t.Fatalf("tab not created / vendor lost: %v posts=%d", tabs, nr.posts)
 	}
 
-	// Idempotent redeploy: same payload converges without churn.
+	// Idempotent redeploy: same payload converges without churn (no POST).
 	dep.HandleDeployment(makeDeployment(t, makeArtifact(t, 7, nil)))
-	if nr.updates != 0 || nr.creates != 1 {
-		t.Fatalf("idempotent redeploy must not rewrite: creates=%d updates=%d", nr.creates, nr.updates)
+	if nr.posts != 1 {
+		t.Fatalf("idempotent redeploy must not rewrite: posts=%d", nr.posts)
 	}
 
-	// A NEW version replaces: deterministic new tab id, the old tab removed.
+	// A NEW version replaces: deterministic new tab id, the old tab removed,
+	// the vendor tab untouched.
 	dep.HandleDeployment(makeDeployment(t, makeArtifact(t, 8, nil)))
-	if _, ok := nr.flows["vpflow-4e1c2b3a-v8"]; !ok {
-		t.Fatal("v8 tab missing")
-	}
-	if _, ok := nr.flows["vpflow-4e1c2b3a-v7"]; ok {
-		t.Fatal("v7 tab must be removed with the new deployment set")
+	tabs = nr.tabIDs()
+	if !tabs["vpflow-4e1c2b3a-v8"] || tabs["vpflow-4e1c2b3a-v7"] || !tabs["tab-auto"] {
+		t.Fatalf("v7->v8 replace wrong: %v", tabs)
 	}
 
-	// Retained-clear removes every artifact tab.
+	// Retained-clear removes every artifact tab; the vendor tab stays.
 	dep.HandleDeployment(nil)
-	if len(nr.flows) != 0 {
-		t.Fatalf("clear must remove all artifact tabs: %+v", nr.flows)
+	tabs = nr.tabIDs()
+	if len(tabs) != 1 || !tabs["tab-auto"] {
+		t.Fatalf("clear must remove all artifact tabs, keep vendor: %v", tabs)
 	}
 	sum := dep.Summary()
 	if sum == nil || len(sum.Applied) != 0 {
@@ -281,7 +269,7 @@ func TestRefusalAcks(t *testing.T) {
 		if state != c.wantState || !strings.Contains(detail, c.wantDetail) {
 			t.Errorf("%s: got %s (%s), want %s (*%s*)", c.name, state, detail, c.wantState, c.wantDetail)
 		}
-		if len(nr.flows) != 0 {
+		if len(nr.tabIDs()) != 0 {
 			t.Errorf("%s: refused artifact must not be deployed", c.name)
 		}
 	}
@@ -329,8 +317,11 @@ func TestPartialSetApplies(t *testing.T) {
 	if state, _ := ackOf(t, dep, "aaaaaaaa-0000-0000-0000-000000000001"); state != "unsupported" {
 		t.Fatalf("bad artifact must be refused, got %s", state)
 	}
-	if _, ok := nr.flows["vpflow-4e1c2b3a-v7"]; !ok {
+	if !nr.tabIDs()["vpflow-4e1c2b3a-v7"] {
 		t.Fatal("good artifact tab missing")
+	}
+	if nr.tabIDs()["vpflow-bad-v3"] {
+		t.Fatal("refused artifact tab deployed")
 	}
 }
 
@@ -352,7 +343,7 @@ func TestIdentityMismatchIsRejected(t *testing.T) {
 	if dep.Summary() != nil {
 		t.Fatal("a foreign deployment must not be adopted")
 	}
-	if len(nr.flows) != 0 {
+	if len(nr.tabIDs()) != 0 {
 		t.Fatal("a foreign deployment must not deploy")
 	}
 }
@@ -362,7 +353,7 @@ func TestPersistedDeploymentSelfHealsOnReconcile(t *testing.T) {
 	dep := newDeployer(t, nr)
 	dir := dep.dir
 	dep.HandleDeployment(makeDeployment(t, makeArtifact(t, 7, nil)))
-	if _, ok := nr.flows["vpflow-4e1c2b3a-v7"]; !ok {
+	if !nr.tabIDs()["vpflow-4e1c2b3a-v7"] {
 		t.Fatal("precondition: tab deployed")
 	}
 
@@ -375,7 +366,7 @@ func TestPersistedDeploymentSelfHealsOnReconcile(t *testing.T) {
 			return Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice}
 		}})
 	dep2.Reconcile()
-	if _, ok := nr2.flows["vpflow-4e1c2b3a-v7"]; !ok {
+	if !nr2.tabIDs()["vpflow-4e1c2b3a-v7"] {
 		t.Fatal("persisted deployment must self-heal the dropped artifact tab")
 	}
 	if state, _ := ackOf(t, dep2, tFlowID); state != "active" {

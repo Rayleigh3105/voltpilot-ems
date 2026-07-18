@@ -409,119 +409,109 @@ func (dep *Deployer) Summary() *cloud.FlowsSummary {
 	return sum
 }
 
-// applyLocked converges the Node-RED runtime to the current set.
+// applyLocked converges the Node-RED runtime to the current set via ONE
+// full-config roundtrip: fetch the running config, drop every @vp-flow tab
+// (and its nodes), append the verified artifacts' bundles with their
+// DETERMINISTIC ids, and POST it back with deployment type 'flows' (only
+// changed flows restart - vendor tabs keep running). The per-flow API is
+// deliberately NOT used: POST /flow ignores client-supplied flow ids, which
+// breaks redeploy-replaces AND the marker-based sweep (caught live by the
+// September-Gate rig).
 func (dep *Deployer) applyLocked() {
 	d := dep.current
 	acks := make([]cloud.AppliedFlow, 0, len(d.Artifacts))
-	desiredTabs := map[string]bool{}
+	verified := make([]Artifact, 0, len(d.Artifacts))
+	ackIdx := map[string]int{}
 	for i, a := range d.Artifacts {
 		ack := cloud.AppliedFlow{FlowID: a.FlowID, FlowVersion: a.FlowVersion, ContentHash: a.ContentHash}
 		state, detail := dep.verifyArtifact(a, d.rawArtifacts[i])
-		if state != "active" {
+		switch {
+		case state != "active":
 			ack.State, ack.Detail = state, detail
-			acks = append(acks, ack)
-			continue
-		}
-		if dep.nr == nil {
+		case dep.nr == nil:
 			ack.State = "error"
 			ack.Detail = "Flow-Runtime nicht konfiguriert (VP_NODERED_ADMIN_URL)"
-			acks = append(acks, ack)
-			continue
+		default:
+			ack.State = "active"
+			verified = append(verified, a)
 		}
-		if err := dep.materialize(a); err != nil {
-			ack.State = "error"
-			ack.Detail = "Übernahme in die Flow-Runtime fehlgeschlagen: " + err.Error()
-			acks = append(acks, ack)
-			continue
-		}
-		for _, id := range a.Bundle.TabIDs {
-			desiredTabs[id] = true
-		}
-		ack.State = "active"
+		ackIdx[a.FlowID] = len(acks)
 		acks = append(acks, ack)
 	}
-	// Remove @vp-flow tabs the set no longer contains (undeploy / clear).
 	if dep.nr != nil {
-		if tabs, err := dep.nr.ListTabs(); err == nil {
-			for _, t := range tabs {
-				if strings.HasPrefix(t.Info, OwnershipMarker) && !desiredTabs[t.ID] {
-					if err := dep.nr.DeleteFlow(t.ID); err != nil {
-						slog.Warn("artifact tab removal failed", "tab", t.ID, "err", err)
-					} else {
-						slog.Info("artifact tab removed (not in deployment set)", "tab", t.ID)
-					}
-				}
+		if err := dep.converge(verified); err != nil {
+			slog.Warn("flow-runtime convergence failed", "err", err)
+			for _, a := range verified {
+				acks[ackIdx[a.FlowID]].State = "error"
+				acks[ackIdx[a.FlowID]].Detail = "Übernahme in die Flow-Runtime fehlgeschlagen: " + err.Error()
 			}
-		} else {
-			slog.Warn("flow-runtime tab listing failed", "err", err)
 		}
 	}
 	dep.applied = acks
 }
 
-// materialize idempotently creates/updates each tab of one artifact via the
-// per-flow Admin API (deterministic tab ids: redeploy replaces).
-func (dep *Deployer) materialize(a Artifact) error {
-	tabs, err := bundleTabs(a.Bundle)
+// converge performs the full-config merge; a no-op when the runtime already
+// carries exactly the desired artifact nodes (no redeploy churn).
+func (dep *Deployer) converge(artifacts []Artifact) error {
+	existing, err := dep.nr.GetFlows()
 	if err != nil {
 		return err
 	}
-	nodesByTab := map[string][]json.RawMessage{}
-	for _, raw := range a.Bundle.NoderedFlows {
+	// Identify @vp-flow tabs currently in the runtime + their nodes.
+	artifactTabIDs := map[string]bool{}
+	for _, raw := range existing {
 		var n tabNode
-		if err := json.Unmarshal(raw, &n); err != nil {
-			return errors.New("Bundle-Knoten nicht lesbar")
+		if json.Unmarshal(raw, &n) == nil && n.Type == "tab" && strings.HasPrefix(n.Info, OwnershipMarker) {
+			artifactTabIDs[n.ID] = true
 		}
-		if n.Type == "tab" {
+	}
+	kept := make([]json.RawMessage, 0, len(existing))
+	current := map[string]json.RawMessage{}
+	for _, raw := range existing {
+		var n tabNode
+		_ = json.Unmarshal(raw, &n)
+		if artifactTabIDs[n.ID] || (n.Z != "" && artifactTabIDs[n.Z]) {
+			current[n.ID] = raw
 			continue
 		}
-		if n.Z != "" {
-			nodesByTab[n.Z] = append(nodesByTab[n.Z], raw)
+		kept = append(kept, raw)
+	}
+	// The desired artifact node set (deterministic ids).
+	desired := map[string]json.RawMessage{}
+	var appendix []json.RawMessage
+	for _, a := range artifacts {
+		for _, raw := range a.Bundle.NoderedFlows {
+			var n tabNode
+			_ = json.Unmarshal(raw, &n)
+			desired[n.ID] = raw
+			appendix = append(appendix, raw)
 		}
 	}
-	for _, tab := range tabs {
-		flow := NRFlow{ID: tab.ID, Label: tab.Label, Info: tab.Info, Nodes: nodesByTab[tab.ID]}
-		if flow.Nodes == nil {
-			flow.Nodes = []json.RawMessage{}
-		}
-		existing, found, err := dep.nr.GetFlow(tab.ID)
-		if err != nil {
-			return err
-		}
-		if found {
-			if sameFlow(existing, flow) {
-				continue // already converged - no redeploy churn
-			}
-			if err := dep.nr.UpdateFlow(tab.ID, flow); err != nil {
-				return err
-			}
-		} else {
-			if err := dep.nr.CreateFlow(flow); err != nil {
-				return err
-			}
-		}
+	if sameNodeSet(current, desired) {
+		return nil // converged - nothing to deploy
 	}
-	return nil
+	slog.Info("deploying flow artifacts to the runtime",
+		"artifacts", len(artifacts), "replacing_nodes", len(current), "with_nodes", len(desired))
+	return dep.nr.PostFlows(append(kept, appendix...))
 }
 
-// sameFlow compares the runtime's flow with the desired one on the canonical
-// bytes of what we deploy (label, info, nodes).
-func sameFlow(existing json.RawMessage, want NRFlow) bool {
-	var have NRFlow
-	if err := json.Unmarshal(existing, &have); err != nil {
+// sameNodeSet compares two node maps on canonical bytes.
+func sameNodeSet(a, b map[string]json.RawMessage) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	norm := func(f NRFlow) string {
-		f.ID = ""
-		raw, _ := json.Marshal(f)
-		c, err := Canonicalize(raw)
-		if err != nil {
-			return ""
+	for id, rawA := range a {
+		rawB, ok := b[id]
+		if !ok {
+			return false
 		}
-		return string(c)
+		ca, errA := Canonicalize(rawA)
+		cb, errB := Canonicalize(rawB)
+		if errA != nil || errB != nil || string(ca) != string(cb) {
+			return false
+		}
 	}
-	a, b := norm(have), norm(want)
-	return a != "" && a == b
+	return true
 }
 
 // --- persistence ------------------------------------------------------------
