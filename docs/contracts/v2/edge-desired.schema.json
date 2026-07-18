@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/edge-desired.schema.json",
+  "title": "VoltPilot v2 Edge Desired / Arbitration Payloads",
+  "description": "The v2 LOCAL-BUS contract between the flow runtime (compiled user flows running in the Node-RED layer) and the Go core's arbitration: a flow's action node publishes a DESIRED value ('Wunsch') on edge/entities/{entity_id}/desired; the core arbitrates competing desires per entity, clamps the winner through the per-entity guard chain, and reports every decision on edge/entities/{entity_id}/arbitration. Flows NEVER write registers and NEVER publish actuation topics - the core alone publishes the guard-clamped command to the driver layer (see edge-desired-arbitration.md for the full topic family). This is a BINDING contract; unlike the versionless v1 local-bus namespace (edge-app/core/internal/localbus/localbus.go), the v2 entity topics are contract-grade because user-authored logic runs against them. schema_version is per-contract and starts at 1.0 (a brand-new contract, no predecessor).",
+  "x-topics": {
+    "desired": "edge/entities/{entity_id}/desired  (flow runtime -> core, QoS1, NOT retained - desires expire via ttl_s, a retained stale desire would be a command from the past)",
+    "arbitration": "edge/entities/{entity_id}/arbitration  (core -> observers, QoS1, NOT retained - event stream; the latest state is also in the core's state snapshot / :8484 API and summarized in the cloud status heartbeat)"
+  },
+  "x-semantics": {
+    "ownership": "At any instant at most ONE desired holds an entity (the holder). Selection: highest priority class wins; within the same class the current holder keeps the entity until its TTL lapses or it releases - a same-class challenger is rejected with reason 'arbitration:conflict' (no last-writer-wins, no oscillation). Cross-flow same-class conflicts are already refused at flow activation time (flow-graph exclusive-resource validation); the runtime rule is the backstop.",
+    "priority": "Classes rank safety > grid > contract > market > flow. On the current edge, safety/grid/contract do not appear as desires at all - they are the guard-chain clamps applied to WHATEVER wins (restrict-only, never bypassable). The classes are reserved in this schema for the E8 command-arbitration masters (Netzbetreiber via EEBUS = grid, Direktvermarkter = contract). The core's plan executor injects the cloud plan slots as class 'market'. Flow-sourced desires are ALWAYS class 'flow' - the core rejects a flow desired claiming any other class (reason 'arbitration:priority_not_allowed').",
+    "override": "override=true on a class-'flow' desired elevates it above 'market' (never above contract/grid/safety) for its bounded TTL (max 14400 s). This is the deliberate 'boost' escape hatch: explicit owner intent may cost money ('kann nerven'), never compliance. Arbitration events flag the elevation loudly; the plan re-takes the entity on expiry.",
+    "ttl": "ttl_s is REQUIRED - there are no immortal desires. On expiry the entity falls to the next-highest active desired, else to the entity's failsafe behavior declared in its registry config (edge/entities/{entity_id}/config), never to a remembered stale value. Flows are expected to re-emit standing desires on their triggers (interval trigger recommended; keep ttl_s comfortably above the re-emit period).",
+    "guards": "Arbitration selects; guards decide. The winning desired is clamped through the per-entity guard chain (v1 order, verified in edge-app/core/internal/guards/guards.go: rated band -> SoC window -> EEG solar-only charge -> observed grid-limit envelope -> band again; peak-shave after all compliance clamps, restrict-only). granted reports the post-guard value; outcome 'clamped' when granted != requested.",
+    "identity": "The entity_id in the payload MUST equal the {entity_id} topic segment; the core ignores mismatches (the v1 topic==payload identity rule)."
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/desired" },
+    { "$ref": "#/$defs/arbitration" }
+  ],
+  "$defs": {
+    "entity_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+      "description": "Entity id from the entity registry. MQTT-topic-safe by construction (the provisioning ref pattern); UUIDs recommended (the cloud registry row id)."
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["safety", "grid", "contract", "market", "flow"],
+      "description": "Priority class. Rank order safety(100) > grid(90, Netzbetreiber) > contract(80, Direktvermarkter) > market(60, cloud plan) > flow(40, user flows). See x-semantics.priority for what may claim which class."
+    },
+    "command": {
+      "type": "object",
+      "description": "One command from the generic v2 vocabulary. Sign conventions are fixed per capability, not per command: storage setpoint_kw + = charge / - = discharge (the v1 battery_setpoint_kw convention); consumer setpoint_kw + = consume; generators are never commanded to produce - only capped via limit_kw/limit_pct (the v1 pv_limit_kw safety posture: a limit only ever REDUCES generation).",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["setpoint_kw", "on_off", "limit_pct", "limit_kw", "mode"] },
+        "value": {}
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "setpoint_kw" } } },
+          "then": { "required": ["value"], "properties": { "value": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "on_off" } } },
+          "then": { "required": ["value"], "properties": { "value": { "type": "boolean" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "limit_pct" } } },
+          "then": { "required": ["value"], "properties": { "value": { "type": "number", "minimum": 0, "maximum": 100 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "limit_kw" } } },
+          "then": { "required": ["value"], "properties": { "value": { "type": "number", "minimum": 0 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "mode" } } },
+          "then": { "required": ["value"], "properties": { "value": { "type": "string", "minLength": 1, "maxLength": 64 } } }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "description": "Who emitted the desired. kind 'flow' = a compiled user/vendor flow (flow identity required, stamped by the compiler into the action node - not customer-editable); 'plan-executor' = the core's own market-class injection of the active plan slot; 'cloud-command' = a cloud-sent ad-hoc command (E12 portfolio runner / E8 masters); 'local-ui' = the :8484 operator surface.",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "enum": ["flow", "plan-executor", "cloud-command", "local-ui"] },
+        "flow_id": { "type": "string", "format": "uuid" },
+        "flow_version": { "type": "integer", "minimum": 1 },
+        "node_id": { "type": "string", "maxLength": 64 }
+      },
+      "if": { "properties": { "kind": { "const": "flow" } } },
+      "then": { "required": ["kind", "flow_id", "flow_version", "node_id"] }
+    },
+    "source_ref": {
+      "type": "object",
+      "description": "Compact reference to a desired in arbitration events.",
+      "required": ["request_id", "source", "priority"],
+      "additionalProperties": false,
+      "properties": {
+        "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "source": { "$ref": "#/$defs/source" },
+        "priority": { "$ref": "#/$defs/priority" },
+        "override": { "type": "boolean" }
+      }
+    },
+    "desired": {
+      "type": "object",
+      "title": "edge/entities/{entity_id}/desired payload",
+      "required": ["schema_version", "entity_id", "request_id", "source", "priority", "command", "ttl_s", "issued_at"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "entity_id": { "$ref": "#/$defs/entity_id" },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Correlates this desired with its arbitration events. Unique per emission; re-emitting the same standing wish MAY reuse the id (refresh: same holder, TTL restarts)."
+        },
+        "source": { "$ref": "#/$defs/source" },
+        "priority": { "$ref": "#/$defs/priority" },
+        "command": { "$ref": "#/$defs/command" },
+        "override": {
+          "type": "boolean",
+          "description": "Only meaningful on class 'flow': elevates this desired above 'market' for its TTL (never above contract/grid/safety). TTL is additionally capped at 14400 s when set. Default false."
+        },
+        "ttl_s": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400,
+          "description": "Seconds this desired stays valid from issued_at. REQUIRED - no immortal desires. RECOMMENDED <= 900 with re-emission on a trigger; override desires are capped at 14400 by the arbiter."
+        },
+        "issued_at": { "type": "string", "format": "date-time", "description": "When the emitter produced this desired (RFC 3339, UTC). The arbiter anchors TTL at min(issued_at, receive time) - a future-dated desired gains nothing." }
+      }
+    },
+    "arbitration": {
+      "type": "object",
+      "title": "edge/entities/{entity_id}/arbitration payload (event)",
+      "description": "One arbitration/guard decision event for one entity. Emitted on every state change: a desired accepted/clamped/rejected, a holder superseded or expired, a release, or the fall to the registry failsafe. 'holder' reports who owns the entity AFTER the event (null = no active desired, the entity runs its registry failsafe).",
+      "required": ["schema_version", "entity_id", "ts", "outcome", "reasons", "holder"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "entity_id": { "$ref": "#/$defs/entity_id" },
+        "ts": { "type": "string", "format": "date-time" },
+        "outcome": {
+          "type": "string",
+          "enum": ["accepted", "clamped", "rejected", "superseded", "expired", "released", "fallback"],
+          "description": "accepted = subject desired won, granted == requested. clamped = subject won but guards reduced it (granted != requested). rejected = subject refused (validation, capability, priority, conflict). superseded = subject lost the entity to a higher-priority desired. expired = subject's TTL lapsed. released = emitter withdrew (a desired with command absent semantics is not defined; release = TTL expiry or an explicit new desired from the same source with ttl_s honored - see .md). fallback = no active desired remains, entity runs its registry failsafe."
+        },
+        "subject": { "$ref": "#/$defs/source_ref", "description": "The desired this event is about (absent only for outcome 'fallback' when triggered by e.g. plan staleness rather than a specific desired)." },
+        "requested": { "$ref": "#/$defs/command", "description": "What the subject asked for." },
+        "granted": {
+          "oneOf": [{ "$ref": "#/$defs/command" }, { "type": "null" }],
+          "description": "The post-guard command actually forwarded to the driver layer as a result of this event; null when nothing is forwarded for the subject (rejected/superseded/expired) - the holder's granted value continues to apply."
+        },
+        "reasons": {
+          "type": "array",
+          "description": "Why, machine-readable, most significant first. Known stages (open set): arbitration:conflict, arbitration:priority, arbitration:priority_not_allowed, arbitration:ttl, arbitration:override, validation:schema, validation:identity, capability:unsupported_command, guard:rated_band, guard:soc_window, guard:solar_only_charge, guard:grid_limit_14a, guard:peak_shave, guard:limit_reduce_only.",
+          "items": {
+            "type": "object",
+            "required": ["stage"],
+            "additionalProperties": false,
+            "properties": {
+              "stage": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "detail": { "type": "string", "maxLength": 512 }
+            }
+          }
+        },
+        "holder": {
+          "oneOf": [{ "$ref": "#/$defs/source_ref" }, { "type": "null" }],
+          "description": "Who holds the entity after this event; null = registry failsafe active."
+        }
+      }
+    }
+  }
+}

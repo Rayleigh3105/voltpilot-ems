@@ -1,0 +1,18 @@
+{
+  "schema_version": "2.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "plan_id": "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9",
+  "generated_at": "2026-07-18T09:45:03Z",
+  "slot_minutes": 15,
+  "entities": [
+    {
+      "entity_id": "9f6f4a1e-3c2d-4b8a-9e51-0d2f8c7a1b22",
+      "charge_from_grid_allowed": true,
+      "slots": [
+        { "start": "2026-07-18T09:45:00Z", "commands": { "setpoint_kw": -30.0 } }
+      ]
+    }
+  ]
+}

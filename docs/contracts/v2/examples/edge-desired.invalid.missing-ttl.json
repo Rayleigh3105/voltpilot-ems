@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "9f6f4a1e-3c2d-4b8a-9e51-0d2f8c7a1b22",
+  "request_id": "n7:evt-2026-07-18T10:15:02Z",
+  "source": {
+    "kind": "flow",
+    "flow_id": "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
+    "flow_version": 7,
+    "node_id": "n7"
+  },
+  "priority": "flow",
+  "command": { "type": "setpoint_kw", "value": 7.4 },
+  "issued_at": "2026-07-18T10:15:02Z"
+}

@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/flow-artifact.schema.json",
+  "title": "VoltPilot v2 Flow Artifact / Deployment",
+  "description": "The DEPLOYABLE compiled form of a flow (compiler input = flow-graph.schema.json) and the retained deployment payload that rolls artifacts out to an edge device. Two message kinds (oneOf): 'artifact' = one compiled flow (manifest + compiled Node-RED tab bundle); 'deployment' = the DESIRED-STATE SET of active artifacts for one device, published RETAINED QoS1 on ems/{tenant_id}/{site_id}/{device_id}/v2/flows (the proven retained-config self-wiring pattern: edge/inverter/config, edge/sources/config, provisioning). The edge core consumes the deployment, verifies each artifact's content_hash and version gates, persists it, injects the tabs into the Node-RED runtime, and acknowledges per artifact in the status heartbeat's additive 'flows' block (flow-artifact.md). Rollback = the cloud republishes the deployment with the previous artifact - the retained topic always carries the full desired state, never a diff. schema_version starts at 1.0 (brand-new contract).",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/flows  (Cloud -> Edge, QoS1, retained; deployment kind only)",
+  "x-limits": "One serialized artifact <= 262144 bytes (256 KiB); one deployment <= 524288 bytes (512 KiB) - comfortably under EMQX's default 1 MiB max packet. The cloud compiler enforces both; a flow whose compiled bundle exceeds the budget fails activation with a clear error. An out-of-band fetch channel (hash + HTTPS download via the enrollment-style API) is the documented escape hatch if real flows ever outgrow this - not built in v1.",
+  "oneOf": [
+    { "$ref": "#/$defs/artifact" },
+    { "$ref": "#/$defs/deployment" }
+  ],
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "artifact": {
+      "type": "object",
+      "title": "One compiled flow artifact",
+      "required": [
+        "schema_version",
+        "kind",
+        "artifact_id",
+        "flow_id",
+        "flow_version",
+        "runtime",
+        "content_hash",
+        "compiled_at",
+        "compiler_version",
+        "min_palette_version",
+        "min_core_version",
+        "required_entities",
+        "bundle"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "kind": { "type": "string", "const": "artifact" },
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "flow_id": { "type": "string", "format": "uuid" },
+        "flow_version": { "type": "integer", "minimum": 1 },
+        "runtime": { "type": "string", "enum": ["edge", "cloud"], "description": "v1 rollout channel below applies to 'edge'; cloud artifacts deploy inside the cloud runner (E12), never over MQTT." },
+        "content_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "sha256 over the RFC 8785 (JCS) canonical serialization of the 'bundle' object. The edge re-canonicalizes and verifies before applying; a mismatch is acked as state 'error' and never deployed."
+        },
+        "compiled_at": { "type": "string", "format": "date-time" },
+        "compiler_version": { "$ref": "#/$defs/semver" },
+        "min_palette_version": {
+          "$ref": "#/$defs/semver",
+          "description": "Minimum @voltpilot/node-red-vp-palette version the bundle's nodes require. The edge compares against its installed palette and refuses (ack state 'unsupported') instead of deploying a bundle its runtime cannot execute."
+        },
+        "min_core_version": {
+          "$ref": "#/$defs/semver",
+          "description": "Minimum vp-edge-core version required (e.g. for arbitration features the flow relies on). Same refusal semantics as min_palette_version."
+        },
+        "required_entities": {
+          "type": "array",
+          "description": "The entities and capabilities this flow needs. The edge checks them against its entity registry view at deploy time; missing entities/capabilities => ack state 'unsupported' with detail (the flow is NOT partially deployed).",
+          "items": {
+            "type": "object",
+            "required": ["entity_id", "capabilities"],
+            "additionalProperties": false,
+            "properties": {
+              "entity_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+              "capabilities": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "pattern": "^(measure|actuate):[a-z0-9_]{1,64}$",
+                  "description": "Capability descriptor: measure:<channel> (e.g. measure:power_kw) or actuate:<command> (e.g. actuate:setpoint_kw, the edge-desired vocabulary)."
+                }
+              }
+            }
+          }
+        },
+        "bundle": {
+          "type": "object",
+          "required": ["format", "tab_ids", "nodered_flows"],
+          "additionalProperties": false,
+          "description": "The compiled runtime payload. v1 format: the Node-RED node array for this flow's tab(s), generated exclusively from catalog node implementations (vp-palette nodes + generated wiring - NO function nodes with free code in user flows). Tabs carry the ownership marker (flow-artifact.md §tab-ownership) so the reseed mechanism can tell artifact tabs from vendor template tabs.",
+          "properties": {
+            "format": { "type": "string", "const": "nodered-tabs" },
+            "tab_ids": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "description": "Ids of the tab nodes contained in nodered_flows; deterministic per (flow_id, flow_version) so redeploys replace instead of duplicating."
+            },
+            "nodered_flows": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "object", "required": ["id", "type"] },
+              "description": "The Node-RED node objects (including the tab node(s)), exactly as they will appear in the runtime's flow configuration."
+            }
+          }
+        },
+        "signature": {
+          "type": "string",
+          "description": "RESERVED for artifact signing at activation (plan §2.2 'signiertes Artefakt'). Format and trust chain are an E2 deliverable; edges tolerate the field's absence until then."
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "title": "Retained deployment set for one device",
+      "required": ["schema_version", "kind", "tenant_id", "site_id", "device_id", "deployed_at", "artifacts"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "kind": { "type": "string", "const": "deployment" },
+        "tenant_id": { "type": "string", "format": "uuid" },
+        "site_id": { "type": "string", "format": "uuid" },
+        "device_id": { "type": "string", "format": "uuid", "description": "MUST match the topic path (the v1 topic==payload identity rule)." },
+        "deployed_at": { "type": "string", "format": "date-time" },
+        "artifacts": {
+          "type": "array",
+          "description": "The COMPLETE desired set of active flow artifacts for this device (runtime 'edge' only). An empty array clears all artifact tabs (every user flow released; entities fall to lower-priority desires / failsafes). An artifact present in the previous deployment but absent here is undeployed. At most one artifact per flow_id.",
+          "items": { "$ref": "#/$defs/artifact" }
+        }
+      }
+    }
+  }
+}

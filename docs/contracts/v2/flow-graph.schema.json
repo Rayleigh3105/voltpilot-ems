@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/flow-graph.schema.json",
+  "title": "VoltPilot v2 Flow Graph",
+  "description": "The typed flow model: the EDITABLE source document a portal-built flow is stored, versioned, validated and simulated as, and the compiler's input (compiler output = flow-artifact.schema.json). A flow is a graph of node INSTANCES drawn from the VoltPilot node catalog (no free code nodes, D1/D2), connected via typed ports, driven by declared triggers. This schema pins the DOCUMENT shape; the semantic validation rules (port type compatibility, cycle rules, required ports, exclusive-resource conflicts) are specified in flow-graph.md and enforced by the platform validator - JSON Schema alone cannot express them. schema_version starts at 1.0 (brand-new contract).",
+  "type": "object",
+  "required": ["schema_version", "flow_id", "flow_version", "name", "runtime", "nodes", "edges", "triggers"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "flow_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable identity of the flow across versions."
+    },
+    "flow_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing version. Editing an active flow creates a NEW draft version; the active version keeps running until the new one is activated."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string", "maxLength": 2000 },
+    "runtime": {
+      "type": "string",
+      "enum": ["edge", "cloud"],
+      "description": "Where this flow executes (D8: one flow model, two runtimes). Node catalog entries declare which runtimes they support; the validator refuses a node outside its runtime."
+    },
+    "site_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "The site an edge flow belongs to (required for runtime=edge). Cloud/portfolio flows scope by tenant instead."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["draft", "simulated", "active", "retired"],
+      "description": "Lifecycle state of THIS version. Informative snapshot in the document; the AUTHORITATIVE state machine lives in the platform API (see flow-graph.md): draft -> simulated (a recorded simulation run exists) -> active (validated + compiled + deployed; at most one active version per flow) -> retired."
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Node instances. Types come from the versioned VoltPilot node catalog (namespaced vp.<domain>.<name>); parameters are validated against the catalog type's parameter schema by the platform validator.",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "type_version"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$",
+            "description": "Unique within the flow."
+          },
+          "type": {
+            "type": "string",
+            "pattern": "^vp\\.[a-z0-9]+(\\.[a-z0-9_-]+)+$",
+            "description": "Catalog type id, e.g. vp.entity.read, vp.entity.control, vp.strategy.market, vp.strategy.peakshaving, vp.price.dayahead, vp.logic.threshold, vp.logic.and, vp.schedule.window, vp.notify.push."
+          },
+          "type_version": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+\\.\\d+$",
+            "description": "Semver of the catalog type this instance was built against. The compiler resolves the concrete implementation; flow-artifact carries the resulting minimum palette/runtime versions."
+          },
+          "label": { "type": "string", "maxLength": 120 },
+          "parameters": {
+            "type": "object",
+            "description": "Type-specific parameters (validated against the catalog type's parameter schema). entityRef parameters reference entities by registry id."
+          },
+          "claims": {
+            "type": "array",
+            "description": "EXPLICIT control claims of this node: which entity actuations it drives (filled by the editor from the catalog type + parameters, so exclusive-resource validation works generically without knowing every type's parameter schema). Only action/strategy nodes carry claims; read nodes never do. Claim unit = the ENTITY (one controlling flow per entity - command types are not split across owners).",
+            "items": {
+              "type": "object",
+              "required": ["entity_id", "commands"],
+              "additionalProperties": false,
+              "properties": {
+                "entity_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" },
+                "commands": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string", "enum": ["setpoint_kw", "on_off", "limit_pct", "limit_kw", "mode"] },
+                  "description": "The command vocabulary subset this node emits for the entity (edge-desired vocabulary)."
+                },
+                "delegated": {
+                  "type": "boolean",
+                  "description": "true = a strategy node delegating the entity to the cloud co-optimizer (the plan will command it, class 'market'); false/absent = a direct action node emitting class-'flow' desires. Both are claims on the same exclusive resource - a delegated and a direct claim on one entity conflict."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Directed, port-to-port connections. Port NAMES are strings; port TYPES (timeseries, number, bool, price, plan, event, entityRef) are declared by the catalog node type - the validator resolves and checks compatibility (flow-graph.md).",
+      "items": {
+        "type": "object",
+        "required": ["id", "from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" },
+          "from": { "$ref": "#/$defs/port_ref" },
+          "to": { "$ref": "#/$defs/port_ref" },
+          "feedback": {
+            "type": "boolean",
+            "description": "Declares an INTENTIONAL cycle (e.g. hysteresis on a previous output). Validation: the graph with all feedback edges removed must be acyclic; a feedback edge's value is the PREVIOUS evaluation's output (one-step delay), so evaluation always terminates."
+          }
+        }
+      }
+    },
+    "triggers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "What causes (re-)evaluation. Evaluation is single-threaded per flow, non-reentrant, bounded by the runtime's evaluation timeout (flow-graph.md).",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" },
+          "kind": {
+            "type": "string",
+            "enum": ["interval", "value-change", "slot-boundary", "event"],
+            "description": "interval = fixed cadence; value-change = a watched port/entity channel changed beyond deadband; slot-boundary = the platform slot grid ticked (slot_minutes, aligned with the plan); event = a named platform event (e.g. plan-received, entity-offline, entity-online)."
+          },
+          "every_s": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "description": "interval only: cadence in seconds."
+          },
+          "source": {
+            "$ref": "#/$defs/port_ref",
+            "description": "value-change only: the watched output port."
+          },
+          "deadband": {
+            "type": "number",
+            "minimum": 0,
+            "description": "value-change only: minimum absolute change to fire (0/absent = any change)."
+          },
+          "event": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "event only: the platform event name."
+          }
+        },
+        "allOf": [
+          { "if": { "properties": { "kind": { "const": "interval" } } }, "then": { "required": ["id", "kind", "every_s"] } },
+          { "if": { "properties": { "kind": { "const": "value-change" } } }, "then": { "required": ["id", "kind", "source"] } },
+          { "if": { "properties": { "kind": { "const": "event" } } }, "then": { "required": ["id", "kind", "event"] } }
+        ]
+      }
+    }
+  },
+  "if": { "properties": { "runtime": { "const": "edge" } } },
+  "then": { "required": ["schema_version", "flow_id", "flow_version", "name", "runtime", "nodes", "edges", "triggers", "site_id"] },
+  "$defs": {
+    "port_ref": {
+      "type": "object",
+      "required": ["node", "port"],
+      "additionalProperties": false,
+      "properties": {
+        "node": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" },
+        "port": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_]{0,63}$" }
+      }
+    }
+  }
+}

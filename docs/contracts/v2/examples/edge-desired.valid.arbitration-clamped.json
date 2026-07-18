@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "9f6f4a1e-3c2d-4b8a-9e51-0d2f8c7a1b22",
+  "ts": "2026-07-18T10:15:02.412Z",
+  "outcome": "clamped",
+  "subject": {
+    "request_id": "n3:evt-2026-07-18T10:15:02Z",
+    "source": {
+      "kind": "flow",
+      "flow_id": "d0eaf5aa-9b1c-4d2e-8f30-415263748596",
+      "flow_version": 2,
+      "node_id": "n3"
+    },
+    "priority": "flow"
+  },
+  "requested": { "type": "setpoint_kw", "value": 7.4 },
+  "granted": { "type": "setpoint_kw", "value": 6.2 },
+  "reasons": [
+    { "stage": "guard:solar_only_charge", "detail": "charge clamped to measured PV 6.2 kW (charge_from_grid_allowed=false)" }
+  ],
+  "holder": {
+    "request_id": "n3:evt-2026-07-18T10:15:02Z",
+    "source": {
+      "kind": "flow",
+      "flow_id": "d0eaf5aa-9b1c-4d2e-8f30-415263748596",
+      "flow_version": 2,
+      "node_id": "n3"
+    },
+    "priority": "flow"
+  }
+}
