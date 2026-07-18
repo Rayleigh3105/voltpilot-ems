@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.local/contracts/v2/mqtt-schedule-2.0.schema.json",
+  "title": "VoltPilot MQTT Multi-Entity Plan Payload (schedule 2.0)",
+  "description": "The v2 multi-entity dispatch plan published by the cloud co-optimizer, RETAINED QoS1 on the NEW v2 topic ems/{tenant_id}/{site_id}/{device_id}/v2/plan. Successor of the FROZEN mqtt-schedule.schema.json (1.0), which stays untouched on its own topic - coexistence is by SEPARATE TOPIC, not schema_version negotiation (see mqtt-schedule-2.0.md, decision D-1/D-2 in the v2 README): v1 edges keep consuming the 1.0 retained plan on .../schedule; v2 edges subscribe .../v2/plan; the two retained slots never collide, which is exactly what the E13a shadow phase (v2 publishes while v1 controls) requires. The plan commands N entities per site with the generic command vocabulary shared with the edge-desired contract; on the edge it enters arbitration as a standing class-'market' desired stream per entity and is ALWAYS clamped by the per-entity guard chain before any register write - the plan stays ADVISORY exactly like 1.0.",
+  "type": "object",
+  "x-topic": "ems/{tenant_id}/{site_id}/{device_id}/v2/plan  (Cloud -> Edge, QoS1, retained; the device_id is the edge GATEWAY device carrying the mTLS identity - entities live under it)",
+  "x-failsafe": "Carried over from 1.0 and generalized per entity: the plan is ADVISORY (guards clamp everything). STALENESS: a plan not refreshed for 20 minutes no longer drives any entity; freshness is additionally bounded by generated_at age with a 5-minute redelivery slack, so a broker redelivery of an old retained payload can never look fresh again (the verified v1 semantics in edge-app/core/internal/plan/plan.go: StaleAfter=20min, redeliverySlack=5min). On staleness each entity falls back to its OWN failsafe behavior declared in the entity registry config (edge/entities/{id}/config) - NOT carried in this payload, so it survives total plan loss. A NEW plan that omits a previously commanded entity RELEASES that entity (its market desire is withdrawn; it falls to lower-priority desires or its failsafe). EXCEPTIONS that deliberately survive staleness, verbatim from the 1.0 PS-3 semantics: grid_import_limit_kw (the edge peak guard keeps defending the LAST known target - restrict-only, so a dead optimizer's target can never widen anything) and each storage entity's reserve_soc_pct (the reserve exists FOR the offline fallback).",
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "site_id",
+    "device_id",
+    "plan_id",
+    "generated_at",
+    "slot_minutes",
+    "entities"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "2.0",
+      "description": "Payload contract version. 2.0 = the multi-entity successor of mqtt-schedule 1.0."
+    },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "plan_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id of this optimization run; keys the persisted plan for plan-vs-actual and for the flow runtime's read-only plan input port."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the co-optimizer produced this plan (RFC 3339, UTC). Bounds freshness together with receipt time (x-failsafe)."
+    },
+    "horizon_slots": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of slots in the plan (96 = 24h at 15 min). Redundant with each entity's slots.length; carried for cheap introspection."
+    },
+    "slot_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Slot width in minutes, one grid for all entities. v2 publishes 15 (the platform optimization grid); the field exists so the edge never has to assume."
+    },
+    "grid_import_limit_kw": {
+      "type": "number",
+      "minimum": 0,
+      "description": "OPTIONAL site-level billing-period peak target in kW (PS-1/PS-3 semantics carried over 1:1 from 1.0): the highest 15-min mean grid IMPORT the optimizer planned for. Present only while the site's peak-shaving module is active; absent = no import target, and a NEW plan without it clears any latched target. Survives plan staleness (see x-failsafe). Import-side only; the edge peak guard is restrict-only and never widens any other guard."
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Per-entity dispatch. Entity ids come from the entity registry; the edge ignores entities it does not know (logged, never fatal) and releases known entities the plan omits.",
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "slots"],
+        "additionalProperties": false,
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+            "description": "Entity id from the entity registry (MQTT-topic-safe; UUIDs recommended)."
+          },
+          "kind": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "OPTIONAL informative domain kind (e.g. 'storage', 'pv-generation', 'wallbox', 'heat-rod', 'grid-meter'). The AUTHORITATIVE capability set lives in the entity registry; the edge never derives permissions from this field."
+          },
+          "charge_from_grid_allowed": {
+            "type": "boolean",
+            "description": "Storage entities only. false OR ABSENT = the entity must never charge from the grid: the edge clamps commanded charge to the measured available PV (the v1 EEG solar-only guard, PV-bus semantics). Only an EXPLICIT true releases the clamp. NOTE this is the v1 EDGE behavior promoted into the contract: the 1.0 contract text said absent = allowed, but the shipped Go edge deliberately deviates fail-safe (plan.go SolarOnlyCharge) - 2.0 adopts the code's reading so contract and execution finally agree. Discharge is never affected."
+          },
+          "reserve_soc_pct": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Storage entities only, OPTIONAL: the SoC floor reserved for peak defense (PS-2 semantics per entity instead of per site - multi-battery ready). Ordinary fallback discharge stops at this floor; peak DEFENSE alone may go below it down to the technical SoC floor. Survives plan staleness. Restrict-only: it can only ever raise a floor."
+          },
+          "slots": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Contiguous slots in ascending start order on the shared slot_minutes grid, covering the plan horizon. The edge executes the slot whose [start, start+slot_minutes) contains 'now'.",
+            "items": {
+              "type": "object",
+              "required": ["start", "commands"],
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Slot start (RFC 3339, UTC), aligned to the slot grid."
+                },
+                "commands": {
+                  "type": "object",
+                  "description": "Target values for the slot, keyed by the generic command vocabulary (shared with edge-desired.schema.json). A slot may set several channels of one entity (e.g. a hybrid inverter entity: setpoint_kw for its storage + limit_kw for its generation). Absent key = no command for that channel this slot; specifically an absent limit_kw/limit_pct means NO limit and MUST clear any previously applied limit (the 1.0 pv_limit_kw clearing rule). All values are ADVISORY - guards clamp. Sign conventions per capability: storage setpoint_kw + = charge / - = discharge; consumer setpoint_kw + = consume; generation is only ever capped (limit_*), never commanded to produce.",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "setpoint_kw": { "type": "number" },
+                    "limit_kw": { "type": "number", "minimum": 0 },
+                    "limit_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+                    "on_off": { "type": "boolean" },
+                    "mode": { "type": "string", "minLength": 1, "maxLength": 64 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

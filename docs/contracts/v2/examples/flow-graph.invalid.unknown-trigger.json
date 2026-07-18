@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
+  "flow_version": 8,
+  "name": "Kaputter Trigger",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "vp.entity.read",
+      "type_version": "1.0.0",
+      "parameters": { "entity_id": "pv-roof-east", "channel": "pv_power_kw" }
+    }
+  ],
+  "edges": [],
+  "triggers": [
+    { "id": "t1", "kind": "cron", "every_s": 60 }
+  ]
+}

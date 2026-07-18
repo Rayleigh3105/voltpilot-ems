@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "heatrod-cellar",
+  "request_id": "boost-8842",
+  "source": {
+    "kind": "flow",
+    "flow_id": "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
+    "flow_version": 7,
+    "node_id": "n7"
+  },
+  "priority": "flow",
+  "override": true,
+  "command": { "type": "on_off", "value": true },
+  "ttl_s": 3600,
+  "issued_at": "2026-07-18T17:40:00Z"
+}

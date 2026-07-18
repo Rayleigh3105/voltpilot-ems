@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "4e1c2b3a-5d6e-4f70-8123-456789abcdef",
+  "flow_version": 7,
+  "name": "Heizstab bei PV-Überschuss",
+  "description": "Schaltet den Heizstab ein, solange mehr als 3 kW ins Netz eingespeist werden (Netz-Leistung unter -3 kW, Hysterese 0,5 kW).",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "active",
+  "nodes": [
+    {
+      "id": "n2",
+      "type": "vp.entity.read",
+      "type_version": "1.0.0",
+      "label": "Netz-Leistung",
+      "parameters": { "entity_id": "grid-meter-1", "channel": "power_kw" }
+    },
+    {
+      "id": "n5",
+      "type": "vp.logic.threshold",
+      "type_version": "1.1.0",
+      "label": "Einspeisung > 3 kW",
+      "parameters": { "threshold": -3.0, "hysteresis": 0.5, "direction": "below" }
+    },
+    {
+      "id": "n7",
+      "type": "vp.entity.control",
+      "type_version": "1.0.0",
+      "label": "Heizstab schalten",
+      "parameters": { "entity_id": "heatrod-cellar", "command": "on_off", "ttl_s": 180 },
+      "claims": [
+        { "entity_id": "heatrod-cellar", "commands": ["on_off"] }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "n2", "port": "value" }, "to": { "node": "n5", "port": "input" } },
+    { "id": "e2", "from": { "node": "n5", "port": "result" }, "to": { "node": "n7", "port": "value" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "interval", "every_s": 60 },
+    { "id": "t2", "kind": "value-change", "source": { "node": "n2", "port": "value" }, "deadband": 0.5 }
+  ]
+}

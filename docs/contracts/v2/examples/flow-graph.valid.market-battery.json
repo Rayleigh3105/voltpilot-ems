@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "b2a4d6c8-1032-4f5e-9a7b-8c9d0e1f2a3b",
+  "flow_version": 1,
+  "name": "Marktoptimierung Speicher",
+  "description": "Delegiert den Hauptspeicher an die Cloud-Co-Optimierung (Arbitrage auf Day-Ahead).",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "lifecycle": "simulated",
+  "nodes": [
+    {
+      "id": "price1",
+      "type": "vp.price.dayahead",
+      "type_version": "1.0.0",
+      "label": "Day-Ahead-Preise",
+      "parameters": { "zone": "DE-LU" }
+    },
+    {
+      "id": "strat1",
+      "type": "vp.strategy.market",
+      "type_version": "1.0.0",
+      "label": "Marktoptimierung",
+      "parameters": { "entity_id": "batt-main" },
+      "claims": [
+        { "entity_id": "batt-main", "commands": ["setpoint_kw"], "delegated": true }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "price1", "port": "prices" }, "to": { "node": "strat1", "port": "price_in" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "slot-boundary" }
+  ]
+}
