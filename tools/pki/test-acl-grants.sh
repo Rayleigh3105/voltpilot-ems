@@ -47,12 +47,15 @@ assert_canonical() {
                       || bad "$label: duplicated default-deny"
 }
 
-# Build a per-device grant block (the exact shape both writers emit).
+# Build a per-device grant block (the exact shape both writers emit, incl. the
+# two v2/# wildcard lines - decision D-2).
 block() { # id
   local d="$1" b="ems/t/s/$1"
   printf '%%%%<<device %s tenant t site s>>\n' "$d"
   printf '{allow, {username, "%s"}, publish,   ["%s/telemetry", "%s/status"]}.\n' "$d" "$b" "$b"
   printf '{allow, {username, "%s"}, subscribe, ["%s/schedule", "%s/command", "%s/config"]}.\n' "$d" "$b" "$b" "$b"
+  printf '{allow, {username, "%s"}, publish,   ["%s/v2/#"]}.\n' "$d" "$b"
+  printf '{allow, {username, "%s"}, subscribe, ["%s/v2/#"]}.\n' "$d" "$b"
   printf '%%%%<<end device %s>>\n' "$d"
 }
 
@@ -121,6 +124,32 @@ assert_canonical "${WORK}/merged_eof.conf" "merge-eof"
 echo "== merge is idempotent =="
 sh "$MERGE" "$BASE" "${WORK}/merged.conf" "${WORK}/merged2.conf"
 diff -q "${WORK}/merged.conf" "${WORK}/merged2.conf" >/dev/null && ok "merge idempotent" || bad "merge not idempotent"
+
+echo "== grant template is byte-identical to the Java writer (shared vector) =="
+# The SAME fixed vector is pinned in AclGrantWriterTest (services/api) -
+# change both together (the EdgeRef shared-vector discipline).
+VT="00000000-0000-0000-0000-000000000001"
+VS="00000000-0000-0000-0000-000000000002"
+VD="00000000-0000-0000-0000-000000000003"
+VB="ems/${VT}/${VS}/${VD}"
+TPL="${WORK}/template.conf"
+printf '%%%%<<BEGIN GENERATED DEVICE GRANTS>>\n%%%%<<END GENERATED DEVICE GRANTS>>\n{allow, all}.\n' > "$TPL"
+VP_ACL_FILE="$TPL" bash -c "set -e; source '${WORK}/ca_lib.sh'; write_acl_grant ${VT} ${VS} ${VD}" >/dev/null
+cat > "${WORK}/expected-block" <<EOF
+%%<<device ${VD} tenant ${VT} site ${VS}>>
+{allow, {username, "${VD}"}, publish,   ["${VB}/telemetry", "${VB}/status"]}.
+{allow, {username, "${VD}"}, subscribe, ["${VB}/schedule", "${VB}/command", "${VB}/config"]}.
+{allow, {username, "${VD}"}, publish,   ["${VB}/v2/#"]}.
+{allow, {username, "${VD}"}, subscribe, ["${VB}/v2/#"]}.
+%%<<end device ${VD}>>
+EOF
+sed -n '/<<device /,/<<end device /p' "$TPL" > "${WORK}/actual-block"
+diff -u "${WORK}/expected-block" "${WORK}/actual-block" >/dev/null \
+  && ok "template: shell block matches the pinned Java-writer vector (incl. v2/# lines)" \
+  || bad "template: shell block drifted from the Java writer (see AclGrantWriterTest)"
+grep -qF "${VB}/v2/#" "$BASE" \
+  && ok "template: committed base seed grant carries the v2/# lines" \
+  || bad "template: committed base seed grant is missing the v2/# lines"
 
 echo
 echo "ACL grant tests: ${PASS} passed, ${FAIL} failed"
