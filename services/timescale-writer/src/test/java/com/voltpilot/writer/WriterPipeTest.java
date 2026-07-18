@@ -55,6 +55,7 @@ class WriterPipeTest {
     private static final String DEVICE = "00000000-0000-0000-0000-000000000003";
     private static final String OBSERVED_AT = "2026-07-01T08:58:45.827Z";
     private static final String RAW_TOPIC = "telemetry.raw";
+    private static final String V2_RAW_TOPIC = "telemetry-v2.raw";
     private static final String APP_PW = "voltpilot_app_test_pw";
 
     @Container
@@ -204,6 +205,144 @@ class WriterPipeTest {
         assertThat(rowsForDevice(device)).isEqualTo(1);
     }
 
+    /**
+     * The v2 leg (dual-consume next to the untouched v1 path): a
+     * telemetry-v2.raw event explodes into generic (entity_id, channel, value)
+     * rows - one per channel - with the v1 disciplines carried over: idempotent
+     * per (entity, channel, time) on redelivery, per-entity ts override,
+     * time-vs-received_at split, RLS tenant fencing, and the purge watermark
+     * refusing replayed pre-purge samples.
+     */
+    @Test
+    void v2EventExplodesIntoPerEntityChannelRowsWithV1Disciplines() throws Exception {
+        createTopic(V2_RAW_TOPIC);
+        String device = "20000000-0000-0000-0000-00000000000b";
+        String battery = "5f0d2c9e-6b1a-4c3d-9e8f-0a1b2c3d4e5f";
+        String meter = "7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071";
+        String meterTs = "2026-07-01T08:58:40.000Z";
+        String v2Event = "{"
+                + "\"schema_version\":\"1.0\","
+                + "\"event_id\":\"" + UUID.randomUUID() + "\","
+                + "\"tenant_id\":\"" + TENANT_A + "\","
+                + "\"site_id\":\"" + SITE + "\","
+                + "\"device_id\":\"" + device + "\","
+                + "\"observed_at\":\"" + OBSERVED_AT + "\","
+                + "\"ingested_at\":\"2026-07-01T08:58:46.000Z\","
+                + "\"source_topic\":\"ems/" + TENANT_A + "/" + SITE + "/" + device + "/v2/telemetry\","
+                + "\"entities\":{"
+                + "\"" + battery + "\":{\"channels\":{\"soc_pct\":62.5,\"battery_power_kw\":12.4}},"
+                + "\"" + meter + "\":{\"ts\":\"" + meterTs + "\",\"channels\":{\"power_kw\":-49.7}}"
+                + "}}";
+
+        // Duplicate delivery: the guarded insert makes the redelivery a no-op.
+        try (KafkaProducer<String, String> producer = producer()) {
+            String key = TENANT_A + ":" + SITE;
+            producer.send(new ProducerRecord<>(V2_RAW_TOPIC, key, v2Event)).get();
+            producer.send(new ProducerRecord<>(V2_RAW_TOPIC, key, v2Event)).get();
+            producer.flush();
+        }
+        awaitV2RowCount(device, 3); // 2 battery channels + 1 meter channel
+
+        try (Connection c = admin();
+                Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(
+                        "SELECT entity_id, channel, value, time, received_at FROM telemetry_v2 "
+                                + "WHERE device_id = '" + device + "' ORDER BY entity_id, channel")) {
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString("entity_id")).isEqualTo(battery);
+            assertThat(rs.getString("channel")).isEqualTo("battery_power_kw");
+            assertThat(rs.getDouble("value")).isEqualTo(12.4);
+            assertThat(rs.getTimestamp("time").toInstant()).isEqualTo(Instant.parse(OBSERVED_AT));
+            assertThat(rs.getTimestamp("received_at").toInstant())
+                    .isEqualTo(Instant.parse("2026-07-01T08:58:46.000Z"));
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString("channel")).isEqualTo("soc_pct");
+            assertThat(rs.getDouble("value")).isEqualTo(62.5);
+            assertThat(rs.next()).isTrue();
+            assertThat(rs.getString("entity_id")).isEqualTo(meter);
+            assertThat(rs.getString("channel")).isEqualTo("power_kw");
+            assertThat(rs.getDouble("value")).isEqualTo(-49.7);
+            // The meter carried its OWN observation time.
+            assertThat(rs.getTimestamp("time").toInstant()).isEqualTo(Instant.parse(meterTs));
+            assertThat(rs.next()).isFalse();
+        }
+
+        // RLS parity with v1: the owning tenant sees the rows, another does not.
+        assertThat(rlsVisibleV2Count(TENANT_A, device)).isEqualTo(3);
+        assertThat(rlsVisibleV2Count(TENANT_B, device)).isEqualTo(0);
+
+        // Purge watermark: rows observed at/before device.data_purged_before are
+        // refused (replayed pre-purge history never resurrects), later ones land.
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            st.execute("INSERT INTO device (id, tenant_id, data_purged_before) VALUES ('"
+                    + device + "', '" + TENANT_A + "', '2026-07-02T00:00:00Z')");
+        }
+        String preWatermark = v2EventAt(device, battery, "2026-07-01T23:59:59.000Z");
+        String postWatermark = v2EventAt(device, battery, "2026-07-02T00:00:01.000Z");
+        try (KafkaProducer<String, String> producer = producer()) {
+            String key = TENANT_A + ":" + SITE;
+            producer.send(new ProducerRecord<>(V2_RAW_TOPIC, key, preWatermark)).get();
+            producer.send(new ProducerRecord<>(V2_RAW_TOPIC, key, postWatermark)).get();
+            producer.flush();
+        }
+        awaitV2RowCount(device, 4); // only the post-watermark sample joined
+        try (Connection c = admin();
+                Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(
+                        "SELECT count(*) FROM telemetry_v2 WHERE device_id = '" + device
+                                + "' AND time = '2026-07-01T23:59:59Z'")) {
+            rs.next();
+            assertThat(rs.getLong(1)).as("pre-watermark sample refused").isEqualTo(0);
+        }
+    }
+
+    private static String v2EventAt(String device, String entity, String observedAt) {
+        return "{"
+                + "\"schema_version\":\"1.0\","
+                + "\"event_id\":\"" + UUID.randomUUID() + "\","
+                + "\"tenant_id\":\"" + TENANT_A + "\","
+                + "\"site_id\":\"" + SITE + "\","
+                + "\"device_id\":\"" + device + "\","
+                + "\"observed_at\":\"" + observedAt + "\","
+                + "\"ingested_at\":\"2026-07-02T13:00:00.000Z\","
+                + "\"entities\":{\"" + entity + "\":{\"channels\":{\"soc_pct\":50.0}}}"
+                + "}";
+    }
+
+    private long rlsVisibleV2Count(String tenant, String device) throws Exception {
+        Properties p = new Properties();
+        p.put("user", "voltpilot_app");
+        p.put("password", APP_PW);
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(), p);
+                Statement st = c.createStatement()) {
+            st.execute("SELECT set_config('app.tenant_id', '" + tenant + "', false)");
+            try (ResultSet rs = st.executeQuery(
+                    "SELECT count(*) FROM telemetry_v2 WHERE device_id = '" + device + "'")) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    private void awaitV2RowCount(String device, int expected) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        long count = -1;
+        while (System.nanoTime() < deadline) {
+            try (Connection c = admin();
+                    Statement st = c.createStatement();
+                    ResultSet rs = st.executeQuery(
+                            "SELECT count(*) FROM telemetry_v2 WHERE device_id = '" + device + "'")) {
+                rs.next();
+                count = rs.getLong(1);
+            }
+            if (count == expected) {
+                return;
+            }
+            Thread.sleep(500);
+        }
+        throw new AssertionError("expected " + expected + " telemetry_v2 row(s), saw " + count);
+    }
+
     private static String eventFor(String tenant, String device, String observedAt) {
         return "{"
                 + "\"schema_version\":\"1.0\","
@@ -229,8 +368,12 @@ class WriterPipeTest {
     }
 
     private void createTopic() throws Exception {
+        createTopic(RAW_TOPIC);
+    }
+
+    private void createTopic(String name) throws Exception {
         try (Admin admin = Admin.create(Map.of("bootstrap.servers", REDPANDA.getBootstrapServers()))) {
-            admin.createTopics(List.of(new NewTopic(RAW_TOPIC, 3, (short) 1))).all().get();
+            admin.createTopics(List.of(new NewTopic(name, 3, (short) 1))).all().get();
         } catch (ExecutionException e) {
             // Redpanda may auto-create the topic when the writer's consumer
             // subscribes first; an already-existing topic is fine.

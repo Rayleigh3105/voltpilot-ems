@@ -21,11 +21,20 @@ voltpilot:
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
     client-id: ${MQTT_CLIENT_ID:voltpilot-ingest}
     telemetry-topic-filter: ${MQTT_TELEMETRY_TOPIC_FILTER:ems/+/+/+/telemetry}
+    # v2 entity telemetry uplink (docs/contracts/v2/mqtt-telemetry-2.0.md).
+    # Single-level wildcards keep the two eras apart: the v1 filter never
+    # matches the 6-segment v2 topic and vice versa (dual-consume).
+    telemetry-v2-topic-filter: ${MQTT_TELEMETRY_V2_TOPIC_FILTER:ems/+/+/+/v2/telemetry}
     qos: ${MQTT_QOS:1}
     username: ${MQTT_USERNAME:}
     password: ${MQTT_PASSWORD:}
   redpanda:
     telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
+    telemetry-v2-topic: ${REDPANDA_TELEMETRY_V2_TOPIC:telemetry-v2.raw}
+  # v2 entity telemetry leg (envelope-only validation -> telemetry-v2.raw).
+  # Disable to run a v1-only ingest.
+  telemetry-v2:
+    enabled: ${VOLTPILOT_TELEMETRY_V2_ENABLED:true}
   # Zero-touch provisioning resolver (docs/contracts/mqtt-provisioning.schema.json):
   # answers provision/{ref}/hello of CLAIMED refs with a retained
   # provision/{ref}/config. Lookup is lazy plain JDBC with the trusted backend
