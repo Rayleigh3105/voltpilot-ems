@@ -424,6 +424,33 @@ test('flow sources-store plans a fronius_sunspec (SunSpec-live) Erzeuger source 
   assert.equal(routed[0].plan.connection.model_type, plans[0].conn.model_type);
 });
 
+// The "Quellen uebernehmen" node must plan a go-e (goe_http_api) CONSUMER source:
+// the flow store and sources-routing.planSources agree on the adapter + the
+// /api/status URL, and the plan carries role 'consumer' so the read publishes
+// load_kw on the third (vp-verbraucher) output.
+test('flow sources-store plans a go-e (goe_http_api) consumer source like the module', () => {
+  const payload = [
+    { id: 'src-goe', role: 'consumer', brand: 'go-e', model: 'goe_http_api', family: 'goe_http_api',
+      communication: 'goe_http_api', connection: { ip: '192.168.1.42', port: 80 } },
+  ];
+  const flow = {};
+  runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow });
+  const plans = JSON.parse(JSON.stringify(flow.source_plans));
+  assert.equal(plans.length, 1, 'the go-e consumer source MUST be planned');
+  assert.equal(plans[0].id, 'src-goe');
+  assert.equal(plans[0].role, 'consumer');
+  assert.equal(plans[0].adapter, 'goe_http_api');
+  assert.equal(plans[0].conn.ip, '192.168.1.42');
+  assert.equal(plans[0].conn.port, 80);
+  assert.equal(plans[0].url, 'http://192.168.1.42:80/api/status?filter=nrg,car,alw,amp,wh');
+
+  // Cross-check against the module routing: same source, same adapter + url.
+  const routed = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: payload }));
+  assert.equal(routed.length, 1);
+  assert.equal(routed[0].plan.adapter, 'goe_http_api');
+  assert.equal(routed[0].plan.url, plans[0].url);
+});
+
 // A connection with no model_type hint (or an unknown one) defaults to 'auto',
 // mirroring inverter-routing.route - an old core build that dropped the SunSpec
 // connection fields from the retained entry still yields a working plan.
@@ -445,9 +472,9 @@ test('flow sources-store defaults a fronius_sunspec plan to model_type auto / un
 // discovery walk + live decode for its sunspec_live branch (the same embed the
 // primary auto-sunspec node uses). Drift guard: editing either module without
 // re-running build-flows.js fails here instead of shipping a stale reader.
-test('flow sources-read embeds the current model-discovery.js + sunspec-live.js sources', () => {
+test('flow sources-read embeds the current model-discovery.js + sunspec-live.js + goe-api.js sources', () => {
   const func = byId['sources-read'].func;
-  for (const rel of ['sunspec/model-discovery.js', 'sunspec/sunspec-live.js']) {
+  for (const rel of ['sunspec/model-discovery.js', 'sunspec/sunspec-live.js', 'goe/goe-api.js']) {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
     assert.ok(
       func.includes(src),
@@ -494,6 +521,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     'fronius/solar-api.js',
     'sunspec/model-discovery.js',
     'sunspec/sunspec-live.js',
+    'goe/goe-api.js',
   ];
   for (const rel of embeds) {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
@@ -503,7 +531,7 @@ test('flow test-read embeds the current test-read.js + decode module sources', (
     );
   }
   // And it wires the embedded modules into makeReadOnce the intended way.
-  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC'));
+  assert.ok(func.includes('__TR.makeReadOnce({ deye: __DEYE, modbus: __MB, fronius: __FR, solarman: __SV5, sunspec: __SS, discovery: __DISC, goe: __GOE'));
 });
 
 // The "Fronius SunSpec lesen" node (auto-sunspec) carries EMBEDDED verbatim

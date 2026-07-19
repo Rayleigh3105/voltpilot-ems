@@ -19,6 +19,7 @@
       "vp-sources-config": "nodes/vp-sources-config.js",
       "vp-quelle": "nodes/vp-quelle.js",
       "vp-netz": "nodes/vp-netz.js",
+      "vp-verbraucher": "nodes/vp-verbraucher.js",
       "vp-test-request": "nodes/vp-test-request.js",
       "vp-test-result": "nodes/vp-test-result.js",
       "vp-desired": "nodes/vp-desired.js",

@@ -561,3 +561,73 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip mismatch: %+v", got)
 	}
 }
+
+// The go-e Charger (wallbox) is a read-only CONSUMER driver: it must appear in
+// the catalog as its own brand with the goe_http_api communication, and Normalize
+// must produce a clean http-only selection (no serial/unit-id/sign fields) that
+// BusPayload publishes as just ip+port.
+func TestGoeCharger_CatalogNormalizeAndBusPayload(t *testing.T) {
+	cat := DefaultCatalog()
+
+	var b Brand
+	found := false
+	for _, x := range cat.Brands {
+		if x.ID == BrandGoe {
+			b = x
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("go-e brand missing from DefaultCatalog")
+	}
+	if b.Communication != CommGoeHTTP {
+		t.Fatalf("go-e communication = %q, want %q", b.Communication, CommGoeHTTP)
+	}
+	if len(b.Models) != 1 || b.Models[0].Family != FamGoeHTTP {
+		t.Fatalf("go-e models = %+v, want one generic goe_http_api model", b.Models)
+	}
+	if b.Models[0].RatedKw != 0 {
+		t.Fatalf("go-e model must carry no RatedKw (envelope stays inactive), got %v", b.Models[0].RatedKw)
+	}
+
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand:      BrandGoe,
+		Model:      FamGoeHTTP,
+		Connection: Connection{IP: "192.168.1.42"},
+	}, now)
+	if err != nil {
+		t.Fatalf("Normalize go-e: %v", err)
+	}
+	if sel.Communication != CommGoeHTTP || sel.Family != FamGoeHTTP {
+		t.Fatalf("normalized go-e = %+v", sel)
+	}
+	if sel.Connection.Port != 80 {
+		t.Fatalf("default go-e port = %d, want 80", sel.Connection.Port)
+	}
+	// http-only transport: no serial / unit id / sign / profile leak through.
+	if sel.Connection.Serial != "" || sel.Connection.UnitID != 0 || sel.Connection.Profile != "" ||
+		sel.Connection.InvertGridSign || sel.Connection.PowerScale != 0 {
+		t.Fatalf("go-e selection carries foreign transport fields: %+v", sel.Connection)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["communication"] != CommGoeHTTP {
+		t.Fatalf("bus payload communication = %v", payload["communication"])
+	}
+	conn, _ := payload["connection"].(map[string]any)
+	if conn == nil || conn["ip"] != "192.168.1.42" {
+		t.Fatalf("bus payload connection = %+v", payload["connection"])
+	}
+	// go-e is a lean http transport: only ip+port in the published connection.
+	if _, ok := conn["serial"]; ok {
+		t.Fatalf("go-e bus connection must not carry serial: %+v", conn)
+	}
+
+	// go-e has no nameplate rating -> the physical-envelope guard stays inactive.
+	if _, ok := cat.RatedKw(BrandGoe, FamGoeHTTP); ok {
+		t.Fatal("go-e must have no RatedKw")
+	}
+}

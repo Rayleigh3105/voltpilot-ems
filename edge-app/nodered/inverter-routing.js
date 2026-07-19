@@ -36,12 +36,18 @@
 const deyeDecode = require('./deye/deye-decode');
 const modbusTcp = require('./modbus-tcp');
 const froniusSolarApi = require('./fronius/solar-api');
+const goeApi = require('./goe/goe-api');
 
 const SCHEMA_VERSION = '1.0';
 
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
 const COMM_FRONIUS = 'fronius_solar_api';
+// go-e Charger local HTTP API v2 (LAN HTTP/JSON, keyless, port 80): a read-only
+// CONSUMER (wallbox) whose charging power is site load. One GET to /api/status
+// returns the total charging power; no per-model register map (self-describing).
+// Read-only like Fronius Solar API - never in a control allowlist. See goe/goe-api.js.
+const COMM_GOE = 'goe_http_api';
 // Real SunSpec discovery over Modbus TCP (port 502): a Fronius Eco (and any
 // SunSpec-conformant inverter) whose Solar API is unusable is read this way. The
 // read path is the live model-discovery walk + measurement decode
@@ -53,6 +59,7 @@ const DEFAULT_SOLARMAN_PORT = 8899;
 const DEFAULT_MODBUS_PORT = 502;
 const DEFAULT_FRONIUS_PORT = 80;
 const DEFAULT_FRONIUS_SUNSPEC_PORT = 502;
+const DEFAULT_GOE_PORT = 80;
 
 // The one register-profile id the SunSpec-live read path uses (mirrors how the
 // Deye family / Modbus profile names the decode). Discovery is dynamic, so there
@@ -65,6 +72,9 @@ const DEYE_FAMILIES = Object.keys(deyeDecode.FAMILIES);
 
 // The Fronius Solar API family set (one entry - the API is self-describing).
 const FRONIUS_FAMILIES = Object.keys(froniusSolarApi.FAMILIES);
+
+// The go-e HTTP API family set (one entry - the API is self-describing).
+const GOE_FAMILIES = Object.keys(goeApi.FAMILIES);
 
 function isObject(v) {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -97,7 +107,8 @@ function parseConfig(input) {
 
   const communication = typeof obj.communication === 'string' ? obj.communication : '';
   if (communication !== COMM_SOLARMAN && communication !== COMM_MODBUS &&
-      communication !== COMM_FRONIUS && communication !== COMM_FRONIUS_SUNSPEC) return null;
+      communication !== COMM_FRONIUS && communication !== COMM_FRONIUS_SUNSPEC &&
+      communication !== COMM_GOE) return null;
 
   const family = typeof obj.family === 'string' ? obj.family.trim() : '';
   if (!family) return null;
@@ -244,6 +255,23 @@ function route(sel) {
     };
   }
 
+  if (sel.communication === COMM_GOE) {
+    // go-e Charger local HTTP API v2: ONE HTTP GET to /api/status returns the
+    // charging power. Self-describing (one family), so gate on the known set for
+    // symmetry with Fronius (an unknown family stays idle-safe). Read-only.
+    if (!GOE_FAMILIES.includes(sel.family)) {
+      return { adapter: 'idle', reason: 'unbekannte go-e-Familie: ' + sel.family };
+    }
+    const port = num(conn.port, DEFAULT_GOE_PORT);
+    return {
+      adapter: COMM_GOE,
+      family: sel.family,
+      target: ip + ':' + port,
+      connection: { ip, port },
+      url: goeApi.statusUrl(ip, port),
+    };
+  }
+
   return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
 }
 
@@ -253,11 +281,13 @@ module.exports = {
   COMM_MODBUS,
   COMM_FRONIUS,
   COMM_FRONIUS_SUNSPEC,
+  COMM_GOE,
   SUNSPEC_LIVE_PROFILE,
   DEFAULT_SOLARMAN_PORT,
   DEFAULT_MODBUS_PORT,
   DEFAULT_FRONIUS_PORT,
   DEFAULT_FRONIUS_SUNSPEC_PORT,
+  DEFAULT_GOE_PORT,
   parseConfig,
   route,
 };

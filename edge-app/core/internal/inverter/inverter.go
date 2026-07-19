@@ -38,6 +38,11 @@ const (
 	// whose Solar API does not work. Read-only (telemetry); control is a separate
 	// bench-gated increment. See nodered/sunspec/sunspec-live.js + FRONIUS.md.
 	CommFroniusSunSpec = "fronius_sunspec"
+	// CommGoeHTTP reads a go-e Charger (wallbox) over its local HTTP API v2 (LAN
+	// HTTP/JSON, keyless, port 80): ONE GET to /api/status returns the charging
+	// power, which VoltPilot maps onto the CONSUMER load channel. Read-only by
+	// construction (no charge/current control). See nodered/goe/goe-api.js.
+	CommGoeHTTP = "goe_http_api"
 )
 
 // Brand ids.
@@ -49,6 +54,10 @@ const (
 	// on BrandFronius) so the per-brand-fixed-communication model stays unchanged:
 	// "Fronius" = Solar API (HTTP), "Fronius (Modbus / SunSpec)" = SunSpec Modbus.
 	BrandFroniusSunSpec = "fronius_sunspec"
+	// BrandGoe is the go-e Charger wallbox (a read-only CONSUMER measurement
+	// point). Added as a source in the "Weitere Energiequellen" flow, not as a
+	// primary inverter.
+	BrandGoe = "go-e"
 )
 
 // Default ports per communication.
@@ -57,6 +66,7 @@ const (
 	defaultModbusPort         = 502
 	defaultFroniusPort        = 80 // Fronius Solar API (HTTP); GEN24 self-signed HTTPS uses insecure_tls
 	defaultFroniusSunSpecPort = 502
+	defaultGoePort            = 80 // go-e Charger local HTTP API v2
 )
 
 // ValidationError carries a customer-facing German message; the web layer maps
@@ -211,6 +221,10 @@ const (
 	// the Solar API - there is one family, not a per-model register map. The
 	// Node-RED routing keys on communication=fronius_sunspec + this profile.
 	FamSunSpecLive = "sunspec_live"
+	// FamGoeHTTP is the single decode profile for the go-e HTTP API v2. The API is
+	// self-describing (one GET returns the charging power), so there is no
+	// per-model register map - one family covers every go-e Charger model.
+	FamGoeHTTP = "goe_http_api"
 )
 
 // deyeFamilies is the register-map reference list (what each Model decodes with).
@@ -342,6 +356,38 @@ func froniusSunspecModels() []Model {
 	}
 }
 
+// goeFields describes the go-e Charger (HTTP API v2) connection: only the host +
+// the HTTP port (80 by default). Keyless on the LAN, self-describing, no serial /
+// unit id / auth - the leanest of all transports (like the Fronius Solar API but
+// without even the HTTPS escape hatch, since go-e is plain HTTP). The go-e's HTTP
+// API must be enabled once in the go-e app.
+func goeFields() []Field {
+	return []Field{
+		{Key: "ip", Label: "IP-Adresse der Wallbox", Type: "text", Required: true,
+			Help: "Die IP der go-e-Wallbox im lokalen Netz (z. B. 192.168.0.50). Die lokale HTTP-API (v2) muss in der go-e-App aktiviert sein."},
+		{Key: "port", Label: "Port", Type: "number", Default: defaultGoePort,
+			Help: "HTTP-Port der go-e-API, üblicherweise 80."},
+	}
+}
+
+// goeFamilies is the single decode profile (the go-e HTTP API is self-describing).
+func goeFamilies() []Family {
+	return []Family{
+		{ID: FamGoeHTTP, Label: "go-e HTTP API (v2)", Note: "Lokale HTTP/JSON-Schnittstelle (/api/status)"},
+	}
+}
+
+// goeModels offers one generic go-e entry (like the Fronius Solar API single
+// entry): /api/status returns the same shape across the go-e Charger lines, so no
+// per-model register map is needed. No RatedKw is set, so the physical-envelope
+// guard stays inactive (a wallbox's load has no fixed nameplate ceiling here).
+func goeModels() []Model {
+	return []Model{
+		{ID: FamGoeHTTP, Label: "go-e Charger (HTTP API v2)", Family: FamGoeHTTP,
+			Note: "go-e Charger HOME/HOMEfix/Gemini u. a. über die lokale HTTP-API (nur lesen)"},
+	}
+}
+
 // DefaultCatalog returns the built-in option tree.
 func DefaultCatalog() Catalog {
 	return Catalog{
@@ -390,6 +436,16 @@ func DefaultCatalog() Catalog {
 				Models:        froniusSunspecModels(),
 				Families:      froniusSunspecFamilies(),
 				Fields:        froniusSunspecFields(),
+			},
+			{
+				ID:            BrandGoe,
+				Label:         "go-e (Wallbox)",
+				Communication: CommGoeHTTP,
+				CommLabel:     "go-e HTTP API v2 (HTTP/JSON)",
+				Note:          "go-e-Wallbox (Ladepunkt/Verbraucher) - wird über die lokale HTTP-API ausgelesen. Als zusätzliche Energiequelle mit der Rolle \"Verbraucher\" hinzufügen. Nur lesen.",
+				Models:        goeModels(),
+				Families:      goeFamilies(),
+				Fields:        goeFields(),
 			},
 		},
 	}
@@ -645,6 +701,15 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Profile = registerFamily // sunspec_live
 		// fields of the other transports are not part of this one.
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS = "", 0, 0, false
+	case CommGoeHTTP:
+		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
+		// escape hatch (charging power is unsigned load).
+		if conn.Port == 0 {
+			conn.Port = defaultGoePort
+		}
+		// fields of the other transports are not part of this one.
+		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
+		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}

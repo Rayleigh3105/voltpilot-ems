@@ -552,3 +552,49 @@ func TestDeleteSourceRollsBackOnPersistFailure(t *testing.T) {
 		t.Fatalf("DeleteSource after recovery: %v", err)
 	}
 }
+
+// A CONSUMER source (e.g. a go-e wallbox) publishes load_kw on its per-source
+// topic. The agent must INGEST it (so its freshness status becomes "ok" and its
+// "Zuletzt gelesen" line shows the load) - a load-only reading was previously
+// dropped as "nothing usable". It must NOT feed the PV sum or the authoritative
+// grid (consumer aggregation is topology-layer work), so a consumer next to an
+// Erzeuger leaves the composite PV untouched.
+func TestConsumerSourceLoadIsIngestedButNotSummedIntoPv(t *testing.T) {
+	a := newGateTestAgent(t)
+
+	goe, err := a.AddSource(sources.Request{
+		Role:       sources.RoleConsumer,
+		Brand:      inverter.BrandGoe,
+		Model:      inverter.FamGoeHTTP,
+		Connection: inverter.Connection{IP: "192.168.1.42"},
+	})
+	if err != nil {
+		t.Fatalf("AddSource(consumer): %v", err)
+	}
+	erz := addErzeuger(t, a, 70)
+
+	// A load-only consumer reading must be RECORDED (freshness advances).
+	a.onSourceTelemetry(sources.TopicPrefix+goe.ID+"/telemetry", []byte(`{"load_kw": 11.04}`))
+	feedSource(a, erz.ID, 42) // Erzeuger PV
+
+	if st := a.SourceStatuses()[goe.ID]; st != "ok" {
+		t.Fatalf("consumer source status = %q, want ok (its reading must be ingested)", st)
+	}
+	last, ok := a.SourceLastReadings()[goe.ID]
+	if !ok || last.LoadKw == nil || *last.LoadKw != 11.04 {
+		t.Fatalf("consumer LastReading = %+v, want LoadKw 11.04", last)
+	}
+	if last.PvKw != nil || last.PowerKw != nil {
+		t.Fatalf("consumer reading must carry only load, got %+v", last)
+	}
+
+	// The consumer's load must NOT enter the PV sum: only the Erzeuger's 42 kW.
+	pv, _ := a.aggregateSourcePv()
+	if pv != 42 {
+		t.Fatalf("aggregated PV = %v, want 42 (consumer load must not be summed in)", pv)
+	}
+	// Nor the authoritative grid (no Netz meter -> nil).
+	if g, _ := a.authoritativeGrid(); g != nil {
+		t.Fatalf("authoritativeGrid = %v, want nil (a consumer is not a grid meter)", *g)
+	}
+}

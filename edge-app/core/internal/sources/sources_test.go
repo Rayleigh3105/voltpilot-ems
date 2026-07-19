@@ -295,3 +295,44 @@ func TestBalanceStoreRoundTripAndLegacyMigration(t *testing.T) {
 		t.Fatal("corrupt balance.json must surface an error")
 	}
 }
+
+// A go-e wallbox is added as a CONSUMER source: the consumer role is accepted,
+// the go-e HTTP transport is derived from the catalog, and the retained bus
+// entry carries just its ip+port so Node-RED can self-wire the /api/status read.
+func TestNormalizeAcceptsConsumerGoeSource(t *testing.T) {
+	req := Request{
+		Role:       RoleConsumer,
+		Brand:      inverter.BrandGoe,
+		Model:      inverter.FamGoeHTTP,
+		Connection: inverter.Connection{IP: "192.168.1.42"},
+	}
+	src, err := Normalize(cat(), req, time.Now())
+	if err != nil {
+		t.Fatalf("consumer go-e source rejected: %v", err)
+	}
+	if src.Role != RoleConsumer {
+		t.Fatalf("role = %q, want %q", src.Role, RoleConsumer)
+	}
+	if src.Communication != inverter.CommGoeHTTP || src.Family != inverter.FamGoeHTTP {
+		t.Fatalf("go-e source transport wrong: %+v", src)
+	}
+	if src.Connection.Port != 80 {
+		t.Fatalf("default go-e port = %d, want 80", src.Connection.Port)
+	}
+
+	src.ID = "src-goe"
+	var m struct {
+		Sources []map[string]any `json:"sources"`
+	}
+	if err := json.Unmarshal(BusConfig([]Source{src}), &m); err != nil {
+		t.Fatal(err)
+	}
+	e := m.Sources[0]
+	if e["role"] != RoleConsumer || e["communication"] != inverter.CommGoeHTTP {
+		t.Fatalf("bus entry wrong: %+v", e)
+	}
+	conn, _ := e["connection"].(map[string]any)
+	if conn == nil || conn["ip"] != "192.168.1.42" {
+		t.Fatalf("bus entry connection wrong: %+v", e["connection"])
+	}
+}

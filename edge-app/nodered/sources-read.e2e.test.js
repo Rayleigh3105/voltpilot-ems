@@ -17,6 +17,8 @@ const test = require('node:test');
 const assert = require('node:assert');
 const vm = require('node:vm');
 const net = require('node:net');
+const http = require('node:http');
+const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -122,7 +124,7 @@ async function runFunctionNode(func, { msg = {}, flow = {}, sends = [], warns = 
     node: { status() {}, error() {}, warn(w) { warns.push(String(w)); }, log(l) { logs.push(String(l)); }, send(m) { sends.push(JSON.parse(JSON.stringify(m))); } },
     context: { get: (k) => ctx[k], set: (k, v) => { ctx[k] = v; } },
     flow: { get: (k) => flow[k], set: (k, v) => { flow[k] = v; } },
-    global: { get: (k) => (k === 'net' ? (netStub || net) : undefined) },
+    global: { get: (k) => (k === 'net' ? (netStub || net) : (k === 'http' ? http : (k === 'https' ? https : undefined))) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, Map,
     setTimeout: fakeTimers ? fakeTimers.setTimeout : setTimeout,
     clearTimeout: fakeTimers ? fakeTimers.clearTimeout : clearTimeout,
@@ -514,4 +516,76 @@ test('a mixed source list plans Fronius + modbus and defers a Deye solarman sour
   } finally {
     server.close();
   }
+});
+
+// A go-e wallbox added as a CONSUMER source (communication goe_http_api) is read
+// over its local HTTP /api/status on the ongoing poll and published as
+// {source_id, payload:{load_kw}} on the THIRD output (vp-verbraucher). This
+// drives the ACTUAL flow node bodies from flows.json against a real in-process
+// HTTP server - the acceptance proof that a go-e source publishes load_kw on
+// edge/sources/<id>/telemetry. No hardware.
+function goeSource(port, overrides = {}) {
+  return Object.assign({
+    id: 'src-goe',
+    role: 'consumer',
+    brand: 'go-e',
+    model: 'goe_http_api',
+    family: 'goe_http_api',
+    communication: 'goe_http_api',
+    connection: { ip: '127.0.0.1', port },
+    interval_s: 5,
+  }, overrides);
+}
+
+test('a go-e consumer source (goe_http_api) is read over HTTP and publishes load_kw on output 3', async () => {
+  const body = JSON.stringify({
+    car: 2, alw: true, amp: 16,
+    nrg: [232, 231, 232, 0, 16, 16, 16, 3680, 3700, 3660, 0, 11040, 99, 99, 99, 0],
+  });
+  const server = http.createServer((req, res) => { res.setHeader('content-type', 'application/json'); res.end(body); });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const { flow, sends } = await storeAndRead([goeSource(port)]);
+    assert.equal(flow.source_plans.length, 1, 'the go-e consumer source is planned');
+    assert.equal(flow.source_plans[0].adapter, 'goe_http_api');
+    assert.equal(sends.length, 1, 'exactly one publish for the one source');
+    const [erzeuger, netz, verbraucher] = sends[0];
+    assert.equal(erzeuger, null, 'nothing on the Erzeuger output');
+    assert.equal(netz, null, 'nothing on the Netz output');
+    assert.ok(verbraucher, 'the Consumer (output 3) carries the reading');
+    assert.equal(verbraucher.source_id, 'src-goe');
+    assert.equal(verbraucher.payload.load_kw, 11.04, '11040 W -> 11.04 kW');
+    assert.ok(typeof verbraucher.payload.ts === 'string', 'reading is stamped');
+    assert.equal('pv_power_kw' in verbraucher.payload, false, 'a consumer publishes ONLY load');
+    assert.equal('power_kw' in verbraucher.payload, false);
+  } finally {
+    server.close();
+  }
+});
+
+test('a not-charging go-e consumer publishes a real load_kw 0 (kept, not dropped)', async () => {
+  const body = JSON.stringify({ car: 4, nrg: new Array(16).fill(0) });
+  const server = http.createServer((req, res) => res.end(body));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const { sends } = await storeAndRead([goeSource(port)]);
+    assert.equal(sends.length, 1);
+    assert.equal(sends[0][2].payload.load_kw, 0, 'a real 0 (idle) is a valid consumer reading');
+  } finally {
+    server.close();
+  }
+});
+
+test('a dead go-e consumer source is skipped (no send) and named via node.warn', async () => {
+  // Port 1 on loopback refuses immediately -> the read fails, nothing published,
+  // and the failure is NOT swallowed silently (rate-limited node.warn).
+  const flow = {};
+  const sends = [];
+  const warns = [];
+  await runFunctionNode(byId['sources-store'].func, { msg: { payload: [goeSource(1)] }, flow });
+  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, sends, warns });
+  assert.equal(sends.length, 0, 'a dead source publishes nothing (error isolation)');
+  assert.ok(warns.some((w) => /src-goe/.test(w)), 'the failed read is named, never silent');
 });

@@ -1715,6 +1715,7 @@ func (a *Agent) publishInverterConfig() {
 type sourceReading struct {
 	pv   *float64
 	grid *float64
+	load *float64 // Consumer load (kW, >= 0); only a consumer source populates it
 	recv time.Time
 	// period is the ACHIEVED read cadence: the wall-clock spacing between this
 	// reading and the previous one (0 until a second reading arrived). The
@@ -1740,11 +1741,14 @@ const sourceStaleFloor = 60 * time.Second
 const sourceStaleCap = 15 * time.Minute
 
 // onSourceTelemetry ingests one additional source's reading (edge/sources/{id}/
-// telemetry): keep the latest PV and/or signed grid power per source, by role.
-// An Erzeuger carries pv_power_kw; a Netz meter carries power_kw (signed,
-// +import/-export). It never fabricates a value - an absent/invalid field is
-// simply not recorded, so the source contributes nothing; a reading with no
-// usable field at all is dropped entirely (never advances freshness).
+// telemetry): keep the latest PV, signed grid power and/or consumer load per
+// source, by role. An Erzeuger carries pv_power_kw; a Netz meter carries power_kw
+// (signed, +import/-export); a Consumer (e.g. a go-e wallbox) carries load_kw
+// (>= 0). It never fabricates a value - an absent/invalid field is simply not
+// recorded, so the source contributes nothing; a reading with no usable field at
+// all is dropped entirely (never advances freshness). Consumer load is recorded
+// for the setup page's "Zuletzt gelesen" + freshness status; its aggregation
+// into the house balance / a consumer entity is topology-layer work.
 func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	id := sources.IDFromTopic(topic)
 	if id == "" {
@@ -1754,6 +1758,7 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	var m struct {
 		PvPowerKw *float64 `json:"pv_power_kw"`
 		PowerKw   *float64 `json:"power_kw"`
+		LoadKw    *float64 `json:"load_kw"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
 		slog.Warn("source telemetry malformed; skipped", "id", id, "err", err)
@@ -1765,8 +1770,8 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 		}
 		return v
 	}
-	pv, grid := usable(m.PvPowerKw), usable(m.PowerKw)
-	if pv == nil && grid == nil {
+	pv, grid, load := usable(m.PvPowerKw), usable(m.PowerKw), usable(m.LoadKw)
+	if pv == nil && grid == nil && load == nil {
 		return // nothing usable in this reading
 	}
 	now := time.Now().UTC()
@@ -1775,7 +1780,7 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	if prev, ok := a.srcReadings[id]; ok && !prev.recv.IsZero() {
 		period = now.Sub(prev.recv) // the ACHIEVED cadence, feeds the freshness window
 	}
-	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, recv: now, period: period}
+	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, load: load, recv: now, period: period}
 	a.srcMu.Unlock()
 }
 
@@ -2134,6 +2139,7 @@ func (a *Agent) SourceLastReadings() map[string]sources.LastReading {
 		out[s.ID] = sources.LastReading{
 			PvKw:     r.pv,
 			PowerKw:  r.grid,
+			LoadKw:   r.load,
 			ReadAtMs: r.recv.UnixMilli(),
 		}
 	}

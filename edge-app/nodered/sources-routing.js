@@ -37,6 +37,10 @@ const { parseConfig, route } = require('./inverter-routing');
 const SCHEMA_VERSION = '1.0';
 const ROLE_ERZEUGER = 'pv-generation';
 const ROLE_NETZ = 'grid-meter';
+// A consumer (Verbraucher) measurement point - e.g. a go-e wallbox read over its
+// local HTTP API. Read-only like the other source roles; its load_kw rides the
+// per-source topic and (topology layer) renders as a consumer entity.
+const ROLE_CONSUMER = 'consumer';
 
 function num(v, fallback) {
   const n = typeof v === 'string' ? Number(v.trim()) : v;
@@ -92,16 +96,17 @@ function parseSourcesConfig(input) {
 
 /**
  * planSources - map parsed source entries onto their read plans, keeping ONLY
- * read-only measurement roles (Erzeuger PV + Netz grid meter) that route to a
- * usable (non-idle) read path. Returns a list of { id, role, capacity_kwp, plan }
- * where plan is the inverter-routing.route result (adapter modbus_tcp |
- * sunspec_live | solarman_v5). The role rides along so the reader picks the
- * right field to publish (Erzeuger -> pv_power_kw, Netz -> signed power_kw).
+ * read-only measurement roles (Erzeuger PV + Netz grid meter + Consumer load)
+ * that route to a usable (non-idle) read path. Returns a list of { id, role,
+ * capacity_kwp, plan } where plan is the inverter-routing.route result (adapter
+ * modbus_tcp | sunspec_live | solarman_v5 | goe_http_api). The role rides along
+ * so the reader picks the right field to publish (Erzeuger -> pv_power_kw, Netz
+ * -> signed power_kw, Consumer -> load_kw).
  */
 function planSources(entries) {
   const out = [];
   (entries || []).forEach((e) => {
-    if (!e || (e.role !== ROLE_ERZEUGER && e.role !== ROLE_NETZ)) return;
+    if (!e || (e.role !== ROLE_ERZEUGER && e.role !== ROLE_NETZ && e.role !== ROLE_CONSUMER)) return;
     const plan = route(e.selection);
     if (!plan || plan.adapter === 'idle') return;
     out.push({ id: e.id, role: e.role, capacity_kwp: e.capacity_kwp, plan });
@@ -113,6 +118,7 @@ module.exports = {
   SCHEMA_VERSION,
   ROLE_ERZEUGER,
   ROLE_NETZ,
+  ROLE_CONSUMER,
   parseSourcesConfig,
   planSources,
 };

@@ -88,6 +88,27 @@ test('planSources ignores an unknown role (reserved vocabulary not read yet)', (
   assert.equal(plans.length, 0);
 });
 
+test('planSources returns a goe_http_api read plan for a consumer (go-e) source', () => {
+  const goe = {
+    id: 'src-goe',
+    role: 'consumer',
+    brand: 'go-e',
+    model: 'goe_http_api',
+    family: 'goe_http_api',
+    communication: 'goe_http_api',
+    connection: { ip: '192.168.1.42', port: 80 },
+    interval_s: 10,
+  };
+  const plans = sr.planSources(sr.parseSourcesConfig(config([goe])));
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].id, 'src-goe');
+  assert.equal(plans[0].role, 'consumer');
+  assert.equal(plans[0].plan.adapter, 'goe_http_api');
+  assert.equal(plans[0].plan.connection.ip, '192.168.1.42');
+  assert.equal(plans[0].plan.connection.port, 80);
+  assert.equal(plans[0].plan.url, 'http://192.168.1.42:80/api/status?filter=nrg,car,alw,amp,wh');
+});
+
 test('planSources returns a sunspec_live read plan for a Fronius SunSpec Erzeuger source', () => {
   const fronius = modbusSource({
     id: 'src-eco',

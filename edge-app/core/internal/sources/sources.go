@@ -44,13 +44,19 @@ const SchemaVersion = "1.0"
 const (
 	RoleErzeuger = "pv-generation"
 	RoleNetz     = "grid-meter"
+	// RoleConsumer is a read-only Verbraucher measurement point (e.g. a go-e
+	// wallbox read over its local HTTP API): its charging power is site LOAD,
+	// forwarded as load_kw on the per-source topic. Its aggregation into the
+	// house balance / a consumer entity is topology-layer work; here it is a
+	// first-class source role so it can be added, read and published.
+	RoleConsumer = "consumer"
 )
 
 // isKnownRole reports whether role is one of the read-only source roles the edge
-// can configure today. A meter (RoleNetz) carries no capacity_kwp; an Erzeuger
-// (RoleErzeuger) may.
+// can configure today. A meter (RoleNetz) and a consumer (RoleConsumer) carry no
+// capacity_kwp; an Erzeuger (RoleErzeuger) may.
 func isKnownRole(role string) bool {
-	return role == RoleErzeuger || role == RoleNetz
+	return role == RoleErzeuger || role == RoleNetz || role == RoleConsumer
 }
 
 // Read-cadence defaults + bounds (seconds). The primary inverter polls every 5 s
@@ -109,6 +115,7 @@ type Source struct {
 type LastReading struct {
 	PvKw     *float64 `json:"pv_kw,omitempty"`    // Erzeuger generation (kW)
 	PowerKw  *float64 `json:"power_kw,omitempty"` // Netz signed grid power (kW, +Bezug/-Einspeisung)
+	LoadKw   *float64 `json:"load_kw,omitempty"`  // Consumer load (kW, >= 0)
 	ReadAtMs int64    `json:"read_at_ms"`
 }
 
@@ -139,7 +146,7 @@ func Normalize(cat inverter.Catalog, req Request, now time.Time) (Source, error)
 		role = RoleErzeuger
 	}
 	if !isKnownRole(role) {
-		return Source{}, invalid("Diese Art von Energiequelle wird nicht unterstützt (nur zusätzliche PV-Anlagen oder ein Netz-Zähler).")
+		return Source{}, invalid("Diese Art von Energiequelle wird nicht unterstützt (nur zusätzliche PV-Anlagen, ein Netz-Zähler oder ein Verbraucher).")
 	}
 
 	// Reuse the exact inverter validation (brand/model/family + connection). The
