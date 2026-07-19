@@ -187,6 +187,33 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 	return srv, fi, h
 }
 
+// TestStateEnvelopeCarriesBuildVersion pins the display path for the build
+// version stamp: the ldflags-set agent.Version flows state.New(ref, version) ->
+// Snapshot.Version -> the /api/state envelope's "version" field, which
+// dashboard.js renders as "v<version>" (blank for the "dev" default). This is
+// the on-device half of the edge-images VERSION build-arg wiring.
+func TestStateEnvelopeCarriesBuildVersion(t *testing.T) {
+	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
+	h := history.New(100)
+	srv := httptest.NewServer(Handler(state.New("edge-ver", "test123"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var env struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatal(err)
+	}
+	if env.Version != "test123" {
+		t.Fatalf("state envelope version = %q, want %q", env.Version, "test123")
+	}
+}
+
 func TestGetInverterReturnsCatalogAndNilSelection(t *testing.T) {
 	srv, _ := newServer(t)
 	resp, err := http.Get(srv.URL + "/api/inverter")
