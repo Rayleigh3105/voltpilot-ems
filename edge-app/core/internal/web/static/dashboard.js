@@ -8,6 +8,42 @@
   var nf1 = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   var nf0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
 
+  // Below this magnitude a power reading counts as idle (the topology deadband).
+  var DEADBAND_KW = 0.05;
+
+  // ---------- adaptive read-model shared metadata (AE6) ----------
+  // The AE1 topology read-model groups entities into four roles; each role has
+  // one hue + soft fill (the same --pv/--load/--grid-c/--batt channel hues the
+  // v1 diagram and charts use), a KPI accent class and an icon. The adaptive
+  // energy diagram and the adaptive tiles both draw from this one map, so the
+  // edge :8484 view matches the portal's AE2/AE3 look.
+  var ROLE_META = {
+    pv:       { label: "PV",          color: cssVar("--pv"),     soft: cssVar("--pv-soft"),   tile: "pv",   icon: "sun" },
+    storage:  { label: "Batterie",    color: cssVar("--batt"),   soft: cssVar("--batt-soft"), tile: "batt", icon: "battery" },
+    consumer: { label: "Verbraucher", color: cssVar("--load"),   soft: cssVar("--load-soft"), tile: "load", icon: "home" },
+    grid:     { label: "Netz",        color: cssVar("--grid-c"), soft: cssVar("--grid-soft"), tile: "grid", icon: "zap" }
+  };
+
+  // Inner markup for a 24x24 stroke icon, embedded as a nested <svg> at a node
+  // and reused as the tile icon (stroke inherits the accent colour).
+  var ICON_PATHS = {
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+    battery: '<rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/>',
+    home: '<path d="M3 9.5 12 3l9 6.5"/><path d="M5 8.5V21h14V8.5"/><path d="M9 21v-6h6v6"/>',
+    zap: '<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/>'
+  };
+
+  // Whether an /api/state topology block carries any renderable role node (else
+  // fall back to the byte-identical v1 diagram + fixed 4 tiles).
+  function hasTopology(topo) {
+    return !!(topo && topo.nodes && topo.nodes.length > 0);
+  }
+  function truncate(s, max) {
+    max = max || 11;
+    var t = (s || "").trim();
+    return t.length <= max ? t : t.slice(0, max - 1) + "…";
+  }
+
   // --- clock alignment: chart timestamps are device epoch ms ---
   var clockOffset = 0; // deviceNow = Date.now() + clockOffset
   function deviceNow() { return Date.now() + clockOffset; }
@@ -68,6 +104,20 @@
 
   function renderKpis(s) {
     var fresh = s.last_telemetry && (serverAge(s.last_telemetry) < 90);
+
+    // Adaptive path (AE6): when the device carries v2 entities, the tiles are
+    // entity/role-driven straight from the topology read-model (a new Wallbox/
+    // Heizstab appears on its own). The fixed 4 cards stay as the v1 fallback.
+    var adaptive = hasTopology(s.topology);
+    var kFixed = $("kpis"), kAdaptive = $("kpisAdaptive");
+    kFixed.hidden = adaptive;
+    kAdaptive.hidden = !adaptive;
+    if (adaptive) {
+      renderAdaptiveTiles(kAdaptive, s.topology);
+      kAdaptive.classList.toggle("stale", !!s.last_telemetry && !fresh);
+      return;
+    }
+
     var pv = latestVal("pv"), load = latestVal("load"), grid = latestVal("grid");
     var soc = latestVal("soc"), batt = latestVal("batt");
 
@@ -359,14 +409,17 @@
   function escapeHtml(s) { return s.replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
 
   // ---------- Energy flow diagram ----------
-  var flow = buildFlow($("flowWrap"));
+  // The controller renders the adaptive N-node topology diagram when the device
+  // carries v2 entities, else the byte-identical fixed 4-node diagram.
+  var flow = createFlow($("flowWrap"));
 
   function renderFlow() {
+    var topo = lastState ? lastState.topology : null;
     flow.update({
       pv: latestVal("pv"), load: latestVal("load"),
       grid: latestVal("grid"), batt: latestVal("batt"),
       soc: latestVal("soc")
-    });
+    }, topo);
   }
 
   // ---------- state application ----------
@@ -560,11 +613,55 @@
     .then(applyState).catch(function () {});
   loadHistory().then(startStream);
 
+  // Inject the flow-spoke keyframes once (shared by the v1 and adaptive
+  // diagrams so the animation exists even if only the adaptive one is built).
+  function ensureFlowKeyframes() {
+    if (document.getElementById("flowKeyframes")) return;
+    var st = document.createElement("style");
+    st.id = "flowKeyframes";
+    st.textContent =
+      "@keyframes vpflow{to{stroke-dashoffset:-24}}" +
+      ".vp-flow-on{animation:vpflow .9s linear infinite}" +
+      ".vp-flow-rev{animation:vpflow .9s linear infinite reverse}";
+    document.head.appendChild(st);
+  }
+
   // ==================================================================
-  // Energy flow diagram: four spokes around a central hub. Flow travels
+  // Flow controller: routes the #flowWrap container between the adaptive
+  // topology diagram (v2 entities present) and the fixed 4-node diagram
+  // (v1 fallback). Switching modes tears down the previous renderer (so a
+  // stale ResizeObserver never squashes the other layout) and rebuilds.
+  // ==================================================================
+  function createFlow(container) {
+    var mode = null, v1 = null, adaptive = null;
+    return {
+      update: function (scalar, topology) {
+        var want = hasTopology(topology) ? "adaptive" : "v1";
+        if (want !== mode) {
+          if (v1 && v1.destroy) v1.destroy();
+          if (adaptive && adaptive.destroy) adaptive.destroy();
+          v1 = adaptive = null;
+          container.innerHTML = "";
+          container.style.height = ""; // reset the v1 narrow-layout height
+          mode = want;
+        }
+        if (mode === "adaptive") {
+          if (!adaptive) adaptive = buildAdaptiveFlow(container);
+          adaptive.update(topology);
+        } else {
+          if (!v1) v1 = buildV1Flow(container);
+          v1.update(scalar);
+        }
+      }
+    };
+  }
+
+  // ==================================================================
+  // v1 energy flow diagram: four spokes around a central hub. Flow travels
   // along a spoke; direction encodes import/export & charge/discharge.
+  // Unchanged behaviour - the fallback for a device without v2 entities.
   // ==================================================================
-  function buildFlow(container) {
+  function buildV1Flow(container) {
     var NS = "http://www.w3.org/2000/svg";
 
     // Two layouts sharing the same node->hub topology, so the animation logic
@@ -672,22 +769,14 @@
         ? Math.round(w * (want.H / want.W)) + "px" : "";
     }
     pickLayout();
+    var ro = null;
     if (window.ResizeObserver) {
-      new ResizeObserver(pickLayout).observe(container);
+      ro = new ResizeObserver(pickLayout); ro.observe(container);
     } else {
       window.addEventListener("resize", pickLayout);
     }
 
-    // Inject the flow keyframes once.
-    if (!document.getElementById("flowKeyframes")) {
-      var st = document.createElement("style");
-      st.id = "flowKeyframes";
-      st.textContent =
-        "@keyframes vpflow{to{stroke-dashoffset:-24}}" +
-        ".vp-flow-on{animation:vpflow .9s linear infinite}" +
-        ".vp-flow-rev{animation:vpflow .9s linear infinite reverse}";
-      document.head.appendChild(st);
-    }
+    ensureFlowKeyframes();
 
     function setSpoke(k, active, reverse, magnitude) {
       var f = spokes[k].flow;
@@ -725,7 +814,339 @@
         setSpoke("grid", d.grid != null && Math.abs(d.grid) > 0.05, d.grid < 0, d.grid);
         // Batterie: discharge (batt<0) node->hub normal; charge (batt>0) reverse.
         setSpoke("batt", d.batt != null && Math.abs(d.batt) > 0.05, d.batt > 0, d.batt);
+      },
+      destroy: function () {
+        if (ro) ro.disconnect();
+        else window.removeEventListener("resize", pickLayout);
       }
     };
+  }
+
+  // ==================================================================
+  // Adaptive energy flow diagram (AE6): the same lightning-hub / soft-circle-
+  // node / animated-dashed-spoke look as the v1 diagram and the portal AE2,
+  // but generalised from the fixed 4 nodes to the N role-grouped nodes of the
+  // AE1 topology read-model. Producers sit top, storage left, consumers right,
+  // grid bottom; each entity contributing to a role is its own circle, and the
+  // animated spoke direction encodes the topology flow sign. Read-only.
+  //
+  // Geometry mirrors the portal's pure adaptiveFlow.layoutFlow so the two views
+  // draw the same picture; only the DOM building is vanilla here.
+  // ==================================================================
+  function buildAdaptiveFlow(container) {
+    var NS = "http://www.w3.org/2000/svg";
+    var ROLE_SIDE = { pv: "top", storage: "left", consumer: "right", grid: "bottom" };
+    // Layout constants (portal adaptiveFlow proportions).
+    var NODE_R = 30, HUB_R = 24, LEFT_INSET = 62, TOP_INSET = 48,
+        COL_GAP = 148, ROW_GAP = 82, LBL_F = 12, VAL_F = 11;
+
+    ensureFlowKeyframes();
+
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    container.innerHTML = "";
+    container.appendChild(svg);
+
+    var sig = null;     // node-set signature: rebuild DOM only when it changes
+    var vtxEls = {};    // vertex key -> { flow, val }
+
+    function strokeWidth(mag) { return Math.max(2.5, Math.min(7, 2.5 + Math.abs(mag) * 0.7)); }
+
+    // vertexValue: SoC for a storage node, |kW| otherwise (portal parity).
+    function vertexValue(role, node, memberKw) {
+      if (role === "storage" && node.soc_pct != null) return nf0.format(node.soc_pct) + " %";
+      if (memberKw == null) return "–";
+      return nf1.format(Math.abs(memberKw)) + " kW";
+    }
+
+    // layout turns the topology's role nodes into positioned circle vertices.
+    function layout(topo) {
+      var nodes = (topo && topo.nodes) || [];
+      var bySide = function (s) {
+        for (var i = 0; i < nodes.length; i++) if (ROLE_SIDE[nodes[i].role] === s) return nodes[i];
+        return null;
+      };
+      var count = function (s) { var n = bySide(s); return n ? n.members.length : 0; };
+      var cols = Math.max(count("top"), count("bottom"), 1);
+      var rows = Math.max(count("left"), count("right"), 1);
+      var W = Math.max(520, (cols - 1) * COL_GAP + 2 * (LEFT_INSET + NODE_R + 40));
+      var H = Math.max(300, (rows - 1) * ROW_GAP + 2 * (TOP_INSET + NODE_R + 34));
+      var hubX = W / 2, hubY = H / 2;
+      var leftX = LEFT_INSET, rightX = W - LEFT_INSET, topY = TOP_INSET, bottomY = H - TOP_INSET;
+      var vertices = [];
+      nodes.forEach(function (node) {
+        var side = ROLE_SIDE[node.role];
+        if (!side) return; // unknown role - skip (never guessed)
+        var n = node.members.length;
+        if (n === 0) return;
+        var reverse = node.direction === "out";
+        node.members.forEach(function (m, i) {
+          var spread = i - (n - 1) / 2, x, y;
+          if (side === "top") { x = hubX + spread * COL_GAP; y = topY; }
+          else if (side === "bottom") { x = hubX + spread * COL_GAP; y = bottomY; }
+          else if (side === "left") { x = leftX; y = hubY + spread * ROW_GAP; }
+          else { x = rightX; y = hubY + spread * ROW_GAP; }
+          var meta = ROLE_META[node.role] || ROLE_META.consumer;
+          var mag = m.value_kw != null ? m.value_kw : (node.value_kw != null ? node.value_kw : 0);
+          vertices.push({
+            key: m.entity_id + ":" + node.role + ":" + i,
+            role: node.role,
+            x: x, y: y,
+            label: truncate(m.label || meta.label),
+            value: vertexValue(node.role, node, m.value_kw),
+            spokeActive: !!node.flow_active,
+            reverse: reverse,
+            strokeWidth: strokeWidth(mag),
+            icon: meta.icon, color: meta.color, soft: meta.soft
+          });
+        });
+      });
+      return { W: W, H: H, hubX: hubX, hubY: hubY, vertices: vertices };
+    }
+
+    function line(x1, y1, x2, y2, stroke, w) {
+      var l = document.createElementNS(NS, "line");
+      l.setAttribute("x1", x1); l.setAttribute("y1", y1);
+      l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+      l.setAttribute("stroke", stroke); l.setAttribute("stroke-width", w);
+      l.setAttribute("stroke-linecap", "round");
+      return l;
+    }
+
+    // Rebuild the whole SVG for a new node set (rare: entity add/remove).
+    function rebuild(L) {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      svg.setAttribute("viewBox", "0 0 " + L.W + " " + L.H);
+      vtxEls = {};
+
+      // Base spokes + animated flow overlays (behind the nodes).
+      L.vertices.forEach(function (v) {
+        svg.appendChild(line(v.x, v.y, L.hubX, L.hubY, "#E3E9F1", "6"));
+        var flow = line(v.x, v.y, L.hubX, L.hubY, v.color, "3");
+        flow.setAttribute("stroke-dasharray", "2 10");
+        flow.style.opacity = "0";
+        svg.appendChild(flow);
+        vtxEls[v.key] = { flow: flow };
+      });
+
+      // Hub (lightning), matching the v1 diagram.
+      var hubC = document.createElementNS(NS, "circle");
+      hubC.setAttribute("cx", L.hubX); hubC.setAttribute("cy", L.hubY); hubC.setAttribute("r", HUB_R);
+      hubC.setAttribute("fill", "#fff"); hubC.setAttribute("stroke", "#E3E9F1"); hubC.setAttribute("stroke-width", "2");
+      svg.appendChild(hubC);
+      var hubIco = document.createElementNS(NS, "path");
+      hubIco.setAttribute("d", "M13 2 3 14h7l-1 8 10-12h-7l1-8z");
+      hubIco.setAttribute("fill", "none"); hubIco.setAttribute("stroke", cssVar("--brand-deep"));
+      hubIco.setAttribute("stroke-width", "2"); hubIco.setAttribute("stroke-linejoin", "round"); hubIco.setAttribute("stroke-linecap", "round");
+      hubIco.setAttribute("transform", "translate(" + (L.hubX - 12) + "," + (L.hubY - 12) + ")");
+      svg.appendChild(hubIco);
+
+      // Nodes (circle + icon + label + value).
+      L.vertices.forEach(function (v) {
+        var g = document.createElementNS(NS, "g");
+        var c = document.createElementNS(NS, "circle");
+        c.setAttribute("cx", v.x); c.setAttribute("cy", v.y); c.setAttribute("r", NODE_R);
+        c.setAttribute("fill", v.soft); c.setAttribute("stroke", v.color); c.setAttribute("stroke-width", "2");
+        g.appendChild(c);
+
+        var ico = document.createElementNS(NS, "svg");
+        ico.setAttribute("x", v.x - 8); ico.setAttribute("y", v.y - NODE_R * 0.72);
+        ico.setAttribute("width", "16"); ico.setAttribute("height", "16");
+        ico.setAttribute("viewBox", "0 0 24 24");
+        ico.setAttribute("fill", "none"); ico.setAttribute("stroke", v.color);
+        ico.setAttribute("stroke-width", "2"); ico.setAttribute("stroke-linecap", "round"); ico.setAttribute("stroke-linejoin", "round");
+        ico.innerHTML = ICON_PATHS[v.icon] || ICON_PATHS.home;
+        g.appendChild(ico);
+
+        var lbl = document.createElementNS(NS, "text");
+        lbl.setAttribute("x", v.x); lbl.setAttribute("y", v.y + NODE_R * 0.06);
+        lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-weight", "700");
+        lbl.setAttribute("font-size", LBL_F); lbl.setAttribute("fill", "#33414F");
+        lbl.setAttribute("font-family", "Inter, sans-serif");
+        lbl.textContent = v.label;
+        g.appendChild(lbl);
+
+        var val = document.createElementNS(NS, "text");
+        val.setAttribute("x", v.x); val.setAttribute("y", v.y + NODE_R * 0.56);
+        val.setAttribute("text-anchor", "middle"); val.setAttribute("font-weight", "600");
+        val.setAttribute("font-size", VAL_F); val.setAttribute("fill", v.color);
+        val.setAttribute("font-family", "Inter, sans-serif");
+        val.textContent = v.value;
+        g.appendChild(val);
+
+        svg.appendChild(g);
+        vtxEls[v.key].val = val;
+      });
+    }
+
+    // In-place value + spoke update (same node set): keeps the animation running.
+    function apply(L) {
+      L.vertices.forEach(function (v) {
+        var e = vtxEls[v.key];
+        if (!e) return;
+        e.val.textContent = v.value;
+        var f = e.flow;
+        if (!v.spokeActive) {
+          f.style.opacity = "0"; f.classList.remove("vp-flow-on", "vp-flow-rev"); return;
+        }
+        f.style.opacity = "1";
+        f.setAttribute("stroke-width", v.strokeWidth.toFixed(1));
+        f.classList.toggle("vp-flow-rev", v.reverse);
+        f.classList.toggle("vp-flow-on", !v.reverse);
+      });
+    }
+
+    return {
+      update: function (topo) {
+        var L = layout(topo);
+        var newSig = L.vertices.map(function (v) { return v.key; }).join("|") + "@" + L.W + "x" + L.H;
+        if (newSig !== sig) { rebuild(L); sig = newSig; }
+        apply(L);
+      },
+      destroy: function () {}
+    };
+  }
+
+  // ==================================================================
+  // Adaptive tiles (AE6): entity/role-driven KPI cards from the topology
+  // read-model. One aggregate tile per PV/Speicher/Netz role + one per
+  // consumer entity (a Wallbox/Heizstab appears on its own). Read-only.
+  // Ports the portal's adaptiveLive.deriveTiles so both views agree.
+  // ==================================================================
+  function signedBattery(n) {
+    if (n.value_kw == null || !n.flow_active) return 0;
+    return n.direction === "out" ? n.value_kw : (n.direction === "in" ? -n.value_kw : 0);
+  }
+
+  function findNode(topo, role) {
+    var nodes = (topo && topo.nodes) || [];
+    for (var i = 0; i < nodes.length; i++) if (nodes[i].role === role) return nodes[i];
+    return null;
+  }
+
+  function deriveTiles(topo) {
+    var tiles = [];
+    var pv = findNode(topo, "pv");
+    if (pv) {
+      var pvActive = pv.flow_active && pv.value_kw != null && pv.value_kw > DEADBAND_KW;
+      var pvCount = pv.members.length;
+      tiles.push({
+        key: "role-pv", tile: "pv", icon: "sun",
+        title: pvCount === 1 ? ((pv.members[0].label || "").trim() || "PV-Anlage") : "PV-Erzeugung",
+        valueText: pv.value_kw == null ? "–" : nf1.format(pv.value_kw), unit: pv.value_kw == null ? "" : "kW",
+        stateLabel: pv.value_kw == null ? "wartet auf Daten" : (pvActive ? "erzeugt" : "keine Erzeugung"),
+        subLine: pvCount > 1 ? pvCount + " Erzeuger" : ""
+      });
+    }
+    var st = findNode(topo, "storage");
+    if (st) {
+      var soc = st.soc_pct != null ? st.soc_pct : null;
+      var batt = signedBattery(st);
+      var sState = "Bereit", sArrow = null, sSub = "";
+      if (soc == null) { sState = "keine Batterie"; }
+      else if (batt > DEADBAND_KW) { sState = "Lädt"; sArrow = "up"; sSub = "Ladeleistung " + nf1.format(batt) + " kW"; }
+      else if (batt < -DEADBAND_KW) { sState = "Entlädt"; sArrow = "down"; sSub = "Abgabe " + nf1.format(Math.abs(batt)) + " kW"; }
+      else if (soc >= 99) { sState = "Voll geladen"; }
+      tiles.push({
+        key: "role-storage", tile: "batt", icon: "battery",
+        title: st.members.length === 1 ? ((st.members[0].label || "").trim() || "Speicher") : "Speicher",
+        valueText: soc == null ? "–" : nf0.format(soc), unit: soc == null ? "" : "%",
+        stateLabel: sState, arrow: sArrow, subLine: sSub,
+        socPct: soc == null ? null : Math.max(0, Math.min(100, soc))
+      });
+    }
+    var cons = findNode(topo, "consumer");
+    if (cons) {
+      cons.members.forEach(function (m, i) {
+        var active = m.value_kw != null && Math.abs(m.value_kw) > DEADBAND_KW;
+        tiles.push({
+          key: "consumer-" + m.entity_id + "-" + i, tile: "load", icon: "home",
+          title: (m.label || "").trim() || "Verbraucher",
+          valueText: m.value_kw == null ? "–" : nf1.format(Math.abs(m.value_kw)), unit: m.value_kw == null ? "" : "kW",
+          stateLabel: m.value_kw == null ? "wartet auf Daten" : (active ? "aktiv" : "aus")
+        });
+      });
+    }
+    var grid = findNode(topo, "grid");
+    if (grid) {
+      var gActive = grid.flow_active && grid.value_kw != null && grid.value_kw > DEADBAND_KW;
+      var gState = "wartet auf Daten", gArrow = null, gSub = "";
+      if (grid.value_kw != null) {
+        if (gActive && grid.direction === "in") { gState = "Netzbezug"; gArrow = "up"; gSub = "aus dem Netz"; }
+        else if (gActive && grid.direction === "out") { gState = "Einspeisung"; gArrow = "down"; gSub = "ins Netz"; }
+        else { gState = "ausgeglichen"; }
+      }
+      tiles.push({
+        key: "role-grid", tile: "grid", icon: "zap", title: "Netz",
+        valueText: grid.value_kw == null ? "–" : nf1.format(grid.value_kw), unit: grid.value_kw == null ? "" : "kW",
+        stateLabel: gState, arrow: gArrow, subLine: gSub
+      });
+    }
+    return tiles;
+  }
+
+  // Cache the adaptive-tile DOM keyed by the tile-set signature, so a per-second
+  // state refresh only updates text (never rebuilds - the SoC bar keeps its
+  // width transition instead of re-animating from 0 every tick).
+  var tileCache = { sig: null, els: {} };
+
+  function tileIconSvg(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round">' + (ICON_PATHS[name] || ICON_PATHS.home) + '</svg>';
+  }
+
+  function buildTileCard(t) {
+    var card = document.createElement("div");
+    card.className = "card kpi " + t.tile;
+    card.innerHTML =
+      '<div class="kpi-top"><span class="kpi-ico">' + tileIconSvg(t.icon) + '</span>' +
+      '<span class="kpi-tag js-tag"></span></div>' +
+      '<p class="kpi-label js-title"></p>' +
+      '<p class="kpi-value"><span class="js-val"></span><span class="u js-unit"></span></p>' +
+      (t.socPct != null || t.tile === "batt"
+        ? '<div class="soc-bar"><span class="soc-fill js-soc" style="width:0%"></span></div>' : "") +
+      '<p class="kpi-sub js-sub">&nbsp;</p>';
+    var el = {
+      card: card,
+      tag: card.querySelector(".js-tag"), title: card.querySelector(".js-title"),
+      val: card.querySelector(".js-val"), unit: card.querySelector(".js-unit"),
+      soc: card.querySelector(".js-soc"), sub: card.querySelector(".js-sub")
+    };
+    el.update = function (t) {
+      el.tag.textContent = t.stateLabel;
+      el.title.textContent = t.title;
+      el.val.textContent = t.valueText;
+      el.unit.textContent = t.unit;
+      if (el.soc) el.soc.style.width = (t.socPct == null ? 0 : t.socPct) + "%";
+      if (t.subLine) {
+        var chip = t.arrow === "up" ? "up" : (t.arrow === "down" ? "down" : "idle");
+        var glyph = t.arrow === "up" ? "▲ " : (t.arrow === "down" ? "▼ " : "");
+        el.sub.innerHTML = t.arrow
+          ? "<span class='chip " + chip + "'>" + glyph + escapeHtml(t.subLine) + "</span>"
+          : escapeHtml(t.subLine);
+      } else {
+        el.sub.innerHTML = "&nbsp;";
+      }
+    };
+    return el;
+  }
+
+  function renderAdaptiveTiles(container, topo) {
+    var tiles = deriveTiles(topo);
+    var newSig = tiles.map(function (t) { return t.key; }).join("|");
+    if (newSig !== tileCache.sig) {
+      container.innerHTML = "";
+      tileCache.els = {};
+      tiles.forEach(function (t) {
+        var el = buildTileCard(t);
+        container.appendChild(el.card);
+        tileCache.els[t.key] = el;
+      });
+      tileCache.sig = newSig;
+    }
+    tiles.forEach(function (t) {
+      var el = tileCache.els[t.key];
+      if (el) el.update(t);
+    });
   }
 })();

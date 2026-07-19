@@ -254,10 +254,27 @@ latest per-entity readings via `topology.Resolve` (default roles, first-of-role
 = maßgeblich) → `topology.Derive`, and `web.Handler`'s `TopologyController`
 carries it as an ADDITIVE `topology` block on `/api/state` + `/api/stream`. The
 scalar `pv_kw`/`load_kw`/`grid_limit_kw`/`soc_pct` fields stay; a registry-less
-device yields an empty topology (byte-for-byte v1). AE6 renders it (not built).
+device yields an empty topology (byte-for-byte v1).
 `entities.Entity.Category()` is the exported category for default role
 resolution. Tests: `internal/topology/topology_test.go`, `internal/web`
 `TestStateEnvelopeCarriesTopology`.
+
+## AE6 :8484 adaptive energy picture (edge half of AE2/AE3)
+
+`static/dashboard.js` renders the topology block: `createFlow($("flowWrap"))`
+routes the energy diagram between the ADAPTIVE N-node topology diagram (v2
+entities present) and the fixed 4-node `buildV1Flow` (v1 fallback), and
+`renderKpis` swaps the fixed `#kpis` cards for entity/role-driven `#kpisAdaptive`
+tiles (`renderAdaptiveTiles`/`deriveTiles`). Both are read-only ports of the
+portal's pure `adaptiveFlow.layoutFlow` + `adaptiveLive.deriveTiles`, so the
+:8484 view matches the portal AE2/AE3 (same lightning-hub / soft-circle-node /
+animated-dashed-spoke look, `--pv/--load/--grid-c/--batt` role hues). A device
+with NO topology stays byte-identical v1 (`hasTopology` gates it). The edge
+topology block carries only role nodes + members (NO entity-type list), so
+consumers use the role home icon + member label — a new Wallbox/Heizstab still
+appears automatically as its own node + tile. `static/*` is `//go:embed`-ed —
+REBUILD the core binary after edits (any `go build`/`go test ./internal/web`
+re-embeds). Test: `internal/web` `TestAdaptiveEnergyPictureServed`.
 
 ## Maintaining this file
 

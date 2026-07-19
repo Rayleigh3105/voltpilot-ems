@@ -124,6 +124,11 @@
 
     <!-- At-a-glance KPI cards -->
     <div class="section-title">Aktuelle Leistung</div>
+    <!-- Adaptive, entity-driven tiles (AE6): filled by dashboard.js from the
+         /api/state topology block. Shown whenever the device carries v2
+         entities; a new entity (Wallbox/Heizstab) appears here automatically.
+         Hidden (and the fixed #kpis shown) on a v1 device with no topology. -->
+    <section class="kpis" id="kpisAdaptive" hidden></section>
     <section class="kpis" id="kpis">
       <div class="card kpi pv">
         <div class="kpi-top">
