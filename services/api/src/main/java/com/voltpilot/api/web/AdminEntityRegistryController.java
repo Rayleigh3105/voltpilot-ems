@@ -116,6 +116,19 @@ public class AdminEntityRegistryController {
     }
 
     /**
+     * Dry-run the conversion (MIG migration runbook step 1): report exactly what
+     * {@code bootstrap} would create/refresh from the site's current master
+     * data - the entities, their derived roles, capabilities and guards, the
+     * resolved gateway device - WITHOUT writing anything. Idempotent + safe to
+     * call repeatedly while reviewing.
+     */
+    @GetMapping("/preview")
+    public EntityRegistryService.ConversionPreview preview(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return service.preview(siteId);
+    }
+
+    /**
      * Create/refresh the pilot entities from the site's current master data and
      * best-effort push the registry to the gateway device. Idempotent.
      */
@@ -126,6 +139,41 @@ public class AdminEntityRegistryController {
         return new BootstrapResponse(
                 result.entities().stream().map(this::toDto).toList(),
                 result.skipped(), result.push());
+    }
+
+    /** Set/clear the v1->v2 history cutover request body. */
+    public record HistoryCutoverRequest(java.time.Instant at) {}
+
+    /** The site's current history cutover status (null = un-migrated / pure v1). */
+    @GetMapping("/history-cutover")
+    public EntityRegistryService.HistoryCutover historyCutover(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return service.historyCutover(siteId);
+    }
+
+    /**
+     * Set the site's history cutover instant (MIG runbook: the portal Historie
+     * splices v1 before / v2 after this instant). Body {@code at} optional -
+     * defaults to now.
+     */
+    @PutMapping("/history-cutover")
+    public EntityRegistryService.HistoryCutover setHistoryCutover(@PathVariable UUID siteId,
+            @RequestBody(required = false) HistoryCutoverRequest request) {
+        requireSite(siteId);
+        EntityRegistryService.HistoryCutover result = service.setHistoryCutover(siteId,
+                request == null ? null : request.at());
+        if (result == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return result;
+    }
+
+    /** Clear the history cutover (MIG rollback: Historie reverts to pure v1). */
+    @DeleteMapping("/history-cutover")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void clearHistoryCutover(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        service.clearHistoryCutover(siteId);
     }
 
     /** Re-push the stored registry (e.g. after a broker outage or re-claim). */

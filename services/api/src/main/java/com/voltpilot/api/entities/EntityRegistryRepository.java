@@ -193,6 +193,27 @@ public class EntityRegistryRepository {
                 (rs, n) -> rs.getObject("id", UUID.class), siteId);
     }
 
+    /**
+     * Set (or clear, with null) the site's v1->v2 history cutover instant (MIG).
+     * RLS-scoped: only a row visible under the session tenant is updated.
+     * Returns true when a row was affected (the site exists for the tenant).
+     */
+    public boolean setV2HistoryCutover(UUID siteId, java.time.Instant at) {
+        return jdbc.update("UPDATE site SET v2_history_cutover_at = ? WHERE id = ?",
+                at == null ? null : java.sql.Timestamp.from(at), siteId) > 0;
+    }
+
+    /** The site's history cutover instant, or null (un-migrated / pure v1). */
+    public java.time.Instant v2HistoryCutover(UUID siteId) {
+        List<java.time.Instant> rows = jdbc.query(
+                "SELECT v2_history_cutover_at FROM site WHERE id = ?",
+                (rs, n) -> {
+                    java.sql.Timestamp ts = rs.getTimestamp("v2_history_cutover_at");
+                    return ts == null ? null : ts.toInstant();
+                }, siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** The site's grid-charging posture (D-8: feeds charge_from_grid_allowed). */
     public boolean netzladenErlaubt(UUID siteId) {
         Boolean b = jdbc.queryForObject(

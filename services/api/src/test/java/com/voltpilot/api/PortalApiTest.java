@@ -1392,6 +1392,135 @@ class PortalApiTest {
     }
 
     /**
+     * MIG v1->v2 history bridge: a migrated site's Historie must NOT reset at
+     * the cutover. With v1 5-channel telemetry BEFORE the cutover instant and
+     * v2 per-entity telemetry (producer + grid-meter + battery-hybrid) AT/AFTER
+     * it, the day series is GAP-FREE across the seam - every 15-min bucket is
+     * present exactly once, the v1-era buckets carry the v1-derived channels and
+     * the v2-era buckets carry the SAME shape reconstructed from telemetry_v2.
+     * The week rollup path bridges the same way; clearing the cutover reverts
+     * the site to pure v1 (the migration rollback).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void migratedSiteHistoryBridgesV1AndV2ErasGapFree() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String deviceId = claimDevice(demo, "edge-mig-hist-01");
+
+        // Cutover on an HOUR boundary (09:00Z) so both the 15-min day view and
+        // the hourly week view splice cleanly. v1 era: two 15-min buckets BEFORE
+        // it (08:30, 08:45 UTC). power_kw=2 (import), pv=1, load=4 -> battery
+        // derived = 2-4+1 = -1 kW (discharge 1).
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, soc_pct, "
+                + "pv_power_kw, load_kw) VALUES "
+                + "('2026-05-20T08:31:00Z','" + tenantA + "','" + BERLIN_SITE + "','" + deviceId
+                + "', 2.0, 50.0, 1.0, 4.0), "
+                + "('2026-05-20T08:46:00Z','" + tenantA + "','" + BERLIN_SITE + "','" + deviceId
+                + "', 2.0, 51.0, 1.0, 4.0) ON CONFLICT DO NOTHING");
+
+        // The three pilot v2 entities (seeded as superuser like every telemetry
+        // seed; the admin bootstrap that creates them is proven in AdminApiTest).
+        String producer = "dddddddd-0000-0000-0000-000000000001";
+        String meter = "dddddddd-0000-0000-0000-000000000002";
+        String battery = "dddddddd-0000-0000-0000-000000000003";
+        for (String[] e : new String[][] {
+                {producer, "pv-generation", "producer", "AC-PV"},
+                {meter, "grid-meter", "grid-meter", "Netz"},
+                {battery, "battery-hybrid", "battery-hybrid", "Speicher"}}) {
+            exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                    + "entity_type, capabilities, guard_config) VALUES ('" + e[0] + "','" + tenantA
+                    + "','" + BERLIN_SITE + "','" + e[1] + "','" + e[3] + "', FALSE, '" + e[2]
+                    + "', '{}'::jsonb, '{}'::jsonb)");
+        }
+
+        // v2 era: two 15-min buckets AT/AFTER the cutover (09:00, 09:15 UTC).
+        // producer pv=3, grid-meter power=2 (import), battery discharge -1, soc 55/56.
+        StringBuilder v2 = new StringBuilder(
+                "INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                        + "entity_id, channel, value) VALUES ");
+        int i = 0;
+        for (String[] row : new String[][] {
+                {"2026-05-20T09:01:00Z", producer, "pv_power_kw", "3.0"},
+                {"2026-05-20T09:01:00Z", meter, "power_kw", "2.0"},
+                {"2026-05-20T09:01:00Z", battery, "battery_power_kw", "-1.0"},
+                {"2026-05-20T09:01:00Z", battery, "pv_power_kw", "0.0"},
+                {"2026-05-20T09:01:00Z", battery, "soc_pct", "55.0"},
+                {"2026-05-20T09:16:00Z", producer, "pv_power_kw", "3.0"},
+                {"2026-05-20T09:16:00Z", meter, "power_kw", "2.0"},
+                {"2026-05-20T09:16:00Z", battery, "battery_power_kw", "-1.0"},
+                {"2026-05-20T09:16:00Z", battery, "pv_power_kw", "0.0"},
+                {"2026-05-20T09:16:00Z", battery, "soc_pct", "56.0"}}) {
+            v2.append(i++ > 0 ? "," : "").append("('").append(row[0]).append("','").append(row[0])
+                    .append("','").append(tenantA).append("','").append(BERLIN_SITE).append("','")
+                    .append(deviceId).append("','").append(row[1]).append("','").append(row[2])
+                    .append("',").append(row[3]).append(")");
+        }
+        exec(v2.toString());
+
+        // The cutover: v1 owns buckets that START before 09:00, v2 owns 09:00+.
+        exec("UPDATE site SET v2_history_cutover_at = '2026-05-20T09:00:00Z' WHERE id = '"
+                + BERLIN_SITE + "'");
+
+        Map<String, Object> day = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=day&at=2026-05-20"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        List<Map<String, Object>> buckets = (List<Map<String, Object>>) day.get("buckets");
+
+        // Gap-free + overlap-free: the four consecutive quarter hours across the
+        // seam, each present exactly once (v1 :30/:45, v2 :00/:15 of the next hr).
+        assertThat(buckets).extracting(b -> b.get("start")).containsExactly(
+                "2026-05-20T08:30:00Z", "2026-05-20T08:45:00Z",
+                "2026-05-20T09:00:00Z", "2026-05-20T09:15:00Z");
+
+        // v1-era bucket (08:30): the v1-derived shape.
+        Map<String, Object> b0 = buckets.get(0);
+        assertThat(num(b0, "pvKwh")).isEqualTo(0.25);        // 1 kW * 0.25 h
+        assertThat(num(b0, "gridImportKwh")).isEqualTo(0.5); // 2 kW import
+        assertThat(num(b0, "batteryDischargeKwh")).isEqualTo(0.25); // 1 kW discharge
+        assertThat(num(b0, "socLastPct")).isEqualTo(50.0);
+
+        // v2-era bucket (09:00): the SAME shape reconstructed from telemetry_v2.
+        Map<String, Object> b2 = buckets.get(2);
+        assertThat(num(b2, "pvKwh")).isEqualTo(0.75);        // producer 3 kW + hybrid 0
+        assertThat(num(b2, "gridImportKwh")).isEqualTo(0.5); // grid-meter 2 kW
+        assertThat(num(b2, "batteryDischargeKwh")).isEqualTo(0.25); // -1 kW -> discharge
+        assertThat(num(b2, "batteryChargeKwh")).isEqualTo(0.0);
+        assertThat(num(b2, "loadKwh")).isEqualTo(1.5);       // grid 2 + pv 3 - batt(-1) = 6 kW
+        assertThat(num(b2, "socLastPct")).isEqualTo(55.0);
+
+        // The week rollup path bridges too (both refresh cascades). The cutover
+        // sits on the hour boundary, so hour 08:00 is v1, hour 09:00 is v2.
+        exec("CALL refresh_telemetry_rollups('2026-05-01T00:00:00Z')");
+        exec("CALL refresh_telemetry_v2_rollups('2026-05-01T00:00:00Z')");
+        Map<String, Object> week = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=week&at=2026-05-20"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        List<Map<String, Object>> weekBuckets = (List<Map<String, Object>>) week.get("buckets");
+        Map<String, Object> v1Hour = weekBuckets.stream()
+                .filter(b -> "2026-05-20T08:00:00Z".equals(b.get("start"))).findFirst().orElseThrow();
+        assertThat(num(v1Hour, "pvKwh")).isEqualTo(0.5); // v1 rollup: 0.25 + 0.25
+        Map<String, Object> v2Hour = weekBuckets.stream()
+                .filter(b -> "2026-05-20T09:00:00Z".equals(b.get("start"))).findFirst().orElseThrow();
+        // Reconstructed by SUMMING quarter energies: 3 kW * 0.25 h * 2 = 1.5 kWh
+        // (NOT avg 3 kW * 1 h = 3.0, which would overstate the partly-filled hour).
+        assertThat(num(v2Hour, "pvKwh")).isEqualTo(1.5);
+
+        // Rollback: clearing the cutover reverts to pure v1 (only the two v1
+        // buckets remain in the day view; the v2 era vanishes).
+        exec("UPDATE site SET v2_history_cutover_at = NULL WHERE id = '" + BERLIN_SITE + "'");
+        Map<String, Object> reverted = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=day&at=2026-05-20"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        assertThat((List<Map<String, Object>>) reverted.get("buckets"))
+                .extracting(b -> b.get("start"))
+                .containsExactly("2026-05-20T08:30:00Z", "2026-05-20T08:45:00Z");
+    }
+
+    /**
      * Audit B2 regression: Postgres GREATEST ignores NULLs, so the old
      * {@code avg(greatest(power_kw, 0))} counted a power-less sample as 0 -
      * understating energy in mixed buckets and fabricating grid_import/export

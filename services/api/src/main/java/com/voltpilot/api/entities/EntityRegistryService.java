@@ -142,6 +142,143 @@ public class EntityRegistryService {
     public record BootstrapResult(List<EntityRow> entities, List<String> skipped,
             PushOutcome push) {}
 
+    // ---- Conversion preview (MIG: dry-run, writes NOTHING) ------------------
+
+    /** One entity a bootstrap run would create or refresh, for operator review. */
+    public record PlannedEntity(UUID pointId, String action, String entityType, String label,
+            List<String> roles, com.fasterxml.jackson.databind.JsonNode capabilities,
+            com.fasterxml.jackson.databind.JsonNode guards) {}
+
+    /**
+     * A read-only preview of exactly what {@link #bootstrap(UUID)} would
+     * create/refresh from the site's CURRENT master data, plus the resolved
+     * gateway device and the derived per-capability roles - so the operator can
+     * review before applying. Writes NOTHING (no measurement_point row, no
+     * registry state, no MQTT push).
+     */
+    public record ConversionPreview(boolean alreadyConverted, UUID gatewayDevice,
+            String gatewayReason, List<PlannedEntity> plan, List<String> skipped) {}
+
+    /**
+     * Dry-run the conversion of one v1 site to the v2 pilot entity model. This
+     * is the review step of the migration runbook: it composes the SAME
+     * capabilities/guards {@link #bootstrap} would write and reports them
+     * without touching any table. {@code action} is {@code "create"} for a row
+     * that would newly become a v2 entity and {@code "refresh"} for one already
+     * stamped (re-run). v1 tables (asset/site/telemetry) are only READ.
+     */
+    @Transactional(readOnly = true)
+    public ConversionPreview preview(UUID siteId) {
+        List<PlannedEntity> plan = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+
+        BatteryAsset battery = repo.batteryAsset(siteId);
+        if (battery != null) {
+            UUID pointId = repo.batteryHybridPointId(siteId);
+            ObjectNode caps = batteryCapabilities(battery);
+            ObjectNode guards = batteryGuards(battery, repo.netzladenErlaubt(siteId));
+            plan.add(new PlannedEntity(pointId, pointId != null ? "refresh" : "create",
+                    TYPE_BATTERY_HYBRID, "Batteriespeicher (Hybrid-Wechselrichter)",
+                    rolesFor(TYPE_BATTERY_HYBRID, caps), caps, guards));
+        } else {
+            skipped.add("battery-hybrid: no battery asset on this site");
+        }
+
+        for (EntityRow point : repo.pointsForSite(siteId)) {
+            String action = point.entityType() != null ? "refresh" : "create";
+            switch (point.role()) {
+                case "pv-generation" -> {
+                    ObjectNode caps = producerCapabilities(point);
+                    plan.add(new PlannedEntity(point.id(), action, TYPE_PRODUCER, point.label(),
+                            rolesFor(TYPE_PRODUCER, caps), caps, producerGuards(point)));
+                }
+                case "grid-meter" -> {
+                    ObjectNode caps = gridMeterCapabilities();
+                    plan.add(new PlannedEntity(point.id(), action, TYPE_GRID_METER, point.label(),
+                            rolesFor(TYPE_GRID_METER, caps), caps, gridMeterGuards()));
+                }
+                case "battery-hybrid" -> {
+                    // counted from the battery asset above.
+                }
+                default -> skipped.add(point.role()
+                        + ": no v2 mapping in the pilot conversion (E1a types only)");
+            }
+        }
+
+        UUID gateway = gatewayDevice(siteId, battery);
+        return new ConversionPreview(repo.hasEntities(siteId), gateway,
+                gateway == null ? gatewayReason(siteId, battery) : null, plan, skipped);
+    }
+
+    /**
+     * The default topology roles a would-be entity's measure channels resolve
+     * to, in canonical order (pv, storage, consumer, grid) - exactly what the
+     * AE1 read-model {@link com.voltpilot.api.topology.TopologyDeriver} derives,
+     * so the preview and the live topology never disagree.
+     */
+    private List<String> rolesFor(String entityType, ObjectNode capabilities) {
+        EntityTypeCatalog.EntityType type = catalog.find(entityType);
+        String category = type == null ? "" : type.category();
+        java.util.LinkedHashSet<String> found = new java.util.LinkedHashSet<>();
+        for (JsonNode m : capabilities.path("measure")) {
+            String channel = m.path("channel").asText(null);
+            String role = com.voltpilot.api.topology.TopologyDeriver.defaultRole(category, channel);
+            if (role != null && !role.isEmpty()) {
+                found.add(role);
+            }
+        }
+        List<String> canonical = List.of(
+                com.voltpilot.api.topology.TopologyDeriver.ROLE_PV,
+                com.voltpilot.api.topology.TopologyDeriver.ROLE_STORAGE,
+                com.voltpilot.api.topology.TopologyDeriver.ROLE_CONSUMER,
+                com.voltpilot.api.topology.TopologyDeriver.ROLE_GRID);
+        return canonical.stream().filter(found::contains).toList();
+    }
+
+    /** The v1->v2 history cutover status of one site (null instant = un-migrated). */
+    public record HistoryCutover(Instant cutoverAt) {}
+
+    /**
+     * Set the site's history cutover instant (MIG runbook: called when the site
+     * goes live on v2 so the portal history splices there). Null = "now".
+     * Returns null when the site is not visible under the caller's tenant.
+     */
+    @Transactional
+    public HistoryCutover setHistoryCutover(UUID siteId, Instant at) {
+        Instant when = at != null ? at : clock.instant();
+        if (!repo.setV2HistoryCutover(siteId, when)) {
+            return null;
+        }
+        return new HistoryCutover(when);
+    }
+
+    /**
+     * Clear the site's history cutover (MIG rollback: the portal history reverts
+     * to pure v1). Returns false when the site is not visible under the tenant.
+     */
+    @Transactional
+    public boolean clearHistoryCutover(UUID siteId) {
+        return repo.setV2HistoryCutover(siteId, null);
+    }
+
+    /** The site's current history cutover status. */
+    @Transactional(readOnly = true)
+    public HistoryCutover historyCutover(UUID siteId) {
+        return new HistoryCutover(repo.v2HistoryCutover(siteId));
+    }
+
+    /** Why no unambiguous gateway device could be resolved (for the preview). */
+    private String gatewayReason(UUID siteId, BatteryAsset battery) {
+        int devices = repo.siteDeviceIds(siteId).size();
+        if (devices == 0) {
+            return "no_claimed_device";
+        }
+        if (battery == null || battery.deviceId() == null) {
+            return "multiple_devices_no_battery_link";
+        }
+        return "no_gateway_device";
+    }
+
     /**
      * Compose the current registry push payload and publish it retained to the
      * site's gateway device. Never throws; a missing publisher/gateway or a
