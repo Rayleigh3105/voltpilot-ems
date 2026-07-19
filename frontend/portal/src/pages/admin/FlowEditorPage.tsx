@@ -4,8 +4,10 @@
  * inspector), the always-visible GUARD BAR (the site's non-editable
  * constraints), live client-side validation (src/flows/validate.ts), the
  * dry-run over the existing Ersparnis-Simulation job infrastructure, and
- * activation - honestly stubbed as "Compiler folgt" until the E2 compiler
- * lands (the api owns that answer; this page only renders it).
+ * activation - now the REAL E2 flowc compiler: on success the flow flips to
+ * "active" and the deployment is published (green notice); a sidecar-down /
+ * compiler-rejection outcome stays an honest warn notice (the api owns the
+ * message and whether it activated; this page only renders `activation`).
  *
  * ALL rules live in the pure src/flows/* modules; this file wires state.
  */

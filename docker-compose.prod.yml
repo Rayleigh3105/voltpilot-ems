@@ -387,6 +387,10 @@ services:
       # Ersparnis-Simulation: the internal simulation service (see the
       # `simulation` service below); the api proxies async jobs there.
       VOLTPILOT_SIMULATION_BASE_URL: ${VOLTPILOT_SIMULATION_BASE_URL:-http://simulation:8095}
+      # Flow compiler: the flowc-serve sidecar (see the `flowc` service below).
+      # Activation stays OFF by default (VOLTPILOT_FLOWS_ACTIVATION_ENABLED); the
+      # sidecar is simply available so flipping the flag needs no compose change.
+      VOLTPILOT_FLOWS_COMPILER_BASE_URL: ${VOLTPILOT_FLOWS_COMPILER_BASE_URL:-http://flowc:8099}
     volumes:
       # Device-CA working dir (created by tools/pki/voltpilot-ca.sh init-ca in
       # this clone). READ-WRITE on purpose: issuance advances the CA's
@@ -656,6 +660,20 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       SIM_MAX_WORKERS: ${SIM_MAX_WORKERS:-3}
+
+  # ---------------------------------------------------------------------------
+  # flowc-serve: the CLOUD-side flow-graph -> flow-artifact compiler sidecar
+  # (E2 flowc; edge-app/nodered/flowc/serve.js). The api compiles flows through
+  # it during activation - no Node runtime in the JVM, and the JCS content hash
+  # is never reimplemented in Java. Stdlib Node, INTERNAL only (no public port),
+  # /health probed. Always up so an operator can flip a site's activation flag
+  # (VOLTPILOT_FLOWS_ACTIVATION_ENABLED) without a compose change.
+  # ---------------------------------------------------------------------------
+  flowc:
+    image: git.tecmaxx.de/mamotec/voltpilot-ems/flowc:${IMAGE_TAG:-latest}
+    build:
+      context: ./edge-app/nodered/flowc
+    restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # Frontend: the built SPA on nginx, and the SINGLE public HTTP entry point the

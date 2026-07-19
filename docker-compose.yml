@@ -318,6 +318,11 @@ services:
       # The api proxies async jobs there; without the service running, starting
       # a simulation returns a friendly 502.
       VOLTPILOT_SIMULATION_BASE_URL: ${VOLTPILOT_SIMULATION_BASE_URL:-http://simulation:8095}
+      # Flow compiler: the flowc-serve sidecar (flows profile) the activation
+      # path compiles graphs with. Activation is OFF by default; with the flag
+      # on but the sidecar down, activation refuses honestly (flow stays
+      # "simuliert"), never half-activated.
+      VOLTPILOT_FLOWS_COMPILER_BASE_URL: ${VOLTPILOT_FLOWS_COMPILER_BASE_URL:-http://flowc:8099}
     ports:
       - "${API_PORT:-8090}:8090"
     healthcheck:
@@ -596,6 +601,25 @@ services:
       SIM_MAX_WORKERS: ${SIM_MAX_WORKERS:-3}
     ports:
       - "127.0.0.1:${SIM_PORT:-8095}:8095"
+
+  # ---------------------------------------------------------------------------
+  # flowc-serve: the CLOUD-side flow-graph -> flow-artifact compiler sidecar
+  # (E2 flowc; edge-app/nodered/flowc/serve.js). The api compiles flows through
+  # it during activation (no Node runtime in the JVM, and the JCS content hash
+  # is never reimplemented in Java). Stdlib Node, internal-only, /health probed.
+  # In its own `flows` profile so a plain backbone `up` stays lean; the editor's
+  # activation is off by default and only the rig flips the flag.
+  # ---------------------------------------------------------------------------
+  flowc:
+    build:
+      context: ./edge-app/nodered/flowc
+    container_name: voltpilot-flowc
+    profiles: ["flows"]
+    restart: unless-stopped
+    environment:
+      FLOWC_PORT: "8099"
+    ports:
+      - "127.0.0.1:${FLOWC_PORT:-8099}:8099"
 
 volumes:
   timescale-data:

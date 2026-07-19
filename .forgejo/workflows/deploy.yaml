@@ -151,6 +151,11 @@ jobs:
             context: .
             dockerfile: ./services/optimization/Dockerfile
             build_args: ""
+          # flowc-serve: the cloud-side flow-graph -> flow-artifact compiler
+          # sidecar the api compiles flows through during activation (E2 flowc).
+          - component: flowc
+            context: ./edge-app/nodered/flowc
+            build_args: ""
           # The SPA bakes its config at build time. VITE_API_BASE empty => the SPA
           # calls same-origin /api/... (nginx proxies it); Keycloak is served under
           # https://${DOMAIN}/auth behind the external proxy. VITE_KEYCLOAK_URL is

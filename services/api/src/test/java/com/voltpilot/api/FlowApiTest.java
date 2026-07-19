@@ -45,8 +45,8 @@ import org.testcontainers.utility.DockerImageName;
  * ACCEPTANCE journey - admin bootstraps the site's v2 entities, builds the
  * pilot flow (Preis + PV-Prognose + Speicher lesen → Marktoptimierung →
  * Speicher steuern), gets validation feedback, runs the dry-run over the
- * site's real master data (lifecycle draft → simulated), and activation
- * answers the honest "Compiler folgt" stub (flag OFF, no compiler) without
+ * site's real master data (lifecycle draft → simulated), and activation is
+ * refused by the OFF activation flag (the flowc compiler is wired now) without
  * changing state. Plus: versioning (editing a simulated version creates a new
  * draft), tenancy (X-Tenant-Id switcher, wrong tenant = 404), and the
  * platform-admin gate (customer token = 403).
@@ -142,7 +142,7 @@ class FlowApiTest {
     FakeSimulationService fake;
 
     @Test
-    void adminBuildsValidatesSimulatesAndActivationAnswersCompilerFolgt() {
+    void adminBuildsValidatesSimulatesAndActivationIsGatedByTheFlag() {
         String admin = token("admin", "admin");
 
         // The catalog the editor palettes/validates against.
@@ -220,14 +220,17 @@ class FlowApiTest {
         assertThat(version.path("simulation").path("headline").path("gesamtVorteilNettoEur")
                 .asDouble()).isEqualTo(364.0);
 
-        // Activation: honestly stubbed (no compiler, flag OFF) - "Compiler folgt",
-        // nothing published, lifecycle unchanged.
+        // Activation: the flowc compiler is wired now, but activation is gated
+        // OFF on this environment (VOLTPILOT_FLOWS_ACTIVATION_ENABLED, only the
+        // rig sets it), so it refuses honestly - nothing published, lifecycle
+        // unchanged. The real compile→publish path is proven against a broker in
+        // FlowActivationBrokerTest.
         ResponseEntity<JsonNode> activated = exchange(base + "/versions/1/activate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
         assertThat(activated.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(activated.getBody().path("activated").asBoolean()).isFalse();
-        assertThat(activated.getBody().path("reason").asText()).isEqualTo("compiler_missing");
-        assertThat(activated.getBody().path("message").asText()).contains("Compiler folgt");
+        assertThat(activated.getBody().path("reason").asText()).isEqualTo("activation_disabled");
+        assertThat(activated.getBody().path("message").asText()).contains("deaktiviert");
         assertThat(exchange(base + "/versions/1", HttpMethod.GET, admin, TENANT_A, null)
                 .getBody().path("lifecycle").asText()).isEqualTo("simulated");
 
@@ -264,6 +267,10 @@ class FlowApiTest {
         assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
         assertThat(refused.getBody().path("message").asText())
                 .contains("Validierungsfehler");
+        // Clean up the draft so the shared BERLIN site's flow list stays
+        // deterministic for adminBuilds… regardless of JUnit method order.
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + flowId, HttpMethod.DELETE,
+                admin, TENANT_A, null);
     }
 
     @Test
