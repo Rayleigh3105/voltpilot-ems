@@ -1,0 +1,208 @@
+{
+  "_comment": [
+    "Shared derivation vectors for the Anlagen-Topologie-Read-Model (AE1).",
+    "Consumed by Go (edge-app/core/internal/topology), TS",
+    "(frontend/portal/src/topology.ts) and Java (services/api .../topology)",
+    "test suites so all three produce the SAME node set from the SAME input",
+    "(the jcs-vectors.json precedent). Each case: input.entities carry already-",
+    "RESOLVED capability roles + live values; expected is the derived topology.",
+    "The Go and TS outputs are byte-identical; the Java output is the same",
+    "structure. See topology-read-model.md."
+  ],
+  "schema_version": "1.0",
+  "cases": [
+    {
+      "name": "pilot-deye-fronius-gridmeter",
+      "note": "AE1 acceptance: hybrid contributes PV+Speicher; PV aggregates hybrid+producer; grid is the maßgebliche meter.",
+      "input": {
+        "entities": [
+          {
+            "id": "A", "type": "battery-hybrid", "label": "Deye SUN-30K", "category": "storage", "health": "ok",
+            "capabilities": [
+              { "channel": "soc_pct", "role": "storage", "primary": true, "value": 62.5 },
+              { "channel": "battery_power_kw", "role": "storage", "primary": true, "value": 12.4 },
+              { "channel": "pv_power_kw", "role": "pv", "primary": false, "value": 18.9 }
+            ]
+          },
+          {
+            "id": "B", "type": "producer", "label": "Fronius Eco 27", "category": "producer", "health": "ok",
+            "capabilities": [
+              { "channel": "pv_power_kw", "role": "pv", "primary": false, "value": 44.2 }
+            ]
+          },
+          {
+            "id": "C", "type": "grid-meter", "label": "Netzanschluss", "category": "meter", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "grid", "primary": true, "value": -49.7 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "pv", "value_kw": 63.1, "flow_active": true, "direction": "in",
+            "members": [
+              { "entity_id": "A", "label": "Deye SUN-30K", "primary": false, "value_kw": 18.9 },
+              { "entity_id": "B", "label": "Fronius Eco 27", "primary": false, "value_kw": 44.2 }
+            ]
+          },
+          {
+            "role": "storage", "value_kw": 12.4, "soc_pct": 62.5, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "A", "label": "Deye SUN-30K", "primary": true, "value_kw": 12.4 }
+            ]
+          },
+          {
+            "role": "grid", "value_kw": 49.7, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "C", "label": "Netzanschluss", "primary": true, "value_kw": -49.7 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "consumers-aggregate",
+      "note": "Verbraucher role sums a wallbox + heating-rod; energy_kwh is informational (no role) and ignored.",
+      "input": {
+        "entities": [
+          {
+            "id": "P", "type": "producer", "label": "PV Dach", "category": "producer", "health": "ok",
+            "capabilities": [
+              { "channel": "pv_power_kw", "role": "pv", "primary": false, "value": 6.4 }
+            ]
+          },
+          {
+            "id": "W", "type": "wallbox", "label": "go-e Wallbox", "category": "consumer", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 7.2 },
+              { "channel": "energy_kwh", "role": "", "primary": false, "value": 1234.5 }
+            ]
+          },
+          {
+            "id": "H", "type": "heating-rod", "label": "Heizstab", "category": "consumer", "health": "stale",
+            "capabilities": [
+              { "channel": "power_kw", "role": "consumer", "primary": false, "value": 2 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "pv", "value_kw": 6.4, "flow_active": true, "direction": "in",
+            "members": [
+              { "entity_id": "P", "label": "PV Dach", "primary": false, "value_kw": 6.4 }
+            ]
+          },
+          {
+            "role": "consumer", "value_kw": 9.2, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "W", "label": "go-e Wallbox", "primary": false, "value_kw": 7.2 },
+              { "entity_id": "H", "label": "Heizstab", "primary": false, "value_kw": 2 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-site",
+      "note": "A fresh site (no v2 entities) yields a well-formed empty topology.",
+      "input": { "entities": [] },
+      "expected": { "schema_version": "1.0", "nodes": [] }
+    },
+    {
+      "name": "discharge-import-idle-pv",
+      "note": "Directions: storage discharge -> in, grid import -> in, pv below the 0.05 kW deadband is idle.",
+      "input": {
+        "entities": [
+          {
+            "id": "A", "type": "battery-hybrid", "label": "Speicher", "category": "storage", "health": "ok",
+            "capabilities": [
+              { "channel": "soc_pct", "role": "storage", "primary": true, "value": 40 },
+              { "channel": "battery_power_kw", "role": "storage", "primary": true, "value": -5.5 },
+              { "channel": "pv_power_kw", "role": "pv", "primary": false, "value": 0.02 }
+            ]
+          },
+          {
+            "id": "C", "type": "grid-meter", "label": "Netz", "category": "meter", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "grid", "primary": true, "value": 3.1 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "pv", "value_kw": 0.02, "flow_active": false,
+            "members": [
+              { "entity_id": "A", "label": "Speicher", "primary": false, "value_kw": 0.02 }
+            ]
+          },
+          {
+            "role": "storage", "value_kw": 5.5, "soc_pct": 40, "flow_active": true, "direction": "in",
+            "members": [
+              { "entity_id": "A", "label": "Speicher", "primary": true, "value_kw": -5.5 }
+            ]
+          },
+          {
+            "role": "grid", "value_kw": 3.1, "flow_active": true, "direction": "in",
+            "members": [
+              { "entity_id": "C", "label": "Netz", "primary": true, "value_kw": 3.1 }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "maßgeblich-among-two-grids-and-unknown-battery",
+      "note": "Grid takes the primary meter (never a sum: 87 would be wrong); a battery with an unknown power reading stays absent (never 0).",
+      "input": {
+        "entities": [
+          {
+            "id": "A", "type": "battery-hybrid", "label": "Speicher", "category": "storage", "health": "stale",
+            "capabilities": [
+              { "channel": "soc_pct", "role": "storage", "primary": true, "value": 55 },
+              { "channel": "battery_power_kw", "role": "storage", "primary": true, "value": null }
+            ]
+          },
+          {
+            "id": "C1", "type": "grid-meter", "label": "Haupt-Zähler", "category": "meter", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "grid", "primary": true, "value": -12 }
+            ]
+          },
+          {
+            "id": "C2", "type": "grid-meter", "label": "Neben-Zähler", "category": "meter", "health": "ok",
+            "capabilities": [
+              { "channel": "power_kw", "role": "grid", "primary": false, "value": 99 }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "schema_version": "1.0",
+        "nodes": [
+          {
+            "role": "storage", "soc_pct": 55, "flow_active": false,
+            "members": [
+              { "entity_id": "A", "label": "Speicher", "primary": true }
+            ]
+          },
+          {
+            "role": "grid", "value_kw": 12, "flow_active": true, "direction": "out",
+            "members": [
+              { "entity_id": "C1", "label": "Haupt-Zähler", "primary": true, "value_kw": -12 },
+              { "entity_id": "C2", "label": "Neben-Zähler", "primary": false, "value_kw": 99 }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
