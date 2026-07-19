@@ -293,8 +293,10 @@ var (
 
 // ReconcileResult is the outcome of a while-connected identity re-check.
 type ReconcileResult struct {
-	// Changed is true only when the portal now reports a DIFFERENT device_id
-	// for this reference and the new certificate/identity was adopted on disk.
+	// Changed is true when the portal now reports a DIFFERENT device_id OR a
+	// different broker endpoint (mqtt host/port) for this reference and the
+	// new identity was adopted on disk. Either drift requires the cloud link
+	// to be rebuilt (the broker host is cached at connect time).
 	Changed bool
 	// Identity is the freshly adopted identity (valid only when Changed).
 	Identity Identity
@@ -317,8 +319,15 @@ type ReconcileResult struct {
 // connected keeps telemetry.device_id in lockstep with the current device row.
 //
 // It is a deliberate no-op (Changed=false, nil error) when:
-//   - the portal still reports the same device_id (the common case), or
+//   - the portal still reports the same device_id AND the same broker
+//     endpoint (the common case), or
 //   - the reference is (temporarily) unclaimed/unknown -> HTTP 404 pending.
+//
+// A changed broker host/port for the SAME device_id is ALSO adopted here: the
+// cloud link caches the broker host at connect time, so a late-provisioned or
+// moved MQTT host is only honored by rebuilding the link on the new endpoint
+// (adoptIdentity). Otherwise a paho auto-reconnect would keep dialing the
+// stale cached host indefinitely.
 //
 // The device key is REUSED (never regenerated): the re-issue is bound to the
 // original CSR, so the returned certificate matches the on-disk key. A cert
@@ -337,12 +346,24 @@ func (e *Enroller) Reconcile(ctx context.Context, current Identity) (ReconcileRe
 		}
 		return ReconcileResult{}, err
 	}
-	if cert.DeviceID == "" || cert.DeviceID == current.DeviceID {
+	if cert.DeviceID == "" {
+		return ReconcileResult{}, nil // no identity to adopt - no thrash
+	}
+	// A change is either a NEW device row (re-claim) OR a changed broker
+	// endpoint for the SAME device (a late-provisioned / moved MQTT host).
+	// The cloud link caches the broker host at connect time (paho AddBroker),
+	// so a host/port change is only picked up by tearing the link down and
+	// standing it up on the new endpoint - which adoptIdentity does. Without
+	// this, a same-device host change would be silently ignored forever and a
+	// paho auto-reconnect would keep dialing the STALE cached host.
+	sameDevice := cert.DeviceID == current.DeviceID
+	sameBroker := cert.MqttHost == current.MqttHost && cert.MqttPort == current.MqttPort
+	if sameDevice && sameBroker {
 		return ReconcileResult{}, nil // unchanged - no thrash
 	}
-	// Identity drift: the reference now maps to a new device row. Adopt it,
-	// reusing the persisted key (persist re-verifies the key match first and
-	// only overwrites the cert/identity on success).
+	// Identity/endpoint drift: adopt it, reusing the persisted key (persist
+	// re-verifies the key match first and only overwrites the cert/identity on
+	// success). A same-device broker move re-uses the same (still-valid) cert.
 	key, err := e.loadKey()
 	if err != nil {
 		return ReconcileResult{}, fmt.Errorf("reconcile: load device key: %w", err)
@@ -351,8 +372,10 @@ func (e *Enroller) Reconcile(ctx context.Context, current Identity) (ReconcileRe
 	if err != nil {
 		return ReconcileResult{}, err
 	}
-	slog.Info("enrollment: adopted new device identity after re-claim",
-		"ref", e.Ref, "old_device_id", current.DeviceID, "new_device_id", id.DeviceID)
+	slog.Info("enrollment: adopted current device identity/endpoint from the portal",
+		"ref", e.Ref, "old_device_id", current.DeviceID, "new_device_id", id.DeviceID,
+		"old_mqtt", fmt.Sprintf("%s:%d", current.MqttHost, current.MqttPort),
+		"new_mqtt", fmt.Sprintf("%s:%d", id.MqttHost, id.MqttPort))
 	return ReconcileResult{Changed: true, Identity: id}, nil
 }
 

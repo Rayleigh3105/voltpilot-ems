@@ -71,7 +71,26 @@ cd /srv/docker/voltpilot
 mkdir -p infra/mqtt/certs
 cp tools/pki/out/server/{server.crt,server.key,device-ca.crt} infra/mqtt/certs/
 cp tools/pki/out/ca/crl.pem infra/mqtt/certs/
+# REQUIRED: make the broker key readable by the emqx process (see below).
+chmod 0755 infra/mqtt/certs
+chmod 0644 infra/mqtt/certs/*.crt infra/mqtt/certs/*.pem infra/mqtt/certs/server.key
 ```
+
+> **`server.key` MUST be readable by the `emqx` process, or EMQX will not start.**
+> The `emqx/emqx` container runs as the non-root `emqx` user (uid/gid `1000`), and
+> the bind mount preserves the file's *host* numeric ownership - so a key that
+> `voltpilot-ca.sh` created `0600`-owned-by-your-deploy-user is **not readable by
+> emqx inside the container**, and the broker fails boot with `cannot read keyfile`
+> (the live incident on 2026-07-03). The **exact expectation**: the mounted
+> `infra/mqtt/certs/` directory is traversable (`0755`) and `server.key` is
+> readable by the emqx uid. The robust, uid-independent way (matching the
+> `acl.conf` convention this stack already uses, and safe on this firewalled,
+> single-purpose VM where the key already lives in plaintext) is `chmod 0644
+> server.key`. If you prefer to keep the private key non-world-readable, the
+> tighter `chown 1000:1000 infra/mqtt/certs/server.key && chmod 0640 …/server.key`
+> also works because the emqx image runs as uid `1000`. The CI deploy workflows
+> enforce these permissions automatically on every roll-out (see the deploy
+> pipeline), so a re-staged key never has to be hand-fixed live again.
 
 `--domain` is the name devices will dial: the recommended setup is a **dedicated MQTT subdomain** (`mqtt.<company-domain>`, plain DNS A record to the VM - see the MQTT note in the NPM section below); the `--ip` lands in the SAN too, so dialing the raw IP stays a working fallback.
 
@@ -164,6 +183,16 @@ Header expectations - NPM's default proxy host template already does the right t
 
 **MQTT is TCP, not HTTP** - NPM proxy hosts are HTTP-only and do NOT cover it.
 Recommended: give devices a **dedicated MQTT subdomain** via a plain DNS **A record** `mqtt.<company-domain> -> <VM-IP>` - `8883` is published by the VM directly, so no NPM involvement is needed.
+
+> **Set `MQTT_DOMAIN` in `.env` to that exact name.** With device enrollment on
+> (`VOLTPILOT_ENROLLMENT_ENABLED=true`, the default proxied production model),
+> `MQTT_DOMAIN` is what enrolled devices are told to dial - it **must** match a
+> name in the broker server-cert SAN (`init-ca --domain/--ip`). Leaving it unset
+> silently fell back to `mqtt.${DOMAIN}` and handed devices the wrong host live
+> (2026-07-03), so the CI deploy preflight now **aborts** when enrollment is on
+> and `MQTT_DOMAIN` is unset. For a raw-IP (non-proxied) setup, set
+> `MQTT_DOMAIN=<VM-IP>`. Only a non-enrollment deployment
+> (`VOLTPILOT_ENROLLMENT_ENABLED=false`) may leave it unset.
 An NPM **Stream** (incoming `8883` -> `<VM-IP>:8883`) could pass the TCP through if you insist on one entry point, but it is unnecessary; dialing the raw `<VM-IP>` also keeps working as a fallback.
 The broker's server certificate must contain the name devices dial (`init-ca --domain/--ip` puts both the domain and the IP in the SAN).
 Adding the MQTT domain to an **already-running** broker is safe: re-running `init-ca` keeps the existing CA (all issued device certs stay valid) and re-issues only the server cert with the new DNS+IP SANs - then re-stage it and restart the broker:
@@ -171,6 +200,7 @@ Adding the MQTT domain to an **already-running** broker is safe: re-running `ini
 ```bash
 ./tools/pki/voltpilot-ca.sh init-ca --domain mqtt.<company-domain> --ip <VM-IP>
 cp tools/pki/out/server/{server.crt,server.key} infra/mqtt/certs/
+chmod 0644 infra/mqtt/certs/server.key   # re-staged 0600; emqx must be able to read it (see step 3)
 docker compose -f docker-compose.prod.yml restart emqx
 ```
 
@@ -275,6 +305,14 @@ scp tools/pki/out/server/{server.crt,server.key,device-ca.crt} \
     ${DEPLOY_USER}@${DEPLOY_HOST}:/srv/docker/voltpilot/infra/mqtt/certs/
 # optional CRL for revocation:
 scp tools/pki/out/ca/crl.pem ${DEPLOY_USER}@${DEPLOY_HOST}:/srv/docker/voltpilot/infra/mqtt/certs/
+# scp preserves the source 0600 on server.key; emqx (uid 1000 in the container)
+# must be able to read it or the broker fails boot (see step 3). The CI deploy
+# workflows chmod this automatically; when staging by hand, do it too:
+ssh ${DEPLOY_USER}@${DEPLOY_HOST} \
+    'chmod 0755 /srv/docker/voltpilot/infra/mqtt/certs && \
+     chmod 0644 /srv/docker/voltpilot/infra/mqtt/certs/*.crt \
+                /srv/docker/voltpilot/infra/mqtt/certs/*.pem \
+                /srv/docker/voltpilot/infra/mqtt/certs/server.key'
 ```
 
 The deploy workflow ships the committed `infra/mqtt/acl/acl.conf` and the `infra/prod/**` bootstrap for you; only the private certs are manual.

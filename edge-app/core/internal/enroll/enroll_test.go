@@ -92,6 +92,8 @@ type apiStub struct {
 	forceKey    *ecdsa.PublicKey // when set, issue against THIS key (mismatch case)
 	device      string           // issued/returned device_id ("" => the deviceID const)
 	emptyBroker bool             // when set, the cert response omits the broker endpoint
+	host        string           // served mqttHost ("" => "mqtt.example.com")
+	port        int              // served mqttPort (0 => 8883)
 
 	csrPosts  int
 	certPolls int
@@ -113,6 +115,15 @@ func (s *apiStub) reclaim(newDevice string) {
 	defer s.mu.Unlock()
 	s.device = newDevice
 	s.issuedPem = "" // force a re-issue for the new device on the next poll
+}
+
+// rehost simulates the portal handing the SAME device a new broker endpoint
+// (a late-provisioned / moved MQTT host). The device_id and certificate are
+// unchanged; only the certificate response's mqttHost/mqttPort differ.
+func (s *apiStub) rehost(host string, port int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.host, s.port = host, port
 }
 
 const (
@@ -176,6 +187,12 @@ func (s *apiStub) handler() http.Handler {
 			s.issuedPem = s.ca.issue(s.t, pub, tenantID, siteID, s.deviceOrDefault())
 		}
 		host, port := "mqtt.example.com", 8883
+		if s.host != "" {
+			host = s.host
+		}
+		if s.port != 0 {
+			port = s.port
+		}
 		if s.emptyBroker {
 			host, port = "", 0
 		}
@@ -523,6 +540,73 @@ func TestReconcileAdoptsChangedDeviceID(t *testing.T) {
 	}
 
 	// A second reconcile against the now-current identity is a no-op.
+	res2, err := e.Reconcile(ctx, res.Identity)
+	if err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+	if res2.Changed {
+		t.Error("second reconcile reported a spurious change")
+	}
+}
+
+// TestReconcileAdoptsChangedBrokerHost proves the reconnect path re-reads the
+// CURRENTLY configured broker endpoint instead of reusing the host cached at
+// first connect: when the portal serves the SAME device_id but a DIFFERENT
+// mqtt host/port, Reconcile reports Changed and persists the new endpoint, so
+// the agent rebuilds the cloud link on the fresh host (a paho auto-reconnect
+// would otherwise keep dialing the stale cached one).
+func TestReconcileAdoptsChangedBrokerHost(t *testing.T) {
+	ca := newTestCA(t)
+	stub := &apiStub{t: t, ca: ca, refKnown: true, claimed: true}
+	srv := httptest.NewServer(stub.handler())
+	defer srv.Close()
+
+	dir := t.TempDir()
+	e, id := enrollOnce(t, srv.URL, dir)
+	if id.MqttHost != "mqtt.example.com" || id.MqttPort != 8883 {
+		t.Fatalf("initial broker endpoint: %s:%d", id.MqttHost, id.MqttPort)
+	}
+	certBefore, err := os.ReadFile(filepath.Join(dir, "device.crt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The portal now hands the SAME device a new broker endpoint.
+	const newHost, newPort = "mqtt.new.example.com", 9883
+	stub.rehost(newHost, newPort)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := e.Reconcile(ctx, id)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if !res.Changed {
+		t.Fatal("broker endpoint changed, but reconcile reported no change")
+	}
+	if res.Identity.DeviceID != id.DeviceID {
+		t.Fatalf("device id must be unchanged: got %s want %s", res.Identity.DeviceID, id.DeviceID)
+	}
+	if res.Identity.MqttHost != newHost || res.Identity.MqttPort != newPort {
+		t.Fatalf("adopted endpoint = %s:%d, want %s:%d",
+			res.Identity.MqttHost, res.Identity.MqttPort, newHost, newPort)
+	}
+	// The new endpoint is persisted (survives a restart).
+	persisted, err := e.LoadIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.MqttHost != newHost || persisted.MqttPort != newPort {
+		t.Fatalf("persisted endpoint = %s:%d, want %s:%d",
+			persisted.MqttHost, persisted.MqttPort, newHost, newPort)
+	}
+	// The certificate is unchanged (same device_id => the same still-valid cert).
+	certAfter, _ := os.ReadFile(filepath.Join(dir, "device.crt"))
+	if string(certAfter) != string(certBefore) {
+		t.Error("a broker-host change must not alter the device certificate")
+	}
+
+	// A second reconcile against the now-current endpoint is a no-op.
 	res2, err := e.Reconcile(ctx, res.Identity)
 	if err != nil {
 		t.Fatalf("second reconcile: %v", err)

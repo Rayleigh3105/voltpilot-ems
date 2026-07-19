@@ -291,6 +291,18 @@ jobs:
             # file unreadable, or EMQX fails boot-time config validation.
             priv chmod 755 "$DEPLOY_DIR/infra/mqtt/acl"
             priv chmod 644 "$DEPLOY_DIR/infra/mqtt/acl/acl.conf"
+            # Broker cert/key permissions. The certs are staged out of band
+            # (below), but scp/cp preserve their source mode, so server.key
+            # commonly lands 0600 owned by the deploy user - unreadable by the
+            # emqx process (a NON-root uid inside the container), which then
+            # fails boot with "cannot read keyfile" (live incident 2026-07-03).
+            # Enforce emqx-readable perms on every deploy so a re-staged key is
+            # never hand-fixed live again (see docs/deploy.md step 3).
+            if [ -d "$DEPLOY_DIR/infra/mqtt/certs" ]; then
+              priv chmod 755 "$DEPLOY_DIR/infra/mqtt/certs"
+              priv find "$DEPLOY_DIR/infra/mqtt/certs" -type f \
+                \( -name '*.crt' -o -name '*.pem' -o -name '*.key' \) -exec chmod 644 {} +
+            fi
             # VoltPilot Keycloak login theme to the compose bind-mount path
             # (./deploy/keycloak/themes/voltpilot in docker-compose.prod.yml).
             priv mkdir -p "$DEPLOY_DIR/deploy/keycloak/themes"
@@ -301,6 +313,23 @@ jobs:
             echo "${{ secrets.FORGEJO_PASSWORD }}" | docker login git.tecmaxx.de -u "${{ secrets.FORGEJO_USERNAME }}" --password-stdin
 
             cd "$DEPLOY_DIR"
+            # Preflight: MQTT_DOMAIN is REQUIRED when device enrollment is on
+            # (the proxied/domain-based production model). Devices are told to
+            # dial ${MQTT_DOMAIN} for mTLS MQTT, and that name must match the
+            # broker server-cert SAN. An unset value silently fell back to
+            # mqtt.${DOMAIN} and handed devices the wrong host live (2026-07-03),
+            # so abort here with a clear message instead. A non-enrollment
+            # deployment (VOLTPILOT_ENROLLMENT_ENABLED=false) is exempt.
+            envval() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- | sed 's/^["'"'"']//; s/["'"'"']$//'; }
+            enroll="$(envval VOLTPILOT_ENROLLMENT_ENABLED)"
+            case "${enroll:-true}" in
+              ''|true|TRUE|True|1|yes|on)
+                if [ -z "$(envval MQTT_DOMAIN)" ]; then
+                  echo "FATAL: device enrollment is enabled but MQTT_DOMAIN is unset in $DEPLOY_DIR/.env." >&2
+                  echo "Set MQTT_DOMAIN to the FQDN devices dial for MQTT (must match the broker server-cert SAN); see docs/deploy.md and .env.prod.example." >&2
+                  exit 1
+                fi ;;
+            esac
             # Pin this rollout to the exact images this run built; secrets and all
             # other settings come from $DEPLOY_DIR/.env (provisioned out of band,
             # see .env.prod.example). The mTLS device certs must already be staged
