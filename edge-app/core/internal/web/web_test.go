@@ -1615,3 +1615,50 @@ func TestStateEnvelopeCarriesTopology(t *testing.T) {
 		t.Fatalf("empty topology not present in envelope: %s", raw)
 	}
 }
+
+// The AE6 adaptive energy picture: the dashboard grows an adaptive-tiles mount
+// (#kpisAdaptive) and dashboard.js routes the #flowWrap diagram + the tiles off
+// the /api/state topology block, with the fixed 4-node diagram + 4 KPI cards as
+// the v1 fallback. Pin the embedded page + script so a static/ edit that forgets
+// the //go:embed rebuild contract (any go build/test re-embeds) fails here.
+func TestAdaptiveEnergyPictureServed(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	page := get("/index.html")
+	// The adaptive-tiles mount alongside the fixed v1 KPI section.
+	for _, want := range []string{`id="kpisAdaptive"`, `id="kpis"`, `id="flowWrap"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing %s", want)
+		}
+	}
+
+	dash := get("/dashboard.js")
+	for _, want := range []string{
+		// The topology gate + the two adaptive renderers.
+		"hasTopology", "buildAdaptiveFlow", "renderAdaptiveTiles", "deriveTiles",
+		// The controller that routes v1 vs adaptive, and reads the state topology.
+		"createFlow", ".topology",
+		// The role vocabulary the adaptive picture groups on.
+		"storage", "consumer",
+	} {
+		if !strings.Contains(dash, want) {
+			t.Errorf("dashboard.js: missing %s", want)
+		}
+	}
+}
