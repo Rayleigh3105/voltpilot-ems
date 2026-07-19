@@ -51,6 +51,21 @@ jobs:
           username: ${{ secrets.FORGEJO_USERNAME }}
           password: ${{ secrets.FORGEJO_PASSWORD }}
 
+      # Version stamp baked into each image via --build-arg VERSION: the short
+      # commit SHA normally, and "<tag>-<shortsha>" when the build ref is a tag.
+      # The core image compiles it into agent.Version (ldflags -X); it surfaces
+      # in the :8484 dashboard + deviceInfo. The nodered image records it as an
+      # OCI image label. Without this every edge image reports Version="dev".
+      - name: Compute version stamp
+        id: version
+        run: |
+          short_sha="${GITHUB_SHA::12}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME}-${short_sha}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${short_sha}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build & Push Image
         uses: docker/build-push-action@v5
         with:
@@ -58,6 +73,8 @@ jobs:
           file: ${{ matrix.context }}/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache
           cache-to: type=registry,ref=git.tecmaxx.de/mamotec/voltpilot-ems/${{ matrix.component }}:buildcache,mode=max
           tags: |

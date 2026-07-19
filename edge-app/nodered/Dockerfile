@@ -25,6 +25,13 @@ RUN git clone --filter=blob:none \
 # --- stage 2: the Node-RED image ---------------------------------------------
 FROM nodered/node-red:4.0
 
+# Build version stamp (--build-arg VERSION, the short commit SHA from the
+# edge-images workflow). Unlike the core binary this image has no runtime
+# version surface, so it is recorded as an OCI image label - `docker inspect`
+# then shows which commit an edge device's Node-RED layer is running.
+ARG VERSION=dev
+LABEL org.opencontainers.image.version="$VERSION"
+
 # Everything below runs as root - at BUILD time AND at RUNTIME. The re-seed
 # ENTRYPOINT must be root: an OLDER image left the vp-palette / node_modules
 # dirs root-owned in the /data volume (build-time COPY into /data), so an
