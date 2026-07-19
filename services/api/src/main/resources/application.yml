@@ -142,6 +142,12 @@ voltpilot:
   # settings above. Off by default; compose turns it on next to the purge one.
   control:
     mqtt-listener-enabled: ${VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED:false}
+  # E1b bidirectional entity sync: ingest the heartbeat `entities` block (the
+  # edge's per-entity observed Ist + local commissioning view) into
+  # entity_observed_state so the portal can surface Soll/Ist drift. Same
+  # listener pattern/broker settings as `control`. Off by default.
+  entities:
+    mqtt-listener-enabled: ${VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED:false}
   # First-boot device enrollment over HTTPS: a fresh edge device uploads a CSR
   # for its reference and polls for its mTLS certificate; once the ref is
   # claimed, the api signs the CSR with the device CA (ca-dir = the working dir

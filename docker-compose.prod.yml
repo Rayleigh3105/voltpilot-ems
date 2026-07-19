@@ -384,6 +384,7 @@ services:
       VOLTPILOT_PURGE_MQTT_LISTENER_ENABLED: "true"
       # Inverter-control confirmation ingestion (portal "Steuerung" strip).
       VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
+      VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Ersparnis-Simulation: the internal simulation service (see the
       # `simulation` service below); the api proxies async jobs there.
       VOLTPILOT_SIMULATION_BASE_URL: ${VOLTPILOT_SIMULATION_BASE_URL:-http://simulation:8095}

@@ -1,0 +1,107 @@
+{
+  "catalog_version": "1.0.0",
+  "_comment": [
+    "VoltPilot entity-type catalog (E1b) - the data-driven truth for known",
+    "entity types (contract edge-entity-config.md: the wire vocabulary is an",
+    "OPEN kebab-case pattern; THIS catalog is what the api validates entity",
+    "creation against). Adding a type is ADDITIVE: append an entry here (+ an",
+    "optional edge driver, which is E6 work) - never a schema release.",
+    "Served to the portal admin editor via GET /api/v1/admin/entity-type-catalog",
+    "and read by EntityTypeCatalog/EntityRegistryService, so client and server",
+    "validate against ONE truth (the flowcatalog precedent).",
+    "Fields: category steers the edge guard semantics (storage|producer|meter|",
+    "consumer - the Go core infers the same category from declared guards, so",
+    "the two never need a lockstep enum); controllable = may carry control=TRUE",
+    "measurement points (replaces the dropped control-only-battery DB CHECK);",
+    "composed = capabilities/guards are COMPOSED from v1 master data by the",
+    "bootstrap (battery asset / measurement points) and not directly creatable",
+    "or guard-editable through the admin entity CRUD.",
+    "default_measure/default_actuate/default_failsafe seed a created entity's",
+    "capabilities and guard config; a rated power (maxPowerKw) bounds the",
+    "numeric commands and lands as guards.limits.max_consumption_kw."
+  ],
+  "types": [
+    {
+      "type": "battery-hybrid",
+      "label": "Batteriespeicher (Hybrid)",
+      "category": "storage",
+      "controllable": true,
+      "composed": true,
+      "default_failsafe": "self-consumption",
+      "default_measure": [
+        { "channel": "soc_pct", "unit": "%" },
+        { "channel": "battery_power_kw", "unit": "kW" },
+        { "channel": "pv_power_kw", "unit": "kW" }
+      ],
+      "default_actuate": [
+        { "command": "setpoint_kw" },
+        { "command": "limit_kw" }
+      ]
+    },
+    {
+      "type": "producer",
+      "label": "Erzeuger (PV)",
+      "category": "producer",
+      "controllable": true,
+      "composed": true,
+      "default_failsafe": "release",
+      "default_measure": [{ "channel": "pv_power_kw", "unit": "kW" }],
+      "default_actuate": [{ "command": "limit_kw" }, { "command": "limit_pct" }]
+    },
+    {
+      "type": "grid-meter",
+      "label": "Netzanschlusszähler",
+      "category": "meter",
+      "controllable": false,
+      "composed": true,
+      "default_failsafe": "measure-only",
+      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_actuate": []
+    },
+    {
+      "type": "wallbox",
+      "label": "Wallbox",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "release",
+      "default_measure": [
+        { "channel": "power_kw", "unit": "kW" },
+        { "channel": "energy_kwh", "unit": "kWh" }
+      ],
+      "default_actuate": [
+        { "command": "setpoint_kw", "min": 0 },
+        { "command": "on_off" },
+        { "command": "limit_kw" }
+      ]
+    },
+    {
+      "type": "heating-rod",
+      "label": "Heizstab",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "off",
+      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_actuate": [
+        { "command": "on_off" },
+        { "command": "setpoint_kw", "min": 0 },
+        { "command": "limit_kw" }
+      ]
+    },
+    {
+      "type": "generic-load",
+      "label": "Steuerbare Last",
+      "category": "consumer",
+      "controllable": true,
+      "composed": false,
+      "default_failsafe": "off",
+      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_actuate": [
+        { "command": "on_off" },
+        { "command": "limit_kw" },
+        { "command": "limit_pct" }
+      ]
+    }
+  ]
+}

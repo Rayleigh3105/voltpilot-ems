@@ -34,7 +34,7 @@ public class OptimizerConfigRepository {
             BigDecimal socMinPct, BigDecimal socMaxPct) {
         return jdbc.update(
                 "UPDATE asset SET wear_cost_ct_per_kwh = ?, soc_min_pct = ?, soc_max_pct = ? "
-                        + "WHERE site_id = ? AND type = 'battery'",
+                        + "WHERE site_id = ? AND type = 'battery' AND is_primary",
                 wearCostCtPerKwh, socMinPct, socMaxPct, siteId) > 0;
     }
 

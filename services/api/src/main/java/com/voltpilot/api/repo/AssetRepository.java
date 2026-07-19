@@ -54,7 +54,7 @@ public class AssetRepository {
                 "INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp, module_count, "
                         + "azimuth_deg, tilt_deg, commissioned_on, registry, registry_unit_id, "
                         + "registry_fetched_at) VALUES (?, ?, 'pv', ?, ?, ?, ?, ?, ?, ?, ?) "
-                        + "ON CONFLICT (site_id, type) DO UPDATE SET "
+                        + "ON CONFLICT (site_id, type) WHERE is_primary DO UPDATE SET "
                         + "pv_capacity_kwp = EXCLUDED.pv_capacity_kwp, "
                         + "module_count = EXCLUDED.module_count, "
                         + "azimuth_deg = EXCLUDED.azimuth_deg, tilt_deg = EXCLUDED.tilt_deg, "
@@ -79,7 +79,7 @@ public class AssetRepository {
                 "INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
                         + "max_discharge_kw, commissioned_on, registry, registry_unit_id, "
                         + "registry_fetched_at) VALUES (?, ?, 'battery', ?, ?, ?, ?, ?, ?, ?) "
-                        + "ON CONFLICT (site_id, type) DO UPDATE SET "
+                        + "ON CONFLICT (site_id, type) WHERE is_primary DO UPDATE SET "
                         + "capacity_kwh = EXCLUDED.capacity_kwh, "
                         + "max_charge_kw = EXCLUDED.max_charge_kw, "
                         + "max_discharge_kw = EXCLUDED.max_discharge_kw, "
@@ -106,7 +106,7 @@ public class AssetRepository {
                 "INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
                         + "max_discharge_kw, roundtrip_efficiency_pct) "
                         + "VALUES (?, ?, 'battery', ?, ?, ?, ?) "
-                        + "ON CONFLICT (site_id, type) DO UPDATE SET "
+                        + "ON CONFLICT (site_id, type) WHERE is_primary DO UPDATE SET "
                         + "capacity_kwh = EXCLUDED.capacity_kwh, "
                         + "max_charge_kw = EXCLUDED.max_charge_kw, "
                         + "max_discharge_kw = EXCLUDED.max_discharge_kw, "
@@ -125,7 +125,7 @@ public class AssetRepository {
      */
     public boolean setBatteryWearCost(UUID siteId, BigDecimal wearCostCtPerKwh) {
         return jdbc.update(
-                "UPDATE asset SET wear_cost_ct_per_kwh = ? WHERE site_id = ? AND type = 'battery'",
+                "UPDATE asset SET wear_cost_ct_per_kwh = ? WHERE site_id = ? AND type = 'battery' AND is_primary",
                 wearCostCtPerKwh, siteId) > 0;
     }
 
@@ -138,7 +138,7 @@ public class AssetRepository {
      */
     public boolean linkBatteryDevice(UUID siteId, UUID deviceId) {
         return jdbc.update(
-                "UPDATE asset SET device_id = ? WHERE site_id = ? AND type = 'battery'",
+                "UPDATE asset SET device_id = ? WHERE site_id = ? AND type = 'battery' AND is_primary",
                 deviceId, siteId) > 0;
     }
 
@@ -163,7 +163,7 @@ public class AssetRepository {
                 "UPDATE asset SET device_id = single.device_id "
                         + "FROM (SELECT (array_agg(id))[1] AS device_id FROM device WHERE site_id = ? "
                         + "  HAVING count(*) = 1) single "
-                        + "WHERE asset.site_id = ? AND asset.type = 'battery' "
+                        + "WHERE asset.site_id = ? AND asset.type = 'battery' AND asset.is_primary "
                         + "  AND asset.device_id IS NULL",
                 siteId, siteId) > 0;
     }
@@ -185,7 +185,7 @@ public class AssetRepository {
         }
         int updated = jdbc.update(
                 "UPDATE asset SET pv_capacity_kwp = GREATEST(COALESCE(pv_capacity_kwp, 0) + ?, 0) "
-                        + "WHERE site_id = ? AND type = 'pv'",
+                        + "WHERE site_id = ? AND type = 'pv' AND is_primary",
                 deltaKwp, siteId);
         if (updated == 0 && deltaKwp.signum() > 0) {
             // No PV asset yet: create it carrying just the additional generation.

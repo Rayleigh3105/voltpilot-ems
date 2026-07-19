@@ -58,8 +58,8 @@ public class SimulationDefaultsRepository {
                        b.soc_min_pct, b.soc_max_pct,
                        pv.pv_capacity_kwp, pv.azimuth_deg, pv.tilt_deg, pv.commissioned_on
                 FROM site s
-                LEFT JOIN asset b ON b.site_id = s.id AND b.type = 'battery'
-                LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv'
+                LEFT JOIN asset b ON b.site_id = s.id AND b.type = 'battery' AND b.is_primary
+                LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary
                 WHERE s.id = ?
                 """,
                 (rs, i) -> new SimulationDefaults(

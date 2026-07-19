@@ -1,7 +1,6 @@
 package com.voltpilot.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Connection;
@@ -1301,6 +1300,95 @@ class PortalApiTest {
         assertThat(monthBuckets.get(0)).containsEntry("start", "2026-06-14T22:00:00Z");
         assertThat(num(monthBuckets.get(0), "loadKwh")).isEqualTo(1.25);
         assertThat(num(monthBuckets.get(0), "costEur")).isEqualTo(0.05);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void entityHistoryServesPerChannelBucketsFromV2TelemetryAndRollups() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String deviceId = claimDevice(demo, "edge-ent-hist-01");
+
+        // A v2-native wallbox entity on the demo site (seeded as the superuser
+        // like every telemetry seed - the admin CRUD path is proven separately
+        // in AdminApiTest).
+        String entityId = "cccccccc-0000-0000-0000-000000000001";
+        exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                + "entity_type, capabilities, guard_config) VALUES "
+                + "('" + entityId + "', '" + tenantA + "', '" + BERLIN_SITE + "', 'wallbox', 'WB', "
+                + "TRUE, 'wallbox', "
+                + "'{\"actuate\":[{\"command\":\"on_off\"}]}'::jsonb, "
+                + "'{\"failsafe\":{\"behavior\":\"release\"}}'::jsonb)");
+
+        // Raw v2 telemetry: two 15-min buckets of power_kw for the entity.
+        exec("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                + "entity_id, channel, value) VALUES "
+                + "('2026-06-15T10:00:00Z','2026-06-15T10:00:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','power_kw', 4.0), "
+                + "('2026-06-15T10:07:00Z','2026-06-15T10:07:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','power_kw', 6.0), "
+                + "('2026-06-15T10:20:00Z','2026-06-15T10:20:01Z','" + tenantA + "','" + BERLIN_SITE
+                + "','" + deviceId + "','" + entityId + "','power_kw', 8.0)");
+
+        // Day range = LIVE 15-min buckets straight from raw (never behind the job).
+        ResponseEntity<Map<String, Object>> day = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/history?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(day.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(day.getBody()).containsEntry("range", "day").containsEntry("bucketMinutes", 15);
+        Map<String, Object> channels = (Map<String, Object>) day.getBody().get("channels");
+        List<Map<String, Object>> power = (List<Map<String, Object>>) channels.get("power_kw");
+        assertThat(power).hasSize(2); // the 10:00 and 10:15 buckets
+        assertThat(power.get(0)).containsEntry("start", "2026-06-15T10:00:00Z");
+        assertThat(num(power.get(0), "avg")).isEqualTo(5.0); // (4+6)/2
+        assertThat(num(power.get(0), "max")).isEqualTo(6.0);
+        assertThat(power.get(1)).containsEntry("start", "2026-06-15T10:15:00Z");
+        assertThat(num(power.get(1), "avg")).isEqualTo(8.0);
+
+        // Week range serves from the hourly rollup after the refresh cascade.
+        exec("CALL refresh_telemetry_v2_rollups('2026-06-01T00:00:00Z')");
+        ResponseEntity<Map<String, Object>> week = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/history?range=week&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(week.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(week.getBody()).containsEntry("range", "week").containsEntry("bucketMinutes", 60);
+        Map<String, Object> weekChannels = (Map<String, Object>) week.getBody().get("channels");
+        List<Map<String, Object>> weekPower =
+                (List<Map<String, Object>>) weekChannels.get("power_kw");
+        assertThat(weekPower).hasSize(1); // one hour with data
+        assertThat(weekPower.get(0)).containsEntry("start", "2026-06-15T10:00:00Z");
+        // sample-weighted hourly avg over the three raw samples (4,6,8)/3 = 6.0.
+        assertThat(num(weekPower.get(0), "avg")).isEqualTo(6.0);
+        assertThat(num(weekPower.get(0), "max")).isEqualTo(8.0);
+        assertThat((long) ((Number) weekPower.get(0).get("n")).longValue()).isEqualTo(3L);
+
+        // Month range serves from the Berlin-daily rollup.
+        ResponseEntity<Map<String, Object>> month = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/history?range=month&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        List<Map<String, Object>> monthPower = (List<Map<String, Object>>)
+                ((Map<String, Object>) month.getBody().get("channels")).get("power_kw");
+        assertThat(monthPower).hasSize(1);
+        assertThat(monthPower.get(0)).containsEntry("start", "2026-06-14T22:00:00Z"); // Berlin day
+
+        // Foreign site's tenant cannot read it (RLS 404 on the entity lookup).
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId + "/history"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Bad range = 400.
+        ResponseEntity<String> bad = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entities/" + entityId
+                        + "/history?range=decade"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(bad.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     /**
@@ -2754,26 +2842,25 @@ class PortalApiTest {
     }
 
     @Test
-    void measurementPointDbConstraintsEnforceReadOnlyControlSafety() {
+    void e1bDropsTheSingleControlPointLocksSoMultiEntitySitesAreRepresentable() {
+        // E1b (V20260719010000) removed the v1 single-battery locks: the
+        // control-only-battery CHECK and the one-control-per-site partial
+        // unique index. v2 controllable-consumer entities (wallbox,
+        // heating-rod, ...) ARE control points, and a site may have several.
+        // Control safety moved to the catalog-driven service (not a DB CHECK).
         String tenant = "00000000-0000-0000-0000-000000000001";
         String site = "ccccccc1-0000-0000-0000-000000000001";
         exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES "
-                + "('" + site + "', '" + tenant + "', 'Control Safety Site', 'DE-LU')");
+                + "('" + site + "', '" + tenant + "', 'Multi-Entity Site', 'DE-LU')");
 
-        // control=true is forbidden for a non-battery-hybrid role (the CHECK).
-        assertThatThrownBy(() -> exec("INSERT INTO measurement_point "
-                + "(tenant_id, site_id, role, control) VALUES "
-                + "('" + tenant + "', '" + site + "', 'pv-generation', TRUE)"))
-                .isInstanceOf(IllegalStateException.class);
-
-        // At most ONE control=true point per site (the partial unique index): the
-        // first battery-hybrid control point is allowed, a second is rejected.
+        // A non-battery-hybrid control point is now allowed at the DB level.
+        exec("INSERT INTO measurement_point (tenant_id, site_id, role, control) VALUES "
+                + "('" + tenant + "', '" + site + "', 'wallbox', TRUE)");
+        // A SECOND control point on the same site is now allowed too.
         exec("INSERT INTO measurement_point (tenant_id, site_id, role, control) VALUES "
                 + "('" + tenant + "', '" + site + "', 'battery-hybrid', TRUE)");
-        assertThatThrownBy(() -> exec("INSERT INTO measurement_point "
-                + "(tenant_id, site_id, role, control) VALUES "
-                + "('" + tenant + "', '" + site + "', 'battery-hybrid', TRUE)"))
-                .isInstanceOf(IllegalStateException.class);
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + site
+                + "' AND control = TRUE")).isEqualTo(2);
     }
 
     /** GET the site's measurement points as the given user. */

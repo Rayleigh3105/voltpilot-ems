@@ -116,6 +116,12 @@ class AdminApiTest {
     @Autowired
     TestRestTemplate rest;
 
+    @Autowired
+    com.voltpilot.api.repo.DeviceRepository deviceRepo;
+
+    @Autowired
+    com.voltpilot.api.entities.EntityObservedRepository entityObservedRepo;
+
     // ---- (a) admin creates a tenant + a customer user -----------------------
 
     @Test
@@ -1443,6 +1449,248 @@ class AdminApiTest {
         Object v = map.get(key);
         assertThat(v).as("numeric field '" + key + "'").isInstanceOf(Number.class);
         return ((Number) v).doubleValue();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void adminManagesOpenEntityTypesAndSollIstDriftSurfaces() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Entitaeten E1b GmbH", "CI").get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "E1b-Anlage", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + siteId + "', 'battery', 65, 30, 30, 92)");
+        String deviceId = (String) rest.exchange(
+                url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "e1b-rig-01"),
+                        adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        rest.exchange(url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"),
+                HttpMethod.POST, new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {});
+
+        // The data-driven type catalog is served to the admin editor.
+        ResponseEntity<Map<String, Object>> cat = rest.exchange(
+                url("/api/v1/admin/entity-type-catalog"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+        assertThat(cat.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> types = (List<Map<String, Object>>) cat.getBody().get("types");
+        Map<String, Object> wallboxType = types.stream()
+                .filter(t -> "wallbox".equals(t.get("type"))).findFirst().orElseThrow();
+        assertThat(wallboxType.get("label")).isEqualTo("Wallbox");
+        assertThat(wallboxType.get("controllable")).isEqualTo(true);
+
+        // Create a wallbox entity - the SECOND control point of the site next
+        // to the battery-hybrid row, which the dropped one-control-per-site
+        // index would have refused before E1b.
+        ResponseEntity<Map<String, Object>> created = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("entityType", "wallbox", "label", "Wallbox Carport",
+                        "maxPowerKw", 11), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String wallboxId = (String) created.getBody().get("id");
+        Map<String, Object> wbGuards = (Map<String, Object>) created.getBody().get("guards");
+        assertThat(num((Map<String, Object>) wbGuards.get("limits"), "max_consumption_kw"))
+                .isEqualTo(11.0);
+        assertThat(((Map<String, Object>) wbGuards.get("failsafe")).get("behavior"))
+                .isEqualTo("release");
+        List<Map<String, Object>> actuate = (List<Map<String, Object>>)
+                ((Map<String, Object>) created.getBody().get("capabilities")).get("actuate");
+        Map<String, Object> setpoint = actuate.stream()
+                .filter(a -> "setpoint_kw".equals(a.get("command"))).findFirst().orElseThrow();
+        assertThat(num(setpoint, "max")).isEqualTo(11.0);
+
+        // Catalog-driven refusals: unknown type 400; a composed pilot type is
+        // not directly creatable (422) and its guard config not editable (422).
+        assertThat(rest.exchange(url("/api/v1/admin/sites/" + siteId + "/v2-entities"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("entityType", "toaster"), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(url("/api/v1/admin/sites/" + siteId + "/v2-entities"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("entityType", "battery-hybrid"), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        String batteryId = (String) rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody().stream()
+                .filter(e -> "battery-hybrid".equals(e.get("entityType")))
+                .map(e -> (String) e.get("id")).findFirst().orElseThrow();
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + batteryId),
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("guards", Map.of("failsafe", Map.of("behavior", "off"))),
+                        adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // Guard-config edit on the open type: valid replaces, garbage is 400.
+        ResponseEntity<Map<String, Object>> edited = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + wallboxId),
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("guards", Map.of(
+                        "limits", Map.of("max_consumption_kw", 7),
+                        "failsafe", Map.of("behavior", "off"))), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(edited.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(num((Map<String, Object>) ((Map<String, Object>) edited.getBody()
+                .get("guards")).get("limits"), "max_consumption_kw")).isEqualTo(7.0);
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + wallboxId),
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("guards",
+                        Map.of("failsafe", Map.of("behavior", "explode"))), adminTenant),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // ---- The customer entities surface: Soll/Ist reconciliation --------
+        ResponseEntity<Map<String, Object>> surface = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(surface.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> registryState =
+                (Map<String, Object>) surface.getBody().get("registry");
+        assertThat(registryState).as("the composed Soll revision is recorded").isNotNull();
+        String revision = (String) registryState.get("revision");
+        assertThat(revision).isNotBlank();
+        List<Map<String, Object>> surfaceEntities =
+                (List<Map<String, Object>>) surface.getBody().get("entities");
+        // The bootstrap made ONE entity (battery-hybrid; no source points on
+        // this site) + the wallbox created above.
+        assertThat(surfaceEntities).hasSize(2);
+        Map<String, Object> wbSurface = surfaceEntities.stream()
+                .filter(e -> wallboxId.equals(e.get("id"))).findFirst().orElseThrow();
+        assertThat(wbSurface.get("typeLabel")).isEqualTo("Wallbox");
+        assertThat(wbSurface.get("control")).isEqualTo(true);
+        assertThat(wbSurface.get("syncStatus"))
+                .as("device never reported -> unreported").isEqualTo("unreported");
+
+        // The edge reports its Ist: wallbox applied at the CURRENT revision,
+        // plus the edge-local commissioning view. The battery is deliberately
+        // absent from the report (not yet applied on the device).
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+        String topic = "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/status";
+        String heartbeat = "{"
+                + "\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantId + "\","
+                + "\"site_id\":\"" + siteId + "\",\"device_id\":\"" + deviceId + "\","
+                + "\"online\":true,"
+                + "\"entities\":{\"revision\":\"" + revision + "\",\"count\":1,"
+                + "\"ids\":[\"" + wallboxId + "\"],"
+                + "\"observed\":{\"" + wallboxId + "\":{\"entity_type\":\"wallbox\","
+                + "\"health\":\"ok\",\"last_telemetry_at\":\"2026-07-19T10:00:00Z\","
+                + "\"channels\":[\"power_kw\"]}},"
+                + "\"local_setup\":[{\"id\":\"inverter\",\"kind\":\"inverter\","
+                + "\"brand\":\"deye\",\"model\":\"SUN-12K-SG04LP3-EU\"}]}}";
+        listener.handle(topic, heartbeat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        surface = rest.exchange(url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        surfaceEntities = (List<Map<String, Object>>) surface.getBody().get("entities");
+        wbSurface = surfaceEntities.stream()
+                .filter(e -> wallboxId.equals(e.get("id"))).findFirst().orElseThrow();
+        assertThat(wbSurface.get("syncStatus")).isEqualTo("in_sync");
+        Map<String, Object> observed = (Map<String, Object>) wbSurface.get("observed");
+        assertThat(observed.get("health")).isEqualTo("ok");
+        Map<String, Object> batterySurface = surfaceEntities.stream()
+                .filter(e -> batteryId.equals(e.get("id"))).findFirst().orElseThrow();
+        assertThat(batterySurface.get("syncStatus"))
+                .as("reported device without this entity = missing on device")
+                .isEqualTo("missing_on_device");
+        List<Map<String, Object>> localSetup =
+                (List<Map<String, Object>>) surface.getBody().get("localSetup");
+        assertThat(localSetup).hasSize(1);
+        assertThat((String) localSetup.get(0).get("label")).contains("deye");
+
+        // Drift is honest, never silently resolved: an OLD applied revision
+        // reads pending; a reported ghost entity surfaces as stale-on-device;
+        // a spoofed identity is ignored outright.
+        String oldRevisionBeat = heartbeat.replace("\"revision\":\"" + revision + "\"",
+                "\"revision\":\"1999-01-01T00:00:00Z\"");
+        listener.handle(topic, oldRevisionBeat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        surface = rest.exchange(url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        wbSurface = ((List<Map<String, Object>>) surface.getBody().get("entities")).stream()
+                .filter(e -> wallboxId.equals(e.get("id"))).findFirst().orElseThrow();
+        assertThat(wbSurface.get("syncStatus")).isEqualTo("pending");
+
+        String ghostBeat = heartbeat.replace(
+                "\"observed\":{\"" + wallboxId + "\"",
+                "\"observed\":{\"ghost-entity-1\":{\"entity_type\":\"wallbox\","
+                        + "\"health\":\"never\"},\"" + wallboxId + "\"");
+        listener.handle(topic, ghostBeat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        surface = rest.exchange(url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat((List<String>) surface.getBody().get("staleOnDevice"))
+                .containsExactly("ghost-entity-1");
+
+        String spoofed = heartbeat.replace(
+                "\"tenant_id\":\"" + tenantId + "\"",
+                "\"tenant_id\":\"99999999-9999-9999-9999-999999999999\"");
+        listener.handle(topic, spoofed.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        surface = rest.exchange(url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat((List<String>) surface.getBody().get("staleOnDevice"))
+                .as("a spoofed heartbeat must not replace the observed state")
+                .containsExactly("ghost-entity-1");
+
+        // Delete the wallbox: the row goes, the surface follows.
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + wallboxId),
+                HttpMethod.DELETE, new HttpEntity<>(adminTenant), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        surface = rest.exchange(url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat((List<Map<String, Object>>) surface.getBody().get("entities")).hasSize(1);
+    }
+
+    @Test
+    void aSecondNonPrimaryBatteryAssetRowLeavesV1PathsIntact() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Zweitspeicher GmbH", "CI").get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Zweitspeicher-Anlage", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        // The customer battery editor creates the PRIMARY battery asset.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/battery"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwh", 20, "maxChargeKw", 10,
+                        "maxDischargeKw", 10), adminTenant),
+                String.class).getStatusCode().is2xxSuccessful()).isTrue();
+
+        // A SECOND battery row is now REPRESENTABLE (non-primary; the old
+        // UNIQUE(site_id, type) would have refused it outright).
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, is_primary) VALUES ('" + tenantId + "', '" + siteId
+                + "', 'battery', 10, 5, 5, FALSE)");
+
+        // v1 paths stay pinned to the primary: the editor upsert still updates
+        // exactly the primary row (no duplicate, no ambiguity)...
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/battery"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwh", 22, "maxChargeKw", 11,
+                        "maxDischargeKw", 11), adminTenant),
+                String.class).getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'battery'")).isEqualTo(2);
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'battery' AND is_primary")).isEqualTo(1);
+        assertThat(queryLong("SELECT capacity_kwh::bigint FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'battery' AND is_primary")).isEqualTo(22);
+
+        // ...and the battery-reading endpoints keep answering (single row).
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/schedule"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(rest.exchange(url("/api/v1/admin/sites/" + siteId + "/optimizer-config"),
+                HttpMethod.GET, new HttpEntity<>(adminTenant), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
     }
 
     private Map<String, Object> createTenant(String token, String name, String segment) {

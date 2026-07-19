@@ -17,8 +17,10 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * The v2 entity registry (E1a pilot minimum): composes the three pilot entity
@@ -70,6 +72,7 @@ public class EntityRegistryService {
     private final EntityRegistryRepository repo;
     private final ObjectProvider<EntityRegistryPublisher> publisher;
     private final ObjectMapper mapper;
+    private final EntityTypeCatalog catalog;
     private final Clock clock;
 
     /**
@@ -80,15 +83,18 @@ public class EntityRegistryService {
      */
     @org.springframework.beans.factory.annotation.Autowired
     public EntityRegistryService(EntityRegistryRepository repo,
-            ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper) {
-        this(repo, publisher, mapper, Clock.systemUTC());
+            ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
+            EntityTypeCatalog catalog) {
+        this(repo, publisher, mapper, catalog, Clock.systemUTC());
     }
 
     EntityRegistryService(EntityRegistryRepository repo,
-            ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper, Clock clock) {
+            ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
+            EntityTypeCatalog catalog, Clock clock) {
         this.repo = repo;
         this.publisher = publisher;
         this.mapper = mapper;
+        this.catalog = catalog;
         this.clock = clock;
     }
 
@@ -142,10 +148,6 @@ public class EntityRegistryService {
      * broker failure is reported in the outcome only.
      */
     public PushOutcome pushRegistryBestEffort(UUID siteId) {
-        EntityRegistryPublisher pub = publisher.getIfAvailable();
-        if (pub == null) {
-            return PushOutcome.notConfigured();
-        }
         UUID tenantId = TenantContext.get();
         UUID gateway = gatewayDevice(siteId, repo.batteryAsset(siteId));
         if (gateway == null) {
@@ -153,8 +155,222 @@ public class EntityRegistryService {
                     siteId);
             return PushOutcome.noGateway();
         }
-        byte[] payload = composePush(tenantId, siteId, gateway, repo.entitiesForSite(siteId));
+        // The composed revision is the Soll the edge is expected to echo in
+        // its heartbeat (E1b bidirectional sync) - recorded even when the
+        // best-effort publish fails or MQTT is not configured (the Soll
+        // changed regardless; retained delivery converges later).
+        Instant now = clock.instant();
+        byte[] payload = composePush(tenantId, siteId, gateway, now, repo.entitiesForSite(siteId));
+        repo.upsertRegistryState(siteId, tenantId, gateway, now.toString());
+        EntityRegistryPublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            return PushOutcome.notConfigured();
+        }
         return PushOutcome.result(pub.publishRegistry(tenantId, siteId, gateway, payload), gateway);
+    }
+
+    // ---- E1b: catalog-driven entity CRUD (arbitrary types) ------------------
+
+    /**
+     * Create a v2-native entity of an open catalog type (wallbox, heating-rod,
+     * generic-load, ...). Pilot types whose config is COMPOSED from v1 master
+     * data (catalog {@code composed}) are refused with a German hint - their
+     * truth lives in the battery editor / measurement points / bootstrap, and
+     * a second source of it would drift. Capabilities/guards default from the
+     * catalog (bounded by {@code maxPowerKw} when given); explicit JSON
+     * overrides are validated against the contract shapes.
+     */
+    @Transactional
+    public EntityRow createEntity(UUID siteId, String entityType, String label,
+            BigDecimal maxPowerKw, JsonNode capabilities, JsonNode guards) {
+        EntityTypeCatalog.EntityType type = catalog.find(entityType);
+        if (type == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannter Entitätstyp \"" + entityType
+                            + "\". Verfügbare Typen liefert der Typkatalog.");
+        }
+        if (type.composed()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Dieser Entitätstyp wird aus den Stammdaten der Anlage abgeleitet "
+                            + "(Speicher, Messpunkte + Bootstrap) und kann nicht direkt "
+                            + "angelegt werden.");
+        }
+        ObjectNode caps = capabilities != null ? validatedCapabilities(capabilities)
+                : defaultCapabilities(type, maxPowerKw);
+        ObjectNode g = guards != null ? validatedGuards(guards)
+                : defaultGuards(type, maxPowerKw);
+        boolean control = type.controllable() && caps.path("actuate").size() > 0;
+        UUID tenantId = TenantContext.get();
+        UUID pointId = repo.createEntityPoint(tenantId, siteId, entityType, label, control);
+        repo.setEntityConfig(pointId, entityType, write(caps), write(g));
+        pushRegistryBestEffort(siteId);
+        return repo.entityForSite(siteId, pointId);
+    }
+
+    /**
+     * Edit an entity: the label always; capabilities/guards/rated power only
+     * for non-composed types (composed configs are maintained through their v1
+     * master data and would silently drift otherwise - never two truths).
+     * Returns the fresh row, or null when the entity is not visible under the
+     * caller's tenant (404 upstream).
+     */
+    @Transactional
+    public EntityRow updateEntity(UUID siteId, UUID pointId, String label, BigDecimal maxPowerKw,
+            JsonNode capabilities, JsonNode guards) {
+        EntityRow row = repo.entityForSite(siteId, pointId);
+        if (row == null) {
+            return null;
+        }
+        if (label != null) {
+            repo.updateLabel(pointId, label.isBlank() ? null : label);
+        }
+        boolean configEdit = capabilities != null || guards != null || maxPowerKw != null;
+        if (configEdit) {
+            EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
+            if (type != null && type.composed()) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Die Konfiguration dieses Entitätstyps wird aus den Stammdaten der "
+                                + "Anlage abgeleitet - bitte dort pflegen (Speicher-Editor, "
+                                + "Messpunkte, Netzladen-Schalter).");
+            }
+            ObjectNode caps;
+            ObjectNode g;
+            if (capabilities == null && guards == null && type != null) {
+                // Only the rated power changed: recompose the defaults with it.
+                caps = defaultCapabilities(type, maxPowerKw);
+                g = defaultGuards(type, maxPowerKw);
+            } else {
+                caps = capabilities != null ? validatedCapabilities(capabilities)
+                        : (ObjectNode) parseOr(row.capabilitiesJson(), mapper.createObjectNode());
+                g = guards != null ? validatedGuards(guards)
+                        : (ObjectNode) parseOr(row.guardConfigJson(), mapper.createObjectNode());
+            }
+            repo.setEntityConfig(pointId, row.entityType(), write(caps), write(g));
+        }
+        pushRegistryBestEffort(siteId);
+        return repo.entityForSite(siteId, pointId);
+    }
+
+    /**
+     * Remove an entity. A v1-BACKED row (pv-generation / grid-meter
+     * measurement point) only loses its entity config - the v1 master data
+     * stays; a v2-native row (battery-hybrid bootstrap row, open types) is
+     * deleted outright. The re-push makes the edge clear the removed entity's
+     * retained config + command. Returns false when not visible (404).
+     */
+    @Transactional
+    public boolean deleteEntity(UUID siteId, UUID pointId) {
+        EntityRow row = repo.entityForSite(siteId, pointId);
+        if (row == null) {
+            return false;
+        }
+        if ("pv-generation".equals(row.role()) || "grid-meter".equals(row.role())) {
+            repo.clearEntityConfig(pointId);
+        } else {
+            repo.deletePoint(pointId);
+        }
+        pushRegistryBestEffort(siteId);
+        return true;
+    }
+
+    private ObjectNode defaultCapabilities(EntityTypeCatalog.EntityType type,
+            BigDecimal maxPowerKw) {
+        ObjectNode caps = mapper.createObjectNode();
+        ArrayNode measure = caps.putArray("measure");
+        for (JsonNode m : type.defaultMeasure()) {
+            measure.add(m.deepCopy());
+        }
+        ArrayNode actuate = caps.putArray("actuate");
+        for (JsonNode a : type.defaultActuate()) {
+            ObjectNode cap = (ObjectNode) a.deepCopy();
+            if (maxPowerKw != null && ("setpoint_kw".equals(cap.path("command").asText())
+                    || "limit_kw".equals(cap.path("command").asText()))) {
+                cap.put("max", maxPowerKw.doubleValue());
+            }
+            actuate.add(cap);
+        }
+        return caps;
+    }
+
+    private ObjectNode defaultGuards(EntityTypeCatalog.EntityType type, BigDecimal maxPowerKw) {
+        ObjectNode guards = mapper.createObjectNode();
+        if ("consumer".equals(type.category()) && maxPowerKw != null) {
+            guards.putObject("limits").put("max_consumption_kw", maxPowerKw.doubleValue());
+        }
+        guards.putObject("failsafe").put("behavior", type.defaultFailsafe());
+        return guards;
+    }
+
+    private static final java.util.Set<String> COMMAND_VOCAB =
+            java.util.Set.of("setpoint_kw", "on_off", "limit_pct", "limit_kw", "mode");
+    private static final java.util.Set<String> FAILSAFE_VOCAB =
+            java.util.Set.of("self-consumption", "off", "release", "measure-only");
+    private static final java.util.Set<String> NUMERIC_LIMIT_KEYS = java.util.Set.of(
+            "max_charge_kw", "max_discharge_kw", "soc_min_pct", "soc_max_pct",
+            "max_generation_kw", "max_consumption_kw");
+
+    /** Contract-shape validation of an explicit capabilities override. */
+    private ObjectNode validatedCapabilities(JsonNode node) {
+        if (!node.isObject()) {
+            throw badConfig("capabilities muss ein Objekt sein");
+        }
+        for (String key : new String[] {"measure", "actuate"}) {
+            JsonNode list = node.get(key);
+            if (list != null && !list.isArray()) {
+                throw badConfig("capabilities." + key + " muss eine Liste sein");
+            }
+        }
+        for (JsonNode m : node.path("measure")) {
+            if (!m.isObject() || !m.path("channel").asText("").matches("^[a-z][a-z0-9_]{0,63}$")) {
+                throw badConfig("Jeder Messkanal braucht einen gültigen channel-Namen");
+            }
+        }
+        for (JsonNode a : node.path("actuate")) {
+            if (!a.isObject() || !COMMAND_VOCAB.contains(a.path("command").asText(""))) {
+                throw badConfig("Unbekanntes Kommando in capabilities.actuate "
+                        + "(erlaubt: setpoint_kw, on_off, limit_pct, limit_kw, mode)");
+            }
+        }
+        return (ObjectNode) node;
+    }
+
+    /** Contract-shape validation of an explicit guards override. */
+    private ObjectNode validatedGuards(JsonNode node) {
+        if (!node.isObject()) {
+            throw badConfig("guards muss ein Objekt sein");
+        }
+        String behavior = node.path("failsafe").path("behavior").asText("");
+        if (!FAILSAFE_VOCAB.contains(behavior)) {
+            throw badConfig("guards.failsafe.behavior muss eines von "
+                    + "self-consumption, off, release, measure-only sein");
+        }
+        JsonNode limits = node.get("limits");
+        if (limits != null) {
+            if (!limits.isObject()) {
+                throw badConfig("guards.limits muss ein Objekt sein");
+            }
+            java.util.Iterator<String> names = limits.fieldNames();
+            while (names.hasNext()) {
+                String key = names.next();
+                JsonNode v = limits.get(key);
+                if (NUMERIC_LIMIT_KEYS.contains(key)) {
+                    if (!v.isNumber() || v.asDouble() < 0) {
+                        throw badConfig("guards.limits." + key + " muss eine Zahl >= 0 sein");
+                    }
+                } else if ("charge_from_grid_allowed".equals(key)) {
+                    if (!v.isBoolean()) {
+                        throw badConfig("guards.limits.charge_from_grid_allowed muss true/false sein");
+                    }
+                } else {
+                    throw badConfig("Unbekannter Schlüssel guards.limits." + key);
+                }
+            }
+        }
+        return (ObjectNode) node;
+    }
+
+    private static ResponseStatusException badConfig(String message) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
 
     /**
@@ -171,8 +387,8 @@ public class EntityRegistryService {
     }
 
     /** The registry_push payload (edge-entity.schema.json $defs/registry_push). */
-    byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, List<EntityRow> rows) {
-        Instant now = clock.instant();
+    byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, Instant now,
+            List<EntityRow> rows) {
         ObjectNode push = mapper.createObjectNode();
         push.put("schema_version", "1.0");
         push.put("tenant_id", tenantId.toString());

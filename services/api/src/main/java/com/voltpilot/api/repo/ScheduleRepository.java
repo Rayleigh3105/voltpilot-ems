@@ -116,7 +116,7 @@ public class ScheduleRepository {
         }
         List<Object[]> battery = jdbc.query(
                 "SELECT capacity_kwh, roundtrip_efficiency_pct FROM asset "
-                        + "WHERE site_id = ? AND type = 'battery'",
+                        + "WHERE site_id = ? AND type = 'battery' AND is_primary",
                 (rs, i) -> new Object[] {
                         rs.getBigDecimal("capacity_kwh"),
                         rs.getBigDecimal("roundtrip_efficiency_pct")
