@@ -166,6 +166,157 @@ public class HistoryRepository {
                 siteId, Timestamp.from(from), Timestamp.from(to));
     }
 
+    // ---- v1 -> v2 history bridge (MIG) --------------------------------------
+    //
+    // A migrated site's Historie splices two eras at site.v2_history_cutover_at:
+    // v1 owns buckets whose start is BEFORE the instant, v2 owns those at/after
+    // it (HistoryService). The methods below RECONSTRUCT the v1 HistoryBucketDto
+    // shape read-side from the v2 per-entity telemetry, so the two eras render
+    // as ONE continuous series. NOTHING is copied.
+    //
+    // Channel reconstruction (per bucket, summed across the site's v2 entities):
+    //   pv_power_kw (any entity)                 -> site PV
+    //   battery_power_kw (any storage)           -> site battery (MEASURED,
+    //                                               not the v1 balance derivation)
+    //   power_kw of a grid-meter entity ONLY     -> site grid (import/export)
+    //   soc_pct                                  -> site SoC (min/max across
+    //                                               entities; last = mean, exact
+    //                                               for the single-battery pilot)
+    //   load                                     -> RESIDUAL grid + pv - battery
+    //                                               (a consumer entity's own
+    //                                               power_kw is already inside it)
+    // Import/export are split from the bucket-AVERAGE grid power (a slot that
+    // both imports and exports nets out - the documented seam approximation;
+    // the money-critical earnings keep reading the v1 rollups during the shadow
+    // phase). A site with no grid-meter entity (bare hybrid) yields NULL grid/
+    // load for the v2 era - PV/battery/SoC still bridge continuously.
+
+    /** The site's history cutover instant, or null when un-migrated (pure v1). */
+    public Instant v2HistoryCutover(UUID siteId) {
+        List<Timestamp> rows = jdbc.query(
+                "SELECT v2_history_cutover_at FROM site WHERE id = ?",
+                (rs, i) -> rs.getTimestamp("v2_history_cutover_at"), siteId);
+        if (rows.isEmpty() || rows.get(0) == null) {
+            return null;
+        }
+        return rows.get(0).toInstant();
+    }
+
+    /**
+     * v2-era day buckets: 15-min aggregation reconstructed from RAW
+     * {@code telemetry_v2} into the v1 HistoryBucketDto shape, incl. the matching
+     * day-ahead price and per-bucket import cost (mirrors {@link #dayBuckets}).
+     */
+    public List<HistoryBucketDto> v2DayBuckets(UUID siteId, Instant from, Instant to,
+            String biddingZone) {
+        String quarters = "SELECT time_bucket('15 minutes', t.time) AS bucket, t.entity_id,"
+                + " t.channel, avg(t.value) AS avg_value, min(t.value) AS min_value,"
+                + " max(t.value) AS max_value, last(t.value, t.time) AS last_value"
+                + " FROM telemetry_v2 t"
+                + " WHERE t.site_id = ? AND t.time >= ? AND t.time < ? GROUP BY 1, 2, 3";
+        return jdbc.query(
+                "WITH b AS (" + v2Reconstruction(quarters, "q.bucket") + ") "
+                        + "SELECT b.*, p.price_eur_mwh,"
+                        + "       b.grid_import_kwh * p.price_eur_mwh / 1000 AS cost_eur "
+                        + "FROM b " + PRICE_LATERAL + "ORDER BY b.bucket",
+                HistoryRepository::mapBucket,
+                siteId, Timestamp.from(from), Timestamp.from(to), biddingZone);
+    }
+
+    /**
+     * v2-era week/month/year buckets reconstructed from {@code
+     * telemetry_v2_rollup_15m} by SUMMING quarter energies into the display
+     * bucket (hourly / Europe/Berlin-daily) - the SAME energy semantics as the
+     * v1 rollups (not avg x span, which would overstate a partly-covered
+     * bucket). Price/cost are merged in separately via {@link #v2CostPerBucket}.
+     */
+    public List<HistoryBucketDto> v2RollupBuckets(UUID siteId, Instant from, Instant to,
+            boolean daily) {
+        String disp = daily
+                ? "time_bucket('1 day', q.bucket, 'Europe/Berlin')"
+                : "time_bucket('1 hour', q.bucket)";
+        String quarters = "SELECT r.bucket, r.entity_id, r.channel, r.avg_value, r.min_value,"
+                + " r.max_value, r.last_value FROM telemetry_v2_rollup_15m r"
+                + " WHERE r.site_id = ? AND r.bucket >= ? AND r.bucket < ?";
+        return jdbc.query(
+                "SELECT b.*, NULL::numeric AS price_eur_mwh, NULL::numeric AS cost_eur "
+                        + "FROM (" + v2Reconstruction(quarters, disp) + ") b ORDER BY b.bucket",
+                HistoryRepository::mapBucket,
+                siteId, Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
+     * v2-era grid cost per display bucket: 15-min import energy from the
+     * grid-meter entity x the matching day-ahead price, summed into the display
+     * bucket (mirrors {@link #costPerBucket} on {@code telemetry_v2_rollup_15m}).
+     */
+    public Map<Instant, BigDecimal> v2CostPerBucket(
+            UUID siteId, Instant from, Instant to, String biddingZone, boolean daily) {
+        String bucketExpr = daily
+                ? "time_bucket('1 day', b.bucket, 'Europe/Berlin')"
+                : "time_bucket('1 hour', b.bucket)";
+        Map<Instant, BigDecimal> costs = new HashMap<>();
+        jdbc.query(
+                "WITH g AS ("
+                        + "  SELECT r.bucket, greatest(r.avg_value, 0) * 0.25 AS grid_import_kwh"
+                        + "  FROM telemetry_v2_rollup_15m r"
+                        + "  JOIN measurement_point mp ON mp.id::text = r.entity_id"
+                        + "  WHERE r.site_id = ? AND mp.entity_type = 'grid-meter'"
+                        + "    AND r.channel = 'power_kw' AND r.bucket >= ? AND r.bucket < ?) "
+                        + "SELECT " + bucketExpr + " AS display_bucket,"
+                        + " sum(b.grid_import_kwh * p.price_eur_mwh / 1000) AS cost_eur "
+                        + "FROM g AS b " + PRICE_LATERAL + "GROUP BY 1",
+                rs -> {
+                    BigDecimal cost = rs.getBigDecimal("cost_eur");
+                    if (cost != null) {
+                        costs.put(rs.getTimestamp("display_bucket").toInstant(), cost);
+                    }
+                },
+                siteId, Timestamp.from(from), Timestamp.from(to), biddingZone);
+        return costs;
+    }
+
+    /**
+     * The shared v2 reconstruction: given a {@code quarters} sub-select yielding
+     * 15-min rows (bucket, entity_id, channel, avg/min/max/last value), pivots
+     * per quarter into site-channel power (grid classified by the grid-meter
+     * entity_type join) and SUMS quarter energies (power x 0.25 h) into the
+     * {@code displayBucketExpr} (identity for day, hour/day for the rollups) -
+     * so the v1 HistoryBucketDto shape holds at every range. Grid import/export
+     * is split per QUARTER before summing; a bucket without any grid-meter
+     * quarter leaves grid/load NULL (a bare hybrid); SoC is min/max across
+     * quarters, last = the latest quarter's value.
+     */
+    private static String v2Reconstruction(String quarters, String displayBucketExpr) {
+        return "WITH typed AS (SELECT src.bucket, src.channel, src.avg_value, src.min_value,"
+                + "   src.max_value, src.last_value, mp.entity_type"
+                + "   FROM (" + quarters + ") src"
+                + "   LEFT JOIN measurement_point mp ON mp.id::text = src.entity_id),"
+                + " q AS (SELECT bucket,"
+                + "   sum(avg_value) FILTER (WHERE channel = 'pv_power_kw') AS pv_kw,"
+                + "   sum(avg_value) FILTER (WHERE channel = 'battery_power_kw') AS batt_kw,"
+                + "   sum(avg_value) FILTER (WHERE channel = 'power_kw'"
+                + "        AND entity_type = 'grid-meter') AS grid_kw,"
+                + "   bool_or(channel = 'power_kw' AND entity_type = 'grid-meter') AS has_grid,"
+                + "   min(min_value) FILTER (WHERE channel = 'soc_pct') AS soc_min,"
+                + "   max(max_value) FILTER (WHERE channel = 'soc_pct') AS soc_max,"
+                + "   avg(last_value) FILTER (WHERE channel = 'soc_pct') AS soc_last"
+                + "   FROM typed GROUP BY bucket)"
+                + " SELECT " + displayBucketExpr + " AS bucket,"
+                + "   greatest(sum(greatest(coalesce(pv_kw, 0), 0) * 0.25), 0) AS pv_kwh,"
+                + "   CASE WHEN bool_or(has_grid) THEN sum(greatest(coalesce(grid_kw, 0)"
+                + "     + coalesce(pv_kw, 0) - coalesce(batt_kw, 0), 0) * 0.25) END AS load_kwh,"
+                + "   CASE WHEN bool_or(has_grid)"
+                + "     THEN sum(greatest(coalesce(grid_kw, 0), 0) * 0.25) END AS grid_import_kwh,"
+                + "   CASE WHEN bool_or(has_grid)"
+                + "     THEN sum(greatest(-coalesce(grid_kw, 0), 0) * 0.25) END AS grid_export_kwh,"
+                + "   sum(greatest(coalesce(batt_kw, 0), 0) * 0.25) AS battery_charge_kwh,"
+                + "   sum(greatest(-coalesce(batt_kw, 0), 0) * 0.25) AS battery_discharge_kwh,"
+                + "   min(soc_min) AS soc_min_pct, max(soc_max) AS soc_max_pct,"
+                + "   last(soc_last, bucket) AS soc_last_pct"
+                + " FROM q GROUP BY " + displayBucketExpr;
+    }
+
     private static HistoryBucketDto mapBucket(ResultSet rs, int i) throws SQLException {
         return new HistoryBucketDto(
                 rs.getTimestamp("bucket").toInstant(),

@@ -1452,6 +1452,112 @@ class AdminApiTest {
     }
 
     /**
+     * MIG conversion preview (migration runbook step 1): the read-only dry-run
+     * reports EXACTLY what bootstrap would create - the three pilot entities,
+     * their derived roles, the resolved gateway - WITHOUT writing anything (the
+     * v2-entities list stays empty until apply). Applying then matches the
+     * preview and flips the actions to "refresh". The per-site history cutover
+     * (the bridge seam) is set and cleared through the admin endpoints.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void v2ConversionPreviewMatchesBootstrapWithoutWritingAndCutoverIsControllable() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Migration GmbH", "CI").get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Bestandsanlage", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + siteId + "', 'battery', 40, 20, 20, 95)");
+        rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "mig-rig-01"), adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {});
+        rest.exchange(url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("role", "pv-generation", "label", "AC-PV",
+                        "capacityKwp", 18), adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        rest.exchange(url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("role", "grid-meter", "label", "Netz"), adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+
+        // Preview: reports the three pilot entities + derived roles, NO write.
+        Map<String, Object> preview = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/preview"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        assertThat(preview.get("alreadyConverted")).isEqualTo(false);
+        assertThat(preview.get("gatewayDevice")).as("auto-linked battery device").isNotNull();
+        List<Map<String, Object>> plan = (List<Map<String, Object>>) preview.get("plan");
+        assertThat(plan).extracting(p -> p.get("entityType"))
+                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter");
+        assertThat(plan).allSatisfy(p -> assertThat(p.get("action")).isEqualTo("create"));
+        Map<String, Object> plannedBattery = plan.stream()
+                .filter(p -> "battery-hybrid".equals(p.get("entityType"))).findFirst().orElseThrow();
+        assertThat((List<String>) plannedBattery.get("roles"))
+                .as("a hybrid maps to PV + Speicher").containsExactly("pv", "storage");
+        assertThat((List<String>) plan.stream()
+                .filter(p -> "grid-meter".equals(p.get("entityType"))).findFirst().orElseThrow()
+                .get("roles")).containsExactly("grid");
+
+        // The preview wrote nothing: the site still has zero v2 entities.
+        assertThat((List<Map<String, Object>>) rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody()).isEmpty();
+
+        // Apply: creates exactly what the preview promised.
+        List<Map<String, Object>> created = (List<Map<String, Object>>) rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"), HttpMethod.POST,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("entities");
+        assertThat(created).extracting(e -> e.get("entityType"))
+                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter");
+
+        // Preview after apply: idempotent - now "refresh", alreadyConverted.
+        Map<String, Object> again = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/preview"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        assertThat(again.get("alreadyConverted")).isEqualTo(true);
+        assertThat((List<Map<String, Object>>) again.get("plan"))
+                .allSatisfy(p -> assertThat(p.get("action")).isEqualTo("refresh"));
+
+        // History cutover: null -> set -> cleared (the bridge control + rollback).
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/history-cutover"),
+                HttpMethod.GET, new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("cutoverAt"))
+                .isNull();
+        Object setAt = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/history-cutover"),
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("at", "2026-05-20T09:00:00Z"), adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("cutoverAt");
+        assertThat(setAt).isEqualTo("2026-05-20T09:00:00Z");
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/history-cutover"),
+                HttpMethod.DELETE, new HttpEntity<>(adminTenant), Void.class).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/history-cutover"),
+                HttpMethod.GET, new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("cutoverAt"))
+                .isNull();
+
+        // Tenant fencing: a foreign tenant selection sees neither preview nor cutover.
+        String otherTenant = (String) createTenant(admin, "Fremd AG", "CI").get("id");
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/preview"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(admin), otherTenant)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * AE1 Anlagen-Topologie-Read-Model: a hybrid entity (Deye: PV+Speicher) and
      * a pure producer (Fronius: PV) plus the grid-meter at one site produce a
      * topology where PV-Erzeugung aggregates the hybrid's PV + the producer,

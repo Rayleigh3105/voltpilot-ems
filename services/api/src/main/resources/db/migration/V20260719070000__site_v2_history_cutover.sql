@@ -1,0 +1,25 @@
+-- =============================================================================
+-- V20260719070000 - site.v2_history_cutover_at (the v1->v2 history bridge seam).
+-- -----------------------------------------------------------------------------
+-- MIG (v1->v2 migration): a migrated site's Historie must NOT visually reset at
+-- the cutover. This column is the per-site instant at which the portal history
+-- switches its data source:
+--   * buckets whose start is BEFORE the instant come from the v1 5-channel
+--     telemetry / telemetry_rollup_* tables (unchanged);
+--   * buckets whose start is AT/AFTER it are RECONSTRUCTED read-side from the
+--     v2 per-entity telemetry_v2 / telemetry_v2_rollup_* tables into the SAME
+--     HistoryBucketDto shape (HistoryRepository.v2*Buckets).
+-- Every bucket start is either < or >= the instant, so the spliced series is
+-- gap-free AND overlap-free by construction (v1 owns the straddling bucket).
+--
+-- NULL (the default) = un-migrated: the site reads pure v1 history, byte-
+-- identical to before this migration. So clearing this column is the history
+-- half of the migration ROLLBACK. NOTHING copies data - the bridge is a pure
+-- read-side adapter over the two eras' tables.
+--
+-- Pure additive ALTER (the max_feed_in_kw precedent V20260716000000): layers
+-- over any existing volume, no infra bootstrap mirror needed. The existing
+-- site RLS policy + grants (V2) cover the new column.
+-- =============================================================================
+
+ALTER TABLE site ADD COLUMN IF NOT EXISTS v2_history_cutover_at TIMESTAMPTZ;

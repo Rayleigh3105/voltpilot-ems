@@ -636,6 +636,13 @@ services:
       OPTIMIZER_WEAR_COST_CT_PER_KWH: ${OPTIMIZER_WEAR_COST_CT_PER_KWH:-4.0}
       OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES: ${OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES:-60}
       OPTIMIZER_SOC_MAX_AGE_MINUTES: ${OPTIMIZER_SOC_MAX_AGE_MINUTES:-120}
+      # MIG v1->v2 migration switch: comma-separated site UUIDs the optimizer
+      # ADDITIONALLY publishes a v2 shadow plan for (ems/{t}/{s}/{d}/v2/plan);
+      # the v1 /schedule plan is byte-identical for every site. Default EMPTY =
+      # nothing flagged (byte-identical v1). Flip it per site to migrate,
+      # unset/remove a site to roll back (seconds, no image change). See
+      # docs/migration-v1-to-v2.md.
+      VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
 
   # Ersparnis-Simulation service: the SAME optimization image with a different
   # entrypoint (the weather-collector pattern). Internal-only (NO public port -

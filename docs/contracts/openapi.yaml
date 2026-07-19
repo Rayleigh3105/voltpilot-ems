@@ -1489,6 +1489,79 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/preview:
+    get:
+      tags: [admin]
+      summary: Dry-run the v1->v2 conversion (MIG migration step 1) - writes nothing.
+      description: >
+        The migration runbook review step: reports EXACTLY what
+        /v2-entities/bootstrap would create/refresh from the site's current v1
+        master data - the entities, their derived topology roles, capabilities
+        and guards, and the resolved gateway device - WITHOUT touching any
+        table. `action` is `create` for a row that would newly become a v2
+        entity and `refresh` for one already stamped (re-run). Idempotent + safe
+        to call repeatedly while reviewing.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The conversion plan (nothing written).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2ConversionPreview" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/history-cutover:
+    get:
+      tags: [admin]
+      summary: The site's v1->v2 history bridge cutover instant (null = un-migrated).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The current cutover (cutoverAt null when un-migrated).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2HistoryCutover" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+    put:
+      tags: [admin]
+      summary: Set the history cutover (portal Historie splices v1 before / v2 after).
+      description: >
+        MIG runbook: called when the site goes live on v2 so the portal Historie
+        switches its data source at this instant (v1 5-channel telemetry before,
+        v2 per-entity reconstruction after). Body `at` optional - defaults to now.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { at: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: The applied cutover instant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2HistoryCutover" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+    delete:
+      tags: [admin]
+      summary: Clear the history cutover (MIG rollback - Historie reverts to pure v1).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Cleared. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
   /api/v1/admin/sites/{siteId}/v2-entities/bootstrap:
     post:
       tags: [admin]
@@ -2514,6 +2587,36 @@ components:
             published: { type: boolean }
             reason: { type: string, nullable: true, enum: [mqtt_not_configured, no_gateway_device, publish_failed, null] }
             deviceId: { type: string, format: uuid, nullable: true }
+    V2ConversionPreview:
+      type: object
+      description: A read-only dry-run of the v1->v2 conversion (MIG). Writes nothing.
+      properties:
+        alreadyConverted: { type: boolean, description: The site already has v2 entities. }
+        gatewayDevice: { type: string, format: uuid, nullable: true, description: The resolved gateway device (null when ambiguous/none). }
+        gatewayReason: { type: string, nullable: true, enum: [no_claimed_device, multiple_devices_no_battery_link, no_gateway_device, null] }
+        plan:
+          type: array
+          items:
+            type: object
+            properties:
+              pointId: { type: string, format: uuid, nullable: true, description: Existing measurement_point id, or null when it would be created. }
+              action: { type: string, enum: [create, refresh] }
+              entityType: { type: string, example: battery-hybrid }
+              label: { type: string, nullable: true }
+              roles:
+                type: array
+                items: { type: string, enum: [pv, storage, consumer, grid] }
+                description: The topology roles this entity's measure channels resolve to (AE1 DefaultRole).
+              capabilities: { type: object, description: The capabilities bootstrap would write. }
+              guards: { type: object, description: The guard config bootstrap would write. }
+        skipped:
+          type: array
+          items: { type: string }
+    V2HistoryCutover:
+      type: object
+      description: The site's v1->v2 history bridge cutover instant.
+      properties:
+        cutoverAt: { type: string, format: date-time, nullable: true, description: null = un-migrated (pure v1 history). }
     MastrPreview:
       type: object
       description: >

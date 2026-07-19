@@ -37,16 +37,21 @@ public class HistoryService {
     public HistoryDto history(UUID siteId, String biddingZone, HistoryRange range, LocalDate at) {
         HistoryRange.Window window = range.window(at);
 
+        // MIG v1->v2 history bridge: an un-migrated site (cutover null) reads
+        // pure v1, byte-identical to before. A migrated site splices at the
+        // cutover instant - v1 owns buckets that START before it, v2 owns those
+        // at/after it - so the series is gap-free AND overlap-free (every bucket
+        // start is either < or >= the instant). Totals/protocol/plan are then
+        // computed over the merged bucket list unchanged (era-agnostic).
+        Instant cutover = repo.v2HistoryCutover(siteId);
         List<HistoryBucketDto> buckets;
-        if (range == HistoryRange.DAY) {
-            buckets = repo.dayBuckets(siteId, window.from(), window.to(), biddingZone);
+        if (cutover == null) {
+            buckets = v1Buckets(siteId, biddingZone, range, window);
         } else {
-            buckets = repo.rollupBuckets(siteId, window.from(), window.to(), range.dailyBuckets());
-            Map<Instant, BigDecimal> costs = repo.costPerBucket(
-                    siteId, window.from(), window.to(), biddingZone, range.dailyBuckets());
-            buckets = buckets.stream()
-                    .map(b -> withCost(b, costs.get(b.start())))
-                    .toList();
+            buckets = splice(
+                    v1Buckets(siteId, biddingZone, range, window),
+                    v2Buckets(siteId, biddingZone, range, window),
+                    cutover);
         }
 
         HistoryTotalsDto totals = totals(buckets, repo.savings(siteId, window.from(), window.to()));
@@ -60,6 +65,54 @@ public class HistoryService {
 
         return new HistoryDto(range.name().toLowerCase(java.util.Locale.ROOT),
                 window.from(), window.to(), range.bucketMinutes(), buckets, totals, protocol, plan);
+    }
+
+    /** v1-era buckets for a range (day = raw telemetry, else = rollups + cost). */
+    private List<HistoryBucketDto> v1Buckets(UUID siteId, String biddingZone, HistoryRange range,
+            HistoryRange.Window window) {
+        if (range == HistoryRange.DAY) {
+            return repo.dayBuckets(siteId, window.from(), window.to(), biddingZone);
+        }
+        List<HistoryBucketDto> buckets =
+                repo.rollupBuckets(siteId, window.from(), window.to(), range.dailyBuckets());
+        Map<Instant, BigDecimal> costs = repo.costPerBucket(
+                siteId, window.from(), window.to(), biddingZone, range.dailyBuckets());
+        return buckets.stream().map(b -> withCost(b, costs.get(b.start()))).toList();
+    }
+
+    /** v2-era buckets, reconstructed into the SAME shape from telemetry_v2. */
+    private List<HistoryBucketDto> v2Buckets(UUID siteId, String biddingZone, HistoryRange range,
+            HistoryRange.Window window) {
+        if (range == HistoryRange.DAY) {
+            return repo.v2DayBuckets(siteId, window.from(), window.to(), biddingZone);
+        }
+        List<HistoryBucketDto> buckets =
+                repo.v2RollupBuckets(siteId, window.from(), window.to(), range.dailyBuckets());
+        Map<Instant, BigDecimal> costs = repo.v2CostPerBucket(
+                siteId, window.from(), window.to(), biddingZone, range.dailyBuckets());
+        return buckets.stream().map(b -> withCost(b, costs.get(b.start()))).toList();
+    }
+
+    /**
+     * Splice the two eras at the cutover: v1 buckets that START before it, then
+     * v2 buckets at/after it, ordered by start. No bucket start can satisfy both
+     * predicates, so the result never gaps and never overlaps.
+     */
+    static List<HistoryBucketDto> splice(List<HistoryBucketDto> v1, List<HistoryBucketDto> v2,
+            Instant cutover) {
+        java.util.List<HistoryBucketDto> merged = new java.util.ArrayList<>();
+        for (HistoryBucketDto b : v1) {
+            if (b.start().isBefore(cutover)) {
+                merged.add(b);
+            }
+        }
+        for (HistoryBucketDto b : v2) {
+            if (!b.start().isBefore(cutover)) {
+                merged.add(b);
+            }
+        }
+        merged.sort(java.util.Comparator.comparing(HistoryBucketDto::start));
+        return merged;
     }
 
     /** Period totals; see {@link HistoryTotalsDto} for the formulas. */
