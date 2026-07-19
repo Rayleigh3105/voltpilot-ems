@@ -1,5 +1,6 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
+import type { Topology } from './topology';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
@@ -526,6 +527,78 @@ export interface SiteEntities {
   entities: SiteEntity[];
   localSetup: EntityLocalSetup[];
   staleOnDevice: string[];
+}
+
+// --- AE1 topology read-model (adaptive energy flow + tiles) -------------------
+
+/** One capability of a topology entity: its resolved role + latest live value. */
+export interface TopologyCapability {
+  channel: string;
+  unit: string | null;
+  /** Resolved role (pv | storage | consumer | grid); null = unassigned. */
+  role: string | null;
+  /** The maßgebliche (primary) capability of its role. */
+  primary: boolean;
+  /** Latest live value; null = unknown (never a fabricated 0). */
+  value: number | null;
+}
+
+/** One entity as the topology read-model exposes it (camelCase). */
+export interface TopologyEntity {
+  id: string;
+  entityType: string;
+  typeLabel: string;
+  label: string | null;
+  /** storage | producer | meter | consumer (steers the tile/flow semantics). */
+  category: string;
+  /** ok | stale | never (5-min liveness window). */
+  health: string;
+  capabilities: TopologyCapability[];
+}
+
+/**
+ * The Anlagen-Topologie-Read-Model (AE1, GET /sites/{id}/topology): the entity
+ * graph + the server-derived role-grouped hub topology the adaptive energy-flow
+ * diagram (AE2) renders. A fresh / un-migrated site returns empty entities +
+ * empty topology nodes (the caller then falls back to the v1 telemetry view).
+ */
+export interface SiteTopology {
+  schemaVersion: string;
+  entities: TopologyEntity[];
+  topology: Topology;
+}
+
+// --- AE7 usage profile (adaptation axis 2: emphasis) -------------------------
+
+/** Which surfaces a profile makes prominent | secondary | minimal | hidden. */
+export interface UsageEmphasis {
+  money: string;
+  peak: string;
+  flow: string;
+  devices: string;
+}
+
+/** The signals the profile was derived from (transparency). */
+export interface UsageProfileSignals {
+  hasStorage: boolean;
+  hasPv: boolean;
+  hasControllableConsumer: boolean;
+  activeStrategyNodeTypes: string[];
+  plantKind: string | null;
+  hasLeistungspreis: boolean;
+}
+
+/**
+ * The AE7 Nutzungsprofil read-model (GET /sites/{id}/profile): the EFFECTIVE
+ * profile (arbitrage | peak | private), the derived default, the raw override,
+ * the emphasis map (which surfaces AE2/AE3 make prominent) and the signals.
+ */
+export interface SiteUsageProfile {
+  usageProfile: string;
+  derivedProfile: string;
+  override: string | null;
+  emphasis: UsageEmphasis;
+  signals: UsageProfileSignals;
 }
 
 /** One aggregated bucket of one entity channel. */
@@ -1060,6 +1133,11 @@ export const api = {
   /** The site's v2 "Geräte & Entitäten" surface (Soll/Ist reconciliation). */
   siteEntities: (siteId: string) =>
     request<SiteEntities>(`/api/v1/sites/${siteId}/entities`),
+  /** AE1 topology read-model (adaptive energy flow + tiles). Empty for un-migrated sites. */
+  topology: (siteId: string) => request<SiteTopology>(`/api/v1/sites/${siteId}/topology`),
+  /** AE7 usage profile + emphasis map (the adaptive view's second axis). */
+  usageProfile: (siteId: string) =>
+    request<SiteUsageProfile>(`/api/v1/sites/${siteId}/profile`),
   /** Per-entity channel history over the v2 telemetry rollups. */
   entityHistory: (siteId: string, entityId: string, range: HistoryRange, at?: string) =>
     request<EntityHistory>(

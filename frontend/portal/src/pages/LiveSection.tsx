@@ -7,8 +7,10 @@ import { api, ONLINE_WINDOW_MS, type Site, type TelemetryPoint } from '../api';
 import { fmtRelative } from '../format';
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, ErrorState } from '../components/States';
+import { AdaptiveLiveView } from '../components/AdaptiveLiveView';
 import { LiveHero } from '../components/LiveHero';
 import { TelemetryChart } from '../TelemetryChart';
+import { useAdaptiveLive } from '../useAdaptiveLive';
 
 /**
  * The "Live-Daten" subpage of one Anlage: the live DEPTH - status sentence,
@@ -92,6 +94,10 @@ export function LiveSection({ site }: { site: Site }) {
     return () => clearInterval(timer);
   }, []);
 
+  // AE1/AE7 adaptive live view (migrated sites); un-migrated sites fall back to
+  // the byte-identical v1 LiveHero below.
+  const { topology, profile, adaptive } = useAdaptiveLive(site.id);
+
   const latest = telemetry.length ? telemetry[telemetry.length - 1] : null;
   const telemetryFresh =
     latest != null && now.getTime() - new Date(latest.ts).getTime() <= ONLINE_WINDOW_MS;
@@ -111,7 +117,22 @@ export function LiveSection({ site }: { site: Site }) {
         )}
       </div>
 
-      {loading && telemetry.length === 0 && !failed ? (
+      {adaptive && topology ? (
+        // AE2/AE3 adaptive view (topology-driven): the N-node energy flow,
+        // entity tiles, module strip. The Verlauf chart stays below when
+        // telemetry is available.
+        <>
+          <AdaptiveLiveView topology={topology} profile={profile} />
+          {telemetry.length > 0 && (
+            <VerlaufBlock
+              telemetry={telemetry}
+              liveWindow={liveWindow}
+              setLiveWindow={setLiveWindow}
+              activeWindow={activeWindow}
+            />
+          )}
+        </>
+      ) : loading && telemetry.length === 0 && !failed ? (
         <ChartCardSkeleton />
       ) : failed ? (
         <ErrorState
@@ -131,28 +152,52 @@ export function LiveSection({ site }: { site: Site }) {
 
           {/* Verlauf: the history chart; the toggle fetches only the
               selected window. */}
-          <div className="vp-live-verlauf-head" style={{ marginTop: 'var(--vp-space-5)' }}>
-            <h3>Verlauf</h3>
-            <div className="vp-seg" role="tablist" aria-label="Zeitraum">
-              {LIVE_WINDOWS.map((w) => (
-                <button
-                  key={w.id}
-                  role="tab"
-                  aria-selected={liveWindow === w.id}
-                  className={liveWindow === w.id ? 'active' : ''}
-                  onClick={() => setLiveWindow(w.id)}
-                >
-                  {w.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <ChartSubtitle>
-            Der Verlauf zeigt die Messwerte Ihrer Geräte {activeWindow.insight}.
-          </ChartSubtitle>
-          <TelemetryChart points={telemetry} windowLabel={activeWindow.insight} />
+          <VerlaufBlock
+            telemetry={telemetry}
+            liveWindow={liveWindow}
+            setLiveWindow={setLiveWindow}
+            activeWindow={activeWindow}
+          />
         </>
       )}
     </Card>
+  );
+}
+
+/** The Verlauf chart + window toggle, shared by the adaptive and v1 branches. */
+function VerlaufBlock({
+  telemetry,
+  liveWindow,
+  setLiveWindow,
+  activeWindow,
+}: {
+  telemetry: TelemetryPoint[];
+  liveWindow: LiveWindow;
+  setLiveWindow: (w: LiveWindow) => void;
+  activeWindow: { id: LiveWindow; label: string; insight: string };
+}) {
+  return (
+    <>
+      <div className="vp-live-verlauf-head" style={{ marginTop: 'var(--vp-space-5)' }}>
+        <h3>Verlauf</h3>
+        <div className="vp-seg" role="tablist" aria-label="Zeitraum">
+          {LIVE_WINDOWS.map((w) => (
+            <button
+              key={w.id}
+              role="tab"
+              aria-selected={liveWindow === w.id}
+              className={liveWindow === w.id ? 'active' : ''}
+              onClick={() => setLiveWindow(w.id)}
+            >
+              {w.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <ChartSubtitle>
+        Der Verlauf zeigt die Messwerte Ihrer Geräte {activeWindow.insight}.
+      </ChartSubtitle>
+      <TelemetryChart points={telemetry} windowLabel={activeWindow.insight} />
+    </>
   );
 }

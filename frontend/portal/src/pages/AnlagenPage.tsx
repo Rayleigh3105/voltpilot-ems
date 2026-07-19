@@ -32,6 +32,8 @@ import { healthChecklist } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
+import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
+import { useAdaptiveLive } from '../useAdaptiveLive';
 import { FahrplanBand } from '../components/FahrplanBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { ErtragChart } from '../components/ErtragChart';
@@ -536,6 +538,9 @@ export function AnlageSeite({
   const siteEarnings = earnings?.sites.find((x) => x.id === site.id) ?? null;
   const sentence = ovSite ? composeSiteSentence(ovSite, now) : null;
   const fresh = ovSite ? siteLiveFresh(ovSite, now) : false;
+  // AE1/AE7: the compact "Jetzt gerade" flow becomes the adaptive N-node
+  // diagram for migrated sites; un-migrated sites keep the v1 EnergyFlow.
+  const adaptiveLive = useAdaptiveLive(site.id);
 
   // Fahrplan-derived flags: whether the plan is current for today (health) and
   // whether the site is controllable (a plan published to a battery device),
@@ -697,7 +702,14 @@ export function AnlageSeite({
                 <Skeleton height={240} radius="var(--vp-radius-md)" />
               ) : (
                 <>
-                  <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
+                  {adaptiveLive.adaptive && adaptiveLive.topology ? (
+                    <AdaptiveEnergyFlow
+                      topology={adaptiveLive.topology}
+                      stale={!adaptiveLive.topology.entities.some((e) => e.health === 'ok')}
+                    />
+                  ) : (
+                    <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
+                  )}
                   {weatherWhyText && fresh && (
                     <p className="vp-live-why">
                       <Icon name="sun" size={14} /> {weatherWhyText}
