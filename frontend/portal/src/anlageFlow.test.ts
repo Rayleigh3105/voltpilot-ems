@@ -72,8 +72,8 @@ function storagePreview(overrides: Partial<MastrPreview> = {}): MastrPreview {
 }
 
 describe('the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
-  it('has exactly the four steps, Anlage -> Register -> Nutzung -> Gerät (design update 2026-07-16)', () => {
-    expect(FLOW_STEPS).toEqual(['Anlage', 'Register', 'Nutzung', 'Gerät']);
+  it('has exactly the four steps, Anlage -> Register -> Gerät -> Nutzung (AE5: device before the adaptive step)', () => {
+    expect(FLOW_STEPS).toEqual(['Anlage', 'Register', 'Gerät', 'Nutzung']);
   });
 
   it('starts fresh customers at the Anlage step', () => {

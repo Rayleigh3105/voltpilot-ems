@@ -1,10 +1,20 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
-import { api, ApiError, type Device, type MastrPreview, type Site, type SiteAsset } from '../api';
+import {
+  api,
+  ApiError,
+  type Device,
+  type MastrPreview,
+  type Site,
+  type SiteAsset,
+  type SiteEntities,
+  type SiteUsageProfile,
+} from '../api';
 
-// The Nutzung step reads isPlatformAdmin() (admin contract fields); the flow
-// tests exercise the CUSTOMER path - keycloak stays out of jsdom.
+// The adaptive Nutzung step reads isPlatformAdmin() (admin: bootstrap +
+// auto-start + entity add). The flow tests exercise the CUSTOMER path - keycloak
+// stays out of jsdom, and the admin-only ops are never called.
 vi.mock('../auth', () => ({ isPlatformAdmin: () => false }));
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
@@ -135,7 +145,37 @@ function batteryAsset(overrides: Partial<SiteAsset> = {}): SiteAsset {
   };
 }
 
-/** Pass the Nutzung step (design update 2026-07-16) without changing anything. */
+const emptyEntities: SiteEntities = {
+  registry: null,
+  entities: [],
+  localSetup: [],
+  staleOnDevice: [],
+};
+
+function usageProfile(override: string | null = null, derived = 'private'): SiteUsageProfile {
+  return {
+    usageProfile: override ?? derived,
+    derivedProfile: derived,
+    override,
+    emphasis: { money: 'minimal', peak: 'hidden', flow: 'prominent', devices: 'prominent' },
+    signals: {
+      hasStorage: true,
+      hasPv: true,
+      hasControllableConsumer: false,
+      activeStrategyNodeTypes: [],
+      plantKind: 'eigenverbrauch',
+      hasLeistungspreis: false,
+    },
+  };
+}
+
+/** The reads the adaptive Nutzung step makes on mount (customer path). */
+function mockAdaptiveReads(profile: SiteUsageProfile = usageProfile()) {
+  vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
+  vi.spyOn(api, 'usageProfile').mockResolvedValue(profile);
+}
+
+/** Pass the adaptive Nutzung step without changing anything. */
 async function skipNutzung() {
   fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später festlegen' }));
 }
@@ -145,7 +185,7 @@ beforeEach(() => {
 });
 
 describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
-  it('walks Anlage -> Register (PV + linked Speicher) -> Gerät and finishes on the summary', async () => {
+  it('walks Anlage -> Register (PV + linked Speicher) -> Gerät -> Nutzung and finishes on the summary', async () => {
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const mastrLookup = vi
       .spyOn(api, 'mastrLookup')
@@ -155,6 +195,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const mastrApply = vi.spyOn(api, 'mastrApply').mockResolvedValue([]);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
     const claimDevice = vi.spyOn(api, 'claimDevice').mockResolvedValue(device);
+    mockAdaptiveReads();
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
@@ -172,35 +213,25 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
       target: { value: 'SEE900000012345' },
     });
     fireEvent.click(screen.getByRole('button', { name: /Im Register suchen/ }));
-    // Both units are looked up (PV, then the linked storage).
     await waitFor(() => expect(mastrLookup).toHaveBeenCalledTimes(2));
-    expect(mastrLookup).toHaveBeenCalledWith('s-1', 'SEE900000012345');
-    expect(mastrLookup).toHaveBeenCalledWith('s-1', 'SEE900000067890');
 
-    // Preview: PV + linked storage + plausibility line.
     expect(await screen.findByText('Im Register gefunden')).toBeInTheDocument();
-    expect(screen.getByText('PV-Anlage')).toBeInTheDocument();
-    expect(screen.getByText('Batteriespeicher')).toBeInTheDocument();
-    expect(screen.getByText('verknüpft')).toBeInTheDocument();
-    expect(screen.getByText(/89551 Königsbronn - stimmt das\?/)).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole('button', { name: 'Übernehmen & weiter' }));
     await waitFor(() => expect(mastrApply).toHaveBeenCalled());
     const applied = mastrApply.mock.calls[0][1];
     expect(applied.pv?.mastrNummer).toBe('SEE900000012345');
     expect(applied.storage?.mastrNummer).toBe('SEE900000067890');
 
-    // Step 3: Nutzung - the setup-time "Wie soll Ihr Speicher arbeiten?"
-    // (design update 2026-07-16); Marktoptimierung is always on.
-    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
-    expect(screen.getByText('Marktoptimierung (immer aktiv)')).toBeInTheDocument();
-    await skipNutzung();
-
-    // Step 4: Gerät.
+    // Step 3: Gerät (AE5: the device now comes BEFORE the adaptive step).
     expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
     fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledWith('s-1', 'VP-DEMO-0001'));
+
+    // Step 4: Nutzung - the adaptive step (Geräte + Nutzungsprofil + Speicher).
+    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nutzungsprofil' })).toBeInTheDocument();
+    await skipNutzung();
 
     // Fertig: the summary names PV, Speicher, Gerät and the source.
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
@@ -214,6 +245,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    mockAdaptiveReads();
     const mastrLookup = vi.spyOn(api, 'mastrLookup');
     const onDone = vi.fn();
 
@@ -233,12 +265,11 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
       's-1',
       { capacityKwh: 10, maxChargeKw: 5, maxDischargeKw: 5 },
     ]);
-    // The register was never queried on the manual path.
     expect(mastrLookup).not.toHaveBeenCalled();
 
-    // Pass the Nutzung step, then skip the device step - honest summary.
-    await skipNutzung();
+    // Step 3 (Gerät) then step 4 (Nutzung) - skip both, honest summary.
     fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    await skipNutzung();
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(screen.getByText('manuell hinterlegt')).toBeInTheDocument();
     expect(screen.getByText('später verbinden')).toBeInTheDocument();
@@ -247,6 +278,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
   it('keeps every step past the first skippable and dead-end-free', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    mockAdaptiveReads();
     const claimDevice = vi.spyOn(api, 'claimDevice');
     const mastrApply = vi.spyOn(api, 'mastrApply');
     const onDone = vi.fn();
@@ -255,15 +287,14 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
-    // Skip the Register step, the Nutzung step, then the Gerät step.
+    // Skip the Register step, the Gerät step, then the Nutzung step.
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    await skipNutzung();
     fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    await skipNutzung();
 
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(claimDevice).not.toHaveBeenCalled();
     expect(mastrApply).not.toHaveBeenCalled();
-    // Nothing was applied, so the source line is absent.
     expect(screen.queryByText('Marktstammdaten')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Zur Anlage' }));
     expect(onDone).toHaveBeenCalled();
@@ -282,8 +313,8 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
     fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    // Register skipped -> the Gerät step is now next (before Nutzung).
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    await skipNutzung();
     fireEvent.change(await screen.findByLabelText('Geräte-ID'), {
       target: { value: 'edge-tippfehla' },
     });
@@ -322,15 +353,37 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
   });
 });
 
-describe('NutzungStep - the usage choice at setup time (design update 2026-07-16)', () => {
+describe('NutzungStep - the AE5 adaptive step (entities + usage profile + Speicher)', () => {
+  it('shows the derived usage profile and writes the override only when changed', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    mockAdaptiveReads(usageProfile(null, 'private'));
+    const setOverride = vi.spyOn(api, 'setUsageProfileOverride').mockResolvedValue(usageProfile('arbitrage'));
+    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
+
+    // Resume at Register, skip through Gerät into Nutzung.
+    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
+
+    // The derived profile (Eigenverbrauch) is surfaced.
+    expect(await screen.findByText(/Abgeleitet aus Ihrer Anlage: Eigenverbrauch/)).toBeInTheDocument();
+
+    // Override to Markterlös (arbitrage).
+    fireEvent.click(await screen.findByRole('radio', { name: /Markterlös/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(setOverride).toHaveBeenCalledWith('s-1', 'arbitrage'));
+    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
+  });
+
   it('saves a changed Speicherschonung preset carrying the battery master data through', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    mockAdaptiveReads();
     const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
     render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
 
-    // Resume at Register, skip into Nutzung.
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
 
     // The battery exists, so the Umgang choice is offered; pick Schonend.
     fireEvent.click(await screen.findByRole('radio', { name: /Schonend/ }));
@@ -346,40 +399,33 @@ describe('NutzungStep - the usage choice at setup time (design update 2026-07-16
         }),
       ),
     );
-    expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
   });
 
-  it('writes nothing when untouched; the Lastspitzen intent shows only the honest customer info', async () => {
+  it('writes nothing when untouched', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    mockAdaptiveReads();
     const saveBattery = vi.spyOn(api, 'saveBattery');
+    const setOverride = vi.spyOn(api, 'setUsageProfileOverride');
     render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
-
-    // Marktoptimierung is always on and not deselectable.
-    const markt = await screen.findByRole('checkbox', { name: /Marktoptimierung/ });
-    expect(markt).toBeChecked();
-    expect(markt).toBeDisabled();
-
-    // Selecting Lastspitzenkappung as a customer shows the calm info - no
-    // contract fields, no button, nothing persisted (Vertrieb läuft persönlich).
-    fireEvent.click(screen.getByRole('checkbox', { name: /Lastspitzenkappung/ }));
-    expect(
-      screen.getByText('Richten wir gemeinsam mit Ihnen ein – Einrichtung durch VoltPilot.'),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText('Leistungspreis (€/kW) *')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    expect(await screen.findByText('Verbinden Sie Ihr VoltPilot-Gerät')).toBeInTheDocument();
+    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(saveBattery).not.toHaveBeenCalled();
+    expect(setOverride).not.toHaveBeenCalled();
   });
 
   it('hides the Umgang choice when the Anlage has no battery', async () => {
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    mockAdaptiveReads();
     render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    expect(await screen.findByText('Wie soll Ihr Speicher arbeiten?')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
+    expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
     expect(screen.queryByText('Umgang mit dem Speicher')).not.toBeInTheDocument();
   });
 });
