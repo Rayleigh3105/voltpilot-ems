@@ -21,9 +21,10 @@
  * `makeReadOnce(deps)` takes its dependencies injected so the same code runs in
  * a unit test (real `net`/`http` + in-process servers) and in the flow node
  * (`global.get('net')` etc. + the embedded decode modules):
- *   deps = { deye, modbus, fronius, solarman, sunspec, discovery, net, http, https }
+ *   deps = { deye, modbus, fronius, solarman, sunspec, discovery, goe, net, http, https }
  * (`sunspec` = sunspec/sunspec-live.js, `discovery` = sunspec/model-discovery.js,
- * both used for the real SunSpec-Modbus read path)
+ * both used for the real SunSpec-Modbus read path; `goe` = goe/goe-api.js, the
+ * go-e Charger HTTP API v2 read path)
  * and returns `readOnce(selection, role) -> Promise<Result>` where Result is
  *   { ok:true,  reading:{ pv_kw?, load_kw?, grid_kw?, soc_pct? } }
  *   { ok:false, error_code, message? }
@@ -74,6 +75,7 @@ function makeReadOnce(deps) {
   const solarman = deps.solarman;
   const sunspec = deps.sunspec;
   const discovery = deps.discovery;
+  const goe = deps.goe;
   const net = deps.net;
   const http = deps.http;
   const https = deps.https;
@@ -119,6 +121,10 @@ function makeReadOnce(deps) {
         invert_grid_sign: !!conn.invert_grid_sign,
         model_type: conn.model_type === 'float' || conn.model_type === 'int_sf' ? conn.model_type : 'auto',
       };
+    }
+    if (sel.communication === 'goe_http_api') {
+      const port = num(conn.port, 80);
+      return { adapter: 'goe_http_api', ip, port, url: goe.statusUrl(ip, port) };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
   }
@@ -277,6 +283,39 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readGoe does ONE HTTP GET to the go-e /api/status endpoint and decodes the
+  // charging power onto load_kw (embedded goe/goe-api.js). Read-only. Classifies:
+  // connect/transport failure -> unreachable, timeout -> no_answer, HTTP>=400 or
+  // non-JSON or no decodable load -> invalid_response.
+  function readGoe(plan, role) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (res) => { if (settled) return; settled = true; resolve(res); };
+      const opts = { method: 'GET', timeout: HTTP_TIMEOUT_MS };
+      let req;
+      try {
+        req = http.request(plan.url, opts, (res) => {
+          if (res.statusCode >= 400) { res.resume(); return done({ ok: false, error_code: ERR_INVALID_RESPONSE }); }
+          let body = '';
+          res.setEncoding('utf8');
+          res.on('data', (c) => { body += c; if (body.length > 262144) { try { req.destroy(); } catch (e) { /* ignore */ } } });
+          res.on('end', () => {
+            let json;
+            try { json = JSON.parse(body); } catch (e) { return done({ ok: false, error_code: ERR_INVALID_RESPONSE }); }
+            const out = goe.decodeStatus(json);
+            if (!out || !out.reading || typeof out.reading.load_kw !== 'number') return done({ ok: false, error_code: ERR_INVALID_RESPONSE });
+            done({ ok: true, reading: toReading(out.reading, role) });
+          });
+        });
+      } catch (e) {
+        return done({ ok: false, error_code: ERR_UNREACHABLE });
+      }
+      req.on('error', () => done({ ok: false, error_code: ERR_UNREACHABLE }));
+      req.on('timeout', () => { try { req.destroy(); } catch (e) { /* ignore */ } done({ ok: false, error_code: ERR_NO_ANSWER }); });
+      req.end();
+    });
+  }
+
   return function readOnce(selection, role) {
     const plan = planFor(selection);
     if (plan.adapter === 'idle') return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST, message: plan.reason });
@@ -284,6 +323,7 @@ function makeReadOnce(deps) {
     if (plan.adapter === 'solarman_v5') return readSolarman(plan, role);
     if (plan.adapter === 'fronius_solar_api') return readFronius(plan, role);
     if (plan.adapter === 'sunspec_live') return readSunSpec(plan, role);
+    if (plan.adapter === 'goe_http_api') return readGoe(plan, role);
     return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST });
   };
 }

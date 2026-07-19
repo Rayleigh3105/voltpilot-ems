@@ -20,6 +20,7 @@ const vpControlReadback = require('../nodes/vp-control-readback.js');
 const vpSourcesConfig = require('../nodes/vp-sources-config.js');
 const vpQuelle = require('../nodes/vp-quelle.js');
 const vpNetz = require('../nodes/vp-netz.js');
+const vpVerbraucher = require('../nodes/vp-verbraucher.js');
 const vpTestRequest = require('../nodes/vp-test-request.js');
 const vpTestResult = require('../nodes/vp-test-result.js');
 
@@ -263,6 +264,17 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpNetz.topicFor('src-n'), 'edge/sources/src-n/telemetry');
     assert.strictEqual(vpNetz.topicFor('a/b'), null); // same topic-injection guard as vp-quelle
     assert.strictEqual(vpNetz.topicFor('#'), null);
+  });
+
+  it('vp-verbraucher shapes a consumer load reading (load_kw only) and guards the topic', function () {
+    assert.deepStrictEqual(vpVerbraucher.shape({ load_kw: 11.04, pv_power_kw: 3 }), { load_kw: 11.04 }); // drops non-load
+    assert.deepStrictEqual(vpVerbraucher.shape({ load: 7 }), { load_kw: 7 }); // alias
+    assert.deepStrictEqual(vpVerbraucher.shape({ load_kw: 0 }), { load_kw: 0 }); // a real 0 (idle) is valid, kept
+    assert.strictEqual(vpVerbraucher.shape({ power_kw: 5 }), null); // no load -> nothing
+    assert.strictEqual(vpVerbraucher.shape({ load_kw: Infinity }), null);
+    assert.strictEqual(vpVerbraucher.topicFor('src-w'), 'edge/sources/src-w/telemetry');
+    assert.strictEqual(vpVerbraucher.topicFor('a/b'), null); // same topic-injection guard
+    assert.strictEqual(vpVerbraucher.topicFor('+'), null);
   });
 
   it('vp-test-request parses a valid test-read request and drops unusable ones', function () {

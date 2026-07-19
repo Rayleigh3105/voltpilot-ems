@@ -22,9 +22,10 @@ const fronius = require('./fronius/solar-api');
 const solarman = require('./deye/solarman-v5');
 const sunspec = require('./sunspec/sunspec-live');
 const discovery = require('./sunspec/model-discovery');
+const goe = require('./goe/goe-api');
 
 function deps(extra) {
-  return Object.assign({ deye, modbus, fronius, solarman, sunspec, discovery, net, http, https }, extra || {});
+  return Object.assign({ deye, modbus, fronius, solarman, sunspec, discovery, goe, net, http, https }, extra || {});
 }
 
 // Build a SunSpec float-113 register image (Map addr->word) for the reader tests.
@@ -360,4 +361,65 @@ test('fronius: a live Solar API host decodes into a reading', async () => {
   } finally {
     server.close();
   }
+});
+
+// --- go-e Charger (HTTP API v2) consumer read path ---------------------------
+
+test('go-e: a live /api/status host decodes charging power into load_kw (consumer)', async () => {
+  const body = JSON.stringify({
+    car: 2,
+    alw: true,
+    amp: 16,
+    nrg: [232, 231, 232, 0, 16, 16, 16, 3680, 3700, 3660, 0, 11040, 99, 99, 99, 0],
+  });
+  const server = http.createServer((req, res) => { res.setHeader('content-type', 'application/json'); res.end(body); });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce({ communication: 'goe_http_api', family: 'goe_http_api', connection: { ip: '127.0.0.1', port } }, 'consumer');
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.strictEqual(res.reading.load_kw, 11.04);
+    // a consumer read surfaces only load (no pv/grid/soc fabricated).
+    assert.strictEqual(res.reading.pv_kw, undefined);
+    assert.strictEqual(res.reading.grid_kw, undefined);
+  } finally {
+    server.close();
+  }
+});
+
+test('go-e: a not-charging device reports a real load_kw 0 (kept)', async () => {
+  const body = JSON.stringify({ car: 4, nrg: new Array(16).fill(0) });
+  const server = http.createServer((req, res) => res.end(body));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce({ communication: 'goe_http_api', family: 'goe_http_api', connection: { ip: '127.0.0.1', port } }, 'consumer');
+    assert.strictEqual(res.ok, true, JSON.stringify(res));
+    assert.strictEqual(res.reading.load_kw, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test('go-e: a reachable host with no nrg classifies as invalid_response (no fabricated load)', async () => {
+  const server = http.createServer((req, res) => res.end(JSON.stringify({ car: 2 })));
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const readOnce = testRead.makeReadOnce(deps());
+    const res = await readOnce({ communication: 'goe_http_api', family: 'goe_http_api', connection: { ip: '127.0.0.1', port } }, 'consumer');
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.error_code, testRead.ERR_INVALID_RESPONSE);
+  } finally {
+    server.close();
+  }
+});
+
+test('go-e: a refused connect classifies as unreachable', async () => {
+  const readOnce = testRead.makeReadOnce(deps({ httpTimeoutMs: 400 }));
+  const res = await readOnce({ communication: 'goe_http_api', family: 'goe_http_api', connection: { ip: '127.0.0.1', port: 1 } }, 'consumer');
+  assert.strictEqual(res.ok, false);
+  assert.strictEqual(res.error_code, testRead.ERR_UNREACHABLE);
 });
