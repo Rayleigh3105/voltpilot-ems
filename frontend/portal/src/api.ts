@@ -1138,6 +1138,16 @@ export const api = {
   /** AE7 usage profile + emphasis map (the adaptive view's second axis). */
   usageProfile: (siteId: string) =>
     request<SiteUsageProfile>(`/api/v1/sites/${siteId}/profile`),
+  /**
+   * Set (or clear with null) the site's usage-profile override (AE7, spec §2:
+   * "Kunde/Admin kann explizit überschreiben"). Customer- or admin-scoped like
+   * the GET; returns the recomputed read-model. Null re-enables auto-derivation.
+   */
+  setUsageProfileOverride: (siteId: string, override: string | null) =>
+    request<SiteUsageProfile>(`/api/v1/sites/${siteId}/profile`, {
+      method: 'PUT',
+      body: JSON.stringify({ override }),
+    }),
   /** Per-entity channel history over the v2 telemetry rollups. */
   entityHistory: (siteId: string, entityId: string, range: HistoryRange, at?: string) =>
     request<EntityHistory>(

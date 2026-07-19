@@ -16,8 +16,13 @@ import { fmtNum } from './format';
  * from this module so it stays unit-testable without a DOM.
  */
 
-/** The step rail of the flow, in order (register-first). */
-export const FLOW_STEPS = ['Anlage', 'Register', 'Nutzung', 'Gerät'] as const;
+/**
+ * The step rail of the flow, in order (register-first). AE5 (spec §3) moved the
+ * device claim ("Gerät") ahead of the adaptive "Nutzung" step: the entity
+ * bootstrap + usage-profile + auto-start seeding need the Anlage's master data
+ * AND its gateway device in place, so Nutzung is now the last, adaptive step.
+ */
+export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Nutzung'] as const;
 
 export type FlowStep = 1 | 2 | 3 | 4;
 

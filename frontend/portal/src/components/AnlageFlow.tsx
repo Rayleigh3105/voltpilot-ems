@@ -11,18 +11,24 @@ import {
   type PlantKind,
   type Site,
   type SiteAsset,
+  type SiteEntity,
+  type SiteUsageProfile,
   type TarifArt,
 } from '../api';
 import { isPlatformAdmin } from '../auth';
+import { entitiesApi, type AutoStartOutcome, type EntityTypeDef } from '../entitiesApi';
 import {
-  LASTSPITZEN_CUSTOMER_INFO,
-  NUTZUNG_QUESTION,
-  buildLastspitzenUpdate,
-  marktoptimierungLine,
-  parseLastspitzenForm,
-  supportsLastspitzenConfig,
-} from '../moduleSurface';
-import { optimizerApi, type LeistungspreisAbrechnung, type OptimizerConfig } from '../optimizerApi';
+  PROFILE_OPTIONS,
+  autoStartSummary,
+  creatableConsumerTypes,
+  entitiesRecognisedSummary,
+  entityGroupLabel,
+  initialProfileChoice,
+  overrideForChoice,
+  profileChoiceChanged,
+  profileLabel,
+  type ProfileChoice,
+} from '../adaptiveOnboarding';
 import {
   SPEICHERSCHONUNG_OPTIONS,
   presetOf,
@@ -237,6 +243,8 @@ export function AnlageFlow({
   const [pvApplied, setPvApplied] = useState<MastrPreview | null>(null);
   const [storageApplied, setStorageApplied] = useState<MastrPreview | null>(null);
   const [manualBatterySaved, setManualBatterySaved] = useState(false);
+  // What the AE7 auto-start seeded (shown on the summary; null = none/skipped).
+  const [autoStart, setAutoStart] = useState<AutoStartOutcome | null>(null);
   const [step, setStep] = useState<number>(initialFlowStep(sites.length > 0));
 
   const locationSites = existingSites ?? sites;
@@ -271,17 +279,25 @@ export function AnlageFlow({
           onSkip={() => setStep(3)}
         />
       )}
-      {step === 3 && site && <NutzungStep site={site} onNext={() => setStep(4)} />}
-      {step === 4 && site && (
+      {step === 3 && site && (
         <GeraetStep
           sites={createdHere ? [site] : locationSites}
           site={site}
           onSiteChange={setSite}
           onClaimed={(d) => {
             setClaimed(d);
+            setStep(4);
+          }}
+          onSkip={() => setStep(4)}
+        />
+      )}
+      {step === 4 && site && (
+        <NutzungStep
+          site={site}
+          onNext={(outcome) => {
+            setAutoStart(outcome);
             setStep(5);
           }}
-          onSkip={() => setStep(5)}
         />
       )}
       {finished &&
@@ -295,6 +311,7 @@ export function AnlageFlow({
             pvApplied={pvApplied}
             storageApplied={storageApplied}
             manualBatterySaved={manualBatterySaved}
+            autoStart={autoStart}
             onDone={onDone}
           />
         ))}
@@ -979,32 +996,38 @@ function ManualBatteryStep({
 }
 
 /**
- * Step 3 · Nutzung: "Wie soll Ihr Speicher arbeiten?" (captain design update
- * 2026-07-16) - the usages are chosen at setup time, changeable later on the
- * Anlage's Optimierung subpage. Two parts, both optional and skippable:
+ * Step 4 · Nutzung: the ADAPTIVE step (AE5, spec §2/§3/§10). Three parts, all
+ * optional and skippable:
  *
- *  - Umgang mit dem Speicher (Speicherschonung preset, default Ausgewogen) -
- *    shown when the Register/manual step left a battery with complete master
- *    data; saved through the battery PUT carrying those values unchanged.
- *  - Optimierungs-Nutzungen (multi-select): Marktoptimierung is always on (it
- *    is the product); Lastspitzenkappung is selectable as INTENT. When
- *    VoltPilot itself onboards (platform-admin via the tenant switcher) AND
- *    the backend already carries the contract fields (probed on the
- *    optimizer-config GET - sibling task vp-peakshave-core-p1), the contract
- *    fields appear inline and save via the admin config PUT; a plain customer
- *    sees only the honest info text and nothing is persisted (Vertrieb läuft
- *    persönlich).
+ *  - Ihre Geräte: the entities of the Anlage. When VoltPilot onboards
+ *    (platform-admin via the tenant switcher) the pilot entities are composed
+ *    from the Register/Gerät master data via the v2 bootstrap and additional
+ *    controllable Verbraucher (Wallbox/Heizstab/…) can be added; a customer
+ *    sees the recognised devices read-only (the permanent editing home is the
+ *    "Geräte & Entitäten" surface).
+ *  - Nutzungsprofil: the DERIVED usage profile (AE7 `GET /sites/{id}/profile`)
+ *    with an explicit override. This is the second adaptation axis - it steers
+ *    which view emphasis the customer then gets (Geld-/Peak-/Flow-zentriert).
+ *  - Umgang mit dem Speicher: Speicherschonung preset (battery master data).
+ *
+ * On finish the profile override is written (only on a change), the
+ * Speicherschonung saved, and - for an admin onboarding - the profile's
+ * auto-start starter flow is seeded (`POST .../flows/auto-start`), so the
+ * customer never faces an empty flow. All decision logic lives in
+ * ../adaptiveOnboarding; this component only wires + renders it.
  */
-function NutzungStep({ site, onNext }: { site: Site; onNext: () => void }) {
+function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStartOutcome | null) => void }) {
   const [battery, setBattery] = useState<SiteAsset | null>(null);
   const [schonung, setSchonung] = useState<SpeicherschonungPreset>('ausgewogen');
-  const [lastspitzen, setLastspitzen] = useState(false);
-  const [adminConfig, setAdminConfig] = useState<OptimizerConfig | null>(null);
-  const [lp, setLp] = useState('');
-  const [abrechnung, setAbrechnung] = useState<LeistungspreisAbrechnung>('jahr');
-  const [reserve, setReserve] = useState('');
+  const [entities, setEntities] = useState<SiteEntity[]>([]);
+  const [profile, setProfile] = useState<SiteUsageProfile | null>(null);
+  const [choice, setChoice] = useState<ProfileChoice>('auto');
+  const [catalog, setCatalog] = useState<EntityTypeDef[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Once the customer picks a profile, a late-arriving profile load must not
+  // clobber their selection back to the derived default.
+  const choiceTouched = useRef(false);
 
   const admin = isPlatformAdmin();
 
@@ -1027,18 +1050,42 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: () => void }) {
     };
   }, [site.id]);
 
-  // Admin only: probe whether the backend already carries the contract fields.
-  useEffect(() => {
-    if (!admin) return;
-    let active = true;
-    optimizerApi.configViaSwitcher(site.id).then(
-      (c) => {
-        if (active) setAdminConfig(c);
-      },
-      () => {
-        if (active) setAdminConfig(null);
-      },
+  // Compose the pilot entities (admin bootstrap - idempotent, fail-soft), then
+  // load the entity list + derived usage profile (+ the type catalog for the
+  // admin add). A customer just reads what exists; nothing here blocks the step.
+  const loadEntities = () =>
+    api.siteEntities(site.id).then(
+      (d) => setEntities(d.entities),
+      () => setEntities([]),
     );
+
+  useEffect(() => {
+    let active = true;
+    async function run() {
+      if (admin) {
+        try {
+          await entitiesApi.bootstrap(site.id);
+        } catch {
+          // Best-effort: an un-migratable or gateway-less site just shows fewer
+          // entities - the wizard never dead-ends on it.
+        }
+      }
+      const [d, prof] = await Promise.all([
+        api.siteEntities(site.id).then((x) => x.entities).catch(() => [] as SiteEntity[]),
+        api.usageProfile(site.id).then((p) => p).catch(() => null),
+      ]);
+      if (!active) return;
+      setEntities(d);
+      setProfile(prof);
+      if (!choiceTouched.current) setChoice(initialProfileChoice(prof));
+      if (admin) {
+        entitiesApi.typeCatalog().then(
+          (c) => active && setCatalog(c.types),
+          () => {},
+        );
+      }
+    }
+    void run();
     return () => {
       active = false;
     };
@@ -1049,27 +1096,15 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: () => void }) {
     battery.capacityKwh != null &&
     battery.maxChargeKw != null &&
     battery.maxDischargeKw != null;
-  const adminFields = admin && supportsLastspitzenConfig(adminConfig?.overrides);
+  const derivedLabel = profileLabel(profile?.derivedProfile);
 
   async function next() {
     if (busy) return;
-    setErr(null);
-
-    // Validate the admin contract fields BEFORE any write.
-    let lastspitzenBody: ReturnType<typeof buildLastspitzenUpdate> | null = null;
-    if (lastspitzen && adminFields && adminConfig) {
-      const parsed = parseLastspitzenForm({ leistungspreis: lp, abrechnung, reserve });
-      if (!parsed.ok) {
-        setErr(parsed.error);
-        return;
-      }
-      lastspitzenBody = buildLastspitzenUpdate(adminConfig.overrides, parsed.value);
-    }
-
     setBusy(true);
+    setErr(null);
     try {
-      // An untouched Ausgewogen equals the stored effective preset - only a
-      // real change writes (never pins the default onto the wear column).
+      // Speicherschonung: an untouched Ausgewogen equals the stored effective
+      // preset - only a real change writes (never pins the default).
       if (batteryEditable && battery && schonung !== presetOf(battery.speicherschonung)) {
         await api.saveBattery(site.id, {
           capacityKwh: battery.capacityKwh as number,
@@ -1080,10 +1115,17 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: () => void }) {
           speicherschonung: schonung,
         });
       }
-      if (lastspitzenBody) {
-        await optimizerApi.updateConfigViaSwitcher(site.id, lastspitzenBody);
+      // Usage-profile override: only on a real change (null re-enables auto).
+      if (profileChoiceChanged(choice, profile)) {
+        await api.setUsageProfileOverride(site.id, overrideForChoice(choice));
       }
-      onNext();
+      // Auto-start the profile's starter flow (admin onboarding; fail-soft,
+      // idempotent - a site with a flow / no battery is skipped, not an error).
+      let outcome: AutoStartOutcome | null = null;
+      if (admin) {
+        outcome = await entitiesApi.autoStart(site.id).catch(() => null);
+      }
+      onNext(outcome);
     } catch {
       setErr('Die Auswahl konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
     } finally {
@@ -1091,104 +1133,106 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: () => void }) {
     }
   }
 
+  const summary = entitiesRecognisedSummary(entities);
+
   return (
     <div className="vp-onboarding-step">
-      <h3>{NUTZUNG_QUESTION}</h3>
+      <h3>Wie nutzen Sie Ihre Anlage?</h3>
       <p className="vp-muted">
-        Sie können das später jederzeit auf der Anlagen-Seite unter „Optimierung" ändern.
+        Daraus richten wir Ihre Ansicht ein. Sie können alles später jederzeit auf der
+        Anlagen-Seite ändern.
       </p>
 
-      {batteryEditable && (
+      <section className="vp-onb-block">
+        <h4 className="vp-onb-block-title">Ihre Geräte</h4>
+        {summary ? (
+          <>
+            <p className="vp-note" style={{ marginTop: 0 }}>
+              {summary}
+            </p>
+            <ul className="vp-onb-entities">
+              {entities.map((e) => (
+                <li key={e.id} className="vp-onb-entity">
+                  <span className="vp-onb-entity-role">{entityGroupLabel(e)}</span>
+                  <span className="vp-onb-entity-name">{e.label ?? e.typeLabel}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="vp-note" style={{ marginTop: 0 }}>
+            {admin
+              ? 'Noch keine Geräte erkannt - legen Sie zuerst PV/Speicher und das Gerät an.'
+              : 'Ihre Geräte richten wir aus Ihren Angaben ein. Weitere - etwa eine Wallbox oder einen Heizstab - ergänzt VoltPilot für Sie.'}
+          </p>
+        )}
+        {admin && <ConsumerAddRow siteId={site.id} catalog={catalog} onAdded={loadEntities} />}
+      </section>
+
+      <section className="vp-onb-block">
+        <h4 className="vp-onb-block-title">Nutzungsprofil</h4>
+        <p className="vp-note" style={{ marginTop: 0 }}>
+          Bestimmt, worauf Ihre Ansicht den Fokus legt.
+          {choice === 'auto' && ` Abgeleitet aus Ihrer Anlage: ${derivedLabel}.`}
+        </p>
         <fieldset className="vp-schonung">
-          <legend className="vp-schonung-legend">Umgang mit dem Speicher</legend>
-          {SPEICHERSCHONUNG_OPTIONS.map((o) => (
+          <legend className="vp-visually-hidden">Nutzungsprofil</legend>
+          {PROFILE_OPTIONS.map((o) => (
             <label
               key={o.value}
-              className={'vp-schonung-opt' + (schonung === o.value ? ' selected' : '')}
+              className={'vp-schonung-opt' + (choice === o.value ? ' selected' : '')}
             >
               <input
                 type="radio"
-                name="nutzung-speicherschonung"
+                name="nutzung-profil"
                 value={o.value}
-                checked={schonung === o.value}
-                onChange={() => setSchonung(o.value)}
+                checked={choice === o.value}
+                onChange={() => {
+                  choiceTouched.current = true;
+                  setChoice(o.value);
+                }}
               />
               <span className="vp-schonung-main">
                 <span className="vp-schonung-label">
                   {o.label}
-                  {o.recommended ? ' (empfohlen)' : ''}
+                  {o.value === 'auto' ? ` (${derivedLabel})` : ''}
                 </span>
                 <span className="vp-schonung-sentence">{o.sentence}</span>
               </span>
             </label>
           ))}
         </fieldset>
-      )}
+      </section>
 
-      <fieldset className="vp-schonung">
-        <legend className="vp-schonung-legend">Optimierungs-Nutzungen</legend>
-        <label className="vp-schonung-opt selected">
-          <input type="checkbox" checked disabled />
-          <span className="vp-schonung-main">
-            <span className="vp-schonung-label">Marktoptimierung (immer aktiv)</span>
-            <span className="vp-schonung-sentence">
-              {marktoptimierungLine(site.plantKind, site.tarifArt)}
-            </span>
-          </span>
-        </label>
-        <label className={'vp-schonung-opt' + (lastspitzen ? ' selected' : '')}>
-          <input
-            type="checkbox"
-            checked={lastspitzen}
-            onChange={() => setLastspitzen((v) => !v)}
-          />
-          <span className="vp-schonung-main">
-            <span className="vp-schonung-label">Lastspitzenkappung</span>
-            <span className="vp-schonung-sentence">
-              Für Gewerbe mit Leistungsmessung: die Batterie kappt Ihre Bezugsspitze – oft
-              mehrere tausend Euro Leistungspreis im Jahr.
-            </span>
-          </span>
-        </label>
-        {lastspitzen && !adminFields && (
-          <p className="vp-note" style={{ margin: 0 }}>
-            {LASTSPITZEN_CUSTOMER_INFO}
-          </p>
-        )}
-        {lastspitzen && adminFields && (
-          <div className="vp-form-stack" style={{ marginTop: 8 }}>
-            <Input
-              label="Leistungspreis (€/kW) *"
-              placeholder="z. B. 120"
-              inputMode="decimal"
-              value={lp}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLp(e.target.value)}
-            />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <label htmlFor="nutzung-abrechnung" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-                Abrechnung
-              </label>
-              <select
-                id="nutzung-abrechnung"
-                className="vp-select"
-                value={abrechnung}
-                onChange={(e) => setAbrechnung(e.target.value as LeistungspreisAbrechnung)}
+      {batteryEditable && (
+        <section className="vp-onb-block">
+          <h4 className="vp-onb-block-title">Umgang mit dem Speicher</h4>
+          <fieldset className="vp-schonung">
+            <legend className="vp-visually-hidden">Umgang mit dem Speicher</legend>
+            {SPEICHERSCHONUNG_OPTIONS.map((o) => (
+              <label
+                key={o.value}
+                className={'vp-schonung-opt' + (schonung === o.value ? ' selected' : '')}
               >
-                <option value="jahr">Jahresleistungspreis</option>
-                <option value="monat">Monatsleistungspreis</option>
-              </select>
-            </div>
-            <Input
-              label="Reserve (kW)"
-              placeholder="optional"
-              inputMode="decimal"
-              value={reserve}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReserve(e.target.value)}
-              hint="Sicherheitsabstand unter der Zielspitze. Leer lassen für den Standard."
-            />
-          </div>
-        )}
-      </fieldset>
+                <input
+                  type="radio"
+                  name="nutzung-speicherschonung"
+                  value={o.value}
+                  checked={schonung === o.value}
+                  onChange={() => setSchonung(o.value)}
+                />
+                <span className="vp-schonung-main">
+                  <span className="vp-schonung-label">
+                    {o.label}
+                    {o.recommended ? ' (empfohlen)' : ''}
+                  </span>
+                  <span className="vp-schonung-sentence">{o.sentence}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        </section>
+      )}
 
       <Button
         variant="primary"
@@ -1201,10 +1245,119 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: () => void }) {
         {busy ? 'Speichere…' : 'Weiter'}
       </Button>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
-        <button type="button" className="vp-linklike" onClick={onNext}>
+        <button type="button" className="vp-linklike" onClick={() => onNext(null)}>
           Überspringen - später festlegen
         </button>
       </p>
+      {err && <div className="vp-alert vp-alert-err">{err}</div>}
+    </div>
+  );
+}
+
+/**
+ * Admin-only inline row to add a controllable Verbraucher (Wallbox/Heizstab/
+ * generischer Verbraucher) during onboarding - reuses the E1b entity CRUD
+ * (`entitiesApi.create`). PV/Speicher/Netz come from the Register/Gerät steps
+ * + the bootstrap, so only consumer types are offered here.
+ */
+function ConsumerAddRow({
+  siteId,
+  catalog,
+  onAdded,
+}: {
+  siteId: string;
+  catalog: EntityTypeDef[];
+  onAdded: () => void | Promise<void>;
+}) {
+  const types = creatableConsumerTypes(catalog);
+  const [open, setOpen] = useState(false);
+  const [entityType, setEntityType] = useState('');
+  const [label, setLabel] = useState('');
+  const [maxPowerKw, setMaxPowerKw] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!entityType && types.length > 0) setEntityType(types[0].type);
+  }, [types, entityType]);
+
+  if (types.length === 0) return null;
+
+  async function add() {
+    if (busy || !entityType) return;
+    const power = maxPowerKw.trim() === '' ? undefined : Number(maxPowerKw.replace(',', '.'));
+    if (power !== undefined && (Number.isNaN(power) || power < 0)) {
+      setErr('Bitte geben Sie eine gültige Leistung in kW an.');
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await entitiesApi.create(siteId, {
+        entityType,
+        label: label.trim() || undefined,
+        maxPowerKw: power,
+      });
+      setLabel('');
+      setMaxPowerKw('');
+      setOpen(false);
+      await onAdded();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Der Verbraucher konnte nicht angelegt werden.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="vp-linklike" onClick={() => setOpen(true)}>
+        <Icon name="plus" size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+        Verbraucher hinzufügen
+      </button>
+    );
+  }
+
+  return (
+    <div className="vp-onb-add">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <label htmlFor="onb-consumer-type" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+          Verbraucher-Typ
+        </label>
+        <select
+          id="onb-consumer-type"
+          className="vp-select"
+          value={entityType}
+          onChange={(e) => setEntityType(e.target.value)}
+        >
+          {types.map((t) => (
+            <option key={t.type} value={t.type}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <Input
+        label="Bezeichnung (optional)"
+        placeholder="z. B. Wallbox Carport"
+        value={label}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLabel(e.target.value)}
+      />
+      <Input
+        label="Leistung (kW, optional)"
+        placeholder="z. B. 11"
+        inputMode="decimal"
+        value={maxPowerKw}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMaxPowerKw(e.target.value)}
+      />
+      <div className="vp-field-row">
+        <Button variant="outline" onClick={add} disabled={busy}>
+          {busy ? 'Füge hinzu…' : 'Hinzufügen'}
+        </Button>
+        <button type="button" className="vp-linklike vp-linklike-quiet" onClick={() => setOpen(false)}>
+          Abbrechen
+        </button>
+      </div>
       {err && <div className="vp-alert vp-alert-err">{err}</div>}
     </div>
   );
@@ -1415,6 +1568,7 @@ function SummaryStep({
   pvApplied,
   storageApplied,
   manualBatterySaved,
+  autoStart,
   onDone,
 }: {
   site: Site;
@@ -1422,9 +1576,11 @@ function SummaryStep({
   pvApplied: MastrPreview | null;
   storageApplied: MastrPreview | null;
   manualBatterySaved: boolean;
+  autoStart: AutoStartOutcome | null;
   onDone: () => void;
 }) {
   const fromRegistry = pvApplied != null || storageApplied != null;
+  const autoStartLine = autoStartSummary(autoStart);
   return (
     <div className="vp-onboarding-step" style={{ textAlign: 'center' }}>
       <div className="vp-success-mark" aria-hidden="true">
@@ -1441,6 +1597,11 @@ function SummaryStep({
         <SummaryRow k="Gerät" v={claimed ? claimed.externalRef : 'später verbinden'} />
         {fromRegistry && <SummaryRow k="Quelle" v="Marktstammdaten" />}
       </dl>
+      {autoStartLine && (
+        <p className="vp-note" style={{ marginTop: 12 }}>
+          {autoStartLine}
+        </p>
+      )}
       {!claimed && (
         <p className="vp-note" style={{ marginTop: 12 }}>
           Sie können das Gerät jederzeit nachholen - auf der Anlagen-Seite unter „Technik &amp;

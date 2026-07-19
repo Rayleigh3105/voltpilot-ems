@@ -3206,6 +3206,65 @@ button.vp-tech-card-h.toggle {
   font-size: 0.82rem;
   color: var(--vp-text-muted, #6c757d);
 }
+
+/* AE5 adaptive onboarding (Nutzung step: Geräte + Nutzungsprofil + Speicher) */
+.vp-onb-block {
+  margin-top: var(--vp-space-4);
+  min-width: 0;
+}
+.vp-onb-block-title {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.vp-onb-entities {
+  list-style: none;
+  margin: var(--vp-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.vp-onb-entity {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-onb-entity-role {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--vp-text-muted, #6c757d);
+  min-width: 5.5rem;
+}
+.vp-onb-entity-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-onb-add {
+  margin-top: var(--vp-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-3);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+}
+.vp-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .vp-tech-editactions {
   display: flex;
   gap: var(--vp-space-2);

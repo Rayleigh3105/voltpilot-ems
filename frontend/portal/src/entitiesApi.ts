@@ -32,6 +32,33 @@ export interface SaveEntityInput {
   guards?: SiteEntity['guards'];
 }
 
+/** One entity as the admin registry surface returns it (bootstrap/create/list). */
+export interface AdminEntity {
+  id: string;
+  entityType: string;
+  role: string;
+  label: string | null;
+  deviceId: string | null;
+}
+
+/** The v2 pilot-entity bootstrap response (compose from v1 master data + push). */
+export interface EntityBootstrapResult {
+  entities: AdminEntity[];
+  skipped: string[];
+  push: { published: boolean; reason: string | null } | null;
+}
+
+/** The AE7 auto-start-flow seeding outcome (created, or skipped with a reason). */
+export interface AutoStartOutcome {
+  created: boolean;
+  reason: string | null;
+  profile: string | null;
+  flowId: string | null;
+  version: number | null;
+  name: string | null;
+  message: string | null;
+}
+
 export const entitiesApi = {
   /** The data-driven entity-type catalog (admin editor palette). */
   typeCatalog: () => request<EntityTypeCatalog>('/api/v1/admin/entity-type-catalog'),
@@ -54,5 +81,25 @@ export const entitiesApi = {
   remove: (siteId: string, pointId: string) =>
     request<void>(`/api/v1/admin/sites/${siteId}/v2-entities/${pointId}`, {
       method: 'DELETE',
+    }),
+
+  /**
+   * AE5 onboarding: compose the site's pilot entities (battery-hybrid / producer
+   * / grid-meter) from its v1 master data and best-effort push the registry to
+   * the gateway device. Idempotent - re-running refreshes. Admin-only.
+   */
+  bootstrap: (siteId: string) =>
+    request<EntityBootstrapResult>(`/api/v1/admin/sites/${siteId}/v2-entities/bootstrap`, {
+      method: 'POST',
+    }),
+
+  /**
+   * AE7 auto-start (spec §3): seed the site's derived-profile starter flow DRAFT
+   * if it has none, so onboarding never dead-ends on an empty editor. Idempotent
+   * (an existing flow / no battery is skipped, never an error). Admin-only.
+   */
+  autoStart: (siteId: string) =>
+    request<AutoStartOutcome>(`/api/v1/admin/sites/${siteId}/flows/auto-start`, {
+      method: 'POST',
     }),
 };
