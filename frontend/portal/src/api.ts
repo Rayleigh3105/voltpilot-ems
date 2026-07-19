@@ -463,6 +463,90 @@ export interface CreateMeasurementPointInput {
   registryUnitId?: string;
 }
 
+// ---- v2 entities ("Geräte & Entitäten") ----------------------------------
+
+/** Per-entity Soll/Ist verdict (edge-reported Ist vs. cloud registry Soll). */
+export type EntitySyncStatus =
+  | 'in_sync'
+  | 'pending'
+  | 'missing_on_device'
+  | 'unreported'
+  | 'never_pushed';
+
+/** The edge-reported observed Ist of one entity (null = nothing reported). */
+export interface EntityObserved {
+  health: 'ok' | 'stale' | 'never';
+  lastTelemetryAt: string | null;
+  channels: string[] | null;
+  appliedType: string | null;
+  reportedAt: string;
+}
+
+/** One v2 entity with its capabilities, guard config and drift verdict. */
+export interface SiteEntity {
+  id: string;
+  entityType: string;
+  typeLabel: string;
+  role: string;
+  label: string | null;
+  control: boolean;
+  deviceId: string | null;
+  capabilities: {
+    measure?: { channel: string; unit?: string }[];
+    actuate?: { command: string; min?: number; max?: number; modes?: string[] }[];
+  } | null;
+  guards: {
+    limits?: Record<string, number | boolean>;
+    failsafe?: { behavior: string };
+  } | null;
+  syncStatus: EntitySyncStatus;
+  observed: EntityObserved | null;
+}
+
+/** The composed registry Soll + the edge's echoed revision. */
+export interface EntityRegistryState {
+  revision: string;
+  composedAt: string;
+  deviceId: string | null;
+  reportedRevision: string | null;
+  reportedAt: string | null;
+}
+
+/** One edge-local commissioning item (inverter/source; never auto-imported). */
+export interface EntityLocalSetup {
+  id: string;
+  kind: string;
+  label: string | null;
+  reportedAt: string;
+}
+
+/** The whole "Geräte & Entitäten" surface for a site. */
+export interface SiteEntities {
+  registry: EntityRegistryState | null;
+  entities: SiteEntity[];
+  localSetup: EntityLocalSetup[];
+  staleOnDevice: string[];
+}
+
+/** One aggregated bucket of one entity channel. */
+export interface EntityHistoryBucket {
+  start: string;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  last: number | null;
+  n: number;
+}
+
+/** Per-entity channel history (channel name -> bucket series). */
+export interface EntityHistory {
+  range: HistoryRange;
+  from: string;
+  to: string;
+  bucketMinutes: number;
+  channels: Record<string, EntityHistoryBucket[]>;
+}
+
 /**
  * Mapped MaStR record for confirmation ("Anlage verknüpfen" step 2). Nothing
  * is persisted until mastrApply; null fields mean "nicht im Register
@@ -973,6 +1057,16 @@ export const api = {
     request<MeasurementPoint[]>(`/api/v1/sites/${siteId}/measurement-points/${pointId}`, {
       method: 'DELETE',
     }),
+  /** The site's v2 "Geräte & Entitäten" surface (Soll/Ist reconciliation). */
+  siteEntities: (siteId: string) =>
+    request<SiteEntities>(`/api/v1/sites/${siteId}/entities`),
+  /** Per-entity channel history over the v2 telemetry rollups. */
+  entityHistory: (siteId: string, entityId: string, range: HistoryRange, at?: string) =>
+    request<EntityHistory>(
+      `/api/v1/sites/${siteId}/entities/${entityId}/history?range=${range}${
+        at ? `&at=${at}` : ''
+      }`,
+    ),
   /**
    * Save the site's battery master data by hand and maintain its controlling
    * device link ("Ihr Wechselrichter steuert diesen Speicher"). Omit deviceId

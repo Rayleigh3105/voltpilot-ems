@@ -43,6 +43,7 @@ import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
 import { LiveSection } from './LiveSection';
+import { EntitaetenSection } from './EntitaetenSection';
 import { SimulationSection } from '../components/SimulationView';
 import { TechnikSection } from './AnlageTechnik';
 
@@ -279,6 +280,10 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     title: 'Technik & Einstellungen',
     subtitle: 'Wechselrichter, Speicher, Anlagentyp, Stromtarif und der Standort Ihrer Anlage.',
   },
+  entitaeten: {
+    title: 'Geräte & Entitäten',
+    subtitle: 'Alle Mess- und Steuer-Einheiten dieser Anlage - Fähigkeiten, Zustand und Konfiguration.',
+  },
   optimierung: {
     title: 'Optimierung',
     subtitle: 'Was VoltPilot für Ihre Anlage steuert - was aktiv ist, was es bewirkt und was noch möglich ist.',
@@ -326,6 +331,7 @@ function AnlagenSubPage({
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
       {sub === 'optimierung' && <OptimierungSection site={site} isAdmin={isAdmin} />}
+      {sub === 'entitaeten' && <EntitaetenSection site={site} isAdmin={isAdmin} />}
       {sub === 'simulation' && <SimulationSection site={site} />}
       {sub === 'technik' && (
         <TechnikSection
@@ -799,6 +805,13 @@ export function AnlageSeite({
               title="Technik & Einstellungen"
               line="Wechselrichter, Speicher, Tarif und Standort."
               onOpen={() => onOpenSub('technik')}
+            />
+            <DetailCard
+              icon="cpu"
+              category="primary"
+              title="Geräte & Entitäten"
+              line="Alle Mess- und Steuer-Einheiten - Fähigkeiten, Zustand, Konfiguration."
+              onOpen={() => onOpenSub('entitaeten')}
             />
             <DetailCard
               icon="euro"
