@@ -9,6 +9,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/topology"
 )
 
 // The v2 entity layer of the agent (contract:
@@ -248,6 +249,56 @@ func (a *Agent) localSetupSummary() []cloud.LocalSetupEntry {
 		})
 	}
 	return out
+}
+
+// Topology builds the Anlagen-Topologie-Read-Model (AE1) from the applied
+// entity registry + the latest per-entity local readings, using the SHARED
+// derivation (topology.Resolve default roles -> topology.Derive). A device
+// without a pushed registry yields an empty topology (byte-for-byte v1). The
+// edge uses default role assignments only; the cloud layers stored overrides
+// on the same defaults (contract docs/contracts/v2/topology-read-model.md).
+func (a *Agent) Topology() topology.Topology {
+	now := time.Now()
+	a.entMu.Lock()
+	reg := a.entRegistry
+	raw := make([]topology.RawEntity, 0, len(reg.Entities))
+	for _, e := range reg.Entities {
+		re := topology.RawEntity{
+			ID: e.ID, Type: e.Type, Label: e.Label,
+			Category: e.Category(), Health: entityHealth(a.entReadings[e.ID], now, hasReading(a.entReadings, e.ID)),
+		}
+		er, ok := a.entReadings[e.ID]
+		for _, m := range e.Capabilities.Measure {
+			ch := topology.RawChannel{Channel: m.Channel}
+			if ok {
+				if v, has := er.channels[m.Channel]; has {
+					val := v
+					ch.Value = &val
+				}
+			}
+			re.Channels = append(re.Channels, ch)
+		}
+		raw = append(raw, re)
+	}
+	a.entMu.Unlock()
+	return topology.Derive(topology.Resolve(raw))
+}
+
+func hasReading(m map[string]entReading, id string) bool {
+	_, ok := m[id]
+	return ok
+}
+
+// entityHealth maps a reading's freshness to the read-model health word,
+// mirroring entitiesSummary (never/stale/ok on the 5-min liveness window).
+func entityHealth(er entReading, now time.Time, has bool) string {
+	if !has {
+		return "never"
+	}
+	if now.Sub(er.recv) <= entityHealthWindow {
+		return "ok"
+	}
+	return "stale"
 }
 
 // entityGuardReading builds the guard context for one entity from ITS latest

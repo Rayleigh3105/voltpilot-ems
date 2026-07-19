@@ -440,6 +440,12 @@ const (
 	catMeasureOnly = "measure-only"
 )
 
+// Category returns the guard-semantics category ("storage"|"producer"|
+// "consumer"|"measure-only") - the exported form for the topology read-model's
+// default role resolution (the cloud type catalog uses "meter" for the same
+// role, accepted as an alias by topology.DefaultRole).
+func (e Entity) Category() string { return e.category() }
+
 func (e Entity) category() string {
 	switch e.Type {
 	case TypeBatteryHybrid:

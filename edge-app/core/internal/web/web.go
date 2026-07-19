@@ -23,6 +23,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/topology"
 )
 
 //go:embed static
@@ -94,6 +95,15 @@ type DespikeController interface {
 	SetDespike(guards.DespikeSettings) (guards.DespikeStatus, error)
 }
 
+// TopologyController exposes the Anlagen-Topologie-Read-Model (AE1): the site's
+// v2 entities aggregated into the hub topology (role groups + directed flows)
+// the adaptive energy-flow diagram renders. Read-only; the agent implements it
+// from its applied entity registry + latest per-entity readings. A device
+// without a pushed registry returns an empty topology.
+type TopologyController interface {
+	Topology() topology.Topology
+}
+
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
 // its own clock drifts from the edge device's, plus the derived onboarding-gate
@@ -116,6 +126,13 @@ type stateEnvelope struct {
 	// the envelope entirely so the UI cannot accidentally reveal it (the
 	// belt-and-suspenders half of the enforcement).
 	ClaimUnlocked bool `json:"claim_unlocked"`
+
+	// Topology is the additive AE1 Anlagen-Topologie-Read-Model: the site's v2
+	// entities aggregated into role-grouped hub nodes + directed flows (the
+	// adaptive energy-flow diagram AE6 renders). The scalar pv_kw/load_kw/
+	// grid_limit_kw/soc_pct fields on the Snapshot stay for backward compat; a
+	// device without v2 entities carries an empty topology (nodes: []).
+	Topology topology.Topology `json:"topology"`
 }
 
 // paired reports whether a certificate is already on disk (the device is
@@ -148,7 +165,7 @@ func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, clai
 	}
 }
 
-func envelope(st *state.Store) stateEnvelope {
+func envelope(st *state.Store, topo TopologyController) stateEnvelope {
 	snap := st.Get()
 	step, invConnected, claimUnlocked := deriveOnboarding(snap)
 	// Withhold the reference until the claim step is unlocked, so the portal
@@ -164,6 +181,7 @@ func envelope(st *state.Store) stateEnvelope {
 		InverterConnected: invConnected,
 		OnboardingStep:    step,
 		ClaimUnlocked:     claimUnlocked,
+		Topology:          topo.Topology(),
 	}
 }
 
@@ -173,7 +191,7 @@ func envelope(st *state.Store) stateEnvelope {
 // action, and the health endpoint.
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
-	src SourcesController) http.Handler {
+	src SourcesController, topo TopologyController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -182,7 +200,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(envelope(st))
+		_ = json.NewEncoder(w).Encode(envelope(st, topo))
 	})
 
 	// GET /api/history?minutes=N - recent telemetry samples for the charts on
@@ -262,7 +280,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		// Only stream samples that arrive after we connect; the client fetches
 		// the backlog via /api/history first.
 		last := time.Now()
-		send("state", envelope(st))
+		send("state", envelope(st, topo))
 
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -277,7 +295,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 					}
 					last = s.Ts
 				}
-				if !send("state", envelope(st)) {
+				if !send("state", envelope(st, topo)) {
 					return
 				}
 			}
