@@ -13,7 +13,7 @@
     "identity": "The entity_id in every payload MUST equal the {entity_id} topic segment; consumers ignore mismatches (the v1 topic==payload identity rule).",
     "failsafe": "guards.failsafe.behavior is what the entity falls back to when nothing commands it (no active desired, stale plan - decision D-9): 'self-consumption' (storage: the v1 guards.SelfConsumption fallback), 'off' (consumers: safe state), 'release' (return the device to its native behavior, clear limits), 'measure-only' (entity is never actuated at all - grid meters, uncontrolled producers).",
     "charge_from_grid_allowed": "Storage guard posture per decision D-8: false OR ABSENT = the entity must never charge from the grid (commanded charge clamped to measured available PV; unknown PV blocks charge entirely). Only an explicit true releases the clamp.",
-    "signs": "Shared with mqtt-telemetry-2.0 and the command vocabulary: storage setpoint_kw/battery_power_kw + = charge, - = discharge; grid power_kw + = import, - = export; generation is only ever capped (limit_kw/limit_pct reduce-only), never commanded to produce."
+    "signs": "Shared with mqtt-telemetry-2.0 and the command vocabulary: storage setpoint_kw/battery_power_kw + = charge, - = discharge; grid power_kw + = import, - = export; generation is only ever capped (limit_kw/limit_pct reduce-only), never commanded to produce; consumer setpoint_kw + = consume (never negative - V2G out of scope)."
   },
   "oneOf": [
     { "$ref": "#/$defs/config" },
@@ -29,8 +29,8 @@
     },
     "entity_type": {
       "type": "string",
-      "enum": ["battery-hybrid", "producer", "grid-meter"],
-      "description": "Domain type on top of the capability model (plan decision D10). E1a ships the three pilot types; further types (wallbox, heat-rod, load) join additively in later increments."
+      "pattern": "^[a-z][a-z0-9-]{0,62}$",
+      "description": "Domain type on top of the capability model (plan decision D10). OPEN vocabulary since E1b: the data-driven platform type CATALOG (services/api entitytypes/catalog.json) is the truth for known types - adding a type is catalog data + an optional driver, never a schema release. Catalog types today: battery-hybrid, producer, grid-meter, wallbox, heating-rod, generic-load. Consumers key BEHAVIOR on the declared capabilities and guards, never on the type string alone: no actuate list (or a measure-only failsafe) = measure-only; storage-shaped guard limits = the storage guard chain incl. D-8; max_generation_kw = producer reduce-only caps; otherwise the consumer clamp ([0, max_consumption_kw], + = consume)."
     },
     "channels": {
       "type": "object",
@@ -86,7 +86,8 @@
         "soc_min_pct": { "type": "number", "minimum": 0, "maximum": 100 },
         "soc_max_pct": { "type": "number", "minimum": 0, "maximum": 100 },
         "charge_from_grid_allowed": { "type": "boolean", "description": "D-8: absent = NOT allowed; only explicit true releases the solar-only-charge clamp." },
-        "max_generation_kw": { "type": "number", "minimum": 0, "description": "Producer nameplate cap: a limit_kw command is additionally clamped to [0, max_generation_kw]; limits only ever reduce." }
+        "max_generation_kw": { "type": "number", "minimum": 0, "description": "Producer nameplate cap: a limit_kw command is additionally clamped to [0, max_generation_kw]; limits only ever reduce." },
+        "max_consumption_kw": { "type": "number", "minimum": 0, "description": "Consumer rated cap (E1b, additive): setpoint_kw and limit_kw on a consumer entity are additionally clamped to [0, max_consumption_kw]. Consumers are only ever commanded to CONSUME (+ = consume, per the D-14 sign convention); a negative consumer setpoint is clamped to 0 - feeding in from a consumer (V2G) is out of scope." }
       }
     },
     "failsafe": {

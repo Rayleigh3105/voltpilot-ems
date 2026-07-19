@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "entity_id": "8c305f21-9e4d-4f60-c1b2-3d4e5f607182",
-  "entity_type": "wallbox",
+  "entity_type": "Wallbox 11kW!",
   "capabilities": {
     "measure": [{ "channel": "power_kw", "unit": "kW" }],
     "actuate": [{ "command": "on_off" }]
