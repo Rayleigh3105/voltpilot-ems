@@ -19,7 +19,7 @@ public class SiteRepository {
             "id, name, bidding_zone, latitude, longitude, plant_kind, anzulegender_wert_ct_kwh,"
                     + " marktpraemie_ct_kwh, tarif_art, tarif_param_ct_kwh, netzladen_erlaubt,"
                     + " max_feed_in_kw, leistungspreis_eur_kw, abrechnung_leistung,"
-                    + " peak_reserve_soc_pct";
+                    + " peak_reserve_soc_pct, usage_profile_override";
 
     private final JdbcTemplate jdbc;
 
@@ -127,6 +127,18 @@ public class SiteRepository {
                 // written ONLY via the admin optimizer-config endpoint.
                 rs.getBigDecimal("leistungspreis_eur_kw"),
                 rs.getString("abrechnung_leistung"),
-                rs.getBigDecimal("peak_reserve_soc_pct"));
+                rs.getBigDecimal("peak_reserve_soc_pct"),
+                // AE7 Nutzungsprofil override (V20260719050000).
+                rs.getString("usage_profile_override"));
+    }
+
+    /**
+     * Set (or clear, with {@code null}) the site's usage-profile override
+     * (AE7). Full-set semantics: {@code null} reverts the site to auto-derive.
+     * RLS scopes the write to the caller's tenant (foreign site => 0 rows).
+     */
+    public boolean setUsageProfileOverride(UUID siteId, String override) {
+        return jdbc.update(
+                "UPDATE site SET usage_profile_override = ? WHERE id = ?", override, siteId) > 0;
     }
 }

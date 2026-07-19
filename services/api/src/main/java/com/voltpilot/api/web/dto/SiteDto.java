@@ -64,5 +64,10 @@ public record SiteDto(
         BigDecimal maxFeedInKw,
         BigDecimal leistungspreisEurKw,
         String abrechnungLeistung,
-        BigDecimal peakReserveSocPct) {
+        BigDecimal peakReserveSocPct,
+        // AE7 Nutzungsprofil (migration V20260719050000): the explicit usage-
+        // profile override (arbitrage|peak|private) or null to auto-derive. Set
+        // via PUT /api/v1/sites/{id}/profile; the effective+derived profile and
+        // emphasis are served by GET /api/v1/sites/{id}/profile.
+        String usageProfileOverride) {
 }

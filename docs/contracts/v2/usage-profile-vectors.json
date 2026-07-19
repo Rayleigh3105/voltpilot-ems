@@ -1,0 +1,98 @@
+{
+  "_comment": [
+    "Shared cross-language vectors for the AE7 Nutzungsprofil (usage profile) - the SECOND",
+    "adaptation axis (adaptive-ems-ui-v1-spec.md §2/§3). The profile is DERIVED from the",
+    "site's entity mix (roles) + the active strategy nodes on its storages + the money-",
+    "master-data (plant_kind, Leistungspreis), explicitly overridable. ONE truth - not a",
+    "second competing concept. Pure deriver + emphasis map are implemented byte-identically",
+    "in Java (services/api .../profile/UsageProfileDeriver) and TS (frontend/portal/src/",
+    "usageProfile.ts); both test suites load THIS file. Change the rules in both + the",
+    "vectors together (the topology-vectors.json / EdgeRef precedent).",
+    "",
+    "deriveDefault(signals) ignores the override; the EFFECTIVE profile = override when set",
+    "and valid, else deriveDefault. Rules, in order (peak beats arbitrage beats private):",
+    "  1. a peak strategy node (vp.strategy.peakshaving / .atypical-grid) OR a configured",
+    "     Leistungspreis (site.leistungspreis_eur_kw) -> peak",
+    "  2. a market strategy node (vp.strategy.market) OR plant_kind = direktvermarktung",
+    "     -> arbitrage",
+    "  3. otherwise (household mix / eigenverbrauch, no market/peak) -> private.",
+    "Emphasis: which portal/edge surfaces each profile makes prominent | secondary |",
+    "minimal | hidden - the ONE contract AE2/AE3/AE4/AE6 consult (they render, never re-decide)."
+  ],
+  "profiles": ["arbitrage", "peak", "private"],
+  "emphasis_levels": ["prominent", "secondary", "minimal", "hidden"],
+  "emphasis_surfaces": ["money", "peak", "flow", "devices"],
+  "emphasis": {
+    "arbitrage": { "money": "prominent", "peak": "hidden", "flow": "secondary", "devices": "secondary" },
+    "peak": { "money": "secondary", "peak": "prominent", "flow": "secondary", "devices": "secondary" },
+    "private": { "money": "minimal", "peak": "hidden", "flow": "prominent", "devices": "prominent" }
+  },
+  "derivation": [
+    {
+      "name": "dv-battery-arbitrage",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": false, "active_strategy_node_types": [], "plant_kind": "direktvermarktung", "has_leistungspreis": false, "override": null },
+      "expected_derived": "arbitrage",
+      "expected_profile": "arbitrage"
+    },
+    {
+      "name": "market-node-arbitrage",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": false, "active_strategy_node_types": ["vp.strategy.market"], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": null },
+      "expected_derived": "arbitrage",
+      "expected_profile": "arbitrage"
+    },
+    {
+      "name": "household-pv-storage-wallbox-private",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": true, "active_strategy_node_types": ["vp.strategy.selfconsumption"], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": null },
+      "expected_derived": "private",
+      "expected_profile": "private"
+    },
+    {
+      "name": "leistungspreis-peak",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": false, "active_strategy_node_types": [], "plant_kind": "eigenverbrauch", "has_leistungspreis": true, "override": null },
+      "expected_derived": "peak",
+      "expected_profile": "peak"
+    },
+    {
+      "name": "peak-strategy-node",
+      "signals": { "has_storage": true, "has_pv": false, "has_controllable_consumer": false, "active_strategy_node_types": ["vp.strategy.peakshaving"], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": null },
+      "expected_derived": "peak",
+      "expected_profile": "peak"
+    },
+    {
+      "name": "atypical-grid-node-is-peak",
+      "signals": { "has_storage": true, "has_pv": false, "has_controllable_consumer": false, "active_strategy_node_types": ["vp.strategy.atypical-grid"], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": null },
+      "expected_derived": "peak",
+      "expected_profile": "peak"
+    },
+    {
+      "name": "peak-beats-arbitrage-when-both",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": false, "active_strategy_node_types": ["vp.strategy.market"], "plant_kind": "direktvermarktung", "has_leistungspreis": true, "override": null },
+      "expected_derived": "peak",
+      "expected_profile": "peak"
+    },
+    {
+      "name": "override-flips-private-to-arbitrage",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": true, "active_strategy_node_types": ["vp.strategy.selfconsumption"], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": "arbitrage" },
+      "expected_derived": "private",
+      "expected_profile": "arbitrage"
+    },
+    {
+      "name": "override-flips-arbitrage-to-private",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": false, "active_strategy_node_types": ["vp.strategy.market"], "plant_kind": "direktvermarktung", "has_leistungspreis": false, "override": "private" },
+      "expected_derived": "arbitrage",
+      "expected_profile": "private"
+    },
+    {
+      "name": "invalid-override-ignored",
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": false, "active_strategy_node_types": [], "plant_kind": "direktvermarktung", "has_leistungspreis": false, "override": "bogus" },
+      "expected_derived": "arbitrage",
+      "expected_profile": "arbitrage"
+    },
+    {
+      "name": "empty-site-defaults-private",
+      "signals": { "has_storage": false, "has_pv": false, "has_controllable_consumer": false, "active_strategy_node_types": [], "plant_kind": null, "has_leistungspreis": false, "override": null },
+      "expected_derived": "private",
+      "expected_profile": "private"
+    }
+  ]
+}
