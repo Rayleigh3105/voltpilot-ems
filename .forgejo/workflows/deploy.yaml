@@ -335,6 +335,17 @@ jobs:
             # see .env.prod.example). The mTLS device certs must already be staged
             # under $DEPLOY_DIR/infra/mqtt/certs/ (docs/connect-a-device.md).
             export IMAGE_TAG="${{ github.sha }}"
+            # Persist the pinned tag into .env (in place, idempotent) so a later
+            # manual `docker compose up --force-recreate` on the VM recreates with
+            # THESE images, not the stale :latest the .env default would otherwise
+            # roll every service back to (footgun that bit the operator 2026-07-02).
+            # A commit SHA has no sed-special chars; replace an existing line,
+            # append only if the key is absent (matches ^IMAGE_TAG= exactly).
+            if grep -qE '^IMAGE_TAG=' .env 2>/dev/null; then
+              priv sed -i "s|^IMAGE_TAG=.*|IMAGE_TAG=${IMAGE_TAG}|" .env
+            else
+              printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG" | priv tee -a .env >/dev/null
+            fi
             docker compose pull
             docker compose up -d --remove-orphans
             # Keycloak keeps image + config, so `up -d` does not recreate it. In
