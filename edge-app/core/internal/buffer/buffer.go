@@ -31,10 +31,15 @@ import (
 
 // Entry is one buffered telemetry sample. Identity is deliberately NOT
 // stored: it is stamped at publish time (a device may buffer telemetry
-// before enrollment has assigned its identity).
+// before enrollment has assigned its identity). EntityID discriminates the
+// era (E1b): "" = a v1 site sample (Measurements = the frozen 1.0 channels),
+// non-empty = a v2 per-entity sample (Measurements = that entity's channels,
+// published as mqtt-telemetry-2.0). Old JSONL entries unmarshal with an
+// empty EntityID and stay v1 - no on-disk migration.
 type Entry struct {
 	Ts           time.Time          `json:"ts"`
 	Seq          int64              `json:"seq"`
+	EntityID     string             `json:"entity_id,omitempty"`
 	Measurements map[string]float64 `json:"measurements"`
 }
 
@@ -159,14 +164,25 @@ func countLines(path string) int {
 	return n
 }
 
-// Append stores one sample, assigning the next monotonic sequence number,
-// and returns the stored entry. Eviction of over-horizon segments happens
-// here.
+// Append stores one v1 site sample, assigning the next monotonic sequence
+// number, and returns the stored entry. Eviction of over-horizon segments
+// happens here.
 func (b *Buffer) Append(ts time.Time, measurements map[string]float64) (Entry, error) {
+	return b.append(Entry{Ts: ts.UTC(), Measurements: measurements})
+}
+
+// AppendEntity stores one v2 per-entity sample (E1b): the v2 uplink rides
+// the SAME disk ring as v1 telemetry - one seq/cursor discipline, one
+// retention horizon, one purge path. The publisher branches on EntityID.
+func (b *Buffer) AppendEntity(entityID string, ts time.Time, channels map[string]float64) (Entry, error) {
+	return b.append(Entry{Ts: ts.UTC(), EntityID: entityID, Measurements: channels})
+}
+
+func (b *Buffer) append(e Entry) (Entry, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	e := Entry{Ts: ts.UTC(), Seq: b.seq, Measurements: measurements}
+	e.Seq = b.seq
 	raw, err := json.Marshal(e)
 	if err != nil {
 		return Entry{}, err

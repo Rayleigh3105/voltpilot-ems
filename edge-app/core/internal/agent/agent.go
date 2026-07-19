@@ -128,7 +128,6 @@ type Agent struct {
 	entIdentity  entities.Identity
 	entAppliedAt time.Time
 	entReadings  map[string]entReading
-	entUplink    chan entities.Telemetry
 
 	// E2 arbitration layer (agent/arbitration.go; contract docs/contracts/v2/
 	// edge-desired-arbitration.md + mqtt-schedule-2.0.md): the desired
@@ -295,7 +294,6 @@ func New(cfg config.Config) (*Agent, error) {
 		balStore:     bs,
 		srcReadings:  map[string]sourceReading{},
 		entReadings:  map[string]entReading{},
-		entUplink:    make(chan entities.Telemetry, 64),
 		testReads:    map[string]chan testconn.Result{},
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
@@ -427,9 +425,10 @@ func (a *Agent) Start(ctx context.Context) error {
 	// Same for the additional-source config: Node-RED self-wires a read of each.
 	a.publishSourcesConfig()
 
-	// v2 entity layer: telemetry wildcard subscription (id 6), boot republish
-	// of the per-entity retained configs, and the live uplink loop.
-	if err := a.startEntityLayer(ctx); err != nil {
+	// v2 entity layer: telemetry wildcard subscription (id 6) + boot republish
+	// of the per-entity retained configs. The v2 uplink rides the shared
+	// store-and-forward buffer (E1b), drained by the publisher loop below.
+	if err := a.startEntityLayer(); err != nil {
 		return err
 	}
 	// E2 arbitration layer: desired + readback wildcard subscriptions (ids
@@ -1546,7 +1545,13 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 			if !ok {
 				break
 			}
-			if err := link.PublishTelemetry(e); err != nil {
+			// One buffer, two eras (E1b): an entry with an EntityID is a v2
+			// per-entity sample, everything else the v1 site sample.
+			publish := link.PublishTelemetry
+			if e.EntityID != "" {
+				publish = link.PublishTelemetryV2
+			}
+			if err := publish(e); err != nil {
 				slog.Warn("telemetry publish failed; will retry", "seq", e.Seq, "err", err)
 				break
 			}

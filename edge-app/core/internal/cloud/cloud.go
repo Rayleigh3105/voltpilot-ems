@@ -237,20 +237,23 @@ func (l *Link) PublishTelemetry(e buffer.Entry) error {
 	return tok.Error()
 }
 
-// PublishTelemetryV2 publishes one per-entity reading as a contract-exact
-// mqtt-telemetry-2.0 payload on .../v2/telemetry (QoS1, not retained) and
-// waits for the ack. E1a scope: live-only forwarding - no store-and-forward
-// for the v2 uplink yet (the caller drops on failure); the v1 buffered
-// telemetry path is untouched.
-func (l *Link) PublishTelemetryV2(entityID string, ts time.Time, channels map[string]float64) error {
+// PublishTelemetryV2 publishes ONE buffered v2 entry (EntityID non-empty) as
+// a contract-exact mqtt-telemetry-2.0 payload on .../v2/telemetry (QoS1, not
+// retained, ORIGINAL timestamp) and waits for the ack. Since E1b the v2
+// uplink rides the store-and-forward buffer exactly like v1: the caller acks
+// the buffer cursor only on nil error, and a replayed entry keeps its
+// original ts (the cloud writer keys liveness on arrival time and is
+// idempotent per (entity, channel, time)).
+func (l *Link) PublishTelemetryV2(e buffer.Entry) error {
 	payload := map[string]any{
 		"schema_version": "2.0",
 		"tenant_id":      l.identity.TenantID,
 		"site_id":        l.identity.SiteID,
 		"device_id":      l.identity.DeviceID,
-		"ts":             ts.UTC().Format(time.RFC3339Nano),
+		"ts":             e.Ts.UTC().Format(time.RFC3339Nano),
+		"seq":            e.Seq,
 		"entities": map[string]any{
-			entityID: map[string]any{"channels": channels},
+			e.EntityID: map[string]any{"channels": e.Measurements},
 		},
 	}
 	raw, err := json.Marshal(payload)
@@ -277,6 +280,34 @@ type EntitiesSummary struct {
 	// per entity the holder source, the granted command and the latest
 	// readback verdict. Additive; absent for entities without a decision.
 	Arbitration map[string]EntityArbitration `json:"arbitration,omitempty"`
+	// Observed is the E1b per-entity Ist (edge-entity-config.md §5): the type
+	// as applied plus telemetry health. Additive; keys are entity ids.
+	Observed map[string]EntityObserved `json:"observed,omitempty"`
+	// LocalSetup reports the edge-authoritative commissioning view (the
+	// :8484 inverter selection + sources) so the cloud can SEE edge-side
+	// master data that has no registry counterpart. The cloud reconciles and
+	// surfaces drift; it never auto-imports.
+	LocalSetup []LocalSetupEntry `json:"local_setup,omitempty"`
+}
+
+// EntityObserved is one entity's edge-side Ist in the heartbeat (E1b).
+type EntityObserved struct {
+	EntityType string `json:"entity_type"`
+	// Health: ok = local telemetry within the liveness window | stale = had
+	// readings, none recently | never = none since boot.
+	Health          string   `json:"health"`
+	LastTelemetryAt string   `json:"last_telemetry_at,omitempty"`
+	Channels        []string `json:"channels,omitempty"`
+}
+
+// LocalSetupEntry is one edge-local commissioning item (inverter or source).
+type LocalSetupEntry struct {
+	ID    string `json:"id"`
+	Kind  string `json:"kind"` // inverter | source
+	Role  string `json:"role,omitempty"`
+	Brand string `json:"brand,omitempty"`
+	Model string `json:"model,omitempty"`
+	Label string `json:"label,omitempty"`
 }
 
 // EntityArbitration is one entity's decision summary in the heartbeat.
