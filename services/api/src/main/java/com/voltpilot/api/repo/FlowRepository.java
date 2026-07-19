@@ -78,6 +78,15 @@ public class FlowRepository {
                 FlowRepository::mapRow, siteId, runtime, exceptFlowId);
     }
 
+    /** The documents (JSON text) of all ACTIVE flows of a site - the AE7 profile
+     * derivation reads the strategy nodes lying on the site's storages. */
+    public List<String> activeDocuments(UUID siteId) {
+        return jdbc.query(
+                "SELECT document::text FROM flow_definition WHERE site_id = ? AND "
+                        + "lifecycle = 'active'",
+                (rs, rowNum) -> rs.getString(1), siteId);
+    }
+
     public int maxVersion(UUID flowId) {
         Integer max = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(flow_version), 0) FROM flow_definition WHERE flow_id = ?",

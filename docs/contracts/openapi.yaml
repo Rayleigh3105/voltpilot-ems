@@ -72,6 +72,13 @@ tags:
       shared derivation is the Go/TS/Java twin
       (docs/contracts/v2/topology-read-model.md). Role ASSIGNMENT is
       platform-admin-only.
+  - name: profile
+    description: >
+      Nutzungsprofil / EMS-Modus (AE7, the second adaptation axis): the usage
+      profile (arbitrage | peak | private) DERIVED from the site's strategy nodes
+      + entity mix + money master data, driving the adaptive portal/edge EMPHASIS
+      (money/peak/flow/devices). Explicitly overridable; ONE truth - not a
+      competing concept (docs/contracts/v2/usage-profile.md). Tenant-scoped.
   - name: simulation
     description: >
       Ersparnis-Simulation: asynchronous what-if jobs over a full historical
@@ -685,6 +692,136 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { description: Not a platform-admin. }
         "404": { description: Site or entity not found for the selected tenant. }
+  /api/v1/sites/{siteId}/profile:
+    get:
+      tags: [profile]
+      summary: Nutzungsprofil / EMS-Modus read-model (AE7, the second adaptation axis).
+      description: >
+        The site's usage profile (arbitrage | peak | private) that steers the
+        adaptive portal/edge EMPHASIS, DERIVED from its strategy nodes (active
+        flows) + entity mix + money master data (plant_kind, Leistungspreis),
+        with an explicit override. ONE truth - not a competing concept (see
+        docs/contracts/v2/usage-profile.md). Returns the effective profile, the
+        derived default, the override, the emphasis map (money/peak/flow/devices)
+        and the raw signals. RLS-scoped (foreign site 404; admins via the
+        `X-Tenant-Id` switcher).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The usage-profile read-model.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    put:
+      tags: [profile]
+      summary: Set or clear the usage-profile override.
+      description: >
+        Set the explicit usage-profile override (arbitrage | peak | private) or
+        clear it (null/blank -> auto-derive). Customer or admin, RLS-scoped;
+        returns the recomputed read-model. Also echoed on Site.usageProfileOverride.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                override:
+                  type: string
+                  nullable: true
+                  enum: [arbitrage, peak, private]
+                  description: null/blank clears the override (auto-derive).
+      responses:
+        "200":
+          description: The recomputed usage-profile read-model.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsageProfile" }
+        "400": { description: Override is not one of arbitrage, peak, private. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/admin/sites/{siteId}/flow-node-governance:
+    get:
+      tags: [admin]
+      summary: Gated strategy-node types and their per-site enablement (AE7 governance).
+      description: >
+        The gated (market-/grid-near) strategy node types from the catalog
+        (Arbitrage, Peak-Shaving, atyp. NN) and whether each is enabled for this
+        site. A flow carrying a gated node stays inactive until it is enabled
+        here. Platform-admin only, via the `X-Tenant-Id` switcher.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The gated node types + enablement.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowNodeGovernance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+        "404": { description: Site not found for the selected tenant. }
+    put:
+      tags: [admin]
+      summary: Enable/disable gated strategy-node types for the site.
+      description: Platform-admin only. An unknown/non-gated node type is 400.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enablements:
+                  type: array
+                  items:
+                    type: object
+                    required: [nodeType, enabled]
+                    properties:
+                      nodeType: { type: string, example: vp.strategy.market }
+                      enabled: { type: boolean }
+      responses:
+        "200":
+          description: The recomputed governance.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowNodeGovernance" }
+        "400": { description: Unknown or non-gated node type. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+        "404": { description: Site not found for the selected tenant. }
+  /api/v1/admin/sites/{siteId}/flows/auto-start:
+    post:
+      tags: [admin]
+      summary: Seed the site's profile-appropriate starter flow draft (AE7 auto-start).
+      description: >
+        Seed a starter flow DRAFT matching the site's derived usage profile
+        (arbitrage -> market, peak -> peak-shaving, private -> self-consumption
+        on the battery), so onboarding never dead-ends. Idempotent: a site with
+        any flow is left untouched (created=false, reason already_has_flow); a
+        site without a battery is skipped (reason no_battery). Platform-admin only.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201":
+          description: The starter flow draft was created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutoStartOutcome" }
+        "200":
+          description: No-op (already has a flow / no battery).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AutoStartOutcome" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not a platform-admin. }
+        "404": { description: Site not found for the selected tenant. }
   /api/v1/sites/{siteId}/history:
     get:
       tags: [history]
@@ -2201,6 +2338,15 @@ components:
             load peaks beyond the 24h planning horizon. Stacks with the
             backup reserve (the highest configured absolute floor binds).
             null = no peak reserve. Admin-configured via optimizer-config.
+        usageProfileOverride:
+          type: string
+          nullable: true
+          enum: [arbitrage, peak, private]
+          description: >
+            AE7 Nutzungsprofil override (arbitrage | peak | private) or null to
+            auto-derive. Set via PUT /api/v1/sites/{id}/profile; the effective +
+            derived profile and the emphasis map are served by
+            GET /api/v1/sites/{id}/profile (see docs/contracts/v2/usage-profile.md).
     SiteAsset:
       type: object
       description: One asset row incl. registry provenance; null = not set.
@@ -3174,6 +3320,71 @@ components:
         mismatchRoles: { type: string, nullable: true, description: "Comma-separated roles that did not confirm (e.g. \"battery_power\")." }
         slotStart: { type: string, format: date-time, nullable: true }
         checkedAt: { type: string, format: date-time, description: "When the readback was taken (\"geprüft vor X\")." }
+    UsageProfile:
+      type: object
+      description: >
+        AE7 Nutzungsprofil read-model (docs/contracts/v2/usage-profile.md): the
+        effective usage profile, the derived default, the override, the emphasis
+        map and the signals it was derived from.
+      properties:
+        usageProfile:
+          type: string
+          enum: [arbitrage, peak, private]
+          description: The EFFECTIVE profile (override when set, else the derived default).
+        derivedProfile:
+          type: string
+          enum: [arbitrage, peak, private]
+          description: The derived default, ignoring any override.
+        override:
+          type: string
+          nullable: true
+          enum: [arbitrage, peak, private]
+        emphasis:
+          type: object
+          description: Which surfaces are prominent | secondary | minimal | hidden.
+          properties:
+            money: { type: string, enum: [prominent, secondary, minimal, hidden] }
+            peak: { type: string, enum: [prominent, secondary, minimal, hidden] }
+            flow: { type: string, enum: [prominent, secondary, minimal, hidden] }
+            devices: { type: string, enum: [prominent, secondary, minimal, hidden] }
+        signals:
+          type: object
+          properties:
+            hasStorage: { type: boolean }
+            hasPv: { type: boolean }
+            hasControllableConsumer: { type: boolean }
+            activeStrategyNodeTypes:
+              type: array
+              items: { type: string, example: vp.strategy.market }
+            plantKind: { type: string, nullable: true }
+            hasLeistungspreis: { type: boolean }
+    FlowNodeGovernance:
+      type: object
+      description: AE7 node governance - the gated strategy node types + per-site enablement.
+      properties:
+        gatedNodes:
+          type: array
+          items:
+            type: object
+            properties:
+              type: { type: string, example: vp.strategy.market }
+              label: { type: string, example: Marktoptimierung }
+              gated: { type: boolean }
+              enabled: { type: boolean, description: Enabled for THIS site. }
+    AutoStartOutcome:
+      type: object
+      description: Result of an AE7 auto-start seeding attempt.
+      properties:
+        created: { type: boolean }
+        reason:
+          type: string
+          nullable: true
+          description: null on success; already_has_flow | no_battery | not_found otherwise.
+        profile: { type: string, nullable: true, enum: [arbitrage, peak, private] }
+        flowId: { type: string, format: uuid, nullable: true }
+        version: { type: integer, nullable: true }
+        name: { type: string, nullable: true }
+        message: { type: string }
     TopologyResponse:
       type: object
       description: >

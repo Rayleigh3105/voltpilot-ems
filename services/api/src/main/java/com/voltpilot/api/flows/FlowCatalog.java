@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -42,6 +44,29 @@ public class FlowCatalog {
     /** The catalog entry of a type id, or null when unknown. */
     public JsonNode type(String typeId) {
         return byType.get(typeId);
+    }
+
+    /**
+     * Whether a node type is GATED (AE7 governance, spec §3): market-/grid-near
+     * strategy nodes that need VoltPilot enablement/contract. Free node types
+     * (Eigenverbrauch, device control, all data/logic/action nodes) omit the
+     * flag and return false. An unknown type is treated as not gated (the
+     * V-4 unknown-type check handles it).
+     */
+    public boolean isGated(String typeId) {
+        JsonNode type = byType.get(typeId);
+        return type != null && type.path("gated").asBoolean(false);
+    }
+
+    /** The set of gated node types (AE7 governance). */
+    public Set<String> gatedTypes() {
+        Set<String> gated = new LinkedHashSet<>();
+        for (Map.Entry<String, JsonNode> e : byType.entrySet()) {
+            if (e.getValue().path("gated").asBoolean(false)) {
+                gated.add(e.getKey());
+            }
+        }
+        return gated;
     }
 
     /**

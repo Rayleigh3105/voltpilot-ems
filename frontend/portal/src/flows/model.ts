@@ -119,6 +119,10 @@ export interface CatalogType {
   label: string;
   description?: string;
   group: CatalogGroup;
+  // AE7 node governance (docs/contracts/v2/usage-profile.md §3): true = a
+  // market-/grid-near strategy node that needs VoltPilot enablement per site
+  // (Arbitrage/Peak/atyp. NN). Absent/false = freely usable.
+  gated?: boolean;
   runtimes: string[];
   inputs: CatalogPort[];
   outputs: CatalogPort[];
