@@ -118,7 +118,13 @@ type Config struct {
 // Defaults returns the built-in configuration.
 func Defaults() Config {
 	return Config{
-		PortalBaseURL:            "https://voltpilot.de",
+		// The portal/api lives on the `portal.` subdomain in the real
+		// deployment (docker-compose defaults + install.sh + DEPLOY.md all use
+		// https://portal.voltpilot.de). The bare apex https://voltpilot.de is
+		// NOT a working enrollment endpoint - shipping it as the default made a
+		// device with no VP_PORTAL_BASE_URL fail to enroll. Keep this in lockstep
+		// with edge-app/docker-compose.yml VP_PORTAL_BASE_URL.
+		PortalBaseURL:            "https://portal.voltpilot.de",
 		MQTTHost:                 "mqtt.voltpilot.de",
 		MQTTPort:                 8883,
 		DataDir:                  "/data",

@@ -61,9 +61,8 @@ cp .env.example .env
 Dann in `.env` mindestens diese Werte setzen:
 
 ```dotenv
-# Live-Cloud - der Portal-Host MUSS explizit gesetzt werden.
-# (Der eingebaute Standard ist https://voltpilot.de und stimmt fuer echte
-#  Geraete NICHT - immer portal.voltpilot.de eintragen.)
+# Live-Cloud. Der eingebaute Standard ist bereits https://portal.voltpilot.de;
+# fuer eine eigene Umgebung hier den passenden Portal-Host eintragen.
 VP_PORTAL_BASE_URL=https://portal.voltpilot.de
 VP_MQTT_HOST=mqtt.voltpilot.de
 VP_MQTT_PORT=8883
