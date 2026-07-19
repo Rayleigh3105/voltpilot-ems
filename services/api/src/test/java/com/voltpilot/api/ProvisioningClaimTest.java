@@ -417,6 +417,44 @@ class ProvisioningClaimTest {
         // D-8: the fresh site has netzladen_erlaubt = FALSE.
         assertThat(battery.get("guards").get("limits").get("charge_from_grid_allowed").asBoolean())
                 .isFalse();
+
+        // E1b: creating an OPEN-type entity (wallbox) re-pushes the registry
+        // retained, so the reconnecting edge converges on the new set.
+        ResponseEntity<Map<String, Object>> wb = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities"),
+                org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("entityType", "wallbox", "label", "Wallbox",
+                        "maxPowerKw", 11), admin),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(wb.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String wallboxPayload = pollRetainedContaining(topic, "wallbox", 15);
+        assertThat(wallboxPayload).as("re-pushed registry carrying the wallbox").isNotNull();
+        JsonNode repushed = mapper.readTree(wallboxPayload);
+        assertThat(repushed.get("entities")).hasSize(2);
+        JsonNode wallbox = null;
+        for (JsonNode e : repushed.get("entities")) {
+            if ("wallbox".equals(e.get("entity_type").asText())) {
+                wallbox = e;
+            }
+        }
+        assertThat(wallbox).isNotNull();
+        assertThat(wallbox.get("guards").get("limits").get("max_consumption_kw").asDouble())
+                .isEqualTo(11.0);
+        assertThat(wallbox.get("guards").get("failsafe").get("behavior").asText())
+                .isEqualTo("release");
+    }
+
+    /** Poll the retained topic until the payload contains a marker (re-push). */
+    private String pollRetainedContaining(String topic, String marker, int timeoutSeconds)
+            throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
+        while (System.nanoTime() < deadline) {
+            String payload = pollRetained(topic, 2);
+            if (payload != null && payload.contains(marker)) {
+                return payload;
+            }
+        }
+        return null;
     }
 
     /** Fresh subscriber on an arbitrary topic: the retained payload, or null. */

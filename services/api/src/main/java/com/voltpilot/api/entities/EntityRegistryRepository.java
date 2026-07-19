@@ -23,7 +23,8 @@ public class EntityRegistryRepository {
     /** One measurement_point row seen as a v2 entity (or bootstrap candidate). */
     public record EntityRow(UUID id, String role, String label, String brand, String model,
             String family, String communication, String connectionJson, BigDecimal capacityKwp,
-            UUID deviceId, String entityType, String capabilitiesJson, String guardConfigJson) {}
+            UUID deviceId, boolean control, String entityType, String capabilitiesJson,
+            String guardConfigJson) {}
 
     /** The site's battery asset slice the battery-hybrid entity derives from. */
     public record BatteryAsset(UUID deviceId, BigDecimal maxChargeKw, BigDecimal maxDischargeKw,
@@ -31,7 +32,7 @@ public class EntityRegistryRepository {
 
     private static final String ROW_COLUMNS =
             "id, role, label, brand, model, family, communication, connection_json::text AS conn, "
-                    + "capacity_kwp, device_id, entity_type, capabilities::text AS caps, "
+                    + "capacity_kwp, device_id, control, entity_type, capabilities::text AS caps, "
                     + "guard_config::text AS guards";
 
     private final JdbcTemplate jdbc;
@@ -86,10 +87,10 @@ public class EntityRegistryRepository {
     }
 
     /**
-     * Create the battery-hybrid registry row for the primary inverter: the ONE
-     * control point of the site (control = TRUE satisfies the v1 CHECK, which
-     * reserves control for exactly this role, and the one-control-per-site
-     * partial unique index).
+     * Create the battery-hybrid registry row for the primary inverter
+     * (control = TRUE; since E1b control is granted per the type catalog's
+     * controllable flag - the v1 control-only-battery CHECK and the
+     * one-control-per-site index fell with V20260719010000).
      */
     public UUID createBatteryHybridPoint(UUID tenantId, UUID siteId, String label, UUID deviceId) {
         return jdbc.queryForObject(
@@ -98,11 +99,84 @@ public class EntityRegistryRepository {
                 UUID.class, tenantId, siteId, label, deviceId);
     }
 
+    /** One entity row of the site, or null (RLS: a foreign site yields null). */
+    public EntityRow entityForSite(UUID siteId, UUID pointId) {
+        List<EntityRow> rows = jdbc.query(
+                "SELECT " + ROW_COLUMNS + " FROM measurement_point "
+                        + "WHERE site_id = ? AND id = ? AND entity_type IS NOT NULL",
+                EntityRegistryRepository::mapRow, siteId, pointId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Create a v2-native entity row (E1b admin CRUD: the open catalog types -
+     * wallbox/heating-rod/generic-load/...). role mirrors the entity type;
+     * control comes from the catalog's controllable flag.
+     */
+    public UUID createEntityPoint(UUID tenantId, UUID siteId, String role, String label,
+            boolean control) {
+        return jdbc.queryForObject(
+                "INSERT INTO measurement_point (tenant_id, site_id, role, label, control) "
+                        + "VALUES (?, ?, ?, ?, ?) RETURNING id",
+                UUID.class, tenantId, siteId, role, label, control);
+    }
+
+    /** Update an entity row's display label. */
+    public void updateLabel(UUID pointId, String label) {
+        jdbc.update("UPDATE measurement_point SET label = ? WHERE id = ?", label, pointId);
+    }
+
+    /**
+     * Un-entity a v1-backed measurement point: the point (v1 master data)
+     * stays, only its v2 entity config is cleared.
+     */
+    public void clearEntityConfig(UUID pointId) {
+        jdbc.update(
+                "UPDATE measurement_point SET entity_type = NULL, capabilities = NULL, "
+                        + "guard_config = NULL WHERE id = ?",
+                pointId);
+    }
+
+    /** Delete a v2-native entity row outright. */
+    public boolean deletePoint(UUID pointId) {
+        return jdbc.update("DELETE FROM measurement_point WHERE id = ?", pointId) > 0;
+    }
+
+    // ---- Bidirectional sync state (E1b) ------------------------------------
+
+    /** The last composed Soll of one site (entity_registry_state), or null. */
+    public record RegistryState(UUID deviceId, String revision, java.time.Instant composedAt) {}
+
+    /**
+     * Record the freshly composed Soll revision - on EVERY compose, even when
+     * the best-effort publish fails (the Soll changed regardless; the edge's
+     * echoed revision is compared against exactly this value).
+     */
+    public void upsertRegistryState(UUID siteId, UUID tenantId, UUID deviceId, String revision) {
+        jdbc.update(
+                "INSERT INTO entity_registry_state (site_id, tenant_id, device_id, revision, composed_at) "
+                        + "VALUES (?, ?, ?, ?, now()) "
+                        + "ON CONFLICT (site_id) DO UPDATE SET device_id = EXCLUDED.device_id, "
+                        + "revision = EXCLUDED.revision, composed_at = EXCLUDED.composed_at",
+                siteId, tenantId, deviceId, revision);
+    }
+
+    public RegistryState registryState(UUID siteId) {
+        List<RegistryState> rows = jdbc.query(
+                "SELECT device_id, revision, composed_at FROM entity_registry_state WHERE site_id = ?",
+                (rs, n) -> new RegistryState(
+                        rs.getObject("device_id", UUID.class),
+                        rs.getString("revision"),
+                        rs.getTimestamp("composed_at").toInstant()),
+                siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** The site's battery asset slice, or null when the site has no battery. */
     public BatteryAsset batteryAsset(UUID siteId) {
         List<BatteryAsset> rows = jdbc.query(
                 "SELECT device_id, max_charge_kw, max_discharge_kw, soc_min_pct, soc_max_pct "
-                        + "FROM asset WHERE site_id = ? AND type = 'battery'",
+                        + "FROM asset WHERE site_id = ? AND type = 'battery' AND is_primary",
                 (rs, n) -> new BatteryAsset(
                         rs.getObject("device_id", UUID.class),
                         rs.getBigDecimal("max_charge_kw"),
@@ -138,6 +212,7 @@ public class EntityRegistryRepository {
                 rs.getString("conn"),
                 rs.getBigDecimal("capacity_kwp"),
                 rs.getObject("device_id", UUID.class),
+                rs.getBoolean("control"),
                 rs.getString("entity_type"),
                 rs.getString("caps"),
                 rs.getString("guards"));

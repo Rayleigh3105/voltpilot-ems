@@ -29,9 +29,11 @@ const ajv = new Ajv2020({ strict: false });
 | `mqtt-telemetry-2.0.valid.single-entity.json` | mqtt-telemetry-2.0 | valid — minimal single grid-meter uplink |
 | `mqtt-telemetry-2.0.invalid.string-channel.json` | mqtt-telemetry-2.0 | **invalid** — channel value is a string (channels are always numbers) |
 | `edge-entity.valid.config-battery.json` | edge-entity | valid — retained per-entity config for a battery-hybrid (guard limits + self-consumption failsafe) |
+| `edge-entity.valid.config-wallbox.json` | edge-entity | valid — retained per-entity config for a wallbox (E1b consumer type: `max_consumption_kw`, `release` failsafe) |
 | `edge-entity.valid.registry-push.json` | edge-entity | valid — full `…/v2/entities` push carrying the three pilot entity descriptors |
+| `edge-entity.valid.registry-push-consumers.json` | edge-entity | valid — push carrying the E1b consumer types (wallbox + heating-rod + generic-load incl. a `mode` capability) |
 | `edge-entity.valid.telemetry-producer.json` | edge-entity | valid — local per-entity telemetry of a producer |
-| `edge-entity.invalid.unknown-entity-type.json` | edge-entity | **invalid** — `entity_type: "wallbox"` is not a pilot type (fails every oneOf branch) |
+| `edge-entity.invalid.malformed-entity-type.json` | edge-entity | **invalid** — `entity_type: "Wallbox 11kW!"` violates the kebab-case type pattern (the vocabulary is open since E1b, but never free-form; fails every oneOf branch) |
 
 The invalid fixtures fail at the JSON-Schema level by design (an ajv run proves it). Semantic
 validator rules that JSON Schema cannot express (port type compatibility, cycles, exclusive

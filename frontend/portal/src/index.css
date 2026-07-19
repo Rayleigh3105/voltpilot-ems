@@ -4414,3 +4414,101 @@ button.vp-tech-card-h.toggle {
   .vp-flowed-pgroup { margin-bottom: 4px; }
   .vp-flowed-pnode { width: auto; }
 }
+
+/* ============================================================================
+   Geräte & Entitäten (E1b) - the v2 entity surface on the Anlagen-Seite.
+   ============================================================================ */
+.vp-entities-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--vp-space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--vp-space-3);
+}
+.vp-entities-summary {
+  margin: 0 0 var(--vp-space-3);
+  color: var(--vp-text-muted, #667);
+  font-size: 0.9rem;
+}
+.vp-entity-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--vp-space-4);
+  margin-top: var(--vp-space-4);
+}
+.vp-entity-card {
+  min-width: 0;
+  border: 1px solid var(--vp-border, #e3e8ef);
+  border-radius: var(--vp-radius-md, 12px);
+  padding: var(--vp-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+.vp-entity-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+}
+.vp-entity-title { display: flex; gap: var(--vp-space-2); align-items: center; min-width: 0; }
+.vp-entity-name { font-weight: 600; overflow-wrap: anywhere; }
+.vp-entity-sub { font-size: 0.82rem; color: var(--vp-text-muted, #667); }
+.vp-entity-control { color: var(--vp-action, #2C5282); }
+.vp-health-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--vp-border, #cbd5e1);
+}
+.vp-health-ok { background: #2f9e44; }
+.vp-health-warn { background: #e8a70b; }
+.vp-health-off { background: #adb5bd; }
+.vp-entity-health { font-size: 0.85rem; }
+.vp-entity-caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.vp-entity-caps-label {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+  margin-right: 2px;
+}
+.vp-chip-static {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f1f5f9);
+  font-size: 0.78rem;
+  font-family: var(--vp-font-mono, ui-monospace, monospace);
+}
+.vp-entity-guards { margin: 0; }
+.vp-entity-actions {
+  display: flex;
+  gap: var(--vp-space-2);
+  margin-top: auto;
+  padding-top: var(--vp-space-2);
+}
+.vp-entity-subhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  margin: var(--vp-space-5) 0 var(--vp-space-2);
+}
+.vp-local-setup-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vp-local-setup-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: 0.88rem;
+}
+.vp-local-setup-list li .vp-muted { margin-left: auto; font-size: 0.8rem; }
+
+@media (max-width: 720px) {
+  .vp-entity-cards { grid-template-columns: 1fr; }
+}

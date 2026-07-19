@@ -189,8 +189,8 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                    s.peak_reserve_soc_pct
             FROM asset a
             JOIN site s ON s.id = a.site_id
-            LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv'
-            WHERE a.type = 'battery'
+            LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv' AND pv.is_primary
+            WHERE a.type = 'battery' AND a.is_primary
             ORDER BY a.site_id
             """
         )

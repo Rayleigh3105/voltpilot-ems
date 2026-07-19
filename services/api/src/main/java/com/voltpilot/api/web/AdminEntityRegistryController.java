@@ -5,22 +5,35 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.SiteRepository;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Platform-admin surface of the v2 entity registry (E1a): the PILOT MAPPING
- * utility that creates the three pilot entities of one v1 site from its
- * existing asset/measurement_point master data, plus list + re-push. Nothing
- * converts automatically - the E13a cutover calls the bootstrap per site.
+ * Platform-admin surface of the v2 entity registry: the E1a PILOT MAPPING
+ * (bootstrap composes the three pilot entities from v1 master data; nothing
+ * converts automatically - the E13a cutover calls it per site) plus the E1b
+ * catalog-driven CRUD for the open entity types (wallbox / heating-rod /
+ * generic-load / ... - the type catalog is data, adding a type is never a
+ * schema release). Composed pilot configs stay maintained through their v1
+ * master data; direct create/guard-edit of them is refused (never two
+ * truths).
  *
  * <p>Like {@link AdminOptimizerController}, this reads/writes THROUGH the
  * RLS-scoped app datasource via the {@code X-Tenant-Id} switcher: no tenant
@@ -39,6 +52,14 @@ public class AdminEntityRegistryController {
     public record BootstrapResponse(List<EntityAdminDto> entities, List<String> skipped,
             EntityRegistryService.PushOutcome push) {}
 
+    /** Create/edit request. capabilities/guards are optional JSON overrides. */
+    public record SaveEntityRequest(
+            @Size(max = 63) String entityType,
+            @Size(max = 200) String label,
+            @DecimalMin("0.0") @DecimalMax("10000.0") BigDecimal maxPowerKw,
+            JsonNode capabilities,
+            JsonNode guards) {}
+
     private final SiteRepository sites;
     private final EntityRegistryRepository repo;
     private final EntityRegistryService service;
@@ -56,6 +77,42 @@ public class AdminEntityRegistryController {
     public List<EntityAdminDto> list(@PathVariable UUID siteId) {
         requireSite(siteId);
         return repo.entitiesForSite(siteId).stream().map(this::toDto).toList();
+    }
+
+    /** Create a v2-native entity of an open catalog type (E1b). */
+    @PostMapping
+    public EntityAdminDto create(@PathVariable UUID siteId,
+            @Valid @RequestBody SaveEntityRequest request) {
+        requireSite(siteId);
+        if (request.entityType() == null || request.entityType().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "entityType ist erforderlich.");
+        }
+        return toDto(service.createEntity(siteId, request.entityType(), request.label(),
+                request.maxPowerKw(), request.capabilities(), request.guards()));
+    }
+
+    /** Edit an entity (label; config only for non-composed types). */
+    @PutMapping("/{pointId}")
+    public EntityAdminDto update(@PathVariable UUID siteId, @PathVariable UUID pointId,
+            @Valid @RequestBody SaveEntityRequest request) {
+        requireSite(siteId);
+        EntityRegistryRepository.EntityRow row = service.updateEntity(siteId, pointId,
+                request.label(), request.maxPowerKw(), request.capabilities(), request.guards());
+        if (row == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+        return toDto(row);
+    }
+
+    /** Remove an entity (v1-backed rows only lose their entity config). */
+    @DeleteMapping("/{pointId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID siteId, @PathVariable UUID pointId) {
+        requireSite(siteId);
+        if (!service.deleteEntity(siteId, pointId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
     }
 
     /**

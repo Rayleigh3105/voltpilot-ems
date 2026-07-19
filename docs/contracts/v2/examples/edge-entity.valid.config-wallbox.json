@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "entity_id": "8c305f21-9e4d-4f60-c1b2-3d4e5f607182",
+  "entity_type": "wallbox",
+  "label": "Wallbox Carport",
+  "capabilities": {
+    "measure": [
+      { "channel": "power_kw", "unit": "kW" },
+      { "channel": "energy_kwh", "unit": "kWh" }
+    ],
+    "actuate": [
+      { "command": "setpoint_kw", "min": 0, "max": 11 },
+      { "command": "on_off" },
+      { "command": "limit_kw", "max": 11 }
+    ]
+  },
+  "guards": {
+    "limits": { "max_consumption_kw": 11 },
+    "failsafe": { "behavior": "release" }
+  },
+  "revision": "2026-07-19T09:00:00Z"
+}

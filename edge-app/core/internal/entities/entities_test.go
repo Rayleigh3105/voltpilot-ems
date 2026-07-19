@@ -79,10 +79,12 @@ func TestParseRegistryPushRejectsForeignIdentityAndWrongVersion(t *testing.T) {
 	}
 }
 
-func TestParseRegistryPushSkipsUnknownTypesNeverFatal(t *testing.T) {
-	// The invalid CONFIG fixture's entity_type ("wallbox") inside a push: the
-	// entry is skipped with a note, the rest of the set applies (the
-	// schedule-2.0 unknown-entity rule; forward compatibility for E1b types).
+func TestParseRegistryPushSkipsMalformedTypesButAcceptsUnknownOnes(t *testing.T) {
+	// The invalid CONFIG fixture's entity_type ("Wallbox 11kW!") inside a
+	// push: the entry is skipped with a note, the rest of the set applies
+	// (the schedule-2.0 unknown-entity rule). An UNKNOWN but well-formed
+	// type ("hvac-compressor") is ACCEPTED - the vocabulary is open since
+	// E1b, guard semantics come from the declared capabilities.
 	push := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      pushIdentity.TenantID,
@@ -91,12 +93,18 @@ func TestParseRegistryPushSkipsUnknownTypesNeverFatal(t *testing.T) {
 		"revision":       "r1",
 		"published_at":   "2026-07-18T11:00:00Z",
 		"entities": []any{
-			json.RawMessage(fixture(t, "edge-entity.invalid.unknown-entity-type.json")),
+			json.RawMessage(fixture(t, "edge-entity.invalid.malformed-entity-type.json")),
 			map[string]any{
 				"entity_id":    "7b2f4e10-8d3c-4e5f-b0a1-2c3d4e5f6071",
 				"entity_type":  "grid-meter",
 				"capabilities": map[string]any{"measure": []any{map[string]any{"channel": "power_kw"}}},
 				"guards":       map[string]any{"failsafe": map[string]any{"behavior": "measure-only"}},
+			},
+			map[string]any{
+				"entity_id":    "hvac-1",
+				"entity_type":  "hvac-compressor",
+				"capabilities": map[string]any{"actuate": []any{map[string]any{"command": "on_off"}}},
+				"guards":       map[string]any{"failsafe": map[string]any{"behavior": "off"}},
 			},
 		},
 	}
@@ -105,11 +113,38 @@ func TestParseRegistryPushSkipsUnknownTypesNeverFatal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("push rejected: %v", err)
 	}
-	if len(reg.Entities) != 1 || reg.Entities[0].Type != TypeGridMeter {
-		t.Fatalf("want the grid meter only, got %+v", reg.Entities)
+	if len(reg.Entities) != 2 {
+		t.Fatalf("want grid meter + unknown type accepted, got %+v", reg.Entities)
 	}
-	if len(skipped) != 1 || !strings.Contains(skipped[0], "wallbox") {
-		t.Fatalf("want one wallbox skip note, got %v", skipped)
+	if unknown := reg.Find("hvac-1"); unknown == nil || unknown.Type != "hvac-compressor" {
+		t.Fatalf("well-formed unknown type must be accepted, got %+v", reg.Entities)
+	}
+	if len(skipped) != 1 || !strings.Contains(skipped[0], "malformed") {
+		t.Fatalf("want one malformed-type skip note, got %v", skipped)
+	}
+}
+
+func TestParseRegistryPushAcceptsTheConsumerFixture(t *testing.T) {
+	reg, skipped, err := ParseRegistryPush(fixture(t, "edge-entity.valid.registry-push-consumers.json"), pushIdentity)
+	if err != nil {
+		t.Fatalf("consumer fixture rejected: %v", err)
+	}
+	if len(skipped) != 0 {
+		t.Fatalf("consumer fixture entries skipped: %v", skipped)
+	}
+	if len(reg.Entities) != 3 {
+		t.Fatalf("want 3 consumer entities, got %d", len(reg.Entities))
+	}
+	wb := reg.FirstOfType(TypeWallbox)
+	if wb == nil || wb.Guards.Limits.MaxConsumptionKw == nil || *wb.Guards.Limits.MaxConsumptionKw != 11 {
+		t.Fatalf("wallbox rated cap missing: %+v", wb)
+	}
+	if wb.category() != catConsumer {
+		t.Fatalf("wallbox category = %q", wb.category())
+	}
+	load := reg.FirstOfType(TypeGenericLoad)
+	if load == nil || !load.modeDeclared("eco") || load.modeDeclared("turbo") {
+		t.Fatalf("generic-load declared mode set not honored: %+v", load)
 	}
 }
 
@@ -251,6 +286,99 @@ func TestClampCommandsCapabilityGateAndTypes(t *testing.T) {
 		Guards: Guards{Failsafe: Failsafe{Behavior: "measure-only"}}}
 	if got := meter.ClampCommands(Commands{SetpointKw: &sp, LimitKw: &sp}, r); !got.Empty() {
 		t.Fatalf("grid meter granted commands: %+v", got)
+	}
+}
+
+func wallboxEntity() Entity {
+	rated, capMax := 11.0, 11.0
+	zero := 0.0
+	return Entity{
+		ID:   "wb",
+		Type: TypeWallbox,
+		Capabilities: Capabilities{Actuate: []ActuateCap{
+			{Command: CmdSetpointKw, Min: &zero, Max: &capMax},
+			{Command: CmdOnOff},
+			{Command: CmdLimitKw, Max: &capMax},
+		}},
+		Guards: Guards{
+			Limits:   GuardLimits{MaxConsumptionKw: &rated},
+			Failsafe: Failsafe{Behavior: "release"},
+		},
+	}
+}
+
+func TestClampCommandsConsumerTypes(t *testing.T) {
+	r := guards.Reading{SocPct: guards.Unknown(), PvKw: guards.Unknown(),
+		LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown()}
+	wb := wallboxEntity()
+
+	// Setpoint capped at the rated band [0, 11]; a consumer is never
+	// commanded to feed in (negative -> 0).
+	over, neg, ok := 22.0, -5.0, 7.4
+	granted, stages := wb.ClampCommandsTraced(Commands{SetpointKw: &over}, nil, false, r)
+	if granted.SetpointKw == nil || *granted.SetpointKw != 11 {
+		t.Fatalf("consumer cap: want 11, got %+v", granted.SetpointKw)
+	}
+	if len(stages) != 1 || stages[0].Stage != guards.StageRatedBand {
+		t.Fatalf("consumer cap must be stage-attributed, got %+v", stages)
+	}
+	if granted = wb.ClampCommands(Commands{SetpointKw: &neg}, r); granted.SetpointKw == nil || *granted.SetpointKw != 0 {
+		t.Fatalf("negative consumer setpoint must clamp to 0, got %+v", granted.SetpointKw)
+	}
+	if granted = wb.ClampCommands(Commands{SetpointKw: &ok}, r); granted.SetpointKw == nil || *granted.SetpointKw != 7.4 {
+		t.Fatalf("in-band consumer setpoint must pass, got %+v", granted.SetpointKw)
+	}
+
+	// on_off passes when declared; limit_kw reduce-only against the rated
+	// cap; an undeclared limit_pct is dropped (capability gate).
+	on := true
+	pct := 50.0
+	granted = wb.ClampCommands(Commands{OnOff: &on, LimitKw: &over, LimitPct: &pct}, r)
+	if granted.OnOff == nil || !*granted.OnOff {
+		t.Fatalf("declared on_off must pass, got %+v", granted.OnOff)
+	}
+	if granted.LimitKw == nil || *granted.LimitKw != 11 {
+		t.Fatalf("consumer limit_kw cap: want 11, got %+v", granted.LimitKw)
+	}
+	if granted.LimitPct != nil {
+		t.Fatal("undeclared limit_pct must be dropped")
+	}
+
+	// Mode: only declared modes pass.
+	pool := Entity{ID: "pool", Type: TypeGenericLoad,
+		Capabilities: Capabilities{Actuate: []ActuateCap{
+			{Command: CmdOnOff}, {Command: CmdMode, Modes: []string{"eco", "boost"}},
+		}},
+		Guards: Guards{Failsafe: Failsafe{Behavior: "off"}}}
+	if granted = pool.ClampCommands(Commands{Mode: "eco"}, r); granted.Mode != "eco" {
+		t.Fatalf("declared mode must pass, got %q", granted.Mode)
+	}
+	if granted = pool.ClampCommands(Commands{Mode: "turbo"}, r); granted.Mode != "" {
+		t.Fatalf("undeclared mode must be dropped, got %q", granted.Mode)
+	}
+
+	// An unknown well-formed type with storage-shaped guards gets the FULL
+	// storage chain incl. the D-8 solar-only posture (fail-safe inference).
+	maxCharge := 10.0
+	futureStorage := Entity{ID: "fs", Type: "salt-battery",
+		Capabilities: Capabilities{Actuate: []ActuateCap{{Command: CmdSetpointKw}}},
+		Guards: Guards{Limits: GuardLimits{MaxChargeKw: &maxCharge},
+			Failsafe: Failsafe{Behavior: "self-consumption"}}}
+	if futureStorage.category() != catStorage {
+		t.Fatalf("storage-shaped unknown type category = %q", futureStorage.category())
+	}
+	wish := 20.0
+	granted = futureStorage.ClampCommands(Commands{SetpointKw: &wish},
+		guards.Reading{SocPct: 50, PvKw: 3, LoadKw: 1, GridLimitKw: guards.Unknown()})
+	if granted.SetpointKw == nil || *granted.SetpointKw != 3 {
+		t.Fatalf("unknown storage type must keep D-8 solar-only, got %+v", granted.SetpointKw)
+	}
+
+	// An unknown type with no actuate list is measure-only: all dropped.
+	sensor := Entity{ID: "s", Type: "humidity-sensor",
+		Guards: Guards{Failsafe: Failsafe{Behavior: "measure-only"}}}
+	if got := sensor.ClampCommands(Commands{SetpointKw: &wish, OnOff: &on}, r); !got.Empty() {
+		t.Fatalf("measure-only unknown type granted commands: %+v", got)
 	}
 }
 

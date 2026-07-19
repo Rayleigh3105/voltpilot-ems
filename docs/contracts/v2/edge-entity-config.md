@@ -24,9 +24,11 @@ identity + `revision` + `published_at` + the full `entities` descriptor array.
   `config` AND `command` cleared (empty retained payload — the provisioning `clearRetained`
   precedent). An empty `entities` array = the device has no v2 entities. An empty PAYLOAD
   clears the retained slot outright (device unclaimed).
-- **One-way in E1a.** The push is cloud → edge only; the edge acknowledges by echoing the
-  applied `revision` in its status heartbeat (§5). The edge-local `:8484` view stays
-  commissioning-only; reconciling an edge-side "Ist" upward is later work.
+- **Soll down, Ist up (bidirectional since E1b).** The push stays the one-way Soll (cloud →
+  edge); the edge reports its Ist back through the additive status-heartbeat `entities` block
+  (§5): the applied `revision` plus per-entity observed health AND the edge-local
+  commissioning view (`:8484` inverter/sources — which keeps working unchanged). The cloud
+  RECONCILES and surfaces drift; it never silently overwrites in either direction.
 - Publishing is **best-effort** on registry change (the on-claim provisioning-publish posture:
   a broker outage never fails the registry write); retained delivery makes the next
   (re)connect converge.
@@ -36,15 +38,23 @@ identity + `revision` + `published_at` + the full `entities` descriptor array.
 `$defs/config` — the registry descriptor per entity (D-3: per-entity topics, wildcard
 `edge/entities/+/config` gives any consumer the complete set on subscribe). Contents:
 
-- **`entity_type`** — the pilot domain types `battery-hybrid` | `producer` | `grid-meter`
-  (D-10: capabilities as the foundation, domain types on top; further types join additively).
+- **`entity_type`** — an OPEN kebab-case vocabulary since E1b (D-10: capabilities as the
+  foundation, domain types on top). The data-driven platform type CATALOG
+  (`services/api` `entitytypes/catalog.json`) is the truth for known types — today
+  `battery-hybrid` | `producer` | `grid-meter` (the pilots) plus the E1b consumer types
+  `wallbox` | `heating-rod` | `generic-load`; adding a type is catalog data + an optional
+  driver, never a schema release. Consumers of this contract key BEHAVIOR on the declared
+  capabilities and guards, never on the type string alone (an unknown well-formed type is
+  data, not an error).
 - **`capabilities`** — `measure` channel descriptors + `actuate` command descriptors from the
   D-14 vocabulary (`setpoint_kw`, `on_off`, `limit_pct`, `limit_kw`, `mode`) with optional
   bounds. A measure-only entity (grid meter) has no `actuate` list. Generators are never
-  commanded to produce — `limit_*` reduce-only (the v1 safety posture).
+  commanded to produce — `limit_*` reduce-only (the v1 safety posture). Consumers are only
+  ever commanded to CONSUME (`setpoint_kw` + = consume, clamped ≥ 0 — V2G out of scope).
 - **`guards`** — per D-9 the guard limits AND the failsafe live HERE, in registry config, never
   in plans: `limits` (rated charge/discharge band, SoC window, `charge_from_grid_allowed` with
-  the D-8 absent-=-NOT-allowed reading, producer `max_generation_kw`) and
+  the D-8 absent-=-NOT-allowed reading, producer `max_generation_kw`, consumer
+  `max_consumption_kw` — E1b, additive) and
   `failsafe.behavior` (`self-consumption` | `off` | `release` | `measure-only`) — what the
   entity falls back to when nothing commands it (no desired, stale plan). The core builds its
   per-entity guard chain instance from this block — the generalization of the v1 env-derived
@@ -87,8 +97,33 @@ the v1 `control`/`purge_request` precedent, `schema_version` stays "1.0"):
               "count": 3, "ids": ["…", "…", "…"] }
 ```
 
-The cloud can compare `revision` against the latest push to verify convergence (consumption
-cloud-side is deliberately deferred; the block ships with E1a so the proof surface exists).
+Since E1b the block additionally carries the per-entity **Ist** (all additive; absent fields
+mean "nothing to report", never fabricated):
+
+```json
+"entities": {
+  "revision": "…", "applied_at": "…", "count": 2, "ids": ["…", "…"],
+  "observed": {
+    "<entity_id>": { "entity_type": "wallbox", "health": "ok",
+                     "last_telemetry_at": "<RFC3339>", "channels": ["power_kw"] }
+  },
+  "local_setup": [
+    { "id": "inverter", "kind": "inverter", "brand": "deye", "model": "SUN-12K-SG04LP3-EU" },
+    { "id": "<source id>", "kind": "source", "role": "pv-generation", "brand": "fronius_sunspec" }
+  ]
+}
+```
+
+- **`observed`** — per applied entity: the type as applied, `health` (`ok` = local telemetry
+  within the 5-min liveness window | `stale` = had readings, none recently | `never` = none
+  since boot) and the channels actually seen. This is the edge's honest Ist per entity.
+- **`local_setup`** — the edge-authoritative commissioning view (`:8484` inverter selection +
+  sources), reported verbatim so the cloud can SEE edge-side master data that has no registry
+  counterpart. The cloud never auto-imports it; reconciliation surfaces it as drift.
+
+The cloud compares `revision` against the latest push and the `observed` map against the
+registry Soll (api `EntityStatusListener` → `entity_observed_state`); drift is surfaced in the
+portal, never silently resolved.
 
 ## 6. Coexistence
 

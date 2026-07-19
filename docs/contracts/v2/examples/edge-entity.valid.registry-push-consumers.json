@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "revision": "2026-07-19T09:00:00Z",
+  "published_at": "2026-07-19T09:00:00Z",
+  "entities": [
+    {
+      "entity_id": "8c305f21-9e4d-4f60-c1b2-3d4e5f607182",
+      "entity_type": "wallbox",
+      "label": "Wallbox Carport",
+      "capabilities": {
+        "measure": [
+          { "channel": "power_kw", "unit": "kW" },
+          { "channel": "energy_kwh", "unit": "kWh" }
+        ],
+        "actuate": [
+          { "command": "setpoint_kw", "min": 0, "max": 11 },
+          { "command": "on_off" },
+          { "command": "limit_kw", "max": 11 }
+        ]
+      },
+      "guards": {
+        "limits": { "max_consumption_kw": 11 },
+        "failsafe": { "behavior": "release" }
+      }
+    },
+    {
+      "entity_id": "9d416032-af5e-4071-d2c3-4e5f60718293",
+      "entity_type": "heating-rod",
+      "label": "Heizstab Pufferspeicher",
+      "capabilities": {
+        "measure": [{ "channel": "power_kw", "unit": "kW" }],
+        "actuate": [
+          { "command": "on_off" },
+          { "command": "setpoint_kw", "min": 0, "max": 6 },
+          { "command": "limit_kw", "max": 6 }
+        ]
+      },
+      "guards": {
+        "limits": { "max_consumption_kw": 6 },
+        "failsafe": { "behavior": "off" }
+      }
+    },
+    {
+      "entity_id": "ae527143-b06f-4182-e3d4-5f6071829304",
+      "entity_type": "generic-load",
+      "label": "Poolpumpe",
+      "capabilities": {
+        "measure": [{ "channel": "power_kw", "unit": "kW" }],
+        "actuate": [
+          { "command": "on_off" },
+          { "command": "limit_pct" },
+          { "command": "mode", "modes": ["eco", "boost"] }
+        ]
+      },
+      "guards": {
+        "limits": { "max_consumption_kw": 2 },
+        "failsafe": { "behavior": "off" }
+      }
+    }
+  ]
+}

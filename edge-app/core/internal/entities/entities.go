@@ -26,12 +26,18 @@ import (
 // SchemaVersion of every payload in this package (a brand-new contract).
 const SchemaVersion = "1.0"
 
-// The pilot entity types (D-10: capabilities as the foundation, domain types
-// on top; further types join additively in later increments).
+// The known catalog entity types (D-10: capabilities as the foundation,
+// domain types on top). The vocabulary is OPEN since E1b - the cloud type
+// catalog is data, and an unknown well-formed type is accepted here with its
+// guard semantics INFERRED from what it declares (see category), never from
+// its name. These constants cover the types with pinned semantics.
 const (
 	TypeBatteryHybrid = "battery-hybrid"
 	TypeProducer      = "producer"
 	TypeGridMeter     = "grid-meter"
+	TypeWallbox       = "wallbox"
+	TypeHeatingRod    = "heating-rod"
+	TypeGenericLoad   = "generic-load"
 )
 
 // The D-14 command vocabulary, shared with edge-desired and mqtt-schedule-2.0.
@@ -45,9 +51,12 @@ const (
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
-func knownType(t string) bool {
-	return t == TypeBatteryHybrid || t == TypeProducer || t == TypeGridMeter
-}
+// typePattern is the contract's open kebab-case entity_type vocabulary
+// (E1b): well-formedness is the only gate - the TYPE CATALOG lives in the
+// cloud as data, and behavior here keys on declared capabilities/guards.
+var typePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
+
+func wellFormedType(t string) bool { return typePattern.MatchString(t) }
 
 // MeasureCap declares one reportable channel.
 type MeasureCap struct {
@@ -77,6 +86,7 @@ type GuardLimits struct {
 	SocMaxPct             *float64 `json:"soc_max_pct,omitempty"`
 	ChargeFromGridAllowed *bool    `json:"charge_from_grid_allowed,omitempty"`
 	MaxGenerationKw       *float64 `json:"max_generation_kw,omitempty"`
+	MaxConsumptionKw      *float64 `json:"max_consumption_kw,omitempty"`
 }
 
 // Failsafe is what the entity falls back to when nothing commands it.
@@ -143,11 +153,13 @@ type Identity struct {
 }
 
 // ParseRegistryPush validates a …/v2/entities payload against the device
-// identity and returns the registry. Entities with an unknown type or an
-// invalid/duplicate id are SKIPPED with a note (forward compatibility: a
-// future push carrying a wallbox to this build must not be fatal); a
-// structurally invalid push or an identity mismatch is an error (the payload
-// is not for this device / not this contract).
+// identity and returns the registry. Entities with a MALFORMED type or an
+// invalid/duplicate id are SKIPPED with a note; an unknown but well-formed
+// type is ACCEPTED (E1b open vocabulary - guard semantics come from the
+// declared capabilities/guards, so a future catalog type reaching this build
+// is data, not an error). A structurally invalid push or an identity
+// mismatch is an error (the payload is not for this device / not this
+// contract).
 func ParseRegistryPush(payload []byte, id Identity) (Registry, []string, error) {
 	var push struct {
 		SchemaVersion string    `json:"schema_version"`
@@ -182,9 +194,9 @@ func ParseRegistryPush(payload []byte, id Identity) (Registry, []string, error) 
 			skipped = append(skipped, fmt.Sprintf("entity %q: id not topic-safe", e.ID))
 		case seen[e.ID]:
 			skipped = append(skipped, fmt.Sprintf("entity %q: duplicate id", e.ID))
-		case !knownType(e.Type):
+		case !wellFormedType(e.Type):
 			// Logged and skipped, never fatal - the schedule-2.0 unknown-entity rule.
-			skipped = append(skipped, fmt.Sprintf("entity %q: unknown entity_type %q", e.ID, e.Type))
+			skipped = append(skipped, fmt.Sprintf("entity %q: malformed entity_type %q", e.ID, e.Type))
 		default:
 			seen[e.ID] = true
 			reg.Entities = append(reg.Entities, e)
@@ -355,8 +367,8 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 			stages = append(stages, guards.ClampStage{Stage: stage, Before: before, After: after})
 		}
 	}
-	switch e.Type {
-	case TypeBatteryHybrid:
+	switch e.category() {
+	case catStorage:
 		if c.SetpointKw != nil && e.allows(CmdSetpointKw) {
 			v, tr := guards.ClampTraced(*c.SetpointKw, limits, r)
 			stages = append(stages, tr...)
@@ -372,7 +384,7 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 			noteLimit(guards.StageLimitReduceOnly, *c.LimitPct, v)
 			out.LimitPct = &v
 		}
-	case TypeProducer:
+	case catProducer:
 		// Generators are never commanded to produce - only ever capped
 		// (limit_* reduce-only, the v1 pv_limit_kw safety posture).
 		if c.LimitKw != nil && e.allows(CmdLimitKw) {
@@ -385,10 +397,117 @@ func (e Entity) ClampCommandsTraced(c Commands, extra *guards.Limits, extraSolar
 			noteLimit(guards.StageLimitReduceOnly, *c.LimitPct, v)
 			out.LimitPct = &v
 		}
-	case TypeGridMeter:
+	case catConsumer:
+		// Consumers are only ever commanded to CONSUME (+ = consume, V2G out
+		// of scope): the setpoint band is [0, min(capability max,
+		// max_consumption_kw)]; limits reduce-only against the same caps.
+		if c.SetpointKw != nil && e.allows(CmdSetpointKw) {
+			v := consumerCap(*c.SetpointKw, e.capMax(CmdSetpointKw), e.Guards.Limits.MaxConsumptionKw)
+			noteLimit(guards.StageRatedBand, *c.SetpointKw, v)
+			out.SetpointKw = &v
+		}
+		if c.LimitKw != nil && e.allows(CmdLimitKw) {
+			v := consumerCap(*c.LimitKw, e.capMax(CmdLimitKw), e.Guards.Limits.MaxConsumptionKw)
+			noteLimit(guards.StageLimitReduceOnly, *c.LimitKw, v)
+			out.LimitKw = &v
+		}
+		if c.LimitPct != nil && e.allows(CmdLimitPct) {
+			v := clampPct(*c.LimitPct)
+			noteLimit(guards.StageLimitReduceOnly, *c.LimitPct, v)
+			out.LimitPct = &v
+		}
+		if c.OnOff != nil && e.allows(CmdOnOff) {
+			v := *c.OnOff
+			out.OnOff = &v
+		}
+		if c.Mode != "" && e.allows(CmdMode) && e.modeDeclared(c.Mode) {
+			out.Mode = c.Mode
+		}
+	case catMeasureOnly:
 		// Measure-only by construction: every command is dropped.
 	}
 	return out, stages
+}
+
+// Guard-semantics categories. The pilot types keep their pinned semantics;
+// everything else is inferred from DECLARED config (D-10: capabilities are
+// the foundation - an unknown future type gets safe semantics from what it
+// declares, never from its name).
+const (
+	catStorage     = "storage"
+	catProducer    = "producer"
+	catConsumer    = "consumer"
+	catMeasureOnly = "measure-only"
+)
+
+func (e Entity) category() string {
+	switch e.Type {
+	case TypeBatteryHybrid:
+		return catStorage
+	case TypeProducer:
+		return catProducer
+	case TypeGridMeter:
+		return catMeasureOnly
+	}
+	if e.Guards.Failsafe.Behavior == "measure-only" || len(e.Capabilities.Actuate) == 0 {
+		return catMeasureOnly
+	}
+	l := e.Guards.Limits
+	if l.MaxChargeKw != nil || l.MaxDischargeKw != nil || l.SocMinPct != nil ||
+		l.SocMaxPct != nil || l.ChargeFromGridAllowed != nil {
+		// Storage-shaped guards: the full battery chain incl. the D-8
+		// solar-only posture - fail-safe for a future storage type.
+		return catStorage
+	}
+	if l.MaxGenerationKw != nil {
+		return catProducer
+	}
+	return catConsumer
+}
+
+// capMax returns the declared upper bound of an actuate capability, or nil.
+func (e Entity) capMax(command string) *float64 {
+	for _, cap := range e.Capabilities.Actuate {
+		if cap.Command == command {
+			return cap.Max
+		}
+	}
+	return nil
+}
+
+// modeDeclared reports whether a mode is in the declared set of the mode
+// capability (a capability without a declared set accepts any mode).
+func (e Entity) modeDeclared(mode string) bool {
+	for _, cap := range e.Capabilities.Actuate {
+		if cap.Command != CmdMode {
+			continue
+		}
+		if len(cap.Modes) == 0 {
+			return true
+		}
+		for _, m := range cap.Modes {
+			if m == mode {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// consumerCap clamps a consumer command value to [0, min(capability max,
+// rated max_consumption_kw)] - restrict-only, never raised.
+func consumerCap(v float64, capMax, rated *float64) float64 {
+	if math.IsNaN(v) || v < 0 {
+		v = 0
+	}
+	if capMax != nil && v > *capMax {
+		v = *capMax
+	}
+	if rated != nil && v > *rated {
+		v = *rated
+	}
+	return math.Round(v*1000) / 1000
 }
 
 // tightenLimits composes two limit sets, most restrictive wins: the narrower

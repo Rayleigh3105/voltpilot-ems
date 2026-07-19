@@ -1317,6 +1317,112 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Site not found (or no tenant selected). }
+    post:
+      tags: [admin]
+      summary: Create a v2-native entity of an open catalog type (E1b).
+      description: >
+        Create an entity of an open catalog type (wallbox / heating-rod /
+        generic-load / ...; the type catalog at GET
+        /api/v1/admin/entity-type-catalog is the truth). capabilities and
+        guards default from the catalog (bounded by maxPowerKw); explicit
+        JSON overrides are validated against the contract shapes. A COMPOSED
+        pilot type (battery-hybrid/producer/grid-meter) is refused (422) -
+        those are maintained through their v1 master data + the bootstrap.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveV2EntityRequest" }
+      responses:
+        "200": { description: The created entity., content: { application/json: { schema: { $ref: "#/components/schemas/V2Entity" } } } }
+        "400": { description: Unknown type / invalid capabilities or guards. }
+        "422": { description: A composed pilot type cannot be created directly. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/{pointId}:
+    put:
+      tags: [admin]
+      summary: Edit a v2 entity (label; config only for non-composed types).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: pointId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveV2EntityRequest" }
+      responses:
+        "200": { description: The updated entity., content: { application/json: { schema: { $ref: "#/components/schemas/V2Entity" } } } }
+        "400": { description: Invalid capabilities or guards. }
+        "422": { description: A composed pilot type's config is not editable here. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Entity/site not found (or no tenant selected). }
+    delete:
+      tags: [admin]
+      summary: Remove a v2 entity (v1-backed rows only lose their entity config).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: pointId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Entity/site not found (or no tenant selected). }
+  /api/v1/admin/entity-type-catalog:
+    get:
+      tags: [admin]
+      summary: The data-driven entity-type catalog the admin entity editor uses.
+      description: >
+        The one truth for known entity types (entitytypes/catalog.json):
+        category (steers edge guard semantics), controllable, composed, and
+        the default capabilities/guards/failsafe seeded on create. Adding a
+        type is catalog data + an optional edge driver, never a schema release.
+      responses:
+        "200": { description: The catalog document., content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/sites/{siteId}/entities:
+    get:
+      tags: [sites]
+      summary: The site's v2 entities with Soll/Ist drift + the edge-local commissioning view.
+      description: >
+        The customer "Geräte & Entitäten" surface: the composed registry Soll
+        (revision) reconciled against the edge-reported observed Ist (health,
+        last telemetry, applied revision) - drift is SURFACED via syncStatus
+        (in_sync | pending | missing_on_device | unreported | never_pushed),
+        never silently resolved. localSetup is the edge-authoritative
+        commissioning view (:8484 inverter/sources); staleOnDevice lists
+        entities the edge still reports that the registry no longer contains.
+        Tenant-scoped (foreign site 404); admins read via the X-Tenant-Id
+        switcher, WRITES stay under /admin/.../v2-entities.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: The site's entity surface., content: { application/json: { schema: { $ref: "#/components/schemas/SiteEntities" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found. }
+  /api/v1/sites/{siteId}/entities/{entityId}/history:
+    get:
+      tags: [sites]
+      summary: Per-entity channel history over the v2 telemetry rollups.
+      description: >
+        Channel-keyed bucket series of one entity: day = live 15-min buckets
+        from raw telemetry_v2, week = hourly rollup, month/year = Europe/Berlin
+        daily rollup (the v1 history discipline). RLS-scoped.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: range, in: query, required: false, schema: { type: string, enum: [day, week, month, year], default: day } }
+        - { name: at, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200": { description: The channel series., content: { application/json: { schema: { $ref: "#/components/schemas/EntityHistory" } } } }
+        "400": { description: Bad range. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Entity/site not found. }
   /api/v1/admin/flow-catalog:
     get:
       tags: [admin]
@@ -2085,12 +2191,88 @@ components:
         docs/contracts/v2/edge-entity.schema.json $defs objects verbatim.
       properties:
         id: { type: string, format: uuid }
-        entityType: { type: string, enum: [battery-hybrid, producer, grid-meter] }
+        entityType: { type: string, description: "Open kebab-case vocabulary (E1b); the type catalog is the truth.", example: wallbox }
         role: { type: string, example: battery-hybrid }
         label: { type: string, nullable: true }
         deviceId: { type: string, format: uuid, nullable: true }
         capabilities: { type: object, nullable: true }
         guards: { type: object, nullable: true }
+    SaveV2EntityRequest:
+      type: object
+      description: Create/edit an entity. capabilities/guards are optional JSON overrides.
+      properties:
+        entityType: { type: string, description: "Catalog type (create only; open kebab-case).", example: wallbox }
+        label: { type: string, nullable: true, maxLength: 200 }
+        maxPowerKw: { type: number, nullable: true, description: "Rated power; bounds numeric commands + consumer max_consumption_kw." }
+        capabilities: { type: object, nullable: true }
+        guards: { type: object, nullable: true }
+    SiteEntities:
+      type: object
+      description: The customer entity surface with Soll/Ist reconciliation (E1b).
+      properties:
+        registry:
+          type: object
+          nullable: true
+          description: The composed registry Soll + the edge's reported revision (null = never pushed).
+          properties:
+            revision: { type: string }
+            composedAt: { type: string, format: date-time }
+            deviceId: { type: string, format: uuid, nullable: true }
+            reportedRevision: { type: string, nullable: true }
+            reportedAt: { type: string, format: date-time, nullable: true }
+        entities:
+          type: array
+          items:
+            allOf:
+              - $ref: "#/components/schemas/V2Entity"
+              - type: object
+                properties:
+                  typeLabel: { type: string }
+                  control: { type: boolean }
+                  syncStatus: { type: string, enum: [in_sync, pending, missing_on_device, unreported, never_pushed] }
+                  observed:
+                    type: object
+                    nullable: true
+                    properties:
+                      health: { type: string, enum: [ok, stale, never] }
+                      lastTelemetryAt: { type: string, format: date-time, nullable: true }
+                      channels: { type: array, items: { type: string }, nullable: true }
+                      appliedType: { type: string, nullable: true }
+                      reportedAt: { type: string, format: date-time }
+        localSetup:
+          type: array
+          description: The edge-authoritative commissioning view (inverter/sources; never auto-imported).
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              kind: { type: string, example: inverter }
+              label: { type: string, nullable: true }
+              reportedAt: { type: string, format: date-time }
+        staleOnDevice:
+          type: array
+          items: { type: string }
+          description: Entities the edge still reports that the registry no longer contains.
+    EntityHistory:
+      type: object
+      properties:
+        range: { type: string, enum: [day, week, month, year] }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        bucketMinutes: { type: integer }
+        channels:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                start: { type: string, format: date-time }
+                avg: { type: number, nullable: true }
+                min: { type: number, nullable: true }
+                max: { type: number, nullable: true }
+                last: { type: number, nullable: true }
+                n: { type: integer }
     V2EntityBootstrapResult:
       type: object
       properties:

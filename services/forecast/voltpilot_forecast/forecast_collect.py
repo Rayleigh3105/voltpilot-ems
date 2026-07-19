@@ -150,7 +150,7 @@ def load_sites(conn) -> list[SiteRow]:
             LEFT JOIN LATERAL (
                 SELECT pv_capacity_kwp, azimuth_deg, tilt_deg
                 FROM asset
-                WHERE site_id = s.id AND type = 'pv' AND pv_capacity_kwp > 0
+                WHERE site_id = s.id AND type = 'pv' AND is_primary AND pv_capacity_kwp > 0
                 ORDER BY created_at DESC
                 LIMIT 1
             ) a ON TRUE
