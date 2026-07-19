@@ -42,6 +42,11 @@ jobs:
             context: .
             dockerfile: ./services/optimization/Dockerfile
             build_args: ""
+          # flowc-serve: the cloud-side flow-graph -> flow-artifact compiler
+          # sidecar the api compiles flows through during activation (E2 flowc).
+          - component: flowc
+            context: ./edge-app/nodered/flowc
+            build_args: ""
           # VITE_KEYCLOAK_URL is appended in the "Compose image build args" step
           # below: the secrets context is NOT available inside strategy.matrix
           # (Forgejo resolves the matrix before secrets exist and rejects the

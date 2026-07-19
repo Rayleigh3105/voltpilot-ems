@@ -186,7 +186,11 @@ authoritative implementations + their proofs:
   committed `flowc/testdata/*.artifact.json` is verified by the Go deployer
   (`crosscheck_test.go`) — never change one side alone. `pinned-hash.txt`
   pins compiler output; a deliberate output change must update the pin (it
-  invalidates deployed content hashes).
+  invalidates deployed content hashes). ALSO a CLOUD consumer now: `serve.js`
+  wraps `compile()` as the `flowc-serve` HTTP sidecar the JVM api calls during
+  flow activation (root AGENTS.md "flowc-serve bridge"); `serve.test.js` pins
+  the graph→artifact→pinned-hash path. Keep the module dependency-free —
+  `serve.js`/`Dockerfile` copy only `canonicalize.js`/`catalog.js`/`compile.js`.
 - **Flow deployment** (`core/internal/flowdeploy`, `agent/flows.go`):
   retained `…/v2/flows` set → verify (hash / semver gates / capabilities;
   palette version LIVE from NR `GET /nodes`, never an env) → per-flow Admin

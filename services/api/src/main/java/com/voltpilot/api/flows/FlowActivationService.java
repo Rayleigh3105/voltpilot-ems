@@ -26,15 +26,20 @@ import org.springframework.transaction.annotation.Transactional;
  * the new version marked active, and the COMPLETE deployment set of the
  * site's gateway device published retained on {@code …/v2/flows}.
  *
- * <p>Two honest stops, in order:
+ * <p>The compiler is the E2 flowc sidecar, wired via {@link FlowCompilerClient}
+ * (a bean is always present now), so activation compiles the REAL artifact and
+ * publishes the D-11 deployment set carrying flowc's own content_hash /
+ * min_palette_version. Honest stops, in order:
  * <ol>
- *   <li>No compiler bean (the E3a reality until E2 lands): activation reports
- *       "Compiler folgt", changes NOTHING and publishes NOTHING.</li>
+ *   <li>No compiler bean (only via the null-provider test seam - "Compiler
+ *       folgt"): changes NOTHING, publishes NOTHING.</li>
  *   <li>Feature flag {@code voltpilot.flows.activation.enabled} (default OFF;
  *       only the simulator-rig environment sets it): with a compiler present
- *       but the flag off, activation still refuses - actual edge consumption
- *       is E2's side, so no production device may ever receive a deployment
- *       from this MVP.</li>
+ *       but the flag off, activation still refuses - so no production device
+ *       may ever receive a deployment from this MVP.</li>
+ *   <li>Compiler failure ({@link FlowCompilerException}: sidecar unreachable or
+ *       the flow rejected) or a malformed artifact: activation refuses with a
+ *       German message and changes NOTHING - the flow stays "simuliert".</li>
  * </ol>
  * Rollback = re-activating a previous version (its stored artifact is
  * re-published; deterministic tab ids make it a clean replace).
@@ -109,8 +114,25 @@ public class FlowActivationService {
                             + "verknüpftes).");
         }
 
-        JsonNode artifact = flowCompiler.compile(document);
-        FlowDeployment.requireArtifactShape(artifact);
+        // Compile the real artifact (the E2 flowc sidecar) and validate its
+        // manifest+bundle against the flow-artifact contract shape BEFORE any
+        // state change - so a sidecar outage or a compiler rejection leaves the
+        // flow at "simuliert", never a half-activated state.
+        JsonNode artifact;
+        try {
+            artifact = flowCompiler.compile(document);
+            FlowDeployment.requireArtifactShape(artifact);
+        } catch (FlowCompilerException e) {
+            log.warn("flow {} activation aborted: {} ({})", version.flowId(), e.getMessage(),
+                    e.reason());
+            return ActivationOutcome.refused(e.reason(), e.getMessage());
+        } catch (IllegalArgumentException e) {
+            log.warn("flow {} activation aborted: compiled artifact invalid: {}",
+                    version.flowId(), e.getMessage());
+            return ActivationOutcome.refused("compiler_rejected",
+                    "Das kompilierte Flow-Artefakt ist ungültig und wurde nicht ausgerollt: "
+                            + e.getMessage());
+        }
 
         flows.retireActive(version.flowId());
         flows.markActive(version.flowId(), version.flowVersion(), artifact.toString());

@@ -161,6 +161,43 @@ class FlowActivationServiceTest {
     }
 
     @Test
+    void whenTheCompilerIsUnavailableActivationRefusesAndChangesNothing() {
+        when(entities.batteryAsset(SITE)).thenReturn(
+                new EntityRegistryRepository.BatteryAsset(DEVICE, null, null, null, null));
+        FlowCompiler downSidecar = doc -> {
+            throw FlowCompilerException.unavailable();
+        };
+        FlowActivationService service = service(downSidecar, true);
+        FlowActivationService.ActivationOutcome outcome = service.activate(SITE,
+                row(2, "simulated", null), MAPPER.createObjectNode());
+        assertThat(outcome.activated()).isFalse();
+        assertThat(outcome.reason()).isEqualTo("compiler_unavailable");
+        assertThat(outcome.message()).contains("nicht erreichbar");
+        // Nothing mutated, nothing published - the flow stays "simuliert".
+        verify(flows, never()).retireActive(any());
+        verify(flows, never()).markActive(any(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString());
+        assertThat(publisher.payload).isNull();
+    }
+
+    @Test
+    void whenTheCompilerRejectsTheFlowActivationRefusesWithItsReason() {
+        when(entities.batteryAsset(SITE)).thenReturn(
+                new EntityRegistryRepository.BatteryAsset(DEVICE, null, null, null, null));
+        FlowCompiler rejecting = doc -> {
+            throw FlowCompilerException.rejected("Der Flow konnte nicht kompiliert werden: V-4 …");
+        };
+        FlowActivationService service = service(rejecting, true);
+        FlowActivationService.ActivationOutcome outcome = service.activate(SITE,
+                row(2, "simulated", null), MAPPER.createObjectNode());
+        assertThat(outcome.activated()).isFalse();
+        assertThat(outcome.reason()).isEqualTo("compiler_rejected");
+        verify(flows, never()).markActive(any(), org.mockito.ArgumentMatchers.anyInt(),
+                anyString());
+        assertThat(publisher.payload).isNull();
+    }
+
+    @Test
     void ambiguousGatewayRefusesInsteadOfGuessing() {
         when(entities.batteryAsset(SITE)).thenReturn(null);
         when(entities.siteDeviceIds(SITE)).thenReturn(List.of(UUID.randomUUID(),
