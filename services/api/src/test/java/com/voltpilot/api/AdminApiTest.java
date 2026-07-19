@@ -1451,6 +1451,199 @@ class AdminApiTest {
         return ((Number) v).doubleValue();
     }
 
+    /**
+     * AE1 Anlagen-Topologie-Read-Model: a hybrid entity (Deye: PV+Speicher) and
+     * a pure producer (Fronius: PV) plus the grid-meter at one site produce a
+     * topology where PV-Erzeugung aggregates the hybrid's PV + the producer,
+     * Speicher = the battery, Netz = the grid measurement flagged maßgeblich -
+     * via GET /sites/{id}/topology; the capability→role assignment is settable
+     * by the admin; RLS fences it. Live values come from telemetry_v2.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void topologyReadModelAggregatesRolesFromV2EntitiesAndAssignmentIsSettable() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Topologie GmbH", "CI").get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Pilotanlage", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + siteId + "', 'battery', 65, 30, 30, 92)");
+        String deviceId = (String) rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "topo-rig-01"), adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        rest.exchange(url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("role", "pv-generation", "label", "Fronius Eco 27",
+                        "capacityKwp", 27), adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        rest.exchange(url("/api/v1/sites/" + siteId + "/measurement-points"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("role", "grid-meter", "label", "Netzanschluss"), adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {});
+        List<Map<String, Object>> entities = (List<Map<String, Object>>) rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"), HttpMethod.POST,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<Map<String, Object>>() {})
+                .getBody().get("entities");
+        String batteryId = entityId(entities, "battery-hybrid");
+        String producerId = entityId(entities, "producer");
+        String gridId = entityId(entities, "grid-meter");
+
+        // Live per-entity values (telemetry_v2, seeded as superuser).
+        seedV2(tenantId, siteId, deviceId, batteryId, "soc_pct", 62.5);
+        seedV2(tenantId, siteId, deviceId, batteryId, "battery_power_kw", 12.4);
+        seedV2(tenantId, siteId, deviceId, batteryId, "pv_power_kw", 18.9);
+        seedV2(tenantId, siteId, deviceId, producerId, "pv_power_kw", 44.2);
+        seedV2(tenantId, siteId, deviceId, gridId, "power_kw", -49.7);
+
+        Map<String, Object> topo = getTopology(siteId, adminTenant);
+        assertThat(topo.get("schemaVersion")).isEqualTo("1.0");
+
+        // The entity graph carries the resolved role + primary + value per capability.
+        List<Map<String, Object>> ents = (List<Map<String, Object>>) topo.get("entities");
+        assertThat(ents).hasSize(3);
+        Map<String, Object> gridPow = capability(ents, gridId, "power_kw");
+        assertThat(gridPow.get("role")).isEqualTo("grid");
+        assertThat(gridPow.get("primary")).as("the sole grid measurement is maßgeblich")
+                .isEqualTo(true);
+        assertThat(capability(ents, batteryId, "pv_power_kw").get("role"))
+                .as("the hybrid's PV channel contributes to the PV role").isEqualTo("pv");
+        assertThat(capability(ents, batteryId, "soc_pct").get("role")).isEqualTo("storage");
+
+        // The derived hub topology: PV aggregates hybrid+producer, storage = the
+        // battery, grid = the maßgebliche meter.
+        Map<String, Object> nodes = topologyNodes(topo);
+        Map<String, Object> pv = (Map<String, Object>) nodes.get("pv");
+        assertThat(num(pv, "value_kw")).isEqualTo(63.1); // 18.9 + 44.2
+        assertThat(pv.get("direction")).isEqualTo("in");
+        assertThat((List<?>) pv.get("members")).hasSize(2);
+        Map<String, Object> storage = (Map<String, Object>) nodes.get("storage");
+        assertThat(num(storage, "soc_pct")).isEqualTo(62.5);
+        assertThat(num(storage, "value_kw")).isEqualTo(12.4);
+        assertThat(storage.get("direction")).isEqualTo("out"); // charging
+        Map<String, Object> grid = (Map<String, Object>) nodes.get("grid");
+        assertThat(num(grid, "value_kw")).isEqualTo(49.7);
+        assertThat(grid.get("direction")).isEqualTo("out"); // export
+        List<Map<String, Object>> gridMembers = (List<Map<String, Object>>) grid.get("members");
+        assertThat(gridMembers).singleElement().satisfies(
+                m -> assertThat(m.get("primary")).isEqualTo(true));
+
+        // Assignment is settable: re-assign the producer's PV to the consumer
+        // role -> PV loses it, a consumer node appears.
+        Map<String, Object> reassigned = putRoles(siteId, adminTenant, Map.of(
+                "assignments", List.of(Map.of("entityId", producerId, "channel", "pv_power_kw",
+                        "role", "consumer", "primary", false))));
+        Map<String, Object> nodes2 = topologyNodes(reassigned);
+        assertThat(num((Map<String, Object>) nodes2.get("pv"), "value_kw")).isEqualTo(18.9);
+        assertThat(num((Map<String, Object>) nodes2.get("consumer"), "value_kw")).isEqualTo(44.2);
+        assertThat(((Map<String, Object>) nodes2.get("consumer")).get("direction")).isEqualTo("out");
+
+        // Clearing the override (blank role) reverts to the DefaultRole mapping.
+        Map<String, Object> cleared = putRoles(siteId, adminTenant, Map.of(
+                "assignments", List.of(Map.of("entityId", producerId, "channel", "pv_power_kw",
+                        "role", ""))));
+        assertThat(num((Map<String, Object>) topologyNodes(cleared).get("pv"), "value_kw"))
+                .isEqualTo(63.1);
+
+        // Validation + authorization.
+        ResponseEntity<String> badRole = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of(Map.of("entityId", producerId,
+                        "channel", "pv_power_kw", "role", "wolke"))), adminTenant), String.class);
+        assertThat(badRole.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ResponseEntity<String> foreignEntity = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of(Map.of("entityId",
+                        UUID.randomUUID().toString(), "channel", "power_kw", "role", "grid"))),
+                        adminTenant), String.class);
+        assertThat(foreignEntity.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        ResponseEntity<String> customerPut = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of()), bearer(token("demo", "demo"))),
+                String.class);
+        assertThat(customerPut.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        // RLS: a foreign customer and a wrong-tenant admin switcher get 404.
+        ResponseEntity<String> foreignCustomer = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/topology"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
+        assertThat(foreignCustomer.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        String otherTenant = (String) createTenant(admin, "Fremd-Topo AG", "CI").get("id");
+        ResponseEntity<String> wrongTenant = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/topology"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(admin), otherTenant)), String.class);
+        assertThat(wrongTenant.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // A site with no v2 entities: a well-formed empty read-model.
+        String freshSite = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Leer", "biddingZone", "DE-LU"), bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        Map<String, Object> empty = getTopology(freshSite, adminTenant);
+        assertThat((List<?>) empty.get("entities")).isEmpty();
+        assertThat((List<?>) ((Map<String, Object>) empty.get("topology")).get("nodes")).isEmpty();
+    }
+
+    private static String entityId(List<Map<String, Object>> entities, String type) {
+        return entities.stream().filter(e -> type.equals(e.get("entityType")))
+                .map(e -> (String) e.get("id")).findFirst().orElseThrow();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> capability(List<Map<String, Object>> entities,
+            String entityId, String channel) {
+        for (Map<String, Object> e : entities) {
+            if (!entityId.equals(e.get("id"))) {
+                continue;
+            }
+            for (Map<String, Object> c : (List<Map<String, Object>>) e.get("capabilities")) {
+                if (channel.equals(c.get("channel"))) {
+                    return c;
+                }
+            }
+        }
+        throw new AssertionError("capability " + channel + " of entity " + entityId + " not found");
+    }
+
+    /** Index the topology's nodes by role for easy lookup. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> topologyNodes(Map<String, Object> topologyResponse) {
+        Map<String, Object> topology = (Map<String, Object>) topologyResponse.get("topology");
+        Map<String, Object> byRole = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> node : (List<Map<String, Object>>) topology.get("nodes")) {
+            byRole.put((String) node.get("role"), node);
+        }
+        return byRole;
+    }
+
+    private Map<String, Object> getTopology(String siteId, HttpHeaders headers) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/topology"), HttpMethod.GET,
+                new HttpEntity<>(headers), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    private Map<String, Object> putRoles(String siteId, HttpHeaders headers, Map<String, Object> body) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(body, headers), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    /** Seed one telemetry_v2 sample (superuser, RLS-bypassing). */
+    private static void seedV2(String tenantId, String siteId, String deviceId, String entityId,
+            String channel, double value) {
+        exec("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                + "entity_id, channel, value) VALUES (now(), now(), '" + tenantId + "', '" + siteId
+                + "', '" + deviceId + "', '" + entityId + "', '" + channel + "', " + value + ")");
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void adminManagesOpenEntityTypesAndSollIstDriftSurfaces() {

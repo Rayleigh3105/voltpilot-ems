@@ -243,6 +243,22 @@ Extends the E1a entity layer (root AGENTS.md "v2 entity model - generalization (
   `internal/entities` consumer-clamp + open-type units, `internal/buffer` entity
   round-trip.
 
+## Anlagen-Topologie-Read-Model (AE1, edge half)
+
+`internal/topology` is the CANONICAL copy of the shared derivation (Go↔TS↔Java,
+pinned to `docs/contracts/v2/topology-vectors.json`; contract
+`docs/contracts/v2/topology-read-model.md`; full rules in the root AGENTS.md
+"Anlagen-Topologie-Read-Model (AE1)" section). `Agent.Topology()`
+(`internal/agent/entities.go`) builds it from the applied entity registry +
+latest per-entity readings via `topology.Resolve` (default roles, first-of-role
+= maßgeblich) → `topology.Derive`, and `web.Handler`'s `TopologyController`
+carries it as an ADDITIVE `topology` block on `/api/state` + `/api/stream`. The
+scalar `pv_kw`/`load_kw`/`grid_limit_kw`/`soc_pct` fields stay; a registry-less
+device yields an empty topology (byte-for-byte v1). AE6 renders it (not built).
+`entities.Entity.Category()` is the exported category for default role
+resolution. Tests: `internal/topology/topology_test.go`, `internal/web`
+`TestStateEnvelopeCarriesTopology`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
