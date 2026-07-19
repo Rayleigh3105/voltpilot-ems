@@ -34,6 +34,7 @@ import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
 import { useAdaptiveLive } from '../useAdaptiveLive';
+import { moneyLayout } from '../moneyEmphasis';
 import { FahrplanBand } from '../components/FahrplanBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { ErtragChart } from '../components/ErtragChart';
@@ -541,6 +542,12 @@ export function AnlageSeite({
   // AE1/AE7: the compact "Jetzt gerade" flow becomes the adaptive N-node
   // diagram for migrated sites; un-migrated sites keep the v1 EnergyFlow.
   const adaptiveLive = useAdaptiveLive(site.id);
+  // AE4: the money view is a profile-conditional lens. Only a MIGRATED site with
+  // a usage profile carries an emphasis; anything else resolves to `prominent`,
+  // so an un-migrated (or profile-less) site renders byte-identical to today.
+  const money = moneyLayout(
+    adaptiveLive.adaptive ? adaptiveLive.profile?.emphasis.money : null,
+  );
 
   // Fahrplan-derived flags: whether the plan is current for today (health) and
   // whether the site is controllable (a plan published to a battery device),
@@ -628,12 +635,13 @@ export function AnlageSeite({
         </div>
       )}
 
-      {/* 2 · Zeitraum-Tabs regieren die ganze Seite. */}
-      <PeriodTabs range={range} onRange={switchRange} />
+      {/* 2 · Zeitraum-Tabs regieren die Geld-Ansicht - nur wenn Geld geführt
+          wird (AE4: für das Privat-Profil ist Geld aus dem Hero genommen). */}
+      {money.showFullMoney && <PeriodTabs range={range} onRange={switchRange} />}
 
       {/* 3 · Monats-Leiste (Phone/Tablet): letzte 12 Monate zum Durchtippen.
           Auf Desktop ersetzt der vertikale Rail in Zone C diese Leiste. */}
-      {range === 'month' && (
+      {money.showFullMoney && range === 'month' && (
         <div className="vp-mstrip-mobile">
           <MonthStrip
             slots={stripSlots(siteEarnings?.monthlyStrip ?? [], now)}
@@ -646,46 +654,63 @@ export function AnlageSeite({
       {/* Das 3-Zonen-Dashboard (Desktop): Geld | Live | Rail über einem
           Fahrplan-Band in voller Breite. Auf Phone/Tablet lösen sich die Zonen
           auf und die Blöcke ordnen sich geldzuerst (per CSS order). */}
-      <div className="vp-anlage-dash">
-        {/* ---- Zone A · Geld (ruhig) ------------------------------------- */}
+      <div
+        className={`vp-anlage-dash${money.nachweis ? ' vp-money-nachweis' : ''}${
+          money.hiddenFromHero ? ' vp-money-min' : ''
+        }`}
+      >
+        {/* ---- Zone A · Geld (ruhig; AE4 profil-bedingt) ----------------- */}
         <div className="vp-zone vp-zone-money">
-          <div className="vp-dash-hero">
-            {earnings == null && !earnFailed ? (
-              <Skeleton height={300} radius="var(--vp-radius-lg)" />
-            ) : (
-              <AnlageHero
-                money={siteEarnings}
-                period={period}
-                unavailable={earnFailed}
-                emptyHint={
-                  siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined
-                }
-              />
-            )}
-          </div>
+          {money.hiddenFromHero ? (
+            // Privat-Profil: Geld ist aus dem Hero genommen, aber über ein ruhiges
+            // Detail erreichbar - der Fokus liegt auf Live-Flüssen + Steuerung.
+            <div className="vp-dash-hero">
+              <MoneyGlanceCard onOpen={() => onOpenSub('historie')} />
+            </div>
+          ) : (
+            <>
+              <div className="vp-dash-hero">
+                {money.nachweis && (
+                  <span className="vp-money-nachweis-tag">Nachweis · {period}</span>
+                )}
+                {earnings == null && !earnFailed ? (
+                  <Skeleton height={300} radius="var(--vp-radius-lg)" />
+                ) : (
+                  <AnlageHero
+                    money={siteEarnings}
+                    period={period}
+                    unavailable={earnFailed}
+                    emptyHint={
+                      siteEarnings?.reason ? notComputableHint(siteEarnings.reason) : undefined
+                    }
+                  />
+                )}
+              </div>
 
-          <div className="vp-dash-ertrag">
-            <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-              <span className="vp-card-label">Ertrag · {period}</span>
-              {earnings == null && !earnFailed ? (
-                <Skeleton height={220} radius="var(--vp-radius-md)" />
-              ) : series.length > 0 ? (
-                <ErtragChart series={series} range={range} />
-              ) : (
-                <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-                  Für diesen Zeitraum liegen noch keine Erträge vor. Sobald Ihre Anlage
-                  misst und Börsenpreise vorliegen, erscheint hier Ihr Verlauf.
-                </p>
-              )}
-            </Card>
-          </div>
+              <div className="vp-dash-ertrag">
+                <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+                  <span className="vp-card-label">Ertrag · {period}</span>
+                  {earnings == null && !earnFailed ? (
+                    <Skeleton height={220} radius="var(--vp-radius-md)" />
+                  ) : series.length > 0 ? (
+                    <ErtragChart series={series} range={range} />
+                  ) : (
+                    <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+                      Für diesen Zeitraum liegen noch keine Erträge vor. Sobald Ihre Anlage
+                      misst und Börsenpreise vorliegen, erscheint hier Ihr Verlauf.
+                    </p>
+                  )}
+                </Card>
+              </div>
 
-          <div className="vp-dash-energy">
-            <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-              <span className="vp-card-label">Energie · {period}</span>
-              <EnergyStatsRow money={siteEarnings} />
-            </Card>
-          </div>
+              <div className="vp-dash-energy">
+                <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+                  <span className="vp-card-label">Energie · {period}</span>
+                  <EnergyStatsRow money={siteEarnings} />
+                </Card>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ---- Zone B · Live (bewegt) ------------------------------------ */}
@@ -751,7 +776,7 @@ export function AnlageSeite({
 
         {/* ---- Zone C · Rail (Desktop-only) ------------------------------ */}
         <div className="vp-zone vp-zone-rail">
-          {range === 'month' && (
+          {money.showFullMoney && range === 'month' && (
             <div className="vp-dash-rail">
               <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
                 <MonthRail
@@ -863,6 +888,28 @@ function PlanTrafCard({ traf, onOpen }: { traf: PlanTrafZu; onOpen: () => void }
         .
       </span>
       <span className="vp-plantraf-chev" aria-hidden="true">
+        ›
+      </span>
+    </button>
+  );
+}
+
+/**
+ * AE4: the quiet money affordance shown in the hero slot when the usage profile
+ * (private) takes money out of the hero. It de-emphasises the number without
+ * destroying access - one tap reaches the full Erlöse/Wert rückblick.
+ */
+function MoneyGlanceCard({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button type="button" className="vp-money-glance" onClick={onOpen}>
+      <span className="vp-money-glance-ico" aria-hidden="true">
+        <Icon name="euro" size={18} />
+      </span>
+      <span className="vp-money-glance-text">
+        <b>Erlöse &amp; Wert</b>
+        <span>Ihr finanzieller Rückblick - im Detail ansehen.</span>
+      </span>
+      <span className="vp-money-glance-chev" aria-hidden="true">
         ›
       </span>
     </button>
