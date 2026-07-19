@@ -220,11 +220,27 @@ class FlowApiTest {
         assertThat(version.path("simulation").path("headline").path("gesamtVorteilNettoEur")
                 .asDouble()).isEqualTo(364.0);
 
-        // Activation: the flowc compiler is wired now, but activation is gated
-        // OFF on this environment (VOLTPILOT_FLOWS_ACTIVATION_ENABLED, only the
-        // rig sets it), so it refuses honestly - nothing published, lifecycle
+        // AE7 governance: the market node is gated - a flow carrying it activates
+        // only after VoltPilot enables that node type for the site. Before the
+        // enablement, activation is refused with gated_node_not_enabled BEFORE
+        // the compiler/flag are ever reached, and nothing changes.
+        ResponseEntity<JsonNode> gatedActivate = exchange(base + "/versions/1/activate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(gatedActivate.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(gatedActivate.getBody().path("activated").asBoolean()).isFalse();
+        assertThat(gatedActivate.getBody().path("reason").asText())
+                .isEqualTo("gated_node_not_enabled");
+        assertThat(gatedActivate.getBody().path("gatedNodesNotEnabled").toString())
+                .contains("vp.strategy.market");
+        // Enable it (VoltPilot "richtet ein"), then the OFF activation-flag path
+        // (VOLTPILOT_FLOWS_ACTIVATION_ENABLED, only the rig sets it) is reached:
+        // activation still refuses honestly - nothing published, lifecycle
         // unchanged. The real compile→publish path is proven against a broker in
         // FlowActivationBrokerTest.
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flow-node-governance", HttpMethod.PUT,
+                admin, TENANT_A,
+                Map.of("enablements",
+                        List.of(Map.of("nodeType", "vp.strategy.market", "enabled", true))));
         ResponseEntity<JsonNode> activated = exchange(base + "/versions/1/activate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
         assertThat(activated.getStatusCode()).isEqualTo(HttpStatus.OK);

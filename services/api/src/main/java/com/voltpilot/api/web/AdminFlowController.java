@@ -7,11 +7,14 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCatalog;
 import com.voltpilot.api.flows.FlowClaims;
+import com.voltpilot.api.flows.FlowGovernance;
 import com.voltpilot.api.flows.FlowGraphValidator;
 import com.voltpilot.api.flows.FlowGraphValidator.EntityCapabilities;
 import com.voltpilot.api.flows.FlowGraphValidator.ForeignClaim;
 import com.voltpilot.api.flows.FlowSimulationMapper;
+import com.voltpilot.api.flows.FlowTemplateService;
 import com.voltpilot.api.flows.FlowValidationFinding;
+import com.voltpilot.api.repo.FlowGatedNodeRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
 import com.voltpilot.api.repo.SimulationDefaultsRepository;
@@ -86,6 +89,8 @@ public class AdminFlowController {
     private final FlowGraphValidator validator;
     private final EntityRegistryRepository entities;
     private final FlowActivationService activation;
+    private final FlowGatedNodeRepository gatedNodes;
+    private final FlowTemplateService templates;
     private final SimulationDefaultsRepository simulationDefaults;
     private final SimulationClient simulationClient;
     private final SimulationJobRegistry simulationJobs;
@@ -93,9 +98,12 @@ public class AdminFlowController {
 
     public AdminFlowController(SiteRepository sites, FlowRepository flows, FlowCatalog catalog,
             FlowGraphValidator validator, EntityRegistryRepository entities,
-            FlowActivationService activation, SimulationDefaultsRepository simulationDefaults,
+            FlowActivationService activation, FlowGatedNodeRepository gatedNodes,
+            FlowTemplateService templates, SimulationDefaultsRepository simulationDefaults,
             SimulationClient simulationClient, SimulationJobRegistry simulationJobs,
             ObjectMapper mapper) {
+        this.gatedNodes = gatedNodes;
+        this.templates = templates;
         this.sites = sites;
         this.flows = flows;
         this.catalog = catalog;
@@ -112,6 +120,58 @@ public class AdminFlowController {
     @GetMapping("/flow-catalog")
     public JsonNode flowCatalog() {
         return catalog.raw();
+    }
+
+    /** One gated node type and whether it is enabled for the site (AE7 governance). */
+    public record GatedNodeDto(String type, String label, boolean gated, boolean enabled) {}
+
+    public record GovernanceResponse(List<GatedNodeDto> gatedNodes) {}
+
+    public record GovernanceRequest(List<Enablement> enablements) {
+
+        public record Enablement(String nodeType, boolean enabled) {}
+    }
+
+    /**
+     * The gated strategy node types (from the catalog) and their per-site
+     * enablement (AE7 governance, spec §3). Gated nodes are placeable in a draft
+     * but a flow carrying one activates only after it is enabled here.
+     */
+    @GetMapping("/sites/{siteId}/flow-node-governance")
+    public GovernanceResponse governance(@PathVariable UUID siteId) {
+        requireSite(siteId);
+        return governanceResponse(siteId);
+    }
+
+    /** Enable/disable gated node types for the site (platform-admin). */
+    @PutMapping("/sites/{siteId}/flow-node-governance")
+    @Transactional
+    public GovernanceResponse setGovernance(@PathVariable UUID siteId,
+            @RequestBody GovernanceRequest request) {
+        requireSite(siteId);
+        Set<String> gated = catalog.gatedTypes();
+        List<GovernanceRequest.Enablement> enablements =
+                request == null || request.enablements() == null ? List.of() : request.enablements();
+        for (GovernanceRequest.Enablement e : enablements) {
+            if (e == null || e.nodeType() == null || !gated.contains(e.nodeType())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Unbekannter oder nicht freischaltbarer Baustein: "
+                                + (e == null ? "null" : e.nodeType()) + ".");
+            }
+            gatedNodes.upsert(TenantContext.get(), siteId, e.nodeType(), e.enabled());
+        }
+        return governanceResponse(siteId);
+    }
+
+    private GovernanceResponse governanceResponse(UUID siteId) {
+        Set<String> enabled = gatedNodes.enabledNodeTypes(siteId);
+        List<GatedNodeDto> nodes = new ArrayList<>();
+        for (String type : catalog.gatedTypes()) {
+            JsonNode entry = catalog.type(type);
+            String label = entry == null ? type : entry.path("label").asText(type);
+            nodes.add(new GatedNodeDto(type, label, true, enabled.contains(type)));
+        }
+        return new GovernanceResponse(nodes);
     }
 
     @GetMapping("/sites/{siteId}/flows")
@@ -138,6 +198,23 @@ public class AdminFlowController {
                     versions.stream().map(FlowVersionRow::flowVersion).toList()));
         }
         return summaries;
+    }
+
+    /**
+     * AE7 auto-start (spec §3): seed the site's derived-profile starter flow
+     * DRAFT if it has none. Idempotent - a site with any flow is left untouched
+     * (reason {@code already_has_flow}); a site without a battery is skipped
+     * (reason {@code no_battery}).
+     */
+    @PostMapping("/sites/{siteId}/flows/auto-start")
+    @Transactional
+    public ResponseEntity<FlowTemplateService.AutoStartOutcome> autoStart(
+            @PathVariable UUID siteId) {
+        requireSite(siteId);
+        FlowTemplateService.AutoStartOutcome outcome = templates.autoStart(siteId,
+                TenantContext.get());
+        HttpStatus status = outcome.created() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(outcome);
     }
 
     @PostMapping("/sites/{siteId}/flows")
@@ -306,6 +383,23 @@ public class AdminFlowController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Bitte zuerst simulieren - die Aktivierung setzt einen erfolgreichen "
                             + "Dry-Run dieser Version voraus.");
+        }
+        // AE7 node governance (spec §3): a flow carrying a GATED strategy node
+        // (Arbitrage/Peak/atyp. NN) stays inactive until a Portal-Admin enables
+        // that node type for THIS site - refused here BEFORE the compiler is ever
+        // contacted, so a gated draft never reaches flowc.
+        List<String> notEnabled = FlowGovernance.notEnabledNodeTypes(document, catalog,
+                gatedNodes.enabledNodeTypes(siteId));
+        if (!notEnabled.isEmpty()) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("activated", false);
+            body.put("reason", "gated_node_not_enabled");
+            body.put("message", "Dieser Flow enthält Bausteine, die VoltPilot erst für diese "
+                    + "Anlage freischalten muss: " + String.join(", ", notEnabled) + ".");
+            body.put("published", false);
+            body.put("lifecycle", row.lifecycle());
+            body.put("gatedNodesNotEnabled", notEnabled);
+            return ResponseEntity.ok(body);
         }
         FlowActivationService.ActivationOutcome outcome = activation.activate(siteId, row,
                 document);

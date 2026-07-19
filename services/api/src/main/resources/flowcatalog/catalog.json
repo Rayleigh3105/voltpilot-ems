@@ -13,7 +13,11 @@
     "claim_template drives the D-13 editor claim derivation (see FlowClaims/flows model):",
     "entity from `entity_parameter`, commands fixed or from `command_parameter`;",
     "an entity-control node fed on its `plan` input by a DELEGATED strategy claiming the",
-    "SAME entity derives NO own claim (the strategy's delegated claim covers the entity)."
+    "SAME entity derives NO own claim (the strategy's delegated claim covers the entity).",
+    "AE7 node governance (docs/contracts/v2/usage-profile.md §3): `gated:true` marks a",
+    "market-/grid-near strategy node that needs VoltPilot enablement (Arbitrage, Peak-Shaving,",
+    "atyp. NN); placeable in a draft, activatable only after per-site admin enablement. Free",
+    "nodes omit the flag (Eigenverbrauch, device control, all data/logic/action nodes)."
   ],
   "types": [
     {
@@ -101,6 +105,7 @@
       "label": "Marktoptimierung",
       "description": "Delegiert den Speicher an die VoltPilot-Co-Optimierung: Arbitrage auf Day-Ahead-Preise, Eigenverbrauch und Vertragsgrenzen im gemeinsamen Optimum.",
       "group": "strategie",
+      "gated": true,
       "runtimes": ["edge"],
       "inputs": [
         { "name": "price_in", "type": "price", "label": "Preise", "required": true },
@@ -131,6 +136,42 @@
         { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Entität", "required": true, "entityTypes": ["battery-hybrid"] }
       ],
       "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true }
+    },
+    {
+      "type": "vp.strategy.peakshaving",
+      "type_version": "1.0.0",
+      "label": "Lastspitzenkappung",
+      "description": "Kappt die Netz-Leistungsspitze (Leistungspreis-Vertrag): der Speicher deckelt den 15-Minuten-Mittelwert des Netzbezugs. Vertragsnah - von VoltPilot eingerichtet.",
+      "group": "strategie",
+      "gated": true,
+      "runtimes": ["edge"],
+      "inputs": [
+        { "name": "soc", "type": "timeseries", "label": "Ladestand", "required": false }
+      ],
+      "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
+      "parameters": [
+        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Entität", "required": true, "entityTypes": ["battery-hybrid"] }
+      ],
+      "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
+      "hint": "Vertrags-Baustein: braucht das VoltPilot-Messkonzept und den Leistungspreis-Vertrag - Freischaltung durch VoltPilot."
+    },
+    {
+      "type": "vp.strategy.atypical-grid",
+      "type_version": "1.0.0",
+      "label": "Atypische Netznutzung",
+      "description": "Verlagert Verbrauch/Speicher in die Hochlastzeitfenster-Randzeiten (§19 StromNEV) für ein reduziertes Netzentgelt. Vertragsnah - von VoltPilot eingerichtet.",
+      "group": "strategie",
+      "gated": true,
+      "runtimes": ["edge"],
+      "inputs": [
+        { "name": "soc", "type": "timeseries", "label": "Ladestand", "required": false }
+      ],
+      "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
+      "parameters": [
+        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Entität", "required": true, "entityTypes": ["battery-hybrid"] }
+      ],
+      "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
+      "hint": "Vertrags-Baustein: braucht die Hochlastzeitfenster des Netzbetreibers - Beratung und Freischaltung durch VoltPilot."
     },
     {
       "type": "vp.entity.control",
