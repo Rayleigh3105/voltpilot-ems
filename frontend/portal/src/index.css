@@ -4512,3 +4512,143 @@ button.vp-tech-card-h.toggle {
 @media (max-width: 720px) {
   .vp-entity-cards { grid-template-columns: 1fr; }
 }
+
+/* ============================================================================
+   Adaptive live view (AE2 energy flow + AE3 tiles / module strip)
+   The N-node energy flow reuses .vp-flow-wrap; these style the profile chip,
+   the read-only device switches on a tile, and the "Was läuft" module strip.
+   ========================================================================== */
+.vp-adaptive-live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4);
+}
+.vp-adaptive-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+}
+.vp-adaptive-head .vp-status-line {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+}
+/* Nutzungsprofil chip (Arbitrage / Peak / Privat). */
+.vp-profile-chip {
+  flex: 0 0 auto;
+  padding: 3px 12px;
+  border-radius: var(--vp-radius-pill);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.vp-profile-chip.arb {
+  background: var(--vp-flow-batt-soft);
+  color: #15803d;
+}
+.vp-profile-chip.peak {
+  background: var(--vp-flow-pv-soft);
+  color: #b45309;
+}
+.vp-profile-chip.priv {
+  background: var(--vp-flow-load-soft);
+  color: #6d28d9;
+}
+
+/* Read-only device switches on a controllable-consumer tile (v1 display-only). */
+.vp-verdict-sw {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: var(--vp-space-1);
+}
+.vp-verdict-sw button {
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid var(--vp-border);
+  background: #fff;
+  border-radius: var(--vp-radius-pill);
+  padding: 4px 11px;
+  color: var(--vp-navy-2, #2c5282);
+  cursor: not-allowed;
+}
+.vp-verdict-sw button.act {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* "Was läuft" module strip - reflects the flow's active strategy nodes. */
+.vp-flowmods {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+.vp-flowmods-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+  margin: 0;
+}
+.vp-flowmods-head .vp-tag {
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: var(--vp-radius-pill);
+  padding: 2px 9px;
+  background: var(--vp-tint, rgba(149, 185, 255, 0.12));
+  color: var(--vp-navy-2, #2c5282);
+}
+.vp-flowmod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--vp-space-3);
+}
+.vp-flowmod {
+  padding: 14px 16px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: #fff;
+  min-width: 0;
+}
+.vp-flowmod.locked {
+  background: var(--vp-bg-light, #f8f9fa);
+}
+.vp-flowmod-top {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+.vp-flowmod-title {
+  font-family: var(--vp-font-display, inherit);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--vp-navy, #1e3a5f);
+}
+.vp-flowmod-state {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: var(--vp-radius-pill);
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.vp-flowmod-state.active {
+  background: var(--vp-flow-batt-soft);
+  color: #15803d;
+}
+.vp-flowmod-state.gated {
+  background: var(--vp-flow-load-soft);
+  color: #6d28d9;
+}
+.vp-flowmod-line {
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #6c757d);
+  margin: 8px 0 0;
+}
