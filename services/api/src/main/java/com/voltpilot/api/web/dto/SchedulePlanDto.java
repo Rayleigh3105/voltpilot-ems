@@ -21,6 +21,12 @@ import java.util.UUID;
  * are the plan-start/-end SoC it was computed from. All null when honestly not
  * computable (pre-FK2 runs without a persisted terminal value, no battery
  * asset) - never a fabricated number.
+ *
+ * <p>{@code peakTargetKw} is the run's planned billing-period grid-import peak
+ * target (PS-1, {@code schedule.peak_target_kw}): the "Ziel" a Lastspitzen
+ * (peak-shaving) Anlage defends. Null when the site runs no peak-shaving module
+ * (no Leistungspreis configured) or on a run that predates the column - the
+ * portal's Peak-Band then shows no target line, never a fabricated 0.
  */
 public record SchedulePlanDto(
         UUID planId,
@@ -31,9 +37,10 @@ public record SchedulePlanDto(
         BigDecimal bankedValueEur,
         BigDecimal socStartPct,
         BigDecimal socEndPct,
+        BigDecimal peakTargetKw,
         List<ScheduleSlotDto> slots) {
 
     public static SchedulePlanDto empty() {
-        return new SchedulePlanDto(null, null, null, 15, null, null, null, null, List.of());
+        return new SchedulePlanDto(null, null, null, 15, null, null, null, null, null, List.of());
     }
 }

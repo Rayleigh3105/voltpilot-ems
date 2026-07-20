@@ -45,12 +45,24 @@ function eur(v: number): string {
   return `${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 }
 
-export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
+export function ScheduleChart({
+  plan,
+  peakTargetKw,
+}: {
+  plan: SchedulePlan;
+  /**
+   * U4 Lastspitzen overlay: when set (schedule.peakTargetKw), a red dashed
+   * horizontal line marks the planned grid-import Ziel on the power axis, and
+   * the axis grows to keep it in view. Absent = the plain Fahrplan (default).
+   */
+  peakTargetKw?: number | null;
+}) {
   const t = chartTheme();
 
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
     const slots = plan.slots;
+    const target = peakTargetKw != null && peakTargetKw > 0 ? peakTargetKw : null;
     const times = slots.map((s) => s.start);
     const battery = slots.map((s) => (s.batteryKw == null ? null : Number(s.batteryKw)));
     // Price shown in ct/kWh (the unit on the customer's bill), not EUR/MWh.
@@ -87,6 +99,17 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
         xAxis: nowIdx,
         lineStyle: { color: t.price, type: 'solid', width: 2 },
         label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop' },
+      });
+    // U4: the peak-shaving Ziel as a horizontal red dashed line on the power axis.
+    if (target != null)
+      markLineData.push({
+        yAxis: target,
+        lineStyle: { color: t.discharge, type: 'dashed', width: 1.5 },
+        label: {
+          formatter: `Ziel Netzbezug ${Math.round(target)} kW`,
+          color: t.discharge,
+          position: 'insideEndTop',
+        },
       });
 
     chart.setOption(
@@ -171,8 +194,10 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
             name: narrow ? 'kW' : 'Leistung (kW)',
             nameTextStyle: { color: t.axis, align: 'left' },
             nameGap: 12,
+            // Discharge stays at battery scale; the top grows to keep the peak
+            // Ziel visible when the Lastspitzen overlay is on.
             min: -Math.ceil(kwMax),
-            max: Math.ceil(kwMax),
+            max: Math.ceil(target != null ? Math.max(kwMax, target) : kwMax),
             splitLine: { lineStyle: { color: t.grid } },
             axisLabel: { color: t.axis },
           },
@@ -269,6 +294,9 @@ export function ScheduleChart({ plan }: { plan: SchedulePlan }) {
     { color: t.discharge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar' },
     { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line' },
     { color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed' },
+    ...(peakTargetKw != null && peakTargetKw > 0
+      ? [{ color: t.discharge, label: 'Ziel Netzbezug (Lastspitze)', unit: 'kW', shape: 'dashed' } as LegendItem]
+      : []),
   ];
 
   return (

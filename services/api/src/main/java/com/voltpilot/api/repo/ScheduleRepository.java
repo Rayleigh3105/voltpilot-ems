@@ -64,23 +64,25 @@ public class ScheduleRepository {
                         rs.getBigDecimal("pv_kw")),
                 siteId, Timestamp.from(generatedAt));
         List<Object[]> meta = jdbc.query(
-                "SELECT plan_id, device_id, terminal_value_eur_per_kwh FROM schedule "
+                "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw FROM schedule "
                         + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
                 (rs, i) -> new Object[] {
                         rs.getObject("plan_id", UUID.class),
                         rs.getObject("device_id", UUID.class),
-                        rs.getBigDecimal("terminal_value_eur_per_kwh")
+                        rs.getBigDecimal("terminal_value_eur_per_kwh"),
+                        rs.getBigDecimal("peak_target_kw")
                 },
                 siteId, Timestamp.from(generatedAt));
         UUID planId = meta.isEmpty() ? null : (UUID) meta.get(0)[0];
         UUID deviceId = meta.isEmpty() ? null : (UUID) meta.get(0)[1];
         BigDecimal terminalValue = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[2];
+        BigDecimal peakTargetKw = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[3];
         BigDecimal savings = slots.stream()
                 .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Banked banked = bankedValue(siteId, slots, terminalValue, 15);
         return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
-                banked.valueEur(), banked.socStartPct(), banked.socEndPct(), slots);
+                banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw, slots);
     }
 
     private record Banked(BigDecimal valueEur, BigDecimal socStartPct, BigDecimal socEndPct) {

@@ -39,6 +39,7 @@ type TabKey = AnlagenSub | 'uebersicht';
 /** The full inventory, in a stable canonical order (drives the overflow order). */
 const ALL_KEYS: TabKey[] = [
   'uebersicht',
+  'lastspitzen',
   'live',
   'fahrplan',
   'historie',
@@ -52,6 +53,7 @@ const ALL_KEYS: TabKey[] = [
 /** Canonical label + design-system icon per tab. */
 const META: Record<TabKey, { label: string; icon: IconName }> = {
   uebersicht: { label: 'Übersicht', icon: 'dashboard' },
+  lastspitzen: { label: 'Lastspitzen', icon: 'trending-up' },
   live: { label: 'Live', icon: 'activity' },
   fahrplan: { label: 'Fahrplan', icon: 'calendar' },
   historie: { label: 'Historie & Erlöse', icon: 'history' },
@@ -82,14 +84,15 @@ const FACES: Record<UsageProfile | 'default', FaceTab[]> = {
     { key: 'live' },
     { key: 'historie', label: 'Historie' },
   ],
-  // peak → Übersicht · Steuerung · Live · Geräte · Historie · Mehr. The
-  // Lastspitzenkappung proof lives in Steuerung's "Was läuft" level (U3 merge;
-  // §4.6: a peak face lands on the Strategien mode). U4 adds a dedicated
-  // Lastspitzen lead artifact.
+  // peak → Übersicht · Lastspitzen · Live · Steuerung · Geräte · Historie · Mehr
+  // (§6 Face 2). U4 promotes the dedicated `Lastspitzen` subpage right after the
+  // cockpit (PS-4 proof + period-history chart + peak-target Fahrplan overlay);
+  // the Lastspitzenkappung "Was läuft" proof still lives inside Steuerung too.
   peak: [
     { key: 'uebersicht' },
-    { key: 'steuerung' },
+    { key: 'lastspitzen' },
     { key: 'live' },
+    { key: 'steuerung' },
     { key: 'entitaeten' },
     { key: 'historie', label: 'Historie' },
   ],

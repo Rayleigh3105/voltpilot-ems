@@ -218,6 +218,14 @@ export interface SchedulePlan {
   socStartPct: number | null;
   /** Planned SoC at the horizon end. */
   socEndPct: number | null;
+  /**
+   * The run's planned billing-period grid-import peak target (PS-1,
+   * schedule.peak_target_kw): the "Ziel" a Lastspitzen (peak-shaving) Anlage
+   * defends. Null when the site runs no peak-shaving module (no Leistungspreis)
+   * or on a run predating the column - the Peak-Band then shows no target line,
+   * never a fabricated 0.
+   */
+  peakTargetKw: number | null;
   slots: ScheduleSlot[];
 }
 

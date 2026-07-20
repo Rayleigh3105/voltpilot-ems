@@ -14,6 +14,7 @@ import {
   type Overview,
   type SchedulePlan,
   type Site,
+  type TelemetryPoint,
 } from '../api';
 import {
   BATTERY_NO_DEVICE_WARNING,
@@ -37,6 +38,9 @@ import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
 import { useAdaptiveLive } from '../useAdaptiveLive';
 import { moneyLayout } from '../moneyEmphasis';
+import { leadArtifact } from '../leadSlot';
+import { peakBand, quarterHourMeanImportKw } from '../peakBand';
+import { PeakBand } from '../components/PeakBand';
 import { FahrplanBand } from '../components/FahrplanBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { ErtragChart } from '../components/ErtragChart';
@@ -48,6 +52,7 @@ import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
 import { LiveSection } from './LiveSection';
 import { EntitaetenSection } from './EntitaetenSection';
+import { LastspitzenSection } from './LastspitzenSection';
 import { SteuerungSection } from './SteuerungSection';
 import { SimulationSection } from '../components/SimulationView';
 import { TechnikSection } from './AnlageTechnik';
@@ -320,6 +325,11 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     subtitle:
       'Ihre Steuerungs-Flows: Regeln bauen, prüfen, simulieren und aktivieren - was geschaltet wird und zu welchen Bedingungen.',
   },
+  lastspitzen: {
+    title: 'Lastspitzen',
+    subtitle:
+      'Lastspitzenkappung: gehaltene Spitze, vermiedene Leistungskosten und der Fahrplan zum Halten Ihrer Zielspitze.',
+  },
 };
 
 /** One deep view of an Anlage, with the way back always in sight. */
@@ -358,6 +368,7 @@ function AnlagenSubPage({
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
       {sub === 'entitaeten' && <EntitaetenSection site={site} isAdmin={isAdmin} />}
+      {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
       {sub === 'simulation' && <SimulationSection site={site} />}
       {sub === 'steuerung' && <SteuerungSection site={site} isAdmin={isAdmin} />}
       {sub === 'technik' && (
@@ -408,6 +419,9 @@ export function AnlageSeite({
   const [planLoading, setPlanLoading] = useState(true);
   const [planFailed, setPlanFailed] = useState(false);
   const [planTraf, setPlanTraf] = useState<PlanTrafZu | null>(null);
+  // U4: recent telemetry for the peak face's live ¼-h mean (fetched only when
+  // the cockpit leads with the Peak-Band - see the gated effect below).
+  const [peakSamples, setPeakSamples] = useState<TelemetryPoint[]>([]);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
@@ -569,9 +583,46 @@ export function AnlageSeite({
   // AE4: the money view is a profile-conditional lens. Only a MIGRATED site with
   // a usage profile carries an emphasis; anything else resolves to `prominent`,
   // so an un-migrated (or profile-less) site renders byte-identical to today.
-  const money = moneyLayout(
-    adaptiveLive.adaptive ? adaptiveLive.profile?.emphasis.money : null,
-  );
+  const emphasis = adaptiveLive.adaptive ? adaptiveLive.profile?.emphasis : null;
+  const money = moneyLayout(emphasis?.money);
+  // U4: the ONE lead-slot switch. A peak-profile site leads with the Peak-Band;
+  // everything else (private/arbitrage, un-migrated, profile-less) leads with
+  // money, byte-identical to today.
+  const isPeakLead = leadArtifact(emphasis?.peak) === 'peakband';
+
+  // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
+  // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
+  // 20-min window always covers the running quarter; polled on the 30 s cadence.
+  useEffect(() => {
+    if (!isPeakLead) {
+      setPeakSamples([]);
+      return;
+    }
+    let active = true;
+    const load = () => {
+      const from = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+      api.telemetry(site.id, from).then(
+        (pts) => active && setPeakSamples(pts),
+        () => {},
+      );
+    };
+    load();
+    const timer = setInterval(load, POLL_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [site.id, isPeakLead, reloadKey]);
+
+  // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
+  // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
+  const peakView = isPeakLead
+    ? peakBand({
+        current: quarterHourMeanImportKw(peakSamples, now),
+        targetKw: plan?.peakTargetKw ?? null,
+        peak: siteEarnings?.peakShaving ?? null,
+      })
+    : null;
 
   // Fahrplan-derived flags: whether the plan is current for today (health) and
   // whether the site is controllable (a plan published to a battery device),
@@ -656,6 +707,15 @@ export function AnlageSeite({
       {ovSite?.batteryWithoutDevice && (
         <div className="vp-alert vp-alert-warn" style={{ marginBottom: 'var(--vp-space-4)' }}>
           {BATTERY_NO_DEVICE_WARNING}
+        </div>
+      )}
+
+      {/* U4 · Peak-Band lead artifact: on the peak face the cockpit leads with
+          the Spitzen-Verteidigung (¼-h-Mittel vs. Ziel + PS-4-Zahlen); Geld
+          läuft darunter als Nachweis (AE4 secondary). Non-peak faces skip it. */}
+      {peakView && (
+        <div className="vp-lead-peakband" style={{ marginBottom: 'var(--vp-space-4)' }}>
+          <PeakBand view={peakView} peak={siteEarnings?.peakShaving ?? null} />
         </div>
       )}
 
