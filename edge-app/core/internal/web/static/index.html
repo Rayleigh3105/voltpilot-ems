@@ -305,6 +305,43 @@
       </div>
     </section>
 
+    <!-- Aktive Steuerung (report §7): the READ-ONLY RESULT of the portal-composed
+         flows - deployed @vp-flow tabs + per-entity arbitration winner. The edge
+         shows WHAT is running, never the flow graph (composition stays in the
+         portal). Fed by active-control.js from /api/state.active_control. -->
+    <div class="section-title">Aktive Steuerung</div>
+    <section class="card actctrl-card">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="19" cy="17" r="2"/></svg></span>Was gerade läuft</h3>
+        <span class="actctrl-note">Ergebnis der Portal-Steuerung · nur Anzeige</span>
+      </div>
+
+      <div id="actctrlBody" hidden>
+        <div class="actctrl-group" id="actFlowsGroup" hidden>
+          <div class="actctrl-grp-title">Aktive Abläufe<span class="actctrl-pal" id="actPalette"></span></div>
+          <ul class="actctrl-list" id="actFlowsList"></ul>
+        </div>
+        <div class="actctrl-group" id="actEntsGroup" hidden>
+          <div class="actctrl-grp-title">Steuert gerade</div>
+          <ul class="actctrl-list" id="actEntsList"></ul>
+        </div>
+      </div>
+
+      <!-- Empty state: no flows deployed / nothing steering. -->
+      <div class="plan-empty" id="actctrlEmpty">
+        <span class="plan-empty-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        </span>
+        <div>
+          <strong>Keine aktive Steuerung.</strong>
+          <p>Sobald im Portal ein Ablauf (Strategie oder Automation) für diese
+          Anlage aktiviert und auf dieses Gerät verteilt wird, sehen Sie hier,
+          was läuft und was jede Einheit gerade steuert. Die Steuerung selbst
+          richten Sie im Portal ein.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- Betrieb (PS-3): market optimization + peak guard, the technician's
          at-a-glance operating state. Fed by betrieb.js from /api/state. -->
     <div class="section-title">Betrieb</div>
@@ -409,6 +446,7 @@
   <script src="charts.js"></script>
   <script src="plan.js"></script>
   <script src="control.js"></script>
+  <script src="active-control.js"></script>
   <script src="betrieb.js"></script>
   <script src="dashboard.js"></script>
 </body>

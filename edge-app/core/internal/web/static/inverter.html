@@ -186,6 +186,21 @@
         </div>
       </div>
 
+      <!-- Group 4: Verbraucher (sources.js) -->
+      <div class="grp" id="verbGroup">
+        <div class="grp-head">
+          <span class="grp-ico load" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14l-1 11H6L5 10z"/></svg>
+          </span>
+          <span class="grp-title">Verbraucher</span>
+          <span class="grp-note" id="verbNote">· 0 Verbraucher</span>
+        </div>
+        <ul class="rows" id="verbList"></ul>
+        <div class="empty-row" id="verbEmpty">
+          <p>Kein zusätzlicher Verbraucher (z. B. Wallbox) eingerichtet.</p>
+        </div>
+      </div>
+
       <div class="add-source-cta">
         <button type="button" class="btn-secondary" id="srcAddToggle">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -224,6 +239,11 @@
                 <strong>Netz-Zähler</strong>
                 <span>Eigener Zähler am Netzübergang</span>
                 <span class="role-locked-note" id="netzLockedNote" hidden>Bereits eingerichtet – nur ein Netz-Zähler pro Anlage möglich.</span>
+              </button>
+              <button type="button" class="role-card load" data-role="consumer" id="roleVerbraucher">
+                <span class="rc-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14l-1 11H6L5 10z"/></svg></span>
+                <strong>Verbraucher</strong>
+                <span>z. B. eine Wallbox, deren Verbrauch mitgezählt wird</span>
               </button>
             </div>
             <p class="field-help" id="srcRoleHelp">Eine zusätzliche PV-Anlage, deren Erzeugung mitgezählt wird.</p>

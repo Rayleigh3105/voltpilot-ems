@@ -488,3 +488,48 @@ func (a *Agent) arbitrationSummary() map[string]cloud.EntityArbitration {
 	}
 	return out
 }
+
+// ActiveControl builds the READ-ONLY "Aktive Steuerung" view the :8484 page
+// renders (report §7 / web.ActiveControlController): the RESULT of the
+// portal-composed flows, never the graph. It reuses the SAME core facts the
+// status heartbeat carries - the applied flow deployment set + the per-entity
+// arbitration winner - enriched with the entity label/type so the strip can
+// name each steered entity. Empty flows AND empty entities => the page shows
+// its honest empty state. There is no write path here.
+func (a *Agent) ActiveControl() cloud.ActiveControl {
+	ac := cloud.ActiveControl{Flows: []cloud.AppliedFlow{}, Entities: []cloud.ActiveControlEntity{}}
+
+	if sum := a.flowsSummary(); sum != nil {
+		ac.PaletteVersion = sum.PaletteVersion
+		if sum.Applied != nil {
+			ac.Flows = sum.Applied
+		}
+	}
+
+	a.entMu.Lock()
+	ents := append([]entities.Entity(nil), a.entRegistry.Entities...)
+	a.entMu.Unlock()
+	for _, e := range ents {
+		dec, ok := a.arb.DecisionFor(e.ID)
+		entry := cloud.ActiveControlEntity{EntityID: e.ID, Label: e.Label, Type: e.Type}
+		if ok {
+			entry.Holder = dec.HolderKind
+			entry.Source = dec.Source
+			if dec.Granted.SetpointKw != nil {
+				v := *dec.Granted.SetpointKw
+				entry.SetpointKw = &v
+			}
+		}
+		a.arbMu.Lock()
+		if am, has := a.entReadback[e.ID]; has {
+			entry.AllMatch = am
+		}
+		a.arbMu.Unlock()
+		// Only entities an active holder steers (or that reported a readback)
+		// belong on the strip; a registry-failsafe entity has no "winner".
+		if entry.Source != "" || entry.AllMatch != nil {
+			ac.Entities = append(ac.Entities, entry)
+		}
+	}
+	return ac
+}

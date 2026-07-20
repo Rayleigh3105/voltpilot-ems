@@ -340,6 +340,44 @@ type AppliedFlow struct {
 	Detail      string `json:"detail,omitempty"`
 }
 
+// ActiveControl is the READ-ONLY "Aktive Steuerung" view the edge :8484 page
+// renders (report §7): the RESULT of the portal-composed flows, never the flow
+// graph itself. It reuses the SAME facts the status heartbeat already carries -
+// the applied flow deployment set (Flows) plus the per-entity arbitration
+// winner (Entities) - so the edge shows "what is running and what is steering
+// each entity RIGHT NOW" without ever composing. Empty (no flows, no entity
+// decisions) => the page shows its honest empty state. There is NO write path.
+type ActiveControl struct {
+	// PaletteVersion is the running vp-palette version (from the deployer),
+	// "" when flow deployment is not wired / nothing was ever deployed.
+	PaletteVersion string `json:"palette_version,omitempty"`
+	// Flows are the deployed @vp-flow tabs with their last ack state. Empty
+	// (never nil) when nothing is deployed.
+	Flows []AppliedFlow `json:"flows"`
+	// Entities are the per-entity arbitration winners: only entities an active
+	// holder (a flow, an override, or the plan executor) is currently steering.
+	// Empty (never nil) when the arbiter commands nothing.
+	Entities []ActiveControlEntity `json:"entities"`
+}
+
+// ActiveControlEntity is one entity's current arbitration winner, enriched with
+// the entity's label/type so the read-only strip can name it for the customer
+// (EntityArbitration alone is keyed by id and carries no label). Read-only.
+type ActiveControlEntity struct {
+	EntityID string `json:"entity_id"`
+	Label    string `json:"label,omitempty"`
+	Type     string `json:"entity_type,omitempty"`
+	// Holder is the winning source kind (e.g. flow | plan | override), "" when
+	// the registry failsafe runs.
+	Holder string `json:"holder,omitempty"`
+	// Source is the command-topic vocabulary: plan | desired | failsafe.
+	Source string `json:"source,omitempty"`
+	// SetpointKw echoes the granted setpoint when one is commanded.
+	SetpointKw *float64 `json:"setpoint_kw,omitempty"`
+	// AllMatch is the latest per-entity readback verdict (nil = none yet).
+	AllMatch *bool `json:"all_match,omitempty"`
+}
+
 // ControlSummary is the compact inverter-control confirmation folded into the
 // status heartbeat (report §5.3), so the cloud sees "Fahrplan sagt X ->
 // Wechselrichter bestätigt Y" without register-level detail. Additive; the

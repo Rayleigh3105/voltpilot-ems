@@ -442,6 +442,10 @@
     // Hand the state to the "Betrieb" card (market optimization + PS-3 peak
     // guard: target, running quarter mean, reserve).
     if (window.VPBetrieb) window.VPBetrieb.onState(s);
+    // Hand the state to the read-only "Aktive Steuerung" strip (the RESULT of
+    // the portal-composed flows: deployed @vp-flow tabs + per-entity
+    // arbitration winner, fed by state.active_control).
+    if (window.VPActiveControl) window.VPActiveControl.onState(s);
   }
 
   // ---------- data purge ("Datenaufzeichnungen löschen") ----------

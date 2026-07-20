@@ -488,6 +488,27 @@ func TestFlowDeploymentAppliedAndAcked(t *testing.T) {
 			cb.statusWith(hash)
 	})
 
+	// The read-only "Aktive Steuerung" view (report §7) reflects the SAME real
+	// core state: the deployed flow appears with its active ack + palette, and
+	// the battery entity surfaces as an arbitration winner once the flow's
+	// desired holds it.
+	waitFor(t, 20*time.Second, "active_control reflects the deployed flow", func() bool {
+		ac := a.ActiveControl()
+		hasFlow := false
+		for _, f := range ac.Flows {
+			if f.ContentHash == hash && f.State == "active" {
+				hasFlow = true
+			}
+		}
+		hasBattery := false
+		for _, e := range ac.Entities {
+			if e.EntityID == entBattery && e.Source != "" {
+				hasBattery = true
+			}
+		}
+		return hasFlow && ac.PaletteVersion != "" && hasBattery
+	})
+
 	// Clearing the retained set removes the tab and empties the ack list.
 	cb.publishRetained(fmt.Sprintf("ems/%s/%s/%s/v2/flows", tTenant, tSite, tDevice), nil)
 	waitFor(t, 20*time.Second, "artifact tab removed on clear", func() bool {
