@@ -99,12 +99,12 @@ public class AdminController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    /** Update a tenant's master data (name/segment). */
+    /** Update a tenant's master data (name/segment/betriebsart - U0 shell frame). */
     @PutMapping("/tenants/{tenantId}")
     public TenantDto updateTenant(@PathVariable UUID tenantId,
             @Valid @RequestBody UpdateTenantRequest request) {
         TenantDto updated = tenants.update(tenantId, request.name().trim(),
-                request.segmentOrDefault());
+                request.segmentOrDefault(), request.betriebsartOrNull());
         if (updated == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
         }

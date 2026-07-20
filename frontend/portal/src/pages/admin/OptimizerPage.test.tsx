@@ -26,7 +26,7 @@ vi.mock('../../optimizerApi', () => ({
 }));
 
 const tenants: Tenant[] = [
-  { id: 't-1', name: 'Demo GmbH', segment: 'B2C', plan: 'basic', createdAt: '2026-01-01T00:00:00Z' },
+  { id: 't-1', name: 'Demo GmbH', segment: 'B2C', plan: 'basic', betriebsart: null, betriebsartEffective: 'endkunde', createdAt: '2026-01-01T00:00:00Z' },
 ];
 
 const sites = [

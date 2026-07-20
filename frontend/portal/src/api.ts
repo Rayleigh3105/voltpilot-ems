@@ -19,6 +19,26 @@ export type PlantKind = 'direktvermarktung' | 'eigenverbrauch';
  */
 export type TarifArt = 'dynamisch' | 'fest' | 'ohne';
 
+/**
+ * The U0 Kontotyp/Betriebsart shell frame (design vp-ems-ui-overhaul §2):
+ * 'endkunde' = single-object cockpit shell (never fleet chrome), 'betreiber' =
+ * fleet/portfolio shell. The value is resolved SERVER-side (explicit tenant
+ * override wins, else derived from the segment: B2C -> endkunde, CI ->
+ * betreiber) - the portal consumes it as-is and never re-derives.
+ */
+export type Betriebsart = 'endkunde' | 'betreiber';
+
+/**
+ * The caller's tenant context, read once at login (the U0 bootstrap).
+ * `betriebsart` is the EFFECTIVE frame the navigation shell keys on.
+ */
+export interface TenantContext {
+  tenantId: string;
+  name: string;
+  segment: string;
+  betriebsart: Betriebsart;
+}
+
 export interface Site {
   id: string;
   name: string;
@@ -1071,6 +1091,12 @@ export const api = {
     request<ControlStatus | undefined>(
       `/api/v1/sites/${siteId}/control-status`,
     ).then((v) => v ?? null),
+  /**
+   * The caller's tenant context (U0 login bootstrap): tenant name/segment +
+   * the EFFECTIVE Betriebsart that picks the navigation shell. 404 for an
+   * admin without a selected tenant (RLS default-deny).
+   */
+  tenantContext: () => request<TenantContext>('/api/v1/tenant-context'),
   listSites: () => request<Site[]>('/api/v1/sites'),
   createSite: (input: CreateSiteInput) =>
     request<Site>('/api/v1/sites', {

@@ -15,6 +15,10 @@ export interface Tenant {
   name: string;
   segment: string;
   plan: string;
+  /** U0 shell-frame override; null = automatic (derived from the segment). */
+  betriebsart: 'endkunde' | 'betreiber' | null;
+  /** The resolved Betriebsart the portal shell keys on (override wins). */
+  betriebsartEffective: 'endkunde' | 'betreiber';
   createdAt: string;
 }
 
@@ -65,6 +69,11 @@ export interface ProvisionDeviceInput {
 export interface UpdateTenantInput {
   name: string;
   segment?: string;
+  /**
+   * U0 shell-frame override, full representation: 'endkunde'/'betreiber' set
+   * it, null/omitted clears it back to the automatic segment-derived default.
+   */
+  betriebsart?: 'endkunde' | 'betreiber' | null;
 }
 
 export interface UpdateUserInput {
