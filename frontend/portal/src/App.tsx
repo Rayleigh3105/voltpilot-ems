@@ -666,6 +666,7 @@ function UnifiedPortal() {
               onNavigate={navigate}
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
+              betriebsart={betriebsart}
             />
           )}
           {page === 'marktpreise' && (

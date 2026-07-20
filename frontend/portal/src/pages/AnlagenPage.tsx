@@ -6,6 +6,7 @@ import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
 import {
   api,
+  type Betriebsart,
   type ControlStatus,
   type Device,
   type Earnings,
@@ -30,6 +31,7 @@ import { todaySlots } from '../schedule';
 import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
 import { healthChecklist } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
+import { AnlageTabBar } from '../components/AnlageTabBar';
 import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
@@ -63,6 +65,8 @@ export interface AnlagenPageProps {
   onNavigate: (route: Route) => void;
   onReload: (selectSiteId?: string) => void;
   isAdmin?: boolean;
+  /** U0 tenant frame (drives the per-Anlage tab order via navFor; null = default). */
+  betriebsart?: Betriebsart | null;
 }
 
 /**
@@ -75,7 +79,7 @@ export interface AnlagenPageProps {
  * list when the customer has several.
  */
 export function AnlagenPage(props: AnlagenPageProps) {
-  const { sites, route, onNavigate, isAdmin = false } = props;
+  const { sites, route, onNavigate, isAdmin = false, betriebsart = null } = props;
 
   if (sites.length === 0) {
     return <AnlagenEmpty onReload={props.onReload} isAdmin={isAdmin} />;
@@ -94,27 +98,46 @@ export function AnlagenPage(props: AnlagenPageProps) {
     );
   }
 
-  if (route.sub) {
-    return (
-      <AnlagenSubPage
-        site={site}
-        sites={sites}
-        devices={props.devices}
-        sub={route.sub}
-        isAdmin={isAdmin}
-        onBack={() => onNavigate(anlageRoute(site.id))}
-        onReload={props.onReload}
-      />
-    );
-  }
+  // The persistent per-Anlage tab bar (U1): rendered ABOVE the cockpit/subpage
+  // switch so it does NOT remount when the customer moves between subpages of
+  // the same Anlage - the derived order is computed once per site visit.
+  const tabBar = (
+    <AnlageTabBar
+      key={site.id}
+      siteId={site.id}
+      siteName={site.name}
+      activeSub={route.sub}
+      betriebsart={betriebsart}
+      onOpen={(sub) => onNavigate(anlageRoute(site.id, sub))}
+    />
+  );
 
   return (
-    <AnlageSeite
-      {...props}
-      site={site}
-      onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
-      onBackToList={sites.length > 1 ? () => onNavigate({ page: 'anlagen', siteId: null, sub: null }) : null}
-    />
+    <>
+      {tabBar}
+      {route.sub ? (
+        <AnlagenSubPage
+          site={site}
+          sites={sites}
+          devices={props.devices}
+          sub={route.sub}
+          isAdmin={isAdmin}
+          onBack={() => onNavigate(anlageRoute(site.id))}
+          onReload={props.onReload}
+        />
+      ) : (
+        <AnlageSeite
+          {...props}
+          site={site}
+          onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
+          onBackToList={
+            sites.length > 1
+              ? () => onNavigate({ page: 'anlagen', siteId: null, sub: null })
+              : null
+          }
+        />
+      )}
+    </>
   );
 }
 
