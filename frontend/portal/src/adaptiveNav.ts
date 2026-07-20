@@ -45,7 +45,6 @@ const ALL_KEYS: TabKey[] = [
   'wetter',
   'technik',
   'entitaeten',
-  'optimierung',
   'simulation',
   'steuerung',
 ];
@@ -59,7 +58,6 @@ const META: Record<TabKey, { label: string; icon: IconName }> = {
   wetter: { label: 'Wetter', icon: 'sun' },
   technik: { label: 'Einstellungen', icon: 'settings' },
   entitaeten: { label: 'Geräte', icon: 'cpu' },
-  optimierung: { label: 'Optimierung', icon: 'trending-up' },
   simulation: { label: 'Ersparnis-Simulation', icon: 'euro' },
   steuerung: { label: 'Steuerung', icon: 'zap' },
 };
@@ -84,12 +82,14 @@ const FACES: Record<UsageProfile | 'default', FaceTab[]> = {
     { key: 'live' },
     { key: 'historie', label: 'Historie' },
   ],
-  // peak → Übersicht · Lastspitzen · Live · Steuerung · Geräte · Historie · Mehr
+  // peak → Übersicht · Steuerung · Live · Geräte · Historie · Mehr. The
+  // Lastspitzenkappung proof lives in Steuerung's "Was läuft" level (U3 merge;
+  // §4.6: a peak face lands on the Strategien mode). U4 adds a dedicated
+  // Lastspitzen lead artifact.
   peak: [
     { key: 'uebersicht' },
-    { key: 'optimierung', label: 'Lastspitzen' },
-    { key: 'live' },
     { key: 'steuerung' },
+    { key: 'live' },
     { key: 'entitaeten' },
     { key: 'historie', label: 'Historie' },
   ],

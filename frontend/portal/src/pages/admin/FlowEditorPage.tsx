@@ -85,6 +85,14 @@ interface FlowEditorPageProps {
   canEnableGated?: boolean;
   /** The German hint on a locked gated node (Beratung-CTA copy). */
   lockedHint?: string;
+  /**
+   * Pre-filter the palette to a mode (U3: Strategien vs Automationen). The
+   * canvas + inspector are unchanged; only which catalog types the palette
+   * offers is narrowed. Absent = the full palette.
+   */
+  paletteFilter?: (type: CatalogType) => boolean;
+  /** Back-button label (default "Alle Flows"). */
+  backLabel?: string;
 }
 
 export function FlowEditorPage({
@@ -95,6 +103,8 @@ export function FlowEditorPage({
   onClose,
   canEnableGated = true,
   lockedHint = 'VoltPilot richtet ein',
+  paletteFilter,
+  backLabel = 'Alle Flows',
 }: FlowEditorPageProps) {
   const [version, setVersion] = useState(initialVersion);
   const [name, setName] = useState('');
@@ -340,7 +350,7 @@ export function FlowEditorPage({
     <div className="vp-flowed">
       <div className="vp-flowed-bar">
         <button type="button" className="vp-flowed-back" onClick={onClose}>
-          <Icon name="chevron-left" size={16} /> Alle Flows
+          <Icon name="chevron-left" size={16} /> {backLabel}
         </button>
         <input
           className="vp-flowed-name"
@@ -421,11 +431,15 @@ export function FlowEditorPage({
 
       <div className="vp-flowed-main">
         <aside className="vp-flowed-palette" aria-label="Baustein-Katalog">
-          {GROUP_ORDER.map((group) => (
+          {GROUP_ORDER.map((group) => {
+            const groupTypes = catalog.types.filter(
+              (t) => t.group === group.key && (!paletteFilter || paletteFilter(t)),
+            );
+            if (groupTypes.length === 0) return null;
+            return (
             <div key={group.key} className="vp-flowed-pgroup">
               <h4>{group.label}</h4>
-              {catalog.types
-                .filter((t) => t.group === group.key)
+              {groupTypes
                 .map((type) => {
                   // A gated strategy node (Arbitrage/Peak/atyp. NN) is placeable
                   // only when this caller may build with it: admins always (they
@@ -461,7 +475,8 @@ export function FlowEditorPage({
                   );
                 })}
             </div>
-          ))}
+            );
+          })}
         </aside>
 
         <div className="vp-flowed-center">

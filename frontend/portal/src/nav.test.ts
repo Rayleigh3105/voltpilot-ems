@@ -57,6 +57,16 @@ describe('parseRoute', () => {
     expect(parseRoute('#standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
   });
 
+  it('redirects the retired optimierung subpage into steuerung (U3 merge)', () => {
+    // "Optimierung" merged into "Steuerung" as its Level 1 "Was läuft"; the old
+    // hash keeps working as a redirect (no bookmark break).
+    expect(parseRoute('#/anlage/site-1/optimierung')).toEqual({
+      page: 'anlagen',
+      siteId: 'site-1',
+      sub: 'steuerung',
+    });
+  });
+
   it('ignores an unknown sub segment instead of breaking the Anlage', () => {
     expect(parseRoute('#/anlage/site-1/unbekannt')).toEqual({
       page: 'anlagen',

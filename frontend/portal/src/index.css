@@ -4570,6 +4570,58 @@ button.vp-tech-card-h.toggle {
 }
 .vp-steuerung-head h3 { margin: 0; font-size: 1.02rem; color: var(--vp-navy-1, #1E3A5F); }
 
+/* U3: the two-level Steuerung area (Was läuft + Ihre Steuerungen, mode tabs). */
+.vp-steuerung-l1head {
+  font-size: 1.06rem; color: var(--vp-navy-1, #1E3A5F);
+  margin: 0 0 var(--vp-space-3);
+}
+.vp-steuerung-l2 { margin-top: var(--vp-space-6); }
+.vp-steuerung-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.vp-mode-tabs {
+  display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px;
+  background: var(--vp-tint, rgba(149, 185, 255, 0.12)); min-width: 0; max-width: 100%;
+  overflow-x: auto; margin: 0 0 8px;
+}
+.vp-mode-tab {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  border: none; background: none; cursor: pointer; border-radius: 9px;
+  padding: 8px 16px; font-size: 0.9rem; font-weight: 600; color: var(--vp-text-2, #4a5568);
+}
+.vp-mode-tab.active { background: var(--vp-surface, #fff); color: var(--vp-action, #2C5282); box-shadow: var(--vp-shadow-sm, 0 1px 2px rgba(16,42,67,.08)); }
+.vp-mode-hint { margin: 0 0 var(--vp-space-4); max-width: 62ch; }
+
+/* Read-only canvas preview inside a flow card (the graph IS the artifact). */
+.vp-flowpreview {
+  margin: 10px 0 4px; border: 1px solid var(--vp-border); border-radius: 10px;
+  background: var(--vp-surface, #fff); overflow: hidden; max-height: 150px;
+  pointer-events: none; min-width: 0;
+}
+.vp-flowpreview .vp-flowcanvas { max-height: 150px; overflow: hidden; }
+.vp-flowpreview svg { width: 100%; height: auto; }
+
+/* The guided Wenn/Dann rule builder. */
+.vp-guided { min-width: 0; }
+.vp-guided-head {
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--vp-text-muted); margin: 18px 0 8px;
+}
+.vp-guided-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 4px; }
+.vp-guided-field label { font-size: 0.85rem; font-weight: 600; }
+.vp-guided-cond { margin-bottom: 8px; }
+.vp-guided-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.vp-guided-row .vp-select { flex: 1 1 130px; min-width: 0; }
+.vp-guided-num { flex: 0 1 110px !important; }
+.vp-guided-comb { display: inline-flex; gap: 4px; margin-bottom: 6px; }
+.vp-guided-comb button {
+  border: 1px solid var(--vp-border); background: var(--vp-surface, #fff); cursor: pointer;
+  border-radius: 7px; padding: 3px 12px; font-size: 0.78rem; font-weight: 700;
+  color: var(--vp-text-muted);
+}
+.vp-guided-comb button.active { border-color: var(--vp-action, #2C5282); color: var(--vp-action, #2C5282); background: var(--vp-tint, rgba(149, 185, 255, 0.12)); }
+.vp-guided-x { border: none; background: none; cursor: pointer; color: var(--vp-text-muted); padding: 6px; flex: none; }
+.vp-guided-note { margin: 14px 0 0; max-width: 62ch; }
+.vp-guided-foot { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
 @media (max-width: 1024px) {
   .vp-flowed-main { grid-template-columns: 1fr; }
   .vp-flowed-palette { display: flex; flex-wrap: wrap; gap: 4px 14px; }

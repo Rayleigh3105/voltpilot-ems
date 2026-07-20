@@ -9,7 +9,8 @@
  * the client validator the moment it is built. Pure - unit-tested in
  * customerTemplates.test.ts.
  */
-import { applyDerivedClaims, type EditorEntity, type FlowDocument } from './model';
+import { type EditorEntity, type FlowDocument } from './model';
+import { buildGuidedFlow } from './guidedBuilder';
 
 /** The site's controllable on/off consumers (Wallbox / Heizstab / gen. Last). */
 export function controllableConsumers(entities: EditorEntity[]): EditorEntity[] {
@@ -27,23 +28,13 @@ export function gridMeterEntity(entities: EditorEntity[]): EditorEntity | null {
   );
 }
 
-function base(name: string, siteId: string | undefined): Pick<FlowDocument,
-    'schema_version' | 'name' | 'runtime' | 'triggers'> & { site_id?: string } {
-  return {
-    schema_version: '1.0',
-    name,
-    runtime: 'edge',
-    ...(siteId ? { site_id: siteId } : {}),
-    triggers: [{ id: 't1', kind: 'slot-boundary' }],
-  };
-}
-
 /**
  * "Wallbox nur bei PV-Überschuss": when the grid meter shows net export beyond a
  * threshold (PV surplus), switch the consumer on. Reads grid power → threshold
- * (below the export limit) → the consumer's on/off. The edge core still
- * arbitrates + clamps the resulting desire (guards, §14a) - a wish, not a
- * forced write.
+ * (below the export limit) → the consumer's on/off. Built through the SHARED
+ * guided-builder emitter (buildGuidedFlow), so it is a builder-openable rule and
+ * cannot drift from the guided subset. The edge core still arbitrates + clamps
+ * the resulting desire (guards, §14a) - a wish, not a forced write.
  */
 export function pvSurplusConsumerFlow(
   name: string,
@@ -51,66 +42,38 @@ export function pvSurplusConsumerFlow(
   gridId: string,
   siteId?: string,
 ): FlowDocument {
-  const doc: FlowDocument = {
-    ...base(name, siteId),
-    nodes: [
-      {
-        id: 'netz1',
-        type: 'vp.entity.read',
-        type_version: '1.0.0',
-        parameters: { entity_id: gridId, channel: 'power_kw' },
-      },
-      {
-        id: 'schwelle1',
-        type: 'vp.logic.threshold',
-        type_version: '1.1.0',
-        parameters: { threshold: -2, direction: 'below', hysteresis: 0.5 },
-      },
-      {
-        id: 'steuern1',
-        type: 'vp.entity.control',
-        type_version: '1.0.0',
-        parameters: { entity_id: consumerId, command: 'on_off', ttl_s: 300 },
-      },
-    ],
-    edges: [
-      { id: 'e1', from: { node: 'netz1', port: 'value' }, to: { node: 'schwelle1', port: 'input' } },
-      { id: 'e2', from: { node: 'schwelle1', port: 'result' }, to: { node: 'steuern1', port: 'value' } },
-    ],
-  };
-  return applyDerivedClaims(doc);
+  return buildGuidedFlow(
+    {
+      conditions: [
+        { kind: 'entity', entityId: gridId, channel: 'power_kw', direction: 'below', threshold: -2, hysteresis: 0.5 },
+      ],
+      combinator: 'and',
+      action: { kind: 'onoff', entityId: consumerId, ttlS: 300 },
+    },
+    name,
+    siteId,
+  );
 }
 
 /**
  * "Heizstab-Zeitplan": switch the consumer on inside a daily time window (e.g.
- * midday PV hours). Schedule window → the consumer's on/off.
+ * midday PV hours). Schedule window → the consumer's on/off. Built through the
+ * SHARED guided-builder emitter.
  */
 export function scheduleConsumerFlow(
   name: string,
   consumerId: string,
   siteId?: string,
 ): FlowDocument {
-  const doc: FlowDocument = {
-    ...base(name, siteId),
-    nodes: [
-      {
-        id: 'zeit1',
-        type: 'vp.schedule.window',
-        type_version: '1.0.0',
-        parameters: { from: '11:00', to: '15:00', days: 'alle' },
-      },
-      {
-        id: 'steuern1',
-        type: 'vp.entity.control',
-        type_version: '1.0.0',
-        parameters: { entity_id: consumerId, command: 'on_off', ttl_s: 600 },
-      },
-    ],
-    edges: [
-      { id: 'e1', from: { node: 'zeit1', port: 'active' }, to: { node: 'steuern1', port: 'value' } },
-    ],
-  };
-  return applyDerivedClaims(doc);
+  return buildGuidedFlow(
+    {
+      conditions: [{ kind: 'schedule', from: '11:00', to: '15:00', days: 'alle' }],
+      combinator: 'and',
+      action: { kind: 'onoff', entityId: consumerId, ttlS: 600 },
+    },
+    name,
+    siteId,
+  );
 }
 
 /** A resolved template: either a ready-to-save document, or an honest reason. */

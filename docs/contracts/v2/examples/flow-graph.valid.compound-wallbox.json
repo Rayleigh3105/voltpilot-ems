@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "2b7c4d1e-3f80-4a12-9b34-56789abcdef0",
+  "flow_version": 1,
+  "name": "Wallbox bei PV-Überschuss und mittags",
+  "description": "Schaltet die Wallbox ein, wenn PV-Überschuss ins Netz fließt UND das Zeitfenster (11-15 Uhr) aktiv ist - eine zusammengesetzte Bedingung über den Und-Baustein.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "draft",
+  "nodes": [
+    {
+      "id": "netz1",
+      "type": "vp.entity.read",
+      "type_version": "1.0.0",
+      "label": "Netz-Leistung",
+      "parameters": { "entity_id": "grid-meter-1", "channel": "power_kw" }
+    },
+    {
+      "id": "schwelle1",
+      "type": "vp.logic.threshold",
+      "type_version": "1.1.0",
+      "label": "PV-Überschuss",
+      "parameters": { "threshold": -2.0, "hysteresis": 0.5, "direction": "below" }
+    },
+    {
+      "id": "zeit1",
+      "type": "vp.schedule.window",
+      "type_version": "1.0.0",
+      "label": "Mittags",
+      "parameters": { "from": "11:00", "to": "15:00", "days": "alle" }
+    },
+    {
+      "id": "und1",
+      "type": "vp.logic.and",
+      "type_version": "1.0.0",
+      "label": "Beides"
+    },
+    {
+      "id": "steuern1",
+      "type": "vp.entity.control",
+      "type_version": "1.0.0",
+      "label": "Wallbox schalten",
+      "parameters": { "entity_id": "wallbox-1", "command": "on_off", "ttl_s": 300 },
+      "claims": [
+        { "entity_id": "wallbox-1", "commands": ["on_off"] }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "netz1", "port": "value" }, "to": { "node": "schwelle1", "port": "input" } },
+    { "id": "e2", "from": { "node": "schwelle1", "port": "result" }, "to": { "node": "und1", "port": "a" } },
+    { "id": "e3", "from": { "node": "zeit1", "port": "active" }, "to": { "node": "und1", "port": "b" } },
+    { "id": "e4", "from": { "node": "und1", "port": "result" }, "to": { "node": "steuern1", "port": "value" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "slot-boundary" }
+  ]
+}

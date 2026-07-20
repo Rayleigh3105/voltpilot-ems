@@ -34,14 +34,22 @@ export type AnlagenSub =
   | 'wetter'
   | 'technik'
   | 'entitaeten'
-  | 'optimierung'
   | 'simulation'
   | 'steuerung';
 
 const SUBS = new Set<string>([
-  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'entitaeten', 'optimierung', 'simulation',
+  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'entitaeten', 'simulation',
   'steuerung',
 ]);
+
+/**
+ * U3: "Optimierung" (read-only module cards) MERGED into "Steuerung" as its
+ * Level 1 "Was läuft". The old subpage hash redirects so bookmarks never break
+ * (the LEGACY_ROUTES discipline, at the sub level).
+ */
+const LEGACY_SUBS: Record<string, AnlagenSub> = {
+  optimierung: 'steuerung',
+};
 
 /**
  * One navigation state. `siteId`/`sub` only carry meaning for page 'anlagen':
@@ -129,7 +137,10 @@ export function parseRoute(hash: string): Route {
   const head = segments[0] ?? '';
 
   if (head === 'anlage' && segments[1]) {
-    const sub = segments[2] && SUBS.has(segments[2]) ? (segments[2] as AnlagenSub) : null;
+    const raw = segments[2];
+    const sub = raw
+      ? (LEGACY_SUBS[raw] ?? (SUBS.has(raw) ? (raw as AnlagenSub) : null))
+      : null;
     return { page: 'anlagen', siteId: segments[1], sub };
   }
   if (head in LEGACY_ROUTES) {

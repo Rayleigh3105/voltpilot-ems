@@ -60,13 +60,31 @@ class FlowSimulationMapperTest {
     }
 
     @Test
-    void flowWithoutStrategyIsRefusedInGerman() {
+    void flowWithoutStrategyOrControlIsRefusedInGerman() {
         ObjectNode doc = FlowGraphValidatorTest.flowShell();
         FlowGraphValidatorTest.addNode(doc, "r1", "vp.entity.read", "1.0.0",
                 Map.of("entity_id", "grid-meter-1", "channel", "power_kw"));
         FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
         assertThat(mapping.supported()).isFalse();
         assertThat(mapping.reason()).contains("keinen simulierbaren Strategie-Baustein");
+    }
+
+    @Test
+    void deviceAutomationMapsToStandardSpeicherBaseline() {
+        // A Wenn/Dann rule controlling a consumer (no battery strategy) is
+        // simulierbar as the site's standard-battery baseline (U3), so it can
+        // reach 'simuliert' and activate.
+        ObjectNode doc = FlowGraphValidatorTest.flowShell();
+        FlowGraphValidatorTest.addNode(doc, "r1", "vp.entity.read", "1.0.0",
+                Map.of("entity_id", "grid-meter-1", "channel", "power_kw"));
+        FlowGraphValidatorTest.addNode(doc, "t1", "vp.logic.threshold", "1.1.0",
+                Map.of("threshold", -2.0, "direction", "below"));
+        FlowGraphValidatorTest.addNode(doc, "c1", "vp.entity.control", "1.0.0",
+                Map.of("entity_id", "wallbox-1", "command", "on_off", "ttl_s", 300));
+        FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
+        assertThat(mapping.supported()).isTrue();
+        assertThat(mapping.scenario()).isEqualTo("standardSpeicher");
+        assertThat(mapping.strategyNodeId()).isNull();
     }
 
     @Test

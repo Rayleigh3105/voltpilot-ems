@@ -34,6 +34,17 @@ function num(v) {
   return typeof v === 'number' && isFinite(v);
 }
 
+// The editor represents a schedule window's day set as the enum
+// alle/werktage/wochenende (api + portal catalogs); WINDOW_BODY runs on a
+// day-number array (0=So..6=Sa). Map the enum here so an editor-produced
+// schedule flow compiles; a raw 0..6 array is still accepted (backward compat).
+function scheduleDays(days) {
+  if (days === 'werktage') return [1, 2, 3, 4, 5];
+  if (days === 'wochenende') return [0, 6];
+  if (Array.isArray(days)) return days;
+  return []; // 'alle' or absent = every day
+}
+
 // literal() guards every value interpolated into generated code: only finite
 // numbers, booleans and WHITELIST-validated strings pass, serialized as a
 // JSON literal (JSON is a JS expression subset; U+2028/2029 escaped).
@@ -91,6 +102,31 @@ const GATE_BODY = [
   'context.set("on", cond);',
   'if (cond && !prev) return msg;',
   'return null;',
+].join('\n');
+
+// vp.logic.and / vp.logic.or: boolean combinators (two bool inputs -> one bool
+// out) so the guided Wenn/Dann builder can wire compound conditions
+// ("PV-Überschuss UND Zeitfenster"). Node-RED delivers every incoming wire on
+// the single input, so the latest boolean is remembered PER SOURCE (msg.topic)
+// and combined; distinct per-branch topics are an edge-runtime refinement.
+const AND_BODY = [
+  'const key = msg.topic || "_";',
+  'const seen = context.get("seen") || {};',
+  'seen[key] = !!msg.payload;',
+  'context.set("seen", seen);',
+  'const vals = Object.keys(seen).map(function (k) { return seen[k]; });',
+  'msg.payload = vals.length > 0 && vals.every(function (v) { return v; });',
+  'return msg;',
+].join('\n');
+
+const OR_BODY = [
+  'const key = msg.topic || "_";',
+  'const seen = context.get("seen") || {};',
+  'seen[key] = !!msg.payload;',
+  'context.set("seen", seen);',
+  'const vals = Object.keys(seen).map(function (k) { return seen[k]; });',
+  'msg.payload = vals.some(function (v) { return v; });',
+  'return msg;',
 ].join('\n');
 
 const WINDOW_BODY = [
@@ -186,6 +222,36 @@ const TYPES = {
         name: node.label || 'Strompreis',
         core: ctx.coreId,
         feed: 'prices',
+      }];
+    },
+  },
+
+  'vp.price.current': {
+    version: '1.0.0',
+    runtimes: ['edge', 'cloud'],
+    minPalette: '0.2.0',
+    triggerable: true,
+    ports: { in: { trigger: { type: 'event' } }, out: { value: { type: 'number' } } },
+    validate(p) {
+      if (p && p.zone !== undefined && ['DE-LU', 'AT', 'CH'].indexOf(p.zone) < 0) {
+        return ['zone muss DE-LU, AT oder CH sein'];
+      }
+      return [];
+    },
+    requires() {
+      return [];
+    },
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      return [{
+        id: ctx.nrId(node.id),
+        type: 'vp-feed',
+        z: ctx.tabId,
+        name: node.label || 'Aktueller Strompreis',
+        core: ctx.coreId,
+        feed: 'price_current',
       }];
     },
   },
@@ -293,6 +359,50 @@ const TYPES = {
     },
   },
 
+  'vp.logic.and': {
+    version: '1.0.0',
+    runtimes: ['edge', 'cloud'],
+    minPalette: '0.2.0',
+    ports: {
+      in: { a: { type: 'bool', required: true }, b: { type: 'bool', required: true } },
+      out: { result: { type: 'bool' } },
+    },
+    validate() {
+      return [];
+    },
+    requires() {
+      return [];
+    },
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      return [fnNode(ctx, node, node.label || 'Und', {}, AND_BODY, 1)];
+    },
+  },
+
+  'vp.logic.or': {
+    version: '1.0.0',
+    runtimes: ['edge', 'cloud'],
+    minPalette: '0.2.0',
+    ports: {
+      in: { a: { type: 'bool', required: true }, b: { type: 'bool', required: true } },
+      out: { result: { type: 'bool' } },
+    },
+    validate() {
+      return [];
+    },
+    requires() {
+      return [];
+    },
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      return [fnNode(ctx, node, node.label || 'Oder', {}, OR_BODY, 1)];
+    },
+  },
+
   'vp.schedule.window': {
     version: '1.0.0',
     runtimes: ['edge', 'cloud'],
@@ -304,8 +414,10 @@ const TYPES = {
       if (!p || !HHMM_RE.test(p.from || '')) errs.push('from fehlt oder ist nicht HH:MM');
       if (!p || !HHMM_RE.test(p.to || '')) errs.push('to fehlt oder ist nicht HH:MM');
       if (p && p.days !== undefined) {
-        const ok = Array.isArray(p.days) && p.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-        if (!ok) errs.push('days muss eine Liste aus 0..6 sein');
+        const enumOk = ['alle', 'werktage', 'wochenende'].indexOf(p.days) >= 0;
+        const arrayOk = Array.isArray(p.days)
+          && p.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+        if (!enumOk && !arrayOk) errs.push('days muss alle/werktage/wochenende oder eine Liste aus 0..6 sein');
       }
       return errs;
     },
@@ -322,7 +434,7 @@ const TYPES = {
         from_m: Number(p.from.slice(3)),
         to_h: Number(p.to.slice(0, 2)),
         to_m: Number(p.to.slice(3)),
-        days: Array.isArray(p.days) ? p.days : [],
+        days: scheduleDays(p.days),
       }, WINDOW_BODY, 1)];
     },
   },
