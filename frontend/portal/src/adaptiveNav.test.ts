@@ -20,7 +20,6 @@ const ALL_SUBS: (AnlagenSub | null)[] = [
   'wetter',
   'technik',
   'entitaeten',
-  'optimierung',
   'simulation',
   'steuerung',
 ];
@@ -36,12 +35,11 @@ describe('navFor - per-face ordering (§5.2)', () => {
     ]);
   });
 
-  it('peak → Übersicht · Lastspitzen · Live · Steuerung · Geräte · Historie', () => {
+  it('peak → Übersicht · Steuerung · Live · Geräte · Historie (Steuerung leads; U3 merge)', () => {
     expect(visibleLabels(navFor('peak', 'betreiber'))).toEqual([
       'Übersicht',
-      'Lastspitzen',
-      'Live',
       'Steuerung',
+      'Live',
       'Geräte',
       'Historie',
     ]);
@@ -57,9 +55,7 @@ describe('navFor - per-face ordering (§5.2)', () => {
     ]);
   });
 
-  it('the peak "Lastspitzen" tab and arbitrage "Erlöse" tab are promotions of existing subs', () => {
-    const peakLast = navFor('peak', null).find((t) => t.label === 'Lastspitzen');
-    expect(peakLast?.sub).toBe('optimierung');
+  it('the arbitrage "Erlöse" tab is a promotion of the historie sub', () => {
     const arbErloese = navFor('arbitrage', null).find((t) => t.label === 'Erlöse');
     expect(arbErloese?.sub).toBe('historie');
   });

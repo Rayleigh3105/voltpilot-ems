@@ -220,6 +220,47 @@
       "parameters": [
         { "name": "message", "kind": "string", "label": "Nachricht", "required": true }
       ]
+    },
+    {
+      "type": "vp.price.current",
+      "type_version": "1.0.0",
+      "label": "Aktueller Strompreis",
+      "description": "Der aktuelle Day-Ahead-Börsenpreis der Anlage als Zahl (ct/kWh) - z. B. für „wenn der Börsenpreis unter 10 ct“.",
+      "group": "daten",
+      "runtimes": ["edge", "cloud"],
+      "inputs": [],
+      "outputs": [{ "name": "value", "type": "number", "label": "Preis", "unit": "ct/kWh" }],
+      "parameters": [
+        { "name": "zone", "kind": "enum", "label": "Gebotszone", "required": false, "options": ["DE-LU", "AT", "CH"], "help": "Leer = Gebotszone der Anlage." }
+      ]
+    },
+    {
+      "type": "vp.logic.and",
+      "type_version": "1.0.0",
+      "label": "Und",
+      "description": "Wahr, wenn BEIDE Bedingungen wahr sind - z. B. „PV-Überschuss UND Zeitfenster“.",
+      "group": "logik",
+      "runtimes": ["edge", "cloud"],
+      "inputs": [
+        { "name": "a", "type": "bool", "label": "Bedingung A", "required": true },
+        { "name": "b", "type": "bool", "label": "Bedingung B", "required": true }
+      ],
+      "outputs": [{ "name": "result", "type": "bool", "label": "Beide wahr" }],
+      "parameters": []
+    },
+    {
+      "type": "vp.logic.or",
+      "type_version": "1.0.0",
+      "label": "Oder",
+      "description": "Wahr, wenn MINDESTENS EINE der beiden Bedingungen wahr ist.",
+      "group": "logik",
+      "runtimes": ["edge", "cloud"],
+      "inputs": [
+        { "name": "a", "type": "bool", "label": "Bedingung A", "required": true },
+        { "name": "b", "type": "bool", "label": "Bedingung B", "required": true }
+      ],
+      "outputs": [{ "name": "result", "type": "bool", "label": "Eine wahr" }],
+      "parameters": []
     }
   ]
 }

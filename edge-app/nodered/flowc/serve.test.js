@@ -31,6 +31,14 @@ function pinnedNotifyHash() {
   return fs.readFileSync(path.join(__dirname, 'pinned-notify-hash.txt'), 'utf8').trim();
 }
 
+function pinnedCompoundHash() {
+  return fs.readFileSync(path.join(__dirname, 'pinned-compound-hash.txt'), 'utf8').trim();
+}
+
+function pinnedPriceHash() {
+  return fs.readFileSync(path.join(__dirname, 'pinned-price-hash.txt'), 'utf8').trim();
+}
+
 /** Start the server on an ephemeral port; resolve {port, close}. */
 function startServer() {
   return new Promise((resolve) => {
@@ -124,6 +132,45 @@ test('POST /compile compiles the notification automation the api used to reject'
     assert.strictEqual(artifact.content_hash, pinnedNotifyHash());
     assert.ok(artifact.bundle.nodered_flows.find((n) => n.type === 'vp-notify'),
       'the compiled bundle carries the notification publisher');
+  } finally {
+    await close();
+  }
+});
+
+test('POST /compile compiles the compound (AND) automation to its pinned artifact', async () => {
+  // U3: "PV-Überschuss UND Zeitfenster -> Wallbox" - the guided builder's
+  // flagship compound rule. build -> validate -> simulate -> activate posts
+  // this document here; it must compile to a stable artifact.
+  const { port, close } = await startServer();
+  try {
+    const graph = fixture('flow-graph.valid.compound-wallbox.json');
+    const res = await request(port, 'POST', '/compile', { document: graph });
+    assert.strictEqual(res.status, 200, res.text);
+    const artifact = res.json;
+    assert.strictEqual(artifact.kind, 'artifact');
+    assert.strictEqual(artifact.flow_id, graph.flow_id);
+    assert.strictEqual(artifact.content_hash, pinnedCompoundHash());
+    assert.ok(artifact.bundle.nodered_flows.find((n) => n.type === 'vp-desired'),
+      'the compiled bundle carries the device-control publisher');
+  } finally {
+    await close();
+  }
+});
+
+test('POST /compile compiles the price automation to its pinned artifact', async () => {
+  // U3: "Börsenpreis < 10 ct -> Wallbox" - the price condition over the new
+  // vp.price.current data node.
+  const { port, close } = await startServer();
+  try {
+    const graph = fixture('flow-graph.valid.price-wallbox.json');
+    const res = await request(port, 'POST', '/compile', { document: graph });
+    assert.strictEqual(res.status, 200, res.text);
+    const artifact = res.json;
+    assert.strictEqual(artifact.kind, 'artifact');
+    assert.strictEqual(artifact.flow_id, graph.flow_id);
+    assert.strictEqual(artifact.content_hash, pinnedPriceHash());
+    assert.ok(artifact.bundle.nodered_flows.find((n) => n.type === 'vp-feed' && n.feed === 'price_current'),
+      'the compiled bundle reads the current price');
   } finally {
     await close();
   }

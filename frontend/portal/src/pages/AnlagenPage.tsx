@@ -43,7 +43,6 @@ import { ErtragChart } from '../components/ErtragChart';
 import { HealthChecklist } from '../components/HealthChecklist';
 import { AnlageHero, EnergyStatsRow, MonthRail, MonthStrip, PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
-import { OptimierungSection } from '../components/OptimierungSection';
 import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
@@ -311,10 +310,6 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     title: 'Geräte & Entitäten',
     subtitle: 'Alle Mess- und Steuer-Einheiten dieser Anlage - Fähigkeiten, Zustand und Konfiguration.',
   },
-  optimierung: {
-    title: 'Optimierung',
-    subtitle: 'Was VoltPilot für Ihre Anlage steuert - was aktiv ist, was es bewirkt und was noch möglich ist.',
-  },
   simulation: {
     title: 'Ersparnis-Simulation',
     subtitle:
@@ -362,7 +357,6 @@ function AnlagenSubPage({
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
-      {sub === 'optimierung' && <OptimierungSection site={site} isAdmin={isAdmin} />}
       {sub === 'entitaeten' && <EntitaetenSection site={site} isAdmin={isAdmin} />}
       {sub === 'simulation' && <SimulationSection site={site} />}
       {sub === 'steuerung' && <SteuerungSection site={site} isAdmin={isAdmin} />}
@@ -842,13 +836,6 @@ export function AnlageSeite({
         <div className="vp-dash-deep">
           <div className="vp-detail-grid">
             <DetailCard
-              icon="trending-up"
-              category="dynamic"
-              title="Optimierung"
-              line="Was VoltPilot für Sie steuert - aktiv, Wirkung, Möglichkeiten."
-              onOpen={() => onOpenSub('optimierung')}
-            />
-            <DetailCard
               icon="history"
               category="home"
               title="Historie & Erlöse"
@@ -884,7 +871,7 @@ export function AnlageSeite({
               icon="zap"
               category="primary"
               title="Steuerung"
-              line="Regeln bauen: was geschaltet wird und zu welchen Bedingungen."
+              line="Was läuft - und eigene Strategien & Automationen bauen."
               onOpen={() => onOpenSub('steuerung')}
             />
             <DetailCard

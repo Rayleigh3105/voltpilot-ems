@@ -23,6 +23,7 @@ const ENTITIES: EditorEntity[] = [
     actuate: ['setpoint_kw', 'limit_kw'],
   },
   { id: 'grid-meter-1', entityType: 'grid-meter', label: 'Netz', measure: ['power_kw'], actuate: [] },
+  { id: 'wallbox-1', entityType: 'wallbox', label: 'Wallbox', measure: ['power_kw'], actuate: ['on_off', 'setpoint_kw'] },
   { id: 'heatrod-cellar', entityType: 'producer', label: 'Heizstab', measure: [], actuate: ['on_off'] },
   { id: 'pv-roof-east', entityType: 'producer', label: 'PV Ost', measure: ['pv_power_kw'], actuate: ['limit_pct'] },
 ];
@@ -73,6 +74,50 @@ describe('contract fixtures (executable contract)', () => {
     const findings = validateFlow(fixture('flow-graph.invalid.unknown-trigger.json'), ENTITIES);
     expect(errors(findings)).toEqual(['V-7']);
     expect(findings[0].message).toContain('cron');
+  });
+
+  it.skipIf(!haveFixtures)('compound-wallbox fixture validates clean (U3 AND + schedule)', () => {
+    const findings = validateFlow(fixture('flow-graph.valid.compound-wallbox.json'), ENTITIES);
+    expect(errors(findings)).toEqual([]);
+  });
+
+  it.skipIf(!haveFixtures)('price-wallbox fixture validates clean (U3 price condition)', () => {
+    const findings = validateFlow(fixture('flow-graph.valid.price-wallbox.json'), ENTITIES);
+    expect(errors(findings)).toEqual([]);
+  });
+});
+
+describe('U3 combinator + price condition', () => {
+  it('the AND combinator joins two conditions (each input takes one edge)', () => {
+    const doc = shell();
+    doc.nodes = [
+      { id: 'r1', type: 'vp.entity.read', type_version: '1.0.0', parameters: { entity_id: 'grid-meter-1', channel: 'power_kw' } },
+      { id: 't1', type: 'vp.logic.threshold', type_version: '1.1.0', parameters: { threshold: -2, direction: 'below' } },
+      { id: 'z1', type: 'vp.schedule.window', type_version: '1.0.0', parameters: { from: '11:00', to: '15:00', days: 'alle' } },
+      { id: 'and1', type: 'vp.logic.and', type_version: '1.0.0', parameters: {} },
+      { id: 'c1', type: 'vp.entity.control', type_version: '1.0.0', parameters: { entity_id: 'wallbox-1', command: 'on_off', ttl_s: 300 }, claims: [{ entity_id: 'wallbox-1', commands: ['on_off'] }] },
+    ];
+    doc.edges = [
+      { id: 'e1', from: { node: 'r1', port: 'value' }, to: { node: 't1', port: 'input' } },
+      { id: 'e2', from: { node: 't1', port: 'result' }, to: { node: 'and1', port: 'a' } },
+      { id: 'e3', from: { node: 'z1', port: 'active' }, to: { node: 'and1', port: 'b' } },
+      { id: 'e4', from: { node: 'and1', port: 'result' }, to: { node: 'c1', port: 'value' } },
+    ];
+    expect(errors(validateFlow(doc, ENTITIES))).toEqual([]);
+  });
+
+  it('vp.price.current feeds a threshold as a number', () => {
+    const doc = shell();
+    doc.nodes = [
+      { id: 'p1', type: 'vp.price.current', type_version: '1.0.0', parameters: {} },
+      { id: 't1', type: 'vp.logic.threshold', type_version: '1.1.0', parameters: { threshold: 10, direction: 'below' } },
+      { id: 'c1', type: 'vp.entity.control', type_version: '1.0.0', parameters: { entity_id: 'wallbox-1', command: 'on_off', ttl_s: 600 }, claims: [{ entity_id: 'wallbox-1', commands: ['on_off'] }] },
+    ];
+    doc.edges = [
+      { id: 'e1', from: { node: 'p1', port: 'value' }, to: { node: 't1', port: 'input' } },
+      { id: 'e2', from: { node: 't1', port: 'result' }, to: { node: 'c1', port: 'value' } },
+    ];
+    expect(errors(validateFlow(doc, ENTITIES))).toEqual([]);
   });
 });
 

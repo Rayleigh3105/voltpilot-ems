@@ -267,6 +267,142 @@ class FlowPeakShavingApiTest {
                 .getBody().path("lifecycle").asText()).isEqualTo("active");
     }
 
+    @Test
+    void deviceAutomationsBuildValidateSimulateAndActivate() {
+        // U3: a FREE device automation - no gated strategy, a Wenn/Dann rule
+        // controlling a consumer. It maps to the standardSpeicher baseline
+        // dry-run (the reference the rule runs on top of) so it reaches
+        // 'simuliert' and activates, passing governance untouched.
+        String admin = token("admin", "admin");
+
+        JsonNode bootstrap = exchange("/api/v1/admin/sites/" + BERLIN_SITE
+                + "/v2-entities/bootstrap", HttpMethod.POST, admin, TENANT_A, Map.of()).getBody();
+        String batteryEntity = null;
+        for (JsonNode entity : bootstrap.path("entities")) {
+            if ("battery-hybrid".equals(entity.path("entityType").asText())) {
+                batteryEntity = entity.path("id").asText();
+            }
+        }
+        assertThat(batteryEntity).isNotNull();
+
+        // A controllable consumer (open catalog type) is the automation's target.
+        String wallbox = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities",
+                HttpMethod.POST, admin, TENANT_A,
+                Map.of("entityType", "wallbox", "label", "Wallbox", "maxPowerKw", 11))
+                .getBody().path("id").asText();
+        assertThat(wallbox).isNotBlank();
+
+        // 1) Compound automation: SoC > 50 % UND Zeitfenster -> Wallbox ein.
+        String compoundId = createActivate(admin, "Wallbox bei vollem Speicher und mittags",
+                compoundAutomation(batteryEntity, wallbox));
+        // Free automation stays reachable to deactivate, freeing the wallbox for
+        // the next rule (V-5: one active flow per entity).
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + compoundId + "/deactivate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+
+        // 2) Price automation: Börsenpreis < 10 ct -> Wallbox ein.
+        String priceId = createActivate(admin, "Wallbox bei günstigem Börsenpreis",
+                priceAutomation(wallbox));
+
+        // Cleanup so the shared site is left as this test found it.
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + priceId + "/deactivate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + priceId,
+                HttpMethod.DELETE, admin, TENANT_A, null);
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + compoundId,
+                HttpMethod.DELETE, admin, TENANT_A, null);
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/" + wallbox,
+                HttpMethod.DELETE, admin, TENANT_A, null);
+    }
+
+    /** create -> save doc -> validate -> simulate(standardSpeicher) -> activate; returns flowId. */
+    private String createActivate(String admin, String name, ObjectNode document) {
+        String flowId = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
+                HttpMethod.POST, admin, TENANT_A, Map.of("name", name)).getBody().path("flowId").asText();
+        String base = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + flowId;
+        exchange(base + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("name", name, "document", document));
+        JsonNode validation = exchange(base + "/versions/1/validate", HttpMethod.POST, admin,
+                TENANT_A, Map.of()).getBody();
+        assertThat(validation.path("valid").asBoolean())
+                .as("automation validates clean: " + validation.path("findings")).isTrue();
+        ResponseEntity<JsonNode> simulated = exchange(base + "/versions/1/simulate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(simulated.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(simulated.getBody().path("flowScenario").asText()).isEqualTo("standardSpeicher");
+        String simulationId = simulated.getBody().path("simulationId").asText();
+        assertThat(exchange(base + "/versions/1/simulation/" + simulationId, HttpMethod.GET,
+                admin, TENANT_A, null).getBody().path("status").asText()).isEqualTo("done");
+        ResponseEntity<JsonNode> activated = exchange(base + "/versions/1/activate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(activated.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(activated.getBody().path("activated").asBoolean())
+                .as("free device automation activates (governance untouched): " + activated.getBody())
+                .isTrue();
+        assertThat(activated.getBody().path("lifecycle").asText()).isEqualTo("active");
+        return flowId;
+    }
+
+    /** SoC > 50 % UND Zeitfenster -> Wallbox on/off (threshold + schedule joined by AND). */
+    private static ObjectNode compoundAutomation(String batteryEntity, String wallbox) {
+        ObjectNode doc = automationShell("Compound");
+        addNode(doc, "soc1", "vp.entity.read",
+                Map.of("entity_id", batteryEntity, "channel", "soc_pct"));
+        ObjectNode threshold = addNode(doc, "sw1", "vp.logic.threshold", Map.of());
+        threshold.put("type_version", "1.1.0");
+        ((ObjectNode) threshold.path("parameters")).put("threshold", 50.0).put("direction", "above");
+        addNode(doc, "z1", "vp.schedule.window",
+                Map.of("from", "11:00", "to", "15:00", "days", "alle"));
+        addNode(doc, "und1", "vp.logic.and", Map.of());
+        controlNode(doc, "steuern1", wallbox);
+        edge(doc, "e1", "soc1", "value", "sw1", "input");
+        edge(doc, "e2", "sw1", "result", "und1", "a");
+        edge(doc, "e3", "z1", "active", "und1", "b");
+        edge(doc, "e4", "und1", "result", "steuern1", "value");
+        return doc;
+    }
+
+    /** Börsenpreis < 10 ct -> Wallbox on/off (price condition over vp.price.current). */
+    private static ObjectNode priceAutomation(String wallbox) {
+        ObjectNode doc = automationShell("Price");
+        addNode(doc, "preis1", "vp.price.current", Map.of());
+        ObjectNode threshold = addNode(doc, "sw1", "vp.logic.threshold", Map.of());
+        threshold.put("type_version", "1.1.0");
+        ((ObjectNode) threshold.path("parameters")).put("threshold", 10.0).put("direction", "below");
+        controlNode(doc, "steuern1", wallbox);
+        edge(doc, "e1", "preis1", "value", "sw1", "input");
+        edge(doc, "e2", "sw1", "result", "steuern1", "value");
+        return doc;
+    }
+
+    private static ObjectNode automationShell(String name) {
+        ObjectNode doc = MAPPER.createObjectNode();
+        doc.put("schema_version", "1.0");
+        doc.put("name", name);
+        doc.put("runtime", "edge");
+        doc.putArray("nodes");
+        doc.putArray("edges");
+        doc.putArray("triggers").addObject().put("id", "t1").put("kind", "slot-boundary");
+        return doc;
+    }
+
+    private static void controlNode(ObjectNode doc, String id, String wallbox) {
+        ObjectNode ctl = addNode(doc, id, "vp.entity.control",
+                Map.of("entity_id", wallbox, "command", "on_off"));
+        ((ObjectNode) ctl.path("parameters")).put("ttl_s", 300);
+        ObjectNode claim = ctl.putArray("claims").addObject();
+        claim.put("entity_id", wallbox);
+        claim.putArray("commands").add("on_off");
+    }
+
+    private static void edge(ObjectNode doc, String id, String fromNode, String fromPort,
+            String toNode, String toPort) {
+        ObjectNode edge = ((ArrayNode) doc.path("edges")).addObject();
+        edge.put("id", id);
+        edge.putObject("from").put("node", fromNode).put("port", fromPort);
+        edge.putObject("to").put("node", toNode).put("port", toPort);
+    }
+
     // ---- helpers -------------------------------------------------------------
 
     /** The minimal peak-shaving flow: read SoC → delegated peak-shaving strategy. */

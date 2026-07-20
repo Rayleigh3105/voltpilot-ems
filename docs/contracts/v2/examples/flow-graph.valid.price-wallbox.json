@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "3c8d5e2f-4091-4b23-8c45-6789abcdef01",
+  "flow_version": 1,
+  "name": "Wallbox bei günstigem Börsenpreis",
+  "description": "Schaltet die Wallbox ein, sobald der aktuelle Börsenpreis unter 10 ct/kWh liegt - eine Preisbedingung über den Aktueller-Strompreis-Baustein.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "draft",
+  "nodes": [
+    {
+      "id": "preis1",
+      "type": "vp.price.current",
+      "type_version": "1.0.0",
+      "label": "Börsenpreis"
+    },
+    {
+      "id": "schwelle1",
+      "type": "vp.logic.threshold",
+      "type_version": "1.1.0",
+      "label": "Preis unter 10 ct",
+      "parameters": { "threshold": 10.0, "hysteresis": 1.0, "direction": "below" }
+    },
+    {
+      "id": "steuern1",
+      "type": "vp.entity.control",
+      "type_version": "1.0.0",
+      "label": "Wallbox schalten",
+      "parameters": { "entity_id": "wallbox-1", "command": "on_off", "ttl_s": 600 },
+      "claims": [
+        { "entity_id": "wallbox-1", "commands": ["on_off"] }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "preis1", "port": "value" }, "to": { "node": "schwelle1", "port": "input" } },
+    { "id": "e2", "from": { "node": "schwelle1", "port": "result" }, "to": { "node": "steuern1", "port": "value" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "slot-boundary" }
+  ]
+}

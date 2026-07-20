@@ -224,6 +224,64 @@ test('pinned content hash of the notify-threshold fixture', () => {
     'notify-threshold compiler output drifted from the committed pin (pinned-notify-hash.txt)');
 });
 
+// U3: the compound automation ("PV-Überschuss UND Zeitfenster -> Wallbox")
+// exercises the boolean combinator vp.logic.and + a schedule window with the
+// editor's enum `days`. Both nodes were previously un-compilable (no AND node;
+// schedule.window rejected the string day set).
+test('compound-wallbox fixture compiles the AND combinator + enum schedule', () => {
+  const a = compile(fixture('flow-graph.valid.compound-wallbox.json'));
+  for (const n of a.bundle.nodered_flows) {
+    assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
+  }
+  const fns = a.bundle.nodered_flows.filter((n) => n.type === 'function' && /generiert von flowc/.test(n.func));
+  const andNode = fns.find((n) => /vals\.every/.test(n.func));
+  assert.ok(andNode, 'the Und-Baustein compiles to the every() combiner body');
+  const window = fns.find((n) => /getHours/.test(n.func));
+  assert.ok(window, 'the schedule window compiles');
+  assert.match(window.func, /"days":\[\]/, 'days "alle" maps to the every-day empty set');
+  // Wiring: threshold + schedule both feed the AND, AND feeds the control.
+  const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
+  assert.strictEqual(desired.entity, 'wallbox-1');
+  assert.deepStrictEqual(andNode.wires, [[desired.id]]);
+});
+
+test('pinned content hash of the compound-wallbox fixture', () => {
+  const a = compile(fixture('flow-graph.valid.compound-wallbox.json'));
+  const pinFile = path.join(__dirname, 'pinned-compound-hash.txt');
+  if (!fs.existsSync(pinFile)) {
+    fs.writeFileSync(pinFile, a.content_hash + '\n');
+  }
+  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
+  assert.strictEqual(a.content_hash, pinned,
+    'compound-wallbox compiler output drifted from the committed pin (pinned-compound-hash.txt)');
+});
+
+// U3: the price automation ("Börsenpreis < 10 ct -> Wallbox") exercises the new
+// vp.price.current data node feeding a threshold.
+test('price-wallbox fixture compiles the current-price feed + threshold', () => {
+  const a = compile(fixture('flow-graph.valid.price-wallbox.json'));
+  for (const n of a.bundle.nodered_flows) {
+    assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
+  }
+  const feed = a.bundle.nodered_flows.find((n) => n.type === 'vp-feed' && n.feed === 'price_current');
+  assert.ok(feed, 'vp.price.current compiles to a vp-feed with feed=price_current');
+  const threshold = a.bundle.nodered_flows.find((n) => n.type === 'function' && /P\.threshold/.test(n.func));
+  const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
+  assert.deepStrictEqual(feed.wires, [[threshold.id]]);
+  assert.deepStrictEqual(threshold.wires, [[desired.id]]);
+});
+
+test('pinned content hash of the price-wallbox fixture', () => {
+  const a = compile(fixture('flow-graph.valid.price-wallbox.json'));
+  const pinFile = path.join(__dirname, 'pinned-price-hash.txt');
+  if (!fs.existsSync(pinFile)) {
+    fs.writeFileSync(pinFile, a.content_hash + '\n');
+  }
+  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
+  assert.strictEqual(a.content_hash, pinned,
+    'price-wallbox compiler output drifted from the committed pin (pinned-price-hash.txt)');
+});
+
 // Drift guard (#518): the flowc TYPES map and the api flow-catalog MUST declare
 // the SAME set of node types. flowc had vp.logic.if but not vp.logic.gate while
 // the api/portal had vp.logic.gate but not vp.logic.if - so a gate flow that the

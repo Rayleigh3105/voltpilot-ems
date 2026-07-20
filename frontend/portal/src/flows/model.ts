@@ -308,12 +308,15 @@ function freshId(prefix: string, taken: Set<string>): string {
 
 const ID_PREFIX: Record<string, string> = {
   'vp.price.dayahead': 'preis',
+  'vp.price.current': 'preisjetzt',
   'vp.forecast.pv': 'prognose',
   'vp.entity.read': 'lesen',
   'vp.logic.threshold': 'schwelle',
   'vp.schedule.window': 'zeitplan',
   'vp.logic.gate': 'wenn',
   'vp.logic.if': 'wert',
+  'vp.logic.and': 'und',
+  'vp.logic.or': 'oder',
   'vp.strategy.market': 'markt',
   'vp.strategy.selfconsumption': 'eigen',
   'vp.entity.control': 'steuern',

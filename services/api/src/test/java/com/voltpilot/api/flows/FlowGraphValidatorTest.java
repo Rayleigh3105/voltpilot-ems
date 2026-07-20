@@ -38,6 +38,7 @@ class FlowGraphValidatorTest {
                     Set.of("setpoint_kw", "limit_kw")),
             "grid-meter-1", new EntityCapabilities(Set.of("power_kw"), Set.of()),
             "heatrod-cellar", new EntityCapabilities(Set.of(), Set.of("on_off")),
+            "wallbox-1", new EntityCapabilities(Set.of("power_kw"), Set.of("on_off", "setpoint_kw")),
             "pv-roof-east", new EntityCapabilities(Set.of("pv_power_kw"), Set.of("limit_pct")));
 
     private static JsonNode fixture(String name) throws IOException {
@@ -77,6 +78,24 @@ class FlowGraphValidatorTest {
         // used to die because flowc lacked the gate compile entry (now fixed).
         List<FlowValidationFinding> findings = validate(fixture(
                 "flow-graph.valid.notify-threshold.json"));
+        assertThat(errors(findings)).isEmpty();
+    }
+
+    @Test
+    void compoundWallboxFixtureValidatesClean() throws IOException {
+        // U3: "PV-Überschuss UND Zeitfenster -> Wallbox" - the boolean
+        // combinator vp.logic.and joins a threshold + schedule condition.
+        List<FlowValidationFinding> findings = validate(fixture(
+                "flow-graph.valid.compound-wallbox.json"));
+        assertThat(errors(findings)).isEmpty();
+    }
+
+    @Test
+    void priceWallboxFixtureValidatesClean() throws IOException {
+        // U3: "Börsenpreis < 10 ct -> Wallbox" - the vp.price.current data node
+        // feeds a threshold as a number.
+        List<FlowValidationFinding> findings = validate(fixture(
+                "flow-graph.valid.price-wallbox.json"));
         assertThat(errors(findings)).isEmpty();
     }
 
@@ -156,6 +175,44 @@ class FlowGraphValidatorTest {
         addEdge(doc, "e1", "p1", "prices", "s1", "price_in");
         addEdge(doc, "e2", "r1", "value", "s1", "soc");
         addEdge(doc, "e3", "p1", "prices", "s1", "pv_forecast"); // price → timeseries
+        assertThat(errors(validate(doc))).isEmpty();
+    }
+
+    @Test
+    void booleanCombinatorJoinsTwoConditionsIntoOne() {
+        // U3: the AND combinator lets a compound condition be wired (each of its
+        // two bool inputs takes ONE edge, so V-1's one-per-input rule holds).
+        ObjectNode doc = flowShell();
+        addNode(doc, "r1", "vp.entity.read", "1.0.0",
+                Map.of("entity_id", "grid-meter-1", "channel", "power_kw"));
+        addNode(doc, "t1", "vp.logic.threshold", "1.1.0",
+                Map.of("threshold", -2.0, "direction", "below"));
+        addNode(doc, "z1", "vp.schedule.window", "1.0.0",
+                Map.of("from", "11:00", "to", "15:00", "days", "alle"));
+        addNode(doc, "and1", "vp.logic.and", "1.0.0", Map.of());
+        addNode(doc, "c1", "vp.entity.control", "1.0.0",
+                Map.of("entity_id", "wallbox-1", "command", "on_off", "ttl_s", 300.0));
+        setClaims(doc, "c1", "wallbox-1", List.of("on_off"), false);
+        addEdge(doc, "e1", "r1", "value", "t1", "input");
+        addEdge(doc, "e2", "t1", "result", "and1", "a");
+        addEdge(doc, "e3", "z1", "active", "and1", "b");
+        addEdge(doc, "e4", "and1", "result", "c1", "value");
+        assertThat(errors(validate(doc))).isEmpty();
+    }
+
+    @Test
+    void priceConditionFeedsAThresholdAsANumber() {
+        // U3: vp.price.current outputs a number, so it feeds a threshold
+        // directly ("wenn Börsenpreis unter 10 ct").
+        ObjectNode doc = flowShell();
+        addNode(doc, "p1", "vp.price.current", "1.0.0", Map.of());
+        addNode(doc, "t1", "vp.logic.threshold", "1.1.0",
+                Map.of("threshold", 10.0, "direction", "below"));
+        addNode(doc, "c1", "vp.entity.control", "1.0.0",
+                Map.of("entity_id", "wallbox-1", "command", "on_off", "ttl_s", 600.0));
+        setClaims(doc, "c1", "wallbox-1", List.of("on_off"), false);
+        addEdge(doc, "e1", "p1", "value", "t1", "input");
+        addEdge(doc, "e2", "t1", "result", "c1", "value");
         assertThat(errors(validate(doc))).isEmpty();
     }
 

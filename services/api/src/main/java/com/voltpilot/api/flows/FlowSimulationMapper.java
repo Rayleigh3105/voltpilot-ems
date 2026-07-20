@@ -21,6 +21,16 @@ import java.util.List;
  * conflict under V-5 anyway. {@code vp.strategy.atypical-grid} is deliberately
  * NOT simulable - its economics (E5b) are not built, so a flow carrying it
  * cannot reach a dry-run (and thus never activates).
+ *
+ * <p>An AUTOMATION (U3) - no battery strategy, but an action driven by Wenn/Dann
+ * conditions: a device control ({@code vp.entity.control}: a Wallbox/Heizstab
+ * rule, a price rule, a compound AND rule) or a notification ({@code
+ * vp.notify.push}) - does not change the battery dispatch economics in the MVP
+ * simulation model, so its dry-run is the site's "standardSpeicher" baseline
+ * (the reference the rule runs on top of). This lets a Wenn/Dann automation
+ * reach {@code simuliert} and activate. A flow with neither a strategy nor an
+ * action (e.g. a bare read + threshold with no sink) has no economic dry-run and
+ * is refused.
  */
 public final class FlowSimulationMapper {
 
@@ -58,6 +68,13 @@ public final class FlowSimulationMapper {
                         "Die atypische Netznutzung (§ 19 StromNEV) ist noch in Vorbereitung und "
                                 + "kann derzeit nicht simuliert oder aktiviert werden.");
             }
+            // A Wenn/Dann automation (controlling a consumer, or notifying) has no
+            // battery strategy; it doesn't change the dispatch economics, so its
+            // dry-run is the site's standard-battery baseline (the reference it
+            // runs on top of). This lets an automation activate.
+            if (hasAutomationAction(doc)) {
+                return new Mapping(true, null, "standardSpeicher", null, null);
+            }
             return Mapping.unsupported(
                     "Dieser Flow enthält keinen simulierbaren Strategie-Baustein. Für den "
                             + "Dry-Run braucht es eine Marktoptimierung, eine Lastspitzenkappung "
@@ -78,5 +95,15 @@ public final class FlowSimulationMapper {
         String schonung = strategy.path("parameters").path("speicherschonung").asText(null);
         return new Mapping(true, null, coOptimized ? "voltpilot" : "standardSpeicher",
                 schonung, strategy.path("id").asText());
+    }
+
+    private static boolean hasAutomationAction(JsonNode doc) {
+        for (JsonNode node : doc.path("nodes")) {
+            String type = node.path("type").asText();
+            if ("vp.entity.control".equals(type) || "vp.notify.push".equals(type)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
