@@ -257,6 +257,12 @@ func (s Source) busEntry() map[string]any {
 	case inverter.CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile
+	case inverter.CommFroniusSolarAPI:
+		// Fronius Solar API over HTTP (mirrors inverter.Selection.BusPayload):
+		// the per-source reader derives scheme + URL from these, so without them
+		// a GEN24's insecure_tls redirect and the grid-sign escape hatch are lost.
+		conn["insecure_tls"] = s.Connection.InsecureTLS
+		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 	case inverter.CommFroniusSunSpec:
 		// SunSpec-live over Modbus TCP (mirrors inverter.Selection.BusPayload):
 		// without these, Node-RED's per-source SunSpec reader falls back to

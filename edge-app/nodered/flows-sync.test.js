@@ -353,12 +353,11 @@ test('flow modbus decoder matches modbus-tcp.decodeProfile() (sunspec)', () => {
   assert.deepStrictEqual(flowReading, expected.reading);
 });
 
-// The "Quellen uebernehmen" (sources-store) node carries a synced copy of the
-// modbus branch of sources-routing.planSources: given the retained source array
-// it must build the same per-source read plans (id + role + connection + read)
-// the module produces for modbus_tcp read-only sources, and count/skip the rest.
-// Both roles (Erzeuger PV + Netz grid meter) are planned; the plan carries role.
-test('flow sources-store matches sources-routing.planSources for modbus sources', () => {
+// The "Quellen uebernehmen" (sources-store) node carries a synced copy of
+// sources-routing.planSources: given the retained source array it must build a
+// per-source read plan for every read transport in every source slot (modbus
+// Erzeuger + Netz AND a Deye Erzeuger over solarman_v5), each carrying its role.
+test('flow sources-store matches sources-routing.planSources for modbus + solarman sources', () => {
   const payload = [
     { id: 'src-a', role: 'pv-generation', brand: 'generic_modbus', model: 'sunspec', family: 'sunspec',
       communication: 'modbus_tcp', connection: { ip: '192.168.0.70', port: 502, unit_id: 2 }, capacity_kwp: 70 },
@@ -370,25 +369,52 @@ test('flow sources-store matches sources-routing.planSources for modbus sources'
   runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow });
   // Normalize across the vm realm (its Object/Array prototypes trip deepStrictEqual).
   const plans = JSON.parse(JSON.stringify(flow.source_plans));
-  // The two modbus sources are planned (Deye deferred); each plan carries its role.
-  assert.equal(plans.length, 2);
+  // All three sources are planned now (the Deye executor is wired, no longer deferred).
+  assert.equal(plans.length, 3);
   const byPlanId = Object.fromEntries(plans.map((p) => [p.id, p]));
+  assert.equal(byPlanId['src-a'].adapter, 'modbus_tcp');
   assert.equal(byPlanId['src-a'].role, 'pv-generation');
   assert.equal(byPlanId['src-a'].conn.ip, '192.168.0.70');
   assert.equal(byPlanId['src-a'].conn.unit_id, 2);
   assert.deepStrictEqual(byPlanId['src-a'].read, { fc: 3, addr: 0, count: 9 });
+  assert.equal(byPlanId['src-netz'].adapter, 'modbus_tcp');
   assert.equal(byPlanId['src-netz'].role, 'grid-meter');
   assert.equal(byPlanId['src-netz'].conn.ip, '1.2.3.4');
+  // The Deye source is planned over solarman_v5, carrying the family + logger serial.
+  assert.equal(byPlanId['src-deye'].adapter, 'solarman_v5');
+  assert.equal(byPlanId['src-deye'].family, 'hybrid_3p');
+  assert.equal(byPlanId['src-deye'].conn.serial, '2985159064');
+  assert.equal(byPlanId['src-deye'].conn.port, 8899);
 
-  // Cross-check against the module: it recognises the modbus + deye Erzeuger and
-  // the modbus Netz source; the flow store keeps the two modbus ones with role.
+  // Cross-check against the module: it recognises all three sources with the same
+  // adapters + ids (the store and planSources agree on what is wired).
   const routed = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: payload }));
-  const modbusRouted = routed.filter((r) => r.plan.adapter === 'modbus_tcp');
-  assert.equal(modbusRouted.length, 2);
   assert.deepStrictEqual(
-    modbusRouted.map((r) => r.id).sort(),
-    plans.map((p) => p.id).sort(),
+    routed.map((r) => [r.id, r.plan.adapter]).sort(),
+    plans.map((p) => [p.id, p.adapter]).sort(),
   );
+});
+
+// The "Quellen uebernehmen" node must ALSO plan a fronius_solar_api source (a
+// Fronius read over its Solar API v1 HTTP endpoint), matching the module.
+test('flow sources-store plans a fronius_solar_api source like the module', () => {
+  const payload = [
+    { id: 'src-fr', role: 'pv-generation', brand: 'fronius', model: 'fronius_solar_api', family: 'fronius_solar_api',
+      communication: 'fronius_solar_api', connection: { ip: '192.168.1.50', port: 80, invert_grid_sign: false } },
+  ];
+  const flow = {};
+  runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow });
+  const plans = JSON.parse(JSON.stringify(flow.source_plans));
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].id, 'src-fr');
+  assert.equal(plans[0].adapter, 'fronius_solar_api');
+  assert.equal(plans[0].scheme, 'http');
+  assert.equal(plans[0].url, 'http://192.168.1.50:80/solar_api/v1/GetPowerFlowRealtimeData.fcgi');
+
+  const routed = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: payload }));
+  assert.equal(routed.length, 1);
+  assert.equal(routed[0].plan.adapter, 'fronius_solar_api');
+  assert.equal(routed[0].plan.url, plans[0].url);
 });
 
 // The "Quellen uebernehmen" node must ALSO plan a fronius_sunspec source (the
@@ -472,9 +498,16 @@ test('flow sources-store defaults a fronius_sunspec plan to model_type auto / un
 // discovery walk + live decode for its sunspec_live branch (the same embed the
 // primary auto-sunspec node uses). Drift guard: editing either module without
 // re-running build-flows.js fails here instead of shipping a stale reader.
-test('flow sources-read embeds the current model-discovery.js + sunspec-live.js + goe-api.js sources', () => {
+test('flow sources-read embeds the current SunSpec + go-e + Deye + Fronius decode sources', () => {
   const func = byId['sources-read'].func;
-  for (const rel of ['sunspec/model-discovery.js', 'sunspec/sunspec-live.js', 'goe/goe-api.js']) {
+  for (const rel of [
+    'sunspec/model-discovery.js',
+    'sunspec/sunspec-live.js',
+    'goe/goe-api.js',
+    'deye/solarman-v5.js',
+    'deye/deye-decode.js',
+    'fronius/solar-api.js',
+  ]) {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
     assert.ok(
       func.includes(src),

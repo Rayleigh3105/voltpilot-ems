@@ -23,6 +23,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const sunspec = require('./sunspec/sunspec-live');
+const solarman = require('./deye/solarman-v5');
+const deyeDecode = require('./deye/deye-decode');
 // The REAL palette node the flow's config path runs through (its parse() is the
 // exact message handler the retained edge/sources/config payload hits first).
 const vpSourcesConfig = require('./vp-palette/nodes/vp-sources-config.js');
@@ -441,12 +443,12 @@ test('TRACE: an unroutable communication is loudly NOT-ROUTED instead of silentl
   const flow = {};
   await runFunctionNode(byId['sources-store'].func, {
     msg: { payload: [{ id: 'src-x', role: 'pv-generation', brand: 'x', family: 'y',
-      communication: 'fronius_solar_api', connection: { ip: '10.0.0.9' } }] },
+      communication: 'zigbee_wtf', connection: { ip: '10.0.0.9' } }] },
     flow, warns, logs,
   });
   assert.equal((flow.source_plans || []).length, 0);
   assert.ok(
-    warns.some((w) => w.includes('src-x') && w.includes('NICHT VERDRAHTET') && w.includes('fronius_solar_api')),
+    warns.some((w) => w.includes('src-x') && w.includes('NICHT VERDRAHTET') && w.includes('zigbee_wtf')),
     'the unwired source is named in a warn, got: ' + JSON.stringify(warns),
   );
   // The read node then says WHY nothing is read (rate-limited, but the first
@@ -501,15 +503,22 @@ test('a read that outlives its own timeouts ends as a LOGGED Gesamt-Timeout - bu
   );
 });
 
-test('a mixed source list plans Fronius + modbus and defers a Deye solarman source', async () => {
+test('a mixed source list plans Fronius SunSpec + modbus + a Deye solarman source (all wired)', async () => {
   const { server, port } = await startModbusServer(sunspecImage(40000, { wWatts: 8000 }));
+  const deadDeye = await startModbusServer(new Map());
+  const deadDeyePort = deadDeye.port;
+  await new Promise((res) => deadDeye.server.close(res));
   try {
     const { flow, sends } = await storeAndRead([
       froniusSource(port),
       { id: 'src-deye', role: 'pv-generation', brand: 'deye', family: 'hybrid_3p',
-        communication: 'solarman_v5', connection: { ip: '127.0.0.1', port: 8899, serial: '2985159064', mb_slave_id: 1 } },
+        communication: 'solarman_v5', connection: { ip: '127.0.0.1', port: deadDeyePort, serial: '2985159064', mb_slave_id: 1 } },
     ]);
-    assert.equal(flow.source_plans.length, 1, 'solarman executor stays deferred');
+    // The Deye source IS planned now (executor wired); it simply fails to read
+    // here (no logger listening) and is error-isolated, so only the Fronius
+    // publishes.
+    assert.equal(flow.source_plans.length, 2, 'both sources are planned - solarman is no longer deferred');
+    assert.ok(flow.source_plans.some((p) => p.id === 'src-deye' && p.adapter === 'solarman_v5'));
     assert.equal(sends.length, 1);
     assert.equal(sends[0][0].source_id, 'src-eco');
     assert.equal(sends[0][0].payload.pv_power_kw, 8);
@@ -588,4 +597,198 @@ test('a dead go-e consumer source is skipped (no send) and named via node.warn',
   await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, sends, warns });
   assert.equal(sends.length, 0, 'a dead source publishes nothing (error isolation)');
   assert.ok(warns.some((w) => /src-goe/.test(w)), 'the failed read is named, never silent');
+});
+
+// A Deye added as a SOURCE (communication solarman_v5) is read over its
+// Solarman-V5 logger (TCP 8899) on the ongoing poll and published on
+// edge/sources/<id>/telemetry. This drives the ACTUAL flow node bodies from
+// flows.json against a real in-process Solarman-V5 server. The per-source
+// Solarman executor was the deferred gap this closes (parity with the
+// fronius_sunspec "planned-but-not-read" fix, 2026-07-13). No hardware.
+
+// An in-process Solarman-V5 logger: answers V5-framed Modbus fn-0x03 reads over
+// a register image (Map addr->word), using the repo codec so the framing is
+// byte-faithful. Reuses solarman-v5.js for the CRC/checksum + frame length.
+function startSolarmanServer(img) {
+  const modbusResp = (slave, startReg, count) => {
+    const bc = count * 2;
+    const body = Buffer.alloc(3 + bc);
+    body[0] = slave; body[1] = 0x03; body[2] = bc;
+    for (let i = 0; i < count; i++) body.writeUInt16BE((img.get(startReg + i) || 0) & 0xffff, 3 + i * 2);
+    const crc = solarman.modbusCrc16(body);
+    return Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
+  };
+  // Wrap a Modbus reply in a V5 RESPONSE frame (control 0x1510, 14-byte preamble
+  // -> modbus at offset 25, matching solarman-v5.V5_RESPONSE_MODBUS_OFFSET).
+  const wrap = (serial, seq, mb) => {
+    const length = 14 + mb.length;
+    const h = Buffer.alloc(11);
+    h[0] = 0xa5; h.writeUInt16LE(length, 1); h.writeUInt16LE(0x1510, 3);
+    h.writeUInt16LE(seq & 0xffff, 5); h.writeUInt32LE(serial >>> 0, 7);
+    const pre = Buffer.alloc(14); pre[0] = 0x02;
+    const frame = Buffer.concat([h, pre, mb, Buffer.from([0x00, 0x15])]);
+    frame[frame.length - 2] = solarman.v5Checksum(frame);
+    return frame;
+  };
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      let acc = Buffer.alloc(0);
+      sock.on('data', (chunk) => {
+        acc = Buffer.concat([acc, chunk]);
+        for (;;) {
+          let need;
+          try { need = solarman.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
+          if (need === null || acc.length < need) return;
+          const frame = acc.slice(0, need); acc = acc.slice(need);
+          const seq = frame.readUInt16LE(5);
+          const serial = frame.readUInt32LE(7);
+          // The REQUEST modbus starts after the 11-byte header + 15-byte preamble.
+          const mbReq = frame.slice(26, frame.length - 2);
+          const slave = mbReq[0];
+          const startReg = mbReq.readUInt16BE(2);
+          const count = mbReq.readUInt16BE(4);
+          sock.write(wrap(serial, seq, modbusResp(slave, startReg, count)));
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+function deyeSource(port, overrides = {}) {
+  return Object.assign({
+    id: 'src-deye',
+    role: 'pv-generation',
+    brand: 'deye',
+    model: 'sun-g03',
+    family: 'string',
+    communication: 'solarman_v5',
+    connection: { ip: '127.0.0.1', port, serial: '2985159064', mb_slave_id: 1 },
+    interval_s: 5,
+  }, overrides);
+}
+
+test('a Deye Erzeuger source (solarman_v5) is read over the V5 logger and publishes pv_power_kw', async () => {
+  // A `string` Deye reports only its AC output at 0x0050/0x0051 (32-bit
+  // low-word-first). Compute the expected reading through the SAME module the
+  // flow embeds so the fixture never drifts from the decode.
+  const img = new Map();
+  img.set(0x0050, 0x3880); // low word
+  img.set(0x0051, 0x0001); // high word -> the decode yields the pv output
+  const expected = deyeDecode.decode(
+    [{ start: 0x0050, regs: [img.get(0x0050), img.get(0x0051)] }],
+    { family: 'string' },
+  );
+  assert.ok(expected.reading.pv_power_kw > 0, 'fixture decodes to a real PV value');
+  const { server, port } = await startSolarmanServer(img);
+  try {
+    const { flow, sends } = await storeAndRead([deyeSource(port)]);
+    assert.equal(flow.source_plans.length, 1, 'the Deye source is planned (solarman executor wired)');
+    assert.equal(flow.source_plans[0].adapter, 'solarman_v5');
+    assert.equal(sends.length, 1, 'exactly one publish for the one source');
+    const [erzeuger, netz, verbraucher] = sends[0];
+    assert.equal(netz, null, 'nothing on the Netz output for an Erzeuger');
+    assert.equal(verbraucher, null, 'nothing on the Consumer output');
+    assert.equal(erzeuger.source_id, 'src-deye');
+    assert.equal(erzeuger.payload.pv_power_kw, expected.reading.pv_power_kw);
+    assert.ok(typeof erzeuger.payload.ts === 'string', 'reading is stamped');
+  } finally {
+    server.close();
+  }
+});
+
+test('a dead Deye solarman source is skipped (no send) and named via node.warn', async () => {
+  // Reserve a port with no listener for the dead logger.
+  const dead = await startSolarmanServer(new Map());
+  const deadPort = dead.port;
+  await new Promise((res) => dead.server.close(res));
+  const flow = {};
+  const sends = [];
+  const warns = [];
+  await runFunctionNode(byId['sources-store'].func, { msg: { payload: [deyeSource(deadPort)] }, flow });
+  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, sends, warns });
+  assert.equal(sends.length, 0, 'a dead Deye source publishes nothing (error isolation, never a fabricated 0)');
+  assert.ok(warns.some((w) => /src-deye/.test(w)), 'the failed read is named, never silent');
+});
+
+// A Fronius added as a SOURCE (communication fronius_solar_api) is read over its
+// Solar API v1 HTTP endpoint on the ongoing poll and published on
+// edge/sources/<id>/telemetry. Drives the ACTUAL flow node bodies against a real
+// in-process HTTP server. This closes the "recognised by routing, executor not
+// wired" gap (parity with the same fix for the other transports). No hardware.
+const FRONIUS_POWERFLOW_PATH = '/solar_api/v1/GetPowerFlowRealtimeData.fcgi';
+
+function froniusApiServer(bodyObj) {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      if (!req.url.startsWith(FRONIUS_POWERFLOW_PATH)) { res.statusCode = 404; res.end('no'); return; }
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify(bodyObj));
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }));
+  });
+}
+
+function froniusApiSource(port, overrides = {}) {
+  return Object.assign({
+    id: 'src-fr',
+    role: 'pv-generation',
+    brand: 'fronius',
+    model: 'fronius_solar_api',
+    family: 'fronius_solar_api',
+    communication: 'fronius_solar_api',
+    connection: { ip: '127.0.0.1', port, invert_grid_sign: false },
+    interval_s: 5,
+  }, overrides);
+}
+
+test('a Fronius Erzeuger source (fronius_solar_api) is read over HTTP and publishes pv_power_kw', async () => {
+  const { server, port } = await froniusApiServer({
+    Head: { Status: { Code: 0 } },
+    Body: { Data: { Site: { P_PV: 5300, P_Grid: -1200, P_Load: -900 }, Inverters: { '1': { SOC: 62 } } } },
+  });
+  try {
+    const { flow, sends } = await storeAndRead([froniusApiSource(port)]);
+    assert.equal(flow.source_plans.length, 1, 'the Fronius Solar API source is planned');
+    assert.equal(flow.source_plans[0].adapter, 'fronius_solar_api');
+    assert.equal(sends.length, 1, 'exactly one publish for the one source');
+    const [erzeuger, netz, verbraucher] = sends[0];
+    assert.equal(netz, null, 'nothing on the Netz output for an Erzeuger');
+    assert.equal(verbraucher, null, 'nothing on the Consumer output');
+    assert.equal(erzeuger.source_id, 'src-fr');
+    assert.equal(erzeuger.payload.pv_power_kw, 5.3, '5300 W -> 5.3 kW');
+    assert.equal('power_kw' in erzeuger.payload, false, 'Erzeuger publishes ONLY pv (no fabricated grid)');
+  } finally {
+    server.close();
+  }
+});
+
+test('a Fronius Netz source (fronius_solar_api, grid-meter) publishes signed power_kw from P_Grid', async () => {
+  const { server, port } = await froniusApiServer({
+    Head: { Status: { Code: 0 } },
+    Body: { Data: { Site: { P_PV: 0, P_Grid: -3400, P_Load: -900 } } },
+  });
+  try {
+    const { sends } = await storeAndRead([froniusApiSource(port, { id: 'src-fr-netz', role: 'grid-meter' })]);
+    assert.equal(sends.length, 1);
+    const [erzeuger, netz] = sends[0];
+    assert.equal(erzeuger, null, 'nothing on the Erzeuger output for a Netz source');
+    assert.equal(netz.source_id, 'src-fr-netz');
+    assert.equal(netz.payload.power_kw, -3.4, '-3400 W -> -3.4 kW (Einspeisung)');
+    assert.equal('pv_power_kw' in netz.payload, false);
+  } finally {
+    server.close();
+  }
+});
+
+test('a dead Fronius Solar API source is skipped (no send) and named via node.warn', async () => {
+  // Port 1 on loopback refuses immediately -> the HTTP read fails, nothing
+  // published, and the failure is NOT swallowed silently.
+  const flow = {};
+  const sends = [];
+  const warns = [];
+  await runFunctionNode(byId['sources-store'].func, { msg: { payload: [froniusApiSource(1)] }, flow });
+  await runFunctionNode(byId['sources-read'].func, { msg: {}, flow, sends, warns });
+  assert.equal(sends.length, 0, 'a dead source publishes nothing (error isolation)');
+  assert.ok(warns.some((w) => /src-fr/.test(w)), 'the failed read is named, never silent');
 });

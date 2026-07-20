@@ -37,14 +37,14 @@ describe('ErzeugerSourcesPanel', () => {
     expect(screen.getByText(/kWp · SEE900000000001/)).toBeInTheDocument();
   });
 
-  it('adds an Erzeuger source (role forced to pv-generation, kWp + SEE captured)', async () => {
+  it('adds an Erzeuger source (default role pv-generation, kWp + SEE captured)', async () => {
     vi.spyOn(api, 'measurementPoints').mockResolvedValue([]);
     const add = vi
       .spyOn(api, 'addMeasurementPoint')
       .mockResolvedValue([point({ label: 'AC-PV', capacityKwp: 30, registryUnitId: '' })]);
     render(<ErzeugerSourcesPanel siteId="site-1" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Erzeuger hinzufügen/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Energiequelle hinzufügen/ }));
     fireEvent.change(screen.getByLabelText(/Bezeichnung/), { target: { value: 'AC-PV' } });
     fireEvent.change(screen.getByLabelText(/Anlagenleistung/), { target: { value: '30' } });
     fireEvent.click(screen.getByRole('button', { name: /Quelle hinzufügen/ }));
@@ -54,6 +54,33 @@ describe('ErzeugerSourcesPanel', () => {
         role: 'pv-generation',
         label: 'AC-PV',
         capacityKwp: 30,
+        registryUnitId: undefined,
+      }),
+    );
+  });
+
+  it('adds a consumer (Verbraucher) source - role consumer, no kWp/MaStR fields', async () => {
+    vi.spyOn(api, 'measurementPoints').mockResolvedValue([]);
+    const add = vi
+      .spyOn(api, 'addMeasurementPoint')
+      .mockResolvedValue([point({ role: 'consumer', label: 'Wallbox', capacityKwp: null, registryUnitId: null })]);
+    render(<ErzeugerSourcesPanel siteId="site-1" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Energiequelle hinzufügen/ }));
+    fireEvent.change(screen.getByLabelText(/Art der Energiequelle/), {
+      target: { value: 'consumer' },
+    });
+    // A consumer has no nameplate: the kWp + MaStR fields are hidden.
+    expect(screen.queryByLabelText(/Anlagenleistung/)).toBeNull();
+    expect(screen.queryByLabelText(/MaStR-Nummer/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/Bezeichnung/), { target: { value: 'Wallbox' } });
+    fireEvent.click(screen.getByRole('button', { name: /Quelle hinzufügen/ }));
+
+    await waitFor(() =>
+      expect(add).toHaveBeenCalledWith('site-1', {
+        role: 'consumer',
+        label: 'Wallbox',
+        capacityKwp: undefined,
         registryUnitId: undefined,
       }),
     );
