@@ -201,8 +201,46 @@ Solange ein Modell nicht freigegeben ist, zeigt das Portal „Steuerung für die
 Modell noch nicht freigegeben" und die `:8484`-Karte „nur lesen" - die Anlage wird
 ausgelesen, aber nicht gesteuert.
 
+## go-e Charger (Wallbox) — ZERTIFIZIERT in Software, nur kurze Geräte-Kontrolle
+
+Anders als Deye/Fronius braucht die **go-e-Wallbox keine Prüfstand-Freigabe pro
+Modell**: die **go-e HTTP-API v2** ist dokumentiert, versioniert und deterministisch
+(github.com/goecharger/go-eCharger-API-v2). Es gibt **keine geratenen Firmware-Register**
+— die Steuerschlüssel und ihre Enums sind veröffentlichte Fakten, und die komplette
+Schreib-→Rücklese-Schleife ist in Software beweisbar (`goe/goe-control.js`
+`goe-control.test.js` gegen einen In-Process-HTTP-Server; der Go-Zwilling
+`edge-app/core/internal/goe` gegen einen `httptest`-Server). Ein falscher Strom lädt
+das Auto nur etwas langsamer/schneller — **kein Batterie-Gesundheits-/Garantierisiko**
+wie ein Deye-ToU- oder Fronius-Speicher-Schreibbefehl. Deshalb ist `goe_http_api`
+**zertifiziert** (`CERTIFIED_CONTROL_FAMILIES` in `goe/goe-control.js` bzw.
+`goe.PlanFor().Certified` im Core) und darf hinter dem Not-Aus `VP_CONTROL_ENABLED`
+live schreiben.
+
+Die Wallbox ist ein **Verbraucher (Consumer)-Entity**: der E2-Arbiter klammert den
+gewünschten Ladesollwert über das Verbraucher-Band und der Consumer-Control-Loop
+(`edge-app/core/internal/agent/consumer_control.go`) setzt ihn physisch (`frc`/`amp`)
+und liest `/api/status` zurück. Steuerschlüssel (go-e-API v2 `apikeys-en.md`):
+`frc` = forceState (Neutral=0, Off=1, On=2), `amp` = requestedCurrent (A).
+
+**Kurze Geräte-Kontrolle (VERIFY-on-device, an der ersten echten Wallbox — kein voller
+Prüfstand):** dieselbe Ehrlichkeit wie bei jedem Hersteller.
+1. **Phasen/Spannung bestätigen.** Der kW→A-Umrechnung liegt `I = P/(Phasen·Spannung)`
+   zugrunde (Default 3 Phasen @ 230 V). Prüfen, dass die Wallbox auf der erwarteten
+   Phasenzahl lädt (`pnp`/`nrg`-Ströme) — die Phasenzahl ist Config
+   (`driver.connection.phases`), **kein** Schreibbefehl (v2 hat keinen einfachen
+   settbaren Phasen-Schalter-Schlüssel).
+2. **`frc`/`amp`-Semantik bestätigen.** Ein Ladebefehl setzt `frc=On` + `amp` und die
+   Rücklesung (`/api/status`) muss `frc`/`amp` echoen (all_match). Ein Nullsollwert →
+   `frc=Off`; ein veralteter/fehlender Befehl → `frc=Neutral` (gibt die Kontrolle an die
+   Wallbox-Logik zurück, nie ein hängender Zwangs-Strom).
+3. **Not-Aus.** `VP_CONTROL_ENABLED=false` → **null HTTP** an die Wallbox (die zwei
+   Live-Lesestandorte werden nie angefasst).
+
 ## Siehe auch
 
+- [`goe/goe-control.js`](goe/goe-control.js) — der zertifizierte go-e-Steueradapter
+  (Schreibplan + Rücklesen), Zwilling von `goe/goe-api.js` (Lesen); Go-Zwilling
+  `edge-app/core/internal/goe`, gemeinsame Vektoren `goe/goe-control-vectors.json`.
 - [`inverter-control-routing.js`](inverter-control-routing.js) - die getestete
   `controlRoute`-Abstraktion (Schreibplan + Rücklesen), Quelle der Wahrheit.
 - [`deye/solarman-v5.js`](deye/solarman-v5.js) - die FC6/FC16-Schreibframes für Deye
