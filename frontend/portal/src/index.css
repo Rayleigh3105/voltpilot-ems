@@ -4814,3 +4814,83 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text-muted, #6c757d);
   margin: 8px 0 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * Per-Anlage tab bar (U1, design vp-ems-ui-overhaul §5.1/§5.2)
+ * A persistent, sticky, horizontally-scrollable tab strip directly under
+ * the Anlage header. Reuses the .vp-seg segmented look; the "Mehr ▾" menu
+ * portals to body (.vp-rowmenu-pop) so overflow-x never clips it.
+ * ------------------------------------------------------------------ */
+.vp-anlage-tabs {
+  position: sticky;
+  top: 68px; /* under the .vp-topbar (height 68px, z-index 20) */
+  z-index: 15;
+  margin: calc(var(--vp-space-6) * -1) calc(var(--vp-space-6) * -1) var(--vp-space-5);
+  padding: var(--vp-space-3) var(--vp-space-6);
+  background: var(--vp-surface);
+  border-bottom: 1px solid var(--vp-border);
+}
+@media (max-width: 1024px) {
+  .vp-anlage-tabs {
+    margin: calc(var(--vp-space-5) * -1) calc(var(--vp-space-5) * -1) var(--vp-space-4);
+    padding: var(--vp-space-3) var(--vp-space-5);
+  }
+}
+@media (max-width: 720px) {
+  .vp-anlage-tabs {
+    margin: calc(var(--vp-space-4) * -1) calc(var(--vp-space-4) * -1) var(--vp-space-4);
+    padding: var(--vp-space-2) var(--vp-space-4);
+  }
+}
+.vp-anlage-tabs-scroll {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+/* Hide the horizontal scrollbar chrome on WebKit (still scrollable). */
+.vp-anlage-tabs-scroll::-webkit-scrollbar {
+  height: 0;
+}
+.vp-anlage-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--vp-text-muted);
+  font-weight: 600;
+  font-size: var(--vp-text-sm);
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--vp-radius-btn);
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 40px;
+  transition: var(--vp-transition-fast);
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-anlage-tab {
+    min-height: 44px;
+  }
+}
+.vp-anlage-tab:hover {
+  color: var(--vp-text-dark);
+  background: var(--vp-bg-light);
+}
+.vp-anlage-tab.active {
+  background: var(--vp-bg-light);
+  color: var(--vp-primary-deep);
+  box-shadow: inset 0 -2px 0 0 var(--vp-primary-deep);
+}
+.vp-anlage-more {
+  margin-left: auto;
+}
+/* Active state of an overflow item inside the "Mehr ▾" menu. */
+.vp-rowmenu-pop button.active {
+  color: var(--vp-primary-deep);
+  background: var(--vp-bg-light);
+}
