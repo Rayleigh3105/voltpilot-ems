@@ -21,6 +21,7 @@
 .grp-ico.inv { background: var(--brand-deep); }
 .grp-ico.pv { background: var(--pv); }
 .grp-ico.grid { background: var(--grid-c); }
+.grp-ico.load { background: var(--load); }
 .grp-title { font-size: 14.5px; font-weight: 750; color: var(--ink); }
 .grp-note { font-size: 12px; color: var(--muted); }
 
@@ -366,6 +367,7 @@
 .role-card .rc-ico svg { width: 18px; height: 18px; }
 .role-card.pv .rc-ico { background: var(--pv); }
 .role-card.grid .rc-ico { background: var(--grid-c); }
+.role-card.load .rc-ico { background: var(--load); }
 .role-card strong { font-size: 13.6px; }
 .role-card span { font-size: 11.8px; color: var(--muted); line-height: 1.4; }
 .role-card.sel { border-color: var(--brand-deep); box-shadow: 0 0 0 3px rgba(90, 141, 232, .18); background: linear-gradient(180deg, #fff, var(--brand-soft)); }

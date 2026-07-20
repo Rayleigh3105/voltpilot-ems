@@ -1,23 +1,32 @@
-// sources.js - the "Erzeuger" + "Netz-Zähler" groups of the "Meine Anlage" card:
-// list (grouped by role, with a live status dot/pill per source) + add (in a
-// focused drawer) + remove ADDITIONAL read-only measurement points. Two roles:
-// an Erzeuger (a separate PV inverter, summed into the site PV) and a Netz-Zähler
-// (a grid meter at the point of common coupling, 0-1 per site). It reuses the
-// SAME option catalog as the inverter form (GET /api/sources returns {sources,
-// statuses, catalog}), keeps control off (a source never gets a control path),
-// and captures a kWp + MaStR SEE number for an Erzeuger only.
+// sources.js - the "Erzeuger" + "Netz-Zähler" + "Verbraucher" groups of the
+// "Meine Anlage" card: list (grouped by role, with a live status dot/pill per
+// source) + add (in a focused drawer) + remove ADDITIONAL read-only measurement
+// points. Three roles: an Erzeuger (a separate PV inverter, summed into the site
+// PV), a Netz-Zähler (a grid meter at the point of common coupling, 0-1 per
+// site) and a Verbraucher (e.g. a go-e wallbox read over its local HTTP API, its
+// consumption only measured, never controlled). It reuses the SAME option
+// catalog as the inverter form (GET /api/sources returns {sources, statuses,
+// catalog}), keeps control off (a source never gets a control path), and
+// captures a kWp + MaStR SEE number for an Erzeuger only.
 // Self-contained, no framework; shares VP (verify.js) with the inverter form.
 (function () {
   "use strict";
 
   var ROLE_ERZEUGER = "pv-generation";
   var ROLE_NETZ = "grid-meter";
+  var ROLE_CONSUMER = "consumer";
+  // Communication of a consumer-only driver (a go-e wallbox). Used to filter the
+  // brand list per role: a consumer picks a consumer brand, an Erzeuger/Netz
+  // picks a generation/meter brand - never mixed.
+  var CONSUMER_COMM = "goe_http_api";
 
   function $(id) { return document.getElementById(id); }
   var el = window.VP.el;
 
   function roleLabel(role) {
-    return role === ROLE_NETZ ? "Netz-Zähler" : "Erzeuger";
+    if (role === ROLE_NETZ) return "Netz-Zähler";
+    if (role === ROLE_CONSUMER) return "Verbraucher";
+    return "Erzeuger";
   }
 
   var catalog = null;
@@ -37,7 +46,11 @@
   }
 
   function commLabel(c) {
-    return c === "solarman_v5" ? "Solarman-V5 (WiFi-Datenlogger)" : "Modbus TCP";
+    if (c === "solarman_v5") return "Solarman-V5 (WiFi-Datenlogger)";
+    if (c === "goe_http_api") return "go-e HTTP-API";
+    if (c === "fronius_solar_api") return "Fronius Solar-API";
+    if (c === "fronius_sunspec") return "SunSpec (Modbus TCP)";
+    return "Modbus TCP";
   }
 
   function fmtKwp(v) {
@@ -57,6 +70,9 @@
     }
     if (typeof lr.power_kw === "number" && isFinite(lr.power_kw)) {
       parts.push(window.VP.gridPart(lr.power_kw));
+    }
+    if (typeof lr.load_kw === "number" && isFinite(lr.load_kw)) {
+      parts.push("Verbrauch " + window.VP.fmtVal(lr.load_kw, "kW"));
     }
     return parts;
   }
@@ -103,9 +119,11 @@
 
   function renderGroups(list) {
     currentList = list || [];
-    var erz = [], netz = [];
+    var erz = [], netz = [], verb = [];
     (list || []).forEach(function (s) {
-      if (s.role === ROLE_NETZ) netz.push(s); else erz.push(s);
+      if (s.role === ROLE_NETZ) netz.push(s);
+      else if (s.role === ROLE_CONSUMER) verb.push(s);
+      else erz.push(s);
     });
     hasNetz = netz.length > 0;
 
@@ -118,6 +136,11 @@
     netz.forEach(function (s) { netzUl.appendChild(buildRow(s)); });
     $("netzEmpty").hidden = netz.length > 0;
     $("netzNote").textContent = hasNetz ? "· 1 von 1" : "· optional, max. 1";
+
+    var verbUl = $("verbList"); verbUl.innerHTML = "";
+    verb.forEach(function (s) { verbUl.appendChild(buildRow(s)); });
+    $("verbEmpty").hidden = verb.length > 0;
+    $("verbNote").textContent = "· " + verb.length + (verb.length === 1 ? " Verbraucher" : " Verbraucher");
     renderBalance();
   }
 
@@ -172,10 +195,21 @@
 
   /* ---------------- add form ---------------- */
 
+  // brandsForRole filters the catalog to the brands that make sense for the
+  // chosen role: a Verbraucher picks a consumer driver (go-e), an Erzeuger/Netz
+  // picks a generation/meter driver (everything else) - so an inverter brand is
+  // never offered for a wallbox, nor go-e for a PV source.
+  function brandsForRole(role) {
+    return (catalog.brands || []).filter(function (b) {
+      var isConsumerBrand = b.communication === CONSUMER_COMM;
+      return role === ROLE_CONSUMER ? isConsumerBrand : !isConsumerBrand;
+    });
+  }
+
   function populateBrands() {
     var sel = $("srcBrand");
     sel.innerHTML = "";
-    catalog.brands.forEach(function (b) {
+    brandsForRole(currentRole).forEach(function (b) {
       sel.appendChild(el("option", { value: b.id }, b.label));
     });
     onBrandChange();
@@ -231,21 +265,35 @@
   }
 
   // setRole selects a role card and shows the nameplate fields (kWp + MaStR SEE)
-  // only for an Erzeuger; a Netz meter has no nameplate. The Netz card is locked
-  // (and never selectable) once one already exists.
+  // only for an Erzeuger; a Netz meter and a Verbraucher have no nameplate. The
+  // Netz card is locked (and never selectable) once one already exists. Changing
+  // the role re-filters the brand list (a Verbraucher offers only consumer
+  // drivers, an Erzeuger/Netz never offers a wallbox).
   function setRole(role) {
     if (role === ROLE_NETZ && hasNetz) return;
+    var prev = currentRole;
     currentRole = role;
     $("roleErz").classList.toggle("sel", role === ROLE_ERZEUGER);
     $("roleNetz").classList.toggle("sel", role === ROLE_NETZ);
-    var netz = role === ROLE_NETZ;
-    $("srcKwpField").hidden = netz;
-    $("srcSeeField").hidden = netz;
-    $("srcRoleHelp").textContent = netz
-      ? "Ein eigener Zähler am Netzübergang. Sein gemessener Bezug/Einspeisung ersetzt den Wert des Speicher-Wechselrichters."
-      : "Eine zusätzliche PV-Anlage, deren Erzeugung mitgezählt wird.";
-    $("srcLabel").placeholder = netz ? "z. B. Netz-Zähler Hausanschluss" : "z. B. PV Dach Süd";
+    $("roleVerbraucher").classList.toggle("sel", role === ROLE_CONSUMER);
+    var nameplate = role === ROLE_ERZEUGER; // only an Erzeuger carries kWp + SEE
+    $("srcKwpField").hidden = !nameplate;
+    $("srcSeeField").hidden = !nameplate;
+    if (role === ROLE_NETZ) {
+      $("srcRoleHelp").textContent = "Ein eigener Zähler am Netzübergang. Sein gemessener Bezug/Einspeisung ersetzt den Wert des Speicher-Wechselrichters.";
+      $("srcLabel").placeholder = "z. B. Netz-Zähler Hausanschluss";
+    } else if (role === ROLE_CONSUMER) {
+      $("srcRoleHelp").textContent = "Ein zusätzlicher Verbraucher (z. B. eine Wallbox). Sein Verbrauch wird nur mitgemessen, nicht gesteuert.";
+      $("srcLabel").placeholder = "z. B. Wallbox Garage";
+    } else {
+      $("srcRoleHelp").textContent = "Eine zusätzliche PV-Anlage, deren Erzeugung mitgezählt wird.";
+      $("srcLabel").placeholder = "z. B. PV Dach Süd";
+    }
+    // Consumer <-> non-consumer switches the available brand set, so repopulate.
+    if (catalog && isConsumerRole(prev) !== isConsumerRole(role)) populateBrands();
   }
+
+  function isConsumerRole(role) { return role === ROLE_CONSUMER; }
 
   function collect() {
     var conn = {};
@@ -397,9 +445,14 @@
   }
 
   function removeSource(s) {
-    var msg = s.role === ROLE_NETZ
-      ? "Diesen Netz-Zähler entfernen? Der Netzbezug wird dann wieder vom Speicher-Wechselrichter gemessen."
-      : "Diese Energiequelle entfernen? Ihre Erzeugung fließt dann nicht mehr in die Gesamt-PV ein.";
+    var msg;
+    if (s.role === ROLE_NETZ) {
+      msg = "Diesen Netz-Zähler entfernen? Der Netzbezug wird dann wieder vom Speicher-Wechselrichter gemessen.";
+    } else if (s.role === ROLE_CONSUMER) {
+      msg = "Diesen Verbraucher entfernen? Sein Verbrauch wird dann nicht mehr mitgemessen.";
+    } else {
+      msg = "Diese Energiequelle entfernen? Ihre Erzeugung fließt dann nicht mehr in die Gesamt-PV ein.";
+    }
     if (!window.confirm(msg)) return;
     fetch("/api/sources/" + encodeURIComponent(s.id), { method: "DELETE" })
       .then(function () { load(); })
@@ -428,6 +481,7 @@
     });
     $("roleErz").addEventListener("click", function () { setRole(ROLE_ERZEUGER); });
     $("roleNetz").addEventListener("click", function () { setRole(ROLE_NETZ); });
+    $("roleVerbraucher").addEventListener("click", function () { setRole(ROLE_CONSUMER); });
     $("srcBrand").addEventListener("change", onBrandChange);
     $("srcForm").addEventListener("submit", addSource);
     $("primGridToggle").addEventListener("change", saveBalance);

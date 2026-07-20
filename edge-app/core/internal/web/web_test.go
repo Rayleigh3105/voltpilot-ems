@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
@@ -130,6 +131,20 @@ func (f *fakeTopology) Topology() topology.Topology {
 	return f.topo
 }
 
+// fakeActiveControl is an ActiveControlController stub for the HTTP-layer tests:
+// it returns whatever ActiveControl view the test sets (zero value = empty).
+type fakeActiveControl struct{ ac cloud.ActiveControl }
+
+func (f *fakeActiveControl) ActiveControl() cloud.ActiveControl {
+	if f.ac.Flows == nil {
+		f.ac.Flows = []cloud.AppliedFlow{}
+	}
+	if f.ac.Entities == nil {
+		f.ac.Entities = []cloud.ActiveControlEntity{}
+	}
+	return f.ac
+}
+
 // fakeSources is an in-memory SourcesController for the HTTP-layer test.
 type fakeSources struct {
 	list     []sources.Source
@@ -193,7 +208,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 	t.Helper()
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 	return srv, fi, h
 }
@@ -206,7 +221,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 func TestStateEnvelopeCarriesBuildVersion(t *testing.T) {
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-ver", "test123"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+	srv := httptest.NewServer(Handler(state.New("edge-ver", "test123"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -347,7 +362,7 @@ func TestStateEnvelopeCarriesServerClock(t *testing.T) {
 		s.Inverter = configuredInverter()
 		s.LastTelemetry = time.Now().UTC()
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
@@ -419,7 +434,7 @@ func TestHistoryReturnsRecentSamplesWithMeasuredBattery(t *testing.T) {
 func TestStateExposesBufferDataLoss(t *testing.T) {
 	st := state.New("edge-test", "test")
 	st.Update(func(s *state.Snapshot) { s.BufferDataLoss = true; s.BufferPending = 7 })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -474,7 +489,7 @@ func configuredInverter() *state.InverterInfo {
 func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 	// (a) No inverter configured -> step "inverter", locked, no reference.
 	st := state.New("edge-gate", "test")
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -511,7 +526,7 @@ func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 func TestOnboardingGateDoneOncePaired(t *testing.T) {
 	st := state.New("edge-paired", "test")
 	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -535,7 +550,7 @@ func TestRemovedDeviceReopensClaimStepAndSurfacesOnHealth(t *testing.T) {
 		s.LastTelemetry = time.Now().UTC()
 		s.BufferPaused = true
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -618,7 +633,7 @@ func waitForLine(sc *bufio.Scanner, want string) bool {
 func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 	fp := &fakePurge{}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -648,7 +663,7 @@ func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
 	fp := &fakePurge{err: context.DeadlineExceeded}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -793,9 +808,9 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		`id="modelSearch"`, `id="modelList"`, `role="listbox"`,
 		`id="modelEmpty"`, `id="modelChosen"`,
 		// The role-grouped "Meine Anlage" card: the Wechselrichter summary/edit
-		// group + the Erzeuger/Netz groups + the add-source CTA.
+		// group + the Erzeuger/Netz/Verbraucher groups + the add-source CTA.
 		`id="anlageCard"`, `id="invGroup"`, `id="invRows"`, `id="invEmpty"`,
-		`id="erzList"`, `id="netzList"`, `id="srcAddToggle"`,
+		`id="erzList"`, `id="netzList"`, `id="verbList"`, `id="srcAddToggle"`,
 		// The "Zuletzt gelesen" line of the Wechselrichter summary row.
 		`id="invRead"`,
 		// The "Verbindung testen" buttons + result panels (inverter form + drawer).
@@ -834,6 +849,11 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	for _, want := range []string{
 		`id="srcDrawerBackdrop"`, `id="srcForm"`, `id="rolePick"`,
 		`id="srcFields"`, `id="srcKwp"`, `id="srcKwpField"`, `id="srcSee"`, `src="sources.js"`,
+		// The three role cards in the add-source picker (incl. the Verbraucher
+		// card so a go-e consumer source is UI-complete end to end).
+		`id="roleErz"`, `id="roleNetz"`, `id="roleVerbraucher"`,
+		// The Verbraucher list group.
+		`id="verbList"`, `id="verbEmpty"`, `id="verbNote"`,
 		// The "Primär misst den gesamten Netzübergang" toggle (Netz group).
 		`id="primGridBlock"`, `id="primGridToggle"`, `id="primGridHelp"`,
 	} {
@@ -843,8 +863,8 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	}
 	srcJs := get("/sources.js")
 	if !strings.Contains(srcJs, "/api/sources") || !strings.Contains(srcJs, "pv-generation") ||
-		!strings.Contains(srcJs, "grid-meter") {
-		t.Error("sources.js: does not drive the /api/sources Erzeuger + Netz surface")
+		!strings.Contains(srcJs, "grid-meter") || !strings.Contains(srcJs, "consumer") {
+		t.Error("sources.js: does not drive the /api/sources Erzeuger + Netz + Verbraucher surface")
 	}
 	if !strings.Contains(srcJs, "/api/balance") || !strings.Contains(srcJs, "primary_grid_not_site_total") {
 		t.Error("sources.js: does not drive the /api/balance toggle")
@@ -909,7 +929,7 @@ func serveHandler(t *testing.T, pl PlanController) *httptest.Server {
 		s.SlotStart = time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
 	})
 	srv := httptest.NewServer(Handler(st,
-		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), pl, &fakeSources{}, &fakeTopology{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), pl, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -1128,7 +1148,7 @@ func TestStateEnvelopeCarriesPeakGuardFields(t *testing.T) {
 		s.PeakGuardActive = true
 	})
 	srv := httptest.NewServer(Handler(st,
-		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -1148,7 +1168,7 @@ func TestStateEnvelopeCarriesPeakGuardFields(t *testing.T) {
 	// Module off: the optional fields are omitted entirely.
 	off := state.New("edge-test", "test")
 	srv2 := httptest.NewServer(Handler(off,
-		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv2.Close)
 	resp2, err := http.Get(srv2.URL + "/api/state")
 	if err != nil {
@@ -1169,7 +1189,7 @@ func sourcesServer(t *testing.T, fs *fakeSources) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, fs, &fakeTopology{}))
+		history.New(10), &fakePlan{}, fs, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -1445,7 +1465,7 @@ func TestSourcesListReturnsLastReadingsWithServerClock(t *testing.T) {
 func TestStateExposesPrimaryLastReading(t *testing.T) {
 	st := state.New("edge-test", "test")
 	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()},
-		&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 
 	getState := func() map[string]any {
@@ -1496,7 +1516,7 @@ func TestTestConnectionReturnsControllerResult(t *testing.T) {
 		testResult: testconn.Result{OK: true, Reading: &testconn.Reading{PvKw: ptr(4.8), SocPct: ptr(62)}},
 	}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 
 	reqBody := `{"role":"pv-generation","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.70"}}`
@@ -1529,7 +1549,7 @@ func TestProbeUnitsReturnsControllerResult(t *testing.T) {
 		probeResult: testconn.Result{OK: true, FoundUnits: []int{1, 2}},
 	}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 
 	reqBody := `{"brand":"fronius_sunspec","model":"fronius-eco-27-3-s","connection":{"ip":"192.168.210.40","unit_id":1}}`
@@ -1556,7 +1576,7 @@ func TestProbeUnitsReturnsControllerResult(t *testing.T) {
 func TestTestConnectionMalformedBodyReturns400(t *testing.T) {
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	t.Cleanup(srv.Close)
 	resp, err := http.Post(srv.URL+"/api/test-connection", "application/json", strings.NewReader("{bad"))
 	if err != nil {
@@ -1579,7 +1599,7 @@ func TestStateEnvelopeCarriesTopology(t *testing.T) {
 	}}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{topo: topo}))
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{topo: topo}, &fakeActiveControl{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -1603,7 +1623,7 @@ func TestStateEnvelopeCarriesTopology(t *testing.T) {
 	// Empty topology (no entities) still serializes nodes: [].
 	srv2 := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}))
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
 	defer srv2.Close()
 	resp2, err := http.Get(srv2.URL + "/api/state")
 	if err != nil {
@@ -1613,6 +1633,106 @@ func TestStateEnvelopeCarriesTopology(t *testing.T) {
 	raw, _ := io.ReadAll(resp2.Body)
 	if !strings.Contains(string(raw), `"topology":{"schema_version":"1.0","nodes":[]}`) {
 		t.Fatalf("empty topology not present in envelope: %s", raw)
+	}
+}
+
+// TestStateEnvelopeCarriesActiveControl proves the read-only "Aktive Steuerung"
+// view (report §7) rides the /api/state envelope additively: a populated view
+// carries the deployed flow acks + the per-entity arbitration winner, and an
+// empty view still serializes flows: [] / entities: [] (the page empty state).
+func TestStateEnvelopeCarriesActiveControl(t *testing.T) {
+	sp := 3.4
+	match := true
+	ac := cloud.ActiveControl{
+		PaletteVersion: "0.2.0",
+		Flows: []cloud.AppliedFlow{
+			{FlowID: "flow-a", FlowVersion: 2, ContentHash: "h", State: "active"},
+		},
+		Entities: []cloud.ActiveControlEntity{
+			{EntityID: "batt", Label: "Speicher", Type: "battery-hybrid",
+				Holder: "flow", Source: "desired", SetpointKw: &sp, AllMatch: &match},
+		},
+	}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{ac: ac}))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		ActiveControl cloud.ActiveControl `json:"active_control"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ActiveControl.PaletteVersion != "0.2.0" {
+		t.Fatalf("palette_version = %q", got.ActiveControl.PaletteVersion)
+	}
+	if len(got.ActiveControl.Flows) != 1 || got.ActiveControl.Flows[0].State != "active" {
+		t.Fatalf("flows = %+v", got.ActiveControl.Flows)
+	}
+	if len(got.ActiveControl.Entities) != 1 {
+		t.Fatalf("entities = %+v", got.ActiveControl.Entities)
+	}
+	e := got.ActiveControl.Entities[0]
+	if e.Label != "Speicher" || e.Holder != "flow" || e.Source != "desired" ||
+		e.SetpointKw == nil || *e.SetpointKw != sp || e.AllMatch == nil || !*e.AllMatch {
+		t.Fatalf("entity winner = %+v", e)
+	}
+
+	// Empty view (no flows, no decisions) still serializes flows/entities as [].
+	srv2 := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	defer srv2.Close()
+	resp2, err := http.Get(srv2.URL + "/api/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	raw, _ := io.ReadAll(resp2.Body)
+	if !strings.Contains(string(raw), `"active_control":{"flows":[],"entities":[]}`) {
+		t.Fatalf("empty active_control not present in envelope: %s", raw)
+	}
+}
+
+// TestActiveControlStripServed pins the read-only "Aktive Steuerung" strip in
+// the dashboard (index.html + its script) so a static/ edit that drops it
+// fails the //go:embed rebuild contract.
+func TestActiveControlStripServed(t *testing.T) {
+	srv, _ := newServer(t)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	page := get("/")
+	for _, want := range []string{
+		`id="actctrlBody"`, `id="actFlowsGroup"`, `id="actFlowsList"`,
+		`id="actEntsGroup"`, `id="actEntsList"`, `id="actctrlEmpty"`,
+		`src="active-control.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing Aktive-Steuerung element %s", want)
+		}
+	}
+	js := get("/active-control.js")
+	if !strings.Contains(js, "active_control") || !strings.Contains(js, "VPActiveControl") {
+		t.Error("active-control.js: does not render state.active_control")
+	}
+	if !strings.Contains(js, "onState") {
+		t.Error("active-control.js: missing onState hook dashboard.js calls")
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
@@ -104,6 +105,17 @@ type TopologyController interface {
 	Topology() topology.Topology
 }
 
+// ActiveControlController exposes the READ-ONLY "Aktive Steuerung" view (report
+// §7): the RESULT of the portal-composed flows - the deployed @vp-flow tabs
+// with their last ack, plus the per-entity arbitration winner - so the edge
+// shows what is running and what is steering each entity RIGHT NOW without ever
+// composing. The agent implements it from flow deployment acks + the arbiter.
+// A device with no flows and no arbitration decisions returns an empty view
+// (the page shows its empty state). There is no write path.
+type ActiveControlController interface {
+	ActiveControl() cloud.ActiveControl
+}
+
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
 // its own clock drifts from the edge device's, plus the derived onboarding-gate
@@ -133,6 +145,12 @@ type stateEnvelope struct {
 	// grid_limit_kw/soc_pct fields on the Snapshot stay for backward compat; a
 	// device without v2 entities carries an empty topology (nodes: []).
 	Topology topology.Topology `json:"topology"`
+
+	// ActiveControl is the additive READ-ONLY "Aktive Steuerung" block: the
+	// deployed @vp-flow tabs (last ack) + the per-entity arbitration winner -
+	// the RESULT of the portal-composed flows. Empty (flows: [], entities: [])
+	// when nothing is deployed / commanded, so the page shows its empty state.
+	ActiveControl cloud.ActiveControl `json:"active_control"`
 }
 
 // paired reports whether a certificate is already on disk (the device is
@@ -165,7 +183,7 @@ func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, clai
 	}
 }
 
-func envelope(st *state.Store, topo TopologyController) stateEnvelope {
+func envelope(st *state.Store, topo TopologyController, ac ActiveControlController) stateEnvelope {
 	snap := st.Get()
 	step, invConnected, claimUnlocked := deriveOnboarding(snap)
 	// Withhold the reference until the claim step is unlocked, so the portal
@@ -182,6 +200,7 @@ func envelope(st *state.Store, topo TopologyController) stateEnvelope {
 		OnboardingStep:    step,
 		ClaimUnlocked:     claimUnlocked,
 		Topology:          topo.Topology(),
+		ActiveControl:     ac.ActiveControl(),
 	}
 }
 
@@ -191,7 +210,7 @@ func envelope(st *state.Store, topo TopologyController) stateEnvelope {
 // action, and the health endpoint.
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
-	src SourcesController, topo TopologyController) http.Handler {
+	src SourcesController, topo TopologyController, ac ActiveControlController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -200,7 +219,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(envelope(st, topo))
+		_ = json.NewEncoder(w).Encode(envelope(st, topo, ac))
 	})
 
 	// GET /api/history?minutes=N - recent telemetry samples for the charts on
@@ -280,7 +299,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		// Only stream samples that arrive after we connect; the client fetches
 		// the backlog via /api/history first.
 		last := time.Now()
-		send("state", envelope(st, topo))
+		send("state", envelope(st, topo, ac))
 
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
@@ -295,7 +314,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 					}
 					last = s.Ts
 				}
-				if !send("state", envelope(st, topo)) {
+				if !send("state", envelope(st, topo, ac)) {
 					return
 				}
 			}

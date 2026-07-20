@@ -1424,6 +1424,10 @@ function GeraetStep({
         {DEVICE_ID_FIELD.help}
         {!multiSite && ` Das Gerät wird mit der Anlage „${site.name}“ verbunden.`}
       </p>
+      <p className="vp-note">
+        Wechselrichter, Erzeuger und Verbraucher richten Sie direkt am Gerät ein – auf der
+        Geräteseite „Meine Anlage". Hier im Portal verbinden Sie das Gerät nur mit Ihrem Konto.
+      </p>
       <div style={{ display: 'grid', gap: 16 }}>
         {multiSite && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

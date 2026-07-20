@@ -232,6 +232,18 @@ authoritative implementations + their proofs:
   API materialization of `@vp-flow` tabs → heartbeat `flows` acks. Needs
   `VP_NODERED_ADMIN_URL` (+ the NR adminAuth credentials) on the CORE;
   unset = verified + persisted but acked `error` naming the setting.
+- **Read-only "Aktive Steuerung" strip (`:8484`, U6 `fm/vp-uo-u6-edge`, report
+  §7)**: the edge shows the RESULT of the portal-composed flows, never the
+  graph. `Agent.ActiveControl()` (`agent/arbitration.go`) reuses the SAME core
+  facts the heartbeat carries — `flowsSummary()` (deployed `@vp-flow` acks +
+  palette) + `arb.DecisionFor` per entity (winner holder/source/setpoint +
+  readback) — enriched with the entity label/type; carried as the additive
+  `cloud.ActiveControl` block on `/api/state` (`web.ActiveControlController`),
+  rendered by `static/active-control.js`. Empty flows AND entities → the page
+  empty state. NO write path, NO editor (composition stays 100% portal). Tests:
+  `web_test.go TestStateEnvelopeCarriesActiveControl`/`TestActiveControlStripServed`,
+  `arbitration_integration_test.go TestFlowDeploymentAppliedAndAcked`
+  (`ActiveControl()` reflects the real deployed flow + battery winner).
 - **Reseed coexistence (D-12)**: `nodered/reseed-merge-flows.js` + the
   entrypoint merge — vendor tab group from the image, `@vp-flow` tabs
   byte-identical; degradation to wholesale only with a loud WARN (the
@@ -341,11 +353,15 @@ allowlist):
   `sources-routing.test.js`, `flows-sync.test.js`, `sources-read.e2e.test.js`
   (real in-process HTTP server → publish on output 3), Go
   `inverter_test.go`/`sources_test.go`/`agent/source_agg_test.go`.
-- FOLLOW-UP (not built): the `:8484` add-source form role picker
-  (`static/sources.js`) still offers only Erzeuger/Netz-Zähler — add a
-  "Verbraucher" card (+ brand-by-role filtering) so an operator can pick go-e
-  from the UI; today a go-e consumer source is added via `POST /api/sources`
-  (`role:"consumer"`).
+- UI-complete since U6 (`fm/vp-uo-u6-edge`): the `:8484` add-source picker
+  (`static/sources.js` + `inverter.html`) offers a **Verbraucher** role card
+  (`roleVerbraucher`), brand-by-role filtering (`brandsForRole` — a consumer
+  picks the `goe_http_api` driver, Erzeuger/Netz never offer it), a Verbraucher
+  list group (`verbList`/`verbEmpty`/`verbNote`) and the consumer `load_kw`
+  reading line — so a go-e wallbox is addable end to end in the UI (no
+  `POST /api/sources` step). Pinned by
+  `web_test.go TestInverterPageServesModelPickerStructure`. The Go
+  `sources.Normalize` already accepted `RoleConsumer`.
 
 ## go-e Charger CONTROL adapter (certified, arbiter-driven, single-writer)
 
