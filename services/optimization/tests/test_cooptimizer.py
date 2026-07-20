@@ -252,6 +252,52 @@ def test_dv_konform_keeps_consumption_side_strategies_alive():
 
 
 @needs_highs
+def test_peak_shaving_module_shaves_the_import_peak_in_the_co_optimizer():
+    # E5a proof: the PS-1 peak module participates in the CO-optimizer exactly
+    # like v1 (the golden peak-shaving-ci scenario pins the slot-by-slot v1↔co
+    # equivalence; this asserts the module DOES something). A flat-price day
+    # (no arbitrage) with a load spike: WITHOUT a Leistungspreis the battery is
+    # idle and the billed import peak IS the spike; WITH one, the module
+    # discharges through the spike to hold the peak down.
+    n = 16
+    prices = [100.0] * n  # flat - kills arbitrage so only the peak term acts
+    load = [3.0] * n
+    for t in range(6, 9):
+        load[t] = 20.0  # a 3-slot import spike
+    batt = storage("batt", capacity=30.0, power=12.0, soc0=25.0, wear_ct=0.0)
+
+    def run(leistungspreis):
+        return solve(
+            make_input(
+                prices,
+                storages=(batt,),
+                load=load,
+                leistungspreis_eur_kw=leistungspreis,
+                peak_so_far_kw=0.0,
+                terminal_value_eur_per_kwh=0.0,
+            )
+        )
+
+    def import_peak(plan):
+        return max((max(s.grid_kw, 0.0) for s in plan.site_slots), default=0.0)
+
+    off = run(None)
+    on = run(200.0)
+
+    # No Leistungspreis → no peak module → the raw spike is the import peak.
+    assert off.peak_target_kw is None
+    assert import_peak(off) > 18.0
+
+    # With a Leistungspreis the module is active, the epigraph binds (peak ==
+    # the actual import peak), and the battery shaves the spike well below it.
+    assert on.peak_target_kw is not None
+    assert on.peak_target_kw == pytest.approx(import_peak(on), abs=0.2)
+    assert import_peak(on) < import_peak(off) - 5.0
+    spike_discharge = sum(max(-s.setpoint_kw, 0.0) for s in on.storages[0].slots[6:9])
+    assert spike_discharge > 0.0, "the battery must discharge through the spike to shave it"
+
+
+@needs_highs
 def test_solar_only_subset_constraint_binds_jointly_not_per_entity():
     # Two EEG storages share ONE solar budget: together they may charge at
     # most the produced PV, not each of them the full PV.
