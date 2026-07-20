@@ -22,14 +22,15 @@ import java.util.List;
  * NOT simulable - its economics (E5b) are not built, so a flow carrying it
  * cannot reach a dry-run (and thus never activates).
  *
- * <p>A DEVICE AUTOMATION (U3) - no battery strategy, but a {@code
- * vp.entity.control} action driven by Wenn/Dann conditions (a Wallbox/Heizstab
- * rule, a price rule, a compound AND rule) - does not change the battery
- * dispatch economics in the MVP simulation model, so its dry-run is the site's
- * "standardSpeicher" baseline (the reference the device rule runs on top of).
- * This lets a device automation reach {@code simuliert} and activate. A flow
- * with no strategy AND no controllable action (e.g. a bare read, or a
- * notify-only chain) still has no economic dry-run and is refused.
+ * <p>An AUTOMATION (U3) - no battery strategy, but an action driven by Wenn/Dann
+ * conditions: a device control ({@code vp.entity.control}: a Wallbox/Heizstab
+ * rule, a price rule, a compound AND rule) or a notification ({@code
+ * vp.notify.push}) - does not change the battery dispatch economics in the MVP
+ * simulation model, so its dry-run is the site's "standardSpeicher" baseline
+ * (the reference the rule runs on top of). This lets a Wenn/Dann automation
+ * reach {@code simuliert} and activate. A flow with neither a strategy nor an
+ * action (e.g. a bare read + threshold with no sink) has no economic dry-run and
+ * is refused.
  */
 public final class FlowSimulationMapper {
 
@@ -67,11 +68,11 @@ public final class FlowSimulationMapper {
                         "Die atypische Netznutzung (§ 19 StromNEV) ist noch in Vorbereitung und "
                                 + "kann derzeit nicht simuliert oder aktiviert werden.");
             }
-            // A device automation (Wenn/Dann rule controlling a consumer) has no
+            // A Wenn/Dann automation (controlling a consumer, or notifying) has no
             // battery strategy; it doesn't change the dispatch economics, so its
             // dry-run is the site's standard-battery baseline (the reference it
-            // runs on top of). This lets a device automation activate.
-            if (hasControlAction(doc)) {
+            // runs on top of). This lets an automation activate.
+            if (hasAutomationAction(doc)) {
                 return new Mapping(true, null, "standardSpeicher", null, null);
             }
             return Mapping.unsupported(
@@ -96,9 +97,10 @@ public final class FlowSimulationMapper {
                 schonung, strategy.path("id").asText());
     }
 
-    private static boolean hasControlAction(JsonNode doc) {
+    private static boolean hasAutomationAction(JsonNode doc) {
         for (JsonNode node : doc.path("nodes")) {
-            if ("vp.entity.control".equals(node.path("type").asText())) {
+            String type = node.path("type").asText();
+            if ("vp.entity.control".equals(type) || "vp.notify.push".equals(type)) {
                 return true;
             }
         }

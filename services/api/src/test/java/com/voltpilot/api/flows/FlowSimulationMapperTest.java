@@ -88,6 +88,22 @@ class FlowSimulationMapperTest {
     }
 
     @Test
+    void notificationAutomationMapsToStandardSpeicherBaseline() {
+        // A notification automation (no control, no strategy) is simulierbar as
+        // the baseline too, so the guided builder's Benachrichtigung action is
+        // not a dead-end (U3).
+        ObjectNode doc = FlowGraphValidatorTest.flowShell();
+        FlowGraphValidatorTest.addNode(doc, "r1", "vp.entity.read", "1.0.0",
+                Map.of("entity_id", "grid-meter-1", "channel", "power_kw"));
+        FlowGraphValidatorTest.addNode(doc, "g1", "vp.logic.gate", "1.0.0", Map.of());
+        FlowGraphValidatorTest.addNode(doc, "n1", "vp.notify.push", "1.0.0",
+                Map.of("message", "Hohe Einspeisung."));
+        FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
+        assertThat(mapping.supported()).isTrue();
+        assertThat(mapping.scenario()).isEqualTo("standardSpeicher");
+    }
+
+    @Test
     void severalStrategiesAreRefused() {
         ObjectNode doc = FlowGraphValidatorTest.flowShell();
         FlowGraphValidatorTest.addNode(doc, "s1", "vp.strategy.market", "1.0.0",
