@@ -26,6 +26,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/goe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
@@ -143,6 +144,12 @@ type Agent struct {
 	planHeld    map[string]string // entity -> "v1"|"v2" currently plan-commanded
 	entReadback map[string]*bool  // per-entity latest readback all_match
 	arbWake     chan struct{}
+
+	// goeDoer executes go-e Charger control HTTP (nil = the default http.Client
+	// doer, set in Start; injectable for tests). The consumer-control loop
+	// (agent/consumer_control.go) reads the arbiter's clamped consumer command
+	// for each go-e-backed wallbox entity and drives its physical set+readback.
+	goeDoer goe.Doer
 
 	// flowDep consumes the retained flow deployment set (agent/flows.go).
 	// Always constructed; without VP_NODERED_ADMIN_URL it verifies + persists
@@ -436,6 +443,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	if err := a.startArbitration(ctx); err != nil {
 		return err
 	}
+	// Consumer-control executor (go-e Charger): a no-op while VP_CONTROL_ENABLED
+	// is off (the default), so a read-only deployment never pays for it.
+	a.startConsumerControl(ctx)
 	// E2 flow deployment: reconcile the persisted set at boot (self-heal from
 	// truth) and keep reconciling periodically.
 	a.flowDep.Reconcile()

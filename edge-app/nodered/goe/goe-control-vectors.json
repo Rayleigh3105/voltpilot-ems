@@ -1,0 +1,77 @@
+{
+  "_comment": "Shared golden vectors for the go-e control mapping, read by BOTH goe-control.test.js (JS, the canonical module) and edge-app/core/internal/goe/control_test.go (the Go executor twin). They pin the pure kW->frc/amp tri-state so the two language implementations can never drift - the refCheckChar/EdgeRef + SocPlausible/socPlausible cross-language precedent. Each case: given `config` + `command`, the plan must have the expected mode/frc/amp/controlEnabled and write exactly `writes_len` set-ops. amp=null means no amp is written.",
+  "cases": [
+    {
+      "name": "charge 11.04kW 3x230 -> On @ 16A",
+      "config": { "ip": "1.2.3.4", "phases": 3, "voltage": 230 },
+      "command": { "setpoint_kw": 11.04, "control_enabled": true },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "22kW clamps to the 16A band",
+      "config": { "ip": "1.2.3.4", "phases": 3, "voltage": 230, "max_current_a": 16 },
+      "command": { "setpoint_kw": 22, "control_enabled": true },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "15kW on a 32A install -> 21A",
+      "config": { "ip": "1.2.3.4", "phases": 3, "voltage": 230, "max_current_a": 32 },
+      "command": { "setpoint_kw": 15, "control_enabled": true },
+      "expect": { "mode": "charge", "frc": 2, "amp": 21, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "1-phase 3.68kW -> 16A",
+      "config": { "ip": "1.2.3.4", "phases": 1, "voltage": 230 },
+      "command": { "setpoint_kw": 3.68, "control_enabled": true },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "below-minimum current -> Off",
+      "config": { "ip": "1.2.3.4", "phases": 3, "voltage": 230 },
+      "command": { "setpoint_kw": 1.0, "control_enabled": true },
+      "expect": { "mode": "off", "frc": 1, "amp": null, "control_enabled": true, "writes_len": 1 }
+    },
+    {
+      "name": "zero setpoint -> Off",
+      "config": { "ip": "1.2.3.4" },
+      "command": { "setpoint_kw": 0, "control_enabled": true },
+      "expect": { "mode": "off", "frc": 1, "amp": null, "control_enabled": true, "writes_len": 1 }
+    },
+    {
+      "name": "on_off=false forces Off despite a setpoint",
+      "config": { "ip": "1.2.3.4" },
+      "command": { "setpoint_kw": 11, "on_off": false, "control_enabled": true },
+      "expect": { "mode": "off", "frc": 1, "amp": null, "control_enabled": true, "writes_len": 1 }
+    },
+    {
+      "name": "on_off=true no setpoint -> charge at max current",
+      "config": { "ip": "1.2.3.4", "max_current_a": 16 },
+      "command": { "on_off": true, "control_enabled": true },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "control_enabled": true, "writes_len": 2 }
+    },
+    {
+      "name": "stale command -> fail-safe Neutral",
+      "config": { "ip": "1.2.3.4" },
+      "command": { "setpoint_kw": 11, "stale": true, "control_enabled": true },
+      "expect": { "mode": "neutral", "frc": 0, "amp": null, "control_enabled": true, "writes_len": 1 }
+    },
+    {
+      "name": "nothing actionable -> fail-safe Neutral",
+      "config": { "ip": "1.2.3.4" },
+      "command": { "control_enabled": true },
+      "expect": { "mode": "neutral", "frc": 0, "amp": null, "control_enabled": true, "writes_len": 1 }
+    },
+    {
+      "name": "kill-switch off -> NO writes (readbacks still run)",
+      "config": { "ip": "1.2.3.4", "phases": 3, "voltage": 230 },
+      "command": { "setpoint_kw": 11.04, "control_enabled": false },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "control_enabled": false, "writes_len": 0 }
+    },
+    {
+      "name": "missing control_enabled defaults to off (fail-secure)",
+      "config": { "ip": "1.2.3.4", "phases": 3, "voltage": 230 },
+      "command": { "setpoint_kw": 11.04 },
+      "expect": { "mode": "charge", "frc": 2, "amp": 16, "control_enabled": false, "writes_len": 0 }
+    }
+  ]
+}

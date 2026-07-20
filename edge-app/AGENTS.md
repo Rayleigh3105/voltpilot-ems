@@ -334,7 +334,52 @@ allowlist):
   (`static/sources.js`) still offers only Erzeuger/Netz-Zähler — add a
   "Verbraucher" card (+ brand-by-role filtering) so an operator can pick go-e
   from the UI; today a go-e consumer source is added via `POST /api/sources`
-  (`role:"consumer"`). Control (charge/current) is out of scope by design.
+  (`role:"consumer"`).
+
+## go-e Charger CONTROL adapter (certified, arbiter-driven, single-writer)
+
+The write/execution counterpart to the read-only go-e driver (`fm/vp-goe-control`).
+Unlike Deye/Fronius (guessed firmware registers → `bench_pending`), go-e's HTTP API v2
+is documented + deterministic, so the whole write→readback loop is software-provable and
+the family is **CERTIFIED** (may go live behind the kill-switch `VP_CONTROL_ENABLED`).
+
+- **Canonical mapping = `nodered/goe/goe-control.js`** (the write twin of `goe-api.js`):
+  pure `controlPlan(config, command, opts)` — kW→A (`I = P/(phases·voltage)`, **FLOORED**
+  so actual charge never exceeds the arbitrated setpoint) → tri-state `frc` (go-e
+  forceState: Neutral=0/Off=1/On=2) + `amp` (requestedCurrent), clamped to the go-e
+  current band [min≈6, max]. Below-min/zero/`on_off=false` → **Off**; stale/loss/no-command
+  → **Neutral** (hands control back, never a stuck forced current); kill-switch off →
+  **no writes, readback still runs**. Plus `evalReadback` (commanded-vs-actual match from
+  `/api/status` frc/amp; car/nrg[11]/acu/alw informational) and `makeExecutor(deps)` (the
+  deps-injected HTTP set→readback loop, the `test-read.js makeReadOnce` pattern). Keys
+  quoted from go-e API v2 `apikeys-en.md` — **`psm`/phaseSwitchMode is NOT a settable v2
+  key**, so phases is a config input for kW→A only, never written. Tests
+  `goe/goe-control.test.js` (offline + in-process HTTP server: match/mismatch/unreachable/
+  kill-switch).
+- **The physical writer lives in the GO CORE** (`internal/goe` = the Go twin of
+  goe-control.js, pinned to the SAME golden vectors `goe/goe-control-vectors.json` — the
+  refCheckChar/EdgeRef + SocPlausible cross-language lockstep; `TestSharedVectors` on both
+  sides). Chosen as the **single writer** (avoids a dual-writer on the same wallbox HTTP
+  socket): the E2 arbiter already owns the clamped consumer command + the entity `Driver`
+  block (go-e ip) + the readback plumbing, and go-e is HTTP-native. `agent/consumer_control.go`
+  reads `arb.DecisionFor(id).Granted` for each go-e-backed wallbox entity (driver
+  `communication:"goe_http_api"`), runs `goe.Execute`, and publishes `edge/entities/{id}/readback`
+  (the v1 all_match shape the arbitration layer's `onEntityReadback` already folds into the
+  heartbeat). **Gated on `VP_CONTROL_ENABLED`: OFF (default) = ZERO HTTP** — a read-only
+  deployment (the two live sites) is never touched. Periodic re-assert (60 s) so a rebooted
+  wallbox re-adopts; change-detected so an unchanged command is not re-written every tick.
+  Proof: `agent/consumer_control_test.go` (desired 22 kW → arbiter clamps to the 11 kW band
+  → go-e set frc=On/amp=15 @ 3×230 → readback all_match on the bus; kill-switch-off = no HTTP;
+  non-go-e entity skipped).
+- **Node-RED is deliberately NOT the go-e writer** (single-writer). `goe-control.js` stays
+  the canonical JS reference (embedding-ready) but is not embedded into a flow; `flows.json`
+  is unchanged and `flows-sync.test.js` stays green. If the captain prefers a flow-side
+  executor, embed `goe-control.js` via `build-flows.js` and retire the Go path — do not run
+  both.
+- **VERIFY-on-device** on the first real wallbox (frc/amp semantics + phase behaviour) is
+  the honest final step, but there is NO per-model bench gate — see `nodered/CONTROL-BENCH.md`
+  → "go-e Charger". Control safety: off by default, upstream guard authoritative (executor
+  never widens the clamped setpoint), fail-safe neutral, readback published.
 
 ## Maintaining this file
 
