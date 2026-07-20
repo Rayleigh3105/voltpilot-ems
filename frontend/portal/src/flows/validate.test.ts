@@ -61,6 +61,14 @@ describe('contract fixtures (executable contract)', () => {
     expect(errors(findings)).toEqual([]);
   });
 
+  it.skipIf(!haveFixtures)('notify-threshold fixture validates clean', () => {
+    // #518: the editor accepts Schwellwert -> Wenn/Dann-gate -> Benachrichtigung
+    // (it always did); the drift was flowc lacking the gate compile entry, which
+    // made activation compiler_reject this exact flow.
+    const findings = validateFlow(fixture('flow-graph.valid.notify-threshold.json'), ENTITIES);
+    expect(errors(findings)).toEqual([]);
+  });
+
   it.skipIf(!haveFixtures)('unknown-trigger fixture fails exactly on V-7', () => {
     const findings = validateFlow(fixture('flow-graph.invalid.unknown-trigger.json'), ENTITIES);
     expect(errors(findings)).toEqual(['V-7']);

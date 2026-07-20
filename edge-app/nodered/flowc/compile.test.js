@@ -8,9 +8,12 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { compile, validate, ValidationError } = require('./compile');
+const { TYPES } = require('./catalog');
 const { contentHash } = require('./canonicalize');
 
 const EXAMPLES = path.join(__dirname, '..', '..', '..', 'docs', 'contracts', 'v2', 'examples');
+const API_CATALOG = path.join(
+  __dirname, '..', '..', '..', 'services', 'api', 'src', 'main', 'resources', 'flowcatalog', 'catalog.json');
 
 function fixture(name) {
   return JSON.parse(fs.readFileSync(path.join(EXAMPLES, name), 'utf8'));
@@ -172,6 +175,73 @@ test('validator refuses the contract error classes', () => {
   assert.ok(!findRule(fb, 'V-2'), 'feedback edge must not count as a cycle');
 
   assert.throws(() => compile(mutate((g) => { g.triggers = []; })), ValidationError);
+});
+
+// The notification automation (Schwellwert -> Wenn/Dann-gate -> Benachrichtigung)
+// is the exact flow that USED to validate + simulate in the editor and then die
+// at activation with compiler_rejected ("unbekannter Katalogtyp vp.logic.gate")
+// because flowc had no compile entry for the gate (OpenProject #518). It must
+// now compile deterministically.
+test('notify-threshold fixture compiles the gate + notification chain', () => {
+  const graph = fixture('flow-graph.valid.notify-threshold.json');
+  const a = compile(graph);
+
+  // Only whitelisted implementations: the gate + threshold compile to generated
+  // function nodes, the action to the vp-notify publisher.
+  for (const n of a.bundle.nodered_flows) {
+    assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
+  }
+  const fns = a.bundle.nodered_flows.filter((n) => n.type === 'function');
+  assert.strictEqual(fns.length, 2, 'threshold + gate both compile to function nodes');
+  for (const fn of fns) assert.match(fn.func, /^\/\/ generiert von flowc/);
+
+  // The gate is a rising-edge event: its generated body only forwards the
+  // message on the false->true transition (context "on"), so notify fires once.
+  const gate = fns.find((n) => /context\.get\("on"\)/.test(n.func) && /cond && !prev/.test(n.func));
+  assert.ok(gate, 'the gate compiles to the rising-edge trigger body');
+
+  // Wiring: read -> threshold -> gate -> notify.
+  const read = a.bundle.nodered_flows.find((n) => n.type === 'vp-entity-read');
+  const notify = a.bundle.nodered_flows.find((n) => n.type === 'vp-notify');
+  assert.strictEqual(notify.message, 'Ihre Anlage speist gerade mehr als 5 kW ins Netz ein.');
+  const threshold = fns.find((n) => n !== gate);
+  assert.deepStrictEqual(read.wires, [[threshold.id]]);
+  assert.deepStrictEqual(threshold.wires, [[gate.id]]);
+  assert.deepStrictEqual(gate.wires, [[notify.id]]);
+});
+
+// The PINNED deterministic hash of the notify-threshold fixture (#518): a
+// deployed content_hash must stay stable; a deliberate compiler change updates
+// the pin consciously.
+test('pinned content hash of the notify-threshold fixture', () => {
+  const a = compile(fixture('flow-graph.valid.notify-threshold.json'));
+  const pinFile = path.join(__dirname, 'pinned-notify-hash.txt');
+  if (!fs.existsSync(pinFile)) {
+    fs.writeFileSync(pinFile, a.content_hash + '\n');
+  }
+  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
+  assert.strictEqual(a.content_hash, pinned,
+    'notify-threshold compiler output drifted from the committed pin (pinned-notify-hash.txt)');
+});
+
+// Drift guard (#518): the flowc TYPES map and the api flow-catalog MUST declare
+// the SAME set of node types. flowc had vp.logic.if but not vp.logic.gate while
+// the api/portal had vp.logic.gate but not vp.logic.if - so a gate flow that the
+// editor accepts died at flowc compile (and an if flow the compiler knew could
+// never come from the editor). This catches that whole class: every type in one
+// catalog is known to the other. (api <-> portal byte-equality is guarded
+// separately by the portal's catalog.sync.test.ts.)
+test('flowc catalog and the api flow-catalog declare the same node types', () => {
+  const api = JSON.parse(fs.readFileSync(API_CATALOG, 'utf8'));
+  const apiTypes = new Set(api.types.map((t) => t.type));
+  const flowcTypes = new Set(Object.keys(TYPES));
+
+  const inApiOnly = [...apiTypes].filter((t) => !flowcTypes.has(t));
+  const inFlowcOnly = [...flowcTypes].filter((t) => !apiTypes.has(t));
+  assert.deepStrictEqual(inApiOnly, [],
+    'types the editor offers but flowc cannot compile (activation would compiler_reject): ' + inApiOnly);
+  assert.deepStrictEqual(inFlowcOnly, [],
+    'types flowc compiles but the editor never produces (dead compile entries): ' + inFlowcOnly);
 });
 
 test('type widenings: price->timeseries and number->timeseries are legal', () => {

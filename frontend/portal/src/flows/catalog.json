@@ -100,6 +100,20 @@
       "parameters": []
     },
     {
+      "type": "vp.logic.if",
+      "type_version": "1.0.0",
+      "label": "Wert bei Bedingung",
+      "description": "Gibt einen festen Zahlenwert aus, je nachdem ob die Bedingung wahr ist - z. B. um einen Sollwert zu setzen.",
+      "group": "logik",
+      "runtimes": ["edge", "cloud"],
+      "inputs": [{ "name": "condition", "type": "bool", "label": "Bedingung", "required": true }],
+      "outputs": [{ "name": "value", "type": "number", "label": "Wert" }],
+      "parameters": [
+        { "name": "then_value", "kind": "number", "label": "Wert wenn wahr", "required": true },
+        { "name": "else_value", "kind": "number", "label": "Wert wenn falsch", "required": false }
+      ]
+    },
+    {
       "type": "vp.strategy.market",
       "type_version": "1.0.0",
       "label": "Marktoptimierung",

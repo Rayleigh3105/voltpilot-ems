@@ -71,6 +71,16 @@ class FlowGraphValidatorTest {
     }
 
     @Test
+    void notifyThresholdFixtureValidatesClean() throws IOException {
+        // #518: Schwellwert -> Wenn/Dann-gate -> Benachrichtigung. The editor +
+        // server accept it (catalog-driven), so it reaches activation - where it
+        // used to die because flowc lacked the gate compile entry (now fixed).
+        List<FlowValidationFinding> findings = validate(fixture(
+                "flow-graph.valid.notify-threshold.json"));
+        assertThat(errors(findings)).isEmpty();
+    }
+
+    @Test
     void unknownTriggerFixtureFailsExactlyOnV7() throws IOException {
         List<FlowValidationFinding> findings = validate(fixture(
                 "flow-graph.invalid.unknown-trigger.json"));

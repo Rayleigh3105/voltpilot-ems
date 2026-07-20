@@ -313,6 +313,7 @@ const ID_PREFIX: Record<string, string> = {
   'vp.logic.threshold': 'schwelle',
   'vp.schedule.window': 'zeitplan',
   'vp.logic.gate': 'wenn',
+  'vp.logic.if': 'wert',
   'vp.strategy.market': 'markt',
   'vp.strategy.selfconsumption': 'eigen',
   'vp.entity.control': 'steuern',

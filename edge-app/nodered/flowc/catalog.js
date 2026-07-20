@@ -81,6 +81,18 @@ const IF_BODY = [
   'return null;',
 ].join('\n');
 
+// vp.logic.gate: rising-edge trigger (bool -> event). Fires ONLY on the
+// false->true transition, so it feeds vp.notify.push once per event instead of
+// on every truthy sample. Distinct from vp.logic.if (bool -> number): the gate
+// emits the message as an EVENT, it does not pick a value.
+const GATE_BODY = [
+  'const cond = !!msg.payload;',
+  'const prev = context.get("on") || false;',
+  'context.set("on", cond);',
+  'if (cond && !prev) return msg;',
+  'return null;',
+].join('\n');
+
 const WINDOW_BODY = [
   '// Zeitfenster in LOKALER Geraetezeit; Tage 0=So..6=Sa (leer = alle).',
   'const now = new Date();',
@@ -262,6 +274,25 @@ const TYPES = {
     },
   },
 
+  'vp.logic.gate': {
+    version: '1.0.0',
+    runtimes: ['edge', 'cloud'],
+    minPalette: '0.2.0',
+    ports: { in: { wenn: { type: 'bool', required: true } }, out: { dann: { type: 'event' } } },
+    validate() {
+      return [];
+    },
+    requires() {
+      return [];
+    },
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      return [fnNode(ctx, node, node.label || 'Wenn/Dann', {}, GATE_BODY, 1)];
+    },
+  },
+
   'vp.schedule.window': {
     version: '1.0.0',
     runtimes: ['edge', 'cloud'],
@@ -344,7 +375,11 @@ const TYPES = {
     version: '1.0.0',
     runtimes: ['edge', 'cloud'],
     minPalette: '0.2.0',
-    ports: { in: { trigger: { type: 'bool', required: true } }, out: {} },
+    // Input is an EVENT (fed by vp.logic.gate's rising edge), matching the api
+    // + portal catalogs. A bare bool cannot reach this input: the editor-side
+    // FlowGraphValidator forbids bool -> event, so a notification is always
+    // wired Schwellwert -> Wenn/Dann (gate) -> Benachrichtigung.
+    ports: { in: { trigger: { type: 'event', required: true } }, out: {} },
     validate(p) {
       if (!p || typeof p.message !== 'string' || p.message.length < 1 || p.message.length > 200) {
         return ['message fehlt oder ist länger als 200 Zeichen'];
