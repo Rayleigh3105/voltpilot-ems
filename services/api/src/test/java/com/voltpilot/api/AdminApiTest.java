@@ -523,6 +523,89 @@ class AdminApiTest {
     }
 
     /**
+     * U0 Kontotyp/Betriebsart frame (design vp-ems-ui-overhaul §2): the shell
+     * frame derives from the segment (B2C -> endkunde, CI -> betreiber), an
+     * explicit admin-set override wins, clearing returns to automatic, and the
+     * EFFECTIVE value is echoed both on the admin tenant DTOs and on the
+     * customer's {@code /tenant-context} login bootstrap. Only a Portal-Admin
+     * can set it - the customer path never writes the frame.
+     */
+    @Test
+    void betriebsartFrameIsAdminSetDerivedFromSegmentAndEchoedOnTenantContext() {
+        String admin = token("admin", "admin");
+
+        // Derived defaults: a self-registered-style B2C household is endkunde,
+        // an admin-provisioned CI operator is betreiber - no override stored.
+        Map<String, Object> b2c = createTenant(admin, "Familie Sonnenhof", "B2C");
+        String b2cId = (String) b2c.get("id");
+        assertThat(b2c.get("betriebsart")).isNull();
+        assertThat(b2c).containsEntry("betriebsartEffective", "endkunde");
+        assertThat(createTenant(admin, "Stadtwerke Windau", "CI"))
+                .containsEntry("betriebsartEffective", "betreiber");
+
+        // The admin flips the household to the fleet shell: the override wins.
+        ResponseEntity<Map<String, Object>> flipped = rest.exchange(
+                url("/api/v1/admin/tenants/" + b2cId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Familie Sonnenhof", "segment", "B2C",
+                        "betriebsart", "betreiber"), bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(flipped.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(flipped.getBody()).containsEntry("betriebsart", "betreiber");
+        assertThat(flipped.getBody()).containsEntry("betriebsartEffective", "betreiber");
+
+        // The customer's login bootstrap reads the EFFECTIVE frame of exactly
+        // their own tenant (RLS; no admin route involved).
+        createUser(admin, b2cId, "sonnenhof-operator", "op@sonnenhof.example", "sonne-pw-123");
+        String customer = token("sonnenhof-operator", "sonne-pw-123");
+        ResponseEntity<Map<String, Object>> ctx = rest.exchange(
+                url("/api/v1/tenant-context"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), new ParameterizedTypeReference<>() {});
+        assertThat(ctx.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ctx.getBody()).containsEntry("tenantId", b2cId);
+        assertThat(ctx.getBody()).containsEntry("segment", "B2C");
+        assertThat(ctx.getBody()).containsEntry("betriebsart", "betreiber");
+
+        // Clearing = the full-representation PUT WITHOUT the field: back to the
+        // segment-derived automatic, and the customer's next bootstrap follows.
+        ResponseEntity<Map<String, Object>> cleared = rest.exchange(
+                url("/api/v1/admin/tenants/" + b2cId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Familie Sonnenhof", "segment", "B2C"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(cleared.getBody().get("betriebsart")).isNull();
+        assertThat(cleared.getBody()).containsEntry("betriebsartEffective", "endkunde");
+        assertThat(rest.exchange(url("/api/v1/tenant-context"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), new ParameterizedTypeReference<Map<String, Object>>() {})
+                .getBody()).containsEntry("betriebsart", "endkunde");
+
+        // Garbage refuses with 400; nothing changes.
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + b2cId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "X", "segment", "B2C", "betriebsart", "portfolio"),
+                        bearer(admin)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // The customer path can never SET the frame: the admin tenant route is
+        // platform-admin-only, an operator token gets 403.
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + b2cId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Hack", "segment", "B2C",
+                        "betriebsart", "betreiber"), bearer(customer)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        // Admins read a tenant's context via the X-Tenant-Id switcher; without
+        // a selected tenant the RLS default-deny yields 404 - never another
+        // tenant's frame.
+        ResponseEntity<Map<String, Object>> adminCtx = rest.exchange(
+                url("/api/v1/tenant-context"), HttpMethod.GET,
+                new HttpEntity<>(withTenant(bearer(admin), b2cId)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(adminCtx.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(adminCtx.getBody()).containsEntry("betriebsart", "endkunde");
+        assertThat(rest.exchange(url("/api/v1/tenant-context"), HttpMethod.GET,
+                new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * The per-site grid-charging switch (netzladen_erlaubt) is editable by the
      * SITE OWNER too (captain revision 2026-07-07 of decision 3 - not only the
      * Portal-Admin): a customer sets it on create and flips it on update of

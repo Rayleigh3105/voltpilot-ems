@@ -3,7 +3,15 @@ import { tenantPulse } from './adminPulse';
 import type { Tenant } from './admin/adminApi';
 
 function t(id: string, segment: string): Tenant {
-  return { id, name: `T-${id}`, segment, plan: 'basic', createdAt: '2026-01-01T00:00:00Z' };
+  return {
+    id,
+    name: `T-${id}`,
+    segment,
+    plan: 'basic',
+    betriebsart: null,
+    betriebsartEffective: segment === 'B2C' ? 'endkunde' : 'betreiber',
+    createdAt: '2026-01-01T00:00:00Z',
+  };
 }
 
 describe('tenantPulse', () => {

@@ -222,6 +222,27 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/EnrollmentPending" }
         "429": { description: Rate limit. Back off >= 5 min. }
+  /api/v1/tenant-context:
+    get:
+      tags: [sites]
+      summary: The caller's tenant context (U0 login bootstrap).
+      description: >
+        The tenant half of the portal's login bootstrap (composition-driven UI
+        overhaul, U0): the caller's tenant row with the EFFECTIVE Betriebsart
+        ('endkunde' | 'betreiber') that picks the navigation shell - the
+        explicit tenant.betriebsart override when set, else derived from the
+        segment (B2C -> endkunde, CI -> betreiber). Derived in the api only;
+        the portal never re-derives. RLS-scoped: a customer gets exactly their
+        own tenant; a Portal-Admin gets the tenant selected via the X-Tenant-Id
+        switcher, and without a selected tenant is default-deny -> 404.
+      responses:
+        "200":
+          description: The caller's tenant context.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantContext" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: No tenant context (admin without a selected tenant). }
   /api/v1/overview:
     get:
       tags: [sites]
@@ -1267,7 +1288,7 @@ paths:
   /api/v1/admin/tenants/{tenantId}:
     put:
       tags: [admin]
-      summary: Update a tenant's master data (name/segment).
+      summary: Update a tenant's master data (name/segment/betriebsart).
       parameters:
         - { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -3905,7 +3926,31 @@ components:
         name: { type: string }
         segment: { type: string, enum: [CI, B2C], example: CI }
         plan: { type: string, example: mvp }
+        betriebsart:
+          type: string
+          enum: [endkunde, betreiber]
+          nullable: true
+          description: >
+            The explicit U0 shell-frame override; null = automatic (derived
+            from the segment).
+        betriebsartEffective:
+          type: string
+          enum: [endkunde, betreiber]
+          description: >
+            The resolved Betriebsart the portal shell keys on - the override
+            when set, else B2C -> endkunde / CI -> betreiber.
         createdAt: { type: string, format: date-time }
+    TenantContext:
+      type: object
+      description: >
+        The caller's tenant as the portal's login bootstrap reads it.
+        `betriebsart` is the EFFECTIVE shell frame (override wins, else
+        segment-derived) - resolved server-side in the one authoritative place.
+      properties:
+        tenantId: { type: string, format: uuid }
+        name: { type: string }
+        segment: { type: string, enum: [CI, B2C] }
+        betriebsart: { type: string, enum: [endkunde, betreiber] }
     CreateTenantRequest:
       type: object
       required: [name]
@@ -3945,6 +3990,14 @@ components:
       properties:
         name: { type: string }
         segment: { type: string, enum: [CI, B2C], description: "Defaults to 'CI'." }
+        betriebsart:
+          type: string
+          enum: [endkunde, betreiber]
+          nullable: true
+          description: >
+            Full-representation U0 shell-frame override: 'endkunde'/'betreiber'
+            set it, null (or omitted) clears it back to the automatic
+            segment-derived default.
     DeleteTenantRequest:
       type: object
       required: [confirmName]

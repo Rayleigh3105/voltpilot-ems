@@ -5,8 +5,9 @@ import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
 import { AuthScreen, TrustRow } from './components/AuthScreen';
 import { isPlatformAdmin, login, loginWithCredentials } from './auth';
-import { api, ApiError, register, setTenantOverride, type Device, type Site } from './api';
+import { api, ApiError, register, setTenantOverride, type Betriebsart, type Device, type Site } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
+import { redirectOverviewToAnlage, showOverviewNav } from './betriebsart';
 import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
@@ -386,6 +387,10 @@ function UnifiedPortal() {
 
   const [sites, setSites] = useState<Site[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  // U0 shell frame: the tenant's EFFECTIVE Betriebsart from /tenant-context
+  // (resolved server-side; null until loaded or when the call fails - the
+  // shell decision then falls back to the v1 site-count heuristic).
+  const [betriebsart, setBetriebsart] = useState<Betriebsart | null>(null);
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -451,13 +456,24 @@ function UnifiedPortal() {
       if (!tenantReady) {
         setSites([]);
         setDevices([]);
+        setBetriebsart(null);
         setSelectedSite(null);
         return;
       }
       try {
-        const [s, d] = await Promise.all([api.listSites(), api.listDevices()]);
+        // The tenant-context read is fail-soft: an older backend (or a
+        // transient blip) leaves the frame on its last known value - never a
+        // broken portal, and never a mid-session shell flip from one failed
+        // background poll. A never-succeeding read keeps the initial null =
+        // the v1 site-count fallback.
+        const [s, d, ctx] = await Promise.all([
+          api.listSites(),
+          api.listDevices(),
+          api.tenantContext().catch(() => null),
+        ]);
         setSites(s);
         setDevices(d);
+        if (ctx) setBetriebsart(ctx.betriebsart);
         setSelectedSite((cur) =>
           selectSiteId ?? (cur && s.some((x) => x.id === cur) ? cur : s[0]?.id ?? null),
         );
@@ -490,20 +506,27 @@ function UnifiedPortal() {
     void reload();
   }, [reload, tenantId]);
 
-  // Single-plant merge (captain decision 2, 2026-07-07): a customer with fewer
-  // than two Anlagen has NO "Übersicht" - "Meine Anlage" is their home. So any
-  // landing on Übersicht (the default boot hash, an old bookmark) forwards to
-  // the Anlagen entry, which itself renders that one Anlage. The fleet
-  // Übersicht returns automatically from the second Anlage on. replace() keeps
+  // U0 shell frame: a customer WITHOUT a fleet level (endkunde below 2
+  // Anlagen - the single-plant merge, captain decision 2, 2026-07-07) has NO
+  // "Übersicht"; any landing there (default boot hash, old bookmark) forwards
+  // to the Anlagen entry. A BETREIBER is never forwarded - the Übersicht IS
+  // their fleet/portfolio landing, even with one Standort. replace() keeps
   // the history clean (Back leaves the app, never bounces here). Admins are
   // untouched - they browse tenants and keep the Übersicht.
   useEffect(() => {
-    if (isAdmin || !loaded || error != null) return;
-    if (route.page === 'uebersicht' && sites.length < 2) {
+    if (error != null) return;
+    const forward = redirectOverviewToAnlage({
+      isAdmin,
+      loaded,
+      tenantReady,
+      betriebsart,
+      siteCount: sites.length,
+    });
+    if (route.page === 'uebersicht' && forward) {
       window.location.replace(hashForRoute(pageRoute('anlagen')));
       setRoute(pageRoute('anlagen'));
     }
-  }, [isAdmin, loaded, error, sites.length, route.page]);
+  }, [isAdmin, loaded, tenantReady, betriebsart, error, sites.length, route.page]);
 
   // An Anlage opened by route is also the context of the site-scoped pages
   // (Marktpreise, Prognosequalität) - switching there stays on "their" site.
@@ -566,9 +589,17 @@ function UnifiedPortal() {
       page={page}
       onNavigate={navigate}
       isAdmin={isAdmin}
-      // Single-plant merge: the "Übersicht" nav item only appears from the
-      // second Anlage on (a single-Anlage customer's home IS "Meine Anlage").
-      showOverview={isAdmin || (loaded && tenantReady && sites.length >= 2)}
+      // U0: the "Übersicht" nav item follows the tenant's Betriebsart frame
+      // (betreiber = always the fleet level; endkunde = only from the second
+      // Anlage on, where it renders the calm card overview), not the raw site
+      // count. Unknown frame falls back to the v1 heuristic.
+      showOverview={showOverviewNav({
+        isAdmin,
+        loaded,
+        tenantReady,
+        betriebsart,
+        siteCount: sites.length,
+      })}
       showAddAnlage={showAddAnlage}
       onAddAnlage={() => setAddAnlageOpen(true)}
       counts={{
@@ -620,7 +651,12 @@ function UnifiedPortal() {
               </Card>
             )}
           {page === 'uebersicht' && (
-            <UebersichtPage {...customerProps} onNavigate={navigate} isAdmin={isAdmin} />
+            <UebersichtPage
+              {...customerProps}
+              onNavigate={navigate}
+              isAdmin={isAdmin}
+              betriebsart={betriebsart}
+            />
           )}
           {page === 'anlagen' && (
             <AnlagenPage

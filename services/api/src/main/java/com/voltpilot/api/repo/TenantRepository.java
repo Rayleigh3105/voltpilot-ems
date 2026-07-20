@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.tenant.Betriebsart;
 import com.voltpilot.api.web.dto.TenantDto;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -29,30 +30,35 @@ public class TenantRepository {
 
     public List<TenantDto> findAll() {
         return jdbc.query(
-                "SELECT id, name, segment, plan, created_at FROM tenant ORDER BY created_at",
+                "SELECT id, name, segment, plan, betriebsart, created_at FROM tenant "
+                        + "ORDER BY created_at",
                 TenantRepository::map);
     }
 
     public TenantDto create(String name, String segment) {
         return jdbc.queryForObject(
                 "INSERT INTO tenant (name, segment) VALUES (?, ?) "
-                        + "RETURNING id, name, segment, plan, created_at",
+                        + "RETURNING id, name, segment, plan, betriebsart, created_at",
                 TenantRepository::map, name, segment);
     }
 
-    /** Update a tenant's master data. Null when the tenant does not exist. */
-    public TenantDto update(UUID tenantId, String name, String segment) {
+    /**
+     * Update a tenant's master data. Null when the tenant does not exist.
+     * {@code betriebsart} is the full-representation U0 override: 'endkunde' /
+     * 'betreiber' set it, null clears it back to the segment-derived automatic.
+     */
+    public TenantDto update(UUID tenantId, String name, String segment, String betriebsart) {
         List<TenantDto> updated = jdbc.query(
-                "UPDATE tenant SET name = ?, segment = ? WHERE id = ? "
-                        + "RETURNING id, name, segment, plan, created_at",
-                TenantRepository::map, name, segment, tenantId);
+                "UPDATE tenant SET name = ?, segment = ?, betriebsart = ? WHERE id = ? "
+                        + "RETURNING id, name, segment, plan, betriebsart, created_at",
+                TenantRepository::map, name, segment, betriebsart, tenantId);
         return updated.isEmpty() ? null : updated.get(0);
     }
 
     /** The tenant by id, or null. */
     public TenantDto findById(UUID tenantId) {
         List<TenantDto> found = jdbc.query(
-                "SELECT id, name, segment, plan, created_at FROM tenant WHERE id = ?",
+                "SELECT id, name, segment, plan, betriebsart, created_at FROM tenant WHERE id = ?",
                 TenantRepository::map, tenantId);
         return found.isEmpty() ? null : found.get(0);
     }
@@ -152,11 +158,15 @@ public class TenantRepository {
 
     private static TenantDto map(java.sql.ResultSet rs, int i) throws java.sql.SQLException {
         OffsetDateTime created = rs.getObject("created_at", OffsetDateTime.class);
+        String segment = rs.getString("segment");
+        String betriebsart = rs.getString("betriebsart");
         return new TenantDto(
                 rs.getObject("id", UUID.class),
                 rs.getString("name"),
-                rs.getString("segment"),
+                segment,
                 rs.getString("plan"),
+                betriebsart,
+                Betriebsart.effective(betriebsart, segment),
                 created != null ? created.toInstant() : null);
     }
 }

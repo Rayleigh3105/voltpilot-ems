@@ -6,6 +6,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
   api,
+  type Betriebsart,
   type Device,
   type Earnings,
   type EarningsRange,
@@ -13,6 +14,7 @@ import {
   type Site,
 } from '../api';
 import { currentUser } from '../auth';
+import { isFleetShell } from '../betriebsart';
 import { fleetDailySaved, fleetKind, premiumDetail, premiumIncluded } from '../fleet';
 import { anlageRoute, type Route } from '../nav';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
@@ -34,21 +36,28 @@ interface UebersichtProps {
   onNavigate: (route: Route) => void;
   onReload: (selectSiteId?: string) => void;
   isAdmin?: boolean;
+  /** U0 shell frame (effective, from /tenant-context); null = unknown. */
+  betriebsart?: Betriebsart | null;
 }
 
 /**
- * The ADAPTIVE Übersicht landing: customers with several Anlagen get the
- * fleet mode - money hero, fleet status sentence, per-Anlage cards - and a
- * card tap opens that Anlage's own page (#/anlage/{id}, the IA's one place
- * per Anlage). For a single-Anlage customer the Übersicht IS the
- * Anlagen-Seite - their whole world is one Anlage, so there is exactly one
- * page telling its story (no duplicated hero blocks).
+ * The ADAPTIVE Übersicht landing, framed by the U0 Betriebsart: a BETREIBER
+ * tenant gets the fleet mode from the FIRST Standort on - the Übersicht is
+ * their portfolio landing (money hero, fleet status sentence, per-Anlage
+ * cards; a card tap opens that Anlage's own page #/anlage/{id}).
+ * // TODO(U5, #516): real portfolio page - until it ships, the betreiber
+ * // shell lands on this interim fleet Übersicht (cards, no operator table).
+ * An ENDKUNDE tenant never sees operator chrome: with one Anlage the
+ * Übersicht IS the Anlagen-Seite (their whole world is one Anlage, no
+ * duplicated hero blocks); with 2-3 Anlagen they get the same calm CARD
+ * overview - by design never a portfolio table (design vp-ems-ui-overhaul
+ * §2.3).
  */
 export function UebersichtPage(props: UebersichtProps) {
   if (props.sites.length === 0) {
     return <UebersichtEmpty {...props} />;
   }
-  if (props.sites.length === 1) {
+  if (!isFleetShell(props.betriebsart ?? null, props.sites.length)) {
     const site = props.sites[0];
     return (
       <AnlageSeite

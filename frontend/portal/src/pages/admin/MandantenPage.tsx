@@ -426,6 +426,10 @@ function TenantDetailDrawer({
       >
         <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
           <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
+          <Badge variant="tint">
+            {betriebsartLabel(tenant.betriebsartEffective)}
+            {tenant.betriebsart == null ? ' (automatisch)' : ''}
+          </Badge>
           <Badge variant="tint">Tarif {tenant.plan.toUpperCase()}</Badge>
           <span className="vp-mono" style={{ alignSelf: 'center' }}>{tenant.id}</span>
           {!editing && (
@@ -586,7 +590,7 @@ function TenantDetailDrawer({
   );
 }
 
-/** Inline edit form of the tenant drawer: name + segment (same fields as create). */
+/** Inline edit form of the tenant drawer: name + segment + Betriebsart (U0). */
 function TenantEditForm({
   tenant,
   onCancel,
@@ -598,6 +602,8 @@ function TenantEditForm({
 }) {
   const [name, setName] = useState(tenant.name);
   const [segment, setSegment] = useState(tenant.segment);
+  // '' = Automatisch (no override stored; the segment derives the shell).
+  const [betriebsart, setBetriebsart] = useState(tenant.betriebsart ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -606,12 +612,16 @@ function TenantEditForm({
     setBusy(true);
     setError(null);
     try {
-      const updated = await adminApi.updateTenant(tenant.id, { name: name.trim(), segment });
+      const updated = await adminApi.updateTenant(tenant.id, {
+        name: name.trim(),
+        segment,
+        betriebsart: betriebsart === '' ? null : (betriebsart as 'endkunde' | 'betreiber'),
+      });
       onSaved(updated);
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 400
-          ? 'Ungültige Eingabe. Bitte prüfen Sie Name und Segment.'
+          ? 'Ungültige Eingabe. Bitte prüfen Sie Name, Segment und Betriebsart.'
           : 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
       );
     } finally {
@@ -641,6 +651,25 @@ function TenantEditForm({
             <option value="B2C">B2C (Privat)</option>
           </select>
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <label htmlFor="edit-tenant-betriebsart" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
+            Betriebsart (Portal-Ansicht)
+          </label>
+          <select
+            id="edit-tenant-betriebsart"
+            className="vp-select"
+            value={betriebsart}
+            onChange={(e) => setBetriebsart(e.target.value)}
+          >
+            <option value="">Automatisch (aus Segment abgeleitet)</option>
+            <option value="endkunde">Endkunde (Cockpit für die eigene Anlage)</option>
+            <option value="betreiber">Betreiber (Flotten-/Portfolio-Ansicht)</option>
+          </select>
+          <p className="vp-muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+            Bestimmt die Navigation des Kundenportals. Automatisch: B2C →
+            Endkunde, CI → Betreiber.
+          </p>
+        </div>
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}
       <div style={{ display: 'flex', gap: 'var(--vp-space-2)', justifyContent: 'flex-end', marginTop: 'var(--vp-space-4)' }}>
@@ -659,4 +688,11 @@ function segmentLabel(segment: string): string {
   if (segment === 'CI') return 'Gewerbe & Industrie';
   if (segment === 'B2C') return 'Privat';
   return segment;
+}
+
+/** German label of the U0 shell frame (effective Betriebsart). */
+function betriebsartLabel(betriebsart: string): string {
+  if (betriebsart === 'endkunde') return 'Endkunde';
+  if (betriebsart === 'betreiber') return 'Betreiber';
+  return betriebsart;
 }

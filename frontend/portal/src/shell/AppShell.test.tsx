@@ -45,8 +45,8 @@ describe('AppShell "＋ Anlage hinzufügen" header action', () => {
 
 describe('AppShell admin tenant switcher', () => {
   const tenants = [
-    { id: 't-1', name: 'Stadtwerke Musterstadt', segment: 'CI', plan: 'basic', createdAt: '2026-01-01T00:00:00Z' },
-    { id: 't-2', name: 'Familie Kaiser', segment: 'B2C', plan: 'basic', createdAt: '2026-01-01T00:00:00Z' },
+    { id: 't-1', name: 'Stadtwerke Musterstadt', segment: 'CI', plan: 'basic', betriebsart: null, betriebsartEffective: 'betreiber' as const, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 't-2', name: 'Familie Kaiser', segment: 'B2C', plan: 'basic', betriebsart: null, betriebsartEffective: 'endkunde' as const, createdAt: '2026-01-01T00:00:00Z' },
   ];
 
   it('renders the tenant switcher with an "Alle Mandanten" default for admins', () => {
