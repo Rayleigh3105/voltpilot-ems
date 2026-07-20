@@ -215,6 +215,17 @@ authoritative implementations + their proofs:
   flow activation (root AGENTS.md "flowc-serve bridge"); `serve.test.js` pins
   the graph→artifact→pinned-hash path. Keep the module dependency-free —
   `serve.js`/`Dockerfile` copy only `canonicalize.js`/`catalog.js`/`compile.js`.
+  **U3 (#514) added to `catalog.js`:** `vp.logic.and`/`.or` (bool combinators,
+  two `a`/`b` inputs → `result`; the generated body combines the last value PER
+  `msg.topic` — Node-RED delivers all wires on one input, so distinct per-branch
+  topics are an edge-runtime refinement), `vp.price.current` (→ `vp-feed`
+  `feed:'price_current'`, a scalar the palette must learn — edge follow-up), and
+  `vp.schedule.window` now accepts the editor's ENUM `days`
+  (`alle`/`werktage`/`wochenende` → day-number array via `scheduleDays()`); the
+  old `0..6`-array-only rule made EVERY schedule flow un-compilable. New fixtures
+  `flow-graph.valid.{compound,price}-wallbox.json` + `pinned-{compound,price}-hash.txt`.
+  The type SET stays synced with the api/portal catalogs (the `compile.test.js`
+  drift guard) — add a node to all three together.
 - **Flow deployment** (`core/internal/flowdeploy`, `agent/flows.go`):
   retained `…/v2/flows` set → verify (hash / semver gates / capabilities;
   palette version LIVE from NR `GET /nodes`, never an env) → per-flow Admin

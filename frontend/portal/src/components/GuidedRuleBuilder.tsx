@@ -53,12 +53,19 @@ function emptyCond(readable: EditorEntity[]): CondForm {
   };
 }
 
+function parseNum(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed.replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
 function buildCondition(f: CondForm): GuidedCondition | null {
   if (f.kind === 'schedule') {
     return { kind: 'schedule', from: f.from, to: f.to, days: f.days };
   }
-  const threshold = Number(f.threshold.replace(',', '.'));
-  if (!Number.isFinite(threshold)) return null;
+  const threshold = parseNum(f.threshold);
+  if (threshold === null) return null;
   if (f.kind === 'price') {
     return { kind: 'price', direction: f.direction, threshold };
   }
@@ -68,11 +75,14 @@ function buildCondition(f: CondForm): GuidedCondition | null {
 
 export function GuidedRuleBuilder({
   entities,
+  siteId,
   onCancel,
   onBuild,
   busy = false,
 }: {
   entities: EditorEntity[];
+  /** Stamped onto the emitted document so it validates clean before the save. */
+  siteId?: string;
   onCancel: () => void;
   /** Emit the rule as a document + its name (ready to create + save). */
   onBuild: (name: string, doc: FlowDocument) => void;
@@ -121,8 +131,8 @@ export function GuidedRuleBuilder({
         return;
       }
       if (actionKind === 'setpoint') {
-        const value = Number(setpointValue.replace(',', '.'));
-        if (!Number.isFinite(value)) {
+        const value = parseNum(setpointValue);
+        if (value === null) {
           setError('Bitte einen Sollwert als Zahl (kW) eingeben.');
           return;
         }
@@ -132,7 +142,8 @@ export function GuidedRuleBuilder({
       }
     }
     const rule: GuidedRule = { conditions, combinator, action };
-    onBuild(name.trim() || 'Neue Automation', buildGuidedFlow(rule, name.trim() || 'Neue Automation'));
+    const finalName = name.trim() || 'Neue Automation';
+    onBuild(finalName, buildGuidedFlow(rule, finalName, siteId));
   };
 
   return (

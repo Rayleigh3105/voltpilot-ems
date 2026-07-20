@@ -211,6 +211,7 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
                 </div>
                 <GuidedRuleBuilder
                   entities={entities}
+                  siteId={site.id}
                   busy={busy}
                   onCancel={() => setGuided(false)}
                   onBuild={(name, doc) => { setGuided(false); void openSaved(name, doc); }}
