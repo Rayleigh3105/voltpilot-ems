@@ -21,7 +21,6 @@ import { LocationMap } from '../components/LocationMap';
 import { TariffFields } from '../components/TariffFields';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
-import { ErzeugerSourcesPanel } from '../components/ErzeugerSourcesPanel';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { InfoTip } from '../components/InfoTip';
 import { MastrDrawer } from '../components/MastrDrawer';
@@ -488,8 +487,12 @@ export function TechnikSection({
         </>
       )}
       <div className="vp-tech-sub">
-        <h3 className="vp-tech-sub-title">Weitere Erzeuger</h3>
-        <ErzeugerSourcesPanel siteId={site.id} />
+        <h3 className="vp-tech-sub-title">Weitere Geräte &amp; Quellen</h3>
+        <p className="vp-note" style={{ marginTop: 0 }}>
+          Zusätzliche Erzeuger, Zähler und Verbraucher verwalten Sie jetzt gebündelt unter{' '}
+          <a href={`#/anlage/${site.id}/entitaeten`}>Geräte</a> - dort erscheinen sie automatisch,
+          sobald Ihr Gerät sie meldet.
+        </p>
       </div>
     </TechCard>
   );

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryRepository.BatteryAsset;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
+import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -73,6 +74,7 @@ public class EntityRegistryService {
     private final ObjectProvider<EntityRegistryPublisher> publisher;
     private final ObjectMapper mapper;
     private final EntityTypeCatalog catalog;
+    private final AssetRepository assets;
     private final Clock clock;
 
     /**
@@ -84,17 +86,18 @@ public class EntityRegistryService {
     @org.springframework.beans.factory.annotation.Autowired
     public EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
-            EntityTypeCatalog catalog) {
-        this(repo, publisher, mapper, catalog, Clock.systemUTC());
+            EntityTypeCatalog catalog, AssetRepository assets) {
+        this(repo, publisher, mapper, catalog, assets, Clock.systemUTC());
     }
 
     EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
-            EntityTypeCatalog catalog, Clock clock) {
+            EntityTypeCatalog catalog, AssetRepository assets, Clock clock) {
         this.repo = repo;
         this.publisher = publisher;
         this.mapper = mapper;
         this.catalog = catalog;
+        this.assets = assets;
         this.clock = clock;
     }
 
@@ -340,6 +343,84 @@ public class EntityRegistryService {
         UUID tenantId = TenantContext.get();
         UUID pointId = repo.createEntityPoint(tenantId, siteId, entityType, label, control);
         repo.setEntityConfig(pointId, entityType, write(caps), write(g));
+        pushRegistryBestEffort(siteId);
+        return repo.entityForSite(siteId, pointId);
+    }
+
+    /**
+     * ADOPT an edge-reported source into a v2 entity (U2, report §3.3): the
+     * customer's :8484 device reports a source (go-e wallbox, AC-coupled PV, a
+     * grid meter); this creates the matching entity in ONE step, prefilled from
+     * the report + the type catalog, and PINS it to the reporting source
+     * ({@code edgeSourceId}) so the "Vom Gerät gemeldet" matcher is
+     * deterministic. Idempotent: re-adopting the same source returns the
+     * existing entity (never a duplicate - the partial-unique index would
+     * refuse it anyway).
+     *
+     * <p>Two paths behind one call, mirroring {@link #createEntity} vs the v1
+     * measurement-point capture the panel it replaces did:
+     * <ul>
+     *   <li>a NON-composed consumer type (wallbox/heating-rod/generic-load) is a
+     *       v2-native entity - created exactly like {@code createEntity}, then
+     *       stamped with the source id;</li>
+     *   <li>a COMPOSED producer / grid-meter is recorded as a read-only source
+     *       measurement point (its kWp / MaStR SEE # are the customer-only
+     *       master data captured HERE - the ErzeugerSourcesPanel job, §3.4) and
+     *       composed into its entity from the catalog. A producer's kWp also
+     *       sums into the aggregate {@code asset.pv} the optimizer reads, exactly
+     *       as the retired panel did.</li>
+     * </ul>
+     * The battery-hybrid type is never adopted here (it is the primary inverter,
+     * set up via the battery editor + bootstrap).
+     */
+    @Transactional
+    public EntityRow adopt(UUID siteId, String edgeSourceId, String entityType, String label,
+            BigDecimal maxPowerKw, BigDecimal capacityKwp, String registryUnitId) {
+        if (edgeSourceId == null || edgeSourceId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "sourceId ist erforderlich.");
+        }
+        EntityRow existing = repo.entityByEdgeSource(siteId, edgeSourceId);
+        if (existing != null) {
+            return existing; // idempotent re-adoption
+        }
+        EntityTypeCatalog.EntityType type = catalog.find(entityType);
+        if (type == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Unbekannter Entitätstyp \"" + entityType
+                            + "\". Verfügbare Typen liefert der Typkatalog.");
+        }
+        UUID tenantId = TenantContext.get();
+        if (!type.composed()) {
+            EntityRow created = createEntity(siteId, entityType, label, maxPowerKw, null, null);
+            repo.setEdgeSource(created.id(), edgeSourceId);
+            return repo.entityForSite(siteId, created.id());
+        }
+        String role = switch (entityType) {
+            case TYPE_PRODUCER -> "pv-generation";
+            case TYPE_GRID_METER -> "grid-meter";
+            default -> throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Dieser Entitätstyp wird über den Wechselrichter/Speicher der Anlage "
+                            + "eingerichtet und kann nicht als Quelle übernommen werden.");
+        };
+        BigDecimal capacity = TYPE_PRODUCER.equals(entityType) ? capacityKwp : null;
+        UUID pointId = repo.createAdoptedPoint(tenantId, siteId, role,
+                label == null || label.isBlank() ? null : label, false, null, capacity,
+                registryUnitId == null || registryUnitId.isBlank() ? null : registryUnitId,
+                edgeSourceId);
+        // Compose the entity config from the catalog (same as the bootstrap).
+        if (TYPE_PRODUCER.equals(entityType)) {
+            EntityRow probe = new EntityRow(pointId, role, label, null, null, null, null, null,
+                    capacity, null, false, null, null, null, edgeSourceId);
+            repo.setEntityConfig(pointId, TYPE_PRODUCER, write(producerCapabilities(probe)),
+                    write(producerGuards(probe)));
+            if (capacity != null) {
+                assets.addPvCapacity(tenantId, siteId, capacity);
+            }
+        } else {
+            repo.setEntityConfig(pointId, TYPE_GRID_METER, write(gridMeterCapabilities()),
+                    write(gridMeterGuards()));
+        }
         pushRegistryBestEffort(siteId);
         return repo.entityForSite(siteId, pointId);
     }

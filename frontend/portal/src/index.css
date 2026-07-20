@@ -4676,6 +4676,146 @@ button.vp-tech-card-h.toggle {
 }
 
 /* ============================================================================
+   U2 "Geräte" area: role pills, strategy chips, Rollen & Zuordnung, adoption.
+   (design data/vp-ems-ui-overhaul/report.md §3)
+   ============================================================================ */
+.vp-entities { display: flex; flex-direction: column; gap: var(--vp-space-5); }
+.vp-entities > .vp-card { min-width: 0; }
+
+/* Role pills + strategy chips on an entity card */
+.vp-role-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.vp-role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #334;
+  background: var(--vp-surface-2, #f1f5f9);
+  border: 1px solid transparent;
+}
+.vp-role-pill.vp-role-pv { background: var(--vp-flow-pv-soft); color: #92590a; }
+.vp-role-pill.vp-role-storage { background: var(--vp-flow-batt-soft); color: #166534; }
+.vp-role-pill.vp-role-grid { background: var(--vp-flow-grid-soft); color: #0f6d6b; }
+.vp-role-pill.vp-role-consumer { background: var(--vp-flow-load-soft); color: #5b3aa8; }
+.vp-role-pill-star { font-weight: 700; }
+.vp-strategy-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.vp-strategy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  text-decoration: none;
+  color: var(--vp-action, #2C5282);
+  background: color-mix(in srgb, var(--vp-action, #2C5282) 9%, transparent);
+}
+.vp-strategy-chip:hover { text-decoration: underline; }
+
+/* Rollen & Zuordnung */
+.vp-rollen-auto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--vp-space-3);
+  color: #166534;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.vp-role-boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--vp-space-4);
+}
+.vp-role-box {
+  min-width: 0;
+  border: 1px solid var(--vp-border, #e3e8ef);
+  border-top: 3px solid var(--vp-border, #cbd5e1);
+  border-radius: var(--vp-radius-md, 12px);
+  padding: var(--vp-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+}
+.vp-role-box.vp-role-pv { border-top-color: var(--vp-flow-pv); }
+.vp-role-box.vp-role-storage { border-top-color: var(--vp-flow-batt); }
+.vp-role-box.vp-role-grid { border-top-color: var(--vp-flow-grid); }
+.vp-role-box.vp-role-consumer { border-top-color: var(--vp-flow-load); }
+.vp-role-box-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.vp-role-box-name { font-weight: 700; }
+.vp-role-sum { font-size: 0.85rem; color: var(--vp-text-muted, #667); font-variant-numeric: tabular-nums; }
+.vp-role-soc { color: var(--vp-flow-batt); }
+.vp-role-members { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.vp-role-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--vp-surface-2, #f6f8fb);
+  font-size: 0.85rem;
+}
+.vp-role-member.primary { background: color-mix(in srgb, var(--vp-flow-grid) 10%, #f6f8fb); }
+.vp-role-member-main { display: flex; flex-direction: column; min-width: 0; }
+.vp-role-member-name { font-weight: 600; overflow-wrap: anywhere; }
+.vp-role-member-main .vp-muted { font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.vp-massgeblich { margin-left: auto; font-size: 0.74rem; font-weight: 700; color: #0f6d6b; white-space: nowrap; }
+.vp-role-member-action,
+.vp-role-add,
+.vp-role-picker-item {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--vp-action, #2C5282);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.vp-role-member-action:disabled, .vp-role-add:disabled { opacity: 0.5; cursor: default; }
+.vp-role-add {
+  align-self: flex-start;
+  margin-left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--vp-space-1);
+}
+.vp-role-picker { display: flex; flex-direction: column; gap: 4px; margin-top: var(--vp-space-1); }
+.vp-role-picker-item {
+  margin-left: 0;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid var(--vp-border, #e3e8ef);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+.vp-role-picker-item:hover { background: var(--vp-surface-2, #f1f5f9); }
+
+/* Vom Gerät gemeldet (adoption bridge) */
+.vp-gemeldet-item {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-3) 0;
+  border-top: 1px solid var(--vp-border, #eef2f7);
+}
+.vp-gemeldet-main { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.vp-gemeldet-name { font-weight: 600; overflow-wrap: anywhere; }
+.vp-gemeldet-main .vp-muted { font-size: 0.8rem; }
+.vp-gemeldet-new .vp-gemeldet-name { color: #92590a; }
+.vp-gemeldet-hint { font-size: 0.8rem; color: var(--vp-text-muted, #667); white-space: nowrap; }
+.vp-gemeldet-note { margin: var(--vp-space-3) 0 0; }
+.vp-plumbing code { font-family: var(--vp-font-mono, ui-monospace, monospace); font-size: 0.85em; }
+
+@media (max-width: 720px) {
+  .vp-role-boxes { grid-template-columns: 1fr; }
+  .vp-gemeldet-item { flex-wrap: wrap; }
+}
+
+/* ============================================================================
    Adaptive live view (AE2 energy flow + AE3 tiles / module strip)
    The N-node energy flow reuses .vp-flow-wrap; these style the profile chip,
    the read-only device switches on a tile, and the "Was läuft" module strip.

@@ -19,10 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class EntityObservedRepository {
 
-    /** One observed row. channelsJson is the raw JSON array of channel names. */
+    /** One observed row. channelsJson is the raw JSON array of channel names.
+     *  edgeRole/edgeBrand are the reported role/brand of a source='local' item
+     *  (U2 adoption: they seed the "als Entität übernehmen" type suggestion). */
     public record ObservedRow(UUID deviceId, String entityId, String source, String entityType,
             String health, String label, Instant lastTelemetryAt, String appliedRevision,
-            String channelsJson, Instant reportedAt) {}
+            String channelsJson, Instant reportedAt, String edgeRole, String edgeBrand) {}
 
     private final JdbcTemplate jdbc;
 
@@ -44,14 +46,14 @@ public class EntityObservedRepository {
             jdbc.update(
                     "INSERT INTO entity_observed_state (device_id, entity_id, tenant_id, site_id, "
                             + "source, entity_type, health, label, last_telemetry_at, "
-                            + "applied_revision, channels, reported_at) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)",
+                            + "applied_revision, channels, reported_at, edge_role, edge_brand) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
                     deviceId, row.entityId(), tenantId, siteId, row.source(), row.entityType(),
                     row.health(), row.label(),
                     row.lastTelemetryAt() == null ? null
                             : java.sql.Timestamp.from(row.lastTelemetryAt()),
                     row.appliedRevision(), row.channelsJson(),
-                    java.sql.Timestamp.from(reportedAt));
+                    java.sql.Timestamp.from(reportedAt), row.edgeRole(), row.edgeBrand());
         }
     }
 
@@ -60,8 +62,8 @@ public class EntityObservedRepository {
         return jdbc.query(
                 "SELECT device_id, entity_id, source, entity_type, health, label, "
                         + "last_telemetry_at, applied_revision, channels::text AS channels_json, "
-                        + "reported_at FROM entity_observed_state WHERE site_id = ? "
-                        + "ORDER BY source, entity_id",
+                        + "reported_at, edge_role, edge_brand FROM entity_observed_state "
+                        + "WHERE site_id = ? ORDER BY source, entity_id",
                 EntityObservedRepository::mapRow, siteId);
     }
 
@@ -77,6 +79,8 @@ public class EntityObservedRepository {
                 last == null ? null : last.toInstant(),
                 rs.getString("applied_revision"),
                 rs.getString("channels_json"),
-                rs.getTimestamp("reported_at").toInstant());
+                rs.getTimestamp("reported_at").toInstant(),
+                rs.getString("edge_role"),
+                rs.getString("edge_brand"));
     }
 }

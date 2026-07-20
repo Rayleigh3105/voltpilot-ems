@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -191,6 +192,42 @@ public class FlowService {
                     versions.stream().map(FlowVersionRow::flowVersion).toList()));
         }
         return summaries;
+    }
+
+    /** One active strategy touching an entity (U2 "Ihre Geräte" strategy chip). */
+    public record EntityStrategyDto(UUID flowId, String flowName) {}
+
+    /**
+     * Which ACTIVE flows touch each of the site's entities (U2, report §3.2):
+     * the entity→flow map the "Ihre Geräte" cards render as read-only strategy
+     * chips (a link into Steuerung), making the Entities⇄Flows model visible.
+     * Derived from each active flow document's D-13 claims ({@link FlowClaims}),
+     * so it agrees with what actually controls the entity. Tenant-scoped (RLS;
+     * foreign site 404). Keyed by entity id (string).
+     */
+    public Map<String, List<EntityStrategyDto>> entityStrategies(UUID siteId) {
+        requireSite(siteId);
+        Map<String, List<EntityStrategyDto>> byEntity = new LinkedHashMap<>();
+        for (FlowVersionRow row : flows.versionsForSite(siteId)) {
+            if (!"active".equals(row.lifecycle())) {
+                continue;
+            }
+            JsonNode doc = parse(row.documentJson());
+            if (doc == null) {
+                continue;
+            }
+            Set<String> entityIds = new LinkedHashSet<>();
+            for (FlowClaims.DerivedClaim claim : FlowClaims.derive(doc, catalog)) {
+                if (claim.entityId() != null && !claim.entityId().isBlank()) {
+                    entityIds.add(claim.entityId());
+                }
+            }
+            for (String entityId : entityIds) {
+                byEntity.computeIfAbsent(entityId, k -> new ArrayList<>())
+                        .add(new EntityStrategyDto(row.flowId(), row.name()));
+            }
+        }
+        return byEntity;
     }
 
     /**

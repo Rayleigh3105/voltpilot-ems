@@ -522,6 +522,8 @@ export interface SiteEntity {
   } | null;
   syncStatus: EntitySyncStatus;
   observed: EntityObserved | null;
+  /** The edge source this entity was adopted from (U2 matcher), else null. */
+  edgeSourceId: string | null;
 }
 
 /** The composed registry Soll + the edge's echoed revision. */
@@ -533,12 +535,17 @@ export interface EntityRegistryState {
   reportedAt: string | null;
 }
 
-/** One edge-local commissioning item (inverter/source; never auto-imported). */
+/** One edge-local commissioning item (inverter/source; the U2 adoption source). */
 export interface EntityLocalSetup {
   id: string;
   kind: string;
+  /** The reported role of a source (pv-generation | grid-meter | consumer), else null. */
+  role: string | null;
+  brand: string | null;
   label: string | null;
   reportedAt: string;
+  /** Non-null when a v2 entity was already adopted from this source. */
+  adoptedEntityId: string | null;
 }
 
 /** The whole "Geräte & Entitäten" surface for a site. */
@@ -586,6 +593,20 @@ export interface SiteTopology {
   schemaVersion: string;
   entities: TopologyEntity[];
   topology: Topology;
+}
+
+/** One capability→role assignment (U2 "Rollen & Zuordnung"). Blank role clears. */
+export interface TopologyRoleAssignment {
+  entityId: string;
+  channel: string;
+  role: string;
+  primary: boolean;
+}
+
+/** One active flow touching an entity (U2 strategy chip). */
+export interface EntityStrategy {
+  flowId: string;
+  flowName: string;
 }
 
 // --- AE7 usage profile (adaptation axis 2: emphasis) -------------------------
@@ -1161,6 +1182,19 @@ export const api = {
     request<SiteEntities>(`/api/v1/sites/${siteId}/entities`),
   /** AE1 topology read-model (adaptive energy flow + tiles). Empty for un-migrated sites. */
   topology: (siteId: string) => request<SiteTopology>(`/api/v1/sites/${siteId}/topology`),
+  /**
+   * Customer capability→role assignment (U2 "Rollen & Zuordnung"): set roles for
+   * the caller's own site (RLS-fenced); returns the recomputed read-model. A
+   * role never widens control, so no extra gate. Admins go through the switcher.
+   */
+  setTopologyRoles: (siteId: string, assignments: TopologyRoleAssignment[]) =>
+    request<SiteTopology>(`/api/v1/sites/${siteId}/topology-roles`, {
+      method: 'PUT',
+      body: JSON.stringify({ assignments }),
+    }),
+  /** Which active flows touch each entity (U2 strategy chips). Keyed by entity id. */
+  entityStrategies: (siteId: string) =>
+    request<Record<string, EntityStrategy[]>>(`/api/v1/sites/${siteId}/entity-strategies`),
   /** AE7 usage profile + emphasis map (the adaptive view's second axis). */
   usageProfile: (siteId: string) =>
     request<SiteUsageProfile>(`/api/v1/sites/${siteId}/profile`),

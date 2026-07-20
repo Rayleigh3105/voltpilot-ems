@@ -60,6 +60,21 @@ public class AdminEntityRegistryController {
             JsonNode capabilities,
             JsonNode guards) {}
 
+    /**
+     * Adopt an edge-reported source (U2, report §3.3): {@code sourceId} is the
+     * edge source id from the heartbeat local_setup; {@code entityType} the
+     * catalog type (suggested from the reported role, confirmable by the admin).
+     * capacityKwp / registryUnitId are the customer-only master data captured
+     * once here (the ErzeugerSourcesPanel job, §3.4).
+     */
+    public record AdoptRequest(
+            @Size(max = 128) String sourceId,
+            @Size(max = 63) String entityType,
+            @Size(max = 200) String label,
+            @DecimalMin("0.0") @DecimalMax("10000.0") BigDecimal maxPowerKw,
+            @DecimalMin("0.0") @DecimalMax("100000.0") BigDecimal capacityKwp,
+            @Size(max = 64) String registryUnitId) {}
+
     private final SiteRepository sites;
     private final EntityRegistryRepository repo;
     private final EntityRegistryService service;
@@ -90,6 +105,23 @@ public class AdminEntityRegistryController {
         }
         return toDto(service.createEntity(siteId, request.entityType(), request.label(),
                 request.maxPowerKw(), request.capabilities(), request.guards()));
+    }
+
+    /**
+     * Adopt an edge-reported source into a v2 entity (U2 adoption bridge,
+     * admin-only first increment). Idempotent per {@code sourceId}.
+     */
+    @PostMapping("/adopt")
+    public EntityAdminDto adopt(@PathVariable UUID siteId,
+            @Valid @RequestBody AdoptRequest request) {
+        requireSite(siteId);
+        if (request.entityType() == null || request.entityType().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "entityType ist erforderlich.");
+        }
+        return toDto(service.adopt(siteId, request.sourceId(), request.entityType(),
+                request.label(), request.maxPowerKw(), request.capacityKwp(),
+                request.registryUnitId()));
     }
 
     /** Edit an entity (label; config only for non-composed types). */

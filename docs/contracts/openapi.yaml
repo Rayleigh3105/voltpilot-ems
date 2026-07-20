@@ -681,6 +681,77 @@ paths:
               schema: { $ref: "#/components/schemas/TopologyResponse" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/topology-roles:
+    put:
+      tags: [topology]
+      summary: Assign capabilities to roles (customer, "Rollen & Zuordnung").
+      description: >
+        The customer twin of the admin role-assignment (U2 "Rollen & Zuordnung",
+        report §3.2): a Portal-User re-assigns a capability's role and picks the
+        maßgebliche (primary) measurement for THEIR OWN site. Tenant-scoped (RLS;
+        foreign site = 404, never 403); admins reach it via the `X-Tenant-Id`
+        switcher. Safe by construction: a role is presentation-level and never
+        widens control (guards/arbitration key on capabilities, not roles), so
+        this shares the admin rule verbatim with no relaxed gate. A blank role
+        reverts to the DefaultRole mapping; an unknown role is 400.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                assignments:
+                  type: array
+                  items:
+                    type: object
+                    required: [entityId, channel]
+                    properties:
+                      entityId: { type: string, format: uuid }
+                      channel: { type: string, example: power_kw }
+                      role:
+                        type: string
+                        description: pv | storage | grid | consumer; blank clears the override.
+                        example: grid
+                      primary: { type: boolean }
+      responses:
+        "200":
+          description: The recomputed topology read-model.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TopologyResponse" }
+        "400": { description: Unknown role or missing entityId/channel. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or entity not found for this tenant. }
+  /api/v1/sites/{siteId}/entity-strategies:
+    get:
+      tags: [topology]
+      summary: Which active flows touch each entity (U2 strategy chips).
+      description: >
+        The entity→active-flow map the "Ihre Geräte" cards render as read-only
+        strategy chips (a link into Steuerung), derived from each active flow
+        document's D-13 claims. Keyed by entity id. Tenant-scoped (RLS; foreign
+        site 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: entityId → list of {flowId, flowName}.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      flowId: { type: string, format: uuid }
+                      flowName: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/admin/sites/{siteId}/topology-roles:
     put:
       tags: [topology, admin]
@@ -1523,6 +1594,49 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Site not found (or no tenant selected). }
+  /api/v1/admin/sites/{siteId}/v2-entities/adopt:
+    post:
+      tags: [admin]
+      summary: Adopt an edge-reported source into a v2 entity (U2 "Vom Gerät gemeldet").
+      description: >
+        U2 adoption bridge (report §3.3, admin-only first increment): the
+        customer's :8484 device reports a source (go-e wallbox, AC-coupled PV, a
+        grid meter) in its heartbeat local_setup; this creates the matching
+        entity in ONE step, prefilled from the report + the type catalog, and
+        PINS it to the reporting source (`sourceId`) so the "Vom Gerät gemeldet"
+        matcher is deterministic and re-adoption is idempotent (a re-adopt
+        returns the existing entity). A non-composed consumer type is created
+        like a v2-native entity; a composed producer/grid-meter is recorded as a
+        read-only source measurement point (its kWp / MaStR SEE # are the
+        customer-only master data captured here - the ErzeugerSourcesPanel job,
+        §3.4). Platform-admin, through the RLS-scoped X-Tenant-Id switcher.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId, entityType]
+              properties:
+                sourceId: { type: string, description: The edge source id from local_setup. }
+                entityType: { type: string, example: wallbox }
+                label: { type: string }
+                maxPowerKw: { type: number, description: Consumer rated power (bounds commands). }
+                capacityKwp: { type: number, description: Producer nameplate (kWp). }
+                registryUnitId: { type: string, description: MaStR SEE number of the source. }
+      responses:
+        "200":
+          description: The adopted (or already-existing) entity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2Entity" }
+        "400": { description: Missing sourceId/entityType or unknown type. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Site not found (or no tenant selected). }
+        "422": { description: The type cannot be adopted as a source (e.g. battery-hybrid). }
   /api/v1/admin/sites/{siteId}/v2-entities/preview:
     get:
       tags: [admin]
