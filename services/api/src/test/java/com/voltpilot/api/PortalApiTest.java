@@ -1760,6 +1760,72 @@ class PortalApiTest {
                 .isEqualTo(otherSites.size());
     }
 
+    /**
+     * U5 portfolio rollup: GET /overview additionally carries per-site entity
+     * role counts + the effective AE7 usage profile (so the portfolio table
+     * renders without N-per-site calls) plus fleet Σ storage kWh/kW, all
+     * RLS-scoped.
+     */
+    @Test
+    void overviewCarriesPerSiteRoleCountsUsageProfileAndStorageTotals() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        // A direktvermarktung site (=> arbitrage profile) with a battery asset
+        // and a mixed entity set: 2 storage + 3 producers + 1 wallbox + 1 meter.
+        String siteId = createSite(demo, "Portfolio Werk Nord", "DE-LU", "direktvermarktung");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
+                + siteId + "', 'battery', 50, 25, 25, 92)");
+        exec("INSERT INTO measurement_point (tenant_id, site_id, role, entity_type) VALUES "
+                + "('" + tenantA + "', '" + siteId + "', 'battery-hybrid', 'battery-hybrid'), "
+                + "('" + tenantA + "', '" + siteId + "', 'battery-hybrid', 'battery-hybrid'), "
+                + "('" + tenantA + "', '" + siteId + "', 'producer', 'producer'), "
+                + "('" + tenantA + "', '" + siteId + "', 'producer', 'producer'), "
+                + "('" + tenantA + "', '" + siteId + "', 'producer', 'producer'), "
+                + "('" + tenantA + "', '" + siteId + "', 'wallbox', 'wallbox'), "
+                + "('" + tenantA + "', '" + siteId + "', 'grid-meter', 'grid-meter')");
+        // A NULL-entity_type point (a v1 source) must NOT be counted as an entity.
+        exec("INSERT INTO measurement_point (tenant_id, site_id, role) VALUES "
+                + "('" + tenantA + "', '" + siteId + "', 'pv-generation')");
+
+        // A second fresh site with NO entities and eigenverbrauch => private,
+        // all role counts zero (registry-less honesty).
+        String plainId = createSite(demo, "Portfolio Haus Süd", "DE-LU", "eigenverbrauch");
+
+        Map<String, Object> site = overviewSite(demo, siteId);
+        assertThat(site).containsEntry("usageProfile", "arbitrage");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> roles = (Map<String, Object>) site.get("roleCounts");
+        assertThat(roles).as("Σ entities per role").isNotNull();
+        assertThat(((Number) roles.get("storage")).intValue()).isEqualTo(2);
+        assertThat(((Number) roles.get("pv")).intValue()).isEqualTo(3);
+        assertThat(((Number) roles.get("consumer")).intValue()).isEqualTo(1);
+        assertThat(((Number) roles.get("grid")).intValue()).isEqualTo(1);
+
+        Map<String, Object> plain = overviewSite(demo, plainId);
+        assertThat(plain).containsEntry("usageProfile", "private");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> plainRoles = (Map<String, Object>) plain.get("roleCounts");
+        assertThat(((Number) plainRoles.get("storage")).intValue()).isZero();
+        assertThat(((Number) plainRoles.get("pv")).intValue()).isZero();
+
+        // Fleet Σ storage kWh/kW includes this battery (other tests may add more).
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        Map<String, Object> totals = map(res.getBody(), "totals");
+        assertThat(num(totals, "storageCapacityKwh")).isGreaterThanOrEqualTo(50.0);
+        assertThat(num(totals, "storagePowerKw")).isGreaterThanOrEqualTo(25.0);
+
+        // RLS: tenant B never sees these sites' rows or role counts.
+        List<Map<String, Object>> otherSites = list(rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody(), "sites");
+        assertThat(otherSites).extracting(x -> x.get("id")).doesNotContain(siteId, plainId);
+    }
+
     /** plant_kind: defaults to eigenverbrauch, editable through the site paths. */
     @Test
     void sitePlantKindDefaultsAndIsEditableViaSitePaths() {

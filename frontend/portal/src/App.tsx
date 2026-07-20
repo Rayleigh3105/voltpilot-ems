@@ -7,7 +7,12 @@ import { AuthScreen, TrustRow } from './components/AuthScreen';
 import { isPlatformAdmin, login, loginWithCredentials } from './auth';
 import { api, ApiError, register, setTenantOverride, type Betriebsart, type Device, type Site } from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
-import { redirectOverviewToAnlage, showOverviewNav } from './betriebsart';
+import {
+  redirectOverviewToAnlage,
+  redirectToPortfolio,
+  showOverviewNav,
+  showPortfolioNav,
+} from './betriebsart';
 import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
@@ -22,6 +27,7 @@ import { showAddAnlageButton } from './addAnlage';
 import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
 import { UebersichtPage } from './pages/UebersichtPage';
+import { PortfolioPage } from './pages/PortfolioPage';
 import { AnlagenPage } from './pages/AnlagenPage';
 import { MarktpreisePage } from './pages/DataPages';
 import { PrognosePage } from './pages/PrognosePage';
@@ -515,14 +521,25 @@ function UnifiedPortal() {
   // untouched - they browse tenants and keep the Übersicht.
   useEffect(() => {
     if (error != null) return;
-    const forward = redirectOverviewToAnlage({
-      isAdmin,
-      loaded,
-      tenantReady,
-      betriebsart,
-      siteCount: sites.length,
-    });
-    if (route.page === 'uebersicht' && forward) {
+    const shell = { isAdmin, loaded, tenantReady, betriebsart, siteCount: sites.length };
+    // Betreiber (U5): the Portfolio page is the landing. A betreiber landing on
+    // the default #/uebersicht boot hash / an old bookmark is sent to
+    // #/portfolio; a non-betreiber that hits #/portfolio (frame changed, stale
+    // bookmark) is sent back to #/uebersicht (which itself may forward an
+    // endkunde without a fleet level to their Anlage below).
+    if (redirectToPortfolio(shell)) {
+      if (route.page === 'uebersicht') {
+        window.location.replace(hashForRoute(pageRoute('portfolio')));
+        setRoute(pageRoute('portfolio'));
+      }
+      return;
+    }
+    if (route.page === 'portfolio' && loaded && tenantReady) {
+      window.location.replace(hashForRoute(pageRoute('uebersicht')));
+      setRoute(pageRoute('uebersicht'));
+      return;
+    }
+    if (route.page === 'uebersicht' && redirectOverviewToAnlage(shell)) {
       window.location.replace(hashForRoute(pageRoute('anlagen')));
       setRoute(pageRoute('anlagen'));
     }
@@ -600,6 +617,14 @@ function UnifiedPortal() {
         betriebsart,
         siteCount: sites.length,
       })}
+      // U5: a betreiber frame swaps "Übersicht" for the "Portfolio" landing.
+      showPortfolio={showPortfolioNav({
+        isAdmin,
+        loaded,
+        tenantReady,
+        betriebsart,
+        siteCount: sites.length,
+      })}
       showAddAnlage={showAddAnlage}
       onAddAnlage={() => setAddAnlageOpen(true)}
       counts={{
@@ -650,6 +675,14 @@ function UnifiedPortal() {
                 </Button>
               </Card>
             )}
+          {page === 'portfolio' && (
+            <PortfolioPage
+              sites={sites}
+              onNavigate={navigate}
+              onReload={(selectSiteId?: string) => void reload(selectSiteId)}
+              isAdmin={isAdmin}
+            />
+          )}
           {page === 'uebersicht' && (
             <UebersichtPage
               {...customerProps}

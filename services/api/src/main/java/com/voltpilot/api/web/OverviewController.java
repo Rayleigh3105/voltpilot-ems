@@ -1,6 +1,10 @@
 package com.voltpilot.api.web;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.history.HistoryRange;
+import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.repo.OverviewRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.web.dto.OverviewDto;
@@ -8,14 +12,19 @@ import com.voltpilot.api.web.dto.OverviewDto.OverviewDailySavingsDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewLiveDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewSiteDto;
 import com.voltpilot.api.web.dto.OverviewDto.OverviewTotalsDto;
+import com.voltpilot.api.web.dto.OverviewDto.RoleCountsDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,18 +48,28 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/overview")
 public class OverviewController {
 
+    private static final Logger log = LoggerFactory.getLogger(OverviewController.class);
+
     /** Portal liveness window - keep in sync with api.ts ONLINE_WINDOW_MS. */
     private static final Duration ONLINE_WINDOW = Duration.ofMinutes(5);
 
     /** Days of the hero's savings mini chart (incl. today). */
     private static final int DAILY_SAVINGS_DAYS = 14;
 
+    /** Strategy-node prefix the usage-profile deriver keys on (UsageProfileService). */
+    private static final String STRATEGY_PREFIX = "vp.strategy.";
+
     private final SiteRepository sites;
     private final OverviewRepository overview;
+    private final EntityTypeCatalog catalog;
+    private final ObjectMapper mapper;
 
-    public OverviewController(SiteRepository sites, OverviewRepository overview) {
+    public OverviewController(SiteRepository sites, OverviewRepository overview,
+            EntityTypeCatalog catalog, ObjectMapper mapper) {
         this.sites = sites;
         this.overview = overview;
+        this.catalog = catalog;
+        this.mapper = mapper;
     }
 
     @GetMapping
@@ -66,6 +85,10 @@ public class OverviewController {
         Map<UUID, BigDecimal> savingsPerSite =
                 overview.savingsPerSite(todayWindow.from(), todayWindow.to());
         java.util.Set<UUID> unlinkedBattery = overview.sitesWithUnlinkedBattery();
+        // U5 portfolio rollup: per-site entity role counts + usage profile, both
+        // in ONE round trip so the portfolio table renders without N calls.
+        Map<UUID, Map<String, Integer>> entityCounts = overview.entityTypeCountsPerSite();
+        Map<UUID, List<String>> activeFlows = overview.activeFlowDocumentsPerSite();
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -94,6 +117,7 @@ public class OverviewController {
                 totalSavings = totalSavings == null ? savings : totalSavings.add(savings);
             }
 
+            Map<String, Integer> typeCounts = entityCounts.getOrDefault(site.id(), Map.of());
             fleet.add(new OverviewSiteDto(
                     site.id(),
                     site.name(),
@@ -106,8 +130,12 @@ public class OverviewController {
                     worstStatus(deviceCount, onlineCount, waitingCount),
                     stats == null ? null : stats.lastSeenAt(),
                     live,
-                    savings));
+                    savings,
+                    roleCounts(typeCounts),
+                    usageProfile(site, typeCounts, activeFlows.getOrDefault(site.id(), List.of()))));
         }
+
+        OverviewRepository.StorageTotals storage = overview.storageTotals();
 
         List<OverviewDailySavingsDto> dailySavings = overview
                 .dailySavings(chartFrom, todayWindow.to()).stream()
@@ -117,8 +145,90 @@ public class OverviewController {
         return new OverviewDto(
                 fleet,
                 new OverviewTotalsDto(
-                        siteRows.size(), totalDevices, totalOnline, totalSavings, liveSitesCovered),
+                        siteRows.size(), totalDevices, totalOnline, totalSavings, liveSitesCovered,
+                        storage.capacityKwh(), storage.powerKw()),
                 dailySavings);
+    }
+
+    /**
+     * Σ v2 entities per role for the portfolio "Entitäten" badge: count each
+     * entity_type into its role via the catalog category (storage→storage,
+     * producer→pv, meter→grid, consumer→consumer). One entity counts once
+     * (a battery-hybrid is one storage entity, never also pv); unknown
+     * categories are ignored. A registry-less site yields all zeros.
+     */
+    private RoleCountsDto roleCounts(Map<String, Integer> typeCounts) {
+        int pv = 0;
+        int storage = 0;
+        int consumer = 0;
+        int grid = 0;
+        for (Map.Entry<String, Integer> e : typeCounts.entrySet()) {
+            EntityTypeCatalog.EntityType type = catalog.find(e.getKey());
+            String category = type == null ? "" : type.category();
+            int n = e.getValue();
+            switch (category) {
+                case "storage" -> storage += n;
+                case "producer" -> pv += n;
+                case "consumer" -> consumer += n;
+                case "meter" -> grid += n;
+                default -> { /* unknown/other category: not counted */ }
+            }
+        }
+        return new RoleCountsDto(pv, storage, consumer, grid);
+    }
+
+    /**
+     * The site's effective AE7 usage profile (arbitrage | peak | private) for
+     * the portfolio Profil-Chip - the SAME {@link UsageProfileDeriver} the
+     * profile endpoint runs, fed the signals derivable from this ONE overview
+     * pass: the entity mix (catalog category), the strategy nodes of the site's
+     * ACTIVE flows, and the money master data (plantKind / Leistungspreis /
+     * override).
+     */
+    private String usageProfile(SiteDto site, Map<String, Integer> typeCounts,
+            List<String> activeFlowDocs) {
+        boolean hasStorage = false;
+        boolean hasPv = false;
+        boolean hasControllableConsumer = false;
+        for (String entityType : typeCounts.keySet()) {
+            EntityTypeCatalog.EntityType type = catalog.find(entityType);
+            String category = type == null ? "" : type.category();
+            switch (category) {
+                case "storage" -> hasStorage = true;
+                case "producer" -> hasPv = true;
+                case "consumer" -> hasControllableConsumer =
+                        hasControllableConsumer || (type != null && type.controllable());
+                default -> { /* meter/other: no signal */ }
+            }
+        }
+        // Only Leistungspreis/strategy-nodes/plantKind/override steer the derived
+        // profile (deriveDefault); the entity signals are reported for parity
+        // with the profile endpoint, never decisive here.
+        return UsageProfileDeriver.effectiveProfile(new UsageProfileDeriver.Signals(
+                hasStorage, hasPv, hasControllableConsumer, strategyNodeTypes(activeFlowDocs),
+                site.plantKind(), site.leistungspreisEurKw() != null, site.usageProfileOverride()));
+    }
+
+    /** The vp.strategy.* node types present in a site's ACTIVE flow documents. */
+    private Set<String> strategyNodeTypes(List<String> activeFlowDocs) {
+        Set<String> types = new LinkedHashSet<>();
+        for (String documentJson : activeFlowDocs) {
+            if (documentJson == null) {
+                continue;
+            }
+            try {
+                JsonNode doc = mapper.readTree(documentJson);
+                for (JsonNode node : doc.path("nodes")) {
+                    String nodeType = node.path("type").asText();
+                    if (nodeType.startsWith(STRATEGY_PREFIX)) {
+                        types.add(nodeType);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("active flow document unreadable in overview, skipped: {}", e.getMessage());
+            }
+        }
+        return types;
     }
 
     /**

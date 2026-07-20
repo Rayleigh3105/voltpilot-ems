@@ -15,6 +15,7 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
+  | 'portfolio'
   | 'uebersicht'
   | 'anlagen'
   | 'marktpreise'
@@ -82,6 +83,15 @@ export const MAIN_PAGES: PageDef[] = [
   { id: 'prognose', label: 'Prognosequalität', icon: 'trending-up' },
 ];
 
+/**
+ * The Betreiber PORTFOLIO landing (U5): NOT in MAIN_PAGES because it renders
+ * ONLY for a betreiber frame, IN PLACE of "Übersicht" (the shell decides, see
+ * betriebsart.ts). The shell hoists it to the top of the sidebar when
+ * `showPortfolioNav` is true; a non-betreiber landing on `#/portfolio` is
+ * redirected away (App.tsx).
+ */
+export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', icon: 'building' };
+
 export const PLATFORM_PAGES: PageDef[] = [
   { id: 'mandanten', label: 'Mandanten', icon: 'building', adminOnly: true },
   { id: 'benutzer', label: 'Benutzer', icon: 'users', adminOnly: true },
@@ -98,10 +108,12 @@ export function anlagenLabel(siteCount: number | null): string {
 
 export function pageLabel(id: PageId, siteCount: number | null = null): string {
   if (id === 'anlagen') return anlagenLabel(siteCount);
-  return [...MAIN_PAGES, ...PLATFORM_PAGES].find((p) => p.id === id)?.label ?? id;
+  return [PORTFOLIO_PAGE, ...MAIN_PAGES, ...PLATFORM_PAGES].find((p) => p.id === id)?.label ?? id;
 }
 
-const PAGE_IDS = new Set<string>([...MAIN_PAGES, ...PLATFORM_PAGES].map((p) => p.id));
+const PAGE_IDS = new Set<string>(
+  [PORTFOLIO_PAGE, ...MAIN_PAGES, ...PLATFORM_PAGES].map((p) => p.id),
+);
 
 /**
  * The retired menu items redirect into the Anlage (nothing was deleted -

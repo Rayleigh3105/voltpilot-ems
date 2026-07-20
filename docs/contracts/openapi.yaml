@@ -3096,6 +3096,26 @@ components:
           description: >
             Ex-ante optimizer savings for today (Europe/Berlin), latest run per
             15-min slot; null when no plan covers today.
+        roleCounts:
+          $ref: "#/components/schemas/OverviewRoleCounts"
+        usageProfile:
+          type: string
+          enum: [arbitrage, peak, private]
+          description: >
+            The site's effective AE7 usage profile (the portfolio Profil-Chip),
+            same derivation as GET /sites/{id}/profile.
+    OverviewRoleCounts:
+      type: object
+      description: >
+        U5 portfolio "Entitäten" badge: Σ v2 entities per topology role. An
+        entity's role is its entity_type's catalog category (storage→storage,
+        producer→pv, meter→grid, consumer→consumer); each entity counts once (a
+        battery-hybrid is one storage entity). All zero for a registry-less site.
+      properties:
+        pv: { type: integer }
+        storage: { type: integer }
+        consumer: { type: integer }
+        grid: { type: integer }
     OverviewLive:
       type: object
       properties:
@@ -3117,6 +3137,16 @@ components:
         liveSitesCovered:
           type: integer
           description: Sites whose live snapshot is inside the 5-min freshness window.
+        storageCapacityKwh:
+          type: number
+          nullable: true
+          description: >
+            U5 portfolio KPI: Σ battery capacity (kWh) over the fleet's v1 asset
+            rows; null when the fleet has no battery.
+        storagePowerKw:
+          type: number
+          nullable: true
+          description: Σ battery discharge power (kW) over the fleet; null when none.
     Earnings:
       type: object
       description: Realized earnings (see GET /api/v1/earnings).

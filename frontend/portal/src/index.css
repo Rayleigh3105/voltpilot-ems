@@ -3818,6 +3818,65 @@ button.vp-tech-card-h.toggle {
 }
 
 /* ============================================================================
+   Betreiber PORTFOLIO shell (U5, pages/PortfolioPage)
+   Aggregate KPI row over an operator table. Built on the shared KpiCard +
+   .vp-table.responsive (collapses to label/value cards below 720px) so the
+   page never overflows horizontally at phone width.
+   ============================================================================ */
+.vp-portfolio-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr));
+  gap: var(--vp-gap);
+}
+.vp-portfolio-table td {
+  vertical-align: middle;
+}
+/* The Σ-per-role "Entitäten" cell: an IconTile + count per non-zero role. */
+.vp-entity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2);
+}
+.vp-entity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.vp-entity-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-text-strong, #1a2433);
+}
+/* Per-site AE7 Profil-Chip: one calm tint per derived face. */
+.vp-profile-chip {
+  font-weight: 600;
+}
+.vp-profile-arbitrage {
+  background: color-mix(in srgb, var(--vp-action, #2c5282) 12%, transparent);
+  color: var(--vp-action, #2c5282);
+}
+.vp-profile-peak {
+  background: color-mix(in srgb, var(--vp-industry-end, #c2410c) 14%, transparent);
+  color: var(--vp-industry-end, #c2410c);
+}
+.vp-profile-private {
+  background: color-mix(in srgb, var(--vp-battery, #16a34a) 14%, transparent);
+  color: color-mix(in srgb, var(--vp-battery, #16a34a) 78%, #0b3d1f);
+}
+.vp-profile-unknown {
+  background: var(--vp-tint, #eef3ff);
+  color: var(--vp-text-muted);
+}
+/* "Speicher ohne Gerät" inline warning under an Anlage name. */
+.vp-portfolio-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--vp-industry-end, #c2410c);
+}
+
+/* ============================================================================
    Portal-Admin Optimizer page (pages/admin/OptimizerPage)
    Diagnostic + tune surface. Built on the shared tokens + chart palette; the
    verdict/waterfall/kpi blocks mirror the design mockup's look.
