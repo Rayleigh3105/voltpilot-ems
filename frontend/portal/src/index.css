@@ -5086,3 +5086,114 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-primary-deep);
   background: var(--vp-bg-light);
 }
+
+/* ============================================================
+   U4 · Peak-Band lead artifact (Lastspitzenkappung, design §6 Face 2)
+   The peak-face cockpit lead: current ¼-h grid-import mean vs. the Ziel
+   (progress bar + red limit marker) + the PS-4 avoided-peak numbers.
+   ============================================================ */
+.vp-peakband {
+  border-left: 5px solid var(--vp-flow-pv);
+}
+.vp-peakband-top {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-5);
+  flex-wrap: wrap;
+}
+.vp-peakband-now {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-peakband-value {
+  font-family: var(--vp-font-display, inherit);
+  font-weight: 800;
+  font-size: var(--vp-text-stat-sm);
+  color: var(--vp-stat-ink);
+  line-height: 1.1;
+}
+.vp-peakband-value.vp-stale {
+  color: var(--vp-text-gray);
+}
+.vp-peakband-bar-wrap {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding-top: 18px; /* room for the "Ziel" label above the bar */
+}
+.vp-peakband-bar {
+  position: relative;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--vp-bg-light, #f1f3f5);
+  overflow: visible;
+}
+.vp-peakband-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 8px 0 0 8px;
+  background: linear-gradient(90deg, #fbbf24, var(--vp-flow-pv));
+  transition: width 0.4s ease;
+}
+.vp-peakband-bar.breach .vp-peakband-fill {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f87171, #dc2626);
+}
+.vp-peakband-limit {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 2px;
+  background: #dc2626;
+  transform: translateX(-1px);
+}
+.vp-peakband-limit-lbl {
+  position: absolute;
+  top: -18px;
+  transform: translateX(-50%);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #dc2626;
+  white-space: nowrap;
+}
+.vp-peakband-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-5);
+  margin-top: var(--vp-space-4);
+  padding-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border);
+}
+.vp-peakband-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-peakband-metric-lbl {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--vp-text-gray);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.vp-peakband-metric-val {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--vp-stat-ink);
+}
+.vp-peakband-metric-val.good {
+  color: var(--vp-flow-batt);
+}
+.vp-peakband-note {
+  margin: var(--vp-space-3) 0 0;
+}
+@media (max-width: 560px) {
+  .vp-peakband-metrics {
+    gap: var(--vp-space-4);
+  }
+}

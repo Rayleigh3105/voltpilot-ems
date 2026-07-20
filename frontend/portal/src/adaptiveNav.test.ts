@@ -14,6 +14,7 @@ function reachableSubs(tabs: AnlagenTab[]): Set<AnlagenSub | null> {
 
 const ALL_SUBS: (AnlagenSub | null)[] = [
   null,
+  'lastspitzen',
   'live',
   'fahrplan',
   'historie',
@@ -35,14 +36,21 @@ describe('navFor - per-face ordering (§5.2)', () => {
     ]);
   });
 
-  it('peak → Übersicht · Steuerung · Live · Geräte · Historie (Steuerung leads; U3 merge)', () => {
+  it('peak → Übersicht · Lastspitzen · Live · Steuerung · Geräte · Historie (U4 lead)', () => {
     expect(visibleLabels(navFor('peak', 'betreiber'))).toEqual([
       'Übersicht',
-      'Steuerung',
+      'Lastspitzen',
       'Live',
+      'Steuerung',
       'Geräte',
       'Historie',
     ]);
+  });
+
+  it('the peak "Lastspitzen" tab opens the lastspitzen sub', () => {
+    const tab = navFor('peak', null).find((t) => t.label === 'Lastspitzen');
+    expect(tab?.sub).toBe('lastspitzen');
+    expect(tab?.overflow).toBe(false);
   });
 
   it('arbitrage → Übersicht · Erlöse · Fahrplan · Steuerung · Geräte', () => {

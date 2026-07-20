@@ -3761,6 +3761,14 @@ components:
           type: number
           nullable: true
           description: Planned state of charge at the horizon end.
+        peakTargetKw:
+          type: number
+          nullable: true
+          description: >-
+            The run's planned billing-period grid-import peak target (PS-1,
+            schedule.peak_target_kw) - the "Ziel" a Lastspitzen (peak-shaving)
+            Anlage defends. Null when the site runs no peak-shaving module or on
+            a run that predates the column.
         slots:
           type: array
           items:

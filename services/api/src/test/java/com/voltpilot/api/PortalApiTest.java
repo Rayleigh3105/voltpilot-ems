@@ -954,15 +954,18 @@ class PortalApiTest {
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000001', "
                 + "now() - interval '1 hour', 0, 0, 50.0, 0, 0, 100.0, 0, 0) "
                 + "ON CONFLICT DO NOTHING");
+        // The newer run also carries a peak-shaving target (PS-1); it must surface
+        // on the plan so the portal's Peak-Band knows the "Ziel" grid-import limit.
         exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
-                + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur, curtail_kw) "
+                + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, baseline_cost_eur, "
+                + "curtail_kw, peak_target_kw) "
                 + "VALUES "
                 + "(now(), '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
-                + "now(), 5.0, 8.0, 62.5, 3.0, 2.0, 80.0, 0.02, 0.10, 0.0), "
+                + "now(), 5.0, 8.0, 62.5, 3.0, 2.0, 80.0, 0.02, 0.10, 0.0, 180.0), "
                 + "(now() + interval '15 minutes', '00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', "
                 + "'00000000-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000002', "
-                + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05, 1.5) "
+                + "now(), -5.0, -2.0, 50.0, 3.0, 0.0, 200.0, 0.03, 0.05, 1.5, 180.0) "
                 + "ON CONFLICT DO NOTHING");
 
         ResponseEntity<Map<String, Object>> res = rest.exchange(
@@ -972,6 +975,8 @@ class PortalApiTest {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody()).containsEntry("planId", "aaaaaaaa-0000-0000-0000-000000000002");
         assertThat(res.getBody()).containsEntry("slotMinutes", 15);
+        // PS-1: the run's peak-shaving target rides on the plan (the Peak-Band "Ziel").
+        assertThat(((Number) res.getBody().get("peakTargetKw")).doubleValue()).isEqualTo(180.0);
         List<?> slots = (List<?>) res.getBody().get("slots");
         assertThat(slots).hasSize(2); // the latest run only, not the older one
         // Headline savings = sum(baseline - cost) = (0.10-0.02) + (0.05-0.03).
