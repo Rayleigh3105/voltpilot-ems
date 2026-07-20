@@ -23,6 +23,10 @@ function pinnedHash() {
   return fs.readFileSync(path.join(__dirname, 'pinned-hash.txt'), 'utf8').trim();
 }
 
+function pinnedPeakshavingHash() {
+  return fs.readFileSync(path.join(__dirname, 'pinned-peakshaving-hash.txt'), 'utf8').trim();
+}
+
 /** Start the server on an ephemeral port; resolve {port, close}. */
 function startServer() {
   return new Promise((resolve) => {
@@ -76,6 +80,25 @@ test('POST /compile compiles a graph fixture to the pinned artifact', async () =
     const bare = await request(port, 'POST', '/compile', graph);
     assert.strictEqual(bare.status, 200);
     assert.strictEqual(bare.json.content_hash, pinnedHash());
+  } finally {
+    await close();
+  }
+});
+
+test('POST /compile compiles a peakshaving graph to its pinned artifact', async () => {
+  const { port, close } = await startServer();
+  try {
+    const graph = fixture('flow-graph.valid.peakshaving-battery.json');
+    const res = await request(port, 'POST', '/compile', { document: graph });
+    assert.strictEqual(res.status, 200, res.text);
+    const artifact = res.json;
+    assert.strictEqual(artifact.kind, 'artifact');
+    assert.strictEqual(artifact.flow_id, graph.flow_id);
+    // The delegated peak-shaving strategy compiles to a no-op (no vp-desired);
+    // the hash is flowc's own, byte-stable against the committed vector.
+    assert.strictEqual(artifact.content_hash, pinnedPeakshavingHash());
+    assert.strictEqual(
+      artifact.bundle.nodered_flows.find((n) => n.type === 'vp-desired'), undefined);
   } finally {
     await close();
   }

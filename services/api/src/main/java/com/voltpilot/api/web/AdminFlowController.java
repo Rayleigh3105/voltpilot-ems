@@ -14,6 +14,7 @@ import com.voltpilot.api.flows.FlowGraphValidator.ForeignClaim;
 import com.voltpilot.api.flows.FlowSimulationMapper;
 import com.voltpilot.api.flows.FlowTemplateService;
 import com.voltpilot.api.flows.FlowValidationFinding;
+import com.voltpilot.api.profile.UsageProfileDeriver;
 import com.voltpilot.api.repo.FlowGatedNodeRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
@@ -24,6 +25,7 @@ import com.voltpilot.api.simulation.SimulationJobRegistry;
 import com.voltpilot.api.simulation.SimulationPayload;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SimulationRequestDto;
+import com.voltpilot.api.web.dto.SiteDto;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -401,6 +403,15 @@ public class AdminFlowController {
             body.put("gatedNodesNotEnabled", notEnabled);
             return ResponseEntity.ok(body);
         }
+        // E5 peak-shaving precondition (after governance, before compile): a
+        // peak-shaving flow needs the site's Leistungspreis configured, else the
+        // co-optimizer epigraph is inactive - refuse honestly rather than deploy
+        // a no-op strategy. (atypical-grid is refused earlier, at the dry-run:
+        // its economics are not built, so it never reaches a simulated state.)
+        ResponseEntity<Map<String, Object>> peakGate = peakShavingGate(siteId, document, row);
+        if (peakGate != null) {
+            return peakGate;
+        }
         FlowActivationService.ActivationOutcome outcome = activation.activate(siteId, row,
                 document);
         Map<String, Object> body = new LinkedHashMap<>();
@@ -415,6 +426,44 @@ public class AdminFlowController {
         }
         body.put("lifecycle", outcome.activated() ? "active" : row.lifecycle());
         return ResponseEntity.ok(body);
+    }
+
+    /**
+     * The E5 peak-shaving activation precondition (returns a 422 refusal, or
+     * {@code null} to proceed). Runs AFTER the AE7 node-governance gate: a
+     * {@code vp.strategy.peakshaving} flow delegates the battery to the
+     * co-optimizer's PS-1 Leistungspreis epigraph, which is INACTIVE unless the
+     * site's {@code leistungspreis_eur_kw} is configured (admin optimizer-config).
+     * Missing → refuse, naming the missing admin step - never deploy a no-op
+     * strategy the co-optimizer would ignore.
+     */
+    private ResponseEntity<Map<String, Object>> peakShavingGate(UUID siteId, JsonNode document,
+            FlowVersionRow row) {
+        if (containsNodeType(document, UsageProfileDeriver.NODE_PEAKSHAVING)) {
+            SiteDto site = sites.findById(siteId);
+            if (site == null || site.leistungspreisEurKw() == null) {
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("activated", false);
+                body.put("reason", "peakshaving_not_configured");
+                body.put("message", "Für die Lastspitzenkappung fehlt der Leistungspreis dieser "
+                        + "Anlage. VoltPilot muss ihn zunächst im Optimizer hinterlegen "
+                        + "(Leistungspreis in €/kW) - erst dann kann der Baustein den Speicher "
+                        + "wirksam steuern.");
+                body.put("published", false);
+                body.put("lifecycle", row.lifecycle());
+                return ResponseEntity.unprocessableEntity().body(body);
+            }
+        }
+        return null;
+    }
+
+    private static boolean containsNodeType(JsonNode doc, String type) {
+        for (JsonNode node : doc.path("nodes")) {
+            if (type.equals(node.path("type").asText())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** German reasons reach the portal as {"message": ...} (MastrController pattern). */

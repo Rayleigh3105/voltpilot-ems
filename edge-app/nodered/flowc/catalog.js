@@ -99,6 +99,22 @@ const STRATEGY_BODY = [
   'return null;',
 ].join('\n');
 
+// Per-strategy input ports. The api flow-catalog (flowcatalog/catalog.json) is
+// authoritative for the editor + FlowGraphValidator; flowc mirrors the input
+// set each strategy declares there so any validator-accepted flow also
+// compiles (peakshaving/atypical-grid take only `soc`, market adds price + PV).
+// All strategies emit the delegated `wunsch` plan output.
+const STRATEGY_INPUTS = {
+  market: {
+    price_in: { type: 'price' },
+    pv_forecast: { type: 'timeseries' },
+    soc: { type: 'timeseries' },
+  },
+  selfconsumption: { pv_forecast: { type: 'timeseries' }, soc: { type: 'timeseries' } },
+  peakshaving: { soc: { type: 'timeseries' } },
+  atypicalGrid: { soc: { type: 'timeseries' } },
+};
+
 const TYPES = {
   'vp.entity.read': {
     version: '1.0.0',
@@ -353,21 +369,25 @@ const TYPES = {
     },
   },
 
-  'vp.strategy.market': strategyType('Marktoptimierung'),
-  'vp.strategy.selfconsumption': strategyType('Eigenverbrauch'),
+  'vp.strategy.market': strategyType('Marktoptimierung', STRATEGY_INPUTS.market),
+  'vp.strategy.selfconsumption': strategyType('Eigenverbrauch', STRATEGY_INPUTS.selfconsumption),
+  'vp.strategy.peakshaving': strategyType('Lastspitzenkappung', STRATEGY_INPUTS.peakshaving),
+  'vp.strategy.atypical-grid': strategyType('Atypische Netznutzung', STRATEGY_INPUTS.atypicalGrid),
 };
 
 // strategyType: a strategy node DELEGATES its entity to the cloud
 // co-optimizer (claims delegated:true); on the edge its compiled form is a
 // deliberate no-op - the plan commands the entity as class 'market'
 // (plan-execution-ownership.md). The claim still reserves the exclusive
-// resource and the artifact still REQUIRES the actuate capability.
-function strategyType(label) {
+// resource and the artifact still REQUIRES the actuate capability. Peak-shaving
+// executes as the PS-3 edge peak guard driven by the v1 plan's
+// grid_import_limit_kw / peak_reserve_soc_pct fields - never re-implemented here.
+function strategyType(label, inputs) {
   return {
     version: '1.0.0',
     runtimes: ['edge', 'cloud'],
     minPalette: '0.2.0',
-    ports: { in: { price_in: { type: 'price' } }, out: {} },
+    ports: { in: inputs, out: { wunsch: { type: 'plan' } } },
     validate(p) {
       if (!p || !ID_RE.test(p.entity_id || '')) return ['entity_id fehlt oder ist ungültig'];
       return [];

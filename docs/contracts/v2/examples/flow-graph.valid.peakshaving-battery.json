@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "c3b5e7d9-2143-4a6f-8b8c-9d0e1f2a3b4c",
+  "flow_version": 1,
+  "name": "Lastspitzenkappung Speicher",
+  "description": "Delegiert den Speicher an die Co-Optimierung zur Kappung der Netz-Leistungsspitze (Leistungspreis-Vertrag). Die Ausführung ist der PS-3 Edge-Peak-Guard, gespeist vom v1-Plan.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "lifecycle": "simulated",
+  "nodes": [
+    {
+      "id": "soc1",
+      "type": "vp.entity.read",
+      "type_version": "1.0.0",
+      "label": "Ladestand",
+      "parameters": { "entity_id": "batt-main", "channel": "soc_pct" }
+    },
+    {
+      "id": "strat1",
+      "type": "vp.strategy.peakshaving",
+      "type_version": "1.0.0",
+      "label": "Lastspitzenkappung",
+      "parameters": { "entity_id": "batt-main" },
+      "claims": [
+        { "entity_id": "batt-main", "commands": ["setpoint_kw"], "delegated": true }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "soc1", "port": "value" }, "to": { "node": "strat1", "port": "soc" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "slot-boundary" }
+  ]
+}

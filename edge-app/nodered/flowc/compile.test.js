@@ -106,6 +106,34 @@ test('market-battery fixture compiles the delegated strategy as a no-op', () => 
   assert.strictEqual(feed.feed, 'prices');
 });
 
+test('peakshaving-battery fixture compiles the delegated strategy as a no-op', () => {
+  const graph = fixture('flow-graph.valid.peakshaving-battery.json');
+  const a = compile(graph);
+  // Delegation, exactly like the market strategy: no desired publisher (the
+  // v1 plan + PS-3 edge peak guard command the entity), just the no-op fn node.
+  assert.strictEqual(a.bundle.nodered_flows.find((n) => n.type === 'vp-desired'), undefined);
+  const strategy = a.bundle.nodered_flows.find((n) => n.type === 'function' && /DELEGIERT/.test(n.func));
+  assert.ok(strategy, 'peak-shaving strategy node must compile to the delegation no-op');
+  // The claim still reserves the setpoint capability + the soc read is required.
+  assert.deepStrictEqual(a.required_entities, [
+    { entity_id: 'batt-main', capabilities: ['actuate:setpoint_kw', 'measure:soc_pct'] },
+  ]);
+});
+
+// The PINNED deterministic hash of the peakshaving fixture (E5a): compiling
+// the committed graph must reproduce these bytes so a deployed content_hash is
+// stable. A deliberate compiler change must consciously update this pin.
+test('pinned content hash of the peakshaving-battery fixture', () => {
+  const a = compile(fixture('flow-graph.valid.peakshaving-battery.json'));
+  const pinFile = path.join(__dirname, 'pinned-peakshaving-hash.txt');
+  if (!fs.existsSync(pinFile)) {
+    fs.writeFileSync(pinFile, a.content_hash + '\n');
+  }
+  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
+  assert.strictEqual(a.content_hash, pinned,
+    'peakshaving compiler output drifted from the committed pin (pinned-peakshaving-hash.txt)');
+});
+
 test('validator refuses the contract error classes', () => {
   const base = fixture('flow-graph.valid.pv-surplus-heatrod.json');
   const mutate = (fn) => {
