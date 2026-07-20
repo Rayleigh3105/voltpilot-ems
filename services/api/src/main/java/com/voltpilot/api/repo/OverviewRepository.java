@@ -50,6 +50,59 @@ public class OverviewRepository {
     public record DailySavings(LocalDate day, BigDecimal savingsEur) {
     }
 
+    /** Fleet-wide Σ battery capacity (kWh) + Σ discharge power (kW); nulls = no battery. */
+    public record StorageTotals(BigDecimal capacityKwh, BigDecimal powerKw) {
+    }
+
+    /**
+     * Per-site v2-entity counts BY entity_type (a measurement_point row with a
+     * non-NULL entity_type IS a v2 entity - the EntityRegistryRepository rule).
+     * ONE fleet-wide query, RLS-scoped like the rest; the controller maps each
+     * entity_type onto its role via the EntityTypeCatalog (the Σ-per-role
+     * badge). Sites without entities are absent.
+     */
+    public Map<UUID, Map<String, Integer>> entityTypeCountsPerSite() {
+        Map<UUID, Map<String, Integer>> counts = new HashMap<>();
+        jdbc.query(
+                "SELECT site_id, entity_type, count(*) AS n FROM measurement_point "
+                        + "WHERE entity_type IS NOT NULL GROUP BY site_id, entity_type",
+                rs -> {
+                    counts.computeIfAbsent(rs.getObject("site_id", UUID.class), k -> new HashMap<>())
+                            .put(rs.getString("entity_type"), rs.getInt("n"));
+                });
+        return counts;
+    }
+
+    /**
+     * The ACTIVE flow documents per site (one fleet-wide query, the
+     * FlowRepository.activeDocuments shape lifted to the whole fleet), so the
+     * overview derives every site's usage profile in ONE round trip. RLS-scoped;
+     * sites without an active flow are absent.
+     */
+    public Map<UUID, List<String>> activeFlowDocumentsPerSite() {
+        Map<UUID, List<String>> docs = new HashMap<>();
+        jdbc.query(
+                "SELECT site_id, document::text AS doc FROM flow_definition "
+                        + "WHERE lifecycle = 'active'",
+                rs -> {
+                    docs.computeIfAbsent(rs.getObject("site_id", UUID.class), k -> new ArrayList<>())
+                            .add(rs.getString("doc"));
+                });
+        return docs;
+    }
+
+    /**
+     * Fleet-wide Σ battery capacity (kWh) and Σ discharge power (kW) for the
+     * portfolio KPI row - from the v1 {@code asset} rows (no new schema).
+     * RLS-scoped; both null when the fleet has no battery (never a fake zero).
+     */
+    public StorageTotals storageTotals() {
+        return jdbc.queryForObject(
+                "SELECT sum(capacity_kwh) AS kwh, sum(max_discharge_kw) AS kw "
+                        + "FROM asset WHERE type = 'battery'",
+                (rs, n) -> new StorageTotals(rs.getBigDecimal("kwh"), rs.getBigDecimal("kw")));
+    }
+
     /**
      * Site ids that own a battery asset with NO controlling device (device_id
      * NULL). Such a battery gets a plan but no publish, so the edge never

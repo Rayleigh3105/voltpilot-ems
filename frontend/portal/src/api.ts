@@ -777,6 +777,26 @@ export interface OverviewSite {
   live: OverviewLive | null;
   /** Ex-ante optimizer savings for today (Berlin day); null = no plan today. */
   plannedSavingsTodayEur: number | null;
+  /**
+   * U5 portfolio: Σ v2 entities per topology role for the "Entitäten" badge.
+   * All zero for a v1/registry-less site (older backends omit the field, read
+   * as undefined -> the portfolio treats it as all-zero).
+   */
+  roleCounts?: RoleCounts;
+  /**
+   * The site's effective AE7 usage profile (arbitrage | peak | private) - the
+   * portfolio Profil-Chip, same derivation as GET /sites/{id}/profile. Absent
+   * on an older backend.
+   */
+  usageProfile?: string;
+}
+
+/** Σ v2 entities per topology role (U5 portfolio "Entitäten" badge). */
+export interface RoleCounts {
+  pv: number;
+  storage: number;
+  consumer: number;
+  grid: number;
 }
 
 export interface OverviewTotals {
@@ -787,6 +807,10 @@ export interface OverviewTotals {
   plannedSavingsTodayEur: number | null;
   /** Sites whose live snapshot is inside the 5-min freshness window. */
   liveSitesCovered: number;
+  /** U5 portfolio KPI: Σ battery capacity (kWh); null when the fleet has none. */
+  storageCapacityKwh?: number | null;
+  /** U5 portfolio KPI: Σ battery discharge power (kW); null when none. */
+  storagePowerKw?: number | null;
 }
 
 /** One Europe/Berlin day of fleet-wide ex-ante savings (hero mini chart). */

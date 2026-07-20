@@ -6,7 +6,7 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 import logoUrl from '../../designsystem/assets/voltpilot-logo.png';
 import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
-import { anlagenLabel, MAIN_PAGES, PLATFORM_PAGES, pageLabel, type PageId } from '../nav';
+import { anlagenLabel, MAIN_PAGES, PLATFORM_PAGES, PORTFOLIO_PAGE, pageLabel, type PageId } from '../nav';
 
 /**
  * The unified dashboard shell: left sidebar (primary navigation, identical for
@@ -19,6 +19,7 @@ export function AppShell({
   onNavigate,
   isAdmin,
   showOverview,
+  showPortfolio,
   showAddAnlage,
   onAddAnlage,
   counts,
@@ -32,6 +33,11 @@ export function AppShell({
   isAdmin: boolean;
   /** Show the "Übersicht" nav item (fleet customers + admins only). */
   showOverview: boolean;
+  /**
+   * Show the "Portfolio" nav item + land on it (Betreiber shell, U5). Replaces
+   * "Übersicht" for a betreiber frame (showOverview is then false).
+   */
+  showPortfolio: boolean;
   /**
    * Show the always-visible "＋ Anlage hinzufügen" header action. Scoped to a
    * single-Anlage customer (see `showAddAnlageButton`) - their only obvious way
@@ -89,6 +95,16 @@ export function AppShell({
         <img src={logoUrl} alt="VoltPilot EMS" />
       </div>
       <nav aria-label="Hauptnavigation">
+        {showPortfolio && (
+          // Betreiber shell (U5): Portfolio leads the sidebar, in place of the
+          // (hidden) Übersicht item.
+          <NavItem
+            icon={<Icon name={PORTFOLIO_PAGE.icon} size={18} />}
+            label={PORTFOLIO_PAGE.label}
+            active={page === PORTFOLIO_PAGE.id}
+            onClick={() => navigate(PORTFOLIO_PAGE.id)}
+          />
+        )}
         {MAIN_PAGES.filter((p) => p.id !== 'uebersicht' || showOverview).map((p) => (
           <NavItem
             key={p.id}

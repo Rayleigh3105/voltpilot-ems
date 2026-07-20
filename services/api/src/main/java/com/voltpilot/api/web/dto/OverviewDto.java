@@ -42,6 +42,15 @@ public record OverviewDto(
      * <p>{@code batteryWithoutDevice} = the site has a battery asset with NO
      * controlling device: the optimizer plans it but can never publish the plan
      * to the edge. The portal shows a plain-German warning linking to the fix.
+     *
+     * <p>{@code roleCounts} (U5) is the Σ v2 entities per role (pv/storage/
+     * consumer/grid), derived from the site's {@code measurement_point} entities
+     * via the {@link com.voltpilot.api.entities.EntityTypeCatalog} category→role
+     * map - the portfolio table's "Entitäten" column ("🔋2 ☀️3 ⚡1"); all zero
+     * for a v1/registry-less site. {@code usageProfile} is the site's effective
+     * AE7 profile ({@code arbitrage} | {@code peak} | {@code private}, the same
+     * {@link com.voltpilot.api.profile.UsageProfileDeriver} the profile endpoint
+     * runs) - the portfolio Profil-Chip, without an N-per-site round trip.
      */
     public record OverviewSiteDto(
             UUID id,
@@ -55,7 +64,19 @@ public record OverviewDto(
             String worstStatus,
             Instant lastSeenAt,
             OverviewLiveDto live,
-            BigDecimal plannedSavingsTodayEur) {
+            BigDecimal plannedSavingsTodayEur,
+            RoleCountsDto roleCounts,
+            String usageProfile) {
+    }
+
+    /**
+     * Σ v2 entities per topology role for the portfolio "Entitäten" badge (U5).
+     * An entity's role is its {@code entity_type}'s catalog category mapped to a
+     * role: storage→storage, producer→pv, meter→grid, consumer→consumer; unknown
+     * categories are not counted. Counts entities (one per entity), so a
+     * battery-hybrid is one storage entity - not double-counted into pv.
+     */
+    public record RoleCountsDto(int pv, int storage, int consumer, int grid) {
     }
 
     /** Newest telemetry row of a site (observation time + the four channels). */
@@ -78,7 +99,9 @@ public record OverviewDto(
             int devices,
             int online,
             BigDecimal plannedSavingsTodayEur,
-            int liveSitesCovered) {
+            int liveSitesCovered,
+            BigDecimal storageCapacityKwh,
+            BigDecimal storagePowerKw) {
     }
 
     /** One Europe/Berlin day of fleet-wide ex-ante savings (the hero mini chart). */

@@ -41,17 +41,17 @@ interface UebersichtProps {
 }
 
 /**
- * The ADAPTIVE Übersicht landing, framed by the U0 Betriebsart: a BETREIBER
- * tenant gets the fleet mode from the FIRST Standort on - the Übersicht is
- * their portfolio landing (money hero, fleet status sentence, per-Anlage
- * cards; a card tap opens that Anlage's own page #/anlage/{id}).
- * // TODO(U5, #516): real portfolio page - until it ships, the betreiber
- * // shell lands on this interim fleet Übersicht (cards, no operator table).
- * An ENDKUNDE tenant never sees operator chrome: with one Anlage the
- * Übersicht IS the Anlagen-Seite (their whole world is one Anlage, no
- * duplicated hero blocks); with 2-3 Anlagen they get the same calm CARD
- * overview - by design never a portfolio table (design vp-ems-ui-overhaul
- * §2.3).
+ * The ADAPTIVE Übersicht landing of the ENDKUNDE (cockpit) shell: with one
+ * Anlage the Übersicht IS the Anlagen-Seite (their whole world is one Anlage,
+ * no duplicated hero blocks); with 2-3 Anlagen they get the calm CARD overview
+ * (money hero, fleet status sentence, per-Anlage cards; a card tap opens that
+ * Anlage's page #/anlage/{id}) - by design never a portfolio table (design
+ * vp-ems-ui-overhaul §2.3).
+ *
+ * A BETREIBER tenant does NOT land here: since U5 (#516) the Betreiber shell
+ * lands on the real Portfolio page (PortfolioPage - aggregate KPIs + operator
+ * table); the shell decision (betriebsart.ts showPortfolioNav) never routes a
+ * betreiber to this Übersicht.
  */
 export function UebersichtPage(props: UebersichtProps) {
   if (props.sites.length === 0) {
