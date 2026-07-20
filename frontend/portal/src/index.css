@@ -4558,6 +4558,18 @@ button.vp-tech-card-h.toggle {
 .vp-flowcard-foot { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .vp-flowtpl-head { font-size: 1.02rem; color: var(--vp-navy-1, #1E3A5F); margin: 22px 0 10px; }
 
+/* E3b: customer "Steuerung" section (reuses the flow cards + editor above). */
+.vp-steuerung { min-width: 0; }
+.vp-steuerung-intro {
+  color: var(--vp-text-2, #4a5568); font-size: 0.95rem; line-height: 1.5;
+  margin: 0 0 var(--vp-space-4); max-width: 62ch;
+}
+.vp-steuerung-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--vp-space-3); margin: 0 0 var(--vp-space-3); flex-wrap: wrap;
+}
+.vp-steuerung-head h3 { margin: 0; font-size: 1.02rem; color: var(--vp-navy-1, #1E3A5F); }
+
 @media (max-width: 1024px) {
   .vp-flowed-main { grid-template-columns: 1fr; }
   .vp-flowed-palette { display: flex; flex-wrap: wrap; gap: 4px 14px; }

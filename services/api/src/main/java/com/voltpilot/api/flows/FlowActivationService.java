@@ -58,6 +58,9 @@ public class FlowActivationService {
         }
     }
 
+    /** Outcome of a deactivation (retire the active version + re-publish). */
+    public record DeactivationOutcome(boolean published) {}
+
     private final FlowRepository flows;
     private final EntityRegistryRepository entities;
     private final ObjectProvider<FlowCompiler> compiler;
@@ -140,6 +143,25 @@ public class FlowActivationService {
         boolean published = publishDeploymentSet(siteId, gateway);
         return new ActivationOutcome(true, null,
                 "Flow aktiviert (Version " + version.flowVersion() + ").", published, gateway);
+    }
+
+    /**
+     * Deactivate a flow: retire its active version and re-publish the site's
+     * (now smaller) COMPLETE deployment set so the edge drops the retired flow.
+     * Never gated by the activation flag - stopping a running flow must always
+     * be possible. Best-effort publish (no gateway / no broker → not published,
+     * logged, never thrown); the retire itself always commits.
+     */
+    @Transactional
+    public DeactivationOutcome deactivate(UUID siteId, UUID flowId, FlowVersionRow active) {
+        flows.retireActive(flowId);
+        UUID gateway = gatewayDevice(siteId);
+        boolean published = gateway != null && publishDeploymentSet(siteId, gateway);
+        if (gateway == null) {
+            log.warn("flow {} deactivated but deployment for site {} not re-published: "
+                    + "no unique gateway device", flowId, siteId);
+        }
+        return new DeactivationOutcome(published);
     }
 
     /**

@@ -35,10 +35,12 @@ export type AnlagenSub =
   | 'technik'
   | 'entitaeten'
   | 'optimierung'
-  | 'simulation';
+  | 'simulation'
+  | 'steuerung';
 
 const SUBS = new Set<string>([
   'live', 'fahrplan', 'historie', 'wetter', 'technik', 'entitaeten', 'optimierung', 'simulation',
+  'steuerung',
 ]);
 
 /**

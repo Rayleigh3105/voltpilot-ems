@@ -27,8 +27,12 @@ import {
   type CanvasSelection,
   type ConnectSource,
 } from '../../components/flows/FlowCanvas';
-import { optimizerApi } from '../../optimizerApi';
-import { flowsApi, type FlowActivationResult, type FlowVersion } from '../../flows/flowsApi';
+import {
+  type BoundFlowApi,
+  type FlowActivationResult,
+  type FlowNodeGovernance,
+  type FlowVersion,
+} from '../../flows/flowsApi';
 import { guardChips, type GuardSources } from '../../flows/guardbar';
 import {
   addEdge,
@@ -66,19 +70,31 @@ const GROUP_SWATCH: Record<string, string> = {
 };
 
 interface FlowEditorPageProps {
-  tenantId: string;
+  /** The site-bound flow API (admin or customer surface, see flowsApi factories). */
+  api: BoundFlowApi;
   site: Site;
   flowId: string;
   initialVersion: number;
   onClose: () => void;
+  /**
+   * May this caller build with GATED strategy nodes freely? Admins can (they
+   * enable them), so gated nodes are placeable; customers cannot, so a gated
+   * node is placeable only when VoltPilot has enabled it for the site, else it
+   * renders locked with {@link lockedHint}. Default true (admin).
+   */
+  canEnableGated?: boolean;
+  /** The German hint on a locked gated node (Beratung-CTA copy). */
+  lockedHint?: string;
 }
 
 export function FlowEditorPage({
-  tenantId,
+  api,
   site,
   flowId,
   initialVersion,
   onClose,
+  canEnableGated = true,
+  lockedHint = 'VoltPilot richtet ein',
 }: FlowEditorPageProps) {
   const [version, setVersion] = useState(initialVersion);
   const [name, setName] = useState('');
@@ -91,6 +107,7 @@ export function FlowEditorPage({
 
   const [entities, setEntities] = useState<EditorEntity[]>([]);
   const [guards, setGuards] = useState<GuardSources | null>(null);
+  const [governance, setGovernance] = useState<FlowNodeGovernance | null>(null);
 
   const [selection, setSelection] = useState<CanvasSelection | null>(null);
   const [connectFrom, setConnectFrom] = useState<ConnectSource | null>(null);
@@ -116,21 +133,23 @@ export function FlowEditorPage({
     let cancelled = false;
     setLoadState('loading');
     Promise.all([
-      flowsApi.get(tenantId, site.id, flowId, initialVersion),
-      flowsApi.entities(tenantId, site.id).catch(() => [] as EditorEntity[]),
-      optimizerApi.config(tenantId, site.id).catch(() => null),
+      api.get(flowId, initialVersion),
+      api.entities().catch(() => [] as EditorEntity[]),
+      api.socBands().catch(() => null),
+      api.governance().catch(() => ({ gatedNodes: [] } as FlowNodeGovernance)),
     ])
-      .then(([flow, entityList, config]) => {
+      .then(([flow, entityList, bands, gov]) => {
         if (cancelled) return;
         adopt(flow);
         setEntities(entityList);
+        setGovernance(gov);
         setGuards({
           netzladenErlaubt: site.netzladenErlaubt,
           maxFeedInKw: site.maxFeedInKw,
           leistungspreisEurKw: site.leistungspreisEurKw ?? null,
-          socMinPct: config?.effective.socMinPct ?? null,
-          socMaxPct: config?.effective.socMaxPct ?? null,
-          backupReserveSocPct: config?.effective.backupReserveSocPct ?? null,
+          socMinPct: bands?.socMinPct ?? null,
+          socMaxPct: bands?.socMaxPct ?? null,
+          backupReserveSocPct: bands?.backupReserveSocPct ?? null,
         });
         setLoadState('idle');
       })
@@ -141,7 +160,13 @@ export function FlowEditorPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, site.id, flowId]);
+  }, [api, site.id, flowId]);
+
+  // The gated node types VoltPilot has enabled for this site (AE7 governance).
+  const enabledGated = useMemo(
+    () => new Set((governance?.gatedNodes ?? []).filter((n) => n.enabled).map((n) => n.type)),
+    [governance],
+  );
 
   // ---- validation (live, client-side; server on Prüfen) ------------------
 
@@ -191,7 +216,7 @@ export function FlowEditorPage({
     setNotice(null);
     try {
       const stamped = applyDerivedClaims(doc);
-      const saved = await flowsApi.save(tenantId, site.id, flowId, versionRef.current,
+      const saved = await api.save(flowId, versionRef.current,
         name || 'Unbenannter Flow', stamped);
       adopt(saved);
       return saved;
@@ -204,14 +229,14 @@ export function FlowEditorPage({
     } finally {
       setBusy(false);
     }
-  }, [doc, name, tenantId, site.id, flowId, adopt]);
+  }, [doc, name, api, flowId, adopt]);
 
   const check = useCallback(async () => {
     const saved = dirty ? await save() : { flowVersion: versionRef.current };
     if (!saved) return;
     setBusy(true);
     try {
-      const result = await flowsApi.validate(tenantId, site.id, flowId, saved.flowVersion);
+      const result = await api.validate(flowId, saved.flowVersion);
       setServerFindings(result.findings);
       setNotice(result.valid
         ? { tone: 'ok', text: 'Der Flow ist gültig - bereit für die Simulation.' }
@@ -224,18 +249,18 @@ export function FlowEditorPage({
     } finally {
       setBusy(false);
     }
-  }, [dirty, save, tenantId, site.id, flowId]);
+  }, [dirty, save, api, flowId]);
 
   const simJobApi = useMemo(
     () => ({
       start: async () => {
-        const result = await flowsApi.simulate(tenantId, site.id, flowId, versionRef.current);
+        const result = await api.simulate(flowId, versionRef.current);
         return { simulationId: result.simulationId };
       },
       poll: (simulationId: string) =>
-        flowsApi.simulationStatus(tenantId, site.id, flowId, versionRef.current, simulationId),
+        api.simulationStatus(flowId, versionRef.current, simulationId),
     }),
-    [tenantId, site.id, flowId],
+    [api, flowId],
   );
   const sim = useSimulationJob(simJobApi);
 
@@ -261,7 +286,7 @@ export function FlowEditorPage({
     setNotice(null);
     setActivation(null);
     try {
-      const result = await flowsApi.activate(tenantId, site.id, flowId, versionRef.current);
+      const result = await api.activate(flowId, versionRef.current);
       setActivation(result);
       if (result.activated) setLifecycle('active');
     } catch (e) {
@@ -272,7 +297,25 @@ export function FlowEditorPage({
     } finally {
       setBusy(false);
     }
-  }, [tenantId, site.id, flowId]);
+  }, [api, flowId]);
+
+  const deactivate = useCallback(async () => {
+    setBusy(true);
+    setNotice(null);
+    setActivation(null);
+    try {
+      const result = await api.deactivate(flowId);
+      setLifecycle(result.lifecycle || 'retired');
+      setNotice({ tone: 'ok', text: result.message });
+    } catch (e) {
+      setNotice({
+        tone: 'error',
+        text: e instanceof ApiError ? e.message : 'Stilllegen fehlgeschlagen.',
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [api, flowId]);
 
   // ---- render ------------------------------------------------------------
 
@@ -332,17 +375,29 @@ export function FlowEditorPage({
           >
             Simulieren
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={activate}
-            disabled={busy || dirty || lifecycle !== 'simulated' || !valid}
-            title={lifecycle !== 'simulated'
-              ? 'Die Aktivierung setzt einen erfolgreichen Dry-Run dieser Version voraus.'
-              : undefined}
-          >
-            Ausrollen
-          </Button>
+          {lifecycle === 'active' ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={deactivate}
+              disabled={busy}
+              title="Diesen Flow anhalten - das Gerät fällt auf die sichere Grundregelung zurück."
+            >
+              Stilllegen
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={activate}
+              disabled={busy || dirty || lifecycle !== 'simulated' || !valid}
+              title={lifecycle !== 'simulated'
+                ? 'Die Aktivierung setzt einen erfolgreichen Dry-Run dieser Version voraus.'
+                : undefined}
+            >
+              Ausrollen
+            </Button>
+          )}
           <Button size="sm" onClick={save} disabled={busy || !dirty}>
             Speichern
           </Button>
@@ -371,31 +426,40 @@ export function FlowEditorPage({
               <h4>{group.label}</h4>
               {catalog.types
                 .filter((t) => t.group === group.key)
-                .map((type) => (
-                  <button
-                    key={type.type}
-                    type="button"
-                    className="vp-flowed-pnode"
-                    title={type.description}
-                    onClick={() => change(addNode(doc, type.type))}
-                  >
-                    <span
-                      className="vp-flowed-sq"
-                      style={{ background: GROUP_SWATCH[group.key] }}
-                    />
-                    {type.label}
-                  </button>
-                ))}
-              {group.key === 'strategie' && (
-                <>
-                  <div className="vp-flowed-pnode locked" title="VoltPilot richtet ein">
-                    <Icon name="lock" size={12} /> Peak-Shaving
-                  </div>
-                  <div className="vp-flowed-pnode locked" title="VoltPilot richtet ein">
-                    <Icon name="lock" size={12} /> Atyp. Netznutzung
-                  </div>
-                </>
-              )}
+                .map((type) => {
+                  // A gated strategy node (Arbitrage/Peak/atyp. NN) is placeable
+                  // only when this caller may build with it: admins always (they
+                  // enable it), customers only once VoltPilot has enabled it for
+                  // the site (AE7 governance) - else it renders locked with the
+                  // Beratung-CTA hint. Free nodes are always placeable.
+                  const locked = type.gated && !canEnableGated && !enabledGated.has(type.type);
+                  if (locked) {
+                    return (
+                      <div
+                        key={type.type}
+                        className="vp-flowed-pnode locked"
+                        title={lockedHint}
+                      >
+                        <Icon name="lock" size={12} /> {type.label}
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={type.type}
+                      type="button"
+                      className="vp-flowed-pnode"
+                      title={type.description}
+                      onClick={() => change(addNode(doc, type.type))}
+                    >
+                      <span
+                        className="vp-flowed-sq"
+                        style={{ background: GROUP_SWATCH[group.key] }}
+                      />
+                      {type.label}
+                    </button>
+                  );
+                })}
             </div>
           ))}
         </aside>
