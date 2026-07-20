@@ -27,6 +27,10 @@ function pinnedPeakshavingHash() {
   return fs.readFileSync(path.join(__dirname, 'pinned-peakshaving-hash.txt'), 'utf8').trim();
 }
 
+function pinnedNotifyHash() {
+  return fs.readFileSync(path.join(__dirname, 'pinned-notify-hash.txt'), 'utf8').trim();
+}
+
 /** Start the server on an ephemeral port; resolve {port, close}. */
 function startServer() {
   return new Promise((resolve) => {
@@ -99,6 +103,27 @@ test('POST /compile compiles a peakshaving graph to its pinned artifact', async 
     assert.strictEqual(artifact.content_hash, pinnedPeakshavingHash());
     assert.strictEqual(
       artifact.bundle.nodered_flows.find((n) => n.type === 'vp-desired'), undefined);
+  } finally {
+    await close();
+  }
+});
+
+test('POST /compile compiles the notification automation the api used to reject', async () => {
+  // #518: a Schwellwert -> Wenn/Dann-gate -> Benachrichtigung flow validates +
+  // simulates in the editor. Before the gate compile entry existed, activation
+  // (which POSTs the document here) died with compiler_rejected. It must now
+  // compile to the artifact whose content_hash is flowc's own pinned vector.
+  const { port, close } = await startServer();
+  try {
+    const graph = fixture('flow-graph.valid.notify-threshold.json');
+    const res = await request(port, 'POST', '/compile', { document: graph });
+    assert.strictEqual(res.status, 200, res.text);
+    const artifact = res.json;
+    assert.strictEqual(artifact.kind, 'artifact');
+    assert.strictEqual(artifact.flow_id, graph.flow_id);
+    assert.strictEqual(artifact.content_hash, pinnedNotifyHash());
+    assert.ok(artifact.bundle.nodered_flows.find((n) => n.type === 'vp-notify'),
+      'the compiled bundle carries the notification publisher');
   } finally {
     await close();
   }

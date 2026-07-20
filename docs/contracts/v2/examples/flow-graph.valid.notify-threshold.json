@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "7c9d8e1f-2a3b-4c5d-8e6f-708192a3b4c5",
+  "flow_version": 2,
+  "name": "Benachrichtigung bei hoher Einspeisung",
+  "description": "Sendet eine Benachrichtigung, sobald mehr als 5 kW ins Netz eingespeist werden (steigende Flanke) - die Meldeautomatik Schwellwert -> Wenn/Dann -> Benachrichtigung.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "active",
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "vp.entity.read",
+      "type_version": "1.0.0",
+      "label": "Netz-Leistung",
+      "parameters": { "entity_id": "grid-meter-1", "channel": "power_kw" }
+    },
+    {
+      "id": "n2",
+      "type": "vp.logic.threshold",
+      "type_version": "1.1.0",
+      "label": "Einspeisung > 5 kW",
+      "parameters": { "threshold": -5.0, "hysteresis": 0.5, "direction": "below" }
+    },
+    {
+      "id": "n3",
+      "type": "vp.logic.gate",
+      "type_version": "1.0.0",
+      "label": "Wenn Einspeisung hoch"
+    },
+    {
+      "id": "n4",
+      "type": "vp.notify.push",
+      "type_version": "1.0.0",
+      "label": "Betreiber benachrichtigen",
+      "parameters": { "message": "Ihre Anlage speist gerade mehr als 5 kW ins Netz ein." }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "n1", "port": "value" }, "to": { "node": "n2", "port": "input" } },
+    { "id": "e2", "from": { "node": "n2", "port": "result" }, "to": { "node": "n3", "port": "wenn" } },
+    { "id": "e3", "from": { "node": "n3", "port": "dann" }, "to": { "node": "n4", "port": "trigger" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "interval", "every_s": 60 },
+    { "id": "t2", "kind": "value-change", "source": { "node": "n1", "port": "value" }, "deadband": 0.5 }
+  ]
+}
