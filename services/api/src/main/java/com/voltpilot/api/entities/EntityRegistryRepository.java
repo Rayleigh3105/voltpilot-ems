@@ -24,7 +24,7 @@ public class EntityRegistryRepository {
     public record EntityRow(UUID id, String role, String label, String brand, String model,
             String family, String communication, String connectionJson, BigDecimal capacityKwp,
             UUID deviceId, boolean control, String entityType, String capabilitiesJson,
-            String guardConfigJson) {}
+            String guardConfigJson, String edgeSourceId) {}
 
     /** The site's battery asset slice the battery-hybrid entity derives from. */
     public record BatteryAsset(UUID deviceId, BigDecimal maxChargeKw, BigDecimal maxDischargeKw,
@@ -33,7 +33,7 @@ public class EntityRegistryRepository {
     private static final String ROW_COLUMNS =
             "id, role, label, brand, model, family, communication, connection_json::text AS conn, "
                     + "capacity_kwp, device_id, control, entity_type, capabilities::text AS caps, "
-                    + "guard_config::text AS guards";
+                    + "guard_config::text AS guards, edge_source_id";
 
     private final JdbcTemplate jdbc;
 
@@ -119,6 +119,46 @@ public class EntityRegistryRepository {
                 "INSERT INTO measurement_point (tenant_id, site_id, role, label, control) "
                         + "VALUES (?, ?, ?, ?, ?) RETURNING id",
                 UUID.class, tenantId, siteId, role, label, control);
+    }
+
+    /**
+     * Create a v2-native entity row FROM an edge-reported source (U2 adoption):
+     * role mirrors the entity type, {@code edgeSourceId} pins it to the source
+     * it was adopted from so re-adoption is idempotent and drift is detectable.
+     * capacity/registry carry the customer-only master data (kWp, MaStR SEE #).
+     */
+    public UUID createAdoptedPoint(UUID tenantId, UUID siteId, String role, String label,
+            boolean control, String brand, BigDecimal capacityKwp, String registryUnitId,
+            String edgeSourceId) {
+        return jdbc.queryForObject(
+                "INSERT INTO measurement_point (tenant_id, site_id, role, label, control, brand, "
+                        + "capacity_kwp, registry_unit_id, edge_source_id) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                UUID.class, tenantId, siteId, role, label, control, brand, capacityKwp,
+                registryUnitId, edgeSourceId);
+    }
+
+    /** Pin an existing entity row to the edge source it was adopted from. */
+    public void setEdgeSource(UUID pointId, String edgeSourceId) {
+        jdbc.update("UPDATE measurement_point SET edge_source_id = ? WHERE id = ?",
+                edgeSourceId, pointId);
+    }
+
+    /** The site's v2 entity already adopted from this edge source, or null. */
+    public EntityRow entityByEdgeSource(UUID siteId, String edgeSourceId) {
+        List<EntityRow> rows = jdbc.query(
+                "SELECT " + ROW_COLUMNS + " FROM measurement_point WHERE site_id = ? "
+                        + "AND edge_source_id = ? AND entity_type IS NOT NULL",
+                EntityRegistryRepository::mapRow, siteId, edgeSourceId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** The edge source ids already adopted into a v2 entity of the site. */
+    public List<String> adoptedEdgeSourceIds(UUID siteId) {
+        return jdbc.query(
+                "SELECT edge_source_id FROM measurement_point WHERE site_id = ? "
+                        + "AND edge_source_id IS NOT NULL AND entity_type IS NOT NULL",
+                (rs, n) -> rs.getString(1), siteId);
     }
 
     /** Update an entity row's display label. */
@@ -236,6 +276,7 @@ public class EntityRegistryRepository {
                 rs.getBoolean("control"),
                 rs.getString("entity_type"),
                 rs.getString("caps"),
-                rs.getString("guards"));
+                rs.getString("guards"),
+                rs.getString("edge_source_id"));
     }
 }

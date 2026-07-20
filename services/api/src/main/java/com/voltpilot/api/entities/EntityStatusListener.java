@@ -176,7 +176,7 @@ public class EntityStatusListener {
                 rows.add(new ObservedRow(deviceId, e.getKey(), "registry",
                         o.path("entity_type").asText(null), o.path("health").asText(null), null,
                         optInstant(o, "last_telemetry_at"), revision,
-                        arrayJson(o.get("channels")), reportedAt));
+                        arrayJson(o.get("channels")), reportedAt, null, null));
             }
         }
         JsonNode localSetup = entities.get("local_setup");
@@ -188,7 +188,7 @@ public class EntityStatusListener {
                 }
                 rows.add(new ObservedRow(deviceId, "local:" + id, "local",
                         l.path("kind").asText(null), null, localLabel(l), null, revision, null,
-                        reportedAt));
+                        reportedAt, textOrNull(l, "role"), textOrNull(l, "brand")));
             }
         }
         TenantContext.set(tenantId);
@@ -218,6 +218,11 @@ public class EntityStatusListener {
             }
         }
         return sb.isEmpty() ? null : sb.toString();
+    }
+
+    private static String textOrNull(JsonNode node, String field) {
+        String v = node.path(field).asText("");
+        return v.isBlank() ? null : v;
     }
 
     private String arrayJson(JsonNode node) {

@@ -3221,6 +3221,97 @@ class PortalApiTest {
     }
 
     /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void customerAssignsTopologyRolesForItsOwnSiteAndStrategiesAreScoped() {
+        String demo = token("demo", "demo"); // tenant A, sees BERLIN_SITE
+        String gridEntity = "aaaa1111-0000-0000-0000-000000000001";
+        // Seed a v2 grid-meter entity on the demo tenant's Berlin site (superuser,
+        // RLS-bypassing) so the customer can re-assign its role.
+        exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, entity_type, "
+                + "capabilities) VALUES ('" + gridEntity + "', "
+                + "'00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', 'grid-meter', "
+                + "'grid-meter', '{\"measure\":[{\"channel\":\"power_kw\",\"unit\":\"kW\"}]}'::jsonb)");
+
+        // By default power_kw resolves to the grid role (DefaultRole mapping).
+        Map<String, Object> before = getMap(url("/api/v1/sites/" + BERLIN_SITE + "/topology"), demo);
+        assertThat(roleOfCapability(before, gridEntity, "power_kw")).isEqualTo("grid");
+
+        // The CUSTOMER re-assigns power_kw to the consumer role on ITS OWN site.
+        ResponseEntity<Map<String, Object>> put = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of(Map.of("entityId", gridEntity,
+                        "channel", "power_kw", "role", "consumer", "primary", false))),
+                        bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(put.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(roleOfCapability(put.getBody(), gridEntity, "power_kw")).isEqualTo("consumer");
+
+        // A blank role reverts to the DefaultRole mapping.
+        ResponseEntity<Map<String, Object>> cleared = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of(Map.of("entityId", gridEntity,
+                        "channel", "power_kw", "role", ""))), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(roleOfCapability(cleared.getBody(), gridEntity, "power_kw")).isEqualTo("grid");
+
+        // Validation: an unknown role is 400.
+        ResponseEntity<String> badRole = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of(Map.of("entityId", gridEntity,
+                        "channel", "power_kw", "role", "wolke"))), bearer(demo)), String.class);
+        assertThat(badRole.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // RLS: the customer cannot touch a foreign site's roles (404, never 403).
+        ResponseEntity<String> foreignSite = rest.exchange(
+                url("/api/v1/sites/" + HAMBURG_SITE + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of()), bearer(demo)), String.class);
+        assertThat(foreignSite.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // The customer cannot re-assign a foreign entity even via its own site path.
+        ResponseEntity<String> foreignEntity = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/topology-roles"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("assignments", List.of(Map.of("entityId",
+                        java.util.UUID.randomUUID().toString(), "channel", "power_kw",
+                        "role", "grid"))), bearer(demo)), String.class);
+        assertThat(foreignEntity.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // Strategy chips: no active flow yet => an empty map; foreign site 404.
+        Map<String, Object> strategies = getMap(
+                url("/api/v1/sites/" + BERLIN_SITE + "/entity-strategies"), demo);
+        assertThat(strategies).isEmpty();
+        ResponseEntity<String> foreignStrategies = rest.exchange(
+                url("/api/v1/sites/" + HAMBURG_SITE + "/entity-strategies"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), String.class);
+        assertThat(foreignStrategies.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        exec("DELETE FROM entity_role_assignment WHERE entity_id = '" + gridEntity + "'");
+        exec("DELETE FROM measurement_point WHERE id = '" + gridEntity + "'");
+    }
+
+    private Map<String, Object> getMap(String url, String token) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(url, HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return res.getBody();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String roleOfCapability(Map<String, Object> topology, String entityId,
+            String channel) {
+        for (Map<String, Object> e : (List<Map<String, Object>>) topology.get("entities")) {
+            if (!entityId.equals(e.get("id"))) {
+                continue;
+            }
+            for (Map<String, Object> c : (List<Map<String, Object>>) e.get("capabilities")) {
+                if (channel.equals(c.get("channel"))) {
+                    return (String) c.get("role");
+                }
+            }
+        }
+        throw new AssertionError("capability " + channel + " of " + entityId + " not found");
+    }
+
     private static void exec(String sql) {
         try (Connection c = DriverManager.getConnection(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());

@@ -7,6 +7,7 @@ import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.topology.TopologyRepository.LatestValue;
 import com.voltpilot.api.topology.TopologyRepository.RoleOverride;
+import com.voltpilot.api.tenant.TenantContext;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -16,7 +17,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Composes the Anlagen-Topologie-Read-Model (AE1) for one site: the v2 entities
@@ -44,6 +47,12 @@ public class TopologyService {
     public record TopologyResponse(String schemaVersion, List<EntityTopologyDto> entities,
             TopologyDeriver.Topology topology) {}
 
+    /** One capability→role assignment (role = null/blank REVERTS to the default). */
+    public record Assignment(UUID entityId, String channel, String role, boolean primary) {}
+
+    /** The role vocabulary a stored override may name (topology.DefaultRole set). */
+    private static final Set<String> ROLE_VOCAB = Set.of("pv", "storage", "grid", "consumer");
+
     private final EntityRegistryRepository registry;
     private final TopologyRepository repo;
     private final EntityTypeCatalog catalog;
@@ -55,6 +64,43 @@ public class TopologyService {
         this.repo = repo;
         this.catalog = catalog;
         this.mapper = mapper;
+    }
+
+    /**
+     * Apply a batch of capability→role assignment overrides for one site and
+     * return the recomputed read-model. Shared verbatim by the admin
+     * ({@code /admin/sites/{id}/topology-roles}) and the customer
+     * ({@code /sites/{id}/topology-roles}) surfaces - a role assignment is
+     * presentation-level and NEVER widens control (guards/arbitration key on
+     * capabilities, not roles), so the customer twin needs no extra gate beyond
+     * RLS. Every assignment must target a v2 entity visible under the session
+     * tenant (RLS: a foreign entity yields null =&gt; 404); an unknown role is
+     * 400; a blank role clears the override (revert to the DefaultRole mapping).
+     */
+    public TopologyResponse applyAssignments(UUID siteId, List<Assignment> assignments) {
+        List<Assignment> batch = assignments == null ? List.of() : assignments;
+        UUID tenantId = TenantContext.get();
+        for (Assignment a : batch) {
+            if (a.entityId() == null || a.channel() == null || a.channel().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Jede Zuordnung braucht entityId und channel.");
+            }
+            if (registry.entityForSite(siteId, a.entityId()) == null) {
+                // RLS hides sites/entities outside the session tenant.
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+            }
+            String role = a.role() == null ? "" : a.role().trim();
+            if (role.isEmpty()) {
+                repo.deleteOverride(siteId, a.entityId(), a.channel());
+                continue;
+            }
+            if (!ROLE_VOCAB.contains(role)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Unbekannte Rolle \"" + role + "\" (erlaubt: pv, storage, grid, consumer).");
+            }
+            repo.upsertOverride(tenantId, siteId, a.entityId(), a.channel(), role, a.primary());
+        }
+        return topology(siteId);
     }
 
     public TopologyResponse topology(UUID siteId) {

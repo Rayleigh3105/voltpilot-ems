@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.flows.FlowService;
+import com.voltpilot.api.flows.FlowService.EntityStrategyDto;
 import com.voltpilot.api.flows.FlowService.FlowSummaryDto;
 import com.voltpilot.api.flows.FlowService.FlowVersionDto;
 import com.voltpilot.api.flows.FlowService.GovernanceResponse;
@@ -75,6 +76,15 @@ public class SiteFlowController {
     @GetMapping("/sites/{siteId}/flows")
     public List<FlowSummaryDto> list(@PathVariable UUID siteId) {
         return flows.list(siteId);
+    }
+
+    /**
+     * Which ACTIVE flows touch each entity of the site (U2 "Ihre Geräte"
+     * strategy chips - read-only, a link into Steuerung). Keyed by entity id.
+     */
+    @GetMapping("/sites/{siteId}/entity-strategies")
+    public Map<String, List<EntityStrategyDto>> entityStrategies(@PathVariable UUID siteId) {
+        return flows.entityStrategies(siteId);
     }
 
     @PostMapping("/sites/{siteId}/flows")

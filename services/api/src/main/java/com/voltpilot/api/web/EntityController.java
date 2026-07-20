@@ -54,9 +54,12 @@ public class EntityController {
 
     public record EntityDto(UUID id, String entityType, String typeLabel, String role,
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
-            String syncStatus, ObservedDto observed) {}
+            String syncStatus, ObservedDto observed, String edgeSourceId) {}
 
-    public record LocalSetupDto(String id, String kind, String label, Instant reportedAt) {}
+    /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
+     *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet"). */
+    public record LocalSetupDto(String id, String kind, String role, String brand, String label,
+            Instant reportedAt, String adoptedEntityId) {}
 
     public record RegistrySummaryDto(String revision, Instant composedAt, UUID deviceId,
             String reportedRevision, Instant reportedAt) {}
@@ -94,15 +97,21 @@ public class EntityController {
         RegistryState state = registry.registryState(siteId);
         List<ObservedRow> observedRows = observed.forSite(siteId);
 
+        // Which edge source each already-adopted entity came from (U2 matcher).
+        Map<String, String> adoptedBySource = new LinkedHashMap<>();
+        for (EntityRow row : rows) {
+            if (row.edgeSourceId() != null) {
+                adoptedBySource.put(row.edgeSourceId(), row.id().toString());
+            }
+        }
+
         Map<String, ObservedRow> byEntity = new LinkedHashMap<>();
-        List<LocalSetupDto> localSetup = new ArrayList<>();
+        List<ObservedRow> localRows = new ArrayList<>();
         String reportedRevision = null;
         Instant reportedAt = null;
         for (ObservedRow row : observedRows) {
             if ("local".equals(row.source())) {
-                localSetup.add(new LocalSetupDto(
-                        row.entityId().replaceFirst("^local:", ""), row.entityType(),
-                        row.label(), row.reportedAt()));
+                localRows.add(row);
             } else {
                 byEntity.put(row.entityId(), row);
             }
@@ -110,6 +119,14 @@ public class EntityController {
                 reportedRevision = row.appliedRevision();
             }
             reportedAt = row.reportedAt();
+        }
+
+        List<LocalSetupDto> localSetup = new ArrayList<>();
+        for (ObservedRow row : localRows) {
+            String sourceId = row.entityId().replaceFirst("^local:", "");
+            localSetup.add(new LocalSetupDto(sourceId, row.entityType(), row.edgeRole(),
+                    row.edgeBrand(), row.label(), row.reportedAt(),
+                    adoptedBySource.get(sourceId)));
         }
 
         List<EntityDto> entities = new ArrayList<>();
@@ -122,7 +139,8 @@ public class EntityController {
                     obs == null ? null
                             : new ObservedDto(obs.health(), obs.lastTelemetryAt(),
                                     parse(obs.channelsJson()), obs.entityType(),
-                                    obs.reportedAt())));
+                                    obs.reportedAt()),
+                    row.edgeSourceId()));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());

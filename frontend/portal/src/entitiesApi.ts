@@ -32,6 +32,19 @@ export interface SaveEntityInput {
   guards?: SiteEntity['guards'];
 }
 
+/** Adopt an edge-reported source into a v2 entity (U2). */
+export interface AdoptInput {
+  sourceId: string;
+  entityType: string;
+  label?: string;
+  /** Consumer rated power (bounds commands). */
+  maxPowerKw?: number;
+  /** Producer nameplate (kWp) - sums into the aggregate site PV. */
+  capacityKwp?: number;
+  /** MaStR SEE number of the source. */
+  registryUnitId?: string;
+}
+
 /** One entity as the admin registry surface returns it (bootstrap/create/list). */
 export interface AdminEntity {
   id: string;
@@ -66,6 +79,19 @@ export const entitiesApi = {
   /** Create a v2-native entity of an open catalog type. */
   create: (siteId: string, body: SaveEntityInput) =>
     request<SiteEntity>(`/api/v1/admin/sites/${siteId}/v2-entities`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * Adopt an edge-reported source into a v2 entity (U2 "Vom Gerät gemeldet",
+   * report §3.3, admin-only first increment). Idempotent per {@code sourceId}:
+   * a re-adopt returns the existing entity. A consumer type becomes a v2-native
+   * entity; a composed producer/grid-meter is recorded as a read-only source
+   * (its kWp / MaStR SEE # captured here). Admin-only.
+   */
+  adopt: (siteId: string, body: AdoptInput) =>
+    request<AdminEntity>(`/api/v1/admin/sites/${siteId}/v2-entities/adopt`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

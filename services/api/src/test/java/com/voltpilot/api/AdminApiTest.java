@@ -2031,6 +2031,118 @@ class AdminApiTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void adminAdoptsEdgeReportedSourcesIntoV2EntitiesIdempotently() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Adoption GmbH", "CI").get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Adoptionsanlage", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + siteId + "', 'battery', 65, 30, 30, 92)");
+        // The site's aggregate PV asset (so a producer adoption can add to it).
+        exec("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES ('"
+                + tenantId + "', '" + siteId + "', 'pv', 10)");
+        String deviceId = (String) rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "adopt-rig-01"),
+                        adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        // The edge reports two local sources: a go-e wallbox (consumer) and an
+        // AC-coupled PV (producer). Neither has a matching entity yet.
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+        String topic = "ems/" + tenantId + "/" + siteId + "/" + deviceId + "/status";
+        String heartbeat = "{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantId + "\","
+                + "\"site_id\":\"" + siteId + "\",\"device_id\":\"" + deviceId + "\","
+                + "\"online\":true,\"entities\":{\"revision\":\"r1\",\"local_setup\":["
+                + "{\"id\":\"goe-1\",\"kind\":\"source\",\"role\":\"consumer\",\"brand\":\"go-e\","
+                + "\"model\":\"Charger 3\"},"
+                + "{\"id\":\"pv-2\",\"kind\":\"source\",\"role\":\"pv-generation\","
+                + "\"brand\":\"Fronius\",\"model\":\"Eco 27\"}]}}";
+        listener.handle(topic, heartbeat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        // The entities surface reports the sources with their role/brand, both
+        // unadopted (no matching entity yet).
+        Map<String, Object> surface = entitiesSurface(siteId, adminTenant);
+        List<Map<String, Object>> localSetup =
+                (List<Map<String, Object>>) surface.get("localSetup");
+        assertThat(localSetup).hasSize(2);
+        Map<String, Object> goe = localSetup.stream()
+                .filter(l -> "goe-1".equals(l.get("id"))).findFirst().orElseThrow();
+        assertThat(goe.get("role")).isEqualTo("consumer");
+        assertThat(goe.get("brand")).isEqualTo("go-e");
+        assertThat(goe.get("adoptedEntityId")).as("not adopted yet").isNull();
+
+        // Adopt the wallbox (non-composed consumer type) -> a v2 entity pinned
+        // to its source id.
+        ResponseEntity<Map<String, Object>> adopted = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "goe-1", "entityType", "wallbox",
+                        "label", "Wallbox Carport", "maxPowerKw", 11), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(adopted.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String wallboxId = (String) adopted.getBody().get("id");
+        assertThat(adopted.getBody().get("entityType")).isEqualTo("wallbox");
+
+        // It shows up in "Ihre Geräte" carrying its edge source id; the reported
+        // source now points at it (adopted).
+        surface = entitiesSurface(siteId, adminTenant);
+        Map<String, Object> wbEntity = ((List<Map<String, Object>>) surface.get("entities"))
+                .stream().filter(e -> wallboxId.equals(e.get("id"))).findFirst().orElseThrow();
+        assertThat(wbEntity.get("edgeSourceId")).isEqualTo("goe-1");
+        goe = ((List<Map<String, Object>>) surface.get("localSetup")).stream()
+                .filter(l -> "goe-1".equals(l.get("id"))).findFirst().orElseThrow();
+        assertThat(goe.get("adoptedEntityId")).isEqualTo(wallboxId);
+
+        // Re-adoption is idempotent: the same source returns the same entity.
+        ResponseEntity<Map<String, Object>> reAdopt = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "goe-1", "entityType", "wallbox"), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(reAdopt.getBody().get("id")).isEqualTo(wallboxId);
+
+        // Adopt the producer (composed) -> a producer entity + its kWp sums into
+        // the aggregate site PV (the retired ErzeugerSourcesPanel job).
+        ResponseEntity<Map<String, Object>> producer = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "pv-2", "entityType", "producer",
+                        "label", "AC-PV Nord", "capacityKwp", 27, "registryUnitId", "SEE900"),
+                        adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(producer.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(producer.getBody().get("entityType")).isEqualTo("producer");
+        assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv' AND is_primary")).isEqualTo(37.0); // 10 + 27
+
+        // battery-hybrid is never adopted as a source (422; a FRESH source id so
+        // the idempotency short-circuit does not mask the type refusal).
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "bh-3", "entityType", "battery-hybrid"),
+                        adminTenant), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // A customer cannot adopt (admin-only route -> 403).
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "x", "entityType", "wallbox"),
+                        bearer(token("demo", "demo"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> entitiesSurface(String siteId, HttpHeaders headers) {
+        return rest.exchange(url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(headers), new ParameterizedTypeReference<Map<String, Object>>() {})
+                .getBody();
+    }
+
+    @Test
     void aSecondNonPrimaryBatteryAssetRowLeavesV1PathsIntact() {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Zweitspeicher GmbH", "CI").get("id");
@@ -2131,6 +2243,19 @@ class AdminApiTest {
                 java.sql.ResultSet rs = st.executeQuery(sql)) {
             rs.next();
             return rs.getLong(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
+
+    /** Scalar numeric query as the Postgres superuser (sees all tenants' rows). */
+    private static double queryDouble(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getDouble(1);
         } catch (Exception e) {
             throw new IllegalStateException("query failed: " + sql, e);
         }
