@@ -90,6 +90,16 @@ tags:
       override them, foreign site = 404 via RLS); the prospect route is
       platform-admin-only with explicit inputs and persists nothing (V1 is
       stateless - results live in the service's job cache for ~1 h).
+  - name: flows
+    description: >
+      Customer flow editor (E3b "Kunden-Freigabe"): a Portal-User builds,
+      validates, simulates, activates and deactivates the flows of THEIR OWN
+      sites (tenant from the JWT, RLS-scoped; a Portal-Admin reaches any site via
+      the X-Tenant-Id switcher). The lifecycle + gates are identical to the admin
+      flow API (draft -> simulated -> active -> retired) and never relaxed for a
+      customer: a flow carrying a GATED strategy node activates only after a
+      Portal-Admin enables that node type for the site. Governance WRITE and the
+      auto-start seed stay platform-admin-only (the admin flow API).
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -1713,6 +1723,223 @@ paths:
         "400": { description: Bad range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Entity/site not found. }
+  /api/v1/flow-catalog:
+    get:
+      tags: [flows]
+      summary: The node catalog for the CUSTOMER flow editor (E3b).
+      description: >
+        E3b customer flow release. The SAME catalog served to the admin editor
+        (services/api flowcatalog/catalog.json), but on an authenticated,
+        non-admin-gated route so a Portal-User's editor palettes/validates
+        against it. Tenant-agnostic (the catalog carries no tenant data); the
+        `gated` flag per node lets the customer editor render a market-/grid-near
+        strategy node "locked" (needs VoltPilot enablement).
+      responses:
+        "200":
+          description: The catalog document ({catalog_version, types[]}).
+          content: { application/json: { schema: { type: object } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/sites/{siteId}/flow-node-governance:
+    get:
+      tags: [flows]
+      summary: READ-ONLY gated-node enablement for the customer editor (E3b).
+      description: >
+        Which gated strategy node types are enabled for THIS site, so the
+        customer editor can render a not-enabled gated node "locked" with the
+        Beratung hint. Read-only for customers - enabling a gated node stays a
+        Portal-Admin action (PUT /api/v1/admin/sites/{siteId}/flow-node-governance).
+        Tenant-scoped like every /sites route (foreign site => 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The gated node types + per-site enablement.
+          content: { application/json: { schema: { $ref: "#/components/schemas/FlowNodeGovernance" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found (foreign tenant). }
+  /api/v1/sites/{siteId}/flows:
+    get:
+      tags: [flows]
+      summary: List a customer's own site flows (E3b).
+      description: >
+        A Portal-User reads the flows of THEIR OWN site (tenant from the JWT,
+        RLS-scoped; a Portal-Admin reaches any site via the X-Tenant-Id switcher).
+        One summary per flow with its version spine; documents follow
+        docs/contracts/v2/flow-graph.schema.json. Mirrors the admin list, minus
+        the platform-admin gate.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's flows.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/FlowSummary" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found (foreign tenant). }
+    post:
+      tags: [flows]
+      summary: Create a flow (version 1, draft) on one's own site.
+      description: >
+        The server stamps ALL identity (flow_id, flow_version, site_id,
+        tenant_id) into the document; the client only supplies the name and an
+        optional starting document.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveFlowRequest" }
+      responses:
+        "201":
+          description: The created draft version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowVersion" }
+        "400": { description: Missing/over-long name. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found (foreign tenant). }
+  /api/v1/sites/{siteId}/flows/{flowId}:
+    delete:
+      tags: [flows]
+      summary: Delete a whole flow (all versions; draft cleanup).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Deleted. }
+        "409": { description: A version is active - deactivate first. }
+        "404": { description: Flow/site not found. }
+  /api/v1/sites/{siteId}/flows/{flowId}/deactivate:
+    post:
+      tags: [flows]
+      summary: Stop a running flow (retire its active version + re-publish).
+      description: >
+        Retires the flow's active version and re-publishes the site's (now
+        smaller) COMPLETE deployment set so the edge drops the retired flow.
+        Never gated by the activation flag - stopping a flow is always allowed.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Deactivation outcome ({deactivated, published, lifecycle}).
+          content: { application/json: { schema: { type: object } } }
+        "409": { description: The flow has no active version. }
+        "404": { description: Flow/site not found. }
+  /api/v1/sites/{siteId}/flows/{flowId}/versions/{version}:
+    get:
+      tags: [flows]
+      summary: One flow version (document + lifecycle + recorded dry-run).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: The flow version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowVersion" }
+        "404": { description: Flow/version/site not found. }
+    put:
+      tags: [flows]
+      summary: Save a flow version (a simulated/active version yields a new draft).
+      description: >
+        A draft is updated in place; editing a simulated/active version creates a
+        NEW draft version (flow-graph contract paragraph 5) - the response carries
+        the resulting version.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveFlowRequest" }
+      responses:
+        "200":
+          description: The saved (possibly new) version.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowVersion" }
+        "409": { description: The version is retired (read-only). }
+        "404": { description: Flow/version/site not found. }
+  /api/v1/sites/{siteId}/flows/{flowId}/versions/{version}/validate:
+    post:
+      tags: [flows]
+      summary: Validate a flow version (V-1..V-8).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Findings + the blocking verdict.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowValidationResult" }
+  /api/v1/sites/{siteId}/flows/{flowId}/versions/{version}/simulate:
+    post:
+      tags: [flows]
+      summary: Start the flow dry-run (Ersparnis-Simulation mapping).
+      description: >
+        Compiles the flow to its deterministic simulation mapping and submits a
+        job over the site's real master data. 422 for an invalid flow or one
+        without a simulierbar battery strategy.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "202":
+          description: The dry-run was submitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  simulationId: { type: string }
+                  flowScenario: { type: string, enum: [voltpilot, standardSpeicher] }
+        "422": { description: Invalid flow / no simulierbar strategy (German message). }
+  /api/v1/sites/{siteId}/flows/{flowId}/versions/{version}/simulation/{simulationId}:
+    get:
+      tags: [flows]
+      summary: Poll the flow dry-run; completion flips draft -> simulated.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+        - { name: simulationId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The job status (+ flowScenario).
+          content: { application/json: { schema: { type: object } } }
+        "404": { description: Job/version not found. }
+  /api/v1/sites/{siteId}/flows/{flowId}/versions/{version}/activate:
+    post:
+      tags: [flows]
+      summary: Activate a simulated version (governance-gated; E3b customer path).
+      description: >
+        The SAME lifecycle + gates as the admin activate, never relaxed for a
+        customer: strict validation, the D1 safety gate (simulate first), the AE7
+        node-governance gate (activated=false, reason=gated_node_not_enabled when
+        a gated strategy node is not yet enabled by a Portal-Admin for the site),
+        the peak-shaving precondition, then compile + rollout - gated by
+        VOLTPILOT_FLOWS_ACTIVATION_ENABLED (default OFF -> reason=activation_disabled).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: Activation outcome (activated, reason, message, published).
+          content: { application/json: { schema: { type: object } } }
+        "409": { description: Already active / draft not simulated yet. }
+        "422": { description: Validation errors (message + findings). }
+        "404": { description: Not found. }
   /api/v1/admin/flow-catalog:
     get:
       tags: [admin]

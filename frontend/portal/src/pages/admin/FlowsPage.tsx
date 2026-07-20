@@ -15,7 +15,7 @@ import { Drawer } from '../../../designsystem/components/shell/Drawer';
 import { ApiError, type Site } from '../../api';
 import { adminApi, type Tenant } from '../../admin/adminApi';
 import { EmptyState, ErrorState, TextSkeleton } from '../../components/States';
-import { flowsApi, type FlowSummary } from '../../flows/flowsApi';
+import { adminFlowApi, flowsApi, type FlowSummary } from '../../flows/flowsApi';
 import { lifecycleLabel, type EditorEntity } from '../../flows/model';
 import {
   batteryEntity,
@@ -90,6 +90,10 @@ export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
 
   const site = useMemo(() => sites.find((s) => s.id === siteId) ?? null, [sites, siteId]);
   const battery = batteryEntity(entities);
+  const editorApi = useMemo(
+    () => (tenantId && siteId ? adminFlowApi(tenantId, siteId) : null),
+    [tenantId, siteId],
+  );
 
   const create = useCallback(async () => {
     if (!tenantId || !siteId) return;
@@ -114,10 +118,10 @@ export function FlowsPage({ tenants }: { tenants: Tenant[] }) {
     }
   }, [tenantId, siteId, createName, createTemplate, battery]);
 
-  if (editing && tenantId && site) {
+  if (editing && site && editorApi) {
     return (
       <FlowEditorPage
-        tenantId={tenantId}
+        api={editorApi}
         site={site}
         flowId={editing.flowId}
         initialVersion={editing.version}

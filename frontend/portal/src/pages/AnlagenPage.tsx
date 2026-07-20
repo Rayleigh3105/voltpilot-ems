@@ -47,6 +47,7 @@ import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
 import { LiveSection } from './LiveSection';
 import { EntitaetenSection } from './EntitaetenSection';
+import { SteuerungSection } from './SteuerungSection';
 import { SimulationSection } from '../components/SimulationView';
 import { TechnikSection } from './AnlageTechnik';
 
@@ -296,6 +297,11 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     subtitle:
       'Was hätte Ihre Anlage im letzten Jahr gebracht - ohne Speicher, mit Standard-Speicher und mit VoltPilot?',
   },
+  steuerung: {
+    title: 'Steuerung',
+    subtitle:
+      'Ihre Steuerungs-Flows: Regeln bauen, prüfen, simulieren und aktivieren - was geschaltet wird und zu welchen Bedingungen.',
+  },
 };
 
 /** One deep view of an Anlage, with the way back always in sight. */
@@ -336,6 +342,7 @@ function AnlagenSubPage({
       {sub === 'optimierung' && <OptimierungSection site={site} isAdmin={isAdmin} />}
       {sub === 'entitaeten' && <EntitaetenSection site={site} isAdmin={isAdmin} />}
       {sub === 'simulation' && <SimulationSection site={site} />}
+      {sub === 'steuerung' && <SteuerungSection site={site} isAdmin={isAdmin} />}
       {sub === 'technik' && (
         <TechnikSection
           site={site}
@@ -849,6 +856,13 @@ export function AnlageSeite({
               title="Geräte & Entitäten"
               line="Alle Mess- und Steuer-Einheiten - Fähigkeiten, Zustand, Konfiguration."
               onOpen={() => onOpenSub('entitaeten')}
+            />
+            <DetailCard
+              icon="zap"
+              category="primary"
+              title="Steuerung"
+              line="Regeln bauen: was geschaltet wird und zu welchen Bedingungen."
+              onOpen={() => onOpenSub('steuerung')}
             />
             <DetailCard
               icon="euro"

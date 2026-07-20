@@ -4,17 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.flows.FlowService;
 import com.voltpilot.api.flows.FlowService.FlowSummaryDto;
 import com.voltpilot.api.flows.FlowService.FlowVersionDto;
-import com.voltpilot.api.flows.FlowService.GovernanceRequest;
 import com.voltpilot.api.flows.FlowService.GovernanceResponse;
 import com.voltpilot.api.flows.FlowService.SaveFlowRequest;
 import com.voltpilot.api.flows.FlowService.ValidationResponse;
-import com.voltpilot.api.flows.FlowTemplateService;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,59 +24,57 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * The Portal-Admin flow-editor surface (E3a): CRUD + versioning + validation +
- * dry-run + governance-gated activation. This is a THIN wrapper - the whole
- * lifecycle lives in {@link FlowService}, shared verbatim with the customer
- * surface ({@link SiteFlowController}) so there is one lifecycle truth and no
- * forked gate. The only admin-exclusive endpoints are the governance WRITE
- * (enable gated node types for a site) and the AE7 auto-start seed.
+ * The CUSTOMER flow-editor surface (E3b, "Kunden-Freigabe"): a Portal-User
+ * builds, validates, simulates, activates, and deactivates the flows of THEIR
+ * OWN sites. Tenant-scoped like every {@code /api/v1/sites/**} route
+ * ({@link SiteController}, {@link UsageProfileController}): NO {@code @PreAuthorize}
+ * - authentication + Postgres RLS are the fence. A customer's tenant comes from
+ * the JWT {@code tenant_id} claim; a Portal-Admin reaches any site through the
+ * {@code X-Tenant-Id} switcher (the same RLS-scoped path). A foreign or unset
+ * tenant sees nothing => 404, never 403.
  *
- * <p>Like {@link AdminEntityRegistryController}, everything reads/writes THROUGH
- * the RLS-scoped app datasource via the {@code X-Tenant-Id} switcher: no tenant
- * selected, or the wrong one, and site + flows are invisible => 404.
+ * <p>The whole lifecycle is {@link FlowService}, shared verbatim with
+ * {@link AdminFlowController} - so no server-side gate is weakened for
+ * customers. In particular activation still refuses a flow carrying a GATED
+ * strategy node ({@code gated_node_not_enabled}) until a Portal-Admin enables
+ * that node type for the site: this surface exposes governance READ-ONLY (to
+ * render a locked node in the editor with the "VoltPilot richtet ein" hint) and
+ * deliberately offers NO governance WRITE and NO auto-start (both stay
+ * admin-only on {@link AdminFlowController}).
+ *
+ * <p>Lifecycle steps a customer gets: full draft → validate → simulate →
+ * activate for FREE-node flows (Eigenverbrauch + device-control/data/logic/
+ * action nodes), deactivate + delete their own flows, and version-history read.
  */
 @RestController
-@RequestMapping("/api/v1/admin")
-@PreAuthorize("hasRole('platform-admin')")
-public class AdminFlowController {
+@RequestMapping("/api/v1")
+public class SiteFlowController {
 
     private final FlowService flows;
 
-    public AdminFlowController(FlowService flows) {
+    public SiteFlowController(FlowService flows) {
         this.flows = flows;
     }
 
-    /** The node catalog the editor palettes/validates against (one truth). */
+    /** The node catalog the customer editor palettes/validates against. */
     @GetMapping("/flow-catalog")
     public JsonNode flowCatalog() {
         return flows.catalogRaw();
     }
 
-    /** The gated strategy node types + their per-site enablement (AE7 governance). */
+    /**
+     * READ-ONLY governance: which gated node types are enabled for the site, so
+     * the editor can render a not-enabled gated node "locked" with the Beratung
+     * hint. A customer cannot change this (no PUT here) - VoltPilot richtet ein.
+     */
     @GetMapping("/sites/{siteId}/flow-node-governance")
     public GovernanceResponse governance(@PathVariable UUID siteId) {
         return flows.governance(siteId);
     }
 
-    /** Enable/disable gated node types for the site (Portal-Admin ONLY). */
-    @PutMapping("/sites/{siteId}/flow-node-governance")
-    public GovernanceResponse setGovernance(@PathVariable UUID siteId,
-            @RequestBody GovernanceRequest request) {
-        return flows.setGovernance(siteId, request);
-    }
-
     @GetMapping("/sites/{siteId}/flows")
     public List<FlowSummaryDto> list(@PathVariable UUID siteId) {
         return flows.list(siteId);
-    }
-
-    /** AE7 auto-start: seed the site's derived-profile starter flow (admin only). */
-    @PostMapping("/sites/{siteId}/flows/auto-start")
-    public ResponseEntity<FlowTemplateService.AutoStartOutcome> autoStart(
-            @PathVariable UUID siteId) {
-        FlowTemplateService.AutoStartOutcome outcome = flows.autoStart(siteId);
-        HttpStatus status = outcome.created() ? HttpStatus.CREATED : HttpStatus.OK;
-        return ResponseEntity.status(status).body(outcome);
     }
 
     @PostMapping("/sites/{siteId}/flows")
