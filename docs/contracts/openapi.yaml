@@ -915,9 +915,11 @@ paths:
         records the second PV here as an Erzeuger source; its kWp sums into the
         aggregate `asset.pv` the forecast reads. A dedicated grid meter at the
         point of common coupling is recorded as a Netz source (`grid-meter`, at
-        most one per site, no nameplate); it does not touch `asset.pv`. NO second
-        device claim - sources are read through the site's one connected edge,
-        which folds a Netz meter into the authoritative site grid. Read-only by
+        most one per site, no nameplate); it does not touch `asset.pv`. A
+        Verbraucher (`consumer`, e.g. a go-e wallbox) is recorded here too - no
+        nameplate, no count limit (a site may have several). NO second device
+        claim - sources are read through the site's one connected edge, which
+        folds a Netz meter into the authoritative site grid. Read-only by
         construction (control is always false).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -933,7 +935,7 @@ paths:
         "404": { description: Site not found for this tenant (RLS). }
     post:
       tags: [registry]
-      summary: Record an additional read-only source (Erzeuger PV, or a single Netz grid meter).
+      summary: Record an additional read-only source (Erzeuger PV, a single Netz grid meter, or a Consumer).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -946,9 +948,10 @@ paths:
                 role:
                   type: string
                   description: >
-                    'pv-generation' (Erzeuger, default) or 'grid-meter' (Netz, at
-                    most one per site; carries no nameplate).
-                  enum: [pv-generation, grid-meter]
+                    'pv-generation' (Erzeuger, default), 'grid-meter' (Netz, at
+                    most one per site; carries no nameplate) or 'consumer'
+                    (Verbraucher, e.g. a wallbox; no nameplate, no count limit).
+                  enum: [pv-generation, grid-meter, consumer]
                 label: { type: string, maxLength: 120 }
                 brand: { type: string, maxLength: 60 }
                 model: { type: string, maxLength: 60 }
@@ -2465,7 +2468,7 @@ components:
         false).
       properties:
         id: { type: string, format: uuid }
-        role: { type: string, example: pv-generation, description: "'pv-generation' (Erzeuger) or 'grid-meter' (Netz)." }
+        role: { type: string, example: pv-generation, description: "'pv-generation' (Erzeuger), 'grid-meter' (Netz) or 'consumer' (Verbraucher)." }
         label: { type: string, nullable: true }
         brand: { type: string, nullable: true }
         model: { type: string, nullable: true }

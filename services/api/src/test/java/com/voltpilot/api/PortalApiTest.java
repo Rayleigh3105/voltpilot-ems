@@ -2956,6 +2956,21 @@ class PortalApiTest {
                 HttpMethod.POST, new HttpEntity<>(Map.of("role", "grid-meter"), bearer(demo)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
 
+        // A Consumer (e.g. a go-e wallbox) is accepted, carries no nameplate (does
+        // NOT bump the aggregate PV even if a capacityKwp is sent), and - unlike
+        // the Netz meter - is NOT count-limited (a site may have several).
+        List<Map<String, Object>> withConsumer = createMeasurementPoint(demo, site, Map.of(
+                "role", "consumer", "label", "Wallbox Garage", "capacityKwp", 22));
+        assertThat(withConsumer).anyMatch(p -> "consumer".equals(p.get("role")));
+        assertThat(withConsumer).filteredOn(p -> "consumer".equals(p.get("role")))
+                .allSatisfy(p -> assertThat(p.get("capacityKwp")).isNull());
+        assertThat(aggregatePvKwp(demo, site)).isEqualByComparingTo("30"); // consumer never touches asset.pv
+        // A SECOND consumer is allowed (no count limit).
+        List<Map<String, Object>> withTwoConsumers = createMeasurementPoint(demo, site,
+                Map.of("role", "consumer", "label", "Wärmepumpe"));
+        assertThat(withTwoConsumers).filteredOn(p -> "consumer".equals(p.get("role"))).hasSize(2);
+        assertThat(aggregatePvKwp(demo, site)).isEqualByComparingTo("30");
+
         // An unknown role is still refused -> 400.
         assertThat(rest.exchange(url("/api/v1/sites/" + site + "/measurement-points"),
                 HttpMethod.POST, new HttpEntity<>(Map.of("role", "wallbox"), bearer(demo)),

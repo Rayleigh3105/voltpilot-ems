@@ -10,9 +10,10 @@ import java.math.BigDecimal;
  * device claim; the source is read through the site's one claimed edge).
  *
  * <p>{@code role} defaults to the Erzeuger role ("pv-generation") and may also be
- * the Netz grid-meter role ("grid-meter", at most one per site). {@code
- * capacityKwp} is the per-Erzeuger nameplate that sums into the aggregate site PV
- * (ignored for a Netz meter, which has no nameplate). {@code registryUnitId} is
+ * the Netz grid-meter role ("grid-meter", at most one per site) or the Consumer
+ * role ("consumer", e.g. a go-e wallbox, no count limit). {@code capacityKwp} is
+ * the per-Erzeuger nameplate that sums into the aggregate site PV (ignored for a
+ * Netz meter or a Consumer, which have no nameplate). {@code registryUnitId} is
  * the source's OWN MaStR SEE number - optional (captain decision 3: capture it,
  * but never block adding a source when it is absent). {@code brand}/{@code model}
  * are informational (the edge reads the source; the portal just records what it

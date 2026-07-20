@@ -23,13 +23,12 @@
  * The register maps + scaling stay in their owning modules (reused via
  * inverter-routing.route). READ-ONLY: a source never gets a control path.
  *
- * SCOPE: the flow read EXECUTOR wired in build-flows.js reads `modbus_tcp`
- * sources (the compact sim profile the e2e uses) AND `fronius_sunspec` /
- * `sunspec_live` sources (real SunSpec model discovery over Modbus TCP - the
- * common separate AC-coupled PV, e.g. a Fronius Eco as an Erzeuger). A
- * `solarman_v5` source is recognised by the routing but its per-source socket
- * executor is deferred (a second Deye as a read-only source is unusual; the
- * primary Deye path is unchanged). See report §4 Phase 1.
+ * SCOPE: the flow read EXECUTOR wired in build-flows.js reads EVERY read
+ * transport in EVERY source slot - `modbus_tcp` (the compact sim profile the e2e
+ * uses), `fronius_sunspec` / `sunspec_live` (real SunSpec model discovery over
+ * Modbus TCP - e.g. a Fronius Eco as an Erzeuger), `goe_http_api` (a go-e wallbox
+ * as a Consumer), `solarman_v5` (a Deye over its Solarman-V5 logger) and
+ * `fronius_solar_api` (a Fronius over its Solar API v1). See report §4 Phase 1.
  */
 
 const { parseConfig, route } = require('./inverter-routing');
@@ -99,7 +98,7 @@ function parseSourcesConfig(input) {
  * read-only measurement roles (Erzeuger PV + Netz grid meter + Consumer load)
  * that route to a usable (non-idle) read path. Returns a list of { id, role,
  * capacity_kwp, plan } where plan is the inverter-routing.route result (adapter
- * modbus_tcp | sunspec_live | solarman_v5 | goe_http_api). The role rides along
+ * modbus_tcp | sunspec_live | solarman_v5 | fronius_solar_api | goe_http_api). The role rides along
  * so the reader picks the right field to publish (Erzeuger -> pv_power_kw, Netz
  * -> signed power_kw, Consumer -> load_kw).
  */

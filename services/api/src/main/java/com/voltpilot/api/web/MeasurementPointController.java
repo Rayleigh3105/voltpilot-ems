@@ -41,9 +41,11 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>Roles: an Erzeuger (PV) source sums its kWp into {@code asset.pv}; a Netz
  * (grid meter) has no nameplate, does not touch {@code asset.pv}, and is capped
- * at one per site (a single meter at the point of common coupling). This is
- * master data only - the edge is the read authority and folds the meter into the
- * site grid; the aggregation itself lives on the edge (report Increment 1).
+ * at one per site (a single meter at the point of common coupling); a Consumer
+ * (Verbraucher, e.g. a go-e wallbox) has no nameplate, does not touch {@code
+ * asset.pv}, and is NOT count-limited (a site may have several consumers). This
+ * is master data only - the edge is the read authority and folds the meter into
+ * the site grid; the aggregation itself lives on the edge (report Increment 1).
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/measurement-points")
@@ -52,6 +54,11 @@ public class MeasurementPointController {
     /** Read-only source roles recordable today. */
     private static final String ROLE_ERZEUGER = "pv-generation";
     private static final String ROLE_NETZ = "grid-meter";
+    // A Verbraucher (e.g. a go-e wallbox read over its local HTTP API): read-only
+    // like the other source roles, no nameplate (never touches asset.pv) and NOT
+    // count-limited (a site may have several). Its load_kw rides the per-source
+    // topic and (topology layer) renders as a consumer entity.
+    private static final String ROLE_CONSUMER = "consumer";
 
     private final SiteRepository sites;
     private final MeasurementPointRepository points;
@@ -87,7 +94,7 @@ public class MeasurementPointController {
 
         String role = request.role() == null || request.role().isBlank()
                 ? ROLE_ERZEUGER : request.role().trim();
-        if (!ROLE_ERZEUGER.equals(role) && !ROLE_NETZ.equals(role)) {
+        if (!ROLE_ERZEUGER.equals(role) && !ROLE_NETZ.equals(role) && !ROLE_CONSUMER.equals(role)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Diese Art von Energiequelle wird nicht unterstützt.");
         }
@@ -96,8 +103,9 @@ public class MeasurementPointController {
                     "Diese Anlage hat bereits einen Netz-Zähler. Es ist nur einer möglich.");
         }
         String label = blankToNull(request.label());
-        // A meter has no nameplate; only an Erzeuger's kWp feeds the aggregate PV.
-        BigDecimal capacity = ROLE_NETZ.equals(role) ? null : request.capacityKwp();
+        // Only an Erzeuger's kWp feeds the aggregate PV; a meter and a consumer
+        // have no nameplate.
+        BigDecimal capacity = ROLE_ERZEUGER.equals(role) ? request.capacityKwp() : null;
 
         points.create(tenantId, siteId, role, label, blankToNull(request.brand()),
                 blankToNull(request.model()), capacity, blankToNull(request.registryUnitId()));

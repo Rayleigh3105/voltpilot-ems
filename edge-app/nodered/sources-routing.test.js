@@ -128,7 +128,7 @@ test('planSources returns a sunspec_live read plan for a Fronius SunSpec Erzeuge
   assert.equal(plans[0].plan.connection.model_type, 'auto');
 });
 
-test('planSources recognises a solarman source via routing (executor deferred)', () => {
+test('planSources returns a solarman_v5 read plan for a Deye source, carrying serial + reads', () => {
   const solar = modbusSource({
     id: 'src-deye',
     brand: 'deye',
@@ -138,5 +138,26 @@ test('planSources recognises a solarman source via routing (executor deferred)',
   });
   const plans = sr.planSources(sr.parseSourcesConfig(config([solar])));
   assert.equal(plans.length, 1);
+  assert.equal(plans[0].id, 'src-deye');
   assert.equal(plans[0].plan.adapter, 'solarman_v5');
+  assert.equal(plans[0].plan.family, 'hybrid_3p');
+  assert.equal(plans[0].plan.connection.serial, '2985159064');
+  assert.ok(Array.isArray(plans[0].plan.reads) && plans[0].plan.reads.length > 0);
+});
+
+test('planSources returns a fronius_solar_api read plan for a Fronius source', () => {
+  const fronius = modbusSource({
+    id: 'src-fr',
+    brand: 'fronius',
+    model: 'fronius_solar_api',
+    family: 'fronius_solar_api',
+    communication: 'fronius_solar_api',
+    connection: { ip: '192.168.1.50', port: 80, invert_grid_sign: false },
+  });
+  const plans = sr.planSources(sr.parseSourcesConfig(config([fronius])));
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].id, 'src-fr');
+  assert.equal(plans[0].plan.adapter, 'fronius_solar_api');
+  assert.equal(plans[0].plan.connection.ip, '192.168.1.50');
+  assert.equal(plans[0].plan.url, 'http://192.168.1.50:80/solar_api/v1/GetPowerFlowRealtimeData.fcgi');
 });
