@@ -5035,81 +5035,8 @@ button.vp-tech-card-h.toggle {
   margin: 8px 0 0;
 }
 
-/* ------------------------------------------------------------------ *
- * Per-Anlage tab bar (U1, design vp-ems-ui-overhaul §5.1/§5.2)
- * A persistent, sticky, horizontally-scrollable tab strip directly under
- * the Anlage header. Reuses the .vp-seg segmented look; the "Mehr ▾" menu
- * portals to body (.vp-rowmenu-pop) so overflow-x never clips it.
- * ------------------------------------------------------------------ */
-.vp-anlage-tabs {
-  position: sticky;
-  top: 68px; /* under the .vp-topbar (height 68px, z-index 20) */
-  z-index: 15;
-  margin: calc(var(--vp-space-6) * -1) calc(var(--vp-space-6) * -1) var(--vp-space-5);
-  padding: var(--vp-space-3) var(--vp-space-6);
-  background: var(--vp-surface);
-  border-bottom: 1px solid var(--vp-border);
-}
-@media (max-width: 1024px) {
-  .vp-anlage-tabs {
-    margin: calc(var(--vp-space-5) * -1) calc(var(--vp-space-5) * -1) var(--vp-space-4);
-    padding: var(--vp-space-3) var(--vp-space-5);
-  }
-}
-@media (max-width: 720px) {
-  .vp-anlage-tabs {
-    margin: calc(var(--vp-space-4) * -1) calc(var(--vp-space-4) * -1) var(--vp-space-4);
-    padding: var(--vp-space-2) var(--vp-space-4);
-  }
-}
-.vp-anlage-tabs-scroll {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  -webkit-overflow-scrolling: touch;
-}
-/* Hide the horizontal scrollbar chrome on WebKit (still scrollable). */
-.vp-anlage-tabs-scroll::-webkit-scrollbar {
-  height: 0;
-}
-.vp-anlage-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  flex: 0 0 auto;
-  border: none;
-  background: transparent;
-  color: var(--vp-text-muted);
-  font-weight: 600;
-  font-size: var(--vp-text-sm);
-  padding: 0.5rem 0.85rem;
-  border-radius: var(--vp-radius-btn);
-  cursor: pointer;
-  white-space: nowrap;
-  min-height: 40px;
-  transition: var(--vp-transition-fast);
-}
-@media (pointer: coarse), (max-width: 720px) {
-  .vp-anlage-tab {
-    min-height: 44px;
-  }
-}
-.vp-anlage-tab:hover {
-  color: var(--vp-text-dark);
-  background: var(--vp-bg-light);
-}
-.vp-anlage-tab.active {
-  background: var(--vp-bg-light);
-  color: var(--vp-primary-deep);
-  box-shadow: inset 0 -2px 0 0 var(--vp-primary-deep);
-}
-.vp-anlage-more {
-  margin-left: auto;
-}
-/* Active state of an overflow item inside the "Mehr ▾" menu. */
+/* Active state of an item inside a portalled overflow menu (the interim
+   "Mehr ▾" deep-view menu of M1, and every RowMenu). */
 .vp-rowmenu-pop button.active {
   color: var(--vp-primary-deep);
   background: var(--vp-bg-light);
@@ -5298,4 +5225,183 @@ button.vp-tech-card-h.toggle {
   margin: var(--vp-space-2) 0 0;
   font-size: 0.8rem;
   color: var(--vp-text-gray);
+}
+
+/* ============================================================
+   M1 · Anlage-scoped shell nav (Projektion #529)
+   The sidebar trio (Übersicht · Steuerung · Geräte) with its Anlage
+   context switcher + the mode-tagged knowledge group, plus the phone
+   bottom bar that keeps those three areas out of the hamburger.
+   Replaces the retired U1 per-Anlage tab bar (.vp-anlage-tabs).
+   ============================================================ */
+.vp-anlagenav {
+  margin-top: var(--vp-space-4);
+  padding-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border);
+  min-width: 0;
+}
+.vp-anlagenav-ctx {
+  padding: 0 var(--vp-space-3) var(--vp-space-2);
+  min-width: 0;
+}
+/* Fleet: a real Anlage switcher (mirrors the top bar's tenant chip). */
+.vp-anlagenav-switch,
+.vp-anlagenav-label {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--vp-radius-sm);
+  font-size: var(--vp-text-sm);
+  font-weight: 700;
+  color: var(--vp-primary-deep);
+  background: var(--vp-tint);
+}
+.vp-anlagenav-switch {
+  border: 1px solid transparent;
+  transition: var(--vp-transition-fast);
+}
+.vp-anlagenav-switch:hover {
+  border-color: var(--vp-primary);
+}
+.vp-anlagenav-switch:focus-within {
+  border-color: var(--vp-primary);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-anlagenav-ic,
+.vp-anlagenav-caret {
+  flex-shrink: 0;
+}
+.vp-anlagenav-caret {
+  color: var(--vp-text-gray);
+}
+.vp-anlagenav-switch select {
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  outline: none;
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 0;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.vp-anlagenav-label .t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Steuerung's active-mode badge reads as a count, not a muted note. */
+.vp-anlagenav .vp-navitem .count {
+  background: var(--vp-tint);
+  color: var(--vp-primary-deep);
+  border-radius: var(--vp-radius-pill);
+  padding: 0 0.45rem;
+  min-width: 20px;
+  text-align: center;
+}
+
+/* The interim "Mehr ▾" deep-view menu trigger (page heads). */
+.vp-more-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 38px;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  color: var(--vp-text-dark);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: var(--vp-transition-fast);
+}
+.vp-more-btn:hover {
+  border-color: var(--vp-gray);
+  background: var(--vp-bg-light);
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-more-btn {
+    min-height: 44px;
+  }
+}
+
+/* ---- Phone bottom bar: the trio, never behind the hamburger ---- */
+.vp-bottombar {
+  display: none;
+}
+@media (max-width: 720px) {
+  .vp-bottombar {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    background: var(--vp-surface);
+    border-top: 1px solid var(--vp-border);
+    box-shadow: 0 -2px 12px rgba(30, 58, 95, 0.08);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  /* Room for the bar so the last card is never covered. */
+  .vp-main.has-bottombar {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0));
+  }
+}
+.vp-bottombar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 0.4rem 0.25rem;
+  border: none;
+  background: none;
+  color: var(--vp-text-muted);
+  font-family: var(--vp-font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+}
+.vp-bottombar-item .ic {
+  position: relative;
+  display: inline-flex;
+  line-height: 0;
+}
+.vp-bottombar-item .lbl {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-bottombar-item.active {
+  color: var(--vp-primary-deep);
+}
+.vp-bottombar-badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-primary-deep);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
 }

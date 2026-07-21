@@ -6,7 +6,6 @@ import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { IconTile, type IconCategory } from '../../designsystem/components/core/IconTile';
 import {
   api,
-  type Betriebsart,
   type ControlStatus,
   type Device,
   type Earnings,
@@ -32,7 +31,8 @@ import { todaySlots } from '../schedule';
 import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
 import { healthChecklist } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
-import { AnlageTabBar } from '../components/AnlageTabBar';
+import { AnlageMoreMenu } from '../components/AnlageMoreMenu';
+import { resolveAnlage } from '../anlageNav';
 import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
@@ -68,8 +68,6 @@ export interface AnlagenPageProps {
   onNavigate: (route: Route) => void;
   onReload: (selectSiteId?: string) => void;
   isAdmin?: boolean;
-  /** U0 tenant frame (drives the per-Anlage tab order via navFor; null = default). */
-  betriebsart?: Betriebsart | null;
 }
 
 /**
@@ -82,14 +80,14 @@ export interface AnlagenPageProps {
  * list when the customer has several.
  */
 export function AnlagenPage(props: AnlagenPageProps) {
-  const { sites, route, onNavigate, isAdmin = false, betriebsart = null } = props;
+  const { sites, route, onNavigate, isAdmin = false } = props;
 
   if (sites.length === 0) {
     return <AnlagenEmpty onReload={props.onReload} isAdmin={isAdmin} />;
   }
 
-  const requested = route.siteId ? sites.find((s) => s.id === route.siteId) ?? null : null;
-  const site = requested ?? (sites.length === 1 ? sites[0] : null);
+  // The SAME resolution the shell uses to scope its trio (anlageNav.ts).
+  const site = resolveAnlage(sites, route.siteId);
 
   if (!site) {
     return (
@@ -101,46 +99,31 @@ export function AnlagenPage(props: AnlagenPageProps) {
     );
   }
 
-  // The persistent per-Anlage tab bar (U1): rendered ABOVE the cockpit/subpage
-  // switch so it does NOT remount when the customer moves between subpages of
-  // the same Anlage - the derived order is computed once per site visit.
-  const tabBar = (
-    <AnlageTabBar
-      key={site.id}
-      siteId={site.id}
-      siteName={site.name}
-      activeSub={route.sub}
-      betriebsart={betriebsart}
-      onOpen={(sub) => onNavigate(anlageRoute(site.id, sub))}
+  // M1 (#529): the U1 per-Anlage tab bar is RETIRED - the three core areas
+  // (Übersicht · Steuerung · Geräte) live in the shell now (sidebar + phone
+  // bottom bar), and the deep views are reached through the cockpit's drill-in
+  // links plus the interim "Mehr ▾" menu on the page head. Routes are
+  // unchanged, so every bookmark keeps working.
+  return route.sub ? (
+    <AnlagenSubPage
+      site={site}
+      sites={sites}
+      devices={props.devices}
+      sub={route.sub}
+      isAdmin={isAdmin}
+      onBack={() => onNavigate(anlageRoute(site.id))}
+      onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
+      onReload={props.onReload}
     />
-  );
-
-  return (
-    <>
-      {tabBar}
-      {route.sub ? (
-        <AnlagenSubPage
-          site={site}
-          sites={sites}
-          devices={props.devices}
-          sub={route.sub}
-          isAdmin={isAdmin}
-          onBack={() => onNavigate(anlageRoute(site.id))}
-          onReload={props.onReload}
-        />
-      ) : (
-        <AnlageSeite
-          {...props}
-          site={site}
-          onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
-          onBackToList={
-            sites.length > 1
-              ? () => onNavigate({ page: 'anlagen', siteId: null, sub: null })
-              : null
-          }
-        />
-      )}
-    </>
+  ) : (
+    <AnlageSeite
+      {...props}
+      site={site}
+      onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
+      onBackToList={
+        sites.length > 1 ? () => onNavigate({ page: 'anlagen', siteId: null, sub: null }) : null
+      }
+    />
   );
 }
 
@@ -334,6 +317,7 @@ function AnlagenSubPage({
   sub,
   isAdmin,
   onBack,
+  onOpenSub,
   onReload,
 }: {
   site: Site;
@@ -342,6 +326,7 @@ function AnlagenSubPage({
   sub: AnlagenSub;
   isAdmin: boolean;
   onBack: () => void;
+  onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
 }) {
   const meta = SUB_PAGES[sub];
@@ -355,6 +340,10 @@ function AnlagenSubPage({
         <div className="titles">
           <h1>{meta.title}</h1>
           <p>{meta.subtitle}</p>
+        </div>
+        <div className="actions">
+          {/* Interim access (M1): every other deep view stays one click away. */}
+          <AnlageMoreMenu activeSub={sub} onOpen={onOpenSub} />
         </div>
       </div>
       {sub === 'live' && <LiveSection site={site} />}
@@ -685,6 +674,10 @@ export function AnlageSeite({
         <div className="vp-anlage-badges">
           <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>
           <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
+          {/* Interim access (M1): the deep views the cockpit does not link to
+              yet (Lastspitzen) - and a fast path to the ones it does - until
+              the M3 block drill-ins own them. */}
+          <AnlageMoreMenu activeSub={null} onOpen={onOpenSub} />
           <button
             type="button"
             className="vp-gear-btn"

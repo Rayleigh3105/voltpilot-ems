@@ -4,9 +4,12 @@
  * responseMode 'query'), so the hash stays free for navigation and survives
  * the login round-trip.
  *
- * IA (captain decision 2026-07-07, "Anlagen-Seite"): the customer nav is
- * Übersicht / Meine Anlage(n) / Marktpreise / Prognosequalität. ONE site =
- * ONE Anlage; everything that used to be its own menu item (Standorte,
+ * IA (captain decision 2026-07-07, "Anlagen-Seite"; evolved by M1 #529): the
+ * customer nav is Übersicht / Meine Anlage(n) plus, per SELECTED Anlage, the
+ * shell trio Übersicht · Steuerung · Geräte (`anlageNav.ts`) and — only while
+ * the market mode is active — the mode-tagged Marktpreise/Prognosequalität
+ * group. ONE site = ONE Anlage; everything that used to be its own menu item
+ * (Standorte,
  * Geräte, Live-Daten, Fahrplan, Wetter, Historie) lives ON the Anlagen-Seite
  * (`#/anlage/{siteId}`) or as one of its subpages
  * (`#/anlage/{siteId}/live|fahrplan|historie|wetter`). The old hashes keep
@@ -77,6 +80,18 @@ export interface PageDef {
 export const MAIN_PAGES: PageDef[] = [
   { id: 'uebersicht', label: 'Übersicht', icon: 'dashboard' },
   { id: 'anlagen', label: 'Meine Anlage', icon: 'sun' },
+];
+
+/**
+ * M1 (Projektion #529, captain feedback round 1): Marktpreise and
+ * Prognosequalität are NOT a global "Markt & Wissen" menu group any more -
+ * they are the MARKET mode's deep views and render as a mode-tagged sidebar
+ * group only while that mode is active (`anlageNav.modeNavGroup`, driven by
+ * the M0 `deepViews(...)`). Trading knowledge on a site that does not trade is
+ * noise at best. The PAGES and their routes are untouched, so every existing
+ * `#/marktpreise` / `#/prognose` bookmark keeps working.
+ */
+export const MODE_PAGES: PageDef[] = [
   { id: 'marktpreise', label: 'Marktpreise', icon: 'euro' },
   { id: 'prognose', label: 'Prognosequalität', icon: 'trending-up' },
 ];
@@ -103,14 +118,20 @@ export function anlagenLabel(siteCount: number | null): string {
   return siteCount != null && siteCount > 1 ? 'Meine Anlagen' : 'Meine Anlage';
 }
 
+/** Every page def, wherever it is rendered (main nav, mode group, Plattform). */
+export const ALL_PAGES: PageDef[] = [
+  PORTFOLIO_PAGE,
+  ...MAIN_PAGES,
+  ...MODE_PAGES,
+  ...PLATFORM_PAGES,
+];
+
 export function pageLabel(id: PageId, siteCount: number | null = null): string {
   if (id === 'anlagen') return anlagenLabel(siteCount);
-  return [PORTFOLIO_PAGE, ...MAIN_PAGES, ...PLATFORM_PAGES].find((p) => p.id === id)?.label ?? id;
+  return ALL_PAGES.find((p) => p.id === id)?.label ?? id;
 }
 
-const PAGE_IDS = new Set<string>(
-  [PORTFOLIO_PAGE, ...MAIN_PAGES, ...PLATFORM_PAGES].map((p) => p.id),
-);
+const PAGE_IDS = new Set<string>(ALL_PAGES.map((p) => p.id));
 
 /**
  * The retired menu items redirect into the Anlage (nothing was deleted -
