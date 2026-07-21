@@ -19,6 +19,19 @@ function fixture(name) {
   return JSON.parse(fs.readFileSync(path.join(EXAMPLES, name), 'utf8'));
 }
 
+// LOW-6: a pin must be COMMITTED, never self-seeded. A run that writes the pin
+// it then asserts against certifies determinism, not correctness - which is
+// exactly how the H3-a / H3-c / MEDIUM-5 defects sailed through review.
+function assertPinned(artifact, pinName) {
+  const pinFile = path.join(__dirname, pinName);
+  assert.ok(fs.existsSync(pinFile),
+    'pin ' + pinName + ' fehlt - bewusst erzeugen (node -e "…content_hash") und einchecken');
+  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
+  assert.strictEqual(artifact.content_hash, pinned,
+    'compiler output drifted from the committed pin (' + pinName
+    + ') - a deliberate change must update the pin');
+}
+
 // Every node type the compiler may EVER emit: vp-palette nodes + the two
 // generated shapes. Anything else appearing in a bundle is a compiler bug
 // (and would break the "no user code paths" isolation guarantee).
@@ -84,13 +97,7 @@ test('pv-surplus-heatrod fixture compiles deterministically', () => {
 // must consciously update this pin (it invalidates deployed content hashes).
 test('pinned content hash of the pv-surplus-heatrod fixture', () => {
   const a = compile(fixture('flow-graph.valid.pv-surplus-heatrod.json'));
-  const pinFile = path.join(__dirname, 'pinned-hash.txt');
-  if (!fs.existsSync(pinFile)) {
-    fs.writeFileSync(pinFile, a.content_hash + '\n');
-  }
-  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
-  assert.strictEqual(a.content_hash, pinned,
-    'compiler output drifted from the committed pin (pinned-hash.txt) - a deliberate change must update the pin');
+  assertPinned(a, 'pinned-hash.txt');
 });
 
 test('market-battery fixture compiles the delegated strategy as a no-op', () => {
@@ -129,13 +136,7 @@ test('peakshaving-battery fixture compiles the delegated strategy as a no-op', (
 // stable. A deliberate compiler change must consciously update this pin.
 test('pinned content hash of the peakshaving-battery fixture', () => {
   const a = compile(fixture('flow-graph.valid.peakshaving-battery.json'));
-  const pinFile = path.join(__dirname, 'pinned-peakshaving-hash.txt');
-  if (!fs.existsSync(pinFile)) {
-    fs.writeFileSync(pinFile, a.content_hash + '\n');
-  }
-  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
-  assert.strictEqual(a.content_hash, pinned,
-    'peakshaving compiler output drifted from the committed pin (pinned-peakshaving-hash.txt)');
+  assertPinned(a, 'pinned-peakshaving-hash.txt');
 });
 
 test('validator refuses the contract error classes', () => {
@@ -216,13 +217,7 @@ test('notify-threshold fixture compiles the gate + notification chain', () => {
 // the pin consciously.
 test('pinned content hash of the notify-threshold fixture', () => {
   const a = compile(fixture('flow-graph.valid.notify-threshold.json'));
-  const pinFile = path.join(__dirname, 'pinned-notify-hash.txt');
-  if (!fs.existsSync(pinFile)) {
-    fs.writeFileSync(pinFile, a.content_hash + '\n');
-  }
-  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
-  assert.strictEqual(a.content_hash, pinned,
-    'notify-threshold compiler output drifted from the committed pin (pinned-notify-hash.txt)');
+  assertPinned(a, 'pinned-notify-hash.txt');
 });
 
 // U3: the compound automation ("PV-Überschuss UND Zeitfenster -> Wallbox")
@@ -235,8 +230,8 @@ test('compound-wallbox fixture compiles the AND combinator + enum schedule', () 
     assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
   }
   const fns = a.bundle.nodered_flows.filter((n) => n.type === 'function' && /generiert von flowc/.test(n.func));
-  const andNode = fns.find((n) => /vals\.every/.test(n.func));
-  assert.ok(andNode, 'the Und-Baustein compiles to the every() combiner body');
+  const andNode = fns.find((n) => /P\.ports/.test(n.func) && /every/.test(n.func));
+  assert.ok(andNode, 'the Und-Baustein compiles to the discriminated every() combiner body');
   const window = fns.find((n) => /getHours/.test(n.func));
   assert.ok(window, 'the schedule window compiles');
   assert.match(window.func, /"days":\[\]/, 'days "alle" maps to the every-day empty set');
@@ -248,13 +243,7 @@ test('compound-wallbox fixture compiles the AND combinator + enum schedule', () 
 
 test('pinned content hash of the compound-wallbox fixture', () => {
   const a = compile(fixture('flow-graph.valid.compound-wallbox.json'));
-  const pinFile = path.join(__dirname, 'pinned-compound-hash.txt');
-  if (!fs.existsSync(pinFile)) {
-    fs.writeFileSync(pinFile, a.content_hash + '\n');
-  }
-  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
-  assert.strictEqual(a.content_hash, pinned,
-    'compound-wallbox compiler output drifted from the committed pin (pinned-compound-hash.txt)');
+  assertPinned(a, 'pinned-compound-hash.txt');
 });
 
 // U3: the price automation ("Börsenpreis < 10 ct -> Wallbox") exercises the new
@@ -274,13 +263,7 @@ test('price-wallbox fixture compiles the current-price feed + threshold', () => 
 
 test('pinned content hash of the price-wallbox fixture', () => {
   const a = compile(fixture('flow-graph.valid.price-wallbox.json'));
-  const pinFile = path.join(__dirname, 'pinned-price-hash.txt');
-  if (!fs.existsSync(pinFile)) {
-    fs.writeFileSync(pinFile, a.content_hash + '\n');
-  }
-  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
-  assert.strictEqual(a.content_hash, pinned,
-    'price-wallbox compiler output drifted from the committed pin (pinned-price-hash.txt)');
+  assertPinned(a, 'pinned-price-hash.txt');
 });
 
 // MB-M1: the generic Modbus read compiles to the DATA-ONLY vp-modbus-read
@@ -325,13 +308,7 @@ test('modbus-read fixture compiles to the data-only palette node', () => {
 
 test('pinned content hash of the modbus-read fixture', () => {
   const a = compile(fixture('flow-graph.valid.modbus-read.json'));
-  const pinFile = path.join(__dirname, 'pinned-modbus-read-hash.txt');
-  if (!fs.existsSync(pinFile)) {
-    fs.writeFileSync(pinFile, a.content_hash + '\n');
-  }
-  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
-  assert.strictEqual(a.content_hash, pinned,
-    'modbus-read compiler output drifted from the committed pin (pinned-modbus-read-hash.txt)');
+  assertPinned(a, 'pinned-modbus-read-hash.txt');
 });
 
 test('modbus-read validator rules: host, mapping pairing, duplicate mapping', () => {
@@ -377,6 +354,159 @@ test('modbus-read validator rules: host, mapping pairing, duplicate mapping', ()
   }), 'V-5'), 'distinct channels coexist');
 });
 
+// H3-a (#519): the guided builder's "Sollwert setzen" action wires
+// vp.logic.if.value -> vp.entity.control.setpoint. flowc's control node used to
+// declare ONLY `value: number|bool`, so every setpoint rule validated in the
+// editor, simulated, reached `simuliert` - and then died at activation with
+// compiler_rejected (V-3 "hat keinen Eingang setpoint" + V-1 "Pflicht-Eingang
+// value ist nicht verbunden"). The input set now mirrors the api catalog.
+test('guided-setpoint fixture compiles the setpoint action', () => {
+  const graph = fixture('flow-graph.valid.guided-setpoint.json');
+  assert.deepStrictEqual(validate(graph), [], 'the guided setpoint rule validates clean');
+  const a = compile(graph);
+  for (const n of a.bundle.nodered_flows) {
+    assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
+  }
+  const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
+  assert.strictEqual(desired.entity, 'wallbox-1');
+  assert.strictEqual(desired.command, 'setpoint_kw');
+  // Wiring: read -> threshold -> if -> control (all edges collapse onto the
+  // vp-desired anchor, whatever graph port they targeted).
+  const fns = a.bundle.nodered_flows.filter((n) => n.type === 'function');
+  const ifNode = fns.find((n) => /P\.then_value/.test(n.func));
+  assert.ok(ifNode, 'the Wenn/Dann value node compiles');
+  assert.deepStrictEqual(ifNode.wires, [[desired.id]]);
+  assert.deepStrictEqual(a.required_entities, [
+    { entity_id: 'grid-meter-1', capabilities: ['measure:power_kw'] },
+    { entity_id: 'wallbox-1', capabilities: ['actuate:setpoint_kw'] },
+  ]);
+});
+
+test('pinned content hash of the guided-setpoint fixture', () => {
+  assertPinned(compile(fixture('flow-graph.valid.guided-setpoint.json')),
+    'pinned-guided-setpoint-hash.txt');
+});
+
+// A control node with NO input at all is still refused - the any-of rule
+// (requires_any_input) replaces the former hard-required `value`.
+test('entity.control needs at least one connected input', () => {
+  const g = fixture('flow-graph.valid.guided-setpoint.json');
+  g.edges = g.edges.filter((e) => e.to.node !== 'steuern1');
+  assert.ok(validate(g).some((f) => f.rule === 'V-1' && /mindestens einer der Eingänge/.test(f.message)),
+    'a control node fed by nothing must be refused');
+});
+
+// MEDIUM-5 (#519): the AE7 starter templates (FlowTemplates.starterFlow) and
+// the documented pilot chain wire strategy.wunsch -> control.plan. flowc had
+// neither the `plan` port nor the D-13 plan-fed claim suppression, so an
+// auto-started flow died at activation with V-3/V-1/V-5 findings.
+test('selfconsumption-starter fixture compiles the pilot strategy -> control chain', () => {
+  const graph = fixture('flow-graph.valid.selfconsumption-starter.json');
+  assert.deepStrictEqual(validate(graph), [], 'the AE7 starter template validates clean');
+  const a = compile(graph);
+  for (const n of a.bundle.nodered_flows) {
+    assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
+  }
+  // The strategy delegates (no-op body) and the control node still materializes
+  // its vp-desired publisher - the plan payload flows through it.
+  const strategy = a.bundle.nodered_flows.find((n) => n.type === 'function' && /DELEGIERT/.test(n.func));
+  assert.ok(strategy, 'the strategy compiles to the delegation no-op');
+  const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
+  assert.strictEqual(desired.entity, 'batt-main');
+  assert.deepStrictEqual(strategy.wires, [[desired.id]]);
+  assert.deepStrictEqual(a.required_entities, [
+    { entity_id: 'batt-main', capabilities: ['actuate:setpoint_kw', 'measure:soc_pct'] },
+  ]);
+});
+
+test('a plan-fed control node derives NO own claim (D-13 suppression)', () => {
+  const base = fixture('flow-graph.valid.selfconsumption-starter.json');
+  // Stamping the un-suppressed claim onto the control node must be REFUSED -
+  // otherwise the chain would V-5-conflict with the strategy's delegated claim.
+  const stamped = JSON.parse(JSON.stringify(base));
+  stamped.nodes.find((n) => n.id === 'ctl1').claims = [
+    { entity_id: 'batt-main', commands: ['setpoint_kw'] },
+  ];
+  const findings = validate(stamped);
+  assert.ok(findings.some((f) => f.rule === 'V-5'),
+    'a hand-stamped claim on the plan-fed control node must not validate');
+  // The suppression is NARROW: a control node that is not plan-fed by a
+  // delegated strategy still derives (and must declare) its own claim - the
+  // guided-setpoint fixture is exactly that case and validates clean.
+  assert.deepStrictEqual(validate(fixture('flow-graph.valid.guided-setpoint.json')), [],
+    'a control node without a delegated feeder keeps its own claim');
+});
+
+test('pinned content hash of the selfconsumption-starter fixture', () => {
+  assertPinned(compile(fixture('flow-graph.valid.selfconsumption-starter.json')),
+    'pinned-selfconsumption-hash.txt');
+});
+
+// H3-b (#519): two vp.schedule.window branches carry NO msg.topic, so the old
+// `msg.topic || "_"` key collapsed both into ONE slot and the AND was not
+// degraded but WRONG - "06:00-08:00 UND 18:00-20:00" switched the device on
+// during EITHER window. The compiled bundle now carries a per-edge tag node and
+// the combinator keys on it. This test RUNS the emitted bodies.
+test('two-window AND is FALSE unless both branches are true', () => {
+  const a = compile(fixture('flow-graph.valid.two-window-and.json'));
+  const fns = a.bundle.nodered_flows.filter((n) => n.type === 'function');
+  const andNode = fns.find((n) => /P\.ports/.test(n.func) && /every/.test(n.func));
+  assert.ok(andNode, 'the Und-Baustein compiles to the discriminated combiner body');
+  const tags = fns.filter((n) => /_vp_src/.test(n.func) && !/P\.ports/.test(n.func));
+  assert.strictEqual(tags.length, 2, 'one tag node per incoming combinator edge');
+  assert.deepStrictEqual(tags.map((n) => n.name).sort(), ['Zweig a', 'Zweig b']);
+  // Each window feeds its OWN tag node, each tag node feeds the combinator.
+  const windows = fns.filter((n) => /getHours/.test(n.func));
+  assert.strictEqual(windows.length, 2);
+  for (const w of windows) {
+    assert.strictEqual(w.wires[0].length, 1);
+    assert.ok(tags.some((t) => t.id === w.wires[0][0]), 'window wires into a tag node');
+  }
+  for (const t of tags) assert.deepStrictEqual(t.wires, [[andNode.id]]);
+
+  // Run the generated code: a shared context (one function node = one context)
+  // fed via the two tag bodies, exactly as Node-RED would deliver it.
+  const run = (node, msg) => {
+    const store = node.__ctx || (node.__ctx = {});
+    const context = { get: (k) => store[k], set: (k, v) => { store[k] = v; } };
+    // eslint-disable-next-line no-new-func
+    return new Function('msg', 'context', node.func + '\n')(msg, context);
+  };
+  const tagA = tags.find((n) => n.name === 'Zweig a');
+  const tagB = tags.find((n) => n.name === 'Zweig b');
+  const send = (tag, active) => run(andNode, run(tag, { payload: active }));
+
+  assert.strictEqual(send(tagA, true).payload, false, 'only branch a known -> not yet true');
+  assert.strictEqual(send(tagB, false).payload, false, 'a=true, b=false -> FALSE');
+  assert.strictEqual(send(tagA, true).payload, false,
+    'branch a re-emitting true must NOT flip the conjunction (the H3-b symptom)');
+  assert.strictEqual(send(tagB, true).payload, true, 'both true -> true');
+  assert.strictEqual(send(tagA, false).payload, false, 'a goes false -> FALSE again');
+  // An untagged message cannot be attributed and is dropped, never guessed.
+  assert.strictEqual(run(andNode, { payload: true }), null);
+});
+
+test('pinned content hash of the two-window-and fixture', () => {
+  assertPinned(compile(fixture('flow-graph.valid.two-window-and.json')),
+    'pinned-two-window-hash.txt');
+});
+
+test('vp.logic.or mirrors the discriminated semantics', () => {
+  const g = fixture('flow-graph.valid.two-window-and.json');
+  g.nodes.find((n) => n.id === 'und1').type = 'vp.logic.or';
+  const a = compile(g);
+  const orNode = a.bundle.nodered_flows.find(
+    (n) => n.type === 'function' && /P\.ports/.test(n.func) && /some/.test(n.func));
+  assert.ok(orNode, 'the Oder-Baustein compiles to the discriminated combiner body');
+  const store = {};
+  const context = { get: (k) => store[k], set: (k, v) => { store[k] = v; } };
+  // eslint-disable-next-line no-new-func
+  const fn = new Function('msg', 'context', orNode.func + '\n');
+  assert.strictEqual(fn({ payload: false, _vp_src: 'a' }, context).payload, false);
+  assert.strictEqual(fn({ payload: true, _vp_src: 'b' }, context).payload, true);
+  assert.strictEqual(fn({ payload: false, _vp_src: 'b' }, context).payload, false);
+});
+
 // Drift guard (#518): the flowc TYPES map and the api flow-catalog MUST declare
 // the SAME set of node types. flowc had vp.logic.if but not vp.logic.gate while
 // the api/portal had vp.logic.gate but not vp.logic.if - so a gate flow that the
@@ -395,6 +525,93 @@ test('flowc catalog and the api flow-catalog declare the same node types', () =>
     'types the editor offers but flowc cannot compile (activation would compiler_reject): ' + inApiOnly);
   assert.deepStrictEqual(inFlowcOnly, [],
     'types flowc compiles but the editor never produces (dead compile entries): ' + inFlowcOnly);
+});
+
+// MEDIUM-6 (#519): the #518 guard above compared type-id SETS only, which is
+// exactly why H3-a and MEDIUM-5 sailed through - both were PORT drift inside a
+// type both catalogs knew. `portDrift` is the shared rule, tested in BOTH
+// directions below so the guard itself is proven to bite.
+//
+// `trigger` is flowc-synthetic (interval / slot-boundary injects wire into it);
+// the api catalog never declares it, so it is excluded from the comparison.
+function portDrift(apiType, flowcType) {
+  const findings = [];
+  const apiIn = (apiType.inputs || []).map((p) => p.name).sort();
+  const flowcIn = Object.keys(flowcType.ports.in)
+    .filter((p) => p !== 'trigger' || apiIn.indexOf('trigger') >= 0).sort();
+  const apiOut = (apiType.outputs || []).map((p) => p.name).sort();
+  const flowcOut = Object.keys(flowcType.ports.out).sort();
+  if (JSON.stringify(apiIn) !== JSON.stringify(flowcIn)) {
+    findings.push(apiType.type + ': Eingänge api=' + apiIn + ' vs flowc=' + flowcIn);
+  }
+  if (JSON.stringify(apiOut) !== JSON.stringify(flowcOut)) {
+    findings.push(apiType.type + ': Ausgänge api=' + apiOut + ' vs flowc=' + flowcOut);
+  }
+  const apiAny = (apiType.requires_any_input || []).slice().sort();
+  const flowcAny = (flowcType.requiresAnyInput || []).slice().sort();
+  if (JSON.stringify(apiAny) !== JSON.stringify(flowcAny)) {
+    findings.push(apiType.type + ': requires_any_input api=' + apiAny + ' vs flowc=' + flowcAny);
+  }
+  return findings;
+}
+
+test('flowc and the api flow-catalog declare the same PORTS per node type', () => {
+  const api = JSON.parse(fs.readFileSync(API_CATALOG, 'utf8'));
+  const drift = [];
+  for (const apiType of api.types) {
+    const flowcType = TYPES[apiType.type];
+    if (!flowcType) continue; // the set guard above reports this
+    drift.push(...portDrift(apiType, flowcType));
+  }
+  assert.deepStrictEqual(drift, [],
+    'port drift makes an editor-accepted flow compiler_reject at activation: ' + drift.join('; '));
+});
+
+test('the port-drift guard bites on a missing input (its own bug class)', () => {
+  // The pre-fix shape of vp.entity.control: the editor offered plan/setpoint/
+  // value, flowc knew only `value`. The guard MUST report that.
+  const apiShape = {
+    type: 'vp.entity.control',
+    inputs: [{ name: 'value' }, { name: 'setpoint' }, { name: 'plan' }],
+    outputs: [],
+    requires_any_input: ['value', 'setpoint', 'plan'],
+  };
+  const flowcShapeBefore = {
+    ports: { in: { value: { type: 'number|bool', required: true } }, out: { result: { type: 'event' } } },
+  };
+  const drift = portDrift(apiShape, flowcShapeBefore);
+  assert.strictEqual(drift.length, 3, 'inputs, outputs and the any-of rule all drift: ' + drift);
+  // ...and stays silent on the shipped shape.
+  assert.deepStrictEqual(portDrift(apiShape, TYPES['vp.entity.control']), []);
+});
+
+// The other half of the #519 class: a type that COMPILES but whose compiled
+// implementation is not runnable on the device. vp.price.current compiled to a
+// vp-feed with feed=price_current, which the palette's FEEDS whitelist did not
+// know - topicFor() returned null, the node registered NO subscribe and NO
+// input handler, and the automation was silently dead forever (H3-c).
+test('every feed flowc can emit exists in the vp-palette FEEDS whitelist', () => {
+  const { FEEDS } = require('../vp-palette/nodes/vp-feed');
+  const emitted = new Set();
+  for (const [typeId, type] of Object.entries(TYPES)) {
+    const probe = { id: 'probe', type: typeId, parameters: {} };
+    const ctx = { tabId: 't', coreId: 'c', flowId: 'f', flowVersion: 1, nrId: (i) => i };
+    let compiled;
+    try {
+      compiled = type.compile(ctx, probe);
+    } catch (e) {
+      continue; // types whose compile needs real params are covered by fixtures
+    }
+    for (const n of compiled) {
+      if (n.type === 'vp-feed') emitted.add(n.feed);
+    }
+  }
+  assert.ok(emitted.size > 0, 'the probe must actually reach the feed types');
+  for (const feed of emitted) {
+    assert.ok(Object.prototype.hasOwnProperty.call(FEEDS, feed),
+      'flowc emits vp-feed feed="' + feed + '" but the palette whitelist does not know it - '
+      + 'the compiled flow would deploy and then do nothing, silently');
+  }
 });
 
 test('type widenings: price->timeseries and number->timeseries are legal', () => {

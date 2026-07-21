@@ -53,6 +53,57 @@ function semverMax(a, b) {
   return a;
 }
 
+/**
+ * The D-13 claim derivation - the compiler twin of the api's FlowClaims /
+ * the portal's model.ts deriveClaims. Catalog templates, minus ONE structural
+ * rule: an entity-control node whose `plan` input is fed by a DELEGATED
+ * strategy claiming the SAME entity derives NO own claim (the strategy's
+ * delegated claim covers the entity; otherwise the documented pilot chain
+ * strategy -> control would V-5-conflict with itself).
+ *
+ * Returns a map graph-node-id -> claims[].
+ */
+function deriveClaims(graph) {
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph.edges) ? graph.edges : [];
+  const byId = {};
+  for (const n of nodes) byId[n.id] = n;
+
+  const templateClaims = (n) => {
+    const type = TYPES[n.type];
+    if (!type || !type.claims) return [];
+    return type.claims(n.parameters || {}) || [];
+  };
+
+  // Pass 1: delegated claims (strategies) - they never suppress.
+  const delegatedEntities = new Set();
+  for (const n of nodes) {
+    for (const c of templateClaims(n)) {
+      if (c.delegated === true) delegatedEntities.add(c.entity_id);
+    }
+  }
+
+  const planFedByDelegated = (nodeId, entityId) => {
+    if (!delegatedEntities.has(entityId)) return false;
+    for (const e of edges) {
+      if (!e.to || e.to.node !== nodeId || e.to.port !== 'plan') continue;
+      const feeder = byId[e.from && e.from.node];
+      if (!feeder) continue;
+      for (const c of templateClaims(feeder)) {
+        if (c.delegated === true && c.entity_id === entityId) return true;
+      }
+    }
+    return false;
+  };
+
+  const out = {};
+  for (const n of nodes) {
+    out[n.id] = templateClaims(n).filter(
+      (c) => c.delegated === true || !planFedByDelegated(n.id, c.entity_id));
+  }
+  return out;
+}
+
 /** validate returns the findings list (empty = valid). */
 function validate(graph) {
   const f = [];
@@ -73,6 +124,8 @@ function validate(graph) {
   const edges = Array.isArray(graph.edges) ? graph.edges : [];
   const triggers = Array.isArray(graph.triggers) ? graph.triggers : [];
   if (nodes.length === 0) push('V-0', 'Flow hat keine Knoten');
+
+  const claimsByNode = deriveClaims(graph);
 
   // V-3 id uniqueness + V-4 catalog resolution + params.
   const byId = {};
@@ -95,7 +148,7 @@ function validate(graph) {
       push('V-4', n.type + ': ' + msg, [n.id]);
     }
     // D-13: explicit claims must equal the catalog-derived ones.
-    const expected = type.claims ? type.claims(n.parameters || {}) : [];
+    const expected = claimsByNode[n.id] || [];
     const declared = Array.isArray(n.claims) ? n.claims : [];
     if (canonicalize(normalizeClaims(expected)) !== canonicalize(normalizeClaims(declared))) {
       push('V-5', n.type + ': claims stimmen nicht mit den Katalog-abgeleiteten überein', [n.id]);
@@ -105,9 +158,7 @@ function validate(graph) {
   // V-5 exclusive resources within the flow.
   const claimed = {};
   for (const n of nodes) {
-    const type = TYPES[n.type];
-    if (!type || !type.claims) continue;
-    for (const c of type.claims(n.parameters || {})) {
+    for (const c of claimsByNode[n.id] || []) {
       if (claimed[c.entity_id]) {
         push('V-5', 'Entität ' + c.entity_id + ' wird von zwei Knoten beansprucht',
           [claimed[c.entity_id], n.id]);
@@ -162,7 +213,7 @@ function validate(graph) {
     inbound[key] = e;
   }
 
-  // V-1 required inputs connected.
+  // V-1 required inputs connected + the any-of rule (requires_any_input).
   for (const n of nodes) {
     const type = TYPES[n.type];
     if (!type) continue;
@@ -170,6 +221,11 @@ function validate(graph) {
       if (spec.required && !inbound[n.id + '/' + port]) {
         push('V-1', n.type + ': Pflicht-Eingang ' + port + ' ist nicht verbunden', [n.id]);
       }
+    }
+    const anyOf = type.requiresAnyInput;
+    if (anyOf && !anyOf.some((port) => inbound[n.id + '/' + port])) {
+      push('V-1', n.type + ': mindestens einer der Eingänge ' + anyOf.join('/')
+        + ' muss verbunden sein', [n.id]);
     }
   }
 
@@ -297,10 +353,43 @@ function compile(graph, opts) {
   }
 
   // Wires: single-input nodes, so every edge lands on the anchor's input.
+  //
+  // EXCEPTION - discriminating nodes (the vp.logic.and/.or combinators): a
+  // Node-RED function node has one input, so a generated TAG node per incoming
+  // edge stamps msg._vp_src with the GRAPH port name before the message
+  // reaches the combinator. Without it two branches that carry no (or the
+  // same) msg.topic collapse into one slot and the combinator computes the
+  // WRONG boolean. Emitted in graph-edge document order -> deterministic.
   const wires = {};
+  const nodeById = {};
+  for (const n of graph.nodes) nodeById[n.id] = n;
   for (const e of graph.edges) {
     const from = anchors[e.from.node];
-    (wires[from] = wires[from] || []).push(anchors[e.to.node]);
+    const toType = TYPES[nodeById[e.to.node].type];
+    let target = anchors[e.to.node];
+    if (toType.discriminateInputs) {
+      // The port name is a CATALOG key (validation proved the port exists), so
+      // it is a whitelisted literal - never free user text in generated code.
+      const port = Object.keys(toType.ports.in).find((p) => p === e.to.port);
+      const tagId = tabId + '-' + e.id + '-in';
+      nrNodes.push({
+        id: tagId,
+        type: 'function',
+        z: tabId,
+        name: 'Zweig ' + port,
+        func: '// generiert von flowc - NICHT von Hand bearbeiten\n'
+          + 'const P = ' + JSON.stringify({ port: port }) + ';\n'
+          + 'msg._vp_src = P.port;\nreturn msg;',
+        outputs: 1,
+        noerr: 0,
+        initialize: '',
+        finalize: '',
+        libs: [],
+      });
+      wires[tagId] = [target];
+      target = tagId;
+    }
+    (wires[from] = wires[from] || []).push(target);
   }
 
   // Triggers: interval / slot-boundary injects wired into every triggerable

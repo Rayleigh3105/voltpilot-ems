@@ -70,7 +70,10 @@ describe('flowc-compiled artifact under a real Node-RED runtime', function () {
       ],
       edges: [
         { id: 'e1', from: { node: 'w1', port: 'active' }, to: { node: 'i1', port: 'condition' } },
-        { id: 'e2', from: { node: 'i1', port: 'value' }, to: { node: 'c1', port: 'value' } },
+        // Setpoint action: the numeric Wenn/Dann value feeds the control node's
+        // `setpoint` input (its `value` input is the bool Ein/Aus port - the
+        // api flow-catalog is authoritative and flowc mirrors it since #519).
+        { id: 'e2', from: { node: 'i1', port: 'value' }, to: { node: 'c1', port: 'setpoint' } },
       ],
       triggers: [{ id: 't1', kind: 'interval', every_s: 5 }],
     };

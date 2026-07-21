@@ -113,28 +113,33 @@ const GATE_BODY = [
 
 // vp.logic.and / vp.logic.or: boolean combinators (two bool inputs -> one bool
 // out) so the guided Wenn/Dann builder can wire compound conditions
-// ("PV-Überschuss UND Zeitfenster"). Node-RED delivers every incoming wire on
-// the single input, so the latest boolean is remembered PER SOURCE (msg.topic)
-// and combined; distinct per-branch topics are an edge-runtime refinement.
-const AND_BODY = [
-  'const key = msg.topic || "_";',
-  'const seen = context.get("seen") || {};',
-  'seen[key] = !!msg.payload;',
-  'context.set("seen", seen);',
-  'const vals = Object.keys(seen).map(function (k) { return seen[k]; });',
-  'msg.payload = vals.length > 0 && vals.every(function (v) { return v; });',
-  'return msg;',
-].join('\n');
+// ("PV-Überschuss UND Zeitfenster"). A Node-RED function node has ONE input, so
+// compile.js wires both branches onto the same anchor and stamps a COMPILE-TIME
+// per-edge discriminator (msg._vp_src = the graph port name) through a
+// generated tag node - see compile.js DISCRIMINATOR_BODY.
+//
+// Keying on that discriminator instead of msg.topic is load-bearing: two
+// vp.schedule.window branches carry NO topic at all (and two reads of the same
+// entity+channel carry the SAME topic), so the former `msg.topic || "_"` key
+// collapsed both branches into ONE slot and the conjunction was not degraded
+// but WRONG (a two-window AND read `true` while only one window was active).
+// An untagged message cannot be attributed and is dropped, and AND only holds
+// once EVERY declared port has been seen true.
+function combinatorBody(op) {
+  return [
+    'const key = typeof msg._vp_src === "string" ? msg._vp_src : "";',
+    'if (P.ports.indexOf(key) < 0) return null;',
+    'const seen = context.get("seen") || {};',
+    'seen[key] = !!msg.payload;',
+    'context.set("seen", seen);',
+    'msg.payload = P.ports.' + op + '(function (p) { return seen[p] === true; });',
+    'delete msg._vp_src;',
+    'return msg;',
+  ].join('\n');
+}
 
-const OR_BODY = [
-  'const key = msg.topic || "_";',
-  'const seen = context.get("seen") || {};',
-  'seen[key] = !!msg.payload;',
-  'context.set("seen", seen);',
-  'const vals = Object.keys(seen).map(function (k) { return seen[k]; });',
-  'msg.payload = vals.some(function (v) { return v; });',
-  'return msg;',
-].join('\n');
+const AND_BODY = combinatorBody('every');
+const OR_BODY = combinatorBody('some');
 
 const WINDOW_BODY = [
   '// Zeitfenster in LOKALER Geraetezeit; Tage 0=So..6=Sa (leer = alle).',
@@ -370,6 +375,9 @@ const TYPES = {
     version: '1.0.0',
     runtimes: ['edge', 'cloud'],
     minPalette: '0.2.0',
+    // discriminateInputs: compile.js inserts a per-edge tag node before this
+    // node so the body can tell branch `a` from branch `b` (see AND_BODY).
+    discriminateInputs: true,
     ports: {
       in: { a: { type: 'bool', required: true }, b: { type: 'bool', required: true } },
       out: { result: { type: 'bool' } },
@@ -384,7 +392,7 @@ const TYPES = {
       return [];
     },
     compile(ctx, node) {
-      return [fnNode(ctx, node, node.label || 'Und', {}, AND_BODY, 1)];
+      return [fnNode(ctx, node, node.label || 'Und', { ports: ['a', 'b'] }, AND_BODY, 1)];
     },
   },
 
@@ -392,6 +400,7 @@ const TYPES = {
     version: '1.0.0',
     runtimes: ['edge', 'cloud'],
     minPalette: '0.2.0',
+    discriminateInputs: true,
     ports: {
       in: { a: { type: 'bool', required: true }, b: { type: 'bool', required: true } },
       out: { result: { type: 'bool' } },
@@ -406,7 +415,7 @@ const TYPES = {
       return [];
     },
     compile(ctx, node) {
-      return [fnNode(ctx, node, node.label || 'Oder', {}, OR_BODY, 1)];
+      return [fnNode(ctx, node, node.label || 'Oder', { ports: ['a', 'b'] }, OR_BODY, 1)];
     },
   },
 
@@ -446,13 +455,27 @@ const TYPES = {
     },
   },
 
+  // The action sink. Its INPUT SET mirrors the api flow-catalog exactly
+  // (flowcatalog/catalog.json): `value` (Ein/Aus), `setpoint` (a numeric
+  // series - the guided "Sollwert setzen" rule wires vp.logic.if.value here)
+  // and `plan` (the DELEGATED strategy wunsch of the pilot chain / the AE7
+  // starter templates). None is individually required; at least one must be
+  // connected (requiresAnyInput, the api's `requires_any_input`).
+  // Compilation collapses ALL of them onto the ONE vp-desired anchor - the
+  // palette node publishes whatever payload reaches it, so no per-port
+  // materialization is needed.
   'vp.entity.control': {
     version: '1.0.0',
     runtimes: ['edge'],
     minPalette: '0.2.0',
+    requiresAnyInput: ['value', 'setpoint', 'plan'],
     ports: {
-      in: { value: { type: 'number|bool', required: true } },
-      out: { result: { type: 'event' } },
+      in: {
+        value: { type: 'bool' },
+        setpoint: { type: 'timeseries' },
+        plan: { type: 'plan' },
+      },
+      out: {},
     },
     validate(p) {
       const errs = [];

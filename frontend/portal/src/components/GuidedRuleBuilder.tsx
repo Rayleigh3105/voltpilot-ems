@@ -79,6 +79,8 @@ export function GuidedRuleBuilder({
   onCancel,
   onBuild,
   busy = false,
+  lockedKinds = [],
+  lockedHint = 'Einrichtung durch VoltPilot',
 }: {
   entities: EditorEntity[];
   /** Stamped onto the emitted document so it validates clean before the save. */
@@ -87,6 +89,14 @@ export function GuidedRuleBuilder({
   /** Emit the rule as a document + its name (ready to create + save). */
   onBuild: (name: string, doc: FlowDocument) => void;
   busy?: boolean;
+  /**
+   * Condition kinds whose catalog node is GATED and not yet enabled for this
+   * site (AE7 governance). They stay VISIBLE but unselectable - the server
+   * refuses activation with `gated_node_not_enabled`, so offering them
+   * silently would build a rule that can never go live.
+   */
+  lockedKinds?: CondKind[];
+  lockedHint?: string;
 }) {
   const readable = readableEntities(entities);
   const targets = actionTargets(entities);
@@ -187,7 +197,9 @@ export function GuidedRuleBuilder({
               onChange={(e) => setCond(i, { kind: e.target.value as CondKind })}
             >
               <option value="entity">Messwert eines Geräts</option>
-              <option value="price">Börsenpreis</option>
+              <option value="price" disabled={lockedKinds.includes('price')}>
+                {lockedKinds.includes('price') ? 'Börsenpreis (gesperrt)' : 'Börsenpreis'}
+              </option>
               <option value="schedule">Zeitfenster</option>
             </select>
 
@@ -217,6 +229,10 @@ export function GuidedRuleBuilder({
                   ))}
                 </select>
               </>
+            )}
+
+            {f.kind === 'price' && lockedKinds.includes('price') && (
+              <span className="vp-muted">{lockedHint}</span>
             )}
 
             {(f.kind === 'entity' || f.kind === 'price') && (

@@ -4,21 +4,30 @@
  * and emits the parsed payload. The feed set is a fixed WHITELIST - a
  * compiled flow can never subscribe an arbitrary topic through this node.
  *
- *   feed "prices"      -> edge/prices        (day-ahead price series; the E4
- *                         price down-channel mirrored locally by the core -
- *                         reserved, the core does not feed it yet)
- *   feed "pv_forecast" -> edge/forecast/pv   (site PV forecast - reserved)
+ *   feed "prices"        -> edge/prices        (day-ahead price series; the E4
+ *                           price down-channel mirrored locally by the core -
+ *                           reserved, the core does not feed it yet)
+ *   feed "pv_forecast"   -> edge/forecast/pv   (site PV forecast - reserved)
+ *   feed "price_current" -> edge/price/current (the CURRENT spot price scalar,
+ *                           what vp.price.current compiles to - reserved on the
+ *                           same E4 down-channel)
  *
  * Until the core feeds a topic the node simply stays "keine Daten" - a flow
  * built on it is idle-safe, exactly like the self-wiring tabs without a
- * selection. An INPUT message re-emits the last payload (trigger semantics,
- * the vp-entity-read convention).
+ * selection. That idle-safety is the WHOLE point of the whitelist being
+ * complete: a feed flowc can emit but the whitelist does not know registers no
+ * subscribe and no input handler at all, so the node is dead with the terse
+ * status "unbekannter Feed" and the flow fails silently (the H3-c defect,
+ * #519). flowc's compile.test.js guards the two lists against each other.
+ * An INPUT message re-emits the last payload (trigger semantics, the
+ * vp-entity-read convention).
  */
 'use strict';
 
 const FEEDS = {
   prices: 'edge/prices',
   pv_forecast: 'edge/forecast/pv',
+  price_current: 'edge/price/current',
 };
 
 // topicFor is exported for unit tests: whitelist only, null otherwise.

@@ -21,6 +21,9 @@ const ajv = new Ajv2020({ strict: false });
 | `mqtt-schedule-2.0.invalid.v1-command-key.json` | mqtt-schedule-2.0 | **invalid** — uses the v1 field name `battery_setpoint_kw` as a command key (not in the 2.0 vocabulary; `additionalProperties: false`) |
 | `flow-graph.valid.pv-surplus-heatrod.json` | flow-graph | valid — read → threshold → on_off control, interval + value-change triggers, explicit claim |
 | `flow-graph.valid.market-battery.json` | flow-graph | valid — strategy node with `delegated: true` claim, slot-boundary trigger |
+| `flow-graph.valid.guided-setpoint.json` | flow-graph | valid — the guided "Sollwert setzen" rule: Bedingung → `vp.logic.if` → control `setpoint` (#519 H3-a) |
+| `flow-graph.valid.selfconsumption-starter.json` | flow-graph | valid — the AE7 starter / pilot chain: delegated strategy → control `plan`, control derives NO own claim (#519 MEDIUM-5) |
+| `flow-graph.valid.two-window-and.json` | flow-graph | valid — two topic-less `vp.schedule.window` branches through `vp.logic.and` (#519 H3-b) |
 | `flow-graph.invalid.unknown-trigger.json` | flow-graph | **invalid** — trigger `kind: "cron"` is not in the trigger enum |
 | `flow-artifact.valid.artifact.json` | flow-artifact | valid — one compiled artifact (manifest + nodered-tabs bundle with `@vp-flow` tab marker) |
 | `flow-artifact.valid.deployment.json` | flow-artifact | valid — retained deployment set for one device carrying that artifact |
