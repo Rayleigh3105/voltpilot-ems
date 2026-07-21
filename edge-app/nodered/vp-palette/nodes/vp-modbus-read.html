@@ -1,0 +1,61 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-modbus-read', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: false },
+      host: { value: '' },
+      port: { value: 502 },
+      unit_id: { value: 1 },
+      register_kind: { value: 'holding' },
+      address: { value: 0 },
+      data_type: { value: 'u16' },
+      word_order: { value: 'big' },
+      scale: { value: 1 },
+      offset: { value: 0 },
+      min_read_interval_s: { value: 5 },
+      entity: { value: '' },
+      channel: { value: '' },
+      deadband: { value: 0 }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'serial.svg',
+    label: function () { return this.name || 'vp-modbus-read'; },
+    paletteLabel: 'vp-modbus-read'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-modbus-read">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+  <div class="form-row">
+    <label for="node-input-host"><i class="fa fa-globe"></i> Host</label>
+    <input type="text" id="node-input-host" placeholder="192.168.0.10">
+  </div>
+  <div class="form-row">
+    <label for="node-input-port"><i class="fa fa-plug"></i> Port</label>
+    <input type="number" id="node-input-port" placeholder="502">
+  </div>
+  <div class="form-row">
+    <label for="node-input-address"><i class="fa fa-hashtag"></i> Adresse</label>
+    <input type="number" id="node-input-address" placeholder="0">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-modbus-read">
+  <p>Liest EIN Register eines Modbus-TCP-Geraets (FC3 Holding / FC4 Input,
+  Datentyp u16/s16/u32/s32/float32 mit Wortreihenfolge), skaliert den Wert und
+  gibt ihn als Zahl aus. Optional wird jeder gelesene Wert als Messkanal einer
+  Entitaet auf <code>edge/entities/&lt;entity&gt;/telemetry</code>
+  aufgezeichnet. Getaktet ueber den Trigger-Eingang; pro Geraet laeuft immer
+  nur EINE Verbindung (frische Socket je Lesung, 8&nbsp;s/8&nbsp;s/30&nbsp;s
+  Timeouts). Nur Lesen - dieser Knoten schreibt nie ein Register.</p>
+</script>

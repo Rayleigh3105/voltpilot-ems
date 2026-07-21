@@ -29,9 +29,16 @@ const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const COMMANDS = ['setpoint_kw', 'on_off', 'limit_pct', 'limit_kw', 'mode'];
 const HHMM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+// The `host` param kind (MB-M1): an IPv4 literal or RFC-1123 hostname, <=253
+// chars - the SAME rule as the api FlowGraphValidator / portal validate.ts.
+const HOST_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 
 function num(v) {
   return typeof v === 'number' && isFinite(v);
+}
+
+function validHost(v) {
+  return typeof v === 'string' && v.length >= 1 && v.length <= 253 && HOST_RE.test(v);
 }
 
 // The editor represents a schedule window's day set as the enum
@@ -512,6 +519,96 @@ const TYPES = {
         name: node.label || 'Benachrichtigung',
         core: ctx.coreId,
         message: node.parameters.message,
+      }];
+    },
+  },
+
+  // vp.modbus.read (MB-M1): the generic Modbus-TCP register READ - the
+  // catalog-scoped power-user escape hatch of flow-graph.md §6 (decision
+  // D-15: transport-level parameters allowed ONLY in the vp.modbus.* domain,
+  // runtime-edge-only, read free). Compiles to the DATA-ONLY vp-modbus-read
+  // palette node (0.3.0) - no generated code, the whitelisted-codegen stance
+  // is untouched. The register count is DERIVED from data_type (1 or 2
+  // words); an optional {entity_id, channel} mapping additionally records
+  // each reading as edge-entity telemetry, which `requires` then verifies
+  // against the device's applied registry (measure:<channel>).
+  'vp.modbus.read': {
+    version: '1.0.0',
+    runtimes: ['edge'],
+    minPalette: '0.3.0',
+    triggerable: true,
+    ports: { in: { trigger: { type: 'event' } }, out: { value: { type: 'number' } } },
+    validate(p) {
+      const errs = [];
+      if (!p) p = {};
+      if (!validHost(p.host)) errs.push('Geräteadresse fehlt oder ist keine gültige IP/Hostname');
+      if (p.port !== undefined && !(Number.isInteger(p.port) && p.port >= 1 && p.port <= 65535)) {
+        errs.push('port muss 1..65535 sein');
+      }
+      if (p.unit_id !== undefined && !(Number.isInteger(p.unit_id) && p.unit_id >= 0 && p.unit_id <= 255)) {
+        errs.push('unit_id muss 0..255 sein');
+      }
+      if (p.register_kind !== undefined && ['holding', 'input'].indexOf(p.register_kind) < 0) {
+        errs.push('register_kind muss holding oder input sein');
+      }
+      if (!(Number.isInteger(p.address) && p.address >= 0 && p.address <= 65535)) {
+        errs.push('address fehlt oder liegt außerhalb 0..65535');
+      }
+      if (p.data_type !== undefined
+          && ['u16', 's16', 'u32', 's32', 'float32'].indexOf(p.data_type) < 0) {
+        errs.push('data_type ist unbekannt');
+      }
+      if (p.word_order !== undefined && ['big', 'little'].indexOf(p.word_order) < 0) {
+        errs.push('word_order muss big oder little sein');
+      }
+      if (p.scale !== undefined && !num(p.scale)) errs.push('scale muss eine Zahl sein');
+      if (p.offset !== undefined && !num(p.offset)) errs.push('offset muss eine Zahl sein');
+      if (p.min_read_interval_s !== undefined
+          && !(Number.isInteger(p.min_read_interval_s)
+            && p.min_read_interval_s >= 1 && p.min_read_interval_s <= 3600)) {
+        errs.push('min_read_interval_s muss 1..3600 sein');
+      }
+      // Entity mapping: both-or-neither (a channel without an entity - or the
+      // reverse - records nowhere and is a config mistake, not a default).
+      const hasEntity = p.entity_id !== undefined && p.entity_id !== '';
+      const hasChannel = p.channel !== undefined && p.channel !== '';
+      if (hasEntity !== hasChannel) {
+        errs.push('entity_id und channel gehören zusammen - beide angeben oder beide leer lassen');
+      }
+      if (hasEntity && !ID_RE.test(p.entity_id)) errs.push('entity_id ist ungültig');
+      if (hasChannel && !CHANNEL_RE.test(p.channel)) errs.push('channel ist ungültig');
+      return errs;
+    },
+    requires(p) {
+      if (p && p.entity_id && p.channel) {
+        return [{ entity_id: p.entity_id, capabilities: ['measure:' + p.channel] }];
+      }
+      return [];
+    },
+    claims() {
+      return [];
+    },
+    compile(ctx, node, extras) {
+      const p = node.parameters || {};
+      return [{
+        id: ctx.nrId(node.id),
+        type: 'vp-modbus-read',
+        z: ctx.tabId,
+        name: node.label || 'Modbus lesen',
+        core: ctx.coreId,
+        host: p.host,
+        port: Number.isInteger(p.port) ? p.port : 502,
+        unit_id: Number.isInteger(p.unit_id) ? p.unit_id : 1,
+        register_kind: p.register_kind === 'input' ? 'input' : 'holding',
+        address: p.address,
+        data_type: typeof p.data_type === 'string' && p.data_type ? p.data_type : 'u16',
+        word_order: p.word_order === 'little' ? 'little' : 'big',
+        scale: num(p.scale) ? p.scale : 1,
+        offset: num(p.offset) ? p.offset : 0,
+        min_read_interval_s: Number.isInteger(p.min_read_interval_s) ? p.min_read_interval_s : 5,
+        entity: p.entity_id || '',
+        channel: p.channel || '',
+        deadband: extras && num(extras.deadband) ? extras.deadband : 0,
       }];
     },
   },

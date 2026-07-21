@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "kind": "artifact",
+  "artifact_id": "4b0b1148-db1b-4725-8c8f-62000e3a3b1b",
+  "flow_id": "7b9e4d2c-8f10-4a35-9b67-89abcdef0123",
+  "flow_version": 1,
+  "runtime": "edge",
+  "content_hash": "sha256:3aa1e103ad80242c01c7b9ced40260b233c3c96c9c206343e93511bb3bfc0cb3",
+  "compiled_at": "1970-01-01T00:00:00Z",
+  "compiler_version": "1.0.0",
+  "min_palette_version": "0.3.0",
+  "min_core_version": "0.1.0",
+  "required_entities": [
+    {
+      "entity_id": "modbus-meter-1",
+      "capabilities": [
+        "measure:leistung_kw"
+      ]
+    },
+    {
+      "entity_id": "wallbox-1",
+      "capabilities": [
+        "actuate:on_off"
+      ]
+    }
+  ],
+  "bundle": {
+    "format": "nodered-tabs",
+    "tab_ids": [
+      "vpflow-7b9e4d2c-v1"
+    ],
+    "nodered_flows": [
+      {
+        "id": "vpflow-7b9e4d2c-v1",
+        "type": "tab",
+        "label": "VP Flow: Wärmepumpen-Zähler aufzeichnen (v1)",
+        "info": "@vp-flow flow_id=7b9e4d2c-8f10-4a35-9b67-89abcdef0123 flow_version=1"
+      },
+      {
+        "id": "vpflow-7b9e4d2c-v1-mb1",
+        "type": "vp-modbus-read",
+        "z": "vpflow-7b9e4d2c-v1",
+        "name": "Zähler Leistung",
+        "core": "cfg-vp-core",
+        "host": "192.168.40.17",
+        "port": 502,
+        "unit_id": 1,
+        "register_kind": "input",
+        "address": 100,
+        "data_type": "float32",
+        "word_order": "big",
+        "scale": 0.001,
+        "offset": 0,
+        "min_read_interval_s": 5,
+        "entity": "modbus-meter-1",
+        "channel": "leistung_kw",
+        "deadband": 0,
+        "x": 140,
+        "y": 80,
+        "wires": [
+          [
+            "vpflow-7b9e4d2c-v1-sw1"
+          ]
+        ]
+      },
+      {
+        "id": "vpflow-7b9e4d2c-v1-sw1",
+        "type": "function",
+        "z": "vpflow-7b9e4d2c-v1",
+        "name": "Leistung über 4 kW",
+        "func": "// generiert von flowc - NICHT von Hand bearbeiten\nconst P = {\"threshold\":4,\"hysteresis\":0.5,\"direction\":\"above\"};\nlet on = context.get(\"on\") || false;\nconst v = Number(msg.payload);\nif (!isFinite(v)) return null;\nif (P.direction === \"below\") {\n  if (v < P.threshold) on = true;\n  else if (v > P.threshold + P.hysteresis) on = false;\n} else {\n  if (v > P.threshold) on = true;\n  else if (v < P.threshold - P.hysteresis) on = false;\n}\ncontext.set(\"on\", on);\nmsg.payload = on;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 80,
+        "wires": [
+          [
+            "vpflow-7b9e4d2c-v1-steuern1"
+          ]
+        ]
+      },
+      {
+        "id": "vpflow-7b9e4d2c-v1-steuern1",
+        "type": "vp-desired",
+        "z": "vpflow-7b9e4d2c-v1",
+        "name": "Wallbox pausieren",
+        "core": "cfg-vp-core",
+        "entity": "wallbox-1",
+        "command": "on_off",
+        "ttl_s": 300,
+        "override": false,
+        "flowId": "7b9e4d2c-8f10-4a35-9b67-89abcdef0123",
+        "flowVersion": 1,
+        "nodeId": "steuern1",
+        "x": 580,
+        "y": 80,
+        "wires": [
+          []
+        ]
+      },
+      {
+        "id": "vpflow-7b9e4d2c-v1-trig1",
+        "type": "inject",
+        "z": "vpflow-7b9e4d2c-v1",
+        "name": "alle 30 s",
+        "props": [],
+        "repeat": "30",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 1,
+        "topic": "",
+        "x": 800,
+        "y": 80,
+        "wires": [
+          [
+            "vpflow-7b9e4d2c-v1-mb1"
+          ]
+        ]
+      }
+    ]
+  }
+}

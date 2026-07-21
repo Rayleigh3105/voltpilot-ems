@@ -10,6 +10,7 @@ import {
   healthTone,
   isEmpty,
   measureChannels,
+  parseChannelList,
   syncVerdict,
 } from './entities';
 
@@ -149,5 +150,23 @@ describe('summary + empty', () => {
       staleOnDevice: [],
     };
     expect(isEmpty(data)).toBe(false);
+  });
+});
+
+describe('parseChannelList (MB-M1 modbus-generic drawer)', () => {
+  it('splits on commas/whitespace, dedupes and keeps order', () => {
+    expect(parseChannelList('leistung_kw, wasser_temp_c')).toEqual([
+      'leistung_kw',
+      'wasser_temp_c',
+    ]);
+    expect(parseChannelList('  a_1\n b2,,a_1 ;c ')).toEqual(['a_1', 'b2', 'c']);
+    expect(parseChannelList('')).toEqual([]);
+  });
+
+  it('refuses entries outside the open channel vocabulary', () => {
+    expect(parseChannelList('Leistung')).toBeNull(); // upper case
+    expect(parseChannelList('1kanal')).toBeNull(); // leading digit
+    expect(parseChannelList('wasser-temp')).toBeNull(); // hyphen
+    expect(parseChannelList('ok_kanal, kaputt!')).toBeNull();
   });
 });

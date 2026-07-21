@@ -31,8 +31,19 @@ import org.springframework.stereotype.Component;
 @Component
 public class FlowGraphValidator {
 
-    /** Capability view of one registry entity (measure channels / actuate commands). */
-    public record EntityCapabilities(Set<String> measure, Set<String> actuate) {}
+    /**
+     * Capability view of one registry entity (measure channels / actuate
+     * commands). {@code composed} = the entity's type is COMPOSED from v1
+     * master data (battery-hybrid/producer/grid-meter per the entity-type
+     * catalog) - a Modbus read must never map onto such an entity, because its
+     * measured channels feed the guard chain (MB-M1 guard-integrity rule).
+     */
+    public record EntityCapabilities(Set<String> measure, Set<String> actuate, boolean composed) {
+
+        public EntityCapabilities(Set<String> measure, Set<String> actuate) {
+            this(measure, actuate, false);
+        }
+    }
 
     /** One claim held by ANOTHER active flow of the same site+runtime. */
     public record ForeignClaim(String entityId, UUID flowId, String flowName) {}
@@ -40,6 +51,10 @@ public class FlowGraphValidator {
     private static final Pattern ID_PATTERN = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$");
     private static final Pattern PORT_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9_]{0,63}$");
     private static final Pattern TIME_PATTERN = Pattern.compile("^([01]\\d|2[0-3]):[0-5]\\d$");
+    /** The `host` param kind (MB-M1): IPv4 literal or RFC-1123 hostname, <= 253 chars. */
+    private static final Pattern HOST_PATTERN = Pattern.compile(
+            "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$",
+            Pattern.CASE_INSENSITIVE);
     private static final Set<String> TRIGGER_KINDS =
             Set.of("interval", "value-change", "slot-boundary", "event");
 
@@ -74,6 +89,7 @@ public class FlowGraphValidator {
         checkTriggers(doc, findings, nodesById);
         checkClaims(doc, findings, nodesById, entities, foreignClaims);
         checkEntityReads(doc, findings, nodesById, entities);
+        checkModbusReads(doc, findings, nodesById, entities);
         return findings;
     }
 
@@ -198,6 +214,14 @@ public class FlowGraphValidator {
                     if (!TIME_PATTERN.matcher(value.asText("")).matches()) {
                         findings.add(paramError(type, spec, nodeId,
                                 "muss eine Uhrzeit im Format HH:MM sein"));
+                    }
+                }
+                case "host" -> {
+                    String host = value.asText("");
+                    if (!value.isTextual() || host.length() > 253
+                            || !HOST_PATTERN.matcher(host).matches()) {
+                        findings.add(paramError(type, spec, nodeId,
+                                "muss eine gültige IP-Adresse oder ein Hostname sein"));
                     }
                 }
                 default -> {
@@ -537,6 +561,62 @@ public class FlowGraphValidator {
                 findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
                         "Die Entität \"" + entityId + "\" misst den Kanal \"" + channel
                                 + "\" nicht."));
+            }
+        }
+    }
+
+    /**
+     * MB-M1 rules for {@code vp.modbus.read}'s optional entity mapping:
+     * entity_id/channel are both-or-neither (V-4); a mapped read's entity must
+     * exist and DECLARE the channel as a measure capability (V-6, the
+     * entity-read rule applied to a second node type) and must NOT be of a
+     * composed type - a customer flow must never inject readings into the
+     * guard chain's inputs (battery SoC/PV feed D-8 and the clamps); two reads
+     * mapping the same (entity, channel) in one flow clash (V-5).
+     */
+    private void checkModbusReads(JsonNode doc, List<FlowValidationFinding> findings,
+            Map<String, JsonNode> nodesById, Map<String, EntityCapabilities> entities) {
+        Map<String, String> mappedBy = new HashMap<>();
+        for (Map.Entry<String, JsonNode> entry : nodesById.entrySet()) {
+            JsonNode node = entry.getValue();
+            if (!"vp.modbus.read".equals(node.path("type").asText())) {
+                continue;
+            }
+            String entityId = node.path("parameters").path("entity_id").asText("");
+            String channel = node.path("parameters").path("channel").asText("");
+            if (entityId.isEmpty() && channel.isEmpty()) {
+                continue; // unmapped read - legal, feeds the flow only
+            }
+            if (entityId.isEmpty() || channel.isEmpty()) {
+                findings.add(FlowValidationFinding.error("V-4", List.of(entry.getKey()), List.of(),
+                        "Baustein \"Modbus lesen\": Entität und Messkanal gehören zusammen - "
+                                + "bitte beide angeben oder beide leer lassen."));
+                continue;
+            }
+            EntityCapabilities caps = entities.get(entityId);
+            if (caps == null) {
+                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
+                        entities.isEmpty()
+                                ? "Diese Anlage hat noch keine v2-Entitäten - bitte zuerst das "
+                                        + "Entitäten-Bootstrap ausführen (Plattform → Anlage)."
+                                : "Unbekannte Entität \"" + entityId + "\"."));
+            } else if (caps.composed()) {
+                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
+                        "Die Entität \"" + entityId + "\" wird aus den Stammdaten der Anlage "
+                                + "abgeleitet - Messwerte können hier nicht per Modbus-Baustein "
+                                + "eingespeist werden. Bitte eine generische Modbus-Entität "
+                                + "verwenden."));
+            } else if (!caps.measure().contains(channel)) {
+                findings.add(FlowValidationFinding.error("V-6", List.of(entry.getKey()), List.of(),
+                        "Die Entität \"" + entityId + "\" misst den Kanal \"" + channel
+                                + "\" nicht."));
+            }
+            String previous = mappedBy.putIfAbsent(entityId + "#" + channel, entry.getKey());
+            if (previous != null) {
+                findings.add(FlowValidationFinding.error("V-5",
+                        List.of(previous, entry.getKey()), List.of(),
+                        "Zwei Modbus-Lesen-Bausteine zeichnen denselben Messkanal \"" + channel
+                                + "\" der Entität \"" + entityId + "\" auf."));
             }
         }
     }

@@ -117,6 +117,22 @@ function validate(graph) {
     }
   }
 
+  // V-5 (MB-M1): two Modbus reads mapping the SAME (entity, channel) in one
+  // flow would double-write one measure channel - refused like a claim clash.
+  const mappedChannels = {};
+  for (const n of nodes) {
+    if (n.type !== 'vp.modbus.read') continue;
+    const p = n.parameters || {};
+    if (!p.entity_id || !p.channel) continue;
+    const key = p.entity_id + '#' + p.channel;
+    if (mappedChannels[key]) {
+      push('V-5', 'Zwei Modbus-Lesen-Bausteine zeichnen denselben Messkanal ' + p.channel
+        + ' der Entität ' + p.entity_id + ' auf', [mappedChannels[key], n.id]);
+    } else {
+      mappedChannels[key] = n.id;
+    }
+  }
+
   // V-1/V-3 edges: endpoint + port existence, type compatibility, in-arity.
   const seenEdge = {};
   const inbound = {};
@@ -417,6 +433,7 @@ function outputsOf(n) {
     case 'vp-entity-read':
     case 'vp-feed':
     case 'vp-desired':
+    case 'vp-modbus-read':
     case 'inject':
       return 1;
     default:

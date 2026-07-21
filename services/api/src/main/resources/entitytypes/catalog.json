@@ -102,6 +102,16 @@
         { "command": "limit_kw" },
         { "command": "limit_pct" }
       ]
+    },
+    {
+      "type": "modbus-generic",
+      "label": "Modbus-Gerät (generisch)",
+      "category": "meter",
+      "controllable": false,
+      "composed": false,
+      "default_failsafe": "measure-only",
+      "default_measure": [],
+      "default_actuate": []
     }
   ]
 }
