@@ -16,12 +16,16 @@ const artifact = compile(flowGraph, { compiledAt: new Date().toISOString() });
 ## Garantien
 
 - **Nur Katalog-Implementierungen** (`catalog.js`): vp-palette-Knoten
-  (`vp-entity-read`, `vp-feed`, `vp-desired`, `vp-notify`) plus GENERIERTE
-  `function`-Knoten aus festen Templates. Parameter gelangen ausschließlich
-  als strikt validierte JSON-Literale (`const P = {...}`) in den Code;
-  Nutzertext (Labels, Nachrichten) landet nur in Daten-Properties. Es gibt
-  keine freien Code-Knoten (D1) — das, nicht Review, macht Nutzer-Flows
-  unfähig, Sockets/Register zu erreichen.
+  (`vp-entity-read`, `vp-feed`, `vp-desired`, `vp-notify`, ab 0.3.0
+  `vp-modbus-read`) plus GENERIERTE `function`-Knoten aus festen Templates.
+  Parameter gelangen ausschließlich als strikt validierte JSON-Literale
+  (`const P = {...}`) in den Code; Nutzertext (Labels, Nachrichten) landet
+  nur in Daten-Properties. Es gibt keine freien Code-Knoten (D1) — das,
+  nicht Review, macht Nutzer-Flows unfähig, beliebige Sockets zu erreichen.
+  Die EINE dokumentierte Ausnahme ist die `vp.modbus.*`-Domäne (Decision
+  D-15, docs/contracts/v2/README.md): der vp-modbus-read-Knoten liest rohe
+  Register über die getestete Palette-Implementierung (lib/modbus-conn.js),
+  weiterhin nur Daten-Konfiguration, nie generierter Code.
 - **Deterministisch**: gleicher Graph (+ gleiche `opts`) → byte-identisches
   Bundle → identischer `content_hash` (`sha256:` über die RFC-8785-Kanonform,
   `canonicalize.js`; Go-Zwilling `edge-app/core/internal/flowdeploy/jcs.go`,
