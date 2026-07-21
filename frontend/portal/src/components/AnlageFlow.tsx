@@ -51,6 +51,7 @@ import {
   zoneForCountry,
 } from '../anlageFlow';
 import { parseFeedInCapInput, parsePremiumInput } from '../fleet';
+import { SETUP_NEXT_HINT } from '../setupPath';
 import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
 import { TariffFields } from './TariffFields';
@@ -1531,6 +1532,9 @@ export function FirstDataStep({ siteId, onDone }: { siteId: string; onDone: () =
           Ihr Gerät sendet Daten. Im Portal sehen Sie ab jetzt Live-Werte, Prognosen und
           den optimierten Speicher-Fahrplan Ihrer Anlage.
         </p>
+        {/* M5 (#533): die Übergabe in den Einrichtungspfad - der Assistent legt
+            die Anlage an, die Anlagen-Seite führt die Kette zu Ende. */}
+        <p className="vp-note" style={{ marginTop: 8 }}>{SETUP_NEXT_HINT}</p>
         <Button variant="primary" size="lg" fullWidth onClick={onDone} style={{ marginTop: 12 }}>
           Zur Anlage
         </Button>
@@ -1613,6 +1617,8 @@ function SummaryStep({
           Einstellungen".
         </p>
       )}
+      {/* M5 (#533): die Übergabe in den Einrichtungspfad. */}
+      <p className="vp-note" style={{ marginTop: 12 }}>{SETUP_NEXT_HINT}</p>
       <Button variant="primary" size="lg" fullWidth onClick={onDone} style={{ marginTop: 16 }}>
         Zur Anlage
       </Button>
