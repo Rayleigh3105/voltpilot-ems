@@ -5,42 +5,39 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * The U0 shell-frame derivation (design vp-ems-ui-overhaul §2.1): the explicit
- * override wins; without one the existing {@code tenant.segment} derives the
- * default - B2C (self-registered households) -> endkunde, CI (admin-provisioned
- * commercial) -> betreiber. Pure unit, always runs.
+ * The U0 shell-frame derivation (design vp-ems-ui-overhaul §2.1, hardened by
+ * the pre-deploy audit HIGH-1): ONLY an explicit override picks a frame. An
+ * unset override is {@code null} = unknown, so the portal keeps the pre-U0
+ * site-count heuristic and no existing tenant's shell changes on deploy.
+ * Pure unit, always runs.
  */
 class BetriebsartTest {
 
     @Test
-    void derivesFromSegmentWhenNoOverrideIsSet() {
-        assertThat(Betriebsart.effective(null, "B2C")).isEqualTo("endkunde");
-        assertThat(Betriebsart.effective(null, "CI")).isEqualTo("betreiber");
+    void anUnsetOverrideIsUnknownAndNeverDerivedFromTheSegment() {
+        // HIGH-1: segment defaults to 'CI' for every admin-provisioned tenant,
+        // so deriving from it would flip existing single-plant customers into
+        // the operator Portfolio shell. Unknown -> the portal derives from scale.
+        assertThat(Betriebsart.effective(null, "CI")).isNull();
+        assertThat(Betriebsart.effective(null, "B2C")).isNull();
+        assertThat(Betriebsart.effective(null, null)).isNull();
+        assertThat(Betriebsart.effective(null, "ENTERPRISE")).isNull();
     }
 
     @Test
-    void explicitOverrideWinsOverTheSegment() {
+    void explicitOverrideWinsRegardlessOfTheSegment() {
         // A mixed/commercial tenant flipped to the cockpit shell...
         assertThat(Betriebsart.effective("endkunde", "CI")).isEqualTo("endkunde");
         // ...and a household portfolio operator flipped to the fleet shell.
         assertThat(Betriebsart.effective("betreiber", "B2C")).isEqualTo("betreiber");
-        // A redundant override is honored, not special-cased.
         assertThat(Betriebsart.effective("endkunde", "B2C")).isEqualTo("endkunde");
         assertThat(Betriebsart.effective("betreiber", "CI")).isEqualTo("betreiber");
     }
 
     @Test
-    void garbageOverrideFallsBackToTheDerivation() {
+    void garbageOverrideReadsAsUnset() {
         // The DB CHECK forbids other values; defensively they read as unset.
-        assertThat(Betriebsart.effective("", "B2C")).isEqualTo("endkunde");
-        assertThat(Betriebsart.effective("portfolio", "CI")).isEqualTo("betreiber");
-    }
-
-    @Test
-    void unknownSegmentDefaultsToBetreiber() {
-        // segment is NOT NULL + CHECK (CI|B2C); anything unexpected reads as
-        // the commercial default, never the private cockpit.
-        assertThat(Betriebsart.effective(null, "ENTERPRISE")).isEqualTo("betreiber");
-        assertThat(Betriebsart.effective(null, null)).isEqualTo("betreiber");
+        assertThat(Betriebsart.effective("", "B2C")).isNull();
+        assertThat(Betriebsart.effective("portfolio", "CI")).isNull();
     }
 }

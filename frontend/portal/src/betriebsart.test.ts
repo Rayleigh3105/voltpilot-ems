@@ -109,3 +109,27 @@ describe('redirectToPortfolio', () => {
     expect(redirectToPortfolio({ ...base, loaded: false, betriebsart: 'betreiber', siteCount: 3 })).toBe(false);
   });
 });
+
+describe('HIGH-1: an UNSET frame is deploy-day neutral (pre-deploy audit)', () => {
+  // The api no longer derives the frame from tenant.segment (which defaults to
+  // 'CI' for every admin-provisioned tenant), so an existing customer arrives
+  // here with betriebsart === null and must see EXACTLY the pre-U0 shell.
+  const unset = (siteCount: number) => ({ ...base, betriebsart: null, siteCount });
+
+  it('a single-plant customer lands on their cockpit, never on Portfolio', () => {
+    expect(showPortfolioNav(unset(1))).toBe(false);
+    expect(redirectToPortfolio(unset(1))).toBe(false);
+    expect(showOverviewNav(unset(1))).toBe(false);
+    expect(redirectOverviewToAnlage(unset(1))).toBe(true);
+  });
+
+  it('a 2+-site customer lands on the calm fleet Übersicht, never on Portfolio', () => {
+    expect(showPortfolioNav(unset(3))).toBe(false);
+    expect(showOverviewNav(unset(3))).toBe(true);
+    expect(redirectOverviewToAnlage(unset(3))).toBe(false);
+  });
+
+  it('only an explicit betreiber override opens the Portfolio shell', () => {
+    expect(showPortfolioNav({ ...base, betriebsart: 'betreiber', siteCount: 1 })).toBe(true);
+  });
+});

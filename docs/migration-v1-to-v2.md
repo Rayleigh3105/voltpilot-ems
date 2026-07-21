@@ -92,7 +92,12 @@ Read the response and confirm it matches the physical plant:
   - `multiple_devices_no_battery_link` → link the battery to its controlling
     device (the battery editor's device picker) so the gateway is unambiguous.
 - `skipped[]` — honest notes (e.g. "no battery asset"). Fix the master data and
-  re-preview if anything important is skipped.
+  re-preview if anything important is skipped. **Since U2 this list is noisier:**
+  the preview only composes the three pilot types, so an entity that already
+  exists as a non-pilot type — e.g. a consumer (Wallbox/Heizstab) adopted from
+  the edge on the Geräte page — legitimately shows up here. An already-adopted
+  or already-converted entity in `skipped[]` is **normal, not a problem**; only
+  a skipped *pilot* (battery / PV / Netz-Zähler) needs a master-data fix.
 
 The preview writes **nothing** — call it as many times as you like while fixing
 master data.
@@ -223,6 +228,11 @@ a v1 site** — that is the design invariant the whole test matrix guards.
 - **Roles are derived, not stored.** The adaptive topology derives each capability's
   role from the entity's channels + category (AE1 `DefaultRole`); the preview reports
   these so you can review them. Overrides are optional
-  (`PUT /api/v1/admin/sites/{id}/topology-roles`).
+  (`PUT /api/v1/admin/sites/{id}/topology-roles`) — and **since U2 the customer
+  can set them too**, via the identical RLS-fenced twin
+  `PUT /api/v1/sites/{id}/topology-roles` behind the "Rollen & Zuordnung" card on
+  `#/anlage/{id}/entitaeten`. A role is presentation-level and never widens
+  control, so this needs no extra gate; it does mean a role you assign during the
+  migration session may later be changed by the customer.
 - **The real live cutover happens WITH the captain.** This runbook + its automated
   dry-run are the rehearsal; the production switch is a joint, supervised session.

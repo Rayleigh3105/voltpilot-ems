@@ -523,25 +523,28 @@ class AdminApiTest {
     }
 
     /**
-     * U0 Kontotyp/Betriebsart frame (design vp-ems-ui-overhaul §2): the shell
-     * frame derives from the segment (B2C -> endkunde, CI -> betreiber), an
-     * explicit admin-set override wins, clearing returns to automatic, and the
-     * EFFECTIVE value is echoed both on the admin tenant DTOs and on the
-     * customer's {@code /tenant-context} login bootstrap. Only a Portal-Admin
-     * can set it - the customer path never writes the frame.
+     * U0 Kontotyp/Betriebsart frame (design vp-ems-ui-overhaul §2, hardened by
+     * the pre-deploy audit HIGH-1): ONLY an explicit admin-set override picks a
+     * shell frame - an unset override stays UNKNOWN (null) for every segment,
+     * so an existing admin-provisioned (segment {@code CI}) customer keeps the
+     * pre-U0 site-count behavior instead of silently landing in the operator
+     * Portfolio shell. Clearing returns to automatic, and the EFFECTIVE value is
+     * echoed both on the admin tenant DTOs and on the customer's
+     * {@code /tenant-context} login bootstrap. Only a Portal-Admin can set it -
+     * the customer path never writes the frame.
      */
     @Test
-    void betriebsartFrameIsAdminSetDerivedFromSegmentAndEchoedOnTenantContext() {
+    void betriebsartFrameIsAdminSetNeverSegmentDerivedAndEchoedOnTenantContext() {
         String admin = token("admin", "admin");
 
-        // Derived defaults: a self-registered-style B2C household is endkunde,
-        // an admin-provisioned CI operator is betreiber - no override stored.
+        // No override stored => unknown frame, for BOTH segments. The CI case is
+        // the HIGH-1 regression guard: it must NOT read 'betreiber'.
         Map<String, Object> b2c = createTenant(admin, "Familie Sonnenhof", "B2C");
         String b2cId = (String) b2c.get("id");
         assertThat(b2c.get("betriebsart")).isNull();
-        assertThat(b2c).containsEntry("betriebsartEffective", "endkunde");
-        assertThat(createTenant(admin, "Stadtwerke Windau", "CI"))
-                .containsEntry("betriebsartEffective", "betreiber");
+        assertThat(b2c.get("betriebsartEffective")).isNull();
+        assertThat(createTenant(admin, "Stadtwerke Windau", "CI").get("betriebsartEffective"))
+                .isNull();
 
         // The admin flips the household to the fleet shell: the override wins.
         ResponseEntity<Map<String, Object>> flipped = rest.exchange(
@@ -565,18 +568,19 @@ class AdminApiTest {
         assertThat(ctx.getBody()).containsEntry("segment", "B2C");
         assertThat(ctx.getBody()).containsEntry("betriebsart", "betreiber");
 
-        // Clearing = the full-representation PUT WITHOUT the field: back to the
-        // segment-derived automatic, and the customer's next bootstrap follows.
+        // Clearing = the full-representation PUT WITHOUT the field: back to
+        // automatic (unknown), and the customer's next bootstrap follows - the
+        // portal then falls back to the pre-U0 site-count heuristic.
         ResponseEntity<Map<String, Object>> cleared = rest.exchange(
                 url("/api/v1/admin/tenants/" + b2cId), HttpMethod.PUT,
                 new HttpEntity<>(Map.of("name", "Familie Sonnenhof", "segment", "B2C"),
                         bearer(admin)),
                 new ParameterizedTypeReference<>() {});
         assertThat(cleared.getBody().get("betriebsart")).isNull();
-        assertThat(cleared.getBody()).containsEntry("betriebsartEffective", "endkunde");
+        assertThat(cleared.getBody().get("betriebsartEffective")).isNull();
         assertThat(rest.exchange(url("/api/v1/tenant-context"), HttpMethod.GET,
                 new HttpEntity<>(bearer(customer)), new ParameterizedTypeReference<Map<String, Object>>() {})
-                .getBody()).containsEntry("betriebsart", "endkunde");
+                .getBody().get("betriebsart")).isNull();
 
         // Garbage refuses with 400; nothing changes.
         assertThat(rest.exchange(url("/api/v1/admin/tenants/" + b2cId), HttpMethod.PUT,
@@ -599,7 +603,8 @@ class AdminApiTest {
                 new HttpEntity<>(withTenant(bearer(admin), b2cId)),
                 new ParameterizedTypeReference<>() {});
         assertThat(adminCtx.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(adminCtx.getBody()).containsEntry("betriebsart", "endkunde");
+        assertThat(adminCtx.getBody()).containsEntry("tenantId", b2cId);
+        assertThat(adminCtx.getBody().get("betriebsart")).isNull();
         assertThat(rest.exchange(url("/api/v1/tenant-context"), HttpMethod.GET,
                 new HttpEntity<>(bearer(admin)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);

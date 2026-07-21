@@ -15,8 +15,12 @@ import type { Betriebsart } from './api';
  *   affordances; the chrome must not jump when site 2 arrives). Opening a
  *   Standort renders the SAME cockpit as the Endkunde shell (one cockpit, two
  *   shells).
- * - `null` (context not loaded / older backend) -> the v1 site-count
- *   fallback, byte-identical to the pre-U0 behavior.
+ * - `null` (no explicit override stored, context not loaded, older backend) ->
+ *   the v1 site-count fallback, byte-identical to the pre-U0 behavior. This is
+ *   the DEFAULT for every existing tenant: the api derives the frame ONLY from
+ *   an explicit `tenant.betriebsart`, never from `tenant.segment` (which
+ *   defaults to `CI` and would otherwise have flipped every admin-provisioned
+ *   customer into the Portfolio shell on deploy - pre-deploy audit HIGH-1).
  *
  * Admins keep today's behavior (tenant switcher + always-Übersicht); the
  * betriebsart in play is the currently-selected tenant's.

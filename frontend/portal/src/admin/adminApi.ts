@@ -15,10 +15,10 @@ export interface Tenant {
   name: string;
   segment: string;
   plan: string;
-  /** U0 shell-frame override; null = automatic (derived from the segment). */
+  /** U0 shell-frame override; null = automatic (derived from the site count). */
   betriebsart: 'endkunde' | 'betreiber' | null;
-  /** The resolved Betriebsart the portal shell keys on (override wins). */
-  betriebsartEffective: 'endkunde' | 'betreiber';
+  /** The resolved frame the shell keys on: the override, else null = unknown. */
+  betriebsartEffective: 'endkunde' | 'betreiber' | null;
   createdAt: string;
 }
 

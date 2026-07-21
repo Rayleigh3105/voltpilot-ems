@@ -8,11 +8,20 @@ package com.voltpilot.api.tenant;
  * (AE1 topology + AE7 profile).
  *
  * <p>This class is the ONE authoritative derivation of the EFFECTIVE
- * Betriebsart: the explicit {@code tenant.betriebsart} override wins; without
- * one it derives from the existing {@code tenant.segment} ({@code B2C} ->
- * endkunde, {@code CI} -> betreiber). Every consumer - the admin tenant DTOs,
- * the customer tenant-context echo, and (via that echo) the portal shell -
- * reads the resolved value from here; the portal never re-derives.
+ * Betriebsart: the explicit {@code tenant.betriebsart} override wins, and
+ * WITHOUT one the frame is deliberately {@code null} = UNKNOWN. It is NOT
+ * derived from {@code tenant.segment}: that column defaults to {@code CI} for
+ * every admin-console-provisioned tenant, so a segment derivation would have
+ * silently flipped every existing single-plant customer from their cockpit to
+ * the operator Portfolio shell on the U0 deploy (pre-deploy audit HIGH-1). An
+ * unknown frame falls back to the pre-U0 {@code sites.length >= 2} heuristic in
+ * the portal ({@code src/betriebsart.ts}), i.e. zero change for existing
+ * tenants; the Portfolio shell appears ONLY once an admin explicitly stores
+ * {@code betriebsart = 'betreiber'}.
+ *
+ * <p>Every consumer - the admin tenant DTOs, the customer tenant-context echo,
+ * and (via that echo) the portal shell - reads the resolved value from here;
+ * the portal never re-derives.
  */
 public final class Betriebsart {
 
@@ -23,15 +32,15 @@ public final class Betriebsart {
     }
 
     /**
-     * The effective Betriebsart: the stored override when set, else the
-     * segment-derived default. {@code B2C} (self-registered households) ->
-     * {@code endkunde}; anything else (the {@code CI} commercial segment -
-     * the only other value the segment CHECK allows) -> {@code betreiber}.
+     * The effective Betriebsart: the stored override when set, else
+     * {@code null} = unknown frame (the consumer falls back to deriving from
+     * scale - the pre-U0 site-count heuristic). {@code segment} is accepted for
+     * call-site symmetry and deliberately NOT used (see the class javadoc).
      */
     public static String effective(String betriebsartOverride, String segment) {
         if (ENDKUNDE.equals(betriebsartOverride) || BETREIBER.equals(betriebsartOverride)) {
             return betriebsartOverride;
         }
-        return "B2C".equals(segment) ? ENDKUNDE : BETREIBER;
+        return null;
     }
 }
