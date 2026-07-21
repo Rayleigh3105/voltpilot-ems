@@ -2124,6 +2124,57 @@ class AdminApiTest {
         assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
                 + "' AND type = 'pv' AND is_primary")).isEqualTo(37.0); // 10 + 27
 
+        String producerId = (String) producer.getBody().get("id");
+        surface = entitiesSurface(siteId, adminTenant);
+        Map<String, Object> pvSource = ((List<Map<String, Object>>) surface.get("localSetup"))
+                .stream().filter(l -> "pv-2".equals(l.get("id"))).findFirst().orElseThrow();
+        assertThat(pvSource.get("adoptedEntityId")).isEqualTo(producerId);
+
+        // MEDIUM-1: deleting a COMPOSED entity keeps its measurement point (only
+        // the entity config is cleared), so the point stays pinned to "pv-2" -
+        // the portal shows the source as adoptable again...
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + producerId),
+                HttpMethod.DELETE, new HttpEntity<>(adminTenant), String.class)
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        surface = entitiesSurface(siteId, adminTenant);
+        assertThat(((List<Map<String, Object>>) surface.get("entities")).stream()
+                .anyMatch(e -> producerId.equals(e.get("id")))).isFalse();
+        pvSource = ((List<Map<String, Object>>) surface.get("localSetup")).stream()
+                .filter(l -> "pv-2".equals(l.get("id"))).findFirst().orElseThrow();
+        assertThat(pvSource.get("adoptedEntityId")).as("offered for adoption again").isNull();
+
+        // ... and re-adopting it RE-COMPOSES that very point instead of inserting
+        // a second one (which the (site, edge_source) unique index refused with an
+        // opaque 500). The kWp is applied as a DELTA, never counted twice.
+        ResponseEntity<Map<String, Object>> reProducer = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "pv-2", "entityType", "producer",
+                        "label", "AC-PV Nord", "capacityKwp", 27, "registryUnitId", "SEE900"),
+                        adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(reProducer.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(reProducer.getBody().get("entityType")).isEqualTo("producer");
+        assertThat(reProducer.getBody().get("id")).as("the same point, re-composed")
+                .isEqualTo(producerId);
+        assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv' AND is_primary")).isEqualTo(37.0); // still 10 + 27
+        assertThat(queryDouble("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "' AND edge_source_id = 'pv-2'")).isEqualTo(1.0);
+
+        // A changed kWp on the re-adopt moves the aggregate by the delta only.
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + producerId),
+                HttpMethod.DELETE, new HttpEntity<>(adminTenant), String.class)
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "pv-2", "entityType", "producer",
+                        "capacityKwp", 30), adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {})
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv' AND is_primary")).isEqualTo(40.0); // 37 - 27 + 30
+
         // battery-hybrid is never adopted as a source (422; a FRESH source id so
         // the idempotency short-circuit does not mask the type refusal).
         assertThat(rest.exchange(

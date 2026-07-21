@@ -357,6 +357,12 @@ public class EntityRegistryService {
      * existing entity (never a duplicate - the partial-unique index would
      * refuse it anyway).
      *
+     * <p><b>One point per (site, source), always.</b> Deleting a COMPOSED entity
+     * keeps its point and only clears the entity config, so the pin survives -
+     * a re-adoption RE-COMPOSES that very row (kWp applied as a delta, since the
+     * aggregate still carries what it contributed) instead of inserting a second
+     * row the unique index refuses with an opaque 500.
+     *
      * <p>Two paths behind one call, mirroring {@link #createEntity} vs the v1
      * measurement-point capture the panel it replaces did:
      * <ul>
@@ -380,8 +386,11 @@ public class EntityRegistryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "sourceId ist erforderlich.");
         }
-        EntityRow existing = repo.entityByEdgeSource(siteId, edgeSourceId);
-        if (existing != null) {
+        // NOT entityByEdgeSource: deleting a COMPOSED entity only clears its
+        // config and leaves the point pinned to this source. Missing that row
+        // would fall through to an INSERT the partial-unique index refuses (500).
+        EntityRow existing = repo.pointByEdgeSource(siteId, edgeSourceId);
+        if (existing != null && existing.entityType() != null) {
             return existing; // idempotent re-adoption
         }
         EntityTypeCatalog.EntityType type = catalog.find(entityType);
@@ -392,6 +401,11 @@ public class EntityRegistryService {
         }
         UUID tenantId = TenantContext.get();
         if (!type.composed()) {
+            if (existing != null) {
+                // A de-entitied COMPOSED point still holds the pin; release it
+                // (with its kWp) so the v2-native entity can take the source.
+                releaseStalePoint(tenantId, siteId, existing);
+            }
             EntityRow created = createEntity(siteId, entityType, label, maxPowerKw, null, null);
             repo.setEdgeSource(created.id(), edgeSourceId);
             return repo.entityForSite(siteId, created.id());
@@ -404,20 +418,36 @@ public class EntityRegistryService {
                             + "eingerichtet und kann nicht als Quelle übernommen werden.");
         };
         BigDecimal capacity = TYPE_PRODUCER.equals(entityType) ? capacityKwp : null;
-        UUID pointId = repo.createAdoptedPoint(tenantId, siteId, role,
-                label == null || label.isBlank() ? null : label, false, null, capacity,
-                registryUnitId == null || registryUnitId.isBlank() ? null : registryUnitId,
-                edgeSourceId);
+        String cleanLabel = label == null || label.isBlank() ? null : label;
+        String cleanRegistryUnit =
+                registryUnitId == null || registryUnitId.isBlank() ? null : registryUnitId;
+        // A previously deleted composed entity left its point pinned to this
+        // source: re-compose THAT row (one point per source - the unique index).
+        BigDecimal previousCapacity = existing == null ? null : existing.capacityKwp();
+        UUID pointId;
+        if (existing != null) {
+            pointId = existing.id();
+            repo.updateAdoptedPoint(pointId, role, cleanLabel, capacity, cleanRegistryUnit);
+        } else {
+            pointId = repo.createAdoptedPoint(tenantId, siteId, role, cleanLabel, false, null,
+                    capacity, cleanRegistryUnit, edgeSourceId);
+        }
         // Compose the entity config from the catalog (same as the bootstrap).
         if (TYPE_PRODUCER.equals(entityType)) {
             EntityRow probe = new EntityRow(pointId, role, label, null, null, null, null, null,
                     capacity, null, false, null, null, null, edgeSourceId);
             repo.setEntityConfig(pointId, TYPE_PRODUCER, write(producerCapabilities(probe)),
                     write(producerGuards(probe)));
-            if (capacity != null) {
-                assets.addPvCapacity(tenantId, siteId, capacity);
+            // Only the DELTA on a re-compose - the aggregate still carries what
+            // the deleted entity's point contributed (its kWp was never removed).
+            BigDecimal deltaKwp = orZero(capacity).subtract(orZero(previousCapacity));
+            if (deltaKwp.signum() != 0) {
+                assets.addPvCapacity(tenantId, siteId, deltaKwp);
             }
         } else {
+            if (previousCapacity != null && previousCapacity.signum() != 0) {
+                assets.addPvCapacity(tenantId, siteId, previousCapacity.negate());
+            }
             repo.setEntityConfig(pointId, TYPE_GRID_METER, write(gridMeterCapabilities()),
                     write(gridMeterGuards()));
         }
@@ -489,6 +519,22 @@ public class EntityRegistryService {
         }
         pushRegistryBestEffort(siteId);
         return true;
+    }
+
+    private static BigDecimal orZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    /**
+     * Drop a de-entitied adopted point (and its kWp contribution) so its edge
+     * source can be adopted as a v2-native entity instead - the pin is unique
+     * per (site, source), so the stale row would otherwise refuse the new one.
+     */
+    private void releaseStalePoint(UUID tenantId, UUID siteId, EntityRow stale) {
+        if (stale.capacityKwp() != null && stale.capacityKwp().signum() != 0) {
+            assets.addPvCapacity(tenantId, siteId, stale.capacityKwp().negate());
+        }
+        repo.deletePoint(stale.id());
     }
 
     private ObjectNode defaultCapabilities(EntityTypeCatalog.EntityType type,

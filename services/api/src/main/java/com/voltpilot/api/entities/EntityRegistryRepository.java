@@ -144,13 +144,35 @@ public class EntityRegistryRepository {
                 edgeSourceId, pointId);
     }
 
-    /** The site's v2 entity already adopted from this edge source, or null. */
-    public EntityRow entityByEdgeSource(UUID siteId, String edgeSourceId) {
+    /**
+     * The site's measurement point pinned to this edge source, entity or not.
+     *
+     * <p>Deliberately NOT filtered on {@code entity_type IS NOT NULL}: deleting a
+     * COMPOSED entity (producer / grid-meter) only clears its entity config and
+     * leaves the point (v1 master data) with its {@code edge_source_id} in place.
+     * A re-adoption must find exactly that row and re-compose it - creating a
+     * second row would violate {@code uq_measurement_point_edge_source} (HTTP 500)
+     * and double-count the producer's kWp.
+     */
+    public EntityRow pointByEdgeSource(UUID siteId, String edgeSourceId) {
         List<EntityRow> rows = jdbc.query(
-                "SELECT " + ROW_COLUMNS + " FROM measurement_point WHERE site_id = ? "
-                        + "AND edge_source_id = ? AND entity_type IS NOT NULL",
+                "SELECT " + ROW_COLUMNS + " FROM measurement_point "
+                        + "WHERE site_id = ? AND edge_source_id = ?",
                 EntityRegistryRepository::mapRow, siteId, edgeSourceId);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Re-point an adopted measurement point at a (possibly changed) role and
+     * master data before its entity config is re-composed. Only rows created by
+     * adoption carry an {@code edge_source_id}, so the role is ours to maintain.
+     */
+    public void updateAdoptedPoint(UUID pointId, String role, String label,
+            BigDecimal capacityKwp, String registryUnitId) {
+        jdbc.update(
+                "UPDATE measurement_point SET role = ?, label = ?, capacity_kwp = ?, "
+                        + "registry_unit_id = ? WHERE id = ?",
+                role, label, capacityKwp, registryUnitId, pointId);
     }
 
     /** The edge source ids already adopted into a v2 entity of the site. */

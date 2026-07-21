@@ -1,7 +1,5 @@
 package com.voltpilot.api.web;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.profile.UsageProfileDeriver;
@@ -18,13 +16,10 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -48,28 +43,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/overview")
 public class OverviewController {
 
-    private static final Logger log = LoggerFactory.getLogger(OverviewController.class);
-
     /** Portal liveness window - keep in sync with api.ts ONLINE_WINDOW_MS. */
     private static final Duration ONLINE_WINDOW = Duration.ofMinutes(5);
 
     /** Days of the hero's savings mini chart (incl. today). */
     private static final int DAILY_SAVINGS_DAYS = 14;
 
-    /** Strategy-node prefix the usage-profile deriver keys on (UsageProfileService). */
-    private static final String STRATEGY_PREFIX = "vp.strategy.";
-
     private final SiteRepository sites;
     private final OverviewRepository overview;
     private final EntityTypeCatalog catalog;
-    private final ObjectMapper mapper;
 
     public OverviewController(SiteRepository sites, OverviewRepository overview,
-            EntityTypeCatalog catalog, ObjectMapper mapper) {
+            EntityTypeCatalog catalog) {
         this.sites = sites;
         this.overview = overview;
         this.catalog = catalog;
-        this.mapper = mapper;
     }
 
     @GetMapping
@@ -88,7 +76,7 @@ public class OverviewController {
         // U5 portfolio rollup: per-site entity role counts + usage profile, both
         // in ONE round trip so the portfolio table renders without N calls.
         Map<UUID, Map<String, Integer>> entityCounts = overview.entityTypeCountsPerSite();
-        Map<UUID, List<String>> activeFlows = overview.activeFlowDocumentsPerSite();
+        Map<UUID, Set<String>> strategyNodes = overview.activeStrategyNodeTypesPerSite();
 
         Instant freshnessCutoff = Instant.now().minus(ONLINE_WINDOW);
         int totalDevices = 0;
@@ -132,7 +120,8 @@ public class OverviewController {
                     live,
                     savings,
                     roleCounts(typeCounts),
-                    usageProfile(site, typeCounts, activeFlows.getOrDefault(site.id(), List.of()))));
+                    usageProfile(site, typeCounts,
+                            strategyNodes.getOrDefault(site.id(), Set.of()))));
         }
 
         OverviewRepository.StorageTotals storage = overview.storageTotals();
@@ -182,11 +171,12 @@ public class OverviewController {
      * the portfolio Profil-Chip - the SAME {@link UsageProfileDeriver} the
      * profile endpoint runs, fed the signals derivable from this ONE overview
      * pass: the entity mix (catalog category), the strategy nodes of the site's
-     * ACTIVE flows, and the money master data (plantKind / Leistungspreis /
-     * override).
+     * ACTIVE flows (extracted in SQL - see
+     * {@link OverviewRepository#activeStrategyNodeTypesPerSite()}), and the money
+     * master data (plantKind / Leistungspreis / override).
      */
     private String usageProfile(SiteDto site, Map<String, Integer> typeCounts,
-            List<String> activeFlowDocs) {
+            Set<String> strategyNodeTypes) {
         boolean hasStorage = false;
         boolean hasPv = false;
         boolean hasControllableConsumer = false;
@@ -205,30 +195,8 @@ public class OverviewController {
         // profile (deriveDefault); the entity signals are reported for parity
         // with the profile endpoint, never decisive here.
         return UsageProfileDeriver.effectiveProfile(new UsageProfileDeriver.Signals(
-                hasStorage, hasPv, hasControllableConsumer, strategyNodeTypes(activeFlowDocs),
+                hasStorage, hasPv, hasControllableConsumer, strategyNodeTypes,
                 site.plantKind(), site.leistungspreisEurKw() != null, site.usageProfileOverride()));
-    }
-
-    /** The vp.strategy.* node types present in a site's ACTIVE flow documents. */
-    private Set<String> strategyNodeTypes(List<String> activeFlowDocs) {
-        Set<String> types = new LinkedHashSet<>();
-        for (String documentJson : activeFlowDocs) {
-            if (documentJson == null) {
-                continue;
-            }
-            try {
-                JsonNode doc = mapper.readTree(documentJson);
-                for (JsonNode node : doc.path("nodes")) {
-                    String nodeType = node.path("type").asText();
-                    if (nodeType.startsWith(STRATEGY_PREFIX)) {
-                        types.add(nodeType);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("active flow document unreadable in overview, skipped: {}", e.getMessage());
-            }
-        }
-        return types;
     }
 
     /**

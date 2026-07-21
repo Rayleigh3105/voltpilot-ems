@@ -7,8 +7,10 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -74,21 +76,29 @@ public class OverviewRepository {
     }
 
     /**
-     * The ACTIVE flow documents per site (one fleet-wide query, the
-     * FlowRepository.activeDocuments shape lifted to the whole fleet), so the
-     * overview derives every site's usage profile in ONE round trip. RLS-scoped;
-     * sites without an active flow are absent.
+     * The {@code vp.strategy.*} node types of each site's ACTIVE flows - the ONLY
+     * thing the overview's usage-profile derivation needs from a flow document.
+     *
+     * <p>Extracted IN SQL (jsonb): the overview is the portal's landing page and
+     * is polled every 30 s, so parsing every active document per request scaled
+     * with the fleet size for a handful of node names. One fleet-wide query,
+     * RLS-scoped; sites without a matching node are absent. A malformed
+     * {@code nodes} (not an array) yields no types instead of an error.
      */
-    public Map<UUID, List<String>> activeFlowDocumentsPerSite() {
-        Map<UUID, List<String>> docs = new HashMap<>();
+    public Map<UUID, Set<String>> activeStrategyNodeTypesPerSite() {
+        Map<UUID, Set<String>> types = new HashMap<>();
         jdbc.query(
-                "SELECT site_id, document::text AS doc FROM flow_definition "
-                        + "WHERE lifecycle = 'active'",
+                "SELECT f.site_id, n.value->>'type' AS node_type FROM flow_definition f "
+                        + "CROSS JOIN LATERAL jsonb_array_elements("
+                        + "  CASE WHEN jsonb_typeof(f.document->'nodes') = 'array' "
+                        + "       THEN f.document->'nodes' ELSE '[]'::jsonb END) AS n "
+                        + "WHERE f.lifecycle = 'active' AND n.value->>'type' LIKE 'vp.strategy.%' "
+                        + "ORDER BY f.site_id, node_type",
                 rs -> {
-                    docs.computeIfAbsent(rs.getObject("site_id", UUID.class), k -> new ArrayList<>())
-                            .add(rs.getString("doc"));
+                    types.computeIfAbsent(rs.getObject("site_id", UUID.class),
+                            k -> new LinkedHashSet<>()).add(rs.getString("node_type"));
                 });
-        return docs;
+        return types;
     }
 
     /**
