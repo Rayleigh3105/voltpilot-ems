@@ -17,6 +17,20 @@
 
   function show(el, on) { if (el) el.hidden = !on; }
 
+  // MODE_LABELS are the CANONICAL customer names of the modes ("Modi", the
+  // customer word per report decision F3 - "Strategien" stays catalog
+  // vocabulary, Automationen stay Automationen). They mirror the portal
+  // read-model `frontend/portal/src/surface.ts` MODE_LABELS byte-for-byte, so
+  // the edge names what runs exactly like the portal does; keep the two in
+  // lockstep when a mode is renamed or added. Display only - the edge derives
+  // NO mode here (it never sees the flow graph), it only speaks the same words.
+  var MODE_LABELS = {
+    lastspitzenkappung: "Lastspitzenkappung",
+    "atypische-netznutzung": "Atypische Netznutzung",
+    marktvermarktung: "Marktvermarktung",
+    eigenverbrauch: "Eigenverbrauch",
+  };
+
   // ackPill maps a flow ack state to a status pill (class + German label).
   function ackPill(state) {
     switch (state) {
@@ -41,16 +55,22 @@
   function typeLabel(t) { return TYPE_LABELS[t] || t || "Einheit"; }
 
   // winnerLabel names the arbitration winner from source (plan|desired|failsafe)
-  // enriched by the holder kind - "was steuert diese Einheit gerade".
+  // enriched by the holder kind - "was steuert diese Einheit gerade". The plan
+  // is the JOINT result of every active mode (VoltPilot optimizes them
+  // together), so it is deliberately not named after a single mode; the
+  // failsafe IS the Eigenverbrauch mode and is named by its canonical label.
   function winnerLabel(source, holder) {
-    if (source === "plan") return "Fahrplan (Optimierung)";
-    if (source === "failsafe" || source === "") return "Grundzustand (Eigenverbrauch)";
+    var plan = "Fahrplan (VoltPilot-Optimierung)";
+    if (source === "plan") return plan;
+    if (source === "failsafe" || source === "") {
+      return MODE_LABELS.eigenverbrauch + " (Grundzustand)";
+    }
     // source === "desired": a wish won - name who emitted it.
     switch (holder) {
-      case "flow":          return "Automation / Ablauf";
+      case "flow":          return "Automation";
       case "local-ui":      return "Manuelle Vorgabe";
       case "cloud-command": return "Portal-Vorgabe";
-      case "plan-executor": return "Fahrplan (Optimierung)";
+      case "plan-executor": return plan;
       default:              return "Vorgabe";
     }
   }
@@ -69,7 +89,8 @@
     return p;
   }
 
-  // renderFlows fills the "Aktive Abläufe" list from the deployed flow acks.
+  // renderFlows fills the "Aktive Modi & Automationen" list from the deployed
+  // flow acks.
   function renderFlows(flows, palette) {
     var group = $("actFlowsGroup"), list = $("actFlowsList");
     if (!group || !list) return false;
@@ -79,8 +100,10 @@
       var li = el("li", "actctrl-row");
       var main = el("div", "actctrl-main");
       // The flow_id is the portal-side identity; a short label is honest here
-      // (the edge never sees the customer's flow name - it lives in the portal).
-      main.appendChild(el("span", "actctrl-name", "Ablauf " + (f.flow_id || "?")
+      // (the edge never sees the customer's flow name NOR whether the flow is a
+      // Modus or an Automation - both live in the portal), so the row names the
+      // pair in the customer vocabulary and keeps the id/version operators use.
+      main.appendChild(el("span", "actctrl-name", "Modus/Automation " + (f.flow_id || "?")
         + (f.flow_version ? " · v" + f.flow_version : "")));
       if (f.detail) main.appendChild(el("span", "actctrl-sub", f.detail));
       li.appendChild(main);

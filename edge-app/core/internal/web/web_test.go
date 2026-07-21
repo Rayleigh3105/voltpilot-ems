@@ -1734,6 +1734,24 @@ func TestActiveControlStripServed(t *testing.T) {
 	if !strings.Contains(js, "onState") {
 		t.Error("active-control.js: missing onState hook dashboard.js calls")
 	}
+	// M7 (report §7): the strip names what runs in the CANONICAL customer mode
+	// vocabulary ("Modi", decision F3), byte-identical to the portal read-model
+	// frontend/portal/src/surface.ts MODE_LABELS. Pin the labels so a rename on
+	// either side is caught instead of silently drifting apart. Copy only - the
+	// edge derives no mode, it only speaks the same words.
+	for _, want := range []string{
+		"Eigenverbrauch", "Lastspitzenkappung", "Marktvermarktung", "Atypische Netznutzung",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("active-control.js: missing canonical mode label %q", want)
+		}
+	}
+	if strings.Contains(js, "Ablauf") {
+		t.Error("active-control.js: retired wording \"Ablauf\" - use Modus/Automation (F3)")
+	}
+	if !strings.Contains(page, "Aktive Modi &amp; Automationen") {
+		t.Error("index.html: Aktive-Steuerung group is not named in the mode vocabulary")
+	}
 }
 
 // The AE6 adaptive energy picture: the dashboard grows an adaptive-tiles mount
