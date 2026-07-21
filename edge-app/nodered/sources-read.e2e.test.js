@@ -50,8 +50,12 @@ function sunspecImage(base, opts) {
   model(1, new Array(66).fill(0)); // Common
   // A REAL Fronius presents more than Common+inverter: nameplate/settings/
   // status/controls models sit between them, each costing the walk an extra
-  // header + body read. extraModels mimics that longer linked list.
-  for (let m = 0; m < extraModels; m++) model(120 + m, new Array(30).fill(0));
+  // header + body read. extraModels mimics that longer linked list. Model 124
+  // (Storage) is deliberately NOT among the padding ids: its presence MEANS the
+  // device is a hybrid, and the decode then reads DC power instead of AC W
+  // (sunspec-live.js decodeInverter) - padding must not fake a battery.
+  const PAD = [120, 121, 122, 123, 126, 129, 130, 131];
+  for (let m = 0; m < extraModels; m++) model(PAD[m % PAD.length], new Array(30).fill(0));
   const inv = new Array(60).fill(0);
   [inv[sunspec.INV_FLOAT.W], inv[sunspec.INV_FLOAT.W + 1]] = f32(wWatts);
   [inv[sunspec.INV_FLOAT.Hz], inv[sunspec.INV_FLOAT.Hz + 1]] = f32(49.99);

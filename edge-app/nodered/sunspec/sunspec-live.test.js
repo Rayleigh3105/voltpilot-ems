@@ -58,12 +58,18 @@ function f32words(value) {
 
 const commonBody = () => new Array(66).fill(0);
 
-// A FLOAT inverter (model 113) body carrying W/Hz/St/Evt1 at the standard offsets.
-function invFloatBody({ w = 0, hz = 50, st = 4, evt1 = 0 } = {}) {
+// A FLOAT inverter (model 113) body carrying W/Hz/St/Evt1 at the standard
+// offsets, plus the optional DC power DCW (the hybrid PV source).
+function invFloatBody({ w = 0, hz = 50, st = 4, evt1 = 0, dcw = null } = {}) {
   const body = new Array(60).fill(0);
   const [wh, wl] = f32words(w);
   body[L.INV_FLOAT.W] = wh;
   body[L.INV_FLOAT.W + 1] = wl;
+  if (dcw !== null) {
+    const [dh, dl] = f32words(dcw);
+    body[L.INV_FLOAT.DCW] = dh;
+    body[L.INV_FLOAT.DCW + 1] = dl;
+  }
   const [hzh, hzl] = f32words(hz);
   body[L.INV_FLOAT.Hz] = hzh;
   body[L.INV_FLOAT.Hz + 1] = hzl;
@@ -74,10 +80,17 @@ function invFloatBody({ w = 0, hz = 50, st = 4, evt1 = 0 } = {}) {
 }
 
 // An INT+SF inverter (model 103) body: W (int16) scaled by W_SF, plus St/Evt1.
-function invIntBody({ wRaw = 0, wSf = 0, hzRaw = 500, hzSf = -1, st = 4, evt1 = 0 } = {}) {
+function invIntBody({
+  wRaw = 0, wSf = 0, hzRaw = 500, hzSf = -1, st = 4, evt1 = 0,
+  dcwRaw = null, dcwSf = 0,
+} = {}) {
   const body = new Array(50).fill(0);
   body[L.INV_INT.W] = wRaw & 0xffff;
   body[L.INV_INT.W_SF] = wSf & 0xffff;
+  if (dcwRaw !== null) {
+    body[L.INV_INT.DCW] = dcwRaw & 0xffff;
+    body[L.INV_INT.DCW_SF] = dcwSf & 0xffff;
+  }
   body[L.INV_INT.Hz] = hzRaw & 0xffff;
   body[L.INV_INT.Hz_SF] = hzSf & 0xffff;
   body[L.INV_INT.St] = st & 0xffff;
@@ -171,6 +184,98 @@ test('decodeInverter honours a modelType override hint', () => {
   // prove the hint is accepted and float still decodes correctly.
   const inv = L.decodeInverter({ discovery: disc, readBlock, modelType: 'float' });
   assert.strictEqual(inv.pv_power_kw, 5);
+});
+
+// --- the hybrid guard: AC W is NOT PV when a battery (Model 124) is present ---
+//
+// Regression for the 2026-07-21 PV incident (data/vp-pv-battery-bug §7 item 1).
+// On a hybrid, AC W = PV + battery discharge - battery charge, so publishing W
+// as pv_power_kw would inflate PV by the discharge. These pin: DCW is used, the
+// value does NOT move with the battery, the one-sided clamp is gone, and an
+// unreadable DCW publishes NOTHING (never a fabricated AC number).
+
+const storageBody = () => new Array(D.M124.LENGTH).fill(0);
+
+// A hybrid (Symo GEN24 + storage): Common + inverter(113) + Storage(124).
+function hybridImage({ w, dcw }) {
+  return buildImage(D.DEFAULT_BASE, [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: 113, body: invFloatBody({ w, dcw, st: 4 }) },
+    { id: D.MODEL.STORAGE, body: storageBody() },
+  ]);
+}
+
+test('hybrid (Model 124 present): pv_power_kw is DCW, unmoved by battery discharge', () => {
+  // Same 8 kW of real PV throughout; only the battery changes, which moves AC W.
+  const pvW = 8000;
+  const cases = [
+    { batteryW: 0, acW: pvW }, // battery idle
+    { batteryW: 5000, acW: pvW + 5000 }, // discharging 5 kW -> AC inflated
+    { batteryW: -3000, acW: pvW - 3000 }, // charging 3 kW -> AC deflated
+  ];
+  const seen = new Set();
+  for (const c of cases) {
+    const { disc, readBlock } = discoverImage(hybridImage({ w: c.acW, dcw: pvW }));
+    const inv = L.decodeInverter({ discovery: disc, readBlock });
+    assert.ok(inv, 'hybrid decodes');
+    assert.strictEqual(inv.hybrid, true);
+    assert.strictEqual(inv.pvSource, 'dc');
+    assert.strictEqual(inv.pv_power_kw, 8, 'PV follows DCW, not AC W');
+    assert.strictEqual(inv.w_kw, c.acW / 1000, 'AC W still surfaced for diagnostics');
+    seen.add(inv.pv_power_kw);
+  }
+  assert.strictEqual(seen.size, 1, 'pv_power_kw is bit-identical across the battery sweep');
+});
+
+test('hybrid: the one-sided max(0, ...) clamp is dropped - a negative DCW stays visible', () => {
+  const { disc, readBlock } = discoverImage(hybridImage({ w: 4000, dcw: -1500 }));
+  const inv = L.decodeInverter({ discovery: disc, readBlock });
+  assert.strictEqual(inv.pv_power_kw, -1.5, 'a sign/scale error must be visible, not a silent 0');
+});
+
+test('hybrid: unreadable DCW publishes NOTHING rather than the AC number', () => {
+  // NaN float = the SunSpec "not implemented" signal for a float field.
+  const { disc, readBlock } = discoverImage(hybridImage({ w: 22000, dcw: NaN }));
+  assert.strictEqual(L.decodeInverter({ discovery: disc, readBlock }), null);
+  const out = L.decodeMeasurements({ discovery: disc, readBlock });
+  assert.strictEqual(out, null, 'no reading at all - never a fabricated PV from AC W');
+});
+
+test('hybrid (int+SF 103): DCW is scaled by DCW_SF; the sentinel means unreadable', () => {
+  const withDc = buildImage(D.DEFAULT_BASE, [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: 103, body: invIntBody({ wRaw: 1800, wSf: 1, dcwRaw: 900, dcwSf: 1 }) },
+    { id: D.MODEL.STORAGE, body: storageBody() },
+  ]);
+  const a = discoverImage(withDc);
+  const inv = L.decodeInverter({ discovery: a.disc, readBlock: a.readBlock });
+  assert.strictEqual(inv.pv_power_kw, 9); // 900 * 10^1 W, NOT the 18 kW AC
+  assert.strictEqual(inv.w_kw, 18);
+
+  const sentinel = buildImage(D.DEFAULT_BASE, [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: 103, body: invIntBody({ wRaw: 1800, wSf: 1, dcwRaw: -32768, dcwSf: 0 }) },
+    { id: D.MODEL.STORAGE, body: storageBody() },
+  ]);
+  const b = discoverImage(sentinel);
+  assert.strictEqual(L.decodeInverter({ discovery: b.disc, readBlock: b.readBlock }), null);
+});
+
+test('batteryless (no Model 124) is byte-identical to before: AC W IS the PV, clamped', () => {
+  // The live Fronius Eco path - must not regress. DCW is deliberately present in
+  // the image and MUST be ignored.
+  const img = buildImage(D.DEFAULT_BASE, [
+    { id: D.MODEL.COMMON, body: commonBody() },
+    { id: 113, body: invFloatBody({ w: 26900, dcw: 12345, st: 4 }) },
+  ]);
+  const { disc, readBlock } = discoverImage(img);
+  const inv = L.decodeInverter({ discovery: disc, readBlock });
+  assert.strictEqual(inv.hybrid, false);
+  assert.strictEqual(inv.pvSource, 'ac');
+  assert.strictEqual(inv.pv_power_kw, 26.9);
+  // and the negative-W floor still applies for a string inverter
+  const neg = discoverImage(ecoImage(-350));
+  assert.strictEqual(L.decodeInverter({ discovery: neg.disc, readBlock: neg.readBlock }).pv_power_kw, 0);
 });
 
 // --- idle-safe -----------------------------------------------------------------

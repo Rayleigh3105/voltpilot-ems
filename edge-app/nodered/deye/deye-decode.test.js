@@ -265,6 +265,34 @@ test('hybrid_3p BM3: absent PV4 (0x02A3=0) does not corrupt the PV sum', () => {
   assert.strictEqual(reading.pv_power_kw, 10);
 });
 
+// --- "a discharging battery must not raise pv_power_kw" (permanent guard) ----
+// Regression fixture for the 2026-07-21 PV incident (data/vp-pv-battery-bug §7
+// item 2). The Deye decode is provably clean - PV is the sum of the four MPPT
+// DC registers 0x02A0..0x02A3 and the battery lives at 0x024E, disjoint fields -
+// but nothing PINNED that, so a future map edit could silently couple them. This
+// sweeps the battery register across a full discharge while every other register
+// stays put and asserts pv_power_kw is bit-identical throughout.
+test('hybrid_3p: sweeping the battery register 0 -> -20 kW never moves pv_power_kw', () => {
+  const pv = [];
+  const batt = [];
+  for (const watts of [0, -2000, -5000, -12000, -20000, 6000]) {
+    const b = block(0x024c, 0x79, {
+      0x024c: 62, // SoC steady
+      0x024e: watts & 0xffff, // the ONLY register that changes
+      0x026b: 4000, // External CT grid import (high word 0x02C4 = 0)
+      0x028d: 7000, // load low word (high 0x0293 = 0)
+      0x02a0: 3000,
+      0x02a1: 900,
+      0x02a2: 100, // MPPT sum = 4.0 kW, constant
+    });
+    const { reading, batt_kw } = D.decode([b], { family: 'hybrid_3p', power_scale: 1 });
+    pv.push(reading.pv_power_kw);
+    batt.push(batt_kw);
+  }
+  assert.deepStrictEqual(pv, [4, 4, 4, 4, 4, 4], 'PV is the MPPT sum, immune to the battery');
+  assert.deepStrictEqual(batt, [0, -2, -5, -12, -20, 6], 'the measured battery tracks the register');
+});
+
 // --- SoC plausibility gate: drop degraded/unanswered reads, never fabricate --
 // Regression for the "SoC time series spikes 0/100" bug on the Deye 12k LV: a
 // Solarman logger that cannot reach the inverter still returns a well-framed,
