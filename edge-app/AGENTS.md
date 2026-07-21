@@ -427,6 +427,20 @@ the family is **CERTIFIED** (may go live behind the kill-switch `VP_CONTROL_ENAB
   → "go-e Charger". Control safety: off by default, upstream guard authoritative (executor
   never widens the clamped setpoint), fail-safe neutral, readback published.
 
+## Per-source status in the heartbeat (#524)
+
+`agent.sourcesSummary()` (`internal/agent/entities.go`) folds an additive
+`sources` block into the status heartbeat: the primary inverter plus every
+configured source with its OWN latest reading + `ok|stale|never` health, so the
+PORTAL can explain a multi-inverter site's composite PV instead of showing one
+opaque number. It only REPORTS - the composite telemetry fold is untouched, and
+the block rides the status channel, never telemetry. The primary's pv comes from
+`Snapshot.LastReading` (captured BEFORE the multi-source fold - never the
+composite); sources reuse the existing `SourceStatuses`/`SourceLastReadings`
+freshness machinery. Bounded at 16 entries in `cloud.PublishStatus`. Cloud half
++ portal rendering: root AGENTS.md "Multi-source Anlage" → Increment 2.
+Proof: `agent/sources_summary_test.go`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

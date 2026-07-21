@@ -1,6 +1,7 @@
 package com.voltpilot.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Connection;
@@ -94,6 +95,9 @@ class PortalApiTest {
 
     @Autowired
     com.voltpilot.api.repo.ControlStatusRepository controlStatusRepo;
+
+    @Autowired
+    com.voltpilot.api.repo.DeviceSourceStatusRepository sourceStatusRepo;
 
     // ---- token validation ---------------------------------------------------
 
@@ -3289,6 +3293,84 @@ class PortalApiTest {
                 url("/api/v1/sites/" + BERLIN_SITE + "/control-status"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo", "demo"))), Map.class);
         assertThat(still.getBody().get("allMatch")).isEqualTo(false); // spoof ignored, mismatch stays
+    }
+
+    /**
+     * The per-source PV breakdown (#524): a multi-inverter site's composite PV
+     * was ONE opaque number in the portal, so the parts (Deye 8,3 + Fronius 21,3
+     * + Fronius WR 2 9,3) were visible only on the edge's own :8484 page. The
+     * heartbeat's additive {@code sources} block now lands in
+     * device_source_status and is served per site - RLS-scoped like every site
+     * route, primary first, honest health, and a wholesale replace so a removed
+     * source cannot ghost in the breakdown.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void siteSourcesExposeThePartsOfTheCompositePvTenantScoped() {
+        var listener = new com.voltpilot.api.sources.SourceStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, sourceStatusRepo);
+        String topic = "ems/00000000-0000-0000-0000-000000000001/"
+                + "00000000-0000-0000-0000-000000000002/00000000-0000-0000-0000-000000000003/status";
+        String identity = "\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"00000000-0000-0000-0000-000000000003\",";
+
+        listener.handle(topic, ("{\"schema_version\":\"1.0\"," + identity
+                + "\"online\":true,\"sources\":{\"reported_at\":\"2026-07-21T10:00:00Z\",\"entries\":["
+                + "{\"id\":\"inverter\",\"kind\":\"primary\",\"brand\":\"deye\",\"model\":\"SUN-12K\","
+                + "\"label\":\"Deye\",\"pv_kw\":8.3,\"health\":\"ok\",\"read_at\":\"2026-07-21T09:59:55Z\"},"
+                + "{\"id\":\"src-1\",\"kind\":\"source\",\"role\":\"pv-generation\",\"brand\":\"fronius\","
+                + "\"label\":\"Fronius Anlage\",\"pv_kw\":21.3,\"health\":\"ok\"},"
+                + "{\"id\":\"src-2\",\"kind\":\"source\",\"role\":\"pv-generation\",\"brand\":\"fronius\","
+                + "\"label\":\"Fronius WR 2\",\"pv_kw\":9.3,\"health\":\"stale\"}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+
+        ResponseEntity<List> ok = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/sources"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), List.class);
+        assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> body = ok.getBody();
+        assertThat(body).hasSize(3);
+        assertThat(body.get(0).get("kind")).isEqualTo("primary"); // primary first
+        assertThat(body.get(0).get("pvKw")).isEqualTo(8.3);
+        assertThat(body.get(0).get("health")).isEqualTo("ok");
+        // The parts sum to the composite the site publishes (8.3+21.3+9.3).
+        double sum = body.stream().mapToDouble(r -> ((Number) r.get("pvKw")).doubleValue()).sum();
+        assertThat(sum).isCloseTo(38.9, within(1e-9));
+        Map<String, Object> stale = body.stream()
+                .filter(r -> "src-2".equals(r.get("sourceId"))).findFirst().orElseThrow();
+        assertThat(stale.get("health")).isEqualTo("stale"); // reported, never dropped to 0
+        assertThat(stale.get("label")).isEqualTo("Fronius WR 2");
+        assertThat(stale.get("powerKw")).isNull(); // absent stays absent
+
+        // Tenant B cannot even see the site -> RLS 404 (never a leak).
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/sources"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // A spoofed payload identity is ignored: the set stays as reported.
+        listener.handle(topic, ("{\"tenant_id\":\"00000000-0000-0000-0000-000000000001\","
+                + "\"site_id\":\"00000000-0000-0000-0000-000000000002\","
+                + "\"device_id\":\"99999999-9999-9999-9999-999999999999\","
+                + "\"sources\":{\"entries\":[{\"id\":\"evil\",\"kind\":\"source\",\"pv_kw\":999}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        assertThat(rest.exchange(url("/api/v1/sites/" + BERLIN_SITE + "/sources"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), List.class).getBody()).hasSize(3);
+
+        // The heartbeat carries the COMPLETE Ist: a removed source disappears.
+        listener.handle(topic, ("{" + identity
+                + "\"sources\":{\"entries\":[{\"id\":\"inverter\",\"kind\":\"primary\","
+                + "\"pv_kw\":9.0,\"health\":\"ok\"}]}}").getBytes(StandardCharsets.UTF_8));
+        List<Map<String, Object>> after = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/sources"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token("demo", "demo"))), List.class).getBody();
+        assertThat(after).hasSize(1);
+        assertThat(after.get(0).get("pvKw")).isEqualTo(9.0);
+
+        // Clean up so sibling tests on the shared Berlin site are unaffected.
+        listener.handle(topic, ("{" + identity + "\"sources\":{\"entries\":[]}}")
+                .getBytes(StandardCharsets.UTF_8));
     }
 
     /** Run a statement as the Postgres superuser (bypasses RLS) to seed feed rows. */

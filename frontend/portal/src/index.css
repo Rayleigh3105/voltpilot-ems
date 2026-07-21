@@ -5256,3 +5256,77 @@ button.vp-tech-card-h.toggle {
     gap: var(--vp-space-4);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Per-source PV breakdown (#524)
+   One calm line under the verdict tiles naming WHICH devices the composite
+   Solar figure is made of, each with a freshness dot. Renders only on a
+   multi-inverter site (see pvSources.ts) - a single inverter stays as before.
+   Every part is min-width:0 + wraps, so long device names never overflow.
+--------------------------------------------------------------------------- */
+.vp-pvsplit {
+  margin-top: var(--vp-space-3);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-flow-pv-soft, #fff);
+  min-width: 0;
+}
+.vp-pvsplit-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--vp-text-gray);
+}
+.vp-pvsplit-head svg {
+  color: var(--vp-flow-pv);
+  flex: none;
+}
+.vp-pvsplit-parts {
+  list-style: none;
+  margin: var(--vp-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2) var(--vp-space-4);
+  min-width: 0;
+}
+.vp-pvsplit-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-pvsplit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+  background: var(--vp-flow-pv);
+}
+.vp-pvsplit-dot.stale {
+  background: var(--vp-text-gray);
+  opacity: 0.55;
+}
+.vp-pvsplit-dot.never {
+  background: transparent;
+  border: 1px solid var(--vp-border);
+}
+.vp-pvsplit-label {
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.vp-pvsplit-val {
+  font-weight: 700;
+  color: var(--vp-stat-ink);
+  white-space: nowrap;
+}
+.vp-pvsplit-note {
+  margin: var(--vp-space-2) 0 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-gray);
+}

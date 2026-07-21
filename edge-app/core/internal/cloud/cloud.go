@@ -310,6 +310,52 @@ type LocalSetupEntry struct {
 	Label string `json:"label,omitempty"`
 }
 
+// SourcesSummary is the additive status-heartbeat block reporting the
+// edge-authoritative PER-MEASUREMENT-POINT Ist: the primary inverter plus every
+// configured additional source with its LATEST reading and freshness. It exists
+// so the cloud can show WHY the composite PV is what it is - a multi-inverter
+// site's portal PV ("39,0 kW") is the sum of several devices, and before this
+// the only place to see the parts was the edge's own :8484 page.
+//
+// It rides the STATUS channel, never telemetry: the composite site reading on
+// the telemetry topic is unchanged, this is pure added visibility. Bounded by
+// maxSourceEntries so a misconfigured device can never inflate the heartbeat.
+type SourcesSummary struct {
+	// ReportedAt is when the edge assembled this view (RFC 3339).
+	ReportedAt string `json:"reported_at"`
+	// Entries are the primary inverter first, then the configured sources in
+	// their persisted order. Never nil when the block is present.
+	Entries []SourceEntry `json:"entries"`
+}
+
+// maxSourceEntries bounds the per-source block (a handful of sources per site;
+// the portal breakdown is a calm one-liner, not a table).
+const maxSourceEntries = 16
+
+// SourceEntry is one measurement point's live Ist for the cloud breakdown.
+// Absent measurements stay ABSENT (nil), never a fabricated 0 - the
+// drop-don't-fabricate discipline the whole edge follows.
+type SourceEntry struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"` // primary | source
+	// Role is the source role (pv-generation | grid-meter | consumer); empty
+	// for the primary inverter, whose role is implied.
+	Role  string `json:"role,omitempty"`
+	Label string `json:"label,omitempty"`
+	Brand string `json:"brand,omitempty"`
+	Model string `json:"model,omitempty"`
+	// PvKw / PowerKw / LoadKw are the point's own latest measured values
+	// (PowerKw signed, +import/-export).
+	PvKw    *float64 `json:"pv_kw,omitempty"`
+	PowerKw *float64 `json:"power_kw,omitempty"`
+	LoadKw  *float64 `json:"load_kw,omitempty"`
+	// Health: ok = a reading inside the point's freshness window |
+	// stale = had a reading, none recently | never = nothing since boot.
+	Health string `json:"health"`
+	// ReadAt is when the latest reading arrived (RFC 3339); empty for never.
+	ReadAt string `json:"read_at,omitempty"`
+}
+
 // EntityArbitration is one entity's decision summary in the heartbeat.
 type EntityArbitration struct {
 	// Holder is the holder's source kind ("" = registry failsafe).
@@ -397,10 +443,11 @@ type ControlSummary struct {
 // schema; mirrors the Node-RED edge's shape). Fire-and-forget semantics:
 // errors are returned but the caller does not retry status. `control` is the
 // optional control confirmation, `entities` the optional v2 entity-registry
-// ack, `flows` the optional flow-deployment ack (nil = omit the block - all
-// additive, schema_version stays "1.0").
+// ack, `flows` the optional flow-deployment ack, `sources` the optional
+// per-measurement-point Ist (nil = omit the block - all additive,
+// schema_version stays "1.0").
 func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
-	entities *EntitiesSummary, flows *FlowsSummary) error {
+	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -419,6 +466,12 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if flows != nil {
 		payload["flows"] = flows
+	}
+	if sources != nil && len(sources.Entries) > 0 {
+		if len(sources.Entries) > maxSourceEntries {
+			sources.Entries = sources.Entries[:maxSourceEntries]
+		}
+		payload["sources"] = sources
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

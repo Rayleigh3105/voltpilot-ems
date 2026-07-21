@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.history.HistoryService;
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.repo.ControlStatusRepository;
@@ -22,6 +23,7 @@ import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.SchedulePlanDto;
 import com.voltpilot.api.web.dto.SiteDeletionPreviewDto;
 import com.voltpilot.api.web.dto.SiteDto;
+import com.voltpilot.api.web.dto.SiteSourceDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
 import com.voltpilot.api.web.dto.UpdateSiteRequest;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
@@ -70,6 +72,7 @@ public class SiteController {
     private final HistoryService history;
     private final ForecastQualityRepository forecastQuality;
     private final ControlStatusRepository controlStatus;
+    private final DeviceSourceStatusRepository sourceStatus;
     private final String activeLoadModel;
     private final String activePvModel;
 
@@ -84,6 +87,7 @@ public class SiteController {
             HistoryService history,
             ForecastQualityRepository forecastQuality,
             ControlStatusRepository controlStatus,
+            DeviceSourceStatusRepository sourceStatus,
             @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
             @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
@@ -96,6 +100,7 @@ public class SiteController {
         this.history = history;
         this.forecastQuality = forecastQuality;
         this.controlStatus = controlStatus;
+        this.sourceStatus = sourceStatus;
         this.activeLoadModel = activeLoadModel;
         this.activePvModel = activePvModel;
     }
@@ -379,5 +384,24 @@ public class SiteController {
         return controlStatus.latestForSite(siteId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /**
+     * The site's measurement points as the edge reports them (primary inverter
+     * + configured sources, each with its own latest reading and freshness).
+     * The portal turns this into the calm PV breakdown under the live PV figure
+     * ("39,0 kW = Deye 8,3 + Fronius 21,3 + …"), so a multi-inverter site's
+     * composite number is explainable without opening the device's own page.
+     *
+     * <p>Empty list while no device has reported the block (an older edge, or a
+     * device that has not yet sent a heartbeat) - the portal then simply keeps
+     * the single PV number.
+     */
+    @GetMapping("/{siteId}/sources")
+    public List<SiteSourceDto> siteSources(@PathVariable UUID siteId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        return sourceStatus.forSite(siteId);
     }
 }

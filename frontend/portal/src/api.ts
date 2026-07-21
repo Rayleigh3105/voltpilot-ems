@@ -848,6 +848,33 @@ export interface ControlStatus {
   checkedAt: string;
 }
 
+// ---- Per-source breakdown (GET /api/v1/sites/{id}/sources) ------------------
+
+/**
+ * One measurement point of a site as the EDGE reports it (primary inverter or
+ * an additional source), with its OWN latest reading and freshness. It exists
+ * so a multi-inverter site's composite PV is explainable ("39,0 kW = Deye 8,3 +
+ * Fronius 21,3 + Fronius WR 2 9,3") instead of one opaque number.
+ *
+ * Absent measurements stay `null` (never a fabricated 0); a point that is stale
+ * or has never delivered says so via `health`.
+ */
+export interface SiteSource {
+  deviceId: string;
+  sourceId: string;
+  kind: 'primary' | 'source';
+  role: string | null;
+  label: string | null;
+  brand: string | null;
+  model: string | null;
+  pvKw: number | null;
+  powerKw: number | null;
+  loadKw: number | null;
+  health: 'ok' | 'stale' | 'never';
+  readAt: string | null;
+  reportedAt: string;
+}
+
 // ---- Realized earnings (GET /api/v1/earnings) -------------------------------
 
 export type EarningsRange = 'day' | 'month' | 'year' | 'all';
@@ -1142,6 +1169,13 @@ export const api = {
    * strip). Resolves to null when no device has reported a readback yet
    * (endpoint answers 204).
    */
+  /**
+   * The site's measurement points as the edge reports them (primary inverter +
+   * configured sources). Feeds the live view's PV breakdown; an empty list
+   * (older edge / no heartbeat yet) simply keeps the single PV number.
+   */
+  siteSources: (siteId: string) =>
+    request<SiteSource[]>(`/api/v1/sites/${siteId}/sources`),
   controlStatus: (siteId: string) =>
     request<ControlStatus | undefined>(
       `/api/v1/sites/${siteId}/control-status`,
