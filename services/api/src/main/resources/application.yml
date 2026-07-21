@@ -158,6 +158,13 @@ voltpilot:
   # listener pattern/broker settings as `control`. Off by default.
   entities:
     mqtt-listener-enabled: ${VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED:false}
+  # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
+  # inverter + each configured source with its OWN latest reading + freshness)
+  # into device_source_status, so the portal can explain a multi-inverter site's
+  # composite PV ("39,0 kW = Deye 8,3 + Fronius 21,3 + ..."). Same listener
+  # pattern/broker settings as `control`. Display-only. Off by default.
+  sources:
+    mqtt-listener-enabled: ${VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED:false}
   # First-boot device enrollment over HTTPS: a fresh edge device uploads a CSR
   # for its reference and polls for its mTLS certificate; once the ref is
   # claimed, the api signs the CSR with the device CA (ca-dir = the working dir

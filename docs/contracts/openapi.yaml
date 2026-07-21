@@ -658,6 +658,31 @@ paths:
         "204": { description: No control readback reported yet for this site. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/sources:
+    get:
+      tags: [sites]
+      summary: The site's measurement points as the edge reports them.
+      description: >
+        The primary inverter plus every configured additional source
+        (Erzeuger/Netz-Zähler/Verbraucher) with its OWN latest reading and
+        freshness, ingested from the additive `sources` block of the device
+        status heartbeat. It makes a multi-inverter site's composite PV
+        explainable in the portal ("39,0 kW = Deye 8,3 + Fronius 21,3 + …")
+        instead of one opaque number. Display-only - the composite telemetry
+        path is untouched. RLS-scoped by tenant; an empty list means no device
+        has reported the block yet.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The site's reported measurement points (primary first).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteSource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/topology:
     get:
       tags: [topology]
@@ -3827,6 +3852,26 @@ components:
         mismatchRoles: { type: string, nullable: true, description: "Comma-separated roles that did not confirm (e.g. \"battery_power\")." }
         slotStart: { type: string, format: date-time, nullable: true }
         checkedAt: { type: string, format: date-time, description: "When the readback was taken (\"geprüft vor X\")." }
+    SiteSource:
+      type: object
+      description: >
+        One measurement point of a site as the edge reports it. Absent
+        measurements stay null (never a fabricated 0); a point that is stale or
+        has never delivered says so via `health` instead of vanishing.
+      properties:
+        deviceId: { type: string, format: uuid, description: "The edge device that reported this point." }
+        sourceId: { type: string, description: "Edge-local id (\"inverter\" for the primary)." }
+        kind: { type: string, enum: [primary, source] }
+        role: { type: string, nullable: true, description: "pv-generation | grid-meter | consumer; null for the primary." }
+        label: { type: string, nullable: true }
+        brand: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        pvKw: { type: number, nullable: true, description: "This point's OWN PV generation." }
+        powerKw: { type: number, nullable: true, description: "Signed grid power, + import / - export." }
+        loadKw: { type: number, nullable: true }
+        health: { type: string, enum: [ok, stale, never] }
+        readAt: { type: string, format: date-time, nullable: true }
+        reportedAt: { type: string, format: date-time }
     UsageProfile:
       type: object
       description: >

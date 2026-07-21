@@ -821,7 +821,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				soc := a.lastRawSoc
 				a.mu.Unlock()
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
-					a.flowsSummary()); err != nil {
+					a.flowsSummary(), a.sourcesSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():

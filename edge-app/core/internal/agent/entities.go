@@ -251,6 +251,87 @@ func (a *Agent) localSetupSummary() []cloud.LocalSetupEntry {
 	return out
 }
 
+// primaryHealthWindow is how long the primary inverter's own reading counts as
+// live in the heartbeat's per-source block. It mirrors the :8484 dashboard's
+// freshness rule ("keine aktuellen Daten" past ~90 s) rather than the source
+// freshness machinery, because the primary is read by the always-on poll.
+const primaryHealthWindow = 90 * time.Second
+
+// sourcesSummary builds the additive heartbeat block that reports the
+// edge-authoritative PER-MEASUREMENT-POINT Ist: the primary inverter plus every
+// configured additional source, each with its OWN latest reading and freshness.
+// The cloud renders it as the portal's PV breakdown ("39,0 kW = Deye 8,3 +
+// Fronius 21,3 + Fronius WR 2 9,3") - the multi-inverter site's parts were
+// previously visible only on the device's own :8484 page.
+//
+// It reports, never decides: the composite telemetry the site publishes is
+// untouched, and a stale/never-read point is reported AS SUCH (health), never
+// dropped-to-zero. nil when nothing is configured at all (a device before
+// commissioning), so a bare heartbeat stays byte-identical.
+func (a *Agent) sourcesSummary() *cloud.SourcesSummary {
+	now := time.Now().UTC()
+	sum := &cloud.SourcesSummary{ReportedAt: now.Format(time.RFC3339)}
+
+	// The primary inverter first (it is the site's base PV contribution).
+	a.invMu.Lock()
+	inv := a.inv
+	a.invMu.Unlock()
+	if inv != nil {
+		snap := a.State.Get()
+		e := cloud.SourceEntry{
+			ID: "inverter", Kind: "primary",
+			Brand: inv.Brand, Model: inv.Model, Label: inv.Label,
+			Health: "never",
+		}
+		if !snap.LastTelemetry.IsZero() {
+			e.Health = "stale"
+			if now.Sub(snap.LastTelemetry.UTC()) <= primaryHealthWindow {
+				e.Health = "ok"
+			}
+			e.ReadAt = snap.LastTelemetry.UTC().Format(time.RFC3339)
+			e.PvKw = channel(snap.LastReading, "pv_power_kw")
+			e.PowerKw = channel(snap.LastReading, "power_kw")
+			e.LoadKw = channel(snap.LastReading, "load_kw")
+		}
+		sum.Entries = append(sum.Entries, e)
+	}
+
+	statuses := a.SourceStatuses()
+	readings := a.SourceLastReadings()
+	for _, s := range a.ListSources() {
+		e := cloud.SourceEntry{
+			ID: s.ID, Kind: "source", Role: s.Role,
+			Brand: s.Brand, Model: s.Model, Label: s.Label,
+			Health: "never",
+		}
+		switch statuses[s.ID] {
+		case "ok":
+			e.Health = "ok"
+		case "warn":
+			e.Health = "stale"
+		}
+		if r, ok := readings[s.ID]; ok {
+			e.PvKw, e.PowerKw, e.LoadKw = r.PvKw, r.PowerKw, r.LoadKw
+			e.ReadAt = time.UnixMilli(r.ReadAtMs).UTC().Format(time.RFC3339)
+		}
+		sum.Entries = append(sum.Entries, e)
+	}
+	if len(sum.Entries) == 0 {
+		return nil
+	}
+	return sum
+}
+
+// channel returns a copy of one channel of the primary's last reading, or nil
+// when the device never delivered it (absent stays absent, never a fake 0).
+func channel(reading map[string]float64, name string) *float64 {
+	v, ok := reading[name]
+	if !ok {
+		return nil
+	}
+	return &v
+}
+
 // Topology builds the Anlagen-Topologie-Read-Model (AE1) from the applied
 // entity registry + the latest per-entity local readings, using the SHARED
 // derivation (topology.Resolve default roles -> topology.Derive). A device

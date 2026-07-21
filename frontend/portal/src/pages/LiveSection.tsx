@@ -3,12 +3,13 @@ import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
-import { api, ONLINE_WINDOW_MS, type Site, type TelemetryPoint } from '../api';
+import { api, ONLINE_WINDOW_MS, type Site, type SiteSource, type TelemetryPoint } from '../api';
 import { fmtRelative } from '../format';
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, ErrorState } from '../components/States';
 import { AdaptiveLiveView } from '../components/AdaptiveLiveView';
 import { LiveHero } from '../components/LiveHero';
+import { PvBreakdownLine } from '../components/PvBreakdown';
 import { TelemetryChart } from '../TelemetryChart';
 import { useAdaptiveLive } from '../useAdaptiveLive';
 
@@ -49,6 +50,25 @@ export function LiveSection({ site }: { site: Site }) {
   const [liveWindow, setLiveWindow] = useState<LiveWindow>('3h');
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
+  // The site's measurement points (primary inverter + configured sources), so
+  // the hero can explain a multi-inverter site's composite PV. Fail-soft: an
+  // older backend / a device that never reported simply yields no breakdown.
+  const [sources, setSources] = useState<SiteSource[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    api.siteSources(site.id).then(
+      (s) => {
+        if (active) setSources(s);
+      },
+      () => {
+        if (active) setSources(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
 
   useEffect(() => {
     let active = true;
@@ -123,6 +143,7 @@ export function LiveSection({ site }: { site: Site }) {
         // telemetry is available.
         <>
           <AdaptiveLiveView topology={topology} profile={profile} />
+          <PvBreakdownLine sources={sources} />
           {telemetry.length > 0 && (
             <VerlaufBlock
               telemetry={telemetry}
@@ -148,7 +169,7 @@ export function LiveSection({ site }: { site: Site }) {
         <>
           {/* Status-first: German status sentence + verdict tiles +
               energy-flow diagram (the edge dashboard's mental model). */}
-          <LiveHero points={telemetry} fresh={telemetryFresh} />
+          <LiveHero points={telemetry} fresh={telemetryFresh} sources={sources} />
 
           {/* Verlauf: the history chart; the toggle fetches only the
               selected window. */}

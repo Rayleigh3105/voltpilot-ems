@@ -10,8 +10,9 @@ import {
   pvState,
   type LiveSnapshot,
 } from '../live';
-import type { TelemetryPoint } from '../api';
+import type { SiteSource, TelemetryPoint } from '../api';
 import { EnergyFlow } from './EnergyFlow';
+import { PvBreakdownLine } from './PvBreakdown';
 
 /**
  * The Live-Daten status hero (report direction B): one German status sentence,
@@ -25,7 +26,19 @@ import { EnergyFlow } from './EnergyFlow';
  * All derivation lives in the pure, unit-tested `live.ts`; this component only
  * renders it.
  */
-export function LiveHero({ points, fresh }: { points: TelemetryPoint[]; fresh: boolean }) {
+export function LiveHero({
+  points,
+  fresh,
+  sources = null,
+}: {
+  points: TelemetryPoint[];
+  fresh: boolean;
+  /**
+   * The site's measurement points, when known: a multi-inverter site then shows
+   * WHICH devices the one Solar figure is made of. null/single = no breakdown.
+   */
+  sources?: SiteSource[] | null;
+}) {
   const snap = buildSnapshot(points);
   const sentence = composeStatusSentence(snap, fresh);
   const dim = !fresh;
@@ -43,6 +56,10 @@ export function LiveHero({ points, fresh }: { points: TelemetryPoint[]; fresh: b
         <HausTile snap={snap} />
         <NetzTile snap={snap} />
       </div>
+
+      {/* Why the Solar number is what it is: the parts of a multi-inverter
+          site's composite PV (renders itself away on a single-inverter site). */}
+      <PvBreakdownLine sources={sources} />
 
       <EnergyFlow snapshot={snap} stale={dim} />
     </div>

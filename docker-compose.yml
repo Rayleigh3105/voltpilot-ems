@@ -314,6 +314,7 @@ services:
       # Inverter-control confirmation: ingest the additive `control` block of the
       # status heartbeat into device_control_status (portal "Steuerung" strip).
       VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
+      VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
       # Ersparnis-Simulation: the internal simulation service (optimize profile).
       # The api proxies async jobs there; without the service running, starting
