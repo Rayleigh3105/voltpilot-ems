@@ -113,7 +113,13 @@ const LEER: AnlageSurfaceInput = {
   entities: [],
 };
 
-function stubApi() {
+function stubApi(overviewSite: Record<string, unknown> = {}) {
+  vi.spyOn(api, 'siteEntities').mockResolvedValue({
+    registry: null,
+    entities: [],
+    localSetup: [],
+    staleOnDevice: [],
+  } as never);
   vi.spyOn(api, 'overview').mockResolvedValue({
     sites: [
       {
@@ -129,6 +135,7 @@ function stubApi() {
         batteryWithoutDevice: false,
         live: null,
         plannedSavingsTodayEur: null,
+        ...overviewSite,
       },
     ],
     totals: {} as never,
@@ -243,6 +250,49 @@ describe('v1-Invariant: eine nie migrierte Anlage rendert das heutige Cockpit', 
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
     expect(container.querySelector('.vp-stack')).toBeNull();
+  });
+});
+
+describe('M5 · Der Leer-Zustand IST der Einrichtungspfad (#533)', () => {
+  /** Eine brandneue Anlage: Gerät verbunden, aber noch nie Messdaten. */
+  function stubFreshSite() {
+    vi.restoreAllMocks();
+    stubApi({ lastSeenAt: null, worstStatus: 'waiting', onlineCount: 0, waitingCount: 1 });
+  }
+
+  it('rendert die drei Schritte statt eines leeren Cockpits', async () => {
+    stubFreshSite();
+    mockAdaptive(false);
+    mockSurface(LEER);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-setup-steps')).toBeTruthy());
+    expect(container.querySelectorAll('.vp-setup-step')).toHaveLength(3);
+    // Kein Platzhalter-Cockpit, kein Modul-Stapel.
+    expect(container.querySelector('.vp-anlage-dash')).toBeNull();
+    expect(container.querySelector('.vp-stack')).toBeNull();
+    // Der Kopf spricht vom Weg, nicht von "offline".
+    expect(container.querySelector('.vp-anlage-sentence')?.textContent).toContain(
+      'Energie-System zusammen',
+    );
+  });
+
+  it('tritt zurück, sobald Entitäten da sind (M3 übernimmt)', async () => {
+    stubFreshSite();
+    mockAdaptive(true);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-stack')).toBeTruthy());
+    expect(container.querySelector('.vp-setup-steps')).toBeNull();
+  });
+
+  it('erscheint NICHT auf einer laufenden v1-Anlage ohne Entitäten', async () => {
+    // Das v1-Invariant von der anderen Seite: dieselbe leere Projektion, aber
+    // die Anlage misst bereits - ihr Cockpit bleibt unangetastet.
+    mockAdaptive(false);
+    mockSurface(LEER);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
+    expect(container.querySelector('.vp-setup-steps')).toBeNull();
   });
 });
 
