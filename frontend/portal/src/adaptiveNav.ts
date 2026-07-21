@@ -52,7 +52,6 @@ const ALL_KEYS: TabKey[] = [
   'wetter',
   'technik',
   'entitaeten',
-  'simulation',
   'steuerung',
 ];
 
@@ -66,7 +65,6 @@ const META: Record<TabKey, { label: string; icon: IconName }> = {
   wetter: { label: 'Wetter', icon: 'sun' },
   technik: { label: 'Einstellungen', icon: 'settings' },
   entitaeten: { label: 'Geräte', icon: 'cpu' },
-  simulation: { label: 'Ersparnis-Simulation', icon: 'euro' },
   steuerung: { label: 'Steuerung', icon: 'zap' },
 };
 

@@ -33,7 +33,6 @@ import { MarktpreisePage } from './pages/DataPages';
 import { PrognosePage } from './pages/PrognosePage';
 import { MandantenPage } from './pages/admin/MandantenPage';
 import { BenutzerPage } from './pages/admin/BenutzerPage';
-import { ErsparnisRechnerPage } from './pages/admin/ErsparnisRechnerPage';
 import { GeraeteRegistryPage } from './pages/admin/GeraeteRegistryPage';
 import { OptimizerPage } from './pages/admin/OptimizerPage';
 import { FlowsPage } from './pages/admin/FlowsPage';
@@ -720,7 +719,6 @@ function UnifiedPortal() {
           )}
           {page === 'geraete-registry' && isAdmin && <GeraeteRegistryPage />}
           {page === 'optimizer' && isAdmin && <OptimizerPage tenants={tenants} />}
-          {page === 'ersparnis-rechner' && isAdmin && <ErsparnisRechnerPage />}
           {page === 'flows' && isAdmin && <FlowsPage tenants={tenants} />}
         </>
       )}

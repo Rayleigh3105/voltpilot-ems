@@ -54,7 +54,6 @@ import { LiveSection } from './LiveSection';
 import { EntitaetenSection } from './EntitaetenSection';
 import { LastspitzenSection } from './LastspitzenSection';
 import { SteuerungSection } from './SteuerungSection';
-import { SimulationSection } from '../components/SimulationView';
 import { TechnikSection } from './AnlageTechnik';
 
 /** Background refresh cadence of the live widgets (30 s poll pattern). */
@@ -315,11 +314,6 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     title: 'Geräte & Entitäten',
     subtitle: 'Alle Mess- und Steuer-Einheiten dieser Anlage - Fähigkeiten, Zustand und Konfiguration.',
   },
-  simulation: {
-    title: 'Ersparnis-Simulation',
-    subtitle:
-      'Was hätte Ihre Anlage im letzten Jahr gebracht - ohne Speicher, mit Standard-Speicher und mit VoltPilot?',
-  },
   steuerung: {
     title: 'Steuerung',
     subtitle:
@@ -369,7 +363,6 @@ function AnlagenSubPage({
       {sub === 'wetter' && <WetterSection site={site} />}
       {sub === 'entitaeten' && <EntitaetenSection site={site} isAdmin={isAdmin} />}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
-      {sub === 'simulation' && <SimulationSection site={site} />}
       {sub === 'steuerung' && <SteuerungSection site={site} isAdmin={isAdmin} />}
       {sub === 'technik' && (
         <TechnikSection
@@ -933,13 +926,6 @@ export function AnlageSeite({
               title="Steuerung"
               line="Was läuft - und eigene Strategien & Automationen bauen."
               onOpen={() => onOpenSub('steuerung')}
-            />
-            <DetailCard
-              icon="euro"
-              category="primary"
-              title="Ersparnis-Simulation"
-              line="Was brächte Ihr Speicher mit VoltPilot - gerechnet übers letzte Jahr?"
-              onOpen={() => onOpenSub('simulation')}
             />
           </div>
         </div>

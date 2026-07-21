@@ -4337,38 +4337,7 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-action, #2c5282);
 }
 
-/* ---- Ersparnis-Simulation (customer subpage + admin Rechner) ------------ */
-.vp-sim-intro {
-  margin: 0 0 var(--vp-space-5);
-  color: var(--vp-text-muted);
-  max-width: 68ch;
-}
-.vp-sim-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--vp-space-4);
-  align-items: start;
-}
-.vp-sim-form > * {
-  min-width: 0;
-}
-.vp-sim-check {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  font-size: 0.92rem;
-  color: var(--vp-text-muted);
-  cursor: pointer;
-}
-.vp-sim-actions {
-  margin-top: var(--vp-space-5);
-}
-.vp-select-label {
-  display: block;
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 0.4rem;
-}
+/* ---- Simulation result view (shared: flow-editor dry-run) --------------- */
 .vp-sim-progress {
   display: flex;
   flex-direction: column;

@@ -24,7 +24,6 @@ export type PageId =
   | 'benutzer'
   | 'geraete-registry'
   | 'optimizer'
-  | 'ersparnis-rechner'
   | 'flows';
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
@@ -35,12 +34,11 @@ export type AnlagenSub =
   | 'wetter'
   | 'technik'
   | 'entitaeten'
-  | 'simulation'
   | 'steuerung'
   | 'lastspitzen';
 
 const SUBS = new Set<string>([
-  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'entitaeten', 'simulation',
+  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'entitaeten',
   'steuerung', 'lastspitzen',
 ]);
 
@@ -98,7 +96,6 @@ export const PLATFORM_PAGES: PageDef[] = [
   { id: 'geraete-registry', label: 'Geräte-Registry', icon: 'list', adminOnly: true },
   { id: 'optimizer', label: 'Optimizer', icon: 'settings', adminOnly: true },
   { id: 'flows', label: 'Flows', icon: 'zap', adminOnly: true },
-  { id: 'ersparnis-rechner', label: 'Ersparnis-Rechner', icon: 'euro', adminOnly: true },
 ];
 
 /** "Meine Anlage" for 0-1 Anlagen, "Meine Anlagen" from 2 (the fleet list). */
