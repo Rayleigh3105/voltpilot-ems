@@ -1,13 +1,20 @@
 /**
  * Pure logic of the AE5 adaptive onboarding step (spec
  * data/vp-ems-replatform/adaptive-ems-ui-v1-spec.md §2/§3/§10): after the
- * Anlage's entities exist, the customer/admin sees the DERIVED usage profile
- * (AE7) with an explicit override, and on finish the site is seeded with the
- * profile-appropriate auto-start flow. This module holds every word- and
- * decision-related bit so the wizard step stays unit-testable without a DOM.
+ * Anlage's entities exist, the customer/admin picks WHICH STARTER FLOW VoltPilot
+ * should seed, and on finish the site gets that auto-start flow. This module
+ * holds every word- and decision-related bit so the wizard step stays
+ * unit-testable without a DOM.
  *
- * It CONSUMES AE7 (profile derivation + emphasis) and E1b (entities) - it does
- * not re-derive them; `deriveDefault`/`effectiveProfile` live in usageProfile.ts.
+ * **F5 (Projektion #529/#534, report §6.5): this pre-pick is the auto-start
+ * TEMPLATE chooser and nothing else.** It rides the KEPT `usage_profile_override`
+ * column (the mechanism `POST .../flows/auto-start` reads), but no portal
+ * surface is derived from a winning profile any more - the Anlagen-Seite is a
+ * projection of the ACTIVE MODES (`surface.ts`). Copy must therefore promise a
+ * starting point, never a view/"Fokus"; `adaptiveOnboarding.test.ts` pins that.
+ *
+ * It CONSUMES AE7 (profile derivation) and E1b (entities) - it does not
+ * re-derive them; `deriveDefault`/`effectiveProfile` live in usageProfile.ts.
  */
 import type { AutoStartOutcome, EntityTypeDef } from './entitiesApi';
 import { isUsageProfile, type UsageProfile } from './usageProfile';

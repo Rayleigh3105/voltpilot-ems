@@ -1,17 +1,24 @@
 /**
  * Pure, framework-free logic for the Betreiber PORTFOLIO shell (U5, design
  * vp-ems-ui-overhaul §6 Face 4 + §5.3): the aggregate KPI row + the operator
- * table (Anlage · Profil-Chip · Entitäten · SoC · jetzt · heute € · Status).
+ * table (Anlage · Modi · Entitäten · SoC · jetzt · heute € · Status).
  * Portfolio is not an AE7 profile - it is the Betreiber SHELL whose rows drill
  * into each Standort's own derived cockpit (§2.3). Everything here is derived
  * from the ONE additive /overview rollup (roleCounts + usageProfile per site)
  * plus the existing /earnings totals - no new engine, the AE4 "lens, not
  * engine" rule. The components only render what these return.
+ *
+ * **M6 (#534):** the single AE7 Profil-Chip is GONE - a Betreiber row now
+ * carries the SET of active modes (`modeChips`), the same projection the
+ * Anlagen-Seite renders (F5: the profile face is retired, `report.md` §6.5).
  */
 import type { IconName } from '../designsystem/components/core/Icon';
-import type { Earnings, EarningsSite, Overview, OverviewSite, RoleCounts } from './api';
+import type { Earnings, EarningsSite, Overview, OverviewSite, RoleCounts, Site } from './api';
 import { berlinDay, savedOnDay, siteLiveFresh } from './fleet';
 import { sanitizeSoc } from './plausible';
+import { isLeistungspreisActive } from './moduleSurface';
+import { activeModes, type AnlageSurfaceInput, type ModeKind } from './surface';
+import { NODE_MARKET, NODE_PEAKSHAVING } from './usageProfile';
 
 // ---- Entitäten badge (Σ per role) --------------------------------------------
 
@@ -60,33 +67,91 @@ export function hasEntities(counts: RoleCounts | undefined): boolean {
   return roleBadges(counts).length > 0;
 }
 
-// ---- Profil-Chip (the per-site AE7 profile) ----------------------------------
+// ---- Modus-Chips (M6 #534 - the projection, per portfolio row) ---------------
 
-export type ProfileKind = 'arbitrage' | 'peak' | 'private' | 'unknown';
-
-export interface ProfileChip {
-  kind: ProfileKind;
-  /** Short German label for the chip. */
+/** One active mode of an Anlage, as a small chip in the "Modi" column. */
+export interface ModeChip {
+  /** The M0 mode key (stable, used as the React key). */
+  key: string;
+  kind: ModeKind;
   label: string;
 }
 
 /**
- * The portfolio Profil-Chip for a site's effective AE7 usage profile. Faces
- * (design §6): Arbitrage/Direktvermarktung, Lastspitze (peak), Privat
- * (Eigenverbrauch). An absent/unknown value (older backend) reads "Standard"
- * as a calm neutral chip, never a wrong face.
+ * The portfolio row's active modes, derived through the M0 read-model
+ * (`surface.ts activeModes`) - the SAME derivation the Anlagen-Seite projects
+ * from, so the portfolio can never tell a different story than the cockpit it
+ * drills into. Read-only reuse: nothing is re-derived here.
+ *
+ * The input is composed from what the portfolio ALREADY holds - the `/overview`
+ * rollup row plus the `SiteDto` the shell loaded. **No extra network call per
+ * row** (a fleet has many rows; the M0 discipline is "no server twin, no new
+ * endpoint"). Two consequences, deliberate and documented:
+ *
+ *  - **Strategy signals** come from the server's own AE7 winner (`usageProfile`):
+ *    `peak` means peak-shaving is genuinely on (leistungspreis OR a peak
+ *    strategy node - the api's `UsageProfileDeriver` rule), `arbitrage` likewise
+ *    for the market mode. We only synthesize the strategy-node signal when the
+ *    master data does NOT already explain the winner, so the chip's origin stays
+ *    as honest as the data allows. `private` implies neither, so it adds nothing
+ *    (Eigenverbrauch comes from the storage∧PV master data, exactly as in M0).
+ *  - **Automations are not represented.** An active rule flow without a strategy
+ *    node is a mode on the Anlagen-Seite, but the overview rollup does not carry
+ *    the flow list. The column therefore shows the Betriebs-Modi; it never
+ *    invents an automation chip.
+ *
+ * A site with no signals at all (never migrated, older backend) returns an empty
+ * list - the cell then reads "—", the portfolio half of the v1 invariant.
  */
-export function profileChip(usageProfile: string | undefined): ProfileChip {
-  switch (usageProfile) {
-    case 'arbitrage':
-      return { kind: 'arbitrage', label: 'Arbitrage' };
-    case 'peak':
-      return { kind: 'peak', label: 'Lastspitze' };
-    case 'private':
-      return { kind: 'private', label: 'Privat' };
-    default:
-      return { kind: 'unknown', label: 'Standard' };
+export function modeChips(
+  site: OverviewSite,
+  config?: Pick<Site, 'tarifArt' | 'leistungspreisEurKw'> | null,
+): ModeChip[] {
+  return activeModes(portfolioSurfaceInput(site, config)).map((m) => ({
+    key: m.key,
+    kind: m.kind,
+    label: m.label,
+  }));
+}
+
+/** The `AnlageSurfaceInput` a portfolio row can honestly compose (see `modeChips`). */
+export function portfolioSurfaceInput(
+  site: OverviewSite,
+  config?: Pick<Site, 'tarifArt' | 'leistungspreisEurKw'> | null,
+): AnlageSurfaceInput {
+  const counts = site.roleCounts;
+  const leistungspreisEurKw = config?.leistungspreisEurKw ?? null;
+  const isDv = site.plantKind === 'direktvermarktung';
+
+  // Only synthesize a strategy-node signal where the master data does not
+  // already explain the server's winner - so a leistungspreis-driven peak mode
+  // is not mislabelled as flow-driven and vice versa.
+  const strategyNodes: string[] = [];
+  if (site.usageProfile === 'peak' && !isLeistungspreisActive(leistungspreisEurKw)) {
+    strategyNodes.push(NODE_PEAKSHAVING);
   }
+  if (site.usageProfile === 'arbitrage' && !isDv) {
+    strategyNodes.push(NODE_MARKET);
+  }
+
+  return {
+    signals: {
+      hasStorage: (counts?.storage ?? 0) > 0,
+      hasPv: (counts?.pv ?? 0) > 0,
+      hasControllableConsumer: (counts?.consumer ?? 0) > 0,
+      activeStrategyNodeTypes: strategyNodes,
+      plantKind: site.plantKind,
+      hasLeistungspreis: isLeistungspreisActive(leistungspreisEurKw),
+    },
+    config: {
+      plantKind: site.plantKind,
+      tarifArt: config?.tarifArt ?? null,
+      netzladenErlaubt: site.netzladenErlaubt,
+      leistungspreisEurKw,
+    },
+    flows: null,
+    entities: null,
+  };
 }
 
 // ---- Per-row derivations -----------------------------------------------------

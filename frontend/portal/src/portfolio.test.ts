@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest';
 import type { Earnings, EarningsSite, Overview, OverviewSite, RoleCounts } from './api';
 import {
   hasEntities,
+  modeChips,
   portfolioKpis,
-  profileChip,
   roleBadges,
   siteNowKw,
   siteSavedToday,
   siteSoc,
   siteStatus,
+  portfolioSurfaceInput,
 } from './portfolio';
+import { activeModes } from './surface';
 
 const NOW = new Date('2026-07-20T12:00:00Z');
 
@@ -92,16 +94,80 @@ describe('roleBadges (Σ per role)', () => {
   });
 });
 
-describe('profileChip', () => {
-  it('maps each AE7 profile to its face label', () => {
-    expect(profileChip('arbitrage')).toEqual({ kind: 'arbitrage', label: 'Arbitrage' });
-    expect(profileChip('peak')).toEqual({ kind: 'peak', label: 'Lastspitze' });
-    expect(profileChip('private')).toEqual({ kind: 'private', label: 'Privat' });
+describe('modeChips (M6: the projection per portfolio row)', () => {
+  it('shows the SET of active modes, not one winning face', () => {
+    // Direktvermarktung + Speicher/PV + Leistungspreis = three modes at once -
+    // exactly what the retired single Profil-Chip could never say.
+    const chips = modeChips(
+      site({ plantKind: 'direktvermarktung', usageProfile: 'peak' }),
+      { tarifArt: 'dynamisch', leistungspreisEurKw: 95 },
+    );
+    expect(chips.map((c) => c.kind)).toEqual(['lastspitzenkappung', 'marktvermarktung']);
+    expect(chips.map((c) => c.label)).toEqual(['Lastspitzenkappung', 'Marktvermarktung']);
+    // The keys are the M0 mode keys (stable React keys).
+    expect(chips.map((c) => c.key)).toEqual(['lastspitzenkappung', 'marktvermarktung']);
   });
 
-  it('an absent/unknown profile is a calm neutral chip, never a wrong face', () => {
-    expect(profileChip(undefined)).toEqual({ kind: 'unknown', label: 'Standard' });
-    expect(profileChip('mystery')).toEqual({ kind: 'unknown', label: 'Standard' });
+  it('derives Eigenverbrauch from the entity roles of a non-DV Anlage', () => {
+    const chips = modeChips(
+      site({ plantKind: 'eigenverbrauch', usageProfile: 'private' }),
+      { tarifArt: 'fest', leistungspreisEurKw: null },
+    );
+    expect(chips.map((c) => c.kind)).toEqual(['eigenverbrauch']);
+  });
+
+  it('trusts the server AE7 winner for a flow-driven mode the master data cannot explain', () => {
+    // No Leistungspreis in the master data, but the api derived "peak" - so a
+    // peak strategy FLOW is active. The chip appears rather than going missing.
+    const chips = modeChips(
+      site({ plantKind: 'eigenverbrauch', usageProfile: 'peak' }),
+      { tarifArt: 'ohne', leistungspreisEurKw: null },
+    );
+    expect(chips.map((c) => c.kind)).toContain('lastspitzenkappung');
+    // ... and it is honestly labelled flow-driven, not "von VoltPilot eingerichtet".
+    const modes = activeModes(portfolioSurfaceInput(
+      site({ plantKind: 'eigenverbrauch', usageProfile: 'peak' }),
+      { tarifArt: 'ohne', leistungspreisEurKw: null },
+    ));
+    expect(modes.find((m) => m.kind === 'lastspitzenkappung')?.origin).toBe('flow');
+  });
+
+  it('keeps a leistungspreis-driven peak mode master-data-driven (no faked flow)', () => {
+    const modes = activeModes(portfolioSurfaceInput(
+      site({ plantKind: 'eigenverbrauch', usageProfile: 'peak' }),
+      { tarifArt: 'ohne', leistungspreisEurKw: 120 },
+    ));
+    expect(modes.find((m) => m.kind === 'lastspitzenkappung')?.origin).toBe('masterdata');
+  });
+
+  it('a never-migrated Anlage has NO chips - the cell reads "—", never a face', () => {
+    expect(
+      modeChips(
+        site({
+          plantKind: 'eigenverbrauch',
+          netzladenErlaubt: false,
+          roleCounts: undefined,
+          usageProfile: undefined,
+        }),
+        null,
+      ),
+    ).toEqual([]);
+    // Same for an older backend that omits roleCounts AND usageProfile while
+    // the SiteDto carries no tariff/Leistungspreis either.
+    expect(
+      modeChips(site({ plantKind: 'eigenverbrauch', roleCounts: undefined, usageProfile: undefined }), {
+        tarifArt: 'ohne',
+        leistungspreisEurKw: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it('honours the F4 rule: Netzladen on a dynamic tariff IS market mode', () => {
+    const chips = modeChips(
+      site({ plantKind: 'eigenverbrauch', netzladenErlaubt: true, usageProfile: 'private' }),
+      { tarifArt: 'dynamisch', leistungspreisEurKw: null },
+    );
+    expect(chips.map((c) => c.kind)).toEqual(['marktvermarktung', 'eigenverbrauch']);
   });
 });
 
