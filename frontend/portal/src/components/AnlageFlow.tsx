@@ -1005,9 +1005,12 @@ function ManualBatteryStep({
  *    controllable Verbraucher (Wallbox/Heizstab/…) can be added; a customer
  *    sees the recognised devices read-only (the permanent editing home is the
  *    "Geräte & Entitäten" surface).
- *  - Nutzungsprofil: the DERIVED usage profile (AE7 `GET /sites/{id}/profile`)
- *    with an explicit override. This is the second adaptation axis - it steers
- *    which view emphasis the customer then gets (Geld-/Peak-/Flow-zentriert).
+ *  - Womit sollen wir starten: the auto-start TEMPLATE chooser. Since M1/M6
+ *    (F5, report §6.5) this is the ONLY surviving use of
+ *    `usage_profile_override` in the portal - it picks which starter flow
+ *    `POST .../flows/auto-start` seeds, and it steers NOTHING about the
+ *    Anlagen-Seite (that is the projection of the ACTIVE MODES, `surface.ts`).
+ *    The column stays in the DB; there is no profile "face" any more.
  *  - Umgang mit dem Speicher: Speicherschonung preset (battery master data).
  *
  * On finish the profile override is written (only on a change), the
@@ -1115,7 +1118,9 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
           speicherschonung: schonung,
         });
       }
-      // Usage-profile override: only on a real change (null re-enables auto).
+      // The template choice rides the (kept) usage_profile_override column -
+      // it decides WHICH starter flow auto-start seeds, nothing else. Written
+      // only on a real change (null re-enables the automatic suggestion).
       if (profileChoiceChanged(choice, profile)) {
         await api.setUsageProfileOverride(site.id, overrideForChoice(choice));
       }
@@ -1139,7 +1144,7 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
     <div className="vp-onboarding-step">
       <h3>Wie nutzen Sie Ihre Anlage?</h3>
       <p className="vp-muted">
-        Daraus richten wir Ihre Ansicht ein. Sie können alles später jederzeit auf der
+        Daraus richten wir Ihre Steuerung ein. Sie können alles später jederzeit auf der
         Anlagen-Seite ändern.
       </p>
 

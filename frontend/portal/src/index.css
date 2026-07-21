@@ -3848,23 +3848,48 @@ button.vp-tech-card-h.toggle {
   font-variant-numeric: tabular-nums;
   color: var(--vp-text-strong, #1a2433);
 }
-/* Per-site AE7 Profil-Chip: one calm tint per derived face. */
-.vp-profile-chip {
-  font-weight: 600;
+/* Per-site MODE chips (M6 #534): the active modes of the Anlage, one calm tint
+   per mode kind. Replaces the retired single AE7 Profil-Chip (F5) - a row shows
+   the SET the cockpit projects from, never one winning face. Wraps and stays
+   min-width:0 so a multi-mode row never widens the table at phone width. */
+.vp-mode-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
-.vp-profile-arbitrage {
+.vp-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--vp-radius-pill);
+  font-size: 0.74rem;
+  font-weight: 600;
+  line-height: 1.35;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  background: var(--vp-tint, #eef3ff);
+  color: var(--vp-text-muted);
+}
+.vp-mode-chip.vp-mode-lastspitzenkappung {
+  background: var(--vp-flow-pv-soft, #fff1e0);
+  color: #b45309;
+}
+.vp-mode-chip.vp-mode-marktvermarktung {
   background: color-mix(in srgb, var(--vp-action, #2c5282) 12%, transparent);
   color: var(--vp-action, #2c5282);
 }
-.vp-profile-peak {
-  background: color-mix(in srgb, var(--vp-industry-end, #c2410c) 14%, transparent);
-  color: var(--vp-industry-end, #c2410c);
+.vp-mode-chip.vp-mode-eigenverbrauch {
+  background: var(--vp-flow-batt-soft, #e6f7ec);
+  color: #15803d;
 }
-.vp-profile-private {
-  background: color-mix(in srgb, var(--vp-battery, #16a34a) 14%, transparent);
-  color: color-mix(in srgb, var(--vp-battery, #16a34a) 78%, #0b3d1f);
+.vp-mode-chip.vp-mode-automation {
+  background: var(--vp-flow-load-soft, #f2eaff);
+  color: #6d28d9;
 }
-.vp-profile-unknown {
+.vp-mode-chip.vp-mode-atypische-netznutzung {
   background: var(--vp-tint, #eef3ff);
   color: var(--vp-text-muted);
 }

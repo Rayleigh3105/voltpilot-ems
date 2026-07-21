@@ -9,13 +9,14 @@ import { api, type Earnings, type Overview, type Site } from '../api';
 import { currentUser } from '../auth';
 import { anlageRoute, type Route } from '../nav';
 import {
+  modeChips,
   portfolioKpis,
-  profileChip,
   roleBadges,
   siteNowKw,
   siteSavedToday,
   siteSoc,
   siteStatus,
+  type ModeChip,
   type RoleBadge,
 } from '../portfolio';
 import { eurAmount, fmtNum } from '../format';
@@ -38,11 +39,15 @@ interface PortfolioProps {
 /**
  * The Betreiber PORTFOLIO landing (U5, design vp-ems-ui-overhaul §6 Face 4 +
  * §5.3): an aggregate KPI row (Σ Speicher, Portfolio-SoC, Erlös heute/Monat, Σ
- * vermiedene Spitze) over an operator table (Anlage · Profil · Entitäten · SoC
+ * vermiedene Spitze) over an operator table (Anlage · Modi · Entitäten · SoC
  * · jetzt · heute € · Status). Portfolio is the Betreiber SHELL, not an AE7
  * profile: every row drills into that Standort's OWN derived cockpit (the same
  * AnlagenPage the Endkunde shell renders - one cockpit, two shells). All
  * wording/derivation lives in the pure `portfolio.ts`; this only renders it.
+ *
+ * M6 (#534): the "Modi" column carries the M0 projection (`modeChips`) instead
+ * of the retired single AE7 Profil-Chip (F5) - the row now names WHAT runs on
+ * the Anlage and is the jump-off into it.
  */
 export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: PortfolioProps) {
   const user = currentUser();
@@ -190,6 +195,9 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
 
   const kpis = portfolioKpis(overview, earnings, now);
   const earningsBySite = new Map((earnings?.sites ?? []).map((s) => [s.id, s]));
+  // The SiteDto the shell already loaded carries the tariff + Leistungspreis
+  // the mode projection needs - no extra request per row.
+  const configById = new Map(sites.map((s) => [s.id, s]));
 
   return (
     <>
@@ -243,7 +251,7 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
           <thead>
             <tr>
               <th>Anlage</th>
-              <th>Profil</th>
+              <th>Modi</th>
               <th>Entitäten</th>
               <th>Ladestand</th>
               <th>PV jetzt</th>
@@ -253,7 +261,7 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
           </thead>
           <tbody>
             {overview.sites.map((s) => {
-              const chip = profileChip(s.usageProfile);
+              const chips = modeChips(s, configById.get(s.id) ?? null);
               const badges = roleBadges(s.roleCounts);
               const soc = siteSoc(s);
               const nowKw = siteNowKw(s, now);
@@ -271,10 +279,8 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
                       )}
                     </div>
                   </td>
-                  <td data-label="Profil">
-                    <Badge variant="tint" className={`vp-profile-chip vp-profile-${chip.kind}`}>
-                      {chip.label}
-                    </Badge>
+                  <td data-label="Modi">
+                    <ModesCell chips={chips} />
                   </td>
                   <td data-label="Entitäten">
                     <EntitiesCell badges={badges} />
@@ -296,6 +302,28 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
 
       {drawers}
     </>
+  );
+}
+
+/**
+ * The "Modi" cell (M6 #534): the Anlage's ACTIVE modes as small chips - the
+ * projection the row drills into. No mode (never migrated, no signals) reads
+ * "—", never an invented face.
+ */
+function ModesCell({ chips }: { chips: ModeChip[] }) {
+  if (chips.length === 0) {
+    return <span className="vp-muted">—</span>;
+  }
+  return (
+    <div className="vp-mode-chips">
+      {chips.map((c) => (
+        // A plain span, not a design-system Badge: Badge paints its tint via
+        // INLINE styles, which would win over the per-mode class tint below.
+        <span key={c.key} className={`vp-mode-chip vp-mode-${c.kind}`}>
+          {c.label}
+        </span>
+      ))}
+    </div>
   );
 }
 

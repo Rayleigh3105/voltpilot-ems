@@ -56,6 +56,18 @@ describe('PROFILE_OPTIONS (AE5 profile choice)', () => {
     const text = PROFILE_OPTIONS.map((o) => `${o.label} ${o.sentence}`).join(' ');
     expect(text).not.toMatch(/MILP|optimizer|Modul|RLS|Keycloak|Flow-Node|Node-RED|profile/i);
   });
+
+  it('F5: promises a STARTING POINT, never a view/Fokus the portal would apply', () => {
+    // report §6.5 - the profile face is retired; this pre-pick is the auto-start
+    // TEMPLATE chooser. Copy that promises an "Ansicht"/"Fokus"/"Gesicht" would
+    // re-introduce exactly the winner-profile framing M1/M6 removed.
+    const text = PROFILE_OPTIONS.map((o) => `${o.label} ${o.sentence}`).join(' ');
+    expect(text).not.toMatch(/Ansicht|Fokus|Gesicht|Darstellung/i);
+    // ... and every non-auto option says what it STARTS with.
+    for (const o of PROFILE_OPTIONS.filter((x) => x.value !== 'auto')) {
+      expect(o.sentence).toMatch(/starten/i);
+    }
+  });
 });
 
 describe('initialProfileChoice / overrideForChoice', () => {
