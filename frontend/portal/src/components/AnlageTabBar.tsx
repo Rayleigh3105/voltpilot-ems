@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Betriebsart } from '../api';
 import { navFor } from '../adaptiveNav';
+import { hasTopology } from '../adaptiveLive';
 import type { AnlagenSub } from '../nav';
 
 /**
@@ -36,12 +37,17 @@ export function AnlageTabBar({
   onOpen: (sub: AnlagenSub | null) => void;
 }) {
   const [profile, setProfile] = useState<string | null>(null);
+  const [migrated, setMigrated] = useState(false);
 
-  // Fetch the effective usage profile once per site (fail-soft → null = the
-  // v1-safe default order). Not re-polled: the order must be stable per visit.
+  // Fetch the effective usage profile + the migration signal once per site
+  // (fail-soft → the v1-safe default order). Not re-polled: the order must be
+  // stable per visit. The profile deriver never returns null, so the per-face
+  // orders are gated on the site ACTUALLY carrying v2 entities (MEDIUM-3) -
+  // otherwise a v1 site would lead with an empty "Geräte" tab.
   useEffect(() => {
     let active = true;
     setProfile(null);
+    setMigrated(false);
     api.usageProfile(siteId).then(
       (p) => {
         if (active) setProfile(p.usageProfile);
@@ -50,12 +56,20 @@ export function AnlageTabBar({
         /* no profile (un-migrated site / error) → default order */
       },
     );
+    api.topology(siteId).then(
+      (t) => {
+        if (active) setMigrated(hasTopology(t));
+      },
+      () => {
+        /* no topology (v1 site / error) → default order */
+      },
+    );
     return () => {
       active = false;
     };
   }, [siteId]);
 
-  const tabs = navFor(profile, betriebsart);
+  const tabs = navFor(profile, betriebsart, migrated);
   const visible = tabs.filter((t) => !t.overflow);
   const overflow = tabs.filter((t) => t.overflow);
   const activeInOverflow = overflow.some((t) => t.sub === activeSub);

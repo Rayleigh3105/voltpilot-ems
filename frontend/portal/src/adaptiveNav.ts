@@ -13,6 +13,12 @@
  *   the VISIBLE set on every face - "always findable".
  * - A null/unknown profile yields a sensible calm default order (v1-safe), so a
  *   site with no derived profile renders a stable tab bar.
+ * - An UN-MIGRATED (v1) site gets that SAME calm default order regardless of
+ *   its derived profile (pre-deploy audit MEDIUM-3): the api's profile deriver
+ *   never returns null, so a plain eigenverbrauch v1 site derived `private` and
+ *   led its tab bar with the (empty) "Geräte" page while Fahrplan/Einstellungen
+ *   dropped into `Mehr ▾`. The per-face orders (§5.2) apply once a site
+ *   actually has v2 entities; before that the everyday v1 subs stay up front.
  *
  * The `frame` (Betriebsart) is part of the §5.2 signature and accepted for
  * completeness; it decides the SHELL (U0), not the per-Anlage tab order, so it
@@ -104,13 +110,18 @@ const FACES: Record<UsageProfile | 'default', FaceTab[]> = {
     { key: 'steuerung' },
     { key: 'entitaeten' },
   ],
-  // default (no/unknown profile) → the §5.1 canonical calm order (v1-safe).
+  // default (no/unknown profile, or an un-migrated v1 site) → the §5.1
+  // canonical calm order (v1-safe): the cockpit leads, then the everyday v1
+  // subs (Live · Fahrplan · Historie) that a v1 customer used before the
+  // overhaul, then the always-findable Steuerung + Geräte, then Einstellungen.
+  // Nothing a v1 customer relies on sits in `Mehr ▾`.
   default: [
     { key: 'uebersicht' },
     { key: 'live' },
+    { key: 'fahrplan' },
+    { key: 'historie' },
     { key: 'steuerung' },
     { key: 'entitaeten' },
-    { key: 'historie' },
     { key: 'technik' },
   ],
 };
@@ -124,14 +135,19 @@ function keyToSub(key: TabKey): AnlagenSub | null {
  * (in face order), then every remaining sub as an overflow tab (canonical
  * order). `profile` accepts the effective usage profile string; anything not a
  * known UsageProfile falls back to the default order.
+ *
+ * `migrated` (default true, so existing call sites keep their behavior) is the
+ * "this site actually has v2 entities" signal - pass false for a v1/un-migrated
+ * site and the calm default order wins over the derived face (MEDIUM-3).
  */
 export function navFor(
   profile: UsageProfile | string | null | undefined,
   // Part of the §5.2 signature; reserved (the frame drives the SHELL in U0, not
   // the per-Anlage tab order). Underscore-prefixed for noUnusedParameters.
   _frame: Betriebsart | null,
+  migrated = true,
 ): AnlagenTab[] {
-  const spec = FACES[isUsageProfile(profile) ? profile : 'default'];
+  const spec = FACES[migrated && isUsageProfile(profile) ? profile : 'default'];
   const visibleKeys = new Set<TabKey>(spec.map((t) => t.key));
 
   const visible: AnlagenTab[] = spec.map((t) => ({

@@ -7,6 +7,8 @@
 #   2. The migration switch VOLTPILOT_V2_PLAN_SITES is a passthrough on the
 #      optimization service in BOTH composes, defaulting to empty.
 #   3. Every .forgejo/workflows/*.yaml still parses (the deploy pipeline).
+#      Needs PyYAML; without it the script FAILS rather than silently skipping
+#      (ALLOW_MISSING_PYYAML=1 downgrades that to a WARN the summary reports).
 # Uses throwaway placeholder secrets - reads no real .env, connects to nothing.
 #
 # Run from the repo root:  bash tools/deploy/verify-migration-deploy.sh
@@ -15,6 +17,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 fail=0
+skipped=0
 note() { printf '  %s\n' "$*"; }
 pass() { printf 'PASS  %s\n' "$*"; }
 bad()  { printf 'FAIL  %s\n' "$*"; fail=1; }
@@ -68,7 +71,17 @@ for py in services/optimization/.venv/bin/python services/forecast/.venv/bin/pyt
   if [ -x "$py" ] && "$py" -c "import yaml" 2>/dev/null; then PYYAML="$py"; break; fi
 done
 if [ -z "$PYYAML" ]; then
-  note "no PyYAML available; skipping the workflow parse (run in an env with pyyaml)"
+  # A silently skipped check that still printed "ALL DEPLOY CHECKS PASSED" made
+  # the gate lie on any VM without PyYAML (pre-deploy migration report). Fail
+  # loud by default; ALLOW_MISSING_PYYAML=1 downgrades it to a WARN that the
+  # final summary still reports - never a clean pass.
+  if [ "${ALLOW_MISSING_PYYAML:-0}" = "1" ]; then
+    printf 'WARN  workflow YAML parse SKIPPED (no PyYAML on this machine)\n'
+    note "install it (pip install pyyaml) and re-run to actually check .forgejo/workflows/*.yaml"
+    skipped=1
+  else
+    bad "workflow YAML parse CANNOT RUN: no PyYAML (pip install pyyaml, or re-run with ALLOW_MISSING_PYYAML=1)"
+  fi
 else
   if "$PYYAML" - <<'PY'
 import glob, sys, yaml
@@ -84,4 +97,11 @@ PY
 fi
 
 echo
-if [ "$fail" -eq 0 ]; then echo "ALL DEPLOY CHECKS PASSED"; else echo "DEPLOY CHECKS FAILED"; exit 1; fi
+if [ "$fail" -ne 0 ]; then
+  echo "DEPLOY CHECKS FAILED"
+  exit 1
+elif [ "$skipped" -ne 0 ]; then
+  echo "DEPLOY CHECKS PASSED WITH SKIPS - the workflow YAML parse did NOT run (no PyYAML)"
+else
+  echo "ALL DEPLOY CHECKS PASSED"
+fi

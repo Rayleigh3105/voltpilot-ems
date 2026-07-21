@@ -230,9 +230,10 @@ paths:
         The tenant half of the portal's login bootstrap (composition-driven UI
         overhaul, U0): the caller's tenant row with the EFFECTIVE Betriebsart
         ('endkunde' | 'betreiber') that picks the navigation shell - the
-        explicit tenant.betriebsart override when set, else derived from the
-        segment (B2C -> endkunde, CI -> betreiber). Derived in the api only;
-        the portal never re-derives. RLS-scoped: a customer gets exactly their
+        explicit tenant.betriebsart override when set, else null = unknown
+        (the portal then falls back to its site-count heuristic; the segment is
+        deliberately NOT used). Derived in the api only; the portal never
+        re-derives. RLS-scoped: a customer gets exactly their
         own tenant; a Portal-Admin gets the tenant selected via the X-Tenant-Id
         switcher, and without a selected tenant is default-deny -> 404.
       responses:
@@ -4083,26 +4084,27 @@ components:
           enum: [endkunde, betreiber]
           nullable: true
           description: >
-            The explicit U0 shell-frame override; null = automatic (derived
-            from the segment).
+            The explicit U0 shell-frame override; null = automatic (the portal
+            derives the shell from the site count).
         betriebsartEffective:
           type: string
           enum: [endkunde, betreiber]
+          nullable: true
           description: >
             The resolved Betriebsart the portal shell keys on - the override
-            when set, else B2C -> endkunde / CI -> betreiber.
+            when set, else null = unknown (never segment-derived).
         createdAt: { type: string, format: date-time }
     TenantContext:
       type: object
       description: >
         The caller's tenant as the portal's login bootstrap reads it.
-        `betriebsart` is the EFFECTIVE shell frame (override wins, else
-        segment-derived) - resolved server-side in the one authoritative place.
+        `betriebsart` is the EFFECTIVE shell frame (the override when set, else
+        null = unknown) - resolved server-side in the one authoritative place.
       properties:
         tenantId: { type: string, format: uuid }
         name: { type: string }
         segment: { type: string, enum: [CI, B2C] }
-        betriebsart: { type: string, enum: [endkunde, betreiber] }
+        betriebsart: { type: string, enum: [endkunde, betreiber], nullable: true }
     CreateTenantRequest:
       type: object
       required: [name]

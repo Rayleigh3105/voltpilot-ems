@@ -427,8 +427,9 @@ function TenantDetailDrawer({
         <div style={{ display: 'flex', gap: 'var(--vp-space-2)', flexWrap: 'wrap', marginBottom: 'var(--vp-space-5)' }}>
           <Badge variant="tint">{segmentLabel(tenant.segment)}</Badge>
           <Badge variant="tint">
-            {betriebsartLabel(tenant.betriebsartEffective)}
-            {tenant.betriebsart == null ? ' (automatisch)' : ''}
+            {tenant.betriebsart == null
+              ? 'Automatisch (nach Anzahl Anlagen)'
+              : betriebsartLabel(tenant.betriebsart)}
           </Badge>
           <Badge variant="tint">Tarif {tenant.plan.toUpperCase()}</Badge>
           <span className="vp-mono" style={{ alignSelf: 'center' }}>{tenant.id}</span>
@@ -690,7 +691,7 @@ function segmentLabel(segment: string): string {
   return segment;
 }
 
-/** German label of the U0 shell frame (effective Betriebsart). */
+/** German label of an explicitly set U0 shell frame. */
 function betriebsartLabel(betriebsart: string): string {
   if (betriebsart === 'endkunde') return 'Endkunde';
   if (betriebsart === 'betreiber') return 'Betreiber';

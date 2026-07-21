@@ -95,13 +95,14 @@ describe('navFor - invariants (never break a deep link; always findable)', () =>
 });
 
 describe('navFor - v1-safe default for null/unknown input', () => {
-  it('a null profile yields the calm default order (Übersicht · Live · Steuerung · Geräte · Historie · Einstellungen)', () => {
+  it('a null profile yields the calm default order (Übersicht · Live · Fahrplan · Historie · Steuerung · Geräte · Einstellungen)', () => {
     expect(visibleLabels(navFor(null, 'endkunde'))).toEqual([
       'Übersicht',
       'Live',
+      'Fahrplan',
+      'Historie & Erlöse',
       'Steuerung',
       'Geräte',
-      'Historie & Erlöse',
       'Einstellungen',
     ]);
   });
@@ -126,5 +127,54 @@ describe('navFor - v1-safe default for null/unknown input', () => {
       expect(t.overflow).toBe(true);
       expect(t.sub).not.toBe(null);
     }
+  });
+});
+
+describe('navFor - MEDIUM-3: a v1/un-migrated site keeps the calm default order', () => {
+  // The api's profile deriver never returns null, so a plain eigenverbrauch v1
+  // site derives 'private'. Without the migration gate its tab bar led with the
+  // (empty) Geräte page and buried Fahrplan/Einstellungen in `Mehr ▾`.
+  for (const profile of ['private', 'peak', 'arbitrage'] as const) {
+    it(`${profile} on an un-migrated site renders the default order`, () => {
+      expect(visibleLabels(navFor(profile, 'endkunde', false))).toEqual(
+        visibleLabels(navFor(null, 'endkunde')),
+      );
+    });
+  }
+
+  it('the v1/fallback order leads with Übersicht, never with the empty Geräte page', () => {
+    const visible = navFor('private', null, false).filter((t) => !t.overflow);
+    expect(visible[0].sub).toBe(null);
+    expect(visible[1].sub).not.toBe('entitaeten');
+  });
+
+  it('the everyday v1 subs (Fahrplan/Historie/Einstellungen) are visible, not buried', () => {
+    const visible = navFor('private', null, false).filter((t) => !t.overflow);
+    for (const sub of ['fahrplan', 'historie', 'technik'] as const) {
+      expect(visible.some((t) => t.sub === sub)).toBe(true);
+    }
+  });
+
+  it('Geräte + Steuerung stay in the visible set (always findable)', () => {
+    const visible = navFor('private', null, false).filter((t) => !t.overflow);
+    expect(visible.some((t) => t.sub === 'entitaeten')).toBe(true);
+    expect(visible.some((t) => t.sub === 'steuerung')).toBe(true);
+  });
+
+  it('every sub stays reachable exactly once on the un-migrated face', () => {
+    const tabs = navFor('peak', 'betreiber', false);
+    expect(reachableSubs(tabs)).toEqual(new Set(ALL_SUBS));
+    expect(tabs).toHaveLength(ALL_SUBS.length);
+  });
+
+  it('a MIGRATED site keeps its per-face order (§5.2 intact)', () => {
+    expect(visibleLabels(navFor('peak', 'betreiber', true))).toEqual([
+      'Übersicht',
+      'Lastspitzen',
+      'Live',
+      'Steuerung',
+      'Geräte',
+      'Historie',
+    ]);
   });
 });

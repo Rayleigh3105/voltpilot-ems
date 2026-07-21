@@ -22,9 +22,10 @@ export type TarifArt = 'dynamisch' | 'fest' | 'ohne';
 /**
  * The U0 Kontotyp/Betriebsart shell frame (design vp-ems-ui-overhaul §2):
  * 'endkunde' = single-object cockpit shell (never fleet chrome), 'betreiber' =
- * fleet/portfolio shell. The value is resolved SERVER-side (explicit tenant
- * override wins, else derived from the segment: B2C -> endkunde, CI ->
- * betreiber) - the portal consumes it as-is and never re-derives.
+ * fleet/portfolio shell. The value is resolved SERVER-side (the explicit
+ * tenant override, else null = unknown - the segment is deliberately NOT used,
+ * see the api's Betriebsart) - the portal consumes it as-is and never
+ * re-derives; null falls back to the pre-U0 site-count heuristic.
  */
 export type Betriebsart = 'endkunde' | 'betreiber';
 
@@ -36,7 +37,8 @@ export interface TenantContext {
   tenantId: string;
   name: string;
   segment: string;
-  betriebsart: Betriebsart;
+  /** null = unknown frame -> the shell derives from the site count. */
+  betriebsart: Betriebsart | null;
 }
 
 export interface Site {
