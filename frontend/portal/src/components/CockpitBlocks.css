@@ -1,0 +1,225 @@
+/*
+ * M3 · Cockpit als Modul-Stapel (#531) — Blockrahmen + die zwei neuen Blöcke.
+ *
+ * Wie bei M4 (`ErloesKomposition.css`) bewusst eine EIGENE, komponenten-lokale
+ * Datei statt eines Blocks in `src/index.css`: M3 landet parallel zu M2 und
+ * fasst dafür keine geteilte Datei an. Tokens kommen wie überall aus dem
+ * Design-System; jedes Flex-/Grid-Kind trägt `min-width: 0`, damit auf 375 px
+ * nichts horizontal überläuft.
+ */
+
+.vp-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+/* --- Blockrahmen ---------------------------------------------------------- */
+
+.vp-block {
+  min-width: 0;
+}
+
+/* Der führende Block (peak → money → flow) bekommt eine ruhige Kante. */
+.vp-block-lead {
+  border-left: 4px solid var(--vp-primary, #95b9ff);
+  padding-left: var(--vp-space-3, 12px);
+  margin-left: -1px;
+}
+
+.vp-block-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-bottom: var(--vp-space-3, 12px);
+}
+
+.vp-block-title {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--vp-navy, #1a365d);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Das "von"-Tag: WELCHER Modus diesen Block beisteuert (die Projektion bleibt
+   lesbar, §1.1). Basis-Blöcke tragen die ruhige Variante. */
+.vp-block-from {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: var(--vp-radius-pill, 999px);
+  padding: 2px 10px;
+  background: var(--vp-navy, #1a365d);
+  color: #fff;
+  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-block-from.is-base {
+  background: var(--vp-bg-subtle, #f1f3f5);
+  color: var(--vp-text-gray, #718096);
+}
+
+.vp-block-drills {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-block-drill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--vp-link, #2c5282);
+  white-space: nowrap;
+}
+.vp-block-drill:hover {
+  text-decoration: underline;
+}
+
+/* --- Kachelreihe (Handel- und Eigenverbrauchs-Block) ---------------------- */
+
+.vp-block-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-block-tile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-bg-subtle, #f1f3f5);
+  border-left: 3px solid var(--tile-hue, var(--vp-primary, #95b9ff));
+}
+
+.vp-block-tile-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-block-tile-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--vp-stat-ink, #2c5282);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-block-tile-sub {
+  font-size: 0.72rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-block-note {
+  margin: var(--vp-space-2, 8px) 0 0;
+  font-size: 0.72rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Geräte-Automatik ----------------------------------------------------- */
+
+.vp-automations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-automation {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-automation-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--vp-text-dark, #1a202c);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-automation-line {
+  margin-left: auto;
+  font-size: 0.74rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Die ruhige Toolbox-Zeile (§1.3) -------------------------------------- */
+
+.vp-toolbox-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-gray, #718096);
+}
+
+.vp-toolbox-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--vp-link, #2c5282);
+  white-space: nowrap;
+}
+.vp-toolbox-cta:hover {
+  text-decoration: underline;
+}
+
+/* Der Abschluss des Stapels: ruhige Toolbox-Zeile + "Mehr" (Wetter). */
+.vp-stack-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-top: var(--vp-space-4, 16px);
+}

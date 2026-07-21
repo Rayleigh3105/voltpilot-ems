@@ -10,6 +10,7 @@ import {
   type Device,
   type Earnings,
   type EarningsRange,
+  type HistoryTotals,
   type Overview,
   type SchedulePlan,
   type Site,
@@ -38,7 +39,24 @@ import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
 import { useAdaptiveLive } from '../useAdaptiveLive';
 import { moneyLayout } from '../moneyEmphasis';
-import { leadArtifact } from '../leadSlot';
+import { leadArtifact, leadBlock } from '../leadSlot';
+import { useAnlageSurface } from '../useAnlageSurface';
+import {
+  automationRows,
+  cockpitStack,
+  eigenverbrauchBlock,
+  handelBlock,
+  hasBlock,
+  projectionActive,
+} from '../cockpit';
+import {
+  CockpitBlock,
+  EigenverbrauchBlockBody,
+  GeraeteAutomatikBody,
+  HandelBlockBody,
+  ToolboxPointer,
+} from '../components/CockpitBlocks';
+import { ErloesKomposition } from '../components/ErloesKomposition';
 import { peakBand, quarterHourMeanImportKw } from '../peakBand';
 import { PeakBand } from '../components/PeakBand';
 import { FahrplanBand } from '../components/FahrplanBand';
@@ -404,6 +422,9 @@ export function AnlageSeite({
   // U4: recent telemetry for the peak face's live ¼-h mean (fetched only when
   // the cockpit leads with the Peak-Band - see the gated effect below).
   const [peakSamples, setPeakSamples] = useState<TelemetryPoint[]>([]);
+  // M3: today's Historie totals feed the Eigenverbrauchs-Block (Autarkie /
+  // PV-Nutzung); fetched only when that block is part of the projection.
+  const [dayTotals, setDayTotals] = useState<HistoryTotals | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
@@ -567,10 +588,27 @@ export function AnlageSeite({
   // so an un-migrated (or profile-less) site renders byte-identical to today.
   const emphasis = adaptiveLive.adaptive ? adaptiveLive.profile?.emphasis : null;
   const money = moneyLayout(emphasis?.money);
-  // U4: the ONE lead-slot switch. A peak-profile site leads with the Peak-Band;
-  // everything else (private/arbitrage, un-migrated, profile-less) leads with
-  // money, byte-identical to today.
-  const isPeakLead = leadArtifact(emphasis?.peak) === 'peakband';
+
+  // M3 (#531): the cockpit is the PROJECTION of the Anlage — a deterministic
+  // module stack derived from the ACTIVE MODES (M0 `surface.ts`), not a fixed
+  // zone raster. The v1 gate is non-negotiable (report §6.2): without entities
+  // (and with the existing `useAdaptiveLive`/`hasTopology` gate closed) the
+  // Anlage renders EXACTLY today's default cockpit, byte-identical.
+  const { surface } = useAnlageSurface(site);
+  const projection = projectionActive({
+    hasEntities: surface?.base.hasEntities,
+    adaptive: adaptiveLive.adaptive,
+  });
+  const blocks = projection ? surface?.cockpitBlocks ?? [] : [];
+  const modes = projection ? surface?.modes ?? [] : [];
+  // The N-ary lead rule (peak → money → flow) replaces the binary U4 switch on
+  // the projected path; the v1 path keeps the AE7 emphasis lens.
+  const lead = projection ? leadBlock(blocks) : null;
+  const stack = projection ? cockpitStack(blocks, lead) : [];
+  const isPeakLead = projection
+    ? hasBlock(blocks, 'peak-band')
+    : leadArtifact(emphasis?.peak) === 'peakband';
+  const hasEvBlock = projection && hasBlock(blocks, 'eigenverbrauch');
 
   // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
   // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
@@ -595,6 +633,31 @@ export function AnlageSeite({
       clearInterval(timer);
     };
   }, [site.id, isPeakLead, reloadKey]);
+
+  // M3: the Eigenverbrauchs-Block's Autarkie / PV-Nutzung come from the EXISTING
+  // Historie totals of today (server-computed) - fetched ONLY when that block is
+  // part of the projection, so no other Ausprägung pays for it. A failure leaves
+  // the numbers null and the block simply omits those tiles (never a fake 0 %).
+  useEffect(() => {
+    if (!hasEvBlock) {
+      setDayTotals(null);
+      return undefined;
+    }
+    let active = true;
+    const load = () => {
+      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+      api.history(site.id, 'day', today).then(
+        (h) => active && setDayTotals(h.totals),
+        () => {},
+      );
+    };
+    load();
+    const timer = setInterval(load, POLL_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [site.id, hasEvBlock, reloadKey]);
 
   // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
   // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
@@ -674,9 +737,9 @@ export function AnlageSeite({
         <div className="vp-anlage-badges">
           <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>
           <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
-          {/* Interim access (M1): the deep views the cockpit does not link to
-              yet (Lastspitzen) - and a fast path to the ones it does - until
-              the M3 block drill-ins own them. */}
+          {/* M1's interim access. The M3 block drill-ins own the deep views on
+              the projected path, but the menu stays as the ONE place where
+              every view is reachable regardless of the active modes. */}
           <AnlageMoreMenu activeSub={null} onOpen={onOpenSub} />
           <button
             type="button"
@@ -696,6 +759,153 @@ export function AnlageSeite({
         </div>
       )}
 
+      {projection ? (
+        /* ===== M3 · Das Cockpit als Modul-Stapel (die Projektion) =========
+           Deterministische Reihenfolge nach report §1.3; jeder Block trägt
+           sein "von"-Tag und seine Drill-ins. Was kein Modus beisteuert,
+           erscheint nicht - auch nicht als leere Karte (§3). */
+        <>
+          {/* Die Zeitraum-Tabs regieren die Geld-Blöcke; ohne Geld-Modus
+              gibt es keinen Zeitraum zu wählen. */}
+          {hasBlock(blocks, 'erloes-komposition') && (
+            <PeriodTabs range={range} onRange={switchRange} />
+          )}
+
+          <div className="vp-stack">
+            {stack.map((b) => {
+              switch (b.id) {
+                case 'peak-band':
+                  return peakView ? (
+                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
+                      <PeakBand view={peakView} peak={siteEarnings?.peakShaving ?? null} />
+                    </CockpitBlock>
+                  ) : null;
+
+                case 'erloes-komposition':
+                  // M4 bringt seinen eigenen Kopf (Titel, "von"-Tag, Drill-in
+                  // in die ERLÖS-Historie) mit - hier wird er nur PLATZIERT.
+                  return (
+                    <Card
+                      key={b.id}
+                      padding="lg"
+                      radius="lg"
+                      className={`vp-block${b.lead ? ' vp-block-lead' : ''}`}
+                      style={{ minWidth: 0 }}
+                    >
+                      <ErloesKomposition
+                        streams={surface?.moneyStreams ?? []}
+                        money={siteEarnings}
+                        range={range}
+                        at={atDate}
+                        now={now}
+                        onOpenErloesHistorie={() => onOpenSub('historie')}
+                      />
+                    </Card>
+                  );
+
+                case 'energiefluss':
+                  return (
+                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
+                      {ovSite == null ? (
+                        <Skeleton height={240} radius="var(--vp-radius-md)" />
+                      ) : (
+                        <>
+                          {adaptiveLive.topology ? (
+                            <AdaptiveEnergyFlow
+                              topology={adaptiveLive.topology}
+                              stale={!adaptiveLive.topology.entities.some((e) => e.health === 'ok')}
+                            />
+                          ) : (
+                            <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
+                          )}
+                          {weatherWhyText && fresh && (
+                            <p className="vp-live-why">
+                              <Icon name="sun" size={14} /> {weatherWhyText}
+                            </p>
+                          )}
+                          <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+                            {ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : ''}
+                          </p>
+                          {controlView && <ControlStrip view={controlView} />}
+                        </>
+                      )}
+                    </CockpitBlock>
+                  );
+
+                case 'handel':
+                  return (
+                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
+                      <HandelBlockBody
+                        view={handelBlock({
+                          money: siteEarnings,
+                          slots: planSlots,
+                          now,
+                          slotMinutes: plan?.slotMinutes ?? 15,
+                          periodLabel: period,
+                        })}
+                      />
+                      {/* Der Fahrplan IST die Handels-Erzählung (§3). */}
+                      <div style={{ marginTop: 'var(--vp-space-3)' }}>
+                        <FahrplanBand
+                          plan={plan}
+                          plantKind={site.plantKind}
+                          now={now}
+                          loading={planLoading && plan == null}
+                          failed={planFailed}
+                          onOpen={() => onOpenSub('fahrplan')}
+                        />
+                      </div>
+                    </CockpitBlock>
+                  );
+
+                case 'eigenverbrauch':
+                  return (
+                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
+                      <EigenverbrauchBlockBody
+                        view={eigenverbrauchBlock({
+                          autarkiePct: dayTotals?.autarkiePct,
+                          eigenverbrauchPct: dayTotals?.eigenverbrauchPct,
+                          gridImportKwh: dayTotals?.gridImportKwh,
+                          slots: planSlots,
+                          now,
+                          slotMinutes: plan?.slotMinutes ?? 15,
+                        })}
+                      />
+                    </CockpitBlock>
+                  );
+
+                case 'geraete-automatik':
+                  return (
+                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
+                      <GeraeteAutomatikBody rows={automationRows(modes)} />
+                    </CockpitBlock>
+                  );
+
+                default:
+                  return null;
+              }
+            })}
+          </div>
+
+          {/* Die ruhige Toolbox-Zeile + "Mehr" (Wetter) - der Abschluss des
+              Stapels (§1.3). Kein Werben für einen bestimmten Modus. */}
+          <div className="vp-stack-foot">
+            <ToolboxPointer onOpen={() => onOpenSub('steuerung')} />
+            <button
+              type="button"
+              className="vp-block-drill"
+              onClick={() => onOpenSub('wetter')}
+            >
+              <Icon name="sun" size={14} />
+              {nextHourTempC != null
+                ? `Wetter · nächste Stunde ${fmtNum(nextHourTempC, '°C')}`
+                : 'Wetter am Standort'}
+            </button>
+          </div>
+        </>
+      ) : (
+        /* ===== v1 (un-migrated): byte-identical to today ================== */
+        <>
       {/* U4 · Peak-Band lead artifact: on the peak face the cockpit leads with
           the Spitzen-Verteidigung (¼-h-Mittel vs. Ziel + PS-4-Zahlen); Geld
           läuft darunter als Nachweis (AE4 secondary). Non-peak faces skip it. */}
@@ -923,6 +1133,8 @@ export function AnlageSeite({
           </div>
         </div>
       </div>
+        </>
+      )}
 
       {/* Single-Anlage customers have no Übersicht/Anlagen-Liste; their way to
           a SECOND Anlage is the always-visible "＋ Anlage hinzufügen" action in
