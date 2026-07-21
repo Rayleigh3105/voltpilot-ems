@@ -39,6 +39,10 @@ function pinnedPriceHash() {
   return fs.readFileSync(path.join(__dirname, 'pinned-price-hash.txt'), 'utf8').trim();
 }
 
+function pinnedFile(name) {
+  return fs.readFileSync(path.join(__dirname, name), 'utf8').trim();
+}
+
 function pinnedModbusReadHash() {
   return fs.readFileSync(path.join(__dirname, 'pinned-modbus-read-hash.txt'), 'utf8').trim();
 }
@@ -200,6 +204,30 @@ test('POST /compile compiles the modbus-read automation to its pinned artifact',
     await close();
   }
 });
+
+// #519: the three shapes that reached the sidecar and were REJECTED - the
+// guided "Sollwert setzen" rule (H3-a), the AE7 starter / pilot chain
+// (MEDIUM-5) and the two-window AND (H3-b). Activation POSTs exactly these
+// documents, so the sidecar is where the regression must be pinned.
+for (const [label, fixtureName, pinName] of [
+  ['guided setpoint rule', 'flow-graph.valid.guided-setpoint.json', 'pinned-guided-setpoint-hash.txt'],
+  ['AE7 starter chain', 'flow-graph.valid.selfconsumption-starter.json', 'pinned-selfconsumption-hash.txt'],
+  ['two-window AND', 'flow-graph.valid.two-window-and.json', 'pinned-two-window-hash.txt'],
+]) {
+  test('POST /compile compiles the ' + label + ' to its pinned artifact', async () => {
+    const { port, close } = await startServer();
+    try {
+      const graph = fixture(fixtureName);
+      const res = await request(port, 'POST', '/compile', { document: graph });
+      assert.strictEqual(res.status, 200, res.text);
+      assert.strictEqual(res.json.kind, 'artifact');
+      assert.strictEqual(res.json.flow_id, graph.flow_id);
+      assert.strictEqual(res.json.content_hash, pinnedFile(pinName));
+    } finally {
+      await close();
+    }
+  });
+}
 
 test('POST /compile honors a caller-supplied compiled_at without changing the hash', async () => {
   const { port, close } = await startServer();

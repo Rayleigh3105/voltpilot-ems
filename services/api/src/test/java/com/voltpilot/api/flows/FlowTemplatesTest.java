@@ -69,6 +69,48 @@ class FlowTemplatesTest {
         }
     }
 
+    /**
+     * MEDIUM-5 (#519): the starter templates wire {@code strategy.wunsch ->
+     * control.plan}, which flowc could not compile (no {@code plan} port, no
+     * plan-fed claim suppression) - so an auto-started flow validated, simulated
+     * and then died at activation with {@code compiler_rejected}. flowc now
+     * pins the SAME shape as the committed contract fixture
+     * {@code flow-graph.valid.selfconsumption-starter.json}; this test keeps the
+     * template and that fixture in lockstep, so a template change that flowc
+     * cannot compile fails HERE instead of at a customer's activation.
+     */
+    @Test
+    void privateStarterMatchesTheCompilerPinnedContractFixture() throws Exception {
+        java.nio.file.Path fixture = java.nio.file.Path.of("..", "..", "docs", "contracts", "v2",
+                "examples", "flow-graph.valid.selfconsumption-starter.json");
+        com.fasterxml.jackson.databind.JsonNode pinned =
+                MAPPER.readTree(java.nio.file.Files.readString(fixture));
+
+        ObjectNode doc = FlowTemplates.starterFlow(MAPPER, "private",
+                pinned.path("nodes").get(0).path("parameters").path("entity_id").asText());
+        FlowTemplates.applyDerivedClaims(doc, CATALOG);
+
+        assertThat(shape(doc))
+                .as("the AE7 starter must keep the shape flowc is pinned against")
+                .isEqualTo(shape(pinned));
+    }
+
+    /** Node types + edge (from-port -> to-port) wiring, ids aside. */
+    private static List<String> shape(com.fasterxml.jackson.databind.JsonNode doc) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        doc.path("nodes").forEach(n -> out.add("node " + n.path("type").asText()
+                + " claims=" + n.path("claims")));
+        java.util.Map<String, String> typeById = new java.util.HashMap<>();
+        doc.path("nodes").forEach(n -> typeById.put(n.path("id").asText(), n.path("type").asText()));
+        doc.path("edges").forEach(e -> out.add("edge "
+                + typeById.get(e.path("from").path("node").asText()) + "."
+                + e.path("from").path("port").asText() + " -> "
+                + typeById.get(e.path("to").path("node").asText()) + "."
+                + e.path("to").path("port").asText()));
+        java.util.Collections.sort(out);
+        return out;
+    }
+
     private static Set<String> nodeTypes(ObjectNode doc) {
         java.util.LinkedHashSet<String> types = new java.util.LinkedHashSet<>();
         doc.path("nodes").forEach(n -> types.add(n.path("type").asText()));

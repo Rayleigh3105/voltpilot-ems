@@ -25,8 +25,13 @@ class FlowGovernanceTest {
         assertThat(CATALOG.isGated("vp.strategy.selfconsumption")).isFalse();
         assertThat(CATALOG.isGated("vp.entity.control")).isFalse();
         assertThat(CATALOG.isGated("vp.price.dayahead")).isFalse();
+        // Gating is NOT a strategy-only concept: vp.price.current is a DATA node
+        // gated because the price down-channel to the device (E4) does not exist
+        // yet - a price automation would otherwise deploy and do nothing (#519,
+        // audit H3-c). It is unlocked per site once VoltPilot sets it up.
+        assertThat(CATALOG.isGated("vp.price.current")).isTrue();
         assertThat(CATALOG.gatedTypes()).containsExactlyInAnyOrder("vp.strategy.market",
-                "vp.strategy.peakshaving", "vp.strategy.atypical-grid");
+                "vp.strategy.peakshaving", "vp.strategy.atypical-grid", "vp.price.current");
     }
 
     @Test

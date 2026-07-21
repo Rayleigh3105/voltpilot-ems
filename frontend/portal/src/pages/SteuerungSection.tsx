@@ -47,7 +47,7 @@ import {
   type FlowSummary,
 } from '../flows/flowsApi';
 import { CUSTOMER_TEMPLATES, type CustomerTemplateDef } from '../flows/customerTemplates';
-import { lifecycleLabel, type EditorEntity, type FlowDocument } from '../flows/model';
+import { catalogType, lifecycleLabel, type EditorEntity, type FlowDocument } from '../flows/model';
 import { batteryEntity, pilotTemplate, simSummaryLine } from '../flows/templates';
 import { flowMode, paletteFilterFor, type SteuerungMode } from '../flows/steuerung';
 import {
@@ -156,6 +156,18 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
   const enabledGatedTypes = useMemo(
     () => (governance?.gatedNodes ?? []).filter((n) => n.enabled).map((n) => n.type),
     [governance],
+  );
+
+  /**
+   * Bedingungs-Arten des Baukastens, deren Katalog-Knoten GATED und für diese
+   * Anlage nicht freigeschaltet ist (AE7-Governance). Der Server verweigert die
+   * Aktivierung sonst mit `gated_node_not_enabled`, also wird die Art sichtbar
+   * gesperrt statt eine Regel bauen zu lassen, die nie live gehen kann.
+   */
+  const lockedCondKinds = useMemo<('price')[]>(
+    () => (catalogType('vp.price.current')?.gated
+      && !enabledGatedTypes.includes('vp.price.current') ? ['price'] : []),
+    [enabledGatedTypes],
   );
 
   /** Die MENGE der aktiven Modi (M0) - hier wird NICHTS neu abgeleitet. */
@@ -370,6 +382,8 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
                   entities={entities}
                   siteId={site.id}
                   busy={busy}
+                  lockedKinds={lockedCondKinds}
+                  lockedHint={EINRICHTUNG_DURCH_VOLTPILOT}
                   onCancel={() => setGuided(false)}
                   onBuild={(name, doc) => {
                     setGuided(false);

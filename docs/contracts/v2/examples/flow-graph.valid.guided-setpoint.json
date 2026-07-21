@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "6c1d8e2f-4a90-4b23-8c45-6789abcdef01",
+  "flow_version": 1,
+  "name": "Wallbox-Sollwert bei PV-Überschuss",
+  "description": "Die geführte Wenn/Dann-Regel mit der Aktion \"Sollwert setzen\": Bedingung -> Wert bei Bedingung -> Entität steuern über den Eingang `setpoint`. Genau die Form, die der geführte Regel-Baukasten (guidedBuilder.ts) erzeugt.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "draft",
+  "nodes": [
+    {
+      "id": "lesen1",
+      "type": "vp.entity.read",
+      "type_version": "1.0.0",
+      "label": "Netz-Leistung",
+      "parameters": { "entity_id": "grid-meter-1", "channel": "power_kw" }
+    },
+    {
+      "id": "schwelle1",
+      "type": "vp.logic.threshold",
+      "type_version": "1.1.0",
+      "label": "PV-Überschuss",
+      "parameters": { "threshold": -2.0, "hysteresis": 0.5, "direction": "below" }
+    },
+    {
+      "id": "wert1",
+      "type": "vp.logic.if",
+      "type_version": "1.0.0",
+      "label": "Ladeleistung",
+      "parameters": { "then_value": 11 }
+    },
+    {
+      "id": "steuern1",
+      "type": "vp.entity.control",
+      "type_version": "1.0.0",
+      "label": "Wallbox regeln",
+      "parameters": { "entity_id": "wallbox-1", "command": "setpoint_kw", "ttl_s": 300 },
+      "claims": [
+        { "entity_id": "wallbox-1", "commands": ["setpoint_kw"] }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "lesen1", "port": "value" }, "to": { "node": "schwelle1", "port": "input" } },
+    { "id": "e2", "from": { "node": "schwelle1", "port": "result" }, "to": { "node": "wert1", "port": "condition" } },
+    { "id": "e3", "from": { "node": "wert1", "port": "value" }, "to": { "node": "steuern1", "port": "setpoint" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "slot-boundary" }
+  ]
+}

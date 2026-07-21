@@ -235,10 +235,14 @@ authoritative implementations + their proofs:
   the graph→artifact→pinned-hash path. Keep the module dependency-free —
   `serve.js`/`Dockerfile` copy only `canonicalize.js`/`catalog.js`/`compile.js`.
   **U3 (#514) added to `catalog.js`:** `vp.logic.and`/`.or` (bool combinators,
-  two `a`/`b` inputs → `result`; the generated body combines the last value PER
-  `msg.topic` — Node-RED delivers all wires on one input, so distinct per-branch
-  topics are an edge-runtime refinement), `vp.price.current` (→ `vp-feed`
-  `feed:'price_current'`, a scalar the palette must learn — edge follow-up), and
+  two `a`/`b` inputs → `result`; since #519 the generated body keys on a
+  COMPILE-TIME per-edge discriminator — the compiler emits a tag node per
+  incoming edge setting `msg._vp_src` to the graph port name — because the old
+  `msg.topic` key collapsed two topic-less branches into one slot and computed
+  the WRONG boolean), `vp.price.current` (→ `vp-feed` `feed:'price_current'`,
+  now in the palette's `FEEDS` whitelist so the node is idle-safe "keine Daten"
+  instead of dead; the node is `gated` in the api/portal catalogs until the E4
+  price down-channel exists), and
   `vp.schedule.window` now accepts the editor's ENUM `days`
   (`alle`/`werktage`/`wochenende` → day-number array via `scheduleDays()`); the
   old `0..6`-array-only rule made EVERY schedule flow un-compilable. New fixtures

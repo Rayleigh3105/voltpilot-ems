@@ -32,9 +32,12 @@ const artifact = compile(flowGraph, { compiledAt: new Date().toISOString() });
   gemeinsame Vektoren `jcs-vectors.json`). Tab-/Knoten-IDs leiten sich aus
   `(flow_id, flow_version)` ab (`vpflow-<id8>-v<n>`), ein Redeploy ERSETZT.
   `compiled_at` default: feste Epoche (Cloud übergibt die Aktivierungszeit).
-  Der Test `compile.test.js` pinnt den Hash des Repo-Fixtures
-  (`pinned-hash.txt`) und `testdata/pv-surplus-heatrod.artifact.json` ist die
-  committete Cross-Language-Probe, die der Go-Deployer verifiziert.
+  Der Test `compile.test.js` pinnt den Hash jedes Repo-Fixtures
+  (`pinned-*.txt`) und `testdata/pv-surplus-heatrod.artifact.json` ist die
+  committete Cross-Language-Probe, die der Go-Deployer verifiziert. **Pins
+  werden NIE vom Test selbst erzeugt** (LOW-6): ein fehlender Pin lässt den
+  Test fehlschlagen, die Datei wird bewusst erzeugt und eingecheckt — ein
+  selbst-geschriebener Pin belegt Determinismus, nicht Korrektheit.
 - **`@vp-flow`-Tab-Marker** (D-12): jeder Artefakt-Tab trägt
   `info: "@vp-flow flow_id=<uuid> flow_version=<n>"` — der Reseed ersetzt nur
   die Vendor-Tab-Gruppe, der Deployer verweigert unmarkierte Bundles.
@@ -46,7 +49,13 @@ werden zu `inject`-Knoten, die in alle triggerbaren Datenknoten verdrahtet
 sind (re-emittieren den letzten Wert — stehende Wünsche frischen ihre TTL auch
 bei flachem Wert auf). Ein `value-change`-Trigger schreibt sein `deadband` in
 den beobachteten `vp-entity-read`-Knoten. Alle Katalogtypen sind bewusst
-Ein-Eingang-Formen (kein Port-Multiplexing nötig). Delegierende
+Ein-Eingang-Formen — mit EINER Ausnahme: die booleschen Kombinatoren
+`vp.logic.and`/`.or` (`discriminateInputs`). Für sie erzeugt der Compiler pro
+eingehender Kante einen generierten Tag-Knoten, der `msg._vp_src` auf den
+GRAPH-Portnamen setzt; der Kombinator schlüsselt seinen `seen`-Zustand darauf.
+Ohne diesen Compile-Zeit-Diskriminator kollabierten zwei Zweige ohne (oder mit
+gleichem) `msg.topic` — z. B. zwei `vp.schedule.window` — auf einen Slot, und
+das UND rechnete nicht ungenau, sondern falsch (#519 H3-b). Delegierende
 Strategie-Knoten (`vp.strategy.*`, `delegated: true`) kompilieren zu einem
 No-op: der Cloud-Plan kommandiert die Entität als Klasse `market`
 (plan-execution-ownership.md); der `vp-desired`-Publisher ist die EINZIGE

@@ -300,7 +300,37 @@ class FlowPeakShavingApiTest {
         exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + compoundId + "/deactivate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
 
-        // 2) Price automation: Börsenpreis < 10 ct -> Wallbox ein.
+        // 2) Price automation: Börsenpreis < 10 ct -> Wallbox ein. vp.price.current
+        // is GATED (#519 H3-c: the price down-channel to the device does not
+        // exist yet, so such a rule would deploy and silently do nothing) - the
+        // activation is refused until VoltPilot enables the node for the site.
+        String priceFlow = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
+                HttpMethod.POST, admin, TENANT_A,
+                Map.of("name", "Preisregel (gesperrt)")).getBody().path("flowId").asText();
+        String priceBase = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + priceFlow;
+        exchange(priceBase + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("name", "Preisregel (gesperrt)", "document", priceAutomation(wallbox)));
+        // It VALIDATES and SIMULATES fine - the gate is the activation, exactly
+        // where a silently-dead price rule must be stopped.
+        assertThat(exchange(priceBase + "/versions/1/validate", HttpMethod.POST, admin, TENANT_A,
+                Map.of()).getBody().path("valid").asBoolean()).isTrue();
+        String priceSim = exchange(priceBase + "/versions/1/simulate", HttpMethod.POST, admin,
+                TENANT_A, Map.of()).getBody().path("simulationId").asText();
+        assertThat(exchange(priceBase + "/versions/1/simulation/" + priceSim, HttpMethod.GET,
+                admin, TENANT_A, null).getBody().path("status").asText()).isEqualTo("done");
+        JsonNode priceGated = exchange(priceBase + "/versions/1/activate", HttpMethod.POST,
+                admin, TENANT_A, Map.of()).getBody();
+        assertThat(priceGated.path("activated").asBoolean()).isFalse();
+        assertThat(priceGated.path("reason").asText()).isEqualTo("gated_node_not_enabled");
+        assertThat(priceGated.path("gatedNodesNotEnabled").toString())
+                .contains("vp.price.current");
+        exchange(priceBase, HttpMethod.DELETE, admin, TENANT_A, null);
+
+        // Once VoltPilot enables the node for the site, the SAME rule activates.
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flow-node-governance",
+                HttpMethod.PUT, admin, TENANT_A,
+                Map.of("enablements", java.util.List.of(
+                        Map.of("nodeType", "vp.price.current", "enabled", true))));
         String priceId = createActivate(admin, "Wallbox bei günstigem Börsenpreis",
                 priceAutomation(wallbox));
 
@@ -313,6 +343,10 @@ class FlowPeakShavingApiTest {
                 HttpMethod.DELETE, admin, TENANT_A, null);
         exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/" + wallbox,
                 HttpMethod.DELETE, admin, TENANT_A, null);
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flow-node-governance",
+                HttpMethod.PUT, admin, TENANT_A,
+                Map.of("enablements", java.util.List.of(
+                        Map.of("nodeType", "vp.price.current", "enabled", false))));
     }
 
     @Test

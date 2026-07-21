@@ -177,10 +177,11 @@ class UsageProfileApiTest {
         exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/bootstrap",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
 
-        // Governance: the three gated strategy nodes, all disabled by default.
+        // Governance: the gated nodes (three strategies + the vp.price.current
+        // data node, #519 H3-c), all disabled by default.
         JsonNode gov = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flow-node-governance",
                 HttpMethod.GET, admin, TENANT_A, null).getBody();
-        assertThat(gov.path("gatedNodes").size()).isEqualTo(3);
+        assertThat(gov.path("gatedNodes").size()).isEqualTo(4);
         for (JsonNode n : gov.path("gatedNodes")) {
             assertThat(n.path("gated").asBoolean()).isTrue();
             assertThat(n.path("enabled").asBoolean()).isFalse();
