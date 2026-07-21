@@ -90,6 +90,14 @@ export interface Site {
    * "not active" (see moduleSurface.ts).
    */
   leistungspreisEurKw?: number | null;
+  /**
+   * Peak reserve (PS-2, `site.peak_reserve_soc_pct`): the hard SoC floor held
+   * back to shave an out-of-horizon peak. Echoed READ-ONLY (configured by
+   * VoltPilot via optimizer-config), and DEFENSIVELY OPTIONAL like
+   * leistungspreisEurKw - absent/null both read as "no peak reserve", so the
+   * SoC reservation stack (M2) simply omits that layer instead of inventing it.
+   */
+  peakReserveSocPct?: number | null;
 }
 
 export interface CreateSiteInput {
