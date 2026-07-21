@@ -24,29 +24,36 @@ export interface ProfileOption {
 }
 
 /**
- * The choices offered in the Nutzungsprofil step, "auto" first (the default,
- * ONE truth - the flow/entities decide). Copy is plain German, no internals.
+ * The choices offered in the "Womit sollen wir starten?" step, "auto" first
+ * (the default, ONE truth - the flow/entities decide). Copy is plain German,
+ * no internals.
+ *
+ * M1/F5 (Projektion #529, report §6.5): this pre-pick is now ONLY the
+ * auto-start TEMPLATE chooser. It no longer steers the portal surface - since
+ * M0/M1 the Anlagen-Seite is a projection of the ACTIVE MODES (`surface.ts`),
+ * not of one winning usage profile - so the copy promises a starting point,
+ * never a "Fokus" the portal would then apply.
  */
 export const PROFILE_OPTIONS: ProfileOption[] = [
   {
     value: 'auto',
     label: 'Automatisch',
-    sentence: 'VoltPilot leitet die Betonung aus Ihrer Anlage und Ihren Nutzungen ab (empfohlen).',
+    sentence: 'VoltPilot schlägt den Start passend zu Ihrer Anlage vor (empfohlen).',
   },
   {
     value: 'arbitrage',
     label: 'Markterlös',
-    sentence: 'Speicher am Strommarkt vermarkten - der Erlös steht im Mittelpunkt.',
+    sentence: 'Speicher am Strommarkt vermarkten - wir starten mit der Marktoptimierung.',
   },
   {
     value: 'peak',
     label: 'Lastspitzen',
-    sentence: 'Gewerbe mit Leistungsmessung - die Bezugsspitze und der Leistungspreis stehen im Fokus.',
+    sentence: 'Gewerbe mit Leistungsmessung - wir starten mit der Lastspitzenkappung.',
   },
   {
     value: 'private',
     label: 'Eigenverbrauch',
-    sentence: 'Haushalt - die Energieflüsse und die Gerätesteuerung stehen im Vordergrund.',
+    sentence: 'Haushalt - wir starten mit der Eigenverbrauchs-Optimierung.',
   },
 ];
 

@@ -6,13 +6,47 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 import logoUrl from '../../designsystem/assets/voltpilot-logo.png';
 import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
-import { anlagenLabel, MAIN_PAGES, PLATFORM_PAGES, PORTFOLIO_PAGE, pageLabel, type PageId } from '../nav';
+import {
+  anlagenLabel,
+  MAIN_PAGES,
+  MODE_PAGES,
+  PLATFORM_PAGES,
+  PORTFOLIO_PAGE,
+  pageLabel,
+  type PageId,
+} from '../nav';
+import type { AnlageArea, AnlageAreaKey, ModeNavGroup } from '../anlageNav';
+import type { AnlagenSub } from '../nav';
+
+/**
+ * The Anlage-scoped shell navigation (M1 #529): the context switcher + the
+ * trio `Übersicht · Steuerung · Geräte` + the mode-tagged knowledge group.
+ * Present whenever exactly one Anlage is in scope; null otherwise (fleet list,
+ * Portfolio, Plattform pages) — the shell then renders as before.
+ */
+export interface AnlageNav {
+  /** The Anlage in scope (the static label / the switcher's current value). */
+  siteId: string;
+  siteName: string;
+  /** All Anlagen of the tenant; 2+ turn the label into a real switcher. */
+  sites: { id: string; name: string }[];
+  onSelectSite: (siteId: string) => void;
+  /** The trio, with Steuerung's active-mode badge (see `anlageTrio`). */
+  trio: AnlageArea[];
+  /** Which trio entry is current; null while a deep view is open. */
+  activeArea: AnlageAreaKey | null;
+  onOpenArea: (sub: AnlagenSub | null) => void;
+  /** Mode-scoped sidebar group (market mode only); null = hidden. */
+  modeGroup: ModeNavGroup | null;
+}
 
 /**
  * The unified dashboard shell: left sidebar (primary navigation, identical for
  * both roles; Portal-Admins additively get the "Plattform" group), top bar
  * (breadcrumb, tenant context, user menu) and the main content area.
- * Collapses to a hamburger drawer below 1024px.
+ * Collapses to a hamburger drawer below 1024px — EXCEPT the Anlage trio, which
+ * becomes an app-like bottom bar on phones (M1): the three core areas never
+ * hide behind a hamburger.
  */
 export function AppShell({
   page,
@@ -26,6 +60,7 @@ export function AppShell({
   tenants,
   tenantOverride,
   onTenantChange,
+  anlage = null,
   children,
 }: {
   page: PageId;
@@ -52,6 +87,8 @@ export function AppShell({
   /** Admin only: the selected tenant id ('' = Alle Mandanten). */
   tenantOverride: string | null;
   onTenantChange: (tenantId: string | null) => void;
+  /** M1: the Anlage-scoped nav (trio + context + mode group); null = none. */
+  anlage?: AnlageNav | null;
   children: React.ReactNode;
 }) {
   const user = currentUser();
@@ -89,6 +126,78 @@ export function AppShell({
     setMobileNav(false);
   };
 
+  const openArea = (sub: AnlagenSub | null) => {
+    anlage?.onOpenArea(sub);
+    setMobileNav(false);
+  };
+
+  /**
+   * M1: the Anlage context + trio + the mode-tagged knowledge group. Rendered
+   * INSIDE the sidebar nav, directly under the main pages, so the customer's
+   * "where am I" (the Anlage) and "what can I do here" (the three areas) sit
+   * together. Fleets get a real switcher; a single-Anlage customer a calm
+   * static label (there is nothing to switch to).
+   */
+  const anlageNav = anlage && (
+    <div className="vp-anlagenav">
+      <div className="vp-anlagenav-ctx">
+        {anlage.sites.length > 1 ? (
+          <span className="vp-anlagenav-switch" title="Anlage wechseln">
+            <Icon name="sun" size={16} className="vp-anlagenav-ic" />
+            <select
+              aria-label="Anlage wählen"
+              value={anlage.siteId}
+              onChange={(e) => {
+                anlage.onSelectSite(e.target.value);
+                setMobileNav(false);
+              }}
+            >
+              {anlage.sites.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevron-down" size={16} className="vp-anlagenav-caret" />
+          </span>
+        ) : (
+          <span className="vp-anlagenav-label">
+            <Icon name="sun" size={16} className="vp-anlagenav-ic" />
+            <span className="t">{anlage.siteName}</span>
+          </span>
+        )}
+      </div>
+      {anlage.trio.map((a) => (
+        <NavItem
+          key={a.key}
+          icon={<Icon name={a.icon} size={18} />}
+          label={a.label}
+          count={a.badge}
+          active={anlage.activeArea === a.key}
+          onClick={() => openArea(a.sub)}
+        />
+      ))}
+      {anlage.modeGroup && (
+        <>
+          <div className="vp-nav-group-label">{anlage.modeGroup.title}</div>
+          {anlage.modeGroup.pages.map((id) => {
+            const def = MODE_PAGES.find((p) => p.id === id);
+            if (!def) return null;
+            return (
+              <NavItem
+                key={def.id}
+                icon={<Icon name={def.icon} size={18} />}
+                label={def.label}
+                active={page === def.id}
+                onClick={() => navigate(def.id)}
+              />
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+
   const sidebar = (
     <aside className={`vp-sidebar ${mobileNav ? 'mobile-open' : ''}`}>
       <div className="brand">
@@ -121,6 +230,7 @@ export function AppShell({
             onClick={() => navigate(p.id)}
           />
         ))}
+        {anlageNav}
         {isAdmin && (
           <>
             <div className="vp-nav-group-label">Plattform</div>
@@ -230,8 +340,31 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="vp-main">{children}</main>
+        <main className={`vp-main${anlage ? ' has-bottombar' : ''}`}>{children}</main>
       </div>
+
+      {anlage && (
+        // M1: the trio as an app-like bottom bar on phones (report §2.1) - the
+        // three core areas of an Anlage must never hide behind the hamburger.
+        // Hidden above 720px by CSS; the sidebar carries it there.
+        <nav className="vp-bottombar" aria-label={`Bereiche der Anlage ${anlage.siteName}`}>
+          {anlage.trio.map((a) => (
+            <button
+              key={a.key}
+              type="button"
+              className={`vp-bottombar-item${anlage.activeArea === a.key ? ' active' : ''}`}
+              aria-current={anlage.activeArea === a.key ? 'page' : undefined}
+              onClick={() => openArea(a.sub)}
+            >
+              <span className="ic" aria-hidden="true">
+                <Icon name={a.icon} size={20} />
+                {a.badge != null && <span className="vp-bottombar-badge">{a.badge}</span>}
+              </span>
+              <span className="lbl">{a.label}</span>
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }

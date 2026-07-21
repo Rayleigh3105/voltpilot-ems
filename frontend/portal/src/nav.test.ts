@@ -6,8 +6,22 @@ import {
   pageLabel,
   pageRoute,
   parseRoute,
+  type AnlagenSub,
   type Route,
 } from './nav';
+import { anlageTrio, DEEP_VIEW_ITEMS } from './anlageNav';
+
+/** Every AnlagenSub route that exists. */
+const ALL_SUBS: AnlagenSub[] = [
+  'live',
+  'fahrplan',
+  'historie',
+  'wetter',
+  'technik',
+  'entitaeten',
+  'steuerung',
+  'lastspitzen',
+];
 
 /**
  * The hash router of the Anlagen IA (captain decision 2026-07-07): four
@@ -114,6 +128,56 @@ describe('anlagenLabel', () => {
     expect(anlagenLabel(1)).toBe('Meine Anlage');
     expect(anlagenLabel(2)).toBe('Meine Anlagen');
     expect(pageLabel('anlagen', 3)).toBe('Meine Anlagen');
+  });
+});
+
+/**
+ * M1 (#529): the per-Anlage tab bar is retired, but NO route may break with it
+ * - every subpage hash and every retired top-level hash still resolves, and
+ * every deep view reachable in the UI is a real route.
+ */
+describe('M1: no route breaks when the tab bar is retired', () => {
+  it('still resolves every Anlage subpage hash', () => {
+    for (const sub of ALL_SUBS) {
+      expect(parseRoute(`#/anlage/s-1/${sub}`)).toEqual({ page: 'anlagen', siteId: 's-1', sub });
+    }
+  });
+
+  it('still redirects the retired top-level hashes into the Anlage', () => {
+    expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: 'live' });
+    expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
+    expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'historie' });
+    expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
+    expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
+    expect(parseRoute('#/geraete')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
+    expect(parseRoute('#/anlage/s-1/optimierung')).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'steuerung',
+    });
+  });
+
+  it('keeps Marktpreise/Prognose addressable although they left the main nav', () => {
+    expect(parseRoute('#/marktpreise')).toEqual(route('marktpreise'));
+    expect(parseRoute('#/prognose')).toEqual(route('prognose'));
+    expect(pageLabel('marktpreise')).toBe('Marktpreise');
+    expect(pageLabel('prognose')).toBe('Prognosequalität');
+  });
+
+  it('routes every UI-reachable deep view (trio + interim "Mehr" menu)', () => {
+    const reachable = [
+      ...anlageTrio(0)
+        .map((a) => a.sub)
+        .filter((s): s is AnlagenSub => s != null),
+      ...DEEP_VIEW_ITEMS.map((i) => i.sub),
+    ];
+    for (const sub of reachable) {
+      expect(parseRoute(hashForRoute(anlageRoute('s-1', sub)))).toEqual({
+        page: 'anlagen',
+        siteId: 's-1',
+        sub,
+      });
+    }
   });
 });
 

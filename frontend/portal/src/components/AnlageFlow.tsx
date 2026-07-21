@@ -1170,13 +1170,14 @@ function NutzungStep({ site, onNext }: { site: Site; onNext: (outcome: AutoStart
       </section>
 
       <section className="vp-onb-block">
-        <h4 className="vp-onb-block-title">Nutzungsprofil</h4>
+        <h4 className="vp-onb-block-title">Womit sollen wir starten?</h4>
         <p className="vp-note" style={{ marginTop: 0 }}>
-          Bestimmt, worauf Ihre Ansicht den Fokus legt.
-          {choice === 'auto' && ` Abgeleitet aus Ihrer Anlage: ${derivedLabel}.`}
+          Bestimmt, welche Steuerung wir für Sie einrichten. Sie können jederzeit
+          weitere Modi hinzufügen oder wieder abschalten.
+          {choice === 'auto' && ` Vorschlag für Ihre Anlage: ${derivedLabel}.`}
         </p>
         <fieldset className="vp-schonung">
-          <legend className="vp-visually-hidden">Nutzungsprofil</legend>
+          <legend className="vp-visually-hidden">Start-Steuerung</legend>
           {PROFILE_OPTIONS.map((o) => (
             <label
               key={o.value}

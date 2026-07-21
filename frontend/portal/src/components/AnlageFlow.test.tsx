@@ -230,7 +230,8 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
     // Step 4: Nutzung - the adaptive step (Geräte + Nutzungsprofil + Speicher).
     expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Nutzungsprofil' })).toBeInTheDocument();
+    // M1/F5: the pre-pick is the auto-start TEMPLATE chooser, not a face switch.
+    expect(screen.getByRole('heading', { name: 'Womit sollen wir starten?' })).toBeInTheDocument();
     await skipNutzung();
 
     // Fertig: the summary names PV, Speicher, Gerät and the source.
@@ -365,8 +366,8 @@ describe('NutzungStep - the AE5 adaptive step (entities + usage profile + Speich
     fireEvent.click(await screen.findByRole('button', { name: 'Gerät habe ich noch nicht - später' }));
     expect(await screen.findByText('Wie nutzen Sie Ihre Anlage?')).toBeInTheDocument();
 
-    // The derived profile (Eigenverbrauch) is surfaced.
-    expect(await screen.findByText(/Abgeleitet aus Ihrer Anlage: Eigenverbrauch/)).toBeInTheDocument();
+    // The suggested starting point (Eigenverbrauch) is surfaced.
+    expect(await screen.findByText(/Vorschlag für Ihre Anlage: Eigenverbrauch/)).toBeInTheDocument();
 
     // Override to Markterlös (arbitrage).
     fireEvent.click(await screen.findByRole('radio', { name: /Markterlös/ }));

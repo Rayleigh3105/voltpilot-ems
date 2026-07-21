@@ -24,6 +24,8 @@ import {
   type Route,
 } from './nav';
 import { showAddAnlageButton } from './addAnlage';
+import { activeAreaKey, anlageTrio, modeNavGroup, resolveAnlage } from './anlageNav';
+import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
 import { UebersichtPage } from './pages/UebersichtPage';
@@ -570,6 +572,37 @@ function UnifiedPortal() {
     onReload: (selectSiteId?: string) => void reload(selectSiteId),
   };
 
+  // M1 (#529): the Anlage-scoped shell nav. Scoped to the SAME Anlage the
+  // AnlagenPage renders (resolveAnlage is shared, so the two can never
+  // disagree), and only while that page is open - the Portfolio, the fleet
+  // list and the Plattform pages keep the plain shell. The Steuerung badge +
+  // the mode-scoped knowledge group come from the M0 read-model; the fetch is
+  // fail-soft, so an older backend just yields no badge and no group.
+  // The mode-scoped pages (Marktpreise/Prognosequalität) keep the Anlage nav
+  // too - they are that Anlage's market-mode deep views, so leaving the trio
+  // behind when opening one would strand the customer.
+  const shellSite =
+    page === 'anlagen'
+      ? resolveAnlage(sites, route.siteId)
+      : page === 'marktpreise' || page === 'prognose'
+        ? resolveAnlage(sites, selectedSite)
+        : null;
+  const { surface } = useAnlageSurface(shellSite);
+  const anlageNav = shellSite
+    ? {
+        siteId: shellSite.id,
+        siteName: shellSite.name,
+        sites: sites.map((s) => ({ id: s.id, name: s.name })),
+        onSelectSite: (id: string) => navigate(anlageRoute(id)),
+        trio: anlageTrio(surface?.modes.length ?? null),
+        // A mode page is not one of the three areas - nothing is highlighted.
+        activeArea: page === 'anlagen' ? activeAreaKey(route.sub) : null,
+        onOpenArea: (sub: Parameters<typeof anlageRoute>[1]) =>
+          navigate(anlageRoute(shellSite.id, sub ?? null)),
+        modeGroup: modeNavGroup(surface?.deepViews ?? null),
+      }
+    : null;
+
   const needsTenantPick = isAdmin && tenantId == null && !isPlatformPage(page);
 
   // An INITIAL sites/devices load failure must not masquerade as an empty
@@ -633,6 +666,7 @@ function UnifiedPortal() {
       tenants={tenants}
       tenantOverride={tenantId}
       onTenantChange={changeTenant}
+      anlage={anlageNav}
     >
       {error && !loadFailed && (
         <div
@@ -698,7 +732,6 @@ function UnifiedPortal() {
               onNavigate={navigate}
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
-              betriebsart={betriebsart}
             />
           )}
           {page === 'marktpreise' && (
