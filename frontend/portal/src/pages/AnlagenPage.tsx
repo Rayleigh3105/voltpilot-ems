@@ -57,6 +57,8 @@ import {
   ToolboxPointer,
 } from '../components/CockpitBlocks';
 import { ErloesKomposition } from '../components/ErloesKomposition';
+import { AnlageSetup } from '../components/AnlageSetup';
+import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
 import { peakBand, quarterHourMeanImportKw } from '../peakBand';
 import { PeakBand } from '../components/PeakBand';
 import { FahrplanBand } from '../components/FahrplanBand';
@@ -399,6 +401,7 @@ export function AnlageSeite({
   sites,
   onOpenSub,
   onBackToList,
+  onReload,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -610,6 +613,23 @@ export function AnlageSeite({
     : leadArtifact(emphasis?.peak) === 'peakband';
   const hasEvBlock = projection && hasBlock(blocks, 'eigenverbrauch');
 
+  // M5 (#533): die Ausprägung "Neu / leer" — das Cockpit IST der
+  // Einrichtungspfad. Die Weiche ist bewusst eng (siehe `setupPath.ts`): eine
+  // LAUFENDE v1-Anlage ohne v2-Entitäten behält ihr Cockpit; nur eine Anlage,
+  // die noch nie Messdaten geliefert hat, bekommt den geführten Pfad. `pinned`
+  // hält ihn stehen, während der Kunde mitten in der Kette steht (nach einer
+  // Übernahme), damit die Seite nicht unter ihm wegspringt.
+  const [setupPinned, setSetupPinned] = useState(false);
+  const showSetup =
+    setupPinned ||
+    setupPathActive({
+      hasEntities: surface?.base.hasEntities,
+      modeCount: surface?.modes.length ?? 0,
+      statusLoaded: ovSite != null,
+      lastSeenAt: ovSite?.lastSeenAt ?? null,
+      hasLiveSample: ovSite?.live != null,
+    });
+
   // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
   // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
   // 20-min window always covers the running quarter; polled on the 30 s cadence.
@@ -724,7 +744,10 @@ export function AnlageSeite({
             />
             {site.name}
           </h1>
-          {sentence ? (
+          {showSetup ? (
+            // M5: der Leer-Zustand spricht nicht von "offline", sondern vom Weg.
+            <p className="vp-anlage-sentence tone-warn">{SETUP_STATUS_LINE}</p>
+          ) : sentence ? (
             <p className={`vp-anlage-sentence tone-${sentence.tone}`}>{sentence.text}</p>
           ) : overviewFailed ? (
             <p className="vp-anlage-sentence tone-off">
@@ -759,7 +782,20 @@ export function AnlageSeite({
         </div>
       )}
 
-      {projection ? (
+      {showSetup ? (
+        /* ===== M5 · Der Leer-Zustand IST der Einrichtungspfad =============
+           Ausprägung "Neu / leer" (report §3): keine Entitäten, keine Modi,
+           noch nie Daten - also keine Platzhalter-Karten, sondern die drei
+           Schritte zum fertigen EMS. */
+        <AnlageSetup
+          site={site}
+          deviceCount={ovSite?.deviceCount ?? 0}
+          onOpenSteuerung={() => onOpenSub('steuerung')}
+          onOpenGeraete={() => onOpenSub('entitaeten')}
+          onReload={onReload}
+          onStay={setSetupPinned}
+        />
+      ) : projection ? (
         /* ===== M3 · Das Cockpit als Modul-Stapel (die Projektion) =========
            Deterministische Reihenfolge nach report §1.3; jeder Block trägt
            sein "von"-Tag und seine Drill-ins. Was kein Modus beisteuert,

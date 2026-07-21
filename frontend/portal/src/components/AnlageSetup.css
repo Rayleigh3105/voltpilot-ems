@@ -1,0 +1,189 @@
+/*
+ * M5 · Leer-Zustand + Anlege-Kette (#533) — der Einrichtungspfad.
+ *
+ * Komponenten-lokale Datei wie bei M3 (`CockpitBlocks.css`) und M4
+ * (`ErloesKomposition.css`): M5 landet parallel zu M6 und fasst dafür die
+ * geteilte `src/index.css` NICHT an. Tokens kommen aus dem Design-System;
+ * jedes Flex-/Grid-Kind trägt `min-width: 0`, damit auf 375 px nichts
+ * horizontal überläuft.
+ */
+
+.vp-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+/* --- Die Schritt-Liste ---------------------------------------------------- */
+
+.vp-setup-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-setup-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+/* Ein noch nicht erreichter Schritt ist sichtbar, aber ruhig — nie versteckt. */
+.vp-setup-step.is-todo {
+  opacity: 0.6;
+}
+
+.vp-setup-num {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #fff;
+  background: var(--vp-text-gray, #718096);
+}
+.vp-setup-step.is-done .vp-setup-num {
+  background: var(--vp-success, #2f855a);
+}
+.vp-setup-step.is-current .vp-setup-num {
+  background: var(--vp-action, #2c5282);
+}
+.vp-setup-step.is-todo .vp-setup-num {
+  background: var(--vp-border, #ced4da);
+}
+
+.vp-setup-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vp-setup-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--vp-text-dark, #1a202c);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setup-line {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setup-action {
+  margin-top: var(--vp-space-2, 8px);
+  display: flex;
+  gap: var(--vp-space-2, 8px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* --- Die gemeldeten Geräte (Schritt 2) ------------------------------------ */
+
+.vp-setup-reported {
+  list-style: none;
+  margin: var(--vp-space-2, 8px) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-setup-source {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-bg-subtle, #f1f3f5);
+}
+
+.vp-setup-source-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.vp-setup-source-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--vp-text-dark, #1a202c);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setup-source-sub {
+  font-size: 0.72rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setup-source-hint {
+  font-size: 0.72rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Die Brücke „übernommen → Regel anlegen?" ----------------------------- */
+
+.vp-setup-bridge {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  min-width: 0;
+  padding: var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-md, 10px);
+  border-left: 4px solid var(--vp-success, #2f855a);
+  background: var(--vp-bg-subtle, #f1f3f5);
+}
+
+.vp-setup-bridge-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+
+.vp-setup-bridge-text {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--vp-text-dark, #1a202c);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setup-bridge-hint {
+  font-size: 0.74rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-setup-foot {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
