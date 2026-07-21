@@ -21,7 +21,6 @@ const ALL_SUBS: (AnlagenSub | null)[] = [
   'wetter',
   'technik',
   'entitaeten',
-  'simulation',
   'steuerung',
 ];
 

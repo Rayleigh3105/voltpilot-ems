@@ -1,16 +1,12 @@
 /**
- * Ersparnis-Simulation surfaces: the shared result view (headline sentence,
- * 3-way scenario cards, monthly chart, Beispieltag dispatch, Größen-Sweep,
- * honest footnote) plus the customer form/section for one Anlage. The admin
- * Ersparnis-Rechner reuses SimulationRunView/SimulationResultView with its
- * own form. All wording/derivation is the pure src/simulation.ts.
+ * Shared simulation surfaces: the result view (headline sentence, 3-way
+ * scenario cards, monthly chart, Beispieltag dispatch, Größen-Sweep, honest
+ * footnote) plus the `useSimulationJob` polling hook. Consumed by the flow
+ * editor's dry-run. All wording/derivation is the pure src/simulation.ts.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
-import { Button } from '../../designsystem/components/core/Button';
-import { Icon } from '../../designsystem/components/core/Icon';
-import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type Site } from '../api';
+import { ApiError } from '../api';
 import { chartTheme } from '../chartTheme';
 import { useEChart } from '../useEChart';
 import { eurAmount, fmtNum } from '../format';
@@ -395,100 +391,4 @@ function SweepChart({ data }: { data: NonNullable<ReturnType<typeof sweepChartDa
       <div ref={ref} className="vp-chart compact" />
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Customer section (the Anlage subpage)
-// ---------------------------------------------------------------------------
-
-export function SimulationSection({ site }: { site: Site }) {
-  const [annualKwh, setAnnualKwh] = useState('4500');
-  const [capacityKwh, setCapacityKwh] = useState('');
-  const [pvKwp, setPvKwp] = useState('');
-  const [netzladenWhatIf, setNetzladenWhatIf] = useState(false);
-  const jobApi = useMemo<SimulationJobApi>(
-    () => ({
-      start: (input) => api.startSimulation(site.id, input),
-      poll: (id) => api.simulationStatus(site.id, id),
-    }),
-    [site.id],
-  );
-  const job = useSimulationJob(jobApi);
-
-  const submit = () => {
-    const input: SimulationRequestInput = {
-      consumption: { annualKwh: parseNumber(annualKwh) ?? undefined },
-    };
-    const capacity = parseNumber(capacityKwh);
-    if (capacity != null) input.battery = { capacityKwh: capacity };
-    const kwp = parseNumber(pvKwp);
-    if (kwp != null) input.plant = { pvKwp: kwp };
-    if (netzladenWhatIf) input.tariff = { netzladenErlaubt: true };
-    void job.start(input);
-  };
-
-  return (
-    <>
-      <Card padding="lg" radius="lg" className="vp-sim-form-card">
-        <p className="vp-sim-intro">
-          Wie hätte sich Ihre Anlage im letzten Jahr geschlagen - ohne Speicher, mit einem
-          Standard-Speicher und mit VoltPilot? Die Simulation rechnet mit den echten
-          Börsenpreisen und dem echten Wetter an Ihrem Standort. Tarif, Speicher und
-          Anlagendaten kommen aus Ihren Stammdaten; einzelne Werte können Sie hier
-          testweise ändern.
-        </p>
-        <div className="vp-sim-form">
-          <Input
-            label="Jahresverbrauch (kWh)"
-            inputMode="decimal"
-            value={annualKwh}
-            onChange={(e) => setAnnualKwh(e.target.value)}
-            hint="Ihr Haushaltsstromverbrauch pro Jahr."
-          />
-          <Input
-            label="Speichergröße (kWh)"
-            inputMode="decimal"
-            value={capacityKwh}
-            onChange={(e) => setCapacityKwh(e.target.value)}
-            placeholder="aus den Stammdaten"
-            hint="Leer lassen = Ihr hinterlegter Speicher."
-          />
-          <Input
-            label="PV-Leistung (kWp)"
-            inputMode="decimal"
-            value={pvKwp}
-            onChange={(e) => setPvKwp(e.target.value)}
-            placeholder="aus den Stammdaten"
-            hint="Leer lassen = Ihre hinterlegte PV-Anlage."
-          />
-          <label className="vp-sim-check">
-            <input
-              type="checkbox"
-              checked={netzladenWhatIf}
-              onChange={(e) => setNetzladenWhatIf(e.target.checked)}
-            />
-            Was wäre, wenn mein Speicher auch aus dem Netz laden dürfte?
-          </label>
-        </div>
-        <div className="vp-sim-actions">
-          <Button
-            variant="primary"
-            iconLeft={<Icon name="trending-up" size={18} />}
-            disabled={job.busy}
-            onClick={submit}
-          >
-            {job.busy ? 'Simulation läuft …' : 'Simulation starten'}
-          </Button>
-        </div>
-      </Card>
-      <SimulationRunView status={job.status} error={job.error} />
-    </>
-  );
-}
-
-function parseNumber(raw: string): number | null {
-  const trimmed = raw.trim().replace(',', '.');
-  if (!trimmed) return null;
-  const n = Number(trimmed);
-  return Number.isFinite(n) ? n : null;
 }
