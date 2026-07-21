@@ -107,4 +107,9 @@ authoritative state machine lives in the platform API.
 - **No guard parameters, no priorities.** Guard limits live in the entity registry; desired
   priority is fixed to class `flow` by the runtime. A flow cannot state "I am more important".
 - **No topics, no registers, no driver details.** The graph speaks entities and capabilities;
-  transport/driver wiring is the vendor layer's self-wiring, unchanged.
+  transport/driver wiring is the vendor layer's self-wiring, unchanged. ONE scoped exception,
+  logged as decision D-15 in the [README decision log](./README.md): catalog types in the
+  `vp.modbus.*` domain MAY carry transport-level parameters (host/register/data type) as a
+  runtime-`edge`-only power-user escape hatch — read free, write governance-gated and outside
+  the guard/arbitration model; the entity abstraction remains the default and the only
+  certified path.

@@ -95,6 +95,26 @@ export function actuateCommands(entity: SiteEntity): string[] {
   return (entity.capabilities?.actuate ?? []).map((a) => a.command);
 }
 
+/** The contract's open channel vocabulary (CHANNEL_RE, edge-entity §2). */
+const CHANNEL_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
+
+/**
+ * Parse a comma/space/newline-separated measure-channel list (the MB-M1
+ * modbus-generic drawer editor, e.g. "leistung_kw, wasser_temp_c"). Returns
+ * the deduplicated channel names, or null when any entry violates the open
+ * channel vocabulary (klein geschrieben, Buchstaben/Ziffern/Unterstrich).
+ * An empty input yields [].
+ */
+export function parseChannelList(text: string): string[] | null {
+  const parts = text.split(/[\s,;]+/).filter((p) => p.length > 0);
+  const channels: string[] = [];
+  for (const part of parts) {
+    if (!CHANNEL_PATTERN.test(part)) return null;
+    if (!channels.includes(part)) channels.push(part);
+  }
+  return channels;
+}
+
 const GUARD_LIMIT_LABELS: Record<string, string> = {
   max_charge_kw: 'Max. Ladeleistung',
   max_discharge_kw: 'Max. Entladeleistung',

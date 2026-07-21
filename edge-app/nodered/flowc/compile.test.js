@@ -23,7 +23,8 @@ function fixture(name) {
 // generated shapes. Anything else appearing in a bundle is a compiler bug
 // (and would break the "no user code paths" isolation guarantee).
 const WHITELISTED_NR_TYPES = new Set([
-  'tab', 'vp-entity-read', 'vp-feed', 'vp-desired', 'vp-notify', 'function', 'inject',
+  'tab', 'vp-entity-read', 'vp-feed', 'vp-desired', 'vp-notify', 'vp-modbus-read',
+  'function', 'inject',
 ]);
 
 test('pv-surplus-heatrod fixture compiles deterministically', () => {
@@ -280,6 +281,100 @@ test('pinned content hash of the price-wallbox fixture', () => {
   const pinned = fs.readFileSync(pinFile, 'utf8').trim();
   assert.strictEqual(a.content_hash, pinned,
     'price-wallbox compiler output drifted from the committed pin (pinned-price-hash.txt)');
+});
+
+// MB-M1: the generic Modbus read compiles to the DATA-ONLY vp-modbus-read
+// palette node (no generated code - the whitelisted-codegen stance holds),
+// carries the entity mapping into required_entities, and lifts the artifact's
+// palette floor to 0.3.0 so old devices degrade honestly.
+test('modbus-read fixture compiles to the data-only palette node', () => {
+  const graph = fixture('flow-graph.valid.modbus-read.json');
+  const a = compile(graph);
+  for (const n of a.bundle.nodered_flows) {
+    assert.ok(WHITELISTED_NR_TYPES.has(n.type), 'unexpected node type ' + n.type);
+  }
+  const mb = a.bundle.nodered_flows.find((n) => n.type === 'vp-modbus-read');
+  assert.ok(mb, 'the read node compiles to vp-modbus-read');
+  assert.strictEqual(mb.host, '192.168.40.17');
+  assert.strictEqual(mb.port, 502);
+  assert.strictEqual(mb.unit_id, 1);
+  assert.strictEqual(mb.register_kind, 'input');
+  assert.strictEqual(mb.address, 100);
+  assert.strictEqual(mb.data_type, 'float32');
+  assert.strictEqual(mb.word_order, 'big');
+  assert.strictEqual(mb.scale, 0.001);
+  assert.strictEqual(mb.entity, 'modbus-meter-1');
+  assert.strictEqual(mb.channel, 'leistung_kw');
+  assert.strictEqual(mb.func, undefined, 'data-only config - never generated code');
+
+  // The mapping contributes the measure requirement; the control its actuate.
+  assert.deepStrictEqual(a.required_entities, [
+    { entity_id: 'modbus-meter-1', capabilities: ['measure:leistung_kw'] },
+    { entity_id: 'wallbox-1', capabilities: ['actuate:on_off'] },
+  ]);
+
+  // The palette floor lifts to 0.3.0 (deploy.go acks `unsupported` below it).
+  assert.strictEqual(a.min_palette_version, '0.3.0');
+
+  // Wiring: read -> threshold -> control.
+  const threshold = a.bundle.nodered_flows.find((n) => n.type === 'function');
+  const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
+  assert.deepStrictEqual(mb.wires, [[threshold.id]]);
+  assert.deepStrictEqual(threshold.wires, [[desired.id]]);
+});
+
+test('pinned content hash of the modbus-read fixture', () => {
+  const a = compile(fixture('flow-graph.valid.modbus-read.json'));
+  const pinFile = path.join(__dirname, 'pinned-modbus-read-hash.txt');
+  if (!fs.existsSync(pinFile)) {
+    fs.writeFileSync(pinFile, a.content_hash + '\n');
+  }
+  const pinned = fs.readFileSync(pinFile, 'utf8').trim();
+  assert.strictEqual(a.content_hash, pinned,
+    'modbus-read compiler output drifted from the committed pin (pinned-modbus-read-hash.txt)');
+});
+
+test('modbus-read validator rules: host, mapping pairing, duplicate mapping', () => {
+  const base = fixture('flow-graph.valid.modbus-read.json');
+  const mutate = (fn) => {
+    const g = JSON.parse(JSON.stringify(base));
+    fn(g);
+    return g;
+  };
+  const findRule = (g, rule) => validate(g).some((f) => f.rule === rule);
+
+  assert.deepStrictEqual(validate(base), [], 'the committed fixture validates clean');
+  assert.ok(findRule(mutate((g) => { delete g.nodes[0].parameters.host; }), 'V-4'), 'missing host');
+  assert.ok(findRule(mutate((g) => { g.nodes[0].parameters.host = 'kein host!'; }), 'V-4'),
+    'invalid host chars');
+  assert.ok(findRule(mutate((g) => { g.nodes[0].parameters.host = '-bad.example'; }), 'V-4'),
+    'label may not start with a hyphen');
+  assert.ok(findRule(mutate((g) => { g.nodes[0].parameters.address = 70000; }), 'V-4'),
+    'address out of range');
+  assert.ok(findRule(mutate((g) => { g.nodes[0].parameters.data_type = 'double'; }), 'V-4'),
+    'unknown data type');
+  assert.ok(findRule(mutate((g) => { delete g.nodes[0].parameters.channel; }), 'V-4'),
+    'entity without channel (both-or-neither)');
+  assert.ok(findRule(mutate((g) => { delete g.nodes[0].parameters.entity_id; }), 'V-4'),
+    'channel without entity (both-or-neither)');
+  // Unmapped is legal: the read then just feeds the flow.
+  assert.deepStrictEqual(validate(mutate((g) => {
+    delete g.nodes[0].parameters.entity_id;
+    delete g.nodes[0].parameters.channel;
+  })), []);
+  // Two reads onto the SAME (entity, channel) clash (V-5).
+  assert.ok(findRule(mutate((g) => {
+    const dup = JSON.parse(JSON.stringify(g.nodes[0]));
+    dup.id = 'mb2';
+    g.nodes.push(dup);
+  }), 'V-5'), 'duplicate mapping refused');
+  // A second read onto a DIFFERENT channel of the same entity is fine.
+  assert.ok(!findRule(mutate((g) => {
+    const second = JSON.parse(JSON.stringify(g.nodes[0]));
+    second.id = 'mb2';
+    second.parameters.channel = 'temp_c';
+    g.nodes.push(second);
+  }), 'V-5'), 'distinct channels coexist');
 });
 
 // Drift guard (#518): the flowc TYPES map and the api flow-catalog MUST declare

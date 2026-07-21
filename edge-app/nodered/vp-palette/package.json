@@ -1,7 +1,7 @@
 {
   "name": "@voltpilot/node-red-vp-palette",
-  "version": "0.2.0",
-  "description": "VoltPilot Edge-App Node-RED-Palette: vp-telemetrie, vp-sollwert, vp-status, vp-inverter-config, vp-sources-config und vp-quelle verbinden die Kunden-I/O-Flows mit dem lokalen Bus des VoltPilot Core-Agenten; ab 0.2.0 zusaetzlich die v2-Flow-Runtime-Knoten vp-desired (Wunsch/Arbitrierung), vp-entity-read, vp-feed und vp-notify.",
+  "version": "0.3.0",
+  "description": "VoltPilot Edge-App Node-RED-Palette: vp-telemetrie, vp-sollwert, vp-status, vp-inverter-config, vp-sources-config und vp-quelle verbinden die Kunden-I/O-Flows mit dem lokalen Bus des VoltPilot Core-Agenten; ab 0.2.0 zusaetzlich die v2-Flow-Runtime-Knoten vp-desired (Wunsch/Arbitrierung), vp-entity-read, vp-feed und vp-notify; ab 0.3.0 der generische Modbus-TCP-Lese-Knoten vp-modbus-read (MB-M1).",
   "license": "UNLICENSED",
   "private": true,
   "keywords": [
@@ -25,7 +25,8 @@
       "vp-desired": "nodes/vp-desired.js",
       "vp-entity-read": "nodes/vp-entity-read.js",
       "vp-feed": "nodes/vp-feed.js",
-      "vp-notify": "nodes/vp-notify.js"
+      "vp-notify": "nodes/vp-notify.js",
+      "vp-modbus-read": "nodes/vp-modbus-read.js"
     }
   },
   "dependencies": {

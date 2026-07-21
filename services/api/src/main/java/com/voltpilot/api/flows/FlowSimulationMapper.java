@@ -24,13 +24,14 @@ import java.util.List;
  *
  * <p>An AUTOMATION (U3) - no battery strategy, but an action driven by Wenn/Dann
  * conditions: a device control ({@code vp.entity.control}: a Wallbox/Heizstab
- * rule, a price rule, a compound AND rule) or a notification ({@code
- * vp.notify.push}) - does not change the battery dispatch economics in the MVP
- * simulation model, so its dry-run is the site's "standardSpeicher" baseline
- * (the reference the rule runs on top of). This lets a Wenn/Dann automation
- * reach {@code simuliert} and activate. A flow with neither a strategy nor an
- * action (e.g. a bare read + threshold with no sink) has no economic dry-run and
- * is refused.
+ * rule, a price rule, a compound AND rule), a notification ({@code
+ * vp.notify.push}), or a MAPPED Modbus read ({@code vp.modbus.read} with an
+ * entity/channel mapping - recording IS its action, MB-M1) - does not change
+ * the battery dispatch economics in the MVP simulation model, so its dry-run is
+ * the site's "standardSpeicher" baseline (the reference the rule runs on top
+ * of). This lets a Wenn/Dann automation reach {@code simuliert} and activate.
+ * A flow with neither a strategy nor an action (e.g. a bare read + threshold
+ * with no sink) has no economic dry-run and is refused.
  */
 public final class FlowSimulationMapper {
 
@@ -101,6 +102,15 @@ public final class FlowSimulationMapper {
         for (JsonNode node : doc.path("nodes")) {
             String type = node.path("type").asText();
             if ("vp.entity.control".equals(type) || "vp.notify.push".equals(type)) {
+                return true;
+            }
+            // MB-M1: a MAPPED Modbus read RECORDS a value into an entity
+            // channel - that recording IS its action, so a record-only flow
+            // (no control/notify sink) still reaches 'simuliert' and can
+            // activate. An unmapped bare read stays refused (no sink at all).
+            if ("vp.modbus.read".equals(type)
+                    && !node.path("parameters").path("entity_id").asText("").isEmpty()
+                    && !node.path("parameters").path("channel").asText("").isEmpty()) {
                 return true;
             }
         }

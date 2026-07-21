@@ -35,11 +35,12 @@ class FlowGraphValidatorTest {
     /** Capabilities matching the contract fixtures' entities. */
     private static final Map<String, EntityCapabilities> FIXTURE_ENTITIES = Map.of(
             "batt-main", new EntityCapabilities(Set.of("soc_pct", "battery_power_kw"),
-                    Set.of("setpoint_kw", "limit_kw")),
-            "grid-meter-1", new EntityCapabilities(Set.of("power_kw"), Set.of()),
+                    Set.of("setpoint_kw", "limit_kw"), true),
+            "grid-meter-1", new EntityCapabilities(Set.of("power_kw"), Set.of(), true),
             "heatrod-cellar", new EntityCapabilities(Set.of(), Set.of("on_off")),
             "wallbox-1", new EntityCapabilities(Set.of("power_kw"), Set.of("on_off", "setpoint_kw")),
-            "pv-roof-east", new EntityCapabilities(Set.of("pv_power_kw"), Set.of("limit_pct")));
+            "pv-roof-east", new EntityCapabilities(Set.of("pv_power_kw"), Set.of("limit_pct"), true),
+            "modbus-meter-1", new EntityCapabilities(Set.of("leistung_kw"), Set.of()));
 
     private static JsonNode fixture(String name) throws IOException {
         return MAPPER.readTree(Files.readString(
@@ -383,6 +384,83 @@ class FlowGraphValidatorTest {
         addNode(doc, "r1", "vp.entity.read", "1.0.0",
                 Map.of("entity_id", "grid-meter-1", "channel", "power_kw"));
         assertThat(errors(validate(doc))).contains("V-8");
+    }
+
+    // ---- MB-M1 vp.modbus.read (mirrored in src/flows/validate.test.ts) -----
+
+    @Test
+    void modbusReadFixtureValidatesClean() throws IOException {
+        List<FlowValidationFinding> findings = validate(fixture(
+                "flow-graph.valid.modbus-read.json"));
+        assertThat(errors(findings)).isEmpty();
+    }
+
+    private ObjectNode modbusFlow(Map<String, Object> params) {
+        ObjectNode doc = flowShell();
+        addNode(doc, "mb1", "vp.modbus.read", "1.0.0", params);
+        return doc;
+    }
+
+    @Test
+    void modbusHostKindIsValidated() {
+        assertThat(errors(validate(modbusFlow(
+                Map.of("host", "192.168.40.17", "address", 100))))).isEmpty();
+        assertThat(errors(validate(modbusFlow(
+                Map.of("host", "zaehler.keller.local", "address", 0))))).isEmpty();
+        assertThat(errors(validate(modbusFlow(
+                Map.of("host", "kein host!", "address", 0))))).containsExactly("V-4");
+        assertThat(errors(validate(modbusFlow(
+                Map.of("host", "-bad.example", "address", 0))))).containsExactly("V-4");
+        assertThat(errors(validate(modbusFlow(Map.of("address", 0))))).containsExactly("V-4");
+    }
+
+    @Test
+    void modbusMappingIsBothOrNeither() {
+        assertThat(errors(validate(modbusFlow(Map.of(
+                "host", "192.168.40.17", "address", 100,
+                "channel", "leistung_kw"))))).containsExactly("V-4");
+        assertThat(errors(validate(modbusFlow(Map.of(
+                "host", "192.168.40.17", "address", 100,
+                "entity_id", "modbus-meter-1"))))).containsExactly("V-4");
+        assertThat(errors(validate(modbusFlow(Map.of(
+                "host", "192.168.40.17", "address", 100,
+                "entity_id", "modbus-meter-1", "channel", "leistung_kw"))))).isEmpty();
+    }
+
+    @Test
+    void modbusMappingOntoComposedEntityIsRefused() {
+        // Guard integrity: the battery's measured channels feed the guard
+        // chain (SoC/PV, D-8) - a customer flow must never inject them.
+        List<FlowValidationFinding> findings = validate(modbusFlow(Map.of(
+                "host", "192.168.40.17", "address", 100,
+                "entity_id", "batt-main", "channel", "soc_pct")));
+        assertThat(errors(findings)).containsExactly("V-6");
+        assertThat(findings.get(0).message()).contains("Stammdaten");
+    }
+
+    @Test
+    void modbusMappingChecksChannelAndEntity() {
+        assertThat(errors(validate(modbusFlow(Map.of(
+                "host", "192.168.40.17", "address", 100,
+                "entity_id", "modbus-meter-1", "channel", "geheimkanal")))))
+                .containsExactly("V-6");
+        assertThat(errors(validate(modbusFlow(Map.of(
+                "host", "192.168.40.17", "address", 100,
+                "entity_id", "nirvana", "channel", "leistung_kw")))))
+                .containsExactly("V-6");
+    }
+
+    @Test
+    void duplicateModbusMappingIsRefused() {
+        ObjectNode doc = modbusFlow(Map.of(
+                "host", "192.168.40.17", "address", 100,
+                "entity_id", "modbus-meter-1", "channel", "leistung_kw"));
+        addNode(doc, "mb2", "vp.modbus.read", "1.0.0", Map.of(
+                "host", "other.local", "address", 7,
+                "entity_id", "modbus-meter-1", "channel", "leistung_kw"));
+        List<FlowValidationFinding> findings = validate(doc);
+        assertThat(errors(findings)).containsExactly("V-5");
+        assertThat(findings.get(0).nodeIds()).containsExactly("mb1", "mb2");
     }
 
     // ---- helpers (mirrored in src/flows/validate.test.ts) ------------------

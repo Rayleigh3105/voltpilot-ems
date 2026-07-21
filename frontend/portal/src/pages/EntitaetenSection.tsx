@@ -24,6 +24,7 @@ import {
   healthTone,
   isEmpty,
   measureChannels,
+  parseChannelList,
   syncVerdict,
 } from '../entities';
 import {
@@ -690,32 +691,52 @@ function EntityDrawer({
       ? String(editEntity.guards.limits.max_consumption_kw)
       : '',
   );
+  const [channelsText, setChannelsText] = useState(
+    editEntity ? measureChannels(editEntity).join(', ') : '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedType = catalog.find((t) => t.type === entityType) ?? null;
   const composedEdit = editing && selectedType?.composed;
+  // A creatable MEASURE-ONLY type (modbus-generic): its channels are
+  // per-entity, creator-declared (MB-M1) - the drawer edits the channel list
+  // instead of a rated power (there is nothing to command).
+  const measureOnly = !!selectedType && !selectedType.composed && !selectedType.controllable;
 
   async function submit() {
     setBusy(true);
     setError(null);
     const power = maxPowerKw.trim() === '' ? undefined : Number(maxPowerKw.replace(',', '.'));
-    if (power !== undefined && (Number.isNaN(power) || power < 0)) {
+    if (!measureOnly && power !== undefined && (Number.isNaN(power) || power < 0)) {
       setError('Bitte geben Sie eine gültige Leistung in kW an.');
       setBusy(false);
       return;
+    }
+    let capabilities: SiteEntity['capabilities'] | undefined;
+    if (measureOnly && !composedEdit) {
+      const channels = parseChannelList(channelsText);
+      if (channels === null || channels.length === 0) {
+        setError('Bitte geben Sie mindestens einen Messkanal an - klein geschrieben, '
+          + 'z. B. leistung_kw oder wasser_temp_c.');
+        setBusy(false);
+        return;
+      }
+      capabilities = { measure: channels.map((channel) => ({ channel })), actuate: [] };
     }
     try {
       if (editing) {
         await entitiesApi.update(siteId, editEntity!.id, {
           label: label.trim() || null,
-          maxPowerKw: composedEdit ? undefined : power ?? null,
+          maxPowerKw: composedEdit || measureOnly ? undefined : power ?? null,
+          capabilities,
         });
       } else {
         await entitiesApi.create(siteId, {
           entityType,
           label: label.trim() || undefined,
-          maxPowerKw: power,
+          maxPowerKw: measureOnly ? undefined : power,
+          capabilities,
         });
       }
       onSaved();
@@ -777,6 +798,20 @@ function EntityDrawer({
             Die Konfiguration dieses Typs wird aus den Stammdaten der Anlage abgeleitet und ist
             hier nicht änderbar.
           </p>
+        ) : measureOnly ? (
+          <>
+            <Input
+              label="Messkanäle (kommagetrennt)"
+              value={channelsText}
+              onChange={(e) => setChannelsText(e.target.value)}
+              placeholder="z. B. leistung_kw, wasser_temp_c"
+            />
+            <p className="vp-note" style={{ marginTop: 0 }}>
+              Diese Kanäle kann ein „Modbus lesen“-Baustein aufzeichnen (Diagramm, Historie).
+              Weisen Sie dem Gerät unter Geräte → Rollen &amp; Zuordnung eine Rolle zu, wenn es
+              im Energiefluss erscheinen soll.
+            </p>
+          </>
         ) : (
           <Input
             label="Rated Leistung (kW)"

@@ -104,6 +104,28 @@ class FlowSimulationMapperTest {
     }
 
     @Test
+    void mappedModbusReadCountsAsAutomationUnmappedBareReadStaysRefused() {
+        // MB-M1: a record-only flow (a mapped Modbus read with no control/
+        // notify sink) RECORDS - that is its action, so it dry-runs as the
+        // standard-battery baseline and can activate.
+        ObjectNode doc = FlowGraphValidatorTest.flowShell();
+        FlowGraphValidatorTest.addNode(doc, "mb1", "vp.modbus.read", "1.0.0",
+                Map.of("host", "192.168.40.17", "address", 100,
+                        "entity_id", "modbus-meter-1", "channel", "leistung_kw"));
+        FlowSimulationMapper.Mapping mapped = FlowSimulationMapper.map(doc);
+        assertThat(mapped.supported()).isTrue();
+        assertThat(mapped.scenario()).isEqualTo("standardSpeicher");
+
+        // An UNMAPPED bare read has no sink at all - honestly refused.
+        ObjectNode bare = FlowGraphValidatorTest.flowShell();
+        FlowGraphValidatorTest.addNode(bare, "mb1", "vp.modbus.read", "1.0.0",
+                Map.of("host", "192.168.40.17", "address", 100));
+        FlowSimulationMapper.Mapping refused = FlowSimulationMapper.map(bare);
+        assertThat(refused.supported()).isFalse();
+        assertThat(refused.reason()).contains("simulierbaren Strategie-Baustein");
+    }
+
+    @Test
     void severalStrategiesAreRefused() {
         ObjectNode doc = FlowGraphValidatorTest.flowShell();
         FlowGraphValidatorTest.addNode(doc, "s1", "vp.strategy.market", "1.0.0",

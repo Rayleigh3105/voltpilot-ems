@@ -35,6 +35,15 @@ export interface ForeignClaim {
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 const PORT_PATTERN = /^[a-z0-9][a-z0-9_]{0,63}$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** The `host` param kind (MB-M1): IPv4 literal or RFC-1123 hostname, ≤253 chars. */
+const HOST_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
+/**
+ * Composed entity types (config derived from v1 master data - the pilot set).
+ * A Modbus read must never map onto them: their measured channels feed the
+ * guard chain (MB-M1 guard-integrity rule). The server derives the same flag
+ * from the entity-type catalog.
+ */
+const COMPOSED_ENTITY_TYPES = new Set(['battery-hybrid', 'producer', 'grid-meter']);
 const TRIGGER_KINDS = new Set(['interval', 'value-change', 'slot-boundary', 'event']);
 
 function error(rule: string, nodeIds: string[], edgeIds: string[], message: string): FlowFinding {
@@ -86,6 +95,7 @@ export function validateFlow(
   checkTriggers(doc, findings, nodesById);
   checkClaims(doc, findings, entities, foreignClaims);
   checkEntityReads(doc, findings, entities);
+  checkModbusReads(doc, findings, entities);
   return findings;
 }
 
@@ -184,6 +194,14 @@ function checkParameters(node: FlowNode, findings: FlowFinding[]) {
         if (!TIME_PATTERN.test(String(value))) {
           findings.push(error('V-4', [node.id], [],
             `Baustein "${type.label}": Parameter "${label}" muss eine Uhrzeit im Format HH:MM sein.`));
+        }
+        break;
+      }
+      case 'host': {
+        if (typeof value !== 'string' || value.length > 253 || !HOST_PATTERN.test(value)) {
+          findings.push(error('V-4', [node.id], [],
+            `Baustein "${type.label}": Parameter "${label}" muss eine gültige IP-Adresse `
+            + 'oder ein Hostname sein.'));
         }
         break;
       }
@@ -442,6 +460,60 @@ function checkClaims(
         findings.push(error('V-6', [claim.nodeId], [],
           `Die Entität "${claim.entityId}" unterstützt das Kommando "${command}" nicht.`));
       }
+    }
+  }
+}
+
+/**
+ * MB-M1 rules for vp.modbus.read's optional entity mapping (the TS twin of
+ * the api's checkModbusReads): entity_id/channel are both-or-neither (V-4); a
+ * mapped read's entity must exist, DECLARE the channel as a measure capability
+ * and must NOT be of a composed type (V-6 - a customer flow must never inject
+ * readings into the guard chain's inputs); two reads mapping the same
+ * (entity, channel) in one flow clash (V-5).
+ */
+function checkModbusReads(
+  doc: FlowDocument,
+  findings: FlowFinding[],
+  entities: EditorEntity[],
+) {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const mappedBy = new Map<string, string>();
+  for (const node of doc.nodes) {
+    if (node.type !== 'vp.modbus.read') continue;
+    const entityId = String(node.parameters?.entity_id ?? '');
+    const channel = String(node.parameters?.channel ?? '');
+    if (!entityId && !channel) continue; // unmapped read - legal
+    if (!entityId || !channel) {
+      findings.push(error('V-4', [node.id], [],
+        'Baustein "Modbus lesen": Entität und Messkanal gehören zusammen - bitte beide '
+        + 'angeben oder beide leer lassen.'));
+      continue;
+    }
+    const entity = byId.get(entityId);
+    if (!entity) {
+      findings.push(error('V-6', [node.id], [],
+        entities.length === 0
+          ? 'Diese Anlage hat noch keine v2-Entitäten - bitte zuerst das '
+            + 'Entitäten-Bootstrap ausführen (Plattform → Anlage).'
+          : `Unbekannte Entität "${entityId}".`));
+    } else if (COMPOSED_ENTITY_TYPES.has(entity.entityType)) {
+      findings.push(error('V-6', [node.id], [],
+        `Die Entität "${entityId}" wird aus den Stammdaten der Anlage abgeleitet - `
+        + 'Messwerte können hier nicht per Modbus-Baustein eingespeist werden. Bitte '
+        + 'eine generische Modbus-Entität verwenden.'));
+    } else if (!entity.measure.includes(channel)) {
+      findings.push(error('V-6', [node.id], [],
+        `Die Entität "${entityId}" misst den Kanal "${channel}" nicht.`));
+    }
+    const key = `${entityId}#${channel}`;
+    const previous = mappedBy.get(key);
+    if (previous) {
+      findings.push(error('V-5', [previous, node.id], [],
+        `Zwei Modbus-Lesen-Bausteine zeichnen denselben Messkanal "${channel}" der `
+        + `Entität "${entityId}" auf.`));
+    } else {
+      mappedBy.set(key, node.id);
     }
   }
 }

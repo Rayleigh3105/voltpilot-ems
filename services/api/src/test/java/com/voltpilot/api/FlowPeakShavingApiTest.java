@@ -315,6 +315,87 @@ class FlowPeakShavingApiTest {
                 HttpMethod.DELETE, admin, TENANT_A, null);
     }
 
+    @Test
+    void modbusReadAutomationRecordsIntoAGenericEntityAndActivates() {
+        // MB-M1: a modbus-generic entity (open catalog type) with a CUSTOM
+        // channel declared via explicit capabilities (the design's R9
+        // verification: validatedCapabilities accepts any CHANNEL_RE name),
+        // then a RECORD-ONLY mapped-read flow: build → validate → dry-run
+        // (standardSpeicher baseline - recording IS the action) → activate,
+        // governance untouched (the read node is FREE). Plus the guard-
+        // integrity refusal: mapping onto the COMPOSED battery entity fails
+        // validation with the Stammdaten copy.
+        String admin = token("admin", "admin");
+
+        String meter = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities",
+                HttpMethod.POST, admin, TENANT_A,
+                Map.of("entityType", "modbus-generic", "label", "Wärmepumpen-Zähler",
+                        "capabilities", Map.of(
+                                "measure",
+                                List.of(Map.of("channel", "wasser_temp_c", "unit", "°C")),
+                                "actuate", List.of())))
+                .getBody().path("id").asText();
+        assertThat(meter).isNotBlank();
+
+        // The mapped read validating CLEAN proves the capability view carries
+        // the custom channel (V-6 would fire otherwise).
+        ObjectNode doc = automationShell("Zähler aufzeichnen");
+        ObjectNode read = addNode(doc, "mb1", "vp.modbus.read", Map.of());
+        ((ObjectNode) read.path("parameters"))
+                .put("host", "192.168.40.17")
+                .put("register_kind", "input")
+                .put("address", 100)
+                .put("data_type", "float32")
+                .put("entity_id", meter)
+                .put("channel", "wasser_temp_c");
+        String flowId = createActivate(admin, "Zähler aufzeichnen", doc);
+
+        // Guard integrity: the SAME read mapped onto the composed battery
+        // entity is refused at validation (V-6, the Stammdaten copy).
+        JsonNode bootstrap = exchange("/api/v1/admin/sites/" + BERLIN_SITE
+                + "/v2-entities/bootstrap", HttpMethod.POST, admin, TENANT_A, Map.of()).getBody();
+        String batteryEntity = null;
+        for (JsonNode entity : bootstrap.path("entities")) {
+            if ("battery-hybrid".equals(entity.path("entityType").asText())) {
+                batteryEntity = entity.path("id").asText();
+            }
+        }
+        assertThat(batteryEntity).isNotNull();
+        ObjectNode hostile = automationShell("SoC einspeisen");
+        ObjectNode hostileRead = addNode(hostile, "mb1", "vp.modbus.read", Map.of());
+        ((ObjectNode) hostileRead.path("parameters"))
+                .put("host", "192.168.40.17")
+                .put("address", 100)
+                .put("entity_id", batteryEntity)
+                .put("channel", "soc_pct");
+        String hostileId = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
+                HttpMethod.POST, admin, TENANT_A, Map.of("name", "SoC einspeisen"))
+                .getBody().path("flowId").asText();
+        String hostileBase = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + hostileId;
+        exchange(hostileBase + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("name", "SoC einspeisen", "document", hostile));
+        JsonNode hostileValidation = exchange(hostileBase + "/versions/1/validate",
+                HttpMethod.POST, admin, TENANT_A, Map.of()).getBody();
+        assertThat(hostileValidation.path("valid").asBoolean()).isFalse();
+        boolean composedRefusal = false;
+        for (JsonNode finding : hostileValidation.path("findings")) {
+            composedRefusal |= "V-6".equals(finding.path("rule").asText())
+                    && finding.path("message").asText().contains("Stammdaten");
+        }
+        assertThat(composedRefusal)
+                .as("mapping onto a composed entity refused: " + hostileValidation)
+                .isTrue();
+
+        // Cleanup so the shared site is left as this test found it.
+        exchange(hostileBase, HttpMethod.DELETE, admin, TENANT_A, null);
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + flowId + "/deactivate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + flowId,
+                HttpMethod.DELETE, admin, TENANT_A, null);
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/" + meter,
+                HttpMethod.DELETE, admin, TENANT_A, null);
+    }
+
     /** create -> save doc -> validate -> simulate(standardSpeicher) -> activate; returns flowId. */
     private String createActivate(String admin, String name, ObjectNode document) {
         String flowId = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",

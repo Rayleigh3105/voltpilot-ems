@@ -26,6 +26,7 @@ const ENTITIES: EditorEntity[] = [
   { id: 'wallbox-1', entityType: 'wallbox', label: 'Wallbox', measure: ['power_kw'], actuate: ['on_off', 'setpoint_kw'] },
   { id: 'heatrod-cellar', entityType: 'producer', label: 'Heizstab', measure: [], actuate: ['on_off'] },
   { id: 'pv-roof-east', entityType: 'producer', label: 'PV Ost', measure: ['pv_power_kw'], actuate: ['limit_pct'] },
+  { id: 'modbus-meter-1', entityType: 'modbus-generic', label: 'Zähler', measure: ['leistung_kw'], actuate: [] },
 ];
 
 const EXAMPLES = resolve(process.cwd(), '../../docs/contracts/v2/examples');
@@ -318,6 +319,74 @@ describe('V-6 capability match', () => {
     const doc = pilotTemplate('Ohne Registry', 'batt-main', SITE);
     const findings = validateFlow(doc, []);
     expect(findings.some((f) => f.message.includes('Bootstrap'))).toBe(true);
+  });
+});
+
+// MB-M1 vp.modbus.read - the MIRROR of the api FlowGraphValidatorTest modbus
+// vectors: host kind (V-4), mapping both-or-neither (V-4), mapped-read
+// capability + composed refusal (V-6), in-flow duplicate mapping (V-5).
+describe('MB-M1 vp.modbus.read', () => {
+  function modbusFlow(params: Record<string, unknown>): FlowDocument {
+    const doc = shell();
+    doc.nodes = [
+      { id: 'mb1', type: 'vp.modbus.read', type_version: '1.0.0', parameters: params },
+    ];
+    return doc;
+  }
+  const BASE = { host: '192.168.40.17', address: 100 };
+
+  it.skipIf(!haveFixtures)('modbus-read fixture validates clean', () => {
+    const findings = validateFlow(fixture('flow-graph.valid.modbus-read.json'), ENTITIES);
+    expect(errors(findings)).toEqual([]);
+  });
+
+  it('validates the host kind (V-4): IPv4 and hostnames pass, garbage fails', () => {
+    expect(errors(validateFlow(modbusFlow(BASE), ENTITIES))).toEqual([]);
+    expect(errors(validateFlow(modbusFlow({ host: 'zaehler.keller.local', address: 0 }),
+      ENTITIES))).toEqual([]);
+    expect(errors(validateFlow(modbusFlow({ host: 'kein host!', address: 0 }), ENTITIES)))
+      .toEqual(['V-4']);
+    expect(errors(validateFlow(modbusFlow({ host: '-bad.example', address: 0 }), ENTITIES)))
+      .toEqual(['V-4']);
+    expect(errors(validateFlow(modbusFlow({ address: 0 }), ENTITIES))).toEqual(['V-4']);
+  });
+
+  it('mapping is both-or-neither (V-4)', () => {
+    expect(errors(validateFlow(modbusFlow({ ...BASE, channel: 'leistung_kw' }), ENTITIES)))
+      .toEqual(['V-4']);
+    expect(errors(validateFlow(modbusFlow({ ...BASE, entity_id: 'modbus-meter-1' }), ENTITIES)))
+      .toEqual(['V-4']);
+    expect(errors(validateFlow(modbusFlow(
+      { ...BASE, entity_id: 'modbus-meter-1', channel: 'leistung_kw' }), ENTITIES))).toEqual([]);
+  });
+
+  it('refuses mapping onto a COMPOSED entity (guard integrity, V-6)', () => {
+    const findings = validateFlow(modbusFlow(
+      { ...BASE, entity_id: 'batt-main', channel: 'soc_pct' }), ENTITIES);
+    expect(errors(findings)).toEqual(['V-6']);
+    expect(findings[0].message).toContain('Stammdaten');
+  });
+
+  it('refuses an undeclared channel and an unknown entity (V-6)', () => {
+    expect(errors(validateFlow(modbusFlow(
+      { ...BASE, entity_id: 'modbus-meter-1', channel: 'geheimkanal' }), ENTITIES)))
+      .toEqual(['V-6']);
+    expect(errors(validateFlow(modbusFlow(
+      { ...BASE, entity_id: 'nirvana', channel: 'leistung_kw' }), ENTITIES)))
+      .toEqual(['V-6']);
+  });
+
+  it('refuses two reads recording the same (entity, channel) (V-5)', () => {
+    const doc = shell();
+    doc.nodes = [
+      { id: 'mb1', type: 'vp.modbus.read', type_version: '1.0.0',
+        parameters: { ...BASE, entity_id: 'modbus-meter-1', channel: 'leistung_kw' } },
+      { id: 'mb2', type: 'vp.modbus.read', type_version: '1.0.0',
+        parameters: { host: 'other.local', address: 7, entity_id: 'modbus-meter-1', channel: 'leistung_kw' } },
+    ];
+    const findings = validateFlow(doc, ENTITIES);
+    expect(errors(findings)).toEqual(['V-5']);
+    expect(findings[0].nodeIds).toEqual(['mb1', 'mb2']);
   });
 });
 

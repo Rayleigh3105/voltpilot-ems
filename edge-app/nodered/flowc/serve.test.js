@@ -39,6 +39,10 @@ function pinnedPriceHash() {
   return fs.readFileSync(path.join(__dirname, 'pinned-price-hash.txt'), 'utf8').trim();
 }
 
+function pinnedModbusReadHash() {
+  return fs.readFileSync(path.join(__dirname, 'pinned-modbus-read-hash.txt'), 'utf8').trim();
+}
+
 /** Start the server on an ephemeral port; resolve {port, close}. */
 function startServer() {
   return new Promise((resolve) => {
@@ -171,6 +175,27 @@ test('POST /compile compiles the price automation to its pinned artifact', async
     assert.strictEqual(artifact.content_hash, pinnedPriceHash());
     assert.ok(artifact.bundle.nodered_flows.find((n) => n.type === 'vp-feed' && n.feed === 'price_current'),
       'the compiled bundle reads the current price');
+  } finally {
+    await close();
+  }
+});
+
+test('POST /compile compiles the modbus-read automation to its pinned artifact', async () => {
+  // MB-M1: the generic Modbus read (mapped onto an entity channel) feeding a
+  // wallbox rule. Activation POSTs this document here; it must compile to a
+  // stable data-only artifact with the 0.3.0 palette floor.
+  const { port, close } = await startServer();
+  try {
+    const graph = fixture('flow-graph.valid.modbus-read.json');
+    const res = await request(port, 'POST', '/compile', { document: graph });
+    assert.strictEqual(res.status, 200, res.text);
+    const artifact = res.json;
+    assert.strictEqual(artifact.kind, 'artifact');
+    assert.strictEqual(artifact.flow_id, graph.flow_id);
+    assert.strictEqual(artifact.content_hash, pinnedModbusReadHash());
+    assert.strictEqual(artifact.min_palette_version, '0.3.0');
+    assert.ok(artifact.bundle.nodered_flows.find((n) => n.type === 'vp-modbus-read'),
+      'the compiled bundle carries the data-only Modbus read node');
   } finally {
     await close();
   }

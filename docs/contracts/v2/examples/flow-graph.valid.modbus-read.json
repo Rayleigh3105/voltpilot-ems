@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "7b9e4d2c-8f10-4a35-9b67-89abcdef0123",
+  "flow_version": 1,
+  "name": "Wärmepumpen-Zähler aufzeichnen",
+  "description": "Liest die Leistung eines Modbus-TCP-Zählers im lokalen Netz (FC4, float32), zeichnet sie als Messkanal einer generischen Modbus-Entität auf (Diagramm, Historie) und schaltet die Wallbox ab einer Schwelle - der MB-M1-Beispielflow für vp.modbus.read.",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "draft",
+  "nodes": [
+    {
+      "id": "mb1",
+      "type": "vp.modbus.read",
+      "type_version": "1.0.0",
+      "label": "Zähler Leistung",
+      "parameters": {
+        "host": "192.168.40.17",
+        "port": 502,
+        "unit_id": 1,
+        "register_kind": "input",
+        "address": 100,
+        "data_type": "float32",
+        "word_order": "big",
+        "scale": 0.001,
+        "offset": 0,
+        "min_read_interval_s": 5,
+        "entity_id": "modbus-meter-1",
+        "channel": "leistung_kw"
+      }
+    },
+    {
+      "id": "sw1",
+      "type": "vp.logic.threshold",
+      "type_version": "1.1.0",
+      "label": "Leistung über 4 kW",
+      "parameters": { "threshold": 4.0, "hysteresis": 0.5, "direction": "above" }
+    },
+    {
+      "id": "steuern1",
+      "type": "vp.entity.control",
+      "type_version": "1.0.0",
+      "label": "Wallbox pausieren",
+      "parameters": { "entity_id": "wallbox-1", "command": "on_off", "ttl_s": 300 },
+      "claims": [
+        { "entity_id": "wallbox-1", "commands": ["on_off"] }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "mb1", "port": "value" }, "to": { "node": "sw1", "port": "input" } },
+    { "id": "e2", "from": { "node": "sw1", "port": "result" }, "to": { "node": "steuern1", "port": "value" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "interval", "every_s": 30 }
+  ]
+}

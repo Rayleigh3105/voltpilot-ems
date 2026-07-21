@@ -261,6 +261,31 @@
       ],
       "outputs": [{ "name": "result", "type": "bool", "label": "Eine wahr" }],
       "parameters": []
+    },
+    {
+      "type": "vp.modbus.read",
+      "type_version": "1.0.0",
+      "label": "Modbus lesen",
+      "description": "Liest ein Register eines Modbus-TCP-Geräts im lokalen Netz und gibt den Wert als Zahl aus. Optional wird der Wert als Messkanal einer Entität aufgezeichnet (Diagramm, Historie).",
+      "group": "daten",
+      "runtimes": ["edge"],
+      "inputs": [],
+      "outputs": [{ "name": "value", "type": "number", "label": "Wert" }],
+      "parameters": [
+        { "name": "host", "kind": "host", "label": "Geräteadresse (IP/Host)", "required": true },
+        { "name": "port", "kind": "number", "label": "Port", "required": false, "min": 1, "max": 65535, "default": 502 },
+        { "name": "unit_id", "kind": "number", "label": "Unit-ID", "required": false, "min": 0, "max": 255, "default": 1 },
+        { "name": "register_kind", "kind": "enum", "label": "Registerart", "required": false, "options": ["holding", "input"], "default": "holding", "optionLabels": { "holding": "Holding-Register (FC3)", "input": "Input-Register (FC4)" } },
+        { "name": "address", "kind": "number", "label": "Registeradresse (0-basiert)", "required": true, "min": 0, "max": 65535, "help": "Protokoll-Adresse, 0-basiert. Handbücher im 4xxxx-Schema: 40001 = Adresse 0." },
+        { "name": "data_type", "kind": "enum", "label": "Datentyp", "required": false, "options": ["u16", "s16", "u32", "s32", "float32"], "default": "u16" },
+        { "name": "word_order", "kind": "enum", "label": "Wortreihenfolge (32-Bit)", "required": false, "options": ["big", "little"], "default": "big", "optionLabels": { "big": "High-Word zuerst (AB CD)", "little": "Low-Word zuerst (CD AB)" } },
+        { "name": "scale", "kind": "number", "label": "Skalierung (×)", "required": false, "default": 1 },
+        { "name": "offset", "kind": "number", "label": "Offset (+)", "required": false, "default": 0 },
+        { "name": "min_read_interval_s", "kind": "number", "label": "Mindestabstand zwischen Lesungen (s)", "required": false, "min": 1, "max": 3600, "default": 5 },
+        { "name": "entity_id", "kind": "entityRef", "label": "Aufzeichnen als Entität", "required": false, "help": "Optional: der Wert wird als Messkanal dieser Entität gespeichert (Diagramm, Historie)." },
+        { "name": "channel", "kind": "channel", "label": "Messkanal", "required": false, "help": "z. B. leistung_kw oder wasser_temp_c. Muss als Messfähigkeit der Entität hinterlegt sein." }
+      ],
+      "hint": "Profi-Baustein: liest rohe Modbus-Register (0-basierte Adresse, Datentyp, Skalierung). Für den Wechselrichter selbst nutzen Sie „Entität lesen“."
     }
   ]
 }

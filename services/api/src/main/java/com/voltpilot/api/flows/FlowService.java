@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryRepository;
+import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.flows.FlowGraphValidator.EntityCapabilities;
 import com.voltpilot.api.flows.FlowGraphValidator.ForeignClaim;
 import com.voltpilot.api.profile.UsageProfileDeriver;
@@ -92,6 +93,7 @@ public class FlowService {
     private final FlowCatalog catalog;
     private final FlowGraphValidator validator;
     private final EntityRegistryRepository entities;
+    private final EntityTypeCatalog entityTypes;
     private final FlowActivationService activation;
     private final FlowGatedNodeRepository gatedNodes;
     private final FlowTemplateService templates;
@@ -102,6 +104,7 @@ public class FlowService {
 
     public FlowService(SiteRepository sites, FlowRepository flows, FlowCatalog catalog,
             FlowGraphValidator validator, EntityRegistryRepository entities,
+            EntityTypeCatalog entityTypes,
             FlowActivationService activation, FlowGatedNodeRepository gatedNodes,
             FlowTemplateService templates, SimulationDefaultsRepository simulationDefaults,
             SimulationClient simulationClient, SimulationJobRegistry simulationJobs,
@@ -111,6 +114,7 @@ public class FlowService {
         this.catalog = catalog;
         this.validator = validator;
         this.entities = entities;
+        this.entityTypes = entityTypes;
         this.activation = activation;
         this.gatedNodes = gatedNodes;
         this.templates = templates;
@@ -517,7 +521,11 @@ public class FlowService {
                     actuate.add(a.path("command").asText());
                 }
             }
-            view.put(row.id().toString(), new EntityCapabilities(measure, actuate));
+            // MB-M1: composed types (config derived from v1 master data) refuse
+            // Modbus-read mappings - their channels feed the guard chain.
+            EntityTypeCatalog.EntityType type = entityTypes.find(row.entityType());
+            boolean composed = type != null && type.composed();
+            view.put(row.id().toString(), new EntityCapabilities(measure, actuate, composed));
         }
         return view;
     }

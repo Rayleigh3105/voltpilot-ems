@@ -15,6 +15,10 @@ import (
 // JCS implementations and the hash discipline agree byte for byte.
 const compiledArtifactFixture = "../../../nodered/flowc/testdata/pv-surplus-heatrod.artifact.json"
 
+// The MB-M1 modbus-read artifact (data-only vp-modbus-read node, palette
+// floor 0.3.0) - the second committed lockstep fixture.
+const modbusArtifactFixture = "../../../nodered/flowc/testdata/modbus-read.artifact.json"
+
 func TestCompiledArtifactFromFlowcVerifiesInGo(t *testing.T) {
 	raw, err := os.ReadFile(compiledArtifactFixture)
 	if err != nil {
@@ -75,5 +79,83 @@ func TestCompiledArtifactFromFlowcVerifiesInGo(t *testing.T) {
 	rawFlow, _ := json.Marshal(cfg)
 	if !strings.Contains(string(rawFlow), OwnershipMarker) {
 		t.Fatal("materialized tab lost the @vp-flow marker")
+	}
+}
+
+// The MB-M1 modbus-read artifact: (a) the JS-built bundle re-canonicalizes to
+// the SAME content hash in Go; (b) a 0.2.0-palette device acks it
+// `unsupported` with the honest German palette-floor copy (min_palette_version
+// 0.3.0 - old devices degrade, never run a node type they lack); (c) a 0.3.0
+// palette + a registry declaring the mapped modbus-generic entity's custom
+// channel deploys it `active`.
+func TestModbusReadArtifactVerifiesAndGatesOnPaletteFloor(t *testing.T) {
+	raw, err := os.ReadFile(modbusArtifactFixture)
+	if err != nil {
+		t.Fatalf("modbus artifact fixture unreadable: %v", err)
+	}
+	var a Artifact
+	if err := json.Unmarshal(raw, &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.MinPaletteVersion != "0.3.0" {
+		t.Fatalf("modbus artifact must require palette 0.3.0, got %s", a.MinPaletteVersion)
+	}
+
+	bundleRaw, err := json.Marshal(a.Bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := ContentHash(bundleRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hash != a.ContentHash {
+		t.Fatalf("cross-language hash mismatch:\n js %s\n go %s", a.ContentHash, hash)
+	}
+
+	// The mapped read requires measure:leistung_kw on the modbus-generic
+	// entity; the control requires actuate:on_off on the wallbox.
+	reg := entities.Registry{Revision: "x", Entities: []entities.Entity{
+		{ID: "modbus-meter-1", Type: "modbus-generic",
+			Capabilities: entities.Capabilities{Measure: []entities.MeasureCap{{Channel: "leistung_kw"}}},
+			Guards:       entities.Guards{Failsafe: entities.Failsafe{Behavior: "measure-only"}}},
+		{ID: "wallbox-1", Type: "wallbox",
+			Capabilities: entities.Capabilities{Actuate: []entities.ActuateCap{{Command: "on_off"}}},
+			Guards:       entities.Guards{Failsafe: entities.Failsafe{Behavior: "release"}}},
+	}}
+	deployment, _ := json.Marshal(map[string]any{
+		"schema_version": "1.0", "kind": "deployment",
+		"tenant_id": tTenant, "site_id": tSite, "device_id": tDevice,
+		"deployed_at": "2026-07-21T12:00:00Z",
+		"artifacts":   []json.RawMessage{raw},
+	})
+
+	// (b) A 0.2.0-palette device (the shipped fleet) refuses honestly.
+	oldNR := newFakeNR()
+	oldDep := NewDeployer(Deps{NR: oldNR, DataDir: t.TempDir(), CoreVersion: "2.0.0",
+		Registry: func() entities.Registry { return reg },
+		Identity: func() Identity {
+			return Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice}
+		}})
+	oldDep.HandleDeployment(deployment)
+	state, detail := ackOf(t, oldDep, a.FlowID)
+	if state != "unsupported" || !strings.Contains(detail, "benötigt Palette >= 0.3.0") {
+		t.Fatalf("0.2.0 palette must degrade honestly: %s (%s)", state, detail)
+	}
+
+	// (c) A 0.3.0 palette deploys the tab.
+	newNR := &fakeNR{palette: "0.3.0"}
+	dep := NewDeployer(Deps{NR: newNR, DataDir: t.TempDir(), CoreVersion: "2.0.0",
+		Registry: func() entities.Registry { return reg },
+		Identity: func() Identity {
+			return Identity{TenantID: tTenant, SiteID: tSite, DeviceID: tDevice}
+		}})
+	dep.HandleDeployment(deployment)
+	state, detail = ackOf(t, dep, a.FlowID)
+	if state != "active" {
+		t.Fatalf("modbus artifact must deploy on a 0.3.0 palette: %s (%s)", state, detail)
+	}
+	if !newNR.tabIDs()["vpflow-7b9e4d2c-v1"] {
+		t.Fatal("modbus flow tab not materialized")
 	}
 }
