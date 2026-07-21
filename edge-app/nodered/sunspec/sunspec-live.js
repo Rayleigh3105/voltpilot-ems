@@ -40,7 +40,8 @@
  * HONESTY (report, CUSTOM-INVERTER.md): every channel is OPTIONAL. A value is
  * present only when it was actually read + is finite; a channel that could not be
  * read is ABSENT, never a fabricated 0. A W reading of exactly 0 (inverter idle /
- * night) IS a real reading and is kept.
+ * night) IS a real reading and is kept. On a HYBRID (Model 124 present) the PV
+ * channel comes from DC power, never from AC W - see decodeInverter.
  */
 
 // --- numeric helpers ---------------------------------------------------------
@@ -75,19 +76,27 @@ function f32(hi, lo) {
 const INV_FLOAT = {
   W: 20, // float32 - AC real power (W)
   Hz: 22, // float32 - line frequency
+  DCW: 36, // float32 - DC power (W) = the TRUE PV on a hybrid. VERIFY-on-device.
   St: 46, // enum16  - operating state
   Evt1: 48, // bitfield32 - event flags 1
 };
 // Inverter model 101/102/103 (INT+SF), from model_103.json:
-//   W@14 W_SF@15 Hz@16 Hz_SF@17 St@38 Evt1@40 (model-start) -> body-relative below.
+//   W@14 W_SF@15 Hz@16 Hz_SF@17 DCW@31 DCW_SF@32 St@38 Evt1@40 (model-start)
+//   -> body-relative below.
 const INV_INT = {
   W: 12, // int16 - AC real power, scaled by W_SF
   W_SF: 13, // sunssf (signed)
   Hz: 14, // int16, scaled by Hz_SF
   Hz_SF: 15, // sunssf
+  DCW: 29, // int16 - DC power, scaled by DCW_SF. VERIFY-on-device.
+  DCW_SF: 30, // sunssf
   St: 36, // enum16
   Evt1: 38, // bitfield32
 };
+
+// SunSpec "not implemented" sentinel for a signed 16-bit value (int16 / sunssf).
+// A float field signals not-implemented as NaN, which isFinite() already catches.
+const INT16_NOT_IMPLEMENTED = -32768;
 
 // Inverter operating-state enum (SunSpec St, models 10X/11X). St=4 MPPT =
 // producing; St=5 THROTTLED is the tell-tale that a curtailment (or the device's
@@ -124,12 +133,28 @@ const MET_FLOAT = {
 /**
  * decodeInverter - decode the inverter measurement model (float 111/112/113 or
  * int+SF 101/102/103) that discovery classified, using DISCOVERED addresses.
- * Returns { pv_power_kw, w_kw, hz, st, stLabel, evt1 } or null (idle-safe) when
- * discovery has no inverter model or the body cannot be read / W is not finite.
+ * Returns { pv_power_kw, pvSource, hybrid, w_kw, hz, st, stLabel, evt1 } or null
+ * (idle-safe) when discovery has no inverter model or the body cannot be read /
+ * W is not finite.
  *
- * pv_power_kw = max(0, W)/1000: a string inverter's AC output IS its PV
- * generation. A negative W (rare, night self-consumption) floors to 0 for the PV
- * channel while w_kw keeps the signed value for diagnostics.
+ * PV SOURCE DEPENDS ON WHETHER THE DEVICE HAS A BATTERY (report
+ * data/vp-pv-battery-bug §7 item 1):
+ *   - NO Model 124 (Storage) -> batteryless string inverter (the Fronius Eco):
+ *     `pv_power_kw = max(0, W)/1000` - its AC output IS its PV generation. A
+ *     negative W (rare, night self-consumption) floors to 0 for the PV channel
+ *     while w_kw keeps the signed value for diagnostics. UNCHANGED behaviour.
+ *   - Model 124 PRESENT -> a HYBRID (Symo GEN24 + storage): AC W = PV + battery
+ *     discharge - battery charge, so publishing it as PV would inflate PV by the
+ *     discharge (and `max(0,…)` would silently swallow a charging error as 0).
+ *     We therefore read the inverter model's DC power DCW = the true PV, and
+ *     drop the one-sided clamp so a sign/scale error shows up as a VISIBLE
+ *     negative instead of a silent 0. If DCW is unreadable we return null -
+ *     publish NOTHING rather than an AC number ("idle, never fabricate").
+ *
+ * VERIFY-on-device: the DCW offsets above are the standard SunSpec model
+ * definitions (model_113 / model_103) but could not be bench-verified here - no
+ * hybrid Fronius exists on any live site yet. Confirm DCW against the device
+ * before trusting a hybrid's PV number (FRONIUS.md §6 / CONTROL-BENCH.md).
  *
  *   { discovery, readBlock, modelType? }
  *     modelType - optional override hint 'float' | 'int_sf'; when absent the
@@ -175,14 +200,48 @@ function decodeInverter(args) {
   const st = regs[off.St] & 0xffff;
   const evt1 = u32(regs[off.Evt1], regs[off.Evt1 + 1]);
 
+  // A Model 124 (Storage) at this unit means the device has a battery -> its AC
+  // W is NOT PV. Use DC power instead, unclamped; unreadable DCW -> nothing.
+  const hybrid = !!(discovery.storage && discovery.storage.present);
+  let pvWatts;
+  if (hybrid) {
+    const dcWatts = readDcWatts(regs, off, type);
+    if (dcWatts === null) return null;
+    pvWatts = dcWatts;
+  } else {
+    pvWatts = Math.max(0, wWatts);
+  }
+
   return {
-    pv_power_kw: round3(Math.max(0, wWatts) / 1000),
+    pv_power_kw: round3(pvWatts / 1000),
+    pvSource: hybrid ? 'dc' : 'ac',
+    hybrid,
     w_kw: round3(wWatts / 1000),
     hz,
     st,
     stLabel: INV_STATE[st] || null,
     evt1,
   };
+}
+
+/**
+ * readDcWatts - the inverter model's DC power (DCW) in watts, or null when it is
+ * not readable (short body, float NaN, int16/sunssf "not implemented" sentinel).
+ * Null is the honest answer - the caller publishes nothing rather than falling
+ * back to the AC number.
+ */
+function readDcWatts(regs, off, type) {
+  if (type === 'int_sf') {
+    if (regs.length <= off.DCW_SF) return null;
+    const raw = s16(regs[off.DCW]);
+    const sf = s16(regs[off.DCW_SF]);
+    if (raw === INT16_NOT_IMPLEMENTED || sf === INT16_NOT_IMPLEMENTED) return null;
+    const v = raw * Math.pow(10, sf);
+    return isFinite(v) ? v : null;
+  }
+  if (regs.length <= off.DCW + 1) return null;
+  const v = f32(regs[off.DCW], regs[off.DCW + 1]);
+  return isFinite(v) ? v : null;
 }
 
 /**
@@ -238,6 +297,8 @@ function decodeMeasurements(args) {
     reading.pv_power_kw = inv.pv_power_kw;
     meta.inverterModel = discovery.inverter ? discovery.inverter.id : null;
     meta.inverterType = discovery.inverter ? discovery.inverter.type : null;
+    meta.pvSource = inv.pvSource; // 'ac' (string inverter) | 'dc' (hybrid, DCW)
+    meta.hybrid = inv.hybrid;
     meta.w_kw = inv.w_kw;
     meta.hz = inv.hz;
     meta.st = inv.st;

@@ -147,6 +147,20 @@ hier **nur lesend** (FC3, schreibt nie).
   Wechselrichters **ist** seine PV-Erzeugung), plus der Betriebszustand `St`
   (inkl. `THROTTLED`) und `Evt1` für Liveness/Fehler. Ein echter 0-W-Messwert
   (Nacht/Leerlauf) ist ein **gültiger** Wert und wird behalten - nie fabriziert.
+- **Hybrid-Schutz (Modell 124 = Speicher):** die AC-Gleichsetzung oben gilt NUR
+  für einen **batterielosen** String-Wechselrichter. Findet der Walker ein
+  **Modell 124 (Storage)** an dieser Unit-ID, ist das Gerät ein **Hybrid**
+  (z. B. Symo GEN24 + Speicher) und seine AC-Leistung ist `PV + Entladung −
+  Beladung` - als PV veröffentlicht würde sie die PV um die Batterie-Entladung
+  aufblähen. Der Decode nimmt dann die **DC-Leistung `DCW`** des Wechselrichter-
+  Modells (Modell 113 `DCW` / Modell 103 `DCW` + `DCW_SF`) = die echte PV, und
+  zwar **ohne** die einseitige `max(0, …)`-Klammer (ein Vorzeichen-/Skalenfehler
+  soll als sichtbares Minus auffallen statt als stille 0). Ist `DCW` nicht
+  lesbar, wird **gar nichts** veröffentlicht - nie eine AC-Zahl als PV
+  ("idle, never fabricate"). **AM GERÄT ZU PRÜFEN:** die `DCW`-Offsets sind die
+  Standard-SunSpec-Definition, aber mangels Hybrid-Hardware hier nicht am Gerät
+  bestätigt - beim ersten Hybrid-Fronius verifizieren. Der batterielose Pfad
+  (kein Modell 124) ist unverändert.
 - **Zähler (Modell 21X):** der Decoder existiert **minimal + optional**, ist aber
   auf dieser Anlage NICHT verdrahtet (der Eco-Standort hat keinen Fronius Smart
   Meter) und **nicht am Gerät verifiziert**. Ohne Zähler ist ein reiner
