@@ -48,6 +48,17 @@ public class FlowTemplateService {
      */
     @Transactional
     public AutoStartOutcome autoStart(UUID siteId, UUID tenantId) {
+        return autoStart(siteId, tenantId, null);
+    }
+
+    /**
+     * Seed a starter flow for a SPECIFIC AE7 profile instead of the derived one
+     * (Portal v3 M3): switching a Modus-Profil on seeds THAT profile's starter,
+     * not whatever the site currently derives. {@code usageProfile} null =
+     * derive (the pre-M3 behaviour, byte-identical).
+     */
+    @Transactional
+    public AutoStartOutcome autoStart(UUID siteId, UUID tenantId, String usageProfile) {
         UsageProfileDto profile = profiles.profile(siteId);
         if (profile == null) {
             return new AutoStartOutcome(false, "not_found", null, null, null, null,
@@ -64,7 +75,8 @@ public class FlowTemplateService {
                             + "Speicher.");
         }
 
-        String kind = profile.usageProfile();
+        String kind = usageProfile != null && !usageProfile.isBlank() ? usageProfile
+                : profile.usageProfile();
         ObjectNode doc = FlowTemplates.starterFlow(mapper, kind, batteryId.toString());
         FlowTemplates.applyDerivedClaims(doc, catalog);
         UUID flowId = UUID.randomUUID();

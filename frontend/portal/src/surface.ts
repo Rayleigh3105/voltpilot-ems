@@ -36,6 +36,7 @@
  * NICHTS rendert bisher hieraus — M1–M4 konsumieren dieses Read-Model.
  */
 
+import { applyProfileStates, type ProfileStates } from './profiles';
 import type { PlantKind, TarifArt } from './api';
 import { catalogType, type FlowDocument } from './flows/model';
 import { hasStrategyNode } from './flows/steuerung';
@@ -184,6 +185,12 @@ export interface AnlageSurfaceInput {
   flows?: SurfaceFlow[] | null;
   /** Die v2-Entitäten der Anlage; leer = "Neu / leer". */
   entities?: SurfaceEntity[] | null;
+  /**
+   * M3-Overlay: der GESPEICHERTE Kundenwille je Modus-Profil (`an` | `aus`).
+   * `aus` unterdrückt einen abgeleiteten Modus; absent/null = Verhalten wie vor
+   * M3, byte-gleich. Die Ableitung selbst ändert sich nie (die AE7-Regel).
+   */
+  profileStates?: ProfileStates | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +590,9 @@ export function activeModes(site: AnlageSurfaceInput): ActiveMode[] {
     );
   }
 
-  return modes.sort(
+  // M3: der Kundenwille legt sich als OVERLAY über die Ableitung - er ändert
+  // sie nicht, er unterdrückt nur ein abgeschaltetes Profil (`profiles.ts`).
+  return applyProfileStates(modes, input.profileStates).sort(
     (a, b) => MODE_RANK[a.kind] - MODE_RANK[b.kind] || a.key.localeCompare(b.key),
   );
 }

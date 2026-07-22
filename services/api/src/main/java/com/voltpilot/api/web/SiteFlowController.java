@@ -8,6 +8,7 @@ import com.voltpilot.api.flows.FlowService.FlowVersionDto;
 import com.voltpilot.api.flows.FlowService.GovernanceResponse;
 import com.voltpilot.api.flows.FlowService.SaveFlowRequest;
 import com.voltpilot.api.flows.FlowService.ValidationResponse;
+import com.voltpilot.api.flows.FlowTemplateService;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,8 +41,12 @@ import org.springframework.web.server.ResponseStatusException;
  * strategy node ({@code gated_node_not_enabled}) until a Portal-Admin enables
  * that node type for the site: this surface exposes governance READ-ONLY (to
  * render a locked node in the editor with the "VoltPilot richtet ein" hint) and
- * deliberately offers NO governance WRITE and NO auto-start (both stay
- * admin-only on {@link AdminFlowController}).
+ * deliberately offers NO governance WRITE (that stays admin-only on
+ * {@link AdminFlowController}). Since Portal v3 M3 the customer DOES reach
+ * {@code auto-start} (seeding a starter DRAFT is harmless and is what a
+ * Modus-Profil toggle needs); the per-site enablement of a gated node type is
+ * still never written from here - it is a server-side effect of an authorized
+ * profile toggle ({@code SiteProfileService}).
  *
  * <p>Lifecycle steps a customer gets: full draft → validate → simulate →
  * activate for FREE-node flows (Eigenverbrauch + device-control/data/logic/
@@ -85,6 +90,21 @@ public class SiteFlowController {
     @GetMapping("/sites/{siteId}/entity-strategies")
     public Map<String, List<EntityStrategyDto>> entityStrategies(@PathVariable UUID siteId) {
         return flows.entityStrategies(siteId);
+    }
+
+    /**
+     * The customer twin of the admin auto-start (Portal v3 M3): seed this
+     * site's profile-appropriate starter flow DRAFT if it has none. Idempotent
+     * ({@code already_has_flow}); the ACTIVATION gate is unchanged - a flow
+     * whose gated node was not enabled still fails with
+     * {@code gated_node_not_enabled}.
+     */
+    @PostMapping("/sites/{siteId}/flows/auto-start")
+    public ResponseEntity<FlowTemplateService.AutoStartOutcome> autoStart(
+            @PathVariable UUID siteId) {
+        FlowTemplateService.AutoStartOutcome outcome = flows.autoStart(siteId);
+        HttpStatus status = outcome.created() ? HttpStatus.CREATED : HttpStatus.OK;
+        return ResponseEntity.status(status).body(outcome);
     }
 
     @PostMapping("/sites/{siteId}/flows")

@@ -873,6 +873,86 @@ paths:
         "400": { description: Override is not one of arbitrage, peak, private. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/profiles:
+    get:
+      tags: [profile]
+      summary: Modus-Profile shelf of the Anlage (Portal v3 M3).
+      description: >
+        The plant's feature set as a shelf with switches: Eigenverbrauch,
+        Marktoptimierung, Gewerbe (Lastspitzenkappung), Atypische Netznutzung.
+        Every profile is a DIRECT customer toggle - there are exactly two states,
+        `an` and `aus`, and no "angefragt" state anywhere. `state` is the STORED
+        intent (null = no row = derived default, i.e. the pre-M3 behaviour);
+        `derivedActive` is what the derivation alone says, `active` the effective
+        result after the intent overlay. `blockedReason` is the honest German
+        sentence for a profile that is switched on but cannot fully run yet
+        (missing Leistungspreis, missing market access) - never a request prompt.
+        RLS-scoped (foreign site 404; admins via the `X-Tenant-Id` switcher).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The shelf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteProfiles" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    put:
+      tags: [profile]
+      summary: Switch one Modus-Profil on or off.
+      description: >
+        Switching a profile ON makes the SERVER enable exactly that profile's
+        gated node types for this site and seed its starter flow
+        (`FlowTemplateService.autoStart`); switching it OFF deactivates the
+        profile's flows, disables those node types again and persists `aus` (so a
+        re-derived signal cannot silently re-enable it). The gate is opened, never
+        faked - the activation path still re-checks it, and the peak-shaving
+        configuration gate, the edge guard chain and the section 14a/EEG
+        protections are untouched. Marktoptimierung additionally requires real
+        market access on the site (a dynamic tariff and/or Direktvermarktung):
+        without it the toggle still flips, but the gated node stays closed and
+        nothing trades. A profile toggle NEVER writes money/contract master data.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile, state]
+              properties:
+                profile:
+                  type: string
+                  enum: [eigenverbrauch, marktvermarktung, lastspitzenkappung, atypische-netznutzung]
+                state: { type: string, enum: [an, aus] }
+      responses:
+        "200":
+          description: The recomputed shelf.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteProfiles" }
+        "400": { description: Unknown profile or state. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/flows/auto-start:
+    post:
+      tags: [flows]
+      summary: Seed this site's starter flow DRAFT (customer twin of the admin route).
+      description: >
+        Idempotent: a site that already has any flow is left untouched
+        (`already_has_flow`), a site without a battery-hybrid entity reports
+        `no_battery`. Creating a DRAFT controls nothing - the activation gate is
+        unchanged, so a flow carrying a gated node still fails with
+        `gated_node_not_enabled` until that node type is enabled for the site.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "201": { description: Starter flow draft created. }
+        "200": { description: Nothing seeded - the outcome carries the German reason. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/admin/sites/{siteId}/flow-node-governance:
     get:
       tags: [admin]
@@ -3910,6 +3990,53 @@ components:
               items: { type: string, example: vp.strategy.market }
             plantKind: { type: string, nullable: true }
             hasLeistungspreis: { type: boolean }
+    SiteProfiles:
+      type: object
+      properties:
+        profiles:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                enum: [eigenverbrauch, marktvermarktung, lastspitzenkappung, atypische-netznutzung]
+              label: { type: string, description: Customer-facing German name. }
+              state:
+                type: string
+                nullable: true
+                enum: [an, aus]
+                description: The STORED customer intent; null = derived default.
+              derivedActive: { type: boolean, description: What the derivation alone says. }
+              active: { type: boolean, description: Effective state after the intent overlay. }
+              unlocks:
+                type: object
+                properties:
+                  views: { type: array, items: { type: string } }
+                  widgets: { type: array, items: { type: string } }
+                  moneyStream: { type: string, nullable: true }
+              requirements:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    label: { type: string }
+                    met: { type: boolean }
+              blockedReason:
+                type: string
+                nullable: true
+                description: >
+                  Honest German sentence for a switched-on profile that cannot
+                  fully run yet. Never a request prompt.
+              origin: { type: string, nullable: true, enum: [masterdata, flow] }
+              flowRef:
+                type: object
+                nullable: true
+                properties:
+                  flowId: { type: string, format: uuid }
+                  name: { type: string }
+              gatedNodeTypes: { type: array, items: { type: string } }
+              gatedNodesEnabled: { type: boolean }
     FlowNodeGovernance:
       type: object
       description: AE7 node governance - the gated strategy node types + per-site enablement.

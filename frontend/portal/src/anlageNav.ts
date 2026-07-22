@@ -104,9 +104,23 @@ function baseItems(badge: number | null): SidebarItem[] {
   ];
 }
 
-/** Einstellungen · Hilfe & Kontakt — the sidebar foot. */
+/**
+ * Modus-Profile · Einstellungen · Hilfe & Kontakt — the sidebar foot.
+ *
+ * M3 mounts the Modus-Profile shelf here rather than in the base group: the
+ * base group is the five FIXED Anlage areas (M1 law 1), and the shelf is a
+ * plant-wide management surface, always reachable, on every plant — including a
+ * v1 one. `Steuerung` links into it as well ("Profile verwalten →", M4).
+ */
 function footItems(): SidebarItem[] {
   return [
+    {
+      key: 'profile',
+      label: 'Modus-Profile',
+      icon: 'sliders',
+      target: { kind: 'sub', sub: 'profile' },
+      badge: null,
+    },
     { key: 'technik', label: 'Einstellungen', icon: 'settings', target: { kind: 'sub', sub: 'technik' }, badge: null },
     { key: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle', target: { kind: 'help' }, badge: null },
   ];

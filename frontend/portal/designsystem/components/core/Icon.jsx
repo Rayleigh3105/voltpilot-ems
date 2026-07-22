@@ -281,6 +281,20 @@ const PATHS = {
       <path d="m6.08 15.87-3.5 1.59a1 1 0 0 0 0 1.83l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9a1 1 0 0 0 0-1.83l-3.5-1.6" />
     </>
   ),
+  // Portal v3 M3: the Modus-Profile shelf (Lucide "sliders-horizontal").
+  sliders: (
+    <>
+      <line x1="21" y1="6" x2="10" y2="6" />
+      <line x1="6" y1="6" x2="3" y2="6" />
+      <line x1="21" y1="12" x2="14" y2="12" />
+      <line x1="10" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="18" x2="16" y2="18" />
+      <line x1="12" y1="18" x2="3" y2="18" />
+      <circle cx="8" cy="6" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="14" cy="18" r="2" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, strokeWidth = 2, style = {}, ...props }) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Site } from './api';
 import { customerFlowApi } from './flows/flowsApi';
+import { profileStatesFrom, type SiteProfiles } from './profiles';
 import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
 
 /**
@@ -16,11 +17,14 @@ import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
  */
 export interface AnlageSurfaceState {
   surface: AnlageSurface | null;
+  /** The M3 profile shelf (null = older backend / not loaded — fail-soft). */
+  profiles: SiteProfiles | null;
   loading: boolean;
 }
 
 export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
   const [surface, setSurface] = useState<AnlageSurface | null>(null);
+  const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
   const [loading, setLoading] = useState(site != null);
 
   const siteId = site?.id ?? null;
@@ -34,6 +38,7 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
   useEffect(() => {
     if (!siteId) {
       setSurface(null);
+      setProfiles(null);
       setLoading(false);
       return undefined;
     }
@@ -45,8 +50,13 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
       customerFlowApi(siteId)
         .list()
         .catch(() => null),
-    ]).then(([profile, entities, flows]) => {
+      // M3: the stored profile intent is an OVERLAY over the derivation.
+      // Fail-soft like everything else here - an older backend simply yields
+      // no states, and the surface is byte-identical to before M3.
+      api.siteProfiles(siteId).catch(() => null),
+    ]).then(([profile, entities, flows, shelf]) => {
       if (!active) return;
+      setProfiles(shelf);
       setSurface(
         anlageSurface({
           signals: profile?.signals ?? null,
@@ -59,6 +69,7 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
           // FlowSummary is structurally a SurfaceFlow (report §1.2).
           flows: (flows as SurfaceFlow[] | null) ?? null,
           entities: entities?.entities ?? null,
+          profileStates: profileStatesFrom(shelf),
         }),
       );
       setLoading(false);
@@ -68,5 +79,5 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
     };
   }, [siteId, plantKind, tarifArt, netzladen, leistungspreis]);
 
-  return { surface, loading };
+  return { surface, profiles, loading };
 }
