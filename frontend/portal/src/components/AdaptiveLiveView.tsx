@@ -104,11 +104,14 @@ export function AdaptiveLiveView({
 function TileCard({ tile }: { tile: AdaptiveTile }) {
   return (
     <div className={`vp-verdict ${tile.tileClass}`}>
-      <span className="vp-verdict-head">
+      {/* The header shows the SHORT generalised word; the full stored name
+          (e.g. "Netzanschluss (Messung über Wechselrichter)") stays reachable
+          on hover instead of truncating the layout. */}
+      <span className="vp-verdict-head" title={tile.fullTitle ?? tile.title}>
         <span className="vp-verdict-ico">
           <Icon name={tile.icon} size={16} />
         </span>
-        {tile.title}
+        <span className="vp-verdict-name">{tile.title}</span>
       </span>
       <span className="vp-verdict-val">{tile.value}</span>
       <span className={`vp-verdict-state${tile.stateTone === 'muted' ? ' muted' : ''}`}>

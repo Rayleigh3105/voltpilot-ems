@@ -78,9 +78,15 @@ describe('AdaptiveLiveView', () => {
     // direct-child node/hub circles (excludes circles inside nested Icon svgs).
     const nodeCircles = svg.querySelectorAll(':scope > circle, :scope > g > circle');
     expect(nodeCircles.length).toBe(5);
-    // tiles + flow both name the entities (label appears in each surface).
-    expect(screen.getAllByText('Fronius').length).toBeGreaterThanOrEqual(1);
+    // tiles + flow name the entities by their SHORT generalised word, and the
+    // full stored name stays reachable on the tile header's tooltip.
+    expect(screen.getAllByText('Erzeuger').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Batteriespeicher').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Wallbox').length).toBeGreaterThanOrEqual(1);
+    expect(container.querySelector('.vp-verdict.pv .vp-verdict-head')).toHaveAttribute(
+      'title',
+      'Fronius',
+    );
     // module strip reflects the active market node.
     expect(screen.getByText('Was läuft')).toBeInTheDocument();
     expect(screen.getByText('Marktoptimierung')).toBeInTheDocument();

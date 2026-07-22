@@ -489,6 +489,14 @@ a:focus-visible,
   color: var(--vp-text-muted, #6c757d);
   font-size: 0.82rem;
   font-weight: 600;
+  /* The name must be able to shrink/wrap inside the tile - on a phone a
+     2-column grid leaves ~116px, and without this the header painted past
+     the card border instead of wrapping. */
+  min-width: 0;
+}
+.vp-verdict-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .vp-verdict-ico {
   display: inline-flex;
