@@ -27,10 +27,13 @@ public class TelemetryRawConsumer {
 
     private final ObjectMapper mapper;
     private final TelemetryWriteRepository repository;
+    private final ComposedEntityFanout fanout;
 
-    public TelemetryRawConsumer(ObjectMapper mapper, TelemetryWriteRepository repository) {
+    public TelemetryRawConsumer(ObjectMapper mapper, TelemetryWriteRepository repository,
+            ComposedEntityFanout fanout) {
         this.mapper = mapper;
         this.repository = repository;
+        this.fanout = fanout;
     }
 
     @KafkaListener(
@@ -51,6 +54,16 @@ public class TelemetryRawConsumer {
         }
 
         boolean inserted = repository.insert(event, value);
+        // MIG-B1: mirror the sample onto the site's COMPOSED v2 entities, so a
+        // migrated plant renders real values before any edge speaks v2. It is a
+        // display bridge over the very same numbers, so a failure here must
+        // never wedge the core pipe (which is already committed) - log + move on.
+        try {
+            fanout.fanOut(event);
+        } catch (RuntimeException e) {
+            log.warn("v2 fan-out for site {} failed (v1 row unaffected): {}", event.site_id(),
+                    e.toString());
+        }
         if (log.isDebugEnabled()) {
             log.debug("{} telemetry row for device={} at {} (tenant={})",
                     inserted ? "Inserted" : "Skipped duplicate",

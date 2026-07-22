@@ -300,9 +300,39 @@ describe('Ausprägung: Marktvermarktung', () => {
     ]);
     expect(markt.origin).toBe('masterdata');
     expect(markt.manifest.steuerungCard.line).toContain('teuer verkaufen');
+    // MIG §5: die DV-Anlage weist aus, was sie WIRKLICH verdient hat -
+    // Einspeise-Erlös (+ EV-Wert, hier ist ein dynamischer Tarif hinterlegt).
+    // `savedEur` ist die Zurechnung UNTER dem Erlös, kein eigener Summand.
     expect(markt.manifest.moneyStreams.map((m) => m.sources)).toEqual([
-      ['savedEur', 'arbitrageEur'],
+      ['einspeiseErloesEur'],
+      ['eigenverbrauchsWertEur'],
     ]);
+    expect(markt.manifest.moneyStreams[0].attribution).toBe('steering');
+  });
+
+  it('MIG §5: ohne hinterlegten Tarif entfällt die EV-Wert-Zeile (statt ewiger "—")', () => {
+    const ohneTarif: AnlageSurfaceInput = {
+      ...MARKT,
+      config: { ...MARKT.config!, tarifArt: 'ohne', netzladenErlaubt: false },
+    };
+    const markt = activeModes(ohneTarif).find((m) => m.kind === 'marktvermarktung')!;
+    expect(markt.manifest.moneyStreams.map((m) => m.id)).toEqual(['einspeisung']);
+  });
+
+  it('MIG §5: derselbe Erlös-Strom erscheint nur EINMAL, auch mit EV-Flow', () => {
+    // DV-Anlage MIT explizitem Eigenverbrauchs-Flow: beide Modi nennen jetzt
+    // dieselben Ströme - doppelt gezeigt (und summiert) wäre es falsch.
+    const beides: AnlageSurfaceInput = {
+      ...MARKT,
+      flows: [
+        flow('f-ev', 'Eigenverbrauch', [
+          { id: 'n1', type: 'vp.strategy.selfconsumption' },
+          { id: 'n2', type: 'vp.entity.control' },
+        ]),
+      ],
+    };
+    const streams = anlageSurface(beides).moneyStreams;
+    expect(streams.map((s) => s.id)).toEqual(['einspeisung', 'eigenverbrauchswert']);
   });
 
   it('F4: Netzladen + dynamischer Tarif zählt auch ohne Direktvermarktung als Markt', () => {
@@ -345,12 +375,13 @@ describe('Ausprägung: Multi-Modus', () => {
   });
 
   it('rendert vier Ströme — drei zugeordnet, die Automation ehrlich "—"', () => {
+    // Seit MIG §5 nennen Markt- UND Eigenverbrauchs-Modus dieselben
+    // Erlös-Ströme; der Stapel zeigt jeden genau einmal (erste Nennung).
     const streams = anlageSurface(MULTI).moneyStreams;
     expect(streams.map((s) => s.id)).toEqual([
       'lastspitzen',
-      'handel',
-      'eigenverbrauchswert',
       'einspeisung',
+      'eigenverbrauchswert',
       'automation',
     ]);
     expect(streams.filter((s) => s.unattributed).map((s) => s.id)).toEqual(['automation']);

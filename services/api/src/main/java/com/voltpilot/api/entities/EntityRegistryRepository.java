@@ -99,6 +99,29 @@ public class EntityRegistryRepository {
                 UUID.class, tenantId, siteId, label, deviceId);
     }
 
+    /** The site's measurement point of this role, or null when none exists. */
+    public UUID pointIdByRole(UUID siteId, String role) {
+        List<UUID> ids = jdbc.query(
+                "SELECT id FROM measurement_point WHERE site_id = ? AND role = ? "
+                        + "ORDER BY created_at, id",
+                (rs, n) -> rs.getObject("id", UUID.class), siteId, role);
+        return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    /**
+     * Create a COMPOSED measure-only point bound to the gateway device (MIG
+     * §2.3/§2.4: the synthesized grid-meter / house-load). {@code control} is
+     * FALSE - the DB CHECK forbids control on a non-battery role anyway, so
+     * nothing composed here can carry an actuate capability to a device.
+     */
+    public UUID createComposedPoint(UUID tenantId, UUID siteId, String role, String label,
+            UUID deviceId) {
+        return jdbc.queryForObject(
+                "INSERT INTO measurement_point (tenant_id, site_id, role, label, device_id, control) "
+                        + "VALUES (?, ?, ?, ?, ?, FALSE) RETURNING id",
+                UUID.class, tenantId, siteId, role, label, deviceId);
+    }
+
     /** One entity row of the site, or null (RLS: a foreign site yields null). */
     public EntityRow entityForSite(UUID siteId, UUID pointId) {
         List<EntityRow> rows = jdbc.query(
@@ -271,6 +294,28 @@ public class EntityRegistryRepository {
                 "SELECT v2_history_cutover_at FROM site WHERE id = ?",
                 (rs, n) -> {
                     java.sql.Timestamp ts = rs.getTimestamp("v2_history_cutover_at");
+                    return ts == null ? null : ts.toInstant();
+                }, siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Stamp the site as auto-backfilled (MIG §6). The marker is what makes the
+     * rollback STICK: the runner only touches sites where it is NULL, so
+     * deleting a site's entities is not silently undone by the next api restart.
+     * Clearing the column re-arms the runner for that site.
+     */
+    public boolean markV2Backfilled(UUID siteId, java.time.Instant at) {
+        return jdbc.update("UPDATE site SET v2_backfilled_at = ? WHERE id = ?",
+                java.sql.Timestamp.from(at), siteId) > 0;
+    }
+
+    /** The site's backfill marker, or null (never auto-backfilled). */
+    public java.time.Instant v2BackfilledAt(UUID siteId) {
+        List<java.time.Instant> rows = jdbc.query(
+                "SELECT v2_backfilled_at FROM site WHERE id = ?",
+                (rs, n) -> {
+                    java.sql.Timestamp ts = rs.getTimestamp("v2_backfilled_at");
                     return ts == null ? null : ts.toInstant();
                 }, siteId);
         return rows.isEmpty() ? null : rows.get(0);

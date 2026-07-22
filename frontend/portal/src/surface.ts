@@ -214,6 +214,15 @@ export interface MoneyStream {
    */
   unattributed: boolean;
   note: string | null;
+  /**
+   * `'steering'` = unter dieser Zeile steht die **Zurechnung** dessen, was
+   * VoltPilots Steuerung beigetragen hat ("davon +X € durch VoltPilots
+   * Steuerung"). Load-bearing (MIG §5): `savedEur` ist ein **Delta gegenüber
+   * einer ungeregelten Anlage** und steckt bereits IM Einspeise-Erlös — als
+   * eigene Summanden-Zeile wäre es doppelt gezählt. Deshalb: Attribution
+   * UNTER dem Erlös, nie daneben.
+   */
+  attribution?: 'steering' | null;
 }
 
 export interface SteuerungCard {
@@ -431,6 +440,21 @@ function dynamicTariff(config: SurfaceSiteConfig | null | undefined): boolean {
   return config?.tarifArt === 'dynamisch';
 }
 
+/**
+ * Ist überhaupt ein Stromtarif hinterlegt? Ohne ihn KANN der Eigenverbrauch
+ * nicht in Euro bewertet werden (`eigenverbrauchsWertEur` bleibt null), also
+ * gibt es die Zeile gar nicht erst — statt einer ewigen "—" (MIG §5).
+ */
+function hasTariff(tarifArt: TarifArt | undefined): boolean {
+  return tarifArt === 'dynamisch' || tarifArt === 'fest';
+}
+
+/** Der hinterlegte Tarif der Anlage (normalisiert; unbekannt/leer = 'ohne'). */
+function tarifArtOf(config: SurfaceSiteConfig | null | undefined): TarifArt {
+  const raw = config?.tarifArt;
+  return raw === 'dynamisch' || raw === 'fest' ? raw : 'ohne';
+}
+
 function isDirektvermarktung(input: AnlageSurfaceInput): boolean {
   return (
     input.config?.plantKind === 'direktvermarktung' ||
@@ -519,7 +543,9 @@ export function activeModes(site: AnlageSurfaceInput): ActiveMode[] {
           signals,
           flowRef: index.flowByType.get(NODE_MARKET) ?? null,
           plantKind: isDirektvermarktung(input) ? 'direktvermarktung' : 'eigenverbrauch',
-          tarifArt: dynamicTariff(input.config) ? 'dynamisch' : 'ohne',
+          // Der ECHTE Tarif (nicht nur dynamisch/ohne): der Geld-Stapel hängt
+          // daran, ob überhaupt ein Tarif hinterlegt ist (MIG §5).
+          tarifArt: tarifArtOf(input.config),
         }),
       );
     }
@@ -644,15 +670,35 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
     case 'marktvermarktung':
       return {
         cockpitBlock: block('handel', 'Handel', seed.label),
+        // MIG §5 (Captain entschieden): eine Direktvermarktungs-Anlage weist
+        // aus, was sie WIRKLICH verdient hat — Einspeise-Erlös (+ Wert des
+        // Eigenverbrauchs, sobald ein Tarif hinterlegt ist). Der Steuerungs-
+        // Beitrag (`savedEur`) ist die ZURECHNUNG darunter, kein Geschwister-
+        // Summand: gemessen zeigte die alte Ein-Strom-Komposition auf einer
+        // realen Anlage 13,62 € statt 301,46 €, weil sie nur das Delta
+        // gutschrieb. Reihenfolge = die Reihenfolge des Geld-Stapels.
         moneyStreams: [
           {
-            id: 'handel',
-            label: 'Handel & Arbitrage',
-            sources: ['savedEur', 'arbitrageEur'],
+            id: 'einspeisung',
+            label: 'Einspeise-Erlös',
+            sources: ['einspeiseErloesEur'],
             period: 'range',
             unattributed: false,
-            note: 'Marktprämie im Kleingedruckten.',
+            note: null,
+            attribution: 'steering',
           },
+          ...(hasTariff(seed.tarifArt)
+            ? [
+                {
+                  id: 'eigenverbrauchswert' as const,
+                  label: 'Wert des Eigenverbrauchs',
+                  sources: ['eigenverbrauchsWertEur'],
+                  period: 'range' as const,
+                  unattributed: false,
+                  note: null,
+                },
+              ]
+            : []),
         ],
         steuerungCard: {
           title: seed.label,
@@ -744,9 +790,26 @@ function sortDeepViews(views: DeepViewId[]): DeepViewId[] {
   return DEEP_VIEW_ORDER.filter((v) => seen.has(v));
 }
 
-/** Alle Geld-Ströme der aktiven Modi, in Modus-Reihenfolge (report §1.4). */
+/**
+ * Alle Geld-Ströme der aktiven Modi, in Modus-Reihenfolge (report §1.4) —
+ * **dedupliziert je Strom-Id**, erste Nennung gewinnt. Seit MIG §5 nennen
+ * Marktvermarktung UND Eigenverbrauch dieselben Erlös-Ströme; eine Anlage, auf
+ * der beide Modi aktiv sind (DV-Anlage mit explizitem Eigenverbrauchs-Flow),
+ * würde denselben Euro sonst zweimal zeigen UND zweimal summieren.
+ */
 export function moneyStreams(modes: ActiveMode[]): MoneyStream[] {
-  return modes.flatMap((m) => m.manifest.moneyStreams);
+  const seen = new Set<MoneyStreamId>();
+  const streams: MoneyStream[] = [];
+  for (const stream of modes.flatMap((m) => m.manifest.moneyStreams)) {
+    // Unzugeordnete Ströme (je Automation einer) tragen ALLE die Id
+    // 'automation' und sind KEINE Dubletten - sie zeigen ohnehin "—".
+    if (!stream.unattributed) {
+      if (seen.has(stream.id)) continue;
+      seen.add(stream.id);
+    }
+    streams.push(stream);
+  }
+  return streams;
 }
 
 /**

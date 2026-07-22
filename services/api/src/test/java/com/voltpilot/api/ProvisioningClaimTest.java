@@ -409,9 +409,22 @@ class ProvisioningClaimTest {
         assertThat(pushNode.get("site_id").asText()).isEqualTo(siteId);
         assertThat(pushNode.get("device_id").asText()).isEqualTo(deviceId);
         assertThat(pushNode.get("revision").asText()).isNotBlank();
-        assertThat(pushNode.get("entities")).hasSize(1);
-        JsonNode battery = pushNode.get("entities").get(0);
-        assertThat(battery.get("entity_type").asText()).isEqualTo("battery-hybrid");
+        // MIG: battery-hybrid (from the asset) + the two SYNTHESIZED gateway
+        // measurements (Netz + Haus), so the edge gets the complete pilot set.
+        assertThat(pushNode.get("entities")).hasSize(3);
+        java.util.List<String> pushedTypes = new java.util.ArrayList<>();
+        for (JsonNode e : pushNode.get("entities")) {
+            pushedTypes.add(e.get("entity_type").asText());
+        }
+        assertThat(pushedTypes)
+                .containsExactlyInAnyOrder("battery-hybrid", "grid-meter", "house-load");
+        JsonNode battery = null;
+        for (JsonNode e : pushNode.get("entities")) {
+            if ("battery-hybrid".equals(e.get("entity_type").asText())) {
+                battery = e;
+            }
+        }
+        assertThat(battery).isNotNull();
         assertThat(battery.get("guards").get("failsafe").get("behavior").asText())
                 .isEqualTo("self-consumption");
         // D-8: the fresh site has netzladen_erlaubt = FALSE.
@@ -430,7 +443,7 @@ class ProvisioningClaimTest {
         String wallboxPayload = pollRetainedContaining(topic, "wallbox", 15);
         assertThat(wallboxPayload).as("re-pushed registry carrying the wallbox").isNotNull();
         JsonNode repushed = mapper.readTree(wallboxPayload);
-        assertThat(repushed.get("entities")).hasSize(2);
+        assertThat(repushed.get("entities")).hasSize(4);
         JsonNode wallbox = null;
         for (JsonNode e : repushed.get("entities")) {
             if ("wallbox".equals(e.get("entity_type").asText())) {

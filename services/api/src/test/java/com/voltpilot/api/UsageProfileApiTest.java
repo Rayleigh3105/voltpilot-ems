@@ -158,6 +158,31 @@ class UsageProfileApiTest {
         assertThat(profile.path("emphasis").path("peak").asText()).isEqualTo("prominent");
     }
 
+    /**
+     * MIG §4: {@code hasPv}/{@code hasStorage} are derived from the entities'
+     * measured CHANNELS, not from the type category. A hybrid-only plant (the
+     * shape of every real one) is category {@code storage} yet measures
+     * {@code pv_power_kw} - the old category rule reported "PV fehlt" forever
+     * and kept the Eigenverbrauch mode from ever firing. The synthesized
+     * Hausverbrauch (category consumer, no actuate) must NOT read as a
+     * controllable consumer.
+     */
+    @Test
+    void hasPvComesFromTheMeasuredChannelsSoAHybridOnlyPlantCountsAsPv() {
+        String admin = token("admin", "admin");
+        // BERLIN has a battery asset + a claimed device: the bootstrap composes
+        // a battery-hybrid (pv+storage) plus the synthesized grid-meter/house-load.
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/bootstrap",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+
+        JsonNode signals = getProfile(token("demo", "demo"), BERLIN_SITE, null).path("signals");
+        assertThat(signals.path("hasStorage").asBoolean()).isTrue();
+        assertThat(signals.path("hasPv").asBoolean())
+                .as("the hybrid MEASURES pv_power_kw - that IS PV").isTrue();
+        assertThat(signals.path("hasControllableConsumer").asBoolean())
+                .as("a house nobody can switch is not a controllable consumer").isFalse();
+    }
+
     @Test
     void foreignSiteProfileIsNotFound() {
         String demo = token("demo", "demo");

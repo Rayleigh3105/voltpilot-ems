@@ -52,6 +52,19 @@ public class EntityRegistryService {
     static final String TYPE_BATTERY_HYBRID = "battery-hybrid";
     static final String TYPE_PRODUCER = "producer";
     static final String TYPE_GRID_METER = "grid-meter";
+    static final String TYPE_HOUSE_LOAD = "house-load";
+
+    static final String ROLE_GRID_METER = "grid-meter";
+    static final String ROLE_HOUSE_LOAD = "house-load";
+
+    /**
+     * The synthesized measurement points' labels - honest about WHERE the
+     * measurement comes from (the gateway inverter's own channel, not a
+     * separate meter). When the customer later adopts a real grid meter, the
+     * {@link #adopt} path relabels that very row.
+     */
+    static final String LABEL_SYNTHESIZED_GRID = "Netzanschluss (Messung über Wechselrichter)";
+    static final String LABEL_SYNTHESIZED_HOUSE = "Hausverbrauch (Messung über Wechselrichter)";
 
     /** Outcome of a best-effort registry push. */
     public record PushOutcome(boolean attempted, boolean published, String reason,
@@ -125,12 +138,16 @@ public class EntityRegistryService {
             skipped.add("battery-hybrid: no battery asset on this site");
         }
 
+        synthesizeGatewayPoints(tenantId, siteId, gatewayDevice(siteId, battery), skipped);
+
         for (EntityRow point : repo.pointsForSite(siteId)) {
             switch (point.role()) {
                 case "pv-generation" -> repo.setEntityConfig(point.id(), TYPE_PRODUCER,
                         write(producerCapabilities(point)), write(producerGuards(point)));
-                case "grid-meter" -> repo.setEntityConfig(point.id(), TYPE_GRID_METER,
+                case ROLE_GRID_METER -> repo.setEntityConfig(point.id(), TYPE_GRID_METER,
                         write(gridMeterCapabilities()), write(gridMeterGuards()));
+                case ROLE_HOUSE_LOAD -> repo.setEntityConfig(point.id(), TYPE_HOUSE_LOAD,
+                        write(houseLoadCapabilities()), write(houseLoadGuards()));
                 default -> {
                     // battery-hybrid handled above; future roles are E1b+.
                 }
@@ -144,6 +161,86 @@ public class EntityRegistryService {
     /** Rows + skips + push outcome of one bootstrap run. */
     public record BootstrapResult(List<EntityRow> entities, List<String> skipped,
             PushOutcome push) {}
+
+    /**
+     * THE COMPOSITION CONTRACT (MIG §2, measured on the captain's real fleet -
+     * do not "restore the symmetry" without re-measuring):
+     *
+     * <ul>
+     *   <li><b>battery-hybrid</b> from the battery ASSET - unchanged. It already
+     *       carries {@code pv_power_kw}, so it alone covers the PV role of a
+     *       hybrid site.</li>
+     *   <li><b>producer</b> ONLY from a {@code pv-generation} measurement POINT
+     *       (a genuinely separate AC-coupled array, recorded by the customer or
+     *       adopted from an edge-reported source). <b>The {@code pv} ASSET never
+     *       becomes an entity</b>: it is the site AGGREGATE, and the topology
+     *       sums per role, so composing it next to the hybrid DOUBLE-COUNTS the
+     *       PV (measured: 5,85 kW read as 11,7 kW).</li>
+     *   <li><b>grid-meter</b> and <b>house-load</b> are SYNTHESIZED from the
+     *       gateway device when no such point exists: v1 renders Netz + Haus
+     *       from the gateway's own {@code power_kw} / {@code load_kw}, and
+     *       without an entity owning those channels both nodes vanish from the
+     *       v2 Energiefluss. Both are measure-only ({@code control = false}, no
+     *       {@code actuate}) - the DB CHECK enforces it - so nothing composed
+     *       here can ever reach a device.</li>
+     * </ul>
+     *
+     * <p>Synthesis needs an unambiguous gateway; without one (no claimed device)
+     * nothing is composed - a device-less site keeps its honest v1 face.
+     */
+    private void synthesizeGatewayPoints(UUID tenantId, UUID siteId, UUID gateway,
+            List<String> skipped) {
+        if (gateway == null) {
+            skipped.add("grid-meter/house-load: no unambiguous gateway device to measure through");
+            return;
+        }
+        ensureComposedPoint(tenantId, siteId, ROLE_GRID_METER, LABEL_SYNTHESIZED_GRID, gateway);
+        ensureComposedPoint(tenantId, siteId, ROLE_HOUSE_LOAD, LABEL_SYNTHESIZED_HOUSE, gateway);
+    }
+
+    /** Create the measure-only point for a role once; an existing one wins. */
+    private void ensureComposedPoint(UUID tenantId, UUID siteId, String role, String label,
+            UUID gateway) {
+        if (repo.pointIdByRole(siteId, role) != null) {
+            return;
+        }
+        repo.createComposedPoint(tenantId, siteId, role, label, gateway);
+    }
+
+    /** What the automatic backfill did with one site (MIG §6). */
+    public enum BackfillOutcome {
+        /** Composed now - stamp the marker. */
+        MIGRATED,
+        /** Already carries v2 entities (admin bootstrap / earlier run) - stamp, compose nothing. */
+        ALREADY_V2,
+        /**
+         * No unambiguous gateway device: composing would replace the honest v1
+         * onboarding guide with an empty Energiefluss on a plant that has no
+         * telemetry and no gateway to push a registry to. Do NOT stamp - the
+         * site is picked up automatically on a later boot once a device is
+         * claimed (MIG §7, the Mienbach case).
+         */
+        SKIPPED_NO_GATEWAY
+    }
+
+    /**
+     * The guarded unit of the automatic migration: compose this site's pilot
+     * entities unless it is already on v2 or has no gateway. Runs under the
+     * caller-established {@link TenantContext} through the RLS-scoped
+     * repository, exactly like the admin bootstrap endpoint - ONE composition
+     * truth, no SQL twin.
+     */
+    @Transactional
+    public BackfillOutcome bootstrapIfEligible(UUID siteId) {
+        if (repo.hasEntities(siteId)) {
+            return BackfillOutcome.ALREADY_V2;
+        }
+        if (gatewayDevice(siteId, repo.batteryAsset(siteId)) == null) {
+            return BackfillOutcome.SKIPPED_NO_GATEWAY;
+        }
+        bootstrap(siteId);
+        return BackfillOutcome.MIGRATED;
+    }
 
     // ---- Conversion preview (MIG: dry-run, writes NOTHING) ------------------
 
@@ -187,6 +284,8 @@ public class EntityRegistryService {
             skipped.add("battery-hybrid: no battery asset on this site");
         }
 
+        boolean hasGridPoint = false;
+        boolean hasHousePoint = false;
         for (EntityRow point : repo.pointsForSite(siteId)) {
             String action = point.entityType() != null ? "refresh" : "create";
             switch (point.role()) {
@@ -195,10 +294,17 @@ public class EntityRegistryService {
                     plan.add(new PlannedEntity(point.id(), action, TYPE_PRODUCER, point.label(),
                             rolesFor(TYPE_PRODUCER, caps), caps, producerGuards(point)));
                 }
-                case "grid-meter" -> {
+                case ROLE_GRID_METER -> {
+                    hasGridPoint = true;
                     ObjectNode caps = gridMeterCapabilities();
                     plan.add(new PlannedEntity(point.id(), action, TYPE_GRID_METER, point.label(),
                             rolesFor(TYPE_GRID_METER, caps), caps, gridMeterGuards()));
+                }
+                case ROLE_HOUSE_LOAD -> {
+                    hasHousePoint = true;
+                    ObjectNode caps = houseLoadCapabilities();
+                    plan.add(new PlannedEntity(point.id(), action, TYPE_HOUSE_LOAD, point.label(),
+                            rolesFor(TYPE_HOUSE_LOAD, caps), caps, houseLoadGuards()));
                 }
                 case "battery-hybrid" -> {
                     // counted from the battery asset above.
@@ -209,6 +315,23 @@ public class EntityRegistryService {
         }
 
         UUID gateway = gatewayDevice(siteId, battery);
+        // The synthesized gateway points (MIG §2.3/§2.4) - LOCKSTEP with
+        // synthesizeGatewayPoints() in bootstrap(), or the preview lies about
+        // what the conversion will do.
+        if (gateway == null) {
+            skipped.add("grid-meter/house-load: no unambiguous gateway device to measure through");
+        } else {
+            if (!hasGridPoint) {
+                ObjectNode caps = gridMeterCapabilities();
+                plan.add(new PlannedEntity(null, "create", TYPE_GRID_METER, LABEL_SYNTHESIZED_GRID,
+                        rolesFor(TYPE_GRID_METER, caps), caps, gridMeterGuards()));
+            }
+            if (!hasHousePoint) {
+                ObjectNode caps = houseLoadCapabilities();
+                plan.add(new PlannedEntity(null, "create", TYPE_HOUSE_LOAD, LABEL_SYNTHESIZED_HOUSE,
+                        rolesFor(TYPE_HOUSE_LOAD, caps), caps, houseLoadGuards()));
+            }
+        }
         return new ConversionPreview(repo.hasEntities(siteId), gateway,
                 gateway == null ? gatewayReason(siteId, battery) : null, plan, skipped);
     }
@@ -789,6 +912,24 @@ public class EntityRegistryService {
     }
 
     private ObjectNode gridMeterGuards() {
+        ObjectNode guards = mapper.createObjectNode();
+        guards.putObject("failsafe").put("behavior", "measure-only");
+        return guards;
+    }
+
+    /**
+     * The Hausverbrauch entity: the site's {@code load_kw} channel, measure-only.
+     * Its catalog type is {@code controllable: false} on purpose - typing it as
+     * {@code generic-load} would light up {@code hasControllableConsumer} and
+     * offer device-automation affordances on a house nobody can switch.
+     */
+    private ObjectNode houseLoadCapabilities() {
+        ObjectNode caps = mapper.createObjectNode();
+        caps.putArray("measure").add(measureCap("power_kw", "kW"));
+        return caps;
+    }
+
+    private ObjectNode houseLoadGuards() {
         ObjectNode guards = mapper.createObjectNode();
         guards.putObject("failsafe").put("behavior", "measure-only");
         return guards;

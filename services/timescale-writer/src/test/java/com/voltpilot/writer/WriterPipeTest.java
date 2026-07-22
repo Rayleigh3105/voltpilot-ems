@@ -324,6 +324,121 @@ class WriterPipeTest {
         }
     }
 
+    /**
+     * MIG-B1 (report §3): for a site whose v2 entities were COMPOSED from its v1
+     * master data, one v1 sample additionally lands as per-entity
+     * {@code telemetry_v2} rows - so a migrated plant renders real values before
+     * any edge speaks v2. A site with NO composed entities (every un-migrated
+     * one) is byte-for-byte unaffected.
+     */
+    @Test
+    void composedEntitiesAreFedFromTheV1SampleAndAnUnmigratedSiteIsUntouched() throws Exception {
+        createTopic();
+        String device = "30000000-0000-0000-0000-0000000000c1";
+        String migratedSite = "30000000-0000-0000-0000-0000000000a1";
+        String battery = UUID.randomUUID().toString();
+        String meter = UUID.randomUUID().toString();
+        String house = UUID.randomUUID().toString();
+        try (Connection c = admin(); Statement st = c.createStatement()) {
+            for (String[] row : new String[][] {
+                    {battery, "battery-hybrid", "battery-hybrid"},
+                    {meter, "grid-meter", "grid-meter"},
+                    {house, "house-load", "house-load"}}) {
+                st.execute("INSERT INTO measurement_point (id, tenant_id, site_id, role, "
+                        + "device_id, entity_type) VALUES ('" + row[0] + "', '" + TENANT_A + "', '"
+                        + migratedSite + "', '" + row[1] + "', '" + device + "', '" + row[2]
+                        + "')");
+            }
+        }
+
+        try (KafkaProducer<String, String> producer = producer()) {
+            producer.send(new ProducerRecord<>(RAW_TOPIC, TENANT_A + ":" + migratedSite,
+                    migratedEvent(device, migratedSite))).get();
+            producer.flush();
+        }
+        // 2 battery channels with values + derived battery power + grid + house.
+        awaitV2RowCount(device, 5);
+
+        try (Connection c = admin();
+                Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(
+                        "SELECT entity_id, channel, value, time, received_at FROM telemetry_v2 "
+                                + "WHERE device_id = '" + device + "' ORDER BY channel")) {
+            java.util.Map<String, Double> byChannel = new java.util.LinkedHashMap<>();
+            java.util.Map<String, String> entityByChannel = new java.util.LinkedHashMap<>();
+            while (rs.next()) {
+                String key = rs.getString("entity_id").equals(battery)
+                        ? rs.getString("channel") : rs.getString("entity_id") + ":"
+                                + rs.getString("channel");
+                byChannel.put(key, rs.getDouble("value"));
+                entityByChannel.put(key, rs.getString("entity_id"));
+                assertThat(rs.getTimestamp("time").toInstant())
+                        .isEqualTo(Instant.parse(OBSERVED_AT));
+                assertThat(rs.getTimestamp("received_at").toInstant())
+                        .as("liveness = ARRIVAL time, like v1")
+                        .isEqualTo(Instant.parse("2026-07-01T08:58:46.000Z"));
+            }
+            assertThat(byChannel.get("soc_pct")).isEqualTo(10.0);
+            assertThat(byChannel.get("pv_power_kw")).isEqualTo(59.0);
+            assertThat(byChannel.get("battery_power_kw")).isEqualTo(44.6 - 14.4 + 59.0);
+            assertThat(byChannel.get(meter + ":power_kw")).isEqualTo(44.6);
+            assertThat(byChannel.get(house + ":power_kw")).isEqualTo(14.4);
+        }
+
+        // RLS parity: the owning tenant sees them, another does not.
+        assertThat(rlsVisibleV2Count(TENANT_A, device)).isEqualTo(5);
+        assertThat(rlsVisibleV2Count(TENANT_B, device)).isEqualTo(0);
+
+        // An UN-migrated site (no composed entities) gets no v2 rows at all.
+        String plainDevice = "30000000-0000-0000-0000-0000000000c2";
+        try (KafkaProducer<String, String> producer = producer()) {
+            producer.send(new ProducerRecord<>(RAW_TOPIC, TENANT_A + ":" + SITE,
+                    migratedEvent(plainDevice, SITE))).get();
+            producer.flush();
+        }
+        awaitRowsForDevice(plainDevice, 1);
+        Thread.sleep(1500); // give the (deliberately absent) fan-out time to NOT happen
+        assertThat(v2RowsForDevice(plainDevice)).isZero();
+    }
+
+    private static String migratedEvent(String device, String site) {
+        return "{"
+                + "\"schema_version\":\"1.0\","
+                + "\"event_id\":\"" + UUID.randomUUID() + "\","
+                + "\"tenant_id\":\"" + TENANT_A + "\","
+                + "\"site_id\":\"" + site + "\","
+                + "\"device_id\":\"" + device + "\","
+                + "\"observed_at\":\"" + OBSERVED_AT + "\","
+                + "\"ingested_at\":\"2026-07-01T08:58:46.000Z\","
+                + "\"source_topic\":\"ems/" + TENANT_A + "/" + site + "/" + device + "/telemetry\","
+                + "\"measurements\":{\"power_kw\":44.6,\"load_kw\":14.4,\"pv_power_kw\":59.0,"
+                + "\"soc_pct\":10.0}"
+                + "}";
+    }
+
+    private long v2RowsForDevice(String device) throws Exception {
+        try (Connection c = admin();
+                Statement st = c.createStatement();
+                ResultSet rs = st.executeQuery(
+                        "SELECT count(*) FROM telemetry_v2 WHERE device_id = '" + device + "'")) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    private void awaitRowsForDevice(String device, int expected) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
+        long count = -1;
+        while (System.nanoTime() < deadline) {
+            count = rowsForDevice(device);
+            if (count == expected) {
+                return;
+            }
+            Thread.sleep(500);
+        }
+        throw new AssertionError("expected " + expected + " telemetry row(s), saw " + count);
+    }
+
     private void awaitV2RowCount(String device, int expected) throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
         long count = -1;

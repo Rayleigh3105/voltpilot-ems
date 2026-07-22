@@ -8,6 +8,7 @@ import com.voltpilot.api.profile.UsageProfileDeriver.Emphasis;
 import com.voltpilot.api.profile.UsageProfileDeriver.Signals;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.topology.TopologyDeriver;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.UsageProfileDto;
 import java.util.ArrayList;
@@ -67,6 +68,26 @@ public class UsageProfileService {
                         signals.hasLeistungspreis()));
     }
 
+    /**
+     * The derivation signals of one site.
+     *
+     * <p><b>hasPv / hasStorage are CAPABILITY-based, not category-based (MIG
+     * §4).</b> Keying on the entity category {@code producer} was measured wrong
+     * on every real hybrid plant: a battery-hybrid is category {@code storage}
+     * and already MEASURES {@code pv_power_kw}, so a correctly composed hybrid
+     * site reported {@code hasPv: false} - the Eigenverbrauch mode could never
+     * fire and the portal kept asking for the PV it already had. The rule is now
+     * the SAME one the AE1 topology uses
+     * ({@link com.voltpilot.api.topology.TopologyDeriver#defaultRole}): a
+     * capability that resolves to role {@code pv} means PV, one that resolves to
+     * {@code storage} means storage - so profile and topology can no longer
+     * disagree about the same plant.
+     *
+     * <p>{@code hasControllableConsumer} additionally requires a non-empty
+     * {@code actuate} list: a consumer-category entity nobody can switch (the
+     * synthesized {@code house-load}) must never light up device-automation
+     * affordances.
+     */
     Signals signals(UUID siteId, SiteDto site) {
         boolean hasStorage = false;
         boolean hasPv = false;
@@ -74,25 +95,50 @@ public class UsageProfileService {
         for (EntityRegistryRepository.EntityRow row : entities.entitiesForSite(siteId)) {
             EntityTypeCatalog.EntityType type = catalog.find(row.entityType());
             String category = type == null ? "" : type.category();
-            boolean controllable = row.control() || (type != null && type.controllable());
-            switch (category) {
-                case "storage":
-                    hasStorage = true;
-                    break;
-                case "producer":
+            for (String role : measuredRoles(category, row.capabilitiesJson())) {
+                if (TopologyDeriver.ROLE_PV.equals(role)) {
                     hasPv = true;
-                    break;
-                case "consumer":
-                    if (controllable) {
-                        hasControllableConsumer = true;
-                    }
-                    break;
-                default:
-                    break;
+                } else if (TopologyDeriver.ROLE_STORAGE.equals(role)) {
+                    hasStorage = true;
+                }
+            }
+            boolean controllable = (row.control() || (type != null && type.controllable()))
+                    && hasActuate(row.capabilitiesJson());
+            if ("consumer".equals(category) && controllable) {
+                hasControllableConsumer = true;
             }
         }
         return new Signals(hasStorage, hasPv, hasControllableConsumer, activeStrategyNodeTypes(siteId),
                 site.plantKind(), site.leistungspreisEurKw() != null, site.usageProfileOverride());
+    }
+
+    /** The topology roles this entity's measure channels resolve to. */
+    private Set<String> measuredRoles(String category, String capabilitiesJson) {
+        Set<String> roles = new LinkedHashSet<>();
+        for (JsonNode m : capabilities(capabilitiesJson).path("measure")) {
+            String role = TopologyDeriver.defaultRole(category, m.path("channel").asText(null));
+            if (role != null && !role.isEmpty()) {
+                roles.add(role);
+            }
+        }
+        return roles;
+    }
+
+    /** Does the entity actually declare a command? (an empty list is not control) */
+    private boolean hasActuate(String capabilitiesJson) {
+        return capabilities(capabilitiesJson).path("actuate").size() > 0;
+    }
+
+    private JsonNode capabilities(String capabilitiesJson) {
+        if (capabilitiesJson == null || capabilitiesJson.isBlank()) {
+            return mapper.createObjectNode();
+        }
+        try {
+            return mapper.readTree(capabilitiesJson);
+        } catch (Exception e) {
+            log.warn("entity capabilities unreadable, treated as empty: {}", e.getMessage());
+            return mapper.createObjectNode();
+        }
     }
 
     /** The vp.strategy.* node types present in the site's ACTIVE flows. */

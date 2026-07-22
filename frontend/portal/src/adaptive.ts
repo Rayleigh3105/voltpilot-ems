@@ -87,6 +87,7 @@ export function iconFor(entityType: string, role: Role | null): IconName {
     case 'battery-hybrid':
       return 'battery';
     case 'generic-load':
+    case 'house-load':
       return 'home';
     default:
       return role ? ROLE_META[role].icon : 'activity';

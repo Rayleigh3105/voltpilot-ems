@@ -27,6 +27,7 @@
 
 import type { EarningsSite, EntityStrategy } from './api';
 import { eurAmount, fmtNum } from './format';
+import { steeringAttributionNote } from './erloesKomposition';
 import type { EditorEntity } from './flows/model';
 import { controllableConsumers, gridMeterEntity } from './flows/customerTemplates';
 import {
@@ -101,7 +102,16 @@ export function contributionRows(
       period: stream.period,
       note: stream.unattributed
         ? 'Pro Regel noch nicht zugeordnet.'
-        : periodLabel(stream.period),
+        : [
+            periodLabel(stream.period),
+            // MIG §5: dieselbe EINE Zurechnungs-Wahrheit wie im Geld-Stapel —
+            // der Steuerungs-Beitrag steht UNTER dem Erlös, nie daneben.
+            stream.attribution === 'steering' && earnings
+              ? steeringAttributionNote(earnings.savedEur)
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
     };
   });
 }
