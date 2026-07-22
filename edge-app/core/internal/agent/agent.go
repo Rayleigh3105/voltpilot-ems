@@ -129,6 +129,14 @@ type Agent struct {
 	entIdentity  entities.Identity
 	entAppliedAt time.Time
 	entReadings  map[string]entReading
+	// entComposed holds the DISPLAY-ONLY local composition of the composed
+	// entities (battery-hybrid/grid-meter/house-load) derived from the gated
+	// composite site sample at onLocalTelemetry - see entities.ComposeLocal.
+	// It fills the :8484 entity tiles + Energiefluss on a migrated plant whose
+	// Layer-1 flows still publish only the v1 site sample. It NEVER enters the
+	// buffer/uplink (the cloud fans the same v1 sample out itself) and never
+	// the heartbeat's observed Ist (which reports what the DEVICE reports).
+	entComposed map[string]entReading
 
 	// E2 arbitration layer (agent/arbitration.go; contract docs/contracts/v2/
 	// edge-desired-arbitration.md + mqtt-schedule-2.0.md): the desired
@@ -1110,6 +1118,11 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		GridLimitKw: ptr("grid_limit_kw"),
 		BattKw:      histBatt,
 	})
+	// Local composition of the composed v2 entities for the device's OWN view
+	// (M-B3-local). Display-only: it feeds Topology() -> the :8484 entity tiles
+	// + Energiefluss, never the buffer/uplink (the cloud fans the very same v1
+	// sample out itself, so uplinking here would double-write telemetry_v2).
+	a.composeEntities(measurements, ts)
 	a.State.Update(func(s *state.Snapshot) {
 		s.LastTelemetry = ts
 		s.BufferPending = a.buf.Pending()
