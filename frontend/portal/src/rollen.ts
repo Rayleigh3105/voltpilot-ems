@@ -16,8 +16,26 @@ import type {
   TopologyEntity,
   TopologyRoleAssignment,
 } from './api';
+import { isPlatformAdmin } from './auth';
 import { channelLabel } from './channels';
 import { defaultRole } from './topology';
+
+/**
+ * Portal v3 · M7 — THE single decision for whether the technical/installer
+ * layer is shown on the (otherwise customer-facing) Anlagen pages: the entity
+ * type badges, raw channels, guard bands, the registry Soll/Ist sync + drift,
+ * and the adoption plumbing. Every technical panel gates on THIS helper and
+ * nothing else, so the customer view stays free of `Entität`/`Messpunkt`/
+ * `Quelle` while a platform-admin sees the same pages with the extra panels
+ * added on top (M7 goal: "two views, one product").
+ *
+ * Owner decision (M7): admin-only for now, no separate installer role. When
+ * that role arrives it plugs in HERE — one line, one place — and every panel
+ * inherits it without another role check leaking into a page.
+ */
+export function showTechnicalLayer(): boolean {
+  return isPlatformAdmin();
+}
 
 export type Role = 'pv' | 'storage' | 'grid' | 'consumer';
 

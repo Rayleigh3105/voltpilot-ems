@@ -27,7 +27,8 @@ const TYPE_SHORT: Record<string, string> = {
   wallbox: 'Wallbox',
   'heating-rod': 'Heizstab',
   'generic-load': 'Verbraucher',
-  'modbus-generic': 'Messpunkt',
+  // D3 customer dictionary (M7): "Messgerät", never the internal "Messpunkt".
+  'modbus-generic': 'Messgerät',
 };
 
 /** Per-role short names - the primary key, so a hybrid reads per ASPECT. */

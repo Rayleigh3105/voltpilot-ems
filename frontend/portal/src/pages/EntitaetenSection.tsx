@@ -43,6 +43,7 @@ import {
   roleBoxes,
   rolePillsFor,
   setPrimaryAssignment,
+  showTechnicalLayer,
   sourceRoleLabel,
   suggestEntityType,
 } from '../rollen';
@@ -65,8 +66,19 @@ import { fmtNum } from '../format';
  * Plus the honest plumbing links + the edge-local commissioning view.
  *
  * All copy/verdicts are the pure src/rollen.ts + src/entities.ts.
+ *
+ * This whole section is the technical/installer panel (M7). It renders only
+ * behind `showTechnicalLayer()`, and its admin-only affordances (create/edit/
+ * adopt) gate on the SAME helper — so `isAdmin` defaults to it and a page never
+ * needs a second role check. Tests may still pass the flag explicitly.
  */
-export function EntitaetenSection({ site, isAdmin = false }: { site: Site; isAdmin?: boolean }) {
+export function EntitaetenSection({
+  site,
+  isAdmin = showTechnicalLayer(),
+}: {
+  site: Site;
+  isAdmin?: boolean;
+}) {
   const [data, setData] = useState<SiteEntities | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]>>({});

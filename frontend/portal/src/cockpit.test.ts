@@ -192,7 +192,7 @@ describe('cockpitStack — die kanonische Reihenfolge (report §1.3)', () => {
     expect(byId['handel'].isBase).toBe(false);
     expect(byId['eigenverbrauch'].fromTag).toBe('Eigenverbrauch');
     expect(byId['peak-band'].fromTag).toBe('Lastspitzenkappung');
-    expect(byId['energiefluss'].fromTag).toBe('Entitäten');
+    expect(byId['energiefluss'].fromTag).toBe('Komponenten');
     expect(byId['energiefluss'].isBase).toBe(true);
   });
 });

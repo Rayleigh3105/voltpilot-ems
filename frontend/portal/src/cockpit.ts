@@ -69,8 +69,11 @@ export interface CockpitBlockView {
   lead: boolean;
 }
 
-/** Das „von"-Tag eines base-Blocks — die Entitäten steuern ihn bei, kein Modus. */
-export const BASE_FROM_TAG = 'Entitäten';
+/**
+ * Das „von"-Tag eines base-Blocks — die Komponenten der Anlage steuern ihn bei,
+ * kein Modus. Kundensprache (D3): „Komponenten", nie „Entitäten" (M7).
+ */
+export const BASE_FROM_TAG = 'Komponenten';
 
 /**
  * Die **Telemetrie-Historie** als BASIS-Drill-in (feedback.md Punkt 2): der

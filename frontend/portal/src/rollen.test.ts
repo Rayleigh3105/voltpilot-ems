@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EntityLocalSetup, SiteTopology } from './api';
+import * as auth from './auth';
 import {
   ROLE_ORDER,
   adoptableSources,
@@ -12,6 +13,7 @@ import {
   roleBoxes,
   rolePillsFor,
   setPrimaryAssignment,
+  showTechnicalLayer,
   sourceRoleLabel,
   sourceSummary,
   suggestEntityType,
@@ -225,6 +227,29 @@ describe('adoption suggestions', () => {
 
 it('ROLE_ORDER is the canonical four', () => {
   expect(ROLE_ORDER).toEqual(['pv', 'storage', 'grid', 'consumer']);
+});
+
+/**
+ * M7: the ONE technical-layer decision. Today it is exactly `isPlatformAdmin()`;
+ * a future installer role plugs in here and nowhere else.
+ */
+describe('showTechnicalLayer', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('is closed for a customer (no platform-admin role)', () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
+    expect(showTechnicalLayer()).toBe(false);
+  });
+
+  it('is open for a platform-admin', () => {
+    vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
+    expect(showTechnicalLayer()).toBe(true);
+  });
+
+  it('defaults closed without any token (the customer default)', () => {
+    // No keycloak token in the test env -> isPlatformAdmin() is false.
+    expect(showTechnicalLayer()).toBe(false);
+  });
 });
 
 function src(

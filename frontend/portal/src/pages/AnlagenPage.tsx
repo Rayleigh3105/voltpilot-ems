@@ -363,7 +363,7 @@ function AnlagenSubPage({
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
-      {sub === 'modell' && <AnlagenModellSection site={site} isAdmin={isAdmin} />}
+      {sub === 'modell' && <AnlagenModellSection site={site} />}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
       {sub === 'profile' && <ProfileSection site={site} />}
       {sub === 'steuerung' && (
