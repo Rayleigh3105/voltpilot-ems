@@ -71,6 +71,13 @@ func (a *Agent) applyEntityRegistry(reg entities.Registry) {
 			delete(a.entReadings, id)
 		}
 	}
+	// The local composition follows the registry too; it is rebuilt from the
+	// next site sample.
+	for id := range a.entComposed {
+		if reg.Find(id) == nil {
+			delete(a.entComposed, id)
+		}
+	}
 	a.entMu.Unlock()
 
 	for _, e := range old.Entities {
@@ -169,6 +176,52 @@ func (a *Agent) onEntityTelemetry(topic string, payload []byte) {
 		s.BufferDataLoss = a.buf.DataLoss()
 	})
 	a.kick()
+}
+
+// composeEntities refreshes the DISPLAY-ONLY local composition of the composed
+// entities (battery-hybrid/grid-meter/house-load) from one gated composite site
+// sample - the local twin of the cloud's ComposedEntityFanout (M-B3-local,
+// report §3). It is what makes the :8484 entity tiles + Energiefluss show live
+// values on a migrated plant whose Layer-1 flows still publish only the v1 site
+// sample on edge/telemetry.
+//
+// HARD BOUNDARY: the result feeds Topology() (the device's own view) and
+// NOTHING else - not the store-and-forward buffer, not the v2 uplink, not the
+// heartbeat's observed Ist. The cloud already receives this very sample as v1
+// telemetry and fans it out into telemetry_v2 itself; uplinking the same values
+// from here would double-write. A real per-entity publisher on
+// edge/entities/{id}/telemetry always WINS over the composition (see
+// entityReading).
+func (a *Agent) composeEntities(site map[string]float64, ts time.Time) {
+	a.entMu.Lock()
+	defer a.entMu.Unlock()
+	if len(a.entRegistry.Entities) == 0 {
+		a.entComposed = nil
+		return
+	}
+	composed := entities.ComposeLocal(a.entRegistry, site)
+	if len(composed) == 0 {
+		a.entComposed = nil
+		return
+	}
+	now := time.Now()
+	out := make(map[string]entReading, len(composed))
+	for id, channels := range composed {
+		out[id] = entReading{channels: channels, ts: ts, recv: now}
+	}
+	a.entComposed = out
+}
+
+// entityReading picks the reading that drives the device's own view of one
+// entity: a REAL per-entity publisher always wins; the local composition fills
+// in for the composed entities of a migrated plant that has none. Caller holds
+// entMu.
+func (a *Agent) entityReading(id string) (entReading, bool) {
+	if er, ok := a.entReadings[id]; ok {
+		return er, true
+	}
+	er, ok := a.entComposed[id]
+	return er, ok
 }
 
 // entityHealthWindow is the per-entity telemetry liveness window for the
@@ -344,11 +397,11 @@ func (a *Agent) Topology() topology.Topology {
 	reg := a.entRegistry
 	raw := make([]topology.RawEntity, 0, len(reg.Entities))
 	for _, e := range reg.Entities {
+		er, ok := a.entityReading(e.ID)
 		re := topology.RawEntity{
 			ID: e.ID, Type: e.Type, Label: e.Label,
-			Category: e.Category(), Health: entityHealth(a.entReadings[e.ID], now, hasReading(a.entReadings, e.ID)),
+			Category: e.Category(), Health: entityHealth(er, now, ok),
 		}
-		er, ok := a.entReadings[e.ID]
 		for _, m := range e.Capabilities.Measure {
 			ch := topology.RawChannel{Channel: m.Channel}
 			if ok {
@@ -363,11 +416,6 @@ func (a *Agent) Topology() topology.Topology {
 	}
 	a.entMu.Unlock()
 	return topology.Derive(topology.Resolve(raw))
-}
-
-func hasReading(m map[string]entReading, id string) bool {
-	_, ok := m[id]
-	return ok
 }
 
 // entityHealth maps a reading's freshness to the read-model health word,

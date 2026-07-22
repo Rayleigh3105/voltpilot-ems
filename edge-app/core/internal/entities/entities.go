@@ -454,6 +454,17 @@ func (e Entity) category() string {
 		return catProducer
 	case TypeGridMeter:
 		return catMeasureOnly
+	case TypeHouseLoad:
+		// Pinned like the other composed types, and deliberately NOT left to
+		// the inference below: a house-load declares no actuate capability, so
+		// the "measure-only" fallback would categorize it as a METER and the
+		// topology read-model would aggregate the Hausverbrauch into the Netz
+		// node instead of emitting its own Verbraucher node. The cloud type
+		// catalog (services/api .../entitytypes/catalog.json) says category
+		// consumer - this keeps the edge's derivation in agreement with it.
+		// Guard-safe: with no actuate capability the capability gate (allows)
+		// refuses every command whatever the category says.
+		return catConsumer
 	}
 	if e.Guards.Failsafe.Behavior == "measure-only" || len(e.Capabilities.Actuate) == 0 {
 		return catMeasureOnly
