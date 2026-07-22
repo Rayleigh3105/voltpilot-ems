@@ -157,16 +157,23 @@ describe('node labels are legible and distinguishable (G2)', () => {
     );
     const labels = repeated.vertices.map((v) => v.label);
     expect(new Set(labels).size).toBe(2); // no two circles read the same
-    expect(labels).toContain('Batteriespeicher · PV');
+    // The rendered name is the SHORT one, per ASPECT: the hybrid's pv side is
+    // an "Erzeuger", its storage side a "Batteriespeicher" - and the role word
+    // still gets its own sub-caption line.
+    expect(labels).toContain('Erzeuger · PV');
     expect(labels).toContain('Batteriespeicher · Speicher');
     // the role word is its OWN line, so the wrap can never eat it
     expect(repeated.vertices.map((v) => v.roleTag).sort()).toEqual(['PV', 'Speicher']);
-    expect(repeated.vertices.every((v) => v.labelLines.join(' ') === 'Batteriespeicher')).toBe(
-      true,
-    );
-    // a name that occurs once is left alone
+    expect(repeated.vertices.map((v) => v.labelLines.join(' ')).sort()).toEqual([
+      'Batteriespeicher',
+      'Erzeuger',
+    ]);
+    // the untruncated stored name stays on the tooltip
+    expect(repeated.vertices.every((v) => v.title.startsWith('Batteriespeicher'))).toBe(true);
+    // a name that occurs once is left alone (short word, no role suffix)
     const consumer = l.vertices.find((v) => v.role === 'consumer')!;
-    expect(consumer.label).toBe('go-e');
+    expect(consumer.label).toBe('Wallbox');
+    expect(consumer.title).toBe('go-e · Verbraucher');
     expect(consumer.roleTag).toBeNull();
   });
 

@@ -22,6 +22,7 @@ import {
   ROLE_META,
   type ControlPreset,
 } from './adaptive';
+import { shortEntityLabel, shortLabelsForRole } from './entityLabel';
 import { fmtNum } from './format';
 import type { FlowNode, Role } from './topology';
 
@@ -32,6 +33,13 @@ export interface AdaptiveTile {
   tileClass: 'pv' | 'batt' | 'grid' | 'load';
   icon: IconName;
   title: string;
+  /**
+   * The untouched full entity name for the tile's `title` tooltip - the header
+   * shows the SHORT generalised word (entityLabel.ts), so the "(Messung über
+   * Wechselrichter)" nuance stays discoverable without truncating the layout.
+   * undefined when there is no name beyond the generic one.
+   */
+  fullTitle?: string;
   /** Headline value ("6,4 kW" / "78 %" / "–"). */
   value: string;
   /** Verdict word/phrase ("erzeugt", "lädt", "Einspeisung", …). */
@@ -56,16 +64,17 @@ function signedBattery(n: FlowNode): number | null {
   return n.direction === 'out' ? n.value_kw : n.direction === 'in' ? -n.value_kw : 0;
 }
 
-function pvTile(n: FlowNode): AdaptiveTile {
+function pvTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTile {
   const active = n.flow_active && n.value_kw != null && n.value_kw > DEADBAND_KW;
   const memberCount = n.members.length;
-  const title = memberCount === 1 ? n.members[0].label || 'PV-Anlage' : 'PV-Erzeugung';
+  const title = memberCount === 1 ? roleMemberLabel(n, 'pv', byId) : 'PV-Erzeugung';
   return {
     key: 'role-pv',
     role: 'pv',
     tileClass: 'pv',
     icon: 'sun',
     title,
+    fullTitle: memberCount === 1 ? fullMemberName(n) : undefined,
     value: n.value_kw == null ? '–' : fmtNum(n.value_kw, 'kW', 1),
     stateLabel: n.value_kw == null ? 'noch keine Daten' : active ? 'erzeugt' : 'keine Erzeugung',
     stateTone: active ? 'accent' : 'muted',
@@ -73,10 +82,10 @@ function pvTile(n: FlowNode): AdaptiveTile {
   };
 }
 
-function storageTile(n: FlowNode): AdaptiveTile {
+function storageTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTile {
   const soc = n.soc_pct ?? null;
   const batt = signedBattery(n);
-  const title = n.members.length === 1 ? n.members[0].label || 'Speicher' : 'Speicher';
+  const title = n.members.length === 1 ? roleMemberLabel(n, 'storage', byId) : 'Speicher';
   let stateLabel = 'Bereit';
   let stateTone: 'accent' | 'muted' = 'muted';
   let arrow: 'up' | 'down' | undefined;
@@ -102,6 +111,7 @@ function storageTile(n: FlowNode): AdaptiveTile {
     tileClass: 'batt',
     icon: 'battery',
     title,
+    fullTitle: n.members.length === 1 ? fullMemberName(n) : undefined,
     value: soc == null ? '–' : fmtNum(soc, '%', 0),
     stateLabel,
     stateTone,
@@ -109,6 +119,28 @@ function storageTile(n: FlowNode): AdaptiveTile {
     socPct: soc == null ? undefined : Math.max(0, Math.min(100, soc)),
     subLine,
   };
+}
+
+/** The full, untouched stored name of a single-member role node (for `title`). */
+function fullMemberName(n: FlowNode): string | undefined {
+  const raw = n.members[0]?.label?.trim();
+  return raw || undefined;
+}
+
+/** The SHORT generalised header word for a single-member role node. */
+function roleMemberLabel(
+  n: FlowNode,
+  role: Role,
+  byId: Map<string, TopologyEntity>,
+): string {
+  const m = n.members[0];
+  const entity = m ? byId.get(m.entity_id) : undefined;
+  return shortEntityLabel({
+    entityType: entity?.entityType,
+    role,
+    label: m?.label,
+    typeLabel: entity?.typeLabel,
+  });
 }
 
 function gridTile(n: FlowNode): AdaptiveTile {
@@ -138,6 +170,7 @@ function gridTile(n: FlowNode): AdaptiveTile {
     tileClass: 'grid',
     icon: 'zap',
     title: 'Netz',
+    fullTitle: fullMemberName(n),
     value: n.value_kw == null ? '–' : fmtNum(n.value_kw, 'kW', 1),
     stateLabel,
     stateTone,
@@ -148,6 +181,15 @@ function gridTile(n: FlowNode): AdaptiveTile {
 
 /** One tile per consumer entity (each with its own value + read-only switches). */
 function consumerTiles(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTile[] {
+  // Short generalised words ("Wallbox", "Hausverbrauch", …), kept distinct when
+  // several consumers of the same type would collapse to one word.
+  const consumerNames = shortLabelsForRole(
+    n.members.map((m) => {
+      const e = byId.get(m.entity_id);
+      return { label: m.label, entityType: e?.entityType, typeLabel: e?.typeLabel };
+    }),
+    'consumer',
+  );
   return n.members.map((m, i) => {
     const entity = byId.get(m.entity_id);
     const type = entity?.entityType ?? '';
@@ -170,7 +212,8 @@ function consumerTiles(n: FlowNode, byId: Map<string, TopologyEntity>): Adaptive
       role: 'consumer' as Role,
       tileClass: 'load' as const,
       icon: iconFor(type, 'consumer'),
-      title: m.label || entity?.typeLabel || 'Verbraucher',
+      title: consumerNames[i],
+      fullTitle: m.label?.trim() || undefined,
       value: m.value_kw == null ? '–' : fmtNum(Math.abs(m.value_kw), 'kW', 1),
       stateLabel,
       stateTone,
@@ -188,9 +231,9 @@ export function deriveTiles(topo: SiteTopology): AdaptiveTile[] {
   const byId = new Map(topo.entities.map((e) => [e.id, e]));
   const tiles: AdaptiveTile[] = [];
   const pv = node(topo, 'pv');
-  if (pv) tiles.push(pvTile(pv));
+  if (pv) tiles.push(pvTile(pv, byId));
   const storage = node(topo, 'storage');
-  if (storage) tiles.push(storageTile(storage));
+  if (storage) tiles.push(storageTile(storage, byId));
   const consumer = node(topo, 'consumer');
   if (consumer) tiles.push(...consumerTiles(consumer, byId));
   const grid = node(topo, 'grid');
@@ -293,7 +336,15 @@ export function composeAdaptiveSentence(
     for (const m of active.slice(0, 2)) {
       const type = byId.get(m.entity_id)?.entityType ?? '';
       const verb = type === 'wallbox' ? 'lädt' : 'läuft';
-      const label = m.label || byId.get(m.entity_id)?.typeLabel || 'Ein Verbraucher';
+      // The SHORT word here too - a sentence reading "Hausverbrauch (Messung
+      // über Wechselrichter) läuft mit …" is the same verbosity the tiles and
+      // the diagram just shed.
+      const label = shortEntityLabel({
+        entityType: type,
+        role: 'consumer',
+        label: m.label,
+        typeLabel: byId.get(m.entity_id)?.typeLabel,
+      });
       parts.push(`${label} ${verb} mit ${fmtNum(Math.abs(m.value_kw as number), 'kW')}.`);
     }
     if (active.length > 2) parts.push(`${active.length - 2} weitere Verbraucher sind aktiv.`);

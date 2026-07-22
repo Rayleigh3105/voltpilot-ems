@@ -14,6 +14,7 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { TopologyEntity } from './api';
 import { iconFor, ROLE_META } from './adaptive';
+import { shortLabelsForRole } from './entityLabel';
 import { fmtNum } from './format';
 import type { FlowNode, Role, Topology } from './topology';
 
@@ -89,12 +90,12 @@ export interface FlowVertex {
   x: number;
   y: number;
   /**
-   * The full display name, role-disambiguated when the SAME name would appear
-   * on two circles (a hybrid inverter contributes to PV *and* Speicher - two
-   * identical "Batteriespeicher…" circles were indistinguishable, G2).
+   * The SHORT display name (entityLabel.ts), role-disambiguated when the same
+   * device would appear on two circles (a hybrid inverter contributes to PV
+   * *and* Speicher - two identical circles were indistinguishable, G2).
    */
   label: string;
-  /** The NAME wrapped for rendering BELOW the circle (never clipped inside it). */
+  /** The short name wrapped for rendering BELOW the circle (never clipped). */
   labelLines: string[];
   /**
    * The disambiguating role word, rendered as its own short line under the
@@ -210,6 +211,15 @@ export function layoutFlow(topology: Topology, entities: TopologyEntity[]): Flow
     const n = node.members.length;
     if (n === 0) continue;
     const reverse = reverseOf(node);
+    // The SHORT, generalised names of this role's members (never the verbose
+    // stored label, which truncated in the circle) - see entityLabel.ts.
+    const shortNames = shortLabelsForRole(
+      node.members.map((m) => {
+        const e = byId.get(m.entity_id);
+        return { label: m.label, entityType: e?.entityType, typeLabel: e?.typeLabel };
+      }),
+      node.role,
+    );
     node.members.forEach((m, i) => {
       const spread = i - (n - 1) / 2;
       let x: number;
@@ -229,9 +239,13 @@ export function layoutFlow(topology: Topology, entities: TopologyEntity[]): Flow
       }
       const entity = byId.get(m.entity_id);
       const base = (m.label && m.label.trim()) || entity?.typeLabel || ROLE_META[node.role].label;
+      // Ambiguity is judged on the FULL name (that is what makes two circles
+      // the same physical device - a hybrid's PV and Speicher aspect), while
+      // what is RENDERED is the short one.
       const ambiguous = (nameCount.get(base) ?? 0) > 1;
       const roleTag = ambiguous ? ROLE_SHORT[node.role] : null;
-      const label = roleTag ? `${base} · ${roleTag}` : base;
+      const short = shortNames[i];
+      const label = roleTag ? `${short} · ${roleTag}` : short;
       const mag = m.value_kw ?? node.value_kw ?? 0;
       vertices.push({
         key: `${m.entity_id}:${node.role}:${i}`,
@@ -239,7 +253,7 @@ export function layoutFlow(topology: Topology, entities: TopologyEntity[]): Flow
         x,
         y,
         label,
-        labelLines: wrapLabel(base),
+        labelLines: wrapLabel(short),
         roleTag,
         title: `${base} · ${ROLE_META[node.role].label}`,
         value: vertexValue(node.role, node, m.value_kw),
