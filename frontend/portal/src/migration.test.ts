@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { anlageTrio, modeNavGroup } from './anlageNav';
+import { anlageSidebar, moreSheetItems } from './anlageNav';
+import { healthBadge } from './health';
 import { cockpitStack, projectionActive } from './cockpit';
 import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
@@ -114,12 +115,37 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
   });
 
   it('die M1-Shell trägt weder Badge noch Modus-Gruppe', () => {
-    const s = anlageSurface(NIE_MIGRIERT);
-    const trio = anlageTrio(s.modes.length);
-    expect(trio.map((a) => a.key)).toEqual(['uebersicht', 'steuerung', 'geraete']);
-    // Kein „0"-Badge, das die Anlage schlechter aussehen lässt, als sie ist.
-    expect(trio.every((a) => a.badge === null)).toBe(true);
-    expect(modeNavGroup(s.deepViews)).toBeNull();
+    for (const input of [NIE_MIGRIERT, NICHTS_GELADEN]) {
+      const s = anlageSurface(input);
+      const sidebar = anlageSidebar(s);
+      // Nur die Basis-Gruppe - keine einzige Modus-Gruppe.
+      expect(sidebar.groups).toHaveLength(1);
+      expect(sidebar.groups[0].label).toBe('Anlage');
+      expect(sidebar.groups[0].items.map((i) => i.key)).toEqual([
+        'cockpit',
+        'live',
+        'historie',
+        'steuerung',
+        'anlagen-modell',
+      ]);
+      // Kein „0"-Badge, das die Anlage schlechter aussehen lässt, als sie ist.
+      expect(sidebar.groups[0].items.every((i) => i.badge === null)).toBe(true);
+      // Und im Mehr-Blatt taucht ebenfalls keine Modus-Gruppe auf.
+      expect(moreSheetItems(sidebar).every((g) => g.tone === null)).toBe(true);
+    }
+  });
+
+  it('das Gesundheits-Abzeichen erfindet nichts (kein v2-Drift, keine Fakten)', () => {
+    // Ohne geladene Fakten: grün, aber OHNE erfundenen Befund.
+    expect(healthBadge({})).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null });
+    // Eine Bestandsanlage hat keine v2-Entitäten - Soll/Ist-Drift ist damit
+    // strukturell unmöglich und darf nie einen Hinweis erzeugen.
+    expect(healthBadge({ entityDrift: false }).detail).toBeNull();
+    expect(healthBadge({ entityDrift: null }).state).toBe('ok');
+    // Ein stilles Gerät bleibt aber auch auf einer v1-Anlage sichtbar.
+    expect(
+      healthBadge({ devices: { deviceCount: 1, onlineCount: 0, waitingCount: 0 } }).state,
+    ).toBe('warnung');
   });
 
   it('die Portfolio-Zeile zeigt keine Modus-Chips (die Zelle liest „—")', () => {
@@ -144,6 +170,15 @@ describe('Abbau-Invarianten (M6)', () => {
       // Der Doc-Kommentar in anlageNav.ts erklärt die LÖSCHUNG - erlaubt ist
       // nur die Erwähnung in einem Kommentar, nie eine echte Verwendung.
       expect(code).not.toMatch(/\bconst\s+FACES\b|\bFACES\s*[:=]|from\s+'.*adaptiveNav'/);
+    }
+  });
+
+  it('das „Mehr ▾"-Popover ist vollständig weg (v3 M1)', () => {
+    const files = sourceFiles();
+    expect(files.some((f) => /AnlageMoreMenu\.tsx?$/.test(f))).toBe(false);
+    for (const f of files) {
+      const code = readFileSync(f, 'utf8');
+      expect(code).not.toMatch(/AnlageMoreMenu|DEEP_VIEW_ITEMS|vp-more-btn/);
     }
   });
 

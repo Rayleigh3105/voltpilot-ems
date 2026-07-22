@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeAreaKey,
-  anlageTrio,
-  DEEP_VIEW_ITEMS,
-  modeNavGroup,
+  activeKeyForPage,
+  anlageSidebar,
+  bottomBarSlots,
+  BASE_GROUP_LABEL,
+  moreSheetItems,
   resolveAnlage,
+  type SidebarGroup,
+  type SidebarItem,
 } from './anlageNav';
-import { MAIN_PAGES, MODE_PAGES, type AnlagenSub } from './nav';
-import type { DeepViewId } from './surface';
+import { MAIN_PAGES, type AnlagenSub } from './nav';
+import { anlageSurface, type AnlageSurface, type AnlageSurfaceInput } from './surface';
 
 /** Every AnlagenSub that exists - the "nothing is orphaned" ground truth. */
 const ALL_SUBS: AnlagenSub[] = [
@@ -21,98 +25,262 @@ const ALL_SUBS: AnlagenSub[] = [
   'lastspitzen',
 ];
 
-describe('anlageTrio - the Anlage-scoped shell areas (M1 §2.1)', () => {
-  it('is always exactly Übersicht · Steuerung · Geräte, in that order', () => {
-    for (const count of [null, 0, 1, 3, 7]) {
-      expect(anlageTrio(count).map((a) => a.label)).toEqual(['Übersicht', 'Steuerung', 'Geräte']);
+const ENTITIES: AnlageSurfaceInput['entities'] = [
+  { id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } },
+];
+
+/** A migrated plant with the market mode active. */
+const MARKT = anlageSurface({
+  entities: ENTITIES,
+  config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
+});
+
+/** A migrated plant with the peak mode active. */
+const PEAK = anlageSurface({
+  entities: ENTITIES,
+  config: { plantKind: 'eigenverbrauch', leistungspreisEurKw: 120 },
+});
+
+/** Both money modes at once - the widest possible nav. */
+const ALLE = anlageSurface({
+  entities: ENTITIES,
+  config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch', leistungspreisEurKw: 120 },
+  signals: {
+    hasStorage: true,
+    hasPv: true,
+    activeStrategyNodeTypes: ['vp.strategy.selfconsumption'],
+    plantKind: 'direktvermarktung',
+    hasLeistungspreis: true,
+  },
+});
+
+/** A plain self-consumption plant (no market, no peak). */
+const PRIVAT = anlageSurface({
+  entities: ENTITIES,
+  signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
+  config: { plantKind: 'eigenverbrauch', tarifArt: 'fest' },
+});
+
+function subsOf(items: SidebarItem[]): (AnlagenSub | null)[] {
+  return items
+    .filter((i) => i.target.kind === 'sub')
+    .map((i) => (i.target as { kind: 'sub'; sub: AnlagenSub | null }).sub);
+}
+
+function allSubs(groups: SidebarGroup[]): (AnlagenSub | null)[] {
+  return groups.flatMap((g) => subsOf(g.items));
+}
+
+describe('anlageSidebar - the base group is fixed and ordered', () => {
+  it('is always exactly the five Anlage areas, in that order', () => {
+    for (const surface of [MARKT, PEAK, PRIVAT, null, undefined]) {
+      const base = anlageSidebar(surface).groups[0];
+      expect(base.label).toBe(BASE_GROUP_LABEL);
+      expect(base.tone).toBeNull();
+      expect(base.items.map((i) => i.key)).toEqual([
+        'cockpit',
+        'live',
+        'historie',
+        'steuerung',
+        'anlagen-modell',
+      ]);
+      expect(base.items.map((i) => i.label)).toEqual([
+        'Cockpit',
+        'Live-Daten',
+        'Historie',
+        'Steuerung',
+        'Anlagen-Modell',
+      ]);
     }
   });
 
-  it('opens the cockpit, the Steuerung area and the Geräte area', () => {
-    expect(anlageTrio(0).map((a) => a.sub)).toEqual([null, 'steuerung', 'entitaeten']);
+  it('opens the cockpit and the four area routes', () => {
+    expect(subsOf(anlageSidebar(null).groups[0].items)).toEqual([
+      null,
+      'live',
+      'historie',
+      'steuerung',
+      'entitaeten',
+    ]);
   });
 
   it('badges Steuerung with the active-mode count from the M0 read-model', () => {
-    expect(anlageTrio(3).find((a) => a.key === 'steuerung')?.badge).toBe(3);
-    expect(anlageTrio(1).find((a) => a.key === 'steuerung')?.badge).toBe(1);
+    const badge = (count: number | null | undefined) =>
+      anlageSidebar(null, count).groups[0].items.find((i) => i.key === 'steuerung')?.badge;
+    expect(badge(3)).toBe(3);
+    expect(badge(1)).toBe(1);
+    // Never a discouraging "0" / an invented number.
+    expect(badge(0)).toBeNull();
+    expect(badge(null)).toBeNull();
+    expect(badge(Number.NaN)).toBeNull();
   });
 
-  it('shows NO badge for zero/unknown modes (never a discouraging "0")', () => {
-    expect(anlageTrio(0).find((a) => a.key === 'steuerung')?.badge).toBeNull();
-    expect(anlageTrio(null).find((a) => a.key === 'steuerung')?.badge).toBeNull();
-    expect(anlageTrio(undefined).find((a) => a.key === 'steuerung')?.badge).toBeNull();
-    expect(anlageTrio(Number.NaN).find((a) => a.key === 'steuerung')?.badge).toBeNull();
+  it('defaults the badge to the surface’s own mode count', () => {
+    const steuerung = anlageSidebar(MARKT).groups[0].items.find((i) => i.key === 'steuerung');
+    expect(steuerung?.badge).toBe(MARKT.modes.length);
   });
 
-  it('never badges Übersicht or Geräte (Steuerung is THE key area)', () => {
-    const trio = anlageTrio(4);
-    expect(trio.find((a) => a.key === 'uebersicht')?.badge).toBeNull();
-    expect(trio.find((a) => a.key === 'geraete')?.badge).toBeNull();
+  it('never badges anything but Steuerung', () => {
+    const base = anlageSidebar(ALLE).groups[0];
+    expect(base.items.filter((i) => i.badge != null).map((i) => i.key)).toEqual(['steuerung']);
+  });
+
+  it('always carries the foot: Einstellungen · Hilfe & Kontakt', () => {
+    const { foot } = anlageSidebar(PRIVAT);
+    expect(foot.map((i) => i.key)).toEqual(['technik', 'hilfe']);
+    expect(foot[1].target).toEqual({ kind: 'help' });
   });
 });
 
-describe('activeAreaKey', () => {
-  it('maps the cockpit and the two area subs onto their trio entry', () => {
-    expect(activeAreaKey(null)).toBe('uebersicht');
-    expect(activeAreaKey('steuerung')).toBe('steuerung');
-    expect(activeAreaKey('entitaeten')).toBe('geraete');
+describe('anlageSidebar - mode groups are a projection, never a hardcoded list', () => {
+  it('renders one labelled, colour-tagged group per active mode with own views', () => {
+    const groups = anlageSidebar(MARKT).groups.slice(1);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].label).toBe('Modus · Marktvermarktung');
+    expect(groups[0].tone).toBe('markt');
+    expect(groups[0].items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise', 'prognose']);
   });
 
-  it('highlights NO area while a deep view is open', () => {
-    for (const sub of ['live', 'fahrplan', 'historie', 'wetter', 'technik', 'lastspitzen'] as const) {
-      expect(activeAreaKey(sub)).toBeNull();
+  it('shows Marktpreise/Prognose ONLY while the market mode is active', () => {
+    const keys = (s: AnlageSurface) =>
+      anlageSidebar(s)
+        .groups.slice(1)
+        .flatMap((g) => g.items.map((i) => i.key));
+    expect(keys(MARKT)).toContain('marktpreise');
+    expect(keys(MARKT)).toContain('prognose');
+    // A plain self-consumption plant never sees trading knowledge.
+    expect(keys(PRIVAT)).not.toContain('marktpreise');
+    expect(keys(PRIVAT)).not.toContain('prognose');
+    expect(keys(PEAK)).not.toContain('marktpreise');
+  });
+
+  it('gives the peak mode its own group with Lastspitzen', () => {
+    const groups = anlageSidebar(PEAK).groups.slice(1);
+    expect(groups.map((g) => g.label)).toEqual(['Modus · Lastspitzenkappung']);
+    expect(groups[0].tone).toBe('peak');
+    expect(groups[0].items.map((i) => i.key)).toEqual(['lastspitzen']);
+  });
+
+  it('emits NO group for a mode whose views are all base areas', () => {
+    // Eigenverbrauch contributes only `erloes-historie` (= the base Historie),
+    // so it is active but adds no navigation of its own.
+    expect(PRIVAT.modes.map((m) => m.kind)).toContain('eigenverbrauch');
+    expect(anlageSidebar(PRIVAT).groups).toHaveLength(1);
+  });
+
+  it('never duplicates an entry across two mode groups', () => {
+    const keys = anlageSidebar(ALLE)
+      .groups.slice(1)
+      .flatMap((g) => g.items.map((i) => i.key));
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('has no mode group at all for an un-migrated / unloaded plant', () => {
+    expect(anlageSidebar(null).groups).toHaveLength(1);
+    expect(anlageSidebar(anlageSurface({})).groups).toHaveLength(1);
+  });
+});
+
+describe('bottomBarSlots - exactly five, Mehr last', () => {
+  it('is Cockpit · Live · Steuerung · Anlage · Mehr', () => {
+    for (const surface of [MARKT, PRIVAT, null]) {
+      const slots = bottomBarSlots(anlageSidebar(surface));
+      expect(slots).toHaveLength(5);
+      expect(slots.map((s) => s.label)).toEqual([
+        'Cockpit',
+        'Live',
+        'Steuerung',
+        'Anlage',
+        'Mehr',
+      ]);
+      expect(slots[4].target).toEqual({ kind: 'more' });
+    }
+  });
+
+  it('carries the Steuerung badge into the bar', () => {
+    const slots = bottomBarSlots(anlageSidebar(null, 4));
+    expect(slots.find((s) => s.key === 'steuerung')?.badge).toBe(4);
+  });
+});
+
+describe('moreSheetItems - everything the bottom bar does not carry', () => {
+  it('keeps the base remainder, the mode groups (colour-tagged) and the foot', () => {
+    const groups = moreSheetItems(anlageSidebar(MARKT));
+    expect(groups[0].label).toBe(BASE_GROUP_LABEL);
+    expect(groups[0].items.map((i) => i.key)).toEqual(['historie']);
+    expect(groups[1].label).toBe('Modus · Marktvermarktung');
+    expect(groups[1].tone).toBe('markt');
+    const last = groups[groups.length - 1];
+    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'technik', 'hilfe']);
+  });
+});
+
+describe('no orphaned view: every AnlagenSub is mounted exactly once', () => {
+  it('base ∪ mode groups ∪ Mehr sheet covers every sub, none twice', () => {
+    // The widest surface, so every mode group that can exist does.
+    const sidebar = anlageSidebar(ALLE);
+    const sidebarSubs = allSubs(sidebar.groups).concat(subsOf(sidebar.foot));
+    const sheetSubs = allSubs(moreSheetItems(sidebar));
+
+    // Nothing is listed twice WITHIN one surface.
+    expect(new Set(sidebarSubs).size).toBe(sidebarSubs.length);
+    expect(new Set(sheetSubs).size).toBe(sheetSubs.length);
+
+    // And together they reach every sub the router knows - a new AnlagenSub
+    // must be mounted somewhere or this fails.
+    const reachable = new Set(
+      [...sidebarSubs, ...sheetSubs].filter((s): s is AnlagenSub => s != null),
+    );
+    expect([...reachable].sort()).toEqual([...ALL_SUBS].sort());
+  });
+
+  it('reaches every sub even on a plant with no mode at all (via the sheet)', () => {
+    const sidebar = anlageSidebar(null);
+    const reachable = new Set(
+      [...allSubs(sidebar.groups), ...subsOf(sidebar.foot), ...allSubs(moreSheetItems(sidebar))]
+        .filter((s): s is AnlagenSub => s != null),
+    );
+    // Only the two mode-scoped views are legitimately absent without a mode.
+    expect([...reachable].sort()).toEqual(
+      ALL_SUBS.filter((s) => s !== 'fahrplan' && s !== 'lastspitzen').sort(),
+    );
+  });
+});
+
+describe('activeAreaKey / activeKeyForPage - ONE highlight rule', () => {
+  it('maps the cockpit and every sub onto its own entry', () => {
+    expect(activeAreaKey(null)).toBe('cockpit');
+    expect(activeAreaKey('entitaeten')).toBe('anlagen-modell');
+    for (const sub of ['live', 'historie', 'steuerung', 'fahrplan', 'lastspitzen', 'wetter', 'technik'] as const) {
+      expect(activeAreaKey(sub)).toBe(sub);
+    }
+  });
+
+  it('keeps a mode page highlighted inside its mode group', () => {
+    expect(activeKeyForPage('marktpreise')).toBe('marktpreise');
+    expect(activeKeyForPage('prognose')).toBe('prognose');
+    expect(activeKeyForPage('uebersicht')).toBeNull();
+    expect(activeKeyForPage('mandanten')).toBeNull();
+  });
+
+  it('highlights a real sidebar entry for every mode-group item', () => {
+    for (const group of anlageSidebar(ALLE).groups.slice(1)) {
+      for (const item of group.items) {
+        const key =
+          item.target.kind === 'sub'
+            ? activeAreaKey(item.target.sub)
+            : item.target.kind === 'page'
+              ? activeKeyForPage(item.target.page)
+              : null;
+        expect(key).toBe(item.key);
+      }
     }
   });
 });
 
-describe('DEEP_VIEW_ITEMS - the interim access affordance (no orphaned view)', () => {
-  it('covers EVERY AnlagenSub exactly once, together with the trio', () => {
-    const trioSubs = anlageTrio(0)
-      .map((a) => a.sub)
-      .filter((s): s is AnlagenSub => s != null);
-    const menuSubs = DEEP_VIEW_ITEMS.map((i) => i.sub);
-    const reachable = [...trioSubs, ...menuSubs];
-    expect(new Set(reachable).size).toBe(reachable.length); // no duplicates
-    expect([...reachable].sort()).toEqual([...ALL_SUBS].sort());
-  });
-
-  it('keeps the money/plan/telemetry deep views the retired tab bar carried', () => {
-    const subs = DEEP_VIEW_ITEMS.map((i) => i.sub);
-    expect(subs).toContain('live');
-    expect(subs).toContain('fahrplan');
-    expect(subs).toContain('historie');
-    expect(subs).toContain('lastspitzen');
-    expect(subs).toContain('wetter');
-    expect(subs).toContain('technik');
-  });
-});
-
-describe('modeNavGroup - Marktpreise/Prognose are MODE views, never a global group', () => {
-  const marketViews: DeepViewId[] = [
-    'live',
-    'telemetrie-historie',
-    'fahrplan',
-    'marktpreise',
-    'prognosequalitaet',
-  ];
-
-  it('renders the mode-tagged group while the market mode is active', () => {
-    expect(modeNavGroup(marketViews)).toEqual({
-      title: 'Aus Modus: Marktvermarktung',
-      pages: ['marktpreise', 'prognose'],
-    });
-  });
-
-  it('is hidden for a Privat-EMS / Gewerbe site (no market mode)', () => {
-    expect(modeNavGroup(['live', 'telemetrie-historie', 'lastspitzen'])).toBeNull();
-    expect(modeNavGroup([])).toBeNull();
-    expect(modeNavGroup(null)).toBeNull();
-    expect(modeNavGroup(undefined)).toBeNull();
-  });
-
-  it('is NOT part of the global main nav any more', () => {
+describe('Marktpreise/Prognose are not a global main-nav group', () => {
+  it('the main nav is just Übersicht + Meine Anlage(n)', () => {
     expect(MAIN_PAGES.map((p) => p.id)).toEqual(['uebersicht', 'anlagen']);
-    expect(MODE_PAGES.map((p) => p.id)).toEqual(['marktpreise', 'prognose']);
   });
 });
 

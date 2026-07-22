@@ -5,7 +5,16 @@ import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
 import { AuthScreen, TrustRow } from './components/AuthScreen';
 import { isPlatformAdmin, login, loginWithCredentials } from './auth';
-import { api, ApiError, register, setTenantOverride, type Betriebsart, type Device, type Site } from './api';
+import {
+  api,
+  ApiError,
+  deviceLiveStatus,
+  register,
+  setTenantOverride,
+  type Betriebsart,
+  type Device,
+  type Site,
+} from './api';
 import { adminApi, type Tenant } from './admin/adminApi';
 import {
   redirectOverviewToAnlage,
@@ -24,7 +33,8 @@ import {
   type Route,
 } from './nav';
 import { showAddAnlageButton } from './addAnlage';
-import { activeAreaKey, anlageTrio, modeNavGroup, resolveAnlage } from './anlageNav';
+import { activeAreaKey, activeKeyForPage, anlageSidebar, resolveAnlage } from './anlageNav';
+import { healthBadge } from './health';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
@@ -588,18 +598,56 @@ function UnifiedPortal() {
         ? resolveAnlage(sites, selectedSite)
         : null;
   const { surface } = useAnlageSurface(shellSite);
+
+  // Re-derive the health badge as time passes: `lastSeenAt` does not change,
+  // but a device crossing the 5-minute window must turn the badge amber
+  // without waiting for the next data load. A pure clock tick, no request.
+  const [healthTick, setHealthTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setHealthTick((t) => t + 1), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Device liveness of the Anlage in scope, straight from the already-loaded
+  // devices list (the same 5-minute window `deviceLiveStatus` uses everywhere).
+  const deviceHealth = useMemo(() => {
+    if (!shellSite) return null;
+    const own = devices.filter((d) => d.siteId === shellSite.id);
+    if (own.length === 0) return { deviceCount: 0, onlineCount: 0, waitingCount: 0 };
+    const now = new Date();
+    let onlineCount = 0;
+    let waitingCount = 0;
+    for (const d of own) {
+      const status = deviceLiveStatus(d, now);
+      if (status === 'online') onlineCount += 1;
+      else if (status === 'waiting') waitingCount += 1;
+    }
+    return { deviceCount: own.length, onlineCount, waitingCount };
+    // healthTick is a deliberate dependency: it is what re-evaluates freshness.
+  }, [shellSite, devices, healthTick]);
+
   const anlageNav = shellSite
     ? {
         siteId: shellSite.id,
         siteName: shellSite.name,
         sites: sites.map((s) => ({ id: s.id, name: s.name })),
         onSelectSite: (id: string) => navigate(anlageRoute(id)),
-        trio: anlageTrio(surface?.modes.length ?? null),
-        // A mode page is not one of the three areas - nothing is highlighted.
-        activeArea: page === 'anlagen' ? activeAreaKey(route.sub) : null,
-        onOpenArea: (sub: Parameters<typeof anlageRoute>[1]) =>
+        sidebar: anlageSidebar(surface, surface?.modes.length ?? null),
+        // A mode page keeps the Anlage nav and highlights ITS entry inside the
+        // market mode group (`activeKeyForPage`), so opening Marktpreise never
+        // leaves the customer without a "you are here".
+        activeKey:
+          page === 'anlagen' ? activeAreaKey(route.sub) : activeKeyForPage(page),
+        onOpenSub: (sub: Parameters<typeof anlageRoute>[1]) =>
           navigate(anlageRoute(shellSite.id, sub ?? null)),
-        modeGroup: modeNavGroup(surface?.deepViews ?? null),
+        onOpenPage: (target: PageId) => navigate(target),
+        // "Alle Anlagen" only exists where a fleet level exists.
+        onOpenFleet: sites.length > 1 ? () => navigate(pageRoute('anlagen')) : null,
+        // Composed from data already in hand (the devices list) - the badge
+        // must never add a request to the main page. Facts nobody supplied
+        // (plan, control, battery) contribute nothing, so the badge never
+        // claims health it did not measure.
+        health: loaded && tenantReady ? healthBadge({ devices: deviceHealth }) : null,
       }
     : null;
 

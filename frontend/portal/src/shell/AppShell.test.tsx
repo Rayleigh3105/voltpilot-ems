@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { AppShell } from './AppShell';
-import { anlageTrio } from '../anlageNav';
+import { anlageSidebar } from '../anlageNav';
+import { anlageSurface } from '../surface';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
 vi.mock('../auth', () => ({
@@ -83,17 +84,23 @@ describe('AppShell admin tenant switcher', () => {
   });
 });
 
-describe('AppShell Anlage nav (M1: trio + context + mode group + bottom bar)', () => {
-  const trio = anlageTrio(3);
+describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom bar)', () => {
+  const MARKT = anlageSurface({
+    entities: [{ id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }],
+    config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
+  });
+
   const anlage = {
     siteId: 's-1',
     siteName: 'Hof Lindenberg',
     sites: [{ id: 's-1', name: 'Hof Lindenberg' }],
     onSelectSite: vi.fn(),
-    trio,
-    activeArea: 'uebersicht' as const,
-    onOpenArea: vi.fn(),
-    modeGroup: null,
+    sidebar: anlageSidebar(null, 3),
+    activeKey: 'cockpit',
+    onOpenSub: vi.fn(),
+    onOpenPage: vi.fn(),
+    onOpenFleet: null,
+    health: { state: 'ok' as const, label: 'Alles in Ordnung', detail: null },
   };
 
   const renderShell = (over: Partial<typeof anlage> = {}) =>
@@ -108,13 +115,26 @@ describe('AppShell Anlage nav (M1: trio + context + mode group + bottom bar)', (
       </AppShell>,
     );
 
-  it('renders the trio in the sidebar AND in the phone bottom bar', () => {
-    renderShell();
-    // One sidebar NavItem + one bottom-bar item per area.
-    for (const label of ['Übersicht', 'Steuerung', 'Geräte']) {
-      expect(screen.getAllByRole('button', { name: new RegExp(label) }).length).toBeGreaterThanOrEqual(2);
+  it('renders the base group with its five areas, labelled "Anlage"', () => {
+    const { container } = renderShell();
+    expect(container.querySelector('.vp-anlagenav .vp-nav-group-label')?.textContent).toBe(
+      'Anlage',
+    );
+    for (const label of ['Cockpit', 'Live-Daten', 'Historie', 'Steuerung', 'Anlagen-Modell']) {
+      expect(screen.getAllByRole('button', { name: new RegExp(label) }).length).toBeGreaterThanOrEqual(1);
     }
-    expect(screen.getByLabelText('Bereiche der Anlage Hof Lindenberg')).toBeInTheDocument();
+  });
+
+  it('renders the 5-slot bottom bar for the Anlage', () => {
+    renderShell();
+    const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
+    expect(bar.querySelectorAll('.vp-bottombar-item')).toHaveLength(5);
+    expect(bar.textContent).toContain('Mehr');
+  });
+
+  it('has NO "Mehr ▾" popover trigger anywhere', () => {
+    const { container } = renderShell();
+    expect(container.querySelector('.vp-more-btn')).toBeNull();
   });
 
   it('carries the active-mode count as the Steuerung badge', () => {
@@ -123,47 +143,88 @@ describe('AppShell Anlage nav (M1: trio + context + mode group + bottom bar)', (
     expect(screen.getAllByText('3').length).toBe(2);
   });
 
-  it('shows a static Anlage label for a single-Anlage customer', () => {
+  it('renders the health badge with its state and names the worst finding', () => {
+    const { container } = renderShell({
+      health: { state: 'warnung', label: 'Warnung', detail: 'Gerät: meldet sich nicht' },
+    });
+    const badge = container.querySelector('.vp-topbar .vp-healthbadge');
+    expect(badge).not.toBeNull();
+    expect(badge?.className).toContain('state-warnung');
+    expect(badge?.getAttribute('title')).toBe('Gerät: meldet sich nicht');
+    expect(badge?.textContent).toContain('Warnung');
+  });
+
+  it('renders no health badge when the state is not known yet', () => {
+    const { container } = renderShell({ health: null });
+    expect(container.querySelector('.vp-healthbadge')).toBeNull();
+  });
+
+  it('shows a static Anlage label with its health line for a single-Anlage customer', () => {
     const { container } = renderShell();
-    // The Anlage name now appears twice on purpose: the sidebar context label
-    // AND the topbar breadcrumb (G1 - the breadcrumb names the Anlage, not the
-    // menu item, and no longer clips to "Meine Anla…" on a phone).
     expect(container.querySelector('.vp-anlagenav-label .t')?.textContent).toBe('Hof Lindenberg');
+    expect(container.querySelector('.vp-anlagenav-health')?.textContent).toContain(
+      'Alles in Ordnung',
+    );
     expect(container.querySelector('.vp-topbar .here')?.textContent).toBe('Hof Lindenberg');
     expect(screen.queryByLabelText('Anlage wählen')).toBeNull();
   });
 
-  it('turns the label into a real switcher for a fleet', () => {
+  it('turns the label into a real switcher with "Alle Anlagen" for a fleet', () => {
     const onSelectSite = vi.fn();
+    const onOpenFleet = vi.fn();
     renderShell({
       sites: [
         { id: 's-1', name: 'Hof Lindenberg' },
         { id: 's-2', name: 'Halle Nord' },
       ],
       onSelectSite,
+      onOpenFleet,
     });
     const select = screen.getByLabelText('Anlage wählen');
     expect(screen.getByRole('option', { name: 'Halle Nord' })).toBeInTheDocument();
     fireEvent.change(select, { target: { value: 's-2' } });
     expect(onSelectSite).toHaveBeenCalledWith('s-2');
+    fireEvent.change(select, { target: { value: '__all__' } });
+    expect(onOpenFleet).toHaveBeenCalledTimes(1);
   });
 
   it('opens an area on click', () => {
-    const onOpenArea = vi.fn();
-    renderShell({ onOpenArea });
+    const onOpenSub = vi.fn();
+    renderShell({ onOpenSub });
     fireEvent.click(screen.getAllByRole('button', { name: /Steuerung/ })[0]);
-    expect(onOpenArea).toHaveBeenCalledWith('steuerung');
+    expect(onOpenSub).toHaveBeenCalledWith('steuerung');
   });
 
-  it('renders Marktpreise/Prognose ONLY as the market mode group', () => {
+  it('renders the market mode group ONLY while that mode is active', () => {
     renderShell();
     expect(screen.queryByRole('button', { name: /Marktpreise/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Prognosequalität/ })).toBeNull();
 
-    renderShell({ modeGroup: { title: 'Aus Modus: Marktvermarktung', pages: ['marktpreise', 'prognose'] } });
-    expect(screen.getByText('Aus Modus: Marktvermarktung')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Marktpreise/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Prognosequalität/ })).toBeInTheDocument();
+    const onOpenPage = vi.fn();
+    renderShell({ sidebar: anlageSidebar(MARKT), onOpenPage });
+    expect(screen.getByText('Modus · Marktvermarktung')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fahrplan/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Marktpreise/ }));
+    expect(onOpenPage).toHaveBeenCalledWith('marktpreise');
+  });
+
+  it('the Mehr slot opens a sheet with the remaining areas, colour-tagged', () => {
+    renderShell({ sidebar: anlageSidebar(MARKT) });
+    const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
+    fireEvent.click(bar.querySelectorAll('.vp-bottombar-item')[4]);
+    const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
+    expect(sheet.textContent).toContain('Historie');
+    expect(sheet.textContent).toContain('Modus · Marktvermarktung');
+    expect(sheet.textContent).toContain('Wetter');
+    expect(sheet.textContent).toContain('Einstellungen');
+    expect(sheet.textContent).toContain('Hilfe & Kontakt');
+    expect(sheet.querySelector('.tone-markt')).not.toBeNull();
+  });
+
+  it('the foot Hilfe entry opens an honest help panel, never a dead link', () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Hilfe & Kontakt/ }));
+    const panel = screen.getByRole('dialog', { name: 'Hilfe & Kontakt' });
+    expect(panel.textContent).toContain('VoltPilot');
   });
 
   it('renders no Anlage nav and no bottom bar without an Anlage in scope', () => {
@@ -173,6 +234,7 @@ describe('AppShell Anlage nav (M1: trio + context + mode group + bottom bar)', (
       </AppShell>,
     );
     expect(screen.queryByLabelText(/Bereiche der Anlage/)).toBeNull();
-    expect(screen.queryByRole('button', { name: /Geräte/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Anlagen-Modell/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Hilfe/ })).toBeNull();
   });
 });

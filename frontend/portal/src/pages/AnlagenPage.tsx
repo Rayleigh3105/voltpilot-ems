@@ -32,7 +32,6 @@ import { todaySlots } from '../schedule';
 import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
 import { healthChecklist } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
-import { AnlageMoreMenu } from '../components/AnlageMoreMenu';
 import { resolveAnlage } from '../anlageNav';
 import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
@@ -120,11 +119,11 @@ export function AnlagenPage(props: AnlagenPageProps) {
     );
   }
 
-  // M1 (#529): the U1 per-Anlage tab bar is RETIRED - the three core areas
-  // (Übersicht · Steuerung · Geräte) live in the shell now (sidebar + phone
-  // bottom bar), and the deep views are reached through the cockpit's drill-in
-  // links plus the interim "Mehr ▾" menu on the page head. Routes are
-  // unchanged, so every bookmark keeps working.
+  // Portal v3 M1: every area of an Anlage lives in the SHELL now - the grouped
+  // sidebar (base group + one group per active mode) plus the phone 5-slot
+  // bottom bar with its Mehr sheet (`anlageNav.ts`). The page head carries no
+  // navigation of its own any more; the cockpit's drill-in links stay as
+  // shortcuts. Routes are unchanged, so every bookmark keeps working.
   return route.sub ? (
     <AnlagenSubPage
       site={site}
@@ -133,7 +132,6 @@ export function AnlagenPage(props: AnlagenPageProps) {
       sub={route.sub}
       isAdmin={isAdmin}
       onBack={() => onNavigate(anlageRoute(site.id))}
-      onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
       onReload={props.onReload}
     />
   ) : (
@@ -338,7 +336,6 @@ function AnlagenSubPage({
   sub,
   isAdmin,
   onBack,
-  onOpenSub,
   onReload,
 }: {
   site: Site;
@@ -347,7 +344,6 @@ function AnlagenSubPage({
   sub: AnlagenSub;
   isAdmin: boolean;
   onBack: () => void;
-  onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
 }) {
   const meta = SUB_PAGES[sub];
@@ -361,10 +357,6 @@ function AnlagenSubPage({
         <div className="titles">
           <h1>{meta.title}</h1>
           <p>{meta.subtitle}</p>
-        </div>
-        <div className="actions">
-          {/* Interim access (M1): every other deep view stays one click away. */}
-          <AnlageMoreMenu activeSub={sub} onOpen={onOpenSub} />
         </div>
       </div>
       {sub === 'live' && <LiveSection site={site} />}
@@ -761,10 +753,6 @@ export function AnlageSeite({
         <div className="vp-anlage-badges">
           <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>
           <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
-          {/* M1's interim access. The M3 block drill-ins own the deep views on
-              the projected path, but the menu stays as the ONE place where
-              every view is reachable regardless of the active modes. */}
-          <AnlageMoreMenu activeSub={null} onOpen={onOpenSub} />
           <button
             type="button"
             className="vp-gear-btn"

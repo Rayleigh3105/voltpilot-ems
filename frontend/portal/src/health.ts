@@ -89,6 +89,94 @@ export function healthChecklist(input: HealthInput): HealthItem[] {
   return items.sort((a, b) => rank[a.state] - rank[b.state]);
 }
 
+// ---------------------------------------------------------------------------
+// Portal v3 · M1 — the ONE aggregated plant state for the shell's top bar
+// ---------------------------------------------------------------------------
+
+/** The three states of the shell health badge (concept tab 2). */
+export type HealthBadgeState = 'ok' | 'hinweis' | 'warnung';
+
+export interface HealthBadge {
+  state: HealthBadgeState;
+  /** The badge word itself. */
+  label: string;
+  /** The WORST finding, named in plain German; null = nothing to report. */
+  detail: string | null;
+}
+
+/**
+ * What the badge may know. Every fact is OPTIONAL and an ABSENT fact
+ * contributes NOTHING — the shell composes the badge from data it already
+ * holds (the "—" discipline: never invent a finding, and never claim health
+ * about something that was not measured).
+ */
+export interface HealthBadgeInput {
+  /** Device liveness of the Anlage; absent = unknown, no device finding. */
+  devices?: { deviceCount: number; onlineCount: number; waitingCount: number } | null;
+  /** Plan presence; absent = unknown, no Fahrplan finding. */
+  plan?: { hasPlanToday: boolean; hasAnyPlan: boolean } | null;
+  /** The control-strip state; absent/null = no control finding. */
+  controlState?: ControlState | null;
+  /** Battery link state; absent = unknown, no Speicher finding. */
+  battery?: { withoutDevice: boolean; linked: boolean } | null;
+  /**
+   * v2 Soll/Ist drift (E1b): the device does not yet carry the current setup.
+   * Absent/false = no finding — an un-migrated plant can never produce one.
+   */
+  entityDrift?: boolean | null;
+}
+
+const BADGE_LABELS: Record<HealthBadgeState, string> = {
+  ok: 'Alles in Ordnung',
+  hinweis: 'Hinweis',
+  warnung: 'Warnung',
+};
+
+/**
+ * The aggregated plant state for the top bar: any `warn` finding makes it a
+ * **Warnung**, any `off` finding a **Hinweis**, otherwise **OK**. It is
+ * therefore never green while a device is silent. The detail names the worst
+ * finding ("Gerät: meldet sich nicht"), so the badge says WHAT is wrong, not
+ * just that something is.
+ *
+ * Reuses `healthChecklist` verbatim for the wording and then drops the rows
+ * whose facts the caller did not supply — an empty input is honestly OK with
+ * no invented detail.
+ */
+export function healthBadge(input?: HealthBadgeInput | null): HealthBadge {
+  const facts = input ?? {};
+  const items = healthChecklist({
+    deviceCount: facts.devices?.deviceCount ?? 0,
+    onlineCount: facts.devices?.onlineCount ?? 0,
+    waitingCount: facts.devices?.waitingCount ?? 0,
+    hasPlanToday: facts.plan?.hasPlanToday ?? false,
+    hasAnyPlan: facts.plan?.hasAnyPlan ?? false,
+    controlState: facts.controlState ?? null,
+    batteryWithoutDevice: facts.battery?.withoutDevice ?? false,
+    batteryLinked: facts.battery?.linked ?? false,
+  }).filter((i) => {
+    if (i.key === 'device') return facts.devices != null;
+    if (i.key === 'plan') return facts.plan != null;
+    if (i.key === 'battery') return facts.battery != null;
+    return true;
+  });
+
+  const findings: { state: Exclude<HealthState, 'ok'>; text: string }[] = items
+    .filter((i) => i.state !== 'ok')
+    .map((i) => ({ state: i.state as Exclude<HealthState, 'ok'>, text: `${i.label}: ${i.detail}` }));
+
+  if (facts.entityDrift) {
+    findings.push({ state: 'off', text: 'Einstellungen: noch nicht auf dem Gerät' });
+  }
+
+  // `healthChecklist` already sorts warn before off; the drift row is appended
+  // as an `off`, so a stable sort keeps warnings first either way.
+  const worst =
+    findings.find((f) => f.state === 'warn') ?? findings.find((f) => f.state === 'off') ?? null;
+  const state: HealthBadgeState = !worst ? 'ok' : worst.state === 'warn' ? 'warnung' : 'hinweis';
+  return { state, label: BADGE_LABELS[state], detail: worst?.text ?? null };
+}
+
 function controlItem(state: ControlState): HealthItem {
   switch (state) {
     case 'healthy':

@@ -9,36 +9,54 @@ import type { Tenant } from '../admin/adminApi';
 import {
   anlagenLabel,
   MAIN_PAGES,
-  MODE_PAGES,
   PLATFORM_PAGES,
   PORTFOLIO_PAGE,
   pageLabel,
   type PageId,
 } from '../nav';
-import type { AnlageArea, AnlageAreaKey, ModeNavGroup } from '../anlageNav';
+import {
+  bottomBarSlots,
+  HELP_TEXT,
+  moreSheetItems,
+  type AnlageSidebar,
+  type NavTarget,
+  type SidebarGroup,
+  type SidebarItem,
+} from '../anlageNav';
+import type { HealthBadge } from '../health';
 import type { AnlagenSub } from '../nav';
+import './Shell.css';
 
 /**
- * The Anlage-scoped shell navigation (M1 #529): the context switcher + the
- * trio `Übersicht · Steuerung · Geräte` + the mode-tagged knowledge group.
+ * Portal v3 · M1 — the Anlage-scoped shell navigation: the Anlage context card
+ * (name + health line, tap = switcher, "Alle Anlagen" → the fleet), the grouped
+ * sidebar (base group + one coloured group per active mode), the foot
+ * (Einstellungen · Hilfe & Kontakt), the phone 5-slot bottom bar with its Mehr
+ * sheet — and the aggregated health badge in the top bar.
  * Present whenever exactly one Anlage is in scope; null otherwise (fleet list,
  * Portfolio, Plattform pages) — the shell then renders as before.
  */
 export interface AnlageNav {
-  /** The Anlage in scope (the static label / the switcher's current value). */
+  /** The Anlage in scope (the switcher's current value). */
   siteId: string;
   siteName: string;
   /** All Anlagen of the tenant; 2+ turn the label into a real switcher. */
   sites: { id: string; name: string }[];
   onSelectSite: (siteId: string) => void;
-  /** The trio, with Steuerung's active-mode badge (see `anlageTrio`). */
-  trio: AnlageArea[];
-  /** Which trio entry is current; null while a deep view is open. */
-  activeArea: AnlageAreaKey | null;
-  onOpenArea: (sub: AnlagenSub | null) => void;
-  /** Mode-scoped sidebar group (market mode only); null = hidden. */
-  modeGroup: ModeNavGroup | null;
+  /** The grouped sidebar model (`anlageSidebar`), never re-derived here. */
+  sidebar: AnlageSidebar;
+  /** Which entry is current (`activeAreaKey` / `activeKeyForPage`). */
+  activeKey: string | null;
+  onOpenSub: (sub: AnlagenSub | null) => void;
+  onOpenPage: (page: PageId) => void;
+  /** "Alle Anlagen" — back to the fleet/portfolio landing; null = hidden. */
+  onOpenFleet: (() => void) | null;
+  /** The aggregated plant state; null = not known yet (no badge is shown). */
+  health: HealthBadge | null;
 }
+
+/** The value the Anlage switcher uses for its "Alle Anlagen" option. */
+const ALL_SITES = '__all__';
 
 /**
  * The unified dashboard shell: left sidebar (primary navigation, identical for
@@ -93,11 +111,26 @@ export function AppShell({
 }) {
   const user = currentUser();
   const [mobileNav, setMobileNav] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
-  // Close the mobile drawer whenever navigation happens.
+  // Close the mobile drawer + sheets whenever navigation happens.
   useEffect(() => {
     setMobileNav(false);
+    setMoreOpen(false);
   }, [page]);
+
+  // Escape closes the phone sheet / the Hilfe panel.
+  useEffect(() => {
+    if (!moreOpen && !helpOpen) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setMoreOpen(false);
+      setHelpOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [moreOpen, helpOpen]);
 
   // While the mobile nav is open: lock body scroll and close on Escape.
   useEffect(() => {
@@ -126,75 +159,108 @@ export function AppShell({
     setMobileNav(false);
   };
 
-  const openArea = (sub: AnlagenSub | null) => {
-    anlage?.onOpenArea(sub);
+  /**
+   * ONE place that turns a nav target into navigation — the sidebar, the
+   * bottom bar and the Mehr sheet all go through it, so they can never drift.
+   */
+  const openTarget = (target: NavTarget) => {
     setMobileNav(false);
+    switch (target.kind) {
+      case 'sub':
+        anlage?.onOpenSub(target.sub);
+        setMoreOpen(false);
+        return;
+      case 'page':
+        anlage?.onOpenPage(target.page);
+        setMoreOpen(false);
+        return;
+      case 'help':
+        setMoreOpen(false);
+        setHelpOpen(true);
+        return;
+      case 'more':
+      default:
+        setMoreOpen((v) => !v);
+    }
   };
 
+  const navEntry = (item: SidebarItem) => (
+    <NavItem
+      key={item.key}
+      icon={<Icon name={item.icon} size={18} />}
+      // The label is wrapped so the tablet icon rail can hide it in CSS while
+      // the accessible name (and the tooltip) stay intact.
+      label={<span className="vp-nav-lbl">{item.label}</span>}
+      count={item.badge}
+      active={anlage?.activeKey === item.key}
+      title={item.label}
+      onClick={() => openTarget(item.target)}
+    />
+  );
+
+  const navGroup = (group: SidebarGroup) => (
+    <div className="vp-navgroup" key={group.key}>
+      <div className={`vp-nav-group-label${group.tone ? ` tone-${group.tone}` : ''}`}>
+        {group.tone && <span className="vp-mode-dot" aria-hidden="true" />}
+        <span className="vp-nav-lbl">{group.label}</span>
+      </div>
+      {group.items.map(navEntry)}
+    </div>
+  );
+
   /**
-   * M1: the Anlage context + trio + the mode-tagged knowledge group. Rendered
-   * INSIDE the sidebar nav, directly under the main pages, so the customer's
-   * "where am I" (the Anlage) and "what can I do here" (the three areas) sit
-   * together. Fleets get a real switcher; a single-Anlage customer a calm
-   * static label (there is nothing to switch to).
+   * The Anlage context card: which plant am I looking at, and is it healthy.
+   * A fleet gets a real switcher (plus "Alle Anlagen" back to the fleet
+   * landing); a single-Anlage customer a calm static label.
    */
   const anlageNav = anlage && (
     <div className="vp-anlagenav">
       <div className="vp-anlagenav-ctx">
-        {anlage.sites.length > 1 ? (
+        {anlage.sites.length > 1 || anlage.onOpenFleet ? (
           <span className="vp-anlagenav-switch" title="Anlage wechseln">
             <Icon name="sun" size={16} className="vp-anlagenav-ic" />
-            <select
-              aria-label="Anlage wählen"
-              value={anlage.siteId}
-              onChange={(e) => {
-                anlage.onSelectSite(e.target.value);
-                setMobileNav(false);
-              }}
-            >
-              {anlage.sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
+            <span className="vp-anlagenav-body">
+              <select
+                aria-label="Anlage wählen"
+                value={anlage.siteId}
+                onChange={(e) => {
+                  setMobileNav(false);
+                  if (e.target.value === ALL_SITES) anlage.onOpenFleet?.();
+                  else anlage.onSelectSite(e.target.value);
+                }}
+              >
+                {anlage.sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+                {anlage.onOpenFleet && <option value={ALL_SITES}>Alle Anlagen</option>}
+              </select>
+              {anlage.health && (
+                <span className={`vp-anlagenav-health state-${anlage.health.state}`}>
+                  <span className="vp-health-dot" aria-hidden="true" />
+                  {anlage.health.label}
+                </span>
+              )}
+            </span>
             <Icon name="chevron-down" size={16} className="vp-anlagenav-caret" />
           </span>
         ) : (
           <span className="vp-anlagenav-label">
             <Icon name="sun" size={16} className="vp-anlagenav-ic" />
-            <span className="t">{anlage.siteName}</span>
+            <span className="vp-anlagenav-body">
+              <span className="t">{anlage.siteName}</span>
+              {anlage.health && (
+                <span className={`vp-anlagenav-health state-${anlage.health.state}`}>
+                  <span className="vp-health-dot" aria-hidden="true" />
+                  {anlage.health.label}
+                </span>
+              )}
+            </span>
           </span>
         )}
       </div>
-      {anlage.trio.map((a) => (
-        <NavItem
-          key={a.key}
-          icon={<Icon name={a.icon} size={18} />}
-          label={a.label}
-          count={a.badge}
-          active={anlage.activeArea === a.key}
-          onClick={() => openArea(a.sub)}
-        />
-      ))}
-      {anlage.modeGroup && (
-        <>
-          <div className="vp-nav-group-label">{anlage.modeGroup.title}</div>
-          {anlage.modeGroup.pages.map((id) => {
-            const def = MODE_PAGES.find((p) => p.id === id);
-            if (!def) return null;
-            return (
-              <NavItem
-                key={def.id}
-                icon={<Icon name={def.icon} size={18} />}
-                label={def.label}
-                active={page === def.id}
-                onClick={() => navigate(def.id)}
-              />
-            );
-          })}
-        </>
-      )}
+      {anlage.sidebar.groups.map(navGroup)}
     </div>
   );
 
@@ -220,7 +286,8 @@ export function AppShell({
           // (hidden) Übersicht item.
           <NavItem
             icon={<Icon name={PORTFOLIO_PAGE.icon} size={18} />}
-            label={PORTFOLIO_PAGE.label}
+            label={<span className="vp-nav-lbl">{PORTFOLIO_PAGE.label}</span>}
+            title={PORTFOLIO_PAGE.label}
             active={page === PORTFOLIO_PAGE.id}
             onClick={() => navigate(PORTFOLIO_PAGE.id)}
           />
@@ -229,7 +296,12 @@ export function AppShell({
           <NavItem
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}
-            label={p.id === 'anlagen' ? anlagenLabel(counts.sites) : p.label}
+            label={
+              <span className="vp-nav-lbl">
+                {p.id === 'anlagen' ? anlagenLabel(counts.sites) : p.label}
+              </span>
+            }
+            title={p.id === 'anlagen' ? anlagenLabel(counts.sites) : p.label}
             active={page === p.id}
             count={
               // "Meine Anlagen" carries the fleet size; a single Anlage needs
@@ -244,12 +316,15 @@ export function AppShell({
         {anlageNav}
         {isAdmin && (
           <>
-            <div className="vp-nav-group-label">Plattform</div>
+            <div className="vp-nav-group-label">
+              <span className="vp-nav-lbl">Plattform</span>
+            </div>
             {PLATFORM_PAGES.map((p) => (
               <NavItem
                 key={p.id}
                 icon={<Icon name={p.icon} size={18} />}
-                label={p.label}
+                label={<span className="vp-nav-lbl">{p.label}</span>}
+                title={p.label}
                 active={page === p.id}
                 count={p.id === 'mandanten' && tenants.length ? tenants.length : null}
                 onClick={() => navigate(p.id)}
@@ -259,7 +334,8 @@ export function AppShell({
         )}
       </nav>
       <div className="side-foot">
-        <p className="vp-note" style={{ margin: 0, padding: '0 var(--vp-space-3)' }}>
+        {anlage && anlage.sidebar.foot.map(navEntry)}
+        <p className="vp-note vp-nav-lbl" style={{ margin: 0, padding: '0 var(--vp-space-3)' }}>
           VoltPilot EMS
         </p>
       </div>
@@ -293,6 +369,17 @@ export function AppShell({
               {anlage ? anlage.siteName : pageLabel(page, counts.sites)}
             </span>
           </div>
+          {anlage?.health && (
+            // ONE aggregated plant state, always in sight (concept tab 2). The
+            // title names the worst finding, so it says WHAT is wrong.
+            <span
+              className={`vp-healthbadge state-${anlage.health.state}`}
+              title={anlage.health.detail ?? anlage.health.label}
+            >
+              <span className="vp-health-dot" aria-hidden="true" />
+              <span className="vp-healthbadge-lbl">{anlage.health.label}</span>
+            </span>
+          )}
           <div className="spacer" />
 
           {showAddAnlage && (
@@ -372,26 +459,84 @@ export function AppShell({
       </div>
 
       {anlage && (
-        // M1: the trio as an app-like bottom bar on phones (report §2.1) - the
-        // three core areas of an Anlage must never hide behind the hamburger.
-        // Hidden above 720px by CSS; the sidebar carries it there.
+        // v3 M1: the app-like 5-slot bottom bar on phones (concept tab 2) -
+        // Cockpit · Live · Steuerung · Anlage · Mehr. The core areas of an
+        // Anlage must never hide behind a hamburger; "Mehr" opens the sheet
+        // with everything else. Hidden above 720px by CSS.
         <nav className="vp-bottombar" aria-label={`Bereiche der Anlage ${anlage.siteName}`}>
-          {anlage.trio.map((a) => (
-            <button
-              key={a.key}
-              type="button"
-              className={`vp-bottombar-item${anlage.activeArea === a.key ? ' active' : ''}`}
-              aria-current={anlage.activeArea === a.key ? 'page' : undefined}
-              onClick={() => openArea(a.sub)}
-            >
-              <span className="ic" aria-hidden="true">
-                <Icon name={a.icon} size={20} />
-                {a.badge != null && <span className="vp-bottombar-badge">{a.badge}</span>}
-              </span>
-              <span className="lbl">{a.label}</span>
-            </button>
-          ))}
+          {bottomBarSlots(anlage.sidebar).map((item) => {
+            const active =
+              item.target.kind === 'more' ? moreOpen : anlage.activeKey === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={`vp-bottombar-item${active ? ' active' : ''}`}
+                aria-current={item.target.kind !== 'more' && active ? 'page' : undefined}
+                aria-expanded={item.target.kind === 'more' ? moreOpen : undefined}
+                onClick={() => openTarget(item.target)}
+              >
+                <span className="ic" aria-hidden="true">
+                  <Icon name={item.icon} size={20} />
+                  {item.badge != null && <span className="vp-bottombar-badge">{item.badge}</span>}
+                </span>
+                <span className="lbl">{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
+      )}
+
+      {anlage && moreOpen && (
+        // The "Mehr" sheet: every remaining area, grouped and colour-tagged
+        // exactly like the sidebar - nothing is hidden, only folded away.
+        <>
+          <div className="vp-sheet-scrim" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+          <div className="vp-sheet" role="dialog" aria-label="Weitere Bereiche">
+            <div className="vp-sheet-head">
+              <span>Weitere Bereiche</span>
+              <button type="button" aria-label="Schließen" onClick={() => setMoreOpen(false)}>
+                <Icon name="x" size={20} />
+              </button>
+            </div>
+            {moreSheetItems(anlage.sidebar).map((group) => (
+              <div className="vp-sheet-group" key={group.key}>
+                <div className={`vp-nav-group-label${group.tone ? ` tone-${group.tone}` : ''}`}>
+                  {group.tone && <span className="vp-mode-dot" aria-hidden="true" />}
+                  {group.label}
+                </div>
+                {group.items.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`vp-sheet-item${anlage.activeKey === item.key ? ' active' : ''}`}
+                    onClick={() => openTarget(item.target)}
+                  >
+                    <Icon name={item.icon} size={18} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {helpOpen && (
+        // Hilfe & Kontakt: an honest sentence, not an invented support address
+        // (the platform has no self-service channel - see HELP_TEXT).
+        <>
+          <div className="vp-sheet-scrim" onClick={() => setHelpOpen(false)} aria-hidden="true" />
+          <div className="vp-helppanel" role="dialog" aria-label="Hilfe & Kontakt">
+            <div className="vp-sheet-head">
+              <span>Hilfe &amp; Kontakt</span>
+              <button type="button" aria-label="Schließen" onClick={() => setHelpOpen(false)}>
+                <Icon name="x" size={20} />
+              </button>
+            </div>
+            <p>{HELP_TEXT}</p>
+          </div>
+        </>
       )}
     </div>
   );

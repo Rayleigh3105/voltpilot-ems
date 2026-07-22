@@ -40,7 +40,9 @@ export type IconName =
   | 'search'
   | 'lock'
   | 'shield'
-  | 'log-out';
+  | 'log-out'
+  | 'help-circle'
+  | 'layers';
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   name: IconName;

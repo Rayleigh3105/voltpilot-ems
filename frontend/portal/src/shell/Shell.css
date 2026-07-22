@@ -1,0 +1,419 @@
+/* ============================================================
+   Portal v3 · M1 — Shell & Navigation (component-local)
+   The grouped Anlage sidebar (base group + one coloured group per active mode),
+   the Anlage context card with its health line, the aggregated health badge in
+   the top bar, the phone 5-slot bottom bar + Mehr sheet, the Hilfe panel and
+   the tablet icon rail.
+
+   Moved here out of `src/index.css` ("M1 · Anlage-scoped shell nav") per the v3
+   CSS convention: surface CSS lives next to its component. The `.vp-bottombar`
+   / `.vp-main.has-bottombar` class names are kept verbatim so nothing else
+   breaks.
+
+   Load order note: this file is imported by `AppShell.tsx`, i.e. potentially
+   BEFORE `index.css`. Every rule that has to beat a base rule is therefore
+   written with a higher specificity (`.vp-app .vp-sidebar`, not `.vp-sidebar`)
+   instead of relying on source order.
+   ============================================================ */
+
+/* ---------- Anlage context card ---------- */
+.vp-anlagenav {
+  margin-top: var(--vp-space-4);
+  padding-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border);
+  min-width: 0;
+}
+.vp-anlagenav-ctx {
+  padding: 0 var(--vp-space-3) var(--vp-space-2);
+  min-width: 0;
+}
+.vp-anlagenav-switch,
+.vp-anlagenav-label {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--vp-radius-sm);
+  font-size: var(--vp-text-sm);
+  font-weight: 700;
+  color: var(--vp-primary-deep);
+  background: var(--vp-tint);
+}
+.vp-anlagenav-switch {
+  border: 1px solid transparent;
+  transition: var(--vp-transition-fast);
+}
+.vp-anlagenav-switch:hover {
+  border-color: var(--vp-primary);
+}
+.vp-anlagenav-switch:focus-within {
+  border-color: var(--vp-primary);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+.vp-anlagenav-ic,
+.vp-anlagenav-caret {
+  flex-shrink: 0;
+}
+.vp-anlagenav-caret {
+  color: var(--vp-text-gray);
+}
+.vp-anlagenav-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-anlagenav-switch select {
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  outline: none;
+  cursor: pointer;
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.vp-anlagenav-label .t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The context card's health line — the same three states as the top badge. */
+.vp-anlagenav-health {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: var(--vp-text-meta);
+  font-weight: 500;
+  color: var(--vp-text-gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Mode groups ---------- */
+.vp-navgroup {
+  min-width: 0;
+}
+.vp-nav-group-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.vp-mode-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-gray, #ced4da);
+}
+.vp-nav-group-label.tone-markt .vp-mode-dot {
+  background: var(--vp-flow-grid);
+}
+.vp-nav-group-label.tone-peak .vp-mode-dot {
+  background: var(--vp-flow-pv);
+}
+.vp-nav-group-label.tone-eigen .vp-mode-dot {
+  background: var(--vp-flow-batt);
+}
+.vp-nav-group-label.tone-atyp .vp-mode-dot,
+.vp-nav-group-label.tone-automation .vp-mode-dot {
+  background: var(--vp-flow-load);
+}
+
+/* Steuerung's active-mode badge reads as a count, not a muted note. */
+.vp-anlagenav .vp-navitem .count {
+  background: var(--vp-tint);
+  color: var(--vp-primary-deep);
+  border-radius: var(--vp-radius-pill);
+  padding: 0 0.45rem;
+  min-width: 20px;
+  text-align: center;
+}
+.vp-navitem .vp-nav-lbl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Health badge (top bar) ---------- */
+.vp-health-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vp-flow-batt);
+}
+.state-hinweis .vp-health-dot {
+  background: var(--vp-gray, #ced4da);
+}
+.state-warnung .vp-health-dot {
+  background: var(--vp-flow-pv);
+}
+.vp-healthbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  min-width: 0;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-surface);
+  font-size: var(--vp-text-meta);
+  font-weight: 600;
+  color: var(--vp-text-gray);
+  white-space: nowrap;
+}
+.vp-healthbadge.state-warnung {
+  border-color: var(--vp-flow-pv);
+  color: var(--vp-text-dark);
+}
+/* Phones keep the dot (the state) but drop the word so the breadcrumb and the
+   user menu keep their room; the title still names the worst finding. */
+@media (max-width: 720px) {
+  .vp-healthbadge-lbl {
+    display: none;
+  }
+  .vp-healthbadge {
+    padding: 0.3rem 0.45rem;
+  }
+}
+
+/* ---------- Phone bottom bar: five slots ---------- */
+.vp-bottombar {
+  display: none;
+}
+@media (max-width: 720px) {
+  .vp-bottombar {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    background: var(--vp-surface);
+    border-top: 1px solid var(--vp-border);
+    box-shadow: 0 -2px 12px rgba(30, 58, 95, 0.08);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  /* Room for the bar so the last card is never covered. */
+  .vp-main.has-bottombar {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0));
+  }
+}
+.vp-bottombar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 0.4rem 0.2rem;
+  border: none;
+  background: none;
+  color: var(--vp-text-muted);
+  font-family: var(--vp-font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--vp-transition-fast);
+}
+.vp-bottombar-item .ic {
+  position: relative;
+  display: inline-flex;
+  line-height: 0;
+}
+.vp-bottombar-item .lbl {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-bottombar-item.active {
+  color: var(--vp-primary-deep);
+}
+.vp-bottombar-badge {
+  position: absolute;
+  top: -6px;
+  right: -10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--vp-radius-pill);
+  background: var(--vp-primary-deep);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+/* ---------- "Mehr" sheet + Hilfe panel ---------- */
+.vp-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(30, 58, 95, 0.35);
+}
+.vp-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  max-height: 78vh;
+  overflow-y: auto;
+  background: var(--vp-surface);
+  border-top-left-radius: var(--vp-radius-lg);
+  border-top-right-radius: var(--vp-radius-lg);
+  box-shadow: var(--vp-shadow-md);
+  padding: var(--vp-space-3) var(--vp-space-3)
+    calc(var(--vp-space-5) + env(safe-area-inset-bottom, 0));
+}
+.vp-helppanel {
+  position: fixed;
+  z-index: 61;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 2 * var(--vp-space-4)));
+  background: var(--vp-surface);
+  border-radius: var(--vp-radius-lg);
+  box-shadow: var(--vp-shadow-md);
+  padding: var(--vp-space-4);
+}
+.vp-helppanel p {
+  margin: var(--vp-space-2) 0 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+.vp-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-3);
+  min-width: 0;
+  font-family: var(--vp-font-heading);
+  font-weight: 700;
+  color: var(--vp-text-dark);
+}
+.vp-sheet-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vp-sheet-head button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--vp-text-gray);
+  cursor: pointer;
+}
+.vp-sheet-group {
+  min-width: 0;
+}
+.vp-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.5rem var(--vp-space-3);
+  border: none;
+  border-radius: var(--vp-radius-sm);
+  background: none;
+  font-family: var(--vp-font-body);
+  font-size: var(--vp-text-sm);
+  font-weight: 600;
+  color: var(--vp-text-dark);
+  text-align: left;
+  cursor: pointer;
+}
+.vp-sheet-item.active {
+  background: var(--vp-tint);
+  color: var(--vp-primary-deep);
+}
+
+/* ---------- Tablet: a 56px icon rail instead of a hamburger ----------
+   721-1023px. The base sheet hides the sidebar below 1024px; these rules are
+   deliberately one specificity step higher so they win regardless of import
+   order. */
+@media (min-width: 721px) and (max-width: 1023px) {
+  .vp-app {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .vp-app > .vp-sidebar {
+    display: flex;
+    position: sticky;
+    width: 56px;
+    box-shadow: none;
+  }
+  .vp-app > .vp-sidebar .brand {
+    padding: var(--vp-space-3) 0;
+    justify-content: center;
+  }
+  /* The wordmark is wider than the rail - scale it to fit instead of letting
+     it spill over the content column. */
+  .vp-app > .vp-sidebar .brand img {
+    height: auto;
+    width: 40px;
+    object-fit: contain;
+  }
+  .vp-app > .vp-sidebar nav,
+  .vp-app > .vp-sidebar .side-foot {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .vp-app > .vp-sidebar .vp-navitem {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  /* The accessible name stays (the label node is only visually hidden), and
+     `title` gives the hover tooltip the rail needs. */
+  .vp-app > .vp-sidebar .vp-nav-lbl {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .vp-app > .vp-sidebar .vp-navitem .count,
+  .vp-app > .vp-sidebar .vp-anlagenav-ctx,
+  .vp-app > .vp-sidebar .vp-sidebar-close {
+    display: none;
+  }
+  .vp-app > .vp-sidebar .vp-nav-group-label {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  /* No hamburger in the rail range - the sidebar is permanently visible. */
+  .vp-content .vp-hamburger {
+    display: none;
+  }
+}
