@@ -23,7 +23,7 @@
  * Alle Ableitung liegt in den reinen Modulen `surface.ts` (M0) und
  * `steuerungArea.ts`; diese Seite lädt und rendert.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
@@ -112,6 +112,30 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  // The notice strip lives at the TOP of the area while the actions that can
+  // fail sit far below it - a message set there read as "nothing happened"
+  // (G6). Every setError goes through `fail`, which also brings the strip
+  // into view, so a refusal is never silent.
+  const noticeRef = useRef<HTMLDivElement | null>(null);
+  const fail = useCallback((message: string) => {
+    setError(message);
+    // The strip renders in the same commit; scroll after paint.
+    requestAnimationFrame(() => {
+      noticeRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }, []);
+
+  /**
+   * The honest message for a failed flow action. A 403 means the account is
+   * not unlocked for this - VoltPilot sets it up - NOT that the server is
+   * unreachable. The gate is unchanged; only the copy tells the truth.
+   */
+  const flowFailure = useCallback((e: unknown, fallback: string): string => {
+    if (e instanceof ApiError && e.status === 403) {
+      return `Der volle Editor ist für Ihr Konto nicht freigeschaltet. ${EINRICHTUNG_DURCH_VOLTPILOT}`;
+    }
+    return e instanceof ApiError ? e.message : fallback;
+  }, []);
 
   const reload = useCallback(() => {
     setListState('loading');
@@ -214,24 +238,24 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
           setEditing({ flowId: created.flowId, version: created.flowVersion, palette });
         }
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Der Flow konnte nicht angelegt werden.');
+        fail(flowFailure(e, 'Der Flow konnte nicht angelegt werden.'));
       } finally {
         setBusy(false);
       }
     },
-    [flowApi],
+    [flowApi, fail, flowFailure],
   );
 
   const useTemplate = useCallback(
     (def: CustomerTemplateDef) => {
       const res = def.resolve(entities, site.id);
       if ('reason' in res) {
-        setError(res.reason);
+        fail(res.reason);
         return;
       }
       void openSaved(def.name, res.doc, 'automation');
     },
-    [entities, site.id, openSaved],
+    [entities, site.id, openSaved, fail],
   );
 
   /** „Pausieren" = den Flow stilllegen (E3b `deactivate`) - Gates unverändert. */
@@ -247,12 +271,12 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
         setNotice(res.message || `„${mode.label}" wurde pausiert.`);
         reload();
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Der Modus konnte nicht pausiert werden.');
+        fail(flowFailure(e, 'Der Modus konnte nicht pausiert werden.'));
       } finally {
         setBusy(false);
       }
     },
-    [flowApi, reload],
+    [flowApi, reload, fail, flowFailure],
   );
 
   const openMode = useCallback(
@@ -275,7 +299,7 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
           break;
         case 'market-template':
           if (!battery) {
-            setError('Diese Anlage hat noch keinen Speicher als Steuer-Einheit.');
+            fail('Diese Anlage hat noch keinen Speicher als Steuer-Einheit.');
             return;
           }
           void openSaved(
@@ -291,7 +315,7 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
           break;
       }
     },
-    [battery, openSaved, site.id],
+    [battery, openSaved, site.id, fail],
   );
 
   if (editing) {
@@ -319,7 +343,13 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
 
   return (
     <div className="vp-steuerung vp-steuerung-area">
-      {error && <p className="vp-flowed-notice error" role="status">{error}</p>}
+      <div ref={noticeRef}>
+        {error && (
+          <p className="vp-flowed-notice error" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
       {notice && <p className="vp-flowed-notice" role="status">{notice}</p>}
 
       {listState === 'loading' && <TextSkeleton lines={5} />}

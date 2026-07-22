@@ -3840,7 +3840,9 @@ button.vp-tech-card-h.toggle {
    ============================================================================ */
 .vp-portfolio-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr));
+  /* 235px: an icon tile + a label like "Speicher gesamt" next to its second
+     value line needs the room, otherwise the label breaks mid-phrase (G8). */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
   gap: var(--vp-gap);
 }
 .vp-portfolio-table td {
@@ -5487,14 +5489,176 @@ button.vp-tech-card-h.toggle {
   }
 }
 
-/* Touch-Ziele auf dem Telefon: die Zurück-Zeile war 31 px, „＋ zuordnen" 19 px
-   hoch. Auf dem Desktop bleibt die kompakte Dichte erhalten. */
-@media (max-width: 720px) {
+/* Touch-Ziele auf Finger-Geräten: die Zurück-Zeile war 31 px, „＋ zuordnen"
+   19 px hoch. `pointer: coarse` nimmt das 768er Tablet mit; am Desktop bleibt
+   die kompakte Dichte erhalten. */
+@media (pointer: coarse), (max-width: 720px) {
   .vp-fleet-back {
     min-height: 44px;
   }
   .vp-role-add,
   .vp-role-picker-item {
     min-height: 36px;
+  }
+}
+
+/* ============================================================
+   UX-Audit-Nachlauf G1-G11 (PR fm/vp-portal-bugs)
+   ============================================================ */
+
+/* G1 · Telefon-Topbar: „Abmelden" wird zum Icon, damit die Brotkrume (jetzt
+   der ANLAGENNAME) ihre Breite behält. Der aria-label/title trägt das Wort. */
+.vp-logout-btn {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+@media (max-width: 560px) {
+  .vp-logout-label {
+    display: none;
+  }
+  .vp-logout-btn {
+    padding-left: var(--vp-space-2);
+    padding-right: var(--vp-space-2);
+  }
+  /* Die E-Mail-Zeile ist auf dem Telefon ohnehin ausgeblendet; hier fällt
+     zusätzlich der Avatar weg, wenn es eng wird - Icon + Titel gewinnen. */
+  .vp-topbar .crumbs {
+    flex: 1 1 auto;
+  }
+}
+
+/* G10 · Sichtbares Schließen im mobilen Seitenmenü (Schleier-Tap + Hamburger
+   bleiben). Nur solange die Seitenleiste ein Slide-over ist. */
+.vp-sidebar-close {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--vp-text-dark);
+  margin-left: auto;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--vp-radius-md, 12px);
+}
+.vp-sidebar-close:hover {
+  background: var(--vp-bg-light, #f1f3f5);
+}
+@media (max-width: 1024px) {
+  .vp-sidebar .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--vp-space-2);
+  }
+  .vp-sidebar-close {
+    display: inline-flex;
+  }
+}
+
+/* G2 · Der adaptive Energiefluss skaliert auf die Containerbreite. Auf einem
+   Telefon fiele die Beschriftung damit unter ~7 px - lesbar ist sie erst ab
+   einer Mindestbreite, die dann (Portal-Konvention für breite Inhalte) INNEN
+   scrollt statt die Seite zu sprengen. */
+@media (max-width: 620px) {
+  .vp-flow-adaptive {
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+  .vp-flow-adaptive > svg {
+    min-width: 440px;
+  }
+}
+
+/* G9 · Geräte-Karten wachsen mit ihrem Inhalt statt auf gleiche Höhe gestreckt
+   zu werden (bei sehr unterschiedlichem Inhalt blieben halbe Karten leer). */
+.vp-entity-cards {
+  align-items: start;
+}
+
+/* G5 · Die Messgröße unterscheidet zwei Zeilen desselben Geräts in einer
+   Rolle (Ladestand vs. Batterieleistung). */
+.vp-role-member-chan {
+  font-weight: 500;
+  color: var(--vp-text-muted, #667);
+}
+
+/* G8 · Zweiter, beschrifteter Wert einer KPI-Kachel - nie ein „·", das beim
+   Umbruch verwaist. */
+.vp-kpi-second {
+  display: block;
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted, #667);
+}
+
+/* G7 · Skala + Legende unter dem Peak-Band; ohne Ziel wird gar kein Balken
+   gezeichnet (siehe PeakBand.tsx). */
+.vp-peakband-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  margin-top: 6px;
+  font-size: 0.7rem;
+  color: var(--vp-text-muted, #667);
+  flex-wrap: wrap;
+}
+.vp-peakband-scale-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.vp-peakband-key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-left: 6px;
+}
+.vp-peakband-key.fill {
+  background: linear-gradient(90deg, #fbbf24, var(--vp-flow-pv));
+}
+.vp-peakband-key.limit {
+  width: 3px;
+  border-radius: 1px;
+  background: #dc2626;
+}
+
+/* G11 · Bequemere Trefferflächen auf JEDEM Finger-Gerät. `pointer: coarse`
+   deckt auch das 768er Tablet ab (die Maus-Dichte am Desktop bleibt), dem
+   Vorbild des bestehenden `.vp-seg`-Blocks folgend. Es wird Höhe gewonnen,
+   keine Optik aufgeblasen. */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-seg button,
+  .vp-period-tabs button {
+    min-height: 44px;
+  }
+  /* Diagramm-Legenden sind Serien-Schalter, sobald sie Knöpfe sind
+     (`button.vp-cl-item.is-toggle` setzt 32px - gleiche Spezifität nötig). */
+  button.vp-cl-item.is-toggle {
+    min-height: 44px;
+  }
+  /* Der InfoTip bleibt optisch 20 px (die Zeilenhöhe der Kennzahl darf nicht
+     springen); nur seine unsichtbare Trefferfläche wächst von 40 auf 44 px. */
+  .vp-infotip-btn::after {
+    inset: -12px;
+  }
+  /* Textlinks, die als Aktion gelesen werden („Ganzer Fahrplan im Detail →",
+     „Feineinstellungen (optional)", „Koordinaten manuell bearbeiten") - alle
+     tragen `.vp-linklike`. */
+  button.vp-linklike {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  /* Technik: „Bearbeiten" und die „Technische Details"-Aufklapper. */
+  .vp-tech-edit {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .vp-tech-disc {
+    min-height: 44px;
   }
 }

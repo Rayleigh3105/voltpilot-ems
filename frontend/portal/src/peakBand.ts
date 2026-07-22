@@ -95,10 +95,18 @@ export interface PeakBandView {
   fresh: boolean;
   /** The Ziel (grid-import target, kW), formatted; null when unknown. */
   targetLabel: string | null;
-  /** Bar fill position as % of the bar max; null when no live mean. */
+  /**
+   * Whether a Ziel exists at all. Without one the bar has NO reference and is
+   * therefore not rendered (G7): a filled bar with no marker and no scale
+   * cannot be read - the customer gets the number plus an honest note instead.
+   */
+  hasTarget: boolean;
+  /** Bar fill position as % of the bar max; null when no bar is shown. */
   fillPct: number | null;
   /** Red limit marker position as % of the bar max; null when no target. */
   limitPct: number | null;
+  /** The bar's upper end, formatted - the scale that makes the fill readable. */
+  scaleMaxLabel: string | null;
   /** The current mean exceeds the Ziel (over the limit → the bar goes red). */
   breach: boolean;
   /** Vermiedene Spitze + ersparte Leistungskosten; empty until measured. */
@@ -125,8 +133,11 @@ export function peakBand(input: {
   const targetKw = input.targetKw ?? null;
   const currentKw = current.kw;
 
+  // A bar only means something against a reference. Without a Ziel there is
+  // neither a marker nor a scale, so no bar is built at all (G7).
+  const hasTarget = targetKw != null;
   const peakOfBoth = Math.max(currentKw ?? 0, targetKw ?? 0);
-  const barMax = peakOfBoth > 0 ? peakOfBoth * BAR_HEADROOM : null;
+  const barMax = hasTarget && peakOfBoth > 0 ? peakOfBoth * BAR_HEADROOM : null;
   const fillPct =
     barMax != null && currentKw != null ? clampPct((currentKw / barMax) * 100) : null;
   const limitPct = barMax != null && targetKw != null ? clampPct((targetKw / barMax) * 100) : null;
@@ -151,16 +162,21 @@ export function peakBand(input: {
   const note =
     currentKw == null
       ? 'Aktueller Live-Wert liegt gerade nicht vor.'
-      : peak != null && peak.peakKw == null
-        ? 'In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.'
-        : null;
+      : !hasTarget
+        ? 'Ziel für den Netzbezug: wird von VoltPilot eingerichtet. Sobald es steht, ' +
+          'sehen Sie hier, wie weit die laufende ¼-Stunde davon entfernt ist.'
+        : peak != null && peak.peakKw == null
+          ? 'In der laufenden Abrechnungsperiode liegen noch keine Messwerte vor.'
+          : null;
 
   return {
     currentLabel: currentKw != null ? fmtNum(currentKw, 'kW', 0) : '—',
     fresh: current.fresh,
     targetLabel: targetKw != null ? `Ziel${NBSP}${fmtNum(targetKw, 'kW', 0)}` : null,
+    hasTarget,
     fillPct,
     limitPct,
+    scaleMaxLabel: barMax != null ? fmtNum(barMax, 'kW', 0) : null,
     breach,
     metrics,
     note,

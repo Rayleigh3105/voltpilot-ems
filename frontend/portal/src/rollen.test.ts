@@ -108,6 +108,30 @@ describe('roleBoxes', () => {
     expect(grid.members[0].primary).toBe(true); // maßgeblich
   });
 
+  // G5: the Speicher box carried the SAME device name twice (its Ladestand and
+  // its Batterieleistung) and read as a duplicate. The measurement name is what
+  // tells them apart - and only where it is actually needed.
+  it('names the measurement when one device feeds a role twice, and only then', () => {
+    const boxes = roleBoxes(topology());
+
+    const storage = boxes.find((b) => b.role === 'storage')!;
+    expect(storage.members).toHaveLength(2);
+    expect(storage.members.every((m) => m.entityLabel === 'Hybrid-Wechselrichter')).toBe(true);
+    expect(storage.members.every((m) => m.needsChannelLabel)).toBe(true);
+    expect(storage.members.map((m) => m.channelLabel).sort()).toEqual([
+      'Batterieleistung',
+      'Ladestand',
+    ]);
+
+    // PV has two members, but from two DIFFERENT devices - their names already
+    // differ, so the box stays calm.
+    const pv = boxes.find((b) => b.role === 'pv')!;
+    expect(pv.members.map((m) => m.needsChannelLabel)).toEqual([false, false]);
+
+    const grid = boxes.find((b) => b.role === 'grid')!;
+    expect(grid.members[0].needsChannelLabel).toBe(false);
+  });
+
   it('omits roles with no members (no empty Verbraucher box)', () => {
     expect(roleBoxes(topology()).some((b) => b.role === 'consumer')).toBe(false);
   });
