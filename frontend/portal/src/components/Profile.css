@@ -94,7 +94,9 @@
 .vp-switch::before {
   content: '';
   position: absolute;
-  inset: -7px -4px;
+  /* >= 44 px Trefferfläche über dem 52x30-Schalter (M4-Nachmessung: -7px
+     ergaben 42 px Höhe, also knapp darunter). */
+  inset: -8px -4px;
 }
 
 .vp-switch:disabled {

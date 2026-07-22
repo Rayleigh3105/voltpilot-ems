@@ -81,6 +81,19 @@ export type TemplateResolution =
   | { doc: FlowDocument; consumerLabel: string }
   | { reason: string };
 
+/**
+ * Portal v3 · M4 — die MASCHINEN-lesbare Voraussetzung einer Vorlage: welche
+ * Rollen die Anlage haben muss, damit die Vorlage überhaupt passt.
+ * `'consumer'` meint dabei ein STEUERBARES Gerät (schaltbar), nicht bloß einen
+ * gemessenen Verbraucher — genau das, was `controllableConsumers` findet.
+ *
+ * Sie steht NEBEN der deutschen `requires`-Prosa, ersetzt sie nicht: die Prosa
+ * bleibt die ehrliche Begründungszeile, `requiresRoles` filtert VOR dem
+ * `resolve()`-Versuch (`flows/templateFilter.ts`). `resolve()` bleibt die
+ * Wahrheit — die Vorfilterung darf nie großzügiger sein als sie.
+ */
+export type TemplateRole = 'consumer' | 'grid' | 'storage' | 'pv';
+
 export interface CustomerTemplateDef {
   id: string;
   name: string;
@@ -88,6 +101,8 @@ export interface CustomerTemplateDef {
   description: string;
   /** What the customer needs for this template (shown when it cannot resolve). */
   requires: string;
+  /** Die Rollen, die die Anlage dafür braucht (M4-Vorfilter). */
+  requiresRoles: TemplateRole[];
   /** Build the document from the site's entities, or explain why it cannot. */
   resolve(entities: EditorEntity[], siteId?: string): TemplateResolution;
 }
@@ -103,6 +118,7 @@ export const CUSTOMER_TEMPLATES: CustomerTemplateDef[] = [
       'Schaltet Ihr Gerät ein, sobald überschüssiger Solarstrom ins Netz fließt - '
       + 'so laden Sie bevorzugt mit eigener Sonne.',
     requires: 'ein steuerbares Gerät und einen Netz-Zähler',
+    requiresRoles: ['consumer', 'grid'],
     resolve(entities, siteId) {
       const consumer = controllableConsumers(entities)[0];
       if (!consumer) return { reason: NO_CONSUMER };
@@ -123,6 +139,7 @@ export const CUSTOMER_TEMPLATES: CustomerTemplateDef[] = [
       'Schaltet Ihr Gerät in einem festen Zeitfenster ein (z. B. mittags) - '
       + 'die Zeiten passen Sie im Editor an.',
     requires: 'ein steuerbares Gerät',
+    requiresRoles: ['consumer'],
     resolve(entities, siteId) {
       const consumer = controllableConsumers(entities)[0];
       if (!consumer) return { reason: NO_CONSUMER };

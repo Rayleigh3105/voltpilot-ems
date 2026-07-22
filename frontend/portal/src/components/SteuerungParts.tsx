@@ -1,5 +1,6 @@
 /**
- * M2 (#530) — die vier Teile der Steuerungs-Fläche als reine Render-Bausteine.
+ * Die Render-Bausteine der Steuerungs-Fläche (Modus-Karte, Ko-Optimierungs-
+ * Streifen, Schutzfunktionen, Kopfzeile).
  * Jede Ableitung liegt im unit-getesteten `src/steuerungArea.ts`; hier wird
  * NUR gerendert (der `FleetOverview`/`ErloesKomposition`-Präzedenzfall).
  */
@@ -17,10 +18,8 @@ import {
   entityChips,
   modeActions,
   peakContributionNote,
-  requirementHint,
   type CoOptimization,
   type ReservationLayer,
-  type ToolboxEntry,
 } from '../steuerungArea';
 import type { ActiveMode } from '../surface';
 import './Steuerung.css';
@@ -172,64 +171,6 @@ export function CoOptimizationStrip({
           Die Aufteilung des Speichers wird von VoltPilot eingerichtet.
         </p>
       )}
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 4 · Die Werkzeugkiste
-// ---------------------------------------------------------------------------
-
-/**
- * Eine Karte je NICHT aktivem Modus — jeder Modus für jeden Kunden, immer.
- * Die Voraussetzungs-Chips sind ehrlich aus den Entitäten abgeleitet, das
- * Gate bleibt das bestehende (der Server prüft weiterhin selbst nach).
- */
-export function ToolboxCard({
-  entry,
-  busy = false,
-  onUse,
-}: {
-  entry: ToolboxEntry;
-  busy?: boolean;
-  onUse: (entry: ToolboxEntry) => void;
-}) {
-  const hint = requirementHint(entry);
-  const managed = entry.action.kind === 'managed';
-  const disabled = busy || !entry.ready || managed;
-  return (
-    <Card className="vp-toolcard" padding="lg" radius="lg">
-      <div className="vp-toolcard-head">
-        <h4>{entry.title}</h4>
-        {entry.gate === 'gated-locked' ? (
-          <Badge variant="off">VoltPilot richtet ein</Badge>
-        ) : entry.gate === 'gated-open' ? (
-          <Badge variant="tint">Freigeschaltet</Badge>
-        ) : null}
-      </div>
-      <p className="vp-toolcard-line">{entry.line}</p>
-      {entry.requirements.length > 0 && (
-        <div className="vp-toolcard-reqs" aria-label="Voraussetzungen">
-          {entry.requirements.map((r) => (
-            <span key={r.key} className={`vp-req-chip${r.ok ? ' ok' : ''}`}>
-              <Icon name={r.ok ? 'check' : 'x'} size={11} /> {r.label}
-            </span>
-          ))}
-        </div>
-      )}
-      {hint && <p className="vp-toolcard-note">{hint}</p>}
-      {entry.gateNote && (
-        <p className="vp-toolcard-note">
-          <Icon name="lock" size={12} /> {entry.gateNote}
-        </p>
-      )}
-      <div className="vp-toolcard-foot">
-        {!managed && (
-          <Button variant="outline" size="sm" disabled={disabled} onClick={() => onUse(entry)}>
-            Einrichten
-          </Button>
-        )}
-      </div>
     </Card>
   );
 }
