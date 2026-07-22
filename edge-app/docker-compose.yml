@@ -20,6 +20,12 @@
 # Configuration: copy .env.example to .env. Nothing is strictly required -
 # an unconfigured device generates a persistent reference and shows it in the
 # local web app.
+#
+# Image version (rollback lever, all optional - unset = today's :latest):
+#   VP_EDGE_IMAGE_TAG      pin BOTH images to one tag (e.g. a commit SHA)
+#   VP_EDGE_CORE_IMAGE     full ref override for core    (digest pin: repo@sha256:...)
+#   VP_EDGE_NODERED_IMAGE  full ref override for nodered (digest pin: repo@sha256:...)
+# Set them in the .env (or via `./update.sh --tag <tag>` / `--core-image <ref>`).
 
 name: voltpilot-edge
 
@@ -27,7 +33,7 @@ services:
   core:
     build:
       context: ./core
-    image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest
+    image: ${VP_EDGE_CORE_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:${VP_EDGE_IMAGE_TAG:-latest}}
     pull_policy: always
     restart: unless-stopped
     environment:
@@ -58,7 +64,7 @@ services:
   nodered:
     build:
       context: ./nodered
-    image: git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest
+    image: ${VP_EDGE_NODERED_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:${VP_EDGE_IMAGE_TAG:-latest}}
     pull_policy: always
     restart: unless-stopped
     depends_on:

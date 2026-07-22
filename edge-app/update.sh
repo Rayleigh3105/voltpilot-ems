@@ -19,12 +19,23 @@
 #      (the Node-RED template auto-reseed applies flow updates on start - no
 #      volume wipe, ever),
 #   5. verifies via the core's local /health endpoint and prints PASS/FAIL
-#      with the pairing/cloud state plus rollback guidance on failure.
+#      with the pairing/cloud state plus rollback guidance on failure, and
+#      prints the RESOLVED image digests so the operator can record them as
+#      the rollback target of the next update.
+#
+# Image version / rollback: by default the device tracks `:latest` exactly as
+# before. `--tag <tag>` pins BOTH images to one tag, `--core-image <ref>` /
+# `--nodered-image <ref>` pin a full ref (that is how a digest pin is
+# expressed), `--latest` releases the pin. A pin is persisted so it also
+# survives a later plain `docker compose up -d`.
 #
 # Hard safety rules: never `down -v`, never touches the data volumes
-# (vp-edge-data / vp-nodered-data) or the device identity, never rewrites the
-# .env (secrets stay untouched, permissions kept at 600), never sets the
-# VP_DEV_* dev hatches, never echoes secrets.
+# (vp-edge-data / vp-nodered-data) or the device identity, never sets the
+# VP_DEV_* dev hatches, never echoes secrets. The .env is NEVER rewritten -
+# with exactly ONE narrow, opt-in exception: `--tag`/`--core-image`/
+# `--nodered-image`/`--latest` replace the corresponding VP_EDGE_* image key
+# (and only that key) in place, byte-preserving every other line, mode 600.
+# Without one of those flags not a single byte of the .env is touched.
 #
 # Usage: ./update.sh [--help]   (run it in the deploy directory)
 #
@@ -78,6 +89,12 @@ COMPOSE_ARGS=()
 VERIFY_RESULT="unbekannt"
 FINAL_PAIRING=""
 FINAL_CLOUD=""
+# Image pin request (empty = untouched; PIN_REQUESTED gates every .env write).
+PIN_REQUESTED=0
+PIN_TAG=""
+PIN_CORE_IMAGE=""
+PIN_NODERED_IMAGE=""
+PIN_RELEASE=0
 
 # Abort wording for the updater (overrides install.sh's installer wording).
 die() { err "$*"; printf '\n%sUpdate abgebrochen.%s\n' "${C_RED}" "${C_RESET}" >&2; exit 1; }
@@ -100,12 +117,16 @@ Unterstützt beide Deploy-Modelle:
 
 Sicherheitsregeln (fest verdrahtet): niemals 'down -v', die Datenvolumes
 (vp-edge-data / vp-nodered-data) und die Geräteidentität bleiben unberührt,
-die .env wird NIE verändert (Geheimnisse bleiben, Rechte 600), die
-VP_DEV_*-Schalter werden nie gesetzt, eine handbearbeitete Compose-Datei
-wird nie ohne --force-compose überschrieben.
+die VP_DEV_*-Schalter werden nie gesetzt, eine handbearbeitete Compose-Datei
+wird nie ohne --force-compose überschrieben. Die .env wird NIE verändert -
+mit genau EINER Ausnahme: die Image-Pin-Optionen unten ersetzen exakt den
+zugehörigen VP_EDGE_*-Schlüssel (jede andere Zeile bleibt Byte für Byte
+erhalten, Rechte 600, kein Geheimnis wird gelesen oder ausgegeben).
 
 ${C_BOLD}Aufruf:${C_RESET}
   ./update.sh [Optionen]        (im Deploy-Verzeichnis ausführen)
+  ./update.sh --tag <tag>       (auf eine bestimmte Version aktualisieren)
+  ./update.sh --core-image <ref> --nodered-image <ref>   (Rollback per Digest)
 
 ${C_BOLD}Optionen:${C_RESET}
   -h, --help           Diese Hilfe anzeigen und beenden.
@@ -127,7 +148,54 @@ ${C_BOLD}Optionen:${C_RESET}
                        stdout schreiben und beenden.
       --dry-run        Nur zeigen, was sich ändern würde: kein Schreiben,
                        kein Pull, kein Start. Funktioniert auch ohne Docker.
+
+${C_BOLD}Image-Version / Rollback${C_RESET} (ohne diese Optionen bleibt alles wie bisher:
+das Gerät folgt ':latest'):
+      --tag <tag>      BEIDE Images auf diesen Tag festnageln (z. B. den
+                       Commit-SHA eines geprüften Stands) und darauf
+                       aktualisieren. Wird in der .env als
+                       VP_EDGE_IMAGE_TAG hinterlegt, gilt also auch für ein
+                       späteres 'docker compose up -d'.
+      --core-image <ref>
+      --nodered-image <ref>
+                       Vollständige Image-Referenz festnageln - so wird ein
+                       DIGEST-Pin gesetzt, der saubere Rollback:
+                         --core-image git.tecmaxx.de/.../edge-app-core@sha256:<digest>
+                       (Digests der laufenden Stände zeigt jedes Update am
+                       Ende an; VP_EDGE_CORE_IMAGE / VP_EDGE_NODERED_IMAGE).
+      --latest         Alle Pins lösen: zurück auf ':latest' (Standard).
 EOF
+}
+
+# An option value must exist and must not be another option. Called directly
+# (never in a subshell) so its `exit` really ends the script.
+require_value() {
+  case "${2-}" in
+    ""|-*) err "Option ${1} benötigt einen Wert."; echo; usage; exit 2 ;;
+  esac
+}
+
+# Docker tag charset (docker's own rule). Rejects anything that could break an
+# .env line (space, quote, $, newline) by construction.
+valid_tag() {
+  case "$1" in
+    *[!A-Za-z0-9._-]*|"") return 1 ;;
+    [.-]*) return 1 ;;
+  esac
+  [ "${#1}" -le 128 ]
+}
+
+# Full image reference: registry/repo:tag or registry/repo@sha256:<digest>.
+# Deliberately a strict charset - no shell/env metacharacters can get through.
+valid_image_ref() {
+  case "$1" in
+    *[!A-Za-z0-9._:/@-]*|"") return 1 ;;
+    [!A-Za-z0-9]*) return 1 ;;
+  esac
+  case "$1" in
+    *:*|*@*) return 0 ;;
+    *) return 1 ;;   # an unversioned ref would silently mean :latest again
+  esac
 }
 
 parse_args() {
@@ -141,10 +209,27 @@ parse_args() {
       --print-compose) PRINT_COMPOSE=1 ;;
       --print-hostnet) PRINT_HOSTNET=1 ;;
       --dry-run) DRY_RUN=1 ;;
+      --tag)
+        require_value --tag "${2-}"; PIN_TAG="$2"; shift
+        if ! valid_tag "$PIN_TAG"; then err "Ungültiger Image-Tag: ${PIN_TAG}"; exit 2; fi
+        PIN_REQUESTED=1 ;;
+      --core-image)
+        require_value --core-image "${2-}"; PIN_CORE_IMAGE="$2"; shift
+        if ! valid_image_ref "$PIN_CORE_IMAGE"; then err "Ungültige Image-Referenz: ${PIN_CORE_IMAGE}"; exit 2; fi
+        PIN_REQUESTED=1 ;;
+      --nodered-image)
+        require_value --nodered-image "${2-}"; PIN_NODERED_IMAGE="$2"; shift
+        if ! valid_image_ref "$PIN_NODERED_IMAGE"; then err "Ungültige Image-Referenz: ${PIN_NODERED_IMAGE}"; exit 2; fi
+        PIN_REQUESTED=1 ;;
+      --latest) PIN_RELEASE=1; PIN_REQUESTED=1 ;;
       *) err "Unbekannte Option: $1"; echo; usage; exit 2 ;;
     esac
     shift
   done
+  if [ "$PIN_RELEASE" -eq 1 ] && { [ -n "$PIN_TAG" ] || [ -n "$PIN_CORE_IMAGE" ] || [ -n "$PIN_NODERED_IMAGE" ]; }; then
+    err "--latest schließt --tag / --core-image / --nodered-image aus."
+    exit 2
+  fi
 }
 
 # docker compose wrapper pinning the project dir + the ACTIVE compose file
@@ -221,6 +306,100 @@ write_hostnet_file() {
   generate_hostnet_compose > "$tmp"
   chmod 644 "$tmp"
   mv "$tmp" "$HOSTNET_FILE"
+}
+
+# =========================================================================
+# Image pin (.env): the ONLY place update.sh ever writes the .env, reached
+# ONLY via --tag / --core-image / --nodered-image / --latest.
+# =========================================================================
+
+# Replace exactly ONE VP_EDGE_* image key in the .env, byte-preserving every
+# other line (secrets included - they are never read, matched or echoed).
+# An empty value REMOVES the key. Atomic (tmp + mv), mode 600.
+env_set_pin() {
+  local key="$1" value="${2-}" tmp
+  case "$key" in
+    VP_EDGE_IMAGE_TAG|VP_EDGE_CORE_IMAGE|VP_EDGE_NODERED_IMAGE) : ;;
+    *) die "interner Fehler: env_set_pin akzeptiert nur VP_EDGE_*-Image-Schlüssel (bekam '${key}')." ;;
+  esac
+  tmp="$(mktemp "${TARGET_DIR}/.env.XXXXXX")"
+  chmod 600 "$tmp"
+  if [ -f "$ENV_FILE" ]; then
+    # awk (not grep -v) so an .env that consists only of this key is not
+    # mistaken for an error, and so the exit status is always 0.
+    if ! awk -v pat="^[[:space:]]*${key}=" '$0 ~ pat { next } { print }' "$ENV_FILE" > "$tmp"; then
+      rm -f "$tmp"
+      die "Die .env konnte nicht gelesen werden - es wurde nichts verändert."
+    fi
+  else
+    printf '%s\n' "# VoltPilot Edge-App - von update.sh angelegt (nur Image-Pin)." > "$tmp"
+  fi
+  if [ -n "$value" ]; then
+    printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  fi
+  mv "$tmp" "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+}
+
+# Apply the requested pin: export it for THIS run's compose calls and persist
+# it in the .env so a later plain `docker compose up -d` keeps the same
+# version. No pin requested -> returns immediately, .env untouched.
+apply_image_pin() {
+  [ "$PIN_REQUESTED" -eq 1 ] || return 0
+
+  local what=""
+  if [ "$PIN_RELEASE" -eq 1 ]; then
+    what="Pins gelöst -> :latest"
+  else
+    if [ -n "$PIN_TAG" ]; then what="Tag ${PIN_TAG}"; fi
+    if [ -n "$PIN_CORE_IMAGE" ]; then what="${what:+${what}, }core=${PIN_CORE_IMAGE}"; fi
+    if [ -n "$PIN_NODERED_IMAGE" ]; then what="${what:+${what}, }nodered=${PIN_NODERED_IMAGE}"; fi
+  fi
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    warn "Dry-Run: Image-Version WÜRDE festgelegt (${what}); die .env bleibt unverändert."
+    return
+  fi
+
+  if [ "$PIN_RELEASE" -eq 1 ]; then
+    env_set_pin VP_EDGE_IMAGE_TAG "latest"
+    env_set_pin VP_EDGE_CORE_IMAGE ""
+    env_set_pin VP_EDGE_NODERED_IMAGE ""
+    unset VP_EDGE_CORE_IMAGE VP_EDGE_NODERED_IMAGE
+    export VP_EDGE_IMAGE_TAG="latest"
+  else
+    if [ -n "$PIN_TAG" ]; then
+      env_set_pin VP_EDGE_IMAGE_TAG "$PIN_TAG"
+      export VP_EDGE_IMAGE_TAG="$PIN_TAG"
+      # A tag pin must not be silently outranked by a stale full-ref pin.
+      local old_core old_nodered
+      old_core="$(env_get VP_EDGE_CORE_IMAGE "$ENV_FILE")"
+      old_nodered="$(env_get VP_EDGE_NODERED_IMAGE "$ENV_FILE")"
+      if [ -n "$old_core" ] && [ -z "$PIN_CORE_IMAGE" ]; then
+        env_set_pin VP_EDGE_CORE_IMAGE ""; unset VP_EDGE_CORE_IMAGE
+        info "Bisheriger core-Image-Pin (${old_core}) wurde durch --tag ersetzt."
+      fi
+      if [ -n "$old_nodered" ] && [ -z "$PIN_NODERED_IMAGE" ]; then
+        env_set_pin VP_EDGE_NODERED_IMAGE ""; unset VP_EDGE_NODERED_IMAGE
+        info "Bisheriger nodered-Image-Pin (${old_nodered}) wurde durch --tag ersetzt."
+      fi
+    fi
+    if [ -n "$PIN_CORE_IMAGE" ]; then
+      env_set_pin VP_EDGE_CORE_IMAGE "$PIN_CORE_IMAGE"
+      export VP_EDGE_CORE_IMAGE="$PIN_CORE_IMAGE"
+    fi
+    if [ -n "$PIN_NODERED_IMAGE" ]; then
+      env_set_pin VP_EDGE_NODERED_IMAGE "$PIN_NODERED_IMAGE"
+      export VP_EDGE_NODERED_IMAGE="$PIN_NODERED_IMAGE"
+    fi
+  fi
+  ok "Image-Version festgelegt (${what}); in der .env hinterlegt - sonst wurde dort nichts verändert."
+  if [ -n "$PIN_CORE_IMAGE" ] && [ -z "$PIN_NODERED_IMAGE" ]; then
+    warn "Nur das core-Image ist gepinnt - für einen vollständigen Rollback auch --nodered-image setzen."
+  fi
+  if [ -n "$PIN_NODERED_IMAGE" ] && [ -z "$PIN_CORE_IMAGE" ]; then
+    warn "Nur das nodered-Image ist gepinnt - für einen vollständigen Rollback auch --core-image setzen."
+  fi
 }
 
 # =========================================================================
@@ -454,7 +633,8 @@ validate_compose_config() {
 }
 
 refresh_compose() {
-  step "3/5  Compose-Datei(en) auf den aktuellen Stand bringen"
+  step "3/5  Compose-Datei(en) + Image-Version auf den aktuellen Stand bringen"
+  apply_image_pin
   case "$MODEL" in
     installer) refresh_generated_compose ;;
     repo)      refresh_repo_compose ;;
@@ -502,6 +682,33 @@ update_containers() {
     die "Start fehlgeschlagen."
   fi
   ok "Container laufen auf dem neuen Stand (Node-RED-Vorlagen aktualisieren sich beim Start selbst)."
+  print_image_digests
+}
+
+# Print the RESOLVED image references + their registry digests after the
+# update, so the operator can record them as the rollback target of the NEXT
+# update (--core-image/--nodered-image take exactly these strings).
+print_image_digests() {
+  [ "$DOCKER_AVAILABLE" -eq 1 ] || return 0
+  local refs ref digest
+  refs="$(dcu config --images 2>/dev/null || true)"
+  [ -n "$refs" ] || return 0
+
+  echo
+  info "${C_BOLD}Laufende Images - für einen späteren Rollback notieren:${C_RESET}"
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    digest="$(docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' "$ref" 2>/dev/null || true)"
+    if [ -n "$digest" ]; then
+      info "  ${digest}"
+    else
+      info "  ${ref}   (kein Registry-Digest bekannt - lokal gebautes Image?)"
+    fi
+  done <<EOF
+${refs}
+EOF
+  info "Zurückrollen auf genau diesen Stand:"
+  info "  ${C_CYAN}./update.sh --core-image <core@sha256:...> --nodered-image <nodered@sha256:...>${C_RESET}"
 }
 
 rollback_hints() {
@@ -515,9 +722,11 @@ rollback_hints() {
     info "            git -C '${TARGET_DIR}' checkout <commit> -- docker-compose.yml docker-compose.hostnet.yml"
     info "            danach: docker compose up -d"
   fi
-  info "  Defektes Image: das vorherige Image per Digest in der Compose-Datei pinnen"
-  info "  ('docker images --digests' zeigt die lokalen Stände; image: ...@sha256:<digest>),"
-  info "  dann 'docker compose up -d' - oder VoltPilot kontaktieren."
+  info "  Defektes Image - auf den zuvor notierten Stand zurückrollen:"
+  info "    ${C_CYAN}./update.sh --core-image <ref@sha256:...> --nodered-image <ref@sha256:...>${C_RESET}"
+  info "    oder auf einen bekannten Tag: ${C_CYAN}./update.sh --tag <tag>${C_RESET}"
+  info "    ('docker images --digests' zeigt die lokal vorhandenen Stände;"
+  info "     ./update.sh --latest löst den Pin wieder) - oder VoltPilot kontaktieren."
   info "  Die Datenvolumes (vp-edge-data / vp-nodered-data) sind unberührt - NIEMALS 'down -v' ausführen."
 }
 
@@ -631,6 +840,15 @@ print_update_summary() {
   printf '%s VoltPilot Edge-App - Update-Zusammenfassung%s\n' "${C_BOLD}" "${C_RESET}"
   printf '%s────────────────────────────────────────────────────────%s\n' "${C_BOLD}" "${C_RESET}"
   info "Deploy-Modell:     ${MODEL}$( [ "$HOSTNET_ACTIVE" -eq 1 ] && printf ' (+ Host-Netz-Override)' )"
+  local pin_tag pin_core pin_nodered
+  pin_tag="$(env_get VP_EDGE_IMAGE_TAG "$ENV_FILE")"
+  pin_core="$(env_get VP_EDGE_CORE_IMAGE "$ENV_FILE")"
+  pin_nodered="$(env_get VP_EDGE_NODERED_IMAGE "$ENV_FILE")"
+  if [ -n "$pin_core" ] || [ -n "$pin_nodered" ]; then
+    info "Image-Version:     gepinnt (core=${pin_core:-<Tag>}, nodered=${pin_nodered:-<Tag>})"
+  else
+    info "Image-Version:     ${pin_tag:-latest}"
+  fi
   if [ "$DRY_RUN" -eq 1 ]; then
     info "Dry-Run abgeschlossen: nichts geschrieben, nichts gezogen, nichts gestartet."
     return
@@ -681,4 +899,9 @@ update_main() {
   esac
 }
 
-update_main "$@"
+# Source guard (same pattern as install.sh): sourcing defines everything but
+# runs nothing, so the self-check can exercise single functions (e.g. the
+# .env pin writer) directly. Direct execution behaves exactly as before.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  update_main "$@"
+fi

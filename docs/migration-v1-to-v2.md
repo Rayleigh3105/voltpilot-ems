@@ -2,7 +2,8 @@
 
 This is the exact, rehearsed, **reversible** procedure to move ONE live site onto
 the adaptive v2 EMS. It is written so the captain and firstmate execute it
-together in minutes, per site, and can roll back in seconds.
+together in minutes, per site, and can roll back in minutes (cloud-side in
+seconds; the device rollback is one `./update.sh --core-image …` per device).
 
 > **Scope for the current live sites.** The two production customer sites only
 > **read / optimize / display** — they do **not** actively control the battery.
@@ -30,20 +31,33 @@ A v1 site has **master data** (asset rows: battery, PV; measurement_point rows:
 producer / grid-meter) and streams **v1 telemetry** (the frozen 5-channel
 `telemetry` topic). Migration adds, without touching any of that:
 
-1. **v2 entities** — composed from the existing master data (battery →
+1. **The edge image** — the updated Edge-App consumes the registry push and shows
+   the adaptive `:8484` UI. (Read-only sites: nothing changes about what the edge
+   *does*.) A new edge image on a device that has NOT been pushed a registry is
+   byte-for-byte v1, so this step is invisible to the customer — which is exactly
+   why it goes **first** (see the ordering warning below).
+2. **v2 entities** — composed from the existing master data (battery →
    `battery-hybrid`, PV points → `producer`, grid meter → `grid-meter`) and pushed
    to the device as a retained registry. → the adaptive topology + entity UI.
-2. **The optimizer flag** `VOLTPILOT_V2_PLAN_SITES` — the optimizer then ALSO
+3. **The optimizer flag** `VOLTPILOT_V2_PLAN_SITES` — the optimizer then ALSO
    publishes a v2 shadow plan (`.../v2/plan`). The v1 `/schedule` plan the device
    runs on is **byte-identical**.
-3. **The edge image** — the updated Edge-App consumes the registry push and shows
-   the adaptive `:8484` UI. (Read-only sites: nothing changes about what the edge
-   *does*.)
 4. **The history cutover** — one per-site instant so the portal Historie splices
    the v1 era (before) and the reconstructed v2 era (after) into one continuous
    series.
 
-Every one of these is independently reversible.
+Every one of these is independently reversible — but see **Rollback** below:
+reverting fully requires **deleting the entity rows**, they are not inert.
+
+> ### ⚠️ Order matters: update the edge BEFORE the bootstrap
+> The moment `bootstrap` returns, the portal switches that site's cockpit and
+> Live-Daten page from the working v1 view to the entity/Projektion view — which
+> is **empty until the device publishes v2 telemetry** (verified in the browser:
+> `Solar 10,4 kW · Batterie 65 %` before, `PV-Erzeugung – wartet auf Daten` right
+> after). Nothing is lost, the data is intact underneath, but a customer looking
+> at the portal in that window sees a dead plant. Updating the edge first shrinks
+> that window from "as long as it takes you" to "the seconds until the retained
+> registry push lands". The steps below are in the correct order.
 
 ---
 
@@ -51,12 +65,53 @@ Every one of these is independently reversible.
 
 - The v2 stack is deployed: the api carries the v2 migrations, and the prod
   compose runs `flowc` + `simulation` + the optimizer. Verify with
-  `bash tools/deploy/verify-migration-deploy.sh` (parses only, deploys nothing).
+  `PATH=<python-with-pyyaml> bash tools/deploy/verify-migration-deploy.sh`
+  (parses only, deploys nothing) → **ALL DEPLOY CHECKS PASSED** *and* the three
+  `ok .forgejo/…` lines. Without PyYAML on the VM the workflow check FAILs
+  loudly (`pip install pyyaml`); it no longer skips silently.
 - You have a **platform-admin** token. All admin calls below go through the
   tenant switcher: `-H "Authorization: Bearer $ADMIN"` **and**
   `-H "X-Tenant-Id: $TENANT"` (the RLS-scoped path — a wrong/absent tenant is a
   404, never a cross-tenant write).
 - Know the site's `SITE_ID` and its `TENANT`.
+
+### Pre-flight (before the deploy window — all verified, all cheap)
+
+- [ ] **Backup**:
+      `docker exec <db> pg_dump -U voltpilot -Fc voltpilot > pre-projektion-$(date +%F).dump`.
+- [ ] `SPRING_PROFILES_ACTIVE` in `/srv/docker/voltpilot/.env` is **blank** (the
+      prod default). A VM that historically ran `local` is safe to blank: the
+      recorded dev-seed rows + the `*:missing` guard boot cleanly.
+- [ ] `VOLTPILOT_V2_PLAN_SITES` **empty** and `VOLTPILOT_FLOWS_ACTIVATION_ENABLED`
+      **unset** at deploy time (nothing a customer builds can reach a device on
+      day one). The flag is flipped per site, later, in step 4.
+- [ ] **Broker ACL `v2/#`, per live device**, once the new api is up — an
+      un-granted device fails *silently* (EMQX `deny_action=ignore`): it never
+      receives the registry, stays v1, and the migration looks successful while
+      doing nothing. This grep is the highest-value 10 seconds of the cutover:
+      ```bash
+      grep -A8 '"<device-uuid>"' /srv/docker/voltpilot/infra/mqtt/acl/acl.conf | grep 'v2/#'   # expect 2 lines
+      # if missing: tools/pki/voltpilot-ca.sh issue --tenant <t> --site <s> --device <d>
+      #             bash tools/pki/reload-broker-authz.sh
+      ```
+- [ ] **Record the edge image digests BEFORE touching any device** — that is the
+      rollback target of step 2:
+      ```bash
+      docker inspect --format '{{index .RepoDigests 0}}' \
+        git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest \
+        git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest | tee ~/edge-rollback-digests.txt
+      ```
+      (`./update.sh` also prints the resolved digests at the end of every run.)
+- [ ] **Preview every live site** (step 1 — writes nothing, can be done today,
+      against production, with zero risk) and fix the master data it reports.
+- [ ] Spot-check one existing customer's cockpit + Historie + Fahrplan after the
+      cloud deploy. Expect: unchanged.
+
+> **Tell support before the deploy:** an **un-migrated** plant now reads
+> „Aktive Modi 0" on `#/anlage/{id}/steuerung` and „Noch keine Geräte" on
+> `#/anlage/{id}/entitaeten`, even with a claimed inverter and a running plan —
+> those pages read the v2 registry, which is empty until this runbook is run for
+> that site. Not a defect; it resolves on migration.
 
 Set up shell vars for the session:
 
@@ -100,9 +155,27 @@ Read the response and confirm it matches the physical plant:
   a skipped *pilot* (battery / PV / Netz-Zähler) needs a master-data fix.
 
 The preview writes **nothing** — call it as many times as you like while fixing
-master data.
+master data. Do this **before** the window, for every site.
 
-## Step 2 — Apply (create the v2 entities + push the registry)
+## Step 2 — Update the edge image FIRST
+
+On the customer device (or via the standalone updater):
+
+```bash
+cd <edge deploy dir> && ./update.sh      # pulls edge-app-core + nodered, up -d
+```
+
+Wait for PASS, `:8484` reachable and the device online in the portal. **A new
+edge that has not been pushed a registry is byte-for-byte v1**, so this is a
+no-op for the customer — and it is what makes step 3's blank window seconds
+instead of minutes. Note the digests `update.sh` prints at the end (rollback
+target). To go to a specific version instead of `:latest`:
+`./update.sh --tag <tag>` — the image workflow publishes `:latest` **and**
+`:<commit-sha>` for both images, so any built state is directly selectable, and
+the pin persists in the device's `.env` (a later plain `docker compose up -d`
+will not silently jump to the newest `:latest`).
+
+## Step 3 — Apply (create the v2 entities + push the registry)
 
 ```bash
 curl -s "${auth[@]}" -X POST "$API/api/v1/admin/sites/$SITE/v2-entities/bootstrap" | jq
@@ -113,11 +186,16 @@ curl -s "${auth[@]}" -X POST "$API/api/v1/admin/sites/$SITE/v2-entities/bootstra
   (`published: true`; `mqtt_not_configured`/`no_gateway_device`/`publish_failed`
   otherwise — the edge converges on the next connect either way; re-push with
   `POST .../v2-entities/push`).
+- **Now watch the portal live view / `:8484` come back within ~1 min.** The
+  cockpit switches to the entity view immediately and is empty until the device
+  publishes v2 telemetry. If it is still empty after a few minutes, the broker
+  ACL (`v2/#`, pre-flight) is the first suspect — the device is silently denied
+  and never received the registry.
 
 This is **idempotent** — safe to re-run; it refreshes the same rows from current
 master data (never duplicates).
 
-## Step 3 — Flip the optimizer flag
+## Step 4 — Flip the optimizer flag
 
 Add the `SITE` uuid to `VOLTPILOT_V2_PLAN_SITES` (comma-separated) in the prod
 `.env`, then restart just the optimizer:
@@ -134,22 +212,15 @@ The optimizer now ALSO publishes a co-optimized v2 plan on
 `test_migration_dryrun.py` proves the v1 payload is byte-identical with or without
 the flag, and the v2 plan reproduces it slot-by-slot.
 
-## Step 4 — Update the edge image
+Then check `docker compose -f docker-compose.prod.yml logs --tail=50 optimization`:
+a normal cycle summary, **not**
+`ValueError: VOLTPILOT_V2_PLAN_SITES must be comma-separated site UUIDs` — that
+error means **no site at all** is being planned, fleet-wide. Copy-paste the uuid.
 
-On the customer device (or via the standalone updater):
+## Step 5 — Wait for real v2 telemetry, then set the history cutover
 
-```bash
-cd <edge deploy dir> && ./update.sh      # pulls edge-app-core + nodered, up -d
-```
-
-The updated core consumes the retained registry push and serves the adaptive
-`:8484` UI (topology energy-flow + entity tiles). For a read-only site nothing
-about the edge's *behaviour* changes — only the UI.
-
-## Step 5 — Set the history cutover
-
-The moment the site is live on v2 (edge updated, v2 telemetry flowing), stamp the
-cutover so the portal Historie splices there:
+Only once v2 telemetry is actually flowing (the live view shows values again),
+stamp the cutover so the portal Historie splices there:
 
 ```bash
 curl -s "${auth[@]}" -X PUT "$API/api/v1/admin/sites/$SITE/v2-entities/history-cutover" \
@@ -173,9 +244,11 @@ overlap-free** (`migratedSiteHistoryBridgesV1AndV2ErasGapFree`). No data is copi
 
 ---
 
-## Rollback (seconds, no data loss)
+## Rollback (minutes, no data loss)
 
-Any subset, in any order — each is independent:
+Each step is independently reversible, and the DB needs **no** down-migration
+(every v2 change is additive and unread by the old code). But **step 3 is
+required, not optional** — see the warning under it.
 
 1. **Optimizer** — remove the site from `VOLTPILOT_V2_PLAN_SITES` and
    `docker compose -f docker-compose.prod.yml up -d optimization`. The v2 plan
@@ -184,32 +257,57 @@ Any subset, in any order — each is independent:
    ```bash
    curl -s "${auth[@]}" -X DELETE "$API/api/v1/admin/sites/$SITE/v2-entities/history-cutover"
    ```
-3. **Edge** — roll the edge image back (`./update.sh` to a prior tag, or
-   `docker compose … up -d` on the pinned SHA). The v1 telemetry path is
-   untouched, so the portal keeps working throughout.
-4. **Entities** (optional, rarely needed) — the v2 entity rows are inert while the
-   optimizer flag is off and the edge is v1; leave them, or delete via
-   `DELETE /api/v1/admin/sites/$SITE/v2-entities/{id}` (a v1-backed producer/
-   grid-meter row only loses its entity config; the master data stays).
+   (Verified: buckets and totals are identical to before afterwards.)
+3. **Entities — REQUIRED.** Delete every entity of the site:
+   ```bash
+   curl -s "${auth[@]}" "$API/api/v1/sites/$SITE/entities" | jq -r '.entities[].id' \
+     | while read -r id; do
+         curl -s "${auth[@]}" -X DELETE "$API/api/v1/admin/sites/$SITE/v2-entities/$id"
+       done
+   ```
+   > **This is what actually restores the v1 face.** The entity rows are **not
+   > inert**: on their own — flag off, cutover cleared, v1 edge — they still drive
+   > the Steuerung modes, the Geräte page and, via topology, the whole cockpit and
+   > Live-Daten view. Verified: deleting them brought back the v1 live view with
+   > real values (`Solar 10,4 kW · Batterie 65 % · Haus 3,0 kW`), left the master
+   > data and `asset.pv.pv_capacity_kwp` untouched, and left a v1-backed
+   > producer / grid-meter `measurement_point` in place with `entity_type = NULL`
+   > (so a later re-bootstrap re-composes the same row).
+4. **Edge** — roll the device back to the digests recorded in the pre-flight:
+   ```bash
+   cd <edge deploy dir>
+   ./update.sh --core-image    git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core@sha256:<digest> \
+               --nodered-image git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered@sha256:<digest>
+   # or, for a known-good published version:  ./update.sh --tag <tag>
+   # release the pin again later with:        ./update.sh --latest
+   ```
+   The pin is persisted in the device's `.env`, so a later plain
+   `docker compose up -d` does **not** silently jump back to `:latest`. The v1
+   telemetry path is untouched, so the portal keeps working throughout.
+5. **Cloud** — redeploy the previous `IMAGE_TAG`. **No DB down-migration**: every
+   v2 change is additive and unread by the old code.
 
-A site with the flag off, the cutover cleared and a v1 edge image is **byte-for-byte
-a v1 site** — that is the design invariant the whole test matrix guards.
+A site with the flag off, the cutover cleared, **the entities deleted** and a v1
+edge image is back to the v1 experience — steps 1, 2 and 3 together, not 1 and 2
+alone.
 
 ---
 
 ## Verification checklist (per site)
 
+- [ ] Pre-flight done (backup, blank profile, flags, ACL `v2/#`, digests recorded).
 - [ ] Preview reviewed; entity types / roles / guards match the physical plant.
 - [ ] `gatewayDevice` resolved (not null).
+- [ ] **Edge image updated FIRST**; `./update.sh` PASS; device online; digests noted.
 - [ ] Apply done; `entities[]` == preview; registry `push.published` (or re-pushed).
-- [ ] Site uuid added to `VOLTPILOT_V2_PLAN_SITES`; optimizer restarted.
+- [ ] Live view / `:8484` back with real values within ~1 min (else: ACL `v2/#`).
+- [ ] Site uuid added to `VOLTPILOT_V2_PLAN_SITES`; optimizer restarted; logs clean.
 - [ ] v2 plan observed on `ems/{t}/{s}/{d}/v2/plan`; v1 `/schedule` unchanged.
-- [ ] Edge image updated; `:8484` shows the adaptive UI; device online.
-- [ ] History cutover set; Historie continuous across the instant.
+- [ ] History cutover set (after real v2 telemetry); Historie continuous across it.
 - [ ] Topology endpoint + portal adaptive view correct.
 - [ ] Money view / earnings / Fahrplan unchanged (v1 behavior intact).
-- [ ] Rollback rehearsed at least once on the rig (flag off + cutover cleared →
-      pure v1).
+- [ ] Rollback rehearsed at least once on the rig — flag off + cutover cleared +
+      **entities deleted** → v1 live view back with real values.
 
 ---
 
