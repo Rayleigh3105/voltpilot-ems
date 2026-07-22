@@ -35,13 +35,17 @@ echo "== install.sh self-check =="
 COMPOSE="$(bash "$INSTALL" --print-compose)"
 [ -n "$COMPOSE" ] || fail "--print-compose produced no output"
 
-grep_has()  { printf '%s\n' "$COMPOSE" | grep -q -- "$1" || fail "generated compose is missing: $1"; }
-grep_none() { printf '%s\n' "$COMPOSE" | grep -qi -- "$1" && fail "generated compose must NOT contain: $1"; return 0; }
+grep_has()  { printf '%s\n' "$COMPOSE" | grep -qF -- "$1" || fail "generated compose is missing: $1"; }
+grep_none() { printf '%s\n' "$COMPOSE" | grep -qiF -- "$1" && fail "generated compose must NOT contain: $1"; return 0; }
 
 grep_has '@voltpilot-edge-install'
 grep_has 'name: voltpilot-edge'
-grep_has 'git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest'
-grep_has 'git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest'
+# Image refs are version-LEVERED (default :latest = the pre-pin behaviour;
+# VP_EDGE_IMAGE_TAG pins a tag, VP_EDGE_*_IMAGE a full ref / digest).
+# shellcheck disable=SC2016  # literal compose interpolation syntax, deliberately not expanded
+grep_has 'image: ${VP_EDGE_CORE_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:${VP_EDGE_IMAGE_TAG:-latest}}'
+# shellcheck disable=SC2016
+grep_has 'image: ${VP_EDGE_NODERED_IMAGE:-git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:${VP_EDGE_IMAGE_TAG:-latest}}'
 grep_has 'pull_policy: always'
 grep_has 'vp-edge-data'
 grep_has 'vp-nodered-data'
@@ -79,6 +83,31 @@ if docker compose version >/dev/null 2>&1; then
     diff <(printf '%s\n' "$repo") <(printf '%s\n' "$gen") >&2 || true
     fail "generated compose drifted from the repo real-mode compose"
   fi
+
+  # Image-version lever: unset = today's :latest (no behaviour change);
+  # VP_EDGE_IMAGE_TAG pins both, VP_EDGE_*_IMAGE overrides a full ref/digest.
+  emptyd="$(mktemp -d)"
+  images() { # images <env assignments...>
+    printf '%s\n' "$COMPOSE" | env -i PATH="$PATH" HOME="${HOME:-/tmp}" "$@" \
+      docker compose --project-directory "$emptyd" -f - config --images 2>/dev/null | sort
+  }
+  def="$(images)"
+  printf '%s\n' "$def" | grep -qx 'git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest' \
+    || fail "default (no VP_EDGE_*) must resolve core to :latest, got: $def"
+  printf '%s\n' "$def" | grep -qx 'git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest' \
+    || fail "default (no VP_EDGE_*) must resolve nodered to :latest, got: $def"
+  tagged="$(images VP_EDGE_IMAGE_TAG=deadbeef)"
+  printf '%s\n' "$tagged" | grep -qx 'git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:deadbeef' \
+    || fail "VP_EDGE_IMAGE_TAG must pin the core image, got: $tagged"
+  printf '%s\n' "$tagged" | grep -qx 'git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:deadbeef' \
+    || fail "VP_EDGE_IMAGE_TAG must pin the nodered image, got: $tagged"
+  pinned="$(images VP_EDGE_CORE_IMAGE=example.test/core@sha256:abc)"
+  printf '%s\n' "$pinned" | grep -qx 'example.test/core@sha256:abc' \
+    || fail "VP_EDGE_CORE_IMAGE must override the full core ref, got: $pinned"
+  printf '%s\n' "$pinned" | grep -qx 'git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest' \
+    || fail "a core-only pin must leave nodered on its default, got: $pinned"
+  rmdir "$emptyd" 2>/dev/null || true
+  pass "image lever: unset -> :latest; VP_EDGE_IMAGE_TAG pins both; VP_EDGE_CORE_IMAGE pins a digest"
 else
   note "docker compose (v2) unavailable - skipping config validity + equivalence check"
 fi

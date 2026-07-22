@@ -12,15 +12,21 @@
 #      byte-identical to the repo docker-compose.hostnet.yml (lockstep guard,
 #      like install-selfcheck's compose equivalence);
 #   3. structural safety: the script never invokes `compose down`, never
-#      removes volumes, never sets a VP_DEV_* hatch, never writes the .env,
-#      and does use `up -d --remove-orphans`;
+#      removes volumes, never sets a VP_DEV_* hatch, writes the .env ONLY
+#      through the single VP_EDGE_*-image-key writer (env_set_pin, reached
+#      only via --tag/--core-image/--nodered-image/--latest), and does use
+#      `up -d --remove-orphans`;
 #   4. behavioral (docker-free, via --dry-run which degrades gracefully
 #      without docker): no deployment -> clear failure; a current generated
 #      compose -> "already up to date", file untouched; a STALE generated
 #      compose -> "would update", file untouched in dry-run; a foreign
-#      (hand-edited) compose -> kept, untouched; the .env is never modified;
-#      a repo-clone deployment is detected as such; a missing install.sh
-#      fails with actionable guidance;
+#      (hand-edited) compose -> kept, untouched; the .env is never modified
+#      on the default path; a repo-clone deployment is detected as such; a
+#      missing install.sh fails with actionable guidance;
+#   4b. the image pin (R3): --help documents it, bad values are refused, a
+#      dry-run pin writes nothing, and env_set_pin replaces exactly its own
+#      key while every other .env line (secrets included) survives byte for
+#      byte at mode 600;
 #   5. if docker compose (v2) is available: the merged base + hostnet
 #      templates pass `docker compose config`;
 #   6. shellcheck is clean (if installed) - update.sh AND install.sh (which
@@ -74,11 +80,21 @@ if grep -qE '(^|[^A-Za-z_])VP_DEV_[A-Z_]+=' "$UPDATE"; then
 fi
 # shellcheck disable=SC2016  # the $ is a literal in the grep pattern, deliberately
 if grep -qE '>+ *"?\$(ENV_FILE|envfile)' "$UPDATE"; then
-  fail "update.sh must never write the .env"
+  fail "update.sh must never redirect into the .env"
 fi
+# The ONLY .env write is env_set_pin's atomic replace: exactly one `mv` onto
+# $ENV_FILE, inside that function, and it accepts only the three VP_EDGE_*
+# image keys (guarded by its own case statement).
+# shellcheck disable=SC2016
+env_mv_count="$(grep -cE '^[[:space:]]*mv "\$tmp" "\$ENV_FILE"' "$UPDATE" || true)"
+[ "$env_mv_count" = "1" ] || fail "expected exactly one .env write site (env_set_pin), found ${env_mv_count}"
+grep -q 'VP_EDGE_IMAGE_TAG|VP_EDGE_CORE_IMAGE|VP_EDGE_NODERED_IMAGE) : ;;' "$UPDATE" \
+  || fail "env_set_pin must whitelist ONLY the VP_EDGE_* image keys"
+grep -q 'PIN_REQUESTED" -eq 1 \] || return 0' "$UPDATE" \
+  || fail "apply_image_pin must return immediately unless a pin flag was given"
 grep -q -- '--remove-orphans' "$UPDATE" || fail "update.sh must use 'up -d --remove-orphans'"
 grep -q 'ff-only' "$UPDATE" || fail "update.sh must use 'git pull --ff-only' for repo clones"
-pass "structural safety: no compose down / volume rm / VP_DEV_ / .env write; --remove-orphans + ff-only present"
+pass "structural safety: no compose down / volume rm / VP_DEV_; single opt-in .env pin writer; --remove-orphans + ff-only present"
 
 # --- 4. Behavioral checks (docker-free: --dry-run degrades without docker).
 tmp_root="$(mktemp -d)"
@@ -148,6 +164,55 @@ if out="$(cd "$d" && bash update.sh --dry-run 2>&1)"; then
 fi
 printf '%s\n' "$out" | grep -q "install.sh" || fail "missing-install.sh error must name install.sh"
 pass "missing install.sh -> clear, actionable failure"
+
+# --- 4g. Image pin (R3): documented, validated, opt-in, surgical. ---------
+HELP="$(bash "$UPDATE" --help)"
+for opt in --tag --core-image --nodered-image --latest; do
+  printf '%s\n' "$HELP" | grep -q -- "$opt" || fail "--help must document ${opt}"
+done
+pass "--help documents --tag / --core-image / --nodered-image / --latest"
+
+# Bad values are refused BEFORE anything is touched (exit 2, no side effects).
+d="$tmp_root/pinargs"; mkdir -p "$d"; cp "$INSTALL" "$UPDATE" "$d/"
+bash "$INSTALL" --print-compose > "$d/docker-compose.yml"
+printf 'VP_NODERED_PASSWORD=geheim\n' > "$d/.env"; chmod 600 "$d/.env"
+e1="$(sha "$d/.env")"
+(cd "$d" && bash update.sh --tag 'bad tag' >/dev/null 2>&1) && fail "an invalid tag must be refused"
+# shellcheck disable=SC2016
+(cd "$d" && bash update.sh --core-image 'foo$(id)' >/dev/null 2>&1) && fail "an invalid image ref must be refused"
+(cd "$d" && bash update.sh --tag >/dev/null 2>&1) && fail "--tag without a value must be refused"
+(cd "$d" && bash update.sh --latest --tag v1 >/dev/null 2>&1) && fail "--latest must exclude --tag"
+[ "$e1" = "$(sha "$d/.env")" ] || fail "a refused pin argument modified the .env"
+pass "invalid pin values refused (exit != 0), .env untouched"
+
+# A dry-run pin announces but writes nothing.
+out="$(cd "$d" && bash update.sh --dry-run --non-interactive --tag v9 2>&1)" || fail "dry-run pin must succeed"
+printf '%s\n' "$out" | grep -q "WÜRDE festgelegt" || fail "dry-run pin not announced"
+[ "$e1" = "$(sha "$d/.env")" ] || fail "dry-run pin wrote the .env"
+pass "--tag in --dry-run: announced, .env untouched"
+
+# env_set_pin is surgical: only its own key changes, everything else survives
+# byte for byte (secrets included), mode stays 600.
+d="$tmp_root/pinwrite"; mkdir -p "$d"; cp "$INSTALL" "$UPDATE" "$d/"
+bash "$INSTALL" --print-compose > "$d/docker-compose.yml"
+printf '# kopf\nVP_WEB_PORT=8484\nVP_NODERED_PASSWORD=streng-geheim\n' > "$d/.env"; chmod 600 "$d/.env"
+(cd "$d" && bash -c '. ./update.sh
+  env_set_pin VP_EDGE_IMAGE_TAG "abc123"
+  env_set_pin VP_EDGE_CORE_IMAGE "reg.example/core@sha256:deadbeef"
+  env_set_pin VP_EDGE_IMAGE_TAG "def456"') || fail "env_set_pin failed"
+grep -qx '# kopf' "$d/.env" || fail "env_set_pin dropped a comment line"
+grep -qx 'VP_WEB_PORT=8484' "$d/.env" || fail "env_set_pin dropped an unrelated key"
+grep -qx 'VP_NODERED_PASSWORD=streng-geheim' "$d/.env" || fail "env_set_pin dropped the secret"
+grep -qx 'VP_EDGE_IMAGE_TAG=def456' "$d/.env" || fail "env_set_pin did not replace its own key"
+[ "$(grep -c '^VP_EDGE_IMAGE_TAG=' "$d/.env")" = "1" ] || fail "env_set_pin duplicated its key instead of replacing it"
+grep -qx 'VP_EDGE_CORE_IMAGE=reg.example/core@sha256:deadbeef' "$d/.env" || fail "digest pin not written"
+# shellcheck disable=SC2012  # fixed, known filename - ls is fine and portable here
+case "$(ls -l "$d/.env" | cut -c1-10)" in -rw-------) : ;; *) fail ".env lost its 600 permissions" ;; esac
+# Releasing removes the key again.
+(cd "$d" && bash -c '. ./update.sh; env_set_pin VP_EDGE_CORE_IMAGE ""') || fail "env_set_pin release failed"
+grep -q 'VP_EDGE_CORE_IMAGE' "$d/.env" && fail "released pin key still present"
+grep -qx 'VP_NODERED_PASSWORD=streng-geheim' "$d/.env" || fail "release dropped the secret"
+pass "env_set_pin: replaces only its key, keeps every other line + mode 600, release removes it"
 
 # --- 5. docker compose validity of the merged templates (docker-gated). ---
 if docker compose version >/dev/null 2>&1; then

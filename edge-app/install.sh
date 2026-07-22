@@ -31,10 +31,15 @@ set -euo pipefail
 readonly REGISTRY="git.tecmaxx.de"
 readonly PORTAL_URL="https://portal.voltpilot.de"
 
-# Registry image refs for the generated compose (real mode only, no build).
-# Keep in lockstep with edge-app/docker-compose.yml's real-mode services.
-readonly CORE_IMAGE="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core:latest"
-readonly NODERED_IMAGE="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered:latest"
+# Registry image repositories for the generated compose (real mode only, no
+# build). Keep in lockstep with edge-app/docker-compose.yml's real-mode
+# services. The concrete VERSION is a runtime lever, not baked in here:
+# VP_EDGE_IMAGE_TAG pins both images to one tag (default 'latest' = today's
+# behaviour), VP_EDGE_CORE_IMAGE / VP_EDGE_NODERED_IMAGE override the full ref
+# (that is how a digest pin - the clean per-device rollback - is expressed).
+readonly CORE_REPO="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-core"
+readonly NODERED_REPO="git.tecmaxx.de/mamotec/voltpilot-ems/edge-app-nodered"
+readonly DEF_VP_EDGE_IMAGE_TAG="latest"
 # Marker on the first line of a compose file WE generated, so a re-run can tell
 # our file apart from a hand-edited one and never clobbers a foreign file.
 readonly COMPOSE_MARKER="# @voltpilot-edge-install: generated docker-compose.yml (do not hand-edit; re-run install.sh --reconfigure)"
@@ -130,6 +135,13 @@ ${C_BOLD}Umgebungsvariablen${C_RESET} (für --non-interactive; überschreiben di
   VP_MAX_CHARGE_KW VP_MAX_DISCHARGE_KW VP_SOC_MIN_PCT VP_SOC_MAX_PCT
   VP_BUFFER_HOURS VP_WEB_PORT VP_NODERED_PORT VP_BUS_PORT
   VP_NODERED_USER VP_NODERED_PASSWORD
+
+${C_BOLD}Image-Version${C_RESET} (Rollback-Hebel, optional; ungesetzt = 'latest' wie bisher):
+  VP_EDGE_IMAGE_TAG      beide Images auf EINEN Tag festnageln
+  VP_EDGE_CORE_IMAGE     vollständige Referenz für core (z. B. Digest-Pin)
+  VP_EDGE_NODERED_IMAGE  vollständige Referenz für nodered
+Bequemer gesetzt/gelöst per ./update.sh --tag <tag> / --core-image <ref> / --latest.
+Bestehende Werte in der .env bleiben auch bei --reconfigure erhalten.
 
 Die Entwicklungs-Schalter VP_DEV_* werden vom Installer NIE gesetzt.
 EOF
@@ -330,12 +342,21 @@ ${COMPOSE_MARKER}
 #   ./install.sh --reconfigure        (diese Datei + .env)
 #
 # Die Datenvolumes (vp-edge-data / vp-nodered-data) bleiben dabei unberührt.
+#
+# Image-Version (Rollback-Hebel, alles optional - ungesetzt = :latest wie
+# bisher). In der .env setzen oder per ./update.sh:
+#   VP_EDGE_IMAGE_TAG      beide Images auf EINEN Tag festnageln (z. B. ein
+#                          Commit-SHA)             -> ./update.sh --tag <tag>
+#   VP_EDGE_CORE_IMAGE     vollständige Referenz für core, z. B. ein
+#                          Digest-Pin repo@sha256:...
+#                                                  -> ./update.sh --core-image <ref>
+#   VP_EDGE_NODERED_IMAGE  dito für nodered        -> ./update.sh --nodered-image <ref>
 
 name: voltpilot-edge
 
 services:
   core:
-    image: ${CORE_IMAGE}
+    image: \${VP_EDGE_CORE_IMAGE:-${CORE_REPO}:\${VP_EDGE_IMAGE_TAG:-latest}}
     pull_policy: always
     restart: unless-stopped
     environment:
@@ -364,7 +385,7 @@ services:
       - "127.0.0.1:\${VP_BUS_PORT:-1884}:1883"
 
   nodered:
-    image: ${NODERED_IMAGE}
+    image: \${VP_EDGE_NODERED_IMAGE:-${NODERED_REPO}:\${VP_EDGE_IMAGE_TAG:-latest}}
     pull_policy: always
     restart: unless-stopped
     depends_on:
@@ -511,6 +532,7 @@ configure_env() {
   local IN_SMIN="${VP_SOC_MIN_PCT:-}" IN_SMAX="${VP_SOC_MAX_PCT:-}" IN_BUF="${VP_BUFFER_HOURS:-}"
   local IN_WEB="${VP_WEB_PORT:-}" IN_NRP="${VP_NODERED_PORT:-}" IN_BUS="${VP_BUS_PORT:-}"
   local IN_NRU="${VP_NODERED_USER:-}"
+  local IN_ITAG="${VP_EDGE_IMAGE_TAG:-}" IN_CIMG="${VP_EDGE_CORE_IMAGE:-}" IN_NIMG="${VP_EDGE_NODERED_IMAGE:-}"
 
   # seed VAR ENV_SNAPSHOT DEFAULT - resolves the effective value per mode.
   seed() {
@@ -535,6 +557,12 @@ configure_env() {
   seed VP_NODERED_PORT     "$IN_NRP"    "$DEF_VP_NODERED_PORT"
   seed VP_BUS_PORT         "$IN_BUS"    "$DEF_VP_BUS_PORT"
   seed VP_NODERED_USER     "$IN_NRU"    "$DEF_VP_NODERED_USER"
+  # Image-Pin: NIE abgefragt (Ops-Hebel, keine Kundeneinstellung), aber immer
+  # aus einer bestehenden .env übernommen - ein per update.sh gesetzter Pin
+  # darf durch --reconfigure nicht stillschweigend verloren gehen.
+  seed VP_EDGE_IMAGE_TAG     "$IN_ITAG" "$DEF_VP_EDGE_IMAGE_TAG"
+  seed VP_EDGE_CORE_IMAGE    "$IN_CIMG" ""
+  seed VP_EDGE_NODERED_IMAGE "$IN_NIMG" ""
   local existing_pw; existing_pw="$(env_get VP_NODERED_PASSWORD "$envfile")"
 
   if [ "$NON_INTERACTIVE" -eq 0 ]; then
@@ -621,6 +649,13 @@ configure_env() {
     echo "# Node-RED-Editor-Zugang (Service-Zugang; pro Installation gesetzt)."
     echo "VP_NODERED_USER=${VP_NODERED_USER}"
     echo "VP_NODERED_PASSWORD=${VP_NODERED_PASSWORD}"
+    echo
+    echo "# Image-Version (Rollback-Hebel). 'latest' = wie bisher; ein Tag oder"
+    echo "# ein Digest-Pin friert das Gerät auf einen geprüften Stand ein."
+    echo "# Setzen per: ./update.sh --tag <tag> | --core-image <ref> | --latest"
+    echo "VP_EDGE_IMAGE_TAG=${VP_EDGE_IMAGE_TAG}"
+    if [ -n "$VP_EDGE_CORE_IMAGE" ]; then echo "VP_EDGE_CORE_IMAGE=${VP_EDGE_CORE_IMAGE}"; fi
+    if [ -n "$VP_EDGE_NODERED_IMAGE" ]; then echo "VP_EDGE_NODERED_IMAGE=${VP_EDGE_NODERED_IMAGE}"; fi
     echo
     echo "# VP_DEV_* bleiben bewusst UNGESETZT (nur Entwicklung/E2E, nie auf echten Geräten)."
   } > "$tmp"
