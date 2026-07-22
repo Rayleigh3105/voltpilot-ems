@@ -19,6 +19,36 @@ step list**, not a mini canvas.
 The simple path (templates + guided builder from M4) stays the default; the editor is exactly one
 click deeper.
 
+## 🔴 This milestone goes LIVE with the release (owner decision)
+
+Until now no production site could activate a flow: `VOLTPILOT_FLOWS_ACTIVATION_ENABLED` is **off**
+in prod, so every activation refuses with `activation_disabled`, and the gated price/strategy nodes
+are enabled per site by a Portal-Admin only. **The v3 release flips both:** the flag goes **on** in
+production and the gated nodes become customer-openable through the M3 profile toggle. From the
+release on, a customer's own rule really commands their wallbox, heat rod or battery.
+
+**RISK — real device control from day one.** The safety net is structural, not procedural:
+a flow can only ever emit a **desire**; `internal/desired` arbitration picks a holder; the **guard
+chain clamps every command** (§14a envelope in both directions, EEG solar-only charge, rated power
+band, SoC window, rate limit) before any register is written. This is precisely why the guard chain
+and the arbitration path are on the DO-NOT-TOUCH list — **do not "optimize" a clamp away to make a
+demo behave.**
+
+**The hard gate this rests on:** the whole path — author a rule → validate → simulate → activate →
+flowc artifact → retained `…/v2/flows` → edge ack → desire → arbitration → **guard-clamped** command
+on the entity's `…/command` topic — must be **proven end to end on the real-data dress rehearsal**
+before the release, including an observed clamp of an over-range desire and both stop levers (flag
+flip; `POST …/flows/{flowId}/deactivate`). See `BUILD.md` §6 and the §7 checklist item.
+
+**Deliverables that belong to this go-live (do them in this milestone, not "later"):**
+- `docker-compose.prod.yml`: `VOLTPILOT_FLOWS_ACTIVATION_ENABLED=true` for the api service, and the
+  same in `.env.prod.example` with a comment naming the rollback lever.
+- The activation error copy must be customer-grade German for every refusal that can now actually
+  happen in production (`compiler_unavailable`, `compiler_rejected`, `gated_node_not_enabled`,
+  `peakshaving_not_configured`) — an operator-only string is not acceptable once customers see it.
+- A short operator note in `docs/deploy.md`: what the flag does, the two stop levers, and that
+  deployed artifacts survive a flag flip.
+
 ## Scope
 
 **In**
@@ -30,11 +60,14 @@ click deeper.
 4. **Code node `vp.logic.function`** in all three catalogs + flowc compilation into a Node-RED
    function node **wrapped in a watchdog** (D1), plus the contract amendment that permits it.
 5. **Phone read view**: the flow as a vertical step list with the same live values + a pause switch.
+6. **The production go-live** of the activation flag + its rollback levers + the end-to-end proof
+   (above).
 
 **Out**
 - No tunnelling of the edge's Node-RED into the portal (D2 rejected that).
-- No change to the guard chain, the arbitration path or the activation gates. Code nodes emit
-  **wishes** through `vp-desired` like every other node.
+- **No change to the guard chain, the arbitration path or the activation gate logic.** Code nodes
+  emit **wishes** through `vp-desired` like every other node. Turning the flag on is a config
+  change, not a loosening of a check.
 - No new deployment mechanism: flowc artifacts, `@vp-flow` tabs, reseed coexistence stay as they are.
 
 ---
@@ -149,6 +182,13 @@ German sentences ("Wenn PV-Überschuss > 3,5 kW … dann Wallbox EIN") derived f
 7. Customer code cannot reach the network from the sandbox context and cannot bypass the guard chain
    — a code node commanding a device produces a **desire** that is clamped exactly like any other.
 8. At ≤ 720 px an automation renders as a step list with live values and a pause switch, no canvas.
+9. **Go-live:** the prod compose (and `.env.prod.example`) carry
+   `VOLTPILOT_FLOWS_ACTIVATION_ENABLED=true`; every activation refusal renders customer-grade German;
+   `docs/deploy.md` documents the flag and both stop levers.
+10. **The end-to-end control path is demonstrated on the dress-rehearsal stack** — a rule authored in
+    the portal reaches the device and its command arrives **guard-clamped** (an over-range desire
+    comes out reduced, not executed as wished), and deactivating that rule stops it. Evidence
+    (transcript/screenshots) is attached to the release PR.
 
 ## Tests to add / adjust
 
@@ -167,11 +207,20 @@ German sentences ("Wenn PV-Überschuss > 3,5 kW … dann Wallbox EIN") derived f
 - `edge-app/core` `go test ./...` — the heartbeat block builder (bounded, absent-stays-absent).
 - `src/flows/catalog.sync.test.ts`, `src/flows/validate.test.ts`, `FlowGraphValidatorTest` — the new
   type validates and is refused where it should be (runtime `cloud`).
+- **Go-live guards:** a test (or a `tools/deploy/` check in the `verify-migration-deploy.sh` spirit)
+  that the prod compose really resolves with the activation flag **on**; and — since the flag is now
+  on in prod — the api test that pinned `activation_disabled` must be re-pointed at an
+  explicitly-flag-off configuration, never deleted (it is the proof the flag still works).
+- `edge-app/core` `internal/guards` + the existing arbitration tests stay untouched and green; they
+  are the safety argument. If a guard test would have to change to make an automation "work", stop —
+  the automation is wrong, not the guard.
 
 ## Dependencies
 
 **M1** (shell) for mounting; **M4** for the single "＋" entry point (build against today's
-`FlowEditorPage`, re-point when M4 lands). Independent of M2/M3/M6.
+`FlowEditorPage`, re-point when M4 lands). **M3** for the customer-openable gated nodes — without it
+a customer can build a strategy flow but not enable its node, so the go-live is only half real.
+Independent of M2/M6.
 
 ## Gotchas
 
@@ -193,5 +242,15 @@ German sentences ("Wenn PV-Überschuss > 3,5 kW … dann Wallbox EIN") derived f
 - **Risk fallback (report §risks ①):** if drag + wire-dragging cannot both land, ship **drag +
   live values** first and keep click-to-connect for wiring. Do not ship a canvas that loses
   click-to-connect.
+- **The flag flip does not un-deploy anything.** Artifacts already on `…/v2/flows` are retained and
+  keep running after `VOLTPILOT_FLOWS_ACTIVATION_ENABLED=false`. The per-flow `deactivate` route is
+  the lever that actually stops a live rule — and it is deliberately **not** gated by the flag.
+  Rehearse both; do not learn this during an incident.
+- **Once customers can really activate, every refusal string is customer copy.** Audit the German of
+  `compiler_unavailable` / `compiler_rejected` / `gated_node_not_enabled` /
+  `peakshaving_not_configured` before the release — these used to be seen only by operators.
+- **A live automation is a real device command.** When testing on the dress-rehearsal stack, use the
+  simulator/rig path (`edge-app/test/e2e-v2-compose.sh`) or a device you own — never point a
+  rehearsal at the captain's live plants.
 - Node-RED's `settings.js` fails closed on the admin password — do not weaken it while wiring the
   status tap.

@@ -77,9 +77,9 @@ Design, animation, "—" discipline: unchanged; only size and placement change.
 |---|---|---|---|---|
 | **M1** | [`M1-shell.md`](./M1-shell.md) | 2 · Shell & Navigation | P1 — sidebar groups, Anlage context card, health badge, 5-slot bottom bar, tablet icon rail | medium |
 | **M2** | [`M2-cockpit.md`](./M2-cockpit.md) | 3 · Live-Cockpit | P2 — existing EnergyFlow as hero, Autarkie/EV rings, widget grid + widget modal | medium |
-| **M3** | [`M3-profile.md`](./M3-profile.md) | 4 · Modus-Profile | P3 — `site_profile_state` + `GET/PUT /sites/{id}/profiles` + surface overlay + customer `autoStart` | medium (the one backend piece) |
+| **M3** | [`M3-profile.md`](./M3-profile.md) | 4 · Modus-Profile | P3 — `site_profile_state` + `GET/PUT /sites/{id}/profiles` + surface overlay + customer `autoStart`; **every** profile is a direct customer toggle (no "Angefragt") | medium (the one backend piece) |
 | **M4** | [`M4-steuerung.md`](./M4-steuerung.md) | 5 · Steuerung | P4 — two capsules, ONE "＋", template filter `requires:[role]` | small |
-| **M5** | [`M5-automationen.md`](./M5-automationen.md) | 6 · Automationen | P5 — drag + persisted positions, live values, deployed-version view, `vp.logic.function`, phone step list, edge node-status | **large** |
+| **M5** | [`M5-automationen.md`](./M5-automationen.md) | 6 · Automationen | P5 — drag + persisted positions, live values, deployed-version view, `vp.logic.function`, phone step list, edge node-status; **plus the production go-live of flow activation** 🔴 | **large** |
 | **M6** | [`M6-komponenten.md`](./M6-komponenten.md) | 7 · Anlagen-Modell | P6 — three columns, adopt+role in one dialog, "Komponente" dictionary | medium |
 | **M7** | [`M7-rollen.md`](./M7-rollen.md) | 8 · Rollen & Umsetzung | P7 — role-gate the technical panels, legacy redirects, responsive proof, copy sweep | small |
 
@@ -100,8 +100,9 @@ M1 Shell ────────┼─────────► M2 Cockpit �
 | Edge | Why |
 |---|---|
 | M1 → everything | M1 owns nav/route shape and deletes `components/AnlageMoreMenu.tsx`; later milestones mount pages into the new sidebar groups. |
-| M3 → M4 | The Steuerung profile capsule renders the persisted state (`an` / `aus` / `angefragt`); without M3 it can only show derived modes. |
+| M3 → M4 | The Steuerung profile capsule renders the persisted state (`an` / `aus`); without M3 it can only show derived modes. |
 | M4 → M5 (integration) | The single "＋ Neue Automation" dialog is M5's entry point. M5's canvas/compiler work is independent and **may start right after M1** on its own track; only the wiring waits for M4. |
+| M3 → M5 (go-live) | M5 turns flow activation on in production; M3 is what lets a **customer** open the gated strategy/price nodes for their own site. Without M3 the go-live is only half real (a customer can build a strategy flow but not enable its node). |
 | M1 → M6 | "Anlagen-Modell" is a sidebar area of the trio; M6 fills it. |
 | all → M7 | M7 gates, redirects and sweeps what the others built. |
 
@@ -142,9 +143,12 @@ M1 Shell ────────┼─────────► M2 Cockpit �
 8. **Routes are additive, bookmarks never break.** `src/nav.ts` keeps its LEGACY discipline: a
    retired hash redirects, it never 404s. Every `AnlagenSub` must be reachable from the new shell,
    which `anlageNav.test.ts` enforces.
-9. **Never widen a server gate in the UI.** Flow governance, peak-shaving gates, RLS and role
-   checks are re-checked server-side. A UI state like "Angefragt" is *UX over* the gate, never a
-   bypass.
+9. **A gate is never faked in the UI — it is opened by an authorized server action or not at all.**
+   RLS, role checks, the peak-shaving configuration gate and the flow-activation gate are re-checked
+   server-side on every call. v3 does make one gate **customer-openable**: switching a mode profile
+   on (M3) makes the server enable exactly that profile's gated node types for that site. That is an
+   authorized, audited server-side effect of an explicit customer action — **not** a client-side
+   bypass, and it never touches the edge guard chain or the §14a/EEG protections, which stay literal.
 10. **Un-migrated (v1) plants stay byte-identical** wherever the projection is not active. The
     consolidated invariant file is `src/migration.test.ts` — new projection surfaces are pinned
     there.
@@ -166,12 +170,15 @@ M1 Shell ────────┼─────────► M2 Cockpit �
 
 ## 6. Delivery strategy
 
-- **One long-lived feature branch: `feat/portal-v3`.** Every milestone lands as its own PR **into
-  that branch**, never into `main`. `main` and prod stay deployable throughout.
-- **Per-milestone gate (before merging into `feat/portal-v3`):** the milestone file's acceptance
-  criteria + `npm run build` (`tsc && vite build`) + `npm test` (vitest) green, and — for milestones
-  touching the api or flowc — `./mvnw test` in `services/api` and `node --test` in
-  `edge-app/nodered/flowc` green.
+- **Milestone = PR, straight onto `main` (owner decision).** There is **no long-lived feature
+  branch**. Each milestone lands on `main` as a normal reviewed direct PR, so `main` evolves toward
+  v3 commit by commit. What holds the release together is not a branch but the deploy discipline:
+  **the owner does not deploy until v3 is complete and real-data-verified.**
+- **Per-milestone gate (before merging to `main`):** the milestone file's acceptance criteria +
+  `npm run build` (`tsc && vite build`) + `npm test` (vitest) green, and — for milestones touching
+  the api or flowc — `./mvnw test` in `services/api` and `node --test` in `edge-app/nodered/flowc`
+  green. A merged-but-not-yet-deployed `main` must stay coherent: never merge a milestone that
+  leaves a half-built surface reachable in the UI.
 - **Real-data dress rehearsal before the release.** Restore the real production dump
   `data/vp-deploy-readiness/prod.dump` into a **throwaway** `timescale/timescaledb:2.17.2-pg16`
   container (own network, own ports, destroyed afterwards) and run the v3 api + portal against it.
@@ -180,14 +187,36 @@ M1 Shell ────────┼─────────► M2 Cockpit �
   the cluster roles `voltpilot_app` / `voltpilot_admin` are **not** in the dump and must be created
   by hand before the api can connect; and every real plant must still render its money headline and
   its energy flow correctly in v3.
-- **One release.** `feat/portal-v3` → `main` as a single reviewed PR; the owner deploys via the
-  `deploy-fast` workflow (`.forgejo/workflows/deploy-fast.yaml`) or the full `deploy.yaml` gate.
+- **One release.** When every milestone is on `main` and the dress rehearsal passed, the owner
+  deploys **once** via the `deploy-fast` workflow (`.forgejo/workflows/deploy-fast.yaml`) or the full
+  `deploy.yaml` gate. That single release therefore also carries whatever else already merged onto
+  `main` in the meantime (today: #212 / #213) — the rehearsal must be run against the **actual `main`
+  tip**, not against a v3-only subset.
+- **🔴 Automations go LIVE with this release (owner decision).** The v3 release itself
+  **switches `VOLTPILOT_FLOWS_ACTIVATION_ENABLED` on in production** and **ungates the price/
+  strategy nodes** for customer sites, so customer-built automations really do control devices from
+  day one. This is not a later, separate go-live.
+  **RISK — real device control from day one.** Until now no production site could activate a flow
+  (`activation_disabled`). After this release a customer's own rule can command their wallbox,
+  heat rod or battery. The safety net is the **edge guard chain** (§14a envelope both directions,
+  EEG solar-only charge, rated power band, SoC window, rate limit) plus arbitration: a flow can only
+  ever *wish*, never force. That chain is on the DO-NOT-TOUCH list for exactly this reason.
+  **Therefore the automation control path is a HARD release gate** (see §7): author a rule →
+  compile via flowc → deploy the artifact → the edge applies it → the resulting device command is
+  observed **guard-clamped**, proven end to end on the dress-rehearsal stack before the deploy.
 - **Rollback stance.** Portal + api roll back by redeploying the previous image tag (`IMAGE_TAG` is
   the commit SHA). The only forward-only pieces are the additive migrations (M3 `site_profile_state`,
   M5 flow layout + node status): all are **additive tables/columns**, so the previous image ignores
   them and keeps working — never a destructive DDL, never an edit of an applied migration. The M5
   edge heartbeat block is additive and feature-flagged; old edges simply do not send it and the
   editor falls back to channel values.
+  **The automation go-live has its own, faster rollback than an image roll-back:** set
+  `VOLTPILOT_FLOWS_ACTIVATION_ENABLED=false` and redeploy the api — new activations then refuse with
+  `activation_disabled` again. Note what that does *not* undo: artifacts already deployed to a device
+  keep running (they are retained on `…/v2/flows`). To stop a specific live rule, use the existing
+  per-flow **`POST …/flows/{flowId}/deactivate`**, which retires the active version and republishes
+  the smaller deployment set — it is deliberately never gated by the activation flag. Both levers
+  must be rehearsed in the dress rehearsal, not discovered during an incident.
 
 ---
 
@@ -208,6 +237,18 @@ M1 Shell ────────┼─────────► M2 Cockpit �
 - [ ] Real-data dress rehearsal passes: **every existing customer plant renders correctly in v3**
       (money headline, energy flow, nav groups) and **every existing automation still runs safely**
       (deployed artifacts unchanged, content hashes stable unless deliberately regenerated).
+- [ ] **HARD GATE — the automation control path is proven end to end on the dress-rehearsal stack**
+      (this is the safeguard the automation go-live rests on, so it is not optional and not a unit
+      test): with `VOLTPILOT_FLOWS_ACTIVATION_ENABLED=true` and the profile's gated nodes enabled,
+      **author a rule in the portal → validate → simulate → activate → flowc compiles the artifact →
+      it is published retained on `ems/{t}/{s}/{d}/v2/flows` → the edge acks it in its heartbeat →
+      the rule's desire reaches `vp-desired` → arbitration picks it → the guard chain CLAMPS it →
+      the clamped command is observed on the entity's `…/command` topic.** Record the observed
+      clamp (a desire beyond the rated band / §14a envelope / SoC window must come out reduced, not
+      executed as wished). Also rehearse both stop levers: the flag flip and
+      `POST …/flows/{flowId}/deactivate` on a live rule.
+- [ ] Toggling a mode profile as a **customer** (M3) really opens that profile's gated nodes for
+      that site and its starter flow activates — and toggling it off deactivates its flows again.
 - [ ] `docs/contracts/v2/` amended where M5 requires it (decision-log entry + `flow-graph.md` §6),
       and the root `AGENTS.md` / `frontend/portal/AGENTS.md` carry the durable v3 notes.
 
@@ -217,6 +258,6 @@ M1 Shell ────────┼─────────► M2 Cockpit �
 
 | # | Question | Interim behaviour built |
 |---|---|---|
-| O1 | Where does an "Angefragt" profile request go — e-mail to VoltPilot, or an admin task list? | M3 persists the state and logs it; the customer sees "Angefragt — VoltPilot richtet ein". No outbound channel is wired. |
+| **O1 — safety, needs an owner answer** | Every profile is now a **direct customer toggle** (owner decision, M3). For **Marktoptimierung** that means a customer switch lets the optimizer trade on their behalf. **What real prerequisite must hold before trading actually starts, so a bare toggle cannot start UNCONTRACTED market participation?** | M3 builds the recommended reconciliation: the **toggle is intent**, and trading only runs when the technical prerequisite is present on the site (a `dynamisch` tariff and/or `plant_kind = direktvermarktung` / market access). Without it the profile switches on, states honestly what is still missing, and the market strategy does not dispatch. See the `OPEN — owner` callout in `M3-profile.md`. |
 | O2 | Should the Fahrplan be a **base** nav item for a pure self-consumption plant with a battery (today it hangs under the market mode)? | M1 keeps it in the market mode group and reachable via the cockpit drill-in; the one-line change is noted in `M1-shell.md`. |
 | O3 | Customer-side adoption ("Neues Gerät gefunden … jetzt zuordnen") currently needs the **admin** endpoint. Build the RLS-fenced customer twin, or keep adoption admin-first? | M6 builds the narrow customer twin (catalog-guarded, mirrors `SiteTopologyController`) and keeps the honest admin-only fallback message if it is not enabled. |

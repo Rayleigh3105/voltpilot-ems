@@ -54,7 +54,9 @@ Toolbox) collapses into these two; the active/offer mixing disappears (offers li
    and revealable on demand. A hidden template's reason names what is missing.
 4. Each profile row states its contribution with a real number and its period, or "—" when
    unattributable (automations, E15) — never a fabricated 0.
-5. "Profile verwalten →" navigates to M3's shelf; `angefragt` profiles read "in Vorbereitung".
+5. "Profile verwalten →" navigates to M3's shelf. Every profile row is a real on/off switch (there
+   is no "Angefragt" state); a profile that is on but cannot fully run yet shows M3's honest
+   `blockedReason` sentence instead of a request prompt.
 6. The reserve stack renders only from **two** battery-claiming modes, in the canonical order
    technisch → Notstrom → Lastspitze → frei, absolute (highest binds).
 7. Gated strategy nodes are still shown-but-locked with `EINRICHTUNG_DURCH_VOLTPILOT`; nothing here
