@@ -44,6 +44,16 @@
     return t.length <= max ? t : t.slice(0, max - 1) + "…";
   }
 
+  // Diagram node names: an entity label carries a technical qualifier in
+  // parentheses ("Batteriespeicher (Hybrid-Wechselrichter)") that is pure noise
+  // in a 30px circle - drop it, keep the head noun. The full label always stays
+  // reachable as the node's <title> tooltip, so nothing is lost.
+  function shortEntityName(raw) {
+    var t = (raw || "").trim();
+    var head = t.replace(/\s*\([^()]*\)\s*$/, "").trim();
+    return head.length >= 3 ? head : t;
+  }
+
   // --- clock alignment: chart timestamps are device epoch ms ---
   var clockOffset = 0; // deviceNow = Date.now() + clockOffset
   function deviceNow() { return Date.now() + clockOffset; }
@@ -842,7 +852,12 @@
     var ROLE_SIDE = { pv: "top", storage: "left", consumer: "right", grid: "bottom" };
     // Layout constants (portal adaptiveFlow proportions).
     var NODE_R = 30, HUB_R = 24, LEFT_INSET = 62, TOP_INSET = 48,
-        COL_GAP = 148, ROW_GAP = 82, LBL_F = 12, VAL_F = 11;
+        COL_GAP = 148, ROW_GAP = 104, LBL_F = 11.5, VAL_F = 11;
+    // The name sits BELOW the circle (two lines max) instead of inside it: a
+    // 30px circle only fits ~11 characters, which rendered two different nodes
+    // of the same entity as an identical "Batteriesp…". LBL_BLOCK is the room
+    // reserved for it under the lowest row of nodes.
+    var LBL_GAP = 15, LBL_LH = 13, LBL_BLOCK = 32, LBL_MAX = 18;
 
     ensureFlowKeyframes();
 
@@ -874,9 +889,9 @@
       var cols = Math.max(count("top"), count("bottom"), 1);
       var rows = Math.max(count("left"), count("right"), 1);
       var W = Math.max(520, (cols - 1) * COL_GAP + 2 * (LEFT_INSET + NODE_R + 40));
-      var H = Math.max(300, (rows - 1) * ROW_GAP + 2 * (TOP_INSET + NODE_R + 34));
-      var hubX = W / 2, hubY = H / 2;
-      var leftX = LEFT_INSET, rightX = W - LEFT_INSET, topY = TOP_INSET, bottomY = H - TOP_INSET;
+      var H = Math.max(300, (rows - 1) * ROW_GAP + 2 * (TOP_INSET + NODE_R + 34)) + LBL_BLOCK;
+      var hubX = W / 2, hubY = (H - LBL_BLOCK) / 2;
+      var leftX = LEFT_INSET, rightX = W - LEFT_INSET, topY = TOP_INSET, bottomY = H - TOP_INSET - LBL_BLOCK;
       var vertices = [];
       nodes.forEach(function (node) {
         var side = ROLE_SIDE[node.role];
@@ -896,7 +911,9 @@
             key: m.entity_id + ":" + node.role + ":" + i,
             role: node.role,
             x: x, y: y,
-            label: truncate(m.label || meta.label),
+            label: truncate(shortEntityName(m.label) || meta.label, LBL_MAX),
+            fullLabel: (m.label || "").trim() || meta.label,
+            roleLabel: meta.label,
             value: vertexValue(node.role, node, m.value_kw),
             spokeActive: !!node.flow_active,
             reverse: reverse,
@@ -904,6 +921,19 @@
             icon: meta.icon, color: meta.color, soft: meta.soft
           });
         });
+      });
+      // One entity can sit on SEVERAL role nodes (a hybrid inverter is both a
+      // producer and the storage), and two entities can share a head noun - in
+      // both cases the bare name renders twice and the nodes stop being
+      // tellable apart. Any name that occurs more than once gets its role as a
+      // second line ("Batteriespeicher / · Batterie" vs "… / · PV").
+      var seen = {};
+      vertices.forEach(function (v) {
+        var k = v.label.toLowerCase();
+        seen[k] = (seen[k] || 0) + 1;
+      });
+      vertices.forEach(function (v) {
+        v.roleLine = seen[v.label.toLowerCase()] > 1 ? "· " + v.roleLabel : "";
       });
       return { W: W, H: H, hubX: hubX, hubY: hubY, vertices: vertices };
     }
@@ -962,16 +992,39 @@
         ico.innerHTML = ICON_PATHS[v.icon] || ICON_PATHS.home;
         g.appendChild(ico);
 
+        // Full entity name as a native tooltip - the visible label is shortened
+        // and may be truncated, this is where the whole thing stays readable.
+        var ttl = document.createElementNS(NS, "title");
+        ttl.textContent = v.roleLine ? v.fullLabel + " (" + v.roleLabel + ")" : v.fullLabel;
+        g.appendChild(ttl);
+
+        // Name UNDER the circle (one line, plus the role line when two nodes
+        // would otherwise read the same). A white halo keeps it legible where
+        // it crosses a spoke.
         var lbl = document.createElementNS(NS, "text");
-        lbl.setAttribute("x", v.x); lbl.setAttribute("y", v.y + NODE_R * 0.06);
+        lbl.setAttribute("x", v.x); lbl.setAttribute("y", v.y + NODE_R + LBL_GAP);
         lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-weight", "700");
         lbl.setAttribute("font-size", LBL_F); lbl.setAttribute("fill", "#33414F");
         lbl.setAttribute("font-family", "Inter, sans-serif");
+        lbl.setAttribute("stroke", "#fff"); lbl.setAttribute("stroke-width", "3.5");
+        lbl.setAttribute("stroke-linejoin", "round");
+        lbl.style.paintOrder = "stroke";
         lbl.textContent = v.label;
+        if (v.roleLine) {
+          lbl.textContent = "";
+          var t1 = document.createElementNS(NS, "tspan");
+          t1.setAttribute("x", v.x); t1.setAttribute("dy", "0");
+          t1.textContent = v.label;
+          var t2 = document.createElementNS(NS, "tspan");
+          t2.setAttribute("x", v.x); t2.setAttribute("dy", LBL_LH);
+          t2.setAttribute("font-weight", "600"); t2.setAttribute("fill", v.color);
+          t2.textContent = v.roleLine;
+          lbl.appendChild(t1); lbl.appendChild(t2);
+        }
         g.appendChild(lbl);
 
         var val = document.createElementNS(NS, "text");
-        val.setAttribute("x", v.x); val.setAttribute("y", v.y + NODE_R * 0.56);
+        val.setAttribute("x", v.x); val.setAttribute("y", v.y + NODE_R * 0.34);
         val.setAttribute("text-anchor", "middle"); val.setAttribute("font-weight", "600");
         val.setAttribute("font-size", VAL_F); val.setAttribute("fill", v.color);
         val.setAttribute("font-family", "Inter, sans-serif");
