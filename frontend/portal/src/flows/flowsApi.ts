@@ -185,6 +185,35 @@ export interface FlowDeactivationResult {
   lifecycle: string;
 }
 
+/** The canvas layout of a flow - a PORTAL concern, never part of the document. */
+export interface FlowLayoutResponse {
+  positions: Record<string, { x: number; y: number }>;
+}
+
+/** One deployed artifact as the DEVICE acknowledges it (heartbeat `flows`). */
+export interface FlowDeviceAck {
+  flowId: string;
+  flowVersion: number;
+  contentHash: string | null;
+  state: 'active' | 'error' | 'unsupported' | string;
+  detail: string | null;
+  reportedAt: string | null;
+}
+
+/** One node's live state as the DEVICE reports it (feature-flagged block). */
+export interface FlowNodeStatusDto {
+  flowId: string;
+  nodeId: string;
+  state: string;
+  text: string | null;
+  since: string | null;
+}
+
+export interface FlowLiveStatus {
+  acks: FlowDeviceAck[];
+  nodes: FlowNodeStatusDto[];
+}
+
 /** The SoC band the guard bar shows (null = not readable on this surface). */
 export interface FlowSocBands {
   socMinPct: number | null;
@@ -213,6 +242,12 @@ export interface BoundFlowApi {
   deactivate(flowId: string): Promise<FlowDeactivationResult>;
   entities(): Promise<EditorEntity[]>;
   governance(): Promise<FlowNodeGovernance>;
+  /** The saved canvas positions of a flow (M5 Part A). */
+  layout(flowId: string): Promise<FlowLayoutResponse>;
+  /** Persist the canvas positions. Never touches the flow document. */
+  saveLayout(flowId: string, positions: Record<string, { x: number; y: number }>): Promise<void>;
+  /** What the DEVICE reports about this site's flows (acks + node states). */
+  liveStatus(): Promise<FlowLiveStatus>;
   /** The SoC band for the guard bar, or null when this surface cannot read it. */
   socBands(): Promise<FlowSocBands | null>;
 }
@@ -237,6 +272,18 @@ export function adminFlowApi(tenantId: string, siteId: string): BoundFlowApi {
         { method: 'POST', ...tenantHeaders(tenantId) },
       ),
     entities: () => flowsApi.entities(tenantId, siteId),
+    layout: (flowId) =>
+      request<FlowLayoutResponse>(
+        `/api/v1/admin/sites/${siteId}/flows/${flowId}/layout`, tenantHeaders(tenantId)),
+    saveLayout: (flowId, positions) =>
+      request<FlowLayoutResponse>(`/api/v1/admin/sites/${siteId}/flows/${flowId}/layout`, {
+        method: 'PUT',
+        body: JSON.stringify({ positions }),
+        ...tenantHeaders(tenantId),
+      }).then(() => undefined),
+    liveStatus: () =>
+      request<FlowLiveStatus>(
+        `/api/v1/admin/sites/${siteId}/flow-node-status`, tenantHeaders(tenantId)),
     governance: () =>
       request<FlowNodeGovernance>(
         `/api/v1/admin/sites/${siteId}/flow-node-governance`,
@@ -296,6 +343,13 @@ export function customerFlowApi(siteId: string): BoundFlowApi {
         actuate: row.capabilities?.actuate?.map((a) => a.command) ?? [],
       }));
     },
+    layout: (flowId) => request<FlowLayoutResponse>(`${base}/${flowId}/layout`),
+    saveLayout: (flowId, positions) =>
+      request<FlowLayoutResponse>(`${base}/${flowId}/layout`, {
+        method: 'PUT',
+        body: JSON.stringify({ positions }),
+      }).then(() => undefined),
+    liveStatus: () => request<FlowLiveStatus>(`/api/v1/sites/${siteId}/flow-node-status`),
     governance: () =>
       request<FlowNodeGovernance>(`/api/v1/sites/${siteId}/flow-node-governance`),
     // The customer surface has no optimizer-config read; the guard bar renders

@@ -1,0 +1,252 @@
+/* ===========================================================================
+ * Portal v3 M5 - the automation editor at Node-RED quality.
+ * Component-local (the CockpitBlocks.css / Steuerung.css precedent): the shared
+ * src/index.css keeps the E3a base rules (.vp-flowed*, .vp-flowcanvas, ...);
+ * everything M5 ADDS lives here so two milestones never edit one stylesheet.
+ * =========================================================================== */
+
+/* --- canvas: grid, drag affordance, live chips, node states -------------- */
+
+.vp-flowgrid {
+  color: rgba(120, 144, 156, 0.16);
+  pointer-events: none;
+}
+
+.vp-flownode.draggable {
+  cursor: grab;
+  touch-action: none; /* the pointer drag owns the gesture, not the scroller */
+}
+
+.vp-flownode.dragging {
+  cursor: grabbing;
+  opacity: 0.92;
+}
+
+.vp-flowchip rect {
+  fill: var(--vp-surface, #fff);
+  stroke: var(--vp-border, #d8dee4);
+  stroke-width: 1;
+}
+
+.vp-flowchip text {
+  fill: var(--vp-stat-ink, #263238);
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.vp-flownode-state {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.vp-flownode-state.ok { fill: var(--vp-chart-charge, #2e9e5b); }
+.vp-flownode-state.off { fill: #78909c; }
+.vp-flownode-state.error { fill: var(--vp-danger, #c62828); }
+
+/* --- deployed-version bar + fork banner ---------------------------------- */
+
+.vp-flowed-deploy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--vp-border, #d8dee4);
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.vp-flowed-deploy .vp-deploy-detail {
+  color: #607d8b;
+  min-width: 0;
+}
+
+.vp-flowed-fork {
+  padding: 0.45rem 0.75rem;
+  background: rgba(199, 119, 0, 0.09);
+  border-bottom: 1px solid rgba(199, 119, 0, 0.28);
+  font-size: 0.85rem;
+}
+
+/* --- guided rollout ------------------------------------------------------ */
+
+.vp-rollout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--vp-border, #d8dee4);
+  min-width: 0;
+}
+
+.vp-rollout-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #d8dee4);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.vp-rollout-step.laeuft {
+  border-color: var(--vp-action, #2c5282);
+  color: var(--vp-action, #2c5282);
+  font-weight: 600;
+}
+
+.vp-rollout-step.fertig {
+  border-color: var(--vp-chart-charge, #2e9e5b);
+  color: var(--vp-chart-charge, #2e9e5b);
+}
+
+.vp-rollout-step.fehler {
+  border-color: var(--vp-danger, #c62828);
+  color: var(--vp-danger, #c62828);
+  font-weight: 600;
+}
+
+.vp-rollout-step.uebersprungen { opacity: 0.45; }
+
+.vp-rollout-msg {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+/* --- the code node inspector -------------------------------------------- */
+
+.vp-codenode { min-width: 0; }
+
+.vp-codenode > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.vp-codenode-area {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  padding: 0.5rem;
+  border: 1px solid var(--vp-border, #d8dee4);
+  border-left: 3px solid var(--vp-warn, #c77700);
+  border-radius: var(--vp-radius-md, 8px);
+  resize: vertical;
+}
+
+.vp-codenode-count {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.75rem;
+  color: #607d8b;
+}
+
+.vp-codenode-count.over {
+  color: var(--vp-danger, #c62828);
+  font-weight: 600;
+}
+
+.vp-codenode-clamps {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--vp-radius-md, 8px);
+  background: rgba(44, 82, 130, 0.06);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.vp-codenode-clamps li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.vp-codenode-clamps li + li { margin-top: 0.35rem; }
+
+/* --- the phone step list ------------------------------------------------- */
+
+.vp-stepflow { min-width: 0; }
+
+.vp-stepflow-status {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.vp-stepflow-status.ok { color: var(--vp-chart-charge, #2e9e5b); }
+.vp-stepflow-status.warn { color: var(--vp-warn, #c77700); }
+.vp-stepflow-status.off { color: #607d8b; }
+
+.vp-stepflow-list {
+  list-style: none;
+  margin: 0 0 0.9rem;
+  padding: 0;
+}
+
+.vp-stepflow-item {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--vp-border, #d8dee4);
+  min-width: 0;
+}
+
+.vp-stepflow-num {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(44, 82, 130, 0.1);
+  color: var(--vp-action, #2c5282);
+}
+
+.vp-stepflow-item.aktion .vp-stepflow-num {
+  background: rgba(46, 158, 91, 0.14);
+  color: var(--vp-chart-charge, #2e9e5b);
+}
+
+.vp-stepflow-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vp-stepflow-text {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.vp-stepflow-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+
+.vp-stepflow-value { color: var(--vp-stat-ink, #263238); }
+.vp-stepflow-state.ok { color: var(--vp-chart-charge, #2e9e5b); }
+.vp-stepflow-state.off { color: #607d8b; }
+.vp-stepflow-state.error { color: var(--vp-danger, #c62828); }

@@ -212,6 +212,21 @@ function checkParameters(node: FlowNode, findings: FlowFinding[]) {
         }
         break;
       }
+      // The sandboxed code node (D-16): source text with the catalog's length
+      // cap. Safety lives in flowc's watchdog wrapper + the edge guard chain -
+      // this only keeps the artifact inside its budget.
+      case 'code': {
+        const max = spec.maxLength ?? 4000;
+        if (typeof value !== 'string' || value.trim() === '') {
+          findings.push(error('V-4', [node.id], [],
+            `Baustein "${type.label}": Parameter "${label}" darf nicht leer sein.`));
+        } else if (value.length > max) {
+          findings.push(error('V-4', [node.id], [],
+            `Baustein "${type.label}": Parameter "${label}" darf höchstens ${max} Zeichen `
+            + 'lang sein.'));
+        }
+        break;
+      }
       default: {
         if (typeof value !== 'string') {
           findings.push(error('V-4', [node.id], [],

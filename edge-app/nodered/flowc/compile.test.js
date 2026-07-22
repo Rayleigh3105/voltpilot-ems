@@ -620,3 +620,104 @@ test('type widenings: price->timeseries and number->timeseries are legal', () =>
   const g = fixture('flow-graph.valid.market-battery.json');
   assert.deepStrictEqual(validate(g), []);
 });
+
+// ---------------------------------------------------------------------------
+// vp.logic.function - the sandboxed customer code node (D-16, Portal v3 M5)
+// ---------------------------------------------------------------------------
+
+test('function-node fixture compiles into the watchdog wrapper', () => {
+  const graph = fixture('flow-graph.valid.function-node.json');
+  const a = compile(graph);
+  const fns = a.bundle.nodered_flows.filter((n) => n.type === 'function');
+  const code = fns.find((n) => /vp_fn/.test(n.func));
+  assert.ok(code, 'the code node compiles to a generated function node');
+
+  // Guard 1 - the RUNTIME watchdog: Node-RED runs a function node with a
+  // `timeout` (seconds) through vm, so even an endless loop is aborted.
+  assert.strictEqual(code.timeout, 0.1, 'the 100 ms limit reaches the node as 0.1 s');
+  // ...plus the in-body deadline detector + honest failure states.
+  assert.match(code.func, /Date\.now\(\) - t0 > P\.timeout_ms/);
+  assert.match(code.func, /node\.status\(\{ fill: "red"/);
+  assert.match(code.func, /node\.error\("Funktion \(Code\)/);
+
+  // Guard 2 - NO network / no sandbox handles: every escape name is a shadowed
+  // parameter of the compiled function, and only wert + msg are ever passed.
+  for (const shadowed of ['net', 'http', 'https', 'require', 'global',
+    'globalThis', 'process', 'flow', 'context', 'env', 'RED', 'node']) {
+    assert.match(code.func, new RegExp('"' + shadowed + '"'),
+      shadowed + ' must be shadowed inside the customer scope');
+  }
+  assert.match(code.func, /fn\(Number\(msg\.payload\), msg\)/);
+
+  // The customer source is DATA (the P literal), never concatenated into this
+  // control flow - so it cannot close the wrapper and continue outside it.
+  assert.match(code.func, /^\/\/ generiert von flowc/);
+  assert.ok(code.func.includes(JSON.stringify(graph.nodes[1].parameters.code)),
+    'the code travels as a JSON string literal');
+
+  // It is a plain Node-RED function node, so the palette floor does not move.
+  assert.strictEqual(a.min_palette_version, '0.2.0');
+  // A code node claims nothing by itself; the control node still does.
+  assert.deepStrictEqual(a.required_entities, [
+    { entity_id: 'grid-meter-1', capabilities: ['measure:power_kw'] },
+    { entity_id: 'wallbox-1', capabilities: ['actuate:setpoint_kw'] },
+  ]);
+  // ...and the effect still leaves through vp-desired (guard chain downstream).
+  const desired = a.bundle.nodered_flows.find((n) => n.type === 'vp-desired');
+  assert.strictEqual(desired.entity, 'wallbox-1');
+  assert.deepStrictEqual(code.wires, [[desired.id]]);
+});
+
+test('the compiled customer code really runs sandboxed', () => {
+  const a = compile(fixture('flow-graph.valid.function-node.json'));
+  const code = a.bundle.nodered_flows.find((n) => n.type === 'function' && /vp_fn/.test(n.func));
+  const store = {};
+  const context = { get: (k) => store[k], set: (k, v) => { store[k] = v; } };
+  const errors = [];
+  const node = { status: () => {}, error: (m) => errors.push(m) };
+  // eslint-disable-next-line no-new-func
+  const run = (msg) => new Function('msg', 'context', 'node', code.func + '\n')(msg, context, node);
+
+  assert.strictEqual(run({ payload: -5 }).payload, 5, '5 kW Einspeisung -> 5 kW laden');
+  assert.strictEqual(run({ payload: -0.5 }).payload, 0, 'below the minimum -> 0');
+  assert.strictEqual(run({ payload: -30 }).payload, 11, 'clamped by the customer code itself');
+  assert.strictEqual(errors.length, 0);
+
+  // The shadowed handles are undefined INSIDE the customer scope: swap the
+  // fixture's code for a probe and run the SAME generated wrapper.
+  const escapeStore = {};
+  const escapeCtx = { get: (k) => escapeStore[k], set: (k, v) => { escapeStore[k] = v; } };
+  const escapeFunc = code.func.replace(
+    /const P = .*;\n/,
+    'const P = ' + JSON.stringify({ code: 'return typeof http === "undefined" && typeof require === "undefined" ? 1 : 0;', timeout_ms: 100 }) + ';\n');
+  // eslint-disable-next-line no-new-func
+  const out = new Function('msg', 'context', 'node', escapeFunc + '\n')(
+    { payload: 0 }, escapeCtx, node);
+  assert.strictEqual(out.payload, 1, 'network handles are not reachable from customer code');
+});
+
+test('the code node is refused in the cloud runtime and on bad params', () => {
+  const graph = fixture('flow-graph.valid.function-node.json');
+  const cloud = JSON.parse(JSON.stringify(graph));
+  cloud.runtime = 'cloud';
+  assert.ok(validate(cloud).some((f) => f.rule === 'V-8'),
+    'customer code must never be offered a cloud runtime');
+
+  const noCode = JSON.parse(JSON.stringify(graph));
+  noCode.nodes[1].parameters.code = '   ';
+  assert.ok(validate(noCode).some((f) => /code fehlt/.test(f.message)));
+
+  const tooLong = JSON.parse(JSON.stringify(graph));
+  tooLong.nodes[1].parameters.code = 'x'.repeat(4001);
+  assert.ok(validate(tooLong).some((f) => /4000/.test(f.message)));
+
+  const slow = JSON.parse(JSON.stringify(graph));
+  slow.nodes[1].parameters.timeout_ms = 5000;
+  assert.ok(validate(slow).some((f) => /timeout_ms/.test(f.message)),
+    'the watchdog window is capped at 500 ms');
+});
+
+test('pinned content hash of the function-node fixture', () => {
+  assertPinned(compile(fixture('flow-graph.valid.function-node.json')),
+    'pinned-function-hash.txt');
+});

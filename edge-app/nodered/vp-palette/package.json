@@ -26,7 +26,8 @@
       "vp-entity-read": "nodes/vp-entity-read.js",
       "vp-feed": "nodes/vp-feed.js",
       "vp-notify": "nodes/vp-notify.js",
-      "vp-modbus-read": "nodes/vp-modbus-read.js"
+      "vp-modbus-read": "nodes/vp-modbus-read.js",
+      "vp-node-status": "nodes/vp-node-status.js"
     }
   },
   "dependencies": {

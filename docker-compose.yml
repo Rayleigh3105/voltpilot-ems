@@ -316,6 +316,8 @@ services:
       VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
+      # Portal v3 M5: deployment acks + the feature-flagged per-node flow states.
+      VOLTPILOT_FLOWS_MQTT_LISTENER_ENABLED: "true"
       # Ersparnis-Simulation: the internal simulation service (optimize profile).
       # The api proxies async jobs there; without the service running, starting
       # a simulation returns a friendly 502.

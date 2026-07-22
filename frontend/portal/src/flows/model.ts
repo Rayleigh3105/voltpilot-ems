@@ -102,6 +102,8 @@ export interface CatalogParam {
   max?: number;
   help?: string;
   entityTypes?: string[];
+  /** Max source length of a `code` param (the sandboxed code node, D-16). */
+  maxLength?: number;
 }
 
 export interface CatalogClaimTemplate {
@@ -317,6 +319,7 @@ const ID_PREFIX: Record<string, string> = {
   'vp.logic.if': 'wert',
   'vp.logic.and': 'und',
   'vp.logic.or': 'oder',
+  'vp.logic.function': 'code',
   'vp.modbus.read': 'modbus',
   'vp.strategy.market': 'markt',
   'vp.strategy.selfconsumption': 'eigen',

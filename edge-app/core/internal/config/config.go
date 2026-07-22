@@ -100,6 +100,13 @@ type Config struct {
 	// received deployment set is verified + persisted but acked 'error' with a
 	// German detail naming this setting, never silently dropped.
 	NodeRedAdminURL string `json:"nodered_admin_url"`
+
+	// FlowNodeStatusEnabled turns the additive per-flow-node status block on the
+	// status heartbeat ON (Portal v3 M5 Part C). Default OFF: the block is
+	// additive and feature-flagged, so an edge that does not send it simply
+	// makes the portal editor fall back to channel values only - it never shows
+	// a guessed node state. VP_FLOW_NODE_STATUS_ENABLED=1.
+	FlowNodeStatusEnabled bool `json:"flow_node_status_enabled"`
 	// NodeRedUser/NodeRedPassword are the Admin API credentials (the same
 	// adminAuth the compose passes the nodered service).
 	NodeRedUser     string `json:"nodered_user"`
@@ -261,6 +268,7 @@ func applyEnv(cfg *Config) {
 	}
 	boolEnv("VP_CONTROL_ENABLED", &cfg.ControlEnabled)
 	boolEnv("VP_GRID_CHARGE_ALLOWED", &cfg.GridChargeAllowed)
+	boolEnv("VP_FLOW_NODE_STATUS_ENABLED", &cfg.FlowNodeStatusEnabled)
 	str("VP_NODERED_ADMIN_URL", &cfg.NodeRedAdminURL)
 	str("VP_NODERED_USER", &cfg.NodeRedUser)
 	str("VP_NODERED_PASSWORD", &cfg.NodeRedPassword)

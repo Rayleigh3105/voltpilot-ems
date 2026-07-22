@@ -205,6 +205,27 @@ test('POST /compile compiles the modbus-read automation to its pinned artifact',
   }
 });
 
+test('POST /compile compiles the sandboxed code node to its pinned artifact', async () => {
+  // Portal v3 M5 / D-16: activation POSTs a document carrying customer code
+  // here. The sidecar must compile it into the watchdog-wrapped function node
+  // (Node-RED `timeout` + the in-body deadline) with a stable hash.
+  const { port, close } = await startServer();
+  try {
+    const graph = fixture('flow-graph.valid.function-node.json');
+    const res = await request(port, 'POST', '/compile', { document: graph });
+    assert.strictEqual(res.status, 200, res.text);
+    const artifact = res.json;
+    assert.strictEqual(artifact.content_hash, pinnedFile('pinned-function-hash.txt'));
+    assert.strictEqual(artifact.min_palette_version, '0.2.0');
+    const code = artifact.bundle.nodered_flows.find(
+      (n) => n.type === 'function' && /vp_fn/.test(n.func));
+    assert.ok(code, 'the compiled bundle carries the wrapped code node');
+    assert.strictEqual(code.timeout, 0.1);
+  } finally {
+    await close();
+  }
+});
+
 // #519: the three shapes that reached the sidecar and were REJECTED - the
 // guided "Sollwert setzen" rule (H3-a), the AE7 starter / pilot chain
 // (MEDIUM-5) and the two-window AND (H3-b). Activation POSTs exactly these

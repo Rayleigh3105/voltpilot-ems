@@ -89,6 +89,11 @@ const (
 	TopicControlReadback = "edge/control/readback"
 	TopicTestReadRequest = "edge/test-read/request"
 	TopicTestReadResult  = "edge/test-read/result"
+	// TopicFlowNodeStatus carries the per-node live state of a deployed flow
+	// (Portal v3 M5 Part C): {flow_id, node_id, state, text?, since?}, published
+	// by the vp-node-status palette node that flowc wires from the compiled
+	// nodes. Read-only telemetry ABOUT a flow - it never commands anything.
+	TopicFlowNodeStatus = "edge/flow/node-status"
 )
 
 // Bus wraps the embedded broker.

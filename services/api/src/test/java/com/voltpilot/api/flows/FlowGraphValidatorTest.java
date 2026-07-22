@@ -386,6 +386,36 @@ class FlowGraphValidatorTest {
         assertThat(errors(validate(doc))).contains("V-8");
     }
 
+    // ---- Portal v3 M5: the sandboxed code node (D-16), mirrored in TS -------
+
+    @Test
+    void codeNodeFixtureValidatesCleanAndItsSourceIsLengthCapped() throws IOException {
+        assertThat(errors(validate(fixture("flow-graph.valid.function-node.json")))).isEmpty();
+
+        ObjectNode empty = flowShell();
+        addNode(empty, "code1", "vp.logic.function", "1.0.0", Map.of("code", "   "));
+        assertThat(errors(validate(empty))).contains("V-4");
+
+        ObjectNode tooLong = flowShell();
+        addNode(tooLong, "code1", "vp.logic.function", "1.0.0",
+                Map.of("code", "x".repeat(4001)));
+        assertThat(errors(validate(tooLong))).contains("V-4");
+
+        // (a bare code node without its connected input is a normal V-1 - the
+        // fixture above is the wired, clean case.)
+    }
+
+    @Test
+    void codeNodeIsEdgeOnly() {
+        // D-16: customer code runs ONLY on the customer's own device - the cloud
+        // never executes it, so a cloud flow may not carry the node at all.
+        ObjectNode doc = flowShell();
+        doc.put("runtime", "cloud");
+        doc.remove("site_id");
+        addNode(doc, "code1", "vp.logic.function", "1.0.0", Map.of("code", "return wert;"));
+        assertThat(errors(validate(doc))).contains("V-8");
+    }
+
     // ---- MB-M1 vp.modbus.read (mirrored in src/flows/validate.test.ts) -----
 
     @Test

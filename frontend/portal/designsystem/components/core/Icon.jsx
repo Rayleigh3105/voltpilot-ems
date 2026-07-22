@@ -295,6 +295,13 @@ const PATHS = {
       <circle cx="14" cy="18" r="2" />
     </>
   ),
+  // Portal v3 M5: the code node in the flow palette (Lucide "code").
+  code: (
+    <>
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, strokeWidth = 2, style = {}, ...props }) {

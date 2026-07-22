@@ -100,6 +100,10 @@ class CustomerFlowApiTest {
         registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
         registry.add("spring.flyway.user", POSTGRES::getUsername);
         registry.add("spring.flyway.password", POSTGRES::getPassword);
+        // Portal v3 M5 go-live: production now runs with flow activation ON.
+        // This test PROVES the flag still works, so it pins the OFF state
+        // EXPLICITLY instead of relying on the application.yml default.
+        registry.add("voltpilot.flows.activation.enabled", () -> "false");
         registry.add("spring.flyway.placeholders.appDbUser", () -> APP_USER);
         registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
 
