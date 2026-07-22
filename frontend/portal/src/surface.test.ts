@@ -649,3 +649,24 @@ describe('Komposition', () => {
     ]);
   });
 });
+
+describe('M3-Overlay: `profileStates` ist rein additiv', () => {
+  it('ohne profileStates ist das Ergebnis byte-gleich zu vorher', () => {
+    for (const input of [PRIVAT, GEWERBE, MARKT, MULTI, LEER]) {
+      const ohne = anlageSurface(input);
+      expect(anlageSurface({ ...input, profileStates: null })).toEqual(ohne);
+      expect(anlageSurface({ ...input, profileStates: undefined })).toEqual(ohne);
+      expect(anlageSurface({ ...input, profileStates: {} })).toEqual(ohne);
+    }
+  });
+
+  it('`aus` unterdrückt genau den einen Modus, alles andere bleibt', () => {
+    const ohne = anlageSurface(MULTI);
+    const aus = anlageSurface({ ...MULTI, profileStates: { marktvermarktung: 'aus' } });
+    expect(ohne.modes.map((m) => m.kind)).toContain('marktvermarktung');
+    expect(aus.modes.map((m) => m.kind)).not.toContain('marktvermarktung');
+    expect(aus.modes.map((m) => m.kind)).toEqual(
+      ohne.modes.map((m) => m.kind).filter((k) => k !== 'marktvermarktung'),
+    );
+  });
+});

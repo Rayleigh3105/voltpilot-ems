@@ -1,5 +1,6 @@
 import { AuthRedirectError, freshToken } from './auth';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
+import type { ProfileState, SiteProfiles } from './profiles';
 import type { Topology } from './topology';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
@@ -1166,6 +1167,8 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
   return (await res.json()) as RegistrationResult;
 }
 
+export type { ProfileState, SiteProfile, SiteProfiles } from './profiles';
+
 export const api = {
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
@@ -1290,6 +1293,29 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ override }),
     }),
+  /**
+   * Portal v3 M3: the Modus-Profile shelf of the Anlage. Every profile is a
+   * DIRECT customer toggle (two states, `an`/`aus` - there is no "angefragt").
+   */
+  siteProfiles: (siteId: string) =>
+    request<SiteProfiles>(`/api/v1/sites/${siteId}/profiles`),
+  /**
+   * Switch one Modus-Profil on or off. Switching ON makes the SERVER enable
+   * exactly that profile's gated node types for the site and seed its starter
+   * flow; switching OFF deactivates its flows and closes those nodes again.
+   * Returns the recomputed shelf.
+   */
+  setSiteProfile: (siteId: string, profile: string, state: ProfileState) =>
+    request<SiteProfiles>(`/api/v1/sites/${siteId}/profiles`, {
+      method: 'PUT',
+      body: JSON.stringify({ profile, state }),
+    }),
+  /** Seed this site's starter flow DRAFT (customer twin, idempotent). */
+  autoStart: (siteId: string) =>
+    request<{ created: boolean; reason?: string | null; message?: string | null }>(
+      `/api/v1/sites/${siteId}/flows/auto-start`,
+      { method: 'POST' },
+    ),
   /** Per-entity channel history over the v2 telemetry rollups. */
   entityHistory: (siteId: string, entityId: string, range: HistoryRange, at?: string) =>
     request<EntityHistory>(

@@ -23,6 +23,7 @@ const ALL_SUBS: AnlagenSub[] = [
   'entitaeten',
   'steuerung',
   'lastspitzen',
+  'profile',
 ];
 
 const ENTITIES: AnlageSurfaceInput['entities'] = [
@@ -125,10 +126,13 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
     expect(base.items.filter((i) => i.badge != null).map((i) => i.key)).toEqual(['steuerung']);
   });
 
-  it('always carries the foot: Einstellungen · Hilfe & Kontakt', () => {
+  it('always carries the foot: Modus-Profile · Einstellungen · Hilfe & Kontakt', () => {
+    // M3 mounts the profile shelf in the foot - the base group stays the five
+    // FIXED Anlage areas, and the shelf is reachable on EVERY plant.
     const { foot } = anlageSidebar(PRIVAT);
-    expect(foot.map((i) => i.key)).toEqual(['technik', 'hilfe']);
-    expect(foot[1].target).toEqual({ kind: 'help' });
+    expect(foot.map((i) => i.key)).toEqual(['profile', 'technik', 'hilfe']);
+    expect(foot[0].target).toEqual({ kind: 'sub', sub: 'profile' });
+    expect(foot[2].target).toEqual({ kind: 'help' });
   });
 });
 
@@ -211,7 +215,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     expect(groups[1].label).toBe('Modus · Marktvermarktung');
     expect(groups[1].tone).toBe('markt');
     const last = groups[groups.length - 1];
-    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'technik', 'hilfe']);
+    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'profile', 'technik', 'hilfe']);
   });
 });
 

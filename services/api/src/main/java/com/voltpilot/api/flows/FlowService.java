@@ -56,7 +56,11 @@ import org.springframework.web.server.ResponseStatusException;
  * GATED strategy node (Arbitrage/Peak/atyp. NN) activates only after a
  * Portal-Admin enables that node type for the site ({@code gated_node_not_enabled});
  * this gate does NOT relax for customers. Only the governance WRITE
- * ({@link #setGovernance}) and the auto-start seed stay admin-only - the
+ * ({@link #setGovernance}) stays admin-only - a customer never enables a gated
+ * node type directly; since Portal v3 M3 the per-site enablement is written by
+ * {@code SiteProfileService} as an authorized server-side effect of an explicit
+ * Modus-Profil toggle on the caller's OWN site. The auto-start seed is reachable
+ * from both surfaces (it only creates a DRAFT). The
  * customer controller never exposes them.
  */
 @Service
@@ -236,8 +240,9 @@ public class FlowService {
 
     /**
      * AE7 auto-start (spec §3): seed the site's derived-profile starter flow
-     * DRAFT if it has none. Portal-Admin ONLY (the customer surface never calls
-     * this). Idempotent - a site with any flow is left untouched.
+     * DRAFT if it has none. Reachable from BOTH surfaces since Portal v3 M3
+     * (a draft cannot control anything; activation stays gated as before).
+     * Idempotent - a site with any flow is left untouched.
      */
     @Transactional
     public FlowTemplateService.AutoStartOutcome autoStart(UUID siteId) {

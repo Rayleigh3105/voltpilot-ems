@@ -7,6 +7,7 @@ import { cockpitStack, projectionActive } from './cockpit';
 import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
+import { profileShelf, profileStatesFrom } from './profiles';
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
 import type { OverviewSite } from './api';
 
@@ -206,6 +207,21 @@ describe('Abbau-Invarianten (M6)', () => {
       const code = readFileSync(f, 'utf8');
       expect(code).not.toMatch(/AnlageMoreMenu|DEEP_VIEW_ITEMS|vp-more-btn/);
     }
+  });
+
+  it('M3: eine Anlage ohne Profil-Zeilen erzeugt NICHTS Neues', () => {
+    // Ein Backend ohne `GET /sites/{id}/profiles` (oder eine Anlage, auf der
+    // noch nie ein Profil geschaltet wurde) liefert KEINE Zustände - die
+    // Projektion muss dann zeichengleich zu vorher sein.
+    const ohne = anlageSurface(NIE_MIGRIERT);
+    expect(anlageSurface({ ...NIE_MIGRIERT, profileStates: null })).toEqual(ohne);
+    expect(anlageSurface({ ...NIE_MIGRIERT, profileStates: {} })).toEqual(ohne);
+    expect(profileStatesFrom(null)).toBeNull();
+    // Und die Projektion selbst bleibt leer: keine Modi, keine Blöcke.
+    expect(ohne.modes).toEqual([]);
+    expect(ohne.cockpitBlocks).toEqual([]);
+    // Das Regal einer Anlage ohne Server-Antwort ist leer, nie erfunden.
+    expect(profileShelf(null)).toEqual({ cards: [], weitere: [] });
   });
 
   it('`usage_profile_override` lebt nur noch als Auto-Start-Template-Wähler', () => {

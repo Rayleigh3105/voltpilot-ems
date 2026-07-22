@@ -73,6 +73,7 @@ class CustomerFlowApiTest {
     private static final String APP_PW = "voltpilot_app_test_pw";
     private static final String TENANT_A = "00000000-0000-0000-0000-000000000001";
     private static final String BERLIN_SITE = "00000000-0000-0000-0000-000000000002";
+    private static final String DACHAU_SITE = "00000000-0000-0000-0000-000000000012";
     private static final String MARKET = "vp.strategy.market";
     private static final String SELFCONSUMPTION = "vp.strategy.selfconsumption";
 
@@ -266,6 +267,39 @@ class CustomerFlowApiTest {
                 .isEqualTo(HttpStatus.NO_CONTENT);
         assertThat(customer(gatedBase, HttpMethod.DELETE, demo, null).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
+    }
+
+    /**
+     * Portal v3 M3: the customer twin of the admin auto-start. Seeding a starter
+     * DRAFT is what a Modus-Profil toggle needs; it is idempotent, and it does
+     * NOT weaken the activation gate (proven by the gated-node case above, which
+     * still refuses with {@code gated_node_not_enabled} without an enablement).
+     * Runs on the DACHAU site so it never collides with the BERLIN journey.
+     */
+    @Test
+    void customerAutoStartSeedsTheStarterFlowOnceAndIsIdempotent() {
+        String admin = token("admin", "admin");
+        adminExchange("/api/v1/admin/sites/" + DACHAU_SITE + "/v2-entities/bootstrap",
+                HttpMethod.POST, admin, Map.of());
+
+        String demo = token("demo", "demo");
+        String path = "/api/v1/sites/" + DACHAU_SITE + "/flows/auto-start";
+        ResponseEntity<JsonNode> created = customer(path, HttpMethod.POST, demo, Map.of());
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(created.getBody().path("created").asBoolean()).isTrue();
+        String flowId = created.getBody().path("flowId").asText();
+
+        ResponseEntity<JsonNode> again = customer(path, HttpMethod.POST, demo, Map.of());
+        assertThat(again.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(again.getBody().path("created").asBoolean()).isFalse();
+        assertThat(again.getBody().path("reason").asText()).isEqualTo("already_has_flow");
+
+        // A foreign tenant cannot seed into someone else's site (RLS => 404).
+        assertThat(customer(path, HttpMethod.POST, token("demo2", "demo2"), Map.of())
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        assertThat(customer("/api/v1/sites/" + DACHAU_SITE + "/flows/" + flowId, HttpMethod.DELETE,
+                demo, null).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
     @Test
