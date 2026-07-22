@@ -67,7 +67,7 @@ function pvTile(n: FlowNode): AdaptiveTile {
     icon: 'sun',
     title,
     value: n.value_kw == null ? '–' : fmtNum(n.value_kw, 'kW', 1),
-    stateLabel: n.value_kw == null ? 'wartet auf Daten' : active ? 'erzeugt' : 'keine Erzeugung',
+    stateLabel: n.value_kw == null ? 'noch keine Daten' : active ? 'erzeugt' : 'keine Erzeugung',
     stateTone: active ? 'accent' : 'muted',
     subLine: memberCount > 1 ? `${memberCount} Erzeuger` : undefined,
   };
@@ -113,7 +113,7 @@ function storageTile(n: FlowNode): AdaptiveTile {
 
 function gridTile(n: FlowNode): AdaptiveTile {
   const active = n.flow_active && n.value_kw != null && n.value_kw > DEADBAND_KW;
-  let stateLabel = 'wartet auf Daten';
+  let stateLabel = 'noch keine Daten';
   let stateTone: 'accent' | 'muted' = 'muted';
   let arrow: 'up' | 'down' | undefined;
   let subLine: string | undefined;
@@ -156,7 +156,7 @@ function consumerTiles(n: FlowNode, byId: Map<string, TopologyEntity>): Adaptive
     let stateLabel: string;
     let stateTone: 'accent' | 'muted';
     if (m.value_kw == null) {
-      stateLabel = 'wartet auf Daten';
+      stateLabel = 'noch keine Daten';
       stateTone = 'muted';
     } else if (active) {
       stateLabel = type === 'wallbox' ? 'lädt' : 'aktiv';
@@ -212,16 +212,55 @@ export interface StatusSentence {
 }
 
 /**
+ * The ONE freshness truth of the live view. Two independent sources feed this
+ * surface and they used to speak past each other (G3): the ANLAGE's telemetry
+ * (the "Stand vor X" chip + the Verlauf chart) and the per-ENTITY health of the
+ * v2 registry. A migrated site whose entities have never reported while v1
+ * telemetry flows normally is neither "live per entity" nor "offline" - it is
+ * an Anlage that reports while its device-level breakdown does not yet.
+ *
+ * - `live`      at least one entity delivers current data.
+ * - `site-only` the Anlage reports current telemetry, the entities do not.
+ * - `stale`     nothing current from either source.
+ */
+export type LiveState = 'live' | 'site-only' | 'stale';
+
+export function liveState(input: {
+  /** Any entity's observed health is `ok`. */
+  entityFresh: boolean;
+  /** The Anlage's v1 telemetry is within the freshness window (null = unknown). */
+  siteFresh: boolean | null | undefined;
+}): LiveState {
+  if (input.entityFresh) return 'live';
+  return input.siteFresh === true ? 'site-only' : 'stale';
+}
+
+/**
  * The ONE plain-German status sentence, composed from the role nodes: PV lead,
  * storage clause, active-consumer clause(s), grid clause - each honest about
  * absent data and speaking direction words, never signs. Stale data goes
- * honest-grey (mirrors live.ts composeStatusSentence).
+ * honest-grey (mirrors live.ts composeStatusSentence); the `site-only` state
+ * says exactly what is and is not there instead of claiming an outage the
+ * Verlauf chart right below would contradict.
  */
-export function composeAdaptiveSentence(topo: SiteTopology, fresh: boolean): StatusSentence {
-  if (!fresh) {
+export function composeAdaptiveSentence(
+  topo: SiteTopology,
+  state: LiveState | boolean,
+): StatusSentence {
+  const resolved: LiveState =
+    typeof state === 'boolean' ? (state ? 'live' : 'stale') : state;
+  if (resolved === 'stale') {
     return {
       live: false,
       text: 'Ihre Anlage meldet gerade keine aktuellen Daten. Angezeigt werden die zuletzt bekannten Werte.',
+    };
+  }
+  if (resolved === 'site-only') {
+    return {
+      live: true,
+      text:
+        'Ihre Anlage liefert aktuelle Messwerte - im Verlauf unten sehen Sie sie. ' +
+        'Die Aufschlüsselung nach einzelnen Geräten meldet noch nichts.',
     };
   }
   const byId = new Map(topo.entities.map((e) => [e.id, e]));

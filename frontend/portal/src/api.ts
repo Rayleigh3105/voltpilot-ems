@@ -1108,7 +1108,13 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     // default to a plain-German message and let a server-provided German
     // `message` (e.g. MaStR lookup) override it. The numeric status stays on
     // ApiError.status for callers that branch on it (409/422/…).
-    let message = 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.';
+    // A 403 is NOT an outage - the server answered, it just refused. Saying
+    // "nicht erreichbar" sent customers chasing a connection problem that did
+    // not exist (G6). The gate itself is untouched; only the copy is honest.
+    let message =
+      res.status === 403
+        ? 'Dafür ist Ihr Konto nicht freigeschaltet. VoltPilot richtet das für Sie ein.'
+        : 'Der Server ist zurzeit nicht erreichbar. Bitte versuchen Sie es erneut.';
     try {
       const body = await res.json();
       if (body && typeof body.message === 'string' && body.message) message = body.message;

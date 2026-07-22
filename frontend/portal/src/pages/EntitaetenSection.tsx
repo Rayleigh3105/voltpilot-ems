@@ -14,6 +14,7 @@ import {
   type SiteEntity,
   type SiteTopology,
 } from '../api';
+import { channelLabel, commandLabel } from '../channels';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import {
   actuateCommands,
@@ -355,12 +356,15 @@ function EntityCard({
         )}
       </div>
 
+      {/* Plain-German capability names; the raw channel/command identifier is
+          kept as the chip's title (support/debug) but never in the copy. An
+          unknown channel falls back to its raw name (channels.ts). */}
       {measures.length > 0 && (
         <div className="vp-entity-caps">
           <span className="vp-entity-caps-label">Misst</span>
           {measures.map((c) => (
-            <span key={c} className="vp-chip-static">
-              {c}
+            <span key={c} className="vp-chip-static" title={c}>
+              {channelLabel(c)}
             </span>
           ))}
         </div>
@@ -369,8 +373,8 @@ function EntityCard({
         <div className="vp-entity-caps">
           <span className="vp-entity-caps-label">Steuert</span>
           {actuates.map((c) => (
-            <span key={c} className="vp-chip-static">
-              {c}
+            <span key={c} className="vp-chip-static" title={c}>
+              {commandLabel(c)}
             </span>
           ))}
         </div>
@@ -534,7 +538,15 @@ function RoleBoxCard({
         {box.members.map((m) => (
           <li key={m.entityId + m.channel} className={`vp-role-member${m.primary ? ' primary' : ''}`}>
             <span className="vp-role-member-main">
-              <span className="vp-role-member-name">{m.entityLabel}</span>
+              <span className="vp-role-member-name">
+                {m.entityLabel}
+                {/* One device can feed a role with SEVERAL measurements (a
+                    hybrid inverter: Ladestand + Batterieleistung). Naming the
+                    measurement is what keeps those rows apart (G5). */}
+                {m.needsChannelLabel && (
+                  <span className="vp-role-member-chan"> · {m.channelLabel}</span>
+                )}
+              </span>
               <span className="vp-muted">{memberValue(m.value, m.unit, m.isSoc)}</span>
             </span>
             {m.primary && !m.isSoc && (
@@ -570,7 +582,7 @@ function RoleBoxCard({
                 disabled={busy}
                 onClick={() => onAssign(c.entityId, c.channel)}
               >
-                {c.entityLabel} · {c.channel}
+                {c.entityLabel} · {c.channelLabel}
                 {c.currentRole && (
                   <span className="vp-muted"> ({ROLE_LABELS[c.currentRole]})</span>
                 )}

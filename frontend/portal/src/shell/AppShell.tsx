@@ -202,6 +202,17 @@ export function AppShell({
     <aside className={`vp-sidebar ${mobileNav ? 'mobile-open' : ''}`}>
       <div className="brand">
         <img src={logoUrl} alt="VoltPilot EMS" />
+        {/* A slide-over needs a visible way out - the veil tap and the
+            hamburger stay, but neither is discoverable (G10). Phone-only
+            (CSS hides it once the sidebar is permanent). */}
+        <button
+          type="button"
+          className="vp-sidebar-close"
+          aria-label="Menü schließen"
+          onClick={() => setMobileNav(false)}
+        >
+          <Icon name="x" size={22} />
+        </button>
       </div>
       <nav aria-label="Hauptnavigation">
         {showPortfolio && (
@@ -274,7 +285,13 @@ export function AppShell({
             <Icon name={mobileNav ? 'x' : 'menu'} size={22} />
           </button>
           <div className="crumbs">
-            <span className="here">{pageLabel(page, counts.sites)}</span>
+            {/* On an Anlage page the breadcrumb names the ANLAGE, not the menu
+                item ("Hof Lindenberg", not "Meine Anlagen") - that is what the
+                customer is looking at, and it is usually shorter (G1). The
+                full text stays in the title for a truncated phone width. */}
+            <span className="here" title={anlage ? anlage.siteName : undefined}>
+              {anlage ? anlage.siteName : pageLabel(page, counts.sites)}
+            </span>
           </div>
           <div className="spacer" />
 
@@ -334,8 +351,19 @@ export function AppShell({
             <span className="vp-avatar" title={user.name}>
               {initials}
             </span>
-            <Button variant="ghost" size="sm" onClick={logout}>
-              Abmelden
+            {/* Icon + word on wider screens, icon-only on a phone so the
+                breadcrumb keeps its room (G1). The aria-label keeps it
+                accessible either way. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="vp-logout-btn"
+              onClick={logout}
+              aria-label="Abmelden"
+              title="Abmelden"
+              iconLeft={<Icon name="log-out" size={18} />}
+            >
+              <span className="vp-logout-label">Abmelden</span>
             </Button>
           </div>
         </header>

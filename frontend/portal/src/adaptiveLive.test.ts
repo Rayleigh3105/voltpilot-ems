@@ -5,6 +5,7 @@ import {
   deriveTiles,
   hasTopology,
   profileChip,
+  liveState,
 } from './adaptiveLive';
 import type { FlowNode } from './topology';
 
@@ -132,5 +133,45 @@ describe('profileChip', () => {
     expect(profileChip('arbitrage').tone).toBe('arb');
     expect(profileChip('peak').label).toContain('Peak');
     expect(profileChip('private').tone).toBe('priv');
+  });
+});
+
+
+// G3: the live surface used to contradict itself - a green "Stand vor 7 Sek."
+// chip and a full Verlauf chart next to "Ihre Anlage meldet gerade keine
+// aktuellen Daten" and grey "wartet auf Daten" tiles. Two independent sources
+// (the Anlage's v1 telemetry vs. the per-entity v2 health) were each speaking
+// for the whole page. `liveState` is the ONE truth both now read.
+describe('liveState - the ONE freshness truth (G3)', () => {
+  it('is live as soon as any entity delivers', () => {
+    expect(liveState({ entityFresh: true, siteFresh: false })).toBe('live');
+    expect(liveState({ entityFresh: true, siteFresh: null })).toBe('live');
+  });
+
+  it('is site-only when the Anlage reports but the entities do not', () => {
+    expect(liveState({ entityFresh: false, siteFresh: true })).toBe('site-only');
+  });
+
+  it('is stale only when NEITHER source is current', () => {
+    expect(liveState({ entityFresh: false, siteFresh: false })).toBe('stale');
+    expect(liveState({ entityFresh: false, siteFresh: null })).toBe('stale');
+    expect(liveState({ entityFresh: false, siteFresh: undefined })).toBe('stale');
+  });
+});
+
+describe('composeAdaptiveSentence - never contradicts the chart below it', () => {
+  it('site-only says what IS there instead of claiming an outage', () => {
+    const s = composeAdaptiveSentence(privatTopo(), 'site-only');
+    expect(s.live).toBe(true);
+    expect(s.text).not.toContain('keine aktuellen Daten');
+    expect(s.text).toContain('aktuelle Messwerte');
+    expect(s.text).toContain('Verlauf');
+  });
+
+  it('keeps the stale wording when nothing is current', () => {
+    expect(composeAdaptiveSentence(privatTopo(), 'stale').live).toBe(false);
+    // the boolean form stays accepted (older callers)
+    expect(composeAdaptiveSentence(privatTopo(), false).live).toBe(false);
+    expect(composeAdaptiveSentence(privatTopo(), true).live).toBe(true);
   });
 });

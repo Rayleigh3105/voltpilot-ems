@@ -84,6 +84,8 @@ export function AdaptiveEnergyFlow({
           const meta = ROLE_META[v.role];
           return (
             <g key={`node-${v.key}`}>
+              {/* The full name always stays reachable, whatever the wrap did. */}
+              <title>{v.title}</title>
               <circle
                 cx={v.x}
                 cy={v.y}
@@ -94,33 +96,54 @@ export function AdaptiveEnergyFlow({
               />
               <Icon
                 name={v.icon}
-                size={15}
-                x={v.x - 7.5}
-                y={v.y - L.nodeR * 0.7}
+                size={16}
+                x={v.x - 8}
+                y={v.y - L.nodeR * 0.62}
                 style={{ color: meta.color }}
               />
+              {/* Only the VALUE stays inside the circle - it always fits. The
+                  name sits below, wrapped, so it is never clipped (G2). */}
               <text
                 x={v.x}
-                y={v.y + L.nodeR * 0.06}
+                y={v.y + L.nodeR * 0.4}
                 textAnchor="middle"
                 fontWeight={700}
-                fontSize={L.lblF}
-                fill="var(--vp-flow-ink)"
-                fontFamily="Inter, sans-serif"
-              >
-                {v.label}
-              </text>
-              <text
-                x={v.x}
-                y={v.y + L.nodeR * 0.56}
-                textAnchor="middle"
-                fontWeight={600}
                 fontSize={L.valF}
                 fill={meta.color}
                 fontFamily="Inter, sans-serif"
               >
                 {v.value}
               </text>
+              {v.labelLines.map((line, li) => (
+                <text
+                  key={li}
+                  x={v.x}
+                  y={v.y + L.nodeR + L.lblDy + li * L.lblLh}
+                  textAnchor="middle"
+                  fontWeight={li === 0 ? 700 : 600}
+                  fontSize={L.lblF}
+                  fill="var(--vp-flow-ink)"
+                  fontFamily="Inter, sans-serif"
+                >
+                  {line}
+                </text>
+              ))}
+              {/* The role word gets its OWN line in the role colour - appended
+                  to the name it would be eaten by the wrap, and two circles of
+                  the same device would read alike again (G2). */}
+              {v.roleTag && (
+                <text
+                  x={v.x}
+                  y={v.y + L.nodeR + L.lblDy + v.labelLines.length * L.lblLh}
+                  textAnchor="middle"
+                  fontWeight={700}
+                  fontSize={L.lblF - 1}
+                  fill={meta.color}
+                  fontFamily="Inter, sans-serif"
+                >
+                  {v.roleTag}
+                </text>
+              )}
             </g>
           );
         })}

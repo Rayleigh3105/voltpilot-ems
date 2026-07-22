@@ -204,15 +204,22 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
       {head}
 
       <div className="vp-portfolio-kpis">
+        {/* Two quantities, two labelled values - never "kWh · kW" in one
+            string, whose separator orphans on the wrap (G8). */}
         <KpiCard
           category="battery"
           icon={<Icon name="battery" size={20} />}
-          value={
-            kpis.storageKwh == null
-              ? '-'
-              : `${fmtNum(kpis.storageKwh, 'kWh', 0)} · ${fmtNum(kpis.storageKw, 'kW', 0)}`
+          value={kpis.storageKwh == null ? '-' : fmtNum(kpis.storageKwh, 'kWh', 0)}
+          label={
+            <>
+              Speicher gesamt
+              {kpis.storageKw != null && (
+                <span className="vp-kpi-second">
+                  {fmtNum(kpis.storageKw, 'kW', 0)} Ladeleistung
+                </span>
+              )}
+            </>
           }
-          label="Speicher gesamt"
         />
         <KpiCard
           category="dynamic"

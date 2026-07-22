@@ -135,15 +135,34 @@ describe('peakBand - the render-ready view', () => {
     expect(view.note).toBe('Aktueller Live-Wert liegt gerade nicht vor.');
   });
 
-  it('no target → no limit marker, but the live mean still fills the bar', () => {
+  // G7: a bar only means something against a reference. Without a Ziel there
+  // is neither a marker nor a scale, so NO bar is built - the customer gets
+  // the number plus the honest "VoltPilot richtet das Ziel ein" note instead
+  // of a fill that cannot be read.
+  it('no target → no bar at all, plus the honest Ziel note', () => {
     const view = peakBand({
       current: { kw: 142, fresh: true, count: 5 },
       targetKw: null,
       peak: PEAK,
     });
     expect(view.targetLabel).toBeNull();
+    expect(view.hasTarget).toBe(false);
     expect(view.limitPct).toBeNull();
+    expect(view.fillPct).toBeNull();
+    expect(view.scaleMaxLabel).toBeNull();
+    expect(view.note).toContain('von VoltPilot eingerichtet');
+  });
+
+  it('with a target the bar carries a marker AND a readable scale', () => {
+    const view = peakBand({
+      current: { kw: 142, fresh: true, count: 5 },
+      targetKw: 180,
+      peak: PEAK,
+    });
+    expect(view.hasTarget).toBe(true);
     expect(view.fillPct).not.toBeNull();
+    expect(view.limitPct).not.toBeNull();
+    expect(view.scaleMaxLabel).not.toBeNull();
   });
 
   it('period not measured yet → no metrics + the honest period note', () => {

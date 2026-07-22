@@ -124,8 +124,12 @@ describe('AppShell Anlage nav (M1: trio + context + mode group + bottom bar)', (
   });
 
   it('shows a static Anlage label for a single-Anlage customer', () => {
-    renderShell();
-    expect(screen.getByText('Hof Lindenberg')).toBeInTheDocument();
+    const { container } = renderShell();
+    // The Anlage name now appears twice on purpose: the sidebar context label
+    // AND the topbar breadcrumb (G1 - the breadcrumb names the Anlage, not the
+    // menu item, and no longer clips to "Meine Anla…" on a phone).
+    expect(container.querySelector('.vp-anlagenav-label .t')?.textContent).toBe('Hof Lindenberg');
+    expect(container.querySelector('.vp-topbar .here')?.textContent).toBe('Hof Lindenberg');
     expect(screen.queryByLabelText('Anlage wählen')).toBeNull();
   });
 

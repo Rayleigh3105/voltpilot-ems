@@ -38,6 +38,7 @@ import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
 import { useAdaptiveLive } from '../useAdaptiveLive';
+import { liveState } from '../adaptiveLive';
 import { moneyLayout } from '../moneyEmphasis';
 import { leadArtifact, leadBlock } from '../leadSlot';
 import { useAnlageSurface } from '../useAnlageSurface';
@@ -849,7 +850,18 @@ export function AnlageSeite({
                           {adaptiveLive.topology ? (
                             <AdaptiveEnergyFlow
                               topology={adaptiveLive.topology}
-                              stale={!adaptiveLive.topology.entities.some((e) => e.health === 'ok')}
+                              // ONE freshness truth (G3): grey out only when
+                              // NEITHER the entities nor the Anlage's own
+                              // telemetry are current - the status sentence
+                              // above reads exactly the same signal.
+                              stale={
+                                liveState({
+                                  entityFresh: adaptiveLive.topology.entities.some(
+                                    (e) => e.health === 'ok',
+                                  ),
+                                  siteFresh: fresh,
+                                }) === 'stale'
+                              }
                             />
                           ) : (
                             <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
@@ -1046,7 +1058,14 @@ export function AnlageSeite({
                   {adaptiveLive.adaptive && adaptiveLive.topology ? (
                     <AdaptiveEnergyFlow
                       topology={adaptiveLive.topology}
-                      stale={!adaptiveLive.topology.entities.some((e) => e.health === 'ok')}
+                      stale={
+                        liveState({
+                          entityFresh: adaptiveLive.topology.entities.some(
+                            (e) => e.health === 'ok',
+                          ),
+                          siteFresh: fresh,
+                        }) === 'stale'
+                      }
                     />
                   ) : (
                     <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />

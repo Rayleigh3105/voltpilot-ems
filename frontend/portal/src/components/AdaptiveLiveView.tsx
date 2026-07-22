@@ -3,6 +3,7 @@ import type { SiteTopology, SiteUsageProfile } from '../api';
 import {
   composeAdaptiveSentence,
   deriveTiles,
+  liveState,
   profileChip,
   type AdaptiveTile,
 } from '../adaptiveLive';
@@ -22,13 +23,23 @@ import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 export function AdaptiveLiveView({
   topology,
   profile,
+  siteFresh = null,
 }: {
   topology: SiteTopology;
   profile: SiteUsageProfile | null;
+  /**
+   * The ANLAGE's own telemetry freshness (the "Stand vor X" chip / the Verlauf
+   * chart). Passed in so this view can never claim an outage while the chart
+   * right below shows current curves (G3). null = unknown (older caller).
+   */
+  siteFresh?: boolean | null;
 }) {
-  // Freshness from the topology entities' liveness (5-min window server-side).
-  const fresh = topology.entities.some((e) => e.health === 'ok');
-  const sentence = composeAdaptiveSentence(topology, fresh);
+  // ONE freshness truth: per-entity health first, the Anlage's telemetry as the
+  // honest middle ground, "stale" only when neither source is current.
+  const entityFresh = topology.entities.some((e) => e.health === 'ok');
+  const state = liveState({ entityFresh, siteFresh });
+  const fresh = state !== 'stale';
+  const sentence = composeAdaptiveSentence(topology, state);
   const tiles = deriveTiles(topology);
 
   const usageProfile: UsageProfile = isUsageProfile(profile?.usageProfile)

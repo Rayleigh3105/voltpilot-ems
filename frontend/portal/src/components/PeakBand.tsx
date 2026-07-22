@@ -30,29 +30,43 @@ export function PeakBand({
           </span>
         </div>
 
-        <div className="vp-peakband-bar-wrap">
-          <div
-            className={`vp-peakband-bar${view.breach ? ' breach' : ''}`}
-            role="img"
-            aria-label={
-              view.targetLabel
-                ? `Aktueller Netzbezug ${view.currentLabel}, ${view.targetLabel}`
-                : `Aktueller Netzbezug ${view.currentLabel}`
-            }
-          >
-            {view.fillPct != null && (
-              <div className="vp-peakband-fill" style={{ width: `${view.fillPct}%` }} />
-            )}
-            {view.limitPct != null && (
-              <>
-                <div className="vp-peakband-limit" style={{ left: `${view.limitPct}%` }} />
-                <div className="vp-peakband-limit-lbl" style={{ left: `${view.limitPct}%` }}>
-                  {view.targetLabel}
-                </div>
-              </>
-            )}
+        {/* No Ziel = no reference = no bar (G7). A filled bar without a marker
+            and without a scale cannot be read; the honest note below says what
+            is missing instead of drawing a meaningless fill. */}
+        {view.hasTarget && (
+          <div className="vp-peakband-bar-wrap">
+            <div
+              className={`vp-peakband-bar${view.breach ? ' breach' : ''}`}
+              role="img"
+              aria-label={
+                view.targetLabel
+                  ? `Aktueller Netzbezug ${view.currentLabel}, ${view.targetLabel}`
+                  : `Aktueller Netzbezug ${view.currentLabel}`
+              }
+            >
+              {view.fillPct != null && (
+                <div className="vp-peakband-fill" style={{ width: `${view.fillPct}%` }} />
+              )}
+              {view.limitPct != null && (
+                <>
+                  <div className="vp-peakband-limit" style={{ left: `${view.limitPct}%` }} />
+                  <div className="vp-peakband-limit-lbl" style={{ left: `${view.limitPct}%` }}>
+                    {view.targetLabel}
+                  </div>
+                </>
+              )}
+            </div>
+            {/* The scale: without it the fill length has no magnitude. */}
+            <div className="vp-peakband-scale" aria-hidden="true">
+              <span>0 kW</span>
+              <span className="vp-peakband-scale-legend">
+                <span className="vp-peakband-key fill" /> aktuell
+                <span className="vp-peakband-key limit" /> Ziel
+              </span>
+              <span>{view.scaleMaxLabel}</span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {view.metrics.length > 0 && (

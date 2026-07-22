@@ -142,7 +142,7 @@ export function LiveSection({ site }: { site: Site }) {
         // entity tiles, module strip. The Verlauf chart stays below when
         // telemetry is available.
         <>
-          <AdaptiveLiveView topology={topology} profile={profile} />
+          <AdaptiveLiveView topology={topology} profile={profile} siteFresh={telemetryFresh} />
           <PvBreakdownLine sources={sources} />
           {telemetry.length > 0 && (
             <VerlaufBlock

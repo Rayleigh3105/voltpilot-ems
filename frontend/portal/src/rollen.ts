@@ -16,6 +16,7 @@ import type {
   TopologyEntity,
   TopologyRoleAssignment,
 } from './api';
+import { channelLabel } from './channels';
 import { defaultRole } from './topology';
 
 export type Role = 'pv' | 'storage' | 'grid' | 'consumer';
@@ -43,6 +44,16 @@ export interface RoleMember {
   value: number | null;
   /** State-of-charge (percent, not kW) - rendered specially. */
   isSoc: boolean;
+  /** The channel's plain-German label ("Ladestand", "Batterieleistung", …). */
+  channelLabel: string;
+  /**
+   * True when the SAME device contributes several measurements to this role -
+   * then the channel label is what tells the two rows apart (a hybrid inverter
+   * feeds Speicher with both `soc_pct` and `battery_power_kw`, which otherwise
+   * rendered as two identical "Batteriespeicher (Hybrid-Wechselrichter)" rows).
+   * False when the device name alone is unambiguous - the box stays calm.
+   */
+  needsChannelLabel: boolean;
 }
 
 /** One "Rollen & Zuordnung" box (the AE0 right column, one per role). */
@@ -88,10 +99,18 @@ export function roleBoxes(topology: SiteTopology): RoleBox[] {
           primary: cap.primary,
           value: cap.value,
           isSoc: cap.channel === SOC_CHANNEL,
+          channelLabel: channelLabel(cap.channel),
+          // Resolved below, once the whole box is known.
+          needsChannelLabel: false,
         });
       }
     }
     if (members.length === 0) continue;
+    // A device that appears more than once in this role needs its channel
+    // label to stay distinguishable (G5); a single-row device does not.
+    const perEntity = new Map<string, number>();
+    for (const m of members) perEntity.set(m.entityId, (perEntity.get(m.entityId) ?? 0) + 1);
+    for (const m of members) m.needsChannelLabel = (perEntity.get(m.entityId) ?? 0) > 1;
     const node = nodeByRole.get(role);
     boxes.push({
       role,
@@ -138,6 +157,8 @@ export interface AssignableCapability {
   entityId: string;
   entityLabel: string;
   channel: string;
+  /** The channel's plain-German label (never the raw identifier in copy). */
+  channelLabel: string;
   currentRole: Role | null;
 }
 
@@ -158,6 +179,7 @@ export function assignableCapabilities(
         entityId: e.id,
         entityLabel: entityLabel(e),
         channel: cap.channel,
+        channelLabel: channelLabel(cap.channel),
         currentRole:
           cap.role != null && ROLE_ORDER.includes(cap.role as Role) ? (cap.role as Role) : null,
       });
