@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { anlageSidebar, moreSheetItems } from './anlageNav';
 import { healthBadge } from './health';
 import { cockpitStack, projectionActive } from './cockpit';
+import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
@@ -91,6 +92,31 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
       expect(s.deepViews).toEqual([]);
       // Auch der Renderer bekommt nichts zu stapeln.
       expect(cockpitStack(s.cockpitBlocks, null)).toEqual([]);
+      // Portal v3 M2: und das Live-Cockpit bekommt keine einzige Kachel -
+      // selbst mit vollständigen Live-, Tages- und Wetterdaten.
+      expect(
+        cockpitWidgets({
+          blocks: s.cockpitBlocks,
+          modes: s.modes,
+          lead: null,
+          channels: s.base.telemetryChannels,
+          snapshot: { pvKw: 4, loadKw: 2, gridKw: 1, battKw: 1, socPct: 55, socAt: null },
+          dayTotals: {
+            consumptionKwh: 10,
+            pvGenerationKwh: 20,
+            gridImportKwh: 1,
+            gridExportKwh: 2,
+            gridCostEur: 0.5,
+            batterySavingsEur: 0.4,
+            autarkiePct: 70,
+            eigenverbrauchPct: 60,
+          },
+          streams: s.moneyStreams,
+          range: 'month',
+          now: new Date('2026-07-22T12:00:00+02:00'),
+          weather: { nextHourTempC: 21, why: 'Sonnig bis 18 Uhr.' },
+        }),
+      ).toEqual([]);
     }
   });
 

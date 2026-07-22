@@ -79,7 +79,27 @@ function nodeValue(key: NodeKey, snap: LiveSnapshot): string {
   return `${fmtNum(Math.abs(v), '', 1)} kW`;
 }
 
-export function EnergyFlow({ snapshot, stale = false }: { snapshot: LiveSnapshot; stale?: boolean }) {
+/**
+ * Portal v3 · M2: the ONLY change to this component is an optional SIZE.
+ * `'compact'` (the default) is byte-for-byte today's behaviour — the fleet card
+ * and the Live view stay identical. `'hero'` merely raises the WIDE layout's
+ * height cap so the cockpit hero can host the very same diagram larger; no
+ * geometry, no animation, no "—" behaviour changes.
+ */
+export type EnergyFlowSize = 'compact' | 'hero';
+
+/** The WIDE layout's height cap per size (the NARROW phone cross always fills). */
+const WIDE_HEIGHT_CAP: Record<EnergyFlowSize, number> = { compact: 264, hero: 420 };
+
+export function EnergyFlow({
+  snapshot,
+  stale = false,
+  size = 'compact',
+}: {
+  snapshot: LiveSnapshot;
+  stale?: boolean;
+  size?: EnergyFlowSize;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(400);
 
@@ -98,7 +118,9 @@ export function EnergyFlow({ snapshot, stale = false }: { snapshot: LiveSnapshot
   // Fill the width exactly (no letterbox) for the phone cross; cap the landscape
   // diamond's height so a wide card doesn't blow it up.
   const rawHeight = width * (L.H / L.W);
-  const height = Math.round(L === NARROW ? rawHeight : Math.min(rawHeight, 264));
+  const height = Math.round(
+    L === NARROW ? rawHeight : Math.min(rawHeight, WIDE_HEIGHT_CAP[size]),
+  );
 
   const flow = flowState(snapshot);
   const spokeClass = (s: Spoke): string =>

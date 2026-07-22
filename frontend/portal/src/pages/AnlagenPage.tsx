@@ -41,21 +41,12 @@ import { liveState } from '../adaptiveLive';
 import { moneyLayout } from '../moneyEmphasis';
 import { leadArtifact, leadBlock } from '../leadSlot';
 import { useAnlageSurface } from '../useAnlageSurface';
-import {
-  automationRows,
-  cockpitStack,
-  eigenverbrauchBlock,
-  handelBlock,
-  hasBlock,
-  projectionActive,
-} from '../cockpit';
-import {
-  CockpitBlock,
-  EigenverbrauchBlockBody,
-  GeraeteAutomatikBody,
-  HandelBlockBody,
-  ToolboxPointer,
-} from '../components/CockpitBlocks';
+import { hasBlock, projectionActive } from '../cockpit';
+import { cockpitHero, cockpitWidgets, type WidgetDef } from '../cockpitWidgets';
+import { ToolboxPointer } from '../components/CockpitBlocks';
+import { CockpitHero } from '../components/CockpitHero';
+import { WidgetGrid } from '../components/WidgetGrid';
+import { WidgetModal } from '../components/WidgetModal';
 import { ErloesKomposition } from '../components/ErloesKomposition';
 import { AnlageSetup } from '../components/AnlageSetup';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
@@ -419,8 +410,13 @@ export function AnlageSeite({
   // the cockpit leads with the Peak-Band - see the gated effect below).
   const [peakSamples, setPeakSamples] = useState<TelemetryPoint[]>([]);
   // M3: today's Historie totals feed the Eigenverbrauchs-Block (Autarkie /
-  // PV-Nutzung); fetched only when that block is part of the projection.
+  // PV-Nutzung); since v3 M2 they ALSO feed the cockpit hero's rings and the
+  // Haus/Netz widgets, so the projection path fetches them once for all of it.
   const [dayTotals, setDayTotals] = useState<HistoryTotals | null>(null);
+  // v3 M2: the Speicher widget's read-only "Umgang mit dem Speicher" row.
+  const [speicherschonung, setSpeicherschonung] = useState<string | null>(null);
+  // v3 M2: which widget's modal is open (null = none).
+  const [openWidget, setOpenWidget] = useState<WidgetDef | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
@@ -600,11 +596,12 @@ export function AnlageSeite({
   // The N-ary lead rule (peak → money → flow) replaces the binary U4 switch on
   // the projected path; the v1 path keeps the AE7 emphasis lens.
   const lead = projection ? leadBlock(blocks) : null;
-  const stack = projection ? cockpitStack(blocks, lead) : [];
   const isPeakLead = projection
     ? hasBlock(blocks, 'peak-band')
     : leadArtifact(emphasis?.peak) === 'peakband';
-  const hasEvBlock = projection && hasBlock(blocks, 'eigenverbrauch');
+  // v3 M2: the day totals now feed the hero rings on EVERY projected cockpit,
+  // not just the Eigenverbrauchs-Block - so the gate is the projection itself.
+  const needsDayTotals = projection;
 
   // M5 (#533): die Ausprägung "Neu / leer" — das Cockpit IST der
   // Einrichtungspfad. Die Weiche ist bewusst eng (siehe `setupPath.ts`): eine
@@ -652,7 +649,7 @@ export function AnlageSeite({
   // part of the projection, so no other Ausprägung pays for it. A failure leaves
   // the numbers null and the block simply omits those tiles (never a fake 0 %).
   useEffect(() => {
-    if (!hasEvBlock) {
+    if (!needsDayTotals) {
       setDayTotals(null);
       return undefined;
     }
@@ -670,7 +667,29 @@ export function AnlageSeite({
       active = false;
       clearInterval(timer);
     };
-  }, [site.id, hasEvBlock, reloadKey]);
+  }, [site.id, needsDayTotals, reloadKey]);
+
+  // v3 M2: the battery's effective Speicherschonung preset, read-only in the
+  // Speicher widget. Fail-soft - without it the row simply does not appear.
+  useEffect(() => {
+    if (!projection) {
+      setSpeicherschonung(null);
+      return;
+    }
+    let active = true;
+    api.siteAssets(site.id).then(
+      (assets) => {
+        if (!active) return;
+        setSpeicherschonung(
+          assets.find((a) => a.speicherschonung != null)?.speicherschonung ?? null,
+        );
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, projection, reloadKey]);
 
   // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
   // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
@@ -708,6 +727,51 @@ export function AnlageSeite({
   const currentMonthIso = `${now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 7)}-01`;
   const selectedMonth = at ?? currentMonthIso;
   const series = siteEarnings?.series ?? [];
+
+  // v3 M2 · das Live-Cockpit: Hero (bestehendes Energiefluss-Diagramm groß +
+  // Ringe + Geld + Fahrplan-Zeile) und das Widget-Raster. Beide Ableitungen
+  // sind rein (`cockpitWidgets.ts`); hier wird nur gefüttert und gerendert.
+  const heroView = cockpitHero({
+    dayTotals,
+    money: siteEarnings,
+    range,
+    at: atDate,
+    now,
+    slots: planSlots,
+    slotMinutes: plan?.slotMinutes ?? 15,
+    plantKind: site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+  });
+  const widgets = projection
+    ? cockpitWidgets({
+        blocks,
+        modes,
+        lead,
+        channels: surface?.base.telemetryChannels ?? [],
+        snapshot: ovSite ? siteSnapshot(ovSite.live) : null,
+        dayTotals,
+        money: siteEarnings,
+        streams: surface?.moneyStreams ?? [],
+        range,
+        at: atDate,
+        now,
+        slots: planSlots,
+        slotMinutes: plan?.slotMinutes ?? 15,
+        plantKind:
+          site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+        peak: peakView,
+        speicherschonung,
+        weather: { nextHourTempC, why: weatherWhyText },
+      })
+    : [];
+  // ONE freshness truth (G3): the hero greys out only when NEITHER the entities
+  // nor the Anlage's own telemetry are current - the head sentence reads the
+  // very same signal. It never fabricates a 0; the last good values stay.
+  const heroStale = adaptiveLive.topology
+    ? liveState({
+        entityFresh: adaptiveLive.topology.entities.some((e) => e.health === 'ok'),
+        siteFresh: fresh,
+      }) === 'stale'
+    : !fresh;
 
   const switchRange = (r: EarningsRange) => {
     setRange(r);
@@ -785,159 +849,82 @@ export function AnlageSeite({
           onStay={setSetupPinned}
         />
       ) : projection ? (
-        /* ===== M3 · Das Cockpit als Modul-Stapel (die Projektion) =========
-           Deterministische Reihenfolge nach report §1.3; jeder Block trägt
-           sein "von"-Tag und seine Drill-ins. Was kein Modus beisteuert,
-           erscheint nicht - auch nicht als leere Karte (§3). */
+        /* ===== v3 M2 · Das Live-Cockpit ==================================
+           Der Hero trägt das BESTEHENDE Energiefluss-Diagramm groß und
+           zentral (kein neues "Energie-Rad", BUILD.md §2) mit Autarkie/
+           Eigenverbrauch als Ringen, dem Geld des Zeitraums und der einen
+           Fahrplan-Zeile. Darunter das Widget-Raster: eine kompakte Kachel
+           je Block/Modus, die WIRKLICH etwas beisteuert - ein Tipp öffnet
+           ihr Modal (Jetzt | Verlauf). Was kein Modus und keine Quelle
+           beisteuert, erscheint nicht - auch nicht als leere Karte. */
         <>
-          {/* Die Zeitraum-Tabs regieren die Geld-Blöcke; ohne Geld-Modus
+          {/* Die Zeitraum-Tabs regieren die Geld-Zahlen; ohne Geld-Modus
               gibt es keinen Zeitraum zu wählen. */}
           {hasBlock(blocks, 'erloes-komposition') && (
             <PeriodTabs range={range} onRange={switchRange} />
           )}
 
-          <div className="vp-stack">
-            {stack.map((b) => {
-              switch (b.id) {
-                case 'peak-band':
-                  return peakView ? (
-                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
-                      <PeakBand view={peakView} peak={siteEarnings?.peakShaving ?? null} />
-                    </CockpitBlock>
-                  ) : null;
+          {ovSite == null ? (
+            <Skeleton height={320} radius="var(--vp-radius-lg)" />
+          ) : (
+            <CockpitHero
+              view={heroView}
+              topology={adaptiveLive.topology}
+              snapshot={siteSnapshot(ovSite.live)}
+              stale={heroStale}
+              freshnessNote={ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : null}
+              whyLine={fresh ? weatherWhyText : null}
+              onOpenSub={onOpenSub}
+              footer={controlView ? <ControlStrip view={controlView} /> : null}
+            />
+          )}
 
-                case 'erloes-komposition':
-                  // M4 bringt seinen eigenen Kopf (Titel, "von"-Tag, Drill-in
-                  // in die ERLÖS-Historie) mit - hier wird er nur PLATZIERT.
-                  return (
-                    <Card
-                      key={b.id}
-                      padding="lg"
-                      radius="lg"
-                      className={`vp-block${b.lead ? ' vp-block-lead' : ''}`}
-                      style={{ minWidth: 0 }}
-                    >
-                      <ErloesKomposition
-                        streams={surface?.moneyStreams ?? []}
-                        money={siteEarnings}
-                        range={range}
-                        at={atDate}
-                        now={now}
-                        onOpenErloesHistorie={() => onOpenSub('historie')}
-                      />
-                    </Card>
-                  );
+          <WidgetGrid widgets={widgets} onOpen={setOpenWidget} />
 
-                case 'energiefluss':
-                  return (
-                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
-                      {ovSite == null ? (
-                        <Skeleton height={240} radius="var(--vp-radius-md)" />
-                      ) : (
-                        <>
-                          {adaptiveLive.topology ? (
-                            <AdaptiveEnergyFlow
-                              topology={adaptiveLive.topology}
-                              // ONE freshness truth (G3): grey out only when
-                              // NEITHER the entities nor the Anlage's own
-                              // telemetry are current - the status sentence
-                              // above reads exactly the same signal.
-                              stale={
-                                liveState({
-                                  entityFresh: adaptiveLive.topology.entities.some(
-                                    (e) => e.health === 'ok',
-                                  ),
-                                  siteFresh: fresh,
-                                }) === 'stale'
-                              }
-                            />
-                          ) : (
-                            <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
-                          )}
-                          {weatherWhyText && fresh && (
-                            <p className="vp-live-why">
-                              <Icon name="sun" size={14} /> {weatherWhyText}
-                            </p>
-                          )}
-                          <p className="vp-note" style={{ margin: 'var(--vp-space-2) 0 0' }}>
-                            {ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : ''}
-                          </p>
-                          {controlView && <ControlStrip view={controlView} />}
-                        </>
-                      )}
-                    </CockpitBlock>
-                  );
-
-                case 'handel':
-                  return (
-                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
-                      <HandelBlockBody
-                        view={handelBlock({
-                          money: siteEarnings,
-                          slots: planSlots,
-                          now,
-                          slotMinutes: plan?.slotMinutes ?? 15,
-                          periodLabel: period,
-                        })}
-                      />
-                      {/* Der Fahrplan IST die Handels-Erzählung (§3). */}
-                      <div style={{ marginTop: 'var(--vp-space-3)' }}>
-                        <FahrplanBand
-                          plan={plan}
-                          plantKind={site.plantKind}
-                          now={now}
-                          loading={planLoading && plan == null}
-                          failed={planFailed}
-                          onOpen={() => onOpenSub('fahrplan')}
-                        />
-                      </div>
-                    </CockpitBlock>
-                  );
-
-                case 'eigenverbrauch':
-                  return (
-                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
-                      <EigenverbrauchBlockBody
-                        view={eigenverbrauchBlock({
-                          autarkiePct: dayTotals?.autarkiePct,
-                          eigenverbrauchPct: dayTotals?.eigenverbrauchPct,
-                          gridImportKwh: dayTotals?.gridImportKwh,
-                          slots: planSlots,
-                          now,
-                          slotMinutes: plan?.slotMinutes ?? 15,
-                        })}
-                      />
-                    </CockpitBlock>
-                  );
-
-                case 'geraete-automatik':
-                  return (
-                    <CockpitBlock key={b.id} view={b} onOpenSub={onOpenSub}>
-                      <GeraeteAutomatikBody rows={automationRows(modes)} />
-                    </CockpitBlock>
-                  );
-
-                default:
-                  return null;
-              }
-            })}
-          </div>
-
-          {/* Die ruhige Toolbox-Zeile + "Mehr" (Wetter) - der Abschluss des
-              Stapels (§1.3). Kein Werben für einen bestimmten Modus. */}
+          {/* Die ruhige Toolbox-Zeile - der Abschluss (§1.3). Kein Werben
+              für einen bestimmten Modus. Das Wetter ist jetzt eine Kachel. */}
           <div className="vp-stack-foot">
             <ToolboxPointer onOpen={() => onOpenSub('steuerung')} />
-            <button
-              type="button"
-              className="vp-block-drill"
-              onClick={() => onOpenSub('wetter')}
-            >
-              <Icon name="sun" size={14} />
-              {nextHourTempC != null
-                ? `Wetter · nächste Stunde ${fmtNum(nextHourTempC, '°C')}`
-                : 'Wetter am Standort'}
-            </button>
           </div>
+
+          {openWidget && (
+            <WidgetModal
+              widget={openWidget}
+              onClose={() => setOpenWidget(null)}
+              onOpenSub={onOpenSub}
+              jetztExtra={
+                /* Die migrierten Block-Körper leben als Modal-Körper weiter -
+                   dieselbe Ableitung, nur ein anderer Ort. */
+                openWidget.id === 'lastspitze' && peakView ? (
+                  <PeakBand view={peakView} peak={siteEarnings?.peakShaving ?? null} />
+                ) : openWidget.id === 'erloes' ? (
+                  <ErloesKomposition
+                    streams={surface?.moneyStreams ?? []}
+                    money={siteEarnings}
+                    range={range}
+                    at={atDate}
+                    now={now}
+                    onOpenErloesHistorie={() => {
+                      setOpenWidget(null);
+                      onOpenSub('historie');
+                    }}
+                  />
+                ) : openWidget.id === 'handel' ? (
+                  <FahrplanBand
+                    plan={plan}
+                    plantKind={site.plantKind}
+                    now={now}
+                    loading={planLoading && plan == null}
+                    failed={planFailed}
+                    onOpen={() => {
+                      setOpenWidget(null);
+                      onOpenSub('fahrplan');
+                    }}
+                  />
+                ) : null
+              }
+            />
+          )}
         </>
       ) : (
         /* ===== v1 (un-migrated): byte-identical to today ================== */
