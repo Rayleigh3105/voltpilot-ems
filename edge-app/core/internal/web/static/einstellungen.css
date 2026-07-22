@@ -32,9 +32,13 @@
 .set-flash { margin-top: 14px; margin-bottom: 0; }
 
 /* ---------------- Expander ---------------- */
+/* The disclosure row was 2px-padded and 24px tall - wide, but a thin band to
+   hit with a thumb. 44px min-height + real padding makes it a comfortable
+   target; the type/weight/colour of the row are unchanged. */
 .set-expander {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
-  width: 100%; padding: 2px; border: 0; background: transparent; cursor: pointer;
+  width: 100%; min-height: 44px; padding: 8px 2px; border: 0; background: transparent;
+  cursor: pointer; border-radius: 10px;
   text-align: left; color: var(--ink); font-family: inherit;
 }
 .set-expander-text { display: block; min-width: 0; }

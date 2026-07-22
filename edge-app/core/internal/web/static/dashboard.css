@@ -516,6 +516,14 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 @media (max-width: 400px) {
   .version { display: none; }
   .pill { padding: 7px 10px; font-size: 12px; }
+
+  /* The ADAPTIVE tiles carry arbitrary entity names ("Batteriespeicher
+     (Hybrid-Wechselrichter)"), which wrap to three lines in a 167px card and
+     leave the odd tile orphaned next to an empty half-row - so on a phone they
+     go single-column. Deliberately scoped to #kpisAdaptive: the v1 tiles have
+     short fixed labels and stay two-up, which keeps that page short. */
+  #kpisAdaptive { grid-template-columns: 1fr; }
+  #kpisAdaptive .kpi-label { white-space: normal; }
 }
 
 /* Very narrow (≤340px): KPIs go single-column so nothing is squeezed. */
