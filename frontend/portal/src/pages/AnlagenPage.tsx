@@ -124,6 +124,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
       sub={route.sub}
       isAdmin={isAdmin}
       onBack={() => onNavigate(anlageRoute(site.id))}
+      onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
       onReload={props.onReload}
     />
   ) : (
@@ -333,6 +334,7 @@ function AnlagenSubPage({
   sub,
   isAdmin,
   onBack,
+  onOpenSub,
   onReload,
 }: {
   site: Site;
@@ -341,6 +343,7 @@ function AnlagenSubPage({
   sub: AnlagenSub;
   isAdmin: boolean;
   onBack: () => void;
+  onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
 }) {
   const meta = SUB_PAGES[sub];
@@ -363,7 +366,9 @@ function AnlagenSubPage({
       {sub === 'entitaeten' && <EntitaetenSection site={site} isAdmin={isAdmin} />}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
       {sub === 'profile' && <ProfileSection site={site} />}
-      {sub === 'steuerung' && <SteuerungSection site={site} isAdmin={isAdmin} />}
+      {sub === 'steuerung' && (
+        <SteuerungSection site={site} isAdmin={isAdmin} onOpenSub={onOpenSub} />
+      )}
       {sub === 'technik' && (
         <TechnikSection
           site={site}

@@ -1,94 +1,72 @@
 /**
- * Anlage → **Steuerung v3** (M2, OpenProject #530, Epic „Projektion" #527;
- * Spec `data/vp-anlagen-face-k9/report.md` §2.3 + §1.2).
+ * Anlage → **Steuerung** (Portal v3 · M4, spec `docs/portal-v3/M4-steuerung.md`).
  *
- * Die Steuerung ist DIE Schlüsselfläche: sie zeigt die MENGE der aktiven Modi
- * (M0 `activeModes`), was jeder Modus beiträgt und welche Geräte er
- * beansprucht — und sie ist der EINE Ort, an dem jeder weitere Modus zu finden
- * ist. Vier Teile:
+ * Die Fläche beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich
+ * selbst geregelt?" — mit genau ZWEI Kapseln und einer schmalen Schutz-Zeile:
  *
- *  1. **Aktive Modi** — je Modus eine Karte (Zustand · Ergebnis · Beitrag ·
- *     Geräte-Chips · Details/Pausieren). NUR Aktives: das Vermischen von
- *     „läuft" und „wäre möglich" (das alte „Was läuft" mit
- *     `flowModules.ts offeredWhenInactive`) endet hier.
- *  2. **Ko-Optimierung** — ab zwei speicher-beanspruchenden Modi: ein Speicher,
- *     ein gemeinsamer Fahrplan + der SoC-Reservierungs-Stack.
- *  3. **Automationen** — die U3-Mechanik UNVERÄNDERT (geführter Baukasten,
- *     Vorlagen, Profi-Ansicht = derselbe `FlowEditorPage`, per-Knoten-Governance);
- *     nur die Rahmung ändert sich: ein Abschnitt dieser Fläche, kein zweiter Tab.
- *  4. **＋ Modus hinzufügen** — die Werkzeugkiste: jeder Modus für jeden Kunden,
- *     mit ehrlichen Voraussetzungs-Chips und dem BESTEHENDEN Gate (der Server
- *     prüft weiterhin selbst nach — E3b bleibt unangetastet).
+ *  1. **Modus-Profile** — kompakte Zeilen (Statuspunkt · ein Satz mit echten
+ *     Zahlen · Schalter), darunter als Fußzeile der Ko-Optimierungs-Streifen
+ *     mit dem SoC-Reservierungs-Stack. „Profile verwalten →" öffnet M3s Regal.
+ *  2. **Automationen** — je Regel eine Zeile mit ihrem lebenden Zustand und
+ *     EINEM Knopf „＋ Neue Automation", dessen Dialog die drei Wege in dieser
+ *     Reihenfolge anbietet: Vorlage → geführter Baukasten → Editor.
  *
- * Alle Ableitung liegt in den reinen Modulen `surface.ts` (M0) und
- * `steuerungArea.ts`; diese Seite lädt und rendert.
+ * Die frühere Vier-Teilung (Aktive Modi → Ko-Optimierung → Automationen +
+ * Vorlagen → Werkzeugkiste) ist damit aufgelöst; Angebote leben ausschließlich
+ * in M3s Regal, es gibt keine zweite Tür in den Editor mehr.
+ *
+ * Alle Ableitung liegt in den reinen Modulen `surface.ts` (M0), `profiles.ts`
+ * (M3), `steuerungArea.ts` und `flows/templateFilter.ts`; diese Seite lädt und
+ * rendert. Gates bleiben unverändert — der Server prüft bei jeder Aktivierung
+ * selbst nach.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { ApiError, api, type EarningsSite, type EntityStrategy, type Site } from '../api';
+import { ApiError, api, type EarningsSite, type Site } from '../api';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { GuidedRuleBuilder } from '../components/GuidedRuleBuilder';
-import { FlowCanvas } from '../components/flows/FlowCanvas';
-import {
-  CoOptimizationStrip,
-  ModeCard,
-  PartHead,
-  ProtectionsRow,
-  ToolboxCard,
-} from '../components/SteuerungParts';
+import { InfoTip } from '../components/InfoTip';
+import { NeueAutomationDialog } from '../components/NeueAutomationDialog';
+import { CoOptimizationStrip, PartHead } from '../components/SteuerungParts';
 import { EINRICHTUNG_DURCH_VOLTPILOT } from '../moduleSurface';
+import { anlageRoute, hashForRoute, type AnlagenSub } from '../nav';
 import { optimizerApi } from '../optimizerApi';
 import {
   customerFlowApi,
   type FlowNodeGovernance,
   type FlowSummary,
 } from '../flows/flowsApi';
-import { CUSTOMER_TEMPLATES, type CustomerTemplateDef } from '../flows/customerTemplates';
-import { catalogType, lifecycleLabel, type EditorEntity, type FlowDocument } from '../flows/model';
-import { batteryEntity, pilotTemplate, simSummaryLine } from '../flows/templates';
+import type { CustomerTemplateDef } from '../flows/customerTemplates';
+import { catalogType, type EditorEntity, type FlowDocument } from '../flows/model';
 import { flowMode, paletteFilterFor, type SteuerungMode } from '../flows/steuerung';
 import {
-  AKTIVE_MODI_INTRO,
-  KEINE_MODI,
-  TOOLBOX_INTRO,
+  AUTOMATION_CAPSULE_EMPTY,
+  AUTOMATION_CAPSULE_INTRO,
+  AUTOMATION_CAPSULE_TITLE,
+  NEUE_AUTOMATION_LABEL,
+  PROFILE_CAPSULE_EMPTY,
+  PROFILE_CAPSULE_INTRO,
+  PROFILE_CAPSULE_TITLE,
+  PROFILE_MANAGE_LABEL,
+  PROTECTION_INTRO,
+  automationRows,
   coOptimization,
+  profileRows,
+  protectionItems,
   socReservationStack,
-  toolbox,
+  type ProfileRow,
   type ReservationInput,
-  type ToolboxEntry,
 } from '../steuerungArea';
+import { type ProfileState, type SiteProfiles } from '../profiles';
 import { activeModes, type ActiveMode, type SurfaceFlow, type SurfaceSignals } from '../surface';
 import { FlowEditorPage } from './admin/FlowEditorPage';
+import '../components/Profile.css';
 
 const EMPTY_DOC: FlowDocument = {
   schema_version: '1.0', name: '', runtime: 'edge', nodes: [], edges: [], triggers: [],
 };
-
-const NOOP = () => {};
-
-/** A non-interactive graph preview (the canvas is the artifact, shown not hidden). */
-function CanvasPreview({ doc, entities }: { doc: FlowDocument; entities: EditorEntity[] }) {
-  if (doc.nodes.length === 0) return null;
-  return (
-    <div className="vp-flowpreview" aria-hidden="true">
-      <FlowCanvas
-        doc={doc}
-        entities={entities}
-        selection={null}
-        connectFrom={null}
-        errorNodeIds={new Set()}
-        errorEdgeIds={new Set()}
-        onSelectNode={NOOP}
-        onSelectEdge={NOOP}
-        onPortClick={NOOP}
-        onBackground={NOOP}
-      />
-    </div>
-  );
-}
 
 interface Editing {
   flowId: string;
@@ -97,21 +75,29 @@ interface Editing {
   palette: SteuerungMode;
 }
 
-export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmin?: boolean }) {
+export function SteuerungSection({
+  site,
+  isAdmin = false,
+  onOpenSub,
+}: {
+  site: Site;
+  isAdmin?: boolean;
+  onOpenSub?: (sub: AnlagenSub) => void;
+}) {
   const flowApi = useMemo(() => customerFlowApi(site.id), [site.id]);
   const [flows, setFlows] = useState<FlowSummary[] | null>(null);
   const [entities, setEntities] = useState<EditorEntity[]>([]);
   const [governance, setGovernance] = useState<FlowNodeGovernance | null>(null);
   const [signals, setSignals] = useState<SurfaceSignals | null>(null);
   const [earnings, setEarnings] = useState<EarningsSite | null>(null);
-  const [strategies, setStrategies] = useState<Record<string, EntityStrategy[]> | null>(null);
+  const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
   const [reservation, setReservation] = useState<ReservationInput | null>(null);
   const [listState, setListState] = useState<'idle' | 'loading' | 'error'>('loading');
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [guided, setGuided] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
   // The notice strip lives at the TOP of the area while the actions that can
   // fail sit far below it - a message set there read as "nothing happened"
   // (G6). Every setError goes through `fail`, which also brings the strip
@@ -149,16 +135,16 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
       flowApi.governance().catch(() => ({ gatedNodes: [] } as FlowNodeGovernance)),
       api.usageProfile(site.id).catch(() => null),
       api.earnings('month').catch(() => null),
-      api.entityStrategies(site.id).catch(() => null),
+      api.siteProfiles(site.id).catch(() => null),
       optimizerApi.configViaSwitcher(site.id).catch(() => null),
     ])
-      .then(([list, entityList, gov, profile, money, claims, config]) => {
+      .then(([list, entityList, gov, profile, money, shelf, config]) => {
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
         setSignals(profile?.signals ?? null);
         setEarnings(money?.sites.find((s) => s.id === site.id) ?? null);
-        setStrategies(claims);
+        setProfiles(shelf);
         setReservation({
           socMinPct: config?.effective.socMinPct ?? null,
           socMaxPct: config?.effective.socMaxPct ?? null,
@@ -176,7 +162,6 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
     reload();
   }, [reload]);
 
-  const battery = batteryEntity(entities);
   const enabledGatedTypes = useMemo(
     () => (governance?.gatedNodes ?? []).filter((n) => n.enabled).map((n) => n.type),
     [governance],
@@ -213,9 +198,16 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
 
   const co = useMemo(() => coOptimization(modes), [modes]);
   const layers = useMemo(() => socReservationStack(reservation), [reservation]);
-  const toolboxEntries = useMemo(
-    () => toolbox({ modes, entities, enabledGatedTypes }),
-    [modes, entities, enabledGatedTypes],
+  const rows = useMemo(
+    () => profileRows(profiles?.profiles, modes, earnings),
+    [profiles, modes, earnings],
+  );
+  const protections = useMemo(() => protectionItems(site), [site]);
+  const automations = useMemo(
+    () => automationRows(
+      (flows ?? []).filter((f) => flowMode(f.latestDocument ?? EMPTY_DOC) === 'automation'),
+    ),
+    [flows],
   );
 
   const openFlow = useCallback(
@@ -237,6 +229,7 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
         } else {
           setEditing({ flowId: created.flowId, version: created.flowVersion, palette });
         }
+        setCreating(false);
       } catch (e) {
         fail(flowFailure(e, 'Der Flow konnte nicht angelegt werden.'));
       } finally {
@@ -250,6 +243,7 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
     (def: CustomerTemplateDef) => {
       const res = def.resolve(entities, site.id);
       if ('reason' in res) {
+        setCreating(false);
         fail(res.reason);
         return;
       }
@@ -258,65 +252,31 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
     [entities, site.id, openSaved, fail],
   );
 
-  /** „Pausieren" = den Flow stilllegen (E3b `deactivate`) - Gates unverändert. */
-  const pauseMode = useCallback(
-    async (mode: ActiveMode) => {
-      const flowId = mode.flowRef?.flowId;
-      if (!flowId) return;
-      if (!window.confirm(`„${mode.label}" pausieren? Der Modus läuft dann nicht mehr.`)) return;
-      setBusy(true);
+  /** Der Profil-Schalter schreibt NUR den Willen; der Server schaltet frei. */
+  const toggleProfile = useCallback(
+    async (id: string, next: ProfileState) => {
+      setToggling(id);
       setError('');
       try {
-        const res = await flowApi.deactivate(flowId);
-        setNotice(res.message || `„${mode.label}" wurde pausiert.`);
+        setProfiles(await api.setSiteProfile(site.id, id, next));
         reload();
       } catch (e) {
-        fail(flowFailure(e, 'Der Modus konnte nicht pausiert werden.'));
+        fail(
+          e instanceof ApiError && e.message
+            ? e.message
+            : 'Das Profil konnte nicht umgeschaltet werden. Bitte später erneut versuchen.',
+        );
       } finally {
-        setBusy(false);
+        setToggling(null);
       }
     },
-    [flowApi, reload, fail, flowFailure],
+    [site.id, reload, fail],
   );
 
-  const openMode = useCallback(
-    (mode: ActiveMode) => {
-      const flowId = mode.flowRef?.flowId;
-      if (!flowId) return;
-      const row = (flows ?? []).find((f) => f.flowId === flowId);
-      if (!row) return;
-      openFlow(row.flowId, row.latestVersion, row.latestDocument ?? null);
-    },
-    [flows, openFlow],
-  );
-
-  const useToolboxEntry = useCallback(
-    (entry: ToolboxEntry) => {
-      setError('');
-      switch (entry.action.kind) {
-        case 'guided':
-          setGuided(true);
-          break;
-        case 'market-template':
-          if (!battery) {
-            fail('Diese Anlage hat noch keinen Speicher als Steuer-Einheit.');
-            return;
-          }
-          void openSaved(
-            entry.title,
-            pilotTemplate(entry.title, battery.id, site.id),
-            'strategie',
-          );
-          break;
-        case 'editor':
-          void openSaved(entry.action.name, null, 'strategie');
-          break;
-        default:
-          break;
-      }
-    },
-    [battery, openSaved, site.id, fail],
-  );
+  const openProfileShelf = useCallback(() => {
+    if (onOpenSub) onOpenSub('profile');
+    else window.location.hash = hashForRoute(anlageRoute(site.id, 'profile'));
+  }, [onOpenSub, site.id]);
 
   if (editing) {
     return (
@@ -337,10 +297,6 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
     );
   }
 
-  const automations = (flows ?? []).filter(
-    (f) => flowMode(f.latestDocument ?? EMPTY_DOC) === 'automation',
-  );
-
   return (
     <div className="vp-steuerung vp-steuerung-area">
       <div ref={noticeRef}>
@@ -350,7 +306,6 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
           </p>
         )}
       </div>
-      {notice && <p className="vp-flowed-notice" role="status">{notice}</p>}
 
       {listState === 'loading' && <TextSkeleton lines={5} />}
       {listState === 'error' && (
@@ -359,206 +314,138 @@ export function SteuerungSection({ site, isAdmin = false }: { site: Site; isAdmi
 
       {listState === 'idle' && flows && (
         <>
-          {/* --- 1 · Aktive Modi ------------------------------------------ */}
-          <section className="vp-steuerung-part" aria-label="Aktive Modi">
-            <PartHead
-              title="Aktive Modi"
-              badge={<Badge variant="tint">{modes.length}</Badge>}
-              intro={modes.length > 0 ? AKTIVE_MODI_INTRO : undefined}
-            />
-            {modes.length === 0 ? (
-              <EmptyState
-                icon="settings"
-                title="Noch kein Modus aktiv"
-                description={KEINE_MODI}
-              />
-            ) : (
-              <div className="vp-modecards">
-                {modes.map((mode) => (
-                  <ModeCard
-                    key={mode.key}
-                    mode={mode}
-                    earnings={earnings}
-                    strategies={strategies}
-                    entities={entities}
-                    busy={busy}
-                    onOpen={openMode}
-                    onPause={pauseMode}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* --- 2 · Ko-Optimierung --------------------------------------- */}
-          {co && (
-            <section className="vp-steuerung-part" aria-label="Ko-Optimierung">
-              <CoOptimizationStrip co={co} layers={layers} />
-            </section>
-          )}
-
-          {/* --- 3 · Automationen (U3-Mechanik unverändert) --------------- */}
-          <section className="vp-steuerung-part" aria-label="Automationen">
-            <PartHead
-              title="Automationen"
-              intro="Eigene Wenn/Dann-Regeln für Ihre Geräte — geprüft, simuliert und erst dann aktiv."
-            />
-            {guided ? (
-              <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-                <div className="vp-steuerung-head">
-                  <h3>Automation per Baukasten</h3>
-                </div>
-                <GuidedRuleBuilder
-                  entities={entities}
-                  siteId={site.id}
-                  busy={busy}
-                  lockedKinds={lockedCondKinds}
-                  lockedHint={EINRICHTUNG_DURCH_VOLTPILOT}
-                  onCancel={() => setGuided(false)}
-                  onBuild={(name, doc) => {
-                    setGuided(false);
-                    void openSaved(name, doc, 'automation');
-                  }}
-                />
-              </Card>
-            ) : (
-              <>
-                {automations.length === 0 ? (
-                  <EmptyState
-                    icon="zap"
-                    title="Noch keine Automation"
-                    description="Starten Sie mit dem Baukasten oder einer Vorlage — z. B. „Wallbox nur bei PV-Überschuss“."
-                  />
-                ) : (
-                  <div className="vp-flowcards">
-                    {automations.map((flow) => {
-                      const doc = flow.latestDocument ?? EMPTY_DOC;
-                      const active = flow.activeVersion != null;
-                      const simLine = simSummaryLine(flow.simulation);
-                      return (
-                        <Card key={flow.flowId} className="vp-flowcard">
-                          <div className="vp-flowcard-head">
-                            <span className={`vp-flowcard-dot ${active ? 'g' : 'o'}`} />
-                            <h3>{flow.name}</h3>
-                            <Badge
-                              variant={active ? 'ok'
-                                : flow.latestLifecycle === 'simulated' ? 'tint' : 'off'}
-                            >
-                              {active
-                                ? `Aktiv · v${flow.activeVersion}`
-                                : `${lifecycleLabel(flow.latestLifecycle)} · v${flow.latestVersion}`}
-                            </Badge>
-                          </div>
-                          <CanvasPreview doc={doc} entities={entities} />
-                          <p className="vp-flowcard-sim">
-                            {active
-                              ? 'Aktiv — auf Ihr Gerät ausgerollt.'
-                              : simLine ?? 'Noch nicht simuliert — der Dry-Run läuft vor jeder Aktivierung.'}
-                          </p>
-                          <div className="vp-flowcard-foot">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openFlow(flow.flowId, flow.latestVersion, doc)}
-                            >
-                              Öffnen
-                            </Button>
-                            {!active && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled={busy}
-                                onClick={async () => {
-                                  if (!window.confirm(`Automation „${flow.name}“ löschen?`)) return;
-                                  setBusy(true);
-                                  try {
-                                    await flowApi.remove(flow.flowId);
-                                    reload();
-                                  } finally {
-                                    setBusy(false);
-                                  }
-                                }}
-                              >
-                                Löschen
-                              </Button>
-                            )}
-                          </div>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <div className="vp-steuerung-head">
-                  <h3>Neue Automation</h3>
-                  <div className="vp-steuerung-actions">
-                    <Button size="sm" onClick={() => setGuided(true)} disabled={busy}>
-                      ＋ Baukasten (geführt)
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openSaved('Neue Automation', null, 'automation')}
-                      disabled={busy}
-                    >
-                      Profi-Ansicht (voller Editor)
-                    </Button>
-                  </div>
-                </div>
-                <h4 className="vp-flowtpl-head">Vorlagen</h4>
-                <div className="vp-flowcards">
-                  {CUSTOMER_TEMPLATES.map((def) => {
-                    const res = def.resolve(entities, site.id);
-                    const blocked = 'reason' in res;
-                    return (
-                      <Card key={def.id} className="vp-flowcard tpl">
-                        <div className="vp-flowcard-head"><h3>{def.name}</h3></div>
-                        <p className="vp-flowcard-sim">{def.description}</p>
-                        <div className="vp-flowcard-foot">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busy || blocked}
-                            onClick={() => useTemplate(def)}
-                          >
-                            Verwenden
-                          </Button>
-                        </div>
-                        {blocked && (
-                          <p className="vp-flowcard-sim">{(res as { reason: string }).reason}</p>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </section>
-
-          {/* --- 4 · Die Werkzeugkiste ------------------------------------ */}
-          <section className="vp-steuerung-part" aria-label="Modus hinzufügen">
-            <PartHead title="＋ Modus hinzufügen" intro={TOOLBOX_INTRO} />
-            <div className="vp-toolbox">
-              {toolboxEntries.map((entry) => (
-                <ToolboxCard key={entry.id} entry={entry} busy={busy} onUse={useToolboxEntry} />
-              ))}
-            </div>
-          </section>
-
-          {/* --- Automatisch aktiv (kein Modus - Schutzfunktionen) -------- */}
-          <section className="vp-steuerung-part" aria-label="Automatisch aktiv">
-            <PartHead title="Automatisch aktiv" />
+          {/* --- Kapsel 1 · Modus-Profile --------------------------------- */}
+          <section className="vp-capsule" aria-label={PROFILE_CAPSULE_TITLE}>
+            <PartHead title={PROFILE_CAPSULE_TITLE} intro={PROFILE_CAPSULE_INTRO}>
+              <button type="button" className="vp-capsule-link" onClick={openProfileShelf}>
+                {PROFILE_MANAGE_LABEL} <Icon name="chevron-right" size={14} />
+              </button>
+            </PartHead>
             <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
-              <ProtectionsRow />
+              {rows.length === 0 ? (
+                <p className="vp-capsule-empty">{PROFILE_CAPSULE_EMPTY}</p>
+              ) : (
+                <ul className="vp-profrows">
+                  {rows.map((row) => (
+                    <ProfileRowView
+                      key={row.id}
+                      row={row}
+                      busy={toggling === row.id}
+                      onToggle={toggleProfile}
+                    />
+                  ))}
+                </ul>
+              )}
+              {co && (
+                <div className="vp-capsule-foot">
+                  <CoOptimizationStrip co={co} layers={layers} />
+                </div>
+              )}
             </Card>
           </section>
 
-          <p className="vp-note">
-            <Icon name="info" size={12} /> Vertragsnahe Modi richtet VoltPilot ein — die
-            Freischaltung prüft das System bei jeder Aktivierung erneut.
+          {/* --- Kapsel 2 · Automationen ---------------------------------- */}
+          <section className="vp-capsule" aria-label={AUTOMATION_CAPSULE_TITLE}>
+            <PartHead title={AUTOMATION_CAPSULE_TITLE} intro={AUTOMATION_CAPSULE_INTRO}>
+              <span className="vp-capsule-action">
+                <Button size="sm" disabled={busy} onClick={() => setCreating(true)}>
+                  {NEUE_AUTOMATION_LABEL}
+                </Button>
+              </span>
+            </PartHead>
+            <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+              {automations.length === 0 ? (
+                <EmptyState
+                  icon="zap"
+                  title="Noch keine Automation"
+                  description={AUTOMATION_CAPSULE_EMPTY}
+                />
+              ) : (
+                <ul className="vp-autorows">
+                  {automations.map((row) => (
+                    <li key={row.flowId} className="vp-autorow">
+                      <span className={`vp-rowdot ${row.tone}`} aria-hidden="true" />
+                      <div className="vp-autorow-text">
+                        <strong>{row.name}</strong>
+                        <p>{row.state}</p>
+                      </div>
+                      <Badge variant={row.active ? 'ok' : 'off'}>v{row.version}</Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => {
+                          const flow = (flows ?? []).find((f) => f.flowId === row.flowId);
+                          if (flow) openFlow(flow.flowId, flow.latestVersion, flow.latestDocument);
+                        }}
+                      >
+                        Öffnen
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </section>
+
+          {/* --- Die schmale Schutz-Zeile --------------------------------- */}
+          <p className="vp-protline">
+            <Icon name="shield" size={14} />
+            <span className="vp-protline-intro">{PROTECTION_INTRO}</span>
+            {protections.map((p) => (
+              <span key={p.key} className="vp-protline-item">
+                {p.label} <InfoTip title={p.label}>{p.tip}</InfoTip>
+              </span>
+            ))}
           </p>
+
+          <NeueAutomationDialog
+            open={creating}
+            onClose={() => setCreating(false)}
+            entities={entities}
+            siteId={site.id}
+            busy={busy}
+            lockedKinds={lockedCondKinds}
+            lockedHint={EINRICHTUNG_DURCH_VOLTPILOT}
+            onUseTemplate={useTemplate}
+            onBuilt={(name, doc) => void openSaved(name, doc, 'automation')}
+            onOpenEditor={() => void openSaved('Neue Automation', null, 'automation')}
+          />
         </>
       )}
     </div>
+  );
+}
+
+/** Eine kompakte Profil-Zeile: Statuspunkt · Beitrag · Schalter. */
+function ProfileRowView({
+  row,
+  busy,
+  onToggle,
+}: {
+  row: ProfileRow;
+  busy: boolean;
+  onToggle: (id: string, next: ProfileState) => void;
+}) {
+  return (
+    <li className={`vp-profrow${row.on ? ' on' : ''}`}>
+      <span className={`vp-rowdot ${row.tone}`} aria-hidden="true" />
+      <div className="vp-profrow-text">
+        <strong>{row.label}</strong>
+        <p className="vp-profrow-contrib">{row.contribution}</p>
+        {row.blockedReason && <p className="vp-profrow-blocked">{row.blockedReason}</p>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={row.on}
+        aria-label={`${row.label} ${row.on ? 'ausschalten' : 'einschalten'}`}
+        className={`vp-switch${row.on ? ' on' : ''}`}
+        disabled={busy}
+        onClick={() => onToggle(row.id, row.on ? 'aus' : 'an')}
+      >
+        <span className="vp-switch-knob" aria-hidden="true" />
+      </button>
+    </li>
   );
 }

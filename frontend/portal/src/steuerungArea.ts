@@ -1,54 +1,44 @@
 /**
- * M2 — die Steuerung als Fläche der aktiven Modi ("Projektion", OpenProject
- * #530, Epic #527; Spec `data/vp-anlagen-face-k9/report.md` §2.3 + §1.2).
+ * Die Ableitung der Steuerungs-Fläche — rein, ohne React/Netzwerk (der
+ * `surface.ts`/`fleet.ts`-Präzedenzfall).
  *
- * Die Steuerung besteht aus VIER Teilen, und dieses Modul leitet sie rein ab
- * (keine React-Imports, kein Netzwerk — der `surface.ts`/`fleet.ts`-Präzedenzfall):
+ * **Portal v3 · M4** (`docs/portal-v3/M4-steuerung.md`): die Steuerung
+ * beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich selbst
+ * geregelt?" — mit ZWEI Kapseln plus einer schmalen Schutz-Zeile:
  *
- *  1. **Aktive Modi** — je aktivem Modus eine Karte: Zustand, Ergebnis-Satz,
- *     **sein Beitrag** (echte Zahlen) und **Geräte-Chips** (welche Geräte der
- *     Modus beansprucht) + Aktionen (Details, Pausieren).
- *  2. **Ko-Optimierungs-Streifen** — ab ZWEI speicher-beanspruchenden Modi:
- *     "N Modi, ein Speicher" + der **SoC-Reservierungs-Stack**.
- *  3. **Automationen** — die U3-Mechanik unverändert (nur Rahmung).
- *  4. **＋ Modus hinzufügen** — die Werkzeugkiste: JEDER Modus für JEDEN Kunden,
- *     mit ehrlichen Voraussetzungs-Chips und dem bestehenden Gate.
+ *  1. **Modus-Profile** (`profileRows`) — kompakte Zeilen: Statuspunkt, EIN
+ *     Satz mit echten Zahlen, Schalter. Das Regal (Nutzen, Freischaltungen,
+ *     Voraussetzungen) ist M3s Fläche; von hier führt „Profile verwalten →"
+ *     dorthin. Der Ko-Optimierungs-Streifen + `socReservationStack` bilden die
+ *     Fußzeile dieser Kapsel.
+ *  2. **Automationen** (`automationRows`) — je Regel eine Zeile mit ihrem
+ *     lebenden Zustand und EINEM „＋ Neue Automation"-Knopf.
  *
- * Zwei Regeln sind hier Gesetz:
- *  - **Nur AKTIVES steht in Teil 1.** Das Vermischen von aktiv + Angebot
- *    (`flowModules.ts offeredWhenInactive`) endet — Angebote leben
- *    ausschließlich in der Werkzeugkiste (Teil 4).
+ * Die alte Werkzeugkiste („＋ Modus hinzufügen") ist ERSETZT: Angebote leben
+ * ausschließlich in M3s Regal, die zweite Tür in den Editor gibt es nicht mehr.
+ *
+ * Zwei Regeln bleiben Gesetz:
+ *  - **Nie eine erfundene Zahl.** Fehlt die Zuordnung (Automationen, E15) oder
+ *    die Erlös-Antwort, steht dort „—", nie eine 0.
  *  - **Stammdaten-Ehrlichkeit** (report §1.2): ein nur über Stammdaten aktiver
- *    Modus sagt "Von VoltPilot eingerichtet" und bekommt KEINE
- *    "Flow öffnen"-Affordanz — nie einen editierbaren Flow versprechen, den es
- *    nicht gibt. Genauso wird nie eine Zahl erfunden: fehlt die Zuordnung,
- *    steht dort "—".
+ *    Modus sagt „Von VoltPilot eingerichtet" und bekommt KEINE
+ *    „Flow öffnen"-Affordanz — nie einen editierbaren Flow versprechen, den es
+ *    nicht gibt.
  */
 
 import type { EarningsSite, EntityStrategy } from './api';
 import { eurAmount, fmtNum } from './format';
 import { steeringAttributionNote } from './erloesKomposition';
-import type { EditorEntity } from './flows/model';
-import { controllableConsumers, gridMeterEntity } from './flows/customerTemplates';
+import { lifecycleLabel, type EditorEntity } from './flows/model';
+import { AUTOMATIC_MODULES } from './moduleSurface';
+import { blockedReason, type SiteProfile } from './profiles';
 import {
-  EINRICHTUNG_DURCH_VOLTPILOT,
-  lastspitzenkappungCard,
-  marktoptimierungLine,
-} from './moduleSurface';
-import {
-  MODE_LABELS,
   VOLTPILOT_MANAGED,
   type ActiveMode,
   type ModeKind,
   type MoneyStreamId,
   type StreamPeriod,
 } from './surface';
-import {
-  NODE_ATYPICAL_GRID,
-  NODE_MARKET,
-  NODE_PEAKSHAVING,
-  NODE_SELFCONSUMPTION,
-} from './usageProfile';
 
 // ---------------------------------------------------------------------------
 // 1 · Der Beitrag eines Modus (echte Zahlen, sonst "—")
@@ -334,171 +324,184 @@ export function socReservationStack(input: ReservationInput | null | undefined):
 }
 
 // ---------------------------------------------------------------------------
-// 4 · Die Werkzeugkiste "＋ Modus hinzufügen"
+// M4 · Kapsel 1 — die Modus-Profil-Zeilen
 // ---------------------------------------------------------------------------
 
-/** Eine Voraussetzung, ehrlich aus den Entitäten abgeleitet ("Speicher ✓"). */
-export interface RequirementChip {
-  key: string;
-  label: string;
-  ok: boolean;
-}
-
-export type ToolboxAction =
-  /** Der geführte Wenn/Dann-Baukasten. */
-  | { kind: 'guided' }
-  /** Die Marktoptimierungs-Vorlage (braucht eine Speicher-Einheit). */
-  | { kind: 'market-template' }
-  /** Leerer Editor mit vorgefiltertem Strategie-Palettenteil. */
-  | { kind: 'editor'; name: string }
-  /** Nichts zu klicken — VoltPilot richtet ein (Vertrieb läuft persönlich). */
-  | { kind: 'managed' };
-
-export interface ToolboxEntry {
+/**
+ * Eine kompakte Profil-Zeile der Steuerung: Statuspunkt, EIN Satz mit dem, was
+ * das Profil beiträgt (echte Zahl + Periode, sonst „—"), und der Schalter.
+ * Das Regal selbst (Nutzen, Freischaltungen, Voraussetzungen) bleibt M3s
+ * Fläche — hier steht nur, was gerade läuft und was es bringt.
+ */
+export interface ProfileRow {
   id: string;
-  kind: ModeKind;
-  title: string;
-  /** EIN deutscher Ergebnis-Satz. */
-  line: string;
-  requirements: RequirementChip[];
-  /** Alle Voraussetzungen erfüllt? */
-  ready: boolean;
-  /** 'free' = jederzeit; 'gated-open' = freigeschaltet; 'gated-locked' = Gate zu. */
-  gate: 'free' | 'gated-open' | 'gated-locked';
-  /** Die Gate-Zeile ("Einrichtung durch VoltPilot …"); null, wenn offen. */
-  gateNote: string | null;
-  action: ToolboxAction;
+  label: string;
+  /** Der effektive Zustand (M3-Overlay) — der Schalter zeigt genau ihn. */
+  on: boolean;
+  /** Der Statuspunkt: läuft / läuft-noch-nicht / aus. */
+  tone: 'on' | 'blocked' | 'off';
+  /** „Wert des Eigenverbrauchs: 88,25 € · im gewählten Zeitraum" bzw. „—". */
+  contribution: string;
+  /** M3s ehrlicher Satz, wenn ein EINGESCHALTETES Profil nicht voll läuft. */
+  blockedReason: string | null;
 }
 
-export interface ToolboxInput {
-  /** Die AKTIVEN Modi — sie verschwinden aus der Werkzeugkiste. */
-  modes: ActiveMode[];
-  entities: EditorEntity[];
-  /** Die per-Site freigeschalteten gated Knotentypen (AE7-Governance). */
-  enabledGatedTypes: string[];
-}
-
-function req(key: string, label: string, ok: boolean): RequirementChip {
-  return { key, label, ok };
+/** Der Beitrag eines Modus als EINE Zeile (echte Zahlen, sonst „—"). */
+function contributionLine(mode: ActiveMode | null, earnings: EarningsSite | null | undefined): string {
+  if (!mode) return '—';
+  const rows = contributionRows(mode, earnings).filter((r) => r.value != null);
+  if (rows.length === 0) return '—';
+  const period = periodLabel(rows[0].period);
+  const sameperiod = rows.every((r) => r.period === rows[0].period);
+  const parts = rows.map((r) => (sameperiod
+    ? `${r.label}: ${r.value}`
+    : `${r.label}: ${r.value} (${periodLabel(r.period)})`));
+  return sameperiod ? `${parts.join(' · ')} · ${period}` : parts.join(' · ');
 }
 
 /**
- * JEDER Modus, für JEDEN Kunden, immer (report §2.3 Teil 4 — die Antwort auf
- * die Auffindbarkeit). Bereits aktive Modi verschwinden; Voraussetzungen werden
- * aus den Entitäten abgeleitet und ehrlich als erfüllt/fehlend gezeigt; das
- * bestehende Gate bleibt unangetastet (die Karte ist sichtbar, die Aktivierung
- * prüft der Server weiterhin selbst).
+ * Die Profil-Kapsel: eine Zeile je Profil, mit dem Beitrag des zugehörigen
+ * AKTIVEN Modus. Profil-Ids und `ModeKind` teilen sich dasselbe Vokabular
+ * (M0/M3), deshalb wird hier nichts geraten — ein Profil ohne laufenden Modus
+ * bekommt schlicht keine Zahl.
  */
-export function toolbox(input: ToolboxInput): ToolboxEntry[] {
-  const active = new Set(input.modes.map((m) => m.kind));
-  const enabled = new Set(input.enabledGatedTypes);
-  const entities = input.entities ?? [];
-  const hasStorage = storageEntities(entities).length > 0;
-  const hasPv = entities.some((e) => e.measure.includes('pv_power_kw'));
-  const hasGrid = gridMeterEntity(entities) != null;
-  const hasConsumer = controllableConsumers(entities).length > 0;
-
-  const gateFor = (nodeType: string): Pick<ToolboxEntry, 'gate' | 'gateNote'> =>
-    enabled.has(nodeType)
-      ? { gate: 'gated-open', gateNote: null }
-      : { gate: 'gated-locked', gateNote: EINRICHTUNG_DURCH_VOLTPILOT };
-
-  const entries: ToolboxEntry[] = [];
-
-  if (!active.has('eigenverbrauch')) {
-    const requirements = [req('speicher', 'Speicher', hasStorage), req('pv', 'PV', hasPv)];
-    entries.push({
-      id: NODE_SELFCONSUMPTION,
-      kind: 'eigenverbrauch',
-      title: MODE_LABELS.eigenverbrauch,
-      line: marktoptimierungLine('eigenverbrauch', 'ohne'),
-      requirements,
-      ready: requirements.every((r) => r.ok),
-      gate: 'free',
-      gateNote: null,
-      action: { kind: 'editor', name: MODE_LABELS.eigenverbrauch },
-    });
-  }
-
-  if (!active.has('marktvermarktung')) {
-    const requirements = [req('speicher', 'Speicher', hasStorage)];
-    entries.push({
-      id: NODE_MARKET,
-      kind: 'marktvermarktung',
-      title: MODE_LABELS.marktvermarktung,
-      line: marktoptimierungLine('direktvermarktung', 'ohne'),
-      requirements,
-      ready: requirements.every((r) => r.ok),
-      ...gateFor(NODE_MARKET),
-      action: { kind: 'market-template' },
-    });
-  }
-
-  if (!active.has('lastspitzenkappung')) {
-    const requirements = [
-      req('speicher', 'Speicher', hasStorage),
-      req('leistungsmessung', 'Leistungsmessung', hasGrid),
-    ];
-    entries.push({
-      id: NODE_PEAKSHAVING,
-      kind: 'lastspitzenkappung',
-      title: MODE_LABELS.lastspitzenkappung,
-      line: lastspitzenkappungCard(null).line,
-      requirements,
-      ready: requirements.every((r) => r.ok),
-      ...gateFor(NODE_PEAKSHAVING),
-      // Vertragsnahes Modul: Leistungspreis + Reserve richtet VoltPilot ein.
-      action: { kind: 'managed' },
-    });
-  }
-
-  if (!active.has('atypische-netznutzung')) {
-    const requirements = [req('leistungsmessung', 'Leistungsmessung', hasGrid)];
-    entries.push({
-      id: NODE_ATYPICAL_GRID,
-      kind: 'atypische-netznutzung',
-      title: MODE_LABELS['atypische-netznutzung'],
-      line: 'Verlagert Verbrauch und Speicher aus den Hochlastzeitfenstern — für ein reduziertes Netzentgelt.',
-      requirements,
-      ready: requirements.every((r) => r.ok),
-      ...gateFor(NODE_ATYPICAL_GRID),
-      action: { kind: 'managed' },
-    });
-  }
-
-  // Eigene Regeln sind nie "schon aktiv" - man kann immer eine weitere bauen.
-  const consumerReq = [req('geraet', 'Steuerbares Gerät', hasConsumer)];
-  entries.push({
-    id: 'automation',
-    kind: 'automation',
-    title: 'Eigene Regel',
-    line: 'Eine Wenn/Dann-Regel für Ihre Geräte — z. B. „Wallbox nur bei PV-Überschuss“.',
-    requirements: consumerReq,
-    ready: consumerReq.every((r) => r.ok),
-    gate: 'free',
-    gateNote: null,
-    action: { kind: 'guided' },
+export function profileRows(
+  profiles: SiteProfile[] | null | undefined,
+  modes: ActiveMode[],
+  earnings: EarningsSite | null | undefined,
+): ProfileRow[] {
+  const byKind = new Map(modes.map((m) => [String(m.kind), m] as const));
+  return (profiles ?? []).map((p) => {
+    const mode = byKind.get(p.id) ?? null;
+    const reason = blockedReason(p);
+    return {
+      id: p.id,
+      label: p.label,
+      on: p.active,
+      tone: p.active ? (reason ? 'blocked' : 'on') : 'off',
+      contribution: p.active ? contributionLine(mode, earnings) : '—',
+      blockedReason: reason,
+    };
   });
-
-  return entries;
 }
 
-/** Die Zeile, die eine unerfüllte Voraussetzung erklärt; null wenn alles da ist. */
-export function requirementHint(entry: ToolboxEntry): string | null {
-  const missing = entry.requirements.filter((r) => !r.ok).map((r) => r.label);
-  if (missing.length === 0) return null;
-  return `Dafür fehlt noch: ${missing.join(' · ')}.`;
+export const PROFILE_CAPSULE_TITLE = 'Modus-Profile';
+
+export const PROFILE_CAPSULE_INTRO =
+  'Was VoltPilot auf Ihrer Anlage tun darf — und was es Ihnen bringt.';
+
+export const PROFILE_CAPSULE_EMPTY =
+  'Für diese Anlage sind noch keine Profile hinterlegt.';
+
+export const PROFILE_MANAGE_LABEL = 'Profile verwalten';
+
+// ---------------------------------------------------------------------------
+// M4 · Kapsel 2 — die Automations-Zeilen
+// ---------------------------------------------------------------------------
+
+/**
+ * Was ein Gerät über eine Regel gemeldet hat. Optional und ADDITIV: der
+ * Knoten-Status kommt erst mit M5 vom Edge — ohne ihn steht in der Zeile
+ * schlicht „Läuft", nie eine erfundene Zahl.
+ */
+export interface AutomationActivity {
+  flowId: string;
+  /** Wie oft die Regel heute geschaltet hat; null/undefined = unbekannt. */
+  switchedToday?: number | null;
+  /** Zeitpunkt der letzten Schaltung (ISO); null/undefined = unbekannt. */
+  lastSwitchedAt?: string | null;
 }
 
+export interface AutomationRow {
+  flowId: string;
+  name: string;
+  active: boolean;
+  version: number;
+  /** „Läuft · heute 3× geschaltet · zuletzt 14:02" bzw. „Läuft" / „Entwurf". */
+  state: string;
+  /** Punkt-Tönung: grün wenn ausgerollt, sonst ruhig. */
+  tone: 'on' | 'off';
+}
+
+function timeOfDay(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/**
+ * Eine Zeile je Automation mit ihrem LEBENDEN Zustand. Ohne Knoten-Status
+ * (heute immer, bis M5 den Edge-Block liefert) bleibt es bei „Läuft" —
+ * ein Schaltzähler wird niemals geschätzt.
+ */
+export function automationRows(
+  flows: { flowId: string; name: string; activeVersion: number | null; latestVersion: number; latestLifecycle: string }[],
+  activity?: AutomationActivity[] | null,
+): AutomationRow[] {
+  const byFlow = new Map((activity ?? []).map((a) => [a.flowId, a] as const));
+  return (flows ?? []).map((f) => {
+    const active = f.activeVersion != null;
+    const a = byFlow.get(f.flowId);
+    const parts: string[] = [active ? 'Läuft' : lifecycleLabel(f.latestLifecycle)];
+    if (active && a) {
+      if (a.switchedToday != null && Number.isFinite(a.switchedToday)) {
+        parts.push(`heute ${a.switchedToday}× geschaltet`);
+      }
+      const at = a.lastSwitchedAt ? timeOfDay(a.lastSwitchedAt) : null;
+      if (at) parts.push(`zuletzt ${at}`);
+    }
+    return {
+      flowId: f.flowId,
+      name: f.name,
+      active,
+      version: active ? (f.activeVersion as number) : f.latestVersion,
+      state: parts.join(' · '),
+      tone: active ? 'on' : 'off',
+    };
+  });
+}
+
+export const AUTOMATION_CAPSULE_TITLE = 'Automationen';
+
+export const AUTOMATION_CAPSULE_INTRO =
+  'Ihre eigenen Wenn/Dann-Regeln — geprüft, simuliert und erst dann aktiv.';
+
+export const AUTOMATION_CAPSULE_EMPTY =
+  'Noch keine eigene Regel. Legen Sie eine an — z. B. „Wallbox nur bei PV-Überschuss".';
+
+export const NEUE_AUTOMATION_LABEL = '＋ Neue Automation';
+
 // ---------------------------------------------------------------------------
-// Kopfzeilen der vier Teile
+// M4 · Die schmale Schutz-Zeile (läuft immer, ohne Profil)
 // ---------------------------------------------------------------------------
 
-export const AKTIVE_MODI_INTRO =
-  'Diese Modi laufen gerade auf Ihrer Anlage — mit dem, was sie beitragen.';
+export interface ProtectionItem {
+  key: string;
+  label: string;
+  tip: string;
+}
 
-export const KEINE_MODI =
-  'Auf dieser Anlage läuft noch kein Modus. Unten finden Sie alles, was möglich ist.';
+/**
+ * Die immer laufenden Schutzfunktionen als schmale Zeile. „Nur Solarladen"
+ * erscheint NUR, wenn das Netzladen für die Anlage tatsächlich gesperrt ist —
+ * sonst wäre die Zeile eine Behauptung.
+ */
+export function protectionItems(site: { netzladenErlaubt?: boolean | null }): ProtectionItem[] {
+  const items: ProtectionItem[] = AUTOMATIC_MODULES.map((m) => ({
+    key: m.title,
+    label: m.title,
+    tip: m.tip,
+  }));
+  if (site?.netzladenErlaubt === false) {
+    items.push({
+      key: 'eeg',
+      label: 'EEG: nur Solarladen',
+      tip:
+        'Ihr Speicher wird ausschließlich mit eigenem Solarstrom geladen — so bleibt Ihre '
+        + 'EEG-Vergütung unangetastet. Ihr Gerät hält das auch dann ein, wenn die Verbindung abreißt.',
+    });
+  }
+  return items;
+}
 
-export const TOOLBOX_INTRO =
-  'Jeder Modus ist für jede Anlage sichtbar. Was Ihre Anlage dafür braucht, steht auf der Karte.';
+export const PROTECTION_INTRO = 'Läuft immer mit, ganz ohne Profil:';

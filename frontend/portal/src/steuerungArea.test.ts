@@ -3,25 +3,22 @@ import type { EarningsSite } from './api';
 import type { EditorEntity, FlowDocument } from './flows/model';
 import { NBSP } from './format';
 import {
-  AKTIVE_MODI_INTRO,
+  PROFILE_CAPSULE_INTRO,
+  automationRows,
   batteryModes,
   coOptimization,
   contributionRows,
   entityChips,
   modeActions,
   peakContributionNote,
-  requirementHint,
+  profileRows,
+  protectionItems,
   socReservationStack,
   storageEntities,
-  toolbox,
 } from './steuerungArea';
+import type { SiteProfile } from './profiles';
 import { activeModes, type AnlageSurfaceInput, type SurfaceFlow } from './surface';
-import {
-  NODE_ATYPICAL_GRID,
-  NODE_MARKET,
-  NODE_PEAKSHAVING,
-  NODE_SELFCONSUMPTION,
-} from './usageProfile';
+import { NODE_ATYPICAL_GRID, NODE_MARKET } from './usageProfile';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -292,83 +289,168 @@ describe('socReservationStack', () => {
   });
 });
 
+
 // ---------------------------------------------------------------------------
-// 4 · Werkzeugkiste
+// M4 · Kapsel 1 — Profil-Zeilen
 // ---------------------------------------------------------------------------
 
-describe('toolbox', () => {
-  it('shows every mode to every customer, with honest requirement chips', () => {
-    const entries = toolbox({ modes: [], entities: [BATTERY, PV], enabledGatedTypes: [] });
-    expect(entries.map((e) => e.kind)).toEqual([
-      'eigenverbrauch',
-      'marktvermarktung',
-      'lastspitzenkappung',
-      'atypische-netznutzung',
-      'automation',
-    ]);
+function profile(over: Partial<SiteProfile> & { id: string }): SiteProfile {
+  return {
+    label: over.id,
+    state: null,
+    derivedActive: false,
+    active: false,
+    unlocks: { views: [], widgets: [], moneyStream: null },
+    requirements: [],
+    blockedReason: null,
+    origin: null,
+    flowRef: null,
+    gatedNodeTypes: [],
+    gatedNodesEnabled: true,
+    ...over,
+  };
+}
 
-    const peak = entries.find((e) => e.kind === 'lastspitzenkappung')!;
-    expect(peak.requirements).toEqual([
-      { key: 'speicher', label: 'Speicher', ok: true },
-      { key: 'leistungsmessung', label: 'Leistungsmessung', ok: false },
-    ]);
-    expect(peak.ready).toBe(false);
-    expect(requirementHint(peak)).toBe('Dafür fehlt noch: Leistungsmessung.');
-
-    const ev = entries.find((e) => e.kind === 'eigenverbrauch')!;
-    expect(ev.ready).toBe(true);
-    expect(requirementHint(ev)).toBeNull();
+describe('profileRows (M4 Kapsel 1)', () => {
+  it('states the contribution of an active profile with a real number and its period', () => {
+    const modes = activeModes(GEWERBE);
+    const rows = profileRows(
+      [profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true })],
+      modes,
+      EARNINGS,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].on).toBe(true);
+    expect(rows[0].tone).toBe('on');
+    expect(rows[0].contribution).toContain('3.600');
+    expect(rows[0].contribution).toContain('laufende Abrechnungsperiode');
   });
 
-  it('drops already-active modes but always keeps "Eigene Regel"', () => {
-    const entries = toolbox({
-      modes: activeModes(GEWERBE),
-      entities: [BATTERY, PV, GRID, WALLBOX],
-      enabledGatedTypes: [],
-    });
-    expect(entries.map((e) => e.kind)).toEqual([
-      'marktvermarktung',
-      'atypische-netznutzung',
-      'automation',
-    ]);
-    const rule = entries.find((e) => e.kind === 'automation')!;
-    expect(rule.ready).toBe(true);
-    expect(rule.action).toEqual({ kind: 'guided' });
+  it('never fabricates a 0 - without earnings the row reads "—"', () => {
+    const rows = profileRows(
+      [profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true })],
+      activeModes(GEWERBE),
+      null,
+    );
+    expect(rows[0].contribution).toBe('—');
   });
 
-  it('keeps the governance gate intact — visible for all, locked until enabled', () => {
-    const locked = toolbox({ modes: [], entities: [BATTERY], enabledGatedTypes: [] });
-    const market = locked.find((e) => e.kind === 'marktvermarktung')!;
-    expect(market.gate).toBe('gated-locked');
-    expect(market.gateNote).toBe('Einrichtung durch VoltPilot – sprechen Sie uns an.');
-
-    const open = toolbox({ modes: [], entities: [BATTERY], enabledGatedTypes: [NODE_MARKET] });
-    expect(open.find((e) => e.kind === 'marktvermarktung')!.gate).toBe('gated-open');
-    expect(open.find((e) => e.kind === 'marktvermarktung')!.gateNote).toBeNull();
-    // Free modes are never gated.
-    expect(open.find((e) => e.kind === 'eigenverbrauch')!.gate).toBe('free');
-    expect(open.find((e) => e.kind === 'automation')!.gate).toBe('free');
+  it('an unattributable stream (automations, E15) reads "—", never a number', () => {
+    const modes = activeModes({
+      ...GEWERBE,
+      flows: [flow('f-rule', 'Wallbox', [])],
+    } as AnlageSurfaceInput);
+    const automation = modes.find((m) => m.kind === 'automation')!;
+    const rows = profileRows(
+      [profile({ id: String(automation.kind), label: 'Automation', active: true })],
+      modes,
+      EARNINGS,
+    );
+    expect(rows[0].contribution).toBe('—');
   });
 
-  it('uses the shipped catalog node ids so the gate keys can never drift', () => {
-    const entries = toolbox({ modes: [], entities: [], enabledGatedTypes: [] });
-    expect(entries.map((e) => e.id)).toEqual([
-      NODE_SELFCONSUMPTION,
-      NODE_MARKET,
-      NODE_PEAKSHAVING,
-      NODE_ATYPICAL_GRID,
-      'automation',
+  it('a switched-off profile keeps its switch and shows no contribution', () => {
+    const rows = profileRows(
+      [profile({ id: 'marktvermarktung', label: 'Marktvermarktung', active: false })],
+      [],
+      EARNINGS,
+    );
+    expect(rows[0].on).toBe(false);
+    expect(rows[0].tone).toBe('off');
+    expect(rows[0].contribution).toBe('—');
+    expect(rows[0].blockedReason).toBeNull();
+  });
+
+  it('an ON profile that cannot fully run shows M3s honest reason, never a request prompt', () => {
+    const rows = profileRows(
+      [profile({
+        id: 'marktvermarktung',
+        label: 'Marktvermarktung',
+        active: true,
+        blockedReason: 'Läuft noch nicht: Ihrer Anlage fehlt ein dynamischer Tarif.',
+      })],
+      [],
+      EARNINGS,
+    );
+    expect(rows[0].tone).toBe('blocked');
+    expect(rows[0].blockedReason).toContain('Läuft noch nicht');
+    expect(rows[0].blockedReason).not.toContain('Angefragt');
+    expect(rows[0].blockedReason).not.toContain('anfragen');
+  });
+
+  it('is empty without profiles (older backend) - never an invented row', () => {
+    expect(profileRows(null, activeModes(GEWERBE), EARNINGS)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M4 · Kapsel 2 — Automations-Zeilen
+// ---------------------------------------------------------------------------
+
+const FLOW_ROW = {
+  flowId: 'f-1',
+  name: 'Wallbox nur bei PV-Überschuss',
+  activeVersion: 2 as number | null,
+  latestVersion: 2,
+  latestLifecycle: 'active',
+};
+
+describe('automationRows (M4 Kapsel 2)', () => {
+  it('without node status says only "Läuft" - never an invented switch count', () => {
+    const rows = automationRows([FLOW_ROW]);
+    expect(rows[0].state).toBe('Läuft');
+    expect(rows[0].tone).toBe('on');
+    expect(rows[0].version).toBe(2);
+  });
+
+  it('renders the live line once a device reported it', () => {
+    const at = new Date();
+    at.setHours(14, 2, 0, 0);
+    const rows = automationRows([FLOW_ROW], [
+      { flowId: 'f-1', switchedToday: 3, lastSwitchedAt: at.toISOString() },
     ]);
+    expect(rows[0].state).toBe('Läuft · heute 3× geschaltet · zuletzt 14:02');
+  });
+
+  it('reports a partial status honestly (count only / last only)', () => {
+    expect(automationRows([FLOW_ROW], [{ flowId: 'f-1', switchedToday: 0 }])[0].state)
+      .toBe('Läuft · heute 0× geschaltet');
+    expect(automationRows([FLOW_ROW], [{ flowId: 'f-1', lastSwitchedAt: 'kaputt' }])[0].state)
+      .toBe('Läuft');
+  });
+
+  it('a not-yet-active rule shows its lifecycle and never a run state', () => {
+    const rows = automationRows(
+      [{ ...FLOW_ROW, activeVersion: null, latestLifecycle: 'simulated' }],
+      [{ flowId: 'f-1', switchedToday: 9 }],
+    );
+    expect(rows[0].state).toBe('Simuliert');
+    expect(rows[0].tone).toBe('off');
+    expect(rows[0].active).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M4 · Die schmale Schutz-Zeile
+// ---------------------------------------------------------------------------
+
+describe('protectionItems', () => {
+  it('always carries §14a and the negative-price curtailment', () => {
+    const labels = protectionItems({ netzladenErlaubt: true }).map((p) => p.label);
+    expect(labels).toEqual(['§ 14a-Schutz', 'Negativpreis-Abregelung']);
+  });
+
+  it('names the EEG solar-only clamp ONLY while grid charging is barred', () => {
+    expect(protectionItems({ netzladenErlaubt: false }).map((p) => p.label))
+      .toContain('EEG: nur Solarladen');
+    expect(protectionItems({ netzladenErlaubt: null }).map((p) => p.label))
+      .not.toContain('EEG: nur Solarladen');
   });
 
   it('never speaks optimizer-internal vocabulary', () => {
     const text = [
-      AKTIVE_MODI_INTRO,
-      ...toolbox({ modes: [], entities: [], enabledGatedTypes: [] }).flatMap((e) => [
-        e.title,
-        e.line,
-        e.gateNote ?? '',
-      ]),
+      PROFILE_CAPSULE_INTRO,
+      ...protectionItems({ netzladenErlaubt: false }).map((p) => `${p.label} ${p.tip}`),
       ...socReservationStack({ socMinPct: 5, backupReserveSocPct: 20, peakReserveSocPct: 30 }).map(
         (l) => `${l.label} ${l.note}`,
       ),

@@ -5,6 +5,7 @@ import {
   gridMeterEntity,
 } from './customerTemplates';
 import type { EditorEntity } from './model';
+import { fitsPlant } from './templateFilter';
 import { isValid, validateFlow } from './validate';
 
 const ENTITIES: EditorEntity[] = [
@@ -54,5 +55,41 @@ describe('customer control templates', () => {
     ];
     const tpl = CUSTOMER_TEMPLATES.find((t) => t.id === 'pv-surplus-consumer')!;
     expect('reason' in tpl.resolve(noGrid, 'site-1')).toBe(true);
+  });
+
+  // --- M4: the machine-readable requirement -------------------------------
+
+  it('every template declares its requiresRoles (the M4 pre-filter)', () => {
+    for (const tpl of CUSTOMER_TEMPLATES) {
+      expect(Array.isArray(tpl.requiresRoles)).toBe(true);
+      expect(tpl.requiresRoles.length).toBeGreaterThan(0);
+      // The German prose stays the honest reason line - it is NOT the machine field.
+      expect(typeof tpl.requires).toBe('string');
+      expect(tpl.requires.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('requiresRoles is never more generous than resolve(): what resolves is classified fitting', () => {
+    // Every subset of the fixture plant: whenever resolve() succeeds, the
+    // pre-filter must have shown the template (the direction that matters -
+    // otherwise the dialog offers a template whose "Verwenden" fails).
+    for (let mask = 0; mask < 1 << ENTITIES.length; mask += 1) {
+      const entities = ENTITIES.filter((_, i) => (mask >> i) & 1);
+      for (const tpl of CUSTOMER_TEMPLATES) {
+        const resolves = 'doc' in tpl.resolve(entities, 'site-1');
+        if (resolves) expect(fitsPlant(tpl, { entities })).toBe(true);
+      }
+    }
+  });
+
+  it('and a template classified fitting on this plant really does resolve', () => {
+    for (let mask = 0; mask < 1 << ENTITIES.length; mask += 1) {
+      const entities = ENTITIES.filter((_, i) => (mask >> i) & 1);
+      for (const tpl of CUSTOMER_TEMPLATES) {
+        if (fitsPlant(tpl, { entities })) {
+          expect('doc' in tpl.resolve(entities, 'site-1')).toBe(true);
+        }
+      }
+    }
   });
 });

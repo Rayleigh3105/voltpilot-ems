@@ -230,6 +230,11 @@
 .vp-soc-legenditem {
   display: flex;
   align-items: baseline;
+  /* M4: ohne Umbruch quetscht das `nowrap`-Label die Notiz auf Null-Breite und
+     `overflow-wrap: anywhere` malt sie als Ein-Zeichen-Säule (am Telefon in der
+     verschachtelten Kapsel gemessen). Die Notiz rutscht jetzt in eine eigene
+     Zeile, statt zu zerbröseln. */
+  flex-wrap: wrap;
   gap: var(--vp-space-2, 8px);
   min-width: 0;
   font-size: 0.82rem;
@@ -251,94 +256,9 @@
 
 .vp-soc-legendnote {
   color: var(--vp-text-muted, #667);
+  flex: 1 1 200px;
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-/* --- 4 · Werkzeugkiste --------------------------------------------------- */
-
-.vp-toolbox {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
-  gap: var(--vp-space-4, 16px);
-  min-width: 0;
-}
-
-.vp-toolcard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2, 8px);
-  min-width: 0;
-}
-
-.vp-toolcard-head {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-2, 8px);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.vp-toolcard-head h4 {
-  margin: 0;
-  font-size: 0.98rem;
-  color: var(--vp-navy, #1a365d);
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-toolcard-line {
-  margin: 0;
-  font-size: 0.86rem;
-  color: var(--vp-text, #223);
-  min-width: 0;
-}
-
-.vp-toolcard-reqs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-.vp-req-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border-radius: var(--vp-radius-pill, 999px);
-  padding: 2px 9px;
-  font-size: 0.74rem;
-  border: 1px solid var(--vp-border, #e2e8f0);
-  background: var(--vp-surface-subtle, #f1f5f9);
-  color: var(--vp-text-muted, #667);
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.vp-req-chip.ok {
-  border-color: rgba(34, 197, 94, 0.4);
-  background: rgba(34, 197, 94, 0.1);
-  color: #15803d;
-}
-
-.vp-toolcard-note {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--vp-text-muted, #667);
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 0;
-}
-
-.vp-toolcard-foot {
-  margin-top: auto;
-  padding-top: var(--vp-space-2, 8px);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--vp-space-2, 8px);
-  min-width: 0;
 }
 
 /* --- Automatisch aktiv (Schutzfunktionen) -------------------------------- */
@@ -367,4 +287,255 @@
   font-size: 0.82rem;
   color: var(--vp-text-muted, #667);
   min-width: 0;
+}
+
+/* =========================================================================
+ * Portal v3 · M4 — die ZWEI Kapseln (`docs/portal-v3/M4-steuerung.md`)
+ *
+ * Layout-Regel wie oben: jedes Flex-/Grid-Kind, das eine Zahl, ein Badge oder
+ * einen langen Namen trägt, bekommt `min-width: 0` — sonst sprengt es die
+ * Spur und die Seite scrollt horizontal (375 px).
+ * ========================================================================= */
+
+.vp-capsule {
+  min-width: 0;
+}
+
+.vp-capsule-action {
+  margin-left: auto;
+  min-width: 0;
+}
+
+.vp-capsule-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--vp-link, #2c5282);
+  font: inherit;
+  font-size: 0.86rem;
+  min-width: 0;
+}
+
+.vp-capsule-link:hover {
+  text-decoration: underline;
+}
+
+.vp-capsule-empty {
+  margin: 0;
+  color: var(--vp-text-muted, #667);
+  font-size: 0.88rem;
+  min-width: 0;
+}
+
+.vp-capsule-foot {
+  margin-top: var(--vp-space-4, 16px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+/* --- Zeilen (Profile + Automationen teilen die Geometrie) ---------------- */
+
+.vp-profrows,
+.vp-autorows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-profrow,
+.vp-autorow {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  padding: var(--vp-space-3, 12px) 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-profrows > .vp-profrow:first-child,
+.vp-autorows > .vp-autorow:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.vp-rowdot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vp-text-muted, #94a3b8);
+}
+
+.vp-rowdot.on {
+  background: var(--vp-success, #38a169);
+}
+
+.vp-rowdot.blocked {
+  background: var(--vp-warning, #dd6b20);
+}
+
+.vp-profrow-text,
+.vp-autorow-text {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.vp-profrow-text strong,
+.vp-autorow-text strong {
+  display: block;
+  color: var(--vp-navy, #1a365d);
+  font-size: 0.94rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-profrow-text p,
+.vp-autorow-text p {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-profrow-blocked {
+  color: var(--vp-warning, #b7791f) !important;
+}
+
+/* --- Die schmale Schutz-Zeile ------------------------------------------- */
+
+.vp-protline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+}
+
+.vp-protline-intro {
+  min-width: 0;
+}
+
+.vp-protline-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--vp-surface-2, #f7fafc);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Der EINE „Neue Automation"-Dialog ---------------------------------- */
+
+.vp-neuauto {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-neuauto-intro,
+.vp-neuauto-note {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+}
+
+.vp-neuauto-head {
+  margin: var(--vp-space-3, 12px) 0 0;
+  font-size: 0.92rem;
+  color: var(--vp-navy, #1a365d);
+  min-width: 0;
+}
+
+.vp-neuauto-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-neuauto-list.muted {
+  opacity: 0.85;
+}
+
+.vp-neuauto-item {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 12px);
+  min-width: 0;
+}
+
+.vp-neuauto-itemtext {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.vp-neuauto-itemtext strong {
+  display: block;
+  color: var(--vp-navy, #1a365d);
+  font-size: 0.9rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-neuauto-itemtext p {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-neuauto-reason {
+  color: var(--vp-warning, #b7791f) !important;
+}
+
+.vp-neuauto-hidden {
+  min-width: 0;
+}
+
+.vp-neuauto-disclose {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--vp-link, #2c5282);
+  text-align: left;
+  min-width: 0;
+}
+
+.vp-neuauto-disclose:hover {
+  text-decoration: underline;
 }
