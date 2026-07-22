@@ -22,7 +22,16 @@
  * fixed templates parameterized exclusively through a JSON literal of
  * strictly validated values (finite numbers, enum strings). User-supplied
  * text (labels, messages) only ever lands in DATA properties (name/label/
- * info/config), never in code. There are no free code nodes (D1).
+ * info/config), never in code.
+ *
+ * ONE scoped exception, logged as decision D-16 (docs/contracts/v2/README.md,
+ * amending flow-graph.md §6): `vp.logic.function` carries CUSTOMER JavaScript.
+ * It is still never concatenated into control flow - the source text is
+ * embedded as a JSON string LITERAL and the generated wrapper compiles it with
+ * `new Function`, inside a CPU/time WATCHDOG, in a scope where `net`/`http`/
+ * `https`/`require`/`global` are shadowed to undefined. Its device effects
+ * leave through vp-desired -> arbitration -> the guard chain like every other
+ * node, so customer code can only ever WISH.
  */
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -140,6 +149,59 @@ function combinatorBody(op) {
 
 const AND_BODY = combinatorBody('every');
 const OR_BODY = combinatorBody('some');
+
+// vp.logic.function (D-16): the sandboxed CUSTOMER code node. Two independent
+// guards make it safe to hand to a customer:
+//
+//  1. The WATCHDOG. The emitted Node-RED function node carries `timeout`
+//     (seconds) - Node-RED runs the script through `vm` with that timeout, so
+//     even a synchronous endless loop is ABORTED by the runtime, never a silent
+//     hang. The in-body deadline check below is the second half: it turns a
+//     slow-but-finishing run into a red node status + node.error instead of a
+//     quietly degrading flow.
+//  2. NO NETWORK / NO SANDBOX ESCAPE. The user source is embedded as DATA
+//     (P.code, a JSON string literal) and compiled with `new Function`, whose
+//     parameter list SHADOWS every handle that could reach outside the node -
+//     net/http/https/require/global/globalThis/process plus the Node-RED
+//     sandbox objects (flow/context/env/RED/node). We pass only `wert` and
+//     `msg`, so all of them are `undefined` inside the customer's scope.
+//
+// The code text is never concatenated into this control flow, so it cannot
+// close the wrapper and continue outside it. Device effects still leave through
+// vp-desired -> arbitration -> the guard chain: this node can only ever wish.
+const FUNCTION_BODY = [
+  'let fn = context.get("vp_fn");',
+  'if (!fn) {',
+  '  try {',
+  '    fn = new Function("wert", "msg", "net", "http", "https", "require", "global",',
+  '      "globalThis", "process", "flow", "context", "env", "RED", "node",',
+  '      "\\"use strict\\";\\n" + P.code);',
+  '    context.set("vp_fn", fn);',
+  '  } catch (e) {',
+  '    node.status({ fill: "red", shape: "dot", text: "Code fehlerhaft" });',
+  '    node.error("Funktion (Code): " + e.message, msg);',
+  '    return null;',
+  '  }',
+  '}',
+  'const t0 = Date.now();',
+  'let out;',
+  'try {',
+  '  out = fn(Number(msg.payload), msg);',
+  '} catch (e) {',
+  '  node.status({ fill: "red", shape: "dot", text: "Fehler" });',
+  '  node.error("Funktion (Code): " + e.message, msg);',
+  '  return null;',
+  '}',
+  'if (Date.now() - t0 > P.timeout_ms) {',
+  '  node.status({ fill: "red", shape: "dot", text: "Zeitlimit" });',
+  '  node.error("Funktion (Code): Zeitlimit von " + P.timeout_ms + " ms ueberschritten", msg);',
+  '  return null;',
+  '}',
+  'if (out === undefined || out === null) { node.status({ fill: "grey", shape: "ring", text: "-" }); return null; }',
+  'node.status({ fill: "green", shape: "dot", text: String(out) });',
+  'msg.payload = out;',
+  'return msg;',
+].join('\n');
 
 const WINDOW_BODY = [
   '// Zeitfenster in LOKALER Geraetezeit; Tage 0=So..6=Sa (leer = alle).',
@@ -416,6 +478,46 @@ const TYPES = {
     },
     compile(ctx, node) {
       return [fnNode(ctx, node, node.label || 'Oder', { ports: ['a', 'b'] }, OR_BODY, 1)];
+    },
+  },
+
+  // The sandboxed customer code node (D-16) - see FUNCTION_BODY above for the
+  // two guards (Node-RED `timeout` watchdog + shadowed network/sandbox handles).
+  // runtime EDGE ONLY: the cloud never executes customer code.
+  'vp.logic.function': {
+    version: '1.0.0',
+    runtimes: ['edge'],
+    minPalette: '0.2.0',
+    ports: { in: { in: { type: 'number', required: true } }, out: { out: { type: 'number' } } },
+    validate(p) {
+      const errs = [];
+      const code = p && p.code;
+      if (typeof code !== 'string' || code.trim().length === 0) {
+        errs.push('code fehlt');
+      } else if (code.length > 4000) {
+        errs.push('code ist länger als 4000 Zeichen');
+      }
+      if (p && p.timeout_ms !== undefined
+          && !(Number.isInteger(p.timeout_ms) && p.timeout_ms >= 1 && p.timeout_ms <= 500)) {
+        errs.push('timeout_ms muss 1..500 sein');
+      }
+      return errs;
+    },
+    requires() {
+      return [];
+    },
+    claims() {
+      return [];
+    },
+    compile(ctx, node) {
+      const p = node.parameters || {};
+      const timeoutMs = Number.isInteger(p.timeout_ms) ? p.timeout_ms : 100;
+      const fn = fnNode(ctx, node, node.label || 'Funktion (Code)',
+        { code: p.code, timeout_ms: timeoutMs }, FUNCTION_BODY, 1);
+      // Node-RED's function node `timeout` is in SECONDS and is enforced by the
+      // runtime's vm - this is the half that can abort a runaway loop.
+      fn.timeout = timeoutMs / 1000;
+      return [fn];
     },
   },
 

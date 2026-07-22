@@ -386,13 +386,28 @@ services:
       VOLTPILOT_CONTROL_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_SOURCES_MQTT_LISTENER_ENABLED: "true"
       VOLTPILOT_ENTITIES_MQTT_LISTENER_ENABLED: "true"
+      # Portal v3 M5: the device's own view of the flows it runs (deployment
+      # acks + the feature-flagged per-node states) - read-only, feeds the
+      # editor's "Läuft auf dem Gerät" badge.
+      VOLTPILOT_FLOWS_MQTT_LISTENER_ENABLED: "true"
       # Ersparnis-Simulation: the internal simulation service (see the
       # `simulation` service below); the api proxies async jobs there.
       VOLTPILOT_SIMULATION_BASE_URL: ${VOLTPILOT_SIMULATION_BASE_URL:-http://simulation:8095}
       # Flow compiler: the flowc-serve sidecar (see the `flowc` service below).
-      # Activation stays OFF by default (VOLTPILOT_FLOWS_ACTIVATION_ENABLED); the
-      # sidecar is simply available so flipping the flag needs no compose change.
       VOLTPILOT_FLOWS_COMPILER_BASE_URL: ${VOLTPILOT_FLOWS_COMPILER_BASE_URL:-http://flowc:8099}
+      # Portal v3 M5 GO-LIVE: customer-built automations really control devices
+      # from this release on. The safety net is STRUCTURAL, not procedural - a
+      # flow can only ever emit a DESIRE; arbitration picks a holder and the
+      # edge guard chain CLAMPS every command (§14a envelope both directions,
+      # EEG solar-only charge, rated power band, SoC window, rate limit).
+      # ROLLBACK (fastest lever): set VOLTPILOT_FLOWS_ACTIVATION_ENABLED=false
+      # in .env and redeploy the api - NEW activations then refuse with
+      # `activation_disabled`. It does NOT un-deploy anything: artifacts already
+      # retained on …/v2/flows keep running. To stop ONE live rule use
+      # POST /api/v1/sites/{siteId}/flows/{flowId}/deactivate, which retires the
+      # active version and republishes the smaller set - deliberately NOT gated
+      # by this flag. See docs/deploy.md "Automationen (Flow-Aktivierung)".
+      VOLTPILOT_FLOWS_ACTIVATION_ENABLED: ${VOLTPILOT_FLOWS_ACTIVATION_ENABLED:-true}
     volumes:
       # Device-CA working dir (created by tools/pki/voltpilot-ca.sh init-ca in
       # this clone). READ-WRITE on purpose: issuance advances the CA's

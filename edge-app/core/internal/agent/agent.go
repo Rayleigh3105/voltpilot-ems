@@ -77,6 +77,11 @@ type Agent struct {
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
 
+	// Per-node live flow state (Portal v3 M5 Part C), recorded from the local
+	// bus and folded into the heartbeat ONLY when the feature flag is on.
+	flowNodeMu     sync.Mutex
+	flowNodeStates map[string]flowNodeState
+
 	// Additional read-only measurement points (Erzeuger/PV + a Netz/grid meter).
 	// srcs is the persisted config; srcReadings holds the latest per-source
 	// reading (its PV and/or signed grid power + the wall-clock receive time, for
@@ -431,6 +436,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	// One-shot "Verbindung testen" results from Node-RED (edge/test-read/result),
 	// correlated to the waiting HTTP handler by request id.
 	if err := bus.Subscribe(localbus.TopicTestReadResult, 5, a.onTestReadResult); err != nil {
+		return err
+	}
+	// Per-node flow state (Portal v3 M5 Part C, additive + feature-flagged):
+	// the handler itself no-ops unless VP_FLOW_NODE_STATUS_ENABLED is set, so
+	// subscribing always is free and the block simply stays absent.
+	if err := bus.Subscribe(localbus.TopicFlowNodeStatus, 9, a.onFlowNodeStatus); err != nil {
 		return err
 	}
 
@@ -829,7 +840,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				soc := a.lastRawSoc
 				a.mu.Unlock()
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
-					a.flowsSummary(), a.sourcesSummary()); err != nil {
+					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():

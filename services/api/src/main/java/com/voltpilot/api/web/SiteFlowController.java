@@ -5,7 +5,10 @@ import com.voltpilot.api.flows.FlowService;
 import com.voltpilot.api.flows.FlowService.EntityStrategyDto;
 import com.voltpilot.api.flows.FlowService.FlowSummaryDto;
 import com.voltpilot.api.flows.FlowService.FlowVersionDto;
+import com.voltpilot.api.flows.FlowService.FlowLiveStatusResponse;
 import com.voltpilot.api.flows.FlowService.GovernanceResponse;
+import com.voltpilot.api.flows.FlowService.LayoutRequest;
+import com.voltpilot.api.flows.FlowService.LayoutResponse;
 import com.voltpilot.api.flows.FlowService.SaveFlowRequest;
 import com.voltpilot.api.flows.FlowService.ValidationResponse;
 import com.voltpilot.api.flows.FlowTemplateService;
@@ -123,6 +126,33 @@ public class SiteFlowController {
     public FlowVersionDto save(@PathVariable UUID siteId, @PathVariable UUID flowId,
             @PathVariable int version, @RequestBody SaveFlowRequest request) {
         return flows.save(siteId, flowId, version, request);
+    }
+
+    /**
+     * The editor's CANVAS LAYOUT (Portal v3 M5). Deliberately its OWN resource:
+     * the flow-graph schema carries no positions and flowc puts the artifact's
+     * x/y inside `content_hash`, so a dragged node must never reach the
+     * document. Keyed on the flow, so a forked draft inherits the arrangement.
+     */
+    @GetMapping("/sites/{siteId}/flows/{flowId}/layout")
+    public LayoutResponse layout(@PathVariable UUID siteId, @PathVariable UUID flowId) {
+        return flows.layout(siteId, flowId);
+    }
+
+    @PutMapping("/sites/{siteId}/flows/{flowId}/layout")
+    public LayoutResponse saveLayout(@PathVariable UUID siteId, @PathVariable UUID flowId,
+            @RequestBody LayoutRequest request) {
+        return flows.saveLayout(siteId, flowId, request);
+    }
+
+    /**
+     * What the DEVICE reports about this site's flows: the deployment acks
+     * (which version really runs - "Läuft auf dem Gerät") plus, only when the
+     * edge sends the feature-flagged block, the per-node live states.
+     */
+    @GetMapping("/sites/{siteId}/flow-node-status")
+    public FlowLiveStatusResponse flowNodeStatus(@PathVariable UUID siteId) {
+        return flows.liveStatus(siteId);
     }
 
     @DeleteMapping("/sites/{siteId}/flows/{flowId}")

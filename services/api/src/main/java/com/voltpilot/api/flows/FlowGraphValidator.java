@@ -224,6 +224,20 @@ public class FlowGraphValidator {
                                 "muss eine gültige IP-Adresse oder ein Hostname sein"));
                     }
                 }
+                // The sandboxed code node (D-16): source text, length-capped by
+                // the catalog. The SAFETY is not in this check - it is flowc's
+                // watchdog wrapper + the guard chain; this only keeps an
+                // artifact inside its size budget and the editor honest.
+                case "code" -> {
+                    String code = value.asText("");
+                    int max = spec.path("maxLength").asInt(4000);
+                    if (!value.isTextual() || code.isBlank()) {
+                        findings.add(paramError(type, spec, nodeId, "darf nicht leer sein"));
+                    } else if (code.length() > max) {
+                        findings.add(paramError(type, spec, nodeId,
+                                "darf höchstens " + max + " Zeichen lang sein"));
+                    }
+                }
                 default -> {
                     if (!value.isTextual()) {
                         findings.add(paramError(type, spec, nodeId, "muss ein Text sein"));

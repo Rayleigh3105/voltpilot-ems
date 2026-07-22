@@ -1,0 +1,47 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-node-status', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { type: 'vp-core', required: true },
+      flowId: { value: '', required: true },
+      nodeId: { value: '', required: true },
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: 'font-awesome/fa-heartbeat',
+    label: function () {
+      return this.name || 'vp-node-status';
+    },
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-node-status">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-plug"></i> Core</label>
+    <input type="text" id="node-input-core" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-flowId"><i class="fa fa-sitemap"></i> Flow-ID</label>
+    <input type="text" id="node-input-flowId" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-nodeId"><i class="fa fa-dot-circle-o"></i> Knoten-ID</label>
+    <input type="text" id="node-input-nodeId" />
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-node-status">
+  <p>
+    Meldet den Live-Zustand eines Flow-Bausteins an den VoltPilot-Core
+    (<code>edge/flow/node-status</code>). Der Core reicht ihn - sofern
+    freigeschaltet - im Status-Heartbeat an das Portal weiter, das ihn im
+    Automations-Editor am passenden Baustein anzeigt.
+  </p>
+  <p>Rein meldend: dieser Baustein steuert nichts.</p>
+</script>

@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.flows.FlowService;
 import com.voltpilot.api.flows.FlowService.FlowSummaryDto;
 import com.voltpilot.api.flows.FlowService.FlowVersionDto;
+import com.voltpilot.api.flows.FlowService.FlowLiveStatusResponse;
 import com.voltpilot.api.flows.FlowService.GovernanceRequest;
 import com.voltpilot.api.flows.FlowService.GovernanceResponse;
+import com.voltpilot.api.flows.FlowService.LayoutRequest;
+import com.voltpilot.api.flows.FlowService.LayoutResponse;
 import com.voltpilot.api.flows.FlowService.SaveFlowRequest;
 import com.voltpilot.api.flows.FlowService.ValidationResponse;
 import com.voltpilot.api.flows.FlowTemplateService;
@@ -98,6 +101,24 @@ public class AdminFlowController {
     public FlowVersionDto save(@PathVariable UUID siteId, @PathVariable UUID flowId,
             @PathVariable int version, @RequestBody SaveFlowRequest request) {
         return flows.save(siteId, flowId, version, request);
+    }
+
+    /** The editor's canvas layout - the admin twin of the customer route. */
+    @GetMapping("/sites/{siteId}/flows/{flowId}/layout")
+    public LayoutResponse layout(@PathVariable UUID siteId, @PathVariable UUID flowId) {
+        return flows.layout(siteId, flowId);
+    }
+
+    @PutMapping("/sites/{siteId}/flows/{flowId}/layout")
+    public LayoutResponse saveLayout(@PathVariable UUID siteId, @PathVariable UUID flowId,
+            @RequestBody LayoutRequest request) {
+        return flows.saveLayout(siteId, flowId, request);
+    }
+
+    /** What the device reports about this site's flows (acks + node states). */
+    @GetMapping("/sites/{siteId}/flow-node-status")
+    public FlowLiveStatusResponse flowNodeStatus(@PathVariable UUID siteId) {
+        return flows.liveStatus(siteId);
     }
 
     @DeleteMapping("/sites/{siteId}/flows/{flowId}")

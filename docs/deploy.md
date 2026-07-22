@@ -423,6 +423,33 @@ docker compose -f docker-compose.prod.yml exec timescaledb \
 
 Then restart the api. As normal practice you **never edit an already-applied migration** (see AGENTS.md).
 
+## Automationen (Flow-Aktivierung) - was der Schalter tut und wie man ihn zurücknimmt
+
+Seit dem Portal-v3-Release **steuern kundengebaute Automationen wirklich Geräte**: Der Kunde baut
+eine Regel im Portal, sie wird über den `flowc`-Sidecar zu einem Flow-Artefakt kompiliert und
+retained auf `ems/{t}/{s}/{d}/v2/flows` an sein Edge-Gerät ausgerollt.
+
+**Das Sicherheitsnetz ist strukturell, nicht prozedural.** Ein Flow kann immer nur einen **Wunsch**
+äußern (`vp-desired`); die Arbitrierung auf dem Gerät bestimmt den Halter, und die **Guard-Kette**
+begrenzt jeden Befehl, bevor ein Register geschrieben wird: § 14a-Hüllkurve in beide Richtungen,
+EEG-Solarladen, Leistungsband des Wechselrichters, SoC-Fenster, Rate-Limit. Genau deshalb stehen
+Guard-Kette und Arbitrierung auf der Do-not-touch-Liste - eine Klemme wegzuoptimieren, damit eine
+Demo „schöner" läuft, ist der eine Fehler, den man hier nicht machen darf.
+
+| Schalter | Wo | Wirkung |
+|---|---|---|
+| `VOLTPILOT_FLOWS_ACTIVATION_ENABLED` | api-Service, `docker-compose.prod.yml` (Default **true**), überschreibbar in `.env` | **false** = jede NEUE Aktivierung wird mit `activation_disabled` abgelehnt. |
+| `POST /api/v1/sites/{siteId}/flows/{flowId}/deactivate` | Portal / API | Stilllegen EINER laufenden Regel: die aktive Version wird zurückgezogen und das kleinere Deployment-Set neu veröffentlicht. **Bewusst NICHT** vom Flag oben abhängig. |
+
+**Wichtig - der Flag-Flip nimmt nichts zurück, was schon läuft.** Bereits ausgerollte Artefakte
+liegen *retained* auf `…/v2/flows` und laufen weiter, auch nachdem das Flag auf `false` steht. Der
+Hebel, der eine LAUFENDE Regel wirklich stoppt, ist `deactivate`. Beide Hebel gehören in die
+Generalprobe (siehe `docs/portal-v3/BUILD.md` §6/§7), nicht in den Störfall.
+
+Zusätzlich pro Anlage: gated Strategie-Bausteine (Markt, Lastspitzenkappung, atyp. Netznutzung)
+bleiben freischaltpflichtig - der Kunde öffnet sie über den Modus-Profil-Schalter (M3), der
+serverseitig genau die Bausteine dieses Profils freigibt; die Aktivierung prüft das erneut.
+
 ## Going to a real production launch
 
 Before serving real customers (on a VM that was demoed with `local`, or a fresh one):

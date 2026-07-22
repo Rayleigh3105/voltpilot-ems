@@ -12,6 +12,8 @@ import com.voltpilot.api.repo.FlowGatedNodeRepository;
 import com.voltpilot.api.repo.FlowRepository;
 import com.voltpilot.api.repo.FlowRepository.FlowVersionRow;
 import com.voltpilot.api.repo.SimulationDefaultsRepository;
+import com.voltpilot.api.repo.FlowLayoutRepository;
+import com.voltpilot.api.repo.FlowStatusRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.simulation.SimulationClient;
 import com.voltpilot.api.simulation.SimulationJobRegistry;
@@ -87,12 +89,31 @@ public class FlowService {
 
     public record GovernanceResponse(List<GatedNodeDto> gatedNodes) {}
 
+    /** One node's canvas position - a PORTAL concern, never part of the document. */
+    public record LayoutPosition(double x, double y) {}
+
+    public record LayoutRequest(Map<String, LayoutPosition> positions) {}
+
+    public record LayoutResponse(Map<String, LayoutPosition> positions) {}
+
+    /** One deployed artifact as the device acknowledges it. */
+    public record FlowAckDto(UUID flowId, int flowVersion, String contentHash, String state,
+            String detail, String reportedAt) {}
+
+    /** One node's live state as the device reports it (never derived cloud-side). */
+    public record FlowNodeStatusDto(UUID flowId, String nodeId, String state, String text,
+            String since) {}
+
+    public record FlowLiveStatusResponse(List<FlowAckDto> acks, List<FlowNodeStatusDto> nodes) {}
+
     public record GovernanceRequest(List<Enablement> enablements) {
 
         public record Enablement(String nodeType, boolean enabled) {}
     }
 
     private final SiteRepository sites;
+    private final FlowLayoutRepository layouts;
+    private final FlowStatusRepository flowStatus;
     private final FlowRepository flows;
     private final FlowCatalog catalog;
     private final FlowGraphValidator validator;
@@ -106,7 +127,8 @@ public class FlowService {
     private final SimulationJobRegistry simulationJobs;
     private final ObjectMapper mapper;
 
-    public FlowService(SiteRepository sites, FlowRepository flows, FlowCatalog catalog,
+    public FlowService(SiteRepository sites, FlowLayoutRepository layouts,
+            FlowStatusRepository flowStatus, FlowRepository flows, FlowCatalog catalog,
             FlowGraphValidator validator, EntityRegistryRepository entities,
             EntityTypeCatalog entityTypes,
             FlowActivationService activation, FlowGatedNodeRepository gatedNodes,
@@ -114,6 +136,8 @@ public class FlowService {
             SimulationClient simulationClient, SimulationJobRegistry simulationJobs,
             ObjectMapper mapper) {
         this.sites = sites;
+        this.layouts = layouts;
+        this.flowStatus = flowStatus;
         this.flows = flows;
         this.catalog = catalog;
         this.validator = validator;
@@ -591,6 +615,84 @@ public class FlowService {
                     "Der Name darf höchstens 120 Zeichen lang sein.");
         }
         return request.name().trim();
+    }
+
+    // --- Portal v3 M5: canvas layout + the device-reported live flow state ---
+
+    /** The canvas layout of one flow (Portal v3 M5 Part A). Never in the document. */
+    public LayoutResponse layout(UUID siteId, UUID flowId) {
+        requireFlow(siteId, flowId);
+        Map<String, LayoutPosition> positions = new LinkedHashMap<>();
+        layouts.find(flowId).forEach((id, p) -> positions.put(id, new LayoutPosition(p.x(), p.y())));
+        return new LayoutResponse(positions);
+    }
+
+    /**
+     * Replace the canvas layout. Unknown node ids are DROPPED server-side (a
+     * stale layout must never resurrect a deleted node), and nothing here ever
+     * touches the flow document - so a drag can not change `content_hash`.
+     */
+    @Transactional
+    public LayoutResponse saveLayout(UUID siteId, UUID flowId, LayoutRequest request) {
+        requireFlow(siteId, flowId);
+        Set<String> known = new LinkedHashSet<>();
+        for (FlowVersionRow row : flows.versionsForFlow(flowId)) {
+            JsonNode doc = parseDocument(row.documentJson());
+            for (JsonNode node : doc.path("nodes")) {
+                known.add(node.path("id").asText(""));
+            }
+        }
+        Map<String, FlowLayoutRepository.Position> clean = new LinkedHashMap<>();
+        Map<String, LayoutPosition> echo = new LinkedHashMap<>();
+        if (request != null && request.positions() != null) {
+            request.positions().forEach((id, pos) -> {
+                if (pos == null || !known.contains(id)
+                        || !Double.isFinite(pos.x()) || !Double.isFinite(pos.y())) {
+                    return;
+                }
+                double x = Math.max(0, pos.x());
+                double y = Math.max(0, pos.y());
+                clean.put(id, new FlowLayoutRepository.Position(x, y));
+                echo.put(id, new LayoutPosition(x, y));
+            });
+        }
+        layouts.save(flowId, siteId, clean);
+        return new LayoutResponse(echo);
+    }
+
+    /**
+     * What the DEVICE says about this site's flows: the deployment acks (which
+     * version really runs) plus - only when the edge sends the feature-flagged
+     * block - the per-node live states. An empty node list means "the device
+     * does not report node states", and the editor then shows none.
+     */
+    public FlowLiveStatusResponse liveStatus(UUID siteId) {
+        requireSite(siteId);
+        List<FlowAckDto> acks = flowStatus.acksForSite(siteId).stream()
+                .map(a -> new FlowAckDto(a.flowId(), a.flowVersion(), a.contentHash(), a.state(),
+                        a.detail(), a.reportedAt() == null ? null : a.reportedAt().toString()))
+                .toList();
+        List<FlowNodeStatusDto> nodes = flowStatus.nodeStatusesForSite(siteId).stream()
+                .map(n -> new FlowNodeStatusDto(n.flowId(), n.nodeId(), n.state(), n.text(),
+                        n.since() == null ? null : n.since().toString()))
+                .toList();
+        return new FlowLiveStatusResponse(acks, nodes);
+    }
+
+    private void requireFlow(UUID siteId, UUID flowId) {
+        requireSite(siteId);
+        List<FlowVersionRow> versions = flows.versionsForFlow(flowId);
+        if (versions.isEmpty() || !versions.get(0).siteId().equals(siteId)) {
+            throw notFound();
+        }
+    }
+
+    private JsonNode parseDocument(String raw) {
+        try {
+            return mapper.readTree(raw);
+        } catch (Exception e) {
+            return mapper.createObjectNode();
+        }
     }
 
     private FlowVersionRow requireVersion(UUID siteId, UUID flowId, int version) {

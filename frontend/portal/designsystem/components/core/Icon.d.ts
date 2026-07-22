@@ -43,7 +43,8 @@ export type IconName =
   | 'log-out'
   | 'help-circle'
   | 'layers'
-  | 'sliders';
+  | 'sliders'
+  | 'code';
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   name: IconName;

@@ -103,7 +103,12 @@ authoritative state machine lives in the platform API.
 ## 6. What is deliberately NOT in the graph
 
 - **No free code** (function nodes, expressions) — v1 scope, per D1; a sandboxed expression
-  node is a possible later catalog addition, not a graph-schema change.
+  node is a possible later catalog addition, not a graph-schema change. That addition has since
+  been made and logged as decision **D-16** in the [README decision log](./README.md):
+  `vp.logic.function` is a catalog type (no graph-schema change), runtime-`edge`-only, compiled
+  into a Node-RED `function` node **wrapped in a CPU/time watchdog** with **no network handles**
+  in scope; its device effects go through `vp-desired` → arbitration → the guard chain like every
+  other node, so the guard/arbitration model remains the only certified control path.
 - **No guard parameters, no priorities.** Guard limits live in the entity registry; desired
   priority is fixed to class `flow` by the runtime. A flow cannot state "I am more important".
 - **No topics, no registers, no driver details.** The graph speaks entities and capabilities;

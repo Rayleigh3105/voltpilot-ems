@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Icon } from '../../../designsystem/components/core/Icon';
-import { ApiError, type Site } from '../../api';
+import { ApiError, api, type Site } from '../../api';
 import {
   SimulationResultView,
   SimulationRunView,
@@ -27,6 +27,9 @@ import {
   type CanvasSelection,
   type ConnectSource,
 } from '../../components/flows/FlowCanvas';
+import { CodeNodeEditor } from '../../components/flows/CodeNodeEditor';
+import { FlowStepList } from '../../components/flows/FlowStepList';
+import '../../components/flows/FlowEditor.css';
 import {
   type BoundFlowApi,
   type FlowActivationResult,
@@ -34,6 +37,22 @@ import {
   type FlowVersion,
 } from '../../flows/flowsApi';
 import { guardChips, type GuardSources } from '../../flows/guardbar';
+import { liveValues, type ChannelValue, type LiveValuesView } from '../../flows/liveValues';
+import {
+  positionsChanged,
+  withPosition,
+  type NodePosition,
+  type SavedPositions,
+} from '../../flows/positions';
+import {
+  deployedBadge,
+  forkBanner,
+  rolloutBusy,
+  rolloutMessage,
+  rolloutSteps,
+  type RolloutState,
+} from '../../flows/rollout';
+import { stepList } from '../../flows/stepList';
 import {
   addEdge,
   addNode,
@@ -96,7 +115,7 @@ interface FlowEditorPageProps {
 }
 
 export function FlowEditorPage({
-  api,
+  api: flowApi,
   site,
   flowId,
   initialVersion,
@@ -125,6 +144,23 @@ export function FlowEditorPage({
   const [showReport, setShowReport] = useState(false);
   const [activation, setActivation] = useState<FlowActivationResult | null>(null);
 
+  // Portal v3 M5: canvas layout (OUTSIDE the hashed document), the device's own
+  // view of what is running, live channel values, and the guided rollout.
+  const [positions, setPositions] = useState<SavedPositions>({});
+  const [activeVersion, setActiveVersion] = useState<number | null>(null);
+  const [ack, setAck] = useState<{ version: number; state: string; detail: string | null } | null>(null);
+  const [channels, setChannels] = useState<ChannelValue[] | null>(null);
+  const [nodeStatuses, setNodeStatuses] = useState<
+    Array<{ nodeId: string; state: string; text: string | null; since: string | null }> | null
+  >(null);
+  const [rollout, setRollout] = useState<RolloutState>({ phase: 'idle' });
+  const [phone, setPhone] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-width: 720px)').matches
+      : false,
+  );
+
+  const savedPositionsRef = useRef<SavedPositions>({});
   const versionRef = useRef(version);
   versionRef.current = version;
 
@@ -143,14 +179,22 @@ export function FlowEditorPage({
     let cancelled = false;
     setLoadState('loading');
     Promise.all([
-      api.get(flowId, initialVersion),
-      api.entities().catch(() => [] as EditorEntity[]),
-      api.socBands().catch(() => null),
-      api.governance().catch(() => ({ gatedNodes: [] } as FlowNodeGovernance)),
+      flowApi.get(flowId, initialVersion),
+      flowApi.entities().catch(() => [] as EditorEntity[]),
+      flowApi.socBands().catch(() => null),
+      flowApi.governance().catch(() => ({ gatedNodes: [] } as FlowNodeGovernance)),
+      // M5 Part A: the saved canvas arrangement (fail-soft - an older backend
+      // simply yields the deterministic auto-layout).
+      flowApi.layout(flowId).catch(() => ({ positions: {} })),
+      // M5 Part B: what the DEVICE says it is running (fail-soft).
+      flowApi.list().catch(() => []),
     ])
-      .then(([flow, entityList, bands, gov]) => {
+      .then(([flow, entityList, bands, gov, layout, summaries]) => {
         if (cancelled) return;
         adopt(flow);
+        setPositions(layout.positions ?? {});
+        savedPositionsRef.current = layout.positions ?? {};
+        setActiveVersion(summaries.find((f) => f.flowId === flowId)?.activeVersion ?? null);
         setEntities(entityList);
         setGovernance(gov);
         setGuards({
@@ -170,7 +214,81 @@ export function FlowEditorPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, site.id, flowId]);
+  }, [flowApi, site.id, flowId]);
+
+  // M5 Part C: live values. Channel values come from the shipped topology
+  // read-model (its capabilities carry the latest per-channel value); per-node
+  // states come ONLY from the device's feature-flagged heartbeat block. Both
+  // fail-soft: without them the editor stays fully usable and shows NO state.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = () => {
+      api.topology(site.id)
+        .then((topology) => {
+          if (cancelled) return;
+          setChannels(topology.entities.flatMap((entity) => entity.capabilities.map((cap) => ({
+            entityId: entity.id,
+            channel: cap.channel,
+            value: cap.value,
+          }))));
+        })
+        .catch(() => undefined);
+      flowApi.liveStatus()
+        .then((status) => {
+          if (cancelled) return;
+          const mine = status.nodes.filter((n) => n.flowId === flowId);
+          // An EMPTY set means "this device does not report node states" - we
+          // pass null so the editor shows none rather than a guessed one.
+          setNodeStatuses(mine.length > 0 ? mine.map((n) => ({
+            nodeId: n.nodeId, state: n.state, text: n.text, since: n.since,
+          })) : null);
+          const deviceAck = status.acks.find((a) => a.flowId === flowId);
+          setAck(deviceAck
+            ? { version: deviceAck.flowVersion, state: deviceAck.state, detail: deviceAck.detail }
+            : null);
+        })
+        .catch(() => undefined);
+    };
+    poll();
+    const timer = window.setInterval(poll, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [flowApi, site.id, flowId]);
+
+  // Phones render the read-only step list, never a mini canvas.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(max-width: 720px)');
+    const onChange = () => setPhone(mq.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+
+  // M5 Part A: a drag writes the LAYOUT resource, debounced - never the
+  // document, so `content_hash` cannot move and the device is not re-deployed.
+  const onPositionChange = useCallback((nodeId: string, pos: NodePosition) => {
+    setPositions((current) => withPosition(current, nodeId, pos));
+  }, []);
+
+  useEffect(() => {
+    if (!positionsChanged(savedPositionsRef.current, positions)) return undefined;
+    const timer = window.setTimeout(() => {
+      const snapshot = positions;
+      flowApi.saveLayout(flowId, snapshot)
+        .then(() => {
+          savedPositionsRef.current = snapshot;
+        })
+        .catch(() => undefined); // a failed layout write is never a blocker
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [positions, flowApi, flowId]);
+
+  const live: LiveValuesView | null = useMemo(
+    () => (doc ? liveValues({ doc, channels, statuses: nodeStatuses }) : null),
+    [doc, channels, nodeStatuses],
+  );
 
   // The gated node types VoltPilot has enabled for this site (AE7 governance).
   const enabledGated = useMemo(
@@ -226,7 +344,7 @@ export function FlowEditorPage({
     setNotice(null);
     try {
       const stamped = applyDerivedClaims(doc);
-      const saved = await api.save(flowId, versionRef.current,
+      const saved = await flowApi.save(flowId, versionRef.current,
         name || 'Unbenannter Flow', stamped);
       adopt(saved);
       return saved;
@@ -239,14 +357,14 @@ export function FlowEditorPage({
     } finally {
       setBusy(false);
     }
-  }, [doc, name, api, flowId, adopt]);
+  }, [doc, name, flowApi, flowId, adopt]);
 
   const check = useCallback(async () => {
     const saved = dirty ? await save() : { flowVersion: versionRef.current };
     if (!saved) return;
     setBusy(true);
     try {
-      const result = await api.validate(flowId, saved.flowVersion);
+      const result = await flowApi.validate(flowId, saved.flowVersion);
       setServerFindings(result.findings);
       setNotice(result.valid
         ? { tone: 'ok', text: 'Der Flow ist gültig - bereit für die Simulation.' }
@@ -259,18 +377,18 @@ export function FlowEditorPage({
     } finally {
       setBusy(false);
     }
-  }, [dirty, save, api, flowId]);
+  }, [dirty, save, flowApi, flowId]);
 
   const simJobApi = useMemo(
     () => ({
       start: async () => {
-        const result = await api.simulate(flowId, versionRef.current);
+        const result = await flowApi.simulate(flowId, versionRef.current);
         return { simulationId: result.simulationId };
       },
       poll: (simulationId: string) =>
-        api.simulationStatus(flowId, versionRef.current, simulationId),
+        flowApi.simulationStatus(flowId, versionRef.current, simulationId),
     }),
-    [api, flowId],
+    [flowApi, flowId],
   );
   const sim = useSimulationJob(simJobApi);
 
@@ -291,30 +409,73 @@ export function FlowEditorPage({
     }
   }, [sim.status?.status]);
 
-  const activate = useCallback(async () => {
-    setBusy(true);
+  /**
+   * The ONE guided "Ausrollen" - prüfen → simulieren → ausrollen over the
+   * EXISTING endpoints. A refusal stops the run and leaves the active version
+   * untouched; every backend reason is mapped to customer-grade German by the
+   * pure rollout.ts (since the v3 release these strings are customer copy).
+   */
+  const rolloutNow = useCallback(async () => {
+    if (!doc) return;
     setNotice(null);
     setActivation(null);
+    setRollout({ phase: 'pruefen' });
     try {
-      const result = await api.activate(flowId, versionRef.current);
+      const savedVersion = dirty ? (await save())?.flowVersion : versionRef.current;
+      if (savedVersion == null) {
+        setRollout({ phase: 'fehler', failedAt: 'pruefen' });
+        return;
+      }
+      const check = await flowApi.validate(flowId, savedVersion);
+      setServerFindings(check.findings);
+      if (!check.valid) {
+        setRollout({ phase: 'fehler', failedAt: 'pruefen' });
+        return;
+      }
+
+      setRollout({ phase: 'simulieren' });
+      const started = await flowApi.simulate(flowId, savedVersion);
+      let status = await flowApi.simulationStatus(flowId, savedVersion, started.simulationId);
+      for (let i = 0; i < 150 && status.status !== 'done' && status.status !== 'failed'; i += 1) {
+        await new Promise((r) => { window.setTimeout(r, 2000); });
+        status = await flowApi.simulationStatus(flowId, savedVersion, started.simulationId);
+      }
+      if (status.status !== 'done') {
+        setRollout({ phase: 'fehler', failedAt: 'simulieren' });
+        return;
+      }
+      setLifecycle((current) => (current === 'draft' ? 'simulated' : current));
+
+      setRollout({ phase: 'ausrollen' });
+      const result = await flowApi.activate(flowId, savedVersion);
       setActivation(result);
-      if (result.activated) setLifecycle('active');
+      if (!result.activated) {
+        setRollout({
+          phase: 'fehler',
+          failedAt: 'ausrollen',
+          reason: result.reason ?? null,
+          message: result.message ?? null,
+        });
+        return;
+      }
+      setLifecycle('active');
+      setActiveVersion(savedVersion);
+      setRollout({ phase: 'fertig', message: result.message ?? null });
     } catch (e) {
-      setNotice({
-        tone: 'error',
-        text: e instanceof ApiError ? e.message : 'Aktivierung fehlgeschlagen.',
+      setRollout({
+        phase: 'fehler',
+        failedAt: 'ausrollen',
+        message: e instanceof ApiError ? e.message : null,
       });
-    } finally {
-      setBusy(false);
     }
-  }, [api, flowId]);
+  }, [doc, dirty, save, flowApi, flowId]);
 
   const deactivate = useCallback(async () => {
     setBusy(true);
     setNotice(null);
     setActivation(null);
     try {
-      const result = await api.deactivate(flowId);
+      const result = await flowApi.deactivate(flowId);
       setLifecycle(result.lifecycle || 'retired');
       setNotice({ tone: 'ok', text: result.message });
     } catch (e) {
@@ -325,7 +486,7 @@ export function FlowEditorPage({
     } finally {
       setBusy(false);
     }
-  }, [api, flowId]);
+  }, [flowApi, flowId]);
 
   // ---- render ------------------------------------------------------------
 
@@ -343,8 +504,41 @@ export function FlowEditorPage({
     ? doc.edges.find((e) => e.id === selection.id) ?? null
     : null;
   const valid = isValid(findings);
+  const badge = deployedBadge({
+    activeVersion,
+    ackVersion: ack?.version ?? null,
+    ackState: (ack?.state as 'active' | 'error' | 'unsupported' | undefined) ?? null,
+    ackDetail: ack?.detail ?? null,
+  });
+  const fork = forkBanner({ activeVersion, editingVersion: version, dirty });
+  const rolloutRunning = rolloutBusy(rollout);
+  const rolloutText = rolloutMessage(rollout);
   const simRunning = sim.busy;
   const simResult = sim.status?.status === 'done' ? sim.status.result ?? null : null;
+
+  // PHONE: a read-only step list with the same live values, never a canvas.
+  if (phone) {
+    return (
+      <div className="vp-flowed phone">
+        <div className="vp-flowed-bar">
+          <button type="button" className="vp-flowed-back" onClick={onClose}>
+            <Icon name="chevron-left" size={16} /> {backLabel}
+          </button>
+          <span className="vp-flowed-name">{name}</span>
+        </div>
+        <FlowStepList
+          steps={stepList(doc, entities, live)}
+          statusLabel={badge.label}
+          statusTone={badge.tone}
+          onPause={lifecycle === 'active' ? deactivate : undefined}
+          pauseBusy={busy}
+        />
+        {notice && (
+          <div className={`vp-flowed-notice ${notice.tone}`} role="status">{notice.text}</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="vp-flowed">
@@ -399,11 +593,9 @@ export function FlowEditorPage({
             <Button
               variant="outline"
               size="sm"
-              onClick={activate}
-              disabled={busy || dirty || lifecycle !== 'simulated' || !valid}
-              title={lifecycle !== 'simulated'
-                ? 'Die Aktivierung setzt einen erfolgreichen Dry-Run dieser Version voraus.'
-                : undefined}
+              onClick={rolloutNow}
+              disabled={busy || rolloutRunning || simRunning}
+              title="Prüfen, simulieren und auf das Gerät ausrollen - in einem Schritt."
             >
               Ausrollen
             </Button>
@@ -413,6 +605,24 @@ export function FlowEditorPage({
           </Button>
         </span>
       </div>
+
+      <div className="vp-flowed-deploy" data-testid="deployed-badge">
+        <Badge variant={badge.tone === 'ok' ? 'ok' : badge.tone === 'warn' ? 'warn' : 'off'}>
+          {badge.label}
+        </Badge>
+        {badge.detail && <span className="vp-deploy-detail">{badge.detail}</span>}
+      </div>
+      {fork && (
+        <div className="vp-flowed-fork" role="status">{fork}</div>
+      )}
+      {rollout.phase !== 'idle' && (
+        <div className="vp-rollout" role="status" data-testid="rollout-strip">
+          {rolloutSteps(rollout).map((step) => (
+            <span key={step.key} className={`vp-rollout-step ${step.state}`}>{step.label}</span>
+          ))}
+          {rolloutText && <span className="vp-rollout-msg">{rolloutText}</span>}
+        </div>
+      )}
 
       {notice && (
         <div className={`vp-flowed-notice ${notice.tone}`} role="status">
@@ -505,6 +715,9 @@ export function FlowEditorPage({
               setSelection(null);
               setConnectFrom(null);
             }}
+            positions={positions}
+            onPositionChange={onPositionChange}
+            live={live}
           />
 
           <div className="vp-flowed-guardbar" aria-label="Nicht editierbare Grenzen">
@@ -651,6 +864,7 @@ function NodeInspector({
           node={node}
           entities={entities}
           onChange={(value) => onParam(param.name, value)}
+          onTimeout={(ms) => onParam('timeout_ms', ms)}
         />
       ))}
       {node.claims && node.claims.length > 0 && (
@@ -678,6 +892,7 @@ function ParamField({
   node,
   entities,
   onChange,
+  onTimeout,
 }: {
   type: CatalogType;
   param: CatalogParam;
@@ -685,9 +900,31 @@ function ParamField({
   node: FlowNode;
   entities: EditorEntity[];
   onChange: (value: unknown) => void;
+  onTimeout?: (ms: number | null) => void;
 }) {
   const label = param.label ?? param.name;
   const id = `flowed-param-${node.id}-${param.name}`;
+  // The sandboxed code node (D-16): a plain monospace textarea + the three
+  // clamps, never a CDN editor (the portal CSP is script-src 'self').
+  if (param.kind === 'code') {
+    const timeoutSpec = type.parameters.find((p) => p.name === 'timeout_ms');
+    const timeout = timeoutSpec
+      ? (node.parameters?.[timeoutSpec.name] as number | undefined) ?? null
+      : null;
+    return (
+      <CodeNodeEditor
+        inputId={id}
+        value={String(value ?? '')}
+        maxLength={param.maxLength ?? 4000}
+        timeoutMs={typeof timeout === 'number' ? timeout : null}
+        onChange={(code) => onChange(code)}
+        onTimeoutChange={(ms) => onTimeout?.(ms)}
+      />
+    );
+  }
+  // The code node's timeout is edited INSIDE CodeNodeEditor - do not render a
+  // second field for it.
+  if (type.type === 'vp.logic.function' && param.name === 'timeout_ms') return null;
   if (param.kind === 'entityRef') {
     const options = param.entityTypes
       ? entities.filter((e) => param.entityTypes?.includes(e.entityType))

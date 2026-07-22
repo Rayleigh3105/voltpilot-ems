@@ -415,6 +415,32 @@ describe('V-8 runtime whitelist', () => {
   });
 });
 
+describe('vp.logic.function (D-16 code node) - the twin of FlowGraphValidatorTest', () => {
+  function codeFlow(parameters: Record<string, unknown>) {
+    const doc = shell();
+    doc.nodes = [
+      { id: 'code1', type: 'vp.logic.function', type_version: '1.0.0', parameters },
+    ];
+    return doc;
+  }
+
+  it('caps the source length and refuses an empty one (V-4)', () => {
+    expect(errors(validateFlow(codeFlow({ code: '   ' }), ENTITIES))).toContain('V-4');
+    expect(errors(validateFlow(codeFlow({ code: 'x'.repeat(4001) }), ENTITIES))).toContain('V-4');
+    // A well-formed code param produces no PARAMETER finding (the unconnected
+    // required input is a separate, expected V-1).
+    const findings = validateFlow(codeFlow({ code: 'return wert * 2;' }), ENTITIES);
+    expect(findings.filter((f) => f.rule === 'V-4')).toEqual([]);
+  });
+
+  it('is edge-only: the cloud never executes customer code (V-8)', () => {
+    const doc = codeFlow({ code: 'return wert;' });
+    doc.runtime = 'cloud';
+    delete doc.site_id;
+    expect(errors(validateFlow(doc, ENTITIES))).toContain('V-8');
+  });
+});
+
 describe('isValid', () => {
   it('is the blocking verdict', () => {
     expect(isValid([])).toBe(true);

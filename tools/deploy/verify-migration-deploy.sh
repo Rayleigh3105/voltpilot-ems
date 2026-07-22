@@ -65,6 +65,32 @@ else
   bad ".env.prod.example missing the VOLTPILOT_V2_PLAN_SITES delta"
 fi
 
+echo "== 2b. Portal v3 M5 go-live: flow activation resolves ON in prod =="
+# The v3 release turns customer flow activation ON in production. Assert the
+# resolved prod compose really carries it (a typo here would silently ship an
+# api that refuses every activation with `activation_disabled`), that the
+# rollback lever is documented, and that the flow-status listener is wired.
+if resolved="$(docker compose -f docker-compose.prod.yml --env-file "$ENV_FILE" config 2>/dev/null)"; then
+  if grep -qE 'VOLTPILOT_FLOWS_ACTIVATION_ENABLED: *"?true"?' <<<"$resolved"; then
+    pass "prod compose resolves VOLTPILOT_FLOWS_ACTIVATION_ENABLED=true"
+  else
+    bad "prod compose does NOT resolve flow activation to true"
+  fi
+  if grep -qE 'VOLTPILOT_FLOWS_MQTT_LISTENER_ENABLED: *"?true"?' <<<"$resolved"; then
+    pass "prod compose wires the flow-status listener"
+  else
+    bad "prod compose is missing VOLTPILOT_FLOWS_MQTT_LISTENER_ENABLED"
+  fi
+else
+  bad "docker-compose.prod.yml did not resolve (flow-activation check)"
+fi
+if grep -q 'VOLTPILOT_FLOWS_ACTIVATION_ENABLED' .env.prod.example \
+   && grep -q 'flows/{flowId}/deactivate' .env.prod.example; then
+  pass ".env.prod.example documents the flag AND the per-flow stop lever"
+else
+  bad ".env.prod.example must document the activation flag + the deactivate lever"
+fi
+
 echo "== 3. deploy workflow YAML parses =="
 PYYAML=""
 for py in services/optimization/.venv/bin/python services/forecast/.venv/bin/python python3; do

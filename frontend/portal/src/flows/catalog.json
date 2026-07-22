@@ -264,6 +264,23 @@
       "parameters": []
     },
     {
+      "type": "vp.logic.function",
+      "type_version": "1.0.0",
+      "label": "Funktion (Code)",
+      "description": "Eigener JavaScript-Code, der NUR auf Ihrem Gerät läuft - mit Zeitwächter und ohne Netzwerkzugriff.",
+      "group": "logik",
+      "runtimes": ["edge"],
+      "inputs": [
+        { "name": "in", "type": "number", "label": "Eingang", "required": true }
+      ],
+      "outputs": [{ "name": "out", "type": "number", "label": "Ausgang" }],
+      "parameters": [
+        { "name": "code", "kind": "code", "label": "Code", "required": true, "maxLength": 4000, "help": "JavaScript. `wert` ist der Eingangswert; geben Sie mit `return` eine Zahl zurück (null = nichts weitergeben)." },
+        { "name": "timeout_ms", "kind": "number", "label": "Zeitlimit (ms)", "required": false, "min": 1, "max": 500, "default": 100, "help": "Läuft der Code länger, wird er abgebrochen und der Baustein meldet einen Fehler." }
+      ],
+      "hint": "Läuft ausschließlich auf Ihrem Gerät. Auch dieser Baustein kann ein Gerät nur WÜNSCHEN - die Schutzgrenzen der Anlage begrenzen jeden Befehl."
+    },
+    {
       "type": "vp.modbus.read",
       "type_version": "1.0.0",
       "label": "Modbus lesen",

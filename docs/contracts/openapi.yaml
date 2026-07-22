@@ -1998,6 +1998,65 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/FlowNodeGovernance" } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found (foreign tenant). }
+  /api/v1/sites/{siteId}/flows/{flowId}/layout:
+    get:
+      tags: [flows]
+      summary: The editor canvas layout of a flow (Portal v3 M5).
+      description: >
+        The saved node positions of a flow. Deliberately its OWN resource: the
+        flow-graph schema carries no positions and flowc assigns the compiled
+        artifact's x/y itself INSIDE content_hash, so a dragged position must
+        never reach the document (a drag would otherwise re-deploy the device).
+        Keyed on the flow, so a forked draft inherits the arrangement. Empty
+        positions = never arranged (the client renders the auto-layout).
+        Mirror on /api/v1/admin/sites/{siteId}/flows/{flowId}/layout.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The saved positions.
+          content: { application/json: { schema: { $ref: "#/components/schemas/FlowLayout" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or flow not found (foreign tenant). }
+    put:
+      tags: [flows]
+      summary: Persist the editor canvas layout (Portal v3 M5).
+      description: >
+        Replace the flow's node positions. Unknown node ids are DROPPED
+        server-side; nothing here reaches the flow document, so content_hash
+        cannot move.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: flowId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FlowLayout" } } }
+      responses:
+        "200":
+          description: The stored positions (unknown ids dropped).
+          content: { application/json: { schema: { $ref: "#/components/schemas/FlowLayout" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or flow not found (foreign tenant). }
+  /api/v1/sites/{siteId}/flow-node-status:
+    get:
+      tags: [flows]
+      summary: What the DEVICE reports about this site's flows (Portal v3 M5).
+      description: >
+        The device's own view of the flows it runs: the deployment acks (which
+        version really runs - the "Läuft auf dem Gerät" badge) plus, only when
+        the edge sends the feature-flagged block, the per-node live states. An
+        empty nodes list means the device does not report node states, and the
+        editor then shows channel values only - never a guessed one. Read-only.
+        Mirror on /api/v1/admin/sites/{siteId}/flow-node-status.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The device-reported acks + node states.
+          content: { application/json: { schema: { $ref: "#/components/schemas/FlowLiveStatus" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found (foreign tenant). }
   /api/v1/sites/{siteId}/flows:
     get:
       tags: [flows]
@@ -4050,6 +4109,51 @@ components:
               label: { type: string, example: Marktoptimierung }
               gated: { type: boolean }
               enabled: { type: boolean, description: Enabled for THIS site. }
+    FlowLayout:
+      type: object
+      description: >
+        Portal v3 M5 - the editor canvas positions of a flow, stored OUTSIDE the
+        hashed flow document (a dragged position must never change content_hash).
+      properties:
+        positions:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              x: { type: number }
+              y: { type: number }
+          description: node id -> {x, y} in canvas coordinates.
+    FlowLiveStatus:
+      type: object
+      description: >
+        Portal v3 M5 - what the DEVICE reports about a site's flows. Read-only.
+      properties:
+        acks:
+          type: array
+          description: One deployment ack per flow the device runs.
+          items:
+            type: object
+            properties:
+              flowId: { type: string, format: uuid }
+              flowVersion: { type: integer }
+              contentHash: { type: string, nullable: true }
+              state: { type: string, enum: [active, error, unsupported] }
+              detail: { type: string, nullable: true }
+              reportedAt: { type: string, format: date-time, nullable: true }
+        nodes:
+          type: array
+          description: >
+            The per-node live states. EMPTY when the device does not send the
+            feature-flagged block - the editor then shows channel values only,
+            never a guessed node state.
+          items:
+            type: object
+            properties:
+              flowId: { type: string, format: uuid }
+              nodeId: { type: string }
+              state: { type: string, enum: [active, idle, error] }
+              text: { type: string, nullable: true }
+              since: { type: string, format: date-time, nullable: true }
     AutoStartOutcome:
       type: object
       description: Result of an AE7 auto-start seeding attempt.

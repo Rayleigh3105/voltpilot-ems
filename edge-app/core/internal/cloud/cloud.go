@@ -386,6 +386,37 @@ type AppliedFlow struct {
 	Detail      string `json:"detail,omitempty"`
 }
 
+// FlowNodeStatusSummary is the additive, FEATURE-FLAGGED status-heartbeat block
+// carrying the per-node live state of the deployed flows (Portal v3 M5 Part C):
+// the portal editor renders "erfüllt" / "EIN seit 14:02" on the node it belongs
+// to. Strictly REPORTING - nothing here commands anything.
+//
+// It is additive and bounded exactly like SourcesSummary: an edge with the flag
+// off (the default) simply omits the block, and the portal then shows channel
+// values only and NO node state - never a guessed one.
+type FlowNodeStatusSummary struct {
+	// ReportedAt is when the edge assembled this view (RFC 3339).
+	ReportedAt string `json:"reported_at"`
+	// Nodes are the currently known per-node states, newest state per node.
+	Nodes []FlowNodeState `json:"nodes"`
+}
+
+// maxFlowNodeStates bounds the block so a misbehaving flow cannot inflate the
+// heartbeat (a customer automation is a handful of nodes).
+const maxFlowNodeStates = 128
+
+// FlowNodeState is ONE node's reported state. Absent fields stay absent.
+type FlowNodeState struct {
+	FlowID string `json:"flow_id"`
+	NodeID string `json:"node_id"`
+	// State is the vocabulary the portal maps: active | idle | error.
+	State string `json:"state"`
+	// Text is the node's own short status text, when it sent one.
+	Text string `json:"text,omitempty"`
+	// Since is when the state was entered (RFC 3339), when known.
+	Since string `json:"since,omitempty"`
+}
+
 // ActiveControl is the READ-ONLY "Aktive Steuerung" view the edge :8484 page
 // renders (report §7): the RESULT of the portal-composed flows, never the flow
 // graph itself. It reuses the SAME facts the status heartbeat already carries -
@@ -447,7 +478,8 @@ type ControlSummary struct {
 // per-measurement-point Ist (nil = omit the block - all additive,
 // schema_version stays "1.0").
 func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
-	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary) error {
+	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
+	flowNodes *FlowNodeStatusSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -472,6 +504,12 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 			sources.Entries = sources.Entries[:maxSourceEntries]
 		}
 		payload["sources"] = sources
+	}
+	if flowNodes != nil && len(flowNodes.Nodes) > 0 {
+		if len(flowNodes.Nodes) > maxFlowNodeStates {
+			flowNodes.Nodes = flowNodes.Nodes[:maxFlowNodeStates]
+		}
+		payload["flow_node_status"] = flowNodes
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

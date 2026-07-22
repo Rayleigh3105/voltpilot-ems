@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "flow_id": "9a71c04e-2b3d-4f51-9c62-0a1b2c3d4e5f",
+  "flow_version": 1,
+  "name": "Wallbox-Sollwert aus PV-Überschuss",
+  "description": "Rechnet den Wallbox-Sollwert mit einem eigenen Code-Baustein aus dem Netzbezug (D-16: läuft nur auf dem Gerät, im Zeitwächter, ohne Netzwerkzugriff).",
+  "runtime": "edge",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "lifecycle": "draft",
+  "nodes": [
+    {
+      "id": "lesen1",
+      "type": "vp.entity.read",
+      "type_version": "1.0.0",
+      "label": "Netz-Leistung",
+      "parameters": { "entity_id": "grid-meter-1", "channel": "power_kw" }
+    },
+    {
+      "id": "code1",
+      "type": "vp.logic.function",
+      "type_version": "1.0.0",
+      "label": "Überschuss in Ladeleistung",
+      "parameters": {
+        "code": "const ueberschuss = -wert;\nif (ueberschuss < 1.4) return 0;\nreturn Math.min(11, Math.round(ueberschuss * 10) / 10);",
+        "timeout_ms": 100
+      }
+    },
+    {
+      "id": "steuern1",
+      "type": "vp.entity.control",
+      "type_version": "1.0.0",
+      "label": "Wallbox stellen",
+      "parameters": { "entity_id": "wallbox-1", "command": "setpoint_kw", "ttl_s": 300 },
+      "claims": [
+        { "entity_id": "wallbox-1", "commands": ["setpoint_kw"] }
+      ]
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": { "node": "lesen1", "port": "value" }, "to": { "node": "code1", "port": "in" } },
+    { "id": "e2", "from": { "node": "code1", "port": "out" }, "to": { "node": "steuern1", "port": "setpoint" } }
+  ],
+  "triggers": [
+    { "id": "t1", "kind": "interval", "every_s": 60 }
+  ]
+}
