@@ -253,40 +253,6 @@
 .picker.invalid { border-color: var(--err); }
 .picker.invalid:focus-within { box-shadow: 0 0 0 3px rgba(220, 38, 38, .15); }
 
-/* ---------------- Responsive (phones during installation) ---------------- */
-@media (max-width: 640px) {
-  /* dashboard.css wraps .topbar-right onto its own row for the dashboard's
-     pill+gear cluster; this page has a single back button - keep it inline. */
-  .topbar { flex-wrap: nowrap; }
-  .topbar-right { width: auto; }
-
-  .inv-head-card, .inv-form-card, .anlage-card { padding: 18px; }
-  .inv-title { font-size: 17.5px; }
-
-  .conn { padding: 14px 14px 0; }
-
-  .picker-panel { max-height: 44vh; }
-
-  /* Rows: let the status pill drop under the name/meta instead of squeezing. */
-  .row { flex-wrap: wrap; }
-  .row-main { flex-basis: 100%; }
-  .row-badge { margin-left: 21px; }
-  .row-actions { margin-left: auto; }
-
-  /* The drawer becomes a full-screen sheet (portal drawer->sheet convention). */
-  .drawer { width: 100vw; max-width: 100vw; height: 100dvh; }
-
-  /* One role card per row on a narrow sheet. */
-  .role-pick { grid-template-columns: 1fr; }
-
-  /* Stacked action buttons, full width, on phones. */
-  .form-actions-row { flex-direction: column; align-items: stretch; gap: 10px; }
-  .form-actions-right { flex-direction: column; align-items: stretch; }
-  .form-actions-row .btn-ghost, .form-actions-right .btn-ghost, .form-actions-right .btn-primary { width: 100%; justify-content: center; }
-  .drawer-foot { flex-direction: column; }
-  .drawer-foot .btn-ghost, .drawer-foot .btn-primary { width: 100%; justify-content: center; }
-}
-
 /* -------------------------------------------------------------------------
    Buttons shared by the card + the add-source drawer.
    ------------------------------------------------------------------------- */
@@ -373,3 +339,51 @@
 .role-card.sel { border-color: var(--brand-deep); box-shadow: 0 0 0 3px rgba(90, 141, 232, .18); background: linear-gradient(180deg, #fff, var(--brand-soft)); }
 .role-card.locked, .role-card:disabled { opacity: .55; cursor: not-allowed; }
 .role-locked-note { color: var(--warn); font-weight: 650; }
+
+/* ---------------- Responsive (phones during installation) ----------------
+   MUST stay at the END of this file: every rule below is a plain single-class
+   override of a base rule declared above, so an earlier placement loses the
+   cascade tie-break and the phone layout silently dies (that is exactly how
+   the add-source drawer stopped becoming a full-screen sheet). Append new
+   phone rules here, never before the base rules they override. */
+@media (max-width: 640px) {
+  /* dashboard.css wraps .topbar-right onto its own row for the dashboard's
+     pill+gear cluster; this page has a single back button - keep it inline. */
+  .topbar { flex-wrap: nowrap; }
+  .topbar-right { width: auto; }
+
+  .inv-head-card, .inv-form-card, .anlage-card { padding: 18px; }
+  .inv-title { font-size: 17.5px; }
+
+  .conn { padding: 14px 14px 0; }
+
+  .picker-panel { max-height: 44vh; }
+
+  /* Rows: let the status pill drop under the name/meta instead of squeezing. */
+  .row { flex-wrap: wrap; }
+  .row-main { flex-basis: 100%; }
+  .row-badge { margin-left: 21px; }
+  .row-actions { margin-left: auto; }
+
+  /* The drawer becomes a full-screen sheet (portal drawer->sheet convention). */
+  .drawer { width: 100vw; max-width: 100vw; height: 100dvh; }
+
+  /* One role card per row on a narrow sheet. */
+  .role-pick { grid-template-columns: 1fr; }
+
+  /* Stacked action buttons, full width, on phones. */
+  .form-actions-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .form-actions-right { flex-direction: column; align-items: stretch; }
+  .form-actions-row .btn-ghost, .form-actions-right .btn-ghost, .form-actions-right .btn-primary { width: 100%; justify-content: center; }
+  .drawer-foot { flex-direction: column; }
+  .drawer-foot .btn-ghost, .drawer-foot .btn-primary { width: 100%; justify-content: center; }
+}
+
+/* Coarse pointers: the two inline text CTAs of the setup card ("Jetzt
+   einrichten", "Quelle hinzufuegen") were 19px/35px tall - below a comfortable
+   touch target on the phone this page is installed from. Grow the hit area
+   only; the visual weight of the link/secondary button is unchanged. */
+@media (hover: none) and (pointer: coarse) {
+  .link-btn-txt { min-height: 44px; display: inline-flex; align-items: center; }
+  .btn-secondary { min-height: 44px; }
+}
