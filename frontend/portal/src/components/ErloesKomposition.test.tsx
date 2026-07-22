@@ -100,7 +100,9 @@ describe('<ErloesKomposition>', () => {
       />,
     );
     expect(screen.getByText('Vermiedene Leistungskosten')).toBeInTheDocument();
-    expect(screen.getByText('Handel & Arbitrage')).toBeInTheDocument();
+    // MIG §5: der Markt-Modus weist den ECHTEN Erlös aus (der Steuerungs-
+    // Beitrag ist die Zurechnung darunter, kein eigener Summand).
+    expect(screen.getByText('Einspeise-Erlös')).toBeInTheDocument();
     expect(screen.getByText('Wert des Eigenverbrauchs')).toBeInTheDocument();
     // Das Perioden-Etikett steht an der Zeile, nicht nur in einer Fußnote.
     expect(screen.getAllByText('Abrechnungsjahr 2026').length).toBeGreaterThan(0);

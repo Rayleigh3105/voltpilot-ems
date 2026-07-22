@@ -69,6 +69,30 @@ CREATE POLICY device_isolation ON device
     USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
     WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
 
+-- The v2 entity registry the MIG-B1 fan-out reads (mirrors the columns of api
+-- migrations V20260709000000 + V20260718000000 the writer touches). Same RLS
+-- pattern: the writer binds app.tenant_id and the policy is the fence.
+CREATE TABLE IF NOT EXISTS measurement_point (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   UUID NOT NULL,
+    site_id     UUID NOT NULL,
+    role        TEXT NOT NULL,
+    label       TEXT,
+    device_id   UUID,
+    control     BOOLEAN NOT NULL DEFAULT FALSE,
+    entity_type TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+GRANT SELECT ON measurement_point TO voltpilot_app;
+
+ALTER TABLE measurement_point ENABLE ROW LEVEL SECURITY;
+ALTER TABLE measurement_point FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS measurement_point_isolation ON measurement_point;
+CREATE POLICY measurement_point_isolation ON measurement_point
+    USING (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid);
+
 -- v2 entity telemetry (mirrors api migration V20260718010000): the generic
 -- (entity_id, channel, value) hypertable the v2 listener writes. Same RLS +
 -- unique-index discipline as v1; the rollup table is NOT mirrored here (the

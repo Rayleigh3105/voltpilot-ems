@@ -43,7 +43,14 @@ const HOST_PATTERN = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0
  * guard chain (MB-M1 guard-integrity rule). The server derives the same flag
  * from the entity-type catalog.
  */
-const COMPOSED_ENTITY_TYPES = new Set(['battery-hybrid', 'producer', 'grid-meter']);
+const COMPOSED_ENTITY_TYPES = new Set([
+  'battery-hybrid',
+  'producer',
+  'grid-meter',
+  // MIG: the synthesized Hausverbrauch entity (v1 `load_kw`) is composed from
+  // the gateway exactly like the grid meter - never a free Modbus target.
+  'house-load',
+]);
 const TRIGGER_KINDS = new Set(['interval', 'value-change', 'slot-boundary', 'event']);
 
 function error(rule: string, nodeIds: string[], edgeIds: string[], message: string): FlowFinding {

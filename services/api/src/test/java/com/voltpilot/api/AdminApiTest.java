@@ -122,6 +122,9 @@ class AdminApiTest {
     @Autowired
     com.voltpilot.api.entities.EntityObservedRepository entityObservedRepo;
 
+    @Autowired
+    com.voltpilot.api.entities.V2SiteBackfillRunner backfillRunner;
+
     // ---- (a) admin creates a tenant + a customer user -----------------------
 
     @Test
@@ -1462,8 +1465,12 @@ class AdminApiTest {
         assertThat(boot.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<Map<String, Object>> entities =
                 (List<Map<String, Object>>) boot.getBody().get("entities");
+        // MIG: the site already HAS a grid-meter point, so only the Hausverbrauch
+        // is synthesized from the gateway (§2.4); the pv ASSET never composes a
+        // producer - the one here comes from the pv-generation POINT (§2.2).
         assertThat(entities).extracting(e -> e.get("entityType"))
-                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter");
+                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter",
+                        "house-load");
 
         Map<String, Object> battery = entities.stream()
                 .filter(e -> "battery-hybrid".equals(e.get("entityType"))).findFirst().orElseThrow();
@@ -1501,13 +1508,13 @@ class AdminApiTest {
         assertThat(push.get("published")).isEqualTo(false);
         assertThat(push.get("reason")).isEqualTo("mqtt_not_configured");
 
-        // Idempotent: a re-run refreshes the SAME rows (still exactly three).
+        // Idempotent: a re-run refreshes the SAME rows (still exactly four).
         ResponseEntity<Map<String, Object>> again = rest.exchange(
                 url("/api/v1/admin/sites/" + siteId + "/v2-entities/bootstrap"), HttpMethod.POST,
                 new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
         List<Map<String, Object>> entitiesAgain =
                 (List<Map<String, Object>>) again.getBody().get("entities");
-        assertThat(entitiesAgain).hasSize(3);
+        assertThat(entitiesAgain).hasSize(4);
         assertThat(entitiesAgain).extracting(e -> e.get("id"))
                 .containsExactlyInAnyOrderElementsOf(
                         entities.stream().map(e -> e.get("id")).toList());
@@ -1531,6 +1538,136 @@ class AdminApiTest {
                 url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo", "demo"))), String.class);
         assertThat(customer.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * MIG §2 + §6 + §7 on a REAL v1 site (the shape of every existing plant:
+     * battery asset + pv asset + one claimed device + ZERO measurement points):
+     *
+     * <ul>
+     *   <li>the automatic backfill composes <b>battery-hybrid + grid-meter +
+     *       house-load</b> - Netz and Haus SYNTHESIZED from the gateway, so the
+     *       Energiefluss has all four nodes;</li>
+     *   <li>the pv ASSET composes <b>no producer</b> - the hybrid already
+     *       carries {@code pv_power_kw} and the topology sums per role, so a
+     *       second PV member would double-count (measured 5,85 -> 11,7 kW);</li>
+     *   <li>the synthesized rows are <b>measure-only</b> (no actuate,
+     *       control=false) - nothing composed can reach a device;</li>
+     *   <li>the v1 master data is <b>untouched</b> (asset.pv_capacity_kwp);</li>
+     *   <li>a <b>device-less</b> site is skipped and NOT marked, so it is
+     *       retried after a claim (Mienbach, §7);</li>
+     *   <li>the run is <b>idempotent</b>, and the marker makes a <b>rollback
+     *       stick</b> - deleting the entities is not re-migrated.</li>
+     * </ul>
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void automaticBackfillComposesGridAndHouseFromTheGatewayAndIsGuardedAndReversible() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Backfill GmbH", "CI").get("id");
+        HttpHeaders adminTenant = withTenant(bearer(admin), tenantId);
+
+        String siteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Auernheim", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        // Exactly the real-world v1 shape: a battery AND a pv asset, one device.
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantId + "', '"
+                + siteId + "', 'battery', 13.8, 12, 12, 92)");
+        exec("INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES ('"
+                + tenantId + "', '" + siteId + "', 'pv', 12.9)");
+        String deviceId = (String) rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "backfill-rig-01"),
+                        adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        // A second site of the same tenant with NO device at all (Mienbach).
+        String deviceLessSiteId = (String) rest.exchange(
+                url("/api/v1/admin/tenants/" + tenantId + "/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Mienbach", "biddingZone", "DE-LU"),
+                        bearer(admin)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                + "max_discharge_kw) VALUES ('" + tenantId + "', '" + deviceLessSiteId
+                + "', 'battery', 5.9, 1.8, 1.8)");
+
+        // The runner already ran at boot, so these two sites are unmarked and
+        // pending - run it exactly as ApplicationReadyEvent would.
+        backfillRunner.run();
+
+        List<Map<String, Object>> entities = (List<Map<String, Object>>) rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
+        assertThat(entities).extracting(e -> e.get("entityType"))
+                .as("Netz + Haus synthesized; the pv ASSET composes NO producer")
+                .containsExactlyInAnyOrder("battery-hybrid", "grid-meter", "house-load");
+
+        for (String type : List.of("grid-meter", "house-load")) {
+            Map<String, Object> row = entities.stream()
+                    .filter(e -> type.equals(e.get("entityType"))).findFirst().orElseThrow();
+            assertThat(row.get("deviceId")).as(type + " measures through the gateway")
+                    .isEqualTo(deviceId);
+            Map<String, Object> caps = (Map<String, Object>) row.get("capabilities");
+            assertThat(caps.get("actuate")).as(type + " is measure-only").isNull();
+            assertThat((List<Map<String, Object>>) caps.get("measure"))
+                    .extracting(m -> m.get("channel")).containsExactly("power_kw");
+            assertThat(((Map<String, Object>) ((Map<String, Object>) row.get("guards"))
+                    .get("failsafe")).get("behavior")).isEqualTo("measure-only");
+            // control = FALSE in the row itself: nothing composed here can ever
+            // carry a command to a device (the DB CHECK enforces it too).
+            assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE id = '"
+                    + row.get("id") + "' AND control = FALSE")).isEqualTo(1);
+        }
+
+        // The topology the portal renders: all four nodes exist.
+        Map<String, Object> topology = (Map<String, Object>) rest.exchange(
+                url("/api/v1/sites/" + siteId + "/topology"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody()
+                .get("topology");
+        assertThat((List<Map<String, Object>>) topology.get("nodes"))
+                .extracting(n -> n.get("role"))
+                .containsExactly("pv", "storage", "consumer", "grid");
+        assertThat((List<Map<String, Object>>) ((List<Map<String, Object>>) topology.get("nodes"))
+                .get(0).get("members"))
+                .as("exactly ONE PV member - the hybrid; no asset-composed producer")
+                .hasSize(1);
+
+        // Safety envelope: v1 master data untouched.
+        assertThat(queryLong("SELECT count(*) FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv' AND pv_capacity_kwp = 12.9")).isEqualTo(1);
+
+        // §7: the device-less site is SKIPPED and NOT marked (it retries later).
+        assertThat((List<Map<String, Object>>) rest.exchange(
+                url("/api/v1/admin/sites/" + deviceLessSiteId + "/v2-entities"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant),
+                new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody())
+                .as("a device-less plant keeps its honest v1 onboarding face").isEmpty();
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + deviceLessSiteId
+                + "' AND v2_backfilled_at IS NULL")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM site WHERE id = '" + siteId
+                + "' AND v2_backfilled_at IS NOT NULL")).isEqualTo(1);
+
+        // Idempotent: a second run composes nothing new.
+        backfillRunner.run();
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "'")).isEqualTo(3);
+
+        // Reversible AND sticky: delete the entities -> the site is v1 again,
+        // and a further run does NOT silently re-migrate it (the marker holds).
+        exec("DELETE FROM measurement_point WHERE site_id = '" + siteId + "'");
+        backfillRunner.run();
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "'")).as("rollback sticks").isZero();
+
+        // Clearing the marker is how an operator deliberately re-arms one site.
+        exec("UPDATE site SET v2_backfilled_at = NULL WHERE id = '" + siteId + "'");
+        backfillRunner.run();
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "'")).isEqualTo(3);
     }
 
     private static double num(Map<String, Object> map, String key) {
@@ -1581,9 +1718,15 @@ class AdminApiTest {
         assertThat(preview.get("alreadyConverted")).isEqualTo(false);
         assertThat(preview.get("gatewayDevice")).as("auto-linked battery device").isNotNull();
         List<Map<String, Object>> plan = (List<Map<String, Object>>) preview.get("plan");
+        // MIG: the preview twin must announce the synthesized Hausverbrauch too,
+        // or it would lie about what the conversion does.
         assertThat(plan).extracting(p -> p.get("entityType"))
-                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter");
+                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter",
+                        "house-load");
         assertThat(plan).allSatisfy(p -> assertThat(p.get("action")).isEqualTo("create"));
+        assertThat((List<String>) plan.stream()
+                .filter(p -> "house-load".equals(p.get("entityType"))).findFirst().orElseThrow()
+                .get("roles")).as("Haus = Verbraucher-Knoten").containsExactly("consumer");
         Map<String, Object> plannedBattery = plan.stream()
                 .filter(p -> "battery-hybrid".equals(p.get("entityType"))).findFirst().orElseThrow();
         assertThat((List<String>) plannedBattery.get("roles"))
@@ -1604,7 +1747,8 @@ class AdminApiTest {
                 new HttpEntity<>(adminTenant),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("entities");
         assertThat(created).extracting(e -> e.get("entityType"))
-                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter");
+                .containsExactlyInAnyOrder("battery-hybrid", "producer", "grid-meter",
+                        "house-load");
 
         // Preview after apply: idempotent - now "refresh", alreadyConverted.
         Map<String, Object> again = rest.exchange(
@@ -1699,7 +1843,9 @@ class AdminApiTest {
 
         // The entity graph carries the resolved role + primary + value per capability.
         List<Map<String, Object>> ents = (List<Map<String, Object>>) topo.get("entities");
-        assertThat(ents).hasSize(3);
+        // Since MIG the bootstrap also synthesizes the Hausverbrauch from the
+        // gateway (it has no reading here, so its consumer node stays valueless).
+        assertThat(ents).hasSize(4);
         Map<String, Object> gridPow = capability(ents, gridId, "power_kw");
         assertThat(gridPow.get("role")).isEqualTo("grid");
         assertThat(gridPow.get("primary")).as("the sole grid measurement is maßgeblich")
@@ -1946,9 +2092,10 @@ class AdminApiTest {
         assertThat(revision).isNotBlank();
         List<Map<String, Object>> surfaceEntities =
                 (List<Map<String, Object>>) surface.getBody().get("entities");
-        // The bootstrap made ONE entity (battery-hybrid; no source points on
-        // this site) + the wallbox created above.
-        assertThat(surfaceEntities).hasSize(2);
+        // The bootstrap made THREE entities (battery-hybrid from the asset plus
+        // the MIG-synthesized grid-meter + house-load from the gateway) + the
+        // wallbox created above.
+        assertThat(surfaceEntities).hasSize(4);
         Map<String, Object> wbSurface = surfaceEntities.stream()
                 .filter(e -> wallboxId.equals(e.get("id"))).findFirst().orElseThrow();
         assertThat(wbSurface.get("typeLabel")).isEqualTo("Wallbox");
@@ -2025,14 +2172,15 @@ class AdminApiTest {
                 .as("a spoofed heartbeat must not replace the observed state")
                 .containsExactly("ghost-entity-1");
 
-        // Delete the wallbox: the row goes, the surface follows.
+        // Delete the wallbox: the row goes, the surface follows (the three
+        // composed pilot entities stay).
         assertThat(rest.exchange(
                 url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + wallboxId),
                 HttpMethod.DELETE, new HttpEntity<>(adminTenant), String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
         surface = rest.exchange(url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
                 new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
-        assertThat((List<Map<String, Object>>) surface.getBody().get("entities")).hasSize(1);
+        assertThat((List<Map<String, Object>>) surface.getBody().get("entities")).hasSize(3);
     }
 
     @Test

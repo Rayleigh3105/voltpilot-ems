@@ -95,6 +95,8 @@ describe('erloesKomposition — Multi-Modus-Komposition', () => {
       money: money({
         savedEur: 89,
         arbitrageEur: 12,
+        einspeiseErloesEur: 301.46,
+        eigenverbrauchsWertEur: 41,
         peakShaving: {
           leistungspreisEurKw: 120,
           abrechnung: 'jahr',
@@ -113,11 +115,17 @@ describe('erloesKomposition — Multi-Modus-Komposition', () => {
 
     // Kanonische Modus-Reihenfolge aus M0: Peak vor Markt (Eigenverbrauch ist
     // auf einer reinen DV-Anlage nicht aktiv).
-    expect(view.rows.map((r) => r.id)).toEqual(['lastspitzen', 'handel']);
+    // MIG §5: die DV-Anlage weist ihren ECHTEN Erlös aus, nicht nur das
+    // Steuerungs-Delta - das steht als Zurechnung UNTER der Zeile.
+    expect(view.rows.map((r) => r.id)).toEqual([
+      'lastspitzen',
+      'einspeisung',
+      'eigenverbrauchswert',
+    ]);
     expect(view.rows[0].valueText).toBe(`1.204,00${NBSP}€`);
-    expect(view.rows[1].valueText).toBe(`89,00${NBSP}€`);
-    // Der Arbitrage-Anteil steht als ruhige Detailzeile, nicht als eigener Strom.
-    expect(view.rows[1].note).toContain(`12,00${NBSP}€`);
+    expect(view.rows[1].valueText).toBe(`301,46${NBSP}€`);
+    expect(view.rows[1].note).toContain(`davon 89,00${NBSP}€ durch VoltPilots Steuerung`);
+    expect(view.rows[2].valueText).toBe(`41,00${NBSP}€`);
     expect(view.isEmpty).toBe(false);
   });
 
@@ -126,6 +134,7 @@ describe('erloesKomposition — Multi-Modus-Komposition', () => {
       streams: multiModusStreams(),
       money: money({
         savedEur: 89,
+        einspeiseErloesEur: 89,
         peakShaving: {
           leistungspreisEurKw: 120,
           abrechnung: 'jahr',
@@ -144,7 +153,7 @@ describe('erloesKomposition — Multi-Modus-Komposition', () => {
     // Beide sind in ihrer eigenen Periode die größte Zeile -> je voller Balken.
     // Ein Jahresstand darf einen Monatswert nie optisch erschlagen.
     expect(view.rows.find((r) => r.id === 'lastspitzen')?.barFraction).toBe(1);
-    expect(view.rows.find((r) => r.id === 'handel')?.barFraction).toBe(1);
+    expect(view.rows.find((r) => r.id === 'einspeisung')?.barFraction).toBe(1);
   });
 
   it('stapelt die vier Modi der Ausprägung "Multi-Modus" (report §3)', () => {
@@ -179,17 +188,18 @@ describe('erloesKomposition — Multi-Modus-Komposition', () => {
       at: NOW,
       now: NOW,
     });
+    // Seit MIG §5 nennen Markt- und Eigenverbrauchs-Modus dieselben Ströme;
+    // jeder erscheint GENAU EINMAL - sonst wäre derselbe Euro doppelt summiert.
     expect(view.rows.map((r) => r.id)).toEqual([
       'lastspitzen',
-      'handel',
-      'eigenverbrauchswert',
       'einspeisung',
+      'eigenverbrauchswert',
       'automation',
     ]);
-    // Zeitraum-Summe = 89 + 41 + 12 (die Automation zählt ehrlich nicht mit),
+    // Zeitraum-Summe = 12 + 41 (die Automation zählt ehrlich nicht mit),
     // der Jahresstand steht daneben - nie in derselben Zahl.
     const byPeriod = Object.fromEntries(view.totals.map((t) => [t.period, t]));
-    expect(byPeriod['range'].eur).toBe(142);
+    expect(byPeriod['range'].eur).toBe(53);
     expect(byPeriod['billing-period'].eur).toBe(1204);
   });
 
@@ -206,6 +216,7 @@ describe('erloesKomposition — Perioden-Disziplin (die tragende Regel)', () => 
       streams: multiModusStreams(),
       money: money({
         savedEur: 89,
+        einspeiseErloesEur: 89,
         peakShaving: {
           leistungspreisEurKw: 120,
           abrechnung: 'jahr',
@@ -225,12 +236,12 @@ describe('erloesKomposition — Perioden-Disziplin (die tragende Regel)', () => 
   it('etikettiert jede Zeile mit IHRER Periode', () => {
     const view = withBothPeriods();
     const peak = view.rows.find((r) => r.id === 'lastspitzen')!;
-    const handel = view.rows.find((r) => r.id === 'handel')!;
+    const erloes = view.rows.find((r) => r.id === 'einspeisung')!;
     expect(peak.period).toBe('billing-period');
     expect(peak.periodLabel).toBe('Abrechnungsjahr 2026');
-    expect(handel.period).toBe('range');
-    expect(handel.periodLabel).toBe('Juli');
-    expect(peak.periodLabel).not.toBe(handel.periodLabel);
+    expect(erloes.period).toBe('range');
+    expect(erloes.periodLabel).toBe('Juli');
+    expect(peak.periodLabel).not.toBe(erloes.periodLabel);
   });
 
   it('summiert NIE quer über Perioden — eine Summe je Periode', () => {
@@ -388,7 +399,7 @@ describe('erloesKomposition — Leerfall & Drill-in', () => {
   it('bietet die ERLÖS-Historie an — sichtbar abgegrenzt vom Telemetrie-Verlauf', () => {
     const view = erloesKomposition({
       streams: multiModusStreams(),
-      money: money({ savedEur: 89 }),
+      money: money({ savedEur: 89, einspeiseErloesEur: 301.46 }),
       range: 'month',
       at: NOW,
       now: NOW,
@@ -402,7 +413,7 @@ describe('erloesKomposition — Leerfall & Drill-in', () => {
   it('nennt den gewählten Zeitraum in der Überschrift', () => {
     const view = erloesKomposition({
       streams: multiModusStreams(),
-      money: money({ savedEur: 1 }),
+      money: money({ savedEur: 1, einspeiseErloesEur: 1 }),
       range: 'day',
       at: NOW,
       now: NOW,

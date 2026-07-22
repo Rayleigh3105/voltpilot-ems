@@ -178,21 +178,39 @@ function num(v: number | null | undefined): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-function resolve(id: MoneyStreamId, money: EarningsSite | null): Resolved {
+/**
+ * Die Zurechnungs-Zeile UNTER dem Erlös: was VoltPilots Steuerung an diesem
+ * Erlös beigetragen hat (MIG §5). Sie ist bewusst **kein eigener Summand** —
+ * `savedEur` ist das Delta gegenüber einer ungeregelten Anlage und steckt
+ * bereits im Erlös. Null (kein Wert / rauschfrei 0) → keine Zeile, nie eine 0.
+ */
+export function steeringAttributionNote(savedEur: number | null | undefined): string | null {
+  const eur = num(savedEur ?? null);
+  if (eur == null || Math.abs(eur) < 0.005) return null;
+  return eur > 0
+    ? `davon ${eurAmount(eur)} durch VoltPilots Steuerung`
+    : `VoltPilots Steuerung: ${eurAmount(eur)} in diesem Zeitraum`;
+}
+
+function resolve(stream: MoneyStream, money: EarningsSite | null): Resolved {
   if (!money) return { eur: null, note: null };
-  switch (id) {
+  switch (stream.id) {
     case 'eigenverbrauchswert':
       return { eur: num(money.eigenverbrauchsWertEur), note: null };
-    case 'einspeisung':
+    case 'einspeisung': {
+      // Die Marktprämie steckt bereits IM Einspeise-Erlös - das gehört ins
+      // Kleingedruckte, nicht in eine eigene erfundene Zeile (report §1.4).
+      const praemie =
+        num(money.anzulegenderWertCtKwh) != null
+          ? 'inkl. Marktprämie (anzulegender Wert hinterlegt)'
+          : null;
+      const steering =
+        stream.attribution === 'steering' ? steeringAttributionNote(money.savedEur) : null;
       return {
         eur: num(money.einspeiseErloesEur),
-        // Die Marktprämie steckt bereits IM Einspeise-Erlös - das gehört ins
-        // Kleingedruckte, nicht in eine eigene erfundene Zeile (report §1.4).
-        note:
-          num(money.anzulegenderWertCtKwh) != null
-            ? 'inkl. Marktprämie (anzulegender Wert hinterlegt)'
-            : null,
+        note: [steering, praemie].filter(Boolean).join(' · ') || null,
       };
+    }
     case 'handel': {
       const saved = num(money.savedEur);
       const arbitrage = num(money.arbitrageEur);
@@ -239,7 +257,7 @@ export function erloesKomposition(input: ErloesKompositionInput): ErloesKomposit
   const rows: StreamRow[] = (input.streams ?? []).map((s) => {
     const { eur, note } = s.unattributed
       ? { eur: null, note: null }
-      : resolve(s.id, input.money);
+      : resolve(s, input.money);
     const state: StreamValueState = s.unattributed
       ? 'unattributed'
       : eur == null

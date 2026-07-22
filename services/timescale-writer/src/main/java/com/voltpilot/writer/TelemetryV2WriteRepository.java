@@ -6,7 +6,9 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -82,8 +84,44 @@ public class TelemetryV2WriteRepository {
         return rows;
     }
 
+    /**
+     * Insert per-entity channel rows composed OUTSIDE a v2 event - the MIG-B1
+     * fan-out of a v1 sample onto a site's composed entities. Same disciplines
+     * as {@link #insert}: RLS-bound tenant, share-locked device row + purge
+     * watermark, and the guarded per-(entity, channel, time) insert - so a row
+     * the device's OWN v2 telemetry already wrote is never overwritten and the
+     * bridge simply no-ops once the edge publishes for itself.
+     *
+     * @return how many rows landed
+     */
+    @Transactional
+    public int insertChannels(UUID tenantId, UUID siteId, UUID deviceId,
+            List<ChannelRow> rows, Instant observedAt, Instant receivedAt) {
+        if (rows.isEmpty()) {
+            return 0;
+        }
+        jdbc.queryForObject("SELECT set_config('app.tenant_id', ?, true)", String.class,
+                tenantId.toString());
+        jdbc.queryForList("SELECT data_purged_before FROM device WHERE id = ? FOR SHARE", deviceId);
+        int inserted = 0;
+        for (ChannelRow row : rows) {
+            inserted += insertRow(tenantId, siteId, deviceId, row.entityId(), row.channel(),
+                    row.value(), observedAt, receivedAt);
+        }
+        return inserted;
+    }
+
+    /** One composed (entity, channel, value) triple. */
+    public record ChannelRow(String entityId, String channel, double value) {}
+
     private int insertRow(TelemetryV2RawEvent event, String entityId, String channel,
             double value, Instant observedAt, Instant receivedAt) {
+        return insertRow(event.tenant_id(), event.site_id(), event.device_id(), entityId, channel,
+                value, observedAt, receivedAt);
+    }
+
+    private int insertRow(UUID tenantId, UUID siteId, UUID deviceId, String entityId,
+            String channel, double value, Instant observedAt, Instant receivedAt) {
         return jdbc.update("""
                 INSERT INTO telemetry_v2
                     (time, received_at, tenant_id, site_id, device_id, entity_id, channel, value)
@@ -94,9 +132,9 @@ public class TelemetryV2WriteRepository {
                     SELECT 1 FROM device WHERE id = ? AND data_purged_before >= ?)
                 """,
                 Timestamp.from(observedAt), Timestamp.from(receivedAt),
-                event.tenant_id(), event.site_id(), event.device_id(), entityId, channel, value,
+                tenantId, siteId, deviceId, entityId, channel, value,
                 entityId, channel, Timestamp.from(observedAt),
-                event.device_id(), Timestamp.from(observedAt));
+                deviceId, Timestamp.from(observedAt));
     }
 
     /** The entity's own ts when present and parseable, else the event's. */

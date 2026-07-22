@@ -59,6 +59,16 @@
       "default_actuate": []
     },
     {
+      "type": "house-load",
+      "label": "Hausverbrauch",
+      "category": "consumer",
+      "controllable": false,
+      "composed": true,
+      "default_failsafe": "measure-only",
+      "default_measure": [{ "channel": "power_kw", "unit": "kW" }],
+      "default_actuate": []
+    },
+    {
       "type": "wallbox",
       "label": "Wallbox",
       "category": "consumer",
