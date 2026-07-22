@@ -9,7 +9,8 @@ import {
   type AnlagenSub,
   type Route,
 } from './nav';
-import { anlageTrio, DEEP_VIEW_ITEMS } from './anlageNav';
+import { anlageSidebar, moreSheetItems } from './anlageNav';
+import { anlageSurface } from './surface';
 
 /** Every AnlagenSub route that exists. */
 const ALL_SUBS: AnlagenSub[] = [
@@ -164,13 +165,25 @@ describe('M1: no route breaks when the tab bar is retired', () => {
     expect(pageLabel('prognose')).toBe('Prognosequalität');
   });
 
-  it('routes every UI-reachable deep view (trio + interim "Mehr" menu)', () => {
+  it('routes every UI-reachable area (v3 shell: sidebar groups + foot + Mehr sheet)', () => {
+    // The widest possible nav, so every mode group that can exist does.
+    const sidebar = anlageSidebar(
+      anlageSurface({
+        entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
+        config: {
+          plantKind: 'direktvermarktung',
+          tarifArt: 'dynamisch',
+          leistungspreisEurKw: 120,
+        },
+      }),
+    );
     const reachable = [
-      ...anlageTrio(0)
-        .map((a) => a.sub)
-        .filter((s): s is AnlagenSub => s != null),
-      ...DEEP_VIEW_ITEMS.map((i) => i.sub),
-    ];
+      ...sidebar.groups.flatMap((g) => g.items),
+      ...sidebar.foot,
+      ...moreSheetItems(sidebar).flatMap((g) => g.items),
+    ]
+      .map((i) => (i.target.kind === 'sub' ? i.target.sub : null))
+      .filter((s): s is AnlagenSub => s != null);
     for (const sub of reachable) {
       expect(parseRoute(hashForRoute(anlageRoute('s-1', sub)))).toEqual({
         page: 'anlagen',

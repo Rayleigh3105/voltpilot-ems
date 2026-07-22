@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { healthChecklist, type HealthInput } from './health';
+import { healthBadge, healthChecklist, type HealthInput } from './health';
 
 function input(over: Partial<HealthInput>): HealthInput {
   return {
@@ -65,5 +65,86 @@ describe('healthChecklist', () => {
     const c = byKey(healthChecklist(input({ controlState: 'preparing' })), 'control');
     expect(c.state).toBe('off');
     expect(c.detail).toContain('vorbereitet');
+  });
+});
+
+describe('healthBadge - the ONE aggregated plant state (v3 M1)', () => {
+  it('is green only when every KNOWN fact is healthy', () => {
+    const badge = healthBadge({
+      devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 },
+      plan: { hasPlanToday: true, hasAnyPlan: true },
+      controlState: 'healthy',
+      battery: { withoutDevice: false, linked: true },
+    });
+    expect(badge).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null });
+  });
+
+  it('goes to WARNUNG while a device is silent, and names the finding', () => {
+    const badge = healthBadge({
+      devices: { deviceCount: 1, onlineCount: 0, waitingCount: 0 },
+      plan: { hasPlanToday: true, hasAnyPlan: true },
+    });
+    expect(badge.state).toBe('warnung');
+    expect(badge.label).toBe('Warnung');
+    expect(badge.detail).toBe('Gerät: meldet sich nicht');
+  });
+
+  it('a warning beats a hinweis (the worst finding wins)', () => {
+    const badge = healthBadge({
+      devices: { deviceCount: 1, onlineCount: 0, waitingCount: 0 },
+      plan: { hasPlanToday: false, hasAnyPlan: false },
+      battery: { withoutDevice: true, linked: false },
+    });
+    expect(badge.state).toBe('warnung');
+    expect(badge.detail).toBe('Gerät: meldet sich nicht');
+  });
+
+  it('a missing plan alone is a HINWEIS, not a warning', () => {
+    const badge = healthBadge({ plan: { hasPlanToday: false, hasAnyPlan: false } });
+    expect(badge.state).toBe('hinweis');
+    expect(badge.label).toBe('Hinweis');
+    expect(badge.detail).toBe('Fahrplan: noch keiner erstellt');
+  });
+
+  it('an unknown fact contributes NOTHING (never an invented finding)', () => {
+    // Devices unknown -> no device row, even though a "0 devices" default
+    // would otherwise read as "noch nicht verbunden".
+    expect(healthBadge({ plan: { hasPlanToday: true, hasAnyPlan: true } }).state).toBe('ok');
+    // Battery unknown -> no Speicher row.
+    expect(healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 } })).toEqual({
+      state: 'ok',
+      label: 'Alles in Ordnung',
+      detail: null,
+    });
+  });
+
+  it('an empty / absent input is OK without an invented detail', () => {
+    for (const arg of [{}, null, undefined] as const) {
+      expect(healthBadge(arg)).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null });
+    }
+  });
+
+  it('surfaces v2 Soll/Ist drift as a hinweis when it is known', () => {
+    const badge = healthBadge({
+      devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 },
+      entityDrift: true,
+    });
+    expect(badge.state).toBe('hinweis');
+    expect(badge.detail).toBe('Einstellungen: noch nicht auf dem Gerät');
+    // Absent/false drift (an un-migrated plant) can never produce a finding.
+    expect(healthBadge({ entityDrift: false }).state).toBe('ok');
+    expect(healthBadge({ entityDrift: null }).detail).toBeNull();
+  });
+
+  it('reports a still-waiting device honestly', () => {
+    const badge = healthBadge({ devices: { deviceCount: 1, onlineCount: 0, waitingCount: 1 } });
+    expect(badge.state).toBe('warnung');
+    expect(badge.detail).toBe('Gerät: wartet auf erste Daten');
+  });
+
+  it('reports a plant without any device as a hinweis', () => {
+    const badge = healthBadge({ devices: { deviceCount: 0, onlineCount: 0, waitingCount: 0 } });
+    expect(badge.state).toBe('hinweis');
+    expect(badge.detail).toBe('Gerät: noch nicht verbunden');
   });
 });

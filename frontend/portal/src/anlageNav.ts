@@ -1,115 +1,275 @@
 /**
- * M1 (Projektion #529): the Anlage-scoped SHELL navigation — the sidebar trio
- * `Übersicht · Steuerung · Geräte` that replaces the U1 per-Anlage tab bar
- * (report `data/vp-anlagen-face-k9/report.md` §2.1/§2.2, F1 decided: the tab
- * bar is retired).
+ * Portal v3 · M1 — the Anlage-scoped SHELL navigation.
+ *
+ * v3 gives an Anlage **one** navigation (`docs/portal-v3/M1-shell.md`): the
+ * sidebar shows every area of the selected plant openly, grouped into
+ * **Anlage** (Cockpit · Live-Daten · Historie · Steuerung · Anlagen-Modell)
+ * plus **one group per active mode profile** (`Modus · <Name>`, colour-tagged).
+ * The v2 "Mehr ▾" popover and the retired U1 tab strip are gone; phones get a
+ * 5-slot bottom bar whose last slot opens a sheet with everything else.
  *
  * Pure + deterministic (the `betriebsart.ts`/`surface.ts` precedent) — no
- * React, no network. The three moves it encodes:
+ * React, no network. The three laws it encodes:
  *
- * 1. **The trio is fixed, not derived.** U1's `adaptiveNav.ts` FACES ordering
- *    (profile → tab order) is DELETED: the projection orders CONTENT, not
- *    navigation. Übersicht leads; Steuerung and Geräte are always present.
- *    Only Steuerung's BADGE is derived — the number of active modes from the
- *    M0 read-model (`activeModes(site).length`), never re-derived here.
- * 2. **No global "Markt & Wissen" group** (captain, `feedback.md` round 1):
- *    Marktpreise + Prognosequalität are the market mode's deep views and are
- *    rendered as a mode-tagged sidebar group that appears and disappears with
- *    the mode — driven by `deepViews(...)` from M0.
- * 3. **Nothing is stranded.** Until the block drill-ins land (M3), every deep
- *    view stays reachable through `DEEP_VIEW_ITEMS` (the interim "Mehr ▾"
- *    menu on the Anlage head) on top of the cockpit's existing links. The
- *    routes themselves never changed, so bookmarks keep working regardless.
+ * 1. **The base group is fixed and ordered.** Five areas, always, in the same
+ *    order. Only Steuerung carries a badge (the active-mode count from the M0
+ *    read-model), and a 0/unknown count renders NO badge — never a
+ *    discouraging "0".
+ * 2. **Mode groups are a PROJECTION, never a hardcoded list.** A group exists
+ *    for every `activeModes(site)` entry whose manifest contributes at least
+ *    one deep view that is not already a base area — so Marktpreise +
+ *    Prognosequalität exist exactly while the market mode is active, and a
+ *    plain self-consumption plant never sees them.
+ * 3. **Nothing is orphaned.** Every `AnlagenSub` is reachable from the sidebar,
+ *    a mode group or the phone Mehr sheet; `anlageNav.test.ts` enforces it, so
+ *    a new sub must be mounted somewhere or the test fails.
+ *
+ * Routes are untouched — every bookmark keeps working (`nav.ts` LEGACY
+ * discipline).
  */
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { AnlagenSub, PageId } from './nav';
-import type { DeepViewId } from './surface';
+import type { ActiveMode, AnlageSurface, DeepViewId, ModeKind } from './surface';
 
-/** One of the three Anlage-scoped shell areas. */
-export type AnlageAreaKey = 'uebersicht' | 'steuerung' | 'geraete';
+/**
+ * Where a nav entry leads. `sub: null` = the Anlage cockpit itself; `page` = a
+ * top-level page (the market mode's Marktpreise/Prognosequalität, whose routes
+ * predate the Anlage subpages); `help` opens the shell's Hilfe panel (there is
+ * deliberately no invented support address — see `HELP_TEXT`); `more` opens the
+ * phone sheet.
+ */
+export type NavTarget =
+  | { kind: 'sub'; sub: AnlagenSub | null }
+  | { kind: 'page'; page: PageId }
+  | { kind: 'help' }
+  | { kind: 'more' };
 
-/** A sidebar (and phone bottom-bar) entry of the Anlage trio. */
-export interface AnlageArea {
-  key: AnlageAreaKey;
-  /** The route sub this area opens; null = the Anlagen-Seite cockpit. */
-  sub: AnlagenSub | null;
+/** The colour key of a mode group's dot; resolved to a token in Shell.css. */
+export type ModeTone = 'markt' | 'peak' | 'eigen' | 'atyp' | 'automation';
+
+/** One sidebar / bottom-bar / sheet entry. */
+export interface SidebarItem {
+  /** Stable key; also what `activeAreaKey` returns for the open route. */
+  key: string;
   label: string;
   icon: IconName;
+  target: NavTarget;
   /** Trailing count badge; null = none (Steuerung only, and only when > 0). */
   badge: number | null;
 }
 
+/** A labelled sidebar group: the fixed base group, or one active mode. */
+export interface SidebarGroup {
+  key: string;
+  label: string;
+  /** null = the base group (no colour dot); else the mode's tone. */
+  tone: ModeTone | null;
+  items: SidebarItem[];
+}
+
+/** The whole Anlage sidebar model: groups plus the foot (Einstellungen · Hilfe). */
+export interface AnlageSidebar {
+  groups: SidebarGroup[];
+  foot: SidebarItem[];
+}
+
+/** The label of the always-present base group. */
+export const BASE_GROUP_LABEL = 'Anlage';
+
 /**
- * The Anlage trio (report §2.1). Steuerung is THE key area and carries the
- * active-mode count; a count of 0/null renders WITHOUT a badge (never a
- * discouraging "0").
+ * The Hilfe & Kontakt copy. There is no self-service support channel in this
+ * platform (no SMTP, and "Vertrieb läuft persönlich" — captain decision, see
+ * `moduleSurface.ts`), so the foot item states the honest truth instead of
+ * linking a mailto nobody reads.
  */
-export function anlageTrio(activeModeCount: number | null | undefined): AnlageArea[] {
-  const badge =
-    typeof activeModeCount === 'number' && Number.isFinite(activeModeCount) && activeModeCount > 0
-      ? Math.trunc(activeModeCount)
-      : null;
+export const HELP_TEXT =
+  'Ihr VoltPilot-Team hilft Ihnen weiter. Wenden Sie sich an Ihren Ansprechpartner bei VoltPilot — ' +
+  'auch wenn Sie Ihr Passwort zurücksetzen möchten oder ein Gerät sich nicht meldet.';
+
+/** The five base areas — fixed, ordered, always present. */
+function baseItems(badge: number | null): SidebarItem[] {
   return [
-    { key: 'uebersicht', sub: null, label: 'Übersicht', icon: 'dashboard', badge: null },
-    { key: 'steuerung', sub: 'steuerung', label: 'Steuerung', icon: 'zap', badge },
-    { key: 'geraete', sub: 'entitaeten', label: 'Geräte', icon: 'cpu', badge: null },
+    { key: 'cockpit', label: 'Cockpit', icon: 'dashboard', target: { kind: 'sub', sub: null }, badge: null },
+    { key: 'live', label: 'Live-Daten', icon: 'activity', target: { kind: 'sub', sub: 'live' }, badge: null },
+    { key: 'historie', label: 'Historie', icon: 'history', target: { kind: 'sub', sub: 'historie' }, badge: null },
+    { key: 'steuerung', label: 'Steuerung', icon: 'zap', target: { kind: 'sub', sub: 'steuerung' }, badge },
+    {
+      key: 'anlagen-modell',
+      label: 'Anlagen-Modell',
+      icon: 'layers',
+      // M6 renames/replaces the page behind this route; M1 only mounts it.
+      target: { kind: 'sub', sub: 'entitaeten' },
+      badge: null,
+    },
+  ];
+}
+
+/** Einstellungen · Hilfe & Kontakt — the sidebar foot. */
+function footItems(): SidebarItem[] {
+  return [
+    { key: 'technik', label: 'Einstellungen', icon: 'settings', target: { kind: 'sub', sub: 'technik' }, badge: null },
+    { key: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle', target: { kind: 'help' }, badge: null },
   ];
 }
 
 /**
- * Which trio entry a route sub belongs to. A deep view (live/fahrplan/…) is
- * NOT one of the three areas — it returns null, so no trio entry is falsely
- * highlighted while a deep view is open.
+ * Which deep views become their OWN nav entry. Everything else a manifest
+ * lists is already a base area (`live`, `geraete`, `telemetrie-historie`,
+ * `erloes-historie`, `flow-editor`) or deliberately has no nav entry any more
+ * (`wetter` becomes a cockpit card + drill-in in M2; its route stays and the
+ * phone sheet keeps it reachable).
  */
-export function activeAreaKey(sub: AnlagenSub | null): AnlageAreaKey | null {
-  if (sub == null) return 'uebersicht';
-  if (sub === 'steuerung') return 'steuerung';
-  if (sub === 'entitaeten') return 'geraete';
-  return null;
-}
+const MODE_VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
+  // OPEN(O2, BUILD.md §8): Fahrplan currently belongs to the market mode. If
+  // the owner decides every plant with a battery plan should carry it as a BASE
+  // entry, move this one line into `baseItems` — nothing else changes.
+  fahrplan: { key: 'fahrplan', label: 'Fahrplan', icon: 'calendar', target: { kind: 'sub', sub: 'fahrplan' } },
+  marktpreise: {
+    key: 'marktpreise',
+    label: 'Marktpreise',
+    icon: 'euro',
+    target: { kind: 'page', page: 'marktpreise' },
+  },
+  prognosequalitaet: {
+    key: 'prognose',
+    label: 'Prognosequalität',
+    icon: 'trending-up',
+    target: { kind: 'page', page: 'prognose' },
+  },
+  lastspitzen: {
+    key: 'lastspitzen',
+    label: 'Lastspitzen',
+    icon: 'trending-up',
+    target: { kind: 'sub', sub: 'lastspitzen' },
+  },
+};
 
-/** One entry of the interim "Mehr ▾" deep-view menu. */
-export interface DeepViewItem {
-  sub: AnlagenSub;
-  label: string;
-  icon: IconName;
-}
-
-/**
- * The interim access affordance (M1 → superseded by the M3 block drill-ins):
- * EVERY Anlage deep view that is not one of the trio areas, so no view is
- * orphaned while the cockpit blocks that will own them do not exist yet.
- * Deliberately exhaustive — a new `AnlagenSub` must land here (or in the
- * trio), which `anlageNav.test.ts` enforces.
- */
-export const DEEP_VIEW_ITEMS: DeepViewItem[] = [
-  { sub: 'live', label: 'Live-Daten', icon: 'activity' },
-  { sub: 'fahrplan', label: 'Fahrplan', icon: 'calendar' },
-  { sub: 'historie', label: 'Historie & Erlöse', icon: 'history' },
-  { sub: 'lastspitzen', label: 'Lastspitzen', icon: 'trending-up' },
-  { sub: 'wetter', label: 'Wetter', icon: 'sun' },
-  { sub: 'technik', label: 'Einstellungen', icon: 'settings' },
+/** The deep view that has no nav entry but must stay reachable (phone sheet). */
+const SHEET_ONLY_ITEMS: SidebarItem[] = [
+  { key: 'wetter', label: 'Wetter', icon: 'sun', target: { kind: 'sub', sub: 'wetter' }, badge: null },
 ];
 
-/** A mode-tagged sidebar group (report §2.1: "Aus Modus: Marktvermarktung"). */
-export interface ModeNavGroup {
-  title: string;
-  pages: PageId[];
+const MODE_TONES: Record<ModeKind, ModeTone> = {
+  marktvermarktung: 'markt',
+  lastspitzenkappung: 'peak',
+  eigenverbrauch: 'eigen',
+  'atypische-netznutzung': 'atyp',
+  automation: 'automation',
+};
+
+function modeGroup(mode: ActiveMode, taken: Set<string>): SidebarGroup | null {
+  const items: SidebarItem[] = [];
+  for (const view of mode.manifest.deepViews) {
+    const def = MODE_VIEW_ITEMS[view];
+    if (!def || taken.has(def.key)) continue;
+    taken.add(def.key);
+    items.push({ ...def, badge: null });
+  }
+  if (items.length === 0) return null;
+  return {
+    key: `mode:${mode.key}`,
+    // M3 gives the customer-facing profile its own name; until then the group
+    // carries the mode label straight from the M0 read-model.
+    label: `Modus · ${mode.label}`,
+    tone: MODE_TONES[mode.kind],
+    items,
+  };
 }
 
 /**
- * The mode-scoped knowledge group. Marktpreise + Prognosequalität belong to
- * `module(marktvermarktung)` and appear ONLY while that mode is active — a
- * Privat-EMS or Gewerbe site never sees them anywhere (captain, Rev. 2).
- * Driven by the M0 deep-view set, so the derivation is not duplicated.
+ * The grouped Anlage sidebar: the fixed base group plus one group per active
+ * mode that contributes a view of its own. `activeModeCount` badges Steuerung
+ * (defaults to the surface's own mode count); 0/null/NaN renders no badge.
  */
-export function modeNavGroup(deepViews: DeepViewId[] | null | undefined): ModeNavGroup | null {
-  const views = deepViews ?? [];
-  const pages: PageId[] = [];
-  if (views.includes('marktpreise')) pages.push('marktpreise');
-  if (views.includes('prognosequalitaet')) pages.push('prognose');
-  if (pages.length === 0) return null;
-  return { title: 'Aus Modus: Marktvermarktung', pages };
+export function anlageSidebar(
+  surface: AnlageSurface | null | undefined,
+  activeModeCount?: number | null,
+): AnlageSidebar {
+  const raw = activeModeCount === undefined ? surface?.modes.length ?? null : activeModeCount;
+  const badge =
+    typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
+
+  const groups: SidebarGroup[] = [
+    { key: 'base', label: BASE_GROUP_LABEL, tone: null, items: baseItems(badge) },
+  ];
+  const taken = new Set<string>();
+  for (const mode of surface?.modes ?? []) {
+    const group = modeGroup(mode, taken);
+    if (group) groups.push(group);
+  }
+  return { groups, foot: footItems() };
+}
+
+/** The bottom-bar keys, in order — the four core areas plus the Mehr sheet. */
+const BOTTOM_KEYS = ['cockpit', 'live', 'steuerung', 'anlagen-modell'] as const;
+
+/** Shorter phone labels; the sidebar keeps the full words. */
+const BOTTOM_LABELS: Record<string, string> = {
+  cockpit: 'Cockpit',
+  live: 'Live',
+  steuerung: 'Steuerung',
+  'anlagen-modell': 'Anlage',
+};
+
+/**
+ * The phone bottom bar: EXACTLY five slots (report §2.1 / concept tab 2) —
+ * Cockpit · Live · Steuerung · Anlage · Mehr. The core areas are always one
+ * thumb away; nothing hides behind a hamburger.
+ */
+export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
+  const base = sidebar.groups[0]?.items ?? [];
+  const slots = BOTTOM_KEYS.map((key) => {
+    const item = base.find((i) => i.key === key);
+    return item ? { ...item, label: BOTTOM_LABELS[key] ?? item.label } : null;
+  }).filter((i): i is SidebarItem => i != null);
+  slots.push({ key: 'more', label: 'Mehr', icon: 'more-horizontal', target: { kind: 'more' }, badge: null });
+  return slots;
+}
+
+/**
+ * The "Mehr" sheet: everything the bottom bar does not carry, grouped and
+ * colour-tagged exactly like the sidebar — the base remainder (Historie), the
+ * mode groups, and a trailing group with the entries that have no sidebar home
+ * (Wetter) plus the foot (Einstellungen · Hilfe & Kontakt).
+ */
+export function moreSheetItems(sidebar: AnlageSidebar): SidebarGroup[] {
+  const inBottom = new Set<string>(BOTTOM_KEYS);
+  const groups: SidebarGroup[] = [];
+  const [base, ...modes] = sidebar.groups;
+  const rest = (base?.items ?? []).filter((i) => !inBottom.has(i.key));
+  if (rest.length > 0) groups.push({ key: 'base', label: BASE_GROUP_LABEL, tone: null, items: rest });
+  groups.push(...modes);
+  groups.push({
+    key: 'mehr',
+    label: 'Mehr',
+    tone: null,
+    items: [...SHEET_ONLY_ITEMS, ...sidebar.foot],
+  });
+  return groups;
+}
+
+/**
+ * Which nav entry the open route highlights. ONE rule, decided here and never
+ * spread into `AppShell`: the cockpit is `cockpit`, the Anlagen-Modell route
+ * (`entitaeten`) carries its v3 name, everything else highlights the entry with
+ * its own sub key — deep views are real sidebar entries now, so (unlike v2)
+ * none of them leaves the navigation unhighlighted.
+ */
+export function activeAreaKey(sub: AnlagenSub | null): string {
+  if (sub == null) return 'cockpit';
+  if (sub === 'entitaeten') return 'anlagen-modell';
+  return sub;
+}
+
+/**
+ * The highlighted entry while a mode PAGE is open (Marktpreise /
+ * Prognosequalität keep the Anlage nav — they are that Anlage's market-mode
+ * deep views). Any other page is outside the Anlage nav.
+ */
+export function activeKeyForPage(page: PageId): string | null {
+  if (page === 'marktpreise') return 'marktpreise';
+  if (page === 'prognose') return 'prognose';
+  return null;
 }
 
 /**
