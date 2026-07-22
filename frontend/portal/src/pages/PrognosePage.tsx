@@ -488,7 +488,7 @@ function ChallengerCard({
                   year: 'numeric',
                 })}` +
                 (state.trainRows
-                  ? ` mit ${state.trainRows.toLocaleString('de-DE')} Messpunkten.`
+                  ? ` mit ${state.trainRows.toLocaleString('de-DE')} Messwerten.`
                   : '.')
               : 'Noch nicht trainiert.'}
           </p>

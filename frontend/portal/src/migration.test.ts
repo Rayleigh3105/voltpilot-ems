@@ -8,6 +8,7 @@ import { cockpitWidgets } from './cockpitWidgets';
 import { hasTopology } from './adaptiveLive';
 import { modeChips } from './portfolio';
 import { profileShelf, profileStatesFrom } from './profiles';
+import { showTechnicalLayer } from './rollen';
 import { anlageSurface, type AnlageSurfaceInput } from './surface';
 import type { OverviewSite } from './api';
 
@@ -222,6 +223,14 @@ describe('Abbau-Invarianten (M6)', () => {
     expect(ohne.cockpitBlocks).toEqual([]);
     // Das Regal einer Anlage ohne Server-Antwort ist leer, nie erfunden.
     expect(profileShelf(null)).toEqual({ cards: [], weitere: [] });
+  });
+
+  it('M7: die technische Schicht ist standardmäßig zu (ohne Admin-Token)', () => {
+    // Ohne Plattform-Admin-Token (der Kundenfall UND ein älteres Backend / ein
+    // Ladefehler) bleibt die Installateur-Ansicht geschlossen - eine Bestands-
+    // oder Kundenanlage bekommt nie Entitätstypen, Kanäle oder Guard-Bänder zu
+    // sehen. Genau EIN Helfer entscheidet das (rollen.showTechnicalLayer).
+    expect(showTechnicalLayer()).toBe(false);
   });
 
   it('`usage_profile_override` lebt nur noch als Auto-Start-Template-Wähler', () => {

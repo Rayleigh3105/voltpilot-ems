@@ -326,7 +326,7 @@ export function TechnikSection({
     const items = [`Die Anlage „${site.name}" mit allen Daten`];
     if (preview && preview.telemetryCount > 0 && preview.telemetryFrom && preview.telemetryTo) {
       items.push(
-        `Alle Messdaten (${fmtNum(preview.telemetryCount, '', 0)} Messpunkte vom ${fmtDay(preview.telemetryFrom)} bis ${fmtDay(preview.telemetryTo)})`,
+        `Alle Messdaten (${fmtNum(preview.telemetryCount, '', 0)} Messwerte vom ${fmtDay(preview.telemetryFrom)} bis ${fmtDay(preview.telemetryTo)})`,
       );
     } else {
       items.push('Alle aufgezeichneten Messdaten dieser Anlage');

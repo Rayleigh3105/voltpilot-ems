@@ -129,7 +129,7 @@ function TileCard({ tile }: { tile: AdaptiveTile }) {
           className="vp-verdict-sw"
           role="group"
           aria-label="Steuerung – bald verfügbar"
-          title="Steuerung folgt (in Vorbereitung)"
+          title="Steuerung folgt"
         >
           {tile.control.options.map((opt, i) => (
             <button

@@ -495,7 +495,7 @@ export function FahrplanSection({ site }: { site: Site }) {
           <InfoTip title="Wie der Fahrplan berechnet wird">
             Der Fahrplan wird für jede Anlage einzeln alle 15 Minuten neu berechnet -
             für die nächsten 24 Stunden in 15-Minuten-Schritten. Ein Optimierungsmodell
-            (MILP) plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden:
+            plant den Batteriespeicher so, dass Ihre Stromkosten minimal werden:
             laden bei günstigem Strom oder PV-Überschuss, entladen wenn Strom teuer ist,
             Eigenverbrauch maximieren. Eingaben je Anlage sind die Börsen-Day-Ahead-Preise,
             die Last- und PV-Prognose, der aktuelle Ladestand, die Batteriegrenzen und die

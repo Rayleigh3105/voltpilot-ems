@@ -259,7 +259,7 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
             <tr>
               <th>Anlage</th>
               <th>Modi</th>
-              <th>Entitäten</th>
+              <th>Komponenten</th>
               <th>Ladestand</th>
               <th>PV jetzt</th>
               <th>Erlös heute</th>
@@ -289,7 +289,7 @@ export function PortfolioPage({ sites, onNavigate, onReload, isAdmin = false }: 
                   <td data-label="Modi">
                     <ModesCell chips={chips} />
                   </td>
-                  <td data-label="Entitäten">
+                  <td data-label="Komponenten">
                     <EntitiesCell badges={badges} />
                   </td>
                   <td data-label="Ladestand">{soc == null ? '—' : fmtNum(soc, '%', 0)}</td>

@@ -11,7 +11,7 @@ import {
   type PlantDevice,
   type PlantEffect,
 } from '../komponenten';
-import type { AdoptableSource } from '../rollen';
+import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { EntitaetenSection } from './EntitaetenSection';
@@ -26,11 +26,14 @@ import '../components/AnlagenModell.css';
  * where people look for them.
  *
  * The customer dictionary is Gerät / Komponente / Messwert (D3) — the words
- * Entität / Messpunkt / Quelle live only in the admin/installer panel below
- * (M7 gates it behind the role; here it is admin-only). All derivation is the
+ * Entität / Messpunkt / Quelle live only in the admin/installer panel below,
+ * gated by the ONE `showTechnicalLayer()` helper (M7). All derivation is the
  * pure `komponenten.ts`; this file only renders.
  */
-export function AnlagenModellSection({ site, isAdmin = false }: { site: Site; isAdmin?: boolean }) {
+export function AnlagenModellSection({ site }: { site: Site }) {
+  // The ONE technical-layer decision (M7): a platform-admin sees the installer
+  // panel added to the same page; a customer never does.
+  const showTechnical = showTechnicalLayer();
   const [data, setData] = useState<SiteEntities | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
   const [error, setError] = useState(false);
@@ -200,14 +203,15 @@ export function AnlagenModellSection({ site, isAdmin = false }: { site: Site; is
       </Card>
 
       {/* The technical/installer view (entity types, raw channels, guard bands,
-          Soll/Ist sync, registry) is admin-only for now — M7 gates it behind
-          the role. Nothing was deleted; it just no longer frames the customer. */}
-      {isAdmin && (
+          Soll/Ist sync, registry) is gated behind the ONE showTechnicalLayer()
+          helper (M7). Nothing was deleted; it just no longer frames the
+          customer, and only a platform-admin ever sees it. */}
+      {showTechnical && (
         <details className="vp-modell-installer">
           <summary>
             <Icon name="settings" size={16} /> Installateur-Ansicht (technisch)
           </summary>
-          <EntitaetenSection site={site} isAdmin={isAdmin} />
+          <EntitaetenSection site={site} isAdmin={showTechnical} />
         </details>
       )}
 
