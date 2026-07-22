@@ -188,6 +188,15 @@
   .vp-drawer {
     width: 100%; /* full-screen sheet on phones */
   }
+  /* Zwei nebeneinander liegende Aktionen passen bei 375 px nicht in eine
+     Zeile: der `flex-wrap` warf sie in zwei rechtsbündige Zeilen (die
+     Abbrechen-Zeile stand einsam über dem Primärknopf). Auf dem Telefon
+     stapeln sie in voller Breite - Reihenfolge bleibt unverändert, der
+     Primärknopf liegt damit am Daumen. */
+  .vp-drawer .dfoot {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 /* ---------- KpiCard ---------- */

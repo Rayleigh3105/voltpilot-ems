@@ -141,8 +141,8 @@
 }
 
 /* Zeilen ohne Zahl bleiben sichtbar, aber ruhig - "—" statt einer erfundenen 0. */
-.vp-stream-unattributed .vp-stream-value,
-.vp-stream-unavailable .vp-stream-value {
+.vp-stream-s-unattributed .vp-stream-value,
+.vp-stream-s-unavailable .vp-stream-value {
   color: var(--vp-text-gray, #718096);
 }
 
