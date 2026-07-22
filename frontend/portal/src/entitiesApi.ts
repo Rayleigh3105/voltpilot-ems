@@ -84,14 +84,20 @@ export const entitiesApi = {
     }),
 
   /**
-   * Adopt an edge-reported source into a v2 entity (U2 "Vom Gerät gemeldet",
-   * report §3.3, admin-only first increment). Idempotent per {@code sourceId}:
-   * a re-adopt returns the existing entity. A consumer type becomes a v2-native
+   * Adopt an edge-reported source into a v2 entity (Portal v3 M6 "Neues Gerät
+   * gefunden", the one-move Zuordnen). Idempotent per {@code sourceId}: a
+   * re-adopt returns the existing entity. A consumer type becomes a v2-native
    * entity; a composed producer/grid-meter is recorded as a read-only source
-   * (its kWp / MaStR SEE # captured here). Admin-only.
+   * (its kWp / MaStR SEE # captured here).
+   *
+   * Points at the CUSTOMER twin `POST /api/v1/sites/{id}/v2-entities/adopt`
+   * (RLS-fenced, catalog-guarded to the guided types — the SiteFlowController
+   * pattern; O3 built in M6). Admins reach it through the X-Tenant-Id switcher.
+   * If the twin is absent (older backend) the call is 401/403/404 and the
+   * caller falls back to the honest "VoltPilot richtet das ein" hint.
    */
   adopt: (siteId: string, body: AdoptInput) =>
-    request<AdminEntity>(`/api/v1/admin/sites/${siteId}/v2-entities/adopt`, {
+    request<AdminEntity>(`/api/v1/sites/${siteId}/v2-entities/adopt`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

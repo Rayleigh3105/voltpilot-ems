@@ -1401,6 +1401,74 @@ class PortalApiTest {
     }
 
     /**
+     * Portal v3 M6 (OPEN O3): the CUSTOMER adopt twin
+     * {@code POST /api/v1/sites/{id}/v2-entities/adopt} — a Portal-User assigns
+     * an edge-reported source of THEIR OWN site in one move. Mirrors
+     * {@code AdminApiTest.adminAdoptsEdgeReportedSourcesIntoV2EntitiesIdempotently}:
+     * a guided consumer type adopts idempotently per edgeSourceId, a non-guided
+     * type is refused (never a free type picker), and a foreign site is 404
+     * (RLS, not 403 — no @PreAuthorize).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void customerAdoptsAReportedSourceInOneMoveGuardedToTheGuidedTypes() {
+        String demo = token("demo", "demo");
+
+        // The customer creates an Anlage of their own tenant.
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Zuordnen-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        // Adopt a reported go-e wallbox (a guided consumer type) -> a v2 entity
+        // pinned to its source id.
+        ResponseEntity<Map<String, Object>> adopted = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "goe-1", "entityType", "wallbox",
+                        "label", "Wallbox Carport", "maxPowerKw", 11), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(adopted.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String wallboxId = (String) adopted.getBody().get("id");
+        assertThat(adopted.getBody().get("entityType")).isEqualTo("wallbox");
+
+        // Idempotent per sourceId: a re-adopt returns the same entity.
+        ResponseEntity<Map<String, Object>> reAdopt = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "goe-1", "entityType", "wallbox"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(reAdopt.getBody().get("id")).isEqualTo(wallboxId);
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "' AND edge_source_id = 'goe-1'")).isEqualTo(1L);
+
+        // A platform-managed composed type (battery-hybrid) is NOT adoptable here
+        // (never a free type picker) -> 422.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "x-1", "entityType", "battery-hybrid"),
+                        bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // A free installer type (modbus-generic) is likewise not a guided type -> 422.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "x-2", "entityType", "modbus-generic"),
+                        bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // An unknown type -> 400.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "x-3", "entityType", "phantasie"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // A foreign tenant can neither see nor adopt onto this site (404, RLS).
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "goe-9", "entityType", "wallbox"),
+                        bearer(token("demo2", "demo2"))),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
      * MIG v1->v2 history bridge: a migrated site's Historie must NOT reset at
      * the cutover. With v1 5-channel telemetry BEFORE the cutover instant and
      * v2 per-entity telemetry (producer + grid-meter + battery-hybrid) AT/AFTER

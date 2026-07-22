@@ -97,8 +97,8 @@ function baseItems(badge: number | null): SidebarItem[] {
       key: 'anlagen-modell',
       label: 'Anlagen-Modell',
       icon: 'layers',
-      // M6 renames/replaces the page behind this route; M1 only mounts it.
-      target: { kind: 'sub', sub: 'entitaeten' },
+      // M6 built the three-column plant model behind this route.
+      target: { kind: 'sub', sub: 'modell' },
       badge: null,
     },
   ];
@@ -265,13 +265,13 @@ export function moreSheetItems(sidebar: AnlageSidebar): SidebarGroup[] {
 /**
  * Which nav entry the open route highlights. ONE rule, decided here and never
  * spread into `AppShell`: the cockpit is `cockpit`, the Anlagen-Modell route
- * (`entitaeten`) carries its v3 name, everything else highlights the entry with
+ * (`modell`) carries its own nav key, everything else highlights the entry with
  * its own sub key — deep views are real sidebar entries now, so (unlike v2)
  * none of them leaves the navigation unhighlighted.
  */
 export function activeAreaKey(sub: AnlagenSub | null): string {
   if (sub == null) return 'cockpit';
-  if (sub === 'entitaeten') return 'anlagen-modell';
+  if (sub === 'modell') return 'anlagen-modell';
   return sub;
 }
 

@@ -20,7 +20,7 @@ const ALL_SUBS: AnlagenSub[] = [
   'historie',
   'wetter',
   'technik',
-  'entitaeten',
+  'modell',
   'steuerung',
   'lastspitzen',
   'profile',
@@ -101,7 +101,7 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
       'live',
       'historie',
       'steuerung',
-      'entitaeten',
+      'modell',
     ]);
   });
 
@@ -254,7 +254,7 @@ describe('no orphaned view: every AnlagenSub is mounted exactly once', () => {
 describe('activeAreaKey / activeKeyForPage - ONE highlight rule', () => {
   it('maps the cockpit and every sub onto its own entry', () => {
     expect(activeAreaKey(null)).toBe('cockpit');
-    expect(activeAreaKey('entitaeten')).toBe('anlagen-modell');
+    expect(activeAreaKey('modell')).toBe('anlagen-modell');
     for (const sub of ['live', 'historie', 'steuerung', 'fahrplan', 'lastspitzen', 'wetter', 'technik'] as const) {
       expect(activeAreaKey(sub)).toBe(sub);
     }

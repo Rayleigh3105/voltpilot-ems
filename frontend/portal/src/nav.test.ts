@@ -19,7 +19,7 @@ const ALL_SUBS: AnlagenSub[] = [
   'historie',
   'wetter',
   'technik',
-  'entitaeten',
+  'modell',
   'steuerung',
   'lastspitzen',
 ];
@@ -79,6 +79,16 @@ describe('parseRoute', () => {
       page: 'anlagen',
       siteId: 'site-1',
       sub: 'steuerung',
+    });
+  });
+
+  it('redirects the retired entitaeten subpage into the Anlagen-Modell (M6)', () => {
+    // The "Geräte & Entitäten" list became the Anlagen-Modell in Portal v3 M6;
+    // the old hash keeps working as a redirect so bookmarks never break.
+    expect(parseRoute('#/anlage/site-1/entitaeten')).toEqual({
+      page: 'anlagen',
+      siteId: 'site-1',
+      sub: 'modell',
     });
   });
 

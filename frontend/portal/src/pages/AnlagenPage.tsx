@@ -62,7 +62,7 @@ import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
 import { LiveSection } from './LiveSection';
-import { EntitaetenSection } from './EntitaetenSection';
+import { AnlagenModellSection } from './AnlagenModellSection';
 import { LastspitzenSection } from './LastspitzenSection';
 import { ProfileSection } from './ProfileSection';
 import { SteuerungSection } from './SteuerungSection';
@@ -305,9 +305,9 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     title: 'Technik & Einstellungen',
     subtitle: 'Wechselrichter, Speicher, Anlagentyp, Stromtarif und der Standort Ihrer Anlage.',
   },
-  entitaeten: {
-    title: 'Geräte & Entitäten',
-    subtitle: 'Alle Mess- und Steuer-Einheiten dieser Anlage - Fähigkeiten, Zustand und Konfiguration.',
+  modell: {
+    title: 'Anlagen-Modell',
+    subtitle: 'So ist Ihre Anlage verschaltet: Geräte, Komponenten und was das Cockpit daraus macht.',
   },
   steuerung: {
     title: 'Steuerung',
@@ -363,7 +363,7 @@ function AnlagenSubPage({
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
-      {sub === 'entitaeten' && <EntitaetenSection site={site} isAdmin={isAdmin} />}
+      {sub === 'modell' && <AnlagenModellSection site={site} isAdmin={isAdmin} />}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
       {sub === 'profile' && <ProfileSection site={site} />}
       {sub === 'steuerung' && (
@@ -856,7 +856,7 @@ export function AnlageSeite({
           site={site}
           deviceCount={ovSite?.deviceCount ?? 0}
           onOpenSteuerung={() => onOpenSub('steuerung')}
-          onOpenGeraete={() => onOpenSub('entitaeten')}
+          onOpenGeraete={() => onOpenSub('modell')}
           onReload={onReload}
           onStay={setSetupPinned}
         />
@@ -1159,11 +1159,11 @@ export function AnlageSeite({
               onOpen={() => onOpenSub('technik')}
             />
             <DetailCard
-              icon="cpu"
+              icon="layers"
               category="primary"
-              title="Geräte & Entitäten"
-              line="Alle Mess- und Steuer-Einheiten - Fähigkeiten, Zustand, Konfiguration."
-              onOpen={() => onOpenSub('entitaeten')}
+              title="Anlagen-Modell"
+              line="Geräte, Komponenten und was das Cockpit daraus macht."
+              onOpen={() => onOpenSub('modell')}
             />
             <DetailCard
               icon="zap"
