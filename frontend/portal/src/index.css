@@ -286,7 +286,11 @@ a:focus-visible,
 /* KPI row (hero of the Übersicht) */
 .vp-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 205px), 1fr));
+  /* 240 statt 205 px: bei 205 wurde eine KPI-Kachel auf dem Tablet schmaler
+     als ihr Inhalt (Icon + Zahl), und die Zahl lief - `overflow: visible` -
+     sichtbar aus der Karte heraus ("330,0 kWh" bei 768 px). Die Kachel bricht
+     jetzt lieber eine Spalte früher um. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: var(--vp-gap);
 }
 /* Generic responsive grids */
@@ -1122,6 +1126,14 @@ a:focus-visible,
   cursor: help;
   transition: var(--vp-transition-fast);
   -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+/* Das Icon bleibt 20 px klein (Satzbild), die TREFFERFLÄCHE wächst per
+   Overlay auf 40 px - ohne die Zeilenhöhe der Kennzahl zu verändern. */
+.vp-infotip-btn::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
 }
 .vp-infotip-btn:hover,
 .vp-infotip-btn[aria-expanded='true'] {
@@ -1347,6 +1359,9 @@ button.vp-cl-item.is-off .vp-cl-label {
   text-transform: uppercase;
   letter-spacing: var(--vp-tracking-wide);
   color: var(--vp-primary-deep);
+  /* "VERBRAUCHSPROGNOSE (LAST)" ist EIN langes Wort: ohne Umbruchpunkt lief es
+     auf dem Telefon aus seiner Flex-Spalte heraus unter das "aktiv"-Badge. */
+  overflow-wrap: anywhere;
 }
 /* An inline text action styled as a link (register/back toggles). */
 .vp-linklike {
@@ -4876,7 +4891,8 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-action, #2C5282);
   font-size: 0.78rem;
   cursor: pointer;
-  padding: 2px 4px;
+  /* War 2px 4px = 19 px hoch und damit auf dem Telefon kaum treffbar. */
+  padding: 7px 8px;
   border-radius: 6px;
 }
 .vp-role-member-action:disabled, .vp-role-add:disabled { opacity: 0.5; cursor: default; }
@@ -5429,4 +5445,56 @@ button.vp-tech-card-h.toggle {
   font-weight: 700;
   line-height: 16px;
   text-align: center;
+}
+
+/* ==========================================================================
+   UX-/Responsive-Audit (Kleinigkeiten) — 375 / 768 / 1440
+   Rein präsentational; jede Regel behebt einen im Browser gemessenen Defekt.
+   ========================================================================== */
+
+/* Karten-Innenabstand auf dem Telefon: 32/40 px fraßen bei 375 px rund ein
+   Fünftel der Breite (Diagramme/Tabellen blieben 261 px schmal). Die Tokens
+   werden hier zentral verkleinert, statt einzelne Karten anzufassen — der
+   `Card` setzt das Padding inline aus `var(--vp-card-pad)`. */
+@media (max-width: 480px) {
+  :root {
+    --vp-card-pad: 1.25rem;
+    --vp-card-pad-lg: 1.5rem;
+  }
+}
+
+/* Schritt-Leiste des Anlege-Assistenten: vier Schritte mit Wort passten bei
+   375 px nicht nebeneinander - Schritt 4 („Nutzung") lief aus dem Drawer
+   heraus und war schlicht nicht sichtbar. Auf dem Telefon trägt nur der
+   AKTIVE Schritt sein Wort, die Nummern bleiben alle sichtbar. */
+@media (max-width: 480px) {
+  .vp-step {
+    min-width: 0;
+  }
+  .vp-step:not(.vp-step-active) .vp-step-label {
+    display: none;
+  }
+  /* Der aktive Schritt bekommt den freiwerdenden Platz, damit sein Wort
+     ausgeschrieben bleibt statt zu „An…" zu werden. */
+  .vp-step-active {
+    flex: 3;
+  }
+  .vp-step-active .vp-step-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Touch-Ziele auf dem Telefon: die Zurück-Zeile war 31 px, „＋ zuordnen" 19 px
+   hoch. Auf dem Desktop bleibt die kompakte Dichte erhalten. */
+@media (max-width: 720px) {
+  .vp-fleet-back {
+    min-height: 44px;
+  }
+  .vp-role-add,
+  .vp-role-picker-item {
+    min-height: 36px;
+  }
 }

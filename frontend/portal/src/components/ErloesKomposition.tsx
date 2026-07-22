@@ -97,7 +97,11 @@ export function ErloesKompositionView({
 
 function Row({ row }: { row: StreamRow }) {
   return (
-    <li className={`vp-stream vp-stream-${row.state}`}>
+    // Der Zustands-Modifier trägt bewusst das `-s-`-Infix: `vp-stream-value`
+    // wäre namensgleich mit der KIND-Klasse `.vp-stream-value` (der rechten
+    // Wertspalte) - die Zeile hätte deren `margin-left:auto` + Spalten-Flex
+    // geerbt und wäre zu einem rechtsbündigen Stapel ohne Balken kollabiert.
+    <li className={`vp-stream vp-stream-s-${row.state}`}>
       <span className="vp-stream-dot" style={{ background: row.hue }} aria-hidden="true" />
       <span className="vp-stream-label">{row.label}</span>
       <span className="vp-stream-value">
