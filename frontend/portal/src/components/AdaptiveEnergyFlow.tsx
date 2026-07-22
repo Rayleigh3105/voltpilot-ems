@@ -2,6 +2,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import type { SiteTopology } from '../api';
 import { ROLE_META } from '../adaptive';
 import { layoutFlow } from '../adaptiveFlow';
+import type { EnergyFlowSize } from './EnergyFlow';
 
 /**
  * AE2 adaptive energy-flow diagram: the real VoltPilot EnergyFlow (lightning
@@ -16,11 +17,19 @@ import { layoutFlow } from '../adaptiveFlow';
 export function AdaptiveEnergyFlow({
   topology,
   stale = false,
+  size = 'compact',
 }: {
   topology: SiteTopology;
   stale?: boolean;
+  /**
+   * Portal v3 · M2: the ONLY addition. `'compact'` (default) keeps today's
+   * `maxWidth: L.W` cap byte-for-byte; `'hero'` lifts it so the cockpit hero
+   * can host the SAME diagram larger. No geometry / `adaptiveFlow.ts` change.
+   */
+  size?: EnergyFlowSize;
 }) {
   const L = layoutFlow(topology.topology, topology.entities);
+  const maxWidth = size === 'hero' ? `${Math.round(L.W * 1.6)}px` : `${L.W}px`;
 
   return (
     <div
@@ -32,7 +41,7 @@ export function AdaptiveEnergyFlow({
       <svg
         viewBox={`0 0 ${L.W} ${L.H}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ display: 'block', width: '100%', maxWidth: `${L.W}px`, height: 'auto', margin: '0 auto' }}
+        style={{ display: 'block', width: '100%', maxWidth, height: 'auto', margin: '0 auto' }}
       >
         {/* Base spokes (grey) + animated coloured overlay per active vertex. */}
         {L.vertices.map((v) => (

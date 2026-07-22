@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { AnlageSeite } from './AnlagenPage';
 import { api, type Site } from '../api';
 import * as adaptive from '../useAdaptiveLive';
@@ -18,9 +18,11 @@ import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../s
  *    Anlage wird einmal mit einer NULL-Surface (älteres Backend / Ladefehler)
  *    und einmal mit der leeren Projektion gerendert; beide DOMs müssen
  *    **zeichengleich** sein und dürfen keinen M3-Knoten enthalten.
- * 2. **Der Modul-Stapel** erscheint für eine migrierte Anlage in der
- *    kanonischen Reihenfolge, jeder Block mit „von"-Tag, plus die beiden NEUEN
- *    Blöcke und die ruhige Toolbox-Zeile.
+ * 2. **Das Live-Cockpit (Portal v3 M2)** erscheint für eine migrierte Anlage:
+ *    der WIEDERVERWENDETE Energiefluss als Hero (kein neues „Energie-Rad"),
+ *    Autarkie/Eigenverbrauch als Ringe, das Widget-Raster in kanonischer
+ *    Reihenfolge, das Widget-Modal am `document.body` und die ruhige
+ *    Toolbox-Zeile.
  */
 
 // jsdom kennt weder ResizeObserver (useContainerWidth/EnergyFlow) noch das
@@ -276,12 +278,12 @@ describe('M5 · Der Leer-Zustand IST der Einrichtungspfad (#533)', () => {
     );
   });
 
-  it('tritt zurück, sobald Entitäten da sind (M3 übernimmt)', async () => {
+  it('tritt zurück, sobald Entitäten da sind (das Cockpit übernimmt)', async () => {
     stubFreshSite();
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stack')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
     expect(container.querySelector('.vp-setup-steps')).toBeNull();
   });
 
@@ -296,60 +298,89 @@ describe('M5 · Der Leer-Zustand IST der Einrichtungspfad (#533)', () => {
   });
 });
 
-describe('Der Modul-Stapel einer migrierten Anlage', () => {
-  it('rendert die Blöcke in kanonischer Reihenfolge, jeweils mit „von"-Tag', async () => {
+describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
+  it('führt mit dem BESTEHENDEN Energiefluss als Hero, nicht mit einem Kartenstapel', async () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stack')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
 
-    // Das feste v4-Zonen-Raster ist abgelöst.
+    // Das feste v4-Zonen-Raster UND der M3-Kartenstapel sind abgelöst.
     expect(container.querySelector('.vp-anlage-dash')).toBeNull();
-
-    const titles = [...container.querySelectorAll('.vp-block-title')].map((n) => n.textContent);
-    expect(titles).toEqual(['Lastspitze', 'Energiefluss', 'Handel', 'Eigenverbrauch', 'Geräte-Automatik']);
-
-    const tags = [...container.querySelectorAll('.vp-block-from')].map((n) => n.textContent);
-    expect(tags).toContain('Modus: Marktvermarktung');
-    expect(tags).toContain('Modus: Eigenverbrauch');
-    expect(tags).toContain('Entitäten');
+    expect(container.querySelector('.vp-stack')).toBeNull();
+    // Das Diagramm ist das WIEDERVERWENDETE `EnergyFlow`/`AdaptiveEnergyFlow`
+    // (kein neues "Energie-Rad") - erkennbar an seinem Wrapper.
+    expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy();
   });
 
-  it('platziert die Erlös-Komposition (M4) als Geld-Block', async () => {
+  it('zeigt Autarkie und Eigenverbrauch als Ringe neben dem Fluss', async () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-streams-block')).toBeTruthy());
-    expect(container.querySelector('.vp-streams-from')?.textContent).toBe('Erlös-Komposition');
+    await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeTruthy());
+    const labels = [...container.querySelectorAll('.vp-hero-ring-label')].map((n) => n.textContent);
+    expect(labels).toEqual(['Autarkie heute', 'Eigenverbrauch']);
   });
 
-  it('führt mit dem Peak-Band (N-äre Führungsregel)', async () => {
+  it('lässt die Ringe WEG, wenn der Tageswert fehlt (nie „0 %")', async () => {
+    vi.restoreAllMocks();
+    stubApi();
+    vi.spyOn(api, 'history').mockResolvedValue({
+      totals: { autarkiePct: null, eigenverbrauchPct: null, gridImportKwh: null },
+      buckets: [],
+      protocol: [],
+      plan: [],
+    } as never);
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stack')).toBeTruthy());
-    const leads = [...container.querySelectorAll('.vp-block-lead')];
-    expect(leads).toHaveLength(1);
-    expect(leads[0].querySelector('.vp-block-title')?.textContent).toBe('Lastspitze');
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    expect(container.querySelector('.vp-hero-rings')).toBeNull();
+    expect(container.textContent).not.toContain('0 %');
   });
 
-  it('bietet den Telemetrie-Verlauf als BASIS-Drill-in und die Erlöse getrennt', async () => {
+  it('rendert das Widget-Raster in kanonischer Reihenfolge', async () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stack')).toBeTruthy());
-    const drills = [...container.querySelectorAll('.vp-block-drill')].map((n) => n.textContent);
-    // Basis-Tiefe (in JEDEM Modus) ...
-    expect(drills.some((t) => t?.includes('Verlauf'))).toBe(true);
-    expect(drills.some((t) => t?.includes('Live im Detail'))).toBe(true);
-    // ... und die Modus-Tiefen an ihren Blöcken.
-    expect(drills.some((t) => t?.includes('Lastspitzen im Detail'))).toBe(true);
-    expect(drills.some((t) => t?.includes('Ganzer Fahrplan'))).toBe(true);
-    expect(drills.some((t) => t?.includes('Steuerung'))).toBe(true);
-    // Die Erlös-Historie gehört dem Geld-Block (M4 rendert sie selbst, sobald
-    // eine zugerechnete Zahl vorliegt) - NICHT dem Basis-Block.
-    const hub = container.querySelector('.vp-block-drills');
-    expect(hub?.textContent).not.toContain('Erlöse im Detail');
+    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
+    const labels = [...container.querySelectorAll('.vp-widget-label')].map((n) => n.textContent);
+    // Peak führt (leadBlock), dann die Fluss-Kacheln, dann die Modus-Kacheln.
+    expect(labels[0]).toBe('Lastspitze');
+    expect(labels).toContain('Geräte-Automatik');
+    expect(container.querySelectorAll('.vp-widget.is-lead')).toHaveLength(1);
+  });
+
+  it('öffnet je Kachel ein Modal mit „Jetzt | Verlauf"', async () => {
+    mockAdaptive(true);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
+    const tile = container.querySelector('.vp-widget') as HTMLButtonElement;
+    fireEvent.click(tile);
+    const modal = document.body.querySelector('.vp-wmodal');
+    expect(modal).toBeTruthy();
+    const segs = [...document.body.querySelectorAll('.vp-wmodal-segbtn')].map((n) => n.textContent);
+    expect(segs).toEqual(['Jetzt', 'Verlauf']);
+    // Das Modal hängt am body (Karten haben `overflow: hidden`).
+    expect(container.querySelector('.vp-wmodal')).toBeNull();
+    fireEvent.click(document.body.querySelector('.vp-wmodal-close') as HTMLButtonElement);
+    expect(document.body.querySelector('.vp-wmodal')).toBeNull();
+  });
+
+  it('eine Privat-Anlage hat weder Lastspitze- noch Handel-Kachel', async () => {
+    mockAdaptive(true);
+    mockSurface({
+      ...MULTI,
+      signals: { ...MULTI.signals!, hasLeistungspreis: false },
+      config: { plantKind: 'eigenverbrauch', tarifArt: 'fest', netzladenErlaubt: false },
+    });
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
+    const labels = [...container.querySelectorAll('.vp-widget-label')].map((n) => n.textContent);
+    expect(labels).not.toContain('Lastspitze');
+    expect(labels).not.toContain('Handel');
+    expect(labels).toContain('Eigenverbrauch');
   });
 
   it('schließt mit der ruhigen Toolbox-Zeile, ohne einen Modus zu bewerben', async () => {
@@ -361,18 +392,5 @@ describe('Der Modul-Stapel einer migrierten Anlage', () => {
     expect(line).toContain('Ihre Anlage kann mehr');
     expect(line).toContain('Modus hinzufügen');
     expect(line).not.toMatch(/Lastspitzen|Marktvermarktung|Eigenverbrauch/);
-  });
-
-  it('eine Privat-Anlage zeigt weder Peak- noch Handel-Block', async () => {
-    mockAdaptive(true);
-    mockSurface({
-      ...MULTI,
-      signals: { ...MULTI.signals!, hasLeistungspreis: false },
-      config: { plantKind: 'eigenverbrauch', tarifArt: 'fest', netzladenErlaubt: false },
-    });
-    const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stack')).toBeTruthy());
-    const titles = [...container.querySelectorAll('.vp-block-title')].map((n) => n.textContent);
-    expect(titles).toEqual(['Energiefluss', 'Eigenverbrauch', 'Geräte-Automatik']);
   });
 });
