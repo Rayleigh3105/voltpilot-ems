@@ -487,11 +487,11 @@ export function TechnikSection({
         </>
       )}
       <div className="vp-tech-sub">
-        <h3 className="vp-tech-sub-title">Weitere Geräte &amp; Quellen</h3>
+        <h3 className="vp-tech-sub-title">Weitere Geräte</h3>
         <p className="vp-note" style={{ marginTop: 0 }}>
-          Zusätzliche Erzeuger, Zähler und Verbraucher verwalten Sie jetzt gebündelt unter{' '}
-          <a href={`#/anlage/${site.id}/entitaeten`}>Geräte</a> - dort erscheinen sie automatisch,
-          sobald Ihr Gerät sie meldet.
+          Zusätzliche Erzeuger, Zähler und Verbraucher sehen Sie gebündelt im{' '}
+          <a href={`#/anlage/${site.id}/modell`}>Anlagen-Modell</a> - dort erscheinen sie
+          automatisch, sobald Ihr Gerät sie meldet.
         </p>
       </div>
     </TechCard>

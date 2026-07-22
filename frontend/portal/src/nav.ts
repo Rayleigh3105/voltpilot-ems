@@ -36,23 +36,26 @@ export type AnlagenSub =
   | 'historie'
   | 'wetter'
   | 'technik'
-  | 'entitaeten'
+  | 'modell'
   | 'steuerung'
   | 'lastspitzen'
   | 'profile';
 
 const SUBS = new Set<string>([
-  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'entitaeten',
+  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'modell',
   'steuerung', 'lastspitzen', 'profile',
 ]);
 
 /**
- * U3: "Optimierung" (read-only module cards) MERGED into "Steuerung" as its
- * Level 1 "Was läuft". The old subpage hash redirects so bookmarks never break
- * (the LEGACY_ROUTES discipline, at the sub level).
+ * Retired subpage hashes that redirect so bookmarks never break (the
+ * LEGACY_ROUTES discipline, at the sub level):
+ * - `optimierung` -> `steuerung` (U3: "Optimierung" merged into Steuerung).
+ * - `entitaeten` -> `modell` (Portal v3 M6: the "Geräte & Entitäten" list
+ *   became the Anlagen-Modell — Gerät/Komponente/Messwert).
  */
 const LEGACY_SUBS: Record<string, AnlagenSub> = {
   optimierung: 'steuerung',
+  entitaeten: 'modell',
 };
 
 /**

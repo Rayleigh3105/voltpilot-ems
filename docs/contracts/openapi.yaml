@@ -751,6 +751,48 @@ paths:
         "400": { description: Unknown role or missing entityId/channel. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or entity not found for this tenant. }
+  /api/v1/sites/{siteId}/v2-entities/adopt:
+    post:
+      tags: [topology]
+      summary: Adopt a reported source into a component (customer, Portal v3 M6 "Zuordnen").
+      description: >
+        The CUSTOMER twin of the adoption bridge (Portal v3 M6 "Neues Gerät
+        gefunden … jetzt zuordnen", OPEN O3): a Portal-User assigns an
+        edge-reported source of THEIR OWN site to a component in one move.
+        Tenant-scoped (RLS; foreign site = 404, never 403); admins reach it via
+        the `X-Tenant-Id` switcher. It delegates to the SAME adoption the admin
+        route uses, but is CATALOG-GUARDED to the GUIDED types only — producer,
+        grid-meter and consumer-category types (the set the guided suggestion
+        derives). It is never a free type picker and never takes guard-config
+        input: platform-managed composed types (battery-hybrid / house-load) and
+        free installer types (modbus-generic) are refused (422). Idempotent per
+        `sourceId` (a re-adopt returns the existing entity).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId, entityType]
+              properties:
+                sourceId: { type: string, description: The edge source id from local_setup. }
+                entityType: { type: string, example: wallbox }
+                label: { type: string }
+                maxPowerKw: { type: number, description: Consumer rated power (bounds commands). }
+                capacityKwp: { type: number, description: Producer nameplate (kWp). }
+                registryUnitId: { type: string, description: MaStR SEE number of the source. }
+      responses:
+        "200":
+          description: The adopted (or already-existing) entity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2Entity" }
+        "400": { description: Missing sourceId/entityType or unknown type. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+        "422": { description: The type is not a guided type (battery-hybrid / house-load / free installer type). }
   /api/v1/sites/{siteId}/entity-strategies:
     get:
       tags: [topology]
