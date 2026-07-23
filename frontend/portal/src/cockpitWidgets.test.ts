@@ -11,7 +11,7 @@ import {
 import { DASH } from './erloesKomposition';
 import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from './surface';
 import { leadBlock } from './leadSlot';
-import type { EarningsSite, HistoryTotals } from './api';
+import type { EarningsSite, HistoryTotals, SiteTopology } from './api';
 import { NBSP } from './format';
 
 /**
@@ -116,6 +116,45 @@ const TOTALS: HistoryTotals = {
 };
 
 const SNAPSHOT = { pvKw: 5.4, loadKw: 1.9, gridKw: -2.1, battKw: 1.4, socPct: 76, socAt: null };
+
+/** Das Topologie-Read-Model der Pilot-Anlage — löst die Fluss-Kacheln auf. */
+const TOPO: SiteTopology = {
+  schemaVersion: '1.0',
+  entities: [
+    {
+      id: 'e-batt',
+      entityType: 'battery-hybrid',
+      typeLabel: 'Speicher',
+      label: null,
+      category: 'storage',
+      health: 'ok',
+      capabilities: [
+        { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 76 },
+        { channel: 'battery_power_kw', unit: 'kW', role: 'storage', primary: false, value: 1.4 },
+        { channel: 'pv_power_kw', unit: 'kW', role: 'pv', primary: true, value: 5.4 },
+      ],
+    },
+    {
+      id: 'e-grid',
+      entityType: 'grid-meter',
+      typeLabel: 'Netzanschluss',
+      label: null,
+      category: 'meter',
+      health: 'ok',
+      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'grid', primary: true, value: -2.1 }],
+    },
+    {
+      id: 'e-haus',
+      entityType: 'house-load',
+      typeLabel: 'Haus',
+      label: null,
+      category: 'consumer',
+      health: 'ok',
+      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: false, value: 1.9 }],
+    },
+  ],
+  topology: { schema_version: '1.0', nodes: [] },
+};
 
 function money(over: Partial<EarningsSite> = {}): EarningsSite {
   return {
@@ -256,22 +295,23 @@ describe('Ehrlichkeit: weglassen statt 0', () => {
     expect(ids(PRIVAT, { weather: { nextHourTempC: null, why: null } })).not.toContain('wetter');
   });
 
-  it('beide Modal-Gesichter lesen dieselbe Zahl wie die Kachel', () => {
-    const speicher = cockpitWidgets(build(PRIVAT)).find((w) => w.id === 'speicher')!;
-    expect(speicher.value).toBe(`76${NBSP}%`);
-    expect(speicher.modal.jetzt.rows[0]).toMatchObject({ label: 'Ladestand', value: `76${NBSP}%` });
-    // Das Verlauf-Gesicht erfindet keine zweite Ableitung, es zeigt den Weg.
-    expect(speicher.modal.verlauf.rows).toEqual([]);
-    expect(speicher.modal.verlauf.drillIn?.sub).toBe('live');
+  it('jede Kachel trägt ihr Absprung-Ziel — Fluss in den Verlauf, Modus auf die Seite', () => {
+    // MIT Topologie lösen die Fluss-Kacheln auf ihren maßgeblichen Messwert auf.
+    const w = cockpitWidgets(build(MULTI, { topology: TOPO }));
+    const target = (id: WidgetId) => w.find((x) => x.id === id)?.target;
+    expect(target('erzeugung')).toEqual({ kind: 'verlauf', entityId: 'e-batt', channel: 'pv_power_kw' });
+    expect(target('speicher')).toEqual({ kind: 'verlauf', entityId: 'e-batt', channel: 'soc_pct' });
+    expect(target('netz')).toEqual({ kind: 'verlauf', entityId: 'e-grid', channel: 'power_kw' });
+    // Geld-/Modus-Kacheln bilden auf ihre Seite ab.
+    expect(target('erloes')).toEqual({ kind: 'sub', sub: 'historie' });
+    expect(target('handel')).toEqual({ kind: 'sub', sub: 'fahrplan' });
+    expect(target('automatik')).toEqual({ kind: 'sub', sub: 'steuerung' });
   });
 
-  it('der Umgang mit dem Speicher erscheint nur, wenn er bekannt ist', () => {
-    const without = cockpitWidgets(build(PRIVAT)).find((w) => w.id === 'speicher')!;
-    expect(without.modal.jetzt.rows.map((r) => r.label)).not.toContain('Umgang mit dem Speicher');
-    const withIt = cockpitWidgets(build(PRIVAT, { speicherschonung: 'schonend' })).find(
-      (w) => w.id === 'speicher',
-    )!;
-    expect(withIt.modal.jetzt.rows.map((r) => r.value)).toContain('Schonend');
+  it('ohne Topologie springt eine Fluss-Kachel ehrlich auf die Live-Daten-Seite', () => {
+    const speicher = cockpitWidgets(build(PRIVAT)).find((x) => x.id === 'speicher')!;
+    expect(speicher.value).toBe(`76${NBSP}%`);
+    expect(speicher.target).toEqual({ kind: 'sub', sub: 'live' });
   });
 });
 

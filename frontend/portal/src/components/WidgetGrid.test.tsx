@@ -3,7 +3,7 @@ import { fireEvent, render } from '@testing-library/react';
 import { WidgetGrid } from './WidgetGrid';
 import type { WidgetDef } from '../cockpitWidgets';
 
-/** Portal v3 · M2 — der dünne Render-Beweis des Widget-Rasters. */
+/** Portal v3 · M2 — der dünne Render-Beweis des Widget-Rasters (V2: Absprung). */
 
 function widget(over: Partial<WidgetDef> = {}): WidgetDef {
   return {
@@ -13,10 +13,7 @@ function widget(over: Partial<WidgetDef> = {}): WidgetDef {
     sub: 'lädt',
     accent: 'batt',
     lead: false,
-    modal: {
-      jetzt: { rows: [], note: null, drillIn: null },
-      verlauf: { rows: [], note: null, drillIn: null },
-    },
+    target: { kind: 'verlauf', entityId: 'e-batt', channel: 'soc_pct' },
     ...over,
   };
 }
@@ -26,7 +23,7 @@ describe('WidgetGrid', () => {
     const { container } = render(
       <WidgetGrid
         widgets={[widget(), widget({ id: 'netz', label: 'Netz', accent: 'grid' })]}
-        onOpen={() => {}}
+        onSelect={() => {}}
       />,
     );
     const labels = [...container.querySelectorAll('.vp-widget-label')].map((n) => n.textContent);
@@ -36,7 +33,7 @@ describe('WidgetGrid', () => {
   });
 
   it('rendert gar nichts ohne Kacheln (keine leere Karte)', () => {
-    const { container } = render(<WidgetGrid widgets={[]} onOpen={() => {}} />);
+    const { container } = render(<WidgetGrid widgets={[]} onSelect={() => {}} />);
     expect(container.querySelector('.vp-widgets')).toBeNull();
   });
 
@@ -44,7 +41,7 @@ describe('WidgetGrid', () => {
     const { container } = render(
       <WidgetGrid
         widgets={[widget({ id: 'lastspitze', label: 'Lastspitze', lead: true }), widget()]}
-        onOpen={() => {}}
+        onSelect={() => {}}
       />,
     );
     const tiles = [...container.querySelectorAll('.vp-widget')];
@@ -53,10 +50,26 @@ describe('WidgetGrid', () => {
   });
 
   it('meldet die angetippte Kachel', () => {
-    const onOpen = vi.fn();
+    const onSelect = vi.fn();
     const w = widget();
-    const { container } = render(<WidgetGrid widgets={[w]} onOpen={onOpen} />);
+    const { container } = render(<WidgetGrid widgets={[w]} onSelect={onSelect} />);
     fireEvent.click(container.querySelector('.vp-widget') as HTMLButtonElement);
-    expect(onOpen).toHaveBeenCalledWith(w);
+    expect(onSelect).toHaveBeenCalledWith(w);
+  });
+
+  it('zeigt die „Verlauf →"-Andeutung nur auf Fluss-Kacheln', () => {
+    const { container } = render(
+      <WidgetGrid
+        widgets={[
+          widget(),
+          widget({ id: 'wetter', label: 'Wetter', accent: 'pv', target: { kind: 'sub', sub: 'wetter' } }),
+        ]}
+        onSelect={() => {}}
+      />,
+    );
+    const tiles = [...container.querySelectorAll('.vp-widget')];
+    // Fluss-Kachel (Verlauf-Ziel) trägt die Andeutung, die Modus-Kachel nicht.
+    expect(tiles[0].querySelector('.vp-widget-jump')).toBeTruthy();
+    expect(tiles[1].querySelector('.vp-widget-jump')).toBeNull();
   });
 });
