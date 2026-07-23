@@ -1,6 +1,5 @@
 /**
- * v3.1-M2 — die **Modus-Container-Seite** (report `data/vp-portal-v31-design/`
- * §3, Meilenstein v3.1-M2).
+ * Der **Modus-Container** (report `data/vp-portal-v31-design/` §3).
  *
  * v3.1 macht jeden Modus zu einem Container: einschalten heißt konfigurieren
  * dürfen, und die thematisch zugehörigen Einstellungen leben IM Modus. Diese
@@ -9,27 +8,40 @@
  *
  *   Kopf (Farb-Punkt der Modus-Tönung · Titel · Status-Pill · Schalter)
  *   → Nutzen-Satz + Beitrag (echte Zahlen aus `contributionRows`, sonst „—")
- *   → Einstellungen  — NUR bei aktivem Modus, Read-only-Zeilen aus
- *      `settingsForMode()` (die Bearbeiten-Formulare kommen in v3.1-M3;
+ *   → Einstellungen — NUR bei aktivem Modus, LESE-ZUERST-Zeilen mit einem
+ *      „Bearbeiten"-Inline-Formular je kunden-editierbarer Einstellung (v3.1-M3;
  *      Owner-Korrektur: ein AUSGESCHALTETER Modus zeigt seine Einstellungen GAR
- *      NICHT — kein gesperrter Teaser)
+ *      NICHT — kein gesperrter Teaser). Von-VoltPilot-Einstellungen bleiben
+ *      read-only (v3.1-M4 trägt ihre Werte nach).
  *   → Voraussetzungen (`requirementChips`, M3-Copy wörtlich)
  *   → Ansichten dieses Modus (dieselben Einträge wie die Sidebar-Gruppe —
  *      EINE Ableitung `manifest.deepViews` → `modeViewItems`)
  *   → Herkunft / „Flow öffnen" (`originLine`, „Flow öffnen" nur mit auflösbarem
  *      `flowRef` — §1.2-Ehrlichkeit).
  *
- * Reiner Renderer: jede Ableitung/Formulierung kommt aus `profiles.ts`,
- * `steuerungArea.ts`, `modeSettings.ts`, `surface.ts` und `anlageNav.ts`. Der
- * Schalter schreibt nur den Willen (der Server schaltet frei); die Gates bleiben
- * unverändert.
+ * v3.1-M3-Regressionsfalle (die wichtigste): der Site-Save ist eine
+ * VOLL-Repräsentation (`buildSitePayload`), damit ein fokussierter Container-Save
+ * kein Technik-Feld (Name, max. Einspeiseleistung, …) blankt — und umgekehrt.
+ * Der Speicher-Save trägt die vollen Speicherparameter durch und sendet die
+ * Speicherschonung nur bei Änderung. Die Schreibpfade sind unverändert
+ * (`api.updateSite`/`api.saveBattery`); die Gates bleiben unangetastet.
  */
+import { useState, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
+import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { EarningsSite } from '../api';
+import { api, type EarningsSite, type SiteAsset, type Site, type TarifArt } from '../api';
 import { modeViewItems, type NavTarget } from '../anlageNav';
-import { settingsForMode } from '../modeSettings';
+import { buildSitePayload } from '../anlage';
+import { settingsForMode, type ModeSettingDef } from '../modeSettings';
+import { fmtNum } from '../format';
+import {
+  parsePremiumInput,
+  premiumInputText,
+  tarifArtLabel,
+} from '../fleet';
+import { presetOf, speicherschonungLabel, type SpeicherschonungPreset } from '../speicherschonung';
 import {
   benefitLine,
   originLine,
@@ -39,6 +51,11 @@ import {
 } from '../profiles';
 import { contributionRows } from '../steuerungArea';
 import { modeDeepViews, type ActiveMode, type ModeKind } from '../surface';
+import { NetzladenBadge } from './NetzladenBadge';
+import { SpeicherschonungField } from './SpeicherschonungField';
+import { NetzladenField } from './NetzladenField';
+import { AnzulegenderWertField } from './AnzulegenderWertField';
+import { TariffFields } from './TariffFields';
 import '../components/Profile.css';
 import './ModusContainer.css';
 
@@ -57,6 +74,10 @@ export interface ModusContainerProps {
   mode: ActiveMode | null;
   /** Alle aktiven Modi — für die erst-aktiver-gewinnt-Dedupe der Einstellungen. */
   activeModes: ActiveMode[];
+  /** Die Anlage (Quelle der Site-Einstellungen + Ziel der Voll-Repräsentation). */
+  site: Site;
+  /** Der Speicher-Asset der Anlage (null = keiner); Quelle der Speicherschonung. */
+  battery: SiteAsset | null;
   /** Die Erlös-Antwort (fail-soft; null = keine Zahlen → „—"). */
   earnings: EarningsSite | null;
   /** Der Schalter ist gerade in Bearbeitung. */
@@ -69,18 +90,26 @@ export interface ModusContainerProps {
   onNavigate: (target: NavTarget) => void;
   /** „Flow öffnen" — nur mit auflösbarem `flowRef`. */
   onOpenFlow: (flowRef: { flowId: string; name: string }) => void;
+  /** Eine Site-Einstellung wurde gespeichert (Voll-Repräsentation zurück). */
+  onSiteSaved: (updated: Site) => void;
+  /** Eine Speicher-Einstellung wurde gespeichert (Assets zurück). */
+  onBatterySaved: (assets: SiteAsset[]) => void;
 }
 
 export function ModusContainer({
   profile,
   mode,
   activeModes,
+  site,
+  battery,
   earnings,
   busy,
   onToggle,
   onBack,
   onNavigate,
   onOpenFlow,
+  onSiteSaved,
+  onBatterySaved,
 }: ModusContainerProps) {
   const on = profile.active;
   const reason = on ? profile.blockedReason : null;
@@ -171,12 +200,14 @@ export function ModusContainer({
             <h3 className="vp-modus-secthead">Einstellungen</h3>
             <ul className="vp-modus-settings">
               {settings.map((s) => (
-                <li key={s.id} className="vp-modus-setting">
-                  <span className="vp-modus-settinglabel">{s.label}</span>
-                  {s.editability === 'voltpilot' ? (
-                    <span className="vp-modus-settingnote">Von VoltPilot eingerichtet</span>
-                  ) : null}
-                </li>
+                <ModusSettingRow
+                  key={s.id}
+                  setting={s}
+                  site={site}
+                  battery={battery}
+                  onSiteSaved={onSiteSaved}
+                  onBatterySaved={onBatterySaved}
+                />
               ))}
             </ul>
           </section>
@@ -248,6 +279,370 @@ export function ModusContainer({
           </div>
         ) : null}
       </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Einstellungs-Zeile: Lese-zuerst + „Bearbeiten"-Inline-Formular (v3.1-M3)
+// ---------------------------------------------------------------------------
+
+/** Die Lese-Wert-Anzeige einer Einstellung (kunden-editierbare Zeilen). */
+function settingReadValue(id: ModeSettingDef['id'], site: Site, battery: SiteAsset | null): ReactNode {
+  switch (id) {
+    case 'speicherschonung':
+      return battery == null ? (
+        <span className="vp-muted">Kein Speicher hinterlegt</span>
+      ) : (
+        speicherschonungLabel(battery.speicherschonung)
+      );
+    case 'netzladen':
+      return <NetzladenBadge erlaubt={site.netzladenErlaubt} small />;
+    case 'anzulegender-wert':
+      return site.anzulegenderWertCtKwh != null ? (
+        fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)
+      ) : (
+        <span className="vp-muted">nicht hinterlegt</span>
+      );
+    case 'stromtarif':
+      return tarifArtLabel(site.tarifArt, site.tarifParamCtKwh);
+    default:
+      return null;
+  }
+}
+
+/**
+ * Eine Einstellungs-Zeile im Container: Label + Lese-Wert + „Bearbeiten"; das
+ * Formular klappt inline auf (das AnlageTechnik-Muster). Von-VoltPilot-
+ * Einstellungen (`editability: 'voltpilot'`) bleiben read-only mit der
+ * M2-Notiz — v3.1-M4 trägt ihre Werte nach.
+ */
+function ModusSettingRow({
+  setting,
+  site,
+  battery,
+  onSiteSaved,
+  onBatterySaved,
+}: {
+  setting: ModeSettingDef;
+  site: Site;
+  battery: SiteAsset | null;
+  onSiteSaved: (updated: Site) => void;
+  onBatterySaved: (assets: SiteAsset[]) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  // Speicherschonung kann nur mit voll konfiguriertem Speicher gespeichert werden
+  // (saveBattery ist eine Voll-Repräsentation der Speicherparameter).
+  const batteryReady =
+    battery != null &&
+    battery.capacityKwh != null &&
+    battery.maxChargeKw != null &&
+    battery.maxDischargeKw != null;
+  const canEdit =
+    setting.editability === 'customer' &&
+    setting.editForm != null &&
+    (setting.id !== 'speicherschonung' || batteryReady);
+
+  return (
+    <li className={`vp-modus-setting${editing ? ' editing' : ''}`}>
+      <div className="vp-modus-settingtop">
+        <span className="vp-modus-settinglabel">{setting.label}</span>
+        {editing ? null : setting.editability === 'voltpilot' ? (
+          <span className="vp-modus-settingnote">Von VoltPilot eingerichtet</span>
+        ) : (
+          <span className="vp-modus-settingval">{settingReadValue(setting.id, site, battery)}</span>
+        )}
+        {canEdit && !editing ? (
+          <button
+            type="button"
+            className="vp-modus-editbtn"
+            onClick={() => setEditing(true)}
+          >
+            <Icon name="pencil" size={14} />
+            Bearbeiten
+          </button>
+        ) : null}
+      </div>
+      {editing ? (
+        <SettingEditForm
+          setting={setting}
+          site={site}
+          battery={battery}
+          onCancel={() => setEditing(false)}
+          onSiteSaved={(updated) => {
+            setEditing(false);
+            onSiteSaved(updated);
+          }}
+          onBatterySaved={(assets) => {
+            setEditing(false);
+            onBatterySaved(assets);
+          }}
+        />
+      ) : null}
+    </li>
+  );
+}
+
+/** Wählt das richtige Inline-Formular je Einstellungs-Id. */
+function SettingEditForm({
+  setting,
+  site,
+  battery,
+  onCancel,
+  onSiteSaved,
+  onBatterySaved,
+}: {
+  setting: ModeSettingDef;
+  site: Site;
+  battery: SiteAsset | null;
+  onCancel: () => void;
+  onSiteSaved: (updated: Site) => void;
+  onBatterySaved: (assets: SiteAsset[]) => void;
+}) {
+  switch (setting.id) {
+    case 'speicherschonung':
+      return battery ? (
+        <SpeicherschonungEditor
+          siteId={site.id}
+          battery={battery}
+          onCancel={onCancel}
+          onSaved={onBatterySaved}
+        />
+      ) : null;
+    case 'netzladen':
+      return <NetzladenEditor site={site} onCancel={onCancel} onSaved={onSiteSaved} />;
+    case 'anzulegender-wert':
+      return <AnzulegenderWertEditor site={site} onCancel={onCancel} onSaved={onSiteSaved} />;
+    case 'stromtarif':
+      return <StromtarifEditor site={site} onCancel={onCancel} onSaved={onSiteSaved} />;
+    default:
+      return null;
+  }
+}
+
+/** Actions-Fußzeile eines Inline-Formulars (Abbrechen / Speichern). */
+function EditActions({
+  busy,
+  onCancel,
+  onSave,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="vp-modus-editactions">
+      <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+        Abbrechen
+      </Button>
+      <Button variant="primary" size="sm" onClick={onSave} disabled={busy}>
+        {busy ? 'Wird gespeichert…' : 'Speichern'}
+      </Button>
+    </div>
+  );
+}
+
+const SITE_SAVE_ERROR =
+  'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.';
+
+/**
+ * Speicherschonung-Editor: der `SpeicherschonungField` + `api.saveBattery`. Er
+ * trägt die vollen Speicherparameter durch (Kapazität/Lade-/Entladeleistung/
+ * Wirkungsgrad/Gerät) und sendet die Speicherschonung nur bei einer echten
+ * Änderung — genau die alte `BatteryEditForm`-Disziplin.
+ */
+function SpeicherschonungEditor({
+  siteId,
+  battery,
+  onCancel,
+  onSaved,
+}: {
+  siteId: string;
+  battery: SiteAsset;
+  onCancel: () => void;
+  onSaved: (assets: SiteAsset[]) => void;
+}) {
+  const initial = presetOf(battery.speicherschonung);
+  const [schonung, setSchonung] = useState<SpeicherschonungPreset | null>(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const assets = await api.saveBattery(siteId, {
+        capacityKwh: battery.capacityKwh!,
+        maxChargeKw: battery.maxChargeKw!,
+        maxDischargeKw: battery.maxDischargeKw!,
+        roundtripEfficiencyPct: battery.roundtripEfficiencyPct,
+        deviceId: battery.deviceId,
+        // Nur eine aktiv geänderte Wahl wird gesendet; ein unberührtes Formular
+        // behält den gespeicherten Wert (auch einen admin-konfigurierten).
+        ...(schonung != null && schonung !== initial ? { speicherschonung: schonung } : {}),
+      });
+      onSaved(assets);
+    } catch {
+      setError(SITE_SAVE_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-modus-editform">
+      <SpeicherschonungField
+        current={battery.speicherschonung}
+        value={schonung}
+        onChange={setSchonung}
+      />
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <EditActions busy={busy} onCancel={onCancel} onSave={save} />
+    </div>
+  );
+}
+
+/** Netzladen-Editor: der `NetzladenField` + `api.updateSite` (Voll-Repräsentation). */
+function NetzladenEditor({
+  site,
+  onCancel,
+  onSaved,
+}: {
+  site: Site;
+  onCancel: () => void;
+  onSaved: (updated: Site) => void;
+}) {
+  const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.updateSite(
+        site.id,
+        buildSitePayload(site, { netzladenErlaubt: netzladen }),
+      );
+      onSaved(updated);
+    } catch {
+      setError(SITE_SAVE_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-modus-editform">
+      <div className="vp-form-stack">
+        <NetzladenField value={netzladen} onChange={setNetzladen} idPrefix="modus-netzladen" />
+      </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <EditActions busy={busy} onCancel={onCancel} onSave={save} />
+    </div>
+  );
+}
+
+/** Anzulegender-Wert-Editor: der `AnzulegenderWertField` + `api.updateSite`. */
+function AnzulegenderWertEditor({
+  site,
+  onCancel,
+  onSaved,
+}: {
+  site: Site;
+  onCancel: () => void;
+  onSaved: (updated: Site) => void;
+}) {
+  const [text, setText] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const value = parsePremiumInput(text);
+    if (value === undefined) {
+      setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.updateSite(
+        site.id,
+        buildSitePayload(site, { anzulegenderWertCtKwh: value }),
+      );
+      onSaved(updated);
+    } catch {
+      setError(SITE_SAVE_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-modus-editform">
+      <div className="vp-form-stack">
+        <AnzulegenderWertField value={text} onChange={setText} />
+      </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <EditActions busy={busy} onCancel={onCancel} onSave={save} />
+    </div>
+  );
+}
+
+/** Stromtarif-Editor: die geteilten `TariffFields` + `api.updateSite`. */
+function StromtarifEditor({
+  site,
+  onCancel,
+  onSaved,
+}: {
+  site: Site;
+  onCancel: () => void;
+  onSaved: (updated: Site) => void;
+}) {
+  const [tarifArt, setTarifArt] = useState<TarifArt>(site.tarifArt ?? 'ohne');
+  const [param, setParam] = useState(premiumInputText(site.tarifParamCtKwh ?? null));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const paramValue = tarifArt === 'ohne' ? null : parsePremiumInput(param);
+    if (paramValue === undefined) {
+      setError(
+        tarifArt === 'dynamisch'
+          ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
+          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
+      );
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await api.updateSite(
+        site.id,
+        buildSitePayload(site, { tarifArt, tarifParamCtKwh: paramValue }),
+      );
+      onSaved(updated);
+    } catch {
+      setError(SITE_SAVE_ERROR);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="vp-modus-editform">
+      <div className="vp-form-stack">
+        <TariffFields
+          tarifArt={tarifArt}
+          onTarifArt={setTarifArt}
+          param={param}
+          onParam={setParam}
+          idPrefix="modus-tarif"
+        />
+      </div>
+      {error && <div className="vp-alert vp-alert-err">{error}</div>}
+      <EditActions busy={busy} onCancel={onCancel} onSave={save} />
     </div>
   );
 }

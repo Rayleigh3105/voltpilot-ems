@@ -26,7 +26,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { ApiError, api, type EarningsSite, type Site } from '../api';
+import { ApiError, api, type EarningsSite, type Site, type SiteAsset } from '../api';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { NeueAutomationDialog } from '../components/NeueAutomationDialog';
@@ -81,18 +81,31 @@ export function SteuerungSection({
   site,
   isAdmin = false,
   onOpenSub,
+  onSiteSaved,
 }: {
   site: Site;
   isAdmin?: boolean;
   onOpenSub?: (sub: AnlagenSub) => void;
+  /**
+   * Eine Site-Einstellung wurde IM Modus-Container gespeichert (v3.1-M3) — die
+   * Anlagen-Seite lädt daraufhin neu, damit alle Flächen den neuen Wert zeigen.
+   */
+  onSiteSaved?: (updated: Site) => void;
 }) {
   const flowApi = useMemo(() => customerFlowApi(site.id), [site.id]);
+  // Lokaler Site-Zustand, damit ein Container-Save (Netzladen/Tarif/…) sofort in
+  // der Ableitung (`activeModes` — Netzladen ∧ dyn. Tarif IST ein Markt-Signal!)
+  // und in den Lese-Zeilen sichtbar wird; die Prop bleibt die Quelle der Wahrheit
+  // und synchronisiert bei einem Anlagenwechsel/Seiten-Reload zurück.
+  const [siteState, setSiteState] = useState<Site>(site);
+  useEffect(() => setSiteState(site), [site]);
   const [flows, setFlows] = useState<FlowSummary[] | null>(null);
   const [entities, setEntities] = useState<EditorEntity[]>([]);
   const [governance, setGovernance] = useState<FlowNodeGovernance | null>(null);
   const [signals, setSignals] = useState<SurfaceSignals | null>(null);
   const [earnings, setEarnings] = useState<EarningsSite | null>(null);
   const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
+  const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [reservation, setReservation] = useState<ReservationInput | null>(null);
   const [listState, setListState] = useState<'idle' | 'loading' | 'error'>('loading');
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -146,14 +159,18 @@ export function SteuerungSection({
       api.earnings('month').catch(() => null),
       api.siteProfiles(site.id).catch(() => null),
       optimizerApi.configViaSwitcher(site.id).catch(() => null),
+      // Der Speicher-Asset speist die Speicherschonungs-Einstellung im Container
+      // (v3.1-M3); fail-soft wie der Rest.
+      api.siteAssets(site.id).catch(() => null),
     ])
-      .then(([list, entityList, gov, profile, money, shelf, config]) => {
+      .then(([list, entityList, gov, profile, money, shelf, config, siteAssets]) => {
         setFlows(list);
         setEntities(entityList);
         setGovernance(gov);
         setSignals(profile?.signals ?? null);
         setEarnings(money?.sites.find((s) => s.id === site.id) ?? null);
         setProfiles(shelf);
+        setAssets(siteAssets);
         setReservation({
           socMinPct: config?.effective.socMinPct ?? null,
           socMaxPct: config?.effective.socMaxPct ?? null,
@@ -194,15 +211,15 @@ export function SteuerungSection({
       activeModes({
         signals,
         config: {
-          plantKind: site.plantKind,
-          tarifArt: site.tarifArt,
-          netzladenErlaubt: site.netzladenErlaubt,
-          leistungspreisEurKw: site.leistungspreisEurKw ?? null,
+          plantKind: siteState.plantKind,
+          tarifArt: siteState.tarifArt,
+          netzladenErlaubt: siteState.netzladenErlaubt,
+          leistungspreisEurKw: siteState.leistungspreisEurKw ?? null,
         },
         flows: (flows as SurfaceFlow[] | null) ?? null,
         entities: null,
       }),
-    [signals, site, flows],
+    [signals, siteState, flows],
   );
 
   const co = useMemo(() => coOptimization(modes), [modes]);
@@ -211,7 +228,26 @@ export function SteuerungSection({
     () => profileRows(profiles?.profiles, modes, earnings),
     [profiles, modes, earnings],
   );
-  const protections = useMemo(() => protectionItems(site), [site]);
+  const protections = useMemo(() => protectionItems(siteState), [siteState]);
+  const battery = useMemo(
+    () => (assets ?? []).find((a) => a.type === 'battery') ?? null,
+    [assets],
+  );
+
+  /** Ein Container-Save einer Site-Einstellung: lokal spiegeln + Seite nachladen. */
+  const handleSiteSaved = useCallback(
+    (updated: Site) => {
+      setSiteState(updated);
+      onSiteSaved?.(updated);
+      reload();
+    },
+    [onSiteSaved, reload],
+  );
+
+  /** Ein Container-Save der Speicherschonung: die neuen Assets übernehmen. */
+  const handleBatterySaved = useCallback((updatedAssets: SiteAsset[]) => {
+    setAssets(updatedAssets);
+  }, []);
   const automations = useMemo(
     () => automationRows(
       (flows ?? []).filter((f) => flowMode(f.latestDocument ?? EMPTY_DOC) === 'automation'),
@@ -346,12 +382,16 @@ export function SteuerungSection({
           profile={openProfile}
           mode={mode}
           activeModes={modes}
+          site={siteState}
+          battery={battery}
           earnings={earnings}
           busy={toggling === openProfile.id}
           onToggle={toggleProfile}
           onBack={() => setOpenContainer(null)}
           onNavigate={navigateView}
           onOpenFlow={openContainerFlow}
+          onSiteSaved={handleSiteSaved}
+          onBatterySaved={handleBatterySaved}
         />
       </div>
     );
