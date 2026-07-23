@@ -113,6 +113,21 @@ export type MoneyStreamId =
   | 'automation';
 
 /**
+ * Die Einstellungen des „Modus-Containers" (v3.1, report §2). Jeder Modus
+ * beansprucht eine Teilmenge davon; die Registry-Wahrheit (Label/Claims/
+ * Editierbarkeit) lebt in `modeSettings.ts`. Hier steht nur das Id-Vokabular,
+ * damit `ModeManifest.settings` seine Ansprüche additiv je Zweig nennen kann.
+ */
+export type ModeSettingId =
+  | 'speicherschonung'
+  | 'netzladen'
+  | 'anzulegender-wert'
+  | 'stromtarif'
+  | 'leistungspreis'
+  | 'abrechnung-leistung'
+  | 'lastspitzen-reserve';
+
+/**
  * Der Zeitraum eines Geld-Stroms. Load-bearing (report §1.4): vermiedene
  * Leistungskosten sind ein Abrechnungsperioden-Standwert, EV/Markt sind
  * Tages-/Monatswerte — die Zeile MUSS ihre Periode nennen, quer summiert wird
@@ -253,6 +268,14 @@ export interface ModeManifest {
   moneyStreams: MoneyStream[];
   steuerungCard: SteuerungCard;
   deepViews: DeepViewId[];
+  /**
+   * Die Einstellungen, die dieser Modus als Container BEANSPRUCHT (v3.1, report
+   * §2) — die Ids, deren `claimedBy` in `modeSettings.ts` diese Modus-Art nennt.
+   * Additiv: eine registrierlose/v1-Anlage erzeugt keine Modi, also nie Settings.
+   * Die Dedupe (erst-aktiver-gewinnt) macht `settingsForMode` — hier stehen die
+   * ROHEN Ansprüche in Anzeige-Reihenfolge.
+   */
+  settings: ModeSettingId[];
 }
 
 export interface ActiveMode {
@@ -303,8 +326,12 @@ export const MODE_LABELS: Record<Exclude<ModeKind, 'automation'>, string> = {
   eigenverbrauch: 'Eigenverbrauch',
 };
 
-/** Kanonische Modus-Reihenfolge (F2: kanonisch, nicht €-gewichtet — kein Flackern). */
-const MODE_RANK: Record<ModeKind, number> = {
+/**
+ * Kanonische Modus-Reihenfolge (F2: kanonisch, nicht €-gewichtet — kein
+ * Flackern). Exportiert, damit `modeSettings.ts` dieselbe Rang-Ordnung für die
+ * erst-aktiver-gewinnt-Dedupe wiederverwendet (das `moneyStreams()`-Muster).
+ */
+export const MODE_RANK: Record<ModeKind, number> = {
   lastspitzenkappung: 10,
   'atypische-netznutzung': 20,
   marktvermarktung: 30,
@@ -659,6 +686,8 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
           preview,
         },
         deepViews: ['lastspitzen', 'erloes-historie'],
+        // §2: die drei Read-only-Ids (von VoltPilot eingerichtet).
+        settings: ['leistungspreis', 'abrechnung-leistung', 'lastspitzen-reserve'],
       };
     case 'atypische-netznutzung':
       return {
@@ -675,6 +704,8 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
           preview,
         },
         deepViews: [],
+        // Karten-Modus: beansprucht keine Einstellung (Ökonomie E5b nicht gebaut).
+        settings: [],
       };
     case 'marktvermarktung':
       return {
@@ -720,6 +751,9 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
         // feedback.md Punkt 1: Marktpreise + Prognosequalität sind KEINE
         // globalen Seiten - sie hängen am Markt-Modus.
         deepViews: ['fahrplan', 'marktpreise', 'prognosequalitaet', 'erloes-historie'],
+        // §2: Speicherschonung + Netzladen + anzulegender Wert + Stromtarif
+        // (Zweit-Claim; Erst-Claim ist Eigenverbrauch). Dedupe: `settingsForMode`.
+        settings: ['speicherschonung', 'netzladen', 'anzulegender-wert', 'stromtarif'],
       };
     case 'eigenverbrauch':
       return {
@@ -751,6 +785,9 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
           preview,
         },
         deepViews: ['erloes-historie'],
+        // §2: Stromtarif (Erst-Claim) + Speicherschonung (Zweit-Claim,
+        // Owner-Korrektur: Batterie wird auch vom Eigenverbrauch beansprucht).
+        settings: ['stromtarif', 'speicherschonung'],
       };
     case 'automation':
     default:
@@ -776,6 +813,8 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
           preview: false,
         },
         deepViews: ['flow-editor'],
+        // Automation: eine Wenn/Dann-Regel beansprucht keine Modus-Einstellung.
+        settings: [],
       };
   }
 }
