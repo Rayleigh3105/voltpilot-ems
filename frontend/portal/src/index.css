@@ -2559,7 +2559,9 @@ button.vp-cl-item.is-off .vp-cl-label {
 }
 .vp-plan-mini i.dis {
   align-self: flex-end;
-  background: var(--vp-chart-discharge, #e53935);
+  /* Entladen is blue, not red: emptying the battery into an expensive hour is
+     how the plant earns money (audit F5) - the same hue as the chart bars. */
+  background: var(--vp-chart-battdischarge, #2c5282);
 }
 .vp-plan-mini-text {
   margin: var(--vp-space-3) 0 0;

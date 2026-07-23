@@ -76,7 +76,8 @@
   --vp-chart-soc:       #9C27B0;  /* battery SoC (= battery) */
   --vp-chart-charge:    #2E9E5B;  /* charge / feed-in green */
   --vp-chart-gridcharge:#00ACC1;  /* battery charge FROM THE GRID (Netzladen) cyan */
-  --vp-chart-discharge: #E53935;  /* discharge / grid draw red */
+  --vp-chart-discharge: #E53935;  /* grid draw / cost red (Netzbezug, warnings) */
+  --vp-chart-battdischarge:#2C5282;/* battery DISCHARGE blue (= action) - earning money is not a problem */
   --vp-chart-plan:      #1E3A5F;  /* plan overlay (= navy) */
   --vp-chart-cloud:     #90A4AE;  /* cloud cover grey */
 

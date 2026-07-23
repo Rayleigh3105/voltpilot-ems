@@ -7,13 +7,21 @@ import {
   hasGridCharge,
   HORIZON_HINT,
   horizonHint,
+  planCoversNow,
   planHourBars,
+  planInsightParts,
   planSentence,
+  planStaleNote,
+  PLAN_STALE_AFTER_MS,
   PV_SOURCE_DEADBAND_KW,
   savingsTodayEur,
   SLOT_DEADBAND_KW,
+  slotBarColor,
+  socRange,
+  socRangeLine,
   todaySlots,
 } from './schedule';
+import { chartTheme, type ChartTheme } from './chartTheme';
 import { NBSP } from './format';
 
 /**
@@ -395,5 +403,163 @@ describe('daypart', () => {
     expect(daypart(12.5)).toBe('mittags');
     expect(daypart(16)).toBe('nachmittags');
     expect(daypart(19)).toBe('abends');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Audit fixes F2 / F3 / F4 / F5 (report `vp-audit-view`, section 3 Fahrplan)
+// ---------------------------------------------------------------------------
+
+/**
+ * F2: a plan generated yesterday was presented as today's ("So plant Ihr
+ * Speicher den Tag" over a date-less time axis). The banner states only what
+ * the plan itself proves - when it was made, that nothing newer exists, and
+ * whether it still covers the current moment.
+ */
+describe('planStaleNote', () => {
+  const iso = (h: number, m: number, dayOffset = 0) =>
+    new Date(2026, 6, 7 + dayOffset, h, m).toISOString();
+
+  it('stays silent for a fresh plan and without a generation time', () => {
+    // NOW is 09:30; a run from 09:00 is one of the last few 15-min cycles.
+    expect(planStaleNote(iso(9, 0), [slot(9, 0, 2), slot(23, 45, 0)], NOW)).toBeNull();
+    expect(planStaleNote(null, [slot(9, 0, 2)], NOW)).toBeNull();
+    expect(planStaleNote(undefined, [slot(9, 0, 2)], NOW)).toBeNull();
+    expect(planStaleNote('nonsense', [slot(9, 0, 2)], NOW)).toBeNull();
+  });
+
+  it('fires once the newest run is older than two hours', () => {
+    const justInside = new Date(NOW.getTime() - PLAN_STALE_AFTER_MS + 60_000).toISOString();
+    expect(planStaleNote(justInside, [slot(9, 0, 2), slot(23, 45, 0)], NOW)).toBeNull();
+    const justOutside = new Date(NOW.getTime() - PLAN_STALE_AFTER_MS - 60_000).toISOString();
+    const note = planStaleNote(justOutside, [slot(9, 0, 2), slot(23, 45, 0)], NOW);
+    expect(note).toContain('von heute');
+    expect(note).toContain('seitdem wurde kein neuer Fahrplan berechnet');
+  });
+
+  it("names yesterday's run and says the bars are a past window (the audit case)", () => {
+    // The real dump: newest run 22.07. 10:29, the plan ends the same evening.
+    const note = planStaleNote(
+      iso(10, 29, -1),
+      [slot(10, 30, -3, null, -1), slot(23, 45, 0, null, -1)],
+      NOW,
+    );
+    expect(note).toContain('von gestern, 10:29 Uhr');
+    expect(note).toContain('bereits vergangenen Zeitraum');
+  });
+
+  it('dates an older run and drops the past-window clause while the plan still runs', () => {
+    const note = planStaleNote(iso(10, 29, -3), [slot(9, 0, 2), slot(23, 45, 0)], NOW);
+    expect(note).toContain('vom 04.07., 10:29 Uhr');
+    expect(note).not.toContain('bereits vergangenen Zeitraum');
+  });
+
+  it('planCoversNow follows the plan horizon, not the calendar day', () => {
+    expect(planCoversNow([slot(9, 0, 2), slot(23, 45, 0)], NOW)).toBe(true);
+    expect(planCoversNow([slot(6, 0, 2), slot(8, 0, 0)], NOW)).toBe(false);
+    expect(planCoversNow([slot(10, 0, 2), slot(23, 45, 0)], NOW)).toBe(false);
+    expect(planCoversNow([], NOW)).toBe(false);
+    // The last slot still counts until its own end (09:15 + 15 min > 09:30 is
+    // false, so use the slot that contains NOW).
+    expect(planCoversNow([slot(9, 30, 2)], NOW)).toBe(true);
+  });
+});
+
+/**
+ * F3: the takeaway claimed "bei flachem Preisverlauf bleibt der Speicher
+ * überwiegend in Ruhe" while the plant visibly cycled over a 3 -> 17 ct curve,
+ * because that clause was merely the else-branch of the savings clause.
+ */
+describe('planInsightParts', () => {
+  const text = (parts: ReturnType<typeof planInsightParts>) =>
+    (parts ?? []).map((p) => p.text).join('');
+  const priced = (
+    hour: number,
+    batteryKw: number | null,
+    priceEurMwh: number | null,
+    costEur: number | null = null,
+    baselineCostEur: number | null = null,
+  ) => ({ ...slot(hour, 0, batteryKw), priceEurMwh, costEur, baselineCostEur });
+
+  it('never calls a cycling plan flat, even when today saves nothing', () => {
+    const parts = planInsightParts([priced(3, 5, 30), priced(19, -5, 170)], NOW);
+    const s = text(parts);
+    expect(s).toContain('lädt günstig');
+    expect(s).toContain('entlädt teuer');
+    expect(s).not.toContain('flach');
+    expect(s).not.toContain('in Ruhe');
+  });
+
+  it('appends the savings clause only when today really saves', () => {
+    const parts = planInsightParts(
+      [priced(3, 5, 30, -0.2, 0.1), priced(19, -5, 170, -0.5, 0.2)],
+      NOW,
+    );
+    expect(text(parts)).toContain('das spart heute rund');
+    expect((parts ?? []).some((p) => p.strong && p.text.includes('€'))).toBe(true);
+  });
+
+  it('keeps the idle wording for a plan that really does nothing', () => {
+    const parts = planInsightParts([priced(3, 0, 30), priced(19, 0, 32)], NOW);
+    const s = text(parts);
+    expect(s).toContain('in Ruhe');
+    expect(s).not.toContain('lädt günstig');
+  });
+
+  it('describes a one-directional plan without inventing the other half', () => {
+    expect(text(planInsightParts([priced(12, 5, 20)], NOW))).toContain('lädt');
+    expect(text(planInsightParts([priced(19, -5, 180)], NOW))).toContain('entlädt');
+    // Nothing priced at all: no sentence rather than a made-up one.
+    expect(planInsightParts([priced(12, 5, null)], NOW)).toBeNull();
+  });
+});
+
+/** F4: the SoC band must be readable without hovering (touch has no hover). */
+describe('socRange / socRangeLine', () => {
+  const s = (socPct: number | null) => ({ ...slot(10, 0, 0), socPct });
+
+  it('names the planned band', () => {
+    expect(socRange([s(12.4), s(88.2), s(50)])).toEqual({ min: 12.4, max: 88.2 });
+    expect(socRangeLine([s(12.4), s(88.2), s(50)])).toBe(
+      `Geplanter Ladestand: 12${NBSP}% bis 88${NBSP}% im Tagesverlauf.`,
+    );
+  });
+
+  it('collapses a flat trajectory into one value', () => {
+    expect(socRangeLine([s(40), s(40.3)])).toBe(
+      `Geplanter Ladestand: durchgehend rund 40${NBSP}%.`,
+    );
+  });
+
+  it('stays absent without SoC data (never a fabricated 0 %)', () => {
+    expect(socRange([s(null), s(null)])).toBeNull();
+    expect(socRangeLine([s(null)])).toBeNull();
+    expect(socRangeLine([])).toBeNull();
+  });
+});
+
+/** F5: discharging earns money - it must not be painted in the warning red. */
+describe('slotBarColor', () => {
+  const t = {
+    charge: '#2E9E5B',
+    gridCharge: '#00ACC1',
+    battDischarge: '#2C5282',
+    discharge: '#E53935',
+  } as ChartTheme;
+
+  it('paints discharge blue, never the red cost hue', () => {
+    expect(slotBarColor('entladen', t)).toBe(t.battDischarge);
+    expect(slotBarColor('entladen', t)).not.toBe(t.discharge);
+  });
+
+  it('keeps the charge colours', () => {
+    expect(slotBarColor('solarladen', t)).toBe(t.charge);
+    expect(slotBarColor('netzladen', t)).toBe(t.gridCharge);
+  });
+
+  it('resolves the real palette to a blue that is not the red token', () => {
+    const real = chartTheme();
+    expect(real.battDischarge).toBe('#2C5282');
+    expect(real.battDischarge).not.toBe(real.discharge);
   });
 });

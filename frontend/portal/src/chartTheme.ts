@@ -33,8 +33,14 @@ export interface ChartTheme {
   charge: string;
   /** Battery charge FROM THE GRID (Netzladen slots in the Fahrplan). */
   gridCharge: string;
-  /** Discharge / grid draw (negative). */
+  /** Grid draw / cost (Netzbezug, warning-coloured red). */
   discharge: string;
+  /**
+   * BATTERY discharge in the plan (blue). Deliberately NOT the red `discharge`
+   * above: a discharging battery is the money-making action, and red reads as
+   * a problem (audit F5). Red stays for genuine costs/warnings.
+   */
+  battDischarge: string;
   /** Plan overlay. */
   plan: string;
   /** Cloud cover. */
@@ -66,6 +72,7 @@ export function chartTheme(): ChartTheme {
     charge: read('--vp-chart-charge', '#2E9E5B'),
     gridCharge: read('--vp-chart-gridcharge', '#00ACC1'),
     discharge: read('--vp-chart-discharge', '#E53935'),
+    battDischarge: read('--vp-chart-battdischarge', '#2C5282'),
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),
   };
