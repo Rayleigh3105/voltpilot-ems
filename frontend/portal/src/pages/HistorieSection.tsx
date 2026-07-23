@@ -15,18 +15,25 @@ import {
 } from '../api';
 import { eurAmount, NBSP } from '../format';
 import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
+import { parseVerlaufParams } from '../verlauf';
 
 import { InfoTip } from '../components/InfoTip';
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
+import { VerlaufExplorer } from '../components/VerlaufExplorer';
 import { HistoryDayChart, HistoryEnergyChart } from '../HistoryChart';
 
 /**
- * Historie: what the system DID, money lens first (captain: Geld führt) and
- * built for Nachvollziehbarkeit - the day view puts the actual battery
- * behavior directly over the price curve (plus the plan overlay), and the
- * Tagesprotokoll narrates the day in plain German.
+ * Historie has two faces: **Bilanz & Erlöse** (the money/energy balance - the
+ * existing page, verbatim) and **Messwerte** (the new Verlauf-Explorer: every
+ * physical measurement over a selectable range). "Geld führt", so Bilanz is the
+ * default tab (owner Q1); a deep link (`?m=…`) opens Messwerte pre-focused. The
+ * boundary is deliberate: the explorer shows raw physical measurements (kW, %),
+ * the derived balance quantities (kWh, €, Autarkie/EV) stay in Bilanz where
+ * their formulas + InfoTips live.
  */
+
+type HistTab = 'bilanz' | 'messwerte';
 
 const EVENT_ICONS: Record<ProtocolEvent['type'], { icon: IconName; label: string }> = {
   'batterie-laden': { icon: 'arrow-up', label: 'Laden' },
@@ -44,13 +51,67 @@ function pct(v: number | null | undefined): string {
   return v == null ? '-' : `${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 1 })}${NBSP}%`;
 }
 
+/** The shared Tag/Woche/Monat/Jahr range control + stepper (both faces). */
+function PeriodNav({
+  range,
+  anchor,
+  onRange,
+  onAnchor,
+}: {
+  range: HistoryRange;
+  anchor: Date;
+  onRange: (r: HistoryRange) => void;
+  onAnchor: (d: Date) => void;
+}) {
+  const nextDisabled = shiftAnchor(anchor, range, 1) > new Date();
+  return (
+    <div className="vp-page-head" style={{ marginBottom: 'var(--vp-space-5)', alignItems: 'center' }}>
+      <div className="vp-seg" role="tablist" aria-label="Zeitraum">
+        {PERIOD_RANGES.map((r) => (
+          <button
+            key={r.id}
+            role="tab"
+            aria-selected={range === r.id}
+            className={range === r.id ? 'active' : ''}
+            onClick={() => onRange(r.id)}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <div className="vp-period-nav" style={{ marginLeft: 'auto' }}>
+        <button
+          type="button"
+          className="step"
+          aria-label="Vorheriger Zeitraum"
+          onClick={() => onAnchor(shiftAnchor(anchor, range, -1))}
+        >
+          <Icon name="chevron-left" size={18} />
+        </button>
+        <span className="label">{periodLabel(anchor, range)}</span>
+        <button
+          type="button"
+          className="step"
+          aria-label="Nächster Zeitraum"
+          disabled={nextDisabled}
+          onClick={() => onAnchor(shiftAnchor(anchor, range, 1))}
+        >
+          <Icon name="chevron-right" size={18} />
+        </button>
+        <button type="button" className="step" onClick={() => onAnchor(new Date())}>
+          Heute
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
- * The "Historie & Erlöse" subpage of one Anlage: what the system DID, money
- * lens first (captain: Geld führt) and built for Nachvollziehbarkeit.
+ * The "Bilanz & Erlöse" face: what the system DID, money lens first (captain:
+ * Geld führt) and built for Nachvollziehbarkeit. Extracted verbatim from the
+ * former Historie page; the period nav is now shared above the tabs.
  */
-export function HistorieSection({ site }: { site: Site }) {
-  const [range, setRange] = useState<HistoryRange>('day');
-  const [anchor, setAnchor] = useState<Date>(() => new Date());
+function BilanzFace({ site, range, anchor }: { site: Site; range: HistoryRange; anchor: Date }) {
   const [history, setHistory] = useState<History | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -72,56 +133,12 @@ export function HistorieSection({ site }: { site: Site }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [site.id, range, at, reloadKey]);
 
-  const nextDisabled = shiftAnchor(anchor, range, 1) > new Date();
   const totals = history?.totals ?? null;
   const buckets = history?.buckets ?? [];
   const isDay = range === 'day';
 
   return (
     <>
-      {/* Period navigation: Tag/Woche/Monat/Jahr + stepper + Heute. */}
-      <div
-        className="vp-page-head"
-        style={{ marginBottom: 'var(--vp-space-5)', alignItems: 'center' }}
-      >
-        <div className="vp-seg" role="tablist" aria-label="Zeitraum">
-          {PERIOD_RANGES.map((r) => (
-            <button
-              key={r.id}
-              role="tab"
-              aria-selected={range === r.id}
-              className={range === r.id ? 'active' : ''}
-              onClick={() => setRange(r.id)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <div className="vp-period-nav" style={{ marginLeft: 'auto' }}>
-          <button
-            type="button"
-            className="step"
-            aria-label="Vorheriger Zeitraum"
-            onClick={() => setAnchor(shiftAnchor(anchor, range, -1))}
-          >
-            <Icon name="chevron-left" size={18} />
-          </button>
-          <span className="label">{periodLabel(anchor, range)}</span>
-          <button
-            type="button"
-            className="step"
-            aria-label="Nächster Zeitraum"
-            disabled={nextDisabled}
-            onClick={() => setAnchor(shiftAnchor(anchor, range, 1))}
-          >
-            <Icon name="chevron-right" size={18} />
-          </button>
-          <button type="button" className="step" onClick={() => setAnchor(new Date())}>
-            Heute
-          </button>
-        </div>
-      </div>
-
       {loading && (
         <Card padding="lg" radius="lg">
           <ChartCardSkeleton />
@@ -159,9 +176,7 @@ export function HistorieSection({ site }: { site: Site }) {
             <KpiCard
               icon={<Icon name="battery-charging" size={20} />}
               category="battery"
-              value={
-                totals?.batterySavingsEur == null ? '-' : eurAmount(totals.batterySavingsEur)
-              }
+              value={totals?.batterySavingsEur == null ? '-' : eurAmount(totals.batterySavingsEur)}
               label="Speicher-Ersparnis"
               title="Aus den gespeicherten Fahrplänen: Kosten gegenüber einem Betrieb ohne Speicher"
             />
@@ -311,6 +326,67 @@ export function HistorieSection({ site }: { site: Site }) {
             </section>
           )}
         </>
+      )}
+    </>
+  );
+}
+
+/**
+ * The "Historie & Erlöse" subpage: a top-level Messwerte | Bilanz & Erlöse tab
+ * over a shared period nav. Bilanz is the default ("Geld führt", Q1); a deep
+ * link `#/anlage/{id}/historie?m={entityId}:{channel}&z=…&at=…` opens Messwerte
+ * pre-focused (`parseRoute` strips `?…`, so this parses the params itself).
+ */
+export function HistorieSection({ site }: { site: Site }) {
+  const [init] = useState(() => parseVerlaufParams(window.location.hash));
+  const [tab, setTab] = useState<HistTab>(init.target ? 'messwerte' : 'bilanz');
+  const [range, setRange] = useState<HistoryRange>(init.range);
+  const [anchor, setAnchor] = useState<Date>(() =>
+    init.at ? new Date(`${init.at}T12:00:00`) : new Date(),
+  );
+
+  // A V2 cockpit jump (or back/forward) can change the deep-link while this
+  // section stays mounted; re-seed the tab + period from it. The explorer's own
+  // replaceState never fires hashchange, so this only reacts to real navigation.
+  useEffect(() => {
+    const onHash = () => {
+      const p = parseVerlaufParams(window.location.hash);
+      if (!p.target) return;
+      setTab('messwerte');
+      setRange(p.range);
+      setAnchor(p.at ? new Date(`${p.at}T12:00:00`) : new Date());
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  return (
+    <>
+      <div className="vp-seg" role="tablist" aria-label="Ansicht" style={{ marginBottom: 'var(--vp-space-4)' }}>
+        <button
+          role="tab"
+          aria-selected={tab === 'bilanz'}
+          className={tab === 'bilanz' ? 'active' : ''}
+          onClick={() => setTab('bilanz')}
+        >
+          Bilanz &amp; Erlöse
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === 'messwerte'}
+          className={tab === 'messwerte' ? 'active' : ''}
+          onClick={() => setTab('messwerte')}
+        >
+          Messwerte
+        </button>
+      </div>
+
+      <PeriodNav range={range} anchor={anchor} onRange={setRange} onAnchor={setAnchor} />
+
+      {tab === 'bilanz' ? (
+        <BilanzFace site={site} range={range} anchor={anchor} />
+      ) : (
+        <VerlaufExplorer site={site} range={range} anchor={anchor} initialTarget={init.target} />
       )}
     </>
   );
