@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { EarningsMonth, EarningsSeriesPoint, EarningsSite } from './api';
+import type { EarningsMonth, EarningsSeriesPoint, EarningsSite, Site } from './api';
 import {
   bestBucket,
   bestBucketText,
+  buildSitePayload,
   bucketAxisLabel,
   eigenverbrauchProvenance,
   einspeiseProvenance,
@@ -290,5 +291,59 @@ describe('expectedMarketValueLine (forward Marktwert Solar, captain 2026-07-09)'
       }),
     );
     expect(line!.value).toBe(`-1,4${NBSP}ct/kWh`);
+  });
+});
+
+describe('buildSitePayload (v3.1-M3 full-representation guard)', () => {
+  const fullSite: Site = {
+    id: 's-1',
+    name: 'Solarpark Dachau',
+    biddingZone: 'DE-LU',
+    latitude: 48.26,
+    longitude: 11.43,
+    plantKind: 'direktvermarktung',
+    anzulegenderWertCtKwh: 8.11,
+    tarifArt: 'dynamisch',
+    tarifParamCtKwh: 18,
+    netzladenErlaubt: true,
+    maxFeedInKw: 75,
+  };
+
+  it('carries EVERY site field through unchanged when overriding a single one', () => {
+    // The move split the site's fields across two edit surfaces (mode containers
+    // vs. the general Technik page). Both go through here, so a focused save of
+    // one field can never blank the others - the load-bearing regression guard.
+    expect(buildSitePayload(fullSite, { netzladenErlaubt: false })).toEqual({
+      name: 'Solarpark Dachau',
+      biddingZone: 'DE-LU',
+      latitude: 48.26,
+      longitude: 11.43,
+      plantKind: 'direktvermarktung',
+      anzulegenderWertCtKwh: 8.11,
+      tarifArt: 'dynamisch',
+      tarifParamCtKwh: 18,
+      netzladenErlaubt: false,
+      maxFeedInKw: 75,
+    });
+  });
+
+  it('a Technik-side override (name/maxFeedIn) keeps the moved money fields', () => {
+    const payload = buildSitePayload(fullSite, { name: 'Neu', maxFeedInKw: 100 });
+    expect(payload.name).toBe('Neu');
+    expect(payload.maxFeedInKw).toBe(100);
+    // The mode-container-owned fields are untouched.
+    expect(payload.netzladenErlaubt).toBe(true);
+    expect(payload.anzulegenderWertCtKwh).toBe(8.11);
+    expect(payload.tarifArt).toBe('dynamisch');
+    expect(payload.tarifParamCtKwh).toBe(18);
+  });
+
+  it('a container-side override (tariff) keeps the Technik fields', () => {
+    const payload = buildSitePayload(fullSite, { tarifArt: 'fest', tarifParamCtKwh: 32.5 });
+    expect(payload.tarifArt).toBe('fest');
+    expect(payload.tarifParamCtKwh).toBe(32.5);
+    expect(payload.name).toBe('Solarpark Dachau');
+    expect(payload.maxFeedInKw).toBe(75);
+    expect(payload.plantKind).toBe('direktvermarktung');
   });
 });

@@ -360,7 +360,12 @@ function AnlagenSubPage({
       {sub === 'modell' && <AnlagenModellSection site={site} />}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
       {sub === 'steuerung' && (
-        <SteuerungSection site={site} isAdmin={isAdmin} onOpenSub={onOpenSub} />
+        <SteuerungSection
+          site={site}
+          isAdmin={isAdmin}
+          onOpenSub={onOpenSub}
+          onSiteSaved={(updated) => onReload(updated.id)}
+        />
       )}
       {sub === 'technik' && (
         <TechnikSection

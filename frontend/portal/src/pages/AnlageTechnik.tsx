@@ -7,49 +7,45 @@ import { Input } from '../../designsystem/components/forms/Input';
 import {
   api,
   ApiError,
-  type CreateSiteInput,
   type Device,
   type PlantKind,
   type Site,
   type SiteAsset,
   type SiteDeletionPreview,
-  type TarifArt,
 } from '../api';
-import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, parsePremiumInput, premiumInputText, tarifArtLabel } from '../fleet';
+import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, premiumInputText } from '../fleet';
+import { buildSitePayload } from '../anlage';
 import { deviceKindLabel, fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { LocationMap } from '../components/LocationMap';
-import { TariffFields } from '../components/TariffFields';
 import { DangerZone } from '../components/DangerZone';
 import { AddDeviceDrawer, DeviceDetailDrawer, DeviceStatusBadge } from '../components/DeviceDrawers';
-import { NetzladenBadge } from '../components/NetzladenBadge';
 import { InfoTip } from '../components/InfoTip';
 import { MastrDrawer } from '../components/MastrDrawer';
-import {
-  presetOf,
-  SPEICHERSCHONUNG_INDIVIDUELL_LABEL,
-  SPEICHERSCHONUNG_OPTIONS,
-  speicherschonungLabel,
-  type SpeicherschonungPreset,
-} from '../speicherschonung';
 import { ErrorState, TextSkeleton } from '../components/States';
 
 /**
- * "Technik & Einstellungen" - the gear subpage of the Anlage, rebuilt as a calm,
- * editorial page (task vp-technik-erklaerbar): a slim left jump-navigation and
- * six explained sections on the right (Meine Anlage / Mein Gerät / Mein Speicher
- * / Vergütung & Tarif / Registrierung / Anlage löschen). Four principles drive
- * it: group by meaning (not DB table), read first + edit on demand, collapse the
- * installer jargon behind "Technische Details", and explain every section in
- * plain German with an info-tooltip per Fachbegriff. Nothing was removed - every
- * setting that used to stack here is still reachable, just one level calmer.
+ * "Technik & Einstellungen" - the gear subpage of the Anlage, the calm,
+ * editorial page of what the plant *is*: a slim left jump-navigation and five
+ * explained sections on the right (Meine Anlage / Mein Gerät / Mein Speicher /
+ * Registrierung / Anlage löschen). Four principles drive it: group by meaning
+ * (not DB table), read first + edit on demand, collapse the installer jargon
+ * behind "Technische Details", and explain every section in plain German with
+ * an info-tooltip per Fachbegriff.
+ *
+ * v3.1-M3 moved the MODE settings out of here into their mode containers
+ * (Steuerung): "Umgang mit dem Speicher" (Speicherschonung), Netzladen,
+ * anzulegender Wert and the Stromtarif now live in Marktoptimierung /
+ * Eigenverbrauch. What stays general is the plant's identity, its hardware and
+ * the official/administrative pieces - plus the maximale Einspeiseleistung, a
+ * Netzanschluss fact that moved up into "Meine Anlage". The former "Vergütung &
+ * Tarif" section is therefore retired.
  */
 
-/** The six sections, in the captain-approved order; ids double as scroll anchors. */
+/** The five sections, in the captain-approved order; ids double as scroll anchors. */
 const SECTIONS = [
   { key: 'anlage', icon: 'home' as IconName, label: 'Meine Anlage' },
   { key: 'geraet', icon: 'cpu' as IconName, label: 'Mein Gerät' },
   { key: 'speicher', icon: 'battery' as IconName, label: 'Mein Speicher' },
-  { key: 'verguetung', icon: 'euro' as IconName, label: 'Vergütung & Tarif' },
   { key: 'registrierung', icon: 'file-text' as IconName, label: 'Registrierung' },
   { key: 'loeschen', icon: 'trash' as IconName, label: 'Anlage löschen', danger: true },
 ] as const;
@@ -255,7 +251,7 @@ export function TechnikSection({
   const [assets, setAssets] = useState<SiteAsset[] | null>(null);
   const [assetsError, setAssetsError] = useState(false);
   const [assetsReloadKey, setAssetsReloadKey] = useState(0);
-  const [editSection, setEditSection] = useState<'anlage' | 'verguetung' | null>(null);
+  const [editSection, setEditSection] = useState<'anlage' | null>(null);
   const [mastrOpen, setMastrOpen] = useState(false);
   const [preview, setPreview] = useState<SiteDeletionPreview | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -352,15 +348,13 @@ export function TechnikSection({
     .sort()
     .pop();
 
-  const isDv = site.plantKind === 'direktvermarktung';
-
-  // --- Section: Meine Anlage (Stammdaten) ---------------------------------
+  // --- Section: Meine Anlage (Stammdaten + Netzanschluss) -----------------
   const anlageEditing = editSection === 'anlage';
   const anlageCard = (
     <TechCard
       key="anlage"
       section={SECTIONS[0]}
-      explain="Die Grunddaten Ihrer Anlage - Name, Standort und Anlagentyp."
+      explain="Die Grunddaten Ihrer Anlage - Name, Standort, Anlagentyp und Netzanschluss."
       summary={site.name}
       action={anlageEditing ? undefined : <EditPencil onClick={() => setEditSection('anlage')} />}
     >
@@ -394,6 +388,23 @@ export function TechnikSection({
             <div className="vp-kv-row">
               <dt className="vp-kv-k">Anlagentyp</dt>
               <dd className="vp-kv-v">{plantKindLabel(site.plantKind)}</dd>
+            </div>
+            <div className="vp-kv-row">
+              <dt className="vp-kv-k">
+                Maximale Einspeiseleistung
+                <InfoTip title="Maximale Einspeiseleistung am Netzanschlusspunkt">
+                  Die Leistungsgrenze, bis zu der Ihre Anlage am Netzanschlusspunkt
+                  einspeisen darf. Der Fahrplan hält sie automatisch ein - der Bezug
+                  aus dem Netz ist davon nicht betroffen.
+                </InfoTip>
+              </dt>
+              <dd className="vp-kv-v">
+                {site.maxFeedInKw != null ? (
+                  fmtNum(site.maxFeedInKw, 'kW', 1)
+                ) : (
+                  <span className="vp-muted">keine Grenze hinterlegt</span>
+                )}
+              </dd>
             </div>
           </dl>
           {site.latitude != null && site.longitude != null ? (
@@ -546,107 +557,11 @@ export function TechnikSection({
     </TechCard>
   );
 
-  // --- Section: Vergütung & Tarif -----------------------------------------
-  const verguetungEditing = editSection === 'verguetung';
-  const verguetungCard = (
-    <TechCard
-      key="verguetung"
-      section={SECTIONS[3]}
-      explain="Wie Ihr eingespeister und selbst genutzter Strom bewertet wird."
-      summary={tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}
-      action={
-        verguetungEditing ? undefined : <EditPencil onClick={() => setEditSection('verguetung')} />
-      }
-    >
-      {verguetungEditing ? (
-        <VerguetungEditForm
-          site={site}
-          onCancel={() => setEditSection(null)}
-          onSaved={(updated) => {
-            setEditSection(null);
-            onSiteSaved(updated);
-            onReload(updated.id);
-          }}
-        />
-      ) : (
-        <>
-          <dl className="vp-kv">
-            {isDv && (
-              <div className="vp-kv-row">
-                <dt className="vp-kv-k">
-                  Anzulegender Wert
-                  <InfoTip title="Anzulegender Wert">
-                    Ihr fester Vergütungssatz aus der Direktvermarktung (EEG-Zuschlag). Er ist die
-                    Basis Ihrer Marktprämie: Wir rechnen die Differenz zum monatlichen Marktwert
-                    Solar in Ihren Erlös ein; bei negativen Börsenpreisen entfällt sie.
-                  </InfoTip>
-                </dt>
-                <dd className="vp-kv-v">
-                  {site.anzulegenderWertCtKwh != null ? (
-                    fmtNum(site.anzulegenderWertCtKwh, 'ct/kWh', 2)
-                  ) : (
-                    <span className="vp-muted">nicht hinterlegt</span>
-                  )}
-                </dd>
-              </div>
-            )}
-            <div className="vp-kv-row">
-              <dt className="vp-kv-k">
-                Ihr Stromtarif
-                <InfoTip title="Stromtarif">
-                  Grundlage für den Wert Ihres Eigenverbrauchs. „Dynamisch" bewertet jede selbst
-                  genutzte Kilowattstunde zum jeweiligen Börsenpreis plus Aufschlag, „Fest" zu
-                  Ihrem festen Arbeitspreis.
-                </InfoTip>
-              </dt>
-              <dd className="vp-kv-v">{tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}</dd>
-            </div>
-            <div className="vp-kv-row">
-              <dt className="vp-kv-k">
-                Netzladen
-                <InfoTip title="Netzladen des Speichers">
-                  Legt fest, ob Ihr Speicher auch Strom aus dem Netz laden darf. EEG-geförderte
-                  Anlagen dürfen das nicht (Ausschließlichkeitsprinzip) - dann lädt der Speicher nur
-                  aus eigenem Solarstrom.
-                </InfoTip>
-              </dt>
-              <dd className="vp-kv-v">
-                <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
-              </dd>
-            </div>
-            <div className="vp-kv-row">
-              <dt className="vp-kv-k">
-                Maximale Einspeiseleistung
-                <InfoTip title="Maximale Einspeiseleistung am Netzanschlusspunkt">
-                  Die Leistungsgrenze, bis zu der Ihre Anlage am Netzanschlusspunkt
-                  einspeisen darf. Der Fahrplan hält sie automatisch ein - der Bezug
-                  aus dem Netz ist davon nicht betroffen.
-                </InfoTip>
-              </dt>
-              <dd className="vp-kv-v">
-                {site.maxFeedInKw != null ? (
-                  fmtNum(site.maxFeedInKw, 'kW', 1)
-                ) : (
-                  <span className="vp-muted">keine Grenze hinterlegt</span>
-                )}
-              </dd>
-            </div>
-          </dl>
-          <p className="vp-tech-miniexp">
-            {isDv
-              ? '„Anzulegender Wert": Ihr fixer Vergütungssatz aus der Direktvermarktung - die Basis der Marktprämie.'
-              : 'Ihr Stromtarif bestimmt, wie viel eine selbst genutzte Kilowattstunde für Sie wert ist.'}
-          </p>
-        </>
-      )}
-    </TechCard>
-  );
-
   // --- Section: Registrierung (Marktstammdaten) ---------------------------
   const registrierungCard = (
     <TechCard
       key="registrierung"
-      section={SECTIONS[4]}
+      section={SECTIONS[3]}
       explain="Die offizielle Registrierung Ihrer Anlage - brauchen Sie nur selten."
       summary={linkedAssets.length > 0 ? 'MaStR verknüpft' : 'Nicht verknüpft'}
     >
@@ -726,7 +641,7 @@ export function TechnikSection({
   const loeschenCard = (
     <TechCard
       key="loeschen"
-      section={SECTIONS[5]}
+      section={SECTIONS[4]}
       explain="Entfernt die Anlage und alle ihre Daten unwiderruflich."
       summary="Unwiderruflich"
     >
@@ -754,7 +669,6 @@ export function TechnikSection({
         {anlageCard}
         {geraetCard}
         {speicherCard}
-        {verguetungCard}
         {registrierungCard}
         {loeschenCard}
       </div>
@@ -782,33 +696,13 @@ export function TechnikSection({
 }
 
 /**
- * Builds a full site update payload from the current site, applying only the
- * fields a focused form edits. The backend UpdateSiteRequest is a
- * full-representation record (name is @NotBlank, plantKind/tarifArt default when
- * omitted), so a partial body would blank the untouched fields - each inline
- * form therefore carries the current values through unchanged.
- */
-function buildSitePayload(site: Site, overrides: Partial<CreateSiteInput>): CreateSiteInput {
-  return {
-    name: site.name,
-    biddingZone: site.biddingZone,
-    latitude: site.latitude,
-    longitude: site.longitude,
-    plantKind: site.plantKind,
-    anzulegenderWertCtKwh: site.anzulegenderWertCtKwh,
-    tarifArt: site.tarifArt,
-    tarifParamCtKwh: site.tarifParamCtKwh,
-    netzladenErlaubt: site.netzladenErlaubt,
-    maxFeedInKw: site.maxFeedInKw,
-    ...overrides,
-  };
-}
-
-/**
- * Inline edit form of the Anlage's Grunddaten: name, Gebotszone, Anlagentyp and
- * the location map. The Vergütung/Tarif fields are edited in their own section
- * (VerguetungEditForm); both carry the other group's values through unchanged
- * via buildSitePayload so a focused save never blanks a field.
+ * Inline edit form of the Anlage's Grunddaten + Netzanschluss: name, Gebotszone,
+ * Anlagentyp, the location map and the maximale Einspeiseleistung (moved up here
+ * in v3.1-M3 - a Netzanschluss fact, not a mode lever). The mode-specific money
+ * fields (netzladen/anzulegender Wert/tariff) now live in the mode containers.
+ * This still carries the WHOLE site through unchanged via the shared
+ * `buildSitePayload` (full-representation), so a focused save here never blanks
+ * a field a mode container owns.
  */
 export function StammdatenEditForm({
   site,
@@ -824,11 +718,17 @@ export function StammdatenEditForm({
   const [plantKind, setPlantKind] = useState<PlantKind>(site.plantKind ?? 'eigenverbrauch');
   const [lat, setLat] = useState<number | null>(site.latitude ?? null);
   const [lon, setLon] = useState<number | null>(site.longitude ?? null);
+  const [maxFeedIn, setMaxFeedIn] = useState(premiumInputText(site.maxFeedInKw ?? null));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
     if (!name.trim()) return;
+    const maxFeedInValue = parseFeedInCapInput(maxFeedIn);
+    if (maxFeedInValue === undefined) {
+      setError('Bitte geben Sie die maximale Einspeiseleistung als Zahl in kW an, z. B. 75.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -840,6 +740,7 @@ export function StammdatenEditForm({
           latitude: lat,
           longitude: lon,
           plantKind,
+          maxFeedInKw: maxFeedInValue,
         }),
       );
       onSaved(updated);
@@ -906,139 +807,6 @@ export function StammdatenEditForm({
             Verschieben Sie den Pin auf Ihren Standort - nötig für die Wettervorhersage. Optional.
           </p>
         </div>
-      </div>
-      {error && <div className="vp-alert vp-alert-err">{error}</div>}
-      <div className="vp-tech-editactions">
-        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-          Abbrechen
-        </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
-          {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Inline edit form of the Vergütung & Tarif: anzulegender Wert (Direktvermarktung
- * only), the electricity tariff (TariffFields) and the grid-charging switch. The
- * switch is editable by the site owner too (captain revision 2026-07-07 of
- * decision 3); the Ausschließlichkeitsprinzip warning stays so nobody flips it
- * uninformed. Carries the Grunddaten through unchanged via buildSitePayload.
- */
-export function VerguetungEditForm({
-  site,
-  onCancel,
-  onSaved,
-}: {
-  site: Site;
-  onCancel: () => void;
-  onSaved: (updated: Site) => void;
-}) {
-  const isDv = site.plantKind === 'direktvermarktung';
-  const [netzladen, setNetzladen] = useState<boolean>(site.netzladenErlaubt);
-  const [praemie, setPraemie] = useState(premiumInputText(site.anzulegenderWertCtKwh ?? null));
-  const [tarifArt, setTarifArt] = useState<TarifArt>(site.tarifArt ?? 'ohne');
-  const [tarifParam, setTarifParam] = useState(premiumInputText(site.tarifParamCtKwh ?? null));
-  const [maxFeedIn, setMaxFeedIn] = useState(premiumInputText(site.maxFeedInKw ?? null));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save() {
-    const praemieValue = isDv ? parsePremiumInput(praemie) : null;
-    if (praemieValue === undefined) {
-      setError('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
-      return;
-    }
-    const tarifParamValue = tarifArt === 'ohne' ? null : parsePremiumInput(tarifParam);
-    if (tarifParamValue === undefined) {
-      setError(
-        tarifArt === 'dynamisch'
-          ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
-          : 'Bitte geben Sie Ihren Strompreis als Zahl in ct/kWh an, z. B. 32,5.',
-      );
-      return;
-    }
-    const maxFeedInValue = parseFeedInCapInput(maxFeedIn);
-    if (maxFeedInValue === undefined) {
-      setError('Bitte geben Sie die maximale Einspeiseleistung als Zahl in kW an, z. B. 75.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const updated = await api.updateSite(
-        site.id,
-        buildSitePayload(site, {
-          anzulegenderWertCtKwh: praemieValue,
-          tarifArt,
-          tarifParamCtKwh: tarifParamValue,
-          netzladenErlaubt: netzladen,
-          // Empty input = null = keep the stored value (the backend's
-          // netzladenErlaubt COALESCE pattern); the payload's carried
-          // site.maxFeedInKw is overridden either way.
-          maxFeedInKw: maxFeedInValue,
-        }),
-      );
-      onSaved(updated);
-    } catch (e) {
-      setError(
-        e instanceof ApiError && e.status === 400
-          ? 'Ungültige Eingabe. Bitte prüfen Sie Ihre Werte.'
-          : 'Die Änderungen konnten nicht gespeichert werden. Bitte versuchen Sie es erneut.',
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="vp-tech-editform">
-      <div className="vp-form-stack">
-        {isDv && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-            <Input
-              label="Anzulegender Wert (ct/kWh)"
-              placeholder="z. B. 8,11"
-              inputMode="decimal"
-              value={praemie}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
-            />
-            <p className="vp-note" style={{ margin: 0 }}>
-              Steht in Ihrem EEG-Zuschlag bzw. Direktvermarktungsvertrag. Optional -
-              wenn angegeben, rechnen wir Ihre Marktprämie (anzulegender Wert minus
-              Monatsmarktwert Solar) in Ihren Mehrerlös ein; bei negativen
-              Börsenpreisen entfällt sie.
-            </p>
-          </div>
-        )}
-        <TariffFields
-          tarifArt={tarifArt}
-          onTarifArt={setTarifArt}
-          param={tarifParam}
-          onParam={setTarifParam}
-          idPrefix="edit-site"
-        />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <label htmlFor="edit-site-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
-            Netzladen des Speichers
-          </label>
-          <select
-            id="edit-site-netzladen"
-            className="vp-select"
-            value={netzladen ? 'erlaubt' : 'verboten'}
-            onChange={(e) => setNetzladen(e.target.value === 'erlaubt')}
-          >
-            <option value="verboten">Verboten - EEG-Anlage (nur Solarladen)</option>
-            <option value="erlaubt">Erlaubt - Speicher darf aus dem Netz laden</option>
-          </select>
-          <p className="vp-note" style={{ margin: 0 }}>
-            EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
-            (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
-            EEG-Vergütung bezieht.
-          </p>
-        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <Input
             label="Maximale Einspeiseleistung am Netzanschlusspunkt (kW)"
@@ -1059,7 +827,7 @@ export function VerguetungEditForm({
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+        <Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
           {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
         </Button>
       </div>
@@ -1152,17 +920,6 @@ export function BatteryControlSection({
             {battery.capacityKwh != null ? fmtNum(battery.capacityKwh, 'kWh', 1) : '-'}
           </dd>
         </div>
-        <div className="vp-kv-row">
-          <dt className="vp-kv-k">
-            Umgang mit dem Speicher
-            <InfoTip title="Umgang mit dem Speicher">
-              Wie stark der Fahrplan Ihren Speicher arbeiten lässt. „Schonend“ nutzt nur deutlich
-              lohnende Gelegenheiten, „Aggressiv“ jede - Sie wählen die Balance zwischen Ertrag und
-              Lebensdauer.
-            </InfoTip>
-          </dt>
-          <dd className="vp-kv-v">{speicherschonungLabel(battery.speicherschonung)}</dd>
-        </div>
       </dl>
       <TechnischeDetails hint="Lade-/Entladeleistung, Wirkungsgrad, steuerndes Gerät">
         <dl className="vp-kv">
@@ -1245,10 +1002,6 @@ function BatteryEditForm({
   const [maxDischarge, setMaxDischarge] = useState(numText(battery?.maxDischargeKw));
   const [efficiency, setEfficiency] = useState(numText(battery?.roundtripEfficiencyPct));
   const [deviceId, setDeviceId] = useState(battery?.deviceId ?? '');
-  // Pre-select the effective preset; 'individuell' (admin-configured custom
-  // value) selects nothing - picking a preset then overwrites it.
-  const initialSchonung = presetOf(battery?.speicherschonung);
-  const [schonung, setSchonung] = useState<SpeicherschonungPreset | null>(initialSchonung);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1274,11 +1027,9 @@ function BatteryEditForm({
         maxDischargeKw: dis,
         roundtripEfficiencyPct: eff,
         deviceId: deviceId || null,
-        // Only an actively changed choice is sent; an untouched form keeps the
-        // stored value (incl. an admin-configured custom one).
-        ...(schonung != null && schonung !== initialSchonung
-          ? { speicherschonung: schonung }
-          : {}),
+        // "Umgang mit dem Speicher" (Speicherschonung) moved to the mode
+        // containers (v3.1-M3): omitting it here keeps the stored value, so a
+        // battery-param edit never overwrites the customer's preset.
       });
       onSaved(assets);
     } catch (e) {
@@ -1324,36 +1075,6 @@ function BatteryEditForm({
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEfficiency(e.target.value)}
           hint="Round-Trip-Wirkungsgrad. Leer lassen für den Standardwert (92 %)."
         />
-        <fieldset className="vp-schonung">
-          <legend className="vp-schonung-legend">Umgang mit dem Speicher</legend>
-          {SPEICHERSCHONUNG_OPTIONS.map((o) => (
-            <label
-              key={o.value}
-              className={'vp-schonung-opt' + (schonung === o.value ? ' selected' : '')}
-            >
-              <input
-                type="radio"
-                name="speicherschonung"
-                value={o.value}
-                checked={schonung === o.value}
-                onChange={() => setSchonung(o.value)}
-              />
-              <span className="vp-schonung-main">
-                <span className="vp-schonung-label">
-                  {o.label}
-                  {o.recommended ? ' (empfohlen)' : ''}
-                </span>
-                <span className="vp-schonung-sentence">{o.sentence}</span>
-              </span>
-            </label>
-          ))}
-          {battery?.speicherschonung === 'individuell' && schonung == null && (
-            <p className="vp-note" style={{ margin: 0 }}>
-              Aktuell: {SPEICHERSCHONUNG_INDIVIDUELL_LABEL}. Die Auswahl einer Option ersetzt
-              diese Einstellung.
-            </p>
-          )}
-        </fieldset>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <label htmlFor="battery-device" style={{ fontSize: '0.9rem', fontWeight: 600 }}>
             Steuerndes Gerät

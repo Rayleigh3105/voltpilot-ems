@@ -8,10 +8,47 @@
  * All calendar reasoning is Europe/Berlin (the v1 platform timezone), matching
  * the backend's earnings buckets.
  */
-import type { EarningsMonth, EarningsRange, EarningsSeriesPoint, EarningsSite } from './api';
+import type {
+  CreateSiteInput,
+  EarningsMonth,
+  EarningsRange,
+  EarningsSeriesPoint,
+  EarningsSite,
+  Site,
+} from './api';
 import { eurAmount, NBSP } from './format';
 
 const ZONE = 'Europe/Berlin';
+
+/**
+ * Builds a FULL site update payload from the current site, applying only the
+ * fields a focused form edits. The backend UpdateSiteRequest is a
+ * full-representation record (name is @NotBlank, plantKind/tarifArt/biddingZone
+ * default when omitted), so a partial body would BLANK every untouched field.
+ *
+ * This is the load-bearing regression guard of the v3.1-M3 settings move: the
+ * money/tariff fields (netzladenErlaubt, anzulegenderWertCtKwh, tarifArt,
+ * tarifParamCtKwh) now live in the mode containers while name/zone/coords/type
+ * and maxFeedInKw stay in the general Technik page - both edit surfaces MUST
+ * carry the other's fields through unchanged, so both go through here. A
+ * container save of a tariff field can never blank a Technik field, and a
+ * Technik save can never blank a moved field.
+ */
+export function buildSitePayload(site: Site, overrides: Partial<CreateSiteInput>): CreateSiteInput {
+  return {
+    name: site.name,
+    biddingZone: site.biddingZone,
+    latitude: site.latitude,
+    longitude: site.longitude,
+    plantKind: site.plantKind,
+    anzulegenderWertCtKwh: site.anzulegenderWertCtKwh,
+    tarifArt: site.tarifArt,
+    tarifParamCtKwh: site.tarifParamCtKwh,
+    netzladenErlaubt: site.netzladenErlaubt,
+    maxFeedInKw: site.maxFeedInKw,
+    ...overrides,
+  };
+}
 
 /** A moment as its Europe/Berlin ISO day ("2026-07-07"). */
 function berlinDay(at: Date): string {

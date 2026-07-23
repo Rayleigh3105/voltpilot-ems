@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { BatteryControlSection, VerguetungEditForm } from './AnlageTechnik';
+import { BatteryControlSection, StammdatenEditForm } from './AnlageTechnik';
 import { api, type Device, type Site, type SiteAsset } from '../api';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
@@ -38,74 +38,64 @@ const eegSite: Site = {
   latitude: null,
   longitude: null,
   plantKind: 'eigenverbrauch',
-  marktpraemieCtKwh: null,
+  anzulegenderWertCtKwh: null,
   tarifArt: 'ohne',
   tarifParamCtKwh: null,
   netzladenErlaubt: false,
   maxFeedInKw: null,
 };
 
-describe('VerguetungEditForm (netzladen switch, captain revision 2026-07-07)', () => {
-  it('renders the editable switch for site owners - no read-only admin note anymore', () => {
-    render(<VerguetungEditForm site={eegSite} onCancel={() => {}} onSaved={() => {}} />);
-    const select = screen.getByLabelText('Netzladen des Speichers') as HTMLSelectElement;
-    expect(select.value).toBe('verboten');
-    // The Ausschließlichkeitsprinzip warning stays, carrying the responsibility.
-    expect(screen.getByText(/Ausschließlichkeitsprinzip/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Nur aktivieren, wenn Ihre Anlage keine\s+EEG-Vergütung bezieht/),
-    ).toBeInTheDocument();
-    // The former customer read-only note is gone.
-    expect(screen.queryByText(/Änderung nur durch den Betreiber/)).not.toBeInTheDocument();
-  });
-
-  it('sends the flipped netzladenErlaubt value on save, carrying the Stammdaten through', async () => {
-    const updateSite = vi
-      .spyOn(api, 'updateSite')
-      .mockResolvedValue({ ...eegSite, netzladenErlaubt: true });
+describe('StammdatenEditForm (Meine Anlage - Stammdaten + Netzanschluss)', () => {
+  it('sends the maximale Einspeiseleistung (FK1, moved up in v3.1-M3) and rejects garbage', async () => {
+    const updateSite = vi.spyOn(api, 'updateSite').mockResolvedValue({ ...eegSite, maxFeedInKw: 75.5 });
     const onSaved = vi.fn();
-    render(<VerguetungEditForm site={eegSite} onCancel={() => {}} onSaved={onSaved} />);
-    fireEvent.change(screen.getByLabelText('Netzladen des Speichers'), {
-      target: { value: 'erlaubt' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    // A focused form still posts the full site representation (name is @NotBlank
-    // server-side, plantKind/tarifArt default when omitted), so the untouched
-    // Grunddaten ride along unchanged.
-    expect(updateSite).toHaveBeenCalledWith(
-      eegSite.id,
-      expect.objectContaining({ netzladenErlaubt: true, name: eegSite.name, plantKind: 'eigenverbrauch' }),
-    );
-    updateSite.mockRestore();
-  });
-
-  it('sends the maximale Einspeiseleistung (FK1) on save and rejects garbage', async () => {
-    const updateSite = vi
-      .spyOn(api, 'updateSite')
-      .mockResolvedValue({ ...eegSite, maxFeedInKw: 75.5 });
-    const onSaved = vi.fn();
-    render(<VerguetungEditForm site={eegSite} onCancel={() => {}} onSaved={onSaved} />);
-    const field = screen.getByLabelText(
-      'Maximale Einspeiseleistung am Netzanschlusspunkt (kW)',
-    );
+    render(<StammdatenEditForm site={eegSite} onCancel={() => {}} onSaved={onSaved} />);
+    const field = screen.getByLabelText('Maximale Einspeiseleistung am Netzanschlusspunkt (kW)');
 
     // Garbage blocks the submit with a German error, nothing is sent.
     fireEvent.change(field, { target: { value: 'abc' } });
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
-    expect(
-      await screen.findByText(/maximale Einspeiseleistung als Zahl in kW/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/maximale Einspeiseleistung als Zahl in kW/)).toBeInTheDocument();
     expect(updateSite).not.toHaveBeenCalled();
 
     // A German-comma value is parsed and sent.
     fireEvent.change(field, { target: { value: '75,5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(updateSite).toHaveBeenCalledWith(
-      eegSite.id,
-      expect.objectContaining({ maxFeedInKw: 75.5 }),
-    );
+    expect(updateSite).toHaveBeenCalledWith('s-1', expect.objectContaining({ maxFeedInKw: 75.5 }));
+    updateSite.mockRestore();
+  });
+
+  it('a focused Technik save never blanks the fields the mode containers own', async () => {
+    // A DV plant whose tariff/netzladen/anzulegender-Wert live in the mode
+    // containers now: editing the name here must carry ALL of them through.
+    const dvSite: Site = {
+      ...eegSite,
+      plantKind: 'direktvermarktung',
+      anzulegenderWertCtKwh: 8.11,
+      tarifArt: 'dynamisch',
+      tarifParamCtKwh: 18,
+      netzladenErlaubt: true,
+    };
+    const updateSite = vi.spyOn(api, 'updateSite').mockResolvedValue(dvSite);
+    const onSaved = vi.fn();
+    render(<StammdatenEditForm site={dvSite} onCancel={() => {}} onSaved={onSaved} />);
+    fireEvent.change(screen.getByLabelText('Name *'), { target: { value: 'Neuer Name' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Änderungen speichern' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    // The moved fields ride along unchanged - the full-representation guard.
+    expect(updateSite).toHaveBeenCalledWith('s-1', {
+      name: 'Neuer Name',
+      biddingZone: 'DE-LU',
+      latitude: null,
+      longitude: null,
+      plantKind: 'direktvermarktung',
+      anzulegenderWertCtKwh: 8.11,
+      tarifArt: 'dynamisch',
+      tarifParamCtKwh: 18,
+      netzladenErlaubt: true,
+      maxFeedInKw: null,
+    });
     updateSite.mockRestore();
   });
 });
@@ -178,13 +168,11 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
   });
 
   it('offers to add a battery when none exists yet', () => {
-    render(
-      <BatteryControlSection siteId="s-1" battery={null} devices={[]} onSaved={() => {}} />,
-    );
+    render(<BatteryControlSection siteId="s-1" battery={null} devices={[]} onSaved={() => {}} />);
     expect(screen.getByRole('button', { name: /Speicher hinzufügen/ })).toBeInTheDocument();
   });
 
-  it('saves parsed params + the chosen controlling device', async () => {
+  it('saves parsed params + the chosen controlling device, NEVER the moved Speicherschonung', async () => {
     const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
     const onSaved = vi.fn();
     render(
@@ -198,11 +186,15 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
     // The editor lives behind "Technische Details" in the read-first layout.
     fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
     fireEvent.click(screen.getByRole('button', { name: /Speicher bearbeiten/ }));
+    // The Speicherschonung radio group is GONE from here (moved to the mode
+    // containers in v3.1-M3).
+    expect(screen.queryByRole('radio', { name: /Ausgewogen/ })).toBeNull();
     // German comma decimal is accepted.
     fireEvent.change(screen.getByLabelText('Kapazität (kWh) *'), { target: { value: '12,5' } });
     fireEvent.change(screen.getByLabelText('Steuerndes Gerät'), { target: { value: 'd-2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    // No speicherschonung sent - a param edit keeps the customer's stored preset.
     expect(saveBattery).toHaveBeenCalledWith('s-1', {
       capacityKwh: 12.5,
       maxChargeKw: 5,
@@ -213,63 +205,17 @@ describe('BatteryControlSection (battery <-> device control path)', () => {
     saveBattery.mockRestore();
   });
 
-  it('shows the effective Speicherschonung read-first and sends a changed preset', async () => {
-    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
-    const onSaved = vi.fn();
+  it('no longer shows the Speicherschonung row in the read view (moved to the mode containers)', () => {
     render(
       <BatteryControlSection
         siteId="s-1"
         battery={battery({ deviceId: 'd-1', speicherschonung: 'ausgewogen' })}
         devices={[device({ id: 'd-1' })]}
-        onSaved={onSaved}
+        onSaved={() => {}}
       />,
     );
-    // Read view: the customer's setting is visible without any disclosure.
-    expect(screen.getByText('Umgang mit dem Speicher')).toBeInTheDocument();
-    expect(screen.getByText('Ausgewogen (empfohlen)')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Speicher bearbeiten/ }));
-    // The effective preset is pre-selected; picking Schonend sends it.
-    const ausgewogen = screen.getByRole('radio', { name: /Ausgewogen/ }) as HTMLInputElement;
-    expect(ausgewogen.checked).toBe(true);
-    fireEvent.click(screen.getByRole('radio', { name: /Schonend/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(saveBattery).toHaveBeenCalledWith(
-      's-1',
-      expect.objectContaining({ speicherschonung: 'schonend' }),
-    );
-    saveBattery.mockRestore();
-  });
-
-  it('names an admin-configured custom value honestly and keeps it on an untouched save', async () => {
-    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
-    const onSaved = vi.fn();
-    render(
-      <BatteryControlSection
-        siteId="s-1"
-        battery={battery({ deviceId: 'd-1', speicherschonung: 'individuell' })}
-        devices={[device({ id: 'd-1' })]}
-        onSaved={onSaved}
-      />,
-    );
-    expect(screen.getByText('Individuell (durch VoltPilot konfiguriert)')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Technische Details/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Speicher bearbeiten/ }));
-    // Nothing pre-selected; the note explains that picking replaces the value.
-    expect(
-      (screen.getAllByRole('radio') as HTMLInputElement[]).filter((r) => r.checked),
-    ).toHaveLength(0);
-    expect(screen.getByText(/Die Auswahl einer Option ersetzt/)).toBeInTheDocument();
-    // An untouched save never sends the field (the custom value is kept).
-    fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(saveBattery).toHaveBeenCalledWith(
-      's-1',
-      expect.not.objectContaining({ speicherschonung: expect.anything() }),
-    );
-    saveBattery.mockRestore();
+    expect(screen.queryByText('Umgang mit dem Speicher')).toBeNull();
+    // Kapazität stays as the read-first battery figure.
+    expect(screen.getByText('Kapazität')).toBeInTheDocument();
   });
 });
