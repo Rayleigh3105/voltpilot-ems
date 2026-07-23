@@ -49,11 +49,11 @@ import {
   historyRangeForCockpit,
   type WidgetDef,
 } from '../cockpitWidgets';
+import { verlaufRangeForCockpit, type WidgetTarget } from '../verlaufTarget';
+import { verlaufHash } from '../verlauf';
 import { ToolboxPointer } from '../components/CockpitBlocks';
 import { CockpitHero } from '../components/CockpitHero';
 import { WidgetGrid } from '../components/WidgetGrid';
-import { WidgetModal } from '../components/WidgetModal';
-import { ErloesKomposition } from '../components/ErloesKomposition';
 import { AnlageSetup } from '../components/AnlageSetup';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
 import { peakBand, quarterHourMeanImportKw } from '../peakBand';
@@ -438,10 +438,6 @@ export function AnlageSeite({
   // `History` and derive the totals from it.
   const [rangeHistory, setRangeHistory] = useState<History | null>(null);
   const rangeTotals: HistoryTotals | null = rangeHistory?.totals ?? null;
-  // v3 M2: the Speicher widget's read-only "Umgang mit dem Speicher" row.
-  const [speicherschonung, setSpeicherschonung] = useState<string | null>(null);
-  // v3 M2: which widget's modal is open (null = none).
-  const [openWidget, setOpenWidget] = useState<WidgetDef | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
@@ -723,28 +719,6 @@ export function AnlageSeite({
     };
   }, [site.id, projection, range, at, reloadKey]);
 
-  // v3 M2: the battery's effective Speicherschonung preset, read-only in the
-  // Speicher widget. Fail-soft - without it the row simply does not appear.
-  useEffect(() => {
-    if (!projection) {
-      setSpeicherschonung(null);
-      return;
-    }
-    let active = true;
-    api.siteAssets(site.id).then(
-      (assets) => {
-        if (!active) return;
-        setSpeicherschonung(
-          assets.find((a) => a.speicherschonung != null)?.speicherschonung ?? null,
-        );
-      },
-      () => {},
-    );
-    return () => {
-      active = false;
-    };
-  }, [site.id, projection, reloadKey]);
-
   // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
   // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
   const peakView = isPeakLead
@@ -801,6 +775,9 @@ export function AnlageSeite({
         modes,
         lead,
         channels: surface?.base.telemetryChannels ?? [],
+        // The topology resolves each flow tile to its maßgeblich Verlauf
+        // measurement (widgetTarget); null → the flow tiles jump to Live-Daten.
+        topology: adaptiveLive.topology,
         snapshot: ovSite ? siteSnapshot(ovSite.live) : null,
         dayTotals,
         money: siteEarnings,
@@ -813,7 +790,6 @@ export function AnlageSeite({
         plantKind:
           site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
         peak: peakView,
-        speicherschonung,
         weather: { nextHourTempC, why: weatherWhyText },
       })
     : [];
@@ -834,6 +810,33 @@ export function AnlageSeite({
   const selectMonth = (monthIso: string) => {
     setRange('month');
     setAt(monthIso);
+  };
+
+  // „Eine Kachel ist ein Absprung" (V2): ein Tipp navigiert direkt zum Ziel der
+  // Kachel — kein Modal. Fluss-Kacheln springen in den Verlauf-Explorer (der
+  // Zeitraum-Tab wird mitgenommen: Heute→Tag, Monat→Monat, Jahr→Jahr,
+  // Gesamt→Jahr); für den Verlauf-Deeplink wird der Hash direkt gesetzt, da er
+  // `?m&z&at` trägt (ein `Route` würde die Query verlieren). Geld-/Modus-
+  // Kacheln öffnen ihre Seite über die normale Navigation.
+  const jumpToWidget = (widget: WidgetDef) => {
+    const target: WidgetTarget = widget.target;
+    if (target.kind === 'verlauf') {
+      window.location.hash = verlaufHash(
+        site.id,
+        { entityId: target.entityId, channel: target.channel },
+        verlaufRangeForCockpit(range),
+        at,
+      );
+      // Ein Absprung ist eine Navigation: an den Seitenanfang (der Hash-Wechsel
+      // scrollt nicht von selbst). try/catch, weil jsdom `scrollTo` nicht kennt.
+      try {
+        window.scrollTo({ top: 0 });
+      } catch {
+        /* jsdom-Stub – im Browser irrelevant */
+      }
+    } else {
+      onOpenSub(target.sub);
+    }
   };
 
   return (
@@ -933,57 +936,15 @@ export function AnlageSeite({
             />
           )}
 
-          <WidgetGrid widgets={widgets} onOpen={setOpenWidget} />
+          {/* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
+              Ziel der Kachel - kein Modal mehr. */}
+          <WidgetGrid widgets={widgets} onSelect={jumpToWidget} />
 
           {/* Die ruhige Toolbox-Zeile - der Abschluss (§1.3). Kein Werben
               für einen bestimmten Modus. Das Wetter ist jetzt eine Kachel. */}
           <div className="vp-stack-foot">
             <ToolboxPointer onOpen={() => onOpenSub('steuerung')} />
           </div>
-
-          {openWidget && (
-            <WidgetModal
-              widget={openWidget}
-              onClose={() => setOpenWidget(null)}
-              onOpenSub={onOpenSub}
-              range={range}
-              periodLabel={period}
-              // v3.2 M2: the range-scoped Historie feeds the modal's Verlauf
-              // chart, so it follows the selected period tab (Gesamt → none).
-              history={rangeHistory}
-              extra={
-                /* Die migrierten Block-Körper leben als Modal-Körper weiter -
-                   dieselbe Ableitung, nur ein anderer Ort. */
-                openWidget.id === 'lastspitze' && peakView ? (
-                  <PeakBand view={peakView} peak={siteEarnings?.peakShaving ?? null} />
-                ) : openWidget.id === 'erloes' ? (
-                  <ErloesKomposition
-                    streams={surface?.moneyStreams ?? []}
-                    money={siteEarnings}
-                    range={range}
-                    at={atDate}
-                    now={now}
-                    onOpenErloesHistorie={() => {
-                      setOpenWidget(null);
-                      onOpenSub('historie');
-                    }}
-                  />
-                ) : openWidget.id === 'handel' ? (
-                  <FahrplanBand
-                    plan={plan}
-                    plantKind={site.plantKind}
-                    now={now}
-                    loading={planLoading && plan == null}
-                    failed={planFailed}
-                    onOpen={() => {
-                      setOpenWidget(null);
-                      onOpenSub('fahrplan');
-                    }}
-                  />
-                ) : null
-              }
-            />
-          )}
         </>
       ) : (
         /* ===== v1 (un-migrated): byte-identical to today ================== */

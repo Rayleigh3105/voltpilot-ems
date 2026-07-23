@@ -22,8 +22,9 @@ import { periodLabel } from '../anlage';
  * 2. **Das Live-Cockpit (Portal v3 M2)** erscheint für eine migrierte Anlage:
  *    der WIEDERVERWENDETE Energiefluss als Hero (kein neues „Energie-Rad"),
  *    Autarkie/Eigenverbrauch als Ringe, das Widget-Raster in kanonischer
- *    Reihenfolge, das Widget-Modal am `document.body` und die ruhige
- *    Toolbox-Zeile.
+ *    Reihenfolge und die ruhige Toolbox-Zeile. Seit V2 ist eine Kachel ein
+ *    ABSPRUNG (kein Modal mehr): Fluss-Kacheln springen in den Verlauf-Explorer,
+ *    Modus-Kacheln auf ihre Seite.
  */
 
 // jsdom kennt weder ResizeObserver (useContainerWidth/EnergyFlow) noch das
@@ -175,14 +176,40 @@ function stubApi(overviewSite: Record<string, unknown> = {}) {
   } as never);
 }
 
-function mockAdaptive(adaptiveOn: boolean) {
+function mockAdaptive(adaptiveOn: boolean, topology: unknown = null) {
   vi.spyOn(adaptive, 'useAdaptiveLive').mockReturnValue({
-    topology: null,
+    topology,
     profile: null,
     adaptive: adaptiveOn,
     loading: false,
   } as never);
 }
+
+/** Ein Topologie-Read-Model, das die Fluss-Kacheln auflöst (Netz → e-grid). */
+const TOPO = {
+  schemaVersion: '1.0',
+  entities: [
+    {
+      id: 'e-batt',
+      entityType: 'battery-hybrid',
+      typeLabel: 'Speicher',
+      label: null,
+      category: 'storage',
+      health: 'ok',
+      capabilities: [{ channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 60 }],
+    },
+    {
+      id: 'e-grid',
+      entityType: 'grid-meter',
+      typeLabel: 'Netzanschluss',
+      label: null,
+      category: 'meter',
+      health: 'ok',
+      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'grid', primary: true, value: -2.1 }],
+    },
+  ],
+  topology: { schema_version: '1.0', nodes: [] },
+};
 
 function mockSurface(input: AnlageSurfaceInput | null) {
   vi.spyOn(surfaceHook, 'useAnlageSurface').mockReturnValue({
@@ -191,7 +218,7 @@ function mockSurface(input: AnlageSurfaceInput | null) {
   });
 }
 
-function renderSeite() {
+function renderSeite(onOpenSub: (sub: string) => void = () => {}) {
   return render(
     <AnlageSeite
       sites={[site]}
@@ -200,7 +227,7 @@ function renderSeite() {
       onNavigate={() => {}}
       onReload={() => {}}
       site={site}
-      onOpenSub={() => {}}
+      onOpenSub={onOpenSub as never}
       onBackToList={null}
     />,
   );
@@ -359,25 +386,38 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(container.querySelectorAll('.vp-widget.is-lead')).toHaveLength(1);
   });
 
-  it('öffnet je Kachel das RICHE Detail-Modal (Werte + Verlauf, kein Umschalter)', async () => {
-    mockAdaptive(true);
+  it('V2: eine Fluss-Kachel SPRINGT in den Verlauf-Explorer — kein Modal', async () => {
+    mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
-    // Eine Fluss-Kachel (Netz) öffnen - sie hat einen Verlauf.
+    window.location.hash = '';
+    // Eine Fluss-Kachel (Netz) antippen — sie springt auf ihren Messwert.
     const netz = [...container.querySelectorAll('.vp-widget')].find(
       (w) => w.querySelector('.vp-widget-label')?.textContent === 'Netz',
     ) as HTMLButtonElement;
     fireEvent.click(netz);
-    const modal = document.body.querySelector('.vp-wmodal');
-    expect(modal).toBeTruthy();
-    // Kein „Jetzt | Verlauf"-Umschalter mehr - Werte UND Verlauf in EINER Ansicht.
-    expect(document.body.querySelector('.vp-wmodal-seg')).toBeNull();
-    expect(document.body.querySelector('.vp-wmodal-verlauf')).toBeTruthy();
-    // Das Modal hängt am body (Karten haben `overflow: hidden`).
-    expect(container.querySelector('.vp-wmodal')).toBeNull();
-    fireEvent.click(document.body.querySelector('.vp-wmodal-close') as HTMLButtonElement);
+    // Der Hash trägt den Verlauf-Deeplink (Messwert + übernommener Zeitraum).
+    expect(window.location.hash).toContain('/anlage/s-1/historie');
+    expect(window.location.hash).toContain('m=e-grid:power_kw');
+    expect(window.location.hash).toContain('z=monat'); // Default „Monat" → Monat
+    // NIE ein Modal — weder am body noch im Container.
     expect(document.body.querySelector('.vp-wmodal')).toBeNull();
+    expect(container.querySelector('.vp-wmodal')).toBeNull();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it('V2: eine Modus-Kachel öffnet ihre Seite über onOpenSub', async () => {
+    const opened: string[] = [];
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite((sub) => opened.push(sub));
+    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
+    const automatik = [...container.querySelectorAll('.vp-widget')].find(
+      (w) => w.querySelector('.vp-widget-label')?.textContent === 'Geräte-Automatik',
+    ) as HTMLButtonElement;
+    fireEvent.click(automatik);
+    expect(opened).toContain('steuerung');
   });
 
   it('eine Privat-Anlage hat weder Lastspitze- noch Handel-Kachel', async () => {

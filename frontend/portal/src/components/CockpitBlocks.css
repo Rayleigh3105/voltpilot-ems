@@ -437,197 +437,32 @@
   overflow-wrap: anywhere;
 }
 
-/* --- Widget-Modal (portalisiert nach document.body) ----------------------- */
+/* --- „Verlauf →"-Andeutung auf den Fluss-Kacheln (V2: eine Kachel springt) - */
 
-.vp-wmodal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--vp-space-4, 16px);
-  background: rgba(15, 23, 42, 0.45);
-}
-
-.vp-wmodal {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-3, 12px);
-  width: min(560px, 100%);
-  max-height: min(80vh, 720px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-width: 0;
-  padding: var(--vp-space-4, 16px);
-  border-radius: var(--vp-radius-lg, 14px);
-  background: #fff;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
-}
-
-/* Auf dem Telefon ist das Modal ein Vollbild-Sheet. */
-@media (max-width: 640px) {
-  .vp-wmodal-backdrop {
-    padding: 0;
-    align-items: stretch;
-  }
-  .vp-wmodal {
-    width: 100%;
-    max-height: 100%;
-    border-radius: 0;
-  }
-}
-
-.vp-wmodal-head {
-  display: flex;
-  align-items: center;
-  gap: var(--vp-space-2, 8px);
-  min-width: 0;
-}
-
-.vp-wmodal-title {
-  margin: 0;
-  font-size: 1.05rem;
-  color: var(--vp-navy, #1a365d);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-wmodal-close {
-  margin-left: auto;
+.vp-widget-jump {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: var(--vp-radius-md, 10px);
-  background: none;
-  cursor: pointer;
-  color: var(--vp-text-gray, #718096);
-}
-.vp-wmodal-close:hover {
-  background: var(--vp-bg-subtle, #f1f3f5);
-}
-
-.vp-wmodal-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-3, 12px);
-  min-width: 0;
-}
-
-.vp-wmodal-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.vp-wmodal-row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--vp-space-3, 12px);
-  flex-wrap: wrap;
-  min-width: 0;
-  padding: var(--vp-space-2, 8px) 0;
-  border-bottom: 1px solid var(--vp-border, #e2e8f0);
-}
-.vp-wmodal-row:last-child {
-  border-bottom: 0;
-}
-
-.vp-wmodal-row-label {
-  font-size: 0.82rem;
-  color: var(--vp-text-gray, #718096);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-wmodal-row-value {
-  margin-left: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 0.98rem;
-  font-weight: 700;
-  color: var(--vp-stat-ink, #2c5282);
-  min-width: 0;
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-
-.vp-wmodal-row-sub {
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--vp-text-gray, #718096);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-wmodal-note {
-  margin: 0;
-  font-size: 0.74rem;
-  color: var(--vp-text-gray, #718096);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.vp-wmodal-drill {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 44px;
-  padding: 0 4px;
-  border: 0;
-  background: none;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 700;
-  color: var(--vp-link, #2c5282);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.vp-wmodal-drill:hover {
-  text-decoration: underline;
-}
-
-/* --- Verlauf im Detail-Modal (v3.2 M2: Werte UND Verlauf in EINER Ansicht) - */
-
-.vp-wmodal-verlauf {
-  display: flex;
-  flex-direction: column;
-  gap: var(--vp-space-2, 8px);
-  min-width: 0;
-  padding-top: var(--vp-space-3, 12px);
-  border-top: 1px solid var(--vp-border, #e2e8f0);
-}
-
-.vp-wmodal-verlauf-title {
-  font-size: 0.78rem;
+  gap: 3px;
+  margin-top: auto;
+  padding-top: 2px;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--vp-text-gray, #718096);
+  color: var(--vp-link, #2c5282);
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 120ms ease, transform 120ms ease;
   min-width: 0;
-  overflow-wrap: anywhere;
 }
-
-/* Das Diagramm bleibt in seinem Container - nie horizontaler Seiten-Überlauf. */
-.vp-chart-modal {
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  height: clamp(200px, 34vw, 260px);
+.vp-widget:hover .vp-widget-jump,
+.vp-widget:focus-visible .vp-widget-jump {
+  opacity: 1;
+  transform: translateY(0);
 }
-
-.vp-wmodal-noverlauf {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--vp-text-gray, #718096);
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* Ohne feinen Zeiger (Touch) ist die Andeutung dauerhaft sichtbar. */
+@media (hover: none) {
+  .vp-widget-jump {
+    opacity: 1;
+    transform: none;
+  }
 }

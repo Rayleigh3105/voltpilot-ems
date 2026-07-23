@@ -43,6 +43,20 @@ function sourceFiles(dir = SRC): string[] {
   return out;
 }
 
+/** Wie `sourceFiles`, aber inklusive `.css` — für den CSS-Teardown-Wächter. */
+function allSourceFiles(dir = SRC): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) {
+      out.push(...allSourceFiles(full));
+    } else if (/\.(tsx?|css)$/.test(name) && !/\.test\.tsx?$/.test(name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
 /**
  * Die nie migrierte Anlage: keine v2-Entitäten, keine Strategie-Knoten, keine
  * Geld-/Vertrags-Stammdaten, keine Flows. Genau der Zustand jeder heutigen
@@ -207,6 +221,22 @@ describe('Abbau-Invarianten (M6)', () => {
     for (const f of files) {
       const code = readFileSync(f, 'utf8');
       expect(code).not.toMatch(/AnlageMoreMenu|DEEP_VIEW_ITEMS|vp-more-btn/);
+    }
+  });
+
+  it('V2: das Widget-Detail-Modal ist vollständig weg (Teardown-Wächter)', () => {
+    // Die Modal-Dateien sind gelöscht (`AnlageMoreMenu`-Präzedenzfall) …
+    const files = sourceFiles();
+    expect(files.some((f) => /components\/WidgetModal\.tsx?$/.test(f))).toBe(false);
+    expect(files.some((f) => /components\/WidgetHistoryChart\.tsx?$/.test(f))).toBe(false);
+    expect(files.some((f) => /widgetHistory\.tsx?$/.test(f))).toBe(false);
+    // … kein `widgetHistory`-Import mehr irgendwo …
+    for (const f of files) {
+      expect(readFileSync(f, 'utf8')).not.toMatch(/from\s+'.*widgetHistory'|WidgetModal|WidgetHistoryChart/);
+    }
+    // … und keine `vp-wmodal`/`vp-chart-modal`-Klasse mehr, auch nicht im CSS.
+    for (const f of allSourceFiles()) {
+      expect(readFileSync(f, 'utf8')).not.toMatch(/vp-wmodal|vp-chart-modal/);
     }
   });
 

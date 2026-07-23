@@ -6,14 +6,21 @@
  * (groß, als Hero — `components/EnergyFlow.tsx` bzw. `AdaptiveEnergyFlow.tsx`;
  * ein neues „Energie-Rad" ist ausdrücklich abgelehnt, BUILD.md §2) und darunter
  * mit einem **Widget-Raster**: Speicher · Erzeugung · Haus · Netz, dazu
- * profil-abhängig Handel, Lastspitze, Erlöse und Geräte-Automatik. Ein Tipp auf
- * eine Kachel öffnet ein **Modal** mit den Segmenten `Jetzt | Verlauf`.
+ * profil-abhängig Handel, Lastspitze, Erlöse und Geräte-Automatik.
+ *
+ * **Eine Kachel ist ein Absprung** (Live-Daten-Redesign V2,
+ * `data/vp-portal-livedata-design/report.md` §1): ein Tipp navigiert direkt zum
+ * `target` der Kachel — Fluss-Kacheln in den Verlauf-Explorer, Geld-/Modus-
+ * Kacheln auf ihre Seite. Das frühere Detail-Modal ist ersatzlos entfernt; die
+ * Werte-Zeilen leben auf den Zielseiten (Live-Board / Bilanz / Lastspitzen /
+ * Fahrplan).
  *
  * Dieses Modul ist die **reine Ableitung** (der `cockpit.ts`/`live.ts`-
  * Präzedenzfall): kein React, kein Netzwerk, kein neuer Rechenkern. Es
  * KONSUMIERT das M0-Read-Model (`surface.ts`) und die bereits vorhandenen
  * Ableitungen (`cockpit.ts` Handel/Eigenverbrauch, `erloesKomposition.ts`,
- * `peakBand.ts`) — es rechnet nichts nach.
+ * `peakBand.ts`) — es rechnet nichts nach. Das Absprung-Ziel selbst kommt aus
+ * dem reinen `verlaufTarget.ts` (`widgetTarget`).
  *
  * Drei Regeln sind hier Gesetz:
  *
@@ -27,12 +34,15 @@
  * 3. **Die Reihenfolge ist kanonisch** — sie kommt aus der Blockordnung von M0
  *    (`CockpitBlock.order`, report §1.3). Die Führungsregel (`leadSlot.ts`
  *    `leadBlock`) markiert nur, was FÜHRT; sie sortiert nichts um.
- *
- * Beide Modal-Gesichter lesen **dieselbe** Zahl wie die Kachel — es gibt keine
- * zweite Ableitung (M2-Akzeptanz 3).
  */
 
-import type { EarningsRange, EarningsSite, HistoryRange, HistoryTotals } from './api';
+import type {
+  EarningsRange,
+  EarningsSite,
+  HistoryRange,
+  HistoryTotals,
+  SiteTopology,
+} from './api';
 import { energyLabel, periodLabel } from './anlage';
 import {
   eigenverbrauchBlock,
@@ -44,11 +54,10 @@ import {
 import { DASH, erloesKomposition, steeringAttributionNote } from './erloesKomposition';
 import { eurAmount, fmtNum } from './format';
 import type { LiveSnapshot } from './live';
-import type { AnlagenSub } from './nav';
 import type { PeakBandView } from './peakBand';
 import { planSentence, SLOT_DEADBAND_KW, type PlanWordingKind } from './schedule';
-import { speicherschonungLabel } from './speicherschonung';
 import type { ActiveMode, CockpitBlock, CockpitBlockId, MoneyStream } from './surface';
+import { widgetTarget, type WidgetTarget } from './verlaufTarget';
 
 // ---------------------------------------------------------------------------
 // Vokabular
@@ -70,28 +79,6 @@ export type WidgetId =
 /** Der Farbkanal einer Kachel — die `--vp-flow-*`-Token bzw. der Geld-Ton. */
 export type WidgetAccent = 'pv' | 'batt' | 'grid' | 'load' | 'money';
 
-/** Eine Zeile eines Modal-Gesichts. */
-export interface WidgetRow {
-  label: string;
-  /** Der Wert; `—`, wenn nicht berechenbar (nie eine erfundene 0). */
-  value: string;
-  sub?: string | null;
-}
-
-/** Der Absprung eines Gesichts in seine Tiefen-Sicht. */
-export interface WidgetDrillIn {
-  sub: AnlagenSub;
-  label: string;
-  hint?: string;
-}
-
-/** Ein Gesicht des Modals (`Jetzt` bzw. `Verlauf`). */
-export interface WidgetFace {
-  rows: WidgetRow[];
-  note: string | null;
-  drillIn: WidgetDrillIn | null;
-}
-
 /** Eine render-fertige Kachel. */
 export interface WidgetDef {
   id: WidgetId;
@@ -103,8 +90,12 @@ export interface WidgetDef {
   accent: WidgetAccent;
   /** true = diese Kachel gehört zum führenden Block (`leadBlock`). */
   lead: boolean;
-  modal: { jetzt: WidgetFace; verlauf: WidgetFace };
+  /** Wohin ein Tipp springt: ein Verlauf-Messwert oder eine Seite. */
+  target: WidgetTarget;
 }
+
+/** Eine Kachel vor dem Anhängen von `lead` + `target`. */
+type WidgetBase = Omit<WidgetDef, 'lead' | 'target'>;
 
 // ---------------------------------------------------------------------------
 // Konstanten
@@ -117,29 +108,6 @@ const FLOW_CHANNELS: Record<'erzeugung' | 'speicher' | 'haus' | 'netz', string[]
   haus: ['load_kw'],
   netz: ['power_kw'],
 };
-
-/** Der Verlauf-Absprung der Live-Kacheln (Telemetrie, NICHT Erlös). */
-export const VERLAUF_LIVE: WidgetDrillIn = {
-  sub: 'live',
-  label: 'Verlauf öffnen',
-  hint: 'Telemetrie-Verlauf aller angelegten Kanäle – getrennt von der Erlös-Historie.',
-};
-
-/** Der Verlauf-Absprung der Tages-/Geld-Kacheln. */
-export const VERLAUF_HISTORIE: WidgetDrillIn = {
-  sub: 'historie',
-  label: 'Historie öffnen',
-  hint: 'Erlös- und Energie-Rückblick – getrennt vom Telemetrie-Verlauf.',
-};
-
-export const VERLAUF_FAHRPLAN: WidgetDrillIn = { sub: 'fahrplan', label: 'Ganzer Fahrplan' };
-export const VERLAUF_LASTSPITZEN: WidgetDrillIn = { sub: 'lastspitzen', label: 'Lastspitzen im Detail' };
-export const VERLAUF_STEUERUNG: WidgetDrillIn = { sub: 'steuerung', label: 'Steuerung öffnen' };
-export const VERLAUF_WETTER: WidgetDrillIn = { sub: 'wetter', label: 'Wetter am Standort' };
-
-/** Die eine Verlauf-Notiz der Live-Kacheln. */
-const LIVE_VERLAUF_NOTE =
-  'Den Messwert-Verlauf dieser Anlage zeigen die Live-Daten – mit Fenster-Umschalter.';
 
 // ---------------------------------------------------------------------------
 // Eingabe
@@ -154,6 +122,12 @@ export interface CockpitWidgetsInput {
   lead?: CockpitBlockId | null;
   /** Alle angelegten Telemetriekanäle (`surface.base.telemetryChannels`). */
   channels?: string[] | null;
+  /**
+   * Das Topologie-Read-Model — löst die Fluss-Kacheln auf ihren maßgeblichen
+   * Messwert im Verlauf-Explorer auf (`widgetTarget`). Null = kein Read-Model:
+   * die Fluss-Kacheln springen dann ehrlich auf die Live-Daten-Seite.
+   */
+  topology?: SiteTopology | null;
   /** Der jüngste Live-Schnappschuss; null = noch keiner. */
   snapshot?: LiveSnapshot | null;
   /** Die Historie-Totals des heutigen Tages (serverseitig gerechnet). */
@@ -171,8 +145,6 @@ export interface CockpitWidgetsInput {
   plantKind?: PlanWordingKind;
   /** Die fertige Peak-Band-Sicht; null = kein Peak-Modul / keine Daten. */
   peak?: PeakBandView | null;
-  /** Der eingestellte Umgang mit dem Speicher (roh, wird gelabelt). */
-  speicherschonung?: string | null;
   /** Wetter am Standort; null = nichts geladen. */
   weather?: { nextHourTempC: number | null; why: string | null } | null;
 }
@@ -184,13 +156,14 @@ export interface CockpitWidgetsInput {
 /**
  * Das Widget-Raster einer Anlage: eine Kachel je Cockpit-Block bzw. Modus, der
  * WIRKLICH etwas beisteuert, in der kanonischen Blockordnung. Eine Kachel ohne
- * Quelle entfällt; eine Kachel ohne aktuellen Wert zeigt `—`.
+ * Quelle entfällt; eine Kachel ohne aktuellen Wert zeigt `—`. Jede Kachel
+ * bekommt ihr Absprung-`target` (Verlauf-Messwert bzw. Seite) angehängt.
  */
 export function cockpitWidgets(input: CockpitWidgetsInput): WidgetDef[] {
   const blocks = [...(input.blocks ?? [])].sort(
     (a, b) => a.order - b.order || a.id.localeCompare(b.id),
   );
-  const out: WidgetDef[] = [];
+  const out: Omit<WidgetDef, 'target'>[] = [];
   const lead = input.lead ?? null;
 
   for (const b of blocks) {
@@ -224,16 +197,18 @@ export function cockpitWidgets(input: CockpitWidgetsInput): WidgetDef[] {
   // das Cockpit erscheint dann gar nicht (`projectionActive`), und diese
   // Funktion darf das nicht unterlaufen.
   if (blocks.length > 0) push(out, wetterWidget(input), false);
-  return out;
+
+  const topology = input.topology ?? null;
+  return out.map((w) => ({ ...w, target: widgetTarget(w.id, topology) }));
 }
 
-function push(out: WidgetDef[], w: Omit<WidgetDef, 'lead'> | null, lead: boolean): void {
+function push(out: Omit<WidgetDef, 'target'>[], w: WidgetBase | null, lead: boolean): void {
   if (w) out.push({ ...w, lead });
 }
 
 // --- Fluss-Kacheln (base) ---------------------------------------------------
 
-function flowWidgets(input: CockpitWidgetsInput): (Omit<WidgetDef, 'lead'> | null)[] {
+function flowWidgets(input: CockpitWidgetsInput): (WidgetBase | null)[] {
   return [erzeugungWidget(input), speicherWidget(input), hausWidget(input), netzWidget(input)];
 }
 
@@ -247,7 +222,7 @@ function hasSource(
   return values.some((v) => num(v) != null);
 }
 
-function erzeugungWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function erzeugungWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const pv = num(input.snapshot?.pvKw);
   if (!hasSource(input, 'erzeugung', [pv])) return null;
   const generated = num(input.dayTotals?.pvGenerationKwh);
@@ -257,17 +232,6 @@ function erzeugungWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | 
     value: pv == null ? DASH : fmtNum(pv, 'kW'),
     sub: generated == null ? null : `${energyLabel(generated)} heute`,
     accent: 'pv',
-    modal: {
-      jetzt: face(
-        [
-          { label: 'Erzeugung jetzt', value: pv == null ? DASH : fmtNum(pv, 'kW') },
-          { label: 'Heute erzeugt', value: generated == null ? DASH : energyLabel(generated) },
-        ],
-        null,
-        null,
-      ),
-      verlauf: face([], LIVE_VERLAUF_NOTE, VERLAUF_LIVE),
-    },
   };
 }
 
@@ -279,58 +243,30 @@ export function speicherStateLine(battKw: number | null | undefined): string | n
   return v > 0 ? `lädt mit ${fmtNum(v, 'kW')}` : `entlädt mit ${fmtNum(Math.abs(v), 'kW')}`;
 }
 
-function speicherWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function speicherWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const soc = num(input.snapshot?.socPct);
   const batt = num(input.snapshot?.battKw);
   if (!hasSource(input, 'speicher', [soc, batt])) return null;
   const state = speicherStateLine(batt);
-  const rows: WidgetRow[] = [
-    { label: 'Ladestand', value: soc == null ? DASH : fmtNum(soc, '%', 0) },
-    { label: 'Leistung', value: batt == null ? DASH : fmtNum(Math.abs(batt), 'kW'), sub: state },
-  ];
-  if (input.speicherschonung != null) {
-    rows.push({
-      label: 'Umgang mit dem Speicher',
-      value: speicherschonungLabel(input.speicherschonung),
-      sub: 'Änderbar unter Technik & Einstellungen.',
-    });
-  }
   return {
     id: 'speicher',
     label: 'Speicher',
     value: soc == null ? DASH : fmtNum(soc, '%', 0),
     sub: state,
     accent: 'batt',
-    modal: {
-      jetzt: face(rows, null, { sub: 'technik', label: 'Technik & Einstellungen' }),
-      verlauf: face([], LIVE_VERLAUF_NOTE, VERLAUF_LIVE),
-    },
   };
 }
 
-function hausWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function hausWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const load = num(input.snapshot?.loadKw);
   if (!hasSource(input, 'haus', [load])) return null;
   const consumed = num(input.dayTotals?.consumptionKwh);
-  const autarkie = num(input.dayTotals?.autarkiePct);
   return {
     id: 'haus',
     label: 'Haus',
     value: load == null ? DASH : fmtNum(load, 'kW'),
     sub: consumed == null ? null : `${energyLabel(consumed)} heute`,
     accent: 'load',
-    modal: {
-      jetzt: face(
-        [
-          { label: 'Verbrauch jetzt', value: load == null ? DASH : fmtNum(load, 'kW') },
-          { label: 'Heute verbraucht', value: consumed == null ? DASH : energyLabel(consumed) },
-          { label: 'Autarkie heute', value: autarkie == null ? DASH : fmtNum(autarkie, '%', 0) },
-        ],
-        null,
-        null,
-      ),
-      verlauf: face([], null, VERLAUF_HISTORIE),
-    },
   };
 }
 
@@ -342,62 +278,33 @@ export function netzDirectionLabel(gridKw: number | null | undefined): string | 
   return v > 0 ? 'Netzbezug' : 'Einspeisung';
 }
 
-function netzWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function netzWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const grid = num(input.snapshot?.gridKw);
   if (!hasSource(input, 'netz', [grid])) return null;
-  const imported = num(input.dayTotals?.gridImportKwh);
-  const exported = num(input.dayTotals?.gridExportKwh);
-  const cost = num(input.dayTotals?.gridCostEur);
   return {
     id: 'netz',
     label: 'Netz',
     value: grid == null ? DASH : fmtNum(Math.abs(grid), 'kW'),
     sub: netzDirectionLabel(grid),
     accent: 'grid',
-    modal: {
-      jetzt: face(
-        [
-          {
-            label: 'Netz jetzt',
-            value: grid == null ? DASH : fmtNum(Math.abs(grid), 'kW'),
-            sub: netzDirectionLabel(grid),
-          },
-          { label: 'Heute bezogen', value: imported == null ? DASH : energyLabel(imported) },
-          { label: 'Heute eingespeist', value: exported == null ? DASH : energyLabel(exported) },
-          { label: 'Netzkosten heute', value: cost == null ? DASH : eurAmount(cost) },
-        ],
-        null,
-        null,
-      ),
-      verlauf: face([], null, VERLAUF_HISTORIE),
-    },
   };
 }
 
 // --- Modus-Kacheln ----------------------------------------------------------
 
-function lastspitzeWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function lastspitzeWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const peak = input.peak;
   if (!peak) return null;
-  const rows: WidgetRow[] = [
-    { label: 'Aktuelles ¼-h-Mittel', value: peak.currentLabel },
-    { label: 'Ziel Netzbezug', value: peak.targetLabel ?? DASH },
-    ...peak.metrics.map((m) => ({ label: m.label, value: m.value })),
-  ];
   return {
     id: 'lastspitze',
     label: 'Lastspitze',
     value: peak.currentLabel,
     sub: peak.targetLabel ? `Ziel ${peak.targetLabel}` : peak.note,
     accent: 'pv',
-    modal: {
-      jetzt: face(rows, peak.note, VERLAUF_LASTSPITZEN),
-      verlauf: face([], null, VERLAUF_LASTSPITZEN),
-    },
   };
 }
 
-function erloesWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function erloesWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const view = erloesKomposition({
     streams: input.streams ?? [],
     money: input.money ?? null,
@@ -413,18 +320,10 @@ function erloesWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | nul
     value: total?.valueText ?? DASH,
     sub: total?.label ?? null,
     accent: 'money',
-    modal: {
-      jetzt: face(
-        view.rows.map((r) => ({ label: r.label, value: r.valueText, sub: r.periodLabel })),
-        view.periodNote ?? view.footnote,
-        null,
-      ),
-      verlauf: face([], null, VERLAUF_HISTORIE),
-    },
   };
 }
 
-function handelWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function handelWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const view: HandelBlockView = handelBlock({
     money: input.money ?? null,
     slots: input.slots ?? [],
@@ -440,18 +339,10 @@ function handelWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | nul
     value: first.value,
     sub: first.label,
     accent: 'grid',
-    modal: {
-      jetzt: face(
-        view.tiles.map((t) => ({ label: t.label, value: t.value, sub: t.sub })),
-        view.praemieNote,
-        VERLAUF_FAHRPLAN,
-      ),
-      verlauf: face([], null, VERLAUF_FAHRPLAN),
-    },
   };
 }
 
-function eigenverbrauchWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function eigenverbrauchWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const view: EigenverbrauchBlockView = eigenverbrauchBlock({
     autarkiePct: input.dayTotals?.autarkiePct,
     eigenverbrauchPct: input.dayTotals?.eigenverbrauchPct,
@@ -468,18 +359,10 @@ function eigenverbrauchWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead
     value: first.value,
     sub: first.label,
     accent: 'batt',
-    modal: {
-      jetzt: face(
-        view.tiles.map((t) => ({ label: t.label, value: t.value, sub: t.sub })),
-        null,
-        VERLAUF_FAHRPLAN,
-      ),
-      verlauf: face([], null, VERLAUF_HISTORIE),
-    },
   };
 }
 
-function automatikWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function automatikWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const rows = (input.modes ?? []).filter((m) => m.kind === 'automation');
   if (rows.length === 0) return null;
   return {
@@ -488,18 +371,10 @@ function automatikWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | 
     value: String(rows.length),
     sub: rows.length === 1 ? 'aktive Regel' : 'aktive Regeln',
     accent: 'load',
-    modal: {
-      jetzt: face(
-        rows.map((m) => ({ label: m.label, value: 'aktiv', sub: 'Läuft auf Ihrem Gerät.' })),
-        null,
-        VERLAUF_STEUERUNG,
-      ),
-      verlauf: face([], null, VERLAUF_STEUERUNG),
-    },
   };
 }
 
-function wetterWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | null {
+function wetterWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const temp = num(input.weather?.nextHourTempC);
   const why = input.weather?.why ?? null;
   if (temp == null && !why) return null;
@@ -509,14 +384,6 @@ function wetterWidget(input: CockpitWidgetsInput): Omit<WidgetDef, 'lead'> | nul
     value: temp == null ? DASH : fmtNum(temp, '°C'),
     sub: why ?? 'Vorhersage am Standort Ihrer Anlage',
     accent: 'pv',
-    modal: {
-      jetzt: face(
-        [{ label: 'Nächste Stunde', value: temp == null ? DASH : fmtNum(temp, '°C'), sub: why }],
-        'Die Vorhersage ist die Grundlage der PV-Prognose.',
-        VERLAUF_WETTER,
-      ),
-      verlauf: face([], null, VERLAUF_WETTER),
-    },
   };
 }
 
@@ -651,10 +518,6 @@ export function cockpitHero(input: {
 }
 
 // ---------------------------------------------------------------------------
-
-function face(rows: WidgetRow[], note: string | null, drillIn: WidgetDrillIn | null): WidgetFace {
-  return { rows, note, drillIn };
-}
 
 function num(v: number | null | undefined): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
