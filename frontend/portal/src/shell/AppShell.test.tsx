@@ -115,14 +115,16 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
       </AppShell>,
     );
 
-  it('renders the base group with its five areas, labelled "Anlage"', () => {
+  it('renders the base group with its four areas, labelled "Anlage"', () => {
+    // Cockpit+Live merge (Option A): no "Live-Daten" nav item any more.
     const { container } = renderShell();
     expect(container.querySelector('.vp-anlagenav .vp-nav-group-label')?.textContent).toBe(
       'Anlage',
     );
-    for (const label of ['Cockpit', 'Live-Daten', 'Historie', 'Steuerung', 'Anlagen-Modell']) {
+    for (const label of ['Cockpit', 'Historie', 'Steuerung', 'Anlagen-Modell']) {
       expect(screen.getAllByRole('button', { name: new RegExp(label) }).length).toBeGreaterThanOrEqual(1);
     }
+    expect(screen.queryByRole('button', { name: /Live-Daten/ })).toBeNull();
   });
 
   it('renders the 5-slot bottom bar for the Anlage', () => {
@@ -212,7 +214,8 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     const bar = screen.getByLabelText('Bereiche der Anlage Hof Lindenberg');
     fireEvent.click(bar.querySelectorAll('.vp-bottombar-item')[4]);
     const sheet = screen.getByRole('dialog', { name: 'Weitere Bereiche' });
-    expect(sheet.textContent).toContain('Historie');
+    // Historie sits in the bottom bar since the merge (owner Q3), so the sheet
+    // leads with the mode groups.
     expect(sheet.textContent).toContain('Modus · Marktvermarktung');
     expect(sheet.textContent).toContain('Wetter');
     expect(sheet.textContent).toContain('Einstellungen');

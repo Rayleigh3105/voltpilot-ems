@@ -1,0 +1,50 @@
+/*
+ * "Komponenten im Detail" — the merged home's third stratum (Cockpit +
+ * Live-Daten merge, Option A). Component-local styles (the LivePuls.css /
+ * CockpitBlocks precedent); the board row styles themselves live untouched in
+ * LivePuls.css. index.css only gains the v4-dash placement rule.
+ */
+
+.vp-komponenten {
+  min-width: 0;
+  margin-top: var(--vp-space-4, 16px);
+}
+/* Inside the v4 dash grid the gap spaces the blocks — no extra margin. */
+.vp-dash-komponenten .vp-komponenten {
+  margin-top: 0;
+}
+.vp-komponenten > * {
+  min-width: 0;
+}
+
+/* The "Verlauf ▾" disclosure row reuses the .vp-live-verlauf-head layout
+   (index.css); only the toggle button is new. */
+.vp-verlauf-fold {
+  margin-top: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-verlauf-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  min-height: 44px;
+  padding: 0 var(--vp-space-2, 8px) 0 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--vp-navy-2, #2c5282);
+}
+.vp-verlauf-toggle svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.vp-verlauf-toggle.is-open svg {
+  transform: rotate(0deg);
+}
+.vp-verlauf-toggle:hover {
+  text-decoration: underline;
+}

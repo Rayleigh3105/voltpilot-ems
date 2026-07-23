@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { SiteTopology } from '../api';
+import type { SiteSource, SiteTopology } from '../api';
 import type { CockpitHeroView, HeroRing } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
 import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
+import { PvBreakdownLine } from './PvBreakdown';
 import './CockpitBlocks.css';
 
 /**
@@ -32,7 +33,7 @@ export function CockpitHero({
   topology,
   snapshot,
   stale = false,
-  freshnessNote,
+  sources = null,
   whyLine,
   onOpenSub,
   footer,
@@ -42,8 +43,13 @@ export function CockpitHero({
   topology: SiteTopology | null;
   snapshot: LiveSnapshot;
   stale?: boolean;
-  /** „Stand vor 20 Sek." — die ehrliche Frische-Zeile. */
-  freshnessNote?: string | null;
+  /**
+   * Die Messstellen der Anlage: eine Multi-Wechselrichter-Anlage erklärt ihre
+   * Solar-Zahl unter dem Diagramm (#524; rendert sich bei < 2 messenden
+   * Geräten selbst weg). Die Frische-Zeile lebt seit dem Cockpit+Live-Merge
+   * NUR noch als Kopf-Chip (R4: eine Frischewahrheit).
+   */
+  sources?: SiteSource[] | null;
   /** Die Wetter-„Warum"-Zeile, nur bei frischen Daten. */
   whyLine?: string | null;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -58,12 +64,12 @@ export function CockpitHero({
         ) : (
           <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />
         )}
+        <PvBreakdownLine sources={sources} />
         {whyLine && (
           <p className="vp-live-why">
             <Icon name="sun" size={14} /> {whyLine}
           </p>
         )}
-        {freshnessNote && <p className="vp-note vp-hero-fresh">{freshnessNote}</p>}
         {footer}
       </div>
 

@@ -82,13 +82,13 @@ export const BASE_FROM_TAG = 'Komponenten';
  * und ist deshalb in jedem Modus vorhanden.
  */
 export const TELEMETRIE_HISTORIE: BlockDrillIn = {
-  sub: 'live',
+  // Seit dem Cockpit+Live-Merge (Option A) lebt der Messwerte-Explorer auf der
+  // Historie-Seite (`?m=…` öffnet ihn vorfokussiert); die frühere Live-Daten-
+  // Seite ist ins Cockpit aufgegangen.
+  sub: 'historie',
   label: 'Verlauf',
   hint: 'Telemetrie-Verlauf aller angelegten Kanäle – getrennt von der Erlös-Historie.',
 };
-
-/** Die Live-Tiefe des Energiefluss-Blocks. */
-export const LIVE_DETAIL: BlockDrillIn = { sub: 'live', label: 'Live im Detail' };
 
 /** Die Drill-ins je Block (§2.2) — die Tiefen-Sichten der abgelösten Tab-Leiste. */
 const BLOCK_DRILL_INS: Partial<Record<CockpitBlockId, BlockDrillIn[]>> = {
@@ -100,8 +100,9 @@ const BLOCK_DRILL_INS: Partial<Record<CockpitBlockId, BlockDrillIn[]>> = {
       hint: 'Erlös-Historie – getrennt vom Telemetrie-Verlauf.',
     },
   ],
-  // base: Live UND der Kanal-Verlauf (Telemetrie-Historie) hängen hier.
-  energiefluss: [LIVE_DETAIL, TELEMETRIE_HISTORIE],
+  // base: die Live-Tiefe lebt seit dem Merge IM Cockpit selbst (Komponenten-
+  // Board); als Drill-in bleibt der Kanal-Verlauf (Telemetrie-Historie).
+  energiefluss: [TELEMETRIE_HISTORIE],
   handel: [{ sub: 'fahrplan', label: 'Ganzer Fahrplan' }],
   eigenverbrauch: [{ sub: 'fahrplan', label: 'Ganzer Fahrplan' }],
   'geraete-automatik': [{ sub: 'steuerung', label: 'Steuerung' }],

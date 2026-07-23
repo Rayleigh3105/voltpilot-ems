@@ -3,17 +3,19 @@ import { fireEvent, render } from '@testing-library/react';
 import { WidgetGrid } from './WidgetGrid';
 import type { WidgetDef } from '../cockpitWidgets';
 
-/** Portal v3 · M2 — der dünne Render-Beweis des Widget-Rasters (V2: Absprung). */
+/** Portal v3 · M2 — der dünne Render-Beweis des Widget-Rasters (V2: Absprung).
+ *  Seit dem Cockpit+Live-Merge (R2) gibt es nur noch Geld-/Modus-Kacheln —
+ *  die „Verlauf →"-Andeutung der Fluss-Kacheln ist mit ihnen gegangen. */
 
 function widget(over: Partial<WidgetDef> = {}): WidgetDef {
   return {
-    id: 'speicher',
-    label: 'Speicher',
-    value: '76 %',
-    sub: 'lädt',
+    id: 'eigenverbrauch',
+    label: 'Eigenverbrauch',
+    value: '82 %',
+    sub: 'Autarkie heute',
     accent: 'batt',
     lead: false,
-    target: { kind: 'verlauf', entityId: 'e-batt', channel: 'soc_pct' },
+    target: { kind: 'sub', sub: 'historie' },
     ...over,
   };
 }
@@ -22,12 +24,12 @@ describe('WidgetGrid', () => {
   it('rendert eine Kachel je Definition, in gegebener Reihenfolge', () => {
     const { container } = render(
       <WidgetGrid
-        widgets={[widget(), widget({ id: 'netz', label: 'Netz', accent: 'grid' })]}
+        widgets={[widget(), widget({ id: 'handel', label: 'Handel', accent: 'grid' })]}
         onSelect={() => {}}
       />,
     );
     const labels = [...container.querySelectorAll('.vp-widget-label')].map((n) => n.textContent);
-    expect(labels).toEqual(['Speicher', 'Netz']);
+    expect(labels).toEqual(['Eigenverbrauch', 'Handel']);
     expect(container.querySelector('.vp-widget-batt')).toBeTruthy();
     expect(container.querySelector('.vp-widget-grid')).toBeTruthy();
   });
@@ -57,7 +59,7 @@ describe('WidgetGrid', () => {
     expect(onSelect).toHaveBeenCalledWith(w);
   });
 
-  it('zeigt die „Verlauf →"-Andeutung nur auf Fluss-Kacheln', () => {
+  it('trägt keine „Verlauf →"-Andeutung mehr (das Board ist die Live-Fläche)', () => {
     const { container } = render(
       <WidgetGrid
         widgets={[
@@ -67,9 +69,6 @@ describe('WidgetGrid', () => {
         onSelect={() => {}}
       />,
     );
-    const tiles = [...container.querySelectorAll('.vp-widget')];
-    // Fluss-Kachel (Verlauf-Ziel) trägt die Andeutung, die Modus-Kachel nicht.
-    expect(tiles[0].querySelector('.vp-widget-jump')).toBeTruthy();
-    expect(tiles[1].querySelector('.vp-widget-jump')).toBeNull();
+    expect(container.querySelector('.vp-widget-jump')).toBeNull();
   });
 });

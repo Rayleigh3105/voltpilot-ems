@@ -12,7 +12,7 @@
  * (Standorte,
  * Geräte, Live-Daten, Fahrplan, Wetter, Historie) lives ON the Anlagen-Seite
  * (`#/anlage/{siteId}`) or as one of its subpages
- * (`#/anlage/{siteId}/live|fahrplan|historie|wetter`). The old hashes keep
+ * (`#/anlage/{siteId}/fahrplan|historie|wetter|…`). The old hashes keep
  * working as redirects so bookmarks never break.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
@@ -31,7 +31,6 @@ export type PageId =
 
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
 export type AnlagenSub =
-  | 'live'
   | 'fahrplan'
   | 'historie'
   | 'wetter'
@@ -41,7 +40,7 @@ export type AnlagenSub =
   | 'lastspitzen';
 
 const SUBS = new Set<string>([
-  'live', 'fahrplan', 'historie', 'wetter', 'technik', 'modell',
+  'fahrplan', 'historie', 'wetter', 'technik', 'modell',
   'steuerung', 'lastspitzen',
 ]);
 
@@ -53,11 +52,15 @@ const SUBS = new Set<string>([
  *   became the Anlagen-Modell — Gerät/Komponente/Messwert).
  * - `profile` -> `steuerung` (v3.1-M2: the standalone Modus-Profile shelf became
  *   the per-mode container opened from the Steuerung capsule).
+ * - `live` -> the cockpit itself (`null`) — the Cockpit + Live-Daten merge
+ *   (Option A): the Komponenten-Board and the compact Verlauf chart live ON
+ *   the Anlagen-Startseite now, so `#/anlage/{id}/live` lands there.
  */
-const LEGACY_SUBS: Record<string, AnlagenSub> = {
+const LEGACY_SUBS: Record<string, AnlagenSub | null> = {
   optimierung: 'steuerung',
   entitaeten: 'modell',
   profile: 'steuerung',
+  live: null,
 };
 
 /**
@@ -146,7 +149,8 @@ const PAGE_IDS = new Set<string>(ALL_PAGES.map((p) => p.id));
  * Anlagen entry itself (their content is the Technik section).
  */
 const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
-  live: 'live',
+  // Cockpit + Live-Daten merge: `#/live` resolves to the Anlage itself.
+  live: null,
   fahrplan: 'fahrplan',
   historie: 'historie',
   wetter: 'wetter',
@@ -175,8 +179,13 @@ export function parseRoute(hash: string): Route {
 
   if (head === 'anlage' && segments[1]) {
     const raw = segments[2];
+    // `in`-check, not `??`: a legacy sub may map to null (= the cockpit).
     const sub = raw
-      ? (LEGACY_SUBS[raw] ?? (SUBS.has(raw) ? (raw as AnlagenSub) : null))
+      ? raw in LEGACY_SUBS
+        ? LEGACY_SUBS[raw]
+        : SUBS.has(raw)
+          ? (raw as AnlagenSub)
+          : null
       : null;
     return { page: 'anlagen', siteId: segments[1], sub };
   }

@@ -16,7 +16,6 @@ import { anlageSurface, type AnlageSurface, type AnlageSurfaceInput } from './su
 
 /** Every AnlagenSub that exists - the "nothing is orphaned" ground truth. */
 const ALL_SUBS: AnlagenSub[] = [
-  'live',
   'fahrplan',
   'historie',
   'wetter',
@@ -73,32 +72,33 @@ function allSubs(groups: SidebarGroup[]): (AnlagenSub | null)[] {
 }
 
 describe('anlageSidebar - the base group is fixed and ordered', () => {
-  it('is always exactly the five Anlage areas, in that order', () => {
+  it('is always exactly the four Anlage areas, in that order', () => {
+    // Cockpit+Live merge (Option A): the former Live-Daten area is gone — the
+    // cockpit hosts the Komponenten-Board + the compact Verlauf itself.
     for (const surface of [MARKT, PEAK, PRIVAT, null, undefined]) {
       const base = anlageSidebar(surface).groups[0];
       expect(base.label).toBe(BASE_GROUP_LABEL);
       expect(base.tone).toBeNull();
       expect(base.items.map((i) => i.key)).toEqual([
         'cockpit',
-        'live',
         'historie',
         'steuerung',
         'anlagen-modell',
       ]);
       expect(base.items.map((i) => i.label)).toEqual([
         'Cockpit',
-        'Live-Daten',
         'Historie',
         'Steuerung',
         'Anlagen-Modell',
       ]);
+      // No "Live-Daten" nav item anywhere.
+      expect(base.items.some((i) => i.label.includes('Live'))).toBe(false);
     }
   });
 
-  it('opens the cockpit and the four area routes', () => {
+  it('opens the cockpit and the three area routes', () => {
     expect(subsOf(anlageSidebar(null).groups[0].items)).toEqual([
       null,
-      'live',
       'historie',
       'steuerung',
       'modell',
@@ -186,13 +186,15 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
 });
 
 describe('bottomBarSlots - exactly five, Mehr last', () => {
-  it('is Cockpit · Live · Steuerung · Anlage · Mehr', () => {
+  it('is Cockpit · Historie · Steuerung · Anlage · Mehr (owner Q3)', () => {
+    // Historie takes the slot the Live-Daten merge freed — every „Verlauf →"
+    // jump lands there, so it is one thumb away.
     for (const surface of [MARKT, PRIVAT, null]) {
       const slots = bottomBarSlots(anlageSidebar(surface));
       expect(slots).toHaveLength(5);
       expect(slots.map((s) => s.label)).toEqual([
         'Cockpit',
-        'Live',
+        'Historie',
         'Steuerung',
         'Anlage',
         'Mehr',
@@ -208,12 +210,13 @@ describe('bottomBarSlots - exactly five, Mehr last', () => {
 });
 
 describe('moreSheetItems - everything the bottom bar does not carry', () => {
-  it('keeps the base remainder, the mode groups (colour-tagged) and the foot', () => {
+  it('keeps the mode groups (colour-tagged) and the foot; no empty base group', () => {
+    // The bottom bar carries all four base areas since the merge, so the base
+    // remainder is empty and the sheet leads with the mode groups.
     const groups = moreSheetItems(anlageSidebar(MARKT));
-    expect(groups[0].label).toBe(BASE_GROUP_LABEL);
-    expect(groups[0].items.map((i) => i.key)).toEqual(['historie']);
-    expect(groups[1].label).toBe('Modus · Marktvermarktung');
-    expect(groups[1].tone).toBe('markt');
+    expect(groups.some((g) => g.label === BASE_GROUP_LABEL)).toBe(false);
+    expect(groups[0].label).toBe('Modus · Marktvermarktung');
+    expect(groups[0].tone).toBe('markt');
     const last = groups[groups.length - 1];
     expect(last.items.map((i) => i.key)).toEqual(['wetter', 'technik', 'hilfe']);
   });
@@ -255,7 +258,7 @@ describe('activeAreaKey / activeKeyForPage - ONE highlight rule', () => {
   it('maps the cockpit and every sub onto its own entry', () => {
     expect(activeAreaKey(null)).toBe('cockpit');
     expect(activeAreaKey('modell')).toBe('anlagen-modell');
-    for (const sub of ['live', 'historie', 'steuerung', 'fahrplan', 'lastspitzen', 'wetter', 'technik'] as const) {
+    for (const sub of ['historie', 'steuerung', 'fahrplan', 'lastspitzen', 'wetter', 'technik'] as const) {
       expect(activeAreaKey(sub)).toBe(sub);
     }
   });

@@ -77,6 +77,16 @@ function stubCommonApi() {
     protocol: [],
     plan: [],
   } as never);
+  // Cockpit+Live merge: the merged home loads the PV-breakdown sources and
+  // (lazy) per-entity sparkline histories — both fail-soft, here empty.
+  vi.spyOn(api, 'siteSources').mockResolvedValue(null as never);
+  vi.spyOn(api, 'entityHistory').mockResolvedValue({
+    range: 'day',
+    from: '',
+    to: '',
+    bucketMinutes: 15,
+    channels: {},
+  } as never);
 }
 
 /** Eine Bestandsanlage: die v2-Routen antworten, aber es gibt nichts. */
@@ -112,6 +122,8 @@ function stubOlderBackend() {
   vi.spyOn(api, 'topology').mockImplementation(boom as never);
   vi.spyOn(api, 'siteEntities').mockImplementation(boom as never);
   vi.spyOn(api, 'usageProfile').mockImplementation(boom as never);
+  vi.spyOn(api, 'siteSources').mockImplementation(boom as never);
+  vi.spyOn(api, 'entityHistory').mockImplementation(boom as never);
   vi.spyOn(flowsApi, 'customerFlowApi').mockReturnValue({ list: boom } as never);
 }
 
@@ -134,8 +146,13 @@ async function renderAndSettle() {
   const view = renderSeite();
   await waitFor(() => expect(view.container.querySelector('.vp-anlage-dash')).toBeTruthy());
   // Die fail-soften Hooks setzen ihren State asynchron - kurz ausschwingen
-  // lassen, damit ein verspäteter Stapel nicht durchrutschen könnte.
+  // lassen, damit ein verspäteter Stapel nicht durchrutschen könnte. Die lazy
+  // Komponenten-Sektion (Cockpit+Live-Merge) muss ihren Endzustand erreicht
+  // haben, sonst verglichen wir einen Lade- mit einem Endzustand.
   await waitFor(() => expect(view.container.querySelector('.vp-stack')).toBeNull());
+  await waitFor(() =>
+    expect(view.container.textContent).toContain('Es liegen noch keine Messwerte vor'),
+  );
   return view;
 }
 

@@ -109,14 +109,12 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
       // Auch der Renderer bekommt nichts zu stapeln.
       expect(cockpitStack(s.cockpitBlocks, null)).toEqual([]);
       // Portal v3 M2: und das Live-Cockpit bekommt keine einzige Kachel -
-      // selbst mit vollständigen Live-, Tages- und Wetterdaten.
+      // selbst mit vollständigen Tages- und Wetterdaten.
       expect(
         cockpitWidgets({
           blocks: s.cockpitBlocks,
           modes: s.modes,
           lead: null,
-          channels: s.base.telemetryChannels,
-          snapshot: { pvKw: 4, loadKw: 2, gridKw: 1, battKw: 1, socPct: 55, socAt: null },
           dayTotals: {
             consumptionKwh: 10,
             pvGenerationKwh: 20,
@@ -165,7 +163,6 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
       expect(sidebar.groups[0].label).toBe('Anlage');
       expect(sidebar.groups[0].items.map((i) => i.key)).toEqual([
         'cockpit',
-        'live',
         'historie',
         'steuerung',
         'anlagen-modell',
@@ -237,6 +234,21 @@ describe('Abbau-Invarianten (M6)', () => {
     // … und keine `vp-wmodal`/`vp-chart-modal`-Klasse mehr, auch nicht im CSS.
     for (const f of allSourceFiles()) {
       expect(readFileSync(f, 'utf8')).not.toMatch(/vp-wmodal|vp-chart-modal/);
+    }
+  });
+
+  it('Cockpit+Live-Merge: die Live-Daten-Seite ist vollständig weg (Teardown-Wächter)', () => {
+    // Option A: die frühere Live-Daten-Seite und ihre beiden Hero-Komponenten
+    // sind gelöscht (das Cockpit hostet Board + Verlauf selbst). Der Wächter
+    // liest die Quellen (AnlageMoreMenu-Präzedenzfall): keine Datei, kein
+    // Import, keine Verwendung mehr — auch nicht in einem Kommentar.
+    const files = sourceFiles();
+    expect(files.some((f) => /pages\/LiveSection\.tsx?$/.test(f))).toBe(false);
+    expect(files.some((f) => /components\/AdaptiveLiveView\.tsx?$/.test(f))).toBe(false);
+    expect(files.some((f) => /components\/LiveHero\.tsx?$/.test(f))).toBe(false);
+    for (const f of files) {
+      const code = readFileSync(f, 'utf8');
+      expect(code).not.toMatch(/LiveSection|AdaptiveLiveView|\bLiveHero\b/);
     }
   });
 

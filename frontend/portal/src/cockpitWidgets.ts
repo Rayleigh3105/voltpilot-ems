@@ -5,14 +5,19 @@
  * Die Anlagen-Startseite führt mit dem **bestehenden Energiefluss-Diagramm**
  * (groß, als Hero — `components/EnergyFlow.tsx` bzw. `AdaptiveEnergyFlow.tsx`;
  * ein neues „Energie-Rad" ist ausdrücklich abgelehnt, BUILD.md §2) und darunter
- * mit einem **Widget-Raster**: Speicher · Erzeugung · Haus · Netz, dazu
- * profil-abhängig Handel, Lastspitze, Erlöse und Geräte-Automatik.
+ * mit einem **Widget-Raster** der Geld-/Modus-Kacheln: Handel, Lastspitze,
+ * Erlöse, Eigenverbrauch, Geräte-Automatik, Wetter.
+ *
+ * **Die vier FLUSS-Kacheln (Erzeugung/Speicher/Haus/Netz) sind seit dem
+ * Cockpit+Live-Merge (Option A, `data/vp-cockpit-live-merge-design/report.md`
+ * §3 R2) ersatzlos entfernt**: das Komponenten-Board im Cockpit ist die EINE
+ * Live-Wert-Fläche — strikt reicher (Zustandswort, Health, Sparkline, alle
+ * Messwerte), und seine Zeilen springen selbst in den Verlauf-Explorer.
  *
  * **Eine Kachel ist ein Absprung** (Live-Daten-Redesign V2,
  * `data/vp-portal-livedata-design/report.md` §1): ein Tipp navigiert direkt zum
- * `target` der Kachel — Fluss-Kacheln in den Verlauf-Explorer, Geld-/Modus-
- * Kacheln auf ihre Seite. Das frühere Detail-Modal ist ersatzlos entfernt; die
- * Werte-Zeilen leben auf den Zielseiten (Live-Board / Bilanz / Lastspitzen /
+ * `target` der Kachel — auf ihre Seite. Das frühere Detail-Modal ist ersatzlos
+ * entfernt; die Werte-Zeilen leben auf den Zielseiten (Bilanz / Lastspitzen /
  * Fahrplan).
  *
  * Dieses Modul ist die **reine Ableitung** (der `cockpit.ts`/`live.ts`-
@@ -27,7 +32,7 @@
  * 1. **Die Projektion entscheidet, WELCHE Kacheln es gibt** (BUILD.md §4.1):
  *    eine Kachel existiert nur, wenn ihr Block/Modus existiert UND eine Quelle
  *    da ist. Ohne Markt-Modus keine Handel-Kachel, ohne Lastspitzen-Modul keine
- *    Lastspitze-Kachel, ohne Speicher-Kanal keine Speicher-Kachel.
+ *    Lastspitze-Kachel.
  * 2. **Die „—"-Disziplin** (BUILD.md §4.2): ein nicht berechenbarer Wert
  *    rendert `—`, **nie eine erfundene 0**; eine Kachel ganz ohne Quelle
  *    entfällt, statt leer dazustehen.
@@ -41,9 +46,8 @@ import type {
   EarningsSite,
   HistoryRange,
   HistoryTotals,
-  SiteTopology,
 } from './api';
-import { energyLabel, periodLabel } from './anlage';
+import { periodLabel } from './anlage';
 import {
   eigenverbrauchBlock,
   handelBlock,
@@ -53,9 +57,8 @@ import {
 } from './cockpit';
 import { DASH, erloesKomposition, steeringAttributionNote } from './erloesKomposition';
 import { eurAmount, fmtNum } from './format';
-import type { LiveSnapshot } from './live';
 import type { PeakBandView } from './peakBand';
-import { planSentence, SLOT_DEADBAND_KW, type PlanWordingKind } from './schedule';
+import { planSentence, type PlanWordingKind } from './schedule';
 import type { ActiveMode, CockpitBlock, CockpitBlockId, MoneyStream } from './surface';
 import { widgetTarget, type WidgetTarget } from './verlaufTarget';
 
@@ -63,14 +66,11 @@ import { widgetTarget, type WidgetTarget } from './verlaufTarget';
 // Vokabular
 // ---------------------------------------------------------------------------
 
-/** Die Kacheln des Cockpits — deterministisch, nie erfunden. */
+/** Die Kacheln des Cockpits — deterministisch, nie erfunden. Die vier
+ *  Fluss-Kacheln sind seit dem Cockpit+Live-Merge (R2) kein Teil davon. */
 export type WidgetId =
   | 'lastspitze'
   | 'erloes'
-  | 'erzeugung'
-  | 'speicher'
-  | 'haus'
-  | 'netz'
   | 'handel'
   | 'eigenverbrauch'
   | 'automatik'
@@ -98,18 +98,6 @@ export interface WidgetDef {
 type WidgetBase = Omit<WidgetDef, 'lead' | 'target'>;
 
 // ---------------------------------------------------------------------------
-// Konstanten
-// ---------------------------------------------------------------------------
-
-/** Der Telemetriekanal, der eine Fluss-Kachel überhaupt erst entstehen lässt. */
-const FLOW_CHANNELS: Record<'erzeugung' | 'speicher' | 'haus' | 'netz', string[]> = {
-  erzeugung: ['pv_power_kw'],
-  speicher: ['soc_pct', 'battery_power_kw'],
-  haus: ['load_kw'],
-  netz: ['power_kw'],
-};
-
-// ---------------------------------------------------------------------------
 // Eingabe
 // ---------------------------------------------------------------------------
 
@@ -120,16 +108,6 @@ export interface CockpitWidgetsInput {
   modes: ActiveMode[] | null | undefined;
   /** Der führende Block (`leadBlock`); markiert nur, sortiert nichts um. */
   lead?: CockpitBlockId | null;
-  /** Alle angelegten Telemetriekanäle (`surface.base.telemetryChannels`). */
-  channels?: string[] | null;
-  /**
-   * Das Topologie-Read-Model — löst die Fluss-Kacheln auf ihren maßgeblichen
-   * Messwert im Verlauf-Explorer auf (`widgetTarget`). Null = kein Read-Model:
-   * die Fluss-Kacheln springen dann ehrlich auf die Live-Daten-Seite.
-   */
-  topology?: SiteTopology | null;
-  /** Der jüngste Live-Schnappschuss; null = noch keiner. */
-  snapshot?: LiveSnapshot | null;
   /** Die Historie-Totals des heutigen Tages (serverseitig gerechnet). */
   dayTotals?: HistoryTotals | null;
   /** Die Earnings-Zeile dieser Anlage. */
@@ -174,9 +152,8 @@ export function cockpitWidgets(input: CockpitWidgetsInput): WidgetDef[] {
       case 'erloes-komposition':
         push(out, erloesWidget(input), b.id === lead);
         break;
-      case 'energiefluss':
-        for (const w of flowWidgets(input)) push(out, w, b.id === lead);
-        break;
+      // 'energiefluss' steuert seit dem Merge KEINE Kacheln mehr bei: der Hero
+      // (Diagramm) und das Komponenten-Board tragen die Live-Werte (R1/R2).
       case 'handel':
         push(out, handelWidget(input), b.id === lead);
         break;
@@ -198,96 +175,11 @@ export function cockpitWidgets(input: CockpitWidgetsInput): WidgetDef[] {
   // Funktion darf das nicht unterlaufen.
   if (blocks.length > 0) push(out, wetterWidget(input), false);
 
-  const topology = input.topology ?? null;
-  return out.map((w) => ({ ...w, target: widgetTarget(w.id, topology) }));
+  return out.map((w) => ({ ...w, target: widgetTarget(w.id) }));
 }
 
 function push(out: Omit<WidgetDef, 'target'>[], w: WidgetBase | null, lead: boolean): void {
   if (w) out.push({ ...w, lead });
-}
-
-// --- Fluss-Kacheln (base) ---------------------------------------------------
-
-function flowWidgets(input: CockpitWidgetsInput): (WidgetBase | null)[] {
-  return [erzeugungWidget(input), speicherWidget(input), hausWidget(input), netzWidget(input)];
-}
-
-function hasSource(
-  input: CockpitWidgetsInput,
-  key: keyof typeof FLOW_CHANNELS,
-  values: (number | null | undefined)[],
-): boolean {
-  const declared = new Set(input.channels ?? []);
-  if (FLOW_CHANNELS[key].some((c) => declared.has(c))) return true;
-  return values.some((v) => num(v) != null);
-}
-
-function erzeugungWidget(input: CockpitWidgetsInput): WidgetBase | null {
-  const pv = num(input.snapshot?.pvKw);
-  if (!hasSource(input, 'erzeugung', [pv])) return null;
-  const generated = num(input.dayTotals?.pvGenerationKwh);
-  return {
-    id: 'erzeugung',
-    label: 'Erzeugung',
-    value: pv == null ? DASH : fmtNum(pv, 'kW'),
-    sub: generated == null ? null : `${energyLabel(generated)} heute`,
-    accent: 'pv',
-  };
-}
-
-/** Der Zustandssatz des Speichers — Vorzeichen erreichen den Kunden nie. */
-export function speicherStateLine(battKw: number | null | undefined): string | null {
-  const v = num(battKw);
-  if (v == null) return null;
-  if (Math.abs(v) < SLOT_DEADBAND_KW) return 'ruht gerade';
-  return v > 0 ? `lädt mit ${fmtNum(v, 'kW')}` : `entlädt mit ${fmtNum(Math.abs(v), 'kW')}`;
-}
-
-function speicherWidget(input: CockpitWidgetsInput): WidgetBase | null {
-  const soc = num(input.snapshot?.socPct);
-  const batt = num(input.snapshot?.battKw);
-  if (!hasSource(input, 'speicher', [soc, batt])) return null;
-  const state = speicherStateLine(batt);
-  return {
-    id: 'speicher',
-    label: 'Speicher',
-    value: soc == null ? DASH : fmtNum(soc, '%', 0),
-    sub: state,
-    accent: 'batt',
-  };
-}
-
-function hausWidget(input: CockpitWidgetsInput): WidgetBase | null {
-  const load = num(input.snapshot?.loadKw);
-  if (!hasSource(input, 'haus', [load])) return null;
-  const consumed = num(input.dayTotals?.consumptionKwh);
-  return {
-    id: 'haus',
-    label: 'Haus',
-    value: load == null ? DASH : fmtNum(load, 'kW'),
-    sub: consumed == null ? null : `${energyLabel(consumed)} heute`,
-    accent: 'load',
-  };
-}
-
-/** „Bezug" / „Einspeisung" / „ausgeglichen" — nie ein Vorzeichen im UI. */
-export function netzDirectionLabel(gridKw: number | null | undefined): string | null {
-  const v = num(gridKw);
-  if (v == null) return null;
-  if (Math.abs(v) < SLOT_DEADBAND_KW) return 'ausgeglichen';
-  return v > 0 ? 'Netzbezug' : 'Einspeisung';
-}
-
-function netzWidget(input: CockpitWidgetsInput): WidgetBase | null {
-  const grid = num(input.snapshot?.gridKw);
-  if (!hasSource(input, 'netz', [grid])) return null;
-  return {
-    id: 'netz',
-    label: 'Netz',
-    value: grid == null ? DASH : fmtNum(Math.abs(grid), 'kW'),
-    sub: netzDirectionLabel(grid),
-    accent: 'grid',
-  };
 }
 
 // --- Modus-Kacheln ----------------------------------------------------------

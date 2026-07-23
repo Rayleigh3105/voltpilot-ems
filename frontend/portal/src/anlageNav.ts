@@ -3,15 +3,16 @@
  *
  * v3 gives an Anlage **one** navigation (`docs/portal-v3/M1-shell.md`): the
  * sidebar shows every area of the selected plant openly, grouped into
- * **Anlage** (Cockpit · Live-Daten · Historie · Steuerung · Anlagen-Modell)
- * plus **one group per active mode profile** (`Modus · <Name>`, colour-tagged).
+ * **Anlage** (Cockpit · Historie · Steuerung · Anlagen-Modell — the former
+ * Live-Daten area merged INTO the cockpit, owner decision Option A) plus
+ * **one group per active mode profile** (`Modus · <Name>`, colour-tagged).
  * The v2 "Mehr ▾" popover and the retired U1 tab strip are gone; phones get a
  * 5-slot bottom bar whose last slot opens a sheet with everything else.
  *
  * Pure + deterministic (the `betriebsart.ts`/`surface.ts` precedent) — no
  * React, no network. The three laws it encodes:
  *
- * 1. **The base group is fixed and ordered.** Five areas, always, in the same
+ * 1. **The base group is fixed and ordered.** Four areas, always, in the same
  *    order. Only Steuerung carries a badge (the active-mode count from the M0
  *    read-model), and a 0/unknown count renders NO badge — never a
  *    discouraging "0".
@@ -86,11 +87,12 @@ export const HELP_TEXT =
   'Ihr VoltPilot-Team hilft Ihnen weiter. Wenden Sie sich an Ihren Ansprechpartner bei VoltPilot — ' +
   'auch wenn Sie Ihr Passwort zurücksetzen möchten oder ein Gerät sich nicht meldet.';
 
-/** The five base areas — fixed, ordered, always present. */
+/** The four base areas — fixed, ordered, always present. (The former
+ *  Live-Daten area merged into the cockpit — Option A; `#/anlage/{id}/live`
+ *  redirects there.) */
 function baseItems(badge: number | null): SidebarItem[] {
   return [
     { key: 'cockpit', label: 'Cockpit', icon: 'dashboard', target: { kind: 'sub', sub: null }, badge: null },
-    { key: 'live', label: 'Live-Daten', icon: 'activity', target: { kind: 'sub', sub: 'live' }, badge: null },
     { key: 'historie', label: 'Historie', icon: 'history', target: { kind: 'sub', sub: 'historie' }, badge: null },
     { key: 'steuerung', label: 'Steuerung', icon: 'zap', target: { kind: 'sub', sub: 'steuerung' }, badge },
     {
@@ -220,21 +222,23 @@ export function anlageSidebar(
   return { groups, foot: footItems() };
 }
 
-/** The bottom-bar keys, in order — the four core areas plus the Mehr sheet. */
-const BOTTOM_KEYS = ['cockpit', 'live', 'steuerung', 'anlagen-modell'] as const;
+/** The bottom-bar keys, in order — the four core areas plus the Mehr sheet.
+ *  Owner Q3: Historie takes the slot the Live-Daten merge freed (every
+ *  „Verlauf →" jump lands there — one thumb away). */
+const BOTTOM_KEYS = ['cockpit', 'historie', 'steuerung', 'anlagen-modell'] as const;
 
 /** Shorter phone labels; the sidebar keeps the full words. */
 const BOTTOM_LABELS: Record<string, string> = {
   cockpit: 'Cockpit',
-  live: 'Live',
+  historie: 'Historie',
   steuerung: 'Steuerung',
   'anlagen-modell': 'Anlage',
 };
 
 /**
- * The phone bottom bar: EXACTLY five slots (report §2.1 / concept tab 2) —
- * Cockpit · Live · Steuerung · Anlage · Mehr. The core areas are always one
- * thumb away; nothing hides behind a hamburger.
+ * The phone bottom bar: EXACTLY five slots —
+ * Cockpit · Historie · Steuerung · Anlage · Mehr. The core areas are always
+ * one thumb away; nothing hides behind a hamburger.
  */
 export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
   const base = sidebar.groups[0]?.items ?? [];
@@ -248,9 +252,10 @@ export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
 
 /**
  * The "Mehr" sheet: everything the bottom bar does not carry, grouped and
- * colour-tagged exactly like the sidebar — the base remainder (Historie), the
- * mode groups, and a trailing group with the entries that have no sidebar home
- * (Wetter) plus the foot (Einstellungen · Hilfe & Kontakt).
+ * colour-tagged exactly like the sidebar — the base remainder (empty since the
+ * bar carries all four areas), the mode groups, and a trailing group with the
+ * entries that have no sidebar home (Wetter) plus the foot (Einstellungen ·
+ * Hilfe & Kontakt).
  */
 export function moreSheetItems(sidebar: AnlageSidebar): SidebarGroup[] {
   const inBottom = new Set<string>(BOTTOM_KEYS);

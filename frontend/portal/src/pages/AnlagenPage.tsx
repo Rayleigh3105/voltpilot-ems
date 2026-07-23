@@ -15,6 +15,7 @@ import {
   type Overview,
   type SchedulePlan,
   type Site,
+  type SiteSource,
   type TelemetryPoint,
 } from '../api';
 import {
@@ -24,7 +25,7 @@ import {
   siteLiveFresh,
   siteSnapshot,
 } from '../fleet';
-import { eurAmount, fmtNum, fmtRelative, plantKindLabel } from '../format';
+import { eurAmount, fmtNum, plantKindLabel } from '../format';
 import { periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
 import { nextHourIndex, weatherWhy } from '../weather';
@@ -38,7 +39,8 @@ import { ControlStrip } from '../components/ControlStrip';
 import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
 import { useAdaptiveLive } from '../useAdaptiveLive';
-import { liveState } from '../adaptiveLive';
+import { liveState, type LiveState } from '../adaptiveLive';
+import { liveChip } from '../liveDetail';
 import { moneyLayout } from '../moneyEmphasis';
 import { leadArtifact, leadBlock } from '../leadSlot';
 import { useAnlageSurface } from '../useAnlageSurface';
@@ -49,10 +51,10 @@ import {
   historyRangeForCockpit,
   type WidgetDef,
 } from '../cockpitWidgets';
-import { verlaufRangeForCockpit, type WidgetTarget } from '../verlaufTarget';
-import { verlaufHash } from '../verlauf';
 import { ToolboxPointer } from '../components/CockpitBlocks';
 import { CockpitHero } from '../components/CockpitHero';
+import { KomponentenSection } from '../components/KomponentenSection';
+import { PvBreakdownLine } from '../components/PvBreakdown';
 import { WidgetGrid } from '../components/WidgetGrid';
 import { AnlageSetup } from '../components/AnlageSetup';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
@@ -67,7 +69,6 @@ import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
 import { HistorieSection } from './HistorieSection';
-import { LiveSection } from './LiveSection';
 import { AnlagenModellSection } from './AnlagenModellSection';
 import { LastspitzenSection } from './LastspitzenSection';
 import { SteuerungSection } from './SteuerungSection';
@@ -290,10 +291,6 @@ function AnlagenListe({
 }
 
 const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
-  live: {
-    title: 'Live-Daten',
-    subtitle: 'Was Ihre Anlage gerade macht: Status, Energiefluss und Messwert-Verlauf.',
-  },
   fahrplan: {
     title: 'Fahrplan',
     subtitle: 'Kostenoptimaler Batterie-Fahrplan aus Börsenpreisen und Prognosen.',
@@ -359,7 +356,6 @@ function AnlagenSubPage({
           <p>{meta.subtitle}</p>
         </div>
       </div>
-      {sub === 'live' && <LiveSection site={site} />}
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
@@ -438,6 +434,10 @@ export function AnlageSeite({
   // `History` and derive the totals from it.
   const [rangeHistory, setRangeHistory] = useState<History | null>(null);
   const rangeTotals: HistoryTotals | null = rangeHistory?.totals ?? null;
+  // The site's measurement points (primary inverter + configured sources), so
+  // the hero can explain a multi-inverter site's composite PV (#524).
+  // Fail-soft: an older backend simply yields no breakdown.
+  const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
 
@@ -492,6 +492,22 @@ export function AnlageSeite({
       },
       () => {
         if (active) setControlStatus(null);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
+
+  // The PV breakdown's measurement points, loaded silently (#524).
+  useEffect(() => {
+    let active = true;
+    api.siteSources(site.id).then(
+      (s) => {
+        if (active) setSources(s);
+      },
+      () => {
+        if (active) setSources(null);
       },
     );
     return () => {
@@ -774,11 +790,6 @@ export function AnlageSeite({
         blocks,
         modes,
         lead,
-        channels: surface?.base.telemetryChannels ?? [],
-        // The topology resolves each flow tile to its maßgeblich Verlauf
-        // measurement (widgetTarget); null → the flow tiles jump to Live-Daten.
-        topology: adaptiveLive.topology,
-        snapshot: ovSite ? siteSnapshot(ovSite.live) : null,
         dayTotals,
         money: siteEarnings,
         streams: surface?.moneyStreams ?? [],
@@ -793,15 +804,21 @@ export function AnlageSeite({
         weather: { nextHourTempC, why: weatherWhyText },
       })
     : [];
-  // ONE freshness truth (G3): the hero greys out only when NEITHER the entities
-  // nor the Anlage's own telemetry are current - the head sentence reads the
-  // very same signal. It never fabricates a 0; the last good values stay.
-  const heroStale = adaptiveLive.topology
+  // ONE freshness truth (G3/R4): the three-state `liveState` drives BOTH the
+  // head chip and the hero/board dimming. `site-only` (the Anlage delivers,
+  // the per-device breakdown does not) gets its own honest chip wording and
+  // never greys anything; only `stale` dims — values keep last-good, absent
+  // stays "—", never a 0.
+  const liveSt: LiveState = adaptiveLive.topology
     ? liveState({
         entityFresh: adaptiveLive.topology.entities.some((e) => e.health === 'ok'),
         siteFresh: fresh,
-      }) === 'stale'
-    : !fresh;
+      })
+    : fresh
+      ? 'live'
+      : 'stale';
+  const heroStale = liveSt === 'stale';
+  const chip = ovSite && !showSetup ? liveChip(liveSt, ovSite.live?.ts ?? null, now) : null;
 
   const switchRange = (r: EarningsRange) => {
     setRange(r);
@@ -813,31 +830,10 @@ export function AnlageSeite({
   };
 
   // „Eine Kachel ist ein Absprung" (V2): ein Tipp navigiert direkt zum Ziel der
-  // Kachel — kein Modal. Fluss-Kacheln springen in den Verlauf-Explorer (der
-  // Zeitraum-Tab wird mitgenommen: Heute→Tag, Monat→Monat, Jahr→Jahr,
-  // Gesamt→Jahr); für den Verlauf-Deeplink wird der Hash direkt gesetzt, da er
-  // `?m&z&at` trägt (ein `Route` würde die Query verlieren). Geld-/Modus-
-  // Kacheln öffnen ihre Seite über die normale Navigation.
-  const jumpToWidget = (widget: WidgetDef) => {
-    const target: WidgetTarget = widget.target;
-    if (target.kind === 'verlauf') {
-      window.location.hash = verlaufHash(
-        site.id,
-        { entityId: target.entityId, channel: target.channel },
-        verlaufRangeForCockpit(range),
-        at,
-      );
-      // Ein Absprung ist eine Navigation: an den Seitenanfang (der Hash-Wechsel
-      // scrollt nicht von selbst). try/catch, weil jsdom `scrollTo` nicht kennt.
-      try {
-        window.scrollTo({ top: 0 });
-      } catch {
-        /* jsdom-Stub – im Browser irrelevant */
-      }
-    } else {
-      onOpenSub(target.sub);
-    }
-  };
+  // Kachel — kein Modal. Seit dem Cockpit+Live-Merge sind alle Kacheln Geld-/
+  // Modus-Kacheln und öffnen ihre Seite; die Verlauf-Sprünge (mit Zeitraum-
+  // Übernahme) leben auf den Komponenten-Board-Zeilen.
+  const jumpToWidget = (widget: WidgetDef) => onOpenSub(widget.target.sub);
 
   return (
     <>
@@ -872,6 +868,13 @@ export function AnlageSeite({
           )}
         </div>
         <div className="vp-anlage-badges">
+          {/* R4: the ONE freshness chip of the merged home (head sentence +
+              chip; the hero/board dim on `stale` from the same signal). */}
+          {chip && (
+            <Badge variant={chip.tone} dot>
+              {chip.label}
+            </Badge>
+          )}
           <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>
           <NetzladenBadge erlaubt={site.netzladenErlaubt} small />
           <button
@@ -929,7 +932,7 @@ export function AnlageSeite({
               topology={adaptiveLive.topology}
               snapshot={siteSnapshot(ovSite.live)}
               stale={heroStale}
-              freshnessNote={ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : null}
+              sources={sources}
               whyLine={fresh ? weatherWhyText : null}
               onOpenSub={onOpenSub}
               footer={controlView ? <ControlStrip view={controlView} /> : null}
@@ -939,6 +942,19 @@ export function AnlageSeite({
           {/* Eine Kachel ist ein Absprung (V2): der Tipp navigiert direkt zum
               Ziel der Kachel - kein Modal mehr. */}
           <WidgetGrid widgets={widgets} onSelect={jumpToWidget} />
+
+          {/* Merge Option A · Stratum 3: Komponenten im Detail — das Board
+              (sichtbar) + der kompakte Verlauf hinter „Verlauf ▾" (Q2). Die
+              Abrufe starten erst nahe dem Viewport (lazy-mount). */}
+          <KomponentenSection
+            site={site}
+            topology={adaptiveLive.topology}
+            adaptive={adaptiveLive.adaptive}
+            stale={heroStale}
+            range={range}
+            at={at}
+            dayTotals={dayTotals}
+          />
 
           {/* Die ruhige Toolbox-Zeile - der Abschluss (§1.3). Kein Werben
               für einen bestimmten Modus. Das Wetter ist jetzt eine Kachel. */}
@@ -1065,25 +1081,17 @@ export function AnlageSeite({
                   ) : (
                     <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
                   )}
+                  {/* #524: why the Solar number is what it is (renders itself
+                      away on a single-inverter site). */}
+                  <PvBreakdownLine sources={sources} />
                   {weatherWhyText && fresh && (
                     <p className="vp-live-why">
                       <Icon name="sun" size={14} /> {weatherWhyText}
                     </p>
                   )}
-                  <div className="vp-site-status-foot">
-                    <span className="vp-note">
-                      {ovSite.live ? `Stand ${fmtRelative(ovSite.live.ts, now)}` : ''}
-                    </span>
-                    <a
-                      href={`#/anlage/${site.id}/live`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        onOpenSub('live');
-                      }}
-                    >
-                      Live-Daten im Detail →
-                    </a>
-                  </div>
+                  {/* Die Live-Tiefe lebt seit dem Merge auf DIESER Seite
+                      (Komponenten im Detail unten) — kein Absprung mehr; die
+                      Frische trägt der Kopf-Chip (R4). */}
                 </>
               )}
             </Card>
@@ -1135,6 +1143,23 @@ export function AnlageSeite({
             loading={planLoading && plan == null}
             failed={planFailed}
             onOpen={() => onOpenSub('fahrplan')}
+          />
+        </div>
+
+        {/* ---- Komponenten im Detail (volle Breite) ---------------------
+            Merge Option A: das Komponenten-Board + der kompakte Verlauf
+            (hinter „Verlauf ▾") leben jetzt AUF der Startseite — die frühere
+            Live-Daten-Seite ist hierher aufgegangen. Lazy-mount: die Abrufe
+            starten erst nahe dem Viewport. */}
+        <div className="vp-dash-komponenten">
+          <KomponentenSection
+            site={site}
+            topology={adaptiveLive.topology}
+            adaptive={adaptiveLive.adaptive}
+            stale={heroStale}
+            range={range}
+            at={at}
+            dayTotals={null}
           />
         </div>
 

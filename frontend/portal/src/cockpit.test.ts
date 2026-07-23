@@ -295,7 +295,11 @@ describe('Block-Drill-ins (report §2.2 + feedback.md)', () => {
     const d = drills(MULTI);
     expect(d).toContain('peak-band:lastspitzen:Lastspitzen im Detail');
     expect(d).toContain('erloes-komposition:historie:Erlöse im Detail');
-    expect(d).toContain('energiefluss:live:Live im Detail');
+    // Cockpit+Live-Merge (Option A): die Live-Tiefe lebt IM Cockpit selbst
+    // (Komponenten-Board) — der Energiefluss-Block behält nur den
+    // Kanal-Verlauf-Drill-in; ein „Live im Detail"-Absprung existiert nicht mehr.
+    expect(d).toContain('energiefluss:historie:Verlauf');
+    expect(d.some((x) => x.includes(':live:'))).toBe(false);
     expect(d).toContain('handel:fahrplan:Ganzer Fahrplan');
     expect(d).toContain('geraete-automatik:steuerung:Steuerung');
   });
@@ -309,16 +313,19 @@ describe('Block-Drill-ins (report §2.2 + feedback.md)', () => {
     }
   });
 
-  it('sie ist NICHT die Erlös-Historie — anderes Ziel, anderes Etikett', () => {
+  it('sie ist NICHT die Erlös-Historie — anderes Etikett, eigener Hinweis', () => {
+    // Seit dem Cockpit+Live-Merge teilen sich BEIDE Drill-ins die Historie-
+    // Seite (der Messwerte-Explorer lebt dort als eigener Reiter, `?m=…`);
+    // die Abgrenzung trägt das Etikett + der Hinweis, nicht mehr die Route.
     const s = anlageSurface(MARKT);
     const views = cockpitStack(s.cockpitBlocks, null);
     const hub = views.find((b) => b.id === 'energiefluss');
     const geld = views.find((b) => b.id === 'erloes-komposition');
     const verlauf = hub?.drillIns.find((d) => d.label === 'Verlauf');
     const erloes = geld?.drillIns[0];
-    expect(verlauf?.sub).toBe('live');
+    expect(verlauf?.sub).toBe('historie');
     expect(erloes?.sub).toBe('historie');
-    expect(verlauf?.sub).not.toBe(erloes?.sub);
+    expect(verlauf?.label).not.toBe(erloes?.label);
     expect(verlauf?.hint).toMatch(/getrennt von der Erlös-Historie/);
   });
 
