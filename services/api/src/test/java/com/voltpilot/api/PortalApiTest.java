@@ -1427,6 +1427,236 @@ class PortalApiTest {
     }
 
     /**
+     * <b>Audit H1 (BLOCKER) — the Messwerte explorer must not be empty after the
+     * automatic v2 migration.</b> {@code telemetry_v2} is fed FORWARD only (the
+     * writer's {@code ComposedEntityFanout} mirrors new live samples), so a
+     * plant with years of v1 telemetry rendered "Keine Werte in diesem Zeitraum"
+     * at every range on deploy day. The fix is a READ-side splice: a COMPOSED
+     * entity reconstructs its pre-v2 window from the v1 telemetry through the
+     * SAME channel map, spliced at the entity's first v2 sample.
+     *
+     * <p>Proven here: (a) the deploy-day state — a composed entity with ZERO v2
+     * rows serves its full v1 history; (b) continuity — a battery-hybrid whose
+     * v2 era starts mid-day yields ONE unbroken series across the seam; (c) no
+     * overlap — the straddling bucket belongs to v2 alone, the v1 sample inside
+     * it never double-counts; (d) the derived {@code battery_power_kw} matches
+     * the fan-out's {@code power − load + pv}; (e) the rollup-backed ranges
+     * bridge too.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void entityHistorySplicesV1TelemetryBeforeTheV2EraForComposedEntities() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Splice-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-splice-01");
+
+        // --- the v1 era: four raw samples on 2026-06-15 (Europe/Berlin day) ---
+        // battery = power - load + pv (the documented v1 balance the fan-out uses)
+        //   10:00 -> 1-2+3 = 2.0 | 10:07 -> 3-2+1 = 2.0  (bucket 10:00, avg 2.0)
+        //   10:20 -> 0-1+5 = 4.0                          (bucket 10:15)
+        //   11:05 -> 0-0+0 = 0.0   <- the OVERLAP DECOY: v2 owns the 11:00 bucket
+        exec("INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, "
+                + "power_kw, load_kw, pv_power_kw, soc_pct) VALUES "
+                + "('2026-06-15T10:00:00Z','2026-06-15T10:00:01Z','" + tenantA + "','" + siteId
+                + "','" + deviceId + "', 1.0, 2.0, 3.0, 50), "
+                + "('2026-06-15T10:07:00Z','2026-06-15T10:07:01Z','" + tenantA + "','" + siteId
+                + "','" + deviceId + "', 3.0, 2.0, 1.0, 52), "
+                + "('2026-06-15T10:20:00Z','2026-06-15T10:20:01Z','" + tenantA + "','" + siteId
+                + "','" + deviceId + "', 0.0, 1.0, 5.0, 60), "
+                + "('2026-06-15T11:05:00Z','2026-06-15T11:05:01Z','" + tenantA + "','" + siteId
+                + "','" + deviceId + "', 0.0, 0.0, 0.0, 99)");
+
+        // --- the composed entities the migration would compose from that data ---
+        String hybrid = "eeeece01-0000-0000-0000-000000000001";
+        String house = "eeeece01-0000-0000-0000-000000000002";
+        exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                + "device_id, entity_type, capabilities, guard_config) VALUES "
+                + "('" + hybrid + "','" + tenantA + "','" + siteId + "','battery-hybrid',"
+                + "'Batteriespeicher', FALSE, '" + deviceId + "', 'battery-hybrid', "
+                + "'{\"measure\":[{\"channel\":\"soc_pct\"}]}'::jsonb, '{}'::jsonb), "
+                + "('" + house + "','" + tenantA + "','" + siteId + "','house-load',"
+                + "'Hausverbrauch', FALSE, '" + deviceId + "', 'house-load', "
+                + "'{\"measure\":[{\"channel\":\"power_kw\"}]}'::jsonb, '{}'::jsonb)");
+
+        // (a) THE DEPLOY-DAY STATE: house-load has NOT ONE v2 row. Before the fix
+        //     this answered {} at every range; now it serves the whole v1 window.
+        Map<String, Object> houseChannels = entityDayChannels(demo, siteId, house, "2026-06-15");
+        List<Map<String, Object>> housePower =
+                (List<Map<String, Object>>) houseChannels.get("power_kw");
+        assertThat(housePower).hasSize(3); // 10:00, 10:15, 11:00 - all from v1 load_kw
+        assertThat(num(housePower.get(0), "avg")).isEqualTo(2.0);
+        assertThat(num(housePower.get(1), "avg")).isEqualTo(1.0);
+        assertThat(num(housePower.get(2), "avg")).isEqualTo(0.0);
+
+        // --- the v2 era starts at 11:00 (the first fan-out sample) ---
+        exec("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, "
+                + "entity_id, channel, value) VALUES "
+                + "('2026-06-15T11:00:00Z','2026-06-15T11:00:01Z','" + tenantA + "','" + siteId
+                + "','" + deviceId + "','" + hybrid + "','battery_power_kw', 9.0), "
+                + "('2026-06-15T11:00:00Z','2026-06-15T11:00:01Z','" + tenantA + "','" + siteId
+                + "','" + deviceId + "','" + hybrid + "','pv_power_kw', 8.0), "
+                + "('2026-06-15T11:00:00Z','2026-06-15T11:00:01Z','" + tenantA + "','" + siteId
+                + "','" + deviceId + "','" + hybrid + "','soc_pct', 70.0)");
+
+        // (b)+(c)+(d) ONE continuous series across the seam: v1 owns the buckets
+        // that START before 11:00, v2 owns the rest - no gap, no overlap.
+        Map<String, Object> ch = entityDayChannels(demo, siteId, hybrid, "2026-06-15");
+        List<Map<String, Object>> batt =
+                (List<Map<String, Object>>) ch.get("battery_power_kw");
+        assertThat(batt).hasSize(3);
+        assertThat(batt.get(0)).containsEntry("start", "2026-06-15T10:00:00Z");
+        assertThat(num(batt.get(0), "avg")).isEqualTo(2.0); // v1: (1-2+3, 3-2+1)/2
+        assertThat(batt.get(1)).containsEntry("start", "2026-06-15T10:15:00Z");
+        assertThat(num(batt.get(1), "avg")).isEqualTo(4.0); // v1: 0-1+5
+        assertThat(batt.get(2)).containsEntry("start", "2026-06-15T11:00:00Z");
+        assertThat(num(batt.get(2), "avg")).isEqualTo(9.0); // v2 ALONE - the 11:05
+                                                            // v1 sample (0.0) is not blended in
+
+        List<Map<String, Object>> pv = (List<Map<String, Object>>) ch.get("pv_power_kw");
+        assertThat(pv).hasSize(3);
+        assertThat(num(pv.get(0), "avg")).isEqualTo(2.0); // (3+1)/2
+        assertThat(num(pv.get(2), "avg")).isEqualTo(8.0);
+
+        List<Map<String, Object>> soc = (List<Map<String, Object>>) ch.get("soc_pct");
+        assertThat(soc).hasSize(3);
+        assertThat(num(soc.get(0), "avg")).isEqualTo(51.0);
+        assertThat(num(soc.get(0), "min")).isEqualTo(50.0);
+        assertThat(num(soc.get(0), "max")).isEqualTo(52.0);
+        assertThat(num(soc.get(2), "avg")).isEqualTo(70.0);
+
+        // (e) the rollup-backed ranges bridge as well: the 10:00 hour comes from
+        // the v1 rollup (quarter powers 2.0 and 4.0 -> 3.0), the 11:00 hour from v2.
+        exec("CALL refresh_telemetry_rollups('2026-06-01T00:00:00Z')");
+        exec("CALL refresh_telemetry_v2_rollups('2026-06-01T00:00:00Z')");
+        ResponseEntity<Map<String, Object>> week = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/entities/" + hybrid
+                        + "/history?range=week&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(week.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> weekBatt = (List<Map<String, Object>>)
+                ((Map<String, Object>) week.getBody().get("channels")).get("battery_power_kw");
+        assertThat(weekBatt).hasSize(2);
+        assertThat(weekBatt.get(0)).containsEntry("start", "2026-06-15T10:00:00Z");
+        assertThat(num(weekBatt.get(0), "avg")).isEqualTo(3.0); // (2.0 + 4.0)/2, from v1
+        assertThat(weekBatt.get(1)).containsEntry("start", "2026-06-15T11:00:00Z");
+        assertThat(num(weekBatt.get(1), "avg")).isEqualTo(9.0); // from v2
+
+        // A day the plant did not exist stays honestly empty - the splice never
+        // fabricates buckets.
+        assertThat(entityDayChannels(demo, siteId, hybrid, "2026-06-01")).isEmpty();
+
+        // RLS: the other tenant cannot read the spliced series either.
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/entities/" + hybrid + "/history"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Audit V2/X1 + H8 + H3 on the wire: a day with NO buckets must answer "—"
+     * for every aggregate (the energy sums used to answer a confident 0.0 while
+     * the cost fields correctly answered null), the spot-priced gridCost carries
+     * its tariff context, and the ex-ante plan sum is served under a name that
+     * says "planned".
+     */
+    @Test
+    void historyTotalsAreNullOnAZeroBucketDayAndCarryTariffAndPlannedContext() {
+        String demo = token("demo", "demo");
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Leer-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        ResponseEntity<Map<String, Object>> day = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/history?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(day.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(list(day.getBody(), "buckets")).isEmpty();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> totals = (Map<String, Object>) day.getBody().get("totals");
+        assertThat(totals).containsEntry("consumptionKwh", null)
+                .containsEntry("pvGenerationKwh", null)
+                .containsEntry("gridImportKwh", null)
+                .containsEntry("gridExportKwh", null)
+                .containsEntry("gridCostEur", null)
+                .containsEntry("autarkiePct", null)
+                .containsEntry("eigenverbrauchPct", null)
+                // H3: the ex-ante PLANNED sum has "planned" in its name; the old
+                // bare field survives one release as a same-valued alias.
+                .containsEntry("batterySavingsPlannedEur", null)
+                .containsEntry("batterySavingsEur", null)
+                // H8: gridCostEur is bare spot - the context says no tariff is set.
+                .containsEntry("tarifArt", "ohne");
+
+        // With a tariff configured the context follows the site.
+        rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Leer-Anlage", "tarifArt", "fest",
+                        "tarifParamCtKwh", 30), bearer(demo)), String.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> after = (Map<String, Object>) rest.exchange(
+                url("/api/v1/sites/" + siteId + "/history?range=day&at=2026-06-15"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("totals");
+        assertThat(after).containsEntry("tarifArt", "fest");
+    }
+
+    /**
+     * Audit H2 (server half): the honest {@code unreported} verdict must be on
+     * the wire for an entity no device has ever echoed - the portal maps unknown
+     * to a grey state instead of a fail-open green dot. {@code observed} stays
+     * null (nothing was reported), never a synthesized "ok".
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void entitySurfaceReportsUnreportedWhenNoDeviceEverEchoedTheRegistry() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Stumm-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-stumm-01");
+
+        String entityId = "eeeece02-0000-0000-0000-000000000001";
+        exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                + "device_id, entity_type, capabilities, guard_config) VALUES ('" + entityId
+                + "','" + tenantA + "','" + siteId + "','battery-hybrid','Batteriespeicher', "
+                + "FALSE, '" + deviceId + "', 'battery-hybrid', "
+                + "'{\"measure\":[{\"channel\":\"soc_pct\"}]}'::jsonb, '{}'::jsonb)");
+        // A registry WAS pushed (so this is not the never_pushed case) but the
+        // device has never reported back - exactly the deploy-day state.
+        exec("INSERT INTO entity_registry_state (site_id, tenant_id, device_id, revision) "
+                + "VALUES ('" + siteId + "','" + tenantA + "','" + deviceId + "','rev-1')");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> entities = list(res.getBody(), "entities");
+        assertThat(entities).hasSize(1);
+        assertThat(entities.get(0)).containsEntry("syncStatus", "unreported")
+                .containsEntry("observed", null);
+    }
+
+    /** The day-range channel map of one entity (helper for the splice test). */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> entityDayChannels(String token, String siteId, String entityId,
+            String at) {
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/entities/" + entityId
+                        + "/history?range=day&at=" + at),
+                HttpMethod.GET, new HttpEntity<>(bearer(token)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return (Map<String, Object>) res.getBody().get("channels");
+    }
+
+    /**
      * Portal v3 M6 (OPEN O3): the CUSTOMER adopt twin
      * {@code POST /api/v1/sites/{id}/v2-entities/adopt} — a Portal-User assigns
      * an edge-reported source of THEIR OWN site in one move. Mirrors

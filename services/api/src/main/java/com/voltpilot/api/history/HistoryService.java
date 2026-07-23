@@ -54,7 +54,8 @@ public class HistoryService {
                     cutover);
         }
 
-        HistoryTotalsDto totals = totals(buckets, repo.savings(siteId, window.from(), window.to()));
+        HistoryTotalsDto totals = totals(buckets, repo.savings(siteId, window.from(), window.to()),
+                repo.tarifArt(siteId));
 
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY
                 ? Tagesprotokoll.build(buckets)
@@ -117,6 +118,18 @@ public class HistoryService {
 
     /** Period totals; see {@link HistoryTotalsDto} for the formulas. */
     static HistoryTotalsDto totals(List<HistoryBucketDto> buckets, BigDecimal savings) {
+        return totals(buckets, savings, null);
+    }
+
+    /**
+     * Period totals; see {@link HistoryTotalsDto} for the formulas. Every sum
+     * follows the cost fields' discipline: null (not 0) when NO bucket carried
+     * the channel, so a 0-bucket day renders "—" rather than a confident zero
+     * (audit V2/X1). {@code tarifArt} is pure context for {@code gridCostEur},
+     * which is always the bare spot cost (audit H8).
+     */
+    static HistoryTotalsDto totals(List<HistoryBucketDto> buckets, BigDecimal savings,
+            String tarifArt) {
         BigDecimal consumption = sum(buckets, HistoryBucketDto::loadKwh);
         BigDecimal pv = sum(buckets, HistoryBucketDto::pvKwh);
         BigDecimal gridImport = sum(buckets, HistoryBucketDto::gridImportKwh);
@@ -130,22 +143,25 @@ public class HistoryService {
             }
         }
 
+        // A ratio needs BOTH of its inputs; an unknown denominator/numerator is
+        // undefined, never silently 0.
         BigDecimal autarkie = null;
-        if (consumption.signum() > 0) {
+        if (consumption != null && gridImport != null && consumption.signum() > 0) {
             autarkie = clampPct(BigDecimal.ONE
                     .subtract(gridImport.divide(consumption, MathContext.DECIMAL64))
                     .multiply(BigDecimal.valueOf(100)));
         }
         BigDecimal eigenverbrauch = null;
-        if (pv.signum() > 0) {
+        if (pv != null && gridExport != null && pv.signum() > 0) {
             eigenverbrauch = clampPct(pv.subtract(gridExport)
                     .divide(pv, MathContext.DECIMAL64)
                     .multiply(BigDecimal.valueOf(100)));
         }
 
-        return new HistoryTotalsDto(
+        return HistoryTotalsDto.of(
                 round(consumption), round(pv), round(gridImport), round(gridExport),
                 cost == null ? null : cost.setScale(4, RoundingMode.HALF_UP),
+                tarifArt,
                 savings == null ? null : savings.setScale(4, RoundingMode.HALF_UP),
                 autarkie, eigenverbrauch);
     }
@@ -161,13 +177,18 @@ public class HistoryService {
                 b.priceEurMwh(), cost);
     }
 
+    /**
+     * Sum of a bucket field, or <b>null when not a single bucket carried it</b>
+     * (a 0-bucket period, or a channel the plant does not measure at all) -
+     * the same discipline the cost fields already had.
+     */
     private static BigDecimal sum(List<HistoryBucketDto> buckets,
             Function<HistoryBucketDto, BigDecimal> field) {
-        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal total = null;
         for (HistoryBucketDto b : buckets) {
             BigDecimal v = field.apply(b);
             if (v != null) {
-                total = total.add(v);
+                total = (total == null ? BigDecimal.ZERO : total).add(v);
             }
         }
         return total;
@@ -179,6 +200,6 @@ public class HistoryService {
     }
 
     private static BigDecimal round(BigDecimal v) {
-        return v.setScale(3, RoundingMode.HALF_UP);
+        return v == null ? null : v.setScale(3, RoundingMode.HALF_UP);
     }
 }

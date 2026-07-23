@@ -1996,6 +1996,14 @@ paths:
         Channel-keyed bucket series of one entity: day = live 15-min buckets
         from raw telemetry_v2, week = hourly rollup, month/year = Europe/Berlin
         daily rollup (the v1 history discipline). RLS-scoped.
+        For a COMPOSED entity (battery-hybrid / grid-meter / house-load) the
+        part of the window BEFORE the v2 era is reconstructed read-side from the
+        site's v1 telemetry through the same channel map the writer's
+        ComposedEntityFanout writes forward with, spliced at
+        max(site.v2_history_cutover_at, the entity's first v2 sample in the
+        window) - v1 owns buckets starting before it, v2 those at/after it, so
+        the series is gap-free and overlap-free across the migration. Nothing is
+        copied. A v2-native entity (wallbox, generic Modbus) is pure v2.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -4303,12 +4311,14 @@ components:
         totals:
           type: object
           properties:
-            consumptionKwh: { type: number }
-            pvGenerationKwh: { type: number }
-            gridImportKwh: { type: number }
-            gridExportKwh: { type: number }
-            gridCostEur: { type: number, nullable: true, description: Null when no price data overlaps the period. }
-            batterySavingsEur: { type: number, nullable: true, description: From persisted optimizer plans; null where none exist. }
+            consumptionKwh: { type: number, nullable: true, description: Null when no bucket carried the channel (0-bucket period) - never a fabricated 0. }
+            pvGenerationKwh: { type: number, nullable: true, description: Null when no bucket carried the channel. }
+            gridImportKwh: { type: number, nullable: true, description: Null when no bucket carried the channel. }
+            gridExportKwh: { type: number, nullable: true, description: Null when no bucket carried the channel. }
+            gridCostEur: { type: number, nullable: true, description: "Import energy x matching day-ahead price; ALWAYS the bare spot cost (no retail tariff is applied). Null when no price data overlaps the period. See tarifArt for the labeling context." }
+            tarifArt: { type: string, nullable: true, enum: [dynamisch, fest, ohne], description: "The site's configured tariff kind - context for gridCostEur, which is spot-priced regardless. 'ohne' means the number must be labeled as a spot price." }
+            batterySavingsPlannedEur: { type: number, nullable: true, description: "EX-ANTE PLANNED savings from the persisted optimizer plans (latest run per slot); null where no plan exists. NOT measured money - the measured counterpart is savedEur on /earnings. Surfaces must say 'geplant'." }
+            batterySavingsEur: { type: number, nullable: true, deprecated: true, description: Deprecated alias of batterySavingsPlannedEur (same value); kept one release. }
             autarkiePct: { type: number, nullable: true, description: "(1 - grid import / consumption) x 100, clamped 0..100." }
             eigenverbrauchPct: { type: number, nullable: true, description: "(pv - grid export) / pv x 100, clamped 0..100." }
         protocol:
