@@ -120,7 +120,9 @@ export function ScheduleChart({
       markLineData.push({
         xAxis: nowIdx,
         lineStyle: { color: t.price, type: 'solid', width: 2 },
-        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop' },
+        // rotate 0: an inside label on a vertical markLine otherwise renders
+        // rotated along the line (the documented edge-label gotcha).
+        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop', rotate: 0 },
       });
     // U4: the peak-shaving Ziel as a horizontal red dashed line on the power axis.
     if (target != null)
