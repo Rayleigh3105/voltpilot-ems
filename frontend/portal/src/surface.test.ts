@@ -650,6 +650,53 @@ describe('Komposition', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// v3.1-M1: ModeManifest.settings (additive Container-Ansprüche, report §2)
+// ---------------------------------------------------------------------------
+
+describe('ModeManifest.settings (v3.1-M1, additiv)', () => {
+  it('markt beansprucht Speicherschonung + Netzladen + anzulegenden Wert + Tarif', () => {
+    const markt = activeModes(MARKT)[0];
+    expect(markt.manifest.settings).toEqual([
+      'speicherschonung',
+      'netzladen',
+      'anzulegender-wert',
+      'stromtarif',
+    ]);
+  });
+
+  it('eigenverbrauch beansprucht Tarif + Speicherschonung (Zweit-Claim Batterie)', () => {
+    const ev = activeModes(PRIVAT).find((m) => m.kind === 'eigenverbrauch')!;
+    expect(ev.manifest.settings).toEqual(['stromtarif', 'speicherschonung']);
+  });
+
+  it('lastspitzenkappung beansprucht die drei Read-only-Ids', () => {
+    const peak = activeModes(GEWERBE).find((m) => m.kind === 'lastspitzenkappung')!;
+    expect(peak.manifest.settings).toEqual([
+      'leistungspreis',
+      'abrechnung-leistung',
+      'lastspitzen-reserve',
+    ]);
+  });
+
+  it('atypische Netznutzung und Automation beanspruchen keine Einstellung', () => {
+    const atyp = activeModes({
+      signals: { hasStorage: false, hasPv: false, activeStrategyNodeTypes: ['vp.strategy.atypical-grid'] },
+      entities: [BATTERY],
+    })[0];
+    expect(atyp.manifest.settings).toEqual([]);
+    const auto = activeModes(PRIVAT).find((m) => m.kind === 'automation')!;
+    expect(auto.manifest.settings).toEqual([]);
+  });
+
+  it('eine leere Projektion trägt nirgends Settings (v1 byte-gleich)', () => {
+    for (const mode of anlageSurface(LEER).modes) {
+      expect(mode.manifest.settings).toEqual([]);
+    }
+    expect(anlageSurface(LEER).modes).toEqual([]);
+  });
+});
+
 describe('M3-Overlay: `profileStates` ist rein additiv', () => {
   it('ohne profileStates ist das Ergebnis byte-gleich zu vorher', () => {
     for (const input of [PRIVAT, GEWERBE, MARKT, MULTI, LEER]) {
