@@ -18,10 +18,12 @@ import './CockpitBlocks.css';
  * Diagramm gebaut** — die Owner-Entscheidung (BUILD.md §2) ist Wiederverwendung;
  * nur Größe und Platzierung ändern sich (`size="hero"`).
  *
- * Rechts die Kennzahlen: **Autarkie heute** und **Eigenverbrauch** als Ringe,
- * die verdiente Summe des gewählten Zeitraums mit der Steuerungs-Zurechnung als
- * Unterzeile, und die eine Fahrplan-Zeile. Ein Tageswert, der nicht vorliegt,
- * erzeugt **keinen Ring** — nie „0 %".
+ * Rechts die Kennzahlen: **Autarkie** und **Eigenverbrauch** als Ringe, die
+ * dem gewählten Zeitraum folgen (v3.2 M1 — Etikett „Autarkie · Monat"), die
+ * verdiente Summe des gewählten Zeitraums mit der Steuerungs-Zurechnung als
+ * Unterzeile, und die eine Fahrplan-Zeile. Der Energiefluss links bleibt
+ * „jetzt gerade". Ein Zeitraum-Wert, der nicht vorliegt, erzeugt **keinen
+ * Ring** — nie „0 %".
  *
  * Render-only: alles Abgeleitete kommt aus `cockpitWidgets.ts` `cockpitHero`.
  */

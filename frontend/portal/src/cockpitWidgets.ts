@@ -32,7 +32,7 @@
  * zweite Ableitung (M2-Akzeptanz 3).
  */
 
-import type { EarningsRange, EarningsSite, HistoryTotals } from './api';
+import type { EarningsRange, EarningsSite, HistoryRange, HistoryTotals } from './api';
 import { energyLabel, periodLabel } from './anlage';
 import {
   eigenverbrauchBlock,
@@ -556,17 +556,47 @@ const RING_HUE = {
 } as const;
 
 /**
- * Der Hero neben dem Energiefluss: **Autarkie heute** und **Eigenverbrauch** als
+ * Der Historie-Bereich, aus dem die Hero-Ringe ihre zeitraum-bezogene
+ * Autarkie/Eigenverbrauch ziehen. Die Zeitraum-Tabs sprechen `EarningsRange`
+ * (Heute/Monat/Jahr/Gesamt), die Historie kennt `HistoryRange`
+ * (day/week/month/year) — hier die Abbildung. **„Gesamt" (`all`) hat keinen
+ * All-Zeit-Historie-Endpunkt**, also `null`: der Aufrufer holt dann keine
+ * Summen und die Ringe entfallen ehrlich (nie ein falscher Jahres-Wert unter
+ * „Gesamt").
+ */
+export function historyRangeForCockpit(range: EarningsRange): HistoryRange | null {
+  switch (range) {
+    case 'day':
+      return 'day';
+    case 'month':
+      return 'month';
+    case 'year':
+      return 'year';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Der Hero neben dem Energiefluss: **Autarkie** und **Eigenverbrauch** als
  * Ringe, die verdiente Summe des gewählten Zeitraums mit der Steuerungs-
  * Zurechnung als Unterzeile, und die eine Fahrplan-Zeile.
  *
- * Ehrlichkeit: ein Tageswert, der nicht vorliegt, erzeugt **keinen Ring**
+ * Die Ring-Kennzahlen **folgen dem gewählten Zeitraum** (v3.2 M1): `totals`
+ * sind die zeitraum-bezogenen Historie-Summen (Tag/Monat/Jahr), und das
+ * Ring-Etikett trägt die Periode wie die Geld-Zeile (`Autarkie · Juli`) — nur
+ * der Energiefluss selbst bleibt „jetzt gerade". „Gesamt" hat keinen All-Zeit-
+ * Historie-Endpunkt, also übergibt der Aufrufer dann `totals: null` und es
+ * erscheint **kein Ring** (nie ein falscher Zeitraum-Wert).
+ *
+ * Ehrlichkeit: ein Zeitraum-Wert, der nicht vorliegt, erzeugt **keinen Ring**
  * (nicht „0 %", M2-Akzeptanz 2); ohne berechenbaren Betrag entfällt die
  * Geld-Zeile. Die Steuerungs-Zurechnung ist NIE ein eigener Summand — sie
  * steckt bereits im Erlös und steht deshalb darunter.
  */
 export function cockpitHero(input: {
-  dayTotals?: HistoryTotals | null;
+  /** Die Historie-Summen des GEWÄHLTEN Zeitraums (nicht „heute"). */
+  totals?: HistoryTotals | null;
   money?: EarningsSite | null;
   range: EarningsRange;
   at?: Date;
@@ -575,29 +605,29 @@ export function cockpitHero(input: {
   slotMinutes?: number;
   plantKind?: PlanWordingKind;
 }): CockpitHeroView {
+  const label = periodLabel(input.range, input.at ?? input.now, input.now);
   const rings: HeroRing[] = [];
-  const autarkie = num(input.dayTotals?.autarkiePct);
+  const autarkie = num(input.totals?.autarkiePct);
   if (autarkie != null) {
     rings.push({
       id: 'autarkie',
-      label: 'Autarkie heute',
+      label: `Autarkie · ${label}`,
       pct: clampPct(autarkie),
       valueText: fmtNum(autarkie, '%', 0),
       hue: RING_HUE.autarkie,
     });
   }
-  const ev = num(input.dayTotals?.eigenverbrauchPct);
+  const ev = num(input.totals?.eigenverbrauchPct);
   if (ev != null) {
     rings.push({
       id: 'eigenverbrauch',
-      label: 'Eigenverbrauch',
+      label: `Eigenverbrauch · ${label}`,
       pct: clampPct(ev),
       valueText: fmtNum(ev, '%', 0),
       hue: RING_HUE.eigenverbrauch,
     });
   }
 
-  const label = periodLabel(input.range, input.at ?? input.now, input.now);
   const total = num(input.money?.gesamtertragEur) ?? num(input.money?.einspeiseErloesEur);
   const money: HeroMoney | null =
     total == null

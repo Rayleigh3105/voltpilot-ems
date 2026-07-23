@@ -5,6 +5,7 @@ import { api, type Site } from '../api';
 import * as adaptive from '../useAdaptiveLive';
 import * as surfaceHook from '../useAnlageSurface';
 import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from '../surface';
+import { periodLabel } from '../anlage';
 
 /**
  * M3 (#531) — der Cockpit-Beweis.
@@ -313,13 +314,20 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy();
   });
 
-  it('zeigt Autarkie und Eigenverbrauch als Ringe neben dem Fluss', async () => {
+  it('zeigt Autarkie und Eigenverbrauch als Ringe, die dem Zeitraum folgen', async () => {
+    // v3.2 M1: die Ring-Kennzahlen tragen die Periode wie die Geld-Zeile (nicht
+    // mehr das feste „heute"). Der Energiefluss selbst bleibt „jetzt gerade".
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeTruthy());
     const labels = [...container.querySelectorAll('.vp-hero-ring-label')].map((n) => n.textContent);
-    expect(labels).toEqual(['Autarkie heute', 'Eigenverbrauch']);
+    // Default-Tab „Monat": die Ringe tragen die Periode des gewählten Zeitraums.
+    const now = new Date();
+    const period = periodLabel('month', now, now);
+    expect(labels).toEqual([`Autarkie · ${period}`, `Eigenverbrauch · ${period}`]);
+    // Nie mehr das zeitraum-blinde „heute".
+    expect(labels.join(' ')).not.toContain('heute');
   });
 
   it('lässt die Ringe WEG, wenn der Tageswert fehlt (nie „0 %")', async () => {
@@ -392,5 +400,94 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(line).toContain('Ihre Anlage kann mehr');
     expect(line).toContain('Modus hinzufügen');
     expect(line).not.toMatch(/Lastspitzen|Marktvermarktung|Eigenverbrauch/);
+  });
+});
+
+describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss bleibt live', () => {
+  /** Autarkie je Zeitraum, damit ein Tab-Wechsel den Wert SICHTBAR ändert. */
+  function rangeAwareHistory() {
+    vi.spyOn(api, 'history').mockImplementation((_id, range) =>
+      Promise.resolve({
+        totals: {
+          autarkiePct:
+            range === 'day' ? 40 : range === 'month' ? 64 : range === 'year' ? 71 : null,
+          eigenverbrauchPct:
+            range === 'day' ? 30 : range === 'month' ? 55 : range === 'year' ? 60 : null,
+          gridImportKwh: 1.8,
+        },
+        buckets: [],
+        protocol: [],
+        plan: [],
+      } as never),
+    );
+  }
+
+  function tab(container: HTMLElement, label: string): HTMLButtonElement {
+    const btn = [...container.querySelectorAll('.vp-period-tabs button')].find(
+      (b) => b.textContent === label,
+    );
+    return btn as HTMLButtonElement;
+  }
+
+  function ringLabels(container: HTMLElement): (string | null)[] {
+    return [...container.querySelectorAll('.vp-hero-ring-label')].map((n) => n.textContent);
+  }
+
+  function ringValues(container: HTMLElement): (string | null)[] {
+    return [...container.querySelectorAll('.vp-hero-ring svg text')].map((n) => n.textContent);
+  }
+
+  it('wechselt Kennzahl UND Etikett mit Heute/Monat/Jahr — Gesamt hat keinen Ring', async () => {
+    rangeAwareHistory();
+    mockAdaptive(true);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeTruthy());
+
+    const now = new Date();
+
+    // Default „Monat": 64 % unter dem Monatsetikett.
+    await waitFor(() => expect(ringValues(container)[0]).toContain('64'));
+    expect(ringLabels(container)).toEqual([
+      `Autarkie · ${periodLabel('month', now, now)}`,
+      `Eigenverbrauch · ${periodLabel('month', now, now)}`,
+    ]);
+
+    // „Jahr": der Wert UND das Etikett folgen dem Tab.
+    fireEvent.click(tab(container, 'Jahr'));
+    await waitFor(() => expect(ringValues(container)[0]).toContain('71'));
+    expect(ringLabels(container)).toEqual([
+      `Autarkie · ${periodLabel('year', now, now)}`,
+      `Eigenverbrauch · ${periodLabel('year', now, now)}`,
+    ]);
+
+    // „Heute": das Tagesetikett, der Tageswert.
+    fireEvent.click(tab(container, 'Heute'));
+    await waitFor(() => expect(ringValues(container)[0]).toContain('40'));
+    expect(ringLabels(container)[0]).toBe('Autarkie · Heute');
+
+    // „Gesamt": kein All-Zeit-Historie-Endpunkt → keine Ringe (nie ein falscher
+    // Wert), aber der Energiefluss bleibt live sichtbar.
+    fireEvent.click(tab(container, 'Gesamt'));
+    await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeNull());
+    expect(container.textContent).not.toContain('0 %');
+    expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy();
+  });
+
+  it('lässt das Energiefluss-Diagramm über alle Tabs unverändert live', async () => {
+    // Der Fluss ist „jetzt gerade" und darf sich beim Tab-Wechsel NICHT ändern.
+    rangeAwareHistory();
+    mockAdaptive(true);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy());
+    const flowBefore = container.querySelector('.vp-hero-flow .vp-flow-wrap')?.innerHTML;
+    for (const label of ['Heute', 'Jahr', 'Gesamt', 'Monat']) {
+      fireEvent.click(tab(container, label));
+      await waitFor(() =>
+        expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy(),
+      );
+    }
+    expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')?.innerHTML).toBe(flowBefore);
   });
 });
