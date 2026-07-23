@@ -48,7 +48,7 @@ describe('flowChain', () => {
   it('walks the pilot chain in topological order', () => {
     const chain = flowChain(pilotTemplate('Pilot', 'batt-1'));
     expect(chain.map((c) => c.label)).toEqual([
-      'Strompreis', 'PV-Prognose', 'Entität lesen', 'Marktoptimierung',
+      'Strompreis', 'PV-Prognose', 'Messwert eines Geräts', 'Marktoptimierung',
     ]);
     expect(flowChain(pilotTemplate('Pilot', 'batt-1'), 3)).toHaveLength(3);
   });

@@ -22,6 +22,12 @@ interface FlowStepListProps {
   /** Present only while the automation is running. */
   onPause?: () => void;
   pauseBusy?: boolean;
+  /**
+   * The phone footer ("… an einem größeren Bildschirm"). False on the desktop
+   * REVIEW step (audit E-1), which reuses this list on a large screen where
+   * that sentence would be plainly untrue.
+   */
+  showPhoneHint?: boolean;
 }
 
 export function FlowStepList({
@@ -30,6 +36,7 @@ export function FlowStepList({
   statusTone,
   onPause,
   pauseBusy,
+  showPhoneHint = true,
 }: FlowStepListProps) {
   return (
     <div className="vp-stepflow" data-testid="flow-steplist">
@@ -62,9 +69,11 @@ export function FlowStepList({
           Automation anhalten
         </Button>
       )}
-      <p className="vp-flowed-help">
-        Zum Bearbeiten öffnen Sie diese Automation an einem größeren Bildschirm.
-      </p>
+      {showPhoneHint && (
+        <p className="vp-flowed-help">
+          Zum Bearbeiten öffnen Sie diese Automation an einem größeren Bildschirm.
+        </p>
+      )}
     </div>
   );
 }

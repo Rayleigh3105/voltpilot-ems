@@ -125,6 +125,14 @@ export interface CatalogType {
   // market-/grid-near strategy node that needs VoltPilot enablement per site
   // (Arbitrage/Peak/atyp. NN). Absent/false = freely usable.
   gated?: boolean;
+  /**
+   * Audit N-1: false = the CUSTOMER surfaces must not offer this node because
+   * the platform cannot keep its promise end to end yet (the notification has
+   * no delivery channel; the Wenn/Dann gate's only sink is that node). The type
+   * stays in the catalog - existing flows keep validating and running, and the
+   * technical (platform-admin) layer keeps it for diagnosis. Absent = visible.
+   */
+  customer_visible?: boolean;
   runtimes: string[];
   inputs: CatalogPort[];
   outputs: CatalogPort[];
@@ -145,6 +153,22 @@ const TYPES_BY_ID = new Map(catalog.types.map((t) => [t.type, t]));
 
 export function catalogType(typeId: string): CatalogType | null {
   return TYPES_BY_ID.get(typeId) ?? null;
+}
+
+/**
+ * Audit N-1: may a CUSTOMER surface offer this node type? Absent flag = yes
+ * (the default for every node); an explicit `customer_visible:false` marks a
+ * node whose promise the platform cannot keep yet, so it is offered only in
+ * the technical layer. Never a gate - it hides an OFFER, and an existing flow
+ * that already carries the node keeps validating, compiling and running.
+ */
+export function customerVisible(type: Pick<CatalogType, 'customer_visible'>): boolean {
+  return type.customer_visible !== false;
+}
+
+/** The node types the customer palette/builder must not offer (N-1). */
+export function diagnosticOnlyTypes(): string[] {
+  return catalog.types.filter((t) => !customerVisible(t)).map((t) => t.type);
 }
 
 export function catalogPort(

@@ -8,6 +8,7 @@ import {
   missingReason,
   partition,
   plantRoles,
+  sharedReason,
 } from './templateFilter';
 
 function ent(
@@ -119,5 +120,29 @@ describe('partition / hiddenDisclosure', () => {
     const part = partition(CUSTOMER_TEMPLATES, { entities: [GRID, WALLBOX] });
     expect(part.notFitting).toEqual([]);
     expect(hiddenDisclosure(part)).toBeNull();
+  });
+});
+
+/**
+ * Audit A-2: the collapsed empty state said only "Für Ihre Anlage passt derzeit
+ * keine Vorlage." while the reason sat one click deep in the expander.
+ */
+describe('sharedReason (audit A-2)', () => {
+  it('names the ONE reason when every hidden template fails on the same thing', () => {
+    const part = partition(CUSTOMER_TEMPLATES, { entities: [GRID] });
+    expect(part.fitting).toEqual([]);
+    expect(sharedReason(part)).toMatch(/steuerbares Gerät/);
+  });
+
+  it('stays silent when nothing is hidden or the reasons differ', () => {
+    expect(sharedReason(partition(CUSTOMER_TEMPLATES, { entities: [GRID, WALLBOX] })))
+      .toBeNull();
+    expect(sharedReason({
+      fitting: [],
+      notFitting: [
+        { template: CUSTOMER_TEMPLATES[0], reason: 'Dafür fehlt Ihrer Anlage noch A.' },
+        { template: CUSTOMER_TEMPLATES[1], reason: 'Dafür fehlt Ihrer Anlage noch B.' },
+      ],
+    })).toBeNull();
   });
 });

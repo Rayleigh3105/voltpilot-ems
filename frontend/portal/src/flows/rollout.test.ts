@@ -107,3 +107,29 @@ describe('forkBanner', () => {
     expect(forkBanner({ activeVersion: 4, editingVersion: 4, dirty: false })).toBeNull();
   });
 });
+
+/**
+ * Audit E-9: the happy path showed the raw server string "Flow aktiviert
+ * (Version 1)." - internal vocabulary plus a version number nobody asked for -
+ * and showed it TWICE. The customer sentence now wins for `fertig`; a FAILURE
+ * still prefers the server's precise cause.
+ */
+describe('rolloutMessage · audit E-9', () => {
+  it('prefers the customer sentence over the server string on success', () => {
+    expect(rolloutMessage({ phase: 'fertig', message: 'Flow aktiviert (Version 1).' }))
+      .toBe('Ihre Automation läuft jetzt auf dem Gerät.');
+    expect(rolloutMessage({ phase: 'fertig' }))
+      .toBe('Ihre Automation läuft jetzt auf dem Gerät.');
+    expect(rolloutMessage({ phase: 'fertig', message: 'Flow aktiviert (Version 1).' }))
+      .not.toMatch(/Flow|Version/);
+  });
+
+  it('still passes a FAILURE cause through verbatim (E-7 feeds it in)', () => {
+    const precise = 'Für das Jahr 2025 liegen nur 0 % der Börsenpreise vor.';
+    expect(rolloutMessage({ phase: 'fehler', failedAt: 'simulieren', message: precise }))
+      .toBe(precise);
+    // ...and falls back to the generic sentence when no cause came back.
+    expect(rolloutMessage({ phase: 'fehler', failedAt: 'simulieren' }))
+      .toMatch(/Probelauf/);
+  });
+});

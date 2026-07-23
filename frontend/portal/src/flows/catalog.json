@@ -17,7 +17,14 @@
     "AE7 node governance (docs/contracts/v2/usage-profile.md §3): `gated:true` marks a",
     "market-/grid-near strategy node that needs VoltPilot enablement (Arbitrage, Peak-Shaving,",
     "atyp. NN); placeable in a draft, activatable only after per-site admin enablement. Free",
-    "nodes omit the flag (Eigenverbrauch, device control, all data/logic/action nodes)."
+    "nodes omit the flag (Eigenverbrauch, device control, all data/logic/action nodes).",
+    "`customer_visible:false` marks a node the CUSTOMER surfaces must not offer because the",
+    "platform cannot yet keep its promise end to end (audit N-1: vp.notify.push publishes on",
+    "the local bus `edge/notify` and NO consumer exists, so an activated notification rule",
+    "would report 'Läuft' and deliver nothing; vp.logic.gate's only sink is that node). The",
+    "type stays in the catalog - existing flows keep validating, compiling and running, and",
+    "the technical (platform-admin) layer keeps it for diagnosis. Absent = customer-visible.",
+    "Remove the flag from vp.notify.push the day a delivery channel ships."
   ],
   "types": [
     {
@@ -47,15 +54,15 @@
     {
       "type": "vp.entity.read",
       "type_version": "1.0.0",
-      "label": "Entität lesen",
-      "description": "Liest einen Messkanal einer Entität (z. B. Speicher-Ladestand oder Netz-Leistung).",
+      "label": "Messwert eines Geräts",
+      "description": "Liest einen Messwert eines Geräts (z. B. Ladestand des Speichers oder Leistung am Netzanschluss).",
       "group": "daten",
       "runtimes": ["edge"],
       "inputs": [],
       "outputs": [{ "name": "value", "type": "number", "label": "Wert" }],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Entität", "required": true },
-        { "name": "channel", "kind": "channel", "label": "Messkanal", "required": true, "help": "Muss eine Messfähigkeit der Entität sein (measure:<Kanal>)." }
+        { "name": "entity_id", "kind": "entityRef", "label": "Gerät", "required": true },
+        { "name": "channel", "kind": "channel", "label": "Messkanal", "required": true, "help": "Muss ein Messwert sein, den dieses Gerät liefert (measure:<Kanal>)." }
       ]
     },
     {
@@ -91,9 +98,10 @@
     {
       "type": "vp.logic.gate",
       "type_version": "1.0.0",
-      "label": "Wenn / Dann",
-      "description": "Löst aus, wenn die Bedingung wahr wird (steigende Flanke) - z. B. für eine Benachrichtigung.",
+      "label": "Wenn / Dann (nur Diagnose)",
+      "description": "Löst aus, wenn die Bedingung wahr wird (steigende Flanke). NUR DIAGNOSE: der einzige Baustein, der ein solches Ereignis annimmt, ist die Benachrichtigung - und die hat noch keinen Zustellweg.",
       "group": "logik",
+      "customer_visible": false,
       "runtimes": ["edge", "cloud"],
       "inputs": [{ "name": "wenn", "type": "bool", "label": "Wenn", "required": true }],
       "outputs": [{ "name": "dann", "type": "event", "label": "Dann" }],
@@ -128,7 +136,7 @@
       ],
       "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Entität", "required": true, "entityTypes": ["battery-hybrid"] },
+        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] },
         { "name": "speicherschonung", "kind": "enum", "label": "Umgang mit dem Speicher", "required": false, "options": ["aggressiv", "ausgewogen", "schonend"], "default": "ausgewogen", "optionLabels": { "aggressiv": "Aggressiv", "ausgewogen": "Ausgewogen", "schonend": "Schonend" } }
       ],
       "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
@@ -147,7 +155,7 @@
       ],
       "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Entität", "required": true, "entityTypes": ["battery-hybrid"] }
+        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] }
       ],
       "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true }
     },
@@ -164,7 +172,7 @@
       ],
       "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Entität", "required": true, "entityTypes": ["battery-hybrid"] }
+        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] }
       ],
       "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
       "hint": "Vertrags-Baustein: braucht das VoltPilot-Messkonzept und den Leistungspreis-Vertrag - Freischaltung durch VoltPilot."
@@ -182,7 +190,7 @@
       ],
       "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Entität", "required": true, "entityTypes": ["battery-hybrid"] }
+        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] }
       ],
       "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true },
       "hint": "Vertrags-Baustein: braucht die Hochlastzeitfenster des Netzbetreibers - Beratung und Freischaltung durch VoltPilot."
@@ -190,8 +198,8 @@
     {
       "type": "vp.entity.control",
       "type_version": "1.0.0",
-      "label": "Entität steuern",
-      "description": "Erzeugt Wünsche für eine Entität - der Edge-Kern arbitriert und die Guard-Kette klemmt jeden Wunsch (nie Sicherheit, Netz oder Vertrag).",
+      "label": "Gerät steuern",
+      "description": "Erzeugt Wünsche für ein Gerät - das Gerät entscheidet, und seine Schutzgrenzen klemmen jeden Wunsch (nie Sicherheit, Netz oder Vertrag).",
       "group": "aktion",
       "runtimes": ["edge"],
       "inputs": [
@@ -202,7 +210,7 @@
       "requires_any_input": ["value", "setpoint", "plan"],
       "outputs": [],
       "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Entität", "required": true },
+        { "name": "entity_id", "kind": "entityRef", "label": "Gerät", "required": true },
         { "name": "command", "kind": "enum", "label": "Kommando", "required": true, "options": ["setpoint_kw", "on_off", "limit_kw", "limit_pct", "mode"] },
         { "name": "ttl_s", "kind": "number", "label": "Wunsch-Gültigkeit (s)", "required": false, "min": 30, "max": 3600, "default": 180 }
       ],
@@ -211,9 +219,10 @@
     {
       "type": "vp.notify.push",
       "type_version": "1.0.0",
-      "label": "Benachrichtigung",
-      "description": "Sendet eine Nachricht an die Betreiber der Anlage, wenn der Auslöser feuert.",
+      "label": "Benachrichtigung (nur Diagnose)",
+      "description": "Legt eine Meldung auf dem Gerät ab, wenn der Auslöser feuert. NUR DIAGNOSE: es gibt noch keinen Zustellweg (keine E-Mail, keine Push-Nachricht, keine Anzeige im Portal), deshalb wird dieser Baustein Kundinnen und Kunden nicht angeboten.",
       "group": "aktion",
+      "customer_visible": false,
       "runtimes": ["edge", "cloud"],
       "inputs": [{ "name": "trigger", "type": "event", "label": "Auslöser", "required": true }],
       "outputs": [],
@@ -284,7 +293,7 @@
       "type": "vp.modbus.read",
       "type_version": "1.0.0",
       "label": "Modbus lesen",
-      "description": "Liest ein Register eines Modbus-TCP-Geräts im lokalen Netz und gibt den Wert als Zahl aus. Optional wird der Wert als Messkanal einer Entität aufgezeichnet (Diagramm, Historie).",
+      "description": "Liest ein Register eines Modbus-TCP-Geräts im lokalen Netz und gibt den Wert als Zahl aus. Optional wird der Wert als Messwert eines Geräts aufgezeichnet (Diagramm, Historie).",
       "group": "daten",
       "runtimes": ["edge"],
       "inputs": [],
@@ -300,10 +309,10 @@
         { "name": "scale", "kind": "number", "label": "Skalierung (×)", "required": false, "default": 1 },
         { "name": "offset", "kind": "number", "label": "Offset (+)", "required": false, "default": 0 },
         { "name": "min_read_interval_s", "kind": "number", "label": "Mindestabstand zwischen Lesungen (s)", "required": false, "min": 1, "max": 3600, "default": 5 },
-        { "name": "entity_id", "kind": "entityRef", "label": "Aufzeichnen als Entität", "required": false, "help": "Optional: der Wert wird als Messkanal dieser Entität gespeichert (Diagramm, Historie)." },
-        { "name": "channel", "kind": "channel", "label": "Messkanal", "required": false, "help": "z. B. leistung_kw oder wasser_temp_c. Muss als Messfähigkeit der Entität hinterlegt sein." }
+        { "name": "entity_id", "kind": "entityRef", "label": "Aufzeichnen bei Gerät", "required": false, "help": "Optional: der Wert wird als Messwert dieses Geräts gespeichert (Diagramm, Historie)." },
+        { "name": "channel", "kind": "channel", "label": "Messkanal", "required": false, "help": "z. B. leistung_kw oder wasser_temp_c. Muss beim Gerät als Messwert hinterlegt sein." }
       ],
-      "hint": "Profi-Baustein: liest rohe Modbus-Register (0-basierte Adresse, Datentyp, Skalierung). Für den Wechselrichter selbst nutzen Sie „Entität lesen“."
+      "hint": "Profi-Baustein: liest rohe Modbus-Register (0-basierte Adresse, Datentyp, Skalierung). Für den Wechselrichter selbst nutzen Sie „Messwert eines Geräts“."
     }
   ]
 }

@@ -4706,6 +4706,24 @@ button.vp-tech-card-h.toggle {
 .vp-guided-x { border: none; background: none; cursor: pointer; color: var(--vp-text-muted); padding: 6px; flex: none; }
 .vp-guided-note { margin: 14px 0 0; max-width: 62ch; }
 .vp-guided-foot { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+/* Audit B-2/A-3/N-1: the "why is this locked / what does this action really do"
+   line, and the labelled inline field next to the action select. */
+.vp-guided-locknote {
+  display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; max-width: 62ch;
+}
+.vp-guided-locknote svg { flex: none; margin-top: 2px; }
+.vp-guided-field.inline { flex: 1 1 180px; min-width: 0; margin-bottom: 0; }
+/* Audit B-1: the dead end is named, not hidden behind a button that cannot work. */
+.vp-guided-deadend {
+  border: 1px solid var(--vp-border); border-left: 3px solid var(--vp-warn, #C77700);
+  border-radius: var(--vp-radius-md, 12px); padding: 14px 16px; background: var(--vp-surface-2, #f7f9fc);
+}
+.vp-guided-deadend h4 { margin: 0 0 6px; font-size: 0.98rem; }
+.vp-guided-deadend p { margin: 0; color: var(--vp-text-muted); max-width: 62ch; }
+.vp-guided-deadend-link {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 10px;
+  font-weight: 600; color: var(--vp-link, #2C5282);
+}
 
 @media (max-width: 1024px) {
   .vp-flowed-main { grid-template-columns: 1fr; }

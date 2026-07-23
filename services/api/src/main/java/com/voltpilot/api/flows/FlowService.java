@@ -68,6 +68,13 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class FlowService {
 
+    /**
+     * Marks a dry-run that is SCOPED to the flow itself (audit E-8): no job
+     * exists in the simulation service, so the poll must answer it locally.
+     * The prefix cannot collide with a service-issued id (those are UUIDs).
+     */
+    private static final String SCOPED_DRY_RUN_PREFIX = "flow-scoped-";
+
     /** One stored flow version, document verbatim. */
     public record FlowVersionDto(UUID flowId, int flowVersion, UUID siteId, String name,
             String runtime, String lifecycle, JsonNode document, JsonNode simulation,
@@ -355,6 +362,21 @@ public class FlowService {
         if (!mapping.supported()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, mapping.reason());
         }
+        // E-8: the dry-run is SCOPED to what the flow actually touches. A flow
+        // without a battery strategy cannot change the dispatch economics, so
+        // no year-long simulation is submitted at all - it neither needs a full
+        // previous calendar year of day-ahead prices nor the weather archive,
+        // and the customer is not made to wait ~2,5 minutes for a number that
+        // would be the untouched baseline by construction.
+        if (!mapping.yearSimulation()) {
+            String scopedId = SCOPED_DRY_RUN_PREFIX + UUID.randomUUID();
+            simulationJobs.registerSiteJob(scopedId, siteId);
+            Map<String, Object> scoped = new LinkedHashMap<>();
+            scoped.put("simulationId", scopedId);
+            scoped.put("flowScenario", null);
+            scoped.put("scope", "automation");
+            return scoped;
+        }
         SimulationDefaultsRepository.SimulationDefaults site = simulationDefaults
                 .findForSite(siteId);
         if (site == null) {
@@ -383,6 +405,18 @@ public class FlowService {
         FlowVersionRow row = requireVersion(siteId, flowId, version);
         if (!simulationJobs.isSiteJob(simulationId, siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Simulation nicht gefunden.");
+        }
+        // E-8: a scoped dry-run has no job in the simulation service - it is
+        // done the moment it is asked for (the flow was validated against the
+        // plant model before the id was ever handed out).
+        if (simulationId.startsWith(SCOPED_DRY_RUN_PREFIX)) {
+            flows.markSimulated(flowId, version, scopedSummary(simulationId));
+            Map<String, Object> done = new LinkedHashMap<>();
+            done.put("status", "done");
+            done.put("progress", 1.0);
+            done.put("flowScenario", null);
+            done.put("scope", "automation");
+            return done;
         }
         Map<String, Object> status = simulationClient.status(simulationId);
         if (status == null) {
@@ -712,6 +746,15 @@ public class FlowService {
 
     private static ResponseStatusException notFound() {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "Nicht gefunden.");
+    }
+
+    /** The recorded summary of a SCOPED (no-year-simulation) dry-run - E-8. */
+    private String scopedSummary(String simulationId) {
+        ObjectNode summary = mapper.createObjectNode();
+        summary.put("simulationId", simulationId);
+        summary.put("scope", "automation");
+        summary.put("finishedAt", Instant.now().toString());
+        return summary.toString();
     }
 
     private String simulationSummary(String simulationId, FlowSimulationMapper.Mapping mapping,

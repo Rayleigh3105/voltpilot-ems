@@ -75,6 +75,12 @@ interface Editing {
   version: number;
   /** Welcher Palettenausschnitt geöffnet wird (U3-Regel: Strategie-Knoten gewinnt). */
   palette: SteuerungMode;
+  /**
+   * Audit E-1: eine frisch GEBAUTE Regel (Baukasten/Vorlage) landet auf dem
+   * Prüf-Schritt in Klartext, nicht auf der Leinwand. Eine bestehende Regel
+   * öffnet weiterhin direkt im Editor.
+   */
+  view?: 'review' | 'editor';
 }
 
 export function SteuerungSection({
@@ -270,7 +276,11 @@ export function SteuerungSection({
         const created = await flowApi.create(name);
         if (doc) {
           const saved = await flowApi.save(created.flowId, 1, name, doc);
-          setEditing({ flowId: saved.flowId, version: saved.flowVersion, palette });
+          // E-1: ein fertig gebautes Dokument (Baukasten/Vorlage) geht auf den
+          // Prüf-Schritt; die leere Fläche öffnet direkt im Editor.
+          setEditing({
+            flowId: saved.flowId, version: saved.flowVersion, palette, view: 'review',
+          });
         } else {
           setEditing({ flowId: created.flowId, version: created.flowVersion, palette });
         }
@@ -351,6 +361,7 @@ export function SteuerungSection({
         canEnableGated={isAdmin}
         lockedHint={EINRICHTUNG_DURCH_VOLTPILOT}
         paletteFilter={paletteFilterFor(editing.palette)}
+        initialView={editing.view ?? 'editor'}
         backLabel="Zur Steuerung"
         onClose={() => {
           setEditing(null);

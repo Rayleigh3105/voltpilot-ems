@@ -107,6 +107,27 @@ export function layoutFlow(doc: FlowDocument): FlowLayout {
   return { boxes, width, height: Math.max(height, 200) };
 }
 
+/**
+ * Never shrink below this - a scaled-down node must stay readable. Below the
+ * floor the canvas keeps its horizontal scroll instead of turning the graph
+ * into unreadable confetti.
+ */
+export const MIN_FIT_SCALE = 0.6;
+
+/**
+ * Fit-to-width (audit E-2): the factor the canvas renders at so a graph wider
+ * than its viewport still shows its last node instead of clipping it at the
+ * right edge. Never magnifies (a small graph keeps its natural size), never
+ * shrinks past {@link MIN_FIT_SCALE}, and an unknown/zero available width
+ * (first paint, jsdom) yields 1 - so the layout is unchanged until measured.
+ */
+export function fitScale(contentWidth: number, availableWidth: number): number {
+  if (!Number.isFinite(contentWidth) || contentWidth <= 0) return 1;
+  if (!Number.isFinite(availableWidth) || availableWidth <= 0) return 1;
+  if (contentWidth <= availableWidth) return 1;
+  return Math.max(MIN_FIT_SCALE, availableWidth / contentWidth);
+}
+
 /** Anchor point of one port on a laid-out node. */
 export function portPosition(
   layout: FlowLayout,

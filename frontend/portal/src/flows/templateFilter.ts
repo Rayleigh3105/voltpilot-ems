@@ -148,3 +148,15 @@ export function hiddenDisclosure(part: TemplatePartition): string | null {
     ? '1 weitere Vorlage passt nicht zu Ihrer Anlage'
     : `${n} weitere Vorlagen passen nicht zu Ihrer Anlage`;
 }
+
+/**
+ * Audit A-2: der EINE Grund, wenn ALLE ausgeblendeten Vorlagen am selben Ding
+ * scheitern — damit der eingeklappte Leer-Zustand ihn nennen kann, statt ihn
+ * einen Klick tief im Aufklapper zu verstecken. Null, wenn nichts fehlt oder
+ * die Gründe sich unterscheiden (dann bleibt der Aufklapper die Wahrheit).
+ */
+export function sharedReason(part: TemplatePartition): string | null {
+  if (part.notFitting.length === 0) return null;
+  const first = part.notFitting[0].reason;
+  return part.notFitting.every((n) => n.reason === first) ? first : null;
+}

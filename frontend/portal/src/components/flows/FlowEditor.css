@@ -250,3 +250,34 @@
 .vp-stepflow-state.ok { color: var(--vp-chart-charge, #2e9e5b); }
 .vp-stepflow-state.off { color: #607d8b; }
 .vp-stepflow-state.error { color: var(--vp-danger, #c62828); }
+
+/* --- E-1 review step: the rule in plain German before the canvas ---------- */
+.vp-flowreview {
+  max-width: 720px;
+  min-width: 0;
+  padding: var(--vp-space-4, 1rem) 0;
+}
+.vp-flowreview h3 { margin: 0 0 0.25rem; font-size: 1.05rem; }
+.vp-flowreview-lead {
+  margin: 0 0 1rem;
+  color: var(--vp-text-muted, #667);
+  font-size: 0.92rem;
+  max-width: 62ch;
+}
+.vp-flowreview-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.vp-flowreview-guards {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  margin: 1rem 0 0;
+  color: var(--vp-text-muted, #667);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.vp-flowreview-guards svg { flex: none; margin-top: 2px; }

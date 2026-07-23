@@ -164,6 +164,10 @@ class FlowPeakShavingApiTest {
     @Autowired
     TestRestTemplate rest;
 
+    /** The stand-in simulation service - E-8 asserts what is (not) submitted. */
+    @Autowired
+    FakeSimulationService simulationHttp;
+
     @Test
     void peakShavingActivatesWithGovernanceAndPriceWhileAtypicalGridIsRefused() {
         String admin = token("admin", "admin");
@@ -265,6 +269,118 @@ class FlowPeakShavingApiTest {
         assertThat(activated.getBody().path("lifecycle").asText()).isEqualTo("active");
         assertThat(exchange(base + "/versions/1", HttpMethod.GET, admin, TENANT_A, null)
                 .getBody().path("lifecycle").asText()).isEqualTo("active");
+    }
+
+    @Test
+    void deviceAutomationDryRunNeverRunsTheYearSimulation() {
+        // E-8: the audit's exact case - activating a pure TIME-WINDOW rule
+        // ("mittags die Wallbox ein") ran a 365-day battery-dispatch MILP
+        // taking ~2,5 minutes, needing a full previous calendar year of
+        // day-ahead prices AND a live weather-archive call. A rule that touches
+        // no battery cannot change the dispatch economics, so its dry-run is
+        // SCOPED: nothing is submitted to the simulation service at all - which
+        // is exactly why it no longer depends on a year of prices being there.
+        String admin = token("admin", "admin");
+        int submittedBefore = simulationHttp.submitted.size();
+
+        String wallbox = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities",
+                HttpMethod.POST, admin, TENANT_A,
+                Map.of("entityType", "wallbox", "label", "Wallbox Zeitplan", "maxPowerKw", 11))
+                .getBody().path("id").asText();
+        assertThat(wallbox).isNotBlank();
+
+        String flowId = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
+                HttpMethod.POST, admin, TENANT_A, Map.of("name", "Wallbox mittags"))
+                .getBody().path("flowId").asText();
+        String base = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + flowId;
+        exchange(base + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("name", "Wallbox mittags", "document", scheduleAutomation(wallbox)));
+        assertThat(exchange(base + "/versions/1/validate", HttpMethod.POST, admin, TENANT_A,
+                Map.of()).getBody().path("valid").asBoolean()).isTrue();
+
+        ResponseEntity<JsonNode> started = exchange(base + "/versions/1/simulate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(started.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(started.getBody().path("scope").asText()).isEqualTo("automation");
+        assertThat(started.getBody().path("flowScenario").isNull()).isTrue();
+        assertThat(simulationHttp.submitted)
+                .as("no year simulation is submitted for a rule that touches no battery")
+                .hasSize(submittedBefore);
+
+        // The poll answers immediately and the version really reaches 'simuliert'.
+        String simulationId = started.getBody().path("simulationId").asText();
+        JsonNode poll = exchange(base + "/versions/1/simulation/" + simulationId, HttpMethod.GET,
+                admin, TENANT_A, null).getBody();
+        assertThat(poll.path("status").asText()).isEqualTo("done");
+        assertThat(poll.path("scope").asText()).isEqualTo("automation");
+        assertThat(simulationHttp.submitted).hasSize(submittedBefore);
+        assertThat(exchange(base + "/versions/1", HttpMethod.GET, admin, TENANT_A, null)
+                .getBody().path("lifecycle").asText()).isEqualTo("simulated");
+
+        // ... and it activates, so the scoping did not cost the customer the gate.
+        ResponseEntity<JsonNode> activated = exchange(base + "/versions/1/activate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(activated.getBody().path("activated").asBoolean())
+                .as("scoped dry-run still satisfies the activation precondition: "
+                        + activated.getBody()).isTrue();
+
+        // A BATTERY strategy still runs the full-year simulation - the scoping
+        // must not silently skip the economics where they exist.
+        String stratFlow = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
+                HttpMethod.POST, admin, TENANT_A, Map.of("name", "Eigenverbrauch (Probe)"))
+                .getBody().path("flowId").asText();
+        String stratBase = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + stratFlow;
+        exchange(stratBase + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("name", "Eigenverbrauch (Probe)", "document",
+                        selfconsumptionFlow(batteryEntityOf(admin))));
+        ResponseEntity<JsonNode> stratSim = exchange(stratBase + "/versions/1/simulate",
+                HttpMethod.POST, admin, TENANT_A, Map.of());
+        assertThat(stratSim.getBody().path("flowScenario").asText())
+                .isEqualTo("standardSpeicher");
+        assertThat(simulationHttp.submitted)
+                .as("a battery strategy DOES submit the year simulation")
+                .hasSize(submittedBefore + 1);
+
+        // Cleanup - the shared site must be left as this test found it.
+        exchange(base + "/deactivate", HttpMethod.POST, admin, TENANT_A, Map.of());
+        exchange(stratBase, HttpMethod.DELETE, admin, TENANT_A, null);
+        exchange(base, HttpMethod.DELETE, admin, TENANT_A, null);
+        exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/v2-entities/" + wallbox,
+                HttpMethod.DELETE, admin, TENANT_A, null);
+    }
+
+    /** The battery-hybrid entity id of the pilot site (bootstrap is idempotent). */
+    private String batteryEntityOf(String admin) {
+        JsonNode bootstrap = exchange("/api/v1/admin/sites/" + BERLIN_SITE
+                + "/v2-entities/bootstrap", HttpMethod.POST, admin, TENANT_A, Map.of()).getBody();
+        for (JsonNode entity : bootstrap.path("entities")) {
+            if ("battery-hybrid".equals(entity.path("entityType").asText())) {
+                return entity.path("id").asText();
+            }
+        }
+        throw new IllegalStateException("no battery-hybrid entity on the pilot site");
+    }
+
+    /** Zeitfenster -> Wallbox on/off: no battery anywhere in the graph. */
+    private static ObjectNode scheduleAutomation(String wallbox) {
+        ObjectNode doc = automationShell("Zeitplan");
+        addNode(doc, "z1", "vp.schedule.window",
+                Map.of("from", "11:00", "to", "15:00", "days", "alle"));
+        controlNode(doc, "steuern1", wallbox);
+        edge(doc, "e1", "z1", "active", "steuern1", "value");
+        return doc;
+    }
+
+    /** A battery strategy flow (the year-simulation contrast). */
+    private static ObjectNode selfconsumptionFlow(String battery) {
+        ObjectNode doc = automationShell("Eigenverbrauch");
+        ObjectNode strategy = addNode(doc, "strat1", "vp.strategy.selfconsumption",
+                Map.of("entity_id", battery));
+        ObjectNode claim = strategy.putArray("claims").addObject();
+        claim.put("entity_id", battery);
+        claim.putArray("commands").add("setpoint_kw");
+        claim.put("delegated", true);
+        return doc;
     }
 
     @Test
@@ -444,7 +560,10 @@ class FlowPeakShavingApiTest {
         ResponseEntity<JsonNode> simulated = exchange(base + "/versions/1/simulate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
         assertThat(simulated.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(simulated.getBody().path("flowScenario").asText()).isEqualTo("standardSpeicher");
+        // E-8: an automation's dry-run is SCOPED to the flow - no scenario, no
+        // year simulation (asserted job-by-job in
+        // deviceAutomationDryRunNeverRunsTheYearSimulation).
+        assertThat(simulated.getBody().path("scope").asText()).isEqualTo("automation");
         String simulationId = simulated.getBody().path("simulationId").asText();
         assertThat(exchange(base + "/versions/1/simulation/" + simulationId, HttpMethod.GET,
                 admin, TENANT_A, null).getBody().path("status").asText()).isEqualTo("done");
