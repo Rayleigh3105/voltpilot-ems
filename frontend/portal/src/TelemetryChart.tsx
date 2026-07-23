@@ -26,13 +26,30 @@ function timeLabel(ms: number): string {
   return new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** The four telemetry channels, in draw order (label is the legend/toggle key). */
+const CHANNELS: { label: string; key: keyof TelemetryPoint; tone: keyof ReturnType<typeof chartTheme>; axis: number; unit: string }[] = [
+  { label: 'PV-Erzeugung', key: 'pvPowerKw', tone: 'pv', axis: 0, unit: 'kW' },
+  { label: 'Hausverbrauch', key: 'loadKw', tone: 'load', axis: 0, unit: 'kW' },
+  { label: 'Netz', key: 'powerKw', tone: 'price', axis: 0, unit: 'kW' },
+  { label: 'Batterie-Ladestand', key: 'socPct', tone: 'soc', axis: 1, unit: '%' },
+];
+
 export function TelemetryChart({
   points,
   windowLabel = 'in den letzten 24 Stunden',
+  hidden,
+  onToggle,
+  variant = 'tall',
 }: {
   points: TelemetryPoint[];
   /** Range phrase for the takeaway line, e.g. "in der letzten Stunde". */
   windowLabel?: string;
+  /** Labels the customer has toggled off (channel-toggle pills, V3 Q3). */
+  hidden?: Set<string>;
+  /** When given, the legend rows become series-toggle pills. */
+  onToggle?: (label: string) => void;
+  /** 'compact' = the shorter Live-Daten chart; 'tall' keeps today's height. */
+  variant?: 'tall' | 'compact';
 }) {
   const t = chartTheme();
 
@@ -56,6 +73,38 @@ export function TelemetryChart({
           return [new Date(p.ts).getTime(), key === 'socPct' ? sanitizeSoc(raw) : raw];
         }),
       });
+
+      // Only the channels the customer left on (V3 channel-toggle pills). The
+      // "Jetzt" marker + shaded past ride the first VISIBLE series so they stay
+      // even if PV is toggled off.
+      const visible = CHANNELS.filter((c) => !hidden?.has(c.label));
+      const built = visible.map((c) => series(c.label, c.key, t[c.tone] as string, c.axis));
+      if (built.length > 0) {
+        (built[0] as Record<string, unknown>).markArea = {
+          silent: true,
+          itemStyle: { color: t.axis, opacity: 0.06 },
+          data: [[{ xAxis: firstMs }, { xAxis: nowMs }]],
+        };
+        (built[0] as Record<string, unknown>).markLine = {
+          silent: true,
+          symbol: 'none',
+          data: [
+            {
+              xAxis: nowMs,
+              lineStyle: { color: t.price, type: 'solid', width: 2 },
+              label: {
+                formatter: 'Jetzt',
+                color: t.price,
+                position: 'insideEndTop',
+                rotate: 0,
+                align: 'right',
+                padding: [0, 6, 0, 0],
+              },
+            },
+          ],
+        };
+      }
+      const showSocAxis = visible.some((c) => c.axis === 1);
 
       chart.setOption(
         {
@@ -103,59 +152,27 @@ export function TelemetryChart({
               min: 0,
               max: 100,
               position: 'right',
+              show: showSocAxis,
               splitLine: { show: false },
               axisLabel: { color: t.soc },
             },
           ],
-          series: [
-            {
-              ...series('PV-Erzeugung', 'pvPowerKw', t.pv),
-              // Shared time-chart convention: shade what already happened and
-              // mark "Jetzt" (here the right edge - telemetry ends at now).
-              markArea: {
-                silent: true,
-                itemStyle: { color: t.axis, opacity: 0.06 },
-                data: [[{ xAxis: firstMs }, { xAxis: nowMs }]],
-              },
-              markLine: {
-                silent: true,
-                symbol: 'none',
-                data: [
-                  {
-                    xAxis: nowMs,
-                    lineStyle: { color: t.price, type: 'solid', width: 2 },
-                    // The live chart's "now" is always the right edge; an
-                    // inside-positioned label would render rotated along the
-                    // line there, so pin it horizontally left of the line.
-                    label: {
-                      formatter: 'Jetzt',
-                      color: t.price,
-                      position: 'insideEndTop',
-                      rotate: 0,
-                      align: 'right',
-                      padding: [0, 6, 0, 0],
-                    },
-                  },
-                ],
-              },
-            },
-            series('Hausverbrauch', 'loadKw', t.load),
-            series('Netz', 'powerKw', t.price),
-            series('Batterie-Ladestand', 'socPct', t.soc, 1),
-          ],
+          series: built,
         },
         true,
       );
     },
-    [points],
+    [points, hidden],
   );
 
-  const legend: LegendItem[] = [
-    { color: t.pv, label: 'PV-Erzeugung', unit: 'kW', shape: 'line' },
-    { color: t.load, label: 'Hausverbrauch', unit: 'kW', shape: 'line' },
-    { color: t.price, label: 'Netz (+ Bezug / − Einspeisung)', unit: 'kW', shape: 'line' },
-    { color: t.soc, label: 'Batterie-Ladestand', unit: '%', shape: 'line' },
-  ];
+  // The legend labels ARE the series names, so a toggle pill's key matches the
+  // `hidden` set exactly. Netz's +Bezug/−Einspeisung detail stays in the tooltip.
+  const legend: LegendItem[] = CHANNELS.map((c) => ({
+    color: t[c.tone] as string,
+    label: c.label,
+    unit: c.unit,
+    shape: 'line',
+  }));
 
   // The takeaway: PV peak if the sun delivered, otherwise the average draw.
   let insight: string | null = null;
@@ -174,8 +191,8 @@ export function TelemetryChart({
 
   return (
     <div>
-      <ChartLegend items={legend} />
-      <div ref={ref} className="vp-chart tall" />
+      <ChartLegend items={legend} hidden={hidden} onToggle={onToggle} />
+      <div ref={ref} className={`vp-chart${variant === 'compact' ? ' compact' : ' tall'}`} />
       {insight && <ChartInsight>{insight}</ChartInsight>}
     </div>
   );

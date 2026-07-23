@@ -1,12 +1,33 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import type { SiteTopology, SiteUsageProfile, TopologyEntity } from '../api';
+import { componentRows } from '../livePuls';
 import type { FlowNode } from '../topology';
 import { NODE_MARKET } from '../usageProfile';
 import { AdaptiveLiveView } from './AdaptiveLiveView';
 
 function entity(id: string, type: string, label: string): TopologyEntity {
-  return { id, entityType: type, typeLabel: label, label, category: '', health: 'ok', capabilities: [] };
+  const channels =
+    type === 'battery-hybrid'
+      ? ['soc_pct', 'battery_power_kw', 'pv_power_kw']
+      : type === 'producer'
+        ? ['pv_power_kw']
+        : ['power_kw'];
+  return {
+    id,
+    entityType: type,
+    typeLabel: label,
+    label,
+    category: '',
+    health: 'ok',
+    capabilities: channels.map((channel) => ({
+      channel,
+      unit: null,
+      role: null,
+      primary: false,
+      value: null,
+    })),
+  };
 }
 
 const NODES: FlowNode[] = [
@@ -67,39 +88,49 @@ const ARB_PROFILE: SiteUsageProfile = {
   },
 };
 
+function renderView(profile: SiteUsageProfile | null, onOpen = vi.fn()) {
+  const rows = componentRows(TOPO);
+  return {
+    onOpen,
+    ...render(
+      <AdaptiveLiveView
+        topology={TOPO}
+        profile={profile}
+        rows={rows}
+        sparks={new Map()}
+        onOpenVerlauf={onOpen}
+      />,
+    ),
+  };
+}
+
 describe('AdaptiveLiveView', () => {
-  it('renders the status sentence, the N-node flow, tiles and the module strip', () => {
-    const { container } = render(<AdaptiveLiveView topology={TOPO} profile={ARB_PROFILE} />);
+  it('renders the status sentence, the N-node flow and the Komponenten-Board', () => {
+    const { container } = renderView(ARB_PROFILE);
     // status sentence + profile chip
     expect(screen.getByText(/erzeugt gerade/)).toBeInTheDocument();
     expect(screen.getByText('Arbitrage / DV')).toBeInTheDocument();
     // the energy-flow svg carries the hub + one node circle per member.
     const svg = container.querySelector('.vp-flow-adaptive svg')!;
-    // direct-child node/hub circles (excludes circles inside nested Icon svgs).
     const nodeCircles = svg.querySelectorAll(':scope > circle, :scope > g > circle');
     expect(nodeCircles.length).toBe(5);
-    // tiles + flow name the entities by their SHORT generalised word, and the
-    // full stored name stays reachable on the tile header's tooltip.
+    // the board names the entities by their SHORT generalised word.
+    expect(container.querySelector('.vp-puls')).toBeInTheDocument();
     expect(screen.getAllByText('Erzeuger').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Batteriespeicher').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Wallbox').length).toBeGreaterThanOrEqual(1);
-    expect(container.querySelector('.vp-verdict.pv .vp-verdict-head')).toHaveAttribute(
-      'title',
-      'Fronius',
-    );
-    // module strip reflects the active market node.
-    expect(screen.getByText('Was läuft')).toBeInTheDocument();
-    expect(screen.getByText('Marktoptimierung')).toBeInTheDocument();
   });
 
-  it('shows read-only device switches on a controllable consumer tile', () => {
-    render(<AdaptiveLiveView topology={TOPO} profile={ARB_PROFILE} />);
-    const nurPv = screen.getByRole('button', { name: 'Nur PV' });
-    expect(nurPv).toBeDisabled();
+  it('jumps to the explorer when a board row is tapped', () => {
+    const { onOpen, container } = renderView(ARB_PROFILE);
+    // The PV row jumps to pv_power_kw of the PV component.
+    const pvJump = container.querySelector<HTMLButtonElement>('.vp-puls-jump[title="Fronius"]')!;
+    fireEvent.click(pvJump);
+    expect(onOpen).toHaveBeenCalledWith({ entityId: 'pv', channel: 'pv_power_kw' });
   });
 
   it('renders without a profile (emphasis best-effort)', () => {
-    render(<AdaptiveLiveView topology={TOPO} profile={null} />);
+    renderView(null);
     expect(screen.getByText(/erzeugt gerade/)).toBeInTheDocument();
   });
 });
