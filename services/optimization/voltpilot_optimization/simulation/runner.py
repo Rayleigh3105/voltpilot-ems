@@ -246,7 +246,10 @@ def solve_chunk(payload: dict) -> dict:
             import_price_eur_mwh=imp[window],
             export_value_eur_mwh=exp[window],
         )
-        plan = optimize(inp, uuid4(), starts[i0])
+        # explain_plan=False: the simulation discards every presentation
+        # field, and the Fahrplan-Warum LP re-solve (~30 ms/solve) would add
+        # real wall-clock over a 365-day chain for nothing.
+        plan = optimize(inp, uuid4(), starts[i0], explain_plan=False)
         commit = plan.slots[:SLOTS_PER_DAY]
         soc = commit[-1].soc_kwh
         if day >= warmup_days:

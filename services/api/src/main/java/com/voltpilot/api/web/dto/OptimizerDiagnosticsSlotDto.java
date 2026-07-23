@@ -19,13 +19,18 @@ import java.time.Instant;
  * <li>{@code wearCostEur} - the persisted P2 wear this slot spends;
  * {@code wearCostCtKwh} the derived rate per kWh of throughput (null for idle
  * slots and pre-P2 rows).</li>
- * <li>{@code valueOfStoredEnergyCtKwh} - forward best-use APPROXIMATION of a
- * stored kWh's worth (the run-level flag marks it as such).</li>
+ * <li>{@code valueOfStoredEnergyCtKwh} - the value of a stored kWh: the
+ * PERSISTED exact SoC shadow price ({@code schedule.stored_value_ct_kwh},
+ * Fahrplan-Warum) where the run carries it, else the forward best-use
+ * APPROXIMATION (the run-level flag marks which one applied).</li>
  * <li>{@code decisionLabel} - solarladen | netzladen | entladen | ruhe (the
  * schedule.ts chargeKind twin); curtailment is orthogonal, read
  * {@code curtailKw}.</li>
  * <li>{@code whyText} - one composed German sentence explaining the decision
  * from those numbers.</li>
+ * <li>{@code slotRole}/{@code slotFlags} - the optimizer-persisted
+ * Fahrplan-Warum role (§6 vocabulary) and binding-constraint codes; null on
+ * pre-feature runs (the decision label above remains the fallback).</li>
  * </ul>
  */
 public record OptimizerDiagnosticsSlotDto(
@@ -45,5 +50,7 @@ public record OptimizerDiagnosticsSlotDto(
         Double wearCostCtKwh,
         Double valueOfStoredEnergyCtKwh,
         String decisionLabel,
-        String whyText) {
+        String whyText,
+        String slotRole,
+        java.util.List<String> slotFlags) {
 }

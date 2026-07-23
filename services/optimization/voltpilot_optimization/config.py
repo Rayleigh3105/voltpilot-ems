@@ -174,6 +174,31 @@ TERMINAL_VALUE_QUANTILE_ENV = "OPTIMIZER_TERMINAL_VALUE_QUANTILE"
 #: unset/blank = derive from the horizon's prices.
 TERMINAL_VALUE_OVERRIDE_ENV = "OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH"
 
+#: Per-slot "Warum" extraction (Fahrplan-Warum): the post-hoc fixed-binary LP
+#: re-solve that computes slot roles, binding flags and the shadow-price
+#: economics (see :mod:`voltpilot_optimization.explain`). Purely additive to
+#: the plan (~30 ms per cycle) and fail-soft; this flag is the instant
+#: off-switch. Default ON.
+EXPLAIN_ENABLED_ENV = "OPTIMIZER_EXPLAIN_ENABLED"
+
+
+def explain_enabled(env=None) -> bool:
+    """Whether the per-slot why-extraction runs after each solve. Garbage
+    values raise loudly (the active-model-typo discipline); the solver calls
+    this inside its fail-soft wrapper, so a bad value drops the why-layer with
+    a warning instead of sinking plans."""
+    env = os.environ if env is None else env
+    raw = env.get(EXPLAIN_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{EXPLAIN_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
 #: Shave-Target-Ratchet: fraction of the Leistungspreis priced on the plain
 #: horizon peak (below the peak_so_far anchor too) - see module docstring.
 PEAK_RATCHET_FRACTION = 0.03

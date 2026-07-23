@@ -105,7 +105,8 @@ public class OptimizerDiagnosticsService {
                     : latest;
         }
         if (run == null) {
-            return dto(site, null, null, day, firstRunDate, lastRunDate, availableRuns, List.of());
+            return dto(site, null, null, day, firstRunDate, lastRunDate, availableRuns,
+                    true, List.of());
         }
         List<SlotRow> rows = repo.slots(site.siteId(), run);
         Map<LocalDate, MarketValue> marketValues = marketValuesFor(site, rows);
@@ -118,8 +119,14 @@ public class OptimizerDiagnosticsService {
             importCt.add(economics.importPriceCtKwh(spot));
             exportCt.add(economics.exportValueCtKwh(spot, row.time()));
         }
-        List<Double> storedCt = economics.storedEnergyValuesCtKwh(importCt, exportCt);
+        List<Double> approxStoredCt = economics.storedEnergyValuesCtKwh(importCt, exportCt);
 
+        // Fahrplan-Warum: prefer the PERSISTED exact stored-energy value (the
+        // run's SoC shadow price, schedule.stored_value_ct_kwh); the forward
+        // best-use heuristic remains only the fallback for pre-feature rows.
+        // The run-level approximation flag is honest per run: false only when
+        // every rendered slot carries the exact value.
+        boolean anyApproximated = rows.isEmpty();
         List<OptimizerDiagnosticsSlotDto> slots = new ArrayList<>(rows.size());
         for (int i = 0; i < rows.size(); i++) {
             SlotRow row = rows.get(i);
@@ -128,6 +135,11 @@ public class OptimizerDiagnosticsService {
             Double curtailKw = toDouble(row.curtailKw());
             String label = SlotEconomics.decisionLabel(batteryKw, gridKw,
                     toDouble(row.pvKw()), curtailKw);
+            Double storedCt = toDouble(row.storedValueCtKwh());
+            if (storedCt == null) {
+                storedCt = approxStoredCt.get(i);
+                anyApproximated = true;
+            }
             slots.add(new OptimizerDiagnosticsSlotDto(
                     row.time(),
                     row.batteryKw(),
@@ -145,13 +157,20 @@ public class OptimizerDiagnosticsService {
                     exportCt.get(i),
                     SlotEconomics.wearCostCtKwh(
                             toDouble(row.wearCostEur()), batteryKw, SLOT_HOURS),
-                    storedCt.get(i),
+                    storedCt,
                     label,
                     SlotEconomics.whyText(label, batteryKw, gridKw, curtailKw,
-                            importCt.get(i), exportCt.get(i), storedCt.get(i))));
+                            importCt.get(i), exportCt.get(i), storedCt),
+                    row.slotRole(),
+                    splitFlags(row.slotFlags())));
         }
         return dto(site, repo.planId(site.siteId(), run), run, day, firstRunDate, lastRunDate,
-                availableRuns, slots);
+                availableRuns, anyApproximated, slots);
+    }
+
+    /** The persisted binding CSV as a list (null stays null - pre-feature row). */
+    private static List<String> splitFlags(String csv) {
+        return csv == null || csv.isBlank() ? null : List.of(csv.split(","));
     }
 
     private static LocalDate berlinDay(Instant instant) {
@@ -160,7 +179,8 @@ public class OptimizerDiagnosticsService {
 
     private OptimizerDiagnosticsDto dto(SiteContext site, UUID planId, Instant run,
             LocalDate availableRunsDate, LocalDate firstRunDate, LocalDate lastRunDate,
-            List<Instant> availableRuns, List<OptimizerDiagnosticsSlotDto> slots) {
+            List<Instant> availableRuns, boolean storedValueIsApproximation,
+            List<OptimizerDiagnosticsSlotDto> slots) {
         return new OptimizerDiagnosticsDto(
                 site.siteId(),
                 planId,
@@ -179,7 +199,7 @@ public class OptimizerDiagnosticsService {
                 batteryContext(site),
                 activeLoadModel,
                 activePvModel,
-                true,
+                storedValueIsApproximation,
                 slots);
     }
 
