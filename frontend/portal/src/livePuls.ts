@@ -15,15 +15,17 @@
  * `live.buildSnapshot` snapshot + the `live.ts` state derivations.
  *
  * Two rules are law (the „—"-Disziplin): an absent value stays absent (the tile
- * already renders „–"), never a fabricated 0; and a sparkline with too few
- * points is simply omitted (no sparkline is honest, never an invented line).
+ * renders the shared `nodata.NO_DATA`), never a fabricated 0; and a sparkline
+ * with too few points is simply omitted — and since the audit (V5) the BOARD
+ * only promises „letzte 60 Min" when at least one row really has one
+ * ({@link hasAnySpark} / {@link boardHint}).
  */
 import type { IconName } from '../designsystem/components/core/Icon';
 import type { EntityHistory, SiteTopology, TelemetryPoint } from './api';
 import { deriveTiles } from './adaptiveLive';
 import { channelLabel, channelUnitHint } from './channels';
-import type { ComponentHealth } from './komponenten';
-import { fmtNum } from './format';
+import { toComponentHealth, type ComponentHealth } from './komponenten';
+import { numOrNoData } from './nodata';
 import {
   batteryState,
   buildSnapshot,
@@ -61,7 +63,7 @@ export interface LivePulsRow {
   title: string;
   /** The untouched full name for the `title` tooltip (else undefined). */
   fullTitle?: string;
-  /** Headline value ("6,4 kW" / "78 %" / "–"). */
+  /** Headline value ("6,4 kW" / "78 %" / "—"). */
   value: string;
   /** Verdict word ("erzeugt", "Lädt", "Einspeisung", …). */
   stateLabel: string;
@@ -88,30 +90,56 @@ const ROLE_CHANNEL: Record<Role, string> = {
   consumer: 'power_kw',
 };
 
-/** Worst-wins health over member entities (any stale → amber, else never → grey). */
-const HEALTH_RANK: Record<ComponentHealth, number> = { ok: 0, never: 1, stale: 2 };
-
-function toHealth(raw: string | null | undefined): ComponentHealth {
-  return raw === 'stale' || raw === 'never' ? raw : 'ok';
-}
+/**
+ * Worst-wins health over member entities. H2: the ranking now carries the
+ * honest `unknown` (no feedback at all) BETWEEN „liefert" and „noch keine
+ * Daten" — see `komponenten.toComponentHealth`, the ONE mapping.
+ */
+const HEALTH_RANK: Record<ComponentHealth, number> = {
+  ok: 0,
+  unknown: 1,
+  never: 2,
+  stale: 3,
+};
 
 function capsOf(topo: SiteTopology, entityId: string) {
   return topo.entities.find((e) => e.id === entityId)?.capabilities ?? [];
 }
 
-/** Prefer the role's representative channel, but only if the entity measures it. */
-function resolveChannel(topo: SiteTopology, entityId: string, preferred: string): string {
+/**
+ * The capabilities of an entity that belong to THIS row's role (V6). A hybrid
+ * inverter measures PV *and* Speicher; the „Erzeuger" row must not list the
+ * Ladestand. Falls back to every capability when the backend assigned no role
+ * to any of them - an empty expansion would be worse than a wide one.
+ */
+function roleCapsOf(topo: SiteTopology, entityId: string, role: Role) {
   const caps = capsOf(topo, entityId);
+  const own = caps.filter((c) => c.role === role);
+  return own.length > 0 ? own : caps;
+}
+
+/** Prefer the role's representative channel, but only among THIS role's caps. */
+function resolveChannel(
+  topo: SiteTopology,
+  entityId: string,
+  role: Role,
+  preferred: string,
+): string {
+  const caps = roleCapsOf(topo, entityId, role);
   if (caps.some((c) => c.channel === preferred)) return preferred;
   return caps[0]?.channel ?? preferred;
 }
 
-/** Every Messwert of the row's member entities, deduped, in a stable order. */
-function collectChannels(topo: SiteTopology, members: FlowMember[]): LivePulsChannel[] {
+/** Every Messwert of the row's role, deduped, in a stable order. */
+function collectChannels(
+  topo: SiteTopology,
+  members: FlowMember[],
+  role: Role,
+): LivePulsChannel[] {
   const seen = new Set<string>();
   const out: LivePulsChannel[] = [];
   for (const m of members) {
-    for (const cap of capsOf(topo, m.entity_id)) {
+    for (const cap of roleCapsOf(topo, m.entity_id, role)) {
       const key = `${m.entity_id}:${cap.channel}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -129,7 +157,7 @@ function collectChannels(topo: SiteTopology, members: FlowMember[]): LivePulsCha
 function worstMemberHealth(topo: SiteTopology, members: FlowMember[]): ComponentHealth {
   let worst: ComponentHealth = 'ok';
   for (const m of members) {
-    const h = toHealth(topo.entities.find((e) => e.id === m.entity_id)?.health);
+    const h = toComponentHealth(topo.entities.find((e) => e.id === m.entity_id)?.health);
     if (HEALTH_RANK[h] > HEALTH_RANK[worst]) worst = h;
   }
   return worst;
@@ -163,7 +191,10 @@ export function componentRows(topo: SiteTopology): LivePulsRow[] {
     }
     const rep = members.find((m) => m.primary) ?? members[0];
     const target = rep
-      ? { entityId: rep.entity_id, channel: resolveChannel(topo, rep.entity_id, preferred) }
+      ? {
+          entityId: rep.entity_id,
+          channel: resolveChannel(topo, rep.entity_id, tile.role, preferred),
+        }
       : null;
     return {
       key: tile.key,
@@ -179,7 +210,7 @@ export function componentRows(topo: SiteTopology): LivePulsRow[] {
       subLine: tile.subLine,
       health: worstMemberHealth(topo, members),
       target,
-      channels: collectChannels(topo, members),
+      channels: collectChannels(topo, members, tile.role),
     };
   });
 }
@@ -199,7 +230,7 @@ function v1Row(
   value: string,
   stateLabel: string,
   stateTone: 'accent' | 'muted',
-  extra?: { arrow?: 'up' | 'down'; socPct?: number },
+  extra?: { arrow?: 'up' | 'down'; socPct?: number; measured?: boolean },
 ): LivePulsRow {
   return {
     key: `v1-${channel}`,
@@ -211,7 +242,9 @@ function v1Row(
     stateTone,
     arrow: extra?.arrow,
     socPct: extra?.socPct,
-    health: 'ok',
+    // H2 discipline on the v1 board too: a site-level row whose measurement is
+    // absent must not show a green „liefert Daten" dot.
+    health: extra?.measured === false ? 'unknown' : 'ok',
     target: { entityId: V1_ENTITY, channel },
     channels: [{ entityId: V1_ENTITY, channel, label: channelLabel(rawChannel), unit }],
   };
@@ -238,7 +271,9 @@ function pvRow(snap: LiveSnapshot): LivePulsRow {
   const s = pvState(snap.pvKw);
   const [label, tone]: [string, 'accent' | 'muted'] =
     s === 'erzeugt' ? ['erzeugt', 'accent'] : s === 'keine' ? ['keine Erzeugung', 'muted'] : ['noch keine Daten', 'muted'];
-  return v1Row('pv', 'pv', 'sun', 'Solar', 'pv_power_kw', 'kW', fmtNum(snap.pvKw, 'kW'), label, tone);
+  return v1Row('pv', 'pv', 'sun', 'Solar', 'pv_power_kw', 'kW', numOrNoData(snap.pvKw, 'kW'), label, tone, {
+    measured: snap.pvKw != null,
+  });
 }
 
 function storageRow(snap: LiveSnapshot): LivePulsRow {
@@ -251,16 +286,18 @@ function storageRow(snap: LiveSnapshot): LivePulsRow {
     label = 'Lädt';
     tone = 'accent';
     arrow = 'up';
-    if (snap.battKw != null) subLine = `Ladeleistung ${fmtNum(snap.battKw, 'kW')}`;
+    if (snap.battKw != null) subLine = `Ladeleistung ${numOrNoData(snap.battKw, 'kW')}`;
   } else if (s === 'entlaedt') {
     label = 'Entlädt';
     tone = 'accent';
     arrow = 'down';
-    if (snap.battKw != null) subLine = `Abgabe ${fmtNum(Math.abs(snap.battKw), 'kW')}`;
+    if (snap.battKw != null) subLine = `Abgabe ${numOrNoData(Math.abs(snap.battKw), 'kW')}`;
   } else if (s === 'voll') {
     label = 'Voll geladen';
   } else if (s === 'keine') {
-    label = 'keine Batterie';
+    // V1 twin of `adaptiveLive.storageTile`: a missing SoC reading is „noch
+    // keine Daten", never the claim that the plant has no battery.
+    label = 'noch keine Daten';
   }
   const socPct = snap.socPct == null ? undefined : Math.max(0, Math.min(100, snap.socPct));
   const row = v1Row(
@@ -270,10 +307,10 @@ function storageRow(snap: LiveSnapshot): LivePulsRow {
     'Batterie',
     'soc_pct',
     '%',
-    snap.socPct == null ? '–' : fmtNum(snap.socPct, '%', 0),
+    numOrNoData(snap.socPct, '%', 0),
     label,
     tone,
-    { arrow, socPct },
+    { arrow, socPct, measured: snap.socPct != null },
   );
   row.subLine = subLine;
   return row;
@@ -283,7 +320,9 @@ function hausRow(snap: LiveSnapshot): LivePulsRow {
   const s = loadState(snap.loadKw);
   const [label, tone]: [string, 'accent' | 'muted'] =
     s === 'bedarf' ? ['aktueller Bedarf', 'accent'] : s === 'keiner' ? ['kein Verbrauch', 'muted'] : ['noch keine Daten', 'muted'];
-  return v1Row('haus', 'consumer', 'home', 'Haus', 'load_kw', 'kW', fmtNum(snap.loadKw, 'kW'), label, tone);
+  return v1Row('haus', 'consumer', 'home', 'Haus', 'load_kw', 'kW', numOrNoData(snap.loadKw, 'kW'), label, tone, {
+    measured: snap.loadKw != null,
+  });
 }
 
 function netzRow(snap: LiveSnapshot): LivePulsRow {
@@ -303,7 +342,10 @@ function netzRow(snap: LiveSnapshot): LivePulsRow {
   } else if (s === 'ausgeglichen') {
     label = 'ausgeglichen';
   }
-  return v1Row('netz', 'grid', 'zap', 'Netz', 'power_kw', 'kW', fmtNum(abs, 'kW'), label, tone, { arrow });
+  return v1Row('netz', 'grid', 'zap', 'Netz', 'power_kw', 'kW', numOrNoData(abs, 'kW'), label, tone, {
+    arrow,
+    measured: snap.gridKw != null,
+  });
 }
 
 // --- Sparklines --------------------------------------------------------------
@@ -382,6 +424,27 @@ export function v1Sparks(
     out.set(r.key, ch ? sparkFromPoints(points, v1Pick(ch), now) : null);
   }
   return out;
+}
+
+/**
+ * V5 (Audit) — **das Versprechen nur machen, wenn es eingelöst wird.** Der
+ * Kopf des Boards sagte immer „letzte 60 Min" und jede Zeile reservierte einen
+ * Sparkline-Platz, auch wenn KEINE Zeile eine Linie hat (schweigendes Gerät;
+ * die Quelle ist die Tages-Rollup-Reihe, die kurz nach Berliner Mitternacht
+ * naturgemäß fast leer ist). Vier dauerhaft leere Kästchen unter einem
+ * Versprechen sind unehrlich — also entscheidet das hier.
+ */
+export function hasAnySpark(sparks: Map<string, Spark | null>): boolean {
+  for (const s of sparks.values()) if (s) return true;
+  return false;
+}
+
+/**
+ * Der Kopfhinweis des Boards: mit Sparklines der volle Satz, ohne sie nur der
+ * Absprung-Hinweis — nie eine „letzte 60 Min"-Zusage ohne Linie.
+ */
+export function boardHint(hasSpark: boolean): { spark: string | null; jump: string } {
+  return { spark: hasSpark ? 'letzte 60 Min' : null, jump: 'tippen für den Verlauf' };
 }
 
 /** Build the sparks map (key = row.key) for the v2 rows from per-entity history. */

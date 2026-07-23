@@ -23,12 +23,15 @@ export function WidgetGrid({
 }) {
   if (widgets.length === 0) return null;
   return (
-    <div className="vp-widgets" role="list">
+    /* V8 (Audit, a11y): die Kacheln SIND Knöpfe. `role="listitem"` auf einem
+       <button> überschreibt dessen implizite Rolle - Screenreader kündigten sie
+       als Listenelement an und ließen sie aus der Bedienelement-Liste fallen.
+       Also: keine Rollen-Überschreibung, stattdessen eine benannte Gruppe. */
+    <div className="vp-widgets" role="group" aria-label="Kennzahlen Ihrer Anlage">
       {widgets.map((w) => (
         <button
           key={w.id}
           type="button"
-          role="listitem"
           className={`vp-widget vp-widget-${w.accent}${w.lead ? ' is-lead' : ''}`}
           onClick={() => onSelect(w)}
           aria-label={`${w.label} öffnen`}

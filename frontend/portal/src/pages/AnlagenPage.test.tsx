@@ -147,7 +147,9 @@ function stubApi(overviewSite: Record<string, unknown> = {}) {
         worstStatus: 'online',
         lastSeenAt: new Date().toISOString(),
         batteryWithoutDevice: false,
-        live: null,
+        // Eine ONLINE-Anlage liefert auch eine Live-Zeile - ohne sie klappt der
+        // Hero seit V14 (Audit) das leere Diagramm bewusst ein.
+        live: { ts: new Date().toISOString(), pvKw: 4.2, loadKw: 1.1, gridKw: -2.1, socPct: 60 },
         plannedSavingsTodayEur: null,
         ...overviewSite,
       },
@@ -334,7 +336,14 @@ describe('M5 · Der Leer-Zustand IST der Einrichtungspfad (#533)', () => {
   /** Eine brandneue Anlage: Gerät verbunden, aber noch nie Messdaten. */
   function stubFreshSite() {
     vi.restoreAllMocks();
-    stubApi({ lastSeenAt: null, worstStatus: 'waiting', onlineCount: 0, waitingCount: 1 });
+    // Noch NIE Messdaten: keine Live-Zeile (das ist genau das M5-Tor).
+    stubApi({
+      lastSeenAt: null,
+      worstStatus: 'waiting',
+      onlineCount: 0,
+      waitingCount: 1,
+      live: null,
+    });
   }
 
   it('rendert die drei Schritte statt eines leeren Cockpits', async () => {
@@ -417,7 +426,10 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     mockSurface(MULTI);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
-    expect(container.querySelector('.vp-hero-rings')).toBeNull();
+    // V13: KEIN Ring (nie „0 %") - aber der Platz bleibt reserviert und sagt,
+    // warum er leer ist, damit die Seitenhöhe beim Tab-Wechsel nicht springt.
+    expect(container.querySelector('.vp-hero-ring')).toBeNull();
+    expect(container.querySelector('.vp-hero-rings-empty')).toBeTruthy();
     expect(container.textContent).not.toContain('0 %');
   });
 
@@ -581,7 +593,11 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
     // „Gesamt": kein All-Zeit-Historie-Endpunkt → keine Ringe (nie ein falscher
     // Wert), aber der Energiefluss bleibt live sichtbar.
     fireEvent.click(tab(container, 'Gesamt'));
-    await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeNull());
+    await waitFor(() => expect(container.querySelector('.vp-hero-ring')).toBeNull());
+    // V13: statt eines Höhensprungs steht dort der ehrliche Satz.
+    expect(container.querySelector('.vp-hero-rings-empty')?.textContent).toContain(
+      'Monat oder Jahr',
+    );
     expect(container.textContent).not.toContain('0 %');
     expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy();
   });

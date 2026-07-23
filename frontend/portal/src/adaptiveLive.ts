@@ -27,6 +27,7 @@ import {
 } from './adaptive';
 import { shortEntityLabel, shortLabelsForRole } from './entityLabel';
 import { fmtNum } from './format';
+import { NO_DATA, numOrNoData } from './nodata';
 import type { FlowNode, Role } from './topology';
 
 export interface AdaptiveTile {
@@ -43,7 +44,7 @@ export interface AdaptiveTile {
    * undefined when there is no name beyond the generic one.
    */
   fullTitle?: string;
-  /** Headline value ("6,4 kW" / "78 %" / "–"). */
+  /** Headline value ("6,4 kW" / "78 %" / "—"). */
   value: string;
   /** Verdict word/phrase ("erzeugt", "lädt", "Einspeisung", …). */
   stateLabel: string;
@@ -78,7 +79,7 @@ function pvTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTile {
     icon: 'sun',
     title,
     fullTitle: memberCount === 1 ? fullMemberName(n) : undefined,
-    value: n.value_kw == null ? '–' : fmtNum(n.value_kw, 'kW', 1),
+    value: numOrNoData(n.value_kw, 'kW', 1),
     stateLabel: n.value_kw == null ? 'noch keine Daten' : active ? 'erzeugt' : 'keine Erzeugung',
     stateTone: active ? 'accent' : 'muted',
     subLine: memberCount > 1 ? `${memberCount} Erzeuger` : undefined,
@@ -94,7 +95,11 @@ function storageTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTi
   let arrow: 'up' | 'down' | undefined;
   let subLine: string | undefined;
   if (soc == null) {
-    stateLabel = 'keine Batterie';
+    // V1 (Audit): ein Speicher-Knoten EXISTIERT nur, wenn die Anlage eine
+    // Batterie hat - ein fehlender Ladestand heißt also „noch keine Daten",
+    // niemals „keine Batterie". Der alte Zweig behauptete das Gegenteil auf
+    // beiden echten Anlagen (13,8 kWh / 65 kWh), sobald das Gerät schwieg.
+    stateLabel = 'noch keine Daten';
   } else if (batt != null && batt > DEADBAND_KW) {
     stateLabel = 'Lädt';
     stateTone = 'accent';
@@ -115,7 +120,7 @@ function storageTile(n: FlowNode, byId: Map<string, TopologyEntity>): AdaptiveTi
     icon: 'battery',
     title,
     fullTitle: n.members.length === 1 ? fullMemberName(n) : undefined,
-    value: soc == null ? '–' : fmtNum(soc, '%', 0),
+    value: numOrNoData(soc, '%', 0),
     stateLabel,
     stateTone,
     arrow,
@@ -174,7 +179,7 @@ function gridTile(n: FlowNode): AdaptiveTile {
     icon: 'zap',
     title: 'Netz',
     fullTitle: fullMemberName(n),
-    value: n.value_kw == null ? '–' : fmtNum(n.value_kw, 'kW', 1),
+    value: numOrNoData(n.value_kw, 'kW', 1),
     stateLabel,
     stateTone,
     arrow,
@@ -217,7 +222,7 @@ function consumerTiles(n: FlowNode, byId: Map<string, TopologyEntity>): Adaptive
       icon: iconFor(type, 'consumer'),
       title: consumerNames[i],
       fullTitle: m.label?.trim() || undefined,
-      value: m.value_kw == null ? '–' : fmtNum(Math.abs(m.value_kw), 'kW', 1),
+      value: m.value_kw == null ? NO_DATA : fmtNum(Math.abs(m.value_kw), 'kW', 1),
       stateLabel,
       stateTone,
       control: controllable ? controlPreset(type) ?? undefined : undefined,

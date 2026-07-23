@@ -304,6 +304,13 @@ export interface HeroMoney {
 
 export interface CockpitHeroView {
   rings: HeroRing[];
+  /**
+   * V13 (Audit): warum gerade KEIN Ring dasteht. Auf „Heute" und „Gesamt"
+   * verschwanden die Ringe kommentarlos und die Seitenhöhe sprang bei jedem
+   * Tab-Wechsel. Der Satz hält den Platz und erklärt ihn — nie ein Ring mit
+   * einer erfundenen 0. null = es gibt Ringe.
+   */
+  ringsNote: string | null;
   money: HeroMoney | null;
   /** EINE deutsche Fahrplan-Zeile; null = kein Plan für heute. */
   planSentence: string | null;
@@ -399,6 +406,12 @@ export function cockpitHero(input: {
 
   return {
     rings,
+    ringsNote:
+      rings.length > 0
+        ? null
+        : input.range === 'all'
+          ? 'Autarkie und Eigenverbrauch gibt es je Zeitraum – wählen Sie Monat oder Jahr.'
+          : `Autarkie und Eigenverbrauch liegen für ${label} noch nicht vor.`,
     money,
     planSentence: planSentence(
       input.slots ?? [],

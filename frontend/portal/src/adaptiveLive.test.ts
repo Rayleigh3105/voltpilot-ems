@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { NO_DATA } from './nodata';
 import type { SiteTopology, TopologyEntity } from './api';
 import { deriveTiles, hasTopology, liveState } from './adaptiveLive';
 import type { FlowNode } from './topology';
@@ -90,6 +91,34 @@ describe('deriveTiles', () => {
     const t = privatTopo();
     t.topology.nodes = t.topology.nodes.filter((n) => n.role !== 'storage');
     expect(deriveTiles(t).some((x) => x.role === 'storage')).toBe(false);
+  });
+
+  it('V1: a missing SoC reads „noch keine Daten", NEVER „keine Batterie"', () => {
+    // A storage node only exists when the plant HAS a battery - so a silent
+    // device must not make the board deny the customer's most expensive asset
+    // (both real plants, 13,8 kWh / 65 kWh, showed exactly that).
+    const t = privatTopo();
+    const storage = t.topology.nodes.find((n) => n.role === 'storage')!;
+    storage.soc_pct = undefined;
+    storage.value_kw = undefined;
+    storage.flow_active = false;
+    const tile = deriveTiles(t).find((x) => x.role === 'storage')!;
+    expect(tile.stateLabel).toBe('noch keine Daten');
+    expect(tile.stateLabel).not.toContain('keine Batterie');
+    // X1: and the value is the ONE shared no-data mark, never a fabricated 0.
+    expect(tile.value).toBe(NO_DATA);
+    expect(tile.socPct).toBeUndefined();
+  });
+
+  it('X1: every tile renders the shared „—" when its value is absent', () => {
+    const t = privatTopo();
+    for (const n of t.topology.nodes) {
+      n.value_kw = undefined;
+      n.soc_pct = undefined;
+      n.flow_active = false;
+      n.members = n.members.map((m) => ({ ...m, value_kw: undefined }));
+    }
+    for (const tile of deriveTiles(t)) expect(tile.value).toBe(NO_DATA);
   });
 });
 

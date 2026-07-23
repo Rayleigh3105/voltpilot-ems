@@ -434,7 +434,7 @@ describe('handelBlock — die Handels-Erzählung aus BESTEHENDEN Daten', () => {
       now: NOW,
       periodLabel: 'Heute',
     });
-    expect(view.tiles.map((t) => t.label)).toEqual(['Verdient · Heute', 'Geladen', 'Verkauf geplant']);
+    expect(view.tiles.map((t) => t.label)).toEqual(['Durch Steuerung · Heute', 'Geladen', 'Verkauf geplant']);
     expect(view.tiles[0].value).toContain('38,40');
     expect(view.tiles[0].sub).toContain('21,10');
     expect(view.tiles[1].value).toBe('02–04 Uhr');

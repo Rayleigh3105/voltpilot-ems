@@ -5,6 +5,7 @@ import {
   deviceSummary,
   newlyReported,
   plantModel,
+  toComponentHealth,
   type ComponentRole,
 } from './komponenten';
 import type { EntityLocalSetup, SiteEntity, SiteTopology } from './api';
@@ -260,5 +261,40 @@ describe('deviceSummary', () => {
     expect(deviceSummary({ health: 'never', messwertCount: 2 })).toBe(
       'noch keine Daten · liefert 2 Messwerte',
     );
+    // H2: an unreported device never reads „verbunden".
+    expect(deviceSummary({ health: 'unknown', messwertCount: 3 })).toBe(
+      'noch keine Rückmeldung · liefert 3 Messwerte',
+    );
+  });
+});
+
+describe('toComponentHealth — H2: health never fails OPEN', () => {
+  it('only a literal ok is ok', () => {
+    expect(toComponentHealth('ok')).toBe('ok');
+    expect(toComponentHealth('stale')).toBe('stale');
+    expect(toComponentHealth('never')).toBe('never');
+  });
+
+  it('anything unreported becomes `unknown`, NOT `ok`', () => {
+    // On deploy day no edge sends the E1b heartbeat, so `observed` is null for
+    // every component - and the old mapping painted every dot green while the
+    // cockpit on the same plant said „Ihr Gerät meldet sich nicht".
+    expect(toComponentHealth(undefined)).toBe('unknown');
+    expect(toComponentHealth(null)).toBe('unknown');
+    // the honest word the API itself returns
+    expect(toComponentHealth('unreported')).toBe('unknown');
+    // and any future word the portal does not know yet
+    expect(toComponentHealth('degraded')).toBe('unknown');
+  });
+
+  it('an entity without an observed report renders a grey component', () => {
+    const model = plantModel(
+      [entity('e-batt', 'battery-hybrid', { observed: null })],
+      null,
+      [inverter('inv', 'deye')],
+    );
+    expect(model.components[0].health).toBe('unknown');
+    expect(model.devices[0].health).toBe('unknown');
+    expect(model.devices[0].summary).toContain('noch keine Rückmeldung');
   });
 });

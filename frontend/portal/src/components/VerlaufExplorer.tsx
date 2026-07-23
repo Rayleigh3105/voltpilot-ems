@@ -86,6 +86,7 @@ const HEALTH_DOT: Record<string, { cls: string; title: string }> = {
   ok: { cls: 'vp-health-ok', title: 'Liefert Daten' },
   stale: { cls: 'vp-health-warn', title: 'Meldet gerade keine Daten' },
   never: { cls: 'vp-health-off', title: 'Noch keine Daten' },
+  unknown: { cls: 'vp-health-off', title: 'Noch keine Rückmeldung' },
 };
 
 /** The grouped list of measurements (desktop rail body + phone sheet body). */
@@ -101,7 +102,7 @@ function GroupList({
   return (
     <div className="vp-verlauf-groups" role="listbox" aria-label="Messwerte">
       {groups.map((g) => {
-        const dot = HEALTH_DOT[g.health] ?? HEALTH_DOT.ok;
+        const dot = HEALTH_DOT[g.health] ?? HEALTH_DOT.unknown;
         return (
           <div key={`${g.entityId}:${g.items[0]?.channel ?? g.label}`} className="vp-verlauf-group">
             <div className="vp-vg-head">

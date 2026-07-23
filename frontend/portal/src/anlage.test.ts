@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { coveredSinceLabel } from './anlage';
 import type { EarningsMonth, EarningsSeriesPoint, EarningsSite, Site } from './api';
 import {
   bestBucket,
@@ -345,5 +346,19 @@ describe('buildSitePayload (v3.1-M3 full-representation guard)', () => {
     expect(payload.name).toBe('Solarpark Dachau');
     expect(payload.maxFeedInKw).toBe(75);
     expect(payload.plantKind).toBe('direktvermarktung');
+  });
+});
+
+
+describe('coveredSinceLabel — V4: name the covered range on „Gesamt"', () => {
+  it('turns the first covered day into a caption', () => {
+    expect(coveredSinceLabel('2026-07-03')).toBe('seit 3. Juli 2026');
+  });
+
+  it('stays null without a known start — never an invented date', () => {
+    expect(coveredSinceLabel(null)).toBeNull();
+    expect(coveredSinceLabel(undefined)).toBeNull();
+    expect(coveredSinceLabel('   ')).toBeNull();
+    expect(coveredSinceLabel('nonsense')).toBeNull();
   });
 });

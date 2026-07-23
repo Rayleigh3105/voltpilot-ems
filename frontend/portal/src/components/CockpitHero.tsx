@@ -5,6 +5,7 @@ import type { SiteSource, SiteTopology } from '../api';
 import type { CockpitHeroView, HeroRing } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
+import { flowHasValues } from '../liveDetail';
 import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 import { EnergyFlow } from './EnergyFlow';
 import { PvBreakdownLine } from './PvBreakdown';
@@ -27,6 +28,12 @@ import './CockpitBlocks.css';
  * Ring** — nie „0 %".
  *
  * Render-only: alles Abgeleitete kommt aus `cockpitWidgets.ts` `cockpitHero`.
+ *
+ * **V14 (Audit): schweigt das Gerät, entfällt das Diagramm.** Vier „—"-Knoten
+ * auf ~450 px sind keine Information; dann bekommt der WEG NACH VORN diesen
+ * Platz (Was kann ich tun?, drei konkrete Schritte, ein Absprung zum Gerät).
+ * **V11:** die Wetter-Zeile stand doppelt auf einem Bildschirm (hier UND in
+ * der Wetter-Kachel) — hier ist sie weg, die Kachel trägt sie.
  */
 export function CockpitHero({
   view,
@@ -34,7 +41,6 @@ export function CockpitHero({
   snapshot,
   stale = false,
   sources = null,
-  whyLine,
   onOpenSub,
   footer,
 }: {
@@ -50,36 +56,42 @@ export function CockpitHero({
    * NUR noch als Kopf-Chip (R4: eine Frischewahrheit).
    */
   sources?: SiteSource[] | null;
-  /** Die Wetter-„Warum"-Zeile, nur bei frischen Daten. */
-  whyLine?: string | null;
   onOpenSub: (sub: AnlagenSub) => void;
   /** Zusatz unter dem Diagramm (heute: der Steuerungs-Streifen). */
   footer?: ReactNode;
 }) {
+  const hasFlow = flowHasValues(topology, snapshot);
   return (
     <Card padding="lg" radius="lg" className="vp-cockpit-hero" style={{ minWidth: 0 }}>
       <div className="vp-hero-flow">
-        {topology ? (
-          <AdaptiveEnergyFlow topology={topology} stale={stale} size="hero" />
+        {hasFlow ? (
+          topology ? (
+            <AdaptiveEnergyFlow topology={topology} stale={stale} size="hero" />
+          ) : (
+            <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />
+          )
         ) : (
-          <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />
+          <NoFlowGuidance onOpenSub={onOpenSub} />
         )}
-        <PvBreakdownLine sources={sources} />
-        {whyLine && (
-          <p className="vp-live-why">
-            <Icon name="sun" size={14} /> {whyLine}
-          </p>
-        )}
+        {hasFlow && <PvBreakdownLine sources={sources} />}
         {footer}
       </div>
 
       <div className="vp-hero-side">
-        {view.rings.length > 0 && (
+        {view.rings.length > 0 ? (
           <div className="vp-hero-rings">
             {view.rings.map((r) => (
               <Ring key={r.id} ring={r} />
             ))}
           </div>
+        ) : (
+          view.ringsNote && (
+            /* V13: der Platz bleibt reserviert und sagt, warum er leer ist -
+               die Seitenhöhe springt nicht mehr bei jedem Tab-Wechsel. */
+            <div className="vp-hero-rings vp-hero-rings-empty">
+              <p className="vp-muted">{view.ringsNote}</p>
+            </div>
+          )
         )}
 
         {view.money && (
@@ -106,6 +118,30 @@ export function CockpitHero({
         )}
       </div>
     </Card>
+  );
+}
+
+/**
+ * V14: der Platz des Diagramms, wenn es nichts zu zeichnen gibt. Kein leeres
+ * Diagramm, keine erfundene Null — die drei Dinge, die wirklich helfen.
+ */
+function NoFlowGuidance({ onOpenSub }: { onOpenSub: (sub: AnlagenSub) => void }) {
+  return (
+    <div className="vp-hero-noflow">
+      <h3>Was kann ich tun?</h3>
+      <ol>
+        <li>Ist Ihr Gerät mit Strom versorgt?</li>
+        <li>Hat es Verbindung zum Internet (Kabel oder WLAN)?</li>
+        <li>Nach einem Neustart dauert es ein paar Minuten, bis Werte ankommen.</li>
+      </ol>
+      <button type="button" className="vp-btn vp-btn-ghost" onClick={() => onOpenSub('modell')}>
+        <Icon name="cpu" size={16} />
+        Gerät prüfen
+      </button>
+      <p className="vp-muted">
+        Sobald Ihr Gerät wieder sendet, erscheint hier automatisch der Energiefluss.
+      </p>
+    </div>
   );
 }
 

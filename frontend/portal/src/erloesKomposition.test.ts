@@ -283,6 +283,48 @@ describe('erloesKomposition — Perioden-Disziplin (die tragende Regel)', () => 
     expect(view.totals[0].eur).toBe(53);
   });
 
+  it('V4: „Gesamt" nennt den abgedeckten Zeitraum statt „Gesamt gesamt"', () => {
+    const streams = moneyStreams(
+      activeModes({
+        signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
+        config: {},
+        entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
+      }),
+    );
+    const view = erloesKomposition({
+      streams,
+      money: money({
+        eigenverbrauchsWertEur: 41,
+        einspeiseErloesEur: 12,
+        firstCoveredDate: '2026-07-03',
+      }),
+      range: 'all',
+      at: NOW,
+      now: NOW,
+    });
+    expect(view.totals[0].label).toBe('seit 3. Juli 2026');
+    expect(view.totals[0].label).not.toContain('Gesamt gesamt');
+  });
+
+  it('V4: ohne bekanntes Startdatum bleibt es beim schlichten „Gesamt gesamt"', () => {
+    // Nie ein erfundenes Datum - lieber die alte, ehrliche Formulierung.
+    const streams = moneyStreams(
+      activeModes({
+        signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
+        config: {},
+        entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
+      }),
+    );
+    const view = erloesKomposition({
+      streams,
+      money: money({ eigenverbrauchsWertEur: 41, firstCoveredDate: null }),
+      range: 'all',
+      at: NOW,
+      now: NOW,
+    });
+    expect(view.totals[0].label).toBe('Gesamt gesamt');
+  });
+
   it('benennt eine monatliche Abrechnungsperiode korrekt', () => {
     expect(
       billingPeriodLabel(

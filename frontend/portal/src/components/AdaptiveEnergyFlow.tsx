@@ -1,7 +1,8 @@
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { SiteTopology } from '../api';
 import { ROLE_META } from '../adaptive';
-import { layoutFlow } from '../adaptiveFlow';
+import { layoutFlow, NARROW_MAX_PX } from '../adaptiveFlow';
 import type { EnergyFlowSize } from './EnergyFlow';
 
 /**
@@ -13,6 +14,13 @@ import type { EnergyFlowSize } from './EnergyFlow';
  * the animated spoke direction encodes the topology flow sign. A dependency-free
  * SVG that scales to its container (zero horizontal overflow). All geometry is
  * the pure `layoutFlow`; this only renders it.
+ *
+ * **V9 (Audit) — the phone fix, twofold.** The container width is measured
+ * (ResizeObserver, the `EnergyFlow` precedent) and below `NARROW_MAX_PX` the
+ * portrait geometry is used, so at 375 px the whole cross fits with readable
+ * labels. And the `<svg>` carries `minWidth: 0`: as a flex item its automatic
+ * minimum size otherwise pinned it at ~440 px inside a ~290 px card, pushing
+ * the Hausverbrauch node entirely off-screen.
  */
 export function AdaptiveEnergyFlow({
   topology,
@@ -28,27 +36,51 @@ export function AdaptiveEnergyFlow({
    */
   size?: EnergyFlowSize;
 }) {
-  const L = layoutFlow(topology.topology, topology.entities);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const measure = () => setWidth(el.clientWidth || 0);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const narrow = width > 0 && width < NARROW_MAX_PX;
+  const L = layoutFlow(topology.topology, topology.entities, { narrow });
   const maxWidth = size === 'hero' ? `${Math.round(L.W * 1.6)}px` : `${L.W}px`;
 
   return (
     <div
+      ref={wrapRef}
       className="vp-flow-wrap vp-flow-adaptive"
       style={{ opacity: stale ? 0.55 : 1, filter: stale ? 'grayscale(0.35)' : undefined }}
       role="img"
-      aria-label="Energiefluss der Anlage, nach Rollen gruppiert"
+      // V12: „nach Rollen gruppiert" was internal v2 vocabulary (D3 says
+      // Gerät / Komponente / Messwert) - the customer just has an Anlage.
+      aria-label="Energiefluss Ihrer Anlage"
     >
       <svg
         viewBox={`0 0 ${L.W} ${L.H}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ display: 'block', width: '100%', maxWidth, height: 'auto', margin: '0 auto' }}
+        style={{
+          display: 'block',
+          width: '100%',
+          maxWidth,
+          minWidth: 0,
+          height: 'auto',
+          margin: '0 auto',
+        }}
       >
         {/* Base spokes (grey) + animated coloured overlay per active vertex. */}
         {L.vertices.map((v) => (
           <g key={`spoke-${v.key}`}>
             <line
-              x1={v.x}
-              y1={v.y}
+              x1={v.spokeX}
+              y1={v.spokeY}
               x2={L.hubX}
               y2={L.hubY}
               stroke="var(--vp-flow-base)"
@@ -58,8 +90,8 @@ export function AdaptiveEnergyFlow({
             {v.spokeActive && (
               <line
                 className={`vp-flow-line ${v.reverse ? 'vp-flow-rev' : 'vp-flow-on'}`}
-                x1={v.x}
-                y1={v.y}
+                x1={v.spokeX}
+                y1={v.spokeY}
                 x2={L.hubX}
                 y2={L.hubY}
                 stroke={ROLE_META[v.role].color}
@@ -126,7 +158,7 @@ export function AdaptiveEnergyFlow({
               {v.labelLines.map((line, li) => (
                 <text
                   key={li}
-                  x={v.x}
+                  x={v.labelX}
                   y={v.y + L.nodeR + L.lblDy + li * L.lblLh}
                   textAnchor="middle"
                   fontWeight={li === 0 ? 700 : 600}
@@ -142,7 +174,7 @@ export function AdaptiveEnergyFlow({
                   the same device would read alike again (G2). */}
               {v.roleTag && (
                 <text
-                  x={v.x}
+                  x={v.labelX}
                   y={v.y + L.nodeR + L.lblDy + v.labelLines.length * L.lblLh}
                   textAnchor="middle"
                   fontWeight={700}

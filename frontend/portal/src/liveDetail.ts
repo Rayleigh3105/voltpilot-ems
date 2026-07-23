@@ -8,11 +8,13 @@
  * Pure + framework-free (the `livePuls.ts`/`adaptiveLive.ts` precedent); the
  * render half is `components/KomponentenSection.tsx`.
  */
-import type { HistoryTotals } from './api';
+import type { HistoryTotals, SiteTopology } from './api';
 import type { LiveState } from './adaptiveLive';
+import type { LiveSnapshot } from './live';
 import { energyLabel } from './anlage';
 import { fmtRelative } from './format';
 import type { LivePulsRow } from './livePuls';
+import { isReportedTotal } from './nodata';
 
 /**
  * The live window of the compact Verlauf chart. R3 (owner Q4): the third
@@ -89,17 +91,27 @@ export function initialVerlaufOpen(stored: string | null): boolean {
  * Haus row. Applied ONLY where the row has no sub-line of its own (a
  * multi-producer "2 Erzeuger" line is never overwritten) and only where the
  * row is unambiguous (the PV role row; the house row identified by key/title —
- * a Wallbox consumer never gets the house total). Absent totals add nothing.
+ * a Wallbox consumer never gets the house total).
+ *
+ * **V2 (Audit) — no fabricated zero next to an honest „no data".** The board
+ * read „noch keine Daten **· 0,0 kWh heute**" because the history endpoint
+ * returns `pvGenerationKwh: 0.0` on a day with ZERO buckets (while correctly
+ * returning `null` for the cost fields). Two guards now:
+ *  1. a row whose own state says „noch keine Daten" gets NO day total at all —
+ *     the two halves of one line must not contradict each other;
+ *  2. a total of 0 (or absent) is treated as NOT REPORTED
+ *     (`nodata.isReportedTotal`) — until the server sends `null` there, the
+ *     portal must not print a kWh figure it cannot vouch for.
  */
 export function withDayTotals(
   rows: LivePulsRow[],
   totals: HistoryTotals | null | undefined,
 ): LivePulsRow[] {
   if (!totals) return rows;
-  const pvKwh = num(totals.pvGenerationKwh);
-  const loadKwh = num(totals.consumptionKwh);
+  const pvKwh = isReportedTotal(totals.pvGenerationKwh) ? totals.pvGenerationKwh : null;
+  const loadKwh = isReportedTotal(totals.consumptionKwh) ? totals.consumptionKwh : null;
   return rows.map((row) => {
-    if (row.subLine) return row;
+    if (row.subLine || row.stateLabel === NO_DATA_STATE) return row;
     if (row.role === 'pv' && pvKwh != null) {
       return { ...row, subLine: `${energyLabel(pvKwh)} heute` };
     }
@@ -111,6 +123,36 @@ export function withDayTotals(
   });
 }
 
-function num(v: number | null | undefined): number | null {
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+/** The verdict word that means „this row has nothing to report" (livePuls.ts). */
+const NO_DATA_STATE = 'noch keine Daten';
+
+/**
+ * V14 (Audit) — hat der Energiefluss ÜBERHAUPT einen Wert?
+ *
+ * Bei schweigendem Gerät zeichnete der Hero ~450 px vier „—"-Knoten und
+ * beherrschte damit den ersten Bildschirm, während die eigentliche Anweisung
+ * („Ihr Gerät meldet sich nicht …") als kleine graue Zeile darüber stand. Wenn
+ * NICHTS zu zeigen ist, wird das Diagramm eingeklappt und der Weg nach vorn
+ * bekommt den Platz. Prüft beide Quellen der zusammengeführten Startseite: die
+ * v2-Topologie (migriert) und den v1-Snapshot.
+ */
+export function flowHasValues(
+  topology: SiteTopology | null | undefined,
+  snapshot: LiveSnapshot | null | undefined,
+): boolean {
+  if (topology) {
+    return topology.topology.nodes.some(
+      (n) =>
+        n.value_kw != null ||
+        n.soc_pct != null ||
+        n.members.some((m) => m.value_kw != null),
+    );
+  }
+  if (!snapshot) return false;
+  return (
+    snapshot.pvKw != null ||
+    snapshot.loadKw != null ||
+    snapshot.gridKw != null ||
+    snapshot.socPct != null
+  );
 }

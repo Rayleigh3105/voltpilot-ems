@@ -261,6 +261,17 @@ describe('Der Hero', () => {
     const none = cockpitHero({ totals: null, money: null, range: 'month', now: NOW });
     expect(none.rings).toEqual([]);
     expect(none.money).toBeNull();
+    // V13: statt eines wortlosen Höhensprungs steht dort der Grund.
+    expect(none.ringsNote).toContain('Juli');
+    expect(hero.ringsNote).toBeNull(); // es GIBT einen Ring
+  });
+
+  it('V13: „Gesamt" sagt, wo Autarkie/Eigenverbrauch stattdessen zu finden sind', () => {
+    const gesamt = cockpitHero({ totals: null, money: money(), range: 'all', now: NOW });
+    expect(gesamt.rings).toEqual([]);
+    expect(gesamt.ringsNote).toContain('Monat oder Jahr');
+    // nie eine erfundene 0
+    expect(gesamt.ringsNote).not.toContain('0 %');
   });
 
   it('stellt die Steuerungs-Zurechnung als UNTERZEILE, nie als eigenen Summanden', () => {

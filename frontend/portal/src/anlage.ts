@@ -115,6 +115,26 @@ export function periodLabel(range: EarningsRange, at: Date, now: Date = new Date
   }
 }
 
+/**
+ * V4 (Audit) — „Gesamt" beim Namen nennen. Die Summenzeile las
+ * „**Gesamt gesamt**" (`${periodLabel} gesamt`, und `periodLabel('all')` ist
+ * „Gesamt"), und niemand konnte sehen, WARUM Monat = Jahr = Gesamt dieselbe
+ * Zahl zeigen (V13). Beides löst der abgedeckte Zeitraum: „seit 3. Juli 2026".
+ * Ohne bekanntes Startdatum bleibt es beim schlichten „Gesamt" — nie ein
+ * erfundenes Datum.
+ */
+export function coveredSinceLabel(firstCoveredDate: string | null | undefined): string | null {
+  const iso = firstCoveredDate?.trim();
+  if (!iso) return null;
+  const d = isoNoon(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `seit ${d.toLocaleDateString('de-DE', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })}`;
+}
+
 /** One slot of the fixed 12-month strip (oldest first, ending this month). */
 export interface StripSlot {
   /** First day of the Berlin month ("2026-07-01") - the `at` for a tap. */

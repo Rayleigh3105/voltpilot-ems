@@ -234,6 +234,8 @@ const HEALTH_TONE: Record<ComponentHealth, 'ok' | 'warn' | 'off'> = {
   ok: 'ok',
   stale: 'warn',
   never: 'off',
+  // H2: „noch keine Rückmeldung" is grey, never green.
+  unknown: 'off',
 };
 
 /** One physical box in the Geräte column. */
