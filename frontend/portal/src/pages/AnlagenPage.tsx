@@ -42,7 +42,12 @@ import { moneyLayout } from '../moneyEmphasis';
 import { leadArtifact, leadBlock } from '../leadSlot';
 import { useAnlageSurface } from '../useAnlageSurface';
 import { hasBlock, projectionActive } from '../cockpit';
-import { cockpitHero, cockpitWidgets, type WidgetDef } from '../cockpitWidgets';
+import {
+  cockpitHero,
+  cockpitWidgets,
+  historyRangeForCockpit,
+  type WidgetDef,
+} from '../cockpitWidgets';
 import { ToolboxPointer } from '../components/CockpitBlocks';
 import { CockpitHero } from '../components/CockpitHero';
 import { WidgetGrid } from '../components/WidgetGrid';
@@ -423,6 +428,11 @@ export function AnlageSeite({
   // PV-Nutzung); since v3 M2 they ALSO feed the cockpit hero's rings and the
   // Haus/Netz widgets, so the projection path fetches them once for all of it.
   const [dayTotals, setDayTotals] = useState<HistoryTotals | null>(null);
+  // v3.2 M1: the hero rings (Autarkie / Eigenverbrauch) follow the SELECTED
+  // period tab, so they read range-scoped Historie totals (day/month/year) -
+  // distinct from `dayTotals`, which stays "today" for the widget grid. The
+  // energy flow stays live regardless. null while loading / for "Gesamt".
+  const [rangeTotals, setRangeTotals] = useState<HistoryTotals | null>(null);
   // v3 M2: the Speicher widget's read-only "Umgang mit dem Speicher" row.
   const [speicherschonung, setSpeicherschonung] = useState<string | null>(null);
   // v3 M2: which widget's modal is open (null = none).
@@ -679,6 +689,35 @@ export function AnlageSeite({
     };
   }, [site.id, needsDayTotals, reloadKey]);
 
+  // v3.2 M1: the hero rings follow the SELECTED period tab. They read
+  // range-scoped Historie totals (Tag/Monat/Jahr) so "Autarkie · Monat" is
+  // genuinely the month's autarky, not today's. The `at` selects a past month
+  // (MonthStrip) exactly like the earnings fetch. "Gesamt" (`all`) has no
+  // all-time Historie endpoint -> no fetch -> the rings are honestly absent
+  // (never a wrong-range value). Fail-soft; the energy flow is untouched.
+  useEffect(() => {
+    const hRange = historyRangeForCockpit(range);
+    if (!projection || hRange == null) {
+      setRangeTotals(null);
+      return undefined;
+    }
+    let active = true;
+    const load = () => {
+      const atForHistory =
+        at ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+      api.history(site.id, hRange, atForHistory).then(
+        (h) => active && setRangeTotals(h.totals),
+        () => {},
+      );
+    };
+    load();
+    const timer = setInterval(load, POLL_MS);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [site.id, projection, range, at, reloadKey]);
+
   // v3 M2: the battery's effective Speicherschonung preset, read-only in the
   // Speicher widget. Fail-soft - without it the row simply does not appear.
   useEffect(() => {
@@ -742,7 +781,7 @@ export function AnlageSeite({
   // Ringe + Geld + Fahrplan-Zeile) und das Widget-Raster. Beide Ableitungen
   // sind rein (`cockpitWidgets.ts`); hier wird nur gefüttert und gerendert.
   const heroView = cockpitHero({
-    dayTotals,
+    totals: rangeTotals,
     money: siteEarnings,
     range,
     at: atDate,

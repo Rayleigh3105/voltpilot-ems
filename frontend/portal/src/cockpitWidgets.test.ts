@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cockpitHero,
   cockpitWidgets,
+  historyRangeForCockpit,
   netzDirectionLabel,
   speicherStateLine,
   type CockpitWidgetsInput,
@@ -295,27 +296,27 @@ describe('Vorzeichen erreichen den Kunden nie', () => {
 
 describe('Der Hero', () => {
   it('trägt Autarkie und Eigenverbrauch als Ringe', () => {
-    const hero = cockpitHero({ dayTotals: TOTALS, money: money(), range: 'month', now: NOW });
+    const hero = cockpitHero({ totals: TOTALS, money: money(), range: 'month', now: NOW });
     expect(hero.rings.map((r) => r.id)).toEqual(['autarkie', 'eigenverbrauch']);
     expect(hero.rings[0].valueText).toBe(`82${NBSP}%`);
     expect(hero.rings[0].pct).toBe(82);
   });
 
-  it('lässt einen Ring WEG, wenn der Tageswert fehlt (nie 0 %)', () => {
+  it('lässt einen Ring WEG, wenn der Zeitraum-Wert fehlt (nie 0 %)', () => {
     const hero = cockpitHero({
-      dayTotals: { ...TOTALS, autarkiePct: null },
+      totals: { ...TOTALS, autarkiePct: null },
       money: money(),
       range: 'month',
       now: NOW,
     });
     expect(hero.rings.map((r) => r.id)).toEqual(['eigenverbrauch']);
-    const none = cockpitHero({ dayTotals: null, money: null, range: 'month', now: NOW });
+    const none = cockpitHero({ totals: null, money: null, range: 'month', now: NOW });
     expect(none.rings).toEqual([]);
     expect(none.money).toBeNull();
   });
 
   it('stellt die Steuerungs-Zurechnung als UNTERZEILE, nie als eigenen Summanden', () => {
-    const hero = cockpitHero({ dayTotals: TOTALS, money: money(), range: 'month', now: NOW });
+    const hero = cockpitHero({ totals: TOTALS, money: money(), range: 'month', now: NOW });
     expect(hero.money?.value).toBe(`17,00${NBSP}€`);
     expect(hero.money?.attribution).toContain('durch VoltPilots Steuerung');
     // Die Zurechnung wird NICHT zur Summe addiert.
@@ -324,5 +325,51 @@ describe('Der Hero', () => {
 
   it('nennt keine Fahrplan-Zeile ohne Plan', () => {
     expect(cockpitHero({ range: 'month', now: NOW }).planSentence).toBeNull();
+  });
+});
+
+describe('Die Ring-Kennzahlen folgen dem gewählten Zeitraum (v3.2 M1)', () => {
+  it('trägt die Periode im Ring-Etikett wie die Geld-Zeile', () => {
+    // Monat: "· Juli" (aktueller Berlin-Monat), Geld ebenso.
+    const monat = cockpitHero({ totals: TOTALS, money: money(), range: 'month', now: NOW });
+    expect(monat.rings.map((r) => r.label)).toEqual([
+      'Autarkie · Juli',
+      'Eigenverbrauch · Juli',
+    ]);
+    expect(monat.money?.label).toBe('Verdient · Juli');
+
+    // Heute: das Tages-Etikett.
+    const heute = cockpitHero({ totals: TOTALS, money: money(), range: 'day', now: NOW });
+    expect(heute.rings.map((r) => r.label)).toEqual([
+      'Autarkie · Heute',
+      'Eigenverbrauch · Heute',
+    ]);
+
+    // Jahr: die Jahreszahl.
+    const jahr = cockpitHero({ totals: TOTALS, money: money(), range: 'year', now: NOW });
+    expect(jahr.rings.map((r) => r.label)).toEqual([
+      'Autarkie · 2026',
+      'Eigenverbrauch · 2026',
+    ]);
+  });
+
+  it('nennt für einen getippten Vormonat dessen Namen (at)', () => {
+    const mai = cockpitHero({
+      totals: TOTALS,
+      money: money(),
+      range: 'month',
+      at: new Date('2026-05-01T12:00:00+02:00'),
+      now: NOW,
+    });
+    expect(mai.rings[0].label).toBe('Autarkie · Mai');
+    expect(mai.money?.label).toBe('Verdient · Mai');
+  });
+
+  it('bildet den Zeitraum-Tab auf den Historie-Bereich ab; „Gesamt" hat keinen', () => {
+    expect(historyRangeForCockpit('day')).toBe('day');
+    expect(historyRangeForCockpit('month')).toBe('month');
+    expect(historyRangeForCockpit('year')).toBe('year');
+    // „Gesamt" (all) → kein All-Zeit-Historie-Endpunkt → keine Ringe.
+    expect(historyRangeForCockpit('all')).toBeNull();
   });
 });
