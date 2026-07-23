@@ -1,0 +1,522 @@
+import { describe, expect, it } from 'vitest';
+import { NBSP } from './format';
+import {
+  FALLBACK_14A_NOTE,
+  FORECAST_FOOTNOTE,
+  KNOWN_ROLES,
+  bandLabel,
+  bindingChips,
+  dayAvgPriceCt,
+  driverLabel,
+  hasWhyLayer,
+  phaseArcSentence,
+  phaseEurAmount,
+  phaseEurLine,
+  phaseEurNote,
+  phaseRange,
+  phaseWhy,
+  phases,
+  roleLabel,
+  slotContextRows,
+  slotWhy,
+  type PlanPhase,
+  type WhySlot,
+} from './fahrplanWhy';
+
+/** Sequential 15-min slots starting at a LOCAL wall-clock hour (TZ-stable). */
+function mkSlots(
+  roles: (string | null)[],
+  overrides: (i: number) => Partial<WhySlot> = () => ({}),
+  startHour = 0,
+): WhySlot[] {
+  const base = new Date(2026, 6, 23, startHour, 0, 0).getTime();
+  return roles.map((role, i) => ({
+    start: new Date(base + i * 15 * 60_000).toISOString(),
+    batteryKw: 0,
+    priceEurMwh: null,
+    costEur: null,
+    baselineCostEur: null,
+    slotRole: role,
+    slotFlags: null,
+    storedValueCtKwh: null,
+    gridValueCtKwh: null,
+    peakPressureEurKw: null,
+    ...overrides(i),
+  }));
+}
+
+function rep(role: string, n: number): string[] {
+  return Array.from({ length: n }, () => role);
+}
+
+describe('hasWhyLayer (the null-degradation gate)', () => {
+  it('is true only when EVERY slot carries a known role', () => {
+    expect(hasWhyLayer(mkSlots(rep('warten', 4)))).toBe(true);
+    expect(hasWhyLayer(mkSlots(['warten', null, 'warten']))).toBe(false);
+    expect(hasWhyLayer(mkSlots(['warten', 'zukunfts_rolle']))).toBe(false);
+    expect(hasWhyLayer([])).toBe(false);
+  });
+
+  it('covers exactly the §6 role vocabulary', () => {
+    expect([...KNOWN_ROLES].sort()).toEqual(
+      [
+        'abregeln',
+        'reserve_halten',
+        'warten',
+        'pv_speichern',
+        'guenstig_laden',
+        'spitze_kappen',
+        'verkaufen',
+        'eigenverbrauch',
+      ].sort(),
+    );
+  });
+});
+
+describe('phases: grouping', () => {
+  it('groups consecutive same-role slots into ordered phases', () => {
+    const slots = mkSlots([
+      ...rep('warten', 8),
+      ...rep('eigenverbrauch', 8),
+      ...rep('pv_speichern', 16),
+      ...rep('warten', 4),
+      ...rep('eigenverbrauch', 12),
+    ]);
+    const ph = phases(slots);
+    expect(ph.map((p) => p.role)).toEqual([
+      'warten',
+      'eigenverbrauch',
+      'pv_speichern',
+      'warten',
+      'eigenverbrauch',
+    ]);
+    expect(ph.map((p) => p.slotCount)).toEqual([8, 8, 16, 4, 12]);
+    expect(ph[1].startIdx).toBe(8);
+    expect(ph[1].endIdx).toBe(15);
+    expect(ph[2].kind).toBe('charge');
+    expect(ph[4].kind).toBe('discharge');
+    expect(ph[0].kind).toBe('idle');
+    // The phase's time range covers first slot start .. last slot end.
+    expect(ph[0].from).toBe(slots[0].start);
+    expect(new Date(ph[0].to).getTime()).toBe(new Date(slots[8].start).getTime());
+  });
+
+  it('smooths a micro-run (<3 slots) between same-role neighbors', () => {
+    const ph = phases(mkSlots([...rep('pv_speichern', 10), ...rep('warten', 2), ...rep('pv_speichern', 10)]));
+    expect(ph).toHaveLength(1);
+    expect(ph[0].role).toBe('pv_speichern');
+    expect(ph[0].slotCount).toBe(22);
+  });
+
+  it('smoothing cascades until stable', () => {
+    const ph = phases(
+      mkSlots([
+        ...rep('pv_speichern', 4),
+        ...rep('warten', 2),
+        ...rep('pv_speichern', 1),
+        ...rep('warten', 2),
+        ...rep('pv_speichern', 4),
+      ]),
+    );
+    expect(ph).toHaveLength(1);
+    expect(ph[0].slotCount).toBe(13);
+  });
+
+  it('keeps a short run between DIFFERENT-role neighbors (a real transition)', () => {
+    const ph = phases(
+      mkSlots([...rep('eigenverbrauch', 6), ...rep('warten', 2), ...rep('pv_speichern', 6)]),
+    );
+    expect(ph.map((p) => p.role)).toEqual(['eigenverbrauch', 'warten', 'pv_speichern']);
+  });
+
+  it('keeps a short run at the plan edge', () => {
+    const ph = phases(mkSlots([...rep('warten', 2), ...rep('pv_speichern', 8)]));
+    expect(ph.map((p) => p.role)).toEqual(['warten', 'pv_speichern']);
+  });
+
+  it('yields NOTHING when any slot lacks a known role (null-degradation)', () => {
+    expect(phases(mkSlots([...rep('pv_speichern', 4), null]))).toEqual([]);
+    expect(phases(mkSlots(['pv_speichern', 'brandneue_rolle']))).toEqual([]);
+    expect(phases([])).toEqual([]);
+  });
+});
+
+describe('phases: €-attribution', () => {
+  it('sums baseline − cost − wear over the priced slots', () => {
+    const ph = phases(
+      mkSlots(rep('eigenverbrauch', 4), () => ({
+        costEur: 0.2,
+        baselineCostEur: 0.5,
+        wearCostEur: 0.05,
+      })),
+    );
+    expect(ph).toHaveLength(1);
+    expect(ph[0].eur).toBeCloseTo(4 * (0.5 - 0.2 - 0.05), 10);
+  });
+
+  it('treats absent wear as 0 (matches the page savings framing)', () => {
+    const ph = phases(
+      mkSlots(rep('eigenverbrauch', 4), () => ({ costEur: 0.2, baselineCostEur: 0.5 })),
+    );
+    expect(ph[0].eur).toBeCloseTo(1.2, 10);
+  });
+
+  it('is null (never a fake 0) when no slot carries cost data', () => {
+    const ph = phases(mkSlots(rep('eigenverbrauch', 4)));
+    expect(ph[0].eur).toBeNull();
+  });
+
+  it('skips unpriced slots inside a priced phase', () => {
+    const ph = phases(
+      mkSlots(rep('eigenverbrauch', 4), (i) =>
+        i === 0 ? {} : { costEur: 0.1, baselineCostEur: 0.4 },
+      ),
+    );
+    expect(ph[0].eur).toBeCloseTo(0.9, 10);
+  });
+});
+
+describe('phases: mode driver (§7)', () => {
+  it('spitze_kappen belongs to the Lastspitzenkappung', () => {
+    const ph = phases(mkSlots(rep('spitze_kappen', 4)));
+    expect(ph[0].driver).toBe('lastspitze');
+  });
+
+  it('μ-pressure marks any phase as Lastspitzenkappung', () => {
+    const ph = phases(mkSlots(rep('guenstig_laden', 4), (i) => ({ peakPressureEurKw: i === 1 ? 2.5 : 0 })));
+    expect(ph[0].driver).toBe('lastspitze');
+  });
+
+  it('reserve flags decide the reserve owner', () => {
+    expect(
+      phases(mkSlots(rep('reserve_halten', 4), () => ({ slotFlags: ['soc_floor', 'reserve_peak'] })))[0]
+        .driver,
+    ).toBe('lastspitze');
+    expect(
+      phases(mkSlots(rep('reserve_halten', 4), () => ({ slotFlags: ['reserve_backup'] })))[0].driver,
+    ).toBe('notstrom');
+    expect(phases(mkSlots(rep('reserve_halten', 4)))[0].driver).toBeNull();
+  });
+
+  it('maps market and self-consumption roles to their home modes', () => {
+    expect(phases(mkSlots(rep('guenstig_laden', 4)))[0].driver).toBe('markt');
+    expect(phases(mkSlots(rep('verkaufen', 4)))[0].driver).toBe('markt');
+    expect(phases(mkSlots(rep('pv_speichern', 4)))[0].driver).toBe('eigenverbrauch');
+    expect(phases(mkSlots(rep('eigenverbrauch', 4)))[0].driver).toBe('eigenverbrauch');
+    expect(phases(mkSlots(rep('warten', 4)))[0].driver).toBeNull();
+    expect(phases(mkSlots(rep('abregeln', 4)))[0].driver).toBeNull();
+  });
+
+  it('driverLabel speaks customer German', () => {
+    expect(driverLabel('eigenverbrauch')).toBe('Eigenverbrauch');
+    expect(driverLabel('markt')).toBe('Marktvermarktung');
+    expect(driverLabel('lastspitze')).toBe('Lastspitzenkappung');
+    expect(driverLabel('notstrom')).toBe('Notstrom');
+    expect(driverLabel(null)).toBeNull();
+  });
+});
+
+describe('phaseArcSentence (the day story)', () => {
+  it('tells the arc chronologically with dayparts and "wieder" on repeats', () => {
+    // 00-07 warten · 07-09 eigenverbrauch · 09-11 warten · 11-15 pv_speichern ·
+    // 15-18 warten · 18-21 eigenverbrauch · 21-24 warten
+    const roles = [
+      ...rep('warten', 28),
+      ...rep('eigenverbrauch', 8),
+      ...rep('warten', 8),
+      ...rep('pv_speichern', 16),
+      ...rep('warten', 12),
+      ...rep('eigenverbrauch', 12),
+      ...rep('warten', 12),
+    ];
+    const arc = phaseArcSentence(phases(mkSlots(roles)), 'eigenverbrauch');
+    expect(arc).toBe(
+      'Morgens den Verbrauch aus dem Speicher decken → mittags PV-Überschuss speichern → abends wieder den Verbrauch aus dem Speicher decken.',
+    );
+  });
+
+  it('words verkaufen per plant kind', () => {
+    // 44 slots idle then selling 11:00-15:00.
+    const roles = [...rep('warten', 44), ...rep('verkaufen', 16), ...rep('warten', 36)];
+    expect(phaseArcSentence(phases(mkSlots(roles)), 'direktvermarktung')).toBe(
+      'Mittags zum Spitzenpreis verkaufen.',
+    );
+    expect(phaseArcSentence(phases(mkSlots(roles)), 'eigenverbrauch')).toBe('Mittags einspeisen.');
+  });
+
+  it('caps the sentence at 4 segments (the longest phases win)', () => {
+    const roles = [
+      ...rep('eigenverbrauch', 8), // 00:00 · 8 slots
+      ...rep('guenstig_laden', 4), // 02:00 · 4 slots (shortest - dropped)
+      ...rep('pv_speichern', 16), // 03:00
+      ...rep('abregeln', 12), // 07:00
+      ...rep('verkaufen', 20), // 10:00
+      ...rep('warten', 36),
+    ];
+    const arc = phaseArcSentence(phases(mkSlots(roles)), 'direktvermarktung')!;
+    expect(arc).not.toContain('günstig aus dem Netz laden');
+    expect(arc.split('→')).toHaveLength(4);
+  });
+
+  it('an all-idle plan says the battery holds (reserve-aware)', () => {
+    expect(phaseArcSentence(phases(mkSlots(rep('warten', 96))), 'eigenverbrauch')).toBe(
+      'Der Speicher hält heute seine Ladung.',
+    );
+    expect(
+      phaseArcSentence(
+        phases(mkSlots([...rep('warten', 48), ...rep('reserve_halten', 48)])),
+        'eigenverbrauch',
+      ),
+    ).toBe('Der Speicher hält seine Ladung als Reserve zurück.');
+  });
+
+  it('is null without phases', () => {
+    expect(phaseArcSentence([], 'eigenverbrauch')).toBeNull();
+  });
+});
+
+describe('slotWhy (per-slot customer sentence)', () => {
+  const base: WhySlot = {
+    start: new Date(2026, 6, 23, 18, 0).toISOString(),
+    batteryKw: -3,
+    priceEurMwh: 315,
+    costEur: null,
+    baselineCostEur: null,
+    storedValueCtKwh: 28.3,
+    slotFlags: null,
+  };
+
+  it('eigenverbrauch compares price against the Wert gespeicherter Energie', () => {
+    expect(slotWhy({ ...base, slotRole: 'eigenverbrauch' }, 'eigenverbrauch')).toBe(
+      'Deckt den Verbrauch aus dem Speicher: Netzstrom wäre jetzt teurer (Börsenpreis 31,5 ct/kWh) als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+    );
+  });
+
+  it('degrades to a number-free sentence when numbers are missing', () => {
+    expect(
+      slotWhy({ ...base, slotRole: 'eigenverbrauch', priceEurMwh: null }, 'eigenverbrauch'),
+    ).toBe('Deckt den Verbrauch aus dem Speicher und vermeidet teuren Netzbezug.');
+    expect(
+      slotWhy({ ...base, slotRole: 'pv_speichern', storedValueCtKwh: null }, 'eigenverbrauch'),
+    ).toBe('Überschüssiger Solarstrom wird für die teuren Stunden gespeichert.');
+  });
+
+  it('pv_speichern names the later value', () => {
+    expect(slotWhy({ ...base, slotRole: 'pv_speichern' }, 'eigenverbrauch')).toBe(
+      'Überschüssiger Solarstrom wird gespeichert statt eingespeist – gespeicherte Energie ist später ≈ 28,3 ct/kWh wert.',
+    );
+  });
+
+  it('guenstig_laden compares purchase price against the stored value', () => {
+    expect(
+      slotWhy({ ...base, slotRole: 'guenstig_laden', priceEurMwh: 158 }, 'eigenverbrauch'),
+    ).toBe(
+      'Lädt günstig aus dem Netz: Börsenpreis 15,8 ct/kWh liegt unter dem Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+    );
+  });
+
+  it('verkaufen words per plant kind', () => {
+    expect(slotWhy({ ...base, slotRole: 'verkaufen' }, 'direktvermarktung')).toBe(
+      'Verkauft zum Spitzenpreis: Börsenpreis 31,5 ct/kWh liegt über dem Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+    );
+    expect(slotWhy({ ...base, slotRole: 'verkaufen' }, 'eigenverbrauch')).toContain('Speist ein');
+  });
+
+  it('warten reads its detail from the binding flags', () => {
+    expect(slotWhy({ ...base, slotRole: 'warten', slotFlags: ['soc_max'] }, 'eigenverbrauch')).toBe(
+      'Der Speicher ist voll und wartet auf die nächste Entladephase.',
+    );
+    expect(
+      slotWhy({ ...base, slotRole: 'warten', slotFlags: ['soc_floor'] }, 'eigenverbrauch'),
+    ).toBe('Der Speicher ist am Minimum und wartet auf PV-Überschuss oder günstigen Strom.');
+    expect(slotWhy({ ...base, slotRole: 'warten' }, 'eigenverbrauch')).toBe(
+      'Der Speicher wartet – kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.',
+    );
+  });
+
+  it('reserve_halten names the reserve owner from the flags', () => {
+    expect(
+      slotWhy({ ...base, slotRole: 'reserve_halten', slotFlags: ['reserve_backup'] }, 'eigenverbrauch'),
+    ).toBe('Der Speicher hält Ladung als Notstrom-Reserve zurück.');
+    expect(
+      slotWhy({ ...base, slotRole: 'reserve_halten', slotFlags: ['reserve_peak'] }, 'eigenverbrauch'),
+    ).toBe('Der Speicher hält Ladung als Reserve für die Lastspitzenkappung zurück.');
+  });
+
+  it('abregeln names the negative price when present', () => {
+    expect(slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: -21 }, 'eigenverbrauch')).toBe(
+      'Einspeisen würde beim negativen Börsenpreis (-2,1 ct/kWh) Geld kosten – die PV wird gedrosselt, statt draufzuzahlen.',
+    );
+    expect(slotWhy({ ...base, slotRole: 'abregeln', priceEurMwh: null }, 'eigenverbrauch')).toBe(
+      'Einspeisen würde bei negativen Preisen Geld kosten – die PV wird gedrosselt, statt draufzuzahlen.',
+    );
+  });
+
+  it('spitze_kappen explains the peak target', () => {
+    expect(slotWhy({ ...base, slotRole: 'spitze_kappen' }, 'eigenverbrauch')).toContain(
+      'Spitzen-Ziel',
+    );
+  });
+
+  it('is null for missing/unknown roles (never fabricated)', () => {
+    expect(slotWhy({ ...base, slotRole: null }, 'eigenverbrauch')).toBeNull();
+    expect(slotWhy({ ...base, slotRole: 'phantasie' }, 'eigenverbrauch')).toBeNull();
+  });
+});
+
+describe('slotContextRows', () => {
+  it('builds price (with Ø), PV, SoC and stored-value rows', () => {
+    const slots = mkSlots(rep('eigenverbrauch', 2), (i) => ({
+      priceEurMwh: i === 0 ? 100 : 300,
+      pvKw: 3.2,
+      socPct: 78.4,
+      storedValueCtKwh: 28.3,
+    }));
+    const rows = slotContextRows(slots[1], slots);
+    expect(rows).toEqual([
+      { label: 'Börsenpreis', value: '30,0 ct/kWh · Ø 20,0 ct/kWh' },
+      { label: 'PV-Prognose', value: '3,2 kW' },
+      { label: 'Ladestand danach', value: '78 %' },
+      { label: 'Wert gespeicherter Energie', value: '≈ 28,3 ct/kWh' },
+    ]);
+  });
+
+  it('omits rows whose value is absent (— discipline)', () => {
+    const slots = mkSlots(rep('warten', 1));
+    expect(slotContextRows(slots[0], slots)).toEqual([]);
+  });
+
+  it('dayAvgPriceCt is null without prices', () => {
+    expect(dayAvgPriceCt(mkSlots(rep('warten', 3)))).toBeNull();
+  });
+});
+
+describe('bindingChips', () => {
+  it('maps known codes to calm German chips', () => {
+    expect(bindingChips(['soc_max', 'grid_limit_14a', 'solar_only'])).toEqual([
+      'Speicher voll',
+      'Netzgrenze §14a',
+      'Nur Solarladen (EEG)',
+    ]);
+    expect(bindingChips(['reserve_backup', 'reserve_peak', 'peak_defining', 'curtailing', 'feed_in_cap', 'soc_floor'])).toEqual([
+      'Notstrom-Reserve',
+      'Reserve für Lastspitze',
+      'Bestimmt die Lastspitze',
+      'Einspeisung gedrosselt',
+      'Einspeisegrenze',
+      'Speicher am Minimum',
+    ]);
+  });
+
+  it('collapses charge_cap + discharge_cap into one chip', () => {
+    expect(bindingChips(['charge_cap', 'discharge_cap'])).toEqual(['Maximale Leistung']);
+  });
+
+  it('ignores unknown codes and handles null', () => {
+    expect(bindingChips(['zukunft_flag'])).toEqual([]);
+    expect(bindingChips(null)).toEqual([]);
+    expect(bindingChips(undefined)).toEqual([]);
+  });
+});
+
+describe('phaseEurLine + phaseRange + labels', () => {
+  const mkPhase = (over: Partial<PlanPhase>): PlanPhase => ({
+    role: 'eigenverbrauch',
+    startIdx: 0,
+    endIdx: 3,
+    slotCount: 4,
+    from: new Date(2026, 6, 23, 17, 45).toISOString(),
+    to: new Date(2026, 6, 23, 22, 0).toISOString(),
+    eur: 3.35,
+    kind: 'discharge',
+    driver: 'eigenverbrauch',
+    ...over,
+  });
+
+  it('discharge phases read +X €', () => {
+    expect(phaseEurLine(mkPhase({}))).toBe(`+3,35${NBSP}€`);
+  });
+
+  it('charge phases word a negative € honestly as Einkauf', () => {
+    expect(phaseEurLine(mkPhase({ kind: 'charge', eur: -1.2 }))).toBe(
+      `Einkauf −1,20${NBSP}€ – zahlt sich in den Entladephasen aus`,
+    );
+    expect(phaseEurAmount(mkPhase({ kind: 'charge', eur: -1.2 }))).toBe(`−1,20${NBSP}€`);
+    expect(phaseEurNote(mkPhase({ kind: 'charge', eur: -1.2 }))).toBe(
+      'Einkauf, der sich in den Entladephasen auszahlt',
+    );
+    // A positive charge phase carries no Einkauf note.
+    expect(phaseEurNote(mkPhase({ kind: 'charge', eur: 0.8 }))).toBeNull();
+    expect(phaseEurNote(mkPhase({ eur: -1.2 }))).toBeNull();
+  });
+
+  it('a non-charge negative stays sign-honest', () => {
+    expect(phaseEurLine(mkPhase({ eur: -0.4 }))).toBe(`−0,40${NBSP}€`);
+  });
+
+  it('null / noise hides the line', () => {
+    expect(phaseEurLine(mkPhase({ eur: null }))).toBeNull();
+    expect(phaseEurLine(mkPhase({ eur: 0.001 }))).toBeNull();
+  });
+
+  it('phaseRange formats the local time window', () => {
+    expect(phaseRange(mkPhase({}))).toBe('17:45–22:00 Uhr');
+  });
+
+  it('phaseWhy summarizes each role in one calm sentence', () => {
+    expect(phaseWhy(mkPhase({ role: 'eigenverbrauch' }), 'eigenverbrauch')).toBe(
+      'Der Speicher deckt den Verbrauch und vermeidet teuren Netzbezug.',
+    );
+    expect(phaseWhy(mkPhase({ role: 'pv_speichern', kind: 'charge' }), 'eigenverbrauch')).toContain(
+      'in den Speicher statt in die Einspeisung',
+    );
+    // A grid-charge phase under peak pressure honestly explains the flatness.
+    expect(
+      phaseWhy(mkPhase({ role: 'guenstig_laden', kind: 'charge', driver: 'lastspitze' }), 'eigenverbrauch'),
+    ).toContain('keine neue Lastspitze');
+    expect(
+      phaseWhy(mkPhase({ role: 'guenstig_laden', kind: 'charge', driver: 'markt' }), 'eigenverbrauch'),
+    ).toContain('für die teuren Stunden danach');
+    expect(phaseWhy(mkPhase({ role: 'verkaufen' }), 'direktvermarktung')).toBe(
+      'Der Speicher verkauft zum Spitzenpreis.',
+    );
+    expect(phaseWhy(mkPhase({ role: 'verkaufen' }), 'eigenverbrauch')).toBe(
+      'Der Speicher speist zum hohen Preis ein.',
+    );
+    expect(
+      phaseWhy(mkPhase({ role: 'reserve_halten', kind: 'idle', driver: 'notstrom' }), 'eigenverbrauch'),
+    ).toBe('Der Speicher hält Ladung als Notstrom-Reserve zurück.');
+    expect(
+      phaseWhy(mkPhase({ role: 'reserve_halten', kind: 'idle', driver: 'lastspitze' }), 'eigenverbrauch'),
+    ).toContain('Reserve für die Lastspitzenkappung');
+    expect(phaseWhy(mkPhase({ role: 'warten', kind: 'idle', driver: null }), 'eigenverbrauch')).toContain(
+      'kein Einsatz',
+    );
+    expect(phaseWhy(mkPhase({ role: 'abregeln', kind: 'curtail' }), 'eigenverbrauch')).toContain(
+      'gedrosselt',
+    );
+  });
+
+  it('roleLabel + bandLabel carry the §6 customer vocabulary', () => {
+    expect(roleLabel('abregeln', 'eigenverbrauch')).toBe('Einspeisung pausiert (Negativpreis)');
+    expect(roleLabel('verkaufen', 'direktvermarktung')).toBe('Zum Spitzenpreis verkaufen');
+    expect(roleLabel('verkaufen', 'eigenverbrauch')).toBe('Einspeisen');
+    expect(roleLabel('reserve_halten', 'eigenverbrauch', ['reserve_backup'])).toBe(
+      'Reserve halten (Notstrom)',
+    );
+    expect(roleLabel('reserve_halten', 'eigenverbrauch', ['reserve_peak'])).toBe(
+      'Reserve halten (Lastspitze)',
+    );
+    expect(bandLabel('warten', 'eigenverbrauch')).toBe('');
+    expect(bandLabel('pv_speichern', 'eigenverbrauch')).toBe('PV speichern');
+    expect(bandLabel('verkaufen', 'eigenverbrauch')).toBe('Einspeisen');
+  });
+
+  it('the honesty copy never names solver internals', () => {
+    for (const text of [FORECAST_FOOTNOTE, FALLBACK_14A_NOTE]) {
+      expect(text).not.toMatch(/MILP|Dual|Schattenpreis|Optimizer/);
+    }
+    expect(FORECAST_FOOTNOTE).toContain('aktualisiert alle 15 Minuten');
+    expect(FALLBACK_14A_NOTE).toContain('Ihr Gerät begrenzt zusätzlich');
+  });
+});

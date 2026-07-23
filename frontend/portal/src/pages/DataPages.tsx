@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -25,6 +25,14 @@ import { WeatherChart } from '../WeatherChart';
 import { hoursAhead, nextHourIndex } from '../weather';
 import { ScheduleChart } from '../ScheduleChart';
 import { bankedValueLine, hasGridCharge, horizonHint } from '../schedule';
+import {
+  FALLBACK_14A_NOTE,
+  FORECAST_FOOTNOTE,
+  WHY_TAP_HINT,
+  phaseArcSentence,
+  phases,
+} from '../fahrplanWhy';
+import { FahrplanWhyPanel, PhaseBand } from '../components/FahrplanWhy';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
 function useSiteData<T>(
@@ -411,11 +419,27 @@ export function WetterSection({ site }: { site: Site }) {
 
 // ---------------------------------------------------------------------------
 
-/** The Fahrplan subpage of one Anlage: KPIs + the full ScheduleChart. */
+/**
+ * The Fahrplan subpage of one Anlage: KPIs + the full ScheduleChart, plus -
+ * when the plan carries the persisted why-facts (slot roles) - the full
+ * "Warum"-experience: day-story phase band + arc sentence above the chart,
+ * per-slot/-phase explanation panel on tap, forecast-honesty footer. Plans
+ * without roles (old rows, pre-feature optimizer) render byte-identically to
+ * the plain view - explanations are never fabricated.
+ */
 export function FahrplanSection({ site }: { site: Site }) {
   const { data: plan, loading, err, reload } = useSiteData<SchedulePlan>(site, (id) => api.schedule(id));
+  const [selSlot, setSelSlot] = useState<number | null>(null);
+  const [selPhase, setSelPhase] = useState<number | null>(null);
 
   const slots = plan?.slots ?? [];
+  // The why-layer gate: [] unless EVERY slot carries a known role.
+  const whyPhases = useMemo(
+    () => phases(plan?.slots ?? [], plan?.slotMinutes ?? 15),
+    [plan],
+  );
+  const hasWhy = whyPhases.length > 0;
+  const arc = hasWhy ? phaseArcSentence(whyPhases, site.plantKind) : null;
   const today = new Date().toDateString();
   const savingsToday = slots
     .filter((s) => new Date(s.start).toDateString() === today)
@@ -528,11 +552,67 @@ export function FahrplanSection({ site }: { site: Site }) {
         )}
         {!loading && !err && slots.length > 0 && (
           <>
-            <ScheduleChart plan={plan!} />
+            {/* The day story (why-layer): arc sentence + tappable phase band.
+                Absent roles = none of this renders - today's view, unchanged. */}
+            {hasWhy && (
+              <>
+                {arc && <p className="vp-fw-arc">{arc}</p>}
+                <PhaseBand
+                  phases={whyPhases}
+                  plantKind={site.plantKind}
+                  selected={selPhase}
+                  onSelect={(i) => {
+                    setSelPhase((cur) => (cur === i ? null : i));
+                    setSelSlot(null);
+                  }}
+                />
+                <p className="vp-fw-hint">{WHY_TAP_HINT}</p>
+              </>
+            )}
+            <ScheduleChart
+              plan={plan!}
+              onSlotClick={
+                hasWhy
+                  ? (i) => {
+                      setSelSlot((cur) => (cur === i ? null : i));
+                      setSelPhase(null);
+                    }
+                  : undefined
+              }
+              selectedIndex={hasWhy ? selSlot : undefined}
+            />
+            {hasWhy && (
+              <FahrplanWhyPanel
+                phases={whyPhases}
+                slots={slots}
+                plantKind={site.plantKind}
+                slotMinutes={plan?.slotMinutes ?? 15}
+                selectedPhase={selPhase}
+                selectedSlot={selSlot}
+                onClose={() => {
+                  setSelPhase(null);
+                  setSelSlot(null);
+                }}
+              />
+            )}
+            {/* Fallback-build honesty: the §14a limit could not be fully
+                scheduled - the device enforces it additionally. */}
+            {hasWhy && plan?.fallback14a === true && (
+              <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+                {FALLBACK_14A_NOTE}
+              </p>
+            )}
             {/* Horizon-edge honesty (FK2): the morning plan legitimately ends at
                 midnight until tomorrow's prices publish - say so, calmly. */}
             {horizonNote && (
               <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>{horizonNote}</p>
+            )}
+            {/* Forecast honesty (why-layer): the plan rests on forecasts. */}
+            {hasWhy && (
+              <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+                {FORECAST_FOOTNOTE}{' '}
+                <a href="#/prognose">Zur Prognosequalität →</a>
+              </p>
             )}
             <p className="vp-note" style={{ marginTop: 'var(--vp-space-4)' }}>
               Kostenoptimaler Batterie-Fahrplan in 15-Minuten-Schritten aus Börsenpreisen

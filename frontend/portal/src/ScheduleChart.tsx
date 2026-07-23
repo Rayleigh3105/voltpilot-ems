@@ -48,6 +48,8 @@ function eur(v: number): string {
 export function ScheduleChart({
   plan,
   peakTargetKw,
+  onSlotClick,
+  selectedIndex,
 }: {
   plan: SchedulePlan;
   /**
@@ -56,6 +58,15 @@ export function ScheduleChart({
    * the axis grows to keep it in view. Absent = the plain Fahrplan (default).
    */
   peakTargetKw?: number | null;
+  /**
+   * "Warum"-layer tap target (the OptimizerPlanChart bar-click pattern,
+   * widened to the whole plot column so idle slots are tappable too): called
+   * with the tapped slot's index. Absent = the chart behaves exactly as
+   * before (no click handling).
+   */
+  onSlotClick?: (index: number) => void;
+  /** The selected slot to highlight (a solid marker line); null/absent = none. */
+  selectedIndex?: number | null;
 }) {
   const t = chartTheme();
 
@@ -111,6 +122,29 @@ export function ScheduleChart({
           position: 'insideEndTop',
         },
       });
+    // "Warum"-layer selection highlight (the OptimizerPlanChart pattern).
+    if (selectedIndex != null && selectedIndex >= 0 && selectedIndex < slots.length)
+      markLineData.push({
+        xAxis: selectedIndex,
+        lineStyle: { color: t.plan, type: 'solid', width: 2 },
+        // rotate 0: an inside label on a vertical markLine otherwise renders
+        // rotated along the line (the documented edge-label gotcha).
+        label: { formatter: 'Ausgewählt', color: t.plan, position: 'insideEndTop', rotate: 0 },
+      });
+
+    // Tap-to-explain: the whole plot column is a tap target (idle slots too),
+    // via the zrender click + pixel→category conversion. Only wired when the
+    // caller opts in - without onSlotClick the chart is byte-identical.
+    const zr = chart.getZr();
+    zr.off('click');
+    if (onSlotClick) {
+      zr.on('click', (e: { offsetX: number; offsetY: number }) => {
+        const pt: [number, number] = [e.offsetX, e.offsetY];
+        if (!chart.containPixel('grid', pt)) return;
+        const idx = Math.round(Number(chart.convertFromPixel({ xAxisIndex: 0 }, pt[0])));
+        if (Number.isFinite(idx) && idx >= 0 && idx < slots.length) onSlotClick(idx);
+      });
+    }
 
     chart.setOption(
       {
@@ -272,7 +306,7 @@ export function ScheduleChart({
       },
       true,
     );
-  }, [plan, t]);
+  }, [plan, t, peakTargetKw, onSlotClick, selectedIndex]);
 
   // Insight: charge cheap, discharge expensive, and today's saving.
   const chargeCt = weightedCt(plan.slots, (kw) => Math.max(kw, 0));

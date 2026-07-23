@@ -64,6 +64,10 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
   { re: /Anlagenteil/, why: 'D3: „Komponente" statt „Anlagenteil"' },
   { re: /Flow-Dokument/, why: 'Ergebnissprache: kein „Flow-Dokument"' },
   { re: /\bMILP\b/, why: 'Ergebnissprache: kein „MILP" (sag „Optimierungsmodell")' },
+  // Fahrplan-"Warum" (vp-fahrplan-why-design): the λ number is customer-named
+  // "Wert gespeicherter Energie" - solver vocabulary never reaches customers.
+  { re: /Schattenpreis/, why: 'Fahrplan-Warum: „Wert gespeicherter Energie" statt „Schattenpreis"' },
+  { re: /\bDual(werte?|s)?\b/, why: 'Fahrplan-Warum: keine „Duals" in der Kundensicht' },
   { re: /\bBroker\b/, why: 'Ergebnissprache: kein „Broker"' },
   { re: /\bAngefragt\b/i, why: 'M3: kein „Angefragt" — jedes Profil ist ein direkter Schalter' },
   { re: /in Vorbereitung/, why: 'M3: kein „in Vorbereitung"' },

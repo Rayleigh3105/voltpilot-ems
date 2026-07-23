@@ -1,0 +1,225 @@
+/* Fahrplan "Warum"-layer: day-story phase band + phase card + slot tap panel
+   (design vp-fahrplan-why-design §8). Component-local per the CockpitBlocks
+   precedent - index.css stays untouched. */
+
+.vp-fw-arc {
+  margin: 0 0 var(--vp-space-3);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.vp-fw-band {
+  display: flex;
+  gap: 2px;
+  height: 46px;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 0 0 var(--vp-space-1);
+  min-width: 0;
+}
+
+.vp-fw-ph {
+  position: relative;
+  min-width: 0;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  overflow: hidden;
+}
+
+.vp-fw-ph span {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 6px;
+}
+
+.vp-fw-ph.dim span {
+  color: #4b5563;
+  text-shadow: none;
+}
+
+.vp-fw-ph.sel {
+  outline: 3px solid var(--vp-action);
+  outline-offset: -3px;
+  z-index: 1;
+}
+
+.vp-fw-ph:focus-visible {
+  outline: 3px solid var(--vp-action);
+  outline-offset: -3px;
+  z-index: 1;
+}
+
+.vp-fw-hint {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.8rem;
+  color: var(--vp-muted, #6c757d);
+}
+
+/* ---- The why panel (phase card / slot card) ---- */
+
+.vp-fw-panel {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface, #fff);
+  padding: var(--vp-space-4);
+  margin-top: var(--vp-space-3);
+}
+
+.vp-fw-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--vp-muted, #6c757d);
+  border-radius: var(--vp-radius-md);
+}
+
+.vp-fw-time {
+  font-size: 0.75rem;
+  color: var(--vp-muted, #6c757d);
+  margin-bottom: 2px;
+  padding-right: 44px;
+}
+
+.vp-fw-role {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--vp-font-heading, inherit);
+  font-weight: 800;
+  font-size: 1rem;
+  margin: 0 0 var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-fw-role i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.vp-fw-mode {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--vp-muted, #6c757d);
+  border: 1px solid var(--vp-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.vp-fw-why {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.vp-fw-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 14px;
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.vp-fw-kv dt {
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-fw-kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 var(--vp-space-2);
+}
+
+.vp-fw-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--vp-ink, #1a1a1a);
+  background: var(--vp-bg-subtle, #f1f3f5);
+  border: 1px solid var(--vp-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.vp-fw-eur {
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.88rem;
+}
+
+.vp-fw-eur b {
+  color: var(--vp-chart-charge, #2e9e5b);
+}
+
+.vp-fw-eur b.neg {
+  color: var(--vp-chart-discharge, #e53935);
+}
+
+.vp-fw-eurnote {
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-fw-phline {
+  margin: 0 0 var(--vp-space-1);
+  font-size: 0.82rem;
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-fw-foot {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--vp-muted, #6c757d);
+}
+
+/* Phone: the panel becomes a bottom sheet (over the M1 bottom bar). */
+@media (max-width: 720px) {
+  .vp-fw-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;
+    margin: 0;
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-bottom: calc(var(--vp-space-4) + env(safe-area-inset-bottom, 0px));
+  }
+}
