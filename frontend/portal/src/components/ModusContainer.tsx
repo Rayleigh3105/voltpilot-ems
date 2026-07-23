@@ -287,7 +287,22 @@ export function ModusContainer({
 // Einstellungs-Zeile: Lese-zuerst + „Bearbeiten"-Inline-Formular (v3.1-M3)
 // ---------------------------------------------------------------------------
 
-/** Die Lese-Wert-Anzeige einer Einstellung (kunden-editierbare Zeilen). */
+/** Ein fail-soft „—" für einen fehlenden (von VoltPilot noch nicht gesetzten) Wert. */
+const MISSING = <span className="vp-muted">—</span>;
+
+/** Die Abrechnungsperiode des Leistungspreises in Kundendeutsch. */
+function abrechnungLabel(v: 'jahr' | 'monat' | null | undefined): ReactNode {
+  if (v === 'jahr') return 'jährlich';
+  if (v === 'monat') return 'monatlich';
+  return MISSING;
+}
+
+/**
+ * Die Lese-Wert-Anzeige einer Einstellung. Kunden-editierbare Zeilen (Markt/
+ * Eigenverbrauch) UND die von-VoltPilot-eingerichteten Read-only-Werte der
+ * Lastspitzenkappung (v3.1-M4: Leistungspreis · Abrechnungsperiode ·
+ * Lastspitzen-Reserve — erstmals kunden-SICHTBAR, fail-soft „—" wo unkonfiguriert).
+ */
 function settingReadValue(id: ModeSettingDef['id'], site: Site, battery: SiteAsset | null): ReactNode {
   switch (id) {
     case 'speicherschonung':
@@ -306,6 +321,13 @@ function settingReadValue(id: ModeSettingDef['id'], site: Site, battery: SiteAss
       );
     case 'stromtarif':
       return tarifArtLabel(site.tarifArt, site.tarifParamCtKwh);
+    // --- v3.1-M4: die drei von VoltPilot eingerichteten Lastspitzen-Werte ----
+    case 'leistungspreis':
+      return site.leistungspreisEurKw != null ? fmtNum(site.leistungspreisEurKw, '€/kW', 2) : MISSING;
+    case 'abrechnung-leistung':
+      return abrechnungLabel(site.abrechnungLeistung);
+    case 'lastspitzen-reserve':
+      return site.peakReserveSocPct != null ? fmtNum(site.peakReserveSocPct, '%', 0) : MISSING;
     default:
       return null;
   }
@@ -344,13 +366,16 @@ function ModusSettingRow({
     setting.editForm != null &&
     (setting.id !== 'speicherschonung' || batteryReady);
 
+  // v3.1-M4: eine von-VoltPilot-eingerichtete Einstellung zeigt jetzt ihren WERT
+  // (read-only, fail-soft „—"), begleitet von der „Von VoltPilot eingerichtet"-
+  // Notiz — der Kunde SIEHT sie erstmals, bearbeitet sie aber nicht (kein Knopf).
+  const readonlyByVoltpilot = setting.editability === 'voltpilot';
+
   return (
     <li className={`vp-modus-setting${editing ? ' editing' : ''}`}>
       <div className="vp-modus-settingtop">
         <span className="vp-modus-settinglabel">{setting.label}</span>
-        {editing ? null : setting.editability === 'voltpilot' ? (
-          <span className="vp-modus-settingnote">Von VoltPilot eingerichtet</span>
-        ) : (
+        {editing ? null : (
           <span className="vp-modus-settingval">{settingReadValue(setting.id, site, battery)}</span>
         )}
         {canEdit && !editing ? (
@@ -364,6 +389,9 @@ function ModusSettingRow({
           </button>
         ) : null}
       </div>
+      {readonlyByVoltpilot && !editing ? (
+        <span className="vp-modus-settinghint">Von VoltPilot eingerichtet</span>
+      ) : null}
       {editing ? (
         <SettingEditForm
           setting={setting}

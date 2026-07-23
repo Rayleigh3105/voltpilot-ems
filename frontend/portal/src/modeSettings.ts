@@ -32,6 +32,25 @@
  * trägt daher KEINE Teaser-Copy; es meldet nur, welche Einstellungen ein AKTIVER
  * Modus zeigt (`settingsForMode`) und welche gerade unbeansprucht ruhen
  * (`orphanedSettings`, reine Auskunft ohne Copy).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ANDOCK-MUSTER für einen KÜNFTIGEN Modus (v3.1-M4-Doku; NICHT gebaut).
+ *
+ * Ein neuer Container (report §2/§7: „Fernzugriff" mit der Einstellung „VPN")
+ * dockt OHNE Kern-Änderung an — drei additive Zeilen, alles andere rendert die
+ * Container-UI (v3.1-M2/M3) datengetrieben:
+ *   1. `surface.ts`: eine neue `ModeKind` + `ModeSettingId`, ein `manifestFor`-
+ *      Zweig mit `settings: ['vpn']` und die Aktivierungsregel in `activeModes`.
+ *   2. HIER: ein `SETTING_DEFS`-Eintrag `vpn`, der die Heimat des Werts festlegt —
+ *      `claimedBy: ['fernzugriff']`, und die WICHTIGE Weiche `editability`:
+ *      `'customer'` (mit `editForm`) für einen selbst-schaltbaren Wert ODER
+ *      `'voltpilot'` (`editForm: null`) für einen read-only „Von VoltPilot
+ *      eingerichtet"-Wert — exakt das Muster der drei Lastspitzen-Werte (v3.1-M4).
+ *   3. `ModusContainer.tsx`: eine `settingReadValue`-Zeile (und, nur bei
+ *      `'customer'`, ein Inline-Formular) für die neue Id.
+ * Dedupe/Waisen/Verstecken-bei-aus/Voll-Repräsentations-Save gelten dann
+ * automatisch — der neue Modus ist ein Container wie jeder andere.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { MODE_RANK, type ActiveMode, type ModeKind, type ModeSettingId } from './surface';
