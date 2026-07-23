@@ -1,0 +1,246 @@
+/*
+ * Verlauf-Explorer (Historie · „Messwerte") — component-local styles.
+ * index.css is left untouched (the CockpitBlocks precedent). Desktop: a left
+ * measurement rail (~270 px) + the chart main; phone: the rail collapses to a
+ * summary button that opens a "Messwert wählen" bottom sheet.
+ */
+
+.vp-verlauf {
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr);
+  gap: var(--vp-space-5);
+  align-items: start;
+}
+
+/* --- measurement rail (desktop) ------------------------------------------- */
+.vp-verlauf-rail {
+  position: sticky;
+  top: var(--vp-space-4);
+  min-width: 0;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 14px);
+  background: var(--vp-surface, #fff);
+  padding: var(--vp-space-3);
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+.vp-verlauf-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 10px;
+  color: var(--vp-text-muted, #667);
+  margin-bottom: var(--vp-space-3);
+}
+.vp-verlauf-search input {
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  color: var(--vp-text, #1a1a1a);
+  min-width: 0;
+  width: 100%;
+}
+
+.vp-verlauf-noresult {
+  padding: 8px 4px;
+  font-size: 0.9rem;
+}
+
+.vp-verlauf-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+.vp-verlauf-group {
+  min-width: 0;
+}
+.vp-vg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--vp-text, #1a1a1a);
+}
+.vp-vg-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-vg-device {
+  margin: 2px 0 6px 26px;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+  overflow-wrap: anywhere;
+}
+
+.vp-verlauf-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px 8px 26px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vp-text, #1a1a1a);
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-verlauf-item:hover {
+  background: var(--vp-surface-2, #f1f5f9);
+}
+.vp-verlauf-item.is-selected {
+  background: color-mix(in srgb, var(--vp-action, #2c5282) 12%, transparent);
+  color: var(--vp-action, #2c5282);
+  font-weight: 600;
+}
+.vp-vi-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-vi-unit {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+}
+.vp-verlauf-item.is-selected .vp-vi-unit {
+  color: inherit;
+}
+
+/* --- phone summary button + bottom sheet ---------------------------------- */
+.vp-verlauf-pick {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: var(--vp-space-4);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--vp-surface, #fff);
+  font: inherit;
+  font-weight: 600;
+  color: var(--vp-text, #1a1a1a);
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-vp-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-vp-unit {
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-verlauf-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+}
+.vp-verlauf-sheet {
+  width: 100%;
+  max-height: 80vh;
+  overflow: auto;
+  background: var(--vp-surface, #fff);
+  border-radius: 18px 18px 0 0;
+  padding: var(--vp-space-4);
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+}
+.vp-vs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--vp-space-3);
+}
+.vp-vs-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.vp-vs-close {
+  border: 0;
+  background: transparent;
+  color: var(--vp-text-muted, #667);
+  cursor: pointer;
+  padding: 4px;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* --- stats strip ---------------------------------------------------------- */
+.vp-verlauf-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-4);
+}
+.vp-verlauf-stat {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vp-vs-label {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+}
+.vp-vs-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--vp-text, #1a1a1a);
+  overflow-wrap: anywhere;
+}
+.vp-vs-note {
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #667);
+}
+
+/* --- responsive ----------------------------------------------------------- */
+@media (max-width: 900px) {
+  .vp-verlauf {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vp-verlauf-rail {
+    display: none;
+  }
+  .vp-verlauf-pick {
+    display: flex;
+  }
+  .vp-verlauf-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .vp-verlauf-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
