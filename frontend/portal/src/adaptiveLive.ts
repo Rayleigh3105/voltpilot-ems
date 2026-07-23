@@ -1,15 +1,18 @@
 /**
- * AE3 adaptive tiles + status sentence: turns the AE1 topology read-model
- * (role-grouped nodes + entities) into the entity/role-driven verdict tiles and
- * the ONE plain-German status sentence of the adaptive live view. The roles
+ * AE3 adaptive tiles + the ONE live-freshness truth: turns the AE1 topology
+ * read-model (role-grouped nodes + entities) into the entity/role-driven
+ * verdict rows of the Komponenten-Board (`livePuls.componentRows` reuses
+ * `deriveTiles` verbatim) and the three-state `liveState`. The roles
  * PV / Speicher / Netz become one aggregate tile each; every controllable
  * consumer (Wallbox, Heizstab, …) becomes its OWN tile with a read-only
  * device-switch affordance (v1 display-only; actual control is E3b). Pure +
  * framework-free (unit-tested in adaptiveLive.test.ts); the components only
  * render it.
  *
- * Signs never reach the customer - the grid/battery labels flip and the
- * sentence speaks direction words, mirroring the v1 live.ts discipline.
+ * Signs never reach the customer - the grid/battery labels flip and the rows
+ * speak direction words, mirroring the v1 live.ts discipline. (The former
+ * per-page adaptive status sentence retired with the Cockpit+Live merge — the
+ * page head's `composeSiteSentence` + the `liveDetail.liveChip` carry it.)
  */
 
 import type { IconName } from '../designsystem/components/core/Icon';
@@ -246,13 +249,7 @@ export function hasTopology(topo: SiteTopology | null | undefined): boolean {
   return topo != null && topo.entities.length > 0 && topo.topology.nodes.length > 0;
 }
 
-// --- Status sentence ---------------------------------------------------------
-
-export interface StatusSentence {
-  text: string;
-  /** false = stale/offline: renders honest-grey. */
-  live: boolean;
-}
+// --- Freshness ---------------------------------------------------------------
 
 /**
  * The ONE freshness truth of the live view. Two independent sources feed this
@@ -276,106 +273,6 @@ export function liveState(input: {
 }): LiveState {
   if (input.entityFresh) return 'live';
   return input.siteFresh === true ? 'site-only' : 'stale';
-}
-
-/**
- * The ONE plain-German status sentence, composed from the role nodes: PV lead,
- * storage clause, active-consumer clause(s), grid clause - each honest about
- * absent data and speaking direction words, never signs. Stale data goes
- * honest-grey (mirrors live.ts composeStatusSentence); the `site-only` state
- * says exactly what is and is not there instead of claiming an outage the
- * Verlauf chart right below would contradict.
- */
-export function composeAdaptiveSentence(
-  topo: SiteTopology,
-  state: LiveState | boolean,
-): StatusSentence {
-  const resolved: LiveState =
-    typeof state === 'boolean' ? (state ? 'live' : 'stale') : state;
-  if (resolved === 'stale') {
-    return {
-      live: false,
-      text: 'Ihre Anlage meldet gerade keine aktuellen Daten. Angezeigt werden die zuletzt bekannten Werte.',
-    };
-  }
-  if (resolved === 'site-only') {
-    return {
-      live: true,
-      text:
-        'Ihre Anlage liefert aktuelle Messwerte - im Verlauf unten sehen Sie sie. ' +
-        'Die Aufschlüsselung nach einzelnen Geräten meldet noch nichts.',
-    };
-  }
-  const byId = new Map(topo.entities.map((e) => [e.id, e]));
-  const parts: string[] = [];
-
-  const pv = node(topo, 'pv');
-  if (pv && pv.value_kw != null) {
-    parts.push(
-      pv.flow_active && pv.value_kw > DEADBAND_KW
-        ? `Ihre Anlage erzeugt gerade ${fmtNum(pv.value_kw, 'kW')}.`
-        : 'Ihre Anlage erzeugt gerade keinen Strom.',
-    );
-  }
-
-  const storage = node(topo, 'storage');
-  if (storage && storage.soc_pct != null) {
-    const soc = ` (${fmtNum(storage.soc_pct, '%', 0)})`;
-    const batt = signedBattery(storage);
-    if (batt != null && batt > DEADBAND_KW) parts.push(`Der Speicher lädt${soc}.`);
-    else if (batt != null && batt < -DEADBAND_KW) parts.push(`Der Speicher entlädt${soc}.`);
-    else if (storage.soc_pct >= 99) parts.push(`Der Speicher ist voll geladen${soc}.`);
-    else parts.push(`Der Speicher ruht${soc}.`);
-  }
-
-  const consumer = node(topo, 'consumer');
-  if (consumer) {
-    const active = consumer.members.filter(
-      (m) => m.value_kw != null && Math.abs(m.value_kw) > DEADBAND_KW,
-    );
-    for (const m of active.slice(0, 2)) {
-      const type = byId.get(m.entity_id)?.entityType ?? '';
-      const verb = type === 'wallbox' ? 'lädt' : 'läuft';
-      // The SHORT word here too - a sentence reading "Hausverbrauch (Messung
-      // über Wechselrichter) läuft mit …" is the same verbosity the tiles and
-      // the diagram just shed.
-      const label = shortEntityLabel({
-        entityType: type,
-        role: 'consumer',
-        label: m.label,
-        typeLabel: byId.get(m.entity_id)?.typeLabel,
-      });
-      parts.push(`${label} ${verb} mit ${fmtNum(Math.abs(m.value_kw as number), 'kW')}.`);
-    }
-    if (active.length > 2) parts.push(`${active.length - 2} weitere Verbraucher sind aktiv.`);
-  }
-
-  const grid = node(topo, 'grid');
-  if (grid && grid.value_kw != null) {
-    if (grid.flow_active && grid.direction === 'in') {
-      parts.push(`Sie beziehen ${fmtNum(grid.value_kw, 'kW')} aus dem Netz.`);
-    } else if (grid.flow_active && grid.direction === 'out') {
-      parts.push(`${fmtNum(grid.value_kw, 'kW')} fließen ins Netz.`);
-    } else {
-      parts.push('Ihr Netzanschluss ist gerade ausgeglichen.');
-    }
-  }
-
-  if (parts.length === 0) return { live: true, text: 'Ihre Anlage liefert gerade Daten.' };
-  return { live: true, text: parts.join(' ') };
-}
-
-/** The profile chip label + tone for the topbar (Arbitrage/Peak/Privat). */
-export function profileChip(profile: string): { label: string; tone: 'arb' | 'peak' | 'priv' } {
-  switch (profile) {
-    case 'arbitrage':
-      return { label: 'Arbitrage / DV', tone: 'arb' };
-    case 'peak':
-      return { label: 'Gewerbe · Peak-Shaving', tone: 'peak' };
-    case 'private':
-    default:
-      return { label: 'Privat-Haushalt', tone: 'priv' };
-  }
 }
 
 // Re-export so components import one module for the role palette.

@@ -124,6 +124,16 @@ function stubApi(overviewSite: Record<string, unknown> = {}) {
     localSetup: [],
     staleOnDevice: [],
   } as never);
+  // Cockpit+Live merge: the merged home also loads the PV-breakdown sources
+  // and (lazy) the per-entity sparkline histories — both fail-soft.
+  vi.spyOn(api, 'siteSources').mockResolvedValue(null as never);
+  vi.spyOn(api, 'entityHistory').mockResolvedValue({
+    range: 'day',
+    from: '',
+    to: '',
+    bucketMinutes: 15,
+    channels: {},
+  } as never);
   vi.spyOn(api, 'overview').mockResolvedValue({
     sites: [
       {
@@ -185,7 +195,8 @@ function mockAdaptive(adaptiveOn: boolean, topology: unknown = null) {
   } as never);
 }
 
-/** Ein Topologie-Read-Model, das die Fluss-Kacheln auflöst (Netz → e-grid). */
+/** Ein Topologie-Read-Model mit Rollen-Knoten — es speist das Komponenten-
+ *  Board (Speicher → e-batt, Netz → e-grid). */
 const TOPO = {
   schemaVersion: '1.0',
   entities: [
@@ -208,7 +219,26 @@ const TOPO = {
       capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'grid', primary: true, value: -2.1 }],
     },
   ],
-  topology: { schema_version: '1.0', nodes: [] },
+  topology: {
+    schema_version: '1.0',
+    nodes: [
+      {
+        role: 'storage',
+        value_kw: 1.2,
+        soc_pct: 60,
+        flow_active: true,
+        direction: 'out',
+        members: [{ entity_id: 'e-batt', label: 'Speicher', primary: true, value_kw: 1.2 }],
+      },
+      {
+        role: 'grid',
+        value_kw: 2.1,
+        flow_active: true,
+        direction: 'out',
+        members: [{ entity_id: 'e-grid', label: 'Netz', primary: true, value_kw: -2.1 }],
+      },
+    ],
+  },
 };
 
 function mockSurface(input: AnlageSurfaceInput | null) {
@@ -235,6 +265,9 @@ function renderSeite(onOpenSub: (sub: string) => void = () => {}) {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // Die Verlauf-Disclosure merkt sich ihren Zustand pro Session (Q2) — Tests
+  // starten immer mit dem Default (eingeklappt).
+  sessionStorage.clear();
   stubApi();
 });
 
@@ -248,6 +281,10 @@ describe('v1-Invariant: eine nie migrierte Anlage rendert das heutige Cockpit', 
     expect(container.querySelector('.vp-zone-money')).toBeTruthy();
     expect(container.querySelector('.vp-dash-fahrplan')).toBeTruthy();
     expect(container.querySelector('.vp-detail-grid')).toBeTruthy();
+    // Cockpit+Live-Merge: das absolute v1-DOM ändert sich BEWUSST — die
+    // Komponenten-Sektion gehört jetzt auch zur v1-Startseite (das Invariant
+    // bleibt die Zeichengleichheit null-Surface === leere Projektion unten).
+    expect(container.querySelector('.vp-dash-komponenten')).toBeTruthy();
     // ... und M3 steuert nichts bei.
     expect(container.querySelector('.vp-stack')).toBeNull();
     expect(container.querySelector('.vp-block')).toBeNull();
@@ -256,21 +293,31 @@ describe('v1-Invariant: eine nie migrierte Anlage rendert das heutige Cockpit', 
   });
 
   it('ist zeichengleich, egal ob das Read-Model geladen wurde oder nicht', async () => {
+    // Beide Renderpfade müssen erst AUSSCHWINGEN (die lazy Komponenten-Sektion
+    // lädt asynchron), sonst verglichen wir einen Lade- mit einem Endzustand.
+    const settle = async (container: HTMLElement) => {
+      await waitFor(() => expect(container.querySelector('.vp-anlage-dash')).toBeTruthy());
+      await waitFor(() =>
+        expect(container.textContent).toContain('Es liegen noch keine Messwerte vor'),
+      );
+    };
+
     // (a) älteres Backend / Ladefehler: gar keine Surface.
     mockAdaptive(false);
     mockSurface(null);
     const a = renderSeite();
-    await waitFor(() => expect(a.container.querySelector('.vp-anlage-dash')).toBeTruthy());
+    await settle(a.container);
     const withoutSurface = a.container.innerHTML;
     a.unmount();
 
     // (b) Surface geladen, aber leer (keine Entitäten, keine Modi).
     vi.restoreAllMocks();
+    sessionStorage.clear();
     stubApi();
     mockAdaptive(false);
     mockSurface(LEER);
     const b = renderSeite();
-    await waitFor(() => expect(b.container.querySelector('.vp-anlage-dash')).toBeTruthy());
+    await settle(b.container);
     expect(b.container.innerHTML).toBe(withoutSurface);
   });
 
@@ -386,24 +433,45 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(container.querySelectorAll('.vp-widget.is-lead')).toHaveLength(1);
   });
 
-  it('V2: eine Fluss-Kachel SPRINGT in den Verlauf-Explorer — kein Modal', async () => {
+  it('Merge: das Komponenten-Board rendert im Cockpit — die Fluss-Kacheln sind weg', async () => {
+    // Option A (R2): das Board ist die EINE Live-Wert-Fläche des Cockpits;
+    // die vier früheren Fluss-Kacheln existieren im Widget-Raster nicht mehr.
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.vp-puls')).toBeTruthy());
+    // Board rows für die Topologie-Rollen (Speicher, Netz).
+    const rowNames = [...container.querySelectorAll('.vp-puls-name')].map((n) => n.textContent);
+    expect(rowNames).toContain('Netz');
+    // Keine Fluss-Kacheln im Raster.
+    const widgetLabels = [...container.querySelectorAll('.vp-widget-label')].map(
+      (n) => n.textContent,
+    );
+    for (const gone of ['Erzeugung', 'Speicher', 'Haus', 'Netz']) {
+      expect(widgetLabels).not.toContain(gone);
+    }
+    // Der Verlauf ist eingeklappt (Q2): Toggle zu, kein Chart-Fenster-Seg.
+    const toggle = container.querySelector('.vp-verlauf-toggle');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('Merge: ein Board-Zeilen-Sprung navigiert in den Verlauf mit Zeitraum-Übernahme', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-puls')).toBeTruthy());
     window.location.hash = '';
-    // Eine Fluss-Kachel (Netz) antippen — sie springt auf ihren Messwert.
-    const netz = [...container.querySelectorAll('.vp-widget')].find(
-      (w) => w.querySelector('.vp-widget-label')?.textContent === 'Netz',
+    // Die Netz-Zeile antippen — sie springt auf ihren Messwert.
+    const netzRow = [...container.querySelectorAll('.vp-puls-jump')].find(
+      (b) => b.querySelector('.vp-puls-name')?.textContent === 'Netz',
     ) as HTMLButtonElement;
-    fireEvent.click(netz);
+    fireEvent.click(netzRow);
     // Der Hash trägt den Verlauf-Deeplink (Messwert + übernommener Zeitraum).
     expect(window.location.hash).toContain('/anlage/s-1/historie');
     expect(window.location.hash).toContain('m=e-grid:power_kw');
     expect(window.location.hash).toContain('z=monat'); // Default „Monat" → Monat
     // NIE ein Modal — weder am body noch im Container.
     expect(document.body.querySelector('.vp-wmodal')).toBeNull();
-    expect(container.querySelector('.vp-wmodal')).toBeNull();
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 

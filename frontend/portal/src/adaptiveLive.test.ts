@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SiteTopology, TopologyEntity } from './api';
-import {
-  composeAdaptiveSentence,
-  deriveTiles,
-  hasTopology,
-  profileChip,
-  liveState,
-} from './adaptiveLive';
+import { deriveTiles, hasTopology, liveState } from './adaptiveLive';
 import type { FlowNode } from './topology';
 
 const NBSP = ' ';
@@ -99,25 +93,6 @@ describe('deriveTiles', () => {
   });
 });
 
-describe('composeAdaptiveSentence', () => {
-  it('leads with PV, then storage, active consumers and the grid', () => {
-    const s = composeAdaptiveSentence(privatTopo(), true);
-    expect(s.live).toBe(true);
-    expect(s.text).toContain('Ihre Anlage erzeugt gerade 6,4');
-    expect(s.text).toContain('Der Speicher lädt (78');
-    expect(s.text).toContain('Wallbox lädt mit 7,2');
-    expect(s.text).toContain('fließen ins Netz');
-    // an idle consumer is not named.
-    expect(s.text).not.toContain('Heizstab');
-  });
-
-  it('goes honest-grey when the data is stale', () => {
-    const s = composeAdaptiveSentence(privatTopo(), false);
-    expect(s.live).toBe(false);
-    expect(s.text).toContain('keine aktuellen Daten');
-  });
-});
-
 describe('hasTopology', () => {
   it('is true only with entities AND nodes', () => {
     expect(hasTopology(privatTopo())).toBe(true);
@@ -127,15 +102,6 @@ describe('hasTopology', () => {
     ).toBe(false);
   });
 });
-
-describe('profileChip', () => {
-  it('labels each profile', () => {
-    expect(profileChip('arbitrage').tone).toBe('arb');
-    expect(profileChip('peak').label).toContain('Peak');
-    expect(profileChip('private').tone).toBe('priv');
-  });
-});
-
 
 // G3: the live surface used to contradict itself - a green "Stand vor 7 Sek."
 // chip and a full Verlauf chart next to "Ihre Anlage meldet gerade keine
@@ -156,22 +122,5 @@ describe('liveState - the ONE freshness truth (G3)', () => {
     expect(liveState({ entityFresh: false, siteFresh: false })).toBe('stale');
     expect(liveState({ entityFresh: false, siteFresh: null })).toBe('stale');
     expect(liveState({ entityFresh: false, siteFresh: undefined })).toBe('stale');
-  });
-});
-
-describe('composeAdaptiveSentence - never contradicts the chart below it', () => {
-  it('site-only says what IS there instead of claiming an outage', () => {
-    const s = composeAdaptiveSentence(privatTopo(), 'site-only');
-    expect(s.live).toBe(true);
-    expect(s.text).not.toContain('keine aktuellen Daten');
-    expect(s.text).toContain('aktuelle Messwerte');
-    expect(s.text).toContain('Verlauf');
-  });
-
-  it('keeps the stale wording when nothing is current', () => {
-    expect(composeAdaptiveSentence(privatTopo(), 'stale').live).toBe(false);
-    // the boolean form stays accepted (older callers)
-    expect(composeAdaptiveSentence(privatTopo(), false).live).toBe(false);
-    expect(composeAdaptiveSentence(privatTopo(), true).live).toBe(true);
   });
 });

@@ -3388,6 +3388,7 @@ button.vp-tech-card-h.toggle {
 .vp-dash-rail,
 .vp-dash-health,
 .vp-dash-fahrplan,
+.vp-dash-komponenten,
 .vp-dash-deep {
   min-width: 0;
 }
@@ -3411,7 +3412,10 @@ button.vp-tech-card-h.toggle {
   .vp-dash-control { order: 5; }
   .vp-dash-ertrag { order: 6; }
   .vp-dash-energy { order: 7; }
-  .vp-dash-deep { order: 8; }
+  /* Merge Option A: the component depth follows the money story, before the
+     deep-link cards — scroll IS the progressive disclosure. */
+  .vp-dash-komponenten { order: 8; }
+  .vp-dash-deep { order: 9; }
   /* The vertical rail + standalone health list are a desktop affordance; on
      phone the horizontal month strip navigates and the header sentence +
      warnings carry the health story. */
@@ -3441,6 +3445,7 @@ button.vp-tech-card-h.toggle {
     min-width: 0;
   }
   .vp-dash-fahrplan,
+  .vp-dash-komponenten,
   .vp-dash-deep {
     grid-column: 1 / -1;
   }

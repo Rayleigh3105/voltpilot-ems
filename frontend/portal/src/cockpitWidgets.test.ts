@@ -3,15 +3,12 @@ import {
   cockpitHero,
   cockpitWidgets,
   historyRangeForCockpit,
-  netzDirectionLabel,
-  speicherStateLine,
   type CockpitWidgetsInput,
   type WidgetId,
 } from './cockpitWidgets';
-import { DASH } from './erloesKomposition';
 import { anlageSurface, type AnlageSurfaceInput, type SurfaceEntity } from './surface';
 import { leadBlock } from './leadSlot';
-import type { EarningsSite, HistoryTotals, SiteTopology } from './api';
+import type { EarningsSite, HistoryTotals } from './api';
 import { NBSP } from './format';
 
 /**
@@ -21,7 +18,9 @@ import { NBSP } from './format';
  * PROJEKTION — es gibt genau die Kacheln, deren Modus/Quelle wirklich existiert,
  * in kanonischer Reihenfolge; was fehlt, **entfällt** statt als 0 dazustehen.
  * Hier stehen die fünf Ausprägungen aus dem Read-Model samt ihrer NEGATIV-
- * Beweise (was NICHT erscheinen darf).
+ * Beweise (was NICHT erscheinen darf). Seit dem Cockpit+Live-Merge (Option A,
+ * R2) gibt es KEINE Fluss-Kacheln mehr — das Komponenten-Board im Cockpit ist
+ * die eine Live-Wert-Fläche; das Raster trägt nur Geld-/Modus-Kacheln.
  */
 
 const NOW = new Date('2026-07-22T12:00:00+02:00');
@@ -115,47 +114,6 @@ const TOTALS: HistoryTotals = {
   eigenverbrauchPct: 64,
 };
 
-const SNAPSHOT = { pvKw: 5.4, loadKw: 1.9, gridKw: -2.1, battKw: 1.4, socPct: 76, socAt: null };
-
-/** Das Topologie-Read-Model der Pilot-Anlage — löst die Fluss-Kacheln auf. */
-const TOPO: SiteTopology = {
-  schemaVersion: '1.0',
-  entities: [
-    {
-      id: 'e-batt',
-      entityType: 'battery-hybrid',
-      typeLabel: 'Speicher',
-      label: null,
-      category: 'storage',
-      health: 'ok',
-      capabilities: [
-        { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 76 },
-        { channel: 'battery_power_kw', unit: 'kW', role: 'storage', primary: false, value: 1.4 },
-        { channel: 'pv_power_kw', unit: 'kW', role: 'pv', primary: true, value: 5.4 },
-      ],
-    },
-    {
-      id: 'e-grid',
-      entityType: 'grid-meter',
-      typeLabel: 'Netzanschluss',
-      label: null,
-      category: 'meter',
-      health: 'ok',
-      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'grid', primary: true, value: -2.1 }],
-    },
-    {
-      id: 'e-haus',
-      entityType: 'house-load',
-      typeLabel: 'Haus',
-      label: null,
-      category: 'consumer',
-      health: 'ok',
-      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: false, value: 1.9 }],
-    },
-  ],
-  topology: { schema_version: '1.0', nodes: [] },
-};
-
 function money(over: Partial<EarningsSite> = {}): EarningsSite {
   return {
     einspeiseErloesEur: 12.5,
@@ -178,8 +136,6 @@ function build(
     blocks: surface.cockpitBlocks,
     modes: surface.modes,
     lead: leadBlock(surface.cockpitBlocks),
-    channels: surface.base.telemetryChannels,
-    snapshot: SNAPSHOT,
     dayTotals: TOTALS,
     money: money(),
     streams: surface.moneyStreams,
@@ -195,17 +151,24 @@ function ids(site: AnlageSurfaceInput, over: Partial<CockpitWidgetsInput> = {}):
 }
 
 describe('Das Widget-Raster folgt der Projektion', () => {
-  it('Privat: Fluss-Kacheln + Erlöse + Eigenverbrauch — KEIN Handel, KEINE Lastspitze', () => {
+  it('Privat: Erlöse + Eigenverbrauch — KEIN Handel, KEINE Lastspitze', () => {
     const set = ids(PRIVAT);
-    expect(set).toContain('erzeugung');
-    expect(set).toContain('speicher');
-    expect(set).toContain('haus');
-    expect(set).toContain('netz');
     expect(set).toContain('eigenverbrauch');
     // Negativ-Beweise.
     expect(set).not.toContain('handel');
     expect(set).not.toContain('lastspitze');
     expect(set).not.toContain('automatik');
+  });
+
+  it('R2 (Cockpit+Live-Merge): es gibt KEINE Fluss-Kacheln mehr — nie', () => {
+    // Das Komponenten-Board ist die eine Live-Wert-Fläche; die vier früheren
+    // Fluss-Kacheln (Erzeugung/Speicher/Haus/Netz) existieren im Raster nicht.
+    for (const site of [PRIVAT, GEWERBE, MARKT, MULTI]) {
+      const set: string[] = ids(site);
+      for (const gone of ['erzeugung', 'speicher', 'haus', 'netz']) {
+        expect(set).not.toContain(gone);
+      }
+    }
   });
 
   it('Gewerbe: die Lastspitze-Kachel existiert nur MIT Peak-Sicht', () => {
@@ -248,8 +211,14 @@ describe('Das Widget-Raster folgt der Projektion', () => {
 
   it('Leer (nie migriert): das Raster ist leer — keine einzige Platzhalter-Kachel', () => {
     expect(cockpitWidgets(build(LEER))).toEqual([]);
-    // Auch mit vollen Live-Daten: ohne Blöcke gibt es keine Kacheln.
-    expect(cockpitWidgets({ ...build(LEER), snapshot: SNAPSHOT, dayTotals: TOTALS })).toEqual([]);
+    // Auch mit vollen Tages-/Wetterdaten: ohne Blöcke gibt es keine Kacheln.
+    expect(
+      cockpitWidgets({
+        ...build(LEER),
+        dayTotals: TOTALS,
+        weather: { nextHourTempC: 21, why: 'Sonnig bis 18 Uhr.' },
+      }),
+    ).toEqual([]);
   });
 
   it('ist deterministisch: dieselbe Eingabe ergibt dieselbe Reihenfolge', () => {
@@ -258,79 +227,18 @@ describe('Das Widget-Raster folgt der Projektion', () => {
 });
 
 describe('Ehrlichkeit: weglassen statt 0', () => {
-  it('ohne Kanal und ohne Wert entfällt die Kachel ganz', () => {
-    // Eine reine PV-Anlage ohne Speicher-Kanal und ohne SoC.
-    const surface = anlageSurface({
-      ...PRIVAT,
-      entities: [entity('e-pv', 'producer', ['pv_power_kw'])],
-    });
-    const set = cockpitWidgets({
-      ...build(PRIVAT),
-      blocks: surface.cockpitBlocks,
-      channels: surface.base.telemetryChannels,
-      snapshot: { pvKw: 5.4, loadKw: null, gridKw: null, battKw: null, socPct: null, socAt: null },
-    }).map((w) => w.id);
-    expect(set).toContain('erzeugung');
-    expect(set).not.toContain('speicher');
-    expect(set).not.toContain('haus');
-    expect(set).not.toContain('netz');
-  });
-
-  it('mit Kanal, aber ohne aktuellen Wert steht „—" — nie eine 0', () => {
-    const w = cockpitWidgets(
-      build(PRIVAT, {
-        snapshot: { pvKw: null, loadKw: null, gridKw: null, battKw: null, socPct: null, socAt: null },
-      }),
-    );
-    const erz = w.find((x) => x.id === 'erzeugung')!;
-    expect(erz.value).toBe(DASH);
-    const netz = w.find((x) => x.id === 'netz')!;
-    expect(netz.value).toBe(DASH);
-    expect(netz.sub).toBeNull();
-  });
-
   it('die Wetter-Kachel erscheint nur mit Wetterdaten', () => {
     expect(ids(PRIVAT)).not.toContain('wetter');
     expect(ids(PRIVAT, { weather: { nextHourTempC: 21, why: null } })).toContain('wetter');
     expect(ids(PRIVAT, { weather: { nextHourTempC: null, why: null } })).not.toContain('wetter');
   });
 
-  it('jede Kachel trägt ihr Absprung-Ziel — Fluss in den Verlauf, Modus auf die Seite', () => {
-    // MIT Topologie lösen die Fluss-Kacheln auf ihren maßgeblichen Messwert auf.
-    const w = cockpitWidgets(build(MULTI, { topology: TOPO }));
+  it('jede Kachel trägt ihr Absprung-Ziel — auf ihre Seite (kein Modal)', () => {
+    const w = cockpitWidgets(build(MULTI));
     const target = (id: WidgetId) => w.find((x) => x.id === id)?.target;
-    expect(target('erzeugung')).toEqual({ kind: 'verlauf', entityId: 'e-batt', channel: 'pv_power_kw' });
-    expect(target('speicher')).toEqual({ kind: 'verlauf', entityId: 'e-batt', channel: 'soc_pct' });
-    expect(target('netz')).toEqual({ kind: 'verlauf', entityId: 'e-grid', channel: 'power_kw' });
-    // Geld-/Modus-Kacheln bilden auf ihre Seite ab.
     expect(target('erloes')).toEqual({ kind: 'sub', sub: 'historie' });
     expect(target('handel')).toEqual({ kind: 'sub', sub: 'fahrplan' });
     expect(target('automatik')).toEqual({ kind: 'sub', sub: 'steuerung' });
-  });
-
-  it('ohne Topologie springt eine Fluss-Kachel ehrlich auf die Live-Daten-Seite', () => {
-    const speicher = cockpitWidgets(build(PRIVAT)).find((x) => x.id === 'speicher')!;
-    expect(speicher.value).toBe(`76${NBSP}%`);
-    expect(speicher.target).toEqual({ kind: 'sub', sub: 'live' });
-  });
-});
-
-describe('Vorzeichen erreichen den Kunden nie', () => {
-  it('der Speicher-Zustand ist ein Wort, keine Richtung', () => {
-    expect(speicherStateLine(2)).toBe(`lädt mit 2,0${NBSP}kW`);
-    expect(speicherStateLine(-2)).toBe(`entlädt mit 2,0${NBSP}kW`);
-    expect(speicherStateLine(0)).toBe('ruht gerade');
-    expect(speicherStateLine(null)).toBeNull();
-  });
-
-  it('das Netz nennt Bezug/Einspeisung, nie ein Minus', () => {
-    expect(netzDirectionLabel(3)).toBe('Netzbezug');
-    expect(netzDirectionLabel(-3)).toBe('Einspeisung');
-    expect(netzDirectionLabel(0)).toBe('ausgeglichen');
-    expect(netzDirectionLabel(undefined)).toBeNull();
-    const netz = cockpitWidgets(build(PRIVAT)).find((w) => w.id === 'netz')!;
-    expect(netz.value).toBe(`2,1${NBSP}kW`);
-    expect(netz.sub).toBe('Einspeisung');
   });
 });
 

@@ -359,7 +359,13 @@
    deliberately one specificity step higher so they win regardless of import
    order. */
 @media (min-width: 721px) and (max-width: 1023px) {
-  .vp-app {
+  /* .vp-app.vp-app: the grid rule itself needs the same one-step specificity
+     bump as the sidebar rules below — index.css's later `@media (max-width:
+     1024px) .vp-app { grid-template-columns: 1fr }` otherwise wins on source
+     order (Shell.css loads BEFORE index.css: main.tsx imports App — and thus
+     AppShell → Shell.css — before ./index.css), which stacked the still-shown
+     rail ABOVE the content and pushed the whole page below the fold. */
+  .vp-app.vp-app {
     grid-template-columns: 56px minmax(0, 1fr);
   }
   .vp-app > .vp-sidebar {

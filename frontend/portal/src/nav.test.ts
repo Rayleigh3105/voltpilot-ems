@@ -14,7 +14,6 @@ import { anlageSurface } from './surface';
 
 /** Every AnlagenSub route that exists. */
 const ALL_SUBS: AnlagenSub[] = [
-  'live',
   'fahrplan',
   'historie',
   'wetter',
@@ -49,7 +48,7 @@ describe('parseRoute', () => {
       siteId: 'site-1',
       sub: null,
     });
-    for (const sub of ['live', 'fahrplan', 'historie', 'wetter'] as const) {
+    for (const sub of ['fahrplan', 'historie', 'wetter'] as const) {
       expect(parseRoute(`#/anlage/site-1/${sub}`)).toEqual({
         page: 'anlagen',
         siteId: 'site-1',
@@ -60,7 +59,6 @@ describe('parseRoute', () => {
 
   it('redirects every retired menu hash into the Anlage (bookmarks keep working)', () => {
     // Site-scoped deep views keep their intent as the Anlage subpage...
-    expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: 'live' });
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
     expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'historie' });
     expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
@@ -70,6 +68,18 @@ describe('parseRoute', () => {
     expect(parseRoute('#/geraete')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
     // Both hash spellings work (the router always accepted #foo and #/foo).
     expect(parseRoute('#standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
+  });
+
+  it('redirects the retired live routes into the cockpit (Cockpit+Live merge)', () => {
+    // Option A: the Live-Daten page is gone — the cockpit hosts the board +
+    // Verlauf. Both the old top-level hash and the subpage hash land on the
+    // Anlage itself (sub null), never a 404.
+    expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: null });
+    expect(parseRoute('#/anlage/site-1/live')).toEqual({
+      page: 'anlagen',
+      siteId: 'site-1',
+      sub: null,
+    });
   });
 
   it('redirects the retired optimierung subpage into steuerung (U3 merge)', () => {
@@ -128,7 +138,7 @@ describe('hashForRoute', () => {
       pageRoute('marktpreise'),
       pageRoute('anlagen'),
       anlageRoute('site-1'),
-      anlageRoute('site-1', 'live'),
+      anlageRoute('site-1', 'fahrplan'),
       anlageRoute('site-1', 'historie'),
     ];
     for (const r of routes) {
@@ -165,7 +175,7 @@ describe('M1: no route breaks when the tab bar is retired', () => {
   });
 
   it('still redirects the retired top-level hashes into the Anlage', () => {
-    expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: 'live' });
+    expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: null });
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
     expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'historie' });
     expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
