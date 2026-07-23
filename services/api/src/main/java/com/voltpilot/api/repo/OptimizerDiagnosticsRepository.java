@@ -28,7 +28,12 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class OptimizerDiagnosticsRepository {
 
-    /** One persisted plan slot with every column the decomposition consumes. */
+    /**
+     * One persisted plan slot with every column the decomposition consumes.
+     * The Fahrplan-Warum columns (V20260723030000) ride along: the EXACT
+     * stored-energy value (the run's SoC shadow price) replaces the service's
+     * approximation where present, and role + binding flags pass through.
+     */
     public record SlotRow(
             Instant time,
             BigDecimal batteryKw,
@@ -40,7 +45,10 @@ public class OptimizerDiagnosticsRepository {
             BigDecimal costEur,
             BigDecimal baselineCostEur,
             BigDecimal curtailKw,
-            BigDecimal wearCostEur) {
+            BigDecimal wearCostEur,
+            BigDecimal storedValueCtKwh,
+            String slotRole,
+            String slotFlags) {
     }
 
     /**
@@ -148,7 +156,8 @@ public class OptimizerDiagnosticsRepository {
     public List<SlotRow> slots(UUID siteId, Instant generatedAt) {
         return jdbc.query(
                 "SELECT time, battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh,"
-                        + " cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur "
+                        + " cost_eur, baseline_cost_eur, curtail_kw, wear_cost_eur,"
+                        + " stored_value_ct_kwh, slot_role, slot_flags "
                         + "FROM schedule WHERE site_id = ? AND generated_at = ? ORDER BY time",
                 (rs, i) -> new SlotRow(
                         rs.getTimestamp("time").toInstant(),
@@ -161,7 +170,10 @@ public class OptimizerDiagnosticsRepository {
                         rs.getBigDecimal("cost_eur"),
                         rs.getBigDecimal("baseline_cost_eur"),
                         rs.getBigDecimal("curtail_kw"),
-                        rs.getBigDecimal("wear_cost_eur")),
+                        rs.getBigDecimal("wear_cost_eur"),
+                        rs.getBigDecimal("stored_value_ct_kwh"),
+                        rs.getString("slot_role"),
+                        rs.getString("slot_flags")),
                 siteId, Timestamp.from(generatedAt));
     }
 

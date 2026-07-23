@@ -27,6 +27,13 @@ import java.util.UUID;
  * (peak-shaving) Anlage defends. Null when the site runs no peak-shaving module
  * (no Leistungspreis configured) or on a run that predates the column - the
  * portal's Peak-Band then shows no target line, never a fabricated 0.
+ *
+ * <p>{@code fallback14a} (Fahrplan-Warum, {@code schedule.fallback_14a},
+ * migration V20260723030000): true = this run is the advisory build without
+ * the infeasible §14a grid-limit constraint (the edge guards + the grid
+ * operator enforce the physical limit regardless) - the portal's §14a copy
+ * switches to the honest fallback wording then. Null on pre-feature runs or
+ * runs whose explain layer was off - the display degrades to today's view.
  */
 public record SchedulePlanDto(
         UUID planId,
@@ -38,9 +45,11 @@ public record SchedulePlanDto(
         BigDecimal socStartPct,
         BigDecimal socEndPct,
         BigDecimal peakTargetKw,
+        Boolean fallback14a,
         List<ScheduleSlotDto> slots) {
 
     public static SchedulePlanDto empty() {
-        return new SchedulePlanDto(null, null, null, 15, null, null, null, null, null, List.of());
+        return new SchedulePlanDto(
+                null, null, null, 15, null, null, null, null, null, null, List.of());
     }
 }

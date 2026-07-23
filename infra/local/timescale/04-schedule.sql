@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS schedule (
     wear_cost_eur     NUMERIC(12, 6),           -- priced battery degradation of the slot (V20260710000000)
     terminal_value_eur_per_kwh NUMERIC(12, 6),  -- run's P3 terminal value per stored kWh (V20260716010000)
     peak_target_kw    NUMERIC(12, 4),           -- run's PS-1 planned billing-period peak target (V20260716020000)
+    slot_role         TEXT,                     -- Fahrplan-Warum role id (V20260723030000)
+    slot_flags        TEXT,                     -- CSV of binding-constraint codes (V20260723030000)
+    stored_value_ct_kwh NUMERIC(12, 4),         -- lambda: exact value of a stored kWh (V20260723030000)
+    grid_value_ct_kwh NUMERIC(12, 4),           -- pi: effective grid-point energy value (V20260723030000)
+    peak_pressure_eur_kw NUMERIC(12, 4),        -- mu: Leistungspreis allocation on the slot (V20260723030000)
+    fallback_14a      BOOLEAN,                  -- run is the advisory no-§14a build (V20260723030000)
     PRIMARY KEY (site_id, generated_at, time)
 );
 

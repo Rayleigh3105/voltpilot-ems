@@ -4006,6 +4006,15 @@ components:
             schedule.peak_target_kw) - the "Ziel" a Lastspitzen (peak-shaving)
             Anlage defends. Null when the site runs no peak-shaving module or on
             a run that predates the column.
+        fallback14a:
+          type: boolean
+          nullable: true
+          description: >-
+            Fahrplan-Warum (schedule.fallback_14a): true = this run is the
+            advisory build without the infeasible §14a grid-limit constraint
+            (edge guards + grid operator enforce the physical limit) - the
+            §14a copy switches to the fallback wording. Null on pre-feature
+            runs or runs whose explain layer was off.
         slots:
           type: array
           items:
@@ -4020,6 +4029,11 @@ components:
               baselineCostEur: { type: number, description: "Projected slot cost with the battery idle." }
               curtailKw: { type: number, nullable: true, description: "Planned PV curtailment for the slot (kW held back, >= 0); the optimizer curtails feed-in at negative prices. Null on pre-curtailment runs." }
               pvKw: { type: number, nullable: true, description: "PV forecast the slot planned with (kW, schedule.pv_kw). Feeds the pv-aware 'Laden aus dem Netz' derivation: grid-charging = charge beyond the slot's available PV (FK3 PV-bus semantics), not merely charging while importing. Null on rows without a persisted PV input." }
+              slotRole: { type: string, nullable: true, description: "Fahrplan-Warum role id (schedule.slot_role): warten | pv_speichern | guenstig_laden | eigenverbrauch | verkaufen | spitze_kappen | reserve_halten | abregeln (additively extensible). Null on pre-feature rows - the portal renders its chargeKind fallback then, never a fabricated explanation." }
+              slotFlags: { type: array, nullable: true, items: { type: string }, description: "Binding-constraint codes (schedule.slot_flags CSV, split): soc_max, soc_floor, reserve_backup, reserve_peak, charge_cap, discharge_cap, solar_only, grid_limit_14a, feed_in_cap, peak_defining, curtailing. Null = no binding recorded / pre-feature row." }
+              storedValueCtKwh: { type: number, nullable: true, description: "The EXACT value of a stored kWh at slot end (the run's SoC shadow price, ct/kWh, rounded 0.1 ct - schedule.stored_value_ct_kwh). Customer copy calls it 'Wert gespeicherter Energie'. Null on pre-feature rows." }
+              gridValueCtKwh: { type: number, nullable: true, description: "Effective per-kWh energy value at the grid connection point (ct/kWh, schedule.grid_value_ct_kwh); deviates from the tariff exactly when §14a or the peak module deforms the slot's economics. Null on pre-feature rows." }
+              peakPressureEurKw: { type: number, nullable: true, description: "The Leistungspreis allocation on this slot (EUR/kW, schedule.peak_pressure_eur_kw; sums to Leistungspreis + ratchet over the horizon). Null when the site runs no peak-shaving module or on pre-feature rows." }
     ControlStatus:
       type: object
       description: Latest inverter-control confirmation for a site (report §5).
@@ -4507,9 +4521,12 @@ components:
       description: >
         One persisted optimizer run with the per-slot euro decomposition (see
         the endpoint description). Run-level fields carry the "inputs at a
-        glance" master data; `storedEnergyValueIsApproximation` is always true
-        (the stored-energy value is a forward best-use heuristic, not a MILP
-        shadow price - the UI must label it).
+        glance" master data; `storedEnergyValueIsApproximation` is false when
+        every rendered slot carries the optimizer-persisted EXACT
+        stored-energy value (the run's SoC shadow price,
+        schedule.stored_value_ct_kwh - Fahrplan-Warum), and true when any slot
+        fell back to the forward best-use heuristic (pre-feature runs, explain
+        layer off - the UI must label it then).
       properties:
         siteId: { type: string, format: uuid }
         planId: { type: string, format: uuid, nullable: true }
@@ -4555,7 +4572,7 @@ components:
             socMaxPct: { type: number, description: Effective usable-band ceiling (override or 95). }
         activeLoadModel: { type: string }
         activePvModel: { type: string }
-        storedEnergyValueIsApproximation: { type: boolean, example: true }
+        storedEnergyValueIsApproximation: { type: boolean, example: false }
         slots:
           type: array
           items: { $ref: "#/components/schemas/OptimizerDiagnosticsSlot" }
@@ -4581,9 +4598,28 @@ components:
         importPriceCtKwh: { type: number, nullable: true, description: Real cost of an imported kWh per the site's tariff. }
         exportValueCtKwh: { type: number, nullable: true, description: Real value of an exported kWh per the plant's remuneration. }
         wearCostCtKwh: { type: number, nullable: true, description: Derived wear rate per kWh of throughput (null for idle slots). }
-        valueOfStoredEnergyCtKwh: { type: number, nullable: true, description: APPROXIMATION - forward best-use price x efficiency minus wear. }
+        valueOfStoredEnergyCtKwh: { type: number, nullable: true, description: "The value of a stored kWh: the persisted EXACT SoC shadow price (Fahrplan-Warum) where the run carries it, else the forward best-use approximation (the run-level flag marks which)." }
         decisionLabel: { type: string, enum: [solarladen, netzladen, entladen, ruhe] }
         whyText: { type: string, description: One composed German sentence explaining the decision. }
+        slotRole:
+          type: string
+          nullable: true
+          description: >-
+            Optimizer-persisted Fahrplan-Warum role (schedule.slot_role;
+            vocabulary: warten | pv_speichern | guenstig_laden |
+            eigenverbrauch | verkaufen | spitze_kappen | reserve_halten |
+            abregeln, additively extensible). Null on pre-feature runs -
+            decisionLabel stays the fallback.
+        slotFlags:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: >-
+            Binding-constraint codes of the slot (schedule.slot_flags CSV,
+            split): soc_max, soc_floor, reserve_backup, reserve_peak,
+            charge_cap, discharge_cap, solar_only, grid_limit_14a,
+            feed_in_cap, peak_defining, curtailing. Null = no binding
+            recorded / pre-feature run.
     OptimizerConfig:
       type: object
       description: The optimizer knobs of one site (see the endpoint description).

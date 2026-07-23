@@ -26,8 +26,11 @@ import java.util.UUID;
  * model/fallback fired for THIS run is not persisted - the UI reads model
  * lifecycle from {@code GET /sites/{id}/forecast-quality}. The §14a limit the
  * run used is likewise not persisted (an honest gap, not a null-able field
- * here). {@code storedEnergyValueIsApproximation} is always true: the value is
- * the forward best-use heuristic, not a MILP shadow price.
+ * here). {@code storedEnergyValueIsApproximation}: since Fahrplan-Warum the
+ * optimizer persists the EXACT stored-energy value (the run's SoC shadow
+ * price, {@code schedule.stored_value_ct_kwh}); the flag is false when every
+ * rendered slot carries it, and true when any slot fell back to the forward
+ * best-use heuristic (pre-feature runs, explain layer off).
  *
  * <p>Run navigation is DAY-scoped (Europe/Berlin, the platform timezone):
  * {@code availableRuns} lists ONE day's runs ({@code availableRunsDate} - the
