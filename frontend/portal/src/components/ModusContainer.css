@@ -1,0 +1,266 @@
+/*
+ * v3.1-M2 — der Modus-Container (Detailseite eines Modus).
+ * Komponenten-lokales Stylesheet (der Profile.css/Steuerung.css-Präzedenzfall):
+ * index.css bleibt unangetastet. Jedes Flex-/Grid-Kind trägt `min-width: 0`,
+ * damit eine lange Zeile die Seite nie horizontal aufreißt (375 / 768 / 1440).
+ * Der Schalter (.vp-switch) wird aus Profile.css wiederverwendet.
+ */
+
+.vp-modus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-modus-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-4, 16px);
+  min-width: 0;
+}
+
+/* --- Kopf ---------------------------------------------------------------- */
+
+.vp-modus-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-modus-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--vp-flow-load, #64748b);
+}
+
+.vp-modus-dot.markt { background: var(--vp-flow-grid, #14b8a6); }
+.vp-modus-dot.peak { background: var(--vp-flow-pv, #f59e0b); }
+.vp-modus-dot.eigen { background: var(--vp-flow-batt, #22c55e); }
+.vp-modus-dot.atyp { background: var(--vp-flow-load, #8b5cf6); }
+
+.vp-modus-title {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--vp-navy, #1a365d);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Der Schalter sitzt rechts. */
+.vp-modus-head .vp-switch {
+  margin-left: auto;
+}
+
+/* --- Abschnitte ---------------------------------------------------------- */
+
+.vp-modus-benefit {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: var(--vp-text, #223);
+  min-width: 0;
+  max-width: 70ch;
+}
+
+.vp-modus-blocked {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: var(--vp-radius-md, 10px);
+  background: rgba(180, 83, 9, 0.08);
+  color: #92400e;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  min-width: 0;
+}
+
+.vp-modus-blocked svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.vp-modus-sect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-modus-secthead {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vp-text-muted, #667085);
+}
+
+/* --- Beitrag ------------------------------------------------------------- */
+
+.vp-modus-contrib,
+.vp-modus-settings,
+.vp-modus-views {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-modus-contribrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-modus-contribtext {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vp-modus-contriblabel {
+  font-size: 0.9rem;
+  color: var(--vp-text, #223);
+  overflow-wrap: anywhere;
+}
+
+.vp-modus-contribnote {
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #667);
+}
+
+.vp-modus-contribval {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--vp-navy, #1a365d);
+  white-space: nowrap;
+}
+
+.vp-modus-contribval.muted {
+  color: var(--vp-text-muted, #667);
+  font-weight: 500;
+}
+
+/* --- Einstellungen (Read-only-Zeilen; Formulare in v3.1-M3) --------------- */
+
+.vp-modus-setting {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-3, 12px);
+  padding: 10px 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-modus-settings > .vp-modus-setting:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.vp-modus-settinglabel {
+  font-size: 0.92rem;
+  color: var(--vp-navy, #1a365d);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-modus-settingnote {
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #667);
+  white-space: nowrap;
+}
+
+/* --- Ansichten ----------------------------------------------------------- */
+
+.vp-modus-view {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px);
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  background: var(--vp-surface-2, #f7fafc);
+  color: var(--vp-navy, #1a365d);
+  font: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+}
+
+.vp-modus-view:hover {
+  border-color: var(--vp-action, #2c5282);
+}
+
+.vp-modus-view > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-modus-view.off {
+  cursor: default;
+  color: var(--vp-text-muted, #667);
+  background: transparent;
+}
+
+.vp-modus-viewsnote {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+}
+
+/* --- Herkunft / Flow öffnen --------------------------------------------- */
+
+.vp-modus-origin {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-modus-originline {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--vp-text-muted, #667);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-modus-openflow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--vp-action, #2c5282);
+  border-radius: var(--vp-radius-md, 10px);
+  background: none;
+  color: var(--vp-action, #2c5282);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.vp-modus-openflow:hover {
+  background: rgba(44, 82, 130, 0.06);
+}

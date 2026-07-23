@@ -105,22 +105,14 @@ function baseItems(badge: number | null): SidebarItem[] {
 }
 
 /**
- * Modus-Profile · Einstellungen · Hilfe & Kontakt — the sidebar foot.
+ * Einstellungen · Hilfe & Kontakt — the sidebar foot.
  *
- * M3 mounts the Modus-Profile shelf here rather than in the base group: the
- * base group is the five FIXED Anlage areas (M1 law 1), and the shelf is a
- * plant-wide management surface, always reachable, on every plant — including a
- * v1 one. `Steuerung` links into it as well ("Profile verwalten →", M4).
+ * v3.1-M2 retired the standalone „Modus-Profile"-Regal: every mode is now a
+ * CONTAINER opened from the Steuerung capsule, so the foot no longer carries a
+ * `profile` entry. Steuerung remains the ONE door to the modes (base group).
  */
 function footItems(): SidebarItem[] {
   return [
-    {
-      key: 'profile',
-      label: 'Modus-Profile',
-      icon: 'sliders',
-      target: { kind: 'sub', sub: 'profile' },
-      badge: null,
-    },
     { key: 'technik', label: 'Einstellungen', icon: 'settings', target: { kind: 'sub', sub: 'technik' }, badge: null },
     { key: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle', target: { kind: 'help' }, badge: null },
   ];
@@ -171,13 +163,27 @@ const MODE_TONES: Record<ModeKind, ModeTone> = {
   automation: 'automation',
 };
 
+/**
+ * The navigable sidebar entries a set of deep views contributes — the mode
+ * group's items, and the SAME list the v3.1-M2 „Modus-Container" renders as its
+ * „Ansichten dieses Modus" section. Only deep views that become their OWN nav
+ * entry appear (see `MODE_VIEW_ITEMS`); base areas contribute none.
+ */
+export function modeViewItems(deepViews: readonly DeepViewId[]): SidebarItem[] {
+  const items: SidebarItem[] = [];
+  for (const view of deepViews) {
+    const def = MODE_VIEW_ITEMS[view];
+    if (def) items.push({ ...def, badge: null });
+  }
+  return items;
+}
+
 function modeGroup(mode: ActiveMode, taken: Set<string>): SidebarGroup | null {
   const items: SidebarItem[] = [];
-  for (const view of mode.manifest.deepViews) {
-    const def = MODE_VIEW_ITEMS[view];
-    if (!def || taken.has(def.key)) continue;
-    taken.add(def.key);
-    items.push({ ...def, badge: null });
+  for (const item of modeViewItems(mode.manifest.deepViews)) {
+    if (taken.has(item.key)) continue;
+    taken.add(item.key);
+    items.push(item);
   }
   if (items.length === 0) return null;
   return {

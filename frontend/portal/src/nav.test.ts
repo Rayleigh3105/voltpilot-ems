@@ -22,7 +22,6 @@ const ALL_SUBS: AnlagenSub[] = [
   'modell',
   'steuerung',
   'lastspitzen',
-  'profile',
 ];
 
 /**
@@ -90,6 +89,16 @@ describe('parseRoute', () => {
       page: 'anlagen',
       siteId: 'site-1',
       sub: 'modell',
+    });
+  });
+
+  it('redirects the retired profile subpage into steuerung (v3.1-M2 container)', () => {
+    // The standalone Modus-Profile shelf became the per-mode container opened
+    // from the Steuerung capsule; the old hash keeps working as a redirect.
+    expect(parseRoute('#/anlage/site-1/profile')).toEqual({
+      page: 'anlagen',
+      siteId: 'site-1',
+      sub: 'steuerung',
     });
   });
 

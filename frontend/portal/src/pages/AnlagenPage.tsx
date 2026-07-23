@@ -64,7 +64,6 @@ import { HistorieSection } from './HistorieSection';
 import { LiveSection } from './LiveSection';
 import { AnlagenModellSection } from './AnlagenModellSection';
 import { LastspitzenSection } from './LastspitzenSection';
-import { ProfileSection } from './ProfileSection';
 import { SteuerungSection } from './SteuerungSection';
 import { TechnikSection } from './AnlageTechnik';
 
@@ -314,11 +313,6 @@ const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
     subtitle:
       'Ihre Steuerungs-Flows: Regeln bauen, prüfen, simulieren und aktivieren - was geschaltet wird und zu welchen Bedingungen.',
   },
-  profile: {
-    title: 'Modus-Profile',
-    subtitle:
-      'Was Ihre Anlage kann: Profile ein- und ausschalten - mehrere gleichzeitig, jederzeit änderbar.',
-  },
   lastspitzen: {
     title: 'Lastspitzen',
     subtitle:
@@ -365,7 +359,6 @@ function AnlagenSubPage({
       {sub === 'wetter' && <WetterSection site={site} />}
       {sub === 'modell' && <AnlagenModellSection site={site} />}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
-      {sub === 'profile' && <ProfileSection site={site} />}
       {sub === 'steuerung' && (
         <SteuerungSection site={site} isAdmin={isAdmin} onOpenSub={onOpenSub} />
       )}

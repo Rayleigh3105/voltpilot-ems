@@ -5,6 +5,7 @@ import {
   anlageSidebar,
   bottomBarSlots,
   BASE_GROUP_LABEL,
+  modeViewItems,
   moreSheetItems,
   resolveAnlage,
   type SidebarGroup,
@@ -23,7 +24,6 @@ const ALL_SUBS: AnlagenSub[] = [
   'modell',
   'steuerung',
   'lastspitzen',
-  'profile',
 ];
 
 const ENTITIES: AnlageSurfaceInput['entities'] = [
@@ -126,13 +126,13 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
     expect(base.items.filter((i) => i.badge != null).map((i) => i.key)).toEqual(['steuerung']);
   });
 
-  it('always carries the foot: Modus-Profile · Einstellungen · Hilfe & Kontakt', () => {
-    // M3 mounts the profile shelf in the foot - the base group stays the five
-    // FIXED Anlage areas, and the shelf is reachable on EVERY plant.
+  it('carries the foot: Einstellungen · Hilfe & Kontakt (no standalone profile)', () => {
+    // v3.1-M2 retired the Modus-Profile shelf - modes are containers opened from
+    // the Steuerung capsule, so the foot no longer carries a `profile` entry.
     const { foot } = anlageSidebar(PRIVAT);
-    expect(foot.map((i) => i.key)).toEqual(['profile', 'technik', 'hilfe']);
-    expect(foot[0].target).toEqual({ kind: 'sub', sub: 'profile' });
-    expect(foot[2].target).toEqual({ kind: 'help' });
+    expect(foot.map((i) => i.key)).toEqual(['technik', 'hilfe']);
+    expect(foot[0].target).toEqual({ kind: 'sub', sub: 'technik' });
+    expect(foot[1].target).toEqual({ kind: 'help' });
   });
 });
 
@@ -215,7 +215,7 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     expect(groups[1].label).toBe('Modus · Marktvermarktung');
     expect(groups[1].tone).toBe('markt');
     const last = groups[groups.length - 1];
-    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'profile', 'technik', 'hilfe']);
+    expect(last.items.map((i) => i.key)).toEqual(['wetter', 'technik', 'hilfe']);
   });
 });
 
@@ -285,6 +285,21 @@ describe('activeAreaKey / activeKeyForPage - ONE highlight rule', () => {
 describe('Marktpreise/Prognose are not a global main-nav group', () => {
   it('the main nav is just Übersicht + Meine Anlage(n)', () => {
     expect(MAIN_PAGES.map((p) => p.id)).toEqual(['uebersicht', 'anlagen']);
+  });
+});
+
+describe('modeViewItems - the shared derivation for the sidebar group AND the container', () => {
+  it('maps a mode’s deep views onto navigable entries, dropping base areas', () => {
+    // Marktvermarktung: fahrplan/marktpreise/prognose become entries;
+    // erloes-historie is a base area and contributes none.
+    const markt = MARKT.modes.find((m) => m.kind === 'marktvermarktung');
+    const items = modeViewItems(markt?.manifest.deepViews ?? []);
+    expect(items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise', 'prognose']);
+  });
+
+  it('is empty for a mode whose views are all base areas', () => {
+    const eigen = PRIVAT.modes.find((m) => m.kind === 'eigenverbrauch');
+    expect(modeViewItems(eigen?.manifest.deepViews ?? [])).toEqual([]);
   });
 });
 
