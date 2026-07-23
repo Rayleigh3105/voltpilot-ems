@@ -219,6 +219,40 @@ export interface ScheduleSlot {
    * import-based rule).
    */
   pvKw: number | null;
+  /**
+   * The slot's role in the plan (the "Warum"-layer, design report
+   * vp-fahrplan-why-design §5.1/§6): abregeln | reserve_halten | warten |
+   * pv_speichern | guenstig_laden | spitze_kappen | verkaufen |
+   * eigenverbrauch. The vocabulary is additive - unknown ids and null (old
+   * rows, pre-feature optimizer) both degrade the Fahrplan to today's view
+   * (no phases band, no tap panel), never a fabricated explanation.
+   */
+  slotRole: string | null;
+  /**
+   * Binding-constraint codes active in the slot (soc_max, soc_floor,
+   * reserve_backup, reserve_peak, charge_cap, discharge_cap, solar_only,
+   * grid_limit_14a, feed_in_cap, peak_defining, curtailing). Null = none
+   * recorded / pre-feature row.
+   */
+  slotFlags: string[] | null;
+  /**
+   * The exact value of a stored kWh at the end of the slot (ct/kWh, rounded
+   * to 0.1 ct) - customer copy calls it "Wert gespeicherter Energie". Null on
+   * pre-feature rows.
+   */
+  storedValueCtKwh: number | null;
+  /**
+   * Effective energy value at the grid connection point (ct/kWh). Present in
+   * the contract but deliberately NOT rendered on the customer surface (D3 -
+   * admin/installer depth only).
+   */
+  gridValueCtKwh: number | null;
+  /**
+   * The slot's share of the Leistungspreis pressure (EUR/kW, peak-shaving
+   * module). > 0 = the slot belongs to the Lastspitzenkappung. Null when the
+   * module is off or on pre-feature rows.
+   */
+  peakPressureEurKw: number | null;
 }
 
 export interface SchedulePlan {
@@ -248,6 +282,13 @@ export interface SchedulePlan {
    * never a fabricated 0.
    */
   peakTargetKw: number | null;
+  /**
+   * True when this run is the advisory fallback build WITHOUT the §14a grid
+   * constraint (it was infeasible) - the device enforces the limit
+   * additionally on execution, and the portal's §14a copy says so. Null on
+   * pre-feature rows (the why-layer then stays hidden anyway).
+   */
+  fallback14a: boolean | null;
   slots: ScheduleSlot[];
 }
 

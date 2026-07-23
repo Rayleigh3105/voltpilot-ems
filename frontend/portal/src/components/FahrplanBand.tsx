@@ -5,8 +5,10 @@ import {
   planHourBars,
   planSentence,
   savingsTodayEur,
+  todaySlots,
   type ChargeKind,
 } from '../schedule';
+import { phaseArcSentence, phases } from '../fahrplanWhy';
 import { energyLabel } from '../anlage';
 import { ScheduleChart } from '../ScheduleChart';
 import { useContainerWidth } from '../useContainerWidth';
@@ -52,7 +54,12 @@ export function FahrplanBand({
   const [ref, width] = useContainerWidth();
   const slots = plan?.slots ?? [];
   const hasPlan = slots.length > 0;
-  const sentence = planSentence(slots, plantKind, now);
+  // Day-story arc (why-layer, D4: the cockpit band stays calm - arc sentence
+  // only, no phase band here). Plans without persisted slot roles fall back
+  // to the classic planSentence - byte-identical to before.
+  const whyPhases = phases(todaySlots(slots, now), plan?.slotMinutes ?? 15);
+  const arc = whyPhases.length > 0 ? phaseArcSentence(whyPhases, plantKind) : null;
+  const sentence = arc ?? planSentence(slots, plantKind, now);
   const saved = savingsTodayEur(slots, now);
   const curtail = curtailmentToday(slots, now);
 
