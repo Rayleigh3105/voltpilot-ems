@@ -38,12 +38,11 @@ export type AnlagenSub =
   | 'technik'
   | 'modell'
   | 'steuerung'
-  | 'lastspitzen'
-  | 'profile';
+  | 'lastspitzen';
 
 const SUBS = new Set<string>([
   'live', 'fahrplan', 'historie', 'wetter', 'technik', 'modell',
-  'steuerung', 'lastspitzen', 'profile',
+  'steuerung', 'lastspitzen',
 ]);
 
 /**
@@ -52,10 +51,13 @@ const SUBS = new Set<string>([
  * - `optimierung` -> `steuerung` (U3: "Optimierung" merged into Steuerung).
  * - `entitaeten` -> `modell` (Portal v3 M6: the "Geräte & Entitäten" list
  *   became the Anlagen-Modell — Gerät/Komponente/Messwert).
+ * - `profile` -> `steuerung` (v3.1-M2: the standalone Modus-Profile shelf became
+ *   the per-mode container opened from the Steuerung capsule).
  */
 const LEGACY_SUBS: Record<string, AnlagenSub> = {
   optimierung: 'steuerung',
   entitaeten: 'modell',
+  profile: 'steuerung',
 };
 
 /**

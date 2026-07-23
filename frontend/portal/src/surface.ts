@@ -820,6 +820,22 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
 }
 
 /**
+ * Die Deep-Views, die eine Modus-ART beisteuert — unabhängig davon, ob der Modus
+ * gerade aktiv ist. Der „Modus-Container" (v3.1-M2) zeigt sie als „Ansichten
+ * dieses Modus"-Abschnitt, auch bei einem AUSGESCHALTETEN Modus (der hat kein
+ * `ActiveMode`-Objekt, also braucht der Container die Views je Art). EINE
+ * Wahrheit: abgeleitet aus `manifestFor` selbst (kein zweiter, driftender Katalog
+ * — Origin/Preview beeinflussen die Deep-Views nicht).
+ */
+export function modeDeepViews(kind: ModeKind): DeepViewId[] {
+  return manifestFor(
+    { kind, key: kind, label: '', signals: [], flowRef: null },
+    'masterdata',
+    kind === 'atypische-netznutzung',
+  ).deepViews;
+}
+
+/**
  * Die Ehrlichkeits-Zeile eines reinen Stammdaten-Modus (report §1.2) - REUSE der
  * bestehenden Formulierung aus `moduleSurface.ts`, damit die Oberfläche EINE
  * Sprache spricht.

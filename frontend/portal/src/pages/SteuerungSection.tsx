@@ -4,9 +4,10 @@
  * Die Fläche beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich
  * selbst geregelt?" — mit genau ZWEI Kapseln und einer schmalen Schutz-Zeile:
  *
- *  1. **Modus-Profile** — kompakte Zeilen (Statuspunkt · ein Satz mit echten
- *     Zahlen · Schalter), darunter als Fußzeile der Ko-Optimierungs-Streifen
- *     mit dem SoC-Reservierungs-Stack. „Profile verwalten →" öffnet M3s Regal.
+ *  1. **Modus-Profile** — kompakte, ANTIPPBARE Zeilen (Statuspunkt · ein Satz
+ *     mit echten Zahlen · Chevron · Schalter); ein Tipp auf die Zeile öffnet den
+ *     Modus-Container (v3.1-M2, `ModusContainer`), darunter als Fußzeile der
+ *     Ko-Optimierungs-Streifen mit dem SoC-Reservierungs-Stack.
  *  2. **Automationen** — je Regel eine Zeile mit ihrem lebenden Zustand und
  *     EINEM Knopf „＋ Neue Automation", dessen Dialog die drei Wege in dieser
  *     Reihenfolge anbietet: Vorlage → geführter Baukasten → Editor.
@@ -30,8 +31,10 @@ import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { InfoTip } from '../components/InfoTip';
 import { NeueAutomationDialog } from '../components/NeueAutomationDialog';
 import { CoOptimizationStrip, PartHead } from '../components/SteuerungParts';
+import { ModusContainer } from '../components/ModusContainer';
 import { EINRICHTUNG_DURCH_VOLTPILOT } from '../moduleSurface';
-import { anlageRoute, hashForRoute, type AnlagenSub } from '../nav';
+import { anlageRoute, hashForRoute, pageRoute, type AnlagenSub } from '../nav';
+import type { NavTarget } from '../anlageNav';
 import { optimizerApi } from '../optimizerApi';
 import {
   customerFlowApi,
@@ -49,7 +52,6 @@ import {
   PROFILE_CAPSULE_EMPTY,
   PROFILE_CAPSULE_INTRO,
   PROFILE_CAPSULE_TITLE,
-  PROFILE_MANAGE_LABEL,
   PROTECTION_INTRO,
   automationRows,
   coOptimization,
@@ -94,6 +96,13 @@ export function SteuerungSection({
   const [reservation, setReservation] = useState<ReservationInput | null>(null);
   const [listState, setListState] = useState<'idle' | 'loading' | 'error'>('loading');
   const [editing, setEditing] = useState<Editing | null>(null);
+  /**
+   * v3.1-M2: der offene Modus-Container (die Profil-Id) — ein interner
+   * Sub-View-State wie `editing` (der Flow-Editor-Präzedenzfall), kein neuer
+   * `Route`-Parameter. Der Bookmark `#/anlage/{id}/profile` redirectet auf
+   * `steuerung` (`nav.ts` LEGACY_SUBS), landet also auf den zwei Kapseln.
+   */
+  const [openContainer, setOpenContainer] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -273,10 +282,28 @@ export function SteuerungSection({
     [site.id, reload, fail],
   );
 
-  const openProfileShelf = useCallback(() => {
-    if (onOpenSub) onOpenSub('profile');
-    else window.location.hash = hashForRoute(anlageRoute(site.id, 'profile'));
-  }, [onOpenSub, site.id]);
+  /** Eine Ansicht dieses Modus öffnen (Container → Sidebar-Ziel). */
+  const navigateView = useCallback(
+    (target: NavTarget) => {
+      if (target.kind === 'sub') {
+        if (target.sub == null) return;
+        if (onOpenSub) onOpenSub(target.sub);
+        else window.location.hash = hashForRoute(anlageRoute(site.id, target.sub));
+      } else if (target.kind === 'page') {
+        window.location.hash = hashForRoute(pageRoute(target.page));
+      }
+    },
+    [onOpenSub, site.id],
+  );
+
+  /** „Flow öffnen" aus dem Container: den echten Flow des Modus öffnen. */
+  const openContainerFlow = useCallback(
+    (flowRef: { flowId: string; name: string }) => {
+      const flow = (flows ?? []).find((f) => f.flowId === flowRef.flowId);
+      if (flow) openFlow(flow.flowId, flow.latestVersion, flow.latestDocument);
+    },
+    [flows, openFlow],
+  );
 
   if (editing) {
     return (
@@ -294,6 +321,39 @@ export function SteuerungSection({
           reload();
         }}
       />
+    );
+  }
+
+  // v3.1-M2: ist ein Modus-Container geöffnet, ersetzt er die zwei Kapseln.
+  // `profiles` bleibt über einen Reload erhalten, der Container flackert also
+  // beim Umschalten nicht weg.
+  const openProfile =
+    openContainer != null
+      ? profiles?.profiles.find((p) => p.id === openContainer) ?? null
+      : null;
+  if (openProfile) {
+    const mode = modes.find((m) => String(m.kind) === openProfile.id) ?? null;
+    return (
+      <div className="vp-steuerung vp-steuerung-area">
+        <div ref={noticeRef}>
+          {error && (
+            <p className="vp-flowed-notice error" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+        <ModusContainer
+          profile={openProfile}
+          mode={mode}
+          activeModes={modes}
+          earnings={earnings}
+          busy={toggling === openProfile.id}
+          onToggle={toggleProfile}
+          onBack={() => setOpenContainer(null)}
+          onNavigate={navigateView}
+          onOpenFlow={openContainerFlow}
+        />
+      </div>
     );
   }
 
@@ -316,11 +376,7 @@ export function SteuerungSection({
         <>
           {/* --- Kapsel 1 · Modus-Profile --------------------------------- */}
           <section className="vp-capsule" aria-label={PROFILE_CAPSULE_TITLE}>
-            <PartHead title={PROFILE_CAPSULE_TITLE} intro={PROFILE_CAPSULE_INTRO}>
-              <button type="button" className="vp-capsule-link" onClick={openProfileShelf}>
-                {PROFILE_MANAGE_LABEL} <Icon name="chevron-right" size={14} />
-              </button>
-            </PartHead>
+            <PartHead title={PROFILE_CAPSULE_TITLE} intro={PROFILE_CAPSULE_INTRO} />
             <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
               {rows.length === 0 ? (
                 <p className="vp-capsule-empty">{PROFILE_CAPSULE_EMPTY}</p>
@@ -332,6 +388,7 @@ export function SteuerungSection({
                       row={row}
                       busy={toggling === row.id}
                       onToggle={toggleProfile}
+                      onOpen={setOpenContainer}
                     />
                   ))}
                 </ul>
@@ -417,24 +474,39 @@ export function SteuerungSection({
   );
 }
 
-/** Eine kompakte Profil-Zeile: Statuspunkt · Beitrag · Schalter. */
+/**
+ * Eine kompakte, ANTIPPBARE Profil-Zeile: Statuspunkt · Beitrag · Chevron
+ * (öffnet den Modus-Container) und rechts der Schalter. Der Schalter ist ein
+ * eigener Knopf NEBEN der Öffnen-Fläche (kein verschachteltes `<button>`) und
+ * stoppt die Propagation, damit ein Umschalten nie in den Container navigiert.
+ */
 function ProfileRowView({
   row,
   busy,
   onToggle,
+  onOpen,
 }: {
   row: ProfileRow;
   busy: boolean;
   onToggle: (id: string, next: ProfileState) => void;
+  onOpen: (id: string) => void;
 }) {
   return (
     <li className={`vp-profrow${row.on ? ' on' : ''}`}>
       <span className={`vp-rowdot ${row.tone}`} aria-hidden="true" />
-      <div className="vp-profrow-text">
-        <strong>{row.label}</strong>
-        <p className="vp-profrow-contrib">{row.contribution}</p>
-        {row.blockedReason && <p className="vp-profrow-blocked">{row.blockedReason}</p>}
-      </div>
+      <button
+        type="button"
+        className="vp-profrow-open"
+        aria-label={`${row.label} öffnen`}
+        onClick={() => onOpen(row.id)}
+      >
+        <span className="vp-profrow-text">
+          <strong>{row.label}</strong>
+          <span className="vp-profrow-contrib">{row.contribution}</span>
+          {row.blockedReason && <span className="vp-profrow-blocked">{row.blockedReason}</span>}
+        </span>
+        <Icon name="chevron-right" size={16} />
+      </button>
       <button
         type="button"
         role="switch"
@@ -442,7 +514,10 @@ function ProfileRowView({
         aria-label={`${row.label} ${row.on ? 'ausschalten' : 'einschalten'}`}
         className={`vp-switch${row.on ? ' on' : ''}`}
         disabled={busy}
-        onClick={() => onToggle(row.id, row.on ? 'aus' : 'an')}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle(row.id, row.on ? 'aus' : 'an');
+        }}
       >
         <span className="vp-switch-knob" aria-hidden="true" />
       </button>

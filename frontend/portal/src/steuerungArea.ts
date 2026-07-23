@@ -6,11 +6,11 @@
  * beantwortet EINE Frage — „Was darf VoltPilot, und was habe ich selbst
  * geregelt?" — mit ZWEI Kapseln plus einer schmalen Schutz-Zeile:
  *
- *  1. **Modus-Profile** (`profileRows`) — kompakte Zeilen: Statuspunkt, EIN
- *     Satz mit echten Zahlen, Schalter. Das Regal (Nutzen, Freischaltungen,
- *     Voraussetzungen) ist M3s Fläche; von hier führt „Profile verwalten →"
- *     dorthin. Der Ko-Optimierungs-Streifen + `socReservationStack` bilden die
- *     Fußzeile dieser Kapsel.
+ *  1. **Modus-Profile** (`profileRows`) — kompakte, ANTIPPBARE Zeilen:
+ *     Statuspunkt, EIN Satz mit echten Zahlen, Schalter. Antippen öffnet den
+ *     Modus-Container (v3.1-M2), in dem Nutzen, Einstellungen, Voraussetzungen
+ *     und Ansichten des Modus leben. Der Ko-Optimierungs-Streifen +
+ *     `socReservationStack` bilden die Fußzeile dieser Kapsel.
  *  2. **Automationen** (`automationRows`) — je Regel eine Zeile mit ihrem
  *     lebenden Zustand und EINEM „＋ Neue Automation"-Knopf.
  *
@@ -330,8 +330,9 @@ export function socReservationStack(input: ReservationInput | null | undefined):
 /**
  * Eine kompakte Profil-Zeile der Steuerung: Statuspunkt, EIN Satz mit dem, was
  * das Profil beiträgt (echte Zahl + Periode, sonst „—"), und der Schalter.
- * Das Regal selbst (Nutzen, Freischaltungen, Voraussetzungen) bleibt M3s
- * Fläche — hier steht nur, was gerade läuft und was es bringt.
+ * Das Detail (Nutzen, Einstellungen, Voraussetzungen, Ansichten) lebt im
+ * Modus-Container (v3.1-M2), den ein Tipp auf die Zeile öffnet — hier steht nur,
+ * was gerade läuft und was es bringt.
  */
 export interface ProfileRow {
   id: string;
@@ -392,8 +393,6 @@ export const PROFILE_CAPSULE_INTRO =
 
 export const PROFILE_CAPSULE_EMPTY =
   'Für diese Anlage sind noch keine Profile hinterlegt.';
-
-export const PROFILE_MANAGE_LABEL = 'Profile verwalten';
 
 // ---------------------------------------------------------------------------
 // M4 · Kapsel 2 — die Automations-Zeilen

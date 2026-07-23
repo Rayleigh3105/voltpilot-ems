@@ -171,14 +171,37 @@ describe('SteuerungSection (Portal v3 M4)', () => {
     expect(screen.getByText(/Lastspitzen-Reserve/)).toBeInTheDocument();
   });
 
-  it('navigates to M3s shelf via "Profile verwalten"', async () => {
+  it('tapping a profile row opens its Modus-Container (v3.1-M2)', async () => {
     setup();
-    const onOpenSub = vi.fn();
-    render(<SteuerungSection site={site} onOpenSub={onOpenSub} />);
+    render(<SteuerungSection site={site} />);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Profile verwalten/ })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /Profile verwalten/ }));
-    expect(onOpenSub).toHaveBeenCalledWith('profile');
+      expect(screen.getByRole('button', { name: /Lastspitzenkappung öffnen/ })).toBeInTheDocument());
+    // The retired "Profile verwalten" door is gone.
+    expect(screen.queryByRole('button', { name: /Profile verwalten/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Lastspitzenkappung öffnen/ }));
+
+    // The container replaces the two capsules: its back link + the mode's own
+    // views section render, the capsules do not.
+    expect(await screen.findByRole('button', { name: /Zur Steuerung/ })).toBeInTheDocument();
+    expect(screen.getByText('Ansichten dieses Modus')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Automationen' })).toBeNull();
+
+    // Back returns to the two capsules.
+    fireEvent.click(screen.getByRole('button', { name: /Zur Steuerung/ }));
+    expect(await screen.findByRole('heading', { name: 'Automationen' })).toBeInTheDocument();
+  });
+
+  it('toggling a row switch does not open the container', async () => {
+    setup();
+    render(<SteuerungSection site={site} />);
+    const off = await screen.findByRole('switch', { name: /Eigenverbrauch einschalten/ });
+    fireEvent.click(off);
+    await waitFor(() =>
+      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'eigenverbrauch', 'an'));
+    // Still on the capsule surface - the switch never navigated into a container.
+    expect(screen.queryByRole('button', { name: /Zur Steuerung/ })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Automationen' })).toBeInTheDocument();
   });
 
   it('has exactly ONE "Neue Automation" entry, whose dialog offers template → builder → editor', async () => {
