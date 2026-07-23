@@ -356,6 +356,18 @@ class PlanSlot:
     # other economics (schedule.wear_cost_eur); consumers (portal/admin "why"
     # view) read it in a later stage.
     wear_cost_eur: float = 0.0
+    # ---- Fahrplan-Warum facts (design scout vp-fahrplan-why-design §5.1) ----
+    # Stamped POST-HOC by the explain layer (voltpilot_optimization.explain)
+    # after the plan is extracted - purely additive, never part of the decision.
+    # All None when the explain layer is off/failed or on pre-feature plans;
+    # the portal/api degrade to today's view then (null discipline). These
+    # fields NEVER reach the MQTT schedule payload (publisher builds its
+    # payload field-by-field) - the flow is optimizer -> schedule table -> api.
+    slot_role: str | None = None  # §6 vocabulary (warten, pv_speichern, ...)
+    slot_flags: tuple[str, ...] | None = None  # binding codes (soc_max, ...)
+    stored_value_ct_kwh: float | None = None  # lambda: value of a stored kWh
+    grid_value_ct_kwh: float | None = None  # pi: energy value at the grid point
+    peak_pressure_eur_kw: float | None = None  # mu: Leistungspreis allocation
 
     @property
     def pv_limit_kw(self) -> float | None:
@@ -400,6 +412,13 @@ class SchedulePlan:
     # module is off (site.leistungspreis_eur_kw NULL) - both consumers then
     # omit/NULL the field, never a fabricated number.
     peak_target_kw: float | None = None
+    # Fahrplan-Warum run-level fact (repeated per slot row in persistence, the
+    # terminal_value pattern): True = this plan is the advisory §14a-fallback
+    # build (the grid-limit constraint was dropped as infeasible - the edge
+    # guards + the grid operator enforce it physically). Stamped by the
+    # explain layer together with the per-slot why-fields; None = explain
+    # off/failed or a pre-feature plan.
+    fallback_14a: bool | None = None
 
     @property
     def cost_eur(self) -> float:

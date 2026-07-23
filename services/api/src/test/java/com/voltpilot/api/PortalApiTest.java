@@ -994,6 +994,15 @@ class PortalApiTest {
         // The PV forecast input rides along so the portal's pv-aware
         // "Laden aus dem Netz" derivation (FK3) has its per-slot PV.
         assertThat(((Number) first.get("pvKw")).doubleValue()).isEqualTo(2.0);
+        // Fahrplan-Warum null discipline: rows written before the why columns
+        // (or with the explain layer off) serve nulls - the portal degrades
+        // byte-identically to today, never a fabricated explanation.
+        assertThat(first.get("slotRole")).isNull();
+        assertThat(first.get("slotFlags")).isNull();
+        assertThat(first.get("storedValueCtKwh")).isNull();
+        assertThat(first.get("gridValueCtKwh")).isNull();
+        assertThat(first.get("peakPressureEurKw")).isNull();
+        assertThat(res.getBody().get("fallback14a")).isNull();
         // The curtailing slot carries its held-back PV so the portal can quantify
         // the avoided negative-price loss.
         @SuppressWarnings("unchecked")
@@ -1016,7 +1025,14 @@ class PortalApiTest {
         // writes), the banked value = V_end x (SoC_end - SoC_start) x capacity:
         // the plan draws DOWN stored energy (end 50% < start ~61.3%), so the
         // value is negative - "aus dem Vortag entnommen".
-        exec("UPDATE schedule SET terminal_value_eur_per_kwh = 0.18 "
+        // ...and with the Fahrplan-Warum columns persisted (what the explain
+        // layer now writes), the decision facts surface on the customer
+        // endpoint: role, split binding flags, the exact stored/grid values,
+        // the peak pressure and the run-level fallback marker.
+        exec("UPDATE schedule SET terminal_value_eur_per_kwh = 0.18, "
+                + "slot_role = 'guenstig_laden', slot_flags = 'charge_cap,peak_defining', "
+                + "stored_value_ct_kwh = 24.2, grid_value_ct_kwh = 10.1, "
+                + "peak_pressure_eur_kw = 1.25, fallback_14a = FALSE "
                 + "WHERE plan_id = 'aaaaaaaa-0000-0000-0000-000000000002'");
         ResponseEntity<Map<String, Object>> banked = rest.exchange(
                 url("/api/v1/sites/" + BERLIN_SITE + "/schedule"), HttpMethod.GET,
@@ -1025,6 +1041,16 @@ class PortalApiTest {
         assertThat(((Number) banked.getBody().get("bankedValueEur")).doubleValue())
                 .isCloseTo(0.18 * (50.0 - socStart) / 100.0 * 100.0,
                         org.assertj.core.data.Offset.offset(1e-3));
+        assertThat(banked.getBody().get("fallback14a")).isEqualTo(Boolean.FALSE);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> whyFirst =
+                (Map<String, Object>) ((List<?>) banked.getBody().get("slots")).get(0);
+        assertThat(whyFirst).containsEntry("slotRole", "guenstig_laden");
+        assertThat(whyFirst.get("slotFlags"))
+                .isEqualTo(List.of("charge_cap", "peak_defining"));
+        assertThat(((Number) whyFirst.get("storedValueCtKwh")).doubleValue()).isEqualTo(24.2);
+        assertThat(((Number) whyFirst.get("gridValueCtKwh")).doubleValue()).isEqualTo(10.1);
+        assertThat(((Number) whyFirst.get("peakPressureEurKw")).doubleValue()).isEqualTo(1.25);
 
         // A site with no plan yet: empty but well-formed (tenant B's own site).
         ResponseEntity<Map<String, Object>> empty = rest.exchange(

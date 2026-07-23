@@ -75,3 +75,51 @@ def test_plan_without_terminal_value_writes_null_never_a_number():
     rows = plan_rows(make_plan(None))
     idx = upsert_columns().index("terminal_value_eur_per_kwh")
     assert all(row[idx] is None for row in rows)
+
+
+def test_why_fields_are_persisted_per_slot_with_flags_as_csv():
+    # Fahrplan-Warum (migration V20260723030000): the explain layer's slot
+    # facts ride the same upsert; flags serialize as a CSV, an EMPTY flag
+    # tuple persists as NULL ("keine Bindung erfasst"), and the run-level
+    # fallback_14a repeats per row (the terminal_value pattern).
+    from dataclasses import replace
+
+    plan = make_plan(0.18)
+    slots = [
+        replace(
+            plan.slots[0],
+            slot_role="guenstig_laden",
+            slot_flags=("charge_cap", "grid_limit_14a"),
+            stored_value_ct_kwh=24.2,
+            grid_value_ct_kwh=10.1,
+            peak_pressure_eur_kw=1.25,
+        ),
+        replace(plan.slots[1], slot_role="warten", slot_flags=()),
+    ]
+    plan = replace(plan, slots=slots, fallback_14a=False)
+    rows = plan_rows(plan)
+    cols = upsert_columns()
+    first, second = rows
+    assert first[cols.index("slot_role")] == "guenstig_laden"
+    assert first[cols.index("slot_flags")] == "charge_cap,grid_limit_14a"
+    assert first[cols.index("stored_value_ct_kwh")] == 24.2
+    assert first[cols.index("grid_value_ct_kwh")] == 10.1
+    assert first[cols.index("peak_pressure_eur_kw")] == 1.25
+    assert first[cols.index("fallback_14a")] is False
+    assert second[cols.index("slot_role")] == "warten"
+    assert second[cols.index("slot_flags")] is None  # empty = no binding = NULL
+    assert second[cols.index("fallback_14a")] is False
+    for col in ("slot_role", "slot_flags", "stored_value_ct_kwh",
+                "grid_value_ct_kwh", "peak_pressure_eur_kw", "fallback_14a"):
+        assert re.search(rf"{col}\s+= EXCLUDED\.{col}", _UPSERT_SQL), col
+
+
+def test_plan_without_explanation_writes_all_why_columns_null():
+    # Explain off/failed (or a pre-feature plan): every why column is NULL -
+    # the api/portal degrade to today's view, never a fabricated explanation.
+    rows = plan_rows(make_plan(0.18))
+    cols = upsert_columns()
+    for row in rows:
+        for col in ("slot_role", "slot_flags", "stored_value_ct_kwh",
+                    "grid_value_ct_kwh", "peak_pressure_eur_kw", "fallback_14a"):
+            assert row[cols.index(col)] is None

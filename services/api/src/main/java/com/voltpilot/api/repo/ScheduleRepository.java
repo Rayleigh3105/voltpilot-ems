@@ -49,7 +49,8 @@ public class ScheduleRepository {
         }
         List<ScheduleSlotDto> slots = jdbc.query(
                 "SELECT time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, "
-                        + "curtail_kw, pv_kw "
+                        + "curtail_kw, pv_kw, slot_role, slot_flags, stored_value_ct_kwh, "
+                        + "grid_value_ct_kwh, peak_pressure_eur_kw "
                         + "FROM schedule WHERE site_id = ? AND generated_at = ? "
                         + "ORDER BY time ASC",
                 (rs, i) -> new ScheduleSlotDto(
@@ -61,28 +62,49 @@ public class ScheduleRepository {
                         rs.getBigDecimal("cost_eur"),
                         rs.getBigDecimal("baseline_cost_eur"),
                         rs.getBigDecimal("curtail_kw"),
-                        rs.getBigDecimal("pv_kw")),
+                        rs.getBigDecimal("pv_kw"),
+                        rs.getString("slot_role"),
+                        splitFlags(rs.getString("slot_flags")),
+                        rs.getBigDecimal("stored_value_ct_kwh"),
+                        rs.getBigDecimal("grid_value_ct_kwh"),
+                        rs.getBigDecimal("peak_pressure_eur_kw")),
                 siteId, Timestamp.from(generatedAt));
         List<Object[]> meta = jdbc.query(
-                "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw FROM schedule "
+                "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, "
+                        + "fallback_14a FROM schedule "
                         + "WHERE site_id = ? AND generated_at = ? LIMIT 1",
                 (rs, i) -> new Object[] {
                         rs.getObject("plan_id", UUID.class),
                         rs.getObject("device_id", UUID.class),
                         rs.getBigDecimal("terminal_value_eur_per_kwh"),
-                        rs.getBigDecimal("peak_target_kw")
+                        rs.getBigDecimal("peak_target_kw"),
+                        rs.getObject("fallback_14a", Boolean.class)
                 },
                 siteId, Timestamp.from(generatedAt));
         UUID planId = meta.isEmpty() ? null : (UUID) meta.get(0)[0];
         UUID deviceId = meta.isEmpty() ? null : (UUID) meta.get(0)[1];
         BigDecimal terminalValue = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[2];
         BigDecimal peakTargetKw = meta.isEmpty() ? null : (BigDecimal) meta.get(0)[3];
+        Boolean fallback14a = meta.isEmpty() ? null : (Boolean) meta.get(0)[4];
         BigDecimal savings = slots.stream()
                 .map(s -> nz(s.baselineCostEur()).subtract(nz(s.costEur())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Banked banked = bankedValue(siteId, slots, terminalValue, 15);
         return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
-                banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw, slots);
+                banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw,
+                fallback14a, slots);
+    }
+
+    /**
+     * The persisted Fahrplan-Warum binding CSV as a list ({@code null} stays
+     * {@code null} - "keine Bindung erfasst" / pre-feature row, so the portal
+     * can tell "no bindings recorded" from "explain never ran").
+     */
+    static List<String> splitFlags(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return null;
+        }
+        return List.of(csv.split(","));
     }
 
     private record Banked(BigDecimal valueEur, BigDecimal socStartPct, BigDecimal socEndPct) {

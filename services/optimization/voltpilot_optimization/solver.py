@@ -215,6 +215,8 @@ extra so the package imports (and non-solver tests run) without the wheel.
 
 from __future__ import annotations
 
+import logging
+from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
 
@@ -236,6 +238,8 @@ from voltpilot_optimization.domain import (
     PlanSlot,
     SchedulePlan,
 )
+
+logger = logging.getLogger("voltpilot.optimization.solver")
 
 
 class InfeasiblePlanError(RuntimeError):
@@ -449,6 +453,7 @@ def optimize(
     inp: OptimizationInput,
     plan_id: UUID,
     generated_at: datetime,
+    explain_plan: bool = True,
 ) -> SchedulePlan:
     """Solve the dispatch MILP and assemble the resulting :class:`SchedulePlan`.
 
@@ -456,21 +461,77 @@ def optimize(
     engine then retries without the grid-limit constraint - the physical §14a
     limit is enforced by the grid operator and the edge guards regardless, and
     an advisory plan is better than none).
+
+    ``explain_plan`` gates the post-hoc Fahrplan-Warum extraction (see
+    :func:`_with_explanation`); high-volume callers that discard the plan's
+    presentation fields (the Ersparnis-Simulation's year chains) pass False.
     """
     model = build_model(inp)
     _solve(model)
-    return _extract_plan(model, inp, plan_id, generated_at)
+    plan = _extract_plan(model, inp, plan_id, generated_at)
+    if not explain_plan:
+        return plan
+    return _with_explanation(plan, model, inp, fallback_14a=False)
 
 
 def optimize_ignoring_grid_limit(
     inp: OptimizationInput,
     plan_id: UUID,
     generated_at: datetime,
+    explain_plan: bool = True,
 ) -> SchedulePlan:
     """Fallback solve with the §14a cap dropped (see :func:`optimize`)."""
     model = build_model(inp, enforce_grid_limit=False)
     _solve(model)
-    return _extract_plan(model, inp, plan_id, generated_at)
+    plan = _extract_plan(model, inp, plan_id, generated_at)
+    if not explain_plan:
+        return plan
+    return _with_explanation(plan, model, inp, fallback_14a=True)
+
+
+def _with_explanation(
+    plan: SchedulePlan,
+    model: ConcreteModel,
+    inp: OptimizationInput,
+    fallback_14a: bool,
+) -> SchedulePlan:
+    """Stamp the per-slot Fahrplan-Warum facts onto an ALREADY-EXTRACTED plan.
+
+    Safety contract (design scout vp-fahrplan-why-design): the explain layer's
+    LP re-solve MUTATES the model (binaries fixed + relaxed), so it runs
+    strictly AFTER :func:`_extract_plan` - the committed setpoints are fully
+    extracted before anything touches the model, and nothing here feeds back
+    into them (purely additive dataclass fields). ANY failure (and a garbage
+    ``OPTIMIZER_EXPLAIN_ENABLED`` value) only warn-logs and returns the plan
+    unchanged - the why-layer degrades, the plan never sinks.
+    """
+    try:
+        from voltpilot_optimization.config import explain_enabled
+
+        if not explain_enabled():
+            return plan
+        from voltpilot_optimization.explain import explain
+
+        whys = explain(model, inp, fallback_14a=fallback_14a)
+        slots = [
+            replace(
+                slot,
+                slot_role=why.slot_role,
+                slot_flags=why.slot_flags,
+                stored_value_ct_kwh=why.stored_value_ct_kwh,
+                grid_value_ct_kwh=why.grid_value_ct_kwh,
+                peak_pressure_eur_kw=why.peak_pressure_eur_kw,
+            )
+            for slot, why in zip(plan.slots, whys)
+        ]
+        return replace(plan, slots=slots, fallback_14a=fallback_14a)
+    except Exception:
+        logger.warning(
+            "explain.failed - plan returned without why-fields",
+            extra={"context": {"site_id": str(plan.site_id), "plan_id": str(plan.plan_id)}},
+            exc_info=True,
+        )
+        return plan
 
 
 def _solve(model: ConcreteModel) -> None:

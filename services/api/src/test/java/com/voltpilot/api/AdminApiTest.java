@@ -1030,6 +1030,35 @@ class AdminApiTest {
         assertThat(num(s2, "valueOfStoredEnergyCtKwh"))
                 .isCloseTo(eta * (14.0 - 2.0), org.assertj.core.data.Offset.offset(1e-6));
         assertThat((String) s2.get("whyText")).contains("Drosselt");
+        // Pre-Fahrplan-Warum rows carry no persisted role/flags.
+        assertThat(s1.get("slotRole")).isNull();
+        assertThat(s1.get("slotFlags")).isNull();
+
+        // ---- Fahrplan-Warum: the persisted EXACT stored value is preferred ---
+        // Once the optimizer's explain layer persisted the run's why columns,
+        // the diagnostics serve the exact SoC shadow price instead of the
+        // forward best-use heuristic, the approximation flag drops to false,
+        // and role + binding flags pass through.
+        exec("UPDATE schedule SET stored_value_ct_kwh = 23.7, "
+                + "slot_role = 'guenstig_laden', slot_flags = 'charge_cap' "
+                + "WHERE plan_id = 'bbbbbbbb-0000-0000-0000-000000000002'");
+        ResponseEntity<Map<String, Object>> exact = rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        Map<String, Object> exactBody = exact.getBody();
+        assertThat(exactBody).containsEntry("storedEnergyValueIsApproximation", false);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> exactSlots = (List<Map<String, Object>>) exactBody.get("slots");
+        assertThat(num(exactSlots.get(0), "valueOfStoredEnergyCtKwh")).isEqualTo(23.7);
+        assertThat(exactSlots.get(0)).containsEntry("slotRole", "guenstig_laden");
+        assertThat(exactSlots.get(0).get("slotFlags")).isEqualTo(List.of("charge_cap"));
+        // The OLDER run still has NULL columns - fetching it keeps the honest
+        // approximation flag.
+        ResponseEntity<Map<String, Object>> stillApprox = rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics?generatedAt=" + genOld),
+                HttpMethod.GET, new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        assertThat(stillApprox.getBody())
+                .containsEntry("storedEnergyValueIsApproximation", true);
 
         // ---- explicit generatedAt selects the OLDER run ----------------------
         ResponseEntity<Map<String, Object>> old = rest.exchange(
