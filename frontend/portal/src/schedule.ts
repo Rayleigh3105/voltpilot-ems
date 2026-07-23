@@ -14,7 +14,8 @@
  * fall back to the old import-based derivation.
  */
 
-import { eurAmount } from './format';
+import type { ChartTheme } from './chartTheme';
+import { eurAmount, NBSP } from './format';
 
 /** Matches the chart's "hält" deadband (0.05 kW) so tiny solver noise stays idle. */
 export const SLOT_DEADBAND_KW = 0.05;
@@ -67,6 +68,212 @@ export function hasGridCharge(
   }[],
 ): boolean {
   return slots.some((s) => chargeKind(s.batteryKw, s.gridKw, s.pvKw, s.curtailKw) === 'netzladen');
+}
+
+/**
+ * The bar colour of one plan slot, from the shared chart palette: green =
+ * Solarladen, türkis = Netzladen, BLAU = Entladen. Discharging deliberately
+ * does NOT use the red `discharge` hue (audit F5) - emptying the battery into
+ * an expensive hour is how the plant earns money, and red reads as a fault.
+ * Red stays reserved for real costs and warnings (Netzbezug, Lastspitzen-Ziel).
+ */
+export function slotBarColor(kind: ChargeKind, t: ChartTheme): string {
+  if (kind === 'netzladen') return t.gridCharge;
+  if (kind === 'entladen') return t.battDischarge;
+  return t.charge;
+}
+
+// ---- Plan freshness (audit F2) ----------------------------------------------
+
+/**
+ * The optimizer re-plans every 15 minutes, so a plan older than this is not
+ * "the current plan" any more - something upstream stopped (no new prices, no
+ * telemetry, optimizer down). Two hours is eight missed runs: generous enough
+ * that a single hiccup stays quiet, tight enough that a day-old plan can never
+ * be presented as today's.
+ */
+export const PLAN_STALE_AFTER_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * ONE honest German banner line for a stale plan (audit F2): a plan generated
+ * yesterday was shown as "So plant Ihr Speicher den Tag" with a date-less
+ * x-axis, so the customer believed they were looking at today. States only
+ * what is verifiable from the plan itself - WHEN it was made and that no newer
+ * one exists - and never guesses the cause (device offline / prices missing /
+ * optimizer down are indistinguishable from here). Null = fresh plan (or no
+ * generation timestamp), and the page then renders exactly as before.
+ */
+export function planStaleNote(
+  generatedAt: string | null | undefined,
+  slots: { start: string }[],
+  now: Date,
+  slotMinutes = 15,
+): string | null {
+  if (!generatedAt) return null;
+  const gen = new Date(generatedAt);
+  const genMs = gen.getTime();
+  if (!Number.isFinite(genMs)) return null;
+  if (now.getTime() - genMs < PLAN_STALE_AFTER_MS) return null;
+
+  const time = gen.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const when =
+    gen.toDateString() === now.toDateString()
+      ? `von heute, ${time} Uhr`
+      : gen.toDateString() === yesterday.toDateString()
+        ? `von gestern, ${time} Uhr`
+        : `vom ${gen.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}, ${time} Uhr`;
+
+  const note = `Dieser Fahrplan stammt ${when} – seitdem wurde kein neuer Fahrplan berechnet.`;
+  return planCoversNow(slots, now, slotMinutes)
+    ? note
+    : `${note} Die Balken zeigen einen bereits vergangenen Zeitraum, nicht den heutigen Tag.`;
+}
+
+/** Whether `now` falls inside the plan's horizon (first slot .. last slot end). */
+export function planCoversNow(
+  slots: { start: string }[],
+  now: Date,
+  slotMinutes = 15,
+): boolean {
+  if (slots.length === 0) return false;
+  const first = new Date(slots[0].start).getTime();
+  const end = new Date(slots[slots.length - 1].start).getTime() + slotMinutes * 60_000;
+  const t = now.getTime();
+  return t >= first && t < end;
+}
+
+// ---- Planned state of charge (audit F4) -------------------------------------
+
+/**
+ * The planned Ladestand band of the plan (min/max in %). The SoC line rides a
+ * secondary 0-100 axis over a kW axis, so without a readable scale it appears
+ * to dip "below zero"; naming the band in plain text makes the trajectory
+ * readable without hovering (which touch devices cannot do at all). Null when
+ * the plan carries no SoC values - never a fabricated 0.
+ */
+export function socRange(
+  slots: { socPct: number | null }[],
+): { min: number; max: number } | null {
+  const values = slots
+    .map((s) => (s.socPct == null ? null : Number(s.socPct)))
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  if (values.length === 0) return null;
+  return { min: Math.min(...values), max: Math.max(...values) };
+}
+
+/** "Geplanter Ladestand: 12 % bis 88 %." - null when the plan has no SoC. */
+export function socRangeLine(slots: { socPct: number | null }[]): string | null {
+  const range = socRange(slots);
+  if (!range) return null;
+  const pct = (v: number) => `${Math.round(v).toLocaleString('de-DE')}${NBSP}%`;
+  return range.max - range.min < 1
+    ? `Geplanter Ladestand: durchgehend rund ${pct(range.min)}.`
+    : `Geplanter Ladestand: ${pct(range.min)} bis ${pct(range.max)} im Tagesverlauf.`;
+}
+
+// ---- The chart takeaway sentence (audit F3) ---------------------------------
+
+/** One piece of the takeaway sentence; `strong` renders bold in the chart. */
+export interface InsightPart {
+  text: string;
+  strong?: boolean;
+}
+
+/** Weighted-average ct/kWh over the slots where `weight(batteryKw)` is positive. */
+export function weightedPriceCt(
+  slots: { batteryKw: number | null; priceEurMwh: number | null }[],
+  weight: (batteryKw: number) => number,
+): number | null {
+  let num = 0;
+  let den = 0;
+  for (const s of slots) {
+    if (s.batteryKw == null || s.priceEurMwh == null) continue;
+    const w = weight(Number(s.batteryKw));
+    if (w <= 0) continue;
+    num += w * (Number(s.priceEurMwh) / 10);
+    den += w;
+  }
+  return den > 0 ? num / den : null;
+}
+
+function ctLabel(v: number): string {
+  return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${NBSP}ct/kWh`;
+}
+
+/**
+ * The chart's takeaway in plain German, as bold/plain parts (audit F3).
+ *
+ * The clauses are MUTUALLY EXCLUSIVE by construction: the "flacher
+ * Preisverlauf - der Speicher bleibt in Ruhe" ending may only appear when the
+ * plan really is idle. Before this it was the else-branch of the savings
+ * clause, so a plant that visibly cycled over a 3 → 17 ct curve was told its
+ * price curve was flat whenever today's planned saving happened to be <= 0
+ * (bank days, or a plan that does not cover today at all).
+ *
+ * Null = nothing honest to say (no priced slots at all).
+ */
+export function planInsightParts(
+  slots: {
+    start: string;
+    batteryKw: number | null;
+    gridKw: number | null;
+    pvKw?: number | null;
+    curtailKw?: number | null;
+    priceEurMwh: number | null;
+    costEur: number | null;
+    baselineCostEur: number | null;
+  }[],
+  now: Date,
+): InsightPart[] | null {
+  const chargeCt = weightedPriceCt(slots, (kw) => Math.max(kw, 0));
+  const dischargeCt = weightedPriceCt(slots, (kw) => Math.max(-kw, 0));
+  const gridCharging = hasGridCharge(slots);
+  const saved = savingsTodayEur(slots, now);
+  const parts: InsightPart[] = [];
+
+  if (chargeCt != null && dischargeCt != null) {
+    parts.push({ text: 'Der Speicher ' });
+    parts.push({ text: 'lädt günstig', strong: true });
+    if (gridCharging) parts.push({ text: ' - auch aus dem Netz (türkis)' });
+    parts.push({ text: ` (Ø ${ctLabel(chargeCt)}) und ` });
+    parts.push({ text: 'entlädt teuer', strong: true });
+    parts.push({ text: ` (Ø ${ctLabel(dischargeCt)}), um den Verbrauch aus dem Speicher zu decken` });
+    if (saved != null && saved > 0.005) {
+      parts.push({ text: ' - das spart heute rund ' });
+      parts.push({ text: eurAmount(saved), strong: true });
+      parts.push({ text: ' gegenüber einem Betrieb ohne Speicher.' });
+    } else {
+      parts.push({ text: '.' });
+    }
+    return parts;
+  }
+
+  if (chargeCt != null) {
+    parts.push({ text: 'Der Speicher ' });
+    parts.push({ text: 'lädt', strong: true });
+    parts.push({
+      text: ` in diesem Zeitraum nur (Ø ${ctLabel(chargeCt)}) und hält die Energie für später zurück.`,
+    });
+    return parts;
+  }
+
+  if (dischargeCt != null) {
+    parts.push({ text: 'Der Speicher ' });
+    parts.push({ text: 'entlädt', strong: true });
+    parts.push({
+      text: ` in diesem Zeitraum nur (Ø ${ctLabel(dischargeCt)}) und deckt damit den Verbrauch.`,
+    });
+    return parts;
+  }
+
+  if (slots.some((s) => s.priceEurMwh != null)) {
+    parts.push({ text: 'Der Speicher bleibt in diesem Zeitraum ' });
+    parts.push({ text: 'in Ruhe', strong: true });
+    parts.push({ text: ' - die Preisunterschiede lohnen kein Laden und Entladen.' });
+    return parts;
+  }
+  return null;
 }
 
 // ---- Fahrplan mini preview (the Anlagen-Seite's "Fahrplan · heute" card) -------

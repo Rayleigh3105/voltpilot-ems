@@ -24,7 +24,13 @@ import { PriceHistoryChart } from '../PriceHistoryChart';
 import { WeatherChart } from '../WeatherChart';
 import { hoursAhead, nextHourIndex } from '../weather';
 import { ScheduleChart } from '../ScheduleChart';
-import { bankedValueLine, hasGridCharge, horizonHint } from '../schedule';
+import {
+  bankedValueLine,
+  hasGridCharge,
+  horizonHint,
+  planStaleNote,
+  savingsTodayEur,
+} from '../schedule';
 import {
   FALLBACK_14A_NOTE,
   FORECAST_FOOTNOTE,
@@ -440,10 +446,12 @@ export function FahrplanSection({ site }: { site: Site }) {
   );
   const hasWhy = whyPhases.length > 0;
   const arc = hasWhy ? phaseArcSentence(whyPhases, site.plantKind) : null;
-  const today = new Date().toDateString();
-  const savingsToday = slots
-    .filter((s) => new Date(s.start).toDateString() === today)
-    .reduce((sum, s) => sum + ((s.baselineCostEur ?? 0) - (s.costEur ?? 0)), 0);
+  const now = new Date();
+  // Null (never a fabricated 0,00 €) when today carries no priced plan slot -
+  // e.g. the newest run is yesterday's (audit F1).
+  const savingsToday = savingsTodayEur(slots, now);
+  // Honest freshness banner ABOVE the chart when the newest run is stale.
+  const staleNote = planStaleNote(plan?.generatedAt, slots, now, plan?.slotMinutes ?? 15);
   // Energy = mean power over each slot × slot length in hours. Derive slots-per-
   // hour from the plan's authoritative slotMinutes instead of hardcoding /4, so
   // a non-15-min slot length stays correct.
@@ -471,10 +479,10 @@ export function FahrplanSection({ site }: { site: Site }) {
           <KpiCard
             icon={<Icon name="euro" size={20} />}
             category="dynamic"
-            value={eurAmount(savingsToday)}
+            value={savingsToday == null ? '—' : eurAmount(savingsToday)}
             label={
               <>
-                Heute geplant gespart
+                Geplante Ersparnis heute
                 <InfoTip title="Wie diese Zahl zu lesen ist">
                   Verglichen wird mit einem Betrieb ganz ohne Batteriespeicher.
                   Energie, die der Fahrplan über den Tag hinaus im Speicher
@@ -492,17 +500,24 @@ export function FahrplanSection({ site }: { site: Site }) {
             icon={<Icon name="arrow-down" size={20} />}
             category="battery"
             value={fmtNum(chargeKwh, 'kWh')}
-            label="Geplant zu laden"
+            label="Geplantes Laden"
             title="Summe der geplanten Ladeenergie über den Planungszeitraum"
           />
           <KpiCard
             icon={<Icon name="arrow-up" size={20} />}
             category="industry"
             value={fmtNum(dischargeKwh, 'kWh')}
-            label="Geplant zu entladen"
+            label="Geplantes Entladen"
             title="Summe der geplanten Entladeenergie über den Planungszeitraum"
           />
         </section>
+      )}
+      {/* F1 honesty: no priced slot for today => "—" above, and the reason
+          spelled out here instead of a fabricated 0,00 €. */}
+      {!loading && !err && slots.length > 0 && savingsToday == null && (
+        <p className="vp-note" style={{ margin: '0 0 var(--vp-space-5)' }}>
+          Für heute liegt noch kein Fahrplan vor.
+        </p>
       )}
       {/* The banked-value line under the savings stat (FK2): on bank days the
           savings alone would make a CORRECT plan look broken. */}
@@ -529,11 +544,23 @@ export function FahrplanSection({ site }: { site: Site }) {
         </div>
         {!loading && !err && slots.length > 0 && (
           <ChartSubtitle>
-            So plant Ihr Speicher den Tag: die Balken zeigen, wann er lädt (grün = eigener
-            Solarstrom{hasGridCharge(slots) ? ', türkis = günstig aus dem Netz' : ''}) oder
-            entlädt (rot), die blaue Linie den Börsen-Strompreis dahinter. Kein Balken heißt:
-            der Speicher hält. Alles links vom „Jetzt“ ist bereits vergangen.
+            {staleNote ? 'So war der Tag geplant' : 'So plant Ihr Speicher den Tag'}: die Balken
+            zeigen, wann er lädt (grün = eigener Solarstrom
+            {hasGridCharge(slots) ? ', türkis = günstig aus dem Netz' : ''}) oder entlädt (blau),
+            die dünne blaue Linie den Börsen-Strompreis dahinter. Kein Balken heißt: der Speicher
+            hält. Alles links vom „Jetzt“ ist bereits vergangen.
           </ChartSubtitle>
+        )}
+        {/* F2: a plan older than ~2 h is not today's plan - say so ABOVE the
+            chart, not in a grey footnote below it. */}
+        {!loading && !err && slots.length > 0 && staleNote && (
+          <div
+            className="vp-alert vp-alert-warn"
+            role="status"
+            style={{ marginTop: 'var(--vp-space-3)' }}
+          >
+            {staleNote}
+          </div>
         )}
         {loading && <ChartCardSkeleton stats={0} />}
         {err && (
@@ -594,6 +621,15 @@ export function FahrplanSection({ site }: { site: Site }) {
                   setSelSlot(null);
                 }}
               />
+            )}
+            {/* F6: the per-slot explanation ("Warum") only exists for plans a
+                current optimizer wrote - the columns fill forward, never
+                backwards. Say it in one line so its absence does not read as a
+                missing feature (and never fabricate a reason). */}
+            {!hasWhy && (
+              <p className="vp-note" style={{ marginTop: 'var(--vp-space-3)' }}>
+                Die Begründung je Viertelstunde erscheint mit dem nächsten Planungslauf.
+              </p>
             )}
             {/* Fallback-build honesty: the §14a limit could not be fully
                 scheduled - the device enforces it additionally. */}
