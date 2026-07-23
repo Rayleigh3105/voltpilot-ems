@@ -10,6 +10,7 @@ import {
   type Device,
   type Earnings,
   type EarningsRange,
+  type History,
   type HistoryTotals,
   type Overview,
   type SchedulePlan,
@@ -432,7 +433,11 @@ export function AnlageSeite({
   // period tab, so they read range-scoped Historie totals (day/month/year) -
   // distinct from `dayTotals`, which stays "today" for the widget grid. The
   // energy flow stays live regardless. null while loading / for "Gesamt".
-  const [rangeTotals, setRangeTotals] = useState<HistoryTotals | null>(null);
+  // v3.2 M2: the SAME range-scoped Historie also feeds the rich widget-detail
+  // modal's Verlauf chart (one fetch, buckets + totals), so we keep the whole
+  // `History` and derive the totals from it.
+  const [rangeHistory, setRangeHistory] = useState<History | null>(null);
+  const rangeTotals: HistoryTotals | null = rangeHistory?.totals ?? null;
   // v3 M2: the Speicher widget's read-only "Umgang mit dem Speicher" row.
   const [speicherschonung, setSpeicherschonung] = useState<string | null>(null);
   // v3 M2: which widget's modal is open (null = none).
@@ -698,7 +703,7 @@ export function AnlageSeite({
   useEffect(() => {
     const hRange = historyRangeForCockpit(range);
     if (!projection || hRange == null) {
-      setRangeTotals(null);
+      setRangeHistory(null);
       return undefined;
     }
     let active = true;
@@ -706,7 +711,7 @@ export function AnlageSeite({
       const atForHistory =
         at ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
       api.history(site.id, hRange, atForHistory).then(
-        (h) => active && setRangeTotals(h.totals),
+        (h) => active && setRangeHistory(h),
         () => {},
       );
     };
@@ -941,7 +946,12 @@ export function AnlageSeite({
               widget={openWidget}
               onClose={() => setOpenWidget(null)}
               onOpenSub={onOpenSub}
-              jetztExtra={
+              range={range}
+              periodLabel={period}
+              // v3.2 M2: the range-scoped Historie feeds the modal's Verlauf
+              // chart, so it follows the selected period tab (Gesamt → none).
+              history={rangeHistory}
+              extra={
                 /* Die migrierten Block-Körper leben als Modal-Körper weiter -
                    dieselbe Ableitung, nur ein anderer Ort. */
                 openWidget.id === 'lastspitze' && peakView ? (
