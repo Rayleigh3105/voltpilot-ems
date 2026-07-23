@@ -196,11 +196,14 @@
   overflow-wrap: anywhere;
 }
 
-.vp-modus-settingnote {
-  margin-left: auto;
+/* v3.1-M4: die „Von VoltPilot eingerichtet"-Notiz einer read-only Lastspitzen-
+ * Einstellung — eine ruhige Kaption UNTER Label · Wert, damit klar ist, dass der
+ * Wert sichtbar, aber nicht kunden-editierbar ist (kein Bearbeiten-Knopf). */
+.vp-modus-settinghint {
   font-size: 0.78rem;
   color: var(--vp-text-muted, #667);
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .vp-modus-editbtn {

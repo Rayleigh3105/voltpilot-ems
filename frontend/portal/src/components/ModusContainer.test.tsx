@@ -184,6 +184,104 @@ describe('ModusContainer (v3.1-M2 shell)', () => {
   });
 });
 
+describe('ModusContainer Gewerbe read-only settings (v3.1-M4)', () => {
+  /**
+   * The Lastspitzenkappung mode, activated independently of the site echo so a
+   * test can pair it with EITHER a fully-configured peak block OR an empty one.
+   */
+  function peakMode(): ActiveMode {
+    const mode = activeModes({ signals: { hasLeistungspreis: true } }).find(
+      (m) => m.kind === 'lastspitzenkappung',
+    );
+    if (!mode) throw new Error('expected a lastspitzenkappung mode');
+    return mode;
+  }
+
+  /** The setting row whose label matches `label`. */
+  function settingRow(label: string): HTMLElement {
+    return screen.getByText(label).closest('li') as HTMLElement;
+  }
+
+  it('renders the three VoltPilot-configured values, read-only, from the site echoes', () => {
+    const mode = peakMode();
+    render(
+      <ModusContainer
+        profile={profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true })}
+        mode={mode}
+        activeModes={[mode]}
+        site={site({
+          leistungspreisEurKw: 120,
+          abrechnungLeistung: 'jahr',
+          peakReserveSocPct: 20,
+        })}
+        battery={battery()}
+        earnings={null}
+        busy={false}
+        {...NOOP}
+      />,
+    );
+
+    // The three settings appear with their real values (a first-time honesty win:
+    // these were admin-only and invisible to the customer before M4).
+    const leistungspreis = settingRow('Leistungspreis');
+    expect(within(leistungspreis).getByText(/120,00.+€\/kW/)).toBeInTheDocument();
+    expect(within(leistungspreis).getByText('Von VoltPilot eingerichtet')).toBeInTheDocument();
+    // Read-only for the customer: no edit control anywhere in the block.
+    expect(within(leistungspreis).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+
+    const abrechnung = settingRow('Abrechnungsperiode');
+    expect(within(abrechnung).getByText('jährlich')).toBeInTheDocument();
+    expect(within(abrechnung).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+
+    const reserve = settingRow('Lastspitzen-Reserve');
+    expect(within(reserve).getByText(/20.+%/)).toBeInTheDocument();
+    expect(within(reserve).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+  });
+
+  it('maps a monthly billing period to plain German', () => {
+    const mode = peakMode();
+    render(
+      <ModusContainer
+        profile={profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true })}
+        mode={mode}
+        activeModes={[mode]}
+        site={site({ leistungspreisEurKw: 95, abrechnungLeistung: 'monat', peakReserveSocPct: 15 })}
+        battery={battery()}
+        earnings={null}
+        busy={false}
+        {...NOOP}
+      />,
+    );
+    expect(within(settingRow('Abrechnungsperiode')).getByText('monatlich')).toBeInTheDocument();
+  });
+
+  it('fails soft to „—" for a value VoltPilot has not configured yet', () => {
+    const mode = peakMode();
+    render(
+      <ModusContainer
+        profile={profile({ id: 'lastspitzenkappung', label: 'Lastspitzenkappung', active: true })}
+        mode={mode}
+        activeModes={[mode]}
+        // A peak mode active (e.g. via a peak-shaving strategy) but the admin has
+        // not yet filled the peak config: every value must fail-soft to „—",
+        // never a fabricated number or period.
+        site={site()}
+        battery={battery()}
+        earnings={null}
+        busy={false}
+        {...NOOP}
+      />,
+    );
+
+    for (const label of ['Leistungspreis', 'Abrechnungsperiode', 'Lastspitzen-Reserve']) {
+      const row = settingRow(label);
+      expect(within(row).getByText('—')).toBeInTheDocument();
+      expect(within(row).getByText('Von VoltPilot eingerichtet')).toBeInTheDocument();
+      expect(within(row).queryByRole('button', { name: /Bearbeiten/ })).toBeNull();
+    }
+  });
+});
+
 describe('ModusContainer settings editing (v3.1-M3)', () => {
   /** Opens the inline editor of the setting row whose label matches `label`. */
   function openEditor(label: string): HTMLElement {

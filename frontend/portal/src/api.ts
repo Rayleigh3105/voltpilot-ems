@@ -92,6 +92,17 @@ export interface Site {
    */
   leistungspreisEurKw?: number | null;
   /**
+   * Leistungspreis billing period (PS-1, `site.abrechnung_leistung`):
+   * 'jahr' = Jahresleistungspreis, 'monat' = Monatsleistungspreis
+   * (Europe/Berlin calendar periods; defaults to 'jahr'). Echoed READ-ONLY
+   * here (configured by VoltPilot via optimizer-config, never customer-editable);
+   * the backend SiteDto already serves it (migration V20260716020000). Rendered
+   * in the Gewerbe/Lastspitzenkappung Modus-Container's "Von VoltPilot
+   * eingerichtet"-block (v3.1-M4). DEFENSIVELY OPTIONAL like leistungspreisEurKw
+   * - absent/null read fail-soft as "—", never a fabricated period.
+   */
+  abrechnungLeistung?: 'jahr' | 'monat' | null;
+  /**
    * Peak reserve (PS-2, `site.peak_reserve_soc_pct`): the hard SoC floor held
    * back to shave an out-of-horizon peak. Echoed READ-ONLY (configured by
    * VoltPilot via optimizer-config), and DEFENSIVELY OPTIONAL like
