@@ -359,17 +359,21 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     expect(container.querySelectorAll('.vp-widget.is-lead')).toHaveLength(1);
   });
 
-  it('öffnet je Kachel ein Modal mit „Jetzt | Verlauf"', async () => {
+  it('öffnet je Kachel das RICHE Detail-Modal (Werte + Verlauf, kein Umschalter)', async () => {
     mockAdaptive(true);
     mockSurface(MULTI);
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-widgets')).toBeTruthy());
-    const tile = container.querySelector('.vp-widget') as HTMLButtonElement;
-    fireEvent.click(tile);
+    // Eine Fluss-Kachel (Netz) öffnen - sie hat einen Verlauf.
+    const netz = [...container.querySelectorAll('.vp-widget')].find(
+      (w) => w.querySelector('.vp-widget-label')?.textContent === 'Netz',
+    ) as HTMLButtonElement;
+    fireEvent.click(netz);
     const modal = document.body.querySelector('.vp-wmodal');
     expect(modal).toBeTruthy();
-    const segs = [...document.body.querySelectorAll('.vp-wmodal-segbtn')].map((n) => n.textContent);
-    expect(segs).toEqual(['Jetzt', 'Verlauf']);
+    // Kein „Jetzt | Verlauf"-Umschalter mehr - Werte UND Verlauf in EINER Ansicht.
+    expect(document.body.querySelector('.vp-wmodal-seg')).toBeNull();
+    expect(document.body.querySelector('.vp-wmodal-verlauf')).toBeTruthy();
     // Das Modal hängt am body (Karten haben `overflow: hidden`).
     expect(container.querySelector('.vp-wmodal')).toBeNull();
     fireEvent.click(document.body.querySelector('.vp-wmodal-close') as HTMLButtonElement);

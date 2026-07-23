@@ -510,34 +510,6 @@
   background: var(--vp-bg-subtle, #f1f3f5);
 }
 
-.vp-wmodal-seg {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: var(--vp-radius-pill, 999px);
-  background: var(--vp-bg-subtle, #f1f3f5);
-  min-width: 0;
-}
-
-.vp-wmodal-segbtn {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 40px;
-  border: 0;
-  border-radius: var(--vp-radius-pill, 999px);
-  background: none;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 700;
-  color: var(--vp-text-gray, #718096);
-}
-.vp-wmodal-segbtn.is-on {
-  background: #fff;
-  color: var(--vp-navy, #1a365d);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
-}
-
 .vp-wmodal-body {
   display: flex;
   flex-direction: column;
@@ -622,4 +594,40 @@
 }
 .vp-wmodal-drill:hover {
   text-decoration: underline;
+}
+
+/* --- Verlauf im Detail-Modal (v3.2 M2: Werte UND Verlauf in EINER Ansicht) - */
+
+.vp-wmodal-verlauf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  min-width: 0;
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+}
+
+.vp-wmodal-verlauf-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Das Diagramm bleibt in seinem Container - nie horizontaler Seiten-Überlauf. */
+.vp-chart-modal {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: clamp(200px, 34vw, 260px);
+}
+
+.vp-wmodal-noverlauf {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--vp-text-gray, #718096);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

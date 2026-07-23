@@ -1,17 +1,27 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { WidgetDef, WidgetFace } from '../cockpitWidgets';
+import type { EarningsRange, History } from '../api';
+import type { WidgetDef, WidgetDrillIn, WidgetFace } from '../cockpitWidgets';
 import type { AnlagenSub } from '../nav';
+import { widgetHistoryMetric } from '../widgetHistory';
+import { WidgetHistoryChart } from './WidgetHistoryChart';
 import './CockpitBlocks.css';
 
-export type WidgetFaceKey = 'jetzt' | 'verlauf';
-
 /**
- * Portal v3 · M2 — das **Widget-Modal** mit den Segmenten `Jetzt | Verlauf`.
+ * Portal v3.2 · **M2 — das RICHE Widget-Detail-Modal.** Ein Tipp auf eine
+ * Kachel öffnet EINE Ansicht, die die **Werte** der Kachel UND ihren
+ * **Verlauf** zusammen zeigt (OpenEMS-Widget-Detail-Richtung) — der frühere
+ * „Jetzt | Verlauf"-Umschalter ist weg. Aufbau: Kopf (Titel + aktuelle Zahl) →
+ * Werte-Zeilen → der reiche Block-Körper (`extra`) → das Verlauf-Diagramm für
+ * diese Kennzahl über den GEWÄHLTEN Zeitraum → die Absprünge in die Tiefe.
  *
- * Render-only. Beide Gesichter lesen **dieselbe** Ableitung wie die Kachel
- * (`cockpitWidgets.ts`) — es gibt keine zweite Rechnung (M2-Akzeptanz 3).
+ * Render-only. Die Werte-Zeilen lesen **dieselbe** Ableitung wie die Kachel
+ * (`cockpitWidgets.ts`), der Verlauf **dieselben** Historie-Buckets wie die
+ * Historie-Seite (`widgetHistory.ts` + `WidgetHistoryChart`) — keine zweite
+ * Rechnung, kein neuer Chart-Stack. Der Verlauf **folgt dem Zeitraum-Tab**; wo
+ * keiner vorliegt (Gesamt, frische Anlage), steht ein ehrlicher Satz statt
+ * eines erfundenen Diagramms.
  *
  * **Es portalisiert nach `document.body`** — die Host-Karte hat `overflow:
  * hidden` (rundet die Ecken) und würde ein absolut positioniertes Kind
@@ -22,22 +32,23 @@ export function WidgetModal({
   widget,
   onClose,
   onOpenSub,
-  jetztExtra,
-  verlaufExtra,
-  controls,
+  extra,
+  history,
+  range,
+  periodLabel,
 }: {
   widget: WidgetDef;
   onClose: () => void;
   onOpenSub: (sub: AnlagenSub) => void;
-  /** Der volle Körper des „Jetzt"-Gesichts (die migrierten Block-Bodies). */
-  jetztExtra?: ReactNode;
-  /** Der volle Körper des „Verlauf"-Gesichts (Bänder/Charts der Blöcke). */
-  verlaufExtra?: ReactNode;
-  /** Der Steuer-Slot der Kachel (heute: der Hinweis auf Technik). */
-  controls?: ReactNode;
+  /** Der reiche Block-Körper (Peak-Band / Erlös-Komposition / Fahrplan-Band). */
+  extra?: ReactNode;
+  /** Die zeitraum-bezogene Historie für den Verlauf; null = kein Verlauf. */
+  history?: History | null;
+  /** Der gewählte Zeitraum (regiert den Verlauf; „Gesamt" hat keinen). */
+  range: EarningsRange;
+  /** Das Periodenetikett (z. B. „Juli", „Heute") für die Verlauf-Überschrift. */
+  periodLabel: string;
 }) {
-  const [face, setFace] = useState<WidgetFaceKey>('jetzt');
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -46,8 +57,13 @@ export function WidgetModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const view: WidgetFace = widget.modal[face];
-  const extra = face === 'jetzt' ? jetztExtra : verlaufExtra;
+  // Die migrierte „Jetzt"-Seite trägt die Werte; die „Verlauf"-Seite trägt nur
+  // noch ihren Absprung in die Tiefen-Sicht (der Verlauf selbst steht jetzt IM
+  // Modal als Diagramm). Beide Notizen/Absprünge fließen in eine Ansicht.
+  const jetzt: WidgetFace = widget.modal.jetzt;
+  const verlauf: WidgetFace = widget.modal.verlauf;
+  const metric = widgetHistoryMetric(widget.id);
+  const drills = dedupeDrills([jetzt.drillIn, verlauf.drillIn]);
 
   return createPortal(
     <div className="vp-wmodal-backdrop" onClick={onClose} role="presentation">
@@ -65,25 +81,10 @@ export function WidgetModal({
           </button>
         </header>
 
-        <div className="vp-wmodal-seg" role="tablist" aria-label="Ansicht">
-          {(['jetzt', 'verlauf'] as WidgetFaceKey[]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="tab"
-              aria-selected={face === k}
-              className={`vp-wmodal-segbtn${face === k ? ' is-on' : ''}`}
-              onClick={() => setFace(k)}
-            >
-              {k === 'jetzt' ? 'Jetzt' : 'Verlauf'}
-            </button>
-          ))}
-        </div>
-
         <div className="vp-wmodal-body">
-          {view.rows.length > 0 && (
+          {jetzt.rows.length > 0 && (
             <ul className="vp-wmodal-rows">
-              {view.rows.map((r) => (
+              {jetzt.rows.map((r) => (
                 <li key={r.label} className="vp-wmodal-row">
                   <span className="vp-wmodal-row-label">{r.label}</span>
                   <span className="vp-wmodal-row-value">
@@ -94,27 +95,52 @@ export function WidgetModal({
               ))}
             </ul>
           )}
+
           {extra}
-          {view.note && <p className="vp-wmodal-note">{view.note}</p>}
-          {face === 'jetzt' && controls}
-          {view.drillIn && (
+
+          {/* Der Verlauf dieser Kennzahl — Werte UND Verlauf in EINER Ansicht.
+              Nur Fluss-/Energie-Kacheln haben einen (`widgetHistoryMetric`). */}
+          {metric && (
+            <WidgetHistoryChart
+              history={history ?? null}
+              metric={metric}
+              range={range}
+              periodLabel={periodLabel}
+            />
+          )}
+
+          {jetzt.note && <p className="vp-wmodal-note">{jetzt.note}</p>}
+
+          {drills.map((d) => (
             <button
+              key={d.sub}
               type="button"
               className="vp-wmodal-drill"
-              title={view.drillIn.hint}
+              title={d.hint}
               onClick={() => {
-                const sub = view.drillIn!.sub;
                 onClose();
-                onOpenSub(sub);
+                onOpenSub(d.sub);
               }}
             >
-              {view.drillIn.label}
+              {d.label}
               <Icon name="chevron-right" size={14} />
             </button>
-          )}
+          ))}
         </div>
       </div>
     </div>,
     document.body,
   );
+}
+
+/** Beide Absprünge einer Kachel, nach Ziel-Seite entdoppelt (erster gewinnt). */
+function dedupeDrills(drills: (WidgetDrillIn | null)[]): WidgetDrillIn[] {
+  const out: WidgetDrillIn[] = [];
+  const seen = new Set<AnlagenSub>();
+  for (const d of drills) {
+    if (!d || seen.has(d.sub)) continue;
+    seen.add(d.sub);
+    out.push(d);
+  }
+  return out;
 }
