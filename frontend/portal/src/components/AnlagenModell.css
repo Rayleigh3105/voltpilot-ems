@@ -118,6 +118,14 @@ button.vp-wbox:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* F1 caveat: "über den Wechselrichter gemessen" — a calm, italic sub-note. */
+.vp-wmeasured {
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--vp-text-gray, #6b7280);
+  overflow-wrap: anywhere;
+}
+
 .vp-wchips {
   display: flex;
   flex-wrap: wrap;

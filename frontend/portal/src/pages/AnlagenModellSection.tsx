@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
-import { api, type Site, type SiteEntities, type SiteTopology } from '../api';
+import { api, type Site, type SiteEntities, type SiteSource, type SiteTopology } from '../api';
 import {
   COMPONENT_ROLE_ICONS,
   plantModel,
@@ -36,6 +36,7 @@ export function AnlagenModellSection({ site }: { site: Site }) {
   const showTechnical = showTechnicalLayer();
   const [data, setData] = useState<SiteEntities | null>(null);
   const [topology, setTopology] = useState<SiteTopology | null>(null);
+  const [sources, setSources] = useState<SiteSource[] | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
@@ -55,6 +56,12 @@ export function AnlagenModellSection({ site }: { site: Site }) {
       (t) => active && setTopology(t),
       () => active && setTopology(null),
     );
+    // The reported measurement points (`/sources`), fail-soft — they tell a
+    // producer component whether its PV is actually flowing (F1 caveat).
+    api.siteSources(site.id).then(
+      (s) => active && setSources(s),
+      () => active && setSources(null),
+    );
     return () => {
       active = false;
     };
@@ -63,8 +70,8 @@ export function AnlagenModellSection({ site }: { site: Site }) {
   const reload = () => setReloadKey((k) => k + 1);
 
   const model = useMemo(
-    () => (data ? plantModel(data.entities, topology, data.localSetup) : null),
-    [data, topology],
+    () => (data ? plantModel(data.entities, topology, data.localSetup, sources) : null),
+    [data, topology, sources],
   );
 
   const isEmpty =
@@ -307,6 +314,9 @@ function ComponentBox({
         {component.label}
       </span>
       <span className="vp-wsub">{component.summary}</span>
+      {/* F1 caveat: a Fronius/producer is read through the inverter, so an empty
+          per-device chart is expected, not alarming. */}
+      {component.measuredVia && <span className="vp-wmeasured">{component.measuredVia}</span>}
       {component.channels.length > 0 && (
         <span className="vp-wchips">
           {component.channels.map((ch) => (

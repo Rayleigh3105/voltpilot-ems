@@ -72,6 +72,7 @@ const topology: SiteTopology = {
 function stub() {
   vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
   vi.spyOn(api, 'topology').mockResolvedValue(topology);
+  vi.spyOn(api, 'siteSources').mockResolvedValue([]);
   // The installer panel (EntitaetenSection) also reads these — fail-soft, but
   // stub them so an admin render is quiet.
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
