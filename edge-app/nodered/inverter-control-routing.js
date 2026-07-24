@@ -635,6 +635,14 @@ const DEYE_TOU_ENABLED_ALL_WEEK = 0x00ff;
 const DEYE_PROG_CHARGE = { DISABLED: 0, GRID: 1, GENERATOR: 2, BOTH: 3 };
 // VoltPilot drives ONE live ToU program slot (Program 1, zero-based index 0).
 const DEYE_CONTROL_SLOT = 0;
+// Program-1 start time (HHMM). 00:00 makes Program 1 the BASE slot of the day, so the
+// slot VoltPilot commands is the governing window at "now" (report §6): the ToU
+// scheduler picks the program whose start time is the latest one <= now, and Program 1
+// starting at midnight is the base. Without writing this, Program 1's stored time window
+// may not bracket "now" and the inverter ignores the commanded slot even though every
+// register reads back correctly. HHMM 00:00 = raw 0 in both decimal-HHMM and BCD, so the
+// exact time encoding (bench-verified per firmware) does not change the base-slot intent.
+const DEYE_PROGRAM_TIME_BASE_HHMM = 0;
 
 function deyeFamilyControlReg(family) {
   return Object.prototype.hasOwnProperty.call(DEYE_CONTROL_REG, family)
@@ -739,6 +747,13 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
       // Turn the ToU scheduler on for all weekdays (bit0=Enabled, 0x00FF="Week").
       role: 'tou_enable', fc: 6, addr: reg.touEnable, value: DEYE_TOU_ENABLED_ALL_WEEK,
       encode: { kind: 'tou_mask', all_week: true }, dwell_s: 900, min_change: 0, bench_pending: true,
+    },
+    {
+      // Set Program 1's start time to 00:00 so the commanded slot is the day's BASE
+      // window - otherwise a stale program time may leave Program 1 inactive at "now"
+      // and the inverter ignores the setpoint even though the registers echo (report §6).
+      role: 'program_time', fc: 6, addr: reg.progTimeBase + slot, value: DEYE_PROGRAM_TIME_BASE_HHMM,
+      encode: { kind: 'program_time_hhmm', hhmm: DEYE_PROGRAM_TIME_BASE_HHMM }, dwell_s: 900, min_change: 0, bench_pending: true,
     },
     {
       role: 'battery_power', fc: 6, addr: reg.progPowerBase + slot, value: powerReg,
