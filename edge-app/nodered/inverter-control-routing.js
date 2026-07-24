@@ -195,6 +195,142 @@ function vendorEmsControl({ conn, ip, family, controlEnabled }) {
   };
 }
 
+// The controller-owned staleness window (report §5.5/§7.5): an edge/setpoint whose
+// core timestamp is older than this is treated as the core having gone silent, so
+// the executor hands control BACK rather than latching the last command. Mirrors
+// the Go plan.StaleAfter (20 min). A native inverter revert timer, where it exists,
+// is a bonus - we never depend on one (Fronius storage has none).
+const SETPOINT_STALE_MS = 20 * 60 * 1000;
+
+/**
+ * controlRelease - the CONTROLLER-OWNED FAILSAFE write plan (report §2.5/§7.5).
+ * Returns the NEUTRAL write plan the executor issues when it must hand control
+ * BACK: edge/setpoint stale (>20 min = core silent), connection loss, or
+ * control_enabled -> false after we held control. It commands NO power, so sign
+ * and scale never matter; per-tier neutral:
+ *   Tier 1 SunSpec (sim/generic): control_enable = 0 (+ setpoint 0, cap cleared)
+ *   Tier 1 Fronius SunSpec:       StorCtl_Mod = 0 + WMaxLim_Ena = 0 (discovered)
+ *   Tier 3 Deye:                  Time-of-Use disabled (revert to self-consumption)
+ *   Tier 2 vendor EMS:            mode -> self-consumption (extension point)
+ *
+ * Gated EXACTLY like controlRoute: only a CERTIFIED family emits executable release
+ * writes; an uncertified family (Deye, Fronius) is planned-only, dormant until its
+ * bench pass. So in production only the certified SunSpec path actually releases;
+ * the Deye/Fronius release is proven by unit tests, never a live write.
+ *
+ *   selection: the parsed edge/inverter/config (or null)
+ *   opts:      { sunspec?: discovery } - live SunSpec model discovery for Fronius
+ * Returns { adapter, family, tier, certified, mode:'release', target, connection,
+ *           writes:[WriteOp], readbacks:[ReadOp], planned:[WriteOp], reason? }.
+ */
+function controlRelease(selection, opts = {}) {
+  const idle = (reason) => ({
+    adapter: 'idle', family: '', tier: CONTROL_TIER.READ_ONLY, certified: false,
+    mode: 'release', writes: [], readbacks: [], planned: [], reason,
+  });
+  if (!selection) return idle('keine Auswahl');
+  const conn = selection.connection || {};
+  const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
+  if (!ip) return idle('keine IP-Adresse');
+  const family = typeof selection.family === 'string' ? selection.family.trim() : '';
+  const certified = CERTIFIED_CONTROL_FAMILIES.has(family);
+  const tier = resolveControlTier(selection);
+  const comm = selection.communication;
+
+  if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
+    const serial = conn.serial;
+    const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
+    const reg = deyeFamilyControlReg(family);
+    // Neutral TOU slot: DISABLE the Time-of-Use scheduler so the inverter reverts to
+    // its own self-consumption logic. EEPROM -> write-on-change (dwell_s), and never
+    // emitted for an uncertified family. String/micro (no ToU) has nothing to release.
+    const planned = reg ? [{
+      role: 'tou_enable', fc: 6, addr: reg.touEnable, value: 0,
+      encode: { kind: 'tou_mask', all_week: false, release: true },
+      dwell_s: 900, min_change: 0, bench_pending: true,
+    }] : [];
+    const readbacks = reg ? [{ role: 'tou_enable', fc: 3, addr: reg.touEnable, expect: 0, tolerance: 0 }] : [];
+    return {
+      adapter: 'solarman_v5', family, tier, certified, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
+      writes: certified ? planned : [], readbacks: certified ? readbacks : [],
+      planned, reason: certified ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
+    };
+  }
+
+  if (tier === CONTROL_TIER.VENDOR_EMS) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    return {
+      adapter: 'vendor_ems', family, tier, certified: false, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port },
+      writes: [], readbacks: [], planned: [],
+      reason: 'Tier-2 Wechselrichtersteuerung (externes EMS) noch nicht implementiert',
+    };
+  }
+
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_MODBUS) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+    // Hand back to self-consumption: control_enable OFF, setpoint cleared, cap cleared.
+    const planned = [
+      { role: 'control_enable', fc: 6, addr: SUNSPEC_REG.ENABLE, value: 0, encode: { kind: 'flag' }, dwell_s: 0, min_change: 0 },
+      { role: 'battery_power', fc: 6, addr: SUNSPEC_REG.SETPOINT, value: 0, encode: { kind: 'kw_x100_s16', scale: 100, kw: 0 }, dwell_s: 0, min_change: 0 },
+      { role: 'pv_limit', fc: 6, addr: SUNSPEC_REG.PVLIMIT, value: NO_PV_LIMIT, encode: { kind: 'pv_limit_x100_u16', scale: 100, sentinel: NO_PV_LIMIT, kw: null }, dwell_s: 0, min_change: 0 },
+    ];
+    const readbacks = [
+      { role: 'control_enable', fc: 3, addr: SUNSPEC_REG.ENABLE, expect: 0, tolerance: 0 },
+      { role: 'battery_power', fc: 3, addr: SUNSPEC_REG.SETPOINT, expect: 0, tolerance: 1 },
+      { role: 'pv_limit', fc: 3, addr: SUNSPEC_REG.PVLIMIT, expect: NO_PV_LIMIT, tolerance: 1 },
+    ];
+    return {
+      adapter: 'modbus_tcp', family, tier, certified, mode: 'release', profile: family,
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
+      writes: certified ? planned : [], readbacks: certified ? readbacks : [],
+      planned, reason: certified ? undefined : 'Modell noch nicht freigegeben',
+    };
+  }
+
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_FRONIUS) {
+    // Fronius storage has NO native revert timer (report §2.5) - exactly why the
+    // controller must own this. Release = idle storage (StorCtl_Mod=0) + disabled
+    // curtailment (WMaxLim_Ena=0), both at DISCOVERED addresses (reuse planStorage(0)
+    // / planCurtailment(null)). Uncertified -> planned-only, no fabricated address.
+    const port = Number(conn.control_port) > 0 ? Number(conn.control_port) : DEFAULT_FRONIUS_CONTROL_PORT;
+    const unitId = Number(conn.control_unit_id) > 0 ? Number(conn.control_unit_id) : 1;
+    const discovery = opts.sunspec || null;
+    const curtail = sunspec.planCurtailment({ discovery, pvLimitKw: null });
+    const storage = sunspec.planStorage({ discovery, batterySetpointKw: 0 });
+    const planned = [
+      ...(curtail.ok ? curtail.writes.map((w) => ({ ...w, bench_pending: true })) : []),
+      ...(storage.ok ? storage.writes.map((w) => ({ ...w, bench_pending: true })) : []),
+    ];
+    return {
+      adapter: 'fronius_sunspec', family, tier, certified, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
+      writes: [], readbacks: [], planned,
+      reason: planned.length > 0 ? 'Fronius SunSpec: Steuerung nicht freigegeben'
+        : 'Fronius SunSpec: ' + curtail.reason + ' (Steuerung nicht freigegeben)',
+    };
+  }
+
+  return idle('unbekannte Kommunikationsmethode');
+}
+
+/**
+ * setpointStale - the executor-owned dead-man's check: true when the setpoint's
+ * core timestamp is older than SETPOINT_STALE_MS (the core went silent). A missing
+ * / unparseable ts is treated as NOT stale (the core always stamps ts; never release
+ * on a parse quirk). `nowMs` defaults to Date.now() (overridable for tests).
+ */
+function setpointStale(ts, nowMs) {
+  if (typeof ts !== 'string' || ts === '') return false;
+  const t = Date.parse(ts);
+  if (!isFinite(t)) return false;
+  const now = typeof nowMs === 'number' ? nowMs : Date.now();
+  return now - t > SETPOINT_STALE_MS;
+}
+
 // --- generic_modbus / SunSpec control adapter (CERTIFIED, proven vs sim) ------
 
 function sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw }) {
@@ -531,6 +667,9 @@ module.exports = {
   DEYE_TOU_ENABLED_ALL_WEEK,
   DEYE_CONTROL_SLOT,
   CERTIFIED_CONTROL_FAMILIES,
+  SETPOINT_STALE_MS,
   resolveControlTier,
   controlRoute,
+  controlRelease,
+  setpointStale,
 };

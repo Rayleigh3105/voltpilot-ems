@@ -29,9 +29,9 @@ const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
 
 // Run a function-node body the way Node-RED does: it may `return` a value or
 // an output array. Provides node/flow/context/global stubs.
-function runFunctionNode(func, { msg = {}, flow = {} } = {}) {
+function runFunctionNode(func, { msg = {}, flow = {}, context = {} } = {}) {
   const flowStore = flow;
-  const ctxStore = {};
+  const ctxStore = context; // shared across calls when the caller passes one in
   const sandbox = {
     msg,
     node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
@@ -295,6 +295,38 @@ test('flow control planner matches the module for the OTHER Deye branches (hybri
   const selStr = { ...base, family: 'string' };
   const spStr = { battery_setpoint_kw: 0, source: 'schedule', control_enabled: true };
   assert.deepStrictEqual(runControlPlan(selStr, spStr), JSON.parse(JSON.stringify(controlRouting.controlRoute(selStr, spStr, {}))));
+});
+
+// The plan node also carries a synced COPY of controlRelease() (the controller-
+// owned failsafe, report §7.5). This pins the inline copy to the module: after
+// HOLDING control (was_controlling primed via a normal write), a kill-off makes
+// the plan node emit the module's release plan byte-for-byte.
+test('flow control planner matches controlRelease() on a kill-off after controlling (SunSpec)', () => {
+  const sel = { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
+    communication: 'modbus_tcp', control_tier: 1, connection: { ip: 'edge-sim', port: 502, unit_id: 1 } };
+  const ctx = {}; const flow = { inverter_config: sel };
+  const plan = byId['auto-control-plan'].func;
+  const fresh = new Date().toISOString();
+  // 1) normal write primes was_controlling
+  runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: fresh, control_enabled: true } }, flow, context: ctx });
+  assert.strictEqual(ctx.was_controlling, true);
+  // 2) kill-off -> the inline release plan == module controlRelease
+  const { msg } = runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: fresh, control_enabled: false } }, flow, context: ctx });
+  assert.strictEqual(msg.control.mode, 'release');
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(controlRouting.controlRelease(sel, {}))));
+});
+
+// A STALE setpoint (core silent >20 min) triggers the same release after controlling.
+test('flow control planner releases on a STALE setpoint after controlling', () => {
+  const sel = { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
+    communication: 'modbus_tcp', control_tier: 1, connection: { ip: 'edge-sim', port: 502, unit_id: 1 } };
+  const ctx = {}; const flow = { inverter_config: sel };
+  const plan = byId['auto-control-plan'].func;
+  runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: new Date().toISOString(), control_enabled: true } }, flow, context: ctx });
+  // control_enabled STILL true, but the ts is 30 min old -> core went silent -> release.
+  const oldTs = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { msg } = runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: oldTs, control_enabled: true } }, flow, context: ctx });
+  assert.strictEqual(msg.control.mode, 'release', 'stale core -> hand control back');
 });
 
 // The "Fronius PowerFlow -> Messwerte" node (auto-fronius-decode) carries a

@@ -406,3 +406,80 @@ test('control_tier 0 (read-only) idles even over a controllable transport', () =
   const sel = { ...SUNSPEC_SEL, control_tier: 0 };
   assert.strictEqual(C.controlRoute(sel, enabled({ battery_setpoint_kw: -5 })).adapter, 'idle');
 });
+
+// --- controller-owned failsafe: controlRelease() per tier (Phase B) ----------
+
+test('Tier-1 SunSpec release hands control back: control_enable=0, setpoint 0, cap cleared', () => {
+  const r = C.controlRelease(SUNSPEC_SEL);
+  assert.strictEqual(r.mode, 'release');
+  assert.strictEqual(r.adapter, 'modbus_tcp');
+  assert.strictEqual(r.tier, C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(r.certified, true);
+  const w = Object.fromEntries(r.writes.map((x) => [x.role, x]));
+  assert.strictEqual(w.control_enable.addr, 41);
+  assert.strictEqual(w.control_enable.value, 0, 'control disabled -> inverter self-consumes');
+  assert.strictEqual(w.battery_power.value, 0);
+  assert.strictEqual(w.pv_limit.value, 0xffff, 'feed-in cap cleared');
+  // readbacks mirror the release writes (the release is verified too)
+  assert.strictEqual(r.readbacks.length, 3);
+  assert.strictEqual(r.readbacks.find((x) => x.role === 'control_enable').expect, 0);
+});
+
+test('Tier-3 Deye release disables Time-of-Use but stays PLANNED-ONLY (uncertified)', () => {
+  const r = C.controlRelease(DEYE_SEL);
+  assert.strictEqual(r.mode, 'release');
+  assert.strictEqual(r.adapter, 'solarman_v5');
+  assert.strictEqual(r.tier, C.CONTROL_TIER.TOU);
+  assert.strictEqual(r.certified, false);
+  assert.deepStrictEqual(r.writes, [], 'no live release write to a bench-pending Deye');
+  assert.deepStrictEqual(r.readbacks, []);
+  // the intended neutral is visible for the bench: disable ToU -> self-consumption
+  assert.strictEqual(r.planned.length, 1);
+  assert.strictEqual(r.planned[0].role, 'tou_enable');
+  assert.strictEqual(r.planned[0].addr, C.DEYE_CONTROL_REG.hybrid_3p.touEnable);
+  assert.strictEqual(r.planned[0].value, 0);
+  assert.strictEqual(r.planned[0].bench_pending, true);
+});
+
+test('Tier-1 Fronius release plans idling storage + disabling curtailment (bench_pending, never executable)', () => {
+  const disc = froniusDiscoveryWithStorage();
+  const r = C.controlRelease(FRONIUS_SEL, { sunspec: disc });
+  assert.strictEqual(r.mode, 'release');
+  assert.strictEqual(r.adapter, 'fronius_sunspec');
+  assert.strictEqual(r.certified, false);
+  assert.deepStrictEqual(r.writes, [], 'never a live Fronius release write');
+  assert.deepStrictEqual(r.readbacks, []);
+  const roles = new Set(r.planned.map((w) => w.role));
+  assert.ok(roles.has('battery_storage_mode'), 'StorCtl_Mod=0 planned (idle storage)');
+  assert.ok(roles.has('pv_limit_enable'), 'WMaxLim_Ena=0 planned (curtailment off)');
+  assert.strictEqual(r.planned.find((w) => w.role === 'battery_storage_mode').value, sunspec.STORCTL_MOD.NONE);
+  assert.ok(r.planned.every((w) => w.bench_pending === true));
+});
+
+test('Fronius release is IDLE-SAFE without discovery (no fabricated address)', () => {
+  const r = C.controlRelease(FRONIUS_SEL, {});
+  assert.deepStrictEqual(r.planned, []);
+  assert.deepStrictEqual(r.writes, []);
+});
+
+test('Tier-2 release is the self-consumption extension point (never a live write)', () => {
+  const sel = { schema_version: '1.0', brand: 'sungrow', family: 'sungrow_sh',
+    communication: 'modbus_tcp', control_tier: 2, connection: { ip: '10.0.0.9', port: 502 } };
+  const r = C.controlRelease(sel);
+  assert.strictEqual(r.adapter, 'vendor_ems');
+  assert.deepStrictEqual(r.writes, []);
+  assert.deepStrictEqual(r.planned, []);
+});
+
+test('controlRelease idles with no selection / no IP', () => {
+  assert.strictEqual(C.controlRelease(null).adapter, 'idle');
+  assert.strictEqual(C.controlRelease({ ...SUNSPEC_SEL, connection: { ip: '' } }).adapter, 'idle');
+});
+
+test('setpointStale is the dead-man check: stale past 20 min, fresh within, safe on missing ts', () => {
+  const now = Date.parse('2026-07-08T12:00:00Z');
+  assert.strictEqual(C.setpointStale('2026-07-08T11:39:00Z', now), true, '21 min old -> stale');
+  assert.strictEqual(C.setpointStale('2026-07-08T11:45:00Z', now), false, '15 min old -> fresh');
+  assert.strictEqual(C.setpointStale(undefined, now), false, 'missing ts never releases');
+  assert.strictEqual(C.setpointStale('nonsense', now), false, 'unparseable ts never releases');
+});

@@ -86,13 +86,14 @@ function startModbusServer(regs) {
 
 // Run a function-node body with a Node-RED-like context; returns its result
 // (awaited if it is a Promise, as the runtime does for async function nodes).
-async function runFunctionNode(func, msg) {
-  const ctxStore = {};
+// Pass a shared `ctxStore` + `flowStore` to persist node/flow context across ticks
+// (the plan node's was_controlling failsafe state lives in node context).
+async function runFunctionNode(func, msg, ctxStore = {}, flowStore = {}) {
   const sandbox = {
     msg,
-    node: { status() {}, error() {}, warn() {}, send() {} },
+    node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
     context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
-    flow: { get() {}, set() {} },
+    flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
     global: { get: (k) => (k === 'net' ? net : undefined) },
     Buffer, Date, Math, isFinite, Number, Array, Object, JSON, Promise, setTimeout, clearTimeout,
   };
@@ -188,6 +189,67 @@ test('control exec flags a mismatch when the inverter ignores the write', async 
     const byRole = Object.fromEntries(out.payload.registers.map((r) => [r.role, r]));
     assert.strictEqual(byRole.battery_power.match, false, 'reg 40 not adopted -> mismatch');
     assert.strictEqual(byRole.battery_power.actual_raw, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test('CONTROLLER-OWNED FAILSAFE: after a control write, a kill-off writes the release (hand back) end to end', async () => {
+  // Prove the whole §7.5 chain against the real read/write server: a normal setpoint
+  // WRITES control (reg 41=1), then a kill-off (control_enabled=false) makes the plan
+  // node emit the RELEASE plan (was_controlling primed), and the executor writes it -
+  // control_enable back to 0, setpoint 0, cap cleared - and confirms the readback.
+  const { server, port, store } = await startReadWriteServer({ 40: 0, 41: 0, 42: 0xffff });
+  try {
+    const sel = { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
+      communication: 'modbus_tcp', control_tier: 1, connection: { ip: '127.0.0.1', port, unit_id: 1 } };
+    const ctx = {}; const flow = { inverter_config: sel };
+    const plan = byId['auto-control-plan'].func;
+    const exec = byId['auto-control-exec'].func;
+
+    // 1) normal control tick: control_enabled=true -> writes 40/41/42, primes was_controlling.
+    const fresh = new Date().toISOString();
+    const m1 = await runFunctionNode(plan, { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: fresh, control_enabled: true } }, ctx, flow);
+    assert.strictEqual(m1.control.mode, undefined, 'normal plan, not a release');
+    await runFunctionNode(exec, m1, {}, flow);
+    assert.strictEqual(store[41], 1, 'control enabled (reg 41=1) after the normal write');
+    assert.strictEqual(store[40], (-1000) & 0xffff, 'setpoint written');
+    assert.strictEqual(ctx.was_controlling, true, 'plan node remembers it held control');
+
+    // 2) kill-off: control_enabled=false -> the plan node emits the RELEASE plan.
+    const m2 = await runFunctionNode(plan, { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: new Date().toISOString(), control_enabled: false } }, ctx, flow);
+    assert.strictEqual(m2.control.mode, 'release', 'kill-off after controlling -> release plan');
+    assert.strictEqual(m2.control.writes.length, 3, 'release writes control_enable/setpoint/cap');
+    assert.strictEqual(ctx.was_controlling, false, 'control handed back');
+
+    // 3) the executor writes the release; the inverter reads back as self-consuming.
+    const out = await runFunctionNode(exec, m2, {}, flow);
+    assert.ok(out, 'release readback published');
+    assert.strictEqual(store[41], 0, 'control DISABLED (reg 41=0) - handed back to self-consumption');
+    assert.strictEqual(store[40], 0, 'setpoint cleared');
+    assert.strictEqual(store[42], 0xffff, 'feed-in cap cleared');
+    assert.ok(out.payload.registers.every((r) => r.match), 'release confirmed by readback');
+  } finally {
+    server.close();
+  }
+});
+
+test('FAILSAFE stays dormant when control was never on (control-off-from-boot writes NOTHING)', async () => {
+  // The discipline "control off -> write NOTHING (readback only)": with was_controlling
+  // never primed, a control_enabled=false tick must NOT write a release - the plan node
+  // yields the normal (empty-writes) plan, and the executor only reads back.
+  const { server, port, store } = await startReadWriteServer({ 40: 7, 41: 1, 42: 0xffff });
+  try {
+    const sel = { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
+      communication: 'modbus_tcp', control_tier: 1, connection: { ip: '127.0.0.1', port, unit_id: 1 } };
+    const ctx = {}; const flow = { inverter_config: sel };
+    const m = await runFunctionNode(byId['auto-control-plan'].func,
+      { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: new Date().toISOString(), control_enabled: false } }, ctx, flow);
+    assert.notStrictEqual(m.control.mode, 'release', 'no release without having held control');
+    assert.strictEqual(m.control.writes.length, 0, 'kill-switch off + never controlled -> no writes');
+    await runFunctionNode(byId['auto-control-exec'].func, m, {}, flow);
+    assert.strictEqual(store[41], 1, 'reg 41 UNTOUCHED - nothing was written');
+    assert.strictEqual(store[40], 7, 'reg 40 UNTOUCHED');
   } finally {
     server.close();
   }
