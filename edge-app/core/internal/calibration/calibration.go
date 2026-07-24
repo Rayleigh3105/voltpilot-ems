@@ -350,6 +350,10 @@ type Snapshot struct {
 	ControlEnabled bool    `json:"control_enabled"` // global kill-switch on (agent-set)
 	Family         string  `json:"family"`          // register-map family (agent-set)
 	Certified      bool    `json:"certified"`       // already certified (agent-set)
+	// The current WRITE-path sign / power scale on the inverter connection (agent-set),
+	// so the correction UI shows what is set. PowerScale 0 = auto-detect.
+	InvertControlSign bool    `json:"invert_control_sign"`
+	PowerScale        float64 `json:"power_scale"`
 
 	SocPct            *float64 `json:"soc_pct"`
 	BatteryKw         *float64 `json:"battery_kw"`

@@ -206,6 +206,8 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 		snap.Available = true
 		snap.Family = sel.Family
 		snap.Certified = a.controlCertified(sel.Family)
+		snap.InvertControlSign = sel.Connection.InvertControlSign
+		snap.PowerScale = sel.Connection.PowerScale
 		if snap.BatteryKw == nil && snap.SocPct == nil {
 			snap.Reason = "Der Wechselrichter liefert noch keine Batterie-Messwerte - kurz warten."
 		}

@@ -913,6 +913,52 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 	}
 }
 
+// TestCalibrationCardServesStructure pins the First-Light calibration card + its
+// script so a static/ edit that forgets the //go:embed rebuild contract fails here.
+func TestCalibrationCardServesStructure(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	page := get("/index.html")
+	for _, want := range []string{
+		`id="calCard"`, `id="calState"`, `id="calUnavail"`, `id="calBody"`,
+		`id="calLive"`, `id="calArm"`, `id="calTestStep"`, `id="calMag"`,
+		`id="calCharge"`, `id="calDischarge"`, `id="calAbort"`, `id="calVerdict"`,
+		`id="calCorrect"`, `id="calInvert"`, `id="calScale"`, `id="calSign"`,
+		`id="calConfirm"`, `id="calCertify"`, `src="calibration.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing calibration element %s", want)
+		}
+	}
+	// The script drives the /api/calibration surface end to end.
+	calJs := get("/calibration.js")
+	for _, want := range []string{
+		"/api/calibration", "/api/calibration/arm", "/api/calibration/test",
+		"/api/calibration/abort", "/api/calibration/correction",
+		"/api/calibration/confirm", "/api/calibration/certify",
+	} {
+		if !strings.Contains(calJs, want) {
+			t.Errorf("calibration.js: does not drive %s", want)
+		}
+	}
+	// dashboard.js hands state to the calibration card for the register readback.
+	if !strings.Contains(get("/dashboard.js"), "VPCalibration") {
+		t.Error("dashboard.js: does not feed VPCalibration.onState")
+	}
+}
+
 // The settings page (Ausreißer-Filter) is built by einstellungen.js against
 // fixed element ids; this pins the embedded page + assets so a static/ edit that
 // forgets the //go:embed rebuild contract fails here instead of shipping broken.
