@@ -12,11 +12,14 @@
  *     The executor (a Node-RED function node carrying a synced copy) performs the
  *     writes/readbacks. This makes the whole design unit-testable offline and
  *     pinned by flows-sync.test.js, just like route().
- *   - Control is OFF by default. `setpoint.control_enabled` is the CORE's
- *     kill-switch (VP_CONTROL_ENABLED, default false) AND its per-model
- *     certification verdict, folded into one boolean the core publishes on
- *     edge/setpoint. When it is false, `writes` is EMPTY - the readbacks still
- *     run so the UI shows the inverter's ACTUAL state, but nothing is written.
+ *   - `setpoint.control_enabled` is the CORE's kill-switch (VP_CONTROL_ENABLED,
+ *     default TRUE since vp-batctl-generic-r4) AND its per-model certification
+ *     verdict (control_enabled = ControlEnabled AND certified), folded into one
+ *     boolean the core publishes on edge/setpoint. On-by-default is safe ONLY
+ *     because the certification allowlist is the per-device gate: an UNCERTIFIED
+ *     family (every Deye/Fronius family) makes control_enabled false and `writes`
+ *     EMPTY - the readbacks still run so the UI shows the inverter's ACTUAL state,
+ *     but nothing is written. VP_CONTROL_ENABLED=false is the global stop.
  *   - A second, independent gate lives HERE: only families in
  *     CERTIFIED_CONTROL_FAMILIES may ever emit executable writes. An uncertified
  *     family (every Deye family until its model is bench-verified) returns
@@ -565,17 +568,36 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
   const powerScale = Number(conn.power_scale) > 0 ? Number(conn.power_scale) : 1;
 
   const reg = deyeFamilyControlReg(family);
-  const base = {
-    adapter: 'solarman_v5', family,
-    target: ip + ':' + port,
-    connection: { ip, port, serial, mb_slave_id: slaveId },
-    certified, // false for all Deye families until bench-certified
-    controlEnabled,
-    // Read-only until certified: NEVER emit executable writes for a bench-pending
-    // address, and do not pretend to confirm control registers we cannot trust.
-    writes: [],
-    readbacks: [],
-    reason: 'Steuerung für dieses Modell noch nicht freigegeben',
+  // The un-gated Deye adapter: the SAME two-gate discipline as sunspecControl.
+  // `planned` is always the real ToU/power WriteOps (from DEYE_CONTROL_REG); a live
+  // write/readback only flows when certified AND control_enabled. Deye stays OUT of
+  // CERTIFIED_CONTROL_FAMILIES (bench-pending per firmware), so in production
+  // writeAllowed is ALWAYS false -> writes:[]/readbacks:[] (dormant). The gate is
+  // now generic: adding hybrid_3p to the allowlist after a bench pass flips control
+  // on with no code change. EEPROM discipline rides on each WriteOp (dwell_s >= 900,
+  // min_change) - the executor writes on change, the 10 s tick drives readback only.
+  const writeAllowed = certified && controlEnabled;
+  // Readback tolerance: the power register is decawatt/watt-scaled so allow ±1 raw
+  // unit; the enum/flag registers must match exactly.
+  const deyeRbTol = (role) => (role === 'battery_power' || role === 'pv_limit' ? 1 : 0);
+  const finalize = (planned) => {
+    const readbacks = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: deyeRbTol(w.role) }));
+    // executable writes carry no bench_pending flag (that is a display marker on
+    // `planned`); the two objects otherwise match address-for-address.
+    const execWrites = planned.map((w) => { const c = { ...w }; delete c.bench_pending; return c; });
+    const out = {
+      adapter: 'solarman_v5', family,
+      target: ip + ':' + port,
+      connection: { ip, port, serial, mb_slave_id: slaveId },
+      certified, controlEnabled,
+      writes: writeAllowed ? execWrites : [],
+      readbacks: writeAllowed ? readbacks : [],
+      planned,
+    };
+    if (!writeAllowed) {
+      out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Steuerung für dieses Modell noch nicht freigegeben';
+    }
+    return out;
   };
 
   // String / micro Deye: NO battery, NO ToU. The only lever is the active-power
@@ -591,7 +613,7 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
         dwell_s: 900, min_change: 1, bench_pending: true,
       });
     }
-    return { ...base, planned };
+    return finalize(planned);
   }
 
   const battKw = invert ? -kw : kw;
@@ -650,7 +672,7 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
     });
   }
 
-  return { ...base, planned };
+  return finalize(planned);
 }
 
 module.exports = {

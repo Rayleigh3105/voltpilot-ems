@@ -148,6 +148,33 @@ test('Deye is UNCERTIFIED: never emits executable writes even when control_enabl
   assert.match(r.reason, /noch nicht freigegeben/);
 });
 
+test('un-gate: Deye writes/readbacks are gated ONLY by the certification allowlist (generic gate)', () => {
+  const sp = enabled({ battery_setpoint_kw: -20 });
+  const off = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+  assert.deepStrictEqual(off.writes, [], 'default: uncertified -> no writes');
+  assert.deepStrictEqual(off.readbacks, []);
+  assert.ok(off.planned.length >= 5, 'the real ToU plan is always in planned[]');
+  // Certifying the family (a bench pass) is the ONLY thing that turns writes on -
+  // NO code change. This IS the un-gate. Restored immediately so the production
+  // default stays read-only.
+  C.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+  try {
+    const on = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+    assert.strictEqual(on.certified, true);
+    assert.strictEqual(on.writes.length, off.planned.length, 'writes == the planned ToU ops');
+    assert.strictEqual(on.readbacks.length, on.writes.length, 'a readback per written register');
+    assert.ok(on.writes.every((w) => w.bench_pending === undefined), 'executable writes are not bench_pending markers');
+    // The kill-switch still gates independently: certified but control_enabled=false
+    // writes NOTHING (two-gate discipline, identical to sunspecControl).
+    const killed = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: false }, { ratedKw: 30 });
+    assert.deepStrictEqual(killed.writes, [], 'certified + kill-switch off -> still no writes');
+    assert.deepStrictEqual(killed.readbacks, []);
+  } finally {
+    C.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+  }
+  assert.deepStrictEqual(C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 }).writes, [], 'production default is read-only again');
+});
+
 test('Deye hybrid_3p planned ToU mapping uses the ha-solarman deye_p3 registers', () => {
   const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 }), { ratedKw: 50 });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));

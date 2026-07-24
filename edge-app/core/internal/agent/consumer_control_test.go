@@ -210,7 +210,8 @@ func TestGoeConsumerControlKillSwitchOffDoesNoHTTP(t *testing.T) {
 	})
 	arb.Tick()
 
-	cfg := config.Defaults() // ControlEnabled defaults FALSE (kill-switch off)
+	cfg := config.Defaults()
+	cfg.ControlEnabled = false // explicit kill-switch OFF (control is ON by default now)
 	a := &Agent{Cfg: cfg, entRegistry: reg, arb: arb, goeDoer: goeHTTPDoer{c: srv.Client()}}
 	a.runGoeControlPass(context.Background(), a.goeDoer, map[string]string{}, map[string]time.Time{}, time.Now())
 

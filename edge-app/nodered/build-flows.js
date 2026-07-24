@@ -393,7 +393,9 @@ const controlRouteSource = [
   "  }",
   "  if (tier === 3 && comm === 'solarman_v5') {",
   "    // ha-solarman-sourced Deye ToU/work-mode registers (deye_p3.yaml hybrid_3p,",
-  "    // deye_hybrid.yaml hybrid_1p). BENCH-PENDING: no executable writes.",
+  "    // deye_hybrid.yaml hybrid_1p). UN-GATED: same two-gate discipline as SunSpec -",
+  "    // planned is always the real WriteOps; a live write/readback only flows when",
+  "    // certified AND control_enabled. Deye stays uncertified -> writes/readbacks [].",
   "    var DEYE_REG = {",
   "      hybrid_3p: { workMode: 0x008e, touEnable: 0x0092, progPowerBase: 0x009a, progSocBase: 0x00a6, progChargeBase: 0x00ac, exportLimit: 0x00e7, exportLimitScale: 10 },",
   "      hybrid_1p: { workMode: 0x00f4, touEnable: 0x00f8, progPowerBase: 0x0100, progSocBase: 0x010c, progChargeBase: 0x0112, exportLimit: 0x00f5, exportLimitScale: 1 }",
@@ -404,13 +406,21 @@ const controlRouteSource = [
   "    var dinvert = conn.invert_control_sign === true;",
   "    var socMin = (typeof setpoint.soc_min_pct === 'number' && isFinite(setpoint.soc_min_pct)) ? setpoint.soc_min_pct : 5;",
   "    var powerScale = Number(conn.power_scale) > 0 ? Number(conn.power_scale) : 1;",
-  "    var dbase = { adapter: 'solarman_v5', family: family, target: ip + ':' + dport, connection: { ip: ip, port: dport, serial: serial, mb_slave_id: slaveId }, certified: certified, controlEnabled: controlEnabled, writes: [], readbacks: [], reason: 'Steuerung f\\u00fcr dieses Modell noch nicht freigegeben' };",
+  "    var dWriteAllowed = certified && controlEnabled;",
+  "    var deyeRbTol = function (role) { return (role === 'battery_power' || role === 'pv_limit') ? 1 : 0; };",
+  "    var deyeFinalize = function (planned) {",
+  "      var readbacks = planned.map(function (w) { return { role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: deyeRbTol(w.role) }; });",
+  "      var execWrites = planned.map(function (w) { var c = {}; for (var kk in w) { if (kk !== 'bench_pending') c[kk] = w[kk]; } return c; });",
+  "      var out = { adapter: 'solarman_v5', family: family, target: ip + ':' + dport, connection: { ip: ip, port: dport, serial: serial, mb_slave_id: slaveId }, certified: certified, controlEnabled: controlEnabled, writes: dWriteAllowed ? execWrites : [], readbacks: dWriteAllowed ? readbacks : [], planned: planned };",
+  "      if (!dWriteAllowed) out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Steuerung f\\u00fcr dieses Modell noch nicht freigegeben';",
+  "      return out;",
+  "    };",
   "    var reg = Object.prototype.hasOwnProperty.call(DEYE_REG, family) ? DEYE_REG[family] : null;",
   "    if (!reg) {",
   "      var ratedKw = Number(opts.ratedKw) > 0 ? Number(opts.ratedKw) : 0;",
   "      var splanned = [];",
   "      if (pvLimitKw != null && ratedKw > 0) { splanned.push({ role: 'pv_limit', fc: 6, addr: 0x0028, value: clampPct((pvLimitKw / ratedKw) * 100), encode: { kind: 'active_power_pct', rated_kw: ratedKw, kw: pvLimitKw }, dwell_s: 900, min_change: 1, bench_pending: true }); }",
-  "      dbase.planned = splanned; return dbase;",
+  "      return deyeFinalize(splanned);",
   "    }",
   "    var dbattKw = dinvert ? -kw : kw;",
   "    var charging = dbattKw > 0;",
@@ -427,7 +437,7 @@ const controlRouteSource = [
   "      { role: 'grid_charge_enable', fc: 6, addr: reg.progChargeBase + slot, value: chargeEnum, encode: { kind: 'charge_enum', eeg_gated: true, disabled: 0, grid: 1 }, dwell_s: 900, min_change: 0, bench_pending: true }",
   "    ];",
   "    if (pvLimitKw != null) { var capW = Math.max(0, pvLimitKw * 1000); dplanned.push({ role: 'pv_limit', fc: 6, addr: reg.exportLimit, value: Math.round(capW / reg.exportLimitScale) & 0xffff, encode: { kind: 'feed_in_cap_w', scale: reg.exportLimitScale, kw: pvLimitKw }, dwell_s: 900, min_change: 1, bench_pending: true }); }",
-  "    dbase.planned = dplanned; return dbase;",
+  "    return deyeFinalize(dplanned);",
   "  }",
   "  if (tier === 1 && comm === 'fronius_solar_api') {",
   "    // Fronius SunSpec control (curtailment, Model 123 WMaxLimPct) is UNCERTIFIED",
@@ -611,6 +621,84 @@ const embedModule = (file) =>
   '(function () { var module = { exports: {} };\n' +
   fs.readFileSync(path.join(__dirname, file), 'utf8') +
   '\nreturn module.exports; })()';
+
+// The Deye Solarman-V5 control executor (report §4.4b/§5/§7.9): the write twin of
+// controlExecFunc for the solarman_v5 adapter. It writes the ToU/power plan over
+// the Solarman-V5 logger (TCP 8899) with FC6 and reads each register back with
+// FC3, embedding deye/solarman-v5.js for the wire codec. Runs ONLY for a
+// certified Deye plan (writes+readbacks present); a bench-pending Deye plan carries
+// writes:[]/readbacks:[] so this node no-ops (return null) - dormant in production.
+// EEPROM discipline: write-on-change (dwell_s/min_change) so the ~10 s republish
+// drives readback only, never a rewrite. One-socket rule (report §5.6): a shared
+// per-(host,port) flow-context lock serialises writes against the read poll on the
+// same logger (which owns the connection); skip-if-busy rather than displace it.
+const controlExecSolarmanFunc = [
+  "// Deye Solarman-V5 Steuerung schreiben + zuruecklesen: nur fuer eine",
+  "// ZERTIFIZIERTE Deye-Familie (sonst writes/readbacks leer -> return null).",
+  "// WRITE-ON-CHANGE (EEPROM!): ein Register wird nur geschrieben, wenn dwell_s",
+  "// abgelaufen UND |Delta| >= min_change; der 10-s-Takt treibt nur das Zuruecklesen.",
+  "const net = global.get('net');",
+  "if (!net) { node.status({ fill: 'red', shape: 'ring', text: 'net fehlt (settings.js)' }); node.error('functionGlobalContext.net in settings.js setzen', msg); return null; }",
+  "const ctrl = msg.control;",
+  "if (!ctrl || ctrl.adapter !== 'solarman_v5' || !Array.isArray(ctrl.readbacks) || ctrl.readbacks.length === 0) {",
+  "  node.status({ fill: 'grey', shape: 'ring', text: (ctrl && ctrl.reason) ? ctrl.reason : 'keine Steuerung' });",
+  "  return null;",
+  "}",
+  "const __SV5 = " + embedModule('deye/solarman-v5.js') + ";",
+  "const conn = ctrl.connection || {};",
+  "const serial = conn.serial;",
+  "const slaveId = conn.mb_slave_id || 1;",
+  "const host = conn.ip; const cport = conn.port || 8899;",
+  "const target = host + ':' + cport;",
+  "// EEPROM write-on-change: skip a register write inside its dwell window or below",
+  "// its min_change delta (vs the last WRITTEN value). Readbacks ALWAYS run.",
+  "const now = Date.now();",
+  "const last = context.get('sv5_ctrl_last') || {};",
+  "const toWrite = [];",
+  "for (const w of (ctrl.writes || [])) {",
+  "  const k = String(w.addr); const prev = last[k];",
+  "  const dwellMs = (w.dwell_s || 0) * 1000;",
+  "  if (prev) {",
+  "    if (now - prev.t < dwellMs) continue;",
+  "    const delta = Math.abs((w.value & 0xffff) - (prev.v & 0xffff));",
+  "    const threshold = w.min_change > 0 ? w.min_change : 1;",
+  "    if (delta < threshold) continue;",
+  "  }",
+  "  toWrite.push(w);",
+  "}",
+  "// One-socket rule (report §5.6): the read poll owns this Solarman logger; do not",
+  "// open a second connection while it is busy. 30 s stale-expiry.",
+  "const busyKey = 'sv5_busy:' + target;",
+  "const busySince = flow.get(busyKey) || 0;",
+  "if (busySince && now - busySince < 30000) { node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt - Tick uebersprungen' }); return null; }",
+  "flow.set(busyKey, now);",
+  "let seq = context.get('sv5_ctrl_seq') || 0;",
+  "return new Promise((resolve) => {",
+  "  const sock = new net.Socket(); sock.setNoDelay(true);",
+  "  let done = false, acc = Buffer.alloc(0), pending = null;",
+  "  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); resolve(null); } else { resolve(okMsg); } };",
+  "  const t = setTimeout(() => finish(new Error('Timeout')), 12000);",
+  "  sock.once('error', (e) => finish(e));",
+  "  const txn = (frame, parse) => new Promise((res, rej) => { pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
+  "  sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); let need; try { need = __SV5.expectedFrameLength(acc); } catch (e) { if (pending) { const p = pending; pending = null; p.rej(e); } return; } if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const frame = acc.slice(0, need); acc = acc.slice(need); try { p.res(p.parse(frame)); } catch (e) { p.rej(e); } } });",
+  "  const nextSeq = () => { seq = (seq + 1) & 0xffff; return seq; };",
+  "  sock.connect(cport, host, async () => {",
+  "    try {",
+  "      for (const w of toWrite) { const s = nextSeq(); await txn(__SV5.buildWriteSingleRequest({ loggerSerial: serial, sequence: s, slaveId: slaveId, reg: w.addr, value: w.value }), (b) => __SV5.readWriteResultFromResponse(b, { expectLoggerSerial: serial, expectFn: 0x06 })); last[String(w.addr)] = { v: w.value & 0xffff, t: Date.now() }; }",
+  "      const registers = [];",
+  "      for (const rb of ctrl.readbacks) { const s = nextSeq(); const regs = await txn(__SV5.buildReadRequest({ loggerSerial: serial, sequence: s, slaveId: slaveId, startReg: rb.addr, count: 1 }), (b) => __SV5.readRegistersFromResponse(b, { expectLoggerSerial: serial })); const actual = (regs[0] || 0) & 0xffff; const tol = rb.tolerance || 0; registers.push({ role: rb.role, fc: 3, addr: rb.addr, commanded_raw: rb.expect & 0xffff, actual_raw: actual, match: Math.abs(actual - (rb.expect & 0xffff)) <= tol }); }",
+  "      context.set('sv5_ctrl_seq', seq); context.set('sv5_ctrl_last', last);",
+  "      const all = registers.every((r) => r.match);",
+  "      const wrote = toWrite.length > 0;",
+  "      const relMode = ctrl.mode === 'release';",
+  "      node.status({ fill: all ? 'green' : 'red', shape: 'dot', text: (relMode ? 'Freigabe ' : '') + (all ? ('bestätigt (' + registers.length + ')') : 'Abweichung') + (wrote ? '' : ' (nur gelesen)') });",
+  "      const sp = msg.setpoint || {};",
+  "      msg.payload = { ts: new Date().toISOString(), family: ctrl.family, source: sp.source || '', slot_start: sp.slot_start, control_enabled: !!ctrl.controlEnabled, certified: !!ctrl.certified, mode: ctrl.mode || 'normal', wrote: wrote, skipped_dwell: (ctrl.writes || []).length - toWrite.length, registers: registers };",
+  "      finish(null, msg);",
+  "    } catch (e) { finish(e); }",
+  "  });",
+  "});",
+].join('\n');
 
 // --- Additional-source read fan-out (multi-source Anlage, Phase 1) -----------
 //
@@ -1256,19 +1344,23 @@ const autoNodes = [
 
   // --- Control path (write + readback), self-wired from the same selection ---
   // SAFETY: writes only happen for a certified family AND when the core's kill-
-  // switch enabled the setpoint (control_enabled). A Deye selection routes here
-  // too but stays read-only (controlRoute emits no executable writes).
+  // switch enabled the setpoint (control_enabled). The plan fans out to BOTH
+  // executors: the generic Modbus one runs a modbus_tcp plan, the Solarman-V5 one
+  // a solarman_v5 (Deye) plan - each no-ops on the other's adapter. A Deye plan is
+  // executable ONLY once its family is bench-certified (else writes/readbacks [] ->
+  // the Deye executor no-ops), so Deye stays read-only in production.
   {
     id: 'auto-control-note', type: 'comment', z: TAB,
-    name: 'Steuerung: Sollwert -> Schreibplan (controlRoute) -> schreiben + zuruecklesen -> vp-control-readback. Standard AUS (Not-Aus), Deye/Fronius nur lesend.',
+    name: 'Steuerung: Sollwert -> Schreibplan (controlRoute/controlRelease) -> schreiben + zuruecklesen -> vp-control-readback. Standard AUS (Not-Aus), Deye/Fronius nur lesend bis Pruefstand-Freigabe.',
     info: '', x: 520, y: 620, wires: [],
   },
   {
     id: 'auto-sollwert', type: 'vp-sollwert', z: TAB, name: 'Sollwert vom Core', core: 'cfg-vp-core',
     x: 140, y: 680, wires: [['auto-control-plan']],
   },
-  Object.assign(fn('auto-control-plan', 'Steuerung / Schreibplan', controlPlanFunc("flow.get('inverter_config') || null"), 1, [['auto-control-exec']]), { x: 380, y: 680 }),
-  Object.assign(fn('auto-control-exec', 'Steuerung schreiben + zuruecklesen', controlExecFunc, 1, [['auto-control-readback']]), { x: 650, y: 680 }),
+  Object.assign(fn('auto-control-plan', 'Steuerung / Schreibplan', controlPlanFunc("flow.get('inverter_config') || null"), 1, [['auto-control-exec', 'auto-control-exec-deye']]), { x: 380, y: 680 }),
+  Object.assign(fn('auto-control-exec', 'SunSpec/Modbus schreiben + zuruecklesen', controlExecFunc, 1, [['auto-control-readback']]), { x: 650, y: 660 }),
+  Object.assign(fn('auto-control-exec-deye', 'Deye Solarman-V5 schreiben + zuruecklesen', controlExecSolarmanFunc, 1, [['auto-control-readback']]), { x: 650, y: 720 }),
   { id: 'auto-control-readback', type: 'vp-control-readback', z: TAB, name: 'Rueckmeldung an Core', core: 'cfg-vp-core', x: 930, y: 680, wires: [] },
 ];
 

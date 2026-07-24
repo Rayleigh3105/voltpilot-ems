@@ -51,10 +51,14 @@ type Config struct {
 	BufferHours int `json:"buffer_hours"`
 
 	// ControlEnabled is the GLOBAL inverter-control kill-switch (report §6.6).
-	// Default FALSE: the edge reads + reads-back but writes NOTHING until an
-	// operator explicitly enables control on this device. When false, the core
-	// publishes control_enabled=false on edge/setpoint and Layer 1 drops all
-	// writes (readbacks still run). This is safety-critical - never default true.
+	// Default TRUE (owner decision, vp-batctl-generic-r4): control is ON by
+	// default. This is safe ONLY because the CERTIFICATION ALLOWLIST is the real
+	// per-device gate: control_enabled on edge/setpoint is (ControlEnabled AND
+	// ControlCertified(family)), so an UNCERTIFIED family emits control_enabled=
+	// false and Layer 1 writes NOTHING. The pilot inverters (Deye hybrid_*,
+	// Fronius) are deliberately NOT in ControlCertifiedFamilies, so no live
+	// inverter write happens until a per-model bench pass adds the family to the
+	// allowlist (CONTROL-BENCH.md). VP_CONTROL_ENABLED=false is the global stop.
 	ControlEnabled bool `json:"control_enabled"`
 	// ControlCertifiedFamilies is the per-model bench-certification allowlist,
 	// keyed by register-map family (report §6.7). Only a selected inverter whose
@@ -146,7 +150,7 @@ func Defaults() Config {
 		ReconcileIntervalSeconds: 300,
 		UnclaimConfirmMinutes:    20,
 		UnclaimConfirmPolls:      4,
-		ControlEnabled:           false,
+		ControlEnabled:           true, // ON by default; the certification allowlist is the per-device gate
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
 		NodeRedUser:              "voltpilot",

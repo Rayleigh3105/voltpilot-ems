@@ -162,14 +162,18 @@ func TestInvalidConfigFileFails(t *testing.T) {
 	}
 }
 
-func TestControlDefaultsOffAndCertifiedAllowlist(t *testing.T) {
+func TestControlDefaultsOnButAllowlistIsThePerDeviceGate(t *testing.T) {
 	clearEnv(t)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ControlEnabled {
-		t.Fatal("ControlEnabled must default false (kill-switch off)")
+	// ON by default (owner decision). Safe ONLY because the certification allowlist
+	// is the real per-device gate (checked below): control_enabled on edge/setpoint
+	// is ControlEnabled AND ControlCertified(family), so an uncertified family never
+	// writes even with the global switch on.
+	if !cfg.ControlEnabled {
+		t.Fatal("ControlEnabled must default TRUE (owner decision; the allowlist gates per device)")
 	}
 	if cfg.GridChargeAllowed {
 		t.Fatal("GridChargeAllowed must default false (EEG-compliant)")
@@ -177,8 +181,13 @@ func TestControlDefaultsOffAndCertifiedAllowlist(t *testing.T) {
 	if !cfg.ControlCertified("sunspec") {
 		t.Fatal("sunspec must be certified by default")
 	}
+	// THE safety spine: the pilot Deye family must stay OUT of the allowlist, so no
+	// live Deye write happens despite control being ON by default.
 	if cfg.ControlCertified("hybrid_3p") {
-		t.Fatal("Deye hybrid_3p must NOT be certified by default")
+		t.Fatal("Deye hybrid_3p must NOT be certified by default (no live inverter write)")
+	}
+	if cfg.ControlCertified("hybrid_1p") {
+		t.Fatal("Deye hybrid_1p must NOT be certified by default")
 	}
 	// An empty family (no selection / sim path) is treated as certified; the
 	// Layer-1 adapter still enforces its own gate.
