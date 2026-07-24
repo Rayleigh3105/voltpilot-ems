@@ -463,6 +463,51 @@ the family is **CERTIFIED** (may go live behind the kill-switch `VP_CONTROL_ENAB
   → "go-e Charger". Control safety: off by default, upstream guard authoritative (executor
   never widens the clamped setpoint), fail-safe neutral, readback published.
 
+## First-Light calibration: the guided, bounded first real write to a live battery
+
+The safe on-device surface (`:8484` „Steuerung kalibrieren") that proves a battery
+inverter's control **sign + scale** on the REAL hardware via small, observed,
+auto-reverting test writes, BEFORE the family is certified (design
+`data/vp-battery-control-deepdive/report.md` §5.7; operator flow
+`nodered/CONTROL-BENCH.md` → „First-Light-Kalibrierung"). It is the mechanism for the
+very first real write to a live customer battery, and the whole point is the safety
+envelope — implemented exactly:
+
+- **`internal/calibration`** is the PURE state machine + sign/scale/magnitude verdict
+  (no I/O; every time-dependent method takes `now`, so the envelope is deterministically
+  testable). `agent/calibration.go` wires it: the bounded write path, the auto-revert
+  watchdog, the measured-battery cross-check, the persisted per-device certification, and
+  the `web.CalibrationController` surface. Endpoints `GET /api/calibration` +
+  `POST /api/calibration/{arm,test,abort,confirm,correction,certify}`; card `static/calibration.js`.
+- **The bounded write path** (`Agent.calibrationOverride`, published on `edge/setpoint`):
+  a test setpoint is magnitude-capped (`VP_CALIBRATION_MAX_KW`, default 1.0 kW) AND still
+  run through `guards.Clamp` (never around it), auto-reverts to the neutral release after
+  `VP_CALIBRATION_TTL_SECONDS` (default 30 s) via a controller-owned `time.AfterFunc`
+  watchdog (independent of the UI — the write NEVER latches), is off by default (explicit
+  arm required), and its `control_enabled` bypasses **ONLY the certification allowlist** —
+  it is still ANDed with `VP_CONTROL_ENABLED`, so the global kill-switch stops it dead.
+  `source:"calibration"` + `calibration:true` mark it; it never grid-charges (EEG-safe).
+- **The executor bypass** (`inverter-control-routing.js` + the synced `build-flows.js`
+  copies, pinned by `flows-sync.test.js`): `setpoint.calibration===true` (and
+  `controlRelease(opts.calibration)`) let an UNCERTIFIED Deye emit its EXISTING mapped
+  WriteOps with `dwell_s=0` (a bounded manual test, so the revert is never blocked by the
+  900 s EEPROM dwell). It REUSES the executor/guards/readback/release — nothing widened.
+  Production (no flag) is byte-identical read-only.
+- **The certification hand-off** (`CalibrationCertify`): gated on the operator confirming
+  BOTH sign and scale (`Passed`), it writes the family into a persisted per-device set
+  (`data-dir/calibration-certified.json`) that `Agent.controlCertified` merges with the env
+  allowlist — so a released family drives the optimizer/arbiter live with NO env change.
+  Never auto-certifies; a sign/scale correction resets the confirmations and revokes it.
+  The fleet-wide certification stays the `VP_CONTROL_CERTIFIED_FAMILIES` allowlist edit.
+- **`invert_control_sign`** (the WRITE-path sign, separate from the read-path
+  `invert_grid_sign`) is plumbed through `inverter.Connection` + `BusPayload` + `Normalize`
+  so the calibration sign correction actually reaches the control adapter.
+- Proofs: `internal/calibration` units, `agent/calibration_test.go` (cap, guard clamp,
+  cert-bypass-without-kill-switch-bypass, auto-revert, persisted+merged cert, correction
+  resets+decertifies), `web` endpoint + card-structure tests, `inverter-control-routing.test.js`
+  + `deye-control.e2e.test.js` (real in-process Solarman-V5: a small calibration write
+  lands + reads back + matches WITHOUT certifying; the revert disables ToU on the wire).
+
 ## vp-modbus-read (MB-M1): generic Modbus flow read + the shared connection manager
 
 Palette **0.3.0** adds `nodes/vp-modbus-read.js` (catalog type `vp.modbus.read`): a

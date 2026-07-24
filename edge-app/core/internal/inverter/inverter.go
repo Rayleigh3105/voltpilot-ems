@@ -818,9 +818,9 @@ func (s Selection) BusPayload() []byte {
 		// `control_tier` is the battery-control primitive the Node-RED controlRoute
 		// dispatches on (additive; controlRoute falls back to communication-inference
 		// when it is absent, so an older core stays byte-compatible).
-		"control_tier":  s.ControlTier,
-		"connection":    conn,
-		"updated_at":    s.UpdatedAt.UTC().Format(time.RFC3339),
+		"control_tier": s.ControlTier,
+		"connection":   conn,
+		"updated_at":   s.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	raw, _ := json.Marshal(payload)
 	return raw

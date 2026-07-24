@@ -135,9 +135,9 @@ type testState struct {
 // Session is the calibration state machine. It is NOT safe for concurrent use;
 // the agent owns exactly one and guards it with a mutex.
 type Session struct {
-	cfg  Config
+	cfg   Config
 	armed bool
-	test *testState
+	test  *testState
 
 	// Operator confirmations, session-scoped (persist across tests within a
 	// commissioning session). Passed() == both true gates the certification step.
@@ -341,8 +341,8 @@ type TestView struct {
 // Snapshot is the /api/calibration payload. The Session fills the pure fields; the
 // agent decorates Available/Reason/ControlEnabled/Family/Certified before serving.
 type Snapshot struct {
-	Available      bool    `json:"available"`  // a battery inverter is selected (agent-set)
-	Reason         string  `json:"reason"`     // German note when unavailable/blocked (agent-set)
+	Available      bool    `json:"available"` // a battery inverter is selected (agent-set)
+	Reason         string  `json:"reason"`    // German note when unavailable/blocked (agent-set)
 	Armed          bool    `json:"armed"`
 	Phase          Phase   `json:"phase"`
 	MaxKw          float64 `json:"max_kw"`
