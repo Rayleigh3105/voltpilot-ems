@@ -5,9 +5,7 @@ Wechselrichter **und liest jedes Register zurück**, um register-genau zu belege
 dass der Wechselrichter den Befehl übernommen hat (Rückleseverifikation, siehe
 `inverter-control-routing.js` + `:8484` „Steuerung & Bestätigung").
 
-**Sicherheitsvorgabe (Captain-Entscheidung 3, nicht verhandelbar):** Steuerung ist
-**standardmäßig AUS** (`VP_CONTROL_ENABLED=false`), und **kein Modell schreibt live,
-bevor es am Prüfstand freigegeben (zertifiziert) wurde.** Der generische
+**Sicherheitsvorgabe (Captain-Entscheidung 3, nicht verhandelbar):** Der generische
 SunSpec-/Modbus-Adapter ist gegen den Simulator bewiesen und daher zertifiziert;
 **alle Deye-Familien sind bewusst NICHT zertifiziert** (`CERTIFIED_CONTROL_FAMILIES`
 in `inverter-control-routing.js` bzw. `VP_CONTROL_CERTIFIED_FAMILIES` im Core) und
@@ -19,6 +17,24 @@ ha-solarman steuert denselben Solarman-V5-Logger, die Adressen sind also belastb
 Sie bleiben dennoch **als `bench_pending` markiert** (per Modell/Firmware zu bestätigen) und
 werden bis zur Freigabe nie in einen Schreibbefehl umgesetzt. Konkrete Adressen: siehe
 die Tabelle in [`DEYE.md`](DEYE.md) → „Ausgeklammert: Hybrid-Batteriesteuerung".
+
+**Tier-Modell + Standard-EIN (Stand 2026, `vp-batctl-generic-r4`):** Die Steuerung
+dispatcht jetzt nach **`control_tier`** (0 read-only · 1 SunSpec-Modell 124 · 2 Vendor-EMS ·
+3 Deye Time-of-Use), nicht nach der Lese-Kommunikation - so bekommt ein künftiger
+Tier-2-Hersteller (Sungrow/SolarEdge) seinen eigenen Adapter, obwohl er über
+`modbus_tcp` liest. `VP_CONTROL_ENABLED` ist **standardmäßig EIN** (Owner-Entscheidung);
+sicher ist das ausschließlich, weil die **Zertifizierungs-Allowlist die eigentliche
+Geräte-Klammer** ist: eine unzertifizierte Familie liefert `writes:[]`, also **keinen
+Live-Schreibbefehl**, egal ob der Not-Aus an ist. Der **Deye-Solarman-V5-Schreib-Executor
+ist gebaut und offline bewiesen** (`deye-control.e2e.test.js`: Schreiben→Zurücklesen→Abgleich
+gegen einen echten In-Process-Solarman-V5-Server, EEPROM-Write-on-Change, Fail-Safe-Release),
+aber `hybrid_3p` steht **NICHT** in der Allowlist → er macht in Produktion nichts. **Die
+Freigabe = diese Checkliste bestehen, DANN die Familie in die Allowlist eintragen** (der
+einzige, code-freie Schalter, der Live-Schreiben aktiviert). Sign/Scale sind Config
+(`invert_control_sign`, `power_scale`; Deye HV = Dekawatt ×10) und werden hier kalibriert,
+nie angenommen. **Dual-Controller-Warnung:** Solange VoltPilot steuert, muss das eigene
+Smart-Control/„Selbstverbrauch+"-Programm des Wechselrichters AUS sein (evcc-Regel „nur ein
+Controller"); ein möglicher Konflikt wird über die Rückmeldung/den Status sichtbar gemacht.
 
 Diese Datei ist die Vorlage, die firstmate dem Captain für die Prüfstand-Sitzung an
 seinem echten **SUN-\*-SG01HP3-EU** (und einem LV-Gerät **SG04LP3**) übergibt.

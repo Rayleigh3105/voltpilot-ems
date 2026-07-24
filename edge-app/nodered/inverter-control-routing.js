@@ -12,11 +12,14 @@
  *     The executor (a Node-RED function node carrying a synced copy) performs the
  *     writes/readbacks. This makes the whole design unit-testable offline and
  *     pinned by flows-sync.test.js, just like route().
- *   - Control is OFF by default. `setpoint.control_enabled` is the CORE's
- *     kill-switch (VP_CONTROL_ENABLED, default false) AND its per-model
- *     certification verdict, folded into one boolean the core publishes on
- *     edge/setpoint. When it is false, `writes` is EMPTY - the readbacks still
- *     run so the UI shows the inverter's ACTUAL state, but nothing is written.
+ *   - `setpoint.control_enabled` is the CORE's kill-switch (VP_CONTROL_ENABLED,
+ *     default TRUE since vp-batctl-generic-r4) AND its per-model certification
+ *     verdict (control_enabled = ControlEnabled AND certified), folded into one
+ *     boolean the core publishes on edge/setpoint. On-by-default is safe ONLY
+ *     because the certification allowlist is the per-device gate: an UNCERTIFIED
+ *     family (every Deye/Fronius family) makes control_enabled false and `writes`
+ *     EMPTY - the readbacks still run so the UI shows the inverter's ACTUAL state,
+ *     but nothing is written. VP_CONTROL_ENABLED=false is the global stop.
  *   - A second, independent gate lives HERE: only families in
  *     CERTIFIED_CONTROL_FAMILIES may ever emit executable writes. An uncertified
  *     family (every Deye family until its model is bench-verified) returns
@@ -43,6 +46,14 @@ const sunspec = require('./sunspec/model-discovery');
 const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
 const COMM_FRONIUS = 'fronius_solar_api';
+
+// Control tiers - the battery-control PRIMITIVE, decoupled from the read transport
+// (design data/vp-battery-control-deepdive/report.md §1). Mirrors the Go
+// inverter.ControlTier* constants; the core stamps `control_tier` onto the
+// published selection and controlRoute DISPATCHES on it. Higher tier = more
+// real-time + higher risk. The tier only selects which adapter runs; a live write
+// is still gated by control_enabled + the certification allowlist.
+const CONTROL_TIER = { READ_ONLY: 0, SUNSPEC: 1, VENDOR_EMS: 2, TOU: 3 };
 
 // The Modbus-TCP control endpoint a Fronius device exposes for SunSpec control.
 // It is a SEPARATE surface from the Solar-API HTTP READ endpoint (port 80): the
@@ -73,6 +84,28 @@ const clampPct = (v) => Math.max(0, Math.min(100, Math.round(v)));
 
 function isFiniteNum(v) {
   return typeof v === 'number' && isFinite(v);
+}
+
+// inferTierFromCommunication reproduces the exact pre-tier dispatch: Deye -> ToU,
+// generic/Fronius SunSpec -> SunSpec, everything else -> read-only. Used only when
+// the selection carries no explicit control_tier (an older core, or a hand-built
+// selection), so a config without the field behaves byte-identically.
+function inferTierFromCommunication(communication) {
+  switch (communication) {
+    case COMM_SOLARMAN: return CONTROL_TIER.TOU;
+    case COMM_MODBUS: return CONTROL_TIER.SUNSPEC;
+    case COMM_FRONIUS: return CONTROL_TIER.SUNSPEC;
+    default: return CONTROL_TIER.READ_ONLY;
+  }
+}
+
+// resolveControlTier prefers the tier the selection declares (control_tier, stamped
+// by the core from the catalog), falling back to communication-inference when it is
+// absent/invalid. This is the ONE place that decides the control primitive.
+function resolveControlTier(selection) {
+  const t = selection && selection.control_tier;
+  if (typeof t === 'number' && isFinite(t) && t >= 0 && t <= 3) return Math.floor(t);
+  return inferTierFromCommunication(selection ? selection.communication : '');
 }
 
 /**
@@ -114,16 +147,247 @@ function controlRoute(selection, setpoint, opts = {}) {
   const pvLimitKw = isFiniteNum(setpoint.pv_limit_kw) && setpoint.pv_limit_kw >= 0
     ? setpoint.pv_limit_kw : null;
 
-  if (selection.communication === COMM_MODBUS) {
-    return sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw });
-  }
-  if (selection.communication === COMM_SOLARMAN) {
+  // Dispatch on the CONTROL TIER (the battery-control primitive), not the read
+  // communication (report §1/§7.3). The tier decouples control from the transport
+  // so a Tier-2 vendor can be added as catalog data; within a tier the register
+  // SURFACE is still selected by communication/family (Tier 1 has two surfaces: the
+  // generic/sim SunSpec and Fronius SunSpec). Every catalogued brand keeps its exact
+  // prior adapter, so behaviour is byte-identical to the communication-only dispatch
+  // (proven by the routing tests + flows-sync.test.js).
+  const tier = resolveControlTier(selection);
+  const comm = selection.communication;
+  if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
     return deyeControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
   }
-  if (selection.communication === COMM_FRONIUS) {
-    return froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
+  if (tier === CONTROL_TIER.VENDOR_EMS) {
+    return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
+  }
+  if (tier === CONTROL_TIER.SUNSPEC) {
+    if (comm === COMM_MODBUS) {
+      return sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw });
+    }
+    if (comm === COMM_FRONIUS) {
+      return froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
+    }
   }
   return idle('unbekannte Kommunikationsmethode');
+}
+
+// --- Tier-2 vendor external-EMS adapter (Sungrow/SolarEdge) - EXTENSION POINT -----
+//
+// The forced-watts RAM-setpoint path (report §3): mode -> command -> power, re-
+// issued on a heartbeat. NOT built here - the Tier-2 vendor executors are Phase E.
+// This stub makes the tier DISPATCH real + honest: a brand catalogued as
+// control_tier=2 lands here instead of being misread as a Tier-1 SunSpec device
+// just because its read transport happens to be modbus_tcp. It NEVER emits a live
+// write (no catalogued brand is Tier 2 yet). When a Sungrow/SolarEdge adapter is
+// built, replace this body with the vendor `{ems_mode_reg, cmd_reg, power_reg, ...}`
+// WriteOps (behind the same controlEnabled + certification gate).
+function vendorEmsControl({ conn, ip, family, controlEnabled }) {
+  const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+  return {
+    adapter: 'vendor_ems', family,
+    target: ip + ':' + port,
+    connection: { ip, port },
+    certified: false, // no Tier-2 vendor is bench-certified yet
+    controlEnabled,
+    writes: [],
+    readbacks: [],
+    planned: [],
+    reason: 'Tier-2 Wechselrichtersteuerung (externes EMS) noch nicht implementiert',
+  };
+}
+
+// The controller-owned staleness window (report §5.5/§7.5): an edge/setpoint whose
+// core timestamp is older than this is treated as the core having gone silent, so
+// the executor hands control BACK rather than latching the last command. Mirrors
+// the Go plan.StaleAfter (20 min). A native inverter revert timer, where it exists,
+// is a bonus - we never depend on one (Fronius storage has none).
+const SETPOINT_STALE_MS = 20 * 60 * 1000;
+
+/**
+ * controlRelease - the CONTROLLER-OWNED FAILSAFE write plan (report §2.5/§7.5).
+ * Returns the NEUTRAL write plan the executor issues when it must hand control
+ * BACK: edge/setpoint stale (>20 min = core silent), connection loss, or
+ * control_enabled -> false after we held control. It commands NO power, so sign
+ * and scale never matter; per-tier neutral:
+ *   Tier 1 SunSpec (sim/generic): control_enable = 0 (+ setpoint 0, cap cleared)
+ *   Tier 1 Fronius SunSpec:       StorCtl_Mod = 0 + WMaxLim_Ena = 0 (discovered)
+ *   Tier 3 Deye:                  Time-of-Use disabled (revert to self-consumption)
+ *   Tier 2 vendor EMS:            mode -> self-consumption (extension point)
+ *
+ * Gated EXACTLY like controlRoute: only a CERTIFIED family emits executable release
+ * writes; an uncertified family (Deye, Fronius) is planned-only, dormant until its
+ * bench pass. So in production only the certified SunSpec path actually releases;
+ * the Deye/Fronius release is proven by unit tests, never a live write.
+ *
+ *   selection: the parsed edge/inverter/config (or null)
+ *   opts:      { sunspec?: discovery } - live SunSpec model discovery for Fronius
+ * Returns { adapter, family, tier, certified, mode:'release', target, connection,
+ *           writes:[WriteOp], readbacks:[ReadOp], planned:[WriteOp], reason? }.
+ */
+function controlRelease(selection, opts = {}) {
+  const idle = (reason) => ({
+    adapter: 'idle', family: '', tier: CONTROL_TIER.READ_ONLY, certified: false,
+    mode: 'release', writes: [], readbacks: [], planned: [], reason,
+  });
+  if (!selection) return idle('keine Auswahl');
+  const conn = selection.connection || {};
+  const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
+  if (!ip) return idle('keine IP-Adresse');
+  const family = typeof selection.family === 'string' ? selection.family.trim() : '';
+  const certified = CERTIFIED_CONTROL_FAMILIES.has(family);
+  const tier = resolveControlTier(selection);
+  const comm = selection.communication;
+
+  if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
+    const serial = conn.serial;
+    const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
+    const reg = deyeFamilyControlReg(family);
+    // Neutral TOU slot: DISABLE the Time-of-Use scheduler so the inverter reverts to
+    // its own self-consumption logic. EEPROM -> write-on-change (dwell_s), and never
+    // emitted for an uncertified family. String/micro (no ToU) has nothing to release.
+    const planned = reg ? [{
+      role: 'tou_enable', fc: 6, addr: reg.touEnable, value: 0,
+      encode: { kind: 'tou_mask', all_week: false, release: true },
+      dwell_s: 900, min_change: 0, bench_pending: true,
+    }] : [];
+    const readbacks = reg ? [{ role: 'tou_enable', fc: 3, addr: reg.touEnable, expect: 0, tolerance: 0 }] : [];
+    return {
+      adapter: 'solarman_v5', family, tier, certified, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
+      writes: certified ? planned : [], readbacks: certified ? readbacks : [],
+      planned, reason: certified ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
+    };
+  }
+
+  if (tier === CONTROL_TIER.VENDOR_EMS) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    return {
+      adapter: 'vendor_ems', family, tier, certified: false, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port },
+      writes: [], readbacks: [], planned: [],
+      reason: 'Tier-2 Wechselrichtersteuerung (externes EMS) noch nicht implementiert',
+    };
+  }
+
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_MODBUS) {
+    const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+    const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
+    // Hand back to self-consumption: control_enable OFF, setpoint cleared, cap cleared.
+    const planned = [
+      { role: 'control_enable', fc: 6, addr: SUNSPEC_REG.ENABLE, value: 0, encode: { kind: 'flag' }, dwell_s: 0, min_change: 0 },
+      { role: 'battery_power', fc: 6, addr: SUNSPEC_REG.SETPOINT, value: 0, encode: { kind: 'kw_x100_s16', scale: 100, kw: 0 }, dwell_s: 0, min_change: 0 },
+      { role: 'pv_limit', fc: 6, addr: SUNSPEC_REG.PVLIMIT, value: NO_PV_LIMIT, encode: { kind: 'pv_limit_x100_u16', scale: 100, sentinel: NO_PV_LIMIT, kw: null }, dwell_s: 0, min_change: 0 },
+    ];
+    const readbacks = [
+      { role: 'control_enable', fc: 3, addr: SUNSPEC_REG.ENABLE, expect: 0, tolerance: 0 },
+      { role: 'battery_power', fc: 3, addr: SUNSPEC_REG.SETPOINT, expect: 0, tolerance: 1 },
+      { role: 'pv_limit', fc: 3, addr: SUNSPEC_REG.PVLIMIT, expect: NO_PV_LIMIT, tolerance: 1 },
+    ];
+    return {
+      adapter: 'modbus_tcp', family, tier, certified, mode: 'release', profile: family,
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
+      writes: certified ? planned : [], readbacks: certified ? readbacks : [],
+      planned, reason: certified ? undefined : 'Modell noch nicht freigegeben',
+    };
+  }
+
+  if (tier === CONTROL_TIER.SUNSPEC && comm === COMM_FRONIUS) {
+    // Fronius storage has NO native revert timer (report §2.5) - exactly why the
+    // controller must own this. Release = idle storage (StorCtl_Mod=0) + disabled
+    // curtailment (WMaxLim_Ena=0), both at DISCOVERED addresses (reuse planStorage(0)
+    // / planCurtailment(null)). Uncertified -> planned-only, no fabricated address.
+    const port = Number(conn.control_port) > 0 ? Number(conn.control_port) : DEFAULT_FRONIUS_CONTROL_PORT;
+    const unitId = Number(conn.control_unit_id) > 0 ? Number(conn.control_unit_id) : 1;
+    const discovery = opts.sunspec || null;
+    const curtail = sunspec.planCurtailment({ discovery, pvLimitKw: null });
+    const storage = sunspec.planStorage({ discovery, batterySetpointKw: 0 });
+    const planned = [
+      ...(curtail.ok ? curtail.writes.map((w) => ({ ...w, bench_pending: true })) : []),
+      ...(storage.ok ? storage.writes.map((w) => ({ ...w, bench_pending: true })) : []),
+    ];
+    return {
+      adapter: 'fronius_sunspec', family, tier, certified, mode: 'release',
+      target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
+      writes: [], readbacks: [], planned,
+      reason: planned.length > 0 ? 'Fronius SunSpec: Steuerung nicht freigegeben'
+        : 'Fronius SunSpec: ' + curtail.reason + ' (Steuerung nicht freigegeben)',
+    };
+  }
+
+  return idle('unbekannte Kommunikationsmethode');
+}
+
+/**
+ * setpointStale - the executor-owned dead-man's check: true when the setpoint's
+ * core timestamp is older than SETPOINT_STALE_MS (the core went silent). A missing
+ * / unparseable ts is treated as NOT stale (the core always stamps ts; never release
+ * on a parse quirk). `nowMs` defaults to Date.now() (overridable for tests).
+ */
+function setpointStale(ts, nowMs) {
+  if (typeof ts !== 'string' || ts === '') return false;
+  const t = Date.parse(ts);
+  if (!isFinite(t)) return false;
+  const now = typeof nowMs === 'number' ? nowMs : Date.now();
+  return now - t > SETPOINT_STALE_MS;
+}
+
+/**
+ * dualControllerSignal - the GENERIC "only-controller" awareness (evcc's hard rule
+ * + report §9 failure #6). While VoltPilot controls, the inverter's OWN smart-control
+ * (self-consumption+, native scheduling) MUST be off, or two controllers fight. We
+ * cannot force the inverter's setting off, but we SURFACE a possible conflict so it
+ * is never SILENTLY fought.
+ *
+ * The GENERIC detector (active for every adapter that reads back): while actively
+ * controlling a certified device, a register we commanded that does NOT hold its
+ * value (readback mismatch) is the signal that something else may be steering the
+ * inverter. Honest "possible" - it can also be a not-yet-adopted write; the reason
+ * tells the operator to make VoltPilot the ONLY controller. This applies to the Deye
+ * Tier-3 path AND the SunSpec Tier-1 path unchanged (it keys on the readback facts,
+ * not the vendor).
+ *
+ * VENDOR-SPECIFIC detectors are EXTENSION POINTS that land with their tiers:
+ *   - Fronius (Tier 1, Phase D): the manual AND-links `ChaGriSet` with the web-UI
+ *     "battery charging from grid" toggle, so a GRID command is silently vetoed by a
+ *     UI setting (report §2.7) - read ChaGriSet back + compare. Seam: opts.vendor.
+ *   - SolarEdge (Tier 2, Phase E): read StorageControlMode (0xE004); != 4 (Remote
+ *     Control) means a UI/second controller left remote mode. Seam: opts.vendor.
+ * Neither vendor read is wired yet; the seams keep the generic path untouched when
+ * a detector is added.
+ *
+ *   facts: { family, certified, controlEnabled, registerCount, allMatch, mismatchRoles }
+ * Returns { onlyControllerRequired, possibleConflict, detector, reason }.
+ */
+function dualControllerSignal(facts = {}) {
+  const controlling = facts.certified === true
+    && facts.controlEnabled === true
+    && Number(facts.registerCount) > 0;
+  const out = {
+    onlyControllerRequired: controlling,
+    possibleConflict: false,
+    detector: controlling ? 'readback_mismatch' : 'none',
+    reason: '',
+  };
+  if (!controlling) return out;
+
+  // --- vendor-specific extension points (Phase D/E) -- see the docstring. The
+  //     detectors read a vendor register (Fronius ChaGriSet, SolarEdge storage
+  //     mode) via opts.vendor and set possibleConflict; not wired yet, so we fall
+  //     through to the generic detector without touching it.
+
+  // --- generic detector: a commanded register that does not hold its value ---
+  if (facts.allMatch !== true) {
+    const roles = Array.isArray(facts.mismatchRoles) ? facts.mismatchRoles : [];
+    out.possibleConflict = true;
+    out.reason = 'Der Wechselrichter hält den geschriebenen Sollwert nicht ('
+      + (roles.join(', ') || 'Register weicht ab')
+      + '). Möglicher Konflikt: die eigene Smart-Steuerung des Wechselrichters oder ein '
+      + 'zweites EMS könnte gegensteuern - VoltPilot muss der einzige Controller sein.';
+  }
+  return out;
 }
 
 // --- generic_modbus / SunSpec control adapter (CERTIFIED, proven vs sim) ------
@@ -360,17 +624,36 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
   const powerScale = Number(conn.power_scale) > 0 ? Number(conn.power_scale) : 1;
 
   const reg = deyeFamilyControlReg(family);
-  const base = {
-    adapter: 'solarman_v5', family,
-    target: ip + ':' + port,
-    connection: { ip, port, serial, mb_slave_id: slaveId },
-    certified, // false for all Deye families until bench-certified
-    controlEnabled,
-    // Read-only until certified: NEVER emit executable writes for a bench-pending
-    // address, and do not pretend to confirm control registers we cannot trust.
-    writes: [],
-    readbacks: [],
-    reason: 'Steuerung für dieses Modell noch nicht freigegeben',
+  // The un-gated Deye adapter: the SAME two-gate discipline as sunspecControl.
+  // `planned` is always the real ToU/power WriteOps (from DEYE_CONTROL_REG); a live
+  // write/readback only flows when certified AND control_enabled. Deye stays OUT of
+  // CERTIFIED_CONTROL_FAMILIES (bench-pending per firmware), so in production
+  // writeAllowed is ALWAYS false -> writes:[]/readbacks:[] (dormant). The gate is
+  // now generic: adding hybrid_3p to the allowlist after a bench pass flips control
+  // on with no code change. EEPROM discipline rides on each WriteOp (dwell_s >= 900,
+  // min_change) - the executor writes on change, the 10 s tick drives readback only.
+  const writeAllowed = certified && controlEnabled;
+  // Readback tolerance: the power register is decawatt/watt-scaled so allow ±1 raw
+  // unit; the enum/flag registers must match exactly.
+  const deyeRbTol = (role) => (role === 'battery_power' || role === 'pv_limit' ? 1 : 0);
+  const finalize = (planned) => {
+    const readbacks = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: deyeRbTol(w.role) }));
+    // executable writes carry no bench_pending flag (that is a display marker on
+    // `planned`); the two objects otherwise match address-for-address.
+    const execWrites = planned.map((w) => { const c = { ...w }; delete c.bench_pending; return c; });
+    const out = {
+      adapter: 'solarman_v5', family,
+      target: ip + ':' + port,
+      connection: { ip, port, serial, mb_slave_id: slaveId },
+      certified, controlEnabled,
+      writes: writeAllowed ? execWrites : [],
+      readbacks: writeAllowed ? readbacks : [],
+      planned,
+    };
+    if (!writeAllowed) {
+      out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Steuerung für dieses Modell noch nicht freigegeben';
+    }
+    return out;
   };
 
   // String / micro Deye: NO battery, NO ToU. The only lever is the active-power
@@ -386,7 +669,7 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
         dwell_s: 900, min_change: 1, bench_pending: true,
       });
     }
-    return { ...base, planned };
+    return finalize(planned);
   }
 
   const battKw = invert ? -kw : kw;
@@ -445,13 +728,14 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
     });
   }
 
-  return { ...base, planned };
+  return finalize(planned);
 }
 
 module.exports = {
   COMM_SOLARMAN,
   COMM_MODBUS,
   COMM_FRONIUS,
+  CONTROL_TIER,
   DEFAULT_FRONIUS_CONTROL_PORT,
   SUNSPEC_REG,
   NO_PV_LIMIT,
@@ -461,5 +745,10 @@ module.exports = {
   DEYE_TOU_ENABLED_ALL_WEEK,
   DEYE_CONTROL_SLOT,
   CERTIFIED_CONTROL_FAMILIES,
+  SETPOINT_STALE_MS,
+  resolveControlTier,
   controlRoute,
+  controlRelease,
+  setpointStale,
+  dualControllerSignal,
 };

@@ -148,6 +148,33 @@ test('Deye is UNCERTIFIED: never emits executable writes even when control_enabl
   assert.match(r.reason, /noch nicht freigegeben/);
 });
 
+test('un-gate: Deye writes/readbacks are gated ONLY by the certification allowlist (generic gate)', () => {
+  const sp = enabled({ battery_setpoint_kw: -20 });
+  const off = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+  assert.deepStrictEqual(off.writes, [], 'default: uncertified -> no writes');
+  assert.deepStrictEqual(off.readbacks, []);
+  assert.ok(off.planned.length >= 5, 'the real ToU plan is always in planned[]');
+  // Certifying the family (a bench pass) is the ONLY thing that turns writes on -
+  // NO code change. This IS the un-gate. Restored immediately so the production
+  // default stays read-only.
+  C.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+  try {
+    const on = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+    assert.strictEqual(on.certified, true);
+    assert.strictEqual(on.writes.length, off.planned.length, 'writes == the planned ToU ops');
+    assert.strictEqual(on.readbacks.length, on.writes.length, 'a readback per written register');
+    assert.ok(on.writes.every((w) => w.bench_pending === undefined), 'executable writes are not bench_pending markers');
+    // The kill-switch still gates independently: certified but control_enabled=false
+    // writes NOTHING (two-gate discipline, identical to sunspecControl).
+    const killed = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: false }, { ratedKw: 30 });
+    assert.deepStrictEqual(killed.writes, [], 'certified + kill-switch off -> still no writes');
+    assert.deepStrictEqual(killed.readbacks, []);
+  } finally {
+    C.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+  }
+  assert.deepStrictEqual(C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 }).writes, [], 'production default is read-only again');
+});
+
 test('Deye hybrid_3p planned ToU mapping uses the ha-solarman deye_p3 registers', () => {
   const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 }), { ratedKw: 50 });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
@@ -352,4 +379,167 @@ test('CERTIFIED_CONTROL_FAMILIES contains sunspec but no Deye or Fronius family'
   for (const f of ['hybrid_3p', 'hybrid_1p', 'string', 'micro', 'fronius_solar_api']) {
     assert.ok(!C.CERTIFIED_CONTROL_FAMILIES.has(f), f + ' must stay uncertified');
   }
+});
+
+// --- control-tier dispatch (Phase A) -----------------------------------------
+
+test('resolveControlTier prefers control_tier, else infers from communication', () => {
+  // explicit wins
+  assert.strictEqual(C.resolveControlTier({ communication: 'modbus_tcp', control_tier: 2 }), C.CONTROL_TIER.VENDOR_EMS);
+  assert.strictEqual(C.resolveControlTier({ communication: 'solarman_v5', control_tier: 0 }), C.CONTROL_TIER.READ_ONLY);
+  // inference reproduces the pre-tier dispatch when control_tier is absent
+  assert.strictEqual(C.resolveControlTier({ communication: 'solarman_v5' }), C.CONTROL_TIER.TOU);
+  assert.strictEqual(C.resolveControlTier({ communication: 'modbus_tcp' }), C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(C.resolveControlTier({ communication: 'fronius_solar_api' }), C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(C.resolveControlTier({ communication: 'goe_http_api' }), C.CONTROL_TIER.READ_ONLY);
+  // out-of-range / garbage tiers fall back to inference
+  assert.strictEqual(C.resolveControlTier({ communication: 'modbus_tcp', control_tier: 9 }), C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(C.resolveControlTier({ communication: 'solarman_v5', control_tier: 'x' }), C.CONTROL_TIER.TOU);
+});
+
+test('an explicit control_tier is byte-identical to inference for a catalogued brand', () => {
+  // The core now stamps control_tier onto the selection; the plan must be IDENTICAL
+  // whether the field is present (new core) or inferred (old core / hand-built).
+  const sp = enabled({ battery_setpoint_kw: -25, pv_limit_kw: 3 });
+  assert.deepStrictEqual(
+    C.controlRoute({ ...SUNSPEC_SEL, control_tier: 1 }, sp),
+    C.controlRoute(SUNSPEC_SEL, sp),
+  );
+  const dsp = enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 });
+  assert.deepStrictEqual(
+    C.controlRoute({ ...DEYE_SEL, control_tier: 3 }, dsp, { ratedKw: 50 }),
+    C.controlRoute(DEYE_SEL, dsp, { ratedKw: 50 }),
+  );
+});
+
+test('control_tier decouples control from the read transport (Tier-2 extension point)', () => {
+  // A future Sungrow-like brand reads over modbus_tcp yet declares Tier 2. It MUST
+  // land on the vendor-EMS extension point, never be misread as a Tier-1 SunSpec
+  // device (which shares the modbus_tcp transport). This is the whole reason the
+  // dispatch keys on the tier, not the communication.
+  const sel = { schema_version: '1.0', brand: 'sungrow', family: 'sungrow_sh',
+    communication: 'modbus_tcp', control_tier: 2, connection: { ip: '10.0.0.9', port: 502 } };
+  const r = C.controlRoute(sel, enabled({ battery_setpoint_kw: -5 }));
+  assert.strictEqual(r.adapter, 'vendor_ems', 'Tier 2 -> vendor-EMS, not the modbus SunSpec adapter');
+  assert.strictEqual(r.certified, false, 'no Tier-2 vendor is certified yet');
+  assert.deepStrictEqual(r.writes, [], 'the extension point never emits a live write');
+  assert.deepStrictEqual(r.planned, []);
+  assert.match(r.reason, /Tier-2|noch nicht implementiert/);
+});
+
+test('control_tier 0 (read-only) idles even over a controllable transport', () => {
+  // A brand explicitly marked read-only must not control, even though its transport
+  // (modbus_tcp) would otherwise infer Tier 1.
+  const sel = { ...SUNSPEC_SEL, control_tier: 0 };
+  assert.strictEqual(C.controlRoute(sel, enabled({ battery_setpoint_kw: -5 })).adapter, 'idle');
+});
+
+// --- controller-owned failsafe: controlRelease() per tier (Phase B) ----------
+
+test('Tier-1 SunSpec release hands control back: control_enable=0, setpoint 0, cap cleared', () => {
+  const r = C.controlRelease(SUNSPEC_SEL);
+  assert.strictEqual(r.mode, 'release');
+  assert.strictEqual(r.adapter, 'modbus_tcp');
+  assert.strictEqual(r.tier, C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(r.certified, true);
+  const w = Object.fromEntries(r.writes.map((x) => [x.role, x]));
+  assert.strictEqual(w.control_enable.addr, 41);
+  assert.strictEqual(w.control_enable.value, 0, 'control disabled -> inverter self-consumes');
+  assert.strictEqual(w.battery_power.value, 0);
+  assert.strictEqual(w.pv_limit.value, 0xffff, 'feed-in cap cleared');
+  // readbacks mirror the release writes (the release is verified too)
+  assert.strictEqual(r.readbacks.length, 3);
+  assert.strictEqual(r.readbacks.find((x) => x.role === 'control_enable').expect, 0);
+});
+
+test('Tier-3 Deye release disables Time-of-Use but stays PLANNED-ONLY (uncertified)', () => {
+  const r = C.controlRelease(DEYE_SEL);
+  assert.strictEqual(r.mode, 'release');
+  assert.strictEqual(r.adapter, 'solarman_v5');
+  assert.strictEqual(r.tier, C.CONTROL_TIER.TOU);
+  assert.strictEqual(r.certified, false);
+  assert.deepStrictEqual(r.writes, [], 'no live release write to a bench-pending Deye');
+  assert.deepStrictEqual(r.readbacks, []);
+  // the intended neutral is visible for the bench: disable ToU -> self-consumption
+  assert.strictEqual(r.planned.length, 1);
+  assert.strictEqual(r.planned[0].role, 'tou_enable');
+  assert.strictEqual(r.planned[0].addr, C.DEYE_CONTROL_REG.hybrid_3p.touEnable);
+  assert.strictEqual(r.planned[0].value, 0);
+  assert.strictEqual(r.planned[0].bench_pending, true);
+});
+
+test('Tier-1 Fronius release plans idling storage + disabling curtailment (bench_pending, never executable)', () => {
+  const disc = froniusDiscoveryWithStorage();
+  const r = C.controlRelease(FRONIUS_SEL, { sunspec: disc });
+  assert.strictEqual(r.mode, 'release');
+  assert.strictEqual(r.adapter, 'fronius_sunspec');
+  assert.strictEqual(r.certified, false);
+  assert.deepStrictEqual(r.writes, [], 'never a live Fronius release write');
+  assert.deepStrictEqual(r.readbacks, []);
+  const roles = new Set(r.planned.map((w) => w.role));
+  assert.ok(roles.has('battery_storage_mode'), 'StorCtl_Mod=0 planned (idle storage)');
+  assert.ok(roles.has('pv_limit_enable'), 'WMaxLim_Ena=0 planned (curtailment off)');
+  assert.strictEqual(r.planned.find((w) => w.role === 'battery_storage_mode').value, sunspec.STORCTL_MOD.NONE);
+  assert.ok(r.planned.every((w) => w.bench_pending === true));
+});
+
+test('Fronius release is IDLE-SAFE without discovery (no fabricated address)', () => {
+  const r = C.controlRelease(FRONIUS_SEL, {});
+  assert.deepStrictEqual(r.planned, []);
+  assert.deepStrictEqual(r.writes, []);
+});
+
+test('Tier-2 release is the self-consumption extension point (never a live write)', () => {
+  const sel = { schema_version: '1.0', brand: 'sungrow', family: 'sungrow_sh',
+    communication: 'modbus_tcp', control_tier: 2, connection: { ip: '10.0.0.9', port: 502 } };
+  const r = C.controlRelease(sel);
+  assert.strictEqual(r.adapter, 'vendor_ems');
+  assert.deepStrictEqual(r.writes, []);
+  assert.deepStrictEqual(r.planned, []);
+});
+
+test('controlRelease idles with no selection / no IP', () => {
+  assert.strictEqual(C.controlRelease(null).adapter, 'idle');
+  assert.strictEqual(C.controlRelease({ ...SUNSPEC_SEL, connection: { ip: '' } }).adapter, 'idle');
+});
+
+test('setpointStale is the dead-man check: stale past 20 min, fresh within, safe on missing ts', () => {
+  const now = Date.parse('2026-07-08T12:00:00Z');
+  assert.strictEqual(C.setpointStale('2026-07-08T11:39:00Z', now), true, '21 min old -> stale');
+  assert.strictEqual(C.setpointStale('2026-07-08T11:45:00Z', now), false, '15 min old -> fresh');
+  assert.strictEqual(C.setpointStale(undefined, now), false, 'missing ts never releases');
+  assert.strictEqual(C.setpointStale('nonsense', now), false, 'unparseable ts never releases');
+});
+
+// --- dual-controller awareness (evcc "only controller" rule) ------------------
+
+test('dualControllerSignal flags a POSSIBLE conflict when a commanded register is not held', () => {
+  const r = C.dualControllerSignal({ family: 'hybrid_3p', certified: true, controlEnabled: true, registerCount: 5, allMatch: false, mismatchRoles: ['battery_power'] });
+  assert.strictEqual(r.onlyControllerRequired, true, 'actively controlling -> the only-controller rule applies');
+  assert.strictEqual(r.possibleConflict, true);
+  assert.strictEqual(r.detector, 'readback_mismatch');
+  assert.match(r.reason, /einzige Controller|gegensteuern/);
+  assert.match(r.reason, /battery_power/);
+});
+
+test('dualControllerSignal is quiet while control holds (all registers match)', () => {
+  const r = C.dualControllerSignal({ family: 'sunspec', certified: true, controlEnabled: true, registerCount: 3, allMatch: true, mismatchRoles: [] });
+  assert.strictEqual(r.onlyControllerRequired, true);
+  assert.strictEqual(r.possibleConflict, false, 'holding our command -> no conflict');
+  assert.strictEqual(r.reason, '');
+});
+
+test('dualControllerSignal does not apply when we are not actively controlling', () => {
+  // kill-switch off, or uncertified, or nothing written -> the rule is moot.
+  assert.strictEqual(C.dualControllerSignal({ certified: true, controlEnabled: false, registerCount: 3, allMatch: false }).onlyControllerRequired, false);
+  assert.strictEqual(C.dualControllerSignal({ certified: false, controlEnabled: true, registerCount: 3, allMatch: false }).possibleConflict, false, 'uncertified -> never a conflict claim');
+  assert.strictEqual(C.dualControllerSignal({ certified: true, controlEnabled: true, registerCount: 0, allMatch: false }).detector, 'none');
+});
+
+test('dualControllerSignal applies to the Deye Tier-3 path the same as SunSpec (generic detector)', () => {
+  const deye = C.dualControllerSignal({ family: 'hybrid_3p', certified: true, controlEnabled: true, registerCount: 5, allMatch: false, mismatchRoles: ['tou_enable'] });
+  const sun = C.dualControllerSignal({ family: 'sunspec', certified: true, controlEnabled: true, registerCount: 3, allMatch: false, mismatchRoles: ['tou_enable'] });
+  assert.strictEqual(deye.possibleConflict, true);
+  assert.strictEqual(sun.possibleConflict, true);
+  assert.strictEqual(deye.detector, sun.detector, 'same generic detector regardless of vendor');
 });

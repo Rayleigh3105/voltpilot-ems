@@ -151,6 +151,25 @@ describe('shaping (pure)', function () {
     assert.ok(future, 'an unknown communication passes through; the router goes idle with a named status');
   });
 
+  it('vp-inverter-config threads control_tier through so controlRoute can dispatch on it', function () {
+    // The core stamps control_tier onto the selection; parse() must carry it (a
+    // Tier-2 brand reading over modbus_tcp cannot be dispatched otherwise).
+    const t2 = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', brand: 'sungrow', family: 'sungrow_sh',
+      communication: 'modbus_tcp', control_tier: 2, connection: { ip: '10.0.0.9' },
+    })));
+    assert.strictEqual(t2.control_tier, 2);
+    // absent / out-of-range -> undefined, so controlRoute falls back to inference.
+    const none = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: 'y' },
+    })));
+    assert.strictEqual(none.control_tier, undefined);
+    const bad = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', family: 'sunspec', communication: 'modbus_tcp', control_tier: 9, connection: { ip: 'y' },
+    })));
+    assert.strictEqual(bad.control_tier, undefined);
+  });
+
   it('vp-control-readback shapes a readback and derives all_match / mismatch_roles', function () {
     const ok = vpControlReadback.shape({
       ts: '2026-07-08T12:00:03Z', family: 'sunspec', source: 'schedule',
@@ -170,6 +189,39 @@ describe('shaping (pure)', function () {
     });
     assert.strictEqual(bad.all_match, false);
     assert.deepStrictEqual(bad.mismatch_roles, ['battery_power']);
+  });
+
+  it('vp-control-readback surfaces the dual-controller signal, matching the canonical detector', function () {
+    // The canonical, unit-tested detector lives in inverter-control-routing.js; the
+    // readback node surfaces it on edge/control/readback. Cross-check that shape()'s
+    // dual_controller equals the module for the SAME facts (no drift), and that a
+    // mismatch while actively controlling flags a possible conflict.
+    const control = require('../../inverter-control-routing.js');
+    const activeMismatch = {
+      family: 'hybrid_3p', control_enabled: true, certified: true,
+      registers: [
+        { role: 'battery_power', fc: 3, addr: 154, commanded_raw: 20000, actual_raw: 0, match: false },
+        { role: 'tou_enable', fc: 3, addr: 146, commanded_raw: 255, actual_raw: 255, match: true },
+      ],
+    };
+    const shaped = vpControlReadback.shape(activeMismatch);
+    assert.strictEqual(shaped.dual_controller.possible_conflict, true, 'commanded register not held -> possible conflict');
+    assert.strictEqual(shaped.dual_controller.only_controller_required, true);
+    const canonical = control.dualControllerSignal({
+      family: 'hybrid_3p', certified: true, controlEnabled: true, registerCount: 2,
+      allMatch: false, mismatchRoles: ['battery_power'],
+    });
+    assert.strictEqual(shaped.dual_controller.possible_conflict, canonical.possibleConflict);
+    assert.strictEqual(shaped.dual_controller.only_controller_required, canonical.onlyControllerRequired);
+    assert.strictEqual(shaped.dual_controller.detector, canonical.detector);
+    assert.strictEqual(shaped.dual_controller.reason, canonical.reason);
+
+    // holding our command -> quiet; kill-switch off -> the rule is moot.
+    const held = vpControlReadback.shape({ ...activeMismatch, registers: [{ role: 'x', match: true, commanded_raw: 1, actual_raw: 1 }] });
+    assert.strictEqual(held.dual_controller.possible_conflict, false);
+    const off = vpControlReadback.shape({ ...activeMismatch, control_enabled: false });
+    assert.strictEqual(off.dual_controller.only_controller_required, false, 'not controlling -> no conflict claim');
+    assert.strictEqual(off.dual_controller.possible_conflict, false);
   });
 
   it('vp-control-readback rejects malformed readbacks', function () {

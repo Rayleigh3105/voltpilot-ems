@@ -14,6 +14,7 @@ import (
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -109,11 +110,27 @@ func TestSetpointCarriesKillSwitchAndPvLimit(t *testing.T) {
 	}
 }
 
-func TestSetpointKillSwitchOffByDefault(t *testing.T) {
-	cfg := config.Defaults() // ControlEnabled defaults false
+// TestSetpointGateIsTheAllowlistNotTheDefault is the safety spine of ON-by-default
+// control: even with ControlEnabled=true (the default), an UNCERTIFIED inverter
+// family (the pilot Deye) makes control_enabled=false on edge/setpoint, so Layer 1
+// writes NOTHING. The per-model certification allowlist is the real per-device gate;
+// the global switch is only the coarse stop.
+func TestSetpointGateIsTheAllowlistNotTheDefault(t *testing.T) {
+	cfg := config.Defaults() // ControlEnabled defaults TRUE now
 	cfg.DataDir = t.TempDir()
+	if !cfg.ControlEnabled {
+		t.Fatal("precondition: control must be ON by default")
+	}
 	a, addr := startBusOnlyAgent(t, cfg)
 	sub := subscribeSetpoint(t, addr)
+
+	// Select the pilot Deye (family hybrid_3p) - deliberately NOT in the allowlist.
+	if _, err := a.SetInverter(inverter.SelectionRequest{
+		Brand: inverter.BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: inverter.Connection{IP: "192.168.0.28", Serial: "2985159064"},
+	}); err != nil {
+		t.Fatalf("SetInverter: %v", err)
+	}
 
 	now := time.Now().UTC()
 	a.mu.Lock()
@@ -127,8 +144,38 @@ func TestSetpointKillSwitchOffByDefault(t *testing.T) {
 		return ok
 	})
 	m, _ := sub.latest()
+	// ON by default, but the uncertified Deye family gates it OFF -> no live write.
 	if m["control_enabled"] != false {
-		t.Fatalf("control_enabled must default false: %v", m)
+		t.Fatalf("uncertified Deye must yield control_enabled=false despite ON default: %v", m)
+	}
+	if a.State.Get().ControlEnabled {
+		t.Fatal("snapshot ControlEnabled must be false for an uncertified inverter")
+	}
+	if a.State.Get().ControlCertified {
+		t.Fatal("snapshot ControlCertified must be false for the pilot Deye family")
+	}
+}
+
+// TestSetpointGlobalStopWinsOverACertifiedFamily proves VP_CONTROL_ENABLED=false is
+// still the global off-switch even for a certified (dev/sim, empty-family) path.
+func TestSetpointGlobalStopWinsOverACertifiedFamily(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.ControlEnabled = false // operator kill-switch OFF
+	cfg.DataDir = t.TempDir()
+	a, addr := startBusOnlyAgent(t, cfg) // no inverter selected -> family "" is certified
+	sub := subscribeSetpoint(t, addr)
+
+	now := time.Now().UTC()
+	a.mu.Lock()
+	a.currentPlan = freshPlan(now, -10, nil)
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 5, LoadKw: 4, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now)
+
+	waitFor(t, 5*time.Second, "setpoint published", func() bool { _, ok := sub.latest(); return ok })
+	m, _ := sub.latest()
+	if m["control_enabled"] != false {
+		t.Fatalf("VP_CONTROL_ENABLED=false must force control_enabled=false: %v", m)
 	}
 	// No cap on the slot -> no pv_limit_kw key at all (adapter clears any latch).
 	if _, present := m["pv_limit_kw"]; present {
@@ -274,6 +321,11 @@ func TestControlReadbackMismatchSurfaces(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"family": "sunspec", "source": "schedule", "all_match": false, "control_enabled": true, "certified": true,
 		"mismatch_roles": []string{"battery_power"},
+		// The readback node's dual-controller awareness rides along.
+		"dual_controller": map[string]any{
+			"only_controller_required": true, "possible_conflict": true,
+			"reason": "Der Wechselrichter hält den geschriebenen Sollwert nicht (battery_power).",
+		},
 		"registers": []map[string]any{
 			{"role": "battery_power", "fc": 3, "addr": 40, "commanded_raw": 64536, "commanded_kw": commanded, "actual_raw": 65416, "actual_kw": actual, "match": false},
 		},
@@ -284,9 +336,19 @@ func TestControlReadbackMismatchSurfaces(t *testing.T) {
 	if snap.Control == nil || snap.Control.AllMatch {
 		t.Fatalf("expected a mismatch snapshot: %+v", snap.Control)
 	}
+	// The dual-controller conflict is stored on the snapshot and forwarded to the cloud.
+	if !snap.Control.PossibleConflict {
+		t.Fatal("possible_conflict must land in the snapshot for the :8484 warning")
+	}
+	if snap.Control.ConflictReason == "" {
+		t.Fatal("conflict reason must be carried for the operator")
+	}
 	sum := controlSummary(snap)
 	if sum.AllMatch || len(sum.MismatchRoles) != 1 || sum.MismatchRoles[0] != "battery_power" {
 		t.Fatalf("mismatch summary: %+v", sum)
+	}
+	if !sum.PossibleConflict {
+		t.Fatal("the heartbeat control summary must forward possible_conflict to the cloud")
 	}
 }
 

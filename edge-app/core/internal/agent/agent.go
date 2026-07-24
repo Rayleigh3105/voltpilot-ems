@@ -1221,12 +1221,13 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 		return nil
 	}
 	sum := &cloud.ControlSummary{
-		AllMatch:       c.AllMatch,
-		ControlEnabled: c.ControlEnabled,
-		Certified:      c.Certified,
-		SlotStart:      c.SlotStart,
-		CheckedAt:      c.CheckedAt.UTC().Format(time.RFC3339Nano),
-		MismatchRoles:  c.MismatchRoles,
+		AllMatch:         c.AllMatch,
+		ControlEnabled:   c.ControlEnabled,
+		Certified:        c.Certified,
+		SlotStart:        c.SlotStart,
+		CheckedAt:        c.CheckedAt.UTC().Format(time.RFC3339Nano),
+		MismatchRoles:    c.MismatchRoles,
+		PossibleConflict: c.PossibleConflict,
 	}
 	if sum.MismatchRoles == nil {
 		sum.MismatchRoles = []string{}
@@ -1256,7 +1257,12 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		Certified      bool     `json:"certified"`
 		AllMatch       bool     `json:"all_match"`
 		MismatchRoles  []string `json:"mismatch_roles"`
-		Registers      []struct {
+		DualController struct {
+			OnlyControllerRequired bool   `json:"only_controller_required"`
+			PossibleConflict       bool   `json:"possible_conflict"`
+			Reason                 string `json:"reason"`
+		} `json:"dual_controller"`
+		Registers []struct {
 			Role         string   `json:"role"`
 			Fc           int      `json:"fc"`
 			Addr         int      `json:"addr"`
@@ -1278,14 +1284,16 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		}
 	}
 	info := &state.ControlInfo{
-		CheckedAt:      checkedAt,
-		Family:         m.Family,
-		Source:         m.Source,
-		SlotStart:      m.SlotStart,
-		ControlEnabled: m.ControlEnabled,
-		Certified:      m.Certified,
-		AllMatch:       m.AllMatch,
-		MismatchRoles:  m.MismatchRoles,
+		CheckedAt:        checkedAt,
+		Family:           m.Family,
+		Source:           m.Source,
+		SlotStart:        m.SlotStart,
+		ControlEnabled:   m.ControlEnabled,
+		Certified:        m.Certified,
+		AllMatch:         m.AllMatch,
+		MismatchRoles:    m.MismatchRoles,
+		PossibleConflict: m.DualController.PossibleConflict,
+		ConflictReason:   m.DualController.Reason,
 	}
 	for _, r := range m.Registers {
 		info.Registers = append(info.Registers, state.ControlRegister{

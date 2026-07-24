@@ -201,6 +201,38 @@ func TestBusPayloadCarriesModelAndFamily(t *testing.T) {
 	if m["schema_version"] != SchemaVersion {
 		t.Errorf("schema version unchanged (additive change): %v", m["schema_version"])
 	}
+	// control_tier is additive: a Deye is Tier 3 (Time-of-Use). JSON numbers decode
+	// as float64.
+	if tier, _ := m["control_tier"].(float64); int(tier) != ControlTierToU {
+		t.Errorf("payload control_tier: Deye must be Tier 3 (ToU), got %v", m["control_tier"])
+	}
+	if sel.ControlTier != ControlTierToU {
+		t.Errorf("selection control_tier: %d", sel.ControlTier)
+	}
+}
+
+// TestControlTierPerBrand pins the battery-control primitive each catalogued brand
+// declares - the dispatch fact the Node-RED controlRoute keys on. Deye=ToU(3),
+// generic SunSpec + both Fronius brands = SunSpec(1), the go-e wallbox = read-only
+// (its control lives in the certified Go core executor, not controlRoute).
+func TestControlTierPerBrand(t *testing.T) {
+	cat := DefaultCatalog()
+	want := map[string]int{
+		BrandDeye:           ControlTierToU,
+		BrandGenericModbus:  ControlTierSunSpec,
+		BrandFronius:        ControlTierSunSpec,
+		BrandFroniusSunSpec: ControlTierSunSpec,
+		BrandGoe:            ControlTierReadOnly,
+	}
+	for _, b := range cat.Brands {
+		w, ok := want[b.ID]
+		if !ok {
+			t.Fatalf("uncatalogued brand %q - add its control_tier expectation", b.ID)
+		}
+		if b.ControlTier != w {
+			t.Errorf("brand %q control_tier = %d, want %d", b.ID, b.ControlTier, w)
+		}
+	}
 }
 
 func TestNormalizeSolarmanRequiresSerial(t *testing.T) {
