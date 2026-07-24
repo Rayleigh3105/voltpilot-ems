@@ -133,6 +133,12 @@ type ControlInfo struct {
 	AllMatch       bool              `json:"all_match"`
 	MismatchRoles  []string          `json:"mismatch_roles,omitempty"`
 	Registers      []ControlRegister `json:"registers"`
+	// PossibleConflict is the dual-controller "only-controller" awareness (report
+	// §9 #6): while actively controlling, a commanded register that does not hold
+	// its value means a second controller (the inverter's own smart-control or
+	// another EMS) may be steering it. Surfaced, never silently fought.
+	PossibleConflict bool   `json:"possible_conflict,omitempty"`
+	ConflictReason   string `json:"conflict_reason,omitempty"`
 }
 
 // ControlRegister is one control register's commanded-vs-actual readback.

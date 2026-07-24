@@ -321,6 +321,11 @@ func TestControlReadbackMismatchSurfaces(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"family": "sunspec", "source": "schedule", "all_match": false, "control_enabled": true, "certified": true,
 		"mismatch_roles": []string{"battery_power"},
+		// The readback node's dual-controller awareness rides along.
+		"dual_controller": map[string]any{
+			"only_controller_required": true, "possible_conflict": true,
+			"reason": "Der Wechselrichter hält den geschriebenen Sollwert nicht (battery_power).",
+		},
 		"registers": []map[string]any{
 			{"role": "battery_power", "fc": 3, "addr": 40, "commanded_raw": 64536, "commanded_kw": commanded, "actual_raw": 65416, "actual_kw": actual, "match": false},
 		},
@@ -331,9 +336,19 @@ func TestControlReadbackMismatchSurfaces(t *testing.T) {
 	if snap.Control == nil || snap.Control.AllMatch {
 		t.Fatalf("expected a mismatch snapshot: %+v", snap.Control)
 	}
+	// The dual-controller conflict is stored on the snapshot and forwarded to the cloud.
+	if !snap.Control.PossibleConflict {
+		t.Fatal("possible_conflict must land in the snapshot for the :8484 warning")
+	}
+	if snap.Control.ConflictReason == "" {
+		t.Fatal("conflict reason must be carried for the operator")
+	}
 	sum := controlSummary(snap)
 	if sum.AllMatch || len(sum.MismatchRoles) != 1 || sum.MismatchRoles[0] != "battery_power" {
 		t.Fatalf("mismatch summary: %+v", sum)
+	}
+	if !sum.PossibleConflict {
+		t.Fatal("the heartbeat control summary must forward possible_conflict to the cloud")
 	}
 }
 

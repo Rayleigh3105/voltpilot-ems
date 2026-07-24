@@ -468,6 +468,10 @@ type ControlSummary struct {
 	SlotStart      string   `json:"slot_start,omitempty"`
 	CheckedAt      string   `json:"checked_at"`
 	MismatchRoles  []string `json:"mismatch_roles"`
+	// PossibleConflict surfaces the dual-controller "only-controller" awareness to
+	// the cloud (additive; report §9 #6). True = a commanded register is not held
+	// while actively controlling -> a second controller may be steering the inverter.
+	PossibleConflict bool `json:"possible_conflict,omitempty"`
 }
 
 // PublishStatus sends the lightweight heartbeat on .../status (no frozen

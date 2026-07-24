@@ -334,6 +334,62 @@ function setpointStale(ts, nowMs) {
   return now - t > SETPOINT_STALE_MS;
 }
 
+/**
+ * dualControllerSignal - the GENERIC "only-controller" awareness (evcc's hard rule
+ * + report §9 failure #6). While VoltPilot controls, the inverter's OWN smart-control
+ * (self-consumption+, native scheduling) MUST be off, or two controllers fight. We
+ * cannot force the inverter's setting off, but we SURFACE a possible conflict so it
+ * is never SILENTLY fought.
+ *
+ * The GENERIC detector (active for every adapter that reads back): while actively
+ * controlling a certified device, a register we commanded that does NOT hold its
+ * value (readback mismatch) is the signal that something else may be steering the
+ * inverter. Honest "possible" - it can also be a not-yet-adopted write; the reason
+ * tells the operator to make VoltPilot the ONLY controller. This applies to the Deye
+ * Tier-3 path AND the SunSpec Tier-1 path unchanged (it keys on the readback facts,
+ * not the vendor).
+ *
+ * VENDOR-SPECIFIC detectors are EXTENSION POINTS that land with their tiers:
+ *   - Fronius (Tier 1, Phase D): the manual AND-links `ChaGriSet` with the web-UI
+ *     "battery charging from grid" toggle, so a GRID command is silently vetoed by a
+ *     UI setting (report §2.7) - read ChaGriSet back + compare. Seam: opts.vendor.
+ *   - SolarEdge (Tier 2, Phase E): read StorageControlMode (0xE004); != 4 (Remote
+ *     Control) means a UI/second controller left remote mode. Seam: opts.vendor.
+ * Neither vendor read is wired yet; the seams keep the generic path untouched when
+ * a detector is added.
+ *
+ *   facts: { family, certified, controlEnabled, registerCount, allMatch, mismatchRoles }
+ * Returns { onlyControllerRequired, possibleConflict, detector, reason }.
+ */
+function dualControllerSignal(facts = {}) {
+  const controlling = facts.certified === true
+    && facts.controlEnabled === true
+    && Number(facts.registerCount) > 0;
+  const out = {
+    onlyControllerRequired: controlling,
+    possibleConflict: false,
+    detector: controlling ? 'readback_mismatch' : 'none',
+    reason: '',
+  };
+  if (!controlling) return out;
+
+  // --- vendor-specific extension points (Phase D/E) -- see the docstring. The
+  //     detectors read a vendor register (Fronius ChaGriSet, SolarEdge storage
+  //     mode) via opts.vendor and set possibleConflict; not wired yet, so we fall
+  //     through to the generic detector without touching it.
+
+  // --- generic detector: a commanded register that does not hold its value ---
+  if (facts.allMatch !== true) {
+    const roles = Array.isArray(facts.mismatchRoles) ? facts.mismatchRoles : [];
+    out.possibleConflict = true;
+    out.reason = 'Der Wechselrichter hält den geschriebenen Sollwert nicht ('
+      + (roles.join(', ') || 'Register weicht ab')
+      + '). Möglicher Konflikt: die eigene Smart-Steuerung des Wechselrichters oder ein '
+      + 'zweites EMS könnte gegensteuern - VoltPilot muss der einzige Controller sein.';
+  }
+  return out;
+}
+
 // --- generic_modbus / SunSpec control adapter (CERTIFIED, proven vs sim) ------
 
 function sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw }) {
@@ -694,4 +750,5 @@ module.exports = {
   controlRoute,
   controlRelease,
   setpointStale,
+  dualControllerSignal,
 };

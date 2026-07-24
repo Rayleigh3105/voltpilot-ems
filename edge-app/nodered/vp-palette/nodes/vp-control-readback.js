@@ -21,6 +21,29 @@
 
 const TOPIC = 'edge/control/readback';
 
+// dualControllerAwareness - the GENERIC "only-controller" signal (evcc's rule; the
+// canonical, unit-tested source is inverter-control-routing.js dualControllerSignal,
+// cross-checked in nodes_spec.js). While actively controlling a certified device, a
+// commanded register that does not hold its value (readback mismatch) means a second
+// controller (the inverter's own smart-control or another EMS) may be steering it -
+// surfaced here on edge/control/readback, never silently fought. Vendor-specific
+// detectors (Fronius ChaGriSet AND-link / SolarEdge storage mode) are extension
+// points in dualControllerSignal (Phase D/E); this covers every adapter with readback
+// (Deye Tier-3 included).
+function dualControllerAwareness(certified, controlEnabled, registerCount, allMatch, mismatchRoles) {
+  const controlling = certified === true && controlEnabled === true && registerCount > 0;
+  if (!controlling) return { only_controller_required: false, possible_conflict: false, detector: 'none', reason: '' };
+  const out = { only_controller_required: true, possible_conflict: false, detector: 'readback_mismatch', reason: '' };
+  if (allMatch !== true) {
+    out.possible_conflict = true;
+    out.reason = 'Der Wechselrichter hält den geschriebenen Sollwert nicht ('
+      + (mismatchRoles.join(', ') || 'Register weicht ab')
+      + '). Möglicher Konflikt: die eigene Smart-Steuerung des Wechselrichters oder ein '
+      + 'zweites EMS könnte gegensteuern - VoltPilot muss der einzige Controller sein.';
+  }
+  return out;
+}
+
 // shape() is exported for unit tests: validate + normalize the readback payload,
 // or null when it is not a usable readback (never published - stays quiet).
 function shape(payload) {
@@ -32,16 +55,23 @@ function shape(payload) {
     if (typeof r.role !== 'string' || typeof r.match !== 'boolean') return null;
     registers.push(r);
   }
+  const control_enabled = payload.control_enabled === true;
+  const certified = payload.certified === true;
+  const all_match = registers.length > 0 && registers.every((r) => r.match === true);
+  const mismatch_roles = registers.filter((r) => r.match !== true).map((r) => r.role);
   return {
     ts: typeof payload.ts === 'string' ? payload.ts : new Date().toISOString(),
     family: typeof payload.family === 'string' ? payload.family : '',
     source: typeof payload.source === 'string' ? payload.source : '',
     slot_start: typeof payload.slot_start === 'string' ? payload.slot_start : undefined,
-    control_enabled: payload.control_enabled === true,
-    certified: payload.certified === true,
+    control_enabled,
+    certified,
+    mode: payload.mode === 'release' ? 'release' : 'normal',
     registers,
-    all_match: registers.length > 0 && registers.every((r) => r.match === true),
-    mismatch_roles: registers.filter((r) => r.match !== true).map((r) => r.role),
+    all_match,
+    mismatch_roles,
+    // Additive "only-controller" awareness surfaced on the readback path.
+    dual_controller: dualControllerAwareness(certified, control_enabled, registers.length, all_match, mismatch_roles),
   };
 }
 

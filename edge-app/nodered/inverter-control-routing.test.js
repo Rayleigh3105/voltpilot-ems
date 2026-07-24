@@ -510,3 +510,36 @@ test('setpointStale is the dead-man check: stale past 20 min, fresh within, safe
   assert.strictEqual(C.setpointStale(undefined, now), false, 'missing ts never releases');
   assert.strictEqual(C.setpointStale('nonsense', now), false, 'unparseable ts never releases');
 });
+
+// --- dual-controller awareness (evcc "only controller" rule) ------------------
+
+test('dualControllerSignal flags a POSSIBLE conflict when a commanded register is not held', () => {
+  const r = C.dualControllerSignal({ family: 'hybrid_3p', certified: true, controlEnabled: true, registerCount: 5, allMatch: false, mismatchRoles: ['battery_power'] });
+  assert.strictEqual(r.onlyControllerRequired, true, 'actively controlling -> the only-controller rule applies');
+  assert.strictEqual(r.possibleConflict, true);
+  assert.strictEqual(r.detector, 'readback_mismatch');
+  assert.match(r.reason, /einzige Controller|gegensteuern/);
+  assert.match(r.reason, /battery_power/);
+});
+
+test('dualControllerSignal is quiet while control holds (all registers match)', () => {
+  const r = C.dualControllerSignal({ family: 'sunspec', certified: true, controlEnabled: true, registerCount: 3, allMatch: true, mismatchRoles: [] });
+  assert.strictEqual(r.onlyControllerRequired, true);
+  assert.strictEqual(r.possibleConflict, false, 'holding our command -> no conflict');
+  assert.strictEqual(r.reason, '');
+});
+
+test('dualControllerSignal does not apply when we are not actively controlling', () => {
+  // kill-switch off, or uncertified, or nothing written -> the rule is moot.
+  assert.strictEqual(C.dualControllerSignal({ certified: true, controlEnabled: false, registerCount: 3, allMatch: false }).onlyControllerRequired, false);
+  assert.strictEqual(C.dualControllerSignal({ certified: false, controlEnabled: true, registerCount: 3, allMatch: false }).possibleConflict, false, 'uncertified -> never a conflict claim');
+  assert.strictEqual(C.dualControllerSignal({ certified: true, controlEnabled: true, registerCount: 0, allMatch: false }).detector, 'none');
+});
+
+test('dualControllerSignal applies to the Deye Tier-3 path the same as SunSpec (generic detector)', () => {
+  const deye = C.dualControllerSignal({ family: 'hybrid_3p', certified: true, controlEnabled: true, registerCount: 5, allMatch: false, mismatchRoles: ['tou_enable'] });
+  const sun = C.dualControllerSignal({ family: 'sunspec', certified: true, controlEnabled: true, registerCount: 3, allMatch: false, mismatchRoles: ['tou_enable'] });
+  assert.strictEqual(deye.possibleConflict, true);
+  assert.strictEqual(sun.possibleConflict, true);
+  assert.strictEqual(deye.detector, sun.detector, 'same generic detector regardless of vendor');
+});

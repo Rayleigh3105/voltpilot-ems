@@ -128,8 +128,14 @@
       setState("var(--warn, #ff9500)", "Abweichung");
       show(banner, true);
       banner.className = "ctrl-banner warn";
-      banner.textContent = "⚠ Der Wechselrichter hat den Sollwert nicht übernommen. " +
-        "Mögliche Ursache: Strom-/SoC-Grenze oder eine falsche Register-Adresse.";
+      // Dual-controller awareness (report §9 #6): a held-back command may mean a
+      // second controller is fighting VoltPilot. Surface the "only controller" note.
+      banner.textContent = c.possible_conflict
+        ? "⚠ Der Wechselrichter hält den Sollwert nicht. Möglicher Konflikt: die eigene " +
+          "Smart-Steuerung des Wechselrichters oder ein zweites EMS könnte gegensteuern - " +
+          "VoltPilot muss der einzige Controller sein (alternativ: Strom-/SoC-Grenze oder Register-Adresse prüfen)."
+        : "⚠ Der Wechselrichter hat den Sollwert nicht übernommen. " +
+          "Mögliche Ursache: Strom-/SoC-Grenze oder eine falsche Register-Adresse.";
     }
 
     var rows = $("ctrlRows");
