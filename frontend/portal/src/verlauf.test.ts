@@ -145,6 +145,25 @@ describe('measurementTree', () => {
     );
     expect(noChannels).toEqual([]);
   });
+
+  it('F2a: flags a producer measurement (its empty range is expected, not a bug)', () => {
+    const withProducer = measurementTree(
+      {
+        ...entities,
+        entities: [
+          entity('batt', 'battery-hybrid', { label: 'Speicher', capabilities: { measure: [{ channel: 'soc_pct', unit: '%' }] } }),
+          entity('pv2', 'producer', { label: 'PV Ost', capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] } }),
+        ],
+        localSetup: [{ id: 'inv', kind: 'inverter', role: null, brand: 'deye', label: 'SUN-12K', reportedAt: '', adoptedEntityId: null }],
+      },
+      null,
+    );
+    const prod = withProducer.find((g) => g.entityId === 'pv2')!;
+    expect(prod.items.every((i) => i.producer)).toBe(true);
+    // A composed component is NOT a producer — it has a real spliced history.
+    const batt = withProducer.find((g) => g.entityId === 'batt')!;
+    expect(batt.items.every((i) => !i.producer)).toBe(true);
+  });
 });
 
 // --- v1FallbackTree ---------------------------------------------------------

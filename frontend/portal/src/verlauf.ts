@@ -55,6 +55,14 @@ export interface VerlaufItem {
   role: ComponentRole;
   /** The raw channel name — kept only as a support/debug `title` tooltip. */
   raw: string;
+  /**
+   * F2a: this measurement belongs to a producer entity, which has no
+   * telemetry_v2 of its own (its PV is measured through the hybrid inverter).
+   * So an empty range is EXPECTED, and the explorer shows an honest note
+   * ("gemessen über den Wechselrichter — siehe PV gesamt") instead of the
+   * generic "Keine Werte".
+   */
+  producer: boolean;
 }
 
 /** One rail group = one Komponente, its Gerät sub-line and its Messwerte. */
@@ -115,6 +123,7 @@ export function measurementTree(
   for (const c of model.components) {
     if (c.channels.length === 0) continue;
     const entity = entityById.get(c.id);
+    const producer = entity?.entityType === 'producer';
     const items: VerlaufItem[] = c.channels.map((ch) => ({
       entityId: c.id,
       channel: ch.raw,
@@ -122,6 +131,7 @@ export function measurementTree(
       unit: itemUnit(entity, ch.raw),
       role: c.role,
       raw: ch.raw,
+      producer,
     }));
     groups.push({
       entityId: c.id,
@@ -201,6 +211,7 @@ export function v1FallbackTree(): VerlaufGroup[] {
         unit: c.percent ? '%' : 'kW',
         role: c.role,
         raw: c.channel,
+        producer: false,
       },
     ],
   }));
