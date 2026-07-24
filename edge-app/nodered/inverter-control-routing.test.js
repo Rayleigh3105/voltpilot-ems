@@ -353,3 +353,56 @@ test('CERTIFIED_CONTROL_FAMILIES contains sunspec but no Deye or Fronius family'
     assert.ok(!C.CERTIFIED_CONTROL_FAMILIES.has(f), f + ' must stay uncertified');
   }
 });
+
+// --- control-tier dispatch (Phase A) -----------------------------------------
+
+test('resolveControlTier prefers control_tier, else infers from communication', () => {
+  // explicit wins
+  assert.strictEqual(C.resolveControlTier({ communication: 'modbus_tcp', control_tier: 2 }), C.CONTROL_TIER.VENDOR_EMS);
+  assert.strictEqual(C.resolveControlTier({ communication: 'solarman_v5', control_tier: 0 }), C.CONTROL_TIER.READ_ONLY);
+  // inference reproduces the pre-tier dispatch when control_tier is absent
+  assert.strictEqual(C.resolveControlTier({ communication: 'solarman_v5' }), C.CONTROL_TIER.TOU);
+  assert.strictEqual(C.resolveControlTier({ communication: 'modbus_tcp' }), C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(C.resolveControlTier({ communication: 'fronius_solar_api' }), C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(C.resolveControlTier({ communication: 'goe_http_api' }), C.CONTROL_TIER.READ_ONLY);
+  // out-of-range / garbage tiers fall back to inference
+  assert.strictEqual(C.resolveControlTier({ communication: 'modbus_tcp', control_tier: 9 }), C.CONTROL_TIER.SUNSPEC);
+  assert.strictEqual(C.resolveControlTier({ communication: 'solarman_v5', control_tier: 'x' }), C.CONTROL_TIER.TOU);
+});
+
+test('an explicit control_tier is byte-identical to inference for a catalogued brand', () => {
+  // The core now stamps control_tier onto the selection; the plan must be IDENTICAL
+  // whether the field is present (new core) or inferred (old core / hand-built).
+  const sp = enabled({ battery_setpoint_kw: -25, pv_limit_kw: 3 });
+  assert.deepStrictEqual(
+    C.controlRoute({ ...SUNSPEC_SEL, control_tier: 1 }, sp),
+    C.controlRoute(SUNSPEC_SEL, sp),
+  );
+  const dsp = enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 });
+  assert.deepStrictEqual(
+    C.controlRoute({ ...DEYE_SEL, control_tier: 3 }, dsp, { ratedKw: 50 }),
+    C.controlRoute(DEYE_SEL, dsp, { ratedKw: 50 }),
+  );
+});
+
+test('control_tier decouples control from the read transport (Tier-2 extension point)', () => {
+  // A future Sungrow-like brand reads over modbus_tcp yet declares Tier 2. It MUST
+  // land on the vendor-EMS extension point, never be misread as a Tier-1 SunSpec
+  // device (which shares the modbus_tcp transport). This is the whole reason the
+  // dispatch keys on the tier, not the communication.
+  const sel = { schema_version: '1.0', brand: 'sungrow', family: 'sungrow_sh',
+    communication: 'modbus_tcp', control_tier: 2, connection: { ip: '10.0.0.9', port: 502 } };
+  const r = C.controlRoute(sel, enabled({ battery_setpoint_kw: -5 }));
+  assert.strictEqual(r.adapter, 'vendor_ems', 'Tier 2 -> vendor-EMS, not the modbus SunSpec adapter');
+  assert.strictEqual(r.certified, false, 'no Tier-2 vendor is certified yet');
+  assert.deepStrictEqual(r.writes, [], 'the extension point never emits a live write');
+  assert.deepStrictEqual(r.planned, []);
+  assert.match(r.reason, /Tier-2|noch nicht implementiert/);
+});
+
+test('control_tier 0 (read-only) idles even over a controllable transport', () => {
+  // A brand explicitly marked read-only must not control, even though its transport
+  // (modbus_tcp) would otherwise infer Tier 1.
+  const sel = { ...SUNSPEC_SEL, control_tier: 0 };
+  assert.strictEqual(C.controlRoute(sel, enabled({ battery_setpoint_kw: -5 })).adapter, 'idle');
+});

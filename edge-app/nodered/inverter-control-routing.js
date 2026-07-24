@@ -44,6 +44,14 @@ const COMM_SOLARMAN = 'solarman_v5';
 const COMM_MODBUS = 'modbus_tcp';
 const COMM_FRONIUS = 'fronius_solar_api';
 
+// Control tiers - the battery-control PRIMITIVE, decoupled from the read transport
+// (design data/vp-battery-control-deepdive/report.md §1). Mirrors the Go
+// inverter.ControlTier* constants; the core stamps `control_tier` onto the
+// published selection and controlRoute DISPATCHES on it. Higher tier = more
+// real-time + higher risk. The tier only selects which adapter runs; a live write
+// is still gated by control_enabled + the certification allowlist.
+const CONTROL_TIER = { READ_ONLY: 0, SUNSPEC: 1, VENDOR_EMS: 2, TOU: 3 };
+
 // The Modbus-TCP control endpoint a Fronius device exposes for SunSpec control.
 // It is a SEPARATE surface from the Solar-API HTTP READ endpoint (port 80): the
 // installer ticks "Allow Control" in Communication -> Modbus, and SunSpec control
@@ -73,6 +81,28 @@ const clampPct = (v) => Math.max(0, Math.min(100, Math.round(v)));
 
 function isFiniteNum(v) {
   return typeof v === 'number' && isFinite(v);
+}
+
+// inferTierFromCommunication reproduces the exact pre-tier dispatch: Deye -> ToU,
+// generic/Fronius SunSpec -> SunSpec, everything else -> read-only. Used only when
+// the selection carries no explicit control_tier (an older core, or a hand-built
+// selection), so a config without the field behaves byte-identically.
+function inferTierFromCommunication(communication) {
+  switch (communication) {
+    case COMM_SOLARMAN: return CONTROL_TIER.TOU;
+    case COMM_MODBUS: return CONTROL_TIER.SUNSPEC;
+    case COMM_FRONIUS: return CONTROL_TIER.SUNSPEC;
+    default: return CONTROL_TIER.READ_ONLY;
+  }
+}
+
+// resolveControlTier prefers the tier the selection declares (control_tier, stamped
+// by the core from the catalog), falling back to communication-inference when it is
+// absent/invalid. This is the ONE place that decides the control primitive.
+function resolveControlTier(selection) {
+  const t = selection && selection.control_tier;
+  if (typeof t === 'number' && isFinite(t) && t >= 0 && t <= 3) return Math.floor(t);
+  return inferTierFromCommunication(selection ? selection.communication : '');
 }
 
 /**
@@ -114,16 +144,55 @@ function controlRoute(selection, setpoint, opts = {}) {
   const pvLimitKw = isFiniteNum(setpoint.pv_limit_kw) && setpoint.pv_limit_kw >= 0
     ? setpoint.pv_limit_kw : null;
 
-  if (selection.communication === COMM_MODBUS) {
-    return sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw });
-  }
-  if (selection.communication === COMM_SOLARMAN) {
+  // Dispatch on the CONTROL TIER (the battery-control primitive), not the read
+  // communication (report §1/§7.3). The tier decouples control from the transport
+  // so a Tier-2 vendor can be added as catalog data; within a tier the register
+  // SURFACE is still selected by communication/family (Tier 1 has two surfaces: the
+  // generic/sim SunSpec and Fronius SunSpec). Every catalogued brand keeps its exact
+  // prior adapter, so behaviour is byte-identical to the communication-only dispatch
+  // (proven by the routing tests + flows-sync.test.js).
+  const tier = resolveControlTier(selection);
+  const comm = selection.communication;
+  if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
     return deyeControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
   }
-  if (selection.communication === COMM_FRONIUS) {
-    return froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
+  if (tier === CONTROL_TIER.VENDOR_EMS) {
+    return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
+  }
+  if (tier === CONTROL_TIER.SUNSPEC) {
+    if (comm === COMM_MODBUS) {
+      return sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw });
+    }
+    if (comm === COMM_FRONIUS) {
+      return froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
+    }
   }
   return idle('unbekannte Kommunikationsmethode');
+}
+
+// --- Tier-2 vendor external-EMS adapter (Sungrow/SolarEdge) - EXTENSION POINT -----
+//
+// The forced-watts RAM-setpoint path (report §3): mode -> command -> power, re-
+// issued on a heartbeat. NOT built here - the Tier-2 vendor executors are Phase E.
+// This stub makes the tier DISPATCH real + honest: a brand catalogued as
+// control_tier=2 lands here instead of being misread as a Tier-1 SunSpec device
+// just because its read transport happens to be modbus_tcp. It NEVER emits a live
+// write (no catalogued brand is Tier 2 yet). When a Sungrow/SolarEdge adapter is
+// built, replace this body with the vendor `{ems_mode_reg, cmd_reg, power_reg, ...}`
+// WriteOps (behind the same controlEnabled + certification gate).
+function vendorEmsControl({ conn, ip, family, controlEnabled }) {
+  const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
+  return {
+    adapter: 'vendor_ems', family,
+    target: ip + ':' + port,
+    connection: { ip, port },
+    certified: false, // no Tier-2 vendor is bench-certified yet
+    controlEnabled,
+    writes: [],
+    readbacks: [],
+    planned: [],
+    reason: 'Tier-2 Wechselrichtersteuerung (externes EMS) noch nicht implementiert',
+  };
 }
 
 // --- generic_modbus / SunSpec control adapter (CERTIFIED, proven vs sim) ------
@@ -452,6 +521,7 @@ module.exports = {
   COMM_SOLARMAN,
   COMM_MODBUS,
   COMM_FRONIUS,
+  CONTROL_TIER,
   DEFAULT_FRONIUS_CONTROL_PORT,
   SUNSPEC_REG,
   NO_PV_LIMIT,
@@ -461,5 +531,6 @@ module.exports = {
   DEYE_TOU_ENABLED_ALL_WEEK,
   DEYE_CONTROL_SLOT,
   CERTIFIED_CONTROL_FAMILIES,
+  resolveControlTier,
   controlRoute,
 };

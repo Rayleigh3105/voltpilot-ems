@@ -69,6 +69,21 @@ const (
 	defaultGoePort            = 80 // go-e Charger local HTTP API v2
 )
 
+// Control tiers - the battery-control PRIMITIVE a brand exposes, decoupled from
+// the read communication (design data/vp-battery-control-deepdive/report.md §1).
+// The Node-RED control adapter (nodered/inverter-control-routing.js controlRoute)
+// dispatches on this, so a new hybrid's control surface is catalog data, exactly
+// like the read side. Higher tier = more real-time, higher risk. This is the
+// declared surface; whether a live write ever happens is still gated end-to-end
+// by the kill-switch (Config.ControlEnabled) AND per-model certification
+// (Config.ControlCertified), never by the tier.
+const (
+	ControlTierReadOnly  = 0 // no certified control surface (read + monitor only)
+	ControlTierSunSpec   = 1 // SunSpec Model 124 storage / Immediate Controls (RAM rate window + hold)
+	ControlTierVendorEMS = 2 // vendor external-EMS: a true forced-watts RAM setpoint (Sungrow/SolarEdge)
+	ControlTierToU       = 3 // vendor Time-of-Use window (EEPROM) - Deye/Sunsynk
+)
+
 // ValidationError carries a customer-facing German message; the web layer maps
 // it to HTTP 400 (a bad request), everything else to 500.
 type ValidationError struct{ Msg string }
@@ -143,6 +158,13 @@ type Brand struct {
 	Models        []Model  `json:"models"`
 	Families      []Family `json:"families"`
 	Fields        []Field  `json:"fields"`
+	// ControlTier is the battery-control PRIMITIVE the brand exposes (see the
+	// ControlTier* constants). It is decoupled from Communication on purpose: a
+	// future Tier-2 vendor (Sungrow/SolarEdge) reads over modbus_tcp yet must
+	// dispatch to the external-EMS adapter, which a communication-only dispatch
+	// could not express. Stamped onto the published Selection so controlRoute can
+	// dispatch on it. 0 (read-only) is the honest default for uncertified brands.
+	ControlTier int `json:"control_tier"`
 }
 
 // Catalog is the whole option tree the UI renders.
@@ -402,6 +424,10 @@ func DefaultCatalog() Catalog {
 				Models:        deyeModels(),
 				Families:      deyeFamilies(),
 				Fields:        solarmanFields(),
+				// Tier 3: Deye's only control lever is the Time-of-Use window in EEPROM
+				// (write-on-change). The register map is bench-pending, so an actual
+				// live write is still blocked by the certification allowlist.
+				ControlTier: ControlTierToU,
 			},
 			{
 				ID:            BrandGenericModbus,
@@ -416,6 +442,9 @@ func DefaultCatalog() Catalog {
 					{ID: FamSunSpec, Label: "SunSpec (Standard)", Note: "SunSpec-konformes Modbus-Registermodell"},
 				},
 				Fields: modbusFields(),
+				// Tier 1: SunSpec Model 124 / Immediate Controls. The generic SunSpec
+				// family is the ONE certified control path (proven against edge/sim).
+				ControlTier: ControlTierSunSpec,
 			},
 			{
 				ID:            BrandFronius,
@@ -426,6 +455,10 @@ func DefaultCatalog() Catalog {
 				Models:        froniusModels(),
 				Families:      froniusFamilies(),
 				Fields:        froniusFields(),
+				// Tier 1: Fronius battery/curtailment control is SunSpec Model 123/124.
+				// Uncertified (planned-only until a bench pass); the control adapter is
+				// wired via this brand's selection (report §7.9 / froniusControl).
+				ControlTier: ControlTierSunSpec,
 			},
 			{
 				ID:            BrandFroniusSunSpec,
@@ -436,6 +469,10 @@ func DefaultCatalog() Catalog {
 				Models:        froniusSunspecModels(),
 				Families:      froniusSunspecFamilies(),
 				Fields:        froniusSunspecFields(),
+				// Tier 1: also a SunSpec control surface. Control via this read-brand is
+				// not wired in controlRoute today (it routes Fronius control through the
+				// Solar-API brand's selection); this read-only brand idles there.
+				ControlTier: ControlTierSunSpec,
 			},
 			{
 				ID:            BrandGoe,
@@ -446,6 +483,10 @@ func DefaultCatalog() Catalog {
 				Models:        goeModels(),
 				Families:      goeFamilies(),
 				Fields:        goeFields(),
+				// Tier 0 for the inverter control-path: a go-e wallbox is a CONSUMER,
+				// controlled by the certified Go core executor (internal/goe), not the
+				// Node-RED battery controlRoute.
+				ControlTier: ControlTierReadOnly,
 			},
 		},
 	}
@@ -578,6 +619,10 @@ type Selection struct {
 	Communication string     `json:"communication"`
 	Connection    Connection `json:"connection"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	// ControlTier is the brand's battery-control primitive (see ControlTier*),
+	// carried through so the Node-RED control adapter can dispatch on it. Purely a
+	// dispatch/documentation fact - it never authorises a write on its own.
+	ControlTier int `json:"control_tier"`
 }
 
 // Normalize validates a request against the catalog and returns the normalized
@@ -630,6 +675,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		Family:        registerFamily,
 		Communication: b.Communication,
 		UpdatedAt:     now.UTC(),
+		ControlTier:   b.ControlTier,
 	}
 
 	switch b.Communication {
@@ -753,6 +799,10 @@ func (s Selection) BusPayload() []byte {
 		"model":         s.Model,
 		"family":        s.Family,
 		"communication": s.Communication,
+		// `control_tier` is the battery-control primitive the Node-RED controlRoute
+		// dispatches on (additive; controlRoute falls back to communication-inference
+		// when it is absent, so an older core stays byte-compatible).
+		"control_tier":  s.ControlTier,
 		"connection":    conn,
 		"updated_at":    s.UpdatedAt.UTC().Format(time.RFC3339),
 	}

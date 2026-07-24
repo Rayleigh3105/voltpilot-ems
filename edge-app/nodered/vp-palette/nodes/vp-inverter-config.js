@@ -55,6 +55,12 @@ function parse(buf) {
     label: typeof obj.label === 'string' ? obj.label : '',
     family: obj.family.trim(),
     communication: obj.communication,
+    // control_tier is the battery-control primitive the WRITE-side controlRoute
+    // dispatches on. Passed through structurally (validation stays STRUCTURAL, per
+    // the 2026-07-13 stale-whitelist lesson); an absent/invalid value lets
+    // controlRoute fall back to communication-inference. Only 0..3 are meaningful.
+    control_tier: (typeof obj.control_tier === 'number' && obj.control_tier >= 0 && obj.control_tier <= 3)
+      ? Math.floor(obj.control_tier) : undefined,
     connection: conn,
     updated_at: typeof obj.updated_at === 'string' ? obj.updated_at : '',
   };

@@ -151,6 +151,25 @@ describe('shaping (pure)', function () {
     assert.ok(future, 'an unknown communication passes through; the router goes idle with a named status');
   });
 
+  it('vp-inverter-config threads control_tier through so controlRoute can dispatch on it', function () {
+    // The core stamps control_tier onto the selection; parse() must carry it (a
+    // Tier-2 brand reading over modbus_tcp cannot be dispatched otherwise).
+    const t2 = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', brand: 'sungrow', family: 'sungrow_sh',
+      communication: 'modbus_tcp', control_tier: 2, connection: { ip: '10.0.0.9' },
+    })));
+    assert.strictEqual(t2.control_tier, 2);
+    // absent / out-of-range -> undefined, so controlRoute falls back to inference.
+    const none = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: 'y' },
+    })));
+    assert.strictEqual(none.control_tier, undefined);
+    const bad = vpInverterConfig.parse(Buffer.from(JSON.stringify({
+      schema_version: '1.0', family: 'sunspec', communication: 'modbus_tcp', control_tier: 9, connection: { ip: 'y' },
+    })));
+    assert.strictEqual(bad.control_tier, undefined);
+  });
+
   it('vp-control-readback shapes a readback and derives all_match / mismatch_roles', function () {
     const ok = vpControlReadback.shape({
       ts: '2026-07-08T12:00:03Z', family: 'sunspec', source: 'schedule',
