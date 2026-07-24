@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
@@ -145,6 +146,47 @@ func (f *fakeActiveControl) ActiveControl() cloud.ActiveControl {
 	return f.ac
 }
 
+// fakeCalibration is an in-memory CalibrationController for the HTTP-layer test:
+// it records the calls the routes make and returns a configurable snapshot/error.
+type fakeCalibration struct {
+	snap    calibration.Snapshot
+	armErr  error
+	testErr error
+
+	lastArmed     *bool
+	lastTestDir   string
+	lastTestKw    float64
+	aborts        int
+	lastSign      *bool
+	lastScale     *bool
+	lastInvertSig *bool
+	lastPowScale  *float64
+	certifyCalls  int
+}
+
+func (f *fakeCalibration) CalibrationSnapshot() calibration.Snapshot { return f.snap }
+func (f *fakeCalibration) CalibrationArm(armed bool) (calibration.Snapshot, error) {
+	f.lastArmed = &armed
+	return f.snap, f.armErr
+}
+func (f *fakeCalibration) CalibrationStartTest(direction string, magnitudeKw float64) (calibration.Snapshot, error) {
+	f.lastTestDir, f.lastTestKw = direction, magnitudeKw
+	return f.snap, f.testErr
+}
+func (f *fakeCalibration) CalibrationAbort() calibration.Snapshot { f.aborts++; return f.snap }
+func (f *fakeCalibration) CalibrationConfirm(sign, scale *bool) calibration.Snapshot {
+	f.lastSign, f.lastScale = sign, scale
+	return f.snap
+}
+func (f *fakeCalibration) CalibrationCorrection(invertControlSign *bool, powerScale *float64) (calibration.Snapshot, error) {
+	f.lastInvertSig, f.lastPowScale = invertControlSign, powerScale
+	return f.snap, nil
+}
+func (f *fakeCalibration) CalibrationCertify() (calibration.Snapshot, error) {
+	f.certifyCalls++
+	return f.snap, nil
+}
+
 // fakeSources is an in-memory SourcesController for the HTTP-layer test.
 type fakeSources struct {
 	list     []sources.Source
@@ -208,7 +250,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 	t.Helper()
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 	return srv, fi, h
 }
@@ -221,7 +263,7 @@ func newServerWithHistory(t *testing.T) (*httptest.Server, *fakeInverter, *histo
 func TestStateEnvelopeCarriesBuildVersion(t *testing.T) {
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	h := history.New(100)
-	srv := httptest.NewServer(Handler(state.New("edge-ver", "test123"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	srv := httptest.NewServer(Handler(state.New("edge-ver", "test123"), fi, &fakePurge{}, &fakeDespike{}, h, &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -362,7 +404,7 @@ func TestStateEnvelopeCarriesServerClock(t *testing.T) {
 		s.Inverter = configuredInverter()
 		s.LastTelemetry = time.Now().UTC()
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 	resp, err := http.Get(srv.URL + "/api/state")
 	if err != nil {
@@ -434,7 +476,7 @@ func TestHistoryReturnsRecentSamplesWithMeasuredBattery(t *testing.T) {
 func TestStateExposesBufferDataLoss(t *testing.T) {
 	st := state.New("edge-test", "test")
 	st.Update(func(s *state.Snapshot) { s.BufferDataLoss = true; s.BufferPending = 7 })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -489,7 +531,7 @@ func configuredInverter() *state.InverterInfo {
 func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 	// (a) No inverter configured -> step "inverter", locked, no reference.
 	st := state.New("edge-gate", "test")
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -526,7 +568,7 @@ func TestOnboardingGateHoldsClaimUntilInverterDeliversData(t *testing.T) {
 func TestOnboardingGateDoneOncePaired(t *testing.T) {
 	st := state.New("edge-paired", "test")
 	st.Update(func(s *state.Snapshot) { s.PairingState = "verbunden" })
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -550,7 +592,7 @@ func TestRemovedDeviceReopensClaimStepAndSurfacesOnHealth(t *testing.T) {
 		s.LastTelemetry = time.Now().UTC()
 		s.BufferPaused = true
 	})
-	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 
 	b := getState(t, srv)
@@ -633,7 +675,7 @@ func waitForLine(sc *bufio.Scanner, want string) bool {
 func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 	fp := &fakePurge{}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -663,7 +705,7 @@ func TestPurgeDataEndpointRunsThePurgeAndReturnsItsState(t *testing.T) {
 func TestPurgeDataEndpointMapsFailureToGermanError(t *testing.T) {
 	fp := &fakePurge{err: context.DeadlineExceeded}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, fp, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 
 	resp, err := http.Post(srv.URL+"/api/purge-data", "application/json", nil)
@@ -929,7 +971,7 @@ func serveHandler(t *testing.T, pl PlanController) *httptest.Server {
 		s.SlotStart = time.Date(2026, 7, 1, 9, 0, 0, 0, time.UTC)
 	})
 	srv := httptest.NewServer(Handler(st,
-		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), pl, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), pl, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -1148,7 +1190,7 @@ func TestStateEnvelopeCarriesPeakGuardFields(t *testing.T) {
 		s.PeakGuardActive = true
 	})
 	srv := httptest.NewServer(Handler(st,
-		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -1168,7 +1210,7 @@ func TestStateEnvelopeCarriesPeakGuardFields(t *testing.T) {
 	// Module off: the optional fields are omitted entirely.
 	off := state.New("edge-test", "test")
 	srv2 := httptest.NewServer(Handler(off,
-		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv2.Close)
 	resp2, err := http.Get(srv2.URL + "/api/state")
 	if err != nil {
@@ -1189,7 +1231,7 @@ func sourcesServer(t *testing.T, fs *fakeSources) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, fs, &fakeTopology{}, &fakeActiveControl{}))
+		history.New(10), &fakePlan{}, fs, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -1465,7 +1507,7 @@ func TestSourcesListReturnsLastReadingsWithServerClock(t *testing.T) {
 func TestStateExposesPrimaryLastReading(t *testing.T) {
 	st := state.New("edge-test", "test")
 	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()},
-		&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		&fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 
 	getState := func() map[string]any {
@@ -1516,7 +1558,7 @@ func TestTestConnectionReturnsControllerResult(t *testing.T) {
 		testResult: testconn.Result{OK: true, Reading: &testconn.Reading{PvKw: ptr(4.8), SocPct: ptr(62)}},
 	}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 
 	reqBody := `{"role":"pv-generation","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.70"}}`
@@ -1549,7 +1591,7 @@ func TestProbeUnitsReturnsControllerResult(t *testing.T) {
 		probeResult: testconn.Result{OK: true, FoundUnits: []int{1, 2}},
 	}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 
 	reqBody := `{"brand":"fronius_sunspec","model":"fronius-eco-27-3-s","connection":{"ip":"192.168.210.40","unit_id":1}}`
@@ -1576,7 +1618,7 @@ func TestProbeUnitsReturnsControllerResult(t *testing.T) {
 func TestTestConnectionMalformedBodyReturns400(t *testing.T) {
 	fi := &fakeInverter{cat: inverter.DefaultCatalog()}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
-		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		fi, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	t.Cleanup(srv.Close)
 	resp, err := http.Post(srv.URL+"/api/test-connection", "application/json", strings.NewReader("{bad"))
 	if err != nil {
@@ -1599,7 +1641,7 @@ func TestStateEnvelopeCarriesTopology(t *testing.T) {
 	}}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{topo: topo}, &fakeActiveControl{}))
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{topo: topo}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -1623,7 +1665,7 @@ func TestStateEnvelopeCarriesTopology(t *testing.T) {
 	// Empty topology (no entities) still serializes nodes: [].
 	srv2 := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv2.Close()
 	resp2, err := http.Get(srv2.URL + "/api/state")
 	if err != nil {
@@ -1655,7 +1697,7 @@ func TestStateEnvelopeCarriesActiveControl(t *testing.T) {
 	}
 	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{ac: ac}))
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{ac: ac}, &fakeCalibration{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/state")
@@ -1687,7 +1729,7 @@ func TestStateEnvelopeCarriesActiveControl(t *testing.T) {
 	// Empty view (no flows, no decisions) still serializes flows/entities as [].
 	srv2 := httptest.NewServer(Handler(state.New("edge-test", "test"),
 		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
-		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}))
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}))
 	defer srv2.Close()
 	resp2, err := http.Get(srv2.URL + "/api/state")
 	if err != nil {
@@ -1798,5 +1840,78 @@ func TestAdaptiveEnergyPictureServed(t *testing.T) {
 		if !strings.Contains(dash, want) {
 			t.Errorf("dashboard.js: missing %s", want)
 		}
+	}
+}
+
+// TestCalibrationEndpoints wires the /api/calibration surface to a recording fake:
+// each route forwards its parsed input to the controller and returns the snapshot,
+// and a *calibration.ValidationError maps to HTTP 400 (not 500).
+func TestCalibrationEndpoints(t *testing.T) {
+	fc := &fakeCalibration{snap: calibration.Snapshot{Armed: true, Available: true, MaxKw: 1.0, TtlSeconds: 30}}
+	srv := httptest.NewServer(Handler(state.New("edge-cal", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10),
+		&fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, fc))
+	defer srv.Close()
+
+	// GET returns the snapshot under a "calibration" key.
+	resp, err := http.Get(srv.URL + "/api/calibration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Calibration calibration.Snapshot `json:"calibration"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if !got.Calibration.Armed || got.Calibration.MaxKw != 1.0 {
+		t.Fatalf("GET snapshot: %+v", got.Calibration)
+	}
+
+	post := func(path, body string) int {
+		r, err := http.Post(srv.URL+path, "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		return r.StatusCode
+	}
+
+	if code := post("/api/calibration/arm", `{"armed":true}`); code != 200 {
+		t.Fatalf("arm status %d", code)
+	}
+	if fc.lastArmed == nil || !*fc.lastArmed {
+		t.Fatalf("arm not forwarded: %v", fc.lastArmed)
+	}
+	if code := post("/api/calibration/test", `{"direction":"discharge","magnitude_kw":0.5}`); code != 200 {
+		t.Fatalf("test status %d", code)
+	}
+	if fc.lastTestDir != "discharge" || fc.lastTestKw != 0.5 {
+		t.Fatalf("test not forwarded: %q %v", fc.lastTestDir, fc.lastTestKw)
+	}
+	if code := post("/api/calibration/abort", ``); code != 200 || fc.aborts != 1 {
+		t.Fatalf("abort status %d aborts %d", code, fc.aborts)
+	}
+	if code := post("/api/calibration/confirm", `{"sign":true,"scale":true}`); code != 200 {
+		t.Fatalf("confirm status %d", code)
+	}
+	if fc.lastSign == nil || !*fc.lastSign || fc.lastScale == nil || !*fc.lastScale {
+		t.Fatalf("confirm not forwarded: %v %v", fc.lastSign, fc.lastScale)
+	}
+	if code := post("/api/calibration/correction", `{"invert_control_sign":true,"power_scale":10}`); code != 200 {
+		t.Fatalf("correction status %d", code)
+	}
+	if fc.lastInvertSig == nil || !*fc.lastInvertSig || fc.lastPowScale == nil || *fc.lastPowScale != 10 {
+		t.Fatalf("correction not forwarded: %v %v", fc.lastInvertSig, fc.lastPowScale)
+	}
+	if code := post("/api/calibration/certify", ``); code != 200 || fc.certifyCalls != 1 {
+		t.Fatalf("certify status %d calls %d", code, fc.certifyCalls)
+	}
+
+	// A validation error maps to 400 with a German message + the snapshot.
+	fc.armErr = &calibration.ValidationError{Msg: "Not-Aus aktiv."}
+	if code := post("/api/calibration/arm", `{"armed":true}`); code != 400 {
+		t.Fatalf("a validation error must be 400, got %d", code)
 	}
 }

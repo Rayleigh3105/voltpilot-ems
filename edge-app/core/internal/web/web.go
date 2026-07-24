@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
@@ -116,6 +117,21 @@ type ActiveControlController interface {
 	ActiveControl() cloud.ActiveControl
 }
 
+// CalibrationController backs the First-Light calibration surface: the safe,
+// tightly-bounded procedure that proves a battery inverter's control sign + scale
+// on the REAL hardware via small, observed, auto-reverting test writes BEFORE the
+// family is certified. The agent implements it. Every mutating call returns the
+// fresh snapshot the surface renders; a *calibration.ValidationError is a 400.
+type CalibrationController interface {
+	CalibrationSnapshot() calibration.Snapshot
+	CalibrationArm(armed bool) (calibration.Snapshot, error)
+	CalibrationStartTest(direction string, magnitudeKw float64) (calibration.Snapshot, error)
+	CalibrationAbort() calibration.Snapshot
+	CalibrationConfirm(sign, scale *bool) calibration.Snapshot
+	CalibrationCorrection(invertControlSign *bool, powerScale *float64) (calibration.Snapshot, error)
+	CalibrationCertify() (calibration.Snapshot, error)
+}
+
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
 // the browser can compute accurate "vor X" ages and align chart axes even when
 // its own clock drifts from the edge device's, plus the derived onboarding-gate
@@ -210,7 +226,8 @@ func envelope(st *state.Store, topo TopologyController, ac ActiveControlControll
 // action, and the health endpoint.
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
-	src SourcesController, topo TopologyController, ac ActiveControlController) http.Handler {
+	src SourcesController, topo TopologyController, ac ActiveControlController,
+	cal CalibrationController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -513,6 +530,101 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data_purge": info})
+	})
+
+	// --- First-Light calibration (the safe, bounded control sign/scale proof) ---
+	//
+	// A SEPARATE, tightly-bounded write path used to calibrate a battery inverter's
+	// control sign + scale on the real hardware BEFORE it is certified. Every axis is
+	// bounded in the agent (magnitude cap + TTL auto-revert + guards.Clamp + off by
+	// default + global kill-switch). These endpoints are the operator surface.
+	calResult := func(w http.ResponseWriter, snap calibration.Snapshot, err error) {
+		if err != nil {
+			var ve *calibration.ValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg, "calibration": snap})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Die Aktion konnte nicht ausgeführt werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"calibration": snap})
+	}
+	readBody := func(r *http.Request, v any) bool {
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+		return json.Unmarshal(body, v) == nil
+	}
+
+	// GET /api/calibration - the current calibration state (armed/phase, envelope,
+	// live battery/soc, testable directions, the active test + its live verdict,
+	// confirmations + certification). The surface polls this.
+	mux.HandleFunc("GET /api/calibration", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"calibration": cal.CalibrationSnapshot()})
+	})
+	// POST /api/calibration/arm {armed} - arm/disarm calibration mode. Arming
+	// refuses (400) unless the kill-switch is on and a controllable inverter is set;
+	// disarming aborts any active test (auto-revert to neutral).
+	mux.HandleFunc("POST /api/calibration/arm", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Armed bool `json:"armed"`
+		}
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		snap, err := cal.CalibrationArm(req.Armed)
+		calResult(w, snap, err)
+	})
+	// POST /api/calibration/test {direction, magnitude_kw} - start ONE bounded test
+	// write. Over the cap / not armed / not controllable -> 400.
+	mux.HandleFunc("POST /api/calibration/test", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Direction   string  `json:"direction"`
+			MagnitudeKw float64 `json:"magnitude_kw"`
+		}
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		snap, err := cal.CalibrationStartTest(req.Direction, req.MagnitudeKw)
+		calResult(w, snap, err)
+	})
+	// POST /api/calibration/abort - one-click abort: end the active test now
+	// (auto-revert to neutral). Always 200.
+	mux.HandleFunc("POST /api/calibration/abort", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"calibration": cal.CalibrationAbort()})
+	})
+	// POST /api/calibration/confirm {sign?, scale?} - record the operator's verdict.
+	mux.HandleFunc("POST /api/calibration/confirm", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Sign  *bool `json:"sign"`
+			Scale *bool `json:"scale"`
+		}
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"calibration": cal.CalibrationConfirm(req.Sign, req.Scale)})
+	})
+	// POST /api/calibration/correction {invert_control_sign?, power_scale?} - persist
+	// a sign/scale correction to the inverter connection and retry.
+	mux.HandleFunc("POST /api/calibration/correction", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			InvertControlSign *bool    `json:"invert_control_sign"`
+			PowerScale        *float64 `json:"power_scale"`
+		}
+		if !readBody(r, &req) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		snap, err := cal.CalibrationCorrection(req.InvertControlSign, req.PowerScale)
+		calResult(w, snap, err)
+	})
+	// POST /api/calibration/certify - the deliberate hand-off: certify this device's
+	// family for optimizer control. Refused (400) unless sign AND scale are confirmed.
+	mux.HandleFunc("POST /api/calibration/certify", func(w http.ResponseWriter, r *http.Request) {
+		snap, err := cal.CalibrationCertify()
+		calResult(w, snap, err)
 	})
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {

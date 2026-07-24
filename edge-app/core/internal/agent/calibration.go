@@ -38,14 +38,10 @@ import (
 //   - certification is a SEPARATE, deliberate step (CalibrationCertify) gated on the
 //     operator confirming BOTH sign and scale - calibration never auto-certifies.
 
-// CalibrationError is a user-facing (German) calibration validation failure. The
-// web layer maps it to HTTP 400; everything else is an internal 500.
-type CalibrationError struct{ Msg string }
-
-func (e *CalibrationError) Error() string { return e.Msg }
-
+// calErr builds a user-facing (German) calibration.ValidationError the web layer
+// maps to HTTP 400.
 func calErr(format string, args ...any) error {
-	return &CalibrationError{Msg: fmt.Sprintf(format, args...)}
+	return &calibration.ValidationError{Msg: fmt.Sprintf(format, args...)}
 }
 
 // controlCertified reports whether a family may receive live control writes. It
@@ -267,8 +263,8 @@ func (a *Agent) CalibrationStartTest(dir string, magnitudeKw float64) (calibrati
 	}
 	a.calMu.Unlock()
 	if err != nil {
-		// StartTest returns package errors with German messages; surface them as 400.
-		return a.calibrationSnapshot(now), &CalibrationError{Msg: err.Error()}
+		// StartTest returns *calibration.ValidationError - surface it as a 400.
+		return a.calibrationSnapshot(now), err
 	}
 	a.nudgeSetpoint() // publish the calibration setpoint immediately
 	return a.calibrationSnapshot(now), nil
@@ -325,7 +321,7 @@ func (a *Agent) CalibrationCorrection(invertSign *bool, powerScale *float64) (ca
 	if _, err := a.SetInverter(req); err != nil {
 		var ve *inverter.ValidationError
 		if errors.As(err, &ve) {
-			return a.calibrationSnapshot(now), &CalibrationError{Msg: ve.Msg}
+			return a.calibrationSnapshot(now), &calibration.ValidationError{Msg: ve.Msg}
 		}
 		return a.calibrationSnapshot(now), calErr("Die Korrektur konnte nicht gespeichert werden.")
 	}

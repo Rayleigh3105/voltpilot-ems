@@ -30,7 +30,6 @@
 package calibration
 
 import (
-	"errors"
 	"math"
 	"time"
 )
@@ -111,10 +110,17 @@ func ClampMagnitude(kw, maxKw float64) float64 {
 	return math.Max(-maxKw, math.Min(maxKw, kw))
 }
 
-// ErrNotArmed / ErrBadMagnitude are the StartTest refusals.
+// ValidationError is a user-facing (German) calibration failure. The web layer
+// maps it to HTTP 400; any other error is an internal 500 (the guards.
+// SettingsValidationError precedent).
+type ValidationError struct{ Msg string }
+
+func (e *ValidationError) Error() string { return e.Msg }
+
+// ErrNotArmed / ErrBadMagnitude are the StartTest refusals (classifiable 400s).
 var (
-	ErrNotArmed     = errors.New("Kalibriermodus ist nicht scharfgeschaltet.")
-	ErrBadMagnitude = errors.New("ungültiger Testwert.")
+	ErrNotArmed     = &ValidationError{Msg: "Kalibriermodus ist nicht scharfgeschaltet."}
+	ErrBadMagnitude = &ValidationError{Msg: "ungültiger Testwert."}
 )
 
 type testState struct {

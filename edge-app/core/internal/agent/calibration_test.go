@@ -147,9 +147,9 @@ func TestCalibrationStartTestEnforcesTheMagnitudeCap(t *testing.T) {
 	if err == nil {
 		t.Fatal("a request above VP_CALIBRATION_MAX_KW must be refused")
 	}
-	var ce *CalibrationError
+	var ce *calibration.ValidationError
 	if !errors.As(err, &ce) {
-		t.Fatalf("expected a CalibrationError, got %T", err)
+		t.Fatalf("expected a calibration.ValidationError, got %T", err)
 	}
 	// A within-cap test is accepted and immediately active.
 	snap, err := a.CalibrationStartTest("discharge", 0.5)
