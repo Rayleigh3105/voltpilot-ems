@@ -376,13 +376,14 @@
           </div>
         </div>
 
-        <!-- Freigabe: erst nach bestätigtem Vorzeichen UND Skala -->
+        <!-- Freigabe: erst nach bestätigtem Vorzeichen UND Skala (aus gemessener Bewegung) -->
         <div class="cal-confirm" id="calConfirm" hidden>
           <div class="cal-confirm-checks">
-            <label><input type="checkbox" id="calSign" /> Vorzeichen bestätigt</label>
-            <label><input type="checkbox" id="calScale" /> Skala bestätigt</label>
+            <label><input type="checkbox" id="calSign" disabled /> Vorzeichen bestätigt</label>
+            <label><input type="checkbox" id="calScale" disabled /> Skala bestätigt</label>
           </div>
           <button type="button" id="calCertify" class="cal-btn primary" disabled>Steuerung freigeben</button>
+          <button type="button" id="calDecertify" class="cal-btn ghost" hidden>Freigabe zurücknehmen</button>
           <p class="cal-hint" id="calCertHint">Nach der Freigabe steuert der VoltPilot-Fahrplan diesen Wechselrichter automatisch.</p>
         </div>
       </div>

@@ -183,15 +183,21 @@
       b.classList.toggle("active", Number(b.dataset.scale) === cal.power_scale);
     });
 
-    // Confirm + certify.
+    // Confirm + certify. Gap B: the boxes/button only enable once the SYSTEM has
+    // objectively observed the movement (write read back + measured verdict) - never on
+    // a manual tick alone. An already-set box stays interactive so it can be unticked.
     show($("calConfirm"), cal.armed);
     $("calSign").checked = !!cal.sign_confirmed;
     $("calScale").checked = !!cal.scale_confirmed;
-    $("calCertify").disabled = !cal.passed || cal.certified;
+    $("calSign").disabled = !cal.can_confirm_sign && !cal.sign_confirmed;
+    $("calScale").disabled = !cal.can_confirm_scale && !cal.scale_confirmed;
+    $("calCertify").disabled = !cal.can_certify || cal.certified;
+    show($("calDecertify"), !!cal.certified);
     $("calCertHint").textContent = cal.certified
-      ? "Dieser Wechselrichter ist freigegeben – der VoltPilot-Fahrplan steuert ihn automatisch."
-      : cal.passed ? "Vorzeichen und Skala bestätigt – Sie können die Steuerung jetzt freigeben."
-        : "Bestätigen Sie zuerst Vorzeichen UND Skala.";
+      ? "Dieser Wechselrichter ist freigegeben – der VoltPilot-Fahrplan steuert ihn automatisch. Mit „Freigabe zurücknehmen“ wieder auf nur-lesend stellen."
+      : cal.can_certify ? "Vorzeichen und Skala bestätigt – Sie können die Steuerung jetzt freigeben."
+        : cal.passed ? "Für die Freigabe fehlt noch eine bestätigte Rückmeldung des Wechselrichters (schreiben + zurücklesen). Bitte einen Testlauf durchführen."
+          : "Bestätigen Sie Vorzeichen UND Skala – die Kästchen werden aktiv, sobald sich die Batterie messbar bewegt hat.";
   }
 
   function startTest(dir) {
@@ -227,6 +233,9 @@
     });
     $("calCertify").addEventListener("click", function () {
       post("/api/calibration/certify").then(applyResp).catch(swallow);
+    });
+    $("calDecertify").addEventListener("click", function () {
+      post("/api/calibration/decertify").then(applyResp).catch(swallow);
     });
     fetchCal();
     setInterval(fetchCal, 1500);

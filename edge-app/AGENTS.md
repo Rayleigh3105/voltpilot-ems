@@ -547,6 +547,48 @@ freshness machinery. Bounded at 16 entries in `cloud.PublishStatus`. Cloud half
 + portal rendering: root AGENTS.md "Multi-source Anlage" → Increment 2.
 Proof: `agent/sources_summary_test.go`.
 
+## Deye control WRITE: bidirectional single-socket lock + First-Light evidence gate
+
+The Solarman/LSW3 logger accepts only ONE TCP client, so the Deye READ poll and the
+control WRITE executor MUST coordinate or the frequent short read displaces the long
+write (5×FC6+5×FC3) mid-sequence and it never lands ("wartet · Noch keine Rückmeldung"
+on the `:8484` card; the certified optimizer path fails identically). Non-negotiable
+facts (branch `fm/vp-deye-write-fix-x2`, PR fixing the reproduced blocker):
+
+- **The one-socket lock is BIDIRECTIONAL on the shared `tab-auto` flow context.** BOTH
+  the read poll (`auto-solarman` in `flows.json`, a preserved-verbatim node) AND the
+  write executor (`controlExecSolarmanFunc` in `build-flows.js`) set/clear
+  `sv5_busy:<host:port>` and honor `sv5_write_want:<host:port>`. A real write ANNOUNCES
+  intent (`sv5_write_want`, 15 s window) so the read yields it a clean window; both
+  DEFER to an in-flight op (skip-if-busy, 30 s stale-expiry). Do NOT remove either side
+  — the write-only lock (pre-fix) only serialized write-vs-write and left read-vs-write
+  colliding. `auto-solarman` is edited directly in `flows.json` (its socket wrapper is
+  flow-specific, not the `deye/solarman-v5.js` codec copy) then carried through by
+  `build-flows.js`; re-run `node build-flows.js` after any change (idempotent).
+- **Swallowed write errors are surfaced** via rate-limited `node.warn` (30 s/class) on
+  the socket-error + busy-skip paths — a real hardware issue shows in
+  `docker compose logs nodered`, not just node status.
+- **Regression coverage** = a `maxConnections=1`/single-client in-process logger driven
+  by the read poll AND write executor concurrently on a shared flow context
+  (`deye-control.e2e.test.js`). The old stub used unlimited `net.createServer` + no
+  concurrent poll, so it could never reproduce the contention.
+- **First-Light certify is EVIDENCE-gated (report §7 Gap B), not a manual tick.** A TRUE
+  `ConfirmSign`/`ConfirmScale` needs the current test's write→readback MATCH
+  (`NoteWriteReadback` from `agent.onControlReadback` when `source=="calibration"` &&
+  `mode!="release"`) AND the measured `Verdict.SignOK`/`MagnitudeOK`; `CanCertify()` =
+  `Passed() && writeReadbackOK`. Snapshot carries `can_confirm_sign/_scale`/`can_certify`
+  for the card. Evidence resets on StartTest/Abort/Correction.
+- **`calibration-certified.json` is versioned (`calibrationCertVersion`).** A file below
+  the current version (a pre-evidence-gate cert) is INVALIDATED once on load →
+  read-only until a real First-Light re-certifies. CRITICAL: the live Pilsting Deye was
+  certified via the old manual path, so on deploy it goes read-only until re-proven.
+- **Gap A**: `POST /api/calibration/decertify` + "Freigabe zurücknehmen" button revoke
+  the per-device grant (mirrors certify's persist rollback).
+- **§6**: the Deye ToU plan writes `progTimeBase` (0x0094 hybrid_3p / 0x00fa hybrid_1p)
+  = Program 1 start 00:00, so the commanded slot is the day's BASE window; without it a
+  stale program time can leave Program 1 inactive at "now" and the inverter ignores the
+  setpoint even though registers echo. Still `bench_pending` (Deye uncertified).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

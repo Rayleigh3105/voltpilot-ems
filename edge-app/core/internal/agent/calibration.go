@@ -286,16 +286,23 @@ func (a *Agent) CalibrationAbort() calibration.Snapshot {
 }
 
 // CalibrationConfirm records the operator's sign/scale verdict (nil = leave as is).
-func (a *Agent) CalibrationConfirm(sign, scale *bool) calibration.Snapshot {
+// Setting a confirmation TRUE is EVIDENCE-GATED (report §7 Gap B): the pure session
+// refuses it unless the current test's write read back a match AND the MEASURED battery
+// moved as commanded, so the live reading is passed in for the verdict. A refusal is a
+// *calibration.ValidationError the web layer maps to 400. Clearing (false) never errors.
+func (a *Agent) CalibrationConfirm(sign, scale *bool) (calibration.Snapshot, error) {
+	now := time.Now().UTC()
+	after := a.liveCalibrationReading() // acquires a.mu then releases, before calMu
 	a.calMu.Lock()
+	var err error
 	if sign != nil {
-		a.cal.ConfirmSign(*sign)
+		err = a.cal.ConfirmSign(*sign, after)
 	}
-	if scale != nil {
-		a.cal.ConfirmScale(*scale)
+	if err == nil && scale != nil {
+		err = a.cal.ConfirmScale(*scale, after)
 	}
 	a.calMu.Unlock()
-	return a.calibrationSnapshot(time.Now().UTC())
+	return a.calibrationSnapshot(now), err
 }
 
 // CalibrationCorrection patches the WRITE-path sign / power scale on the inverter
@@ -360,12 +367,17 @@ func (a *Agent) CalibrationCertify() (calibration.Snapshot, error) {
 	}
 	a.calMu.Lock()
 	passed := a.cal.Passed()
-	if passed {
+	canCertify := a.cal.CanCertify() // Passed() AND the current test's write read back a match
+	if canCertify {
 		a.calCert[family] = true
 	}
 	a.calMu.Unlock()
-	if !passed {
-		return a.calibrationSnapshot(now), calErr("Bitte bestätigen Sie zuerst Vorzeichen UND Skala.")
+	if !canCertify {
+		// Distinguish "confirm the boxes" from "no real write landed yet" (Gap B).
+		if !passed {
+			return a.calibrationSnapshot(now), calErr("Bitte bestätigen Sie zuerst Vorzeichen UND Skala.")
+		}
+		return a.calibrationSnapshot(now), calErr("Für die Freigabe fehlt eine bestätigte Rückmeldung des Wechselrichters. Bitte führen Sie einen Testlauf durch, bis das Schreiben zurückgelesen und bestätigt wurde.")
 	}
 	if err := a.persistCalibrationCert(); err != nil {
 		// Roll back the in-memory grant if it cannot be persisted (a restart would
@@ -377,6 +389,40 @@ func (a *Agent) CalibrationCertify() (calibration.Snapshot, error) {
 	}
 	slog.Warn("First-Light: inverter control CERTIFIED for this device via calibration", "family", family)
 	a.nudgeSetpoint() // control_enabled now flips true for the optimizer/arbiter path
+	return a.calibrationSnapshot(now), nil
+}
+
+// CalibrationDecertify is the deliberate counterpart to CalibrationCertify ("Freigabe
+// zurücknehmen", report §7 Gap A): it removes the selected family from the per-device
+// certification, re-persists, and nudges the setpoint so control_certified flips false
+// and the family returns to read-only. Mirrors CalibrationCertify's persist rollback so
+// the in-memory grant and the on-disk file never diverge. (An env-allowlisted family
+// stays certified fleet-wide - this only revokes the per-device First-Light grant.)
+func (a *Agent) CalibrationDecertify() (calibration.Snapshot, error) {
+	now := time.Now().UTC()
+	sel, ok := a.GetInverter()
+	if !ok {
+		return a.calibrationSnapshot(now), calErr("Kein Wechselrichter ausgewählt.")
+	}
+	family := strings.ToLower(strings.TrimSpace(sel.Family))
+	if family == "" {
+		return a.calibrationSnapshot(now), calErr("Kein Modell erkannt.")
+	}
+	a.calMu.Lock()
+	was := a.calCert[family]
+	delete(a.calCert, family)
+	a.calMu.Unlock()
+	if was {
+		if err := a.persistCalibrationCert(); err != nil {
+			// Roll back so memory matches disk (a restart would otherwise re-certify).
+			a.calMu.Lock()
+			a.calCert[family] = true
+			a.calMu.Unlock()
+			return a.calibrationSnapshot(now), calErr("Die Freigabe konnte nicht zurückgenommen werden.")
+		}
+		slog.Warn("First-Light: inverter control DECERTIFIED for this device (Freigabe zurückgenommen)", "family", family)
+	}
+	a.nudgeSetpoint() // control_certified now flips false -> the family is read-only again
 	return a.calibrationSnapshot(now), nil
 }
 
@@ -398,7 +444,19 @@ func (a *Agent) calibrationPreflight() error {
 
 // --- persisted per-device certification (data-dir/calibration-certified.json) ---
 
+// calibrationCertVersion is the schema version of calibration-certified.json, bumped
+// whenever the MEANING of a stored certification changes. A file BELOW this version was
+// written before the current safety gate existed, so its grants cannot be trusted and
+// are invalidated once, on load (loadCalibrationCert). v1 introduces the Gap-B evidence
+// gate (report §7): a pre-v1 certification was granted WITHOUT the objective
+// write->readback + measured-movement proof (it was possible via a manual tick), so on
+// upgrade the inverter goes READ-ONLY until a real, evidence-backed First-Light
+// re-certifies it. CRITICAL: this is what stops a stale, unverified certification from
+// driving the battery the moment the socket-coordination fix makes writes land.
+const calibrationCertVersion = 1
+
 type calibrationCertFile struct {
+	Version  int      `json:"version"`
 	Families []string `json:"families"`
 }
 
@@ -419,6 +477,23 @@ func (a *Agent) loadCalibrationCert() {
 	var f calibrationCertFile
 	if err := json.Unmarshal(raw, &f); err != nil {
 		slog.Warn("calibration certification corrupt; none applied", "err", err)
+		return
+	}
+	// One-time invalidation on upgrade (report §7 CRITICAL): a certification recorded
+	// BELOW the current schema version was granted before the current safety gate
+	// existed (v1 = the Gap-B evidence gate), so it cannot be trusted. Drop it and
+	// re-persist an empty, version-stamped file; the inverter stays READ-ONLY until the
+	// operator re-runs a real, evidence-backed First-Light. Runs once (next boot sees v1);
+	// if the re-persist fails, none is applied THIS boot and the migration retries next boot
+	// (fail-safe: read-only until it succeeds).
+	if f.Version < calibrationCertVersion {
+		if len(f.Families) > 0 {
+			slog.Warn("First-Light: invalidating a pre-evidence-gate control certification; the inverter is READ-ONLY until re-certified via a real First-Light",
+				"families", f.Families, "was_version", f.Version, "gate_version", calibrationCertVersion)
+		}
+		if err := a.persistCalibrationCert(); err != nil {
+			slog.Warn("could not persist the certification invalidation; will retry on next boot", "err", err)
+		}
 		return
 	}
 	a.calMu.Lock()
@@ -445,7 +520,7 @@ func (a *Agent) persistCalibrationCert() error {
 	}
 	a.calMu.Unlock()
 	sort.Strings(fams)
-	raw, err := json.MarshalIndent(calibrationCertFile{Families: fams}, "", "  ")
+	raw, err := json.MarshalIndent(calibrationCertFile{Version: calibrationCertVersion, Families: fams}, "", "  ")
 	if err != nil {
 		return err
 	}

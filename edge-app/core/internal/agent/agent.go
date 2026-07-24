@@ -1283,6 +1283,7 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		Family         string   `json:"family"`
 		Source         string   `json:"source"`
 		SlotStart      string   `json:"slot_start"`
+		Mode           string   `json:"mode"`
 		ControlEnabled bool     `json:"control_enabled"`
 		Certified      bool     `json:"certified"`
 		AllMatch       bool     `json:"all_match"`
@@ -1333,6 +1334,15 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		})
 	}
 	a.State.Update(func(s *state.Snapshot) { s.Control = info })
+	// First-Light Gap B (report §7): a calibration WRITE's readback (source ==
+	// "calibration" and NOT the neutral release) is the objective "the write landed"
+	// evidence the sign/scale confirm + certify gates require. Correlate a full-register
+	// match to the current test so certification cannot precede a real, confirmed write.
+	if strings.EqualFold(strings.TrimSpace(m.Source), "calibration") && m.Mode != "release" {
+		a.calMu.Lock()
+		a.cal.NoteWriteReadback(m.AllMatch)
+		a.calMu.Unlock()
+	}
 	// E2: the register-level proof also surfaces per entity - mirror it onto
 	// the battery entity's readback topic (same payload shape, entity contract
 	// §4) and record the verdict for the heartbeat. No-op without a registry.
