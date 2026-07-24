@@ -175,6 +175,49 @@ test('un-gate: Deye writes/readbacks are gated ONLY by the certification allowli
   assert.deepStrictEqual(C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 }).writes, [], 'production default is read-only again');
 });
 
+test('First-Light calibration bypasses ONLY the certification gate (never the kill-switch)', () => {
+  // The mechanism for the very first real write to a live Deye battery, BEFORE the
+  // family is certified. setpoint.calibration=true un-gates the SAME planned ToU
+  // WriteOps for the uncertified family - WITHOUT touching CERTIFIED_CONTROL_FAMILIES.
+  const off = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -0.5 }), { ratedKw: 30 });
+  assert.deepStrictEqual(off.writes, [], 'no calibration flag -> production default read-only');
+
+  const cal = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -0.5, calibration: true }), { ratedKw: 30 });
+  assert.strictEqual(cal.adapter, 'solarman_v5');
+  assert.strictEqual(cal.certified, false, 'family is still uncertified');
+  assert.strictEqual(cal.calibration, true);
+  assert.strictEqual(cal.writes.length, cal.planned.length, 'calibration executes the SAME planned ToU ops');
+  assert.strictEqual(cal.readbacks.length, cal.writes.length, 'a readback per written register');
+  // The bounded calibration write forces dwell_s=0 so the controller-owned
+  // auto-revert is never blocked by the 900 s EEPROM dwell.
+  assert.ok(cal.writes.every((w) => w.dwell_s === 0 && w.min_change === 0), 'calibration writes carry dwell_s=0');
+
+  // The global kill-switch STILL wins: calibration with control_enabled=false writes nothing.
+  const killed = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -0.5, source: 'calibration', control_enabled: false, calibration: true }, { ratedKw: 30 });
+  assert.deepStrictEqual(killed.writes, [], 'kill-switch off -> no calibration write');
+  assert.deepStrictEqual(killed.readbacks, []);
+
+  // The normal (non-calibration) production path is untouched: still read-only.
+  assert.deepStrictEqual(C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -0.5 }), { ratedKw: 30 }).writes, []);
+});
+
+test('First-Light calibration revert hands the uncertified Deye back (controlRelease bypass)', () => {
+  // controlRelease normally emits writes:[] for an uncertified Deye. During a
+  // calibration test the auto-revert MUST actually disable ToU (hand back to
+  // self-consumption), so opts.calibration un-gates the release too.
+  const plain = C.controlRelease(DEYE_SEL, {});
+  assert.deepStrictEqual(plain.writes, [], 'uncertified release is planned-only by default');
+
+  const rel = C.controlRelease(DEYE_SEL, { calibration: true });
+  assert.strictEqual(rel.mode, 'release');
+  assert.strictEqual(rel.calibration, true);
+  assert.strictEqual(rel.writes.length, 1, 'the neutral ToU-disable write executes during calibration');
+  assert.strictEqual(rel.writes[0].role, 'tou_enable');
+  assert.strictEqual(rel.writes[0].value, 0, 'ToU disabled -> self-consumption');
+  assert.strictEqual(rel.writes[0].dwell_s, 0, 'revert not blocked by EEPROM dwell');
+  assert.strictEqual(rel.readbacks.length, 1);
+});
+
 test('Deye hybrid_3p planned ToU mapping uses the ha-solarman deye_p3 registers', () => {
   const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 }), { ratedKw: 50 });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
