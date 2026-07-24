@@ -83,7 +83,7 @@ func (a *Agent) newArbiter() *desired.Arbiter {
 				family = a.inv.Family
 			}
 			a.invMu.Unlock()
-			return a.Cfg.ControlEnabled && a.Cfg.ControlCertified(family)
+			return a.Cfg.ControlEnabled && a.controlCertified(family)
 		},
 		StorageFailsafe: a.storageFailsafe,
 		PublishCommand: func(entityID string, payload []byte) {

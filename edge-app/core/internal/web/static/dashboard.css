@@ -600,3 +600,78 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .betrieb-row .bt-value { font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
 .betrieb-row .bt-value.ok { color: var(--ok); }
 .betrieb-row .bt-value.bt-plain { font-weight: 500; color: var(--muted); }
+
+/* ---------- First-Light-Kalibrierung ---------- */
+.cal-card .cal-intro { margin: 4px 0 14px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2, var(--muted)); }
+.cal-live { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.cal-stat { flex: 1 1 120px; min-width: 0; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); padding: 10px 13px; display: flex; flex-direction: column; gap: 3px; }
+.cal-stat-label { font-size: 11.5px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.cal-stat-val { font-size: 16px; font-weight: 700; color: var(--ink); }
+
+.cal-step { padding: 14px 0; border-top: 1px solid var(--line); }
+.cal-arm-row { display: flex; align-items: center; gap: 14px; }
+.cal-arm-row strong { display: block; font-size: 14.5px; }
+.cal-hint { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+
+/* the arm switch */
+.cal-switch { position: relative; display: inline-block; width: 48px; height: 28px; flex: none; cursor: pointer; }
+.cal-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.cal-slider { position: absolute; inset: 0; background: var(--line); border-radius: 999px; transition: background .18s; }
+.cal-slider::before { content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px;
+  background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .18s; }
+.cal-switch input:checked + .cal-slider { background: var(--brand); }
+.cal-switch input:checked + .cal-slider::before { transform: translateX(20px); }
+
+.cal-mag { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.cal-mag label { font-size: 13px; font-weight: 650; }
+.cal-mag select { padding: 8px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface);
+  font-size: 13.5px; font-weight: 600; color: var(--ink); min-height: 40px; }
+.cal-test-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.cal-btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 10px; padding: 11px 16px; min-height: 44px; font-size: 13.5px; font-weight: 650; cursor: pointer;
+  transition: filter .15s, background .15s, border-color .15s; }
+.cal-btn:hover:not(:disabled) { filter: brightness(.97); }
+.cal-btn:disabled { opacity: .45; cursor: not-allowed; }
+.cal-btn.charge { background: var(--batt-soft); border-color: var(--batt); color: var(--batt); }
+.cal-btn.discharge { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-deep); }
+.cal-btn.abort { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); margin-left: auto; }
+.cal-btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.cal-btn.ghost.active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-deep); }
+
+.cal-err { margin: 10px 0 0; padding: 9px 13px; border-radius: 9px; font-size: 13px; font-weight: 600;
+  background: var(--err-soft); color: var(--err); border: 1px solid var(--err); }
+
+.cal-verdict { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.cal-verdict-head { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 11px 14px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 14px; }
+.cal-count { font-size: 12.5px; font-weight: 650; color: var(--muted); white-space: nowrap; }
+.cal-checks { display: flex; flex-direction: column; }
+.cal-check { display: grid; grid-template-columns: 26px 1fr; grid-template-areas: "ico label" "ico detail";
+  gap: 1px 10px; padding: 11px 14px; align-items: center; }
+.cal-check + .cal-check { border-top: 1px solid var(--line); }
+.cal-check-ico { grid-area: ico; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-weight: 800; font-size: 13px; }
+.cal-check-label { grid-area: label; font-weight: 650; font-size: 13.5px; }
+.cal-check-detail { grid-area: detail; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.cal-check.ok .cal-check-ico { background: var(--batt-soft); color: var(--batt); }
+.cal-check.bad .cal-check-ico { background: var(--warn-soft); color: var(--warn); }
+.cal-check.bad .cal-check-detail { color: var(--warn); }
+.cal-check.wait .cal-check-ico { background: var(--line); color: var(--muted); }
+
+.cal-correct { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: flex;
+  flex-wrap: wrap; align-items: center; gap: 10px; }
+.cal-correct-title { flex-basis: 100%; font-size: 12.5px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .03em; }
+.cal-scale { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+
+.cal-confirm { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.cal-confirm-checks { display: flex; flex-wrap: wrap; gap: 16px 22px; margin-bottom: 12px; }
+.cal-confirm-checks label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.cal-confirm-checks input { width: 18px; height: 18px; }
+
+@media (max-width: 640px) {
+  .cal-btn.abort { margin-left: 0; width: 100%; }
+  .cal-test-btns .cal-btn { flex: 1 1 auto; }
+}

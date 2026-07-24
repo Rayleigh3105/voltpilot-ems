@@ -29,6 +29,17 @@
  *     session has something concrete to verify.
  *   - Signs are configuration, never code: `connection.invert_control_sign`
  *     flips the battery-power write direction if the bench shows it inverted.
+ *   - FIRST-LIGHT CALIBRATION is the ONE deliberate certification bypass: when
+ *     the core sets `setpoint.calibration === true` (only during an armed, bounded,
+ *     TTL-limited, single-shot calibration test - see internal/calibration + the
+ *     agent), an UNCERTIFIED family may execute its EXISTING mapped WriteOps so the
+ *     operator can prove sign + scale on the real inverter BEFORE certifying it.
+ *     This bypass touches ONLY the certification gate: `control_enabled` (the core
+ *     kill-switch) is STILL required, the value the core sends is STILL guard-clamped
+ *     and magnitude-capped upstream, and the WriteOps are the SAME register mapping -
+ *     nothing here is widened or reimplemented. Calibration writes carry dwell_s=0
+ *     (a handful of writes in a bounded manual test, never the EEPROM-wear-sensitive
+ *     optimizer cadence) so the controller-owned auto-revert is never blocked.
  *
  * The register maps stay in their owning modules (modbus-tcp.js for the SunSpec
  * profile, deye/deye-decode.js for the Deye families). This file only decides
@@ -141,6 +152,10 @@ function controlRoute(selection, setpoint, opts = {}) {
   }
 
   const controlEnabled = setpoint.control_enabled === true;
+  // First-Light calibration bypass (see the SAFETY header): the core sets this ONLY
+  // during a bounded, armed, TTL-limited test, and it bypasses ONLY the certification
+  // gate - never control_enabled, never the guard clamp, never the magnitude cap.
+  const calibration = setpoint.calibration === true;
   const family = typeof selection.family === 'string' ? selection.family.trim() : '';
   const certified = CERTIFIED_CONTROL_FAMILIES.has(family);
   const kw = setpoint.battery_setpoint_kw;
@@ -157,14 +172,14 @@ function controlRoute(selection, setpoint, opts = {}) {
   const tier = resolveControlTier(selection);
   const comm = selection.communication;
   if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
-    return deyeControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
+    return deyeControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts });
   }
   if (tier === CONTROL_TIER.VENDOR_EMS) {
     return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
   }
   if (tier === CONTROL_TIER.SUNSPEC) {
     if (comm === COMM_MODBUS) {
-      return sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw });
+      return sunspecControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw });
     }
     if (comm === COMM_FRONIUS) {
       return froniusControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts });
@@ -219,14 +234,20 @@ const SETPOINT_STALE_MS = 20 * 60 * 1000;
  * Gated EXACTLY like controlRoute: only a CERTIFIED family emits executable release
  * writes; an uncertified family (Deye, Fronius) is planned-only, dormant until its
  * bench pass. So in production only the certified SunSpec path actually releases;
- * the Deye/Fronius release is proven by unit tests, never a live write.
+ * the Deye/Fronius release is proven by unit tests, never a live write. The ONE
+ * exception mirrors controlRoute: `opts.calibration === true` (a First-Light test's
+ * controller-owned auto-revert) lets the uncertified family emit the neutral release
+ * so the bounded calibration write is HANDED BACK, never latched - the same
+ * certification-only bypass, with dwell_s=0 so the revert is not blocked.
  *
  *   selection: the parsed edge/inverter/config (or null)
- *   opts:      { sunspec?: discovery } - live SunSpec model discovery for Fronius
+ *   opts:      { sunspec?: discovery, calibration?: boolean } - live SunSpec model
+ *              discovery for Fronius + the calibration-revert bypass.
  * Returns { adapter, family, tier, certified, mode:'release', target, connection,
  *           writes:[WriteOp], readbacks:[ReadOp], planned:[WriteOp], reason? }.
  */
 function controlRelease(selection, opts = {}) {
+  const calibration = opts.calibration === true;
   const idle = (reason) => ({
     adapter: 'idle', family: '', tier: CONTROL_TIER.READ_ONLY, certified: false,
     mode: 'release', writes: [], readbacks: [], planned: [], reason,
@@ -237,6 +258,8 @@ function controlRelease(selection, opts = {}) {
   if (!ip) return idle('keine IP-Adresse');
   const family = typeof selection.family === 'string' ? selection.family.trim() : '';
   const certified = CERTIFIED_CONTROL_FAMILIES.has(family);
+  // releaseAllowed = the family is certified OR this is a calibration-test revert.
+  const releaseAllowed = certified || calibration;
   const tier = resolveControlTier(selection);
   const comm = selection.communication;
 
@@ -247,18 +270,19 @@ function controlRelease(selection, opts = {}) {
     const reg = deyeFamilyControlReg(family);
     // Neutral TOU slot: DISABLE the Time-of-Use scheduler so the inverter reverts to
     // its own self-consumption logic. EEPROM -> write-on-change (dwell_s), and never
-    // emitted for an uncertified family. String/micro (no ToU) has nothing to release.
+    // emitted for an uncertified family EXCEPT a calibration-test revert (dwell_s=0
+    // so it is not blocked). String/micro (no ToU) has nothing to release.
     const planned = reg ? [{
       role: 'tou_enable', fc: 6, addr: reg.touEnable, value: 0,
       encode: { kind: 'tou_mask', all_week: false, release: true },
-      dwell_s: 900, min_change: 0, bench_pending: true,
+      dwell_s: calibration ? 0 : 900, min_change: 0, bench_pending: true,
     }] : [];
     const readbacks = reg ? [{ role: 'tou_enable', fc: 3, addr: reg.touEnable, expect: 0, tolerance: 0 }] : [];
     return {
-      adapter: 'solarman_v5', family, tier, certified, mode: 'release',
+      adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
       target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
-      writes: certified ? planned : [], readbacks: certified ? readbacks : [],
-      planned, reason: certified ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
+      writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? readbacks : [],
+      planned, reason: releaseAllowed ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
     };
   }
 
@@ -287,10 +311,10 @@ function controlRelease(selection, opts = {}) {
       { role: 'pv_limit', fc: 3, addr: SUNSPEC_REG.PVLIMIT, expect: NO_PV_LIMIT, tolerance: 1 },
     ];
     return {
-      adapter: 'modbus_tcp', family, tier, certified, mode: 'release', profile: family,
+      adapter: 'modbus_tcp', family, tier, certified, calibration, mode: 'release', profile: family,
       target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
-      writes: certified ? planned : [], readbacks: certified ? readbacks : [],
-      planned, reason: certified ? undefined : 'Modell noch nicht freigegeben',
+      writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? readbacks : [],
+      planned, reason: releaseAllowed ? undefined : 'Modell noch nicht freigegeben',
     };
   }
 
@@ -392,7 +416,7 @@ function dualControllerSignal(facts = {}) {
 
 // --- generic_modbus / SunSpec control adapter (CERTIFIED, proven vs sim) ------
 
-function sunspecControl({ selection, conn, ip, family, certified, controlEnabled, kw, pvLimitKw }) {
+function sunspecControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
   const unitId = Number(conn.unit_id) > 0 ? Number(conn.unit_id) : 1;
   const invert = conn.invert_control_sign === true;
@@ -427,12 +451,15 @@ function sunspecControl({ selection, conn, ip, family, certified, controlEnabled
     { role: 'pv_limit', fc: 3, addr: SUNSPEC_REG.PVLIMIT, expect: pvRaw, tolerance: 1 },
   ];
 
-  const writeAllowed = certified && controlEnabled;
+  // Certification bypass ONLY for a First-Light calibration write (control_enabled
+  // still required). sunspec is already certified, so calibration is a no-op here -
+  // the bypass exists for the uncertified Deye path; kept uniform for clarity.
+  const writeAllowed = controlEnabled && (certified || calibration);
   const out = {
     adapter: 'modbus_tcp', family, profile: family,
     target: ip + ':' + port,
     connection: { ip, port, unit_id: unitId },
-    certified, controlEnabled,
+    certified, controlEnabled, calibration: calibration === true,
     writes: writeAllowed ? planned : [],
     readbacks,
     planned,
@@ -614,7 +641,7 @@ function deyeFamilyControlReg(family) {
     ? DEYE_CONTROL_REG[family] : null;
 }
 
-function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitKw, setpoint, opts }) {
+function deyeControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
   const serial = conn.serial;
   const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
@@ -632,20 +659,33 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, kw, pvLimitK
   // now generic: adding hybrid_3p to the allowlist after a bench pass flips control
   // on with no code change. EEPROM discipline rides on each WriteOp (dwell_s >= 900,
   // min_change) - the executor writes on change, the 10 s tick drives readback only.
-  const writeAllowed = certified && controlEnabled;
+  // The two-gate discipline PLUS the First-Light calibration bypass: a live write
+  // needs control_enabled (the core kill-switch) AND (the family is certified OR
+  // this is a bounded calibration test). Calibration bypasses ONLY certification -
+  // exactly the mechanism for the first real write to prove sign/scale before the
+  // bench pass. In production (no calibration flag) Deye stays writes:[] as before.
+  const writeAllowed = controlEnabled && (certified || calibration);
   // Readback tolerance: the power register is decawatt/watt-scaled so allow ±1 raw
   // unit; the enum/flag registers must match exactly.
   const deyeRbTol = (role) => (role === 'battery_power' || role === 'pv_limit' ? 1 : 0);
   const finalize = (planned) => {
     const readbacks = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: deyeRbTol(w.role) }));
     // executable writes carry no bench_pending flag (that is a display marker on
-    // `planned`); the two objects otherwise match address-for-address.
-    const execWrites = planned.map((w) => { const c = { ...w }; delete c.bench_pending; return c; });
+    // `planned`); the two objects otherwise match address-for-address. A CALIBRATION
+    // write forces dwell_s=0/min_change=0: a bounded manual test does a handful of
+    // writes (well inside EEPROM endurance) and the controller-owned auto-revert
+    // must NOT be blocked by the 900 s optimizer dwell. The normal (certified,
+    // non-calibration) path keeps its EEPROM write-on-change cadence untouched.
+    const execWrites = planned.map((w) => {
+      const c = { ...w }; delete c.bench_pending;
+      if (calibration) { c.dwell_s = 0; c.min_change = 0; }
+      return c;
+    });
     const out = {
       adapter: 'solarman_v5', family,
       target: ip + ':' + port,
       connection: { ip, port, serial, mb_slave_id: slaveId },
-      certified, controlEnabled,
+      certified, controlEnabled, calibration: calibration === true,
       writes: writeAllowed ? execWrites : [],
       readbacks: writeAllowed ? readbacks : [],
       planned,

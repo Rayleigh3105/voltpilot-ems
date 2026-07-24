@@ -211,6 +211,46 @@ func TestBusPayloadCarriesModelAndFamily(t *testing.T) {
 	}
 }
 
+// TestControlSignIsPreservedAndPublished proves the WRITE-path control sign the
+// First-Light calibration step sets on the Deye connection survives Normalize and
+// reaches the Node-RED control adapter via the retained edge/inverter/config.
+func TestControlSignIsPreservedAndPublished(t *testing.T) {
+	cat := DefaultCatalog()
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-12k-sg04lp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064", InvertControlSign: true, PowerScale: 10},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sel.Connection.InvertControlSign {
+		t.Fatal("Normalize must preserve invert_control_sign on a solarman selection")
+	}
+	var m map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
+		t.Fatal(err)
+	}
+	conn, _ := m["connection"].(map[string]any)
+	if conn["invert_control_sign"] != true {
+		t.Errorf("edge/inverter/config must carry invert_control_sign=true, got %v", conn["invert_control_sign"])
+	}
+	if conn["power_scale"].(float64) != 10 {
+		t.Errorf("power_scale must be published for the control scale, got %v", conn["power_scale"])
+	}
+
+	// The read-only go-e transport must NOT carry a control sign (meaningless there).
+	sel2, err := cat.Normalize(SelectionRequest{
+		Brand: BrandGoe, Family: FamGoeHTTP,
+		Connection: Connection{IP: "10.0.0.9", InvertControlSign: true},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel2.Connection.InvertControlSign {
+		t.Error("a read-only go-e source must not keep a control sign")
+	}
+}
+
 // TestControlTierPerBrand pins the battery-control primitive each catalogued brand
 // declares - the dispatch fact the Node-RED controlRoute keys on. Deye=ToU(3),
 // generic SunSpec + both Fronius brands = SunSpec(1), the go-e wallbox = read-only

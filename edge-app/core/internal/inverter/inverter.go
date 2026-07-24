@@ -579,6 +579,14 @@ type Connection struct {
 	InvertGridSign bool    `json:"invert_grid_sign,omitempty"`
 	PowerScale     float64 `json:"power_scale,omitempty"`
 
+	// InvertControlSign flips the battery-power WRITE direction (charge<->discharge)
+	// for the control adapter. It is SEPARATE from InvertGridSign (a READ-path sign):
+	// the write sign is firmware-dependent (sunsynk inverts vs ha-solarman raw) and is
+	// proven on the real inverter by the First-Light calibration step, never guessed.
+	// Read by the Node-RED control adapter (conn.invert_control_sign) on the control
+	// transports (solarman_v5 / modbus_tcp / fronius_sunspec).
+	InvertControlSign bool `json:"invert_control_sign,omitempty"`
+
 	// modbus_tcp
 	UnitID  int    `json:"unit_id,omitempty"`
 	Profile string `json:"profile,omitempty"`
@@ -719,9 +727,10 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.Port == 0 {
 			conn.Port = defaultFroniusPort
 		}
-		// fields of the other transports are not part of this one.
+		// fields of the other transports are not part of this one (Fronius Solar API
+		// is read-only, so the control sign is meaningless here).
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.ModelType = "", 0, 0, ""
-		conn.UnitID, conn.Profile = 0, ""
+		conn.UnitID, conn.Profile, conn.InvertControlSign = 0, "", false
 	case CommFroniusSunSpec:
 		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
 		// hint + the grid-sign escape hatch. The register-map profile is the single
@@ -753,9 +762,11 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.Port == 0 {
 			conn.Port = defaultGoePort
 		}
-		// fields of the other transports are not part of this one.
+		// fields of the other transports are not part of this one (go-e is a read-only
+		// consumer source, no control sign).
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
+		conn.InvertControlSign = false
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -778,9 +789,13 @@ func (s Selection) BusPayload() []byte {
 		conn["mb_slave_id"] = s.Connection.MbSlaveID
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
 		conn["power_scale"] = s.Connection.PowerScale
+		// invert_control_sign is the WRITE-path sign the calibration step proves; the
+		// Deye control adapter reads it. Absent = false (no inversion).
+		conn["invert_control_sign"] = s.Connection.InvertControlSign
 	case CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile
+		conn["invert_control_sign"] = s.Connection.InvertControlSign
 	case CommFroniusSolarAPI:
 		conn["insecure_tls"] = s.Connection.InsecureTLS
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
@@ -789,6 +804,7 @@ func (s Selection) BusPayload() []byte {
 		conn["profile"] = s.Connection.Profile
 		conn["model_type"] = s.Connection.ModelType
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		conn["invert_control_sign"] = s.Connection.InvertControlSign
 	}
 	payload := map[string]any{
 		"schema_version": SchemaVersion,
@@ -802,9 +818,9 @@ func (s Selection) BusPayload() []byte {
 		// `control_tier` is the battery-control primitive the Node-RED controlRoute
 		// dispatches on (additive; controlRoute falls back to communication-inference
 		// when it is absent, so an older core stays byte-compatible).
-		"control_tier":  s.ControlTier,
-		"connection":    conn,
-		"updated_at":    s.UpdatedAt.UTC().Format(time.RFC3339),
+		"control_tier": s.ControlTier,
+		"connection":   conn,
+		"updated_at":   s.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	raw, _ := json.Marshal(payload)
 	return raw

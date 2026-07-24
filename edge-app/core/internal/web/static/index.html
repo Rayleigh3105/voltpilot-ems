@@ -305,6 +305,89 @@
       </div>
     </section>
 
+    <!-- First-Light calibration: the SAFE, tightly-bounded proof of the inverter's
+         control SIGN + SCALE on the real hardware via small, observed, auto-reverting
+         test writes BEFORE the model is certified. Bounded on every axis (magnitude
+         cap + TTL auto-revert + guards + off by default + global kill-switch). Fed by
+         calibration.js from /api/calibration; the controls POST to /api/calibration/*.
+         The register readback ("Kam der Befehl an?") is the card above. -->
+    <div class="section-title">First-Light-Kalibrierung</div>
+    <section class="card cal-card" id="calCard">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M12 19v3M5 12H2M22 12h-3M6.3 6.3 4.5 4.5M19.5 19.5l-1.8-1.8"/><circle cx="12" cy="12" r="4"/></svg></span>Steuerung kalibrieren</h3>
+        <span class="ctrl-state" id="calState" hidden><span class="ss-dot"></span><span id="calStateText">–</span></span>
+      </div>
+
+      <!-- Not applicable / kill-switch off / no controllable inverter -->
+      <div class="plan-empty" id="calUnavail" hidden>
+        <span class="plan-empty-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        </span>
+        <div>
+          <strong id="calUnavailTitle">Kalibrierung nicht verfügbar.</strong>
+          <p id="calUnavailText"></p>
+        </div>
+      </div>
+
+      <div id="calBody" hidden>
+        <p class="cal-intro">Der <strong>allererste echte Schreibbefehl</strong> an Ihre Batterie.
+          VoltPilot schreibt einen <strong>kleinen</strong> Testwert, liest ihn zurück und prüft, ob sich
+          die Batterie in die richtige Richtung und Größe bewegt. Jeder Test <strong>schaltet
+          sich nach kurzer Zeit von selbst wieder ab</strong> (Neutral) – der Befehl bleibt nie stehen.</p>
+
+        <div class="cal-live" id="calLive"></div>
+
+        <!-- Schritt 1: Kalibriermodus scharfschalten -->
+        <div class="cal-step">
+          <div class="cal-arm-row">
+            <label class="cal-switch"><input type="checkbox" id="calArm" /><span class="cal-slider"></span></label>
+            <div>
+              <strong>Kalibriermodus</strong>
+              <p class="cal-hint" id="calArmHint">Erst scharfschalten, dann einen kleinen Test starten.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schritt 2: kleinen Testbefehl senden -->
+        <div class="cal-step" id="calTestStep" hidden>
+          <div class="cal-mag">
+            <label for="calMag">Testleistung</label>
+            <select id="calMag"></select>
+          </div>
+          <div class="cal-test-btns">
+            <button type="button" id="calCharge" class="cal-btn charge">Laden testen</button>
+            <button type="button" id="calDischarge" class="cal-btn discharge">Entladen testen</button>
+            <button type="button" id="calAbort" class="cal-btn abort" hidden>Abbrechen → Neutral</button>
+          </div>
+          <p class="cal-err" id="calErr" hidden></p>
+        </div>
+
+        <!-- Schritt 3: beobachten &amp; prüfen -->
+        <div class="cal-verdict" id="calVerdict" hidden></div>
+
+        <!-- Korrektur: Vorzeichen / Skala -->
+        <div class="cal-correct" id="calCorrect" hidden>
+          <div class="cal-correct-title">Stimmt etwas nicht?</div>
+          <button type="button" id="calInvert" class="cal-btn ghost">Vorzeichen umkehren &amp; erneut testen</button>
+          <div class="cal-scale">
+            <span>Leistungsskalierung:</span>
+            <button type="button" class="cal-btn ghost cal-scale-btn" data-scale="1">×1 (LV)</button>
+            <button type="button" class="cal-btn ghost cal-scale-btn" data-scale="10">×10 (HV)</button>
+          </div>
+        </div>
+
+        <!-- Freigabe: erst nach bestätigtem Vorzeichen UND Skala -->
+        <div class="cal-confirm" id="calConfirm" hidden>
+          <div class="cal-confirm-checks">
+            <label><input type="checkbox" id="calSign" /> Vorzeichen bestätigt</label>
+            <label><input type="checkbox" id="calScale" /> Skala bestätigt</label>
+          </div>
+          <button type="button" id="calCertify" class="cal-btn primary" disabled>Steuerung freigeben</button>
+          <p class="cal-hint" id="calCertHint">Nach der Freigabe steuert der VoltPilot-Fahrplan diesen Wechselrichter automatisch.</p>
+        </div>
+      </div>
+    </section>
+
     <!-- Aktive Steuerung (report §7): the READ-ONLY RESULT of the portal-composed
          flows - deployed @vp-flow tabs + per-entity arbitration winner. The edge
          shows WHAT is running, never the flow graph (composition stays in the
@@ -447,6 +530,7 @@
   <script src="charts.js"></script>
   <script src="plan.js"></script>
   <script src="control.js"></script>
+  <script src="calibration.js"></script>
   <script src="active-control.js"></script>
   <script src="betrieb.js"></script>
   <script src="dashboard.js"></script>

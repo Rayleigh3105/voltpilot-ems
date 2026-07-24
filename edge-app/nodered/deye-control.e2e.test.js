@@ -258,6 +258,60 @@ test('Deye executor no-ops for an UNCERTIFIED (production-default) Deye plan - n
   }
 });
 
+test('First-Light calibration writes a SMALL bounded value to the real logger WITHOUT certifying', async () => {
+  // The very first real write to a live Deye battery: setpoint.calibration=true
+  // un-gates the executor for the UNCERTIFIED family (no CERTIFIED_CONTROL_FAMILIES
+  // change), the executor writes the small ToU plan over the Solarman-V5 wire and
+  // reads every register back. This is the offline proof of the calibration path.
+  const { server, port, store, writes } = await startSolarmanServer({});
+  try {
+    // A small -0.3 kW discharge test, calibration flag ON, family STILL uncertified.
+    const plan = controlRouting.controlRoute(
+      { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } },
+      { battery_setpoint_kw: -0.3, source: 'calibration', control_enabled: true, soc_min_pct: 10, calibration: true },
+      { ratedKw: 30 },
+    );
+    assert.strictEqual(plan.certified, false, 'family is NOT certified - calibration is the bypass');
+    assert.strictEqual(plan.calibration, true);
+    assert.ok(plan.writes.length >= 5, 'the bounded ToU plan is executable during calibration');
+    assert.ok(plan.writes.every((w) => w.dwell_s === 0), 'calibration writes carry dwell_s=0');
+    plan.connection.port = port;
+    const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } });
+    assert.ok(out, 'the calibration write produced a readback');
+    const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+    // -0.3 kW discharge at power_scale 1 -> 300 W in the Program-Power register.
+    assert.strictEqual(store[reg.progPowerBase], 300, 'the small calibration setpoint was written');
+    assert.strictEqual(store[reg.progSocBase], 10, 'discharge -> target SoC floor');
+    assert.ok(out.payload.registers.every((r) => r.match), 'readback confirms the calibration write');
+    assert.ok(writes.length >= 5);
+  } finally {
+    server.close();
+  }
+});
+
+test('First-Light calibration auto-revert disables ToU on the real logger (never latches)', async () => {
+  // The controller-owned auto-revert: controlRelease with the calibration flag
+  // hands the uncertified Deye back (ToU disabled), proven end to end on the wire.
+  const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+  const { server, port, store, writes } = await startSolarmanServer({ [reg.touEnable]: 0x00ff });
+  try {
+    const rel = controlRouting.controlRelease(
+      { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } },
+      { calibration: true },
+    );
+    assert.strictEqual(rel.mode, 'release');
+    assert.strictEqual(rel.calibration, true);
+    assert.ok(rel.writes.length >= 1, 'calibration release is executable for the uncertified family');
+    rel.connection.port = port;
+    const out = await runExec(DEYE_EXEC, { control: rel, setpoint: {} });
+    assert.ok(out, 'release readback published');
+    assert.strictEqual(store[reg.touEnable], 0, 'Time-of-Use DISABLED -> battery handed back to self-consumption');
+    assert.ok(writes.some((w) => w.reg === reg.touEnable && w.value === 0));
+  } finally {
+    server.close();
+  }
+});
+
 test('Deye executor ignores a non-Deye plan (the modbus executor owns that path)', async () => {
   const sunspec = controlRouting.controlRoute(
     { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec', communication: 'modbus_tcp', connection: { ip: '127.0.0.1', port: 502, unit_id: 1 } },

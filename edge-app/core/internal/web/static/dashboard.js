@@ -449,6 +449,10 @@
     // Hand the state to the "Steuerung & Bestätigung" card (register-level
     // control readback fed by state.control).
     if (window.VPControl) window.VPControl.onState(s);
+    // Hand the state to the First-Light calibration card (it also reads
+    // state.control for the "Kam der Befehl an?" register readback; its own
+    // /api/calibration poll drives the rest).
+    if (window.VPCalibration) window.VPCalibration.onState(s);
     // Hand the state to the "Betrieb" card (market optimization + PS-3 peak
     // guard: target, running quarter mean, reserve).
     if (window.VPBetrieb) window.VPBetrieb.onState(s);

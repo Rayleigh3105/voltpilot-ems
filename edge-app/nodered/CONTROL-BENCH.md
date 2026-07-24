@@ -39,6 +39,47 @@ Controller"); ein möglicher Konflikt wird über die Rückmeldung/den Status sic
 Diese Datei ist die Vorlage, die firstmate dem Captain für die Prüfstand-Sitzung an
 seinem echten **SUN-\*-SG01HP3-EU** (und einem LV-Gerät **SG04LP3**) übergibt.
 
+## First-Light-Kalibrierung (`:8484`, der geführte erste Schreibbefehl)
+
+Der **allererste echte Schreibbefehl** auf einen produktiven Kundenspeicher läuft über
+die geführte **First-Light-Kalibrierung** auf `:8484` (Karte „Steuerung kalibrieren",
+`static/calibration.js` → `POST /api/calibration/*`). Sie ersetzt das manuelle
+„kleinen Wert schreiben → zurücklesen → prüfen, ob sich die Batterie richtig bewegt"
+aus report §5.7 durch eine sichere, auf **jeder Achse begrenzte** Bedienoberfläche:
+
+- **Getrennter, eng begrenzter Schreibpfad** (nicht der Optimierer-Pfad) und bewusst
+  **NICHT über die Zertifizierungs-Allowlist gegated** – genau das ist der Sinn: sign/scale
+  am echten Gerät beweisen, BEVOR es zertifiziert wird. Der Bypass betrifft **nur** die
+  Zertifizierung; `VP_CONTROL_ENABLED` (Not-Aus) muss weiter EIN sein.
+- **Kleiner Betrag:** `|Sollwert| ≤ VP_CALIBRATION_MAX_KW` (Default **1,0 kW**), zusätzlich
+  durch `guards.Clamp` begrenzt – die Oberfläche kann physisch nicht mehr kommandieren.
+- **Kurz + Auto-Neutral:** jeder Testschreib **kehrt nach `VP_CALIBRATION_TTL_SECONDS`
+  (Default 30 s) selbsttätig auf Neutral (Release) zurück** – ein Controller-eigener
+  Watchdog, auch wenn die Oberfläche geschlossen ist. Der Befehl **rastet nie ein**.
+- **Ein-Klick-Abbruch** („Abbrechen → Neutral"), ausgeschaltet per Voreinstellung
+  (erst scharfschalten), jeder Schreib wird protokolliert.
+- **Beobachten + prüfen an einer Stelle:** die Register-Rückmeldung („Kam der Befehl an?",
+  aus der Karte „Steuerung & Bestätigung") plus die **Telemetrie-Differenz** („Hat die
+  Batterie sich bewegt?" – gemessene Batterieleistung vs. kommandiert), damit **Vorzeichen
+  und Größe sichtbar** werden. Falsches Vorzeichen → `invert_control_sign` setzen und erneut
+  testen; ~10× daneben → `power_scale` = 10 (HV) und erneut testen (persistiert auf die
+  Deye-Verbindung).
+- **Freigabe = gated auf bestandene Kalibrierung:** erst wenn Vorzeichen UND Skala bestätigt
+  sind, wird „Steuerung freigeben" freigeschaltet. Das ist eine **PER-GERÄT**-Zertifizierung
+  (`calibration-certified.json` im Data-Dir, in `Agent.controlCertified` mit der
+  Env-Allowlist gemergt) – danach steuert der Fahrplan **diesen** Wechselrichter live. Es
+  **auto-zertifiziert nie**.
+
+**Verhältnis zur Checkliste unten:** First-Light deckt die interaktiven Sign-/Scale-/
+„Batterie bewegt sich"-Punkte am echten Gerät ab. Die restlichen Prüfpunkte (Limit-vs-Force,
+EEPROM-Kadenz innerhalb der Endurance, Fail-Safe-Verhalten, Dual-Controller) bleiben Sache
+der Bench-Sitzung. Die **fleet-weite** Freigabe einer Familie bleibt der Allowlist-Eintrag
+(`VP_CONTROL_CERTIFIED_FAMILIES`); die First-Light-Freigabe ist die geräte-lokale Variante
+für die erste Inbetriebnahme. Wo alles liegt: `internal/config` (die zwei Knöpfe),
+`internal/calibration` (reine Zustandsmaschine + Verdikt), `agent/calibration.go` (der
+Schreibpfad + Watchdog + Persistenz), `inverter-control-routing.js` (der Executor-Bypass),
+`static/calibration.js` (die Oberfläche).
+
 ## Vor der Sitzung
 
 - Steuerung an einem **Ersatz-/Testspeicher** verifizieren, nie am produktiven

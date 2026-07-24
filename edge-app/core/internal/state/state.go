@@ -15,6 +15,7 @@ const (
 	ModeSelfConsume Mode = "eigenverbrauch"  // self-consumption fallback
 	ModeNoReading   Mode = "keine_messwerte" // no inverter reading -> no setpoint
 	ModeDesired     Mode = "wunsch"          // a v2 desired (flow/override) holds the battery entity
+	ModeCalibration Mode = "kalibrierung"    // a First-Light calibration test is driving the battery
 )
 
 // Snapshot is one consistent view of the agent for the UI / health endpoint.
