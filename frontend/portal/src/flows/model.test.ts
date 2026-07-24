@@ -8,6 +8,8 @@ import {
   addNode,
   applyDerivedClaims,
   catalogType,
+  customerVisible,
+  diagnosticOnlyTypes,
   compatible,
   deriveClaims,
   lifecycleSteps,
@@ -154,5 +156,36 @@ describe('display derivation', () => {
     expect(lifecycleSteps('draft').map((s) => s.state)).toEqual(['live', 'open', 'open']);
     expect(lifecycleSteps('simulated').map((s) => s.state)).toEqual(['done', 'live', 'open']);
     expect(lifecycleSteps('active').map((s) => s.state)).toEqual(['done', 'done', 'live']);
+  });
+});
+
+/**
+ * Audit N-1: „Benachrichtigung" is delivered NOWHERE - `vp-notify` publishes on
+ * the local bus and no consumer exists - yet a customer could build, validate,
+ * simulate and ACTIVATE it, after which the shelf reported "Läuft". The node
+ * stays in the catalog (existing flows keep validating, compiling and running,
+ * and the technical layer keeps it for diagnosis) but is flagged so no customer
+ * surface offers it. Delete the flag the day a delivery channel ships.
+ */
+describe('customer visibility (audit N-1)', () => {
+  it('flags exactly the nodes whose promise the platform cannot keep', () => {
+    expect(diagnosticOnlyTypes().sort()).toEqual(['vp.logic.gate', 'vp.notify.push']);
+  });
+
+  it('treats an unflagged node as customer-visible (the default)', () => {
+    expect(customerVisible(catalogType('vp.entity.control')!)).toBe(true);
+    expect(customerVisible(catalogType('vp.entity.read')!)).toBe(true);
+    expect(customerVisible({})).toBe(true);
+    expect(customerVisible({ customer_visible: false })).toBe(false);
+  });
+
+  it('says what it is in its own label, so the technical layer cannot mistake it', () => {
+    expect(catalogType('vp.notify.push')!.label).toMatch(/nur Diagnose/);
+    expect(catalogType('vp.logic.gate')!.label).toMatch(/nur Diagnose/);
+  });
+
+  it('D3 vocabulary: the palette speaks of Messwerten und Geräten', () => {
+    expect(catalogType('vp.entity.read')!.label).toBe('Messwert eines Geräts');
+    expect(catalogType('vp.entity.control')!.label).toBe('Gerät steuern');
   });
 });

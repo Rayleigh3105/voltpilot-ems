@@ -7,10 +7,20 @@
  *
  * Pure render + local form state; the emit is `buildGuidedFlow`. All rule logic
  * lives in src/flows/guidedBuilder.ts (unit-tested).
+ *
+ * Two honesty rules from the 2026-07-24 control audit live here:
+ * - **N-1**: „Benachrichtigung" is NOT offered to customers - the notification
+ *   has no delivery channel yet, so an activated rule would report "Läuft" and
+ *   deliver nothing. It stays available in the technical layer for diagnosis
+ *   (`allowDiagnosticActions`).
+ * - **B-1**: a plant without a controllable device is a DEAD END, not a form:
+ *   the builder says so up front, links to „Anlagen-Modell" and never offers a
+ *   primary button that cannot succeed.
  */
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { anlageRoute, hashForRoute } from '../nav';
 import {
   actionTargets,
   buildGuidedFlow,
@@ -38,6 +48,23 @@ interface CondForm {
 }
 
 type ActionKind = 'onoff' | 'setpoint' | 'notify';
+
+/**
+ * B-2: the price condition is locked until VoltPilot enables the market node
+ * for this site - say WHY and BY WHOM instead of a bare "(gesperrt)".
+ */
+export const PRICE_LOCKED_HINT =
+  'Der Börsenpreis wird zusammen mit der Marktoptimierung freigeschaltet - sprechen Sie uns an.';
+
+/**
+ * B-1: what the builder says when the plant has nothing it could switch.
+ * The customer's next step is a real one, not a retry of the same form.
+ */
+export const NO_DEVICE_TITLE = 'Für diese Anlage gibt es noch kein schaltbares Gerät';
+export const NO_DEVICE_BODY =
+  'Eine Wenn/Dann-Regel schaltet ein Gerät - zum Beispiel eine Wallbox oder einen Heizstab. '
+  + 'Solange keines Ihrer Geräte als schaltbar hinterlegt ist, kann die Regel nichts tun. '
+  + 'Im Anlagen-Modell ordnen Sie ein gemeldetes Gerät zu; danach steht es hier zur Auswahl.';
 
 function emptyCond(readable: EditorEntity[]): CondForm {
   const first = readable[0];
@@ -81,6 +108,7 @@ export function GuidedRuleBuilder({
   busy = false,
   lockedKinds = [],
   lockedHint = 'Einrichtung durch VoltPilot',
+  allowDiagnosticActions = false,
 }: {
   entities: EditorEntity[];
   /** Stamped onto the emitted document so it validates clean before the save. */
@@ -97,14 +125,28 @@ export function GuidedRuleBuilder({
    */
   lockedKinds?: CondKind[];
   lockedHint?: string;
+  /**
+   * N-1: may this surface offer diagnostic-only actions (the notification,
+   * which has no delivery channel yet)? The customer surfaces pass false; the
+   * technical layer passes true. Default false = never promise delivery.
+   */
+  allowDiagnosticActions?: boolean;
 }) {
   const readable = readableEntities(entities);
   const targets = actionTargets(entities);
+  // B-1: without a switchable device AND without the diagnostic action there is
+  // no action this builder could emit - that is a dead end, and it is named up
+  // front instead of behind a button that answers "Bitte ein Gerät wählen".
+  const deadEnd = targets.length === 0 && !allowDiagnosticActions;
 
   const [name, setName] = useState('Neue Automation');
   const [conds, setConds] = useState<CondForm[]>([emptyCond(readable)]);
   const [combinator, setCombinator] = useState<Combinator>('and');
-  const [actionKind, setActionKind] = useState<ActionKind>('onoff');
+  const [actionKind, setActionKind] = useState<ActionKind>(
+    // Pre-select an action that can actually run: with no switchable device the
+    // only remaining one is the diagnostic notification (technical layer only).
+    targets.length === 0 && allowDiagnosticActions ? 'notify' : 'onoff',
+  );
   const [actionEntity, setActionEntity] = useState(targets[0]?.id ?? '');
   const [setpointValue, setSetpointValue] = useState('');
   const [message, setMessage] = useState('');
@@ -156,6 +198,29 @@ export function GuidedRuleBuilder({
     onBuild(finalName, buildGuidedFlow(rule, finalName, siteId));
   };
 
+  if (deadEnd) {
+    return (
+      <div className="vp-guided">
+        <div className="vp-guided-deadend" role="status">
+          <h4>{NO_DEVICE_TITLE}</h4>
+          <p>{NO_DEVICE_BODY}</p>
+          {siteId && (
+            <a
+              className="vp-guided-deadend-link"
+              href={hashForRoute(anlageRoute(siteId, 'modell'))}
+              onClick={onCancel}
+            >
+              <Icon name="chevron-right" size={14} /> Zum Anlagen-Modell - Gerät zuordnen
+            </a>
+          )}
+        </div>
+        <div className="vp-guided-foot">
+          <Button variant="outline" size="sm" onClick={onCancel}>Zurück</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="vp-guided">
       <div className="vp-guided-field">
@@ -198,7 +263,9 @@ export function GuidedRuleBuilder({
             >
               <option value="entity">Messwert eines Geräts</option>
               <option value="price" disabled={lockedKinds.includes('price')}>
-                {lockedKinds.includes('price') ? 'Börsenpreis (gesperrt)' : 'Börsenpreis'}
+                {lockedKinds.includes('price')
+                  ? 'Börsenpreis (noch nicht freigeschaltet)'
+                  : 'Börsenpreis'}
               </option>
               <option value="schedule">Zeitfenster</option>
             </select>
@@ -229,10 +296,6 @@ export function GuidedRuleBuilder({
                   ))}
                 </select>
               </>
-            )}
-
-            {f.kind === 'price' && lockedKinds.includes('price') && (
-              <span className="vp-muted">{lockedHint}</span>
             )}
 
             {(f.kind === 'entity' || f.kind === 'price') && (
@@ -299,6 +362,15 @@ export function GuidedRuleBuilder({
           </div>
         </div>
       ))}
+      {/* B-2: the lock is explained once, always visible - the old hint sat
+          inside a branch that only rendered for the very option the lock makes
+          unselectable, so nobody ever read it. */}
+      {lockedKinds.includes('price') && (
+        <p className="vp-note vp-guided-locknote">
+          <Icon name="lock" size={13} /> {PRICE_LOCKED_HINT}
+          {lockedHint ? ` (${lockedHint})` : ''}
+        </p>
+      )}
       {conds.length < 3 && (
         <Button
           variant="ghost"
@@ -319,7 +391,11 @@ export function GuidedRuleBuilder({
         >
           <option value="onoff">Gerät ein/aus</option>
           <option value="setpoint">Sollwert setzen</option>
-          <option value="notify">Benachrichtigung</option>
+          {/* N-1: the notification has no delivery channel - offered only in
+              the technical layer, and labelled for what it is. */}
+          {allowDiagnosticActions && (
+            <option value="notify">Benachrichtigung (nur Diagnose)</option>
+          )}
         </select>
         {actionKind !== 'notify' && (
           <select
@@ -345,15 +421,26 @@ export function GuidedRuleBuilder({
           />
         )}
         {actionKind === 'notify' && (
-          <input
-            className="vp-select"
-            aria-label="Nachricht"
-            placeholder="Nachricht"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-          />
+          // A-3: a visible label like every neighbouring field, not a
+          // placeholder that vanishes as soon as one types.
+          <span className="vp-guided-field inline">
+            <label htmlFor="guided-message">Nachricht</label>
+            <input
+              id="guided-message"
+              className="vp-select"
+              placeholder="z. B. Speicher unter 20 %"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+          </span>
         )}
       </div>
+      {actionKind === 'notify' && (
+        <p className="vp-note vp-guided-locknote">
+          <Icon name="alert-triangle" size={13} /> Nur Diagnose: die Meldung wird auf dem Gerät
+          abgelegt, aber noch nicht zugestellt (keine E-Mail, keine Push-Nachricht).
+        </p>
+      )}
 
       {error && <p className="vp-flowed-notice error" role="status">{error}</p>}
 

@@ -59,6 +59,7 @@ import {
   applyDerivedClaims,
   catalog,
   catalogType,
+  customerVisible,
   lifecycleLabel,
   lifecycleSteps,
   removeEdge,
@@ -73,6 +74,7 @@ import {
   type PortType,
 } from '../../flows/model';
 import { isValid, validateFlow, type FlowFinding } from '../../flows/validate';
+import { showTechnicalLayer } from '../../rollen';
 
 const GROUP_ORDER: Array<{ key: string; label: string }> = [
   { key: 'strategie', label: 'Strategie' },
@@ -112,6 +114,12 @@ interface FlowEditorPageProps {
   paletteFilter?: (type: CatalogType) => boolean;
   /** Back-button label (default "Alle Flows"). */
   backLabel?: string;
+  /**
+   * Audit E-1: open on the plain-German REVIEW step (the rule as sentences +
+   * Ausrollen, editor one click away) instead of the canvas. The guided
+   * builder and the templates hand over this way; the free editor does not.
+   */
+  initialView?: 'review' | 'editor';
 }
 
 export function FlowEditorPage({
@@ -124,6 +132,7 @@ export function FlowEditorPage({
   lockedHint = 'VoltPilot richtet ein',
   paletteFilter,
   backLabel = 'Alle Flows',
+  initialView = 'editor',
 }: FlowEditorPageProps) {
   const [version, setVersion] = useState(initialVersion);
   const [name, setName] = useState('');
@@ -154,6 +163,15 @@ export function FlowEditorPage({
     Array<{ nodeId: string; state: string; text: string | null; since: string | null }> | null
   >(null);
   const [rollout, setRollout] = useState<RolloutState>({ phase: 'idle' });
+  /**
+   * Audit E-1: coming out of the guided builder the customer was dropped onto
+   * the full canvas ("… Gerät wählen, fertig" → a 12-block technical palette).
+   * `view` inserts a plain-German REVIEW step in between: the rule as sentences
+   * plus ONE Ausrollen button, with the editor one optional click away.
+   */
+  const [view, setView] = useState<'review' | 'editor'>(
+    initialView === 'review' ? 'review' : 'editor',
+  );
   const [phone, setPhone] = useState(
     () => typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(max-width: 720px)').matches
@@ -290,6 +308,10 @@ export function FlowEditorPage({
     [doc, channels, nodeStatuses],
   );
 
+  // The ONE role helper (M7): the technical layer keeps the diagnostic-only
+  // nodes; a customer surface never offers them (N-1).
+  const technical = showTechnicalLayer();
+
   // The gated node types VoltPilot has enabled for this site (AE7 governance).
   const enabledGated = useMemo(
     () => new Set((governance?.gatedNodes ?? []).filter((n) => n.enabled).map((n) => n.type)),
@@ -419,6 +441,11 @@ export function FlowEditorPage({
     if (!doc) return;
     setNotice(null);
     setActivation(null);
+    // E-6: the catch-all used to hardcode failedAt:'ausrollen', so a THROW in
+    // validate or simulate was attributed to the wrong step (the strip showed
+    // "Prüfen ✓ · Simulieren ✓ · Ausrollen ✗" next to "Der Simulationsdienst
+    // ist gerade nicht erreichbar"). Track the running step and use it.
+    const running = { at: 'pruefen' as 'pruefen' | 'simulieren' | 'ausrollen' };
     setRollout({ phase: 'pruefen' });
     try {
       const savedVersion = dirty ? (await save())?.flowVersion : versionRef.current;
@@ -433,6 +460,7 @@ export function FlowEditorPage({
         return;
       }
 
+      running.at = 'simulieren';
       setRollout({ phase: 'simulieren' });
       const started = await flowApi.simulate(flowId, savedVersion);
       let status = await flowApi.simulationStatus(flowId, savedVersion, started.simulationId);
@@ -441,11 +469,19 @@ export function FlowEditorPage({
         status = await flowApi.simulationStatus(flowId, savedVersion, started.simulationId);
       }
       if (status.status !== 'done') {
-        setRollout({ phase: 'fehler', failedAt: 'simulieren' });
+        // E-7: the dry-run's own German sentence names the real cause (e.g.
+        // missing price coverage). Dropping it left the customer with "bitte
+        // erneut versuchen" - an instruction they could follow forever.
+        setRollout({
+          phase: 'fehler',
+          failedAt: 'simulieren',
+          message: status.error ?? null,
+        });
         return;
       }
       setLifecycle((current) => (current === 'draft' ? 'simulated' : current));
 
+      running.at = 'ausrollen';
       setRollout({ phase: 'ausrollen' });
       const result = await flowApi.activate(flowId, savedVersion);
       setActivation(result);
@@ -464,7 +500,7 @@ export function FlowEditorPage({
     } catch (e) {
       setRollout({
         phase: 'fehler',
-        failedAt: 'ausrollen',
+        failedAt: running.at,
         message: e instanceof ApiError ? e.message : null,
       });
     }
@@ -515,6 +551,85 @@ export function FlowEditorPage({
   const rolloutText = rolloutMessage(rollout);
   const simRunning = sim.busy;
   const simResult = sim.status?.status === 'done' ? sim.status.result ?? null : null;
+
+  // E-1: the plain-German REVIEW step between the guided builder and the
+  // canvas - the rule as sentences (the SAME pure stepList the phone shows),
+  // the three-step progress, ONE "Ausrollen" and the editor as an option.
+  if (view === 'review' && !phone) {
+    return (
+      <div className="vp-flowed review">
+        <div className="vp-flowed-bar">
+          <button type="button" className="vp-flowed-back" onClick={onClose}>
+            <Icon name="chevron-left" size={16} /> {backLabel}
+          </button>
+          <span className="vp-flowed-name">{name}</span>
+        </div>
+
+        <div className="vp-flowreview">
+          <h3>Ihre Regel</h3>
+          <p className="vp-flowreview-lead">
+            So haben wir Ihre Regel verstanden. Passt das, rollen wir sie aus - VoltPilot prüft
+            und simuliert sie vorher.
+          </p>
+          <FlowStepList
+            steps={stepList(doc, entities, live)}
+            statusLabel={badge.label}
+            statusTone={badge.tone}
+            showPhoneHint={false}
+          />
+
+          {findings.filter((f) => f.severity === 'error').length > 0 && (
+            <p className="vp-flowed-notice warn" role="status">
+              Diese Regel ist noch nicht vollständig. Öffnen Sie den Editor, um die markierten
+              Stellen zu ergänzen.
+            </p>
+          )}
+
+          {rollout.phase !== 'idle' && (
+            <div className="vp-rollout" role="status" data-testid="rollout-strip">
+              {rolloutSteps(rollout).map((step) => (
+                <span key={step.key} className={`vp-rollout-step ${step.state}`}>{step.label}</span>
+              ))}
+              {rolloutText && <span className="vp-rollout-msg">{rolloutText}</span>}
+            </div>
+          )}
+          {notice && (
+            <div className={`vp-flowed-notice ${notice.tone}`} role="status">{notice.text}</div>
+          )}
+
+          <div className="vp-flowreview-foot">
+            {rollout.phase === 'fertig' ? (
+              <Button size="sm" onClick={onClose}>Fertig</Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={rolloutNow}
+                disabled={busy || rolloutRunning}
+                title="Prüfen, simulieren und auf das Gerät ausrollen - in einem Schritt."
+              >
+                Ausrollen
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setView('editor')}
+              disabled={rolloutRunning}
+            >
+              Im Editor öffnen
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={rolloutRunning}>
+              Später
+            </Button>
+          </div>
+          <p className="vp-flowreview-guards">
+            <Icon name="shield" size={14} /> Nicht editierbar:{' '}
+            {guardChips(guards).map((chip) => chip.text).join(' · ')}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // PHONE: a read-only step list with the same live values, never a canvas.
   if (phone) {
@@ -629,7 +744,10 @@ export function FlowEditorPage({
           {notice.text}
         </div>
       )}
-      {activation && (
+      {/* E-9: while the guided rollout is showing, IT owns the outcome message
+          (customer German). Rendering the raw server string next to it showed
+          "Flow aktiviert (Version 1)." twice. */}
+      {activation && rollout.phase === 'idle' && (
         <div
           className={`vp-flowed-notice ${activation.activated ? 'ok' : 'warn'}`}
           role="status"
@@ -643,7 +761,13 @@ export function FlowEditorPage({
         <aside className="vp-flowed-palette" aria-label="Baustein-Katalog">
           {GROUP_ORDER.map((group) => {
             const groupTypes = catalog.types.filter(
-              (t) => t.group === group.key && (!paletteFilter || paletteFilter(t)),
+              (t) => t.group === group.key
+                && (!paletteFilter || paletteFilter(t))
+                // N-1: a node whose promise the platform cannot keep (the
+                // notification has no delivery channel, and the Wenn/Dann gate
+                // only feeds it) is offered ONLY in the technical layer -
+                // never to a customer who would then read "Läuft".
+                && (customerVisible(t) || technical),
             );
             if (groupTypes.length === 0) return null;
             return (

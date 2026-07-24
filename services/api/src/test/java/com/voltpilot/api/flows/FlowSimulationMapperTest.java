@@ -22,6 +22,7 @@ class FlowSimulationMapperTest {
         assertThat(mapping.scenario()).isEqualTo("voltpilot");
         assertThat(mapping.speicherschonung()).isEqualTo("ausgewogen");
         assertThat(mapping.strategyNodeId()).isEqualTo("strat1");
+        assertThat(mapping.yearSimulation()).isTrue();
     }
 
     @Test
@@ -70,10 +71,11 @@ class FlowSimulationMapperTest {
     }
 
     @Test
-    void deviceAutomationMapsToStandardSpeicherBaseline() {
-        // A Wenn/Dann rule controlling a consumer (no battery strategy) is
-        // simulierbar as the site's standard-battery baseline (U3), so it can
-        // reach 'simuliert' and activate.
+    void deviceAutomationDryRunsScopedWithoutAYearSimulation() {
+        // E-8: a Wenn/Dann rule controlling a consumer (no battery strategy)
+        // cannot change the dispatch economics, so its dry-run is SCOPED to the
+        // flow: supported (it reaches 'simuliert' and activates) but with NO
+        // scenario and NO year simulation - no year of prices, no weather call.
         ObjectNode doc = FlowGraphValidatorTest.flowShell();
         FlowGraphValidatorTest.addNode(doc, "r1", "vp.entity.read", "1.0.0",
                 Map.of("entity_id", "grid-meter-1", "channel", "power_kw"));
@@ -83,15 +85,44 @@ class FlowSimulationMapperTest {
                 Map.of("entity_id", "wallbox-1", "command", "on_off", "ttl_s", 300));
         FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
         assertThat(mapping.supported()).isTrue();
-        assertThat(mapping.scenario()).isEqualTo("standardSpeicher");
+        assertThat(mapping.yearSimulation()).isFalse();
+        assertThat(mapping.scenario()).isNull();
         assertThat(mapping.strategyNodeId()).isNull();
     }
 
     @Test
-    void notificationAutomationMapsToStandardSpeicherBaseline() {
-        // A notification automation (no control, no strategy) is simulierbar as
-        // the baseline too, so the guided builder's Benachrichtigung action is
-        // not a dead-end (U3).
+    void pureTimeWindowRuleNeedsNoYearSimulationEither() {
+        // The audit's exact case: "schick mir mittags eine Nachricht" ran a
+        // 365-day battery MILP (~2,5 min, a year of prices + a live weather
+        // archive call). A schedule-driven rule touches no battery at all.
+        ObjectNode doc = FlowGraphValidatorTest.flowShell();
+        FlowGraphValidatorTest.addNode(doc, "z1", "vp.schedule.window", "1.0.0",
+                Map.of("from", "11:00", "to", "15:00", "days", "alle"));
+        FlowGraphValidatorTest.addNode(doc, "c1", "vp.entity.control", "1.0.0",
+                Map.of("entity_id", "wallbox-1", "command", "on_off", "ttl_s", 300));
+        FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
+        assertThat(mapping.supported()).isTrue();
+        assertThat(mapping.yearSimulation()).isFalse();
+    }
+
+    @Test
+    void batteryStrategiesStillNeedTheYearSimulation() {
+        // The scoping must not weaken the strategy path: those DO change the
+        // dispatch economics, so their dry-run stays the full-year run.
+        ObjectNode market = FlowGraphValidatorTest.pilotFlow("batt-main");
+        assertThat(FlowSimulationMapper.map(market).yearSimulation()).isTrue();
+
+        ObjectNode self = FlowGraphValidatorTest.flowShell();
+        FlowGraphValidatorTest.addNode(self, "s1", "vp.strategy.selfconsumption", "1.0.0",
+                Map.of("entity_id", "batt-main"));
+        FlowGraphValidatorTest.setClaims(self, "s1", "batt-main", List.of("setpoint_kw"), true);
+        assertThat(FlowSimulationMapper.map(self).yearSimulation()).isTrue();
+    }
+
+    @Test
+    void notificationAutomationDryRunsScopedToo() {
+        // The notification stays SIMULIERBAR (existing flows keep working) but
+        // is likewise scoped - it is diagnostic-only in the UI since N-1.
         ObjectNode doc = FlowGraphValidatorTest.flowShell();
         FlowGraphValidatorTest.addNode(doc, "r1", "vp.entity.read", "1.0.0",
                 Map.of("entity_id", "grid-meter-1", "channel", "power_kw"));
@@ -100,21 +131,21 @@ class FlowSimulationMapperTest {
                 Map.of("message", "Hohe Einspeisung."));
         FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
         assertThat(mapping.supported()).isTrue();
-        assertThat(mapping.scenario()).isEqualTo("standardSpeicher");
+        assertThat(mapping.yearSimulation()).isFalse();
     }
 
     @Test
     void mappedModbusReadCountsAsAutomationUnmappedBareReadStaysRefused() {
         // MB-M1: a record-only flow (a mapped Modbus read with no control/
         // notify sink) RECORDS - that is its action, so it dry-runs as the
-        // standard-battery baseline and can activate.
+        // flow-scoped dry-run (E-8) and can activate.
         ObjectNode doc = FlowGraphValidatorTest.flowShell();
         FlowGraphValidatorTest.addNode(doc, "mb1", "vp.modbus.read", "1.0.0",
                 Map.of("host", "192.168.40.17", "address", 100,
                         "entity_id", "modbus-meter-1", "channel", "leistung_kw"));
         FlowSimulationMapper.Mapping mapped = FlowSimulationMapper.map(doc);
         assertThat(mapped.supported()).isTrue();
-        assertThat(mapped.scenario()).isEqualTo("standardSpeicher");
+        assertThat(mapped.yearSimulation()).isFalse();
 
         // An UNMAPPED bare read has no sink at all - honestly refused.
         ObjectNode bare = FlowGraphValidatorTest.flowShell();

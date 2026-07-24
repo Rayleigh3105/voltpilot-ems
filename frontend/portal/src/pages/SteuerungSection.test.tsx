@@ -220,7 +220,9 @@ describe('SteuerungSection (Portal v3 M4)', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('1 · Vorlage verwenden');
     expect(dialog).toHaveTextContent('2 · Geführter Baukasten');
-    expect(dialog).toHaveTextContent('3 · Node-RED-Editor');
+    expect(dialog).toHaveTextContent('3 · Freier Editor');
+    // A-1: the runtime's vendor name is not customer copy.
+    expect(dialog.textContent ?? '').not.toContain('Node-RED');
   });
 
   it('the dialog lists only fitting templates and hides the rest behind an honest counted line', async () => {

@@ -22,7 +22,8 @@ import type { SiteTopology } from '../api';
 import { GuidedRuleBuilder } from './GuidedRuleBuilder';
 import { CUSTOMER_TEMPLATES, type CustomerTemplateDef } from '../flows/customerTemplates';
 import type { EditorEntity, FlowDocument } from '../flows/model';
-import { hiddenDisclosure, partition } from '../flows/templateFilter';
+import { hiddenDisclosure, partition, sharedReason } from '../flows/templateFilter';
+import { showTechnicalLayer } from '../rollen';
 import './Steuerung.css';
 
 /** Die Bedingungs-Arten des Baukastens (Spiegel von `GuidedRuleBuilder`). */
@@ -52,13 +53,16 @@ export function NeueAutomationDialog({
   onUseTemplate: (def: CustomerTemplateDef) => void;
   /** Der Baukasten hat eine Regel gebaut (Name + Dokument). */
   onBuilt: (name: string, doc: FlowDocument) => void;
-  /** „Node-RED-Editor" — der leere Editor (M5 löst ihn später ab). */
+  /** Der freie Editor mit einer leeren Fläche. */
   onOpenEditor: () => void;
 }) {
   const [guided, setGuided] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const part = useMemo(() => partition(CUSTOMER_TEMPLATES, { entities, topology }), [entities, topology]);
   const disclosure = hiddenDisclosure(part);
+  // A-2: wenn ALLE ausgeblendeten Vorlagen am selben Ding scheitern, gehört der
+  // Grund in den eingeklappten Zustand - nicht einen Klick tiefer.
+  const shared = sharedReason(part);
 
   if (!open) return null;
 
@@ -82,6 +86,9 @@ export function NeueAutomationDialog({
           busy={busy}
           lockedKinds={lockedKinds}
           lockedHint={lockedHint}
+          // N-1: Diagnose-Aktionen (die Benachrichtigung ohne Zustellweg) nur
+          // in der technischen Schicht - EIN Sichtbarkeits-Helfer (M7).
+          allowDiagnosticActions={showTechnicalLayer()}
           onCancel={() => setGuided(false)}
           onBuild={(name, doc) => {
             setGuided(false);
@@ -100,7 +107,11 @@ export function NeueAutomationDialog({
           <h3 className="vp-neuauto-head">1 · Vorlage verwenden</h3>
           {part.fitting.length === 0 ? (
             <p className="vp-neuauto-note">
-              Für Ihre Anlage passt derzeit keine Vorlage. Nutzen Sie den Baukasten.
+              Für Ihre Anlage passt derzeit keine Vorlage.
+              {/* Mit einem bekannten Grund führt der Baukasten in dieselbe
+                  Sackgasse - dann nennen wir den Grund statt ihn dorthin zu
+                  schicken (A-2 zusammen mit B-1). */}
+              {shared ? ` ${shared}` : ' Nutzen Sie den Baukasten.'}
             </p>
           ) : (
             <ul className="vp-neuauto-list">
@@ -160,7 +171,8 @@ export function NeueAutomationDialog({
           </Button>
 
           {/* 3 · Editor ---------------------------------------------------- */}
-          <h3 className="vp-neuauto-head">3 · Node-RED-Editor</h3>
+          {/* A-1: „Node-RED" ist der Name einer Laufzeit, kein Kundenwort. */}
+          <h3 className="vp-neuauto-head">3 · Freier Editor (für Fortgeschrittene)</h3>
           <p className="vp-neuauto-note">
             Die freie Fläche: Bausteine verbinden, wie Sie wollen. Vor jeder
             Aktivierung wird die Regel geprüft und simuliert.

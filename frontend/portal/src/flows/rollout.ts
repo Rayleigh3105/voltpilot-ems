@@ -61,12 +61,21 @@ export const ROLLOUT_REASONS: Record<string, string> = {
   already_active: 'Diese Automation läuft bereits auf Ihrem Gerät.',
 };
 
-/** The honest German sentence for one outcome (server message wins). */
+/** The customer sentence for the happy path - see {@link rolloutMessage}. */
+export const ROLLOUT_DONE_MESSAGE = 'Ihre Automation läuft jetzt auf dem Gerät.';
+
+/**
+ * The honest German sentence for one outcome. A server message wins for every
+ * FAILURE (it is the precise cause, and the caller has already mapped it), but
+ * NOT for the happy path: there the server says "Flow aktiviert (Version 1)."
+ * - internal vocabulary and a version number the customer did not ask for
+ * (audit E-9), so the customer string wins.
+ */
 export function rolloutMessage(state: RolloutState): string | null {
-  if (state.message && state.message.trim()) return state.message.trim();
   if (state.phase === 'fertig') {
-    return 'Ihre Automation läuft jetzt auf dem Gerät.';
+    return ROLLOUT_DONE_MESSAGE;
   }
+  if (state.message && state.message.trim()) return state.message.trim();
   if (state.phase !== 'fehler') return null;
   const known = state.reason ? ROLLOUT_REASONS[state.reason] : undefined;
   if (known) return known;

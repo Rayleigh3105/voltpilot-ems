@@ -1,6 +1,6 @@
 /** Deterministic layered auto-layout over the pilot flow. */
 import { describe, expect, it } from 'vitest';
-import { edgePath, layoutFlow, portPosition } from './layout';
+import { MIN_FIT_SCALE, edgePath, fitScale, layoutFlow, portPosition } from './layout';
 import { pilotTemplate } from './templates';
 
 describe('layoutFlow', () => {
@@ -48,5 +48,39 @@ describe('layoutFlow', () => {
     const inPos = portPosition(layout, doc, { node: 'strat1', port: 'price_in' }, 'in')!;
     expect(inPos.x).toBe(layout.boxes.get('strat1')!.x);
     expect(edgePath(out, inPos)).toMatch(/^M[\d.]+,[\d.]+ C/);
+  });
+});
+
+/**
+ * Audit E-2: at 1440 the third node was clipped at the right edge of the canvas
+ * viewport ("Benachric…") because the SVG was rendered at its full layout width
+ * inside a narrower box. `fitScale` is the pure half of the fix.
+ */
+describe('fitScale (audit E-2)', () => {
+  it('shrinks a graph that is wider than its viewport', () => {
+    expect(fitScale(1000, 800)).toBe(0.8);
+    expect(fitScale(1000, 700)).toBe(0.7);
+  });
+
+  it('never magnifies a graph that already fits', () => {
+    expect(fitScale(400, 1200)).toBe(1);
+    expect(fitScale(1200, 1200)).toBe(1);
+  });
+
+  it('never shrinks past the readability floor (scroll takes over)', () => {
+    expect(fitScale(4000, 200)).toBe(MIN_FIT_SCALE);
+  });
+
+  it('is a no-op until the container has been measured', () => {
+    expect(fitScale(1000, 0)).toBe(1);
+    expect(fitScale(1000, Number.NaN)).toBe(1);
+    expect(fitScale(0, 500)).toBe(1);
+  });
+
+  it('keeps the whole pilot graph inside a real editor viewport', () => {
+    const layout = layoutFlow(pilotTemplate('Pilot', 'batt-main'));
+    const viewport = 760; // the canvas column at 1440 with palette + inspector
+    const scale = fitScale(layout.width, viewport);
+    expect(layout.width * scale).toBeLessThanOrEqual(viewport + 0.001);
   });
 });

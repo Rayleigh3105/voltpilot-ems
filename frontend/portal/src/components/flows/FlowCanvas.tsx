@@ -14,7 +14,8 @@
  * reports pointer deltas.
  */
 import { Fragment, useCallback, useRef, useState } from 'react';
-import { edgePath, portPosition, type FlowLayout } from '../../flows/layout';
+import { useContainerWidth } from '../../useContainerWidth';
+import { edgePath, fitScale, portPosition, type FlowLayout } from '../../flows/layout';
 import type { LiveValuesView } from '../../flows/liveValues';
 import {
   dragTo,
@@ -104,6 +105,16 @@ export function FlowCanvas({
   const layout: FlowLayout = resolvePositions(doc, effective);
   const draggable = onPositionChange != null;
 
+  // Fit-to-width (audit E-2): a graph wider than its viewport was clipped at
+  // the right edge ("Benachric…" on a 1440 screen). The SVG is rendered at a
+  // scale (never magnifying, floored so nodes stay readable) while the viewBox
+  // keeps the layout coordinate system - so a pointer delta must be divided by
+  // that scale before it becomes a layout delta.
+  const [wrapRef, wrapWidth] = useContainerWidth<HTMLDivElement>();
+  const scale = fitScale(layout.width, wrapWidth);
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+
   const onPointerDown = useCallback(
     (nodeId: string, event: React.PointerEvent<SVGGElement>) => {
       // `button` can be absent on synthetic/touch pointer events - only a
@@ -127,8 +138,9 @@ export function FlowCanvas({
   const onPointerMove = useCallback((event: React.PointerEvent<SVGGElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const dx = event.clientX - drag.startX;
-    const dy = event.clientY - drag.startY;
+    const s = scaleRef.current || 1;
+    const dx = (event.clientX - drag.startX) / s;
+    const dy = (event.clientY - drag.startY) / s;
     if (!movedRef.current && Math.abs(dx) < 3 && Math.abs(dy) < 3) return; // a click, not a drag
     movedRef.current = true;
     setDragging({ id: drag.id, pos: dragTo(drag.origin, { dx, dy }) });
@@ -145,10 +157,10 @@ export function FlowCanvas({
   }, [dragging, onPositionChange]);
 
   return (
-    <div className="vp-flowcanvas" data-testid="flow-canvas">
+    <div className="vp-flowcanvas" data-testid="flow-canvas" ref={wrapRef}>
       <svg
-        width={layout.width}
-        height={layout.height}
+        width={Math.round(layout.width * scale)}
+        height={Math.round(layout.height * scale)}
         viewBox={`0 0 ${layout.width} ${layout.height}`}
         role="img"
         aria-label={`Flow-Diagramm mit ${doc.nodes.length} Bausteinen`}

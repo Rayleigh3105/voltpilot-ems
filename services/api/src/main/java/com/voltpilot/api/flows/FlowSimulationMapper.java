@@ -27,20 +27,38 @@ import java.util.List;
  * rule, a price rule, a compound AND rule), a notification ({@code
  * vp.notify.push}), or a MAPPED Modbus read ({@code vp.modbus.read} with an
  * entity/channel mapping - recording IS its action, MB-M1) - does not change
- * the battery dispatch economics in the MVP simulation model, so its dry-run is
- * the site's "standardSpeicher" baseline (the reference the rule runs on top
- * of). This lets a Wenn/Dann automation reach {@code simuliert} and activate.
- * A flow with neither a strategy nor an action (e.g. a bare read + threshold
- * with no sink) has no economic dry-run and is refused.
+ * the battery dispatch economics in the MVP simulation model. Its dry-run is
+ * therefore SCOPED to what the flow actually touches: {@code yearSimulation()}
+ * is false and NO simulation job runs at all (audit E-8). Until this fix every
+ * such flow - including a pure time-window rule - ran a 365-day battery-dispatch
+ * MILP taking ~2,5 minutes and requiring a full previous calendar year of
+ * day-ahead prices plus a live weather-archive call: two external dependencies
+ * and a two-minute wait for "schalte mittags die Wallbox ein", and the ONE
+ * reason a rollout failed outright on a plant whose price history was not
+ * backfilled. A flow with neither a strategy nor an action (e.g. a bare read +
+ * threshold with no sink) has no dry-run at all and is refused.
  */
 public final class FlowSimulationMapper {
 
-    /** The mapping outcome: supported + scenario key, or a German refusal. */
+    /**
+     * The mapping outcome: supported + scenario key, or a German refusal.
+     *
+     * @param yearSimulation whether this flow's dry-run needs the full-year
+     *     Ersparnis-Simulation (a battery strategy changes the dispatch
+     *     economics) or is SCOPED to the flow itself (an automation does not) -
+     *     see the class doc, audit E-8. Always false when {@code supported} is
+     *     false. When false, {@code scenario} is null: no scenario runs.
+     */
     public record Mapping(boolean supported, String reason, String scenario,
-            String speicherschonung, String strategyNodeId) {
+            String speicherschonung, String strategyNodeId, boolean yearSimulation) {
 
         static Mapping unsupported(String reason) {
-            return new Mapping(false, reason, null, null, null);
+            return new Mapping(false, reason, null, null, null, false);
+        }
+
+        /** A dry-run scoped to the flow itself - no year simulation is run. */
+        static Mapping scoped() {
+            return new Mapping(true, null, null, null, null, false);
         }
     }
 
@@ -69,12 +87,14 @@ public final class FlowSimulationMapper {
                         "Die atypische Netznutzung (§ 19 StromNEV) ist noch in Vorbereitung und "
                                 + "kann derzeit nicht simuliert oder aktiviert werden.");
             }
-            // A Wenn/Dann automation (controlling a consumer, or notifying) has no
-            // battery strategy; it doesn't change the dispatch economics, so its
-            // dry-run is the site's standard-battery baseline (the reference it
-            // runs on top of). This lets an automation activate.
+            // A Wenn/Dann automation (controlling a consumer, recording a
+            // measurement, notifying) has no battery strategy; it does not change
+            // the dispatch economics, so there is nothing a year-long battery
+            // simulation could tell anyone about it. Its dry-run is SCOPED to the
+            // flow (validation + the plant model), runs instantly and needs
+            // neither a year of prices nor the weather archive (E-8).
             if (hasAutomationAction(doc)) {
-                return new Mapping(true, null, "standardSpeicher", null, null);
+                return Mapping.scoped();
             }
             return Mapping.unsupported(
                     "Dieser Flow enthält keinen simulierbaren Strategie-Baustein. Für den "
@@ -95,7 +115,7 @@ public final class FlowSimulationMapper {
                 || "vp.strategy.peakshaving".equals(type);
         String schonung = strategy.path("parameters").path("speicherschonung").asText(null);
         return new Mapping(true, null, coOptimized ? "voltpilot" : "standardSpeicher",
-                schonung, strategy.path("id").asText());
+                schonung, strategy.path("id").asText(), true);
     }
 
     private static boolean hasAutomationAction(JsonNode doc) {
