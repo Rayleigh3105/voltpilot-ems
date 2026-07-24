@@ -3,12 +3,32 @@ import {
   componentLabel,
   componentRole,
   deviceSummary,
+  MEASURED_VIA_INVERTER,
   newlyReported,
   plantModel,
   toComponentHealth,
   type ComponentRole,
 } from './komponenten';
-import type { EntityLocalSetup, SiteEntity, SiteTopology } from './api';
+import type { EntityLocalSetup, SiteEntity, SiteSource, SiteTopology } from './api';
+
+function siteSource(sourceId: string, overrides: Partial<SiteSource> = {}): SiteSource {
+  return {
+    deviceId: 'gw',
+    sourceId,
+    kind: 'source',
+    role: 'pv-generation',
+    label: null,
+    brand: null,
+    model: null,
+    pvKw: null,
+    powerKw: null,
+    loadKw: null,
+    health: 'ok',
+    readAt: null,
+    reportedAt: '',
+    ...overrides,
+  };
+}
 
 /** A minimal v2 entity for the model derivation. */
 function entity(
@@ -296,5 +316,116 @@ describe('toComponentHealth — H2: health never fails OPEN', () => {
     expect(model.components[0].health).toBe('unknown');
     expect(model.devices[0].health).toBe('unknown');
     expect(model.devices[0].summary).toContain('noch keine Rückmeldung');
+  });
+});
+
+/** A minimal topology entity (its `health` is telemetry_v2 liveness). */
+function topoEntity(id: string, entityType: string, category: string, health: string) {
+  return { id, entityType, typeLabel: entityType, label: null, category, health, capabilities: [] };
+}
+
+describe('plantModel — F1: health from real data presence, not the edge echo', () => {
+  it('takes the topology (telemetry_v2) liveness over a stale observed echo', () => {
+    // The composed hybrid's edge `observed` is empty-by-construction (`never`)
+    // on a migrated plant — but telemetry_v2 is current (topology `ok`).
+    const entities = [
+      entity('batt', 'battery-hybrid', {
+        label: 'Batteriespeicher',
+        observed: { health: 'never', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+      }),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [topoEntity('batt', 'battery-hybrid', 'storage', 'ok')],
+      topology: { schema_version: '1.0', nodes: [] },
+    };
+    const m = plantModel(entities, topology, [inverter('inv', 'deye')]);
+    // The false „noch keine Daten" is gone — the component reflects real data.
+    expect(m.components[0].health).toBe('ok');
+    expect(m.devices[0].health).toBe('ok');
+    expect(m.devices[0].summary).toContain('verbunden');
+  });
+
+  it('a producer with no telemetry_v2 but /sources data reads "über den Wechselrichter gemessen"', () => {
+    const entities = [
+      entity('batt', 'battery-hybrid', { label: 'Speicher' }),
+      entity('pv2', 'producer', {
+        label: 'PV-Dach Ost',
+        edgeSourceId: 'fro-2',
+        observed: { health: 'never', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+        capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+      }),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [
+        topoEntity('batt', 'battery-hybrid', 'storage', 'ok'),
+        // A producer has no telemetry_v2 → topology liveness reads `never`.
+        topoEntity('pv2', 'producer', 'producer', 'never'),
+      ],
+      topology: { schema_version: '1.0', nodes: [] },
+    };
+    const localSetup = [
+      inverter('inv', 'deye'),
+      source('fro-2', 'pv-generation', { brand: 'Fronius', label: 'Anlage', adoptedEntityId: 'pv2' }),
+    ];
+    const sources = [siteSource('fro-2', { pvKw: 19.9, health: 'ok', label: 'Fronius Anlage' })];
+    const prod = plantModel(entities, topology, localSetup, sources).components.find((c) => c.id === 'pv2')!;
+    // Delivering (via the inverter) → green, with the honest note, not „noch keine Daten".
+    expect(prod.health).toBe('ok');
+    expect(prod.measuredVia).toBe(MEASURED_VIA_INVERTER);
+  });
+
+  it('a producer with no reading stays honest (grey) but still names how it is measured', () => {
+    const entities = [
+      entity('batt', 'battery-hybrid', { label: 'Speicher' }),
+      entity('pv2', 'producer', { label: 'PV Ost', edgeSourceId: 'fro-2' }),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [
+        topoEntity('batt', 'battery-hybrid', 'storage', 'ok'),
+        topoEntity('pv2', 'producer', 'producer', 'never'),
+      ],
+      topology: { schema_version: '1.0', nodes: [] },
+    };
+    const prod = plantModel(entities, topology, [inverter('inv', 'deye')], []).components.find(
+      (c) => c.id === 'pv2',
+    )!;
+    expect(prod.health).toBe('never');
+    expect(prod.measuredVia).toBe(MEASURED_VIA_INVERTER);
+  });
+});
+
+describe('plantModel — IA(5) Datenfluss card + F5 copy', () => {
+  const hybridPlusProducer = () => {
+    const entities = [
+      entity('batt', 'battery-hybrid', { label: 'Speicher' }),
+      entity('pv2', 'producer', { label: 'PV Ost', edgeSourceId: 'fro-2' }),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [
+        topoEntity('batt', 'battery-hybrid', 'storage', 'ok'),
+        topoEntity('pv2', 'producer', 'producer', 'never'),
+      ],
+      topology: { schema_version: '1.0', nodes: [] },
+    };
+    return plantModel(entities, topology, [inverter('inv', 'deye')], []);
+  };
+
+  it('adds a Datenfluss explainer when a hybrid measures extra producers', () => {
+    expect(hybridPlusProducer().effects.some((e) => e.key === 'datenfluss')).toBe(true);
+  });
+
+  it('omits the Datenfluss card on a plain single-inverter plant', () => {
+    const m = plantModel([entity('batt', 'battery-hybrid')], null, [inverter('inv', 'deye')]);
+    expect(m.effects.some((e) => e.key === 'datenfluss')).toBe(false);
+  });
+
+  it('F5: the cockpit card no longer promises a summed Rollen-Knoten', () => {
+    const cockpit = hybridPlusProducer().effects.find((e) => e.key === 'cockpit')!;
+    expect(cockpit.summary).not.toMatch(/summieren/i);
+    expect(cockpit.summary).toMatch(/eigener Knoten/i);
   });
 });

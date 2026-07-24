@@ -1068,6 +1068,7 @@ export function AnlageSeite({
                   {adaptiveLive.adaptive && adaptiveLive.topology ? (
                     <AdaptiveEnergyFlow
                       topology={adaptiveLive.topology}
+                      sources={sources}
                       stale={
                         liveState({
                           entityFresh: adaptiveLive.topology.entities.some(

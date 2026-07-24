@@ -66,7 +66,7 @@ export function CockpitHero({
       <div className="vp-hero-flow">
         {hasFlow ? (
           topology ? (
-            <AdaptiveEnergyFlow topology={topology} stale={stale} size="hero" />
+            <AdaptiveEnergyFlow topology={topology} stale={stale} size="hero" sources={sources} />
           ) : (
             <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />
           )

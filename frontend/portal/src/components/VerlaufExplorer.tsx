@@ -331,12 +331,23 @@ export function VerlaufExplorer({
             />
           )}
           {!loading && !dataErr && series && series.empty && (
-            <EmptyState
-              icon="activity"
-              category="dynamic"
-              title="Keine Werte in diesem Zeitraum"
-              description="Für diesen Messwert liegen im gewählten Zeitraum keine Daten vor. Wählen Sie einen anderen Zeitraum oder Messwert."
-            />
+            selected?.producer ? (
+              // F2a: a producer has no eigene Messreihe — seine PV wird über den
+              // Wechselrichter erfasst und steckt in „PV gesamt".
+              <EmptyState
+                icon="sun"
+                category="dynamic"
+                title="Wird über den Wechselrichter gemessen"
+                description="Diese Werte werden über den Wechselrichter gemessen und stecken in „PV gesamt“. Einen eigenen Verlauf hat dieser Erzeuger nicht — die Gesamt-PV finden Sie im Cockpit und in der Historie."
+              />
+            ) : (
+              <EmptyState
+                icon="activity"
+                category="dynamic"
+                title="Keine Werte in diesem Zeitraum"
+                description="Für diesen Messwert liegen im gewählten Zeitraum keine Daten vor. Wählen Sie einen anderen Zeitraum oder Messwert."
+              />
+            )
           )}
           {!loading && !dataErr && series && !series.empty && selected && (
             <>

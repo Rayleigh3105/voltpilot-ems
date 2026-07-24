@@ -29,6 +29,7 @@
 import type {
   EntityLocalSetup,
   SiteEntity,
+  SiteSource,
   SiteTopology,
   TopologyEntity,
 } from './api';
@@ -93,6 +94,13 @@ export interface PlantComponent {
   /** The maßgebliche (primary) grid measurement. */
   primary: boolean;
   health: ComponentHealth;
+  /**
+   * F1 producer caveat: a Fronius/producer component has no telemetry_v2 of its
+   * OWN — its PV is measured THROUGH the hybrid inverter — so a plain health dot
+   * would read „noch keine Daten" forever. This carries the honest note
+   * („über den Wechselrichter gemessen") the UI shows instead, or null.
+   */
+  measuredVia: string | null;
 }
 
 /** One Gerät (left column): a physical box the edge reports. */
@@ -133,6 +141,9 @@ const HOUSE_LOAD_TYPE = 'house-load';
 const BATTERY_HYBRID_TYPE = 'battery-hybrid';
 const PRODUCER_TYPE = 'producer';
 const GRID_METER_TYPE = 'grid-meter';
+
+/** The honest note for a producer whose PV is read through the hybrid inverter. */
+export const MEASURED_VIA_INVERTER = 'über den Wechselrichter gemessen';
 
 /** Fallback category per entity type when no topology row is present. */
 function inferCategory(entityType: string): string {
@@ -258,6 +269,29 @@ function componentChannels(entity: SiteEntity): Messwert[] {
   return out;
 }
 
+/** Per-source PV presence, keyed by the edge source id (SiteEntity.edgeSourceId). */
+interface SourceReading {
+  hasReading: boolean;
+  health: ComponentHealth;
+}
+
+/**
+ * Index the reported measurement points (`/sources`) by their edge source id, so
+ * a producer entity (linked via `edgeSourceId`) can learn whether its PV is
+ * actually flowing right now. Grid meters / consumers are irrelevant here.
+ */
+function sourceReadingIndex(sources: SiteSource[] | null | undefined): Map<string, SourceReading> {
+  const idx = new Map<string, SourceReading>();
+  for (const s of sources ?? []) {
+    if (s.role === 'grid-meter' || s.role === 'consumer') continue;
+    idx.set(s.sourceId, {
+      hasReading: s.pvKw != null && s.health !== 'never',
+      health: s.health === 'stale' ? 'stale' : s.health === 'ok' ? 'ok' : 'unknown',
+    });
+  }
+  return idx;
+}
+
 /** A customer-safe role word for a reported-but-unassigned source (no "Quelle"). */
 function reportedRoleLabel(role: string | null): string {
   switch (role) {
@@ -316,7 +350,7 @@ function fallbackDeviceLabel(components: PlantComponent[]): string {
 }
 
 /** The fixed "Ihre Anlage" effect cards; Gesundheit reflects the worst device. */
-function plantEffects(devices: PlantDevice[]): PlantEffect[] {
+function plantEffects(devices: PlantDevice[], components: PlantComponent[]): PlantEffect[] {
   const silent = devices.find((d) => d.health !== 'ok');
   const health: PlantEffect =
     silent != null
@@ -332,12 +366,14 @@ function plantEffects(devices: PlantDevice[]): PlantEffect[] {
           summary: 'Alle Geräte liefern Daten. Das Health-Zeichen oben bleibt grün.',
           tone: 'plain',
         };
-  return [
+  const effects: PlantEffect[] = [
     {
       key: 'cockpit',
       title: 'Cockpit & Energiefluss',
+      // F5: the flow draws ONE Knoten per Komponente (kein summierter Rollen-
+      // Knoten), also keine falsche Zusage mehr.
       summary:
-        'Jede Komponente ist ein Knoten im Energiefluss; gleichartige Komponenten summieren sich zum Rollen-Knoten (Aufschlüsselung per Tipp).',
+        'Jede Komponente erscheint als eigener Knoten im Energiefluss — so sehen Sie jeden Erzeuger und Verbraucher einzeln.',
       tone: 'plain',
     },
     {
@@ -356,6 +392,21 @@ function plantEffects(devices: PlantDevice[]): PlantEffect[] {
     },
     health,
   ];
+  // IA(5): a "Datenfluss"-Erklärer, but only where it explains something — a
+  // hybrid inverter that measures the plant PLUS extra producers whose PV is
+  // read through it. On a plain single-inverter plant it would be noise.
+  const hasHybrid = components.some((c) => c.role === 'storage');
+  const hasProducer = components.some((c) => c.role === 'pv' && c.measuredVia != null);
+  if (hasHybrid && hasProducer) {
+    effects.unshift({
+      key: 'datenfluss',
+      title: 'Datenfluss',
+      summary:
+        'Der Wechselrichter misst Netzanschluss, Speicher, Hausverbrauch und die gesamte PV-Leistung. Weitere Erzeuger liefern ihre Leistung an den Wechselrichter — daraus errechnet VoltPilot Cockpit und Historie.',
+      tone: 'plain',
+    });
+  }
+  return effects;
 }
 
 /**
@@ -371,16 +422,38 @@ export function plantModel(
   entities: SiteEntity[],
   topology: SiteTopology | null,
   localSetup: EntityLocalSetup[],
+  sources?: SiteSource[] | null,
 ): PlantModel {
   const categoryById = new Map<string, string>();
+  // F1: the topology entity's `health` is telemetry_v2 liveness — the SAME
+  // signal the Cockpit reads. Health from real data presence, not the edge
+  // `observed` echo (which is empty-by-construction for composed/adopted
+  // entities → false „noch keine Daten" on every migrated plant).
+  const topoHealthById = new Map<string, string>();
   for (const t of topology?.entities ?? []) {
-    categoryById.set(t.id, (t as TopologyEntity).category);
+    const te = t as TopologyEntity;
+    categoryById.set(te.id, te.category);
+    topoHealthById.set(te.id, te.health);
   }
+  const sourceByEdgeId = sourceReadingIndex(sources);
 
   const components: PlantComponent[] = entities.map((e) => {
     const role = componentRole(e.entityType, categoryById.get(e.id) ?? null);
     const control = e.control === true;
     const primary = role === 'grid' && isPrimaryGrid(e, topology);
+    // Prefer the topology (telemetry_v2) liveness; fall back to the edge echo
+    // only when no topology row exists (v1/un-migrated site).
+    let health = toComponentHealth(topoHealthById.get(e.id) ?? e.observed?.health);
+    let measuredVia: string | null = null;
+    // Producer caveat: a producer has NO telemetry_v2 of its own (its PV is
+    // measured through the hybrid inverter), so topology liveness reads `never`.
+    // Say so honestly — and go green when /sources proves it IS delivering —
+    // instead of the blanket „noch keine Daten".
+    if (role === 'pv' && e.entityType === PRODUCER_TYPE && health !== 'ok') {
+      measuredVia = MEASURED_VIA_INVERTER;
+      const src = e.edgeSourceId != null ? sourceByEdgeId.get(e.edgeSourceId) : undefined;
+      if (src?.hasReading) health = src.health;
+    }
     return {
       id: e.id,
       label: componentLabel(e.label, role, e.typeLabel),
@@ -390,7 +463,8 @@ export function plantModel(
       channels: componentChannels(e),
       control,
       primary,
-      health: toComponentHealth(e.observed?.health),
+      health,
+      measuredVia,
     };
   });
   const componentById = new Map(components.map((c) => [c.id, c] as const));
@@ -466,7 +540,7 @@ export function plantModel(
     devices,
     components,
     newlyReported: newlyReported(localSetup, entities),
-    effects: plantEffects(devices),
+    effects: plantEffects(devices, components),
   };
 }
 

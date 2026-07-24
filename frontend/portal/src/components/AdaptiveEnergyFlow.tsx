@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { SiteTopology } from '../api';
+import type { SiteSource, SiteTopology } from '../api';
 import { ROLE_META } from '../adaptive';
 import { layoutFlow, NARROW_MAX_PX } from '../adaptiveFlow';
+import { reconcileProducerPv } from '../pvReconcile';
 import type { EnergyFlowSize } from './EnergyFlow';
 
 /**
@@ -26,6 +27,7 @@ export function AdaptiveEnergyFlow({
   topology,
   stale = false,
   size = 'compact',
+  sources = null,
 }: {
   topology: SiteTopology;
   stale?: boolean;
@@ -35,6 +37,12 @@ export function AdaptiveEnergyFlow({
    * can host the SAME diagram larger. No geometry / `adaptiveFlow.ts` change.
    */
   size?: EnergyFlowSize;
+  /**
+   * The reported measurement points (`/sources`). On a migrated multi-inverter
+   * plant they split the composite PV back onto the separate producer circles
+   * so the flow matches the breakdown box (F3/F4). A no-op otherwise.
+   */
+  sources?: SiteSource[] | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -50,7 +58,10 @@ export function AdaptiveEnergyFlow({
   }, []);
 
   const narrow = width > 0 && width < NARROW_MAX_PX;
-  const L = layoutFlow(topology.topology, topology.entities, { narrow });
+  // F3/F4: split the composite PV back onto the producer circles from /sources
+  // (display-only; a no-op when the topology is already truthful).
+  const reconciled = reconcileProducerPv(topology, sources);
+  const L = layoutFlow(reconciled.topology, reconciled.entities, { narrow });
   const maxWidth = size === 'hero' ? `${Math.round(L.W * 1.6)}px` : `${L.W}px`;
 
   return (
