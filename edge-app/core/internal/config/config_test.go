@@ -17,6 +17,7 @@ func clearEnv(t *testing.T) {
 		"VP_DEV_DEVICE_ID", "VP_DEV_CLOUD_URL", "VP_DEV_INSECURE",
 		"VP_CONTROL_ENABLED", "VP_GRID_CHARGE_ALLOWED", "VP_CONTROL_CERTIFIED_FAMILIES",
 		"VP_RECONCILE_INTERVAL_SECONDS", "VP_UNCLAIM_CONFIRM_MINUTES", "VP_UNCLAIM_CONFIRM_POLLS",
+		"VP_CALIBRATION_MAX_KW", "VP_CALIBRATION_TTL_SECONDS",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -148,6 +149,44 @@ func TestUnclaimConfirmDefaultsAndEnv(t *testing.T) {
 	}
 	if cfg.UnclaimConfirm != 20*time.Minute || cfg.UnclaimConfirmPolls != 4 {
 		t.Errorf("zero/negative must fall back to defaults: %v / %d polls", cfg.UnclaimConfirm, cfg.UnclaimConfirmPolls)
+	}
+}
+
+func TestCalibrationDefaultsAndEnv(t *testing.T) {
+	clearEnv(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The First-Light calibration envelope: a SMALL magnitude cap + a SHORT
+	// auto-revert TTL. Both must default to safe values with no config.
+	if cfg.CalibrationMaxKw != 1.0 {
+		t.Errorf("calibration max default: %v (want 1.0 kW)", cfg.CalibrationMaxKw)
+	}
+	if cfg.CalibrationTTL != 30*time.Second {
+		t.Errorf("calibration ttl default: %v (want 30s)", cfg.CalibrationTTL)
+	}
+
+	t.Setenv("VP_CALIBRATION_MAX_KW", "0.5")
+	t.Setenv("VP_CALIBRATION_TTL_SECONDS", "15")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CalibrationMaxKw != 0.5 || cfg.CalibrationTTL != 15*time.Second {
+		t.Errorf("calibration env override: %v / %v", cfg.CalibrationMaxKw, cfg.CalibrationTTL)
+	}
+
+	// Zero/negative/garbage cannot widen or disable the envelope - it falls back
+	// to the safe defaults (a calibration write is never unbounded).
+	t.Setenv("VP_CALIBRATION_MAX_KW", "0")
+	t.Setenv("VP_CALIBRATION_TTL_SECONDS", "-5")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CalibrationMaxKw != 1.0 || cfg.CalibrationTTL != 30*time.Second {
+		t.Errorf("zero/negative must fall back to safe defaults: %v / %v", cfg.CalibrationMaxKw, cfg.CalibrationTTL)
 	}
 }
 

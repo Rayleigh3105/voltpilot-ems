@@ -71,6 +71,22 @@ type Config struct {
 	// site's netzladen_erlaubt flag; kept off by default on-device.
 	GridChargeAllowed bool `json:"grid_charge_allowed"`
 
+	// CalibrationMaxKw is the HARD magnitude cap for the First-Light calibration
+	// step (the very first real write to a live customer battery, done BEFORE the
+	// family is certified): a calibration test setpoint is capped to
+	// [-CalibrationMaxKw, +CalibrationMaxKw] and then re-clamped through the guard
+	// chain, so the surface can physically never command more than this. Small on
+	// purpose (report §5.7 "write a SMALL value ... never write a large forced
+	// value first"). VP_CALIBRATION_MAX_KW; garbage/<=0 falls back to the default.
+	CalibrationMaxKw float64 `json:"calibration_max_kw"`
+	// CalibrationTTL is the auto-revert window: EVERY calibration write reverts to
+	// neutral (release) after this long, enforced by a controller-owned watchdog
+	// even if the UI is closed or the socket drops - the write NEVER latches.
+	CalibrationTTL time.Duration `json:"-"`
+	// CalibrationTTLSeconds is the config-file/env form of CalibrationTTL.
+	// VP_CALIBRATION_TTL_SECONDS; garbage/<=0 falls back to the default.
+	CalibrationTTLSeconds int `json:"calibration_ttl_seconds"`
+
 	// SetpointInterval is how often the current setpoint is recomputed and
 	// re-published on the local bus (the slot boundary is always hit).
 	SetpointInterval time.Duration `json:"-"`
@@ -153,6 +169,8 @@ func Defaults() Config {
 		ControlEnabled:           true, // ON by default; the certification allowlist is the per-device gate
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
+		CalibrationMaxKw:         1.0, // small: the first live write must be tiny (report §5.7)
+		CalibrationTTLSeconds:    30,  // auto-revert to neutral fast; the write never latches
 		NodeRedUser:              "voltpilot",
 	}
 }
@@ -208,6 +226,13 @@ func Load() (Config, error) {
 	if len(cfg.ControlCertifiedFamilies) == 0 {
 		cfg.ControlCertifiedFamilies = Defaults().ControlCertifiedFamilies
 	}
+	if cfg.CalibrationMaxKw <= 0 {
+		cfg.CalibrationMaxKw = Defaults().CalibrationMaxKw
+	}
+	if cfg.CalibrationTTLSeconds <= 0 {
+		cfg.CalibrationTTLSeconds = Defaults().CalibrationTTLSeconds
+	}
+	cfg.CalibrationTTL = time.Duration(cfg.CalibrationTTLSeconds) * time.Second
 	return cfg, nil
 }
 
@@ -265,6 +290,8 @@ func applyEnv(cfg *Config) {
 	num("VP_RECONCILE_INTERVAL_SECONDS", &cfg.ReconcileIntervalSeconds)
 	num("VP_UNCLAIM_CONFIRM_MINUTES", &cfg.UnclaimConfirmMinutes)
 	num("VP_UNCLAIM_CONFIRM_POLLS", &cfg.UnclaimConfirmPolls)
+	f64("VP_CALIBRATION_MAX_KW", &cfg.CalibrationMaxKw)
+	num("VP_CALIBRATION_TTL_SECONDS", &cfg.CalibrationTTLSeconds)
 	boolEnv := func(key string, dst *bool) {
 		if v := os.Getenv(key); v != "" {
 			*dst = v == "1" || strings.EqualFold(v, "true")
