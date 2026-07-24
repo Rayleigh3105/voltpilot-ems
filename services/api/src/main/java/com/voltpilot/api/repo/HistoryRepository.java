@@ -150,6 +150,20 @@ public class HistoryRepository {
     }
 
     /**
+     * The site's configured tariff kind ({@code dynamisch|fest|ohne}) - pure
+     * CONTEXT for {@code gridCostEur}, which is always the bare spot cost of the
+     * imported energy and never applies a retail tariff. Without it the portal
+     * labels a spot number "Stromkosten (Netzbezug)" on a plant that has no
+     * tariff configured at all (audit H8). Null only when the site is
+     * unreadable (RLS/deleted).
+     */
+    public String tarifArt(UUID siteId) {
+        List<String> rows = jdbc.query("SELECT tarif_art FROM site WHERE id = ?",
+                (rs, i) -> rs.getString("tarif_art"), siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
      * The plan trajectory for a day (plan-vs-actual overlay): per 15-min slot
      * the battery power / SoC of the latest run that planned it. Empty when the
      * optimizer never planned the day.

@@ -79,13 +79,56 @@ class HistoryRangeTest {
         assertThat(t.batterySavingsEur()).isNull();
     }
 
+    /**
+     * Audit V2/X1: a 0-bucket period must return "—" for EVERY aggregate, not a
+     * confident 0,0 kWh next to an honest "noch keine Daten". Before the fix the
+     * energy sums answered 0.0 while the cost fields correctly answered null.
+     */
     @Test
     void totalsNullSemanticsForEmptyData() {
         HistoryTotalsDto empty = HistoryService.totals(List.of(), null);
-        assertThat(empty.consumptionKwh()).isEqualByComparingTo("0");
+        assertThat(empty.consumptionKwh()).isNull();
+        assertThat(empty.pvGenerationKwh()).isNull();
+        assertThat(empty.gridImportKwh()).isNull();
+        assertThat(empty.gridExportKwh()).isNull();
         assertThat(empty.autarkiePct()).isNull(); // no consumption -> undefined
         assertThat(empty.eigenverbrauchPct()).isNull(); // no PV -> undefined
         assertThat(empty.gridCostEur()).isNull(); // no priced bucket at all
+        assertThat(empty.batterySavingsPlannedEur()).isNull();
+    }
+
+    /**
+     * The same discipline per CHANNEL: a plant that measures load but no PV at
+     * all reports pv = null (never 0), and the ratio that needs it is undefined.
+     */
+    @Test
+    void totalsNullAChannelNoBucketCarried() {
+        HistoryBucketDto loadOnly = new HistoryBucketDto(Instant.parse("2026-06-15T10:00:00Z"),
+                null, BigDecimal.valueOf(4), null, null,
+                null, null, null, null, null, null, null);
+        HistoryTotalsDto t = HistoryService.totals(List.of(loadOnly), null);
+        assertThat(t.consumptionKwh()).isEqualByComparingTo("4");
+        assertThat(t.pvGenerationKwh()).isNull();
+        assertThat(t.gridImportKwh()).isNull();
+        assertThat(t.eigenverbrauchPct()).isNull();
+        assertThat(t.autarkiePct()).isNull(); // import unknown -> not "100 % autark"
+    }
+
+    /**
+     * Audit H3/H8: the planned savings carry a name that says so, and the
+     * spot-priced gridCost carries the site's tariff context. The deprecated
+     * alias mirrors the planned value for one release.
+     */
+    @Test
+    void totalsCarryThePlannedSavingsNameAndTheTariffContext() {
+        HistoryTotalsDto t = HistoryService.totals(
+                List.of(bucket(5, 4, 3, 1, 0.30)), BigDecimal.valueOf(150.26), "ohne");
+        assertThat(t.batterySavingsPlannedEur()).isEqualByComparingTo("150.26");
+        assertThat(t.batterySavingsEur()).isEqualByComparingTo("150.26"); // deprecated alias
+        assertThat(t.tarifArt()).isEqualTo("ohne");
+
+        // No tariff context available (older/unreadable site) -> null, not a guess.
+        assertThat(HistoryService.totals(List.of(), null).tarifArt()).isNull();
     }
 
     private static HistoryBucketDto bucket(

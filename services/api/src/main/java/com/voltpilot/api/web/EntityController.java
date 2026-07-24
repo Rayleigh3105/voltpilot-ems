@@ -161,7 +161,8 @@ public class EntityController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate at) {
         requireSite(siteId);
-        if (registry.entityForSite(siteId, entityId) == null) {
+        EntityRow entity = registry.entityForSite(siteId, entityId);
+        if (entity == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
         }
         HistoryRange parsed = HistoryRange.parse(range);
@@ -171,8 +172,12 @@ public class EntityController {
         }
         LocalDate anchor = at != null ? at : LocalDate.now(HistoryRange.ZONE);
         HistoryRange.Window window = parsed.window(anchor);
+        // The entity's type/device drive the MIG-B2 v1 splice for a COMPOSED
+        // entity (audit H1): telemetry_v2 is fed forward only, so without it a
+        // migrated plant's explorer is empty for its whole pre-migration history.
         Map<String, List<EntityHistoryRepository.Bucket>> channels =
-                history.history(siteId, entityId.toString(), parsed, window.from(), window.to());
+                history.history(siteId, entityId.toString(), parsed, window.from(), window.to(),
+                        entity.entityType(), entity.deviceId());
         return new EntityHistoryDto(parsed.name().toLowerCase(), window.from(), window.to(),
                 parsed.bucketMinutes(), channels);
     }
