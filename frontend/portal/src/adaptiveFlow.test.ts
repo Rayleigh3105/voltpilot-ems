@@ -170,11 +170,65 @@ describe('node labels are legible and distinguishable (G2)', () => {
     ]);
     // the untruncated stored name stays on the tooltip
     expect(repeated.vertices.every((v) => v.title.startsWith('Batteriespeicher'))).toBe(true);
-    // a name that occurs once is left alone (short word, no role suffix)
+    // V12 (Audit): the role line is CONSISTENT - every circle carries it, not
+    // only the ambiguous ones (two nodes had a coloured subtitle, two did not).
     const consumer = l.vertices.find((v) => v.role === 'consumer')!;
-    expect(consumer.label).toBe('Wallbox');
+    expect(consumer.label).toBe('Wallbox · Verbraucher');
+    expect(consumer.roleTag).toBe('Verbraucher');
     expect(consumer.title).toBe('go-e · Verbraucher');
-    expect(consumer.roleTag).toBeNull();
+    // ... except where it would only repeat the name ("Netz · Netz" is noise).
+    const grid = l.vertices.find((v) => v.role === 'grid')!;
+    expect(grid.label).toBe('Netz');
+    expect(grid.roleTag).toBeNull();
+  });
+
+  it('V15: a top node\'s spoke starts BELOW its label block, not at its centre', () => {
+    // The animated dots ran straight through the „PV" role word under the
+    // Erzeuger circle, because the spoke began at the circle centre.
+    const l = layoutFlow(TOPO, ENTITIES);
+    const labelBlock = l.lblDy + 3 * l.lblLh;
+    for (const v of l.vertices) {
+      if (v.y < l.hubY) {
+        expect(v.spokeY).toBeGreaterThanOrEqual(v.y + Math.min(l.nodeR + labelBlock, 1) - 0.01);
+        expect(v.spokeY).toBeGreaterThan(v.y + l.nodeR);
+      } else {
+        // every other side keeps the untouched geometry
+        expect(v.spokeX).toBeCloseTo(v.x, 6);
+        expect(v.spokeY).toBeCloseTo(v.y, 6);
+      }
+    }
+  });
+
+  it('V9: a long name on an outer column stays inside the narrow viewBox', () => {
+    // SVG <text> is neither wrapped nor clipped by CSS - a centred label on the
+    // left column ran past x=0 and rendered as "3atteriespeicher".
+    const narrow = layoutFlow(TOPO, ENTITIES, { narrow: true });
+    for (const v of narrow.vertices) {
+      const widest = Math.max(...v.labelLines.map((l) => l.length), v.roleTag?.length ?? 0, 1);
+      const half = (widest * narrow.lblF * 0.55) / 2;
+      expect(v.labelX - half).toBeGreaterThanOrEqual(-0.01);
+      expect(v.labelX + half).toBeLessThanOrEqual(narrow.W + 0.01);
+    }
+    // On the roomy landscape layout nothing moves.
+    const wide = layoutFlow(TOPO, ENTITIES);
+    for (const v of wide.vertices) expect(v.labelX).toBeCloseTo(v.x, 6);
+  });
+
+  it('V9: the narrow (phone) layout is a slimmer viewBox with the same nodes', () => {
+    const wide = layoutFlow(TOPO, ENTITIES);
+    const narrow = layoutFlow(TOPO, ENTITIES, { narrow: true });
+    expect(narrow.W).toBeLessThan(wide.W);
+    // same circles, same labels - only the coordinates differ
+    expect(narrow.vertices.map((v) => v.key)).toEqual(wide.vertices.map((v) => v.key));
+    expect(narrow.lblF).toBe(wide.lblF);
+    // and everything still fits inside the smaller viewBox
+    const labelBlock = narrow.lblDy + 3 * narrow.lblLh;
+    for (const v of narrow.vertices) {
+      expect(v.x - narrow.nodeR).toBeGreaterThanOrEqual(0);
+      expect(v.x + narrow.nodeR).toBeLessThanOrEqual(narrow.W);
+      expect(v.y - narrow.nodeR).toBeGreaterThanOrEqual(0);
+      expect(v.y + narrow.nodeR + labelBlock).toBeLessThanOrEqual(narrow.H);
+    }
   });
 
   it('every circle stays inside the viewBox, labels included', () => {

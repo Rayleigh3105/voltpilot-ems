@@ -272,6 +272,45 @@
   min-width: 0;
 }
 
+/* V13 (Audit): der Ring-Platz bleibt reserviert und sagt, warum er leer ist -
+   sonst sprang die Seitenhöhe bei jedem Zeitraum-Tab. */
+.vp-hero-rings-empty {
+  min-height: 96px;
+  align-items: center;
+}
+.vp-hero-rings-empty p {
+  margin: 0;
+  font-size: 0.84rem;
+  max-width: 34ch;
+}
+
+/* V14 (Audit): der Weg nach vorn bekommt den Platz des leeren Diagramms. */
+.vp-hero-noflow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  align-items: flex-start;
+  min-width: 0;
+  padding: var(--vp-space-3, 12px) 0;
+}
+.vp-hero-noflow h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.vp-hero-noflow ol {
+  margin: 0;
+  padding-left: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: var(--vp-text, #1a1a1a);
+}
+.vp-hero-noflow p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
 .vp-hero-ring {
   display: flex;
   flex-direction: column;

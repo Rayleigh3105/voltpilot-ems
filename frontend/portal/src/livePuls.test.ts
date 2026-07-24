@@ -2,14 +2,17 @@ import { describe, expect, it } from 'vitest';
 import type { EntityHistory, SiteTopology, TelemetryPoint, TopologyEntity } from './api';
 import type { FlowNode } from './topology';
 import {
+  boardHint,
   componentRows,
   entitySparks,
+  hasAnySpark,
   sparkFromEntityHistory,
   sparkFromPoints,
   v1FallbackRows,
   v1Pick,
   v1Sparks,
 } from './livePuls';
+import { NO_DATA } from './nodata';
 
 /** fmtNum puts a non-breaking space before the unit. */
 const NBSP = ' ';
@@ -214,10 +217,15 @@ describe('v1FallbackRows (site-level, reusing live.ts states)', () => {
     expect(netz.value).not.toMatch(/-/);
   });
 
-  it('keeps an absent value as „–", never a fabricated 0', () => {
+  it('keeps an absent value as „—", never a fabricated 0 — and never „keine Batterie"', () => {
     const [, storage] = v1FallbackRows([pt({ pvPowerKw: 0 })]);
-    expect(storage.value).toBe('–');
-    expect(storage.stateLabel).toBe('keine Batterie');
+    // X1: EIN Zeichen für „kein Wert" auf allen Cockpit-/Board-Flächen.
+    expect(storage.value).toBe(NO_DATA);
+    // V1 (Audit): ein fehlender Ladestand ist „noch keine Daten" - die Anlage
+    // HAT eine Batterie, sie meldet nur gerade nichts.
+    expect(storage.stateLabel).toBe('noch keine Daten');
+    // H2: und der Punkt behauptet dann kein „liefert Daten".
+    expect(storage.health).toBe('unknown');
   });
 });
 
@@ -321,5 +329,91 @@ describe('entitySparks', () => {
     expect(sparks.get('role-pv')?.values).toEqual([3, 6]);
     // Storage entity has no history loaded → null (honest, no sparkline).
     expect(sparks.get('role-storage')).toBeNull();
+  });
+});
+
+
+// --- V6 (Audit): the expansion lists only the ROW's own Messwerte ------------
+
+describe('componentRows — V6: a role row expands to ITS channels only', () => {
+  /** A hybrid whose capabilities carry real roles (as the API returns them). */
+  function roledEnt(id: string, type: string, caps: [string, string][]): TopologyEntity {
+    return {
+      id,
+      entityType: type,
+      typeLabel: type,
+      label: type,
+      category: '',
+      health: 'ok',
+      capabilities: caps.map(([channel, role]) => ({
+        channel,
+        unit: null,
+        role,
+        primary: role === 'storage' ? channel === 'soc_pct' : true,
+        value: null,
+      })) as never,
+    };
+  }
+  const hybrid = roledEnt('hy', 'battery-hybrid', [
+    ['soc_pct', 'storage'],
+    ['battery_power_kw', 'storage'],
+    ['pv_power_kw', 'pv'],
+  ]);
+  const member = { entity_id: 'hy', label: 'Batteriespeicher', primary: true, value_kw: 5.9 };
+  const topo: SiteTopology = {
+    schemaVersion: '1.0',
+    entities: [hybrid],
+    topology: {
+      schema_version: '1.0',
+      nodes: [
+        { role: 'pv', value_kw: 5.9, flow_active: true, direction: 'in', members: [member] },
+        {
+          role: 'storage',
+          value_kw: 1.2,
+          soc_pct: 87,
+          flow_active: true,
+          direction: 'out',
+          members: [member],
+        },
+      ],
+    },
+  };
+
+  it('the Erzeuger row lists PV only — never the hybrid’s Ladestand', () => {
+    const [pv, storage] = componentRows(topo);
+    expect(pv.channels.map((c) => c.channel)).toEqual(['pv_power_kw']);
+    expect(pv.target?.channel).toBe('pv_power_kw');
+    // ... while the Speicher row keeps its own two.
+    expect(storage.channels.map((c) => c.channel)).toEqual(['soc_pct', 'battery_power_kw']);
+    expect(storage.target?.channel).toBe('soc_pct');
+  });
+
+  it('falls back to every channel when the backend assigned no role', () => {
+    // An empty expansion would be worse than a wide one.
+    const roleless: SiteTopology = {
+      ...topo,
+      entities: [ent('hy', 'battery-hybrid', ['soc_pct', 'pv_power_kw'])],
+    };
+    const [pv] = componentRows(roleless);
+    expect(pv.channels.map((c) => c.channel)).toEqual(['soc_pct', 'pv_power_kw']);
+  });
+});
+
+// --- V5 (Audit): promise a sparkline only when there IS one -----------------
+
+describe('hasAnySpark / boardHint — V5: no blank promise', () => {
+  const spark = { values: [1, 2], min: 1, max: 2 };
+
+  it('detects whether the board carries a single line', () => {
+    expect(hasAnySpark(new Map())).toBe(false);
+    expect(hasAnySpark(new Map([['a', null]]))).toBe(false);
+    expect(hasAnySpark(new Map([['a', null], ['b', spark]]))).toBe(true);
+  });
+
+  it('drops „letzte 60 Min" when no row can show one', () => {
+    expect(boardHint(true).spark).toBe('letzte 60 Min');
+    expect(boardHint(false).spark).toBeNull();
+    // the jump hint is always honest and always there
+    expect(boardHint(false).jump).toBe('tippen für den Verlauf');
   });
 });

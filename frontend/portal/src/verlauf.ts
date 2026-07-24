@@ -87,11 +87,14 @@ function deviceLineFor(
   const feeders = model.devices.filter((d) => d.componentIds.includes(componentId));
   if (feeders.length === 0) return null;
   const names = Array.from(new Set(feeders.map((d) => d.label))).join(' · ');
+  // H2: only a real `ok` reads „verbunden" - an unreported device says so.
   const health = feeders.some((d) => d.health === 'stale')
     ? 'meldet gerade keine Daten'
     : feeders.some((d) => d.health === 'never')
       ? 'noch keine Daten'
-      : 'verbunden';
+      : feeders.some((d) => d.health === 'unknown')
+        ? 'noch keine Rückmeldung'
+        : 'verbunden';
   return `${names} · ${health}`;
 }
 

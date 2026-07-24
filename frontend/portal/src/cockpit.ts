@@ -302,7 +302,12 @@ export function handelBlock(input: {
   if (saved != null) {
     const arbitrage = numOrNull(input.money?.arbitrageEur);
     tiles.push({
-      label: `Verdient · ${input.periodLabel}`,
+      // V3 (Audit): NIE zweimal dasselbe Etikett mit zwei Zahlen auf einem
+      // Bildschirm. Der Hero sagt „Verdient · Juli" = `gesamtertragEur`; DIESE
+      // Kachel ist `savedEur`, also die Zurechnung zur Steuerung - genau das,
+      // was der Hero darunter schon ausschreibt („davon X € durch VoltPilots
+      // Steuerung"). Also heißt sie auch so.
+      label: `Durch Steuerung · ${input.periodLabel}`,
       value: eurAmount(saved),
       sub: arbitrage != null ? `davon Arbitrage ${eurAmount(arbitrage)}` : null,
       hue: 'grid',

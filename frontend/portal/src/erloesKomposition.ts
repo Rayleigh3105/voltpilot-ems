@@ -29,7 +29,7 @@
  */
 
 import type { EarningsRange, EarningsSite } from './api';
-import { periodLabel } from './anlage';
+import { coveredSinceLabel, periodLabel } from './anlage';
 import { eurAmount } from './format';
 import type { MoneyStream, MoneyStreamId, StreamPeriod } from './surface';
 
@@ -253,6 +253,12 @@ export function erloesKomposition(input: ErloesKompositionInput): ErloesKomposit
   const rangeLabel = periodLabel(input.range, at, now);
   const billingLabel = billingPeriodLabel(input.money);
   const labelFor = (p: StreamPeriod) => (p === 'billing-period' ? billingLabel : rangeLabel);
+  // V4/V13: „Gesamt gesamt" -> „seit 3. Juli 2026" (nennt zugleich, warum
+  // Monat/Jahr/Gesamt auf einer jungen Anlage dieselbe Zahl tragen).
+  const sinceLabel =
+    input.range === 'all' ? coveredSinceLabel(input.money?.firstCoveredDate) : null;
+  const totalCaption = (p: StreamPeriod) =>
+    p === 'range' && sinceLabel ? sinceLabel : `${labelFor(p)} gesamt`;
 
   const rows: StreamRow[] = (input.streams ?? []).map((s) => {
     const { eur, note } = s.unattributed
@@ -295,7 +301,7 @@ export function erloesKomposition(input: ErloesKompositionInput): ErloesKomposit
     const sum = contributing.reduce((acc, r) => acc + (r.eur as number), 0);
     totals.push({
       period,
-      label: `${labelFor(period)} gesamt`,
+      label: totalCaption(period),
       eur: contributing.length > 0 ? sum : null,
       valueText: contributing.length > 0 ? eurAmount(sum) : DASH,
       contributingRows: contributing.length,

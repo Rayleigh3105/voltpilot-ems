@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { chartTheme } from '../chartTheme';
+import { boardHint, hasAnySpark } from '../livePuls';
 import type { LivePulsChannel, LivePulsRow, Spark } from '../livePuls';
 
 import './LivePuls.css';
@@ -18,6 +19,8 @@ const HEALTH: Record<string, { cls: string; title: string }> = {
   ok: { cls: 'vp-health-ok', title: 'Liefert Daten' },
   stale: { cls: 'vp-health-warn', title: 'Meldet gerade keine Daten' },
   never: { cls: 'vp-health-off', title: 'Noch keine Daten' },
+  // H2: nichts gemeldet ist NICHT „liefert Daten" - grau, mit ehrlichem Titel.
+  unknown: { cls: 'vp-health-off', title: 'Noch keine Rückmeldung' },
 };
 
 /** Sparkline hue: by the plotted channel first (a hybrid's PV reads orange),
@@ -125,14 +128,17 @@ function ChannelItem({
 function Row({
   row,
   spark,
+  showSparkSlot,
   onOpen,
 }: {
   row: LivePulsRow;
   spark: Spark | null;
+  /** V5: der Platz wird nur reserviert, wenn das Board überhaupt Linien hat. */
+  showSparkSlot: boolean;
   onOpen: (t: { entityId: string; channel: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const dot = HEALTH[row.health] ?? HEALTH.ok;
+  const dot = HEALTH[row.health] ?? HEALTH.unknown;
   const canExpand = row.channels.length > 1;
 
   return (
@@ -164,16 +170,16 @@ function Row({
           </span>
           {spark ? (
             <Sparkline spark={spark} color={sparkColor(row)} />
-          ) : (
+          ) : showSparkSlot ? (
             <span className="vp-puls-spark vp-puls-spark-none" aria-hidden="true" />
-          )}
+          ) : null}
           <span className="vp-puls-val">{row.value}</span>
           <span className="vp-puls-go" aria-hidden="true">
             Verlauf
             <Icon name="chevron-right" size={15} />
           </span>
         </button>
-        {canExpand && (
+        {canExpand ? (
           <button
             type="button"
             className={`vp-puls-expand${open ? ' is-open' : ''}`}
@@ -183,6 +189,10 @@ function Row({
           >
             <Icon name="chevron-down" size={18} />
           </button>
+        ) : (
+          /* V10: die Spalte bleibt reserviert, sonst sind Zeilen MIT Chevron
+             schmaler als Zeilen ohne - am Telefon fiel das sofort auf. */
+          <span className="vp-puls-expand-spacer" aria-hidden="true" />
         )}
       </div>
       {canExpand && open && (
@@ -206,15 +216,27 @@ export function LivePuls({
   sparks: Map<string, Spark | null>;
   onOpenVerlauf: (target: { entityId: string; channel: string }) => void;
 }) {
+  // V5: „letzte 60 Min" wird nur versprochen, wenn wirklich eine Linie da ist.
+  const anySpark = hasAnySpark(sparks);
+  const hint = boardHint(anySpark);
   return (
     <div className="vp-puls" aria-label="Komponenten im Detail">
       <div className="vp-puls-head">
         <h3>Komponenten</h3>
-        <span className="vp-puls-hint">letzte 60 Min · tippen für den Verlauf</span>
+        <span className="vp-puls-hint">
+          {hint.spark && <span className="vp-puls-hint-spark">{hint.spark} · </span>}
+          {hint.jump}
+        </span>
       </div>
       <div className="vp-puls-rows">
         {rows.map((row) => (
-          <Row key={row.key} row={row} spark={sparks.get(row.key) ?? null} onOpen={onOpenVerlauf} />
+          <Row
+            key={row.key}
+            row={row}
+            spark={sparks.get(row.key) ?? null}
+            showSparkSlot={anySpark}
+            onOpen={onOpenVerlauf}
+          />
         ))}
       </div>
     </div>

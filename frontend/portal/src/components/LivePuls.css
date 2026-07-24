@@ -212,6 +212,12 @@
   transform: rotate(180deg);
 }
 
+/* V10: reserved chevron column on rows that cannot expand - without it the
+   expandable rows were visibly narrower than the rest. */
+.vp-puls-expand-spacer {
+  flex: 0 0 44px;
+}
+
 .vp-puls-channels {
   border-top: 1px solid var(--vp-border, #e2e8f0);
   padding: 4px;
@@ -265,5 +271,44 @@
   .vp-puls-spark-none,
   .vp-puls-go {
     display: none;
+  }
+}
+
+/* --- V10: phone rows (Audit) --------------------------------------------- */
+@media (max-width: 420px) {
+  /* Title / state / value stack VERTICALLY: at 375 px the one-line row
+     truncated the sub-line mid-token ("· 0,0 kWh he…") and collided with the
+     value column. Nothing is ellipsised away any more - it wraps. */
+  .vp-puls-jump {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    align-items: flex-start;
+  }
+  .vp-puls-ico {
+    margin-top: 2px;
+  }
+  .vp-puls-name,
+  .vp-puls-state,
+  .vp-puls-sub {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .vp-puls-state {
+    flex-wrap: wrap;
+  }
+  .vp-puls-val {
+    /* own full-width line, aligned under the name (icon 26px + gap 10px). */
+    flex: 1 0 100%;
+    padding-left: 36px;
+    font-size: 1.05rem;
+  }
+  /* The header hint must not truncate to "tippen für den…". */
+  .vp-puls-hint {
+    white-space: normal;
+    text-align: right;
+  }
+  .vp-puls-head {
+    align-items: flex-start;
   }
 }

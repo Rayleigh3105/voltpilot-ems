@@ -38,8 +38,16 @@ import { adoptableSources, suggestEntityType, type AdoptableSource } from './rol
 /** The customer-facing component role buckets (the middle column). */
 export type ComponentRole = 'pv' | 'storage' | 'grid' | 'house' | 'consumer';
 
-/** Live health of a device / component (the existing v2 entity states). */
-export type ComponentHealth = 'ok' | 'stale' | 'never';
+/**
+ * Live health of a device / component. `ok` / `stale` / `never` are the v2
+ * entity states; **`unknown` is the H2 fix**: before it, `toHealth(undefined)`
+ * returned `ok`, so on deploy day — when NO edge sends the E1b heartbeat and
+ * `observed` is null for every component — every device reported a green
+ * „verbunden" while the cockpit on the same plant said „Ihr Gerät meldet sich
+ * nicht". A green dot on a dead device is worse than no dot, so an absent
+ * report is now its own honest, grey state ("noch keine Rückmeldung").
+ */
+export type ComponentHealth = 'ok' | 'stale' | 'never' | 'unknown';
 
 /** German role labels — the customer names for the roles ("PV-Dach", …). */
 export const COMPONENT_ROLE_LABELS: Record<ComponentRole, string> = {
@@ -209,7 +217,12 @@ function componentSummary(role: ComponentRole, control: boolean, primary: boolea
 }
 
 /** Worst-wins device/component health (any stale → amber, else never → grey). */
-const HEALTH_RANK: Record<ComponentHealth, number> = { ok: 0, never: 1, stale: 2 };
+const HEALTH_RANK: Record<ComponentHealth, number> = {
+  ok: 0,
+  unknown: 1,
+  never: 2,
+  stale: 3,
+};
 
 function worstHealth(items: ComponentHealth[]): ComponentHealth {
   let worst: ComponentHealth = 'ok';
@@ -219,8 +232,18 @@ function worstHealth(items: ComponentHealth[]): ComponentHealth {
   return worst;
 }
 
-function toHealth(raw: string | null | undefined): ComponentHealth {
-  return raw === 'stale' || raw === 'never' ? raw : 'ok';
+/**
+ * The ONE health mapping of the customer surfaces (H2) — shared with the
+ * Komponenten-Board (`livePuls.ts`) and the Verlauf rail (`verlauf.ts`) so a
+ * dot can never mean two different things.
+ *
+ * **Only a literal `ok` is green.** Anything the backend does not (yet) report
+ * — `undefined`, `null`, the honest `syncStatus: "unreported"`, an unknown
+ * future word — becomes `unknown`, NOT `ok`. Fail-open on health is a lie.
+ */
+export function toComponentHealth(raw: string | null | undefined): ComponentHealth {
+  if (raw === 'stale' || raw === 'never' || raw === 'ok') return raw;
+  return 'unknown';
 }
 
 /** The measured values (Messwerte) an entity reports. */
@@ -274,7 +297,9 @@ export function deviceSummary(device: { health: ComponentHealth; messwertCount: 
       ? 'verbunden'
       : device.health === 'stale'
         ? 'meldet gerade keine Daten'
-        : 'noch keine Daten';
+        : device.health === 'never'
+          ? 'noch keine Daten'
+          : 'noch keine Rückmeldung';
   if (device.messwertCount <= 0) return state;
   const word = device.messwertCount === 1 ? 'Messwert' : 'Messwerte';
   return `${state} · liefert ${device.messwertCount} ${word}`;
@@ -365,7 +390,7 @@ export function plantModel(
       channels: componentChannels(e),
       control,
       primary,
-      health: toHealth(e.observed?.health),
+      health: toComponentHealth(e.observed?.health),
     };
   });
   const componentById = new Map(components.map((c) => [c.id, c] as const));

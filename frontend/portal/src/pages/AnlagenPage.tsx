@@ -933,7 +933,6 @@ export function AnlageSeite({
               snapshot={siteSnapshot(ovSite.live)}
               stale={heroStale}
               sources={sources}
-              whyLine={fresh ? weatherWhyText : null}
               onOpenSub={onOpenSub}
               footer={controlView ? <ControlStrip view={controlView} /> : null}
             />

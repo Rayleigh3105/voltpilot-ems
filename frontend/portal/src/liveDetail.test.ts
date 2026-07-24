@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  flowHasValues,
   initialVerlaufOpen,
   LIVE_WINDOWS,
   liveChip,
   windowStart,
   withDayTotals,
 } from './liveDetail';
+import type { LiveSnapshot } from './live';
 import type { LivePulsRow } from './livePuls';
 import { NBSP } from './format';
 
@@ -115,5 +117,77 @@ describe('withDayTotals — R2: the retired flow tiles’ kWh lines move to the 
     // The v2 house row is identified by its generalised title.
     const haus = row({ key: 'consumer-e1-0', role: 'consumer', title: 'Hausverbrauch' });
     expect(withDayTotals([haus], totals)[0].subLine).toBe(`18,4${NBSP}kWh heute`);
+  });
+
+  // --- V2 (Audit): no fabricated zero next to an honest "no data" ----------
+
+  it('V2: a row that says „noch keine Daten" gets NO day total appended', () => {
+    // The board read „noch keine Daten · 0,0 kWh heute" — the two halves of one
+    // line contradicted each other.
+    const rows = withDayTotals(
+      [row({ key: 'v1-pv', role: 'pv', stateLabel: 'noch keine Daten', value: '—' })],
+      totals,
+    );
+    expect(rows[0].subLine).toBeUndefined();
+  });
+
+  it('V2: a 0-bucket total is „not reported", never printed as 0,0 kWh', () => {
+    // The history endpoint returns pvGenerationKwh: 0.0 on a day with ZERO
+    // buckets (while correctly nulling the cost fields).
+    const zeroDay = { pvGenerationKwh: 0, consumptionKwh: 0 } as never;
+    const rows = withDayTotals(
+      [row({ key: 'v1-pv', role: 'pv' }), row({ key: 'v1-haus', role: 'consumer', title: 'Haus' })],
+      zeroDay,
+    );
+    expect(rows[0].subLine).toBeUndefined();
+    expect(rows[1].subLine).toBeUndefined();
+    // A real, non-zero total still shows.
+    expect(withDayTotals([row({ role: 'pv' })], totals)[0].subLine).toBe(`32,1${NBSP}kWh heute`);
+  });
+});
+
+describe('flowHasValues — V14: collapse a diagram that would be four dashes', () => {
+  const snap = (over: Partial<LiveSnapshot>): LiveSnapshot =>
+    ({ pvKw: null, loadKw: null, gridKw: null, socPct: null, battKw: null, ts: null, ...over }) as
+      LiveSnapshot;
+
+  it('false when neither source carries a single value', () => {
+    expect(flowHasValues(null, snap({}))).toBe(false);
+    expect(flowHasValues(null, null)).toBe(false);
+  });
+
+  it('true from the v1 snapshot as soon as ONE channel has a value', () => {
+    expect(flowHasValues(null, snap({ pvKw: 0 }))).toBe(true);
+    expect(flowHasValues(null, snap({ socPct: 87 }))).toBe(true);
+  });
+
+  it('reads the migrated topology: node value, SoC or a member value', () => {
+    const topo = (nodes: unknown[]) =>
+      ({ schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes } }) as never;
+    const silent = topo([
+      { role: 'pv', flow_active: false, members: [{ entity_id: 'e', label: 'x', primary: true }] },
+    ]);
+    expect(flowHasValues(silent, snap({}))).toBe(false);
+    expect(
+      flowHasValues(
+        topo([{ role: 'pv', value_kw: 5.9, flow_active: true, members: [] }]),
+        snap({}),
+      ),
+    ).toBe(true);
+    expect(
+      flowHasValues(topo([{ role: 'storage', soc_pct: 87, flow_active: false, members: [] }]), snap({})),
+    ).toBe(true);
+    expect(
+      flowHasValues(
+        topo([
+          {
+            role: 'pv',
+            flow_active: false,
+            members: [{ entity_id: 'e', label: 'x', primary: true, value_kw: 1.2 }],
+          },
+        ]),
+        snap({}),
+      ),
+    ).toBe(true);
   });
 });
