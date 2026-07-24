@@ -640,9 +640,13 @@ const embedModule = (file) =>
 // certified Deye plan (writes+readbacks present); a bench-pending Deye plan carries
 // writes:[]/readbacks:[] so this node no-ops (return null) - dormant in production.
 // EEPROM discipline: write-on-change (dwell_s/min_change) so the ~10 s republish
-// drives readback only, never a rewrite. One-socket rule (report §5.6): a shared
-// per-(host,port) flow-context lock serialises writes against the read poll on the
-// same logger (which owns the connection); skip-if-busy rather than displace it.
+// drives readback only, never a rewrite. One-socket rule (report §5.6, the fix):
+// the Solarman logger accepts only ONE TCP client, so this executor and the read
+// poll (auto-solarman) share a per-(host,port) flow-context lock BIDIRECTIONALLY:
+// a real write announces intent (sv5_write_want) so the read yields it a clean
+// window, and the write still defers to an in-flight read (skip-if-busy) instead
+// of colliding. A swallowed socket error/busy-skip now also emits a rate-limited
+// node.warn so a real hardware issue is visible in the logs, not just node status.
 const controlExecSolarmanFunc = [
   "// Deye Solarman-V5 Steuerung schreiben + zuruecklesen: nur fuer eine",
   "// ZERTIFIZIERTE Deye-Familie (sonst writes/readbacks leer -> return null).",
@@ -661,9 +665,13 @@ const controlExecSolarmanFunc = [
   "const slaveId = conn.mb_slave_id || 1;",
   "const host = conn.ip; const cport = conn.port || 8899;",
   "const target = host + ':' + cport;",
+  "const now = Date.now();",
+  "// Surface a real hardware failure in 'docker compose logs nodered' (report §7.2)",
+  "// instead of swallowing it to node status only. Rate-limited (30 s per class) so",
+  "// the ~10 s republish cannot spam the log.",
+  "const warnRL = (key, line) => { const at = context.get('sv5_warn_' + key) || 0; if (now - at < 30000) return; context.set('sv5_warn_' + key, now); node.warn(line); };",
   "// EEPROM write-on-change: skip a register write inside its dwell window or below",
   "// its min_change delta (vs the last WRITTEN value). Readbacks ALWAYS run.",
-  "const now = Date.now();",
   "const last = context.get('sv5_ctrl_last') || {};",
   "const toWrite = [];",
   "for (const w of (ctrl.writes || [])) {",
@@ -677,17 +685,26 @@ const controlExecSolarmanFunc = [
   "  }",
   "  toWrite.push(w);",
   "}",
-  "// One-socket rule (report §5.6): the read poll owns this Solarman logger; do not",
-  "// open a second connection while it is busy. 30 s stale-expiry.",
+  "// One-socket rule (report §5.6, the fix): this Solarman logger accepts only ONE",
+  "// TCP client, so the read poll (auto-solarman) and this write executor coordinate",
+  "// on the SHARED per-(host,port) flow-context lock (same tab -> shared flow ctx).",
+  "// (1) A real write ANNOUNCES intent (sv5_write_want) so the frequent short read",
+  "// yields the socket and the long write cycle (5xFC6 + 5xFC3) gets a clean window;",
+  "// the read clears its yield after a bounded burst if we stop announcing.",
+  "// (2) We STILL DEFER to an in-flight read instead of opening a colliding second",
+  "// socket (30 s stale-expiry). finish() releases BOTH keys so a completed attempt",
+  "// (success OR failure) always hands the socket back.",
   "const busyKey = 'sv5_busy:' + target;",
+  "const wantKey = 'sv5_write_want:' + target;",
+  "if (toWrite.length > 0) flow.set(wantKey, now);",
   "const busySince = flow.get(busyKey) || 0;",
-  "if (busySince && now - busySince < 30000) { node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt - Tick uebersprungen' }); return null; }",
+  "if (busySince && now - busySince < 30000) { node.status({ fill: 'blue', shape: 'ring', text: 'Logger belegt - warte auf Lesezyklus' }); warnRL('busy', 'Deye-Steuerung: Logger belegt (' + target + '), Schreiben auf den naechsten Takt verschoben'); return null; }",
   "flow.set(busyKey, now);",
   "let seq = context.get('sv5_ctrl_seq') || 0;",
   "return new Promise((resolve) => {",
   "  const sock = new net.Socket(); sock.setNoDelay(true);",
   "  let done = false, acc = Buffer.alloc(0), pending = null;",
-  "  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); resolve(null); } else { resolve(okMsg); } };",
+  "  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); flow.set(wantKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); warnRL('err', 'Deye-Steuerung fehlgeschlagen (' + target + '): ' + err.message); resolve(null); } else { resolve(okMsg); } };",
   "  const t = setTimeout(() => finish(new Error('Timeout')), 12000);",
   "  sock.once('error', (e) => finish(e));",
   "  const txn = (frame, parse) => new Promise((res, rej) => { pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
