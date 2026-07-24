@@ -169,8 +169,9 @@ func Defaults() Config {
 		ControlEnabled:           true, // ON by default; the certification allowlist is the per-device gate
 		ControlCertifiedFamilies: []string{"sunspec"},
 		GridChargeAllowed:        false,
-		CalibrationMaxKw:         1.0, // small: the first live write must be tiny (report §5.7)
-		CalibrationTTLSeconds:    30,  // auto-revert to neutral fast; the write never latches
+		CalibrationMaxKw:         1.0,              // small: the first live write must be tiny (report §5.7)
+		CalibrationTTLSeconds:    30,               // auto-revert to neutral fast; the write never latches
+		CalibrationTTL:           30 * time.Second, // derived; Load() recomputes it from the seconds
 		NodeRedUser:              "voltpilot",
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
@@ -76,6 +77,21 @@ type Agent struct {
 
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
+
+	// First-Light calibration (agent/calibration.go): the bounded, armed,
+	// TTL-limited procedure that proves a battery inverter's control sign + scale
+	// on the REAL hardware BEFORE the family is certified. cal is the pure state
+	// machine, calWatchdog the controller-owned auto-revert timer, calCert the
+	// persisted per-device certification a passed First-Light grants ("Steuerung
+	// freigeben") - all guarded by calMu. lastBattKw is the latest MEASURED battery
+	// power (the verdict's before/after cross-check input), guarded by a.mu
+	// alongside lastReading (read into a local before taking calMu, so the two
+	// locks never nest).
+	lastBattKw  *float64
+	calMu       sync.Mutex
+	cal         *calibration.Session
+	calWatchdog *time.Timer
+	calCert     map[string]bool
 
 	// Per-node live flow state (Portal v3 M5 Part C), recorded from the local
 	// bus and folded into the heartbeat ONLY when the feature flag is on.
@@ -319,6 +335,8 @@ func New(cfg config.Config) (*Agent, error) {
 		envelope:     guards.NewEnvelope(),
 		peak:         guards.NewPeakTracker(),
 		despikeStore: ds,
+		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
+		calCert:      map[string]bool{},
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
 		lastReading: guards.Reading{
@@ -357,6 +375,10 @@ func New(cfg config.Config) (*Agent, error) {
 	} else if err != nil {
 		slog.Warn("stored balance settings unreadable; using defaults", "err", err)
 	}
+	// Restore the per-device First-Light calibration certification (families the
+	// operator proved + released via "Steuerung freigeben"). A corrupt/missing file
+	// leaves the set empty - the family stays uncertified, the fail-safe default.
+	a.loadCalibrationCert()
 	// Restore the applied v2 entity registry (persisted across restarts); its
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
@@ -1083,6 +1105,14 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	if p := ptr("soc_pct"); p != nil {
 		a.lastRawSoc = p
 	}
+	// Track the latest MEASURED battery power for the First-Light calibration
+	// cross-check ("hat die Batterie sich bewegt?"). Absent = nil, never a
+	// fabricated 0. Guarded by a.mu alongside lastReading (read into a local in
+	// the calibration snapshot so calMu is never held under a.mu).
+	if battKw != nil {
+		v := *battKw
+		a.lastBattKw = &v
+	}
 	a.mu.Unlock()
 
 	// Feed the PS-3 peak tracker with the gated composite site grid (a despiked
@@ -1405,6 +1435,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 		SolarOnlyCharge: solarOnly,
 	}
 
+	// First-Light calibration OVERRIDE (agent/calibration.go): while a bounded test
+	// is engaged (active OR its auto-revert window), publish the small clamped test
+	// setpoint (or the neutral release) INSTEAD of the plan/arbiter value. The value
+	// still flows through guards.Clamp (the SAME limits), the magnitude is already
+	// capped, and the global kill-switch still gates the write - calibration only
+	// bypasses the certification allowlist so the first real write can prove
+	// sign/scale. Returns true when it handled the tick.
+	if a.calibrationOverride(now, r, limits) {
+		return
+	}
+
 	var (
 		kw        float64
 		mode      state.Mode
@@ -1518,7 +1559,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 		family = a.inv.Family
 	}
 	a.invMu.Unlock()
-	certified := a.Cfg.ControlCertified(family)
+	// controlCertified merges the env allowlist with the per-device First-Light
+	// certification (agent/calibration.go), so a family the operator proved + released
+	// drives the optimizer path live without an env change.
+	certified := a.controlCertified(family)
 	controlEnabled := a.Cfg.ControlEnabled && certified
 
 	msg := map[string]any{
