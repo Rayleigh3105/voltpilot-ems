@@ -52,6 +52,88 @@ const V5_FRAME_TYPE = 0x02; // "solar inverter" request/response frame type
 const V5_RESPONSE_MODBUS_OFFSET = 25;
 const V5_REQUEST_PREAMBLE = 15;
 
+// Byte offset of the response STATUS field (index 12): frametype(11) then status.
+const V5_RESPONSE_STATUS_OFFSET = 12;
+
+// V5 response frame-type values (offset 11) with plain-German labels. Per the
+// pysolarmanv5 protocol doc: 0x02 = solar inverter (the only one carrying a
+// Modbus reply), 0x01 = data logging stick, 0x00 = Solarman cloud. A write reply
+// with a frame type other than 0x02 means the logger did NOT return an inverter
+// answer - name it instead of blindly slicing an inverter Modbus frame out of it.
+const V5_FRAME_TYPES = {
+  0x00: 'Solarman-Cloud',
+  0x01: 'Datenlogger-Stick',
+  0x02: 'Wechselrichter',
+};
+
+/** v5FrameTypeLabel - German label for a V5 response frame-type byte. */
+function v5FrameTypeLabel(frameType) {
+  return V5_FRAME_TYPES[frameType] || 'unbekannt';
+}
+
+// Modbus exception codes -> plain-German meaning (standard Modbus spec, matching
+// pysolarmanv5's umodbus error_code_to_exception_map). 0x0B ("gateway target
+// failed to respond") is the telling one: the Solarman logger IS a TCP<->RS485
+// gateway, so 0x0B / a stub reply means the logger was reached but the inverter
+// did not answer the write on the internal bus - exactly the live symptom.
+const MODBUS_EXCEPTIONS = {
+  0x01: 'unzulaessige Funktion (illegal function)',
+  0x02: 'unzulaessige Datenadresse (illegal data address)',
+  0x03: 'unzulaessiger Datenwert (illegal data value)',
+  0x04: 'Geraetefehler im Wechselrichter (slave device failure)',
+  0x05: 'wird bearbeitet (acknowledge)',
+  0x06: 'Wechselrichter beschaeftigt (slave device busy)',
+  0x07: 'Verarbeitung abgelehnt (negative acknowledge)',
+  0x08: 'Speicher-Paritaetsfehler (memory parity error)',
+  0x0a: 'Gateway-Pfad nicht verfuegbar (gateway path unavailable)',
+  0x0b: 'Wechselrichter hat nicht geantwortet (gateway target failed to respond)',
+};
+
+/** modbusExceptionText - plain-German meaning for a Modbus exception code. */
+function modbusExceptionText(code) {
+  return MODBUS_EXCEPTIONS[code] || 'unbekannte Modbus-Ausnahme';
+}
+
+/**
+ * hexdump - render a Buffer as space-separated uppercase hex bytes, for the
+ * raw-frame diagnostics the write executor logs on a failure. Never throws.
+ */
+function hexdump(buf) {
+  if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf || []);
+  const out = new Array(buf.length);
+  for (let i = 0; i < buf.length; i++) out[i] = buf[i].toString(16).padStart(2, '0').toUpperCase();
+  return out.join(' ');
+}
+
+/**
+ * describeV5Frame - best-effort, NEVER-throwing decode of a (possibly malformed)
+ * V5 frame's header for diagnostics: start byte, declared length, control code,
+ * sequence, logger serial, frame type (+label), status and a best-effort Modbus
+ * slice - plus the full hex. This is what makes ONE field test decisive: the raw
+ * bytes and the parsed header are printed even when parsing fails. It reads only
+ * what is present (guards every offset), so a truncated or empty buffer is safe.
+ */
+function describeV5Frame(buf) {
+  if (!Buffer.isBuffer(buf)) buf = Buffer.from(buf || []);
+  const info = { length: buf.length, hex: hexdump(buf) };
+  if (buf.length >= 1) info.startByte = buf[0];
+  if (buf.length >= 3) info.declaredLength = buf.readUInt16LE(1);
+  if (buf.length >= 5) info.controlCode = buf.readUInt16LE(3);
+  if (buf.length >= 7) info.sequence = buf.readUInt16LE(5);
+  if (buf.length >= 11) info.loggerSerial = buf.readUInt32LE(7);
+  if (buf.length >= 12) {
+    info.frameType = buf[11];
+    info.frameTypeLabel = v5FrameTypeLabel(buf[11]);
+  }
+  if (buf.length >= 13) info.status = buf[V5_RESPONSE_STATUS_OFFSET];
+  if (buf.length >= V5_RESPONSE_MODBUS_OFFSET + 2) {
+    const mb = buf.slice(V5_RESPONSE_MODBUS_OFFSET, buf.length - 2);
+    info.modbusLength = mb.length;
+    info.modbusHex = hexdump(mb);
+  }
+  return info;
+}
+
 // --- Modbus RTU --------------------------------------------------------------
 
 /**
@@ -142,7 +224,8 @@ function parseWriteResponse(mb, opts = {}) {
   if (crcGot !== crcCalc) throw new Error('Modbus-CRC falsch');
   const fn = mb[1];
   if (fn & 0x80) {
-    throw new Error('Modbus-Ausnahme 0x' + mb[2].toString(16).padStart(2, '0'));
+    const code = mb[2];
+    throw new Error('Modbus-Ausnahme 0x' + code.toString(16).padStart(2, '0') + ': ' + modbusExceptionText(code));
   }
   if (opts.expectFn !== undefined && fn !== opts.expectFn) {
     throw new Error('unerwartete Modbus-Funktion 0x' + fn.toString(16).padStart(2, '0'));
@@ -173,7 +256,8 @@ function parseModbusResponse(mb) {
   if (crcGot !== crcCalc) throw new Error('Modbus-CRC falsch');
   const fn = mb[1];
   if (fn & 0x80) {
-    throw new Error('Modbus-Ausnahme 0x' + mb[2].toString(16).padStart(2, '0'));
+    const code = mb[2];
+    throw new Error('Modbus-Ausnahme 0x' + code.toString(16).padStart(2, '0') + ': ' + modbusExceptionText(code));
   }
   if (fn !== 0x03) {
     throw new Error('unerwartete Modbus-Funktion 0x' + fn.toString(16).padStart(2, '0'));
@@ -276,6 +360,25 @@ function parseV5Response(buf, opts = {}) {
   const sequence = frame.readUInt16LE(5);
   const loggerSerial = frame.readUInt32LE(7);
   const frameType = frame[11];
+  const status = frame[V5_RESPONSE_STATUS_OFFSET];
+
+  // fail() builds an Error carrying the parsed V5 header + the full raw frame hex,
+  // so the write executor can log the raw request/response bytes on a failure
+  // (the ONE field test that settles a real logger). Never on the happy path.
+  const fail = (message) => {
+    const err = new Error(message);
+    err.v5 = {
+      controlCode,
+      sequence,
+      loggerSerial,
+      frameType,
+      frameTypeLabel: v5FrameTypeLabel(frameType),
+      status,
+      frameHex: hexdump(frame),
+    };
+    err.frameHex = err.v5.frameHex;
+    return err;
+  };
 
   if (controlCode !== V5_CONTROL_RESPONSE) {
     throw new Error('unerwarteter V5-Controlcode 0x' + controlCode.toString(16) + ' (erwartet 0x1510)');
@@ -287,9 +390,48 @@ function parseV5Response(buf, opts = {}) {
     throw new Error('Sequenznummer im Frame weicht ab: ' + sequence);
   }
 
+  // Frame type (offset 11) MUST be 0x02 (solar inverter) to carry a Modbus reply
+  // (pysolarmanv5 enforces the same). A write reply of type 0x01/0x00 means the
+  // logger answered but NOT with an inverter frame - name it, don't slice garbage.
+  if (frameType !== V5_FRAME_TYPE) {
+    throw fail(
+      'V5-Frametyp 0x' + frameType.toString(16).padStart(2, '0') + ' (' + v5FrameTypeLabel(frameType) +
+      ') - kein Wechselrichter-Antwortframe; der Logger meldet keine Antwort vom Wechselrichter (Status 0x' +
+      status.toString(16).padStart(2, '0') + ')',
+    );
+  }
+
   const modbusFrame = frame.slice(V5_RESPONSE_MODBUS_OFFSET, frame.length - 2);
-  if (modbusFrame.length < 5) throw new Error('Modbus-Antwort im V5-Frame zu kurz');
-  return { controlCode, sequence, loggerSerial, frameType, modbusFrame };
+  if (modbusFrame.length < 5) {
+    // The V5 wrapper is VALID (start / control code / serial / sequence / checksum
+    // all passed) but the embedded Modbus payload is too short to be an RTU reply.
+    // This is NOT a wrong offset - reads use the same offset 25, and a normal FC6
+    // echo is 8 bytes and fits. A short/empty payload means the logger framed a
+    // response the inverter did NOT (properly) answer. Name the reason so the field
+    // test is decisive, instead of a bare "zu kurz".
+    if (modbusFrame.length === 0) {
+      throw fail(
+        'Logger lieferte keine Modbus-Nutzlast (Frametyp 0x' + frameType.toString(16).padStart(2, '0') +
+        '/' + v5FrameTypeLabel(frameType) + ', Status 0x' + status.toString(16).padStart(2, '0') +
+        ') - der Wechselrichter hat auf die Schreibanfrage nicht geantwortet',
+      );
+    }
+    // A 1..4-byte stub: if it looks like a Modbus exception reply (fn|0x80 + code),
+    // decode it with a plain-German meaning (0x0B = gateway target failed to
+    // respond = the logger was reached, the inverter was not).
+    if (modbusFrame.length >= 3 && (modbusFrame[1] & 0x80)) {
+      const code = modbusFrame[2];
+      throw fail(
+        'Modbus-Ausnahme 0x' + code.toString(16).padStart(2, '0') + ': ' + modbusExceptionText(code) +
+        ' (verkuerzte Antwort ' + hexdump(modbusFrame) + ')',
+      );
+    }
+    throw fail(
+      'verkuerzte Modbus-Antwort (' + modbusFrame.length + ' Byte: ' + hexdump(modbusFrame) +
+      ') - der Wechselrichter hat die Schreibanfrage nicht regulaer beantwortet',
+    );
+  }
+  return { controlCode, sequence, loggerSerial, frameType, status, modbusFrame };
 }
 
 /**
@@ -356,6 +498,14 @@ module.exports = {
   V5_CONTROL_REQUEST,
   V5_CONTROL_RESPONSE,
   V5_FRAME_TYPE,
+  V5_RESPONSE_MODBUS_OFFSET,
+  V5_FRAME_TYPES,
+  MODBUS_EXCEPTIONS,
+  // diagnostics
+  v5FrameTypeLabel,
+  modbusExceptionText,
+  hexdump,
+  describeV5Frame,
   // modbus
   modbusCrc16,
   readHoldingRegistersRequest,
