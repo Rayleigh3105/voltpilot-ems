@@ -274,7 +274,7 @@ func TestCalibrationCorrectionResetsConfirmationsAndDecertifies(t *testing.T) {
 
 	// A control-sign correction invalidates the proof: confirmations reset, the
 	// family is decertified, and the WRITE sign is now set on the connection.
-	snap, err := a.CalibrationCorrection(bptr(true), nil)
+	snap, err := a.CalibrationCorrection(bptr(true), nil, nil)
 	if err != nil {
 		t.Fatalf("correction: %v", err)
 	}
@@ -287,6 +287,44 @@ func TestCalibrationCorrectionResetsConfirmationsAndDecertifies(t *testing.T) {
 	sel, _ := a.GetInverter()
 	if !sel.Connection.InvertControlSign {
 		t.Fatal("the correction must set invert_control_sign on the inverter connection")
+	}
+}
+
+// TestCalibrationReadBattSignCorrectionSetsTheConnection proves Defect 1's operator
+// lever: the READ-side measured-battery sign correction lands on the inverter
+// connection (and is echoed in the snapshot) so the next decode honors it - the fix
+// for a Deye whose raw battery register reads inverted vs the cockpit. Like the
+// control-sign correction it also resets the stale proof + decertifies.
+func TestCalibrationReadBattSignCorrectionSetsTheConnection(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+	selectDeye(t, a)
+
+	proveCalibration(t, a)
+	if _, err := a.CalibrationCertify(); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := a.CalibrationCorrection(nil, nil, bptr(true))
+	if err != nil {
+		t.Fatalf("batt-sign correction: %v", err)
+	}
+	if !snap.InvertBattSign {
+		t.Fatalf("the snapshot must echo invert_batt_sign so the card can show it: %+v", snap)
+	}
+	if snap.Passed || snap.SignConfirmed || snap.ScaleConfirmed {
+		t.Fatalf("a read-sign correction must reset the proof (the measurement changed): %+v", snap)
+	}
+	if a.controlCertified("hybrid_3p") {
+		t.Fatal("a read-sign correction must revoke the stale certification")
+	}
+	sel, _ := a.GetInverter()
+	if !sel.Connection.InvertBattSign {
+		t.Fatal("the correction must set invert_batt_sign on the inverter connection")
+	}
+	if sel.Connection.InvertControlSign {
+		t.Fatal("a read-sign-only correction must not touch the write sign")
 	}
 }
 

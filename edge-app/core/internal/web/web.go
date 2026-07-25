@@ -128,7 +128,7 @@ type CalibrationController interface {
 	CalibrationStartTest(direction string, magnitudeKw float64) (calibration.Snapshot, error)
 	CalibrationAbort() calibration.Snapshot
 	CalibrationConfirm(sign, scale *bool) (calibration.Snapshot, error)
-	CalibrationCorrection(invertControlSign *bool, powerScale *float64) (calibration.Snapshot, error)
+	CalibrationCorrection(invertControlSign *bool, powerScale *float64, invertBattSign *bool) (calibration.Snapshot, error)
 	CalibrationCertify() (calibration.Snapshot, error)
 	CalibrationDecertify() (calibration.Snapshot, error)
 }
@@ -610,18 +610,20 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		snap, err := cal.CalibrationConfirm(req.Sign, req.Scale)
 		calResult(w, snap, err)
 	})
-	// POST /api/calibration/correction {invert_control_sign?, power_scale?} - persist
-	// a sign/scale correction to the inverter connection and retry.
+	// POST /api/calibration/correction {invert_control_sign?, power_scale?,
+	// invert_batt_sign?} - persist a control-sign / scale / measured-battery-sign
+	// correction to the inverter connection and retry.
 	mux.HandleFunc("POST /api/calibration/correction", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			InvertControlSign *bool    `json:"invert_control_sign"`
 			PowerScale        *float64 `json:"power_scale"`
+			InvertBattSign    *bool    `json:"invert_batt_sign"`
 		}
 		if !readBody(r, &req) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
 			return
 		}
-		snap, err := cal.CalibrationCorrection(req.InvertControlSign, req.PowerScale)
+		snap, err := cal.CalibrationCorrection(req.InvertControlSign, req.PowerScale, req.InvertBattSign)
 		calResult(w, snap, err)
 	})
 	// POST /api/calibration/certify - the deliberate hand-off: certify this device's

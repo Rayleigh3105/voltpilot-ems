@@ -478,6 +478,10 @@ type Snapshot struct {
 	// so the correction UI shows what is set. PowerScale 0 = auto-detect.
 	InvertControlSign bool    `json:"invert_control_sign"`
 	PowerScale        float64 `json:"power_scale"`
+	// InvertBattSign is the current READ-path battery sign on the connection (agent-set),
+	// so the correction UI can show + toggle it when the MEASURED battery reads inverted
+	// vs the cockpit (charge must be positive). Deye (solarman_v5) only.
+	InvertBattSign bool `json:"invert_batt_sign"`
 
 	SocPct            *float64 `json:"soc_pct"`
 	BatteryKw         *float64 `json:"battery_kw"`

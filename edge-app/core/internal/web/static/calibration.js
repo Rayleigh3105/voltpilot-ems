@@ -26,6 +26,15 @@
     });
   }
   function fmtKw(v) { return v == null ? "–" : nf1.format(v) + " kW"; }
+  // Battery power in the SAME convention the portal/cockpit uses: charge POSITIVE,
+  // with an explicit sign + a direction word, so the operator can sanity-check it
+  // against the cockpit at a glance (e.g. "+31,1 kW · lädt" / "-1,0 kW · entlädt").
+  function fmtBatt(v) {
+    if (v == null) return "–";
+    var body = (v > 0 ? "+" : "") + nf1.format(v) + " kW";
+    var word = v > 0.05 ? " · lädt" : v < -0.05 ? " · entlädt" : " · ruht";
+    return body + word;
+  }
 
   function post(path, body) {
     return fetch(path, {
@@ -113,16 +122,37 @@
     show(box, true);
     var t = cal.test, v = t.verdict || {};
     var dir = t.direction === "charge" ? "Laden" : "Entladen";
+    var stale = t.phase === "idle";       // the test is over; the live reading no longer reflects the command
+    var landed = !!cal.write_readback_ok; // the CURRENT test's write read back a full register match
     var left = t.phase === "active" ? (t.seconds_left + " s bis Neutral")
-      : (t.phase === "revert" ? "schaltet ab …" : "abgeschlossen");
+      : (t.phase === "revert" ? "schaltet ab …" : (stale ? "veraltet" : "abgeschlossen"));
     var a = arrived();
-    var moved = v.measured_kw == null ? "" : " (gemessen " + fmtKw(v.measured_kw) + ")";
+    var moved = v.measured_kw == null ? "" : " (gemessen " + fmtBatt(v.measured_kw) + ")";
+
+    // "Hat die Batterie sich bewegt?" is only meaningful once the CURRENT test's
+    // write has landed (row 1 confirmed) AND while the test is still current. A
+    // stale/never-landed test must never show a confident-looking verdict (the exact
+    // trap the owner hit); a busy baseline is shown as "not attributable", never a ✓.
+    var movementRow;
+    if (stale) {
+      movementRow = checkRow("Hat die Batterie sich bewegt?", null,
+        "Ergebnis vom letzten Test – nicht mehr aktuell. Für ein aktuelles Ergebnis erneut testen.");
+    } else if (!landed) {
+      movementRow = checkRow("Hat die Batterie sich bewegt?", null,
+        "Warte auf bestätigtes Schreiben (siehe oben) – erst danach ist die Bewegung aussagekräftig.");
+    } else if (v.baseline_busy) {
+      movementRow = checkRow("Hat die Batterie sich bewegt?", null, (v.text || "") + moved);
+    } else {
+      movementRow = checkRow("Hat die Batterie sich bewegt?", v.sign_ok && v.magnitude_ok, (v.text || "") + moved);
+    }
+
+    box.classList.toggle("stale", stale);
     box.innerHTML =
       '<div class="cal-verdict-head"><strong>' + esc(dir) + " · kommandiert " + esc(fmtKw(t.command_kw)) +
       '</strong><span class="cal-count">' + esc(left) + "</span></div>" +
       '<div class="cal-checks">' +
       checkRow("Kam der Befehl an?", a.ok, a.text) +
-      checkRow("Hat die Batterie sich bewegt?", v.sign_ok && v.magnitude_ok, (v.text || "") + moved) +
+      movementRow +
       "</div>";
   }
 
@@ -154,7 +184,7 @@
     var live = $("calLive");
     live.innerHTML = "";
     live.appendChild(statEl("Ladestand", cal.soc_pct == null ? "–" : nf0.format(cal.soc_pct) + " %"));
-    live.appendChild(statEl("Batterie jetzt", fmtKw(cal.battery_kw)));
+    live.appendChild(statEl("Batterie jetzt", fmtBatt(cal.battery_kw)));
     var testHint = cal.charge_testable && cal.discharge_testable ? "Laden und Entladen testbar"
       : cal.discharge_testable ? "nur Entladen testbar (Akku voll)"
         : cal.charge_testable ? "nur Laden testbar (Akku leer)"
@@ -178,6 +208,7 @@
 
     // Correction: once a test has run (so there is something to correct).
     show($("calCorrect"), cal.armed && !!cal.test);
+    $("calBattInvert").classList.toggle("active", !!cal.invert_batt_sign);
     $("calInvert").classList.toggle("active", !!cal.invert_control_sign);
     Array.prototype.forEach.call(document.querySelectorAll(".cal-scale-btn"), function (b) {
       b.classList.toggle("active", Number(b.dataset.scale) === cal.power_scale);
@@ -215,6 +246,10 @@
     $("calDischarge").addEventListener("click", function () { startTest("discharge"); });
     $("calAbort").addEventListener("click", function () {
       post("/api/calibration/abort").then(applyResp).catch(swallow);
+    });
+    $("calBattInvert").addEventListener("click", function () {
+      var cur = lastCal && lastCal.invert_batt_sign;
+      post("/api/calibration/correction", { invert_batt_sign: !cur }).then(applyResp).catch(swallow);
     });
     $("calInvert").addEventListener("click", function () {
       var cur = lastCal && lastCal.invert_control_sign;

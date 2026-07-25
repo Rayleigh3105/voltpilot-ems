@@ -659,6 +659,9 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .cal-check.bad .cal-check-ico { background: var(--warn-soft); color: var(--warn); }
 .cal-check.bad .cal-check-detail { color: var(--warn); }
 .cal-check.wait .cal-check-ico { background: var(--line); color: var(--muted); }
+/* A finished (idle-phase) test is visibly stale: the live reading no longer
+   reflects the command, so the last verdict is dimmed + a "veraltet" count. */
+.cal-verdict.stale { opacity: .6; }
 
 .cal-correct { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); display: flex;
   flex-wrap: wrap; align-items: center; gap: 10px; }

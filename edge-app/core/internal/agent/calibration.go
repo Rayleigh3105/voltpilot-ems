@@ -167,7 +167,12 @@ func (a *Agent) armCalibrationWatchdog(d time.Duration) {
 }
 
 // liveCalibrationReading copies out the latest measured battery power + SoC (the
-// verdict's cross-check inputs) under a.mu, so calMu is never held under a.mu.
+// verdict's cross-check inputs) under a.mu, so calMu is never held under a.mu. The
+// battery power carries the documented + charge / - discharge convention (the decode
+// boundary honors it via the connection's invert_batt_sign); the verdict and the
+// card's "BATTERIE JETZT" tile rely on that convention (charge positive), so a
+// firmware whose raw register is inverted MUST have invert_batt_sign set or both read
+// backwards.
 func (a *Agent) liveCalibrationReading() calibration.Reading {
 	a.mu.Lock()
 	batt := a.lastBattKw
@@ -208,6 +213,7 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 		snap.Certified = a.controlCertified(sel.Family)
 		snap.InvertControlSign = sel.Connection.InvertControlSign
 		snap.PowerScale = sel.Connection.PowerScale
+		snap.InvertBattSign = sel.Connection.InvertBattSign
 		if snap.BatteryKw == nil && snap.SocPct == nil {
 			snap.Reason = "Der Wechselrichter liefert noch keine Batterie-Messwerte - kurz warten."
 		}
@@ -305,11 +311,15 @@ func (a *Agent) CalibrationConfirm(sign, scale *bool) (calibration.Snapshot, err
 	return a.calibrationSnapshot(now), err
 }
 
-// CalibrationCorrection patches the WRITE-path sign / power scale on the inverter
-// connection and re-persists + re-publishes the selection, so the next calibration
-// write uses them. Because the proof is now stale, it resets the operator
-// confirmations AND removes any First-Light certification for that family.
-func (a *Agent) CalibrationCorrection(invertSign *bool, powerScale *float64) (calibration.Snapshot, error) {
+// CalibrationCorrection patches the WRITE-path control sign / power scale AND the
+// READ-path measured-battery sign on the inverter connection and re-persists +
+// re-publishes the selection, so the next calibration write AND the measured
+// cross-check use them. invertBattSign is the read-side fix for a battery that reads
+// inverted vs the cockpit (the captain's SUN-30K HV firmware, DEYE.md): it is the
+// operator's lever right where they notice it on the card. Because any of these
+// invalidates the proof, it resets the operator confirmations AND removes any
+// First-Light certification for that family.
+func (a *Agent) CalibrationCorrection(invertSign *bool, powerScale *float64, invertBattSign *bool) (calibration.Snapshot, error) {
 	now := time.Now().UTC()
 	sel, ok := a.GetInverter()
 	if !ok {
@@ -326,6 +336,9 @@ func (a *Agent) CalibrationCorrection(invertSign *bool, powerScale *float64) (ca
 	}
 	if powerScale != nil {
 		req.Connection.PowerScale = *powerScale
+	}
+	if invertBattSign != nil {
+		req.Connection.InvertBattSign = *invertBattSign
 	}
 	if _, err := a.SetInverter(req); err != nil {
 		var ve *inverter.ValidationError
