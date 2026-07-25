@@ -366,7 +366,7 @@ ha-solarman steuert **denselben Solarman-V5-WiFi-Logger** wie wir (FC6/FC16-Modb
 
 > **Korrektur (data/learnings.md 2026-07-08):** Der frühere `0x0F00`-Ansatz war FALSCH - ein Lese-Dump des SG04LP3 des Kapitäns zeigte, dass `0x0F00…` **Live-Telemetrie** hält, nicht die ToU/Work-Mode-Config. Die echten Hebel liegen im Holding-Register-Block `0x008D…0x00B1` (3p) bzw. `0x00F3…0x0117` (1p), **außerhalb** des Telemetriefensters (`0x024C…`/`0x0F00…`).
 
-ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EINEN Live-Slot (Programm 1)** - Strategie A. Adressen je Familie (`inverter-control-routing.js` `DEYE_CONTROL_REG`):
+ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EINEN Live-Slot (Programm 1)**. Adressen je Familie (`inverter-control-routing.js` `DEYE_CONTROL_REG`):
 
 | Zweck | Rolle | `hybrid_3p` (deye_p3) | `hybrid_1p` (deye_hybrid) | Hinweis |
 |---|---|---|---|---|
@@ -388,7 +388,33 @@ ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EI
 
 **Die Steuer-Abstraktion + der Solarman-V5-Schreib-Executor sind GEBAUT und OFFLINE bewiesen** (`inverter-control-routing.js` `controlRoute`/`controlRelease` + der Node-RED-Knoten `auto-control-exec-deye` in `build-flows.js`, der über `deye/solarman-v5.js` FC6 schreibt und per FC3 zurückliest; `deye-control.e2e.test.js` fährt Schreiben→Zurücklesen→Abgleich, EEPROM-Write-on-Change und den Fail-Safe-Release gegen einen echten In-Process-Solarman-V5-Server). Der Deye-Adapter ist **un-gated** (dieselbe Zwei-Tor-Logik wie SunSpec: `writes` fließen nur bei `certified && control_enabled`), aber `hybrid_3p`/`hybrid_1p` bleiben **bewusst `bench_pending` und aus der Allowlist** (`CERTIFIED_CONTROL_FAMILIES = {sunspec}`), **egal dass `VP_CONTROL_ENABLED` jetzt standardmäßig EIN ist** - die Allowlist ist die eigentliche Geräte-Klammer, also **kein Live-Schreiben** bis die Prüfstand-Checkliste pro Modell abgehakt ist: **[`CONTROL-BENCH.md`](CONTROL-BENCH.md)**. Erst dann kommt die Familie in die Allowlist. **Dual-Controller:** eine geschriebene, aber nicht gehaltene Register-Rückmeldung wird als möglicher Konflikt („VoltPilot muss der einzige Controller sein") über den Rückleseweg sichtbar gemacht (`edge/control/readback` → `:8484`).
 
-**Batterie-Lade-/Entlade-Steuerregister für den Prüfstand-Folgeschritt (nur `hybrid_3p` gezeigt; `hybrid_1p` analog, siehe Tabelle):** zusätzlich zu obiger ToU-Steuerung stehen für Feinregelung `Export Surplus Power`/Max Sell Power (`0x008F`/`0x00F5`), `Solar Sell`-Schalter (`0x0091`/`0x00F7`) und die Strom-Grenzen (`0x006C/0x006D`) bereit - alle in `DEYE_CONTROL_REG` dokumentiert, alle `bench_pending`.
+### Korrigierter ENTLADE-Schreibplan (report `vp-deye-tou-dir-q5` §8, `bench_pending`)
+
+**Strategie A (Ziel-SoC-Boden + Leistungskappe + Netzladen aus) ist RICHTIG fürs LADEN, aber grundlegend UNVOLLSTÄNDIG fürs ENTLADEN.** Der ToU-Ziel-SoC ist ein Entlade-**Boden** (eine Erlaubnis), **kein Entladebefehl**, und in *Export/Selling First* lädt der Deye einen PV-Überschuss **erst in die Batterie**, bevor er einspeist - ein „Entlade auf den Boden"-Programm *erlaubt* eine Entladung, *erzwingt* sie aber nie, während der Wechselrichter stattdessen lädt (das Live-Symptom: befohlen −0,3 kW, Batterie lud +12 kW). `invert_control_sign` ist dabei ein **Ablenkungsmanöver** (§5): die Richtung wird über den Ziel-SoC kodiert, nicht über einen Vorzeichenwert; umgedreht schreibt „Entladen" ein „Laden auf 100 %", was bei voller Batterie ein stiller No-Op ist und einen Fix *vortäuschen* kann.
+
+`deyeControl` synthetisiert deshalb eine echte Entladung mit den fehlenden Hebeln, in dieser Reihenfolge (Aktivierung STRIKT ZULETZT):
+
+| # | Register (hybrid_3p) | Wert (Entladen) | neu? |
+|---|---|---|---|
+| 1 | Energy Pattern `0x008D` | **Load First (1)** - PV nicht erst in die Batterie | **NEU** |
+| 2 | Work Mode `0x008E` | Export First (0) | vorhanden |
+| 3 | Solar Sell `0x0091` | **AN (1)** - Export-Pfad freigeben | **NEU** |
+| 4 | Programm-1-Startzeit `0x0094` | 00:00 (Basisfenster, report §6) | vorhanden |
+| 5 | Programm-1-Charging `0x00AC` | Disabled (EEG-gated) | vorhanden |
+| 6 | Programm-1-Ziel-SoC `0x00A6` | Boden (`soc_min`) - die Erlaubnis | vorhanden |
+| 7 | **Max Sell Power `0x008F`** | **X** (der sanfte Erzwingungs-Hebel „6b") | **NEU** |
+| 8 | Programm-1-Leistung `0x009A` | X (N1-skaliert) | vorhanden |
+| 9 | ToU aktivieren `0x0092` | `0x00FF` - **ZULETZT** | vorhanden |
+
+**Der schwerere „6a"-Hebel (Max-Ladestrom `0x006C` ≈ 2 A klemmen) ist BEWUSST NICHT verdrahtet** (Owner-Entscheidung); der Code ist so strukturiert, dass 6a später als Fallback ergänzt werden kann, falls der Prüfstand zeigt, dass diese Firmware 6b nicht befolgt. **LADEN** behält Strategie A plus Energy Pattern → **Battery First (0)** und stellt `Max Sell Power` aus dem Snapshot auf den Vor-Steuerungswert zurück.
+
+**Snapshot-and-Restore (Deye hat KEINEN Revert-Timer).** Alles, was wir ändern, bleibt im EEPROM, bis wir es zurücksetzen. Der Executor liest daher **vor dem ersten Schreibbefehl** die Installateur-Werte der Register per FC3 aus (`snapshotPlan`) und speichert sie **dauerhaft** (Node-RED `contextStorage` `file`, überlebt Neustart/Re-Seed); `controlRelease` schreibt sie auf JEDER Rückgabe zurück (TTL/Abbruch/Not-Aus/Verbindungsverlust laufen im Plan-Knoten in denselben `controlRelease`; Absturz-Wiederherstellung beim Start ist ein eigener Knoten). ToU-Aktivierung wird ZULETZT zurückgesetzt; ohne Snapshot bleibt der Release wie bisher (nur `tou_enable = 0`).
+
+**N1 (Skala):** `progPower` UND `maxSellPower` nutzen `power_scale` konsistent ([1,10]; HV=10 Dekawatt). Eine unbestätigte Skala (nicht explizit 1/10) fällt auf 1 zurück, wird aber `powerScaleConfirmed=false` markiert und im Executor **gewarnt** - nie stumm falsch. **N2 (Slot-Zeit):** der Executor liest alle 6 Programm-Startzeiten und **warnt** (+ `active_slot_conflict`), wenn ein späteres Programm (2-6) „jetzt" aktiv ist und Programm 1 verdrängt - **wir schreiben Programme 2-6 NIE um**. Einmalige Inbetriebnahme (report §8.9): Programme 2-6 so setzen, dass Programm 1 der aktive Slot ist (oder das Raster auf Programm 1 = ganztags kollabieren).
+
+**Feinregelungs-/Fallback-Register** (alle `bench_pending`, `hybrid_1p` analog): die Strom-Grenzen `0x006C`/`0x006D` (6a-Fallback) bleiben in `DEYE_CONTROL_REG` dokumentiert.
+
+> **Prüfstand:** die Entladung ist bei 100 % SoC praktisch unbeobachtbar - die Batterie zuerst auf ≈40-70 % entladen. Vollständige Prüfstand-Prozedur: [`CONTROL-BENCH.md`](CONTROL-BENCH.md).
 
 ---
 
