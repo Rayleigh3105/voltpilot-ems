@@ -109,7 +109,8 @@ const TOTALS: HistoryTotals = {
   gridImportKwh: 3.2,
   gridExportKwh: 9.6,
   gridCostEur: 0.94,
-  batterySavingsEur: 1.2,
+  tarifArt: 'dynamisch',
+  batterySavingsPlannedEur: 1.2,
   autarkiePct: 82,
   eigenverbrauchPct: 64,
 };

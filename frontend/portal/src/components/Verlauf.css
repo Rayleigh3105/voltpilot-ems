@@ -82,12 +82,12 @@
 
 .vp-verlauf-item {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
   text-align: left;
-  padding: 8px 10px 8px 26px;
+  padding: 8px 10px 8px 8px;
   border: 0;
   border-radius: 10px;
   background: transparent;
@@ -221,6 +221,63 @@
 .vp-vs-note {
   font-size: 0.74rem;
   color: var(--vp-text-muted, #667);
+}
+
+/* --- B1-c: Mehrfachauswahl (bis zu 3 Messwerte) --------------------------- */
+
+/* Das Kästchen macht sichtbar, dass mehrere Messwerte kombinierbar sind
+   (Checkbox statt Radiobutton) und traegt die Farbe der Kurve im Diagramm. */
+.vp-vi-check {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--vp-border, #cbd5e1);
+  border-radius: 4px;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.vp-verlauf-item.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.vp-verlauf-count {
+  margin: 6px 4px 0;
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #667);
+}
+/* F2a: der ehrliche Grund statt eines leeren Eintrags. */
+.vp-vg-measuredvia {
+  color: #8a6d3b;
+}
+.vp-verlauf-missing {
+  margin: 0 0 8px;
+}
+.vp-verlauf-sheet-done {
+  width: 100%;
+  margin-top: var(--vp-space-3);
+}
+
+/* Ein Kennzahlen-Block je ausgewaehltem Messwert. */
+.vp-verlauf-statblocks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3);
+}
+.vp-verlauf-statname {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: var(--vp-space-4) 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.vp-verlauf-statblock .vp-verlauf-stats {
+  margin-top: var(--vp-space-2);
 }
 
 /* --- responsive ----------------------------------------------------------- */

@@ -45,6 +45,13 @@ export interface ChartTheme {
   plan: string;
   /** Cloud cover. */
   cloud: string;
+  /**
+   * The GRID role hue (teal) - the same `--vp-flow-grid` the energy-flow diagram
+   * uses, so a "Netz" series reads as the grid everywhere. Deliberately NOT
+   * `gridCharge` (that is the Netzladen slot colour) and not the red
+   * `discharge` (that is cost/warning ink).
+   */
+  flowGrid: string;
 }
 
 let cache: ChartTheme | null = null;
@@ -75,6 +82,7 @@ export function chartTheme(): ChartTheme {
     battDischarge: read('--vp-chart-battdischarge', '#2C5282'),
     plan: read('--vp-chart-plan', '#1E3A5F'),
     cloud: read('--vp-chart-cloud', '#90A4AE'),
+    flowGrid: read('--vp-flow-grid', '#0ea5a3'),
   };
   return cache;
 }

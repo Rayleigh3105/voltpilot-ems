@@ -68,14 +68,88 @@ export interface VerlaufItem {
 /** One rail group = one Komponente, its Gerät sub-line and its Messwerte. */
 export interface VerlaufGroup {
   entityId: string;
-  /** Customer-facing component name. */
+  /** Customer-facing component name (no parenthetical type suffix). */
   label: string;
+  /** The stored, fully-qualified name - support/debug `title` only. */
+  rawLabel: string;
   role: ComponentRole;
   icon: string;
-  /** "Wechselrichter · verbunden" style attribution, or null when unknown. */
+  /** "Deye SUN-12K · verbunden" - ONE device name plus its state, or null. */
   deviceLine: string | null;
   health: ComponentHealth;
+  /**
+   * F2a: this component's values are read THROUGH the hybrid inverter, so it has
+   * no series of its own yet ("über den Wechselrichter gemessen"). The rail says
+   * so instead of offering measurements that would chart empty, and
+   * {@link firstTarget} never lands on one.
+   *
+   * Data-driven on purpose: it comes from `plantModel`'s `measuredVia`, which is
+   * null as soon as the component's own telemetry is present - so when the edge
+   * starts publishing PV per entity, this note stops appearing by itself. No
+   * rework, no type-based guess.
+   */
+  measuredVia: string | null;
   items: VerlaufItem[];
+}
+
+// --- Rail cleanup (B1-c) -----------------------------------------------------
+
+/** Comparison key: case- and separator-insensitive ("SUN-30K" == "sun30k"). */
+function normKey(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * The rail shows a plain component name. A composed entity's stored label
+ * carries its type in brackets ("Netzanschluss (Messung)", "Batteriespeicher
+ * (Hybrid)"), which is what got truncated mid-word in the rail - the bracket is
+ * dropped here and the full name survives as the row's `title`.
+ */
+export function railComponentName(label: string, role: ComponentRole): string {
+  const stripped = label.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  // Nothing but the bracket (or nothing at all) → the role name, never noise.
+  return stripped || COMPONENT_ROLE_LABELS[role];
+}
+
+/** A lowercase brand reads as a name once ("deye" -> "Deye"); SMA stays SMA. */
+function brandName(brand: string): string {
+  const b = brand.trim();
+  return b === b.toLowerCase() ? b.charAt(0).toUpperCase() + b.slice(1) : b;
+}
+
+/**
+ * ONE device name for a component - the fix for the rail's technical dump
+ * ("deye · sun-30k-sg01hp3 · Deye · SUN-30K-SG01HP3-EU"). Every feeder is turned
+ * into a brand-prefixed display name, then names whose key is CONTAINED in a
+ * more human one are dropped (so the id, the brand alone and the model alone all
+ * collapse into the one full name). Genuinely different devices survive as
+ * "+ N weitere" - never a chain of near-duplicates.
+ */
+export function oneDeviceName(
+  feeders: { label: string; brand: string | null }[],
+): { name: string; more: number } | null {
+  const named = feeders
+    .map((f) => {
+      const label = f.label?.trim() ?? '';
+      if (!label) return f.brand?.trim() ? brandName(f.brand) : '';
+      const brand = f.brand?.trim() ? brandName(f.brand) : '';
+      if (brand && !normKey(label).startsWith(normKey(brand))) return `${brand} ${label}`;
+      return label;
+    })
+    .filter((n) => n.length > 0);
+  if (named.length === 0) return null;
+
+  // Most human first (uppercase letters read as a product name), then longest.
+  const humanness = (s: string) => (s.match(/[A-ZÄÖÜ]/g) ?? []).length;
+  const sorted = [...named].sort(
+    (a, b) => humanness(b) - humanness(a) || b.length - a.length || a.localeCompare(b),
+  );
+  const kept: string[] = [];
+  for (const n of sorted) {
+    if (kept.some((k) => normKey(k).includes(normKey(n)))) continue;
+    kept.push(n);
+  }
+  return { name: kept[0], more: kept.length - 1 };
 }
 
 // --- Browser tree ------------------------------------------------------------
@@ -87,14 +161,19 @@ function itemUnit(entity: SiteEntity | undefined, channel: string): string {
   return channelUnitHint(channel) ?? '';
 }
 
-/** The device sub-line for a component: its feeding devices' names + state. */
+/**
+ * The device sub-line for a component: ONE device name plus its state (B1-c).
+ * No device ids, no register families, no thrice-repeated model - see
+ * {@link oneDeviceName}.
+ */
 function deviceLineFor(
   componentId: string,
   model: ReturnType<typeof plantModel>,
 ): string | null {
   const feeders = model.devices.filter((d) => d.componentIds.includes(componentId));
   if (feeders.length === 0) return null;
-  const names = Array.from(new Set(feeders.map((d) => d.label))).join(' · ');
+  const picked = oneDeviceName(feeders);
+  if (!picked) return null;
   // H2: only a real `ok` reads „verbunden" - an unreported device says so.
   const health = feeders.some((d) => d.health === 'stale')
     ? 'meldet gerade keine Daten'
@@ -103,7 +182,8 @@ function deviceLineFor(
       : feeders.some((d) => d.health === 'unknown')
         ? 'noch keine Rückmeldung'
         : 'verbunden';
-  return `${names} · ${health}`;
+  const name = picked.more > 0 ? `${picked.name} + ${picked.more} weitere` : picked.name;
+  return `${name} · ${health}`;
 }
 
 /**
@@ -135,11 +215,13 @@ export function measurementTree(
     }));
     groups.push({
       entityId: c.id,
-      label: c.label,
+      label: railComponentName(c.label, c.role),
+      rawLabel: c.label,
       role: c.role,
       icon: COMPONENT_ROLE_ICONS[c.role],
       deviceLine: deviceLineFor(c.id, model),
       health: c.health,
+      measuredVia: c.measuredVia,
       items,
     });
   }
@@ -199,10 +281,12 @@ export function v1FallbackTree(): VerlaufGroup[] {
   return V1_CHANNELS.map((c) => ({
     entityId: V1_ENTITY,
     label: COMPONENT_ROLE_LABELS[c.role],
+    rawLabel: COMPONENT_ROLE_LABELS[c.role],
     role: c.role,
     icon: COMPONENT_ROLE_ICONS[c.role],
     deviceLine: null,
     health: 'ok' as ComponentHealth,
+    measuredVia: null,
     items: [
       {
         entityId: V1_ENTITY,
@@ -235,10 +319,71 @@ export function findItem(groups: VerlaufGroup[], target: VerlaufTarget | null): 
   return null;
 }
 
-/** The landing measurement when none is selected: the first available. */
+/**
+ * The landing measurement when none is selected. Deliberately skips a component
+ * whose values are read through the inverter (`measuredVia`): landing on one
+ * would greet the customer with an honest-but-empty chart.
+ */
 export function firstTarget(groups: VerlaufGroup[]): VerlaufTarget | null {
-  const it = flattenItems(groups)[0];
+  const measuring = groups.filter((g) => g.measuredVia == null);
+  const it = flattenItems(measuring.length ? measuring : groups)[0];
   return it ? { entityId: it.entityId, channel: it.channel } : null;
+}
+
+// --- Multi-select (B1-c): up to 3 measurements on one chart -------------------
+
+/** The owner's ceiling: three curves stay readable, four do not. */
+export const MAX_SELECTED = 3;
+
+/** Same measurement? */
+export function sameTarget(a: VerlaufTarget, b: VerlaufTarget): boolean {
+  return a.entityId === b.entityId && a.channel === b.channel;
+}
+
+export function isSelected(targets: VerlaufTarget[], t: VerlaufTarget): boolean {
+  return targets.some((x) => sameTarget(x, t));
+}
+
+/**
+ * Checkbox semantics instead of a radio button: add a measurement while there is
+ * room (max {@link MAX_SELECTED}), remove it when it is already selected - but
+ * never empty the selection, because an empty chart is not a state a click
+ * should be able to reach (the `toggleSerie` rule of the default view).
+ */
+export function toggleTarget(
+  targets: VerlaufTarget[],
+  t: VerlaufTarget,
+  max: number = MAX_SELECTED,
+): VerlaufTarget[] {
+  if (isSelected(targets, t)) {
+    if (targets.length <= 1) return targets;
+    return targets.filter((x) => !sameTarget(x, t));
+  }
+  if (targets.length >= max) return targets;
+  return [...targets, t];
+}
+
+/** "2 von 3 ausgewählt · max. 3" - the rail's honest footer. */
+export function selectionNote(count: number, max: number = MAX_SELECTED): string {
+  return `${count} von ${max} ausgewählt · max. ${max}`;
+}
+
+/** Resolve a list of deep-link targets to their items, dropping unknown ones. */
+export function findItems(groups: VerlaufGroup[], targets: VerlaufTarget[]): VerlaufItem[] {
+  return targets
+    .map((t) => findItem(groups, t))
+    .filter((it): it is VerlaufItem => it != null);
+}
+
+/**
+ * Mixed units (kW next to %) need a second axis - one axis would squash the
+ * kW curve into the floor of a 0..100 scale. The FIRST unit owns the primary
+ * axis, the first differing one the secondary; a third distinct unit is not
+ * possible with the measurements we expose (kW / % / kWh).
+ */
+export function secondAxisUnit(units: string[]): string | null {
+  const distinct = units.filter((u, i) => u && units.indexOf(u) === i);
+  return distinct.length > 1 ? distinct[1] : null;
 }
 
 // --- Deep-link params --------------------------------------------------------
@@ -267,6 +412,9 @@ export function wordRange(word: string | null): VerlaufRange {
 
 /** The parsed explorer state carried in the hash query. */
 export interface VerlaufParams {
+  /** Every named measurement, in link order (max {@link MAX_SELECTED}). */
+  targets: VerlaufTarget[];
+  /** The first named measurement - "did this link name one at all?". */
   target: VerlaufTarget | null;
   range: VerlaufRange;
   /** Anchor date as YYYY-MM-DD, or null for "today". */
@@ -280,23 +428,27 @@ function queryOf(hashOrQuery: string): string {
 }
 
 /**
- * Parse `m={entityId}:{channel}`, `z={tag|woche|monat|jahr}`, `at={ISO}` from a
- * hash (or bare query). Unknown/absent params fall back to safe defaults —
- * `parseRoute` already strips `?…`, so the explorer parses this itself.
+ * Parse `m={entityId}:{channel}` (repeatable, up to {@link MAX_SELECTED}),
+ * `z={tag|woche|monat|jahr}`, `at={ISO}` from a hash (or bare query).
+ * Unknown/absent params fall back to safe defaults — `parseRoute` already strips
+ * `?…`, so the explorer parses this itself. A single-`m` link (every existing
+ * bookmark and cockpit jump) parses exactly as before.
  */
 export function parseVerlaufParams(hashOrQuery: string): VerlaufParams {
   const params = new URLSearchParams(queryOf(hashOrQuery));
-  const m = params.get('m');
-  let target: VerlaufTarget | null = null;
-  if (m) {
+  const targets: VerlaufTarget[] = [];
+  for (const m of params.getAll('m')) {
     const idx = m.indexOf(':');
-    if (idx > 0 && idx < m.length - 1) {
-      target = { entityId: m.slice(0, idx), channel: m.slice(idx + 1) };
-    }
+    if (idx <= 0 || idx >= m.length - 1) continue;
+    const t = { entityId: m.slice(0, idx), channel: m.slice(idx + 1) };
+    if (isSelected(targets, t)) continue;
+    if (targets.length >= MAX_SELECTED) break;
+    targets.push(t);
   }
   const at = params.get('at');
   return {
-    target,
+    targets,
+    target: targets[0] ?? null,
     range: wordRange(params.get('z')),
     at: at && /^\d{4}-\d{2}-\d{2}$/.test(at) ? at : null,
   };
@@ -305,15 +457,20 @@ export function parseVerlaufParams(hashOrQuery: string): VerlaufParams {
 /**
  * Build the explorer deep-link. `hashForRoute` stays untouched (it drops the
  * query); this is the ONE builder for the `?m&z&at` link (reused by the V2
- * cockpit jump).
+ * cockpit jump). Several measurements become several `m` params, so a comparison
+ * is shareable too; a single target still produces the byte-identical old link.
  */
 export function verlaufHash(
   siteId: string,
-  target: VerlaufTarget,
+  target: VerlaufTarget | VerlaufTarget[],
   range: VerlaufRange,
   at?: string | null,
 ): string {
-  const parts = [`m=${target.entityId}:${target.channel}`, `z=${rangeWord(range)}`];
+  const list = Array.isArray(target) ? target : [target];
+  const parts = list
+    .slice(0, MAX_SELECTED)
+    .map((t) => `m=${t.entityId}:${t.channel}`)
+    .concat(`z=${rangeWord(range)}`);
   if (at) parts.push(`at=${at}`);
   return `#/anlage/${siteId}/historie?${parts.join('&')}`;
 }

@@ -309,15 +309,41 @@ export interface HistoryBucket {
   costEur: number | null;
 }
 
+/**
+ * Period aggregates of a history window. The field types mirror
+ * `HistoryTotalsDto` EXACTLY - which matters, because the four energy sums are
+ * server-side **nullable** ("— nie eine erfundene 0", audit V2/X1) while this
+ * interface used to declare them `number`, so every consumer believed a sum was
+ * always present.
+ */
 export interface HistoryTotals {
-  consumptionKwh: number;
-  pvGenerationKwh: number;
-  gridImportKwh: number;
-  gridExportKwh: number;
-  /** Null when no price data overlaps the period. */
+  /** Null when not a single bucket carried the load channel. */
+  consumptionKwh: number | null;
+  /** Null when not a single bucket carried the PV channel. */
+  pvGenerationKwh: number | null;
+  /** Null when not a single bucket carried the grid channel. */
+  gridImportKwh: number | null;
+  /** Null when not a single bucket carried the grid channel. */
+  gridExportKwh: number | null;
+  /**
+   * Always the bare SPOT cost of the imported energy - the site's configured
+   * retail tariff is NOT applied. Null when no price data overlaps the period.
+   * `tarifArt` is the context needed to label it truthfully (audit H8).
+   */
   gridCostEur: number | null;
-  /** Null when no optimizer plan covers the period. */
-  batterySavingsEur: number | null;
+  /** The site's configured tariff kind; null only when unreadable. */
+  tarifArt: TarifArt | null;
+  /**
+   * The EX-ANTE **planned** battery saving from the persisted optimizer runs -
+   * NOT measured money (the measured counterpart is `savedEur` on
+   * `GET /api/v1/earnings`, and the two legitimately differ by a large factor).
+   * Null when no plan covers any slot. Any surface rendering it MUST say
+   * "geplant" (audit H3/X2) - hence the field name.
+   *
+   * The backend also still ships the deprecated `batterySavingsEur` alias for
+   * one release; it is deliberately absent here so no new reader can appear.
+   */
+  batterySavingsPlannedEur: number | null;
   autarkiePct: number | null;
   eigenverbrauchPct: number | null;
 }
