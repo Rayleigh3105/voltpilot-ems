@@ -96,7 +96,10 @@ describe('pvBreakdown', () => {
 describe('sourceLabel', () => {
   it('prefers the label, then brand/model, then a role word', () => {
     expect(sourceLabel(src({ label: 'Fronius WR 2', brand: 'fronius' }))).toBe('Fronius WR 2');
-    expect(sourceLabel(src({ brand: 'deye', model: 'SUN-12K' }))).toBe('deye SUN-12K');
+    // The derivation is the SHARED entityLabel.deviceName - brand cased, model
+    // shortened - so this box reads identically in the energy flow.
+    expect(sourceLabel(src({ brand: 'deye', model: 'SUN-12K' }))).toBe('Deye SUN-12K');
+    expect(sourceLabel(src({ brand: 'deye', model: 'SUN-30K-SG01HP3-EU' }))).toBe('Deye SUN-30K');
     expect(sourceLabel(src({ kind: 'primary', role: null }))).toBe('Wechselrichter');
     expect(sourceLabel(src({ role: 'grid-meter' }))).toBe('Netz-Zähler');
     expect(sourceLabel(src({ sourceId: 'src-9' }))).toBe('src-9');
