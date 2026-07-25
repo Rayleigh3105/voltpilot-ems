@@ -73,7 +73,11 @@ export function CockpitHero({
         ) : (
           <NoFlowGuidance onOpenSub={onOpenSub} />
         )}
-        {hasFlow && <PvBreakdownLine sources={sources} />}
+        {/* Auf einer migrierten Anlage trägt der PV-Knoten seine Zusammensetzung
+            selbst (ein Tipp darauf öffnet sie) - die immer sichtbare Zeile wäre
+            dann eine zweite, widersprechbare Wahrheit. Die v1-Anlage behält sie:
+            ihr Fluss hat keinen anklickbaren PV-Knoten. */}
+        {hasFlow && !topology && <PvBreakdownLine sources={sources} />}
         {footer}
       </div>
 

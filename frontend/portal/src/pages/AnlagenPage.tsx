@@ -1082,8 +1082,12 @@ export function AnlageSeite({
                     <EnergyFlow snapshot={siteSnapshot(ovSite.live)} stale={!fresh} />
                   )}
                   {/* #524: why the Solar number is what it is (renders itself
-                      away on a single-inverter site). */}
-                  <PvBreakdownLine sources={sources} />
+                      away on a single-inverter site). Auf einer migrierten
+                      Anlage trägt der PV-Knoten das selbst - ein Tipp darauf
+                      öffnet die Zusammensetzung. */}
+                  {!(adaptiveLive.adaptive && adaptiveLive.topology) && (
+                    <PvBreakdownLine sources={sources} />
+                  )}
                   {weatherWhyText && fresh && (
                     <p className="vp-live-why">
                       <Icon name="sun" size={14} /> {weatherWhyText}
