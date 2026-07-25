@@ -18,6 +18,70 @@
 
 import type { Role } from './topology';
 
+/**
+ * ONE device-name derivation for BOTH surfaces (the energy-flow composition and
+ * the per-source breakdown). Before this there were two: the flow named a device
+ * through `shortLabelsForRole` (role words, falling back to the verbose stored
+ * label) while the breakdown named the SAME box through `pvSources.sourceLabel`
+ * (edge label / brand+model). So one plant read "Fronius WR1" above and "Fronius
+ * Anlage" below - and, because the two lists were ordered independently, even
+ * crossed (entity WR1 ↔ source "Anlage WR 2").
+ *
+ * The rule (concept `vp-ui-pv-hist-d8`, "Eine Kiste = ein Name"): the name comes
+ * from the name the device carries ON THE EDGE - what the customer typed on
+ * `:8484` and therefore recognises - else brand + short model. The ROLE is a
+ * subtitle, never mixed into the name. The verbose stored label stays the
+ * tooltip.
+ *
+ * Returns null when nothing nameable was supplied, so each caller keeps its own
+ * last resort (`shortEntityLabel` → "Gerät", `sourceLabel` → the role word).
+ */
+export interface DeviceNameInput {
+  /** The name the device carries on the edge (`/sources` label) - wins. */
+  edgeLabel?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  /** The stored (verbose) v2 entity label - fallback. */
+  storedLabel?: string | null;
+  /** The server's type label - the last derivable fallback. */
+  typeLabel?: string | null;
+}
+
+/**
+ * Shorten a model code to what a human says out loud:
+ * "SUN-30K-SG01HP3-EU" -> "SUN-30K". Only the first two hyphen groups are kept;
+ * a model with two or fewer groups is left alone.
+ */
+export function shortModel(model: string): string {
+  const m = model.trim();
+  if (!m) return '';
+  const groups = m.split('-');
+  if (groups.length <= 2) return m;
+  return groups.slice(0, 2).join('-');
+}
+
+/** "deye" -> "Deye"; an already-capitalised or mixed-case brand is left alone. */
+function brandCase(brand: string): string {
+  const b = brand.trim();
+  if (!b) return '';
+  if (b !== b.toLowerCase()) return b;
+  return b.charAt(0).toUpperCase() + b.slice(1);
+}
+
+export function deviceName(input: DeviceNameInput): string | null {
+  const edge = (input.edgeLabel ?? '').trim();
+  if (edge) return edge;
+  const brand = brandCase((input.brand ?? '').trim());
+  const model = shortModel((input.model ?? '').trim());
+  const brandModel = [brand, model].filter(Boolean).join(' ');
+  if (brandModel) return brandModel;
+  const stored = stripParenthetical((input.storedLabel ?? '').trim());
+  if (stored) return stored;
+  const typeLabel = stripParenthetical((input.typeLabel ?? '').trim());
+  if (typeLabel) return typeLabel;
+  return null;
+}
+
 /** Per-type short names for the types a role alone cannot tell apart. */
 const TYPE_SHORT: Record<string, string> = {
   'battery-hybrid': 'Batteriespeicher',

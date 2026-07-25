@@ -15,6 +15,7 @@
  *    silently presented as live.
  */
 import type { SiteSource } from './api';
+import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
 
 /** Below this magnitude a PV reading counts as "no generation" (live.ts DEADBAND_KW). */
@@ -45,14 +46,14 @@ export interface PvBreakdown {
 }
 
 /**
- * A customer-facing name for one measurement point: its own label, else its
- * brand/model, else a role word, else the technical id as a last resort.
+ * A customer-facing name for one measurement point. The derivation itself is
+ * the SHARED `entityLabel.deviceName` (edge label → brand + short model), so
+ * this box reads identically here and in the energy flow's composition; only
+ * the last resorts are source-specific.
  */
 export function sourceLabel(s: SiteSource): string {
-  const label = s.label?.trim();
-  if (label) return label;
-  const brandModel = [s.brand, s.model].filter((v) => v && v.trim()).join(' ');
-  if (brandModel) return brandModel;
+  const derived = deviceName({ edgeLabel: s.label, brand: s.brand, model: s.model });
+  if (derived) return derived;
   if (s.kind === 'primary') return 'Wechselrichter';
   if (s.role === 'grid-meter') return 'Netz-Zähler';
   return s.sourceId;

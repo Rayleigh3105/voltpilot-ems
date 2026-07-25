@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { SiteSource } from '../api';
-import { PvBreakdownLine } from './PvBreakdown';
+import type { PvComposition } from '../pvComposition';
+import { PvBreakdownLine, PvCompositionDetails } from './PvBreakdown';
 
 function src(over: Partial<SiteSource>): SiteSource {
   return {
@@ -51,5 +52,70 @@ describe('PvBreakdownLine', () => {
   it('renders nothing while the points are unknown', () => {
     const { container } = render(<PvBreakdownLine sources={null} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+const COMPOSITION: PvComposition = {
+  totalKw: 69.8,
+  parts: [
+    { key: 'deye:0', label: 'Deye SUN-30K', kw: 23, health: 'ok', note: null, title: 'Deye' },
+    { key: 'f1:1', label: 'Fronius Anlage', kw: 21.3, health: 'ok', note: null, title: 'Fronius' },
+    {
+      key: 'f2:2',
+      label: 'Fronius Anlage WR 2',
+      kw: 25.5,
+      health: 'stale',
+      note: null,
+      title: 'Fronius 2',
+    },
+  ],
+  unmeasured: [],
+  deviceCount: 3,
+  origin: 'sources',
+};
+
+describe('PvCompositionDetails (the panel behind the click on „PV-Erzeugung")', () => {
+  it('names every inverter with its share, and the shares add up to the total', () => {
+    const { container } = render(<PvCompositionDetails composition={COMPOSITION} />);
+    expect(screen.getByText('Deye SUN-30K')).toBeInTheDocument();
+    expect(screen.getByText('Fronius Anlage')).toBeInTheDocument();
+    expect(screen.getByText('Fronius Anlage WR 2')).toBeInTheDocument();
+    expect(container.querySelectorAll('.vp-pvcomp-row')).toHaveLength(3);
+    expect(container.querySelectorAll('.vp-pvcomp-seg')).toHaveLength(3);
+    expect(screen.getByText('3 Geräte')).toBeInTheDocument();
+    // the rendered values are the composition's parts, which sum to its total
+    const sum = COMPOSITION.parts.reduce((s, p) => s + (p.kw as number), 0);
+    expect(sum).toBeCloseTo(COMPOSITION.totalKw as number, 9);
+  });
+
+  it('flags a stale device instead of quietly showing it as live', () => {
+    const { container } = render(<PvCompositionDetails composition={COMPOSITION} />);
+    expect(container.querySelectorAll('.vp-pvsplit-dot.stale')).toHaveLength(1);
+  });
+
+  it('names a device without an own value with its reason - never a bare "–"', () => {
+    const { container } = render(
+      <PvCompositionDetails
+        composition={{
+          ...COMPOSITION,
+          parts: COMPOSITION.parts.slice(0, 2),
+          totalKw: 44.3,
+          unmeasured: [
+            {
+              key: 'f2:2',
+              label: 'Fronius Anlage WR 2',
+              kw: null,
+              health: 'never',
+              note: 'über den Wechselrichter mitgemessen',
+              title: 'Fronius 2',
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByText('Fronius Anlage WR 2')).toBeInTheDocument();
+    expect(screen.getByText('über den Wechselrichter mitgemessen')).toBeInTheDocument();
+    expect(container.textContent).not.toContain('–');
+    expect(container.querySelectorAll('.vp-pvcomp-row.quiet')).toHaveLength(1);
   });
 });

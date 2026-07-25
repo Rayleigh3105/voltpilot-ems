@@ -1,0 +1,136 @@
+/* ---------------------------------------------------------------------------
+   PV-Zusammensetzung — das Panel hinter dem Klick auf „PV-Erzeugung"
+   (Owner-Entscheidung A1, Konzept vp-ui-pv-hist-d8).
+
+   Der Energiefluss bleibt ruhig und vierknotig; die Stückelung ist EINEN Tipp
+   entfernt. Farbsprache = die bestehenden `--vp-flow-*`-Kanaltöne (PV orange),
+   also eine Verfeinerung INNERHALB der Diagrammsprache, kein neues Paradigma.
+
+   Jede Zelle ist `min-width: 0` + umbruchsicher, damit lange Gerätenamen auf
+   375 px nie horizontal überlaufen.
+--------------------------------------------------------------------------- */
+/* Diagramm oben, Zusammensetzung darunter. Bewusst KEIN zweites Kind in
+   `.vp-flow-wrap`: unter 620 px ist der Wrap eine horizontal scrollende Box mit
+   440 px Mindestbreite für das Diagramm — das Panel gehört nicht hinein. */
+.vp-flow-composed {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+}
+
+.vp-pvcomp {
+  margin-top: var(--vp-space-3);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid var(--vp-flow-pv, #e8a33d);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-flow-pv-soft, #fff);
+  min-width: 0;
+}
+
+.vp-pvcomp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-pvcomp-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--vp-flow-ink, #1a1a1a);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-pvcomp-count {
+  font-size: 0.75rem;
+  color: var(--vp-text-gray);
+  white-space: nowrap;
+}
+
+/* Die proportionale Leiste: Anteile auf einen Blick, ohne eine Zahl zu
+   wiederholen. Rein dekorativ (aria-hidden) — die Werte stehen darunter. */
+.vp-pvcomp-bar {
+  display: flex;
+  gap: 3px;
+  margin-top: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-pvcomp-seg {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--vp-flow-pv, #e8a33d);
+  min-width: 4px;
+}
+
+.vp-pvcomp-rows {
+  list-style: none;
+  margin: var(--vp-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-pvcomp-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--vp-space-2);
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.vp-pvcomp-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--vp-flow-ink, #1a1a1a);
+}
+
+.vp-pvcomp-val {
+  flex: none;
+  font-weight: 700;
+  color: var(--vp-stat-ink, #2c5282);
+  white-space: nowrap;
+}
+
+/* Der ehrliche Leerzustand: das Gerät wird BENANNT und der Grund gesagt —
+   nie ein nacktes „–". */
+.vp-pvcomp-note {
+  flex: 1 1 160px;
+  min-width: 0;
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--vp-text-gray);
+  overflow-wrap: anywhere;
+}
+
+.vp-pvcomp-row.quiet .vp-pvcomp-name {
+  color: var(--vp-text-gray);
+}
+
+/* Der Knoten selbst ist die Schaltfläche: Tastaturfokus muss sichtbar sein. */
+.vp-flow-node-btn {
+  cursor: pointer;
+}
+
+.vp-flow-node-btn:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, #2c5282);
+  outline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+  .vp-pvcomp-row {
+    flex-wrap: wrap;
+  }
+  .vp-pvcomp-note {
+    flex-basis: 100%;
+    text-align: left;
+  }
+}

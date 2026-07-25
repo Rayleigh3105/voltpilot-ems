@@ -1,5 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { shortEntityLabel, shortLabelsForRole, stripParenthetical } from './entityLabel';
+import {
+  deviceName,
+  shortEntityLabel,
+  shortLabelsForRole,
+  shortModel,
+  stripParenthetical,
+} from './entityLabel';
+
+describe('shortModel', () => {
+  it('shortens a model code to what a human says out loud', () => {
+    expect(shortModel('SUN-30K-SG01HP3-EU')).toBe('SUN-30K');
+    expect(shortModel('SUN-12K')).toBe('SUN-12K');
+    expect(shortModel('Symo')).toBe('Symo');
+    expect(shortModel('  ')).toBe('');
+  });
+});
+
+describe('deviceName · ONE name per box', () => {
+  it('prefers the name the device carries on the edge', () => {
+    expect(deviceName({ edgeLabel: 'Fronius WR 2', brand: 'fronius', model: 'Symo' })).toBe(
+      'Fronius WR 2',
+    );
+  });
+
+  it('falls back to brand + SHORT model, brand properly cased', () => {
+    expect(deviceName({ brand: 'deye', model: 'SUN-30K-SG01HP3-EU' })).toBe('Deye SUN-30K');
+    expect(deviceName({ brand: 'Fronius' })).toBe('Fronius');
+  });
+
+  it('then the stored label without its qualifier, then the type label', () => {
+    expect(deviceName({ storedLabel: 'Batteriespeicher (Hybrid-Wechselrichter)' })).toBe(
+      'Batteriespeicher',
+    );
+    expect(deviceName({ typeLabel: 'Erzeuger' })).toBe('Erzeuger');
+  });
+
+  it('returns null when nothing is nameable, so each caller keeps its own last resort', () => {
+    expect(deviceName({})).toBeNull();
+    expect(deviceName({ edgeLabel: '  ', brand: null, model: null })).toBeNull();
+  });
+
+  it('is the SAME derivation both surfaces use, so a box cannot read two ways', () => {
+    // The defect: the flow said "Fronius WR1" while the breakdown said
+    // "Fronius Anlage" for the same box - and the two were even crossed.
+    const box = { edgeLabel: 'Fronius Anlage WR 2', brand: 'fronius', model: 'Symo' };
+    expect(deviceName(box)).toBe(deviceName({ ...box }));
+    expect(deviceName(box)).toBe('Fronius Anlage WR 2');
+  });
+});
 
 describe('stripParenthetical', () => {
   it('drops a trailing qualifier but keeps the name', () => {
