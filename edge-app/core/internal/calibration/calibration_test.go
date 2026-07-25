@@ -191,23 +191,102 @@ func TestVerdictSignAndScale(t *testing.T) {
 	}
 }
 
+// primeEvidence arms + starts a discharge test and records a matching write->readback,
+// so the Gap-B confirm/certify gates have their objective evidence. Returns the "after"
+// reading that yields a good verdict (sign + magnitude OK) for the -0.5 kW command.
+func primeEvidence(s *Session, now time.Time) Reading {
+	s.Arm()
+	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(0)}, now)
+	s.NoteWriteReadback(true) // the write read back a full register match
+	return Reading{BatteryKw: fp(-0.48), SocPct: fp(60)}
+}
+
 func TestConfirmationsAndPassed(t *testing.T) {
 	s := newSession()
+	now := time.Unix(1_700_000_000, 0)
+	after := primeEvidence(s, now)
 	if s.Passed() {
 		t.Fatal("nothing confirmed -> not passed")
 	}
-	s.ConfirmSign(true)
+	if err := s.ConfirmSign(true, after); err != nil {
+		t.Fatalf("confirm sign with evidence: %v", err)
+	}
 	if s.Passed() {
 		t.Fatal("only sign -> not passed")
 	}
-	s.ConfirmScale(true)
-	if !s.Passed() {
-		t.Fatal("sign+scale confirmed -> passed")
+	if err := s.ConfirmScale(true, after); err != nil {
+		t.Fatalf("confirm scale with evidence: %v", err)
 	}
-	// A correction invalidates both confirmations.
+	if !s.Passed() || !s.CanCertify() {
+		t.Fatal("sign+scale confirmed with evidence -> passed + certifiable")
+	}
+	// A correction invalidates both confirmations AND the landed-write evidence.
 	s.ResetConfirmations()
-	if s.Passed() || s.signConfirmed || s.scaleConfirmed {
-		t.Fatal("ResetConfirmations must clear both")
+	if s.Passed() || s.signConfirmed || s.scaleConfirmed || s.writeReadbackOK {
+		t.Fatal("ResetConfirmations must clear both confirmations + the write evidence")
+	}
+}
+
+// TestConfirmationRequiresObjectiveEvidence is the Gap-B guard: a TRUE sign/scale
+// confirmation is refused until the SYSTEM observed a landed write AND a measured
+// movement; certification additionally needs the current test's write evidence.
+func TestConfirmationRequiresObjectiveEvidence(t *testing.T) {
+	s := newSession()
+	now := time.Unix(1_700_000_000, 0)
+	good := Reading{BatteryKw: fp(-0.48)}
+
+	// No test at all -> refused.
+	if err := s.ConfirmSign(true, good); err != ErrNoTestYet {
+		t.Fatalf("confirm without a test must be refused: %v", err)
+	}
+
+	// A test but NO write->readback yet -> refused (the write never landed).
+	s.Arm()
+	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(0)}, now)
+	if err := s.ConfirmSign(true, good); err != ErrNoWriteEvidence {
+		t.Fatalf("confirm before a landed write must be refused: %v", err)
+	}
+	if s.CanCertify() {
+		t.Fatal("cannot certify without a landed write")
+	}
+
+	// Write landed, but the battery moved the WRONG way -> sign refused.
+	s.NoteWriteReadback(true)
+	wrongWay := Reading{BatteryKw: fp(0.48)} // command is discharge (-), battery charges (+)
+	if err := s.ConfirmSign(true, wrongWay); err != ErrSignNotObserved {
+		t.Fatalf("confirm sign against an inverted movement must be refused: %v", err)
+	}
+	// Write landed, but the magnitude is way off (below the move deadband) -> scale refused.
+	tinyMove := Reading{BatteryKw: fp(-0.02)}
+	if err := s.ConfirmScale(true, tinyMove); err != ErrScaleNotObserved {
+		t.Fatalf("confirm scale against a bad magnitude must be refused: %v", err)
+	}
+
+	// Write landed AND a good measured verdict -> both confirm, cert allowed.
+	if err := s.ConfirmSign(true, good); err != nil {
+		t.Fatalf("good sign confirm: %v", err)
+	}
+	if err := s.ConfirmScale(true, good); err != nil {
+		t.Fatalf("good scale confirm: %v", err)
+	}
+	if !s.CanCertify() {
+		t.Fatal("both confirmed with a landed write -> certifiable")
+	}
+
+	// A readback MISMATCH revokes the write evidence -> cert blocked again.
+	s.NoteWriteReadback(false)
+	if s.CanCertify() {
+		t.Fatal("a readback mismatch must revoke certifiability")
+	}
+
+	// Starting a NEW test resets the write evidence.
+	_ = s.StartTest(Discharge, 0.4, Reading{BatteryKw: fp(0)}, now)
+	if s.writeReadbackOK {
+		t.Fatal("a fresh test must reset the landed-write evidence")
+	}
+	// Clearing a confirmation is always allowed (no evidence needed).
+	if err := s.ConfirmSign(false, Reading{}); err != nil {
+		t.Fatalf("clearing a confirmation must never error: %v", err)
 	}
 }
 
@@ -261,5 +340,15 @@ func TestSnapshotCarriesTheLiveVerdict(t *testing.T) {
 	}
 	if snap.Test.SecondsLeft <= 0 || snap.Test.SecondsLeft > 30 {
 		t.Fatalf("seconds-left should count down within the TTL: %d", snap.Test.SecondsLeft)
+	}
+	// Gap B: even with a good verdict, the confirm boxes stay locked until a real
+	// write->readback landed (no writeReadbackOK yet).
+	if snap.CanConfirmSign || snap.CanConfirmScale || snap.WriteReadbackOK {
+		t.Fatalf("no landed-write evidence yet -> confirm boxes must stay locked: %+v", snap)
+	}
+	s.NoteWriteReadback(true)
+	snap = s.Snapshot(start.Add(5*time.Second), live, SocBand{MinPct: 5, MaxPct: 95})
+	if !snap.WriteReadbackOK || !snap.CanConfirmSign || !snap.CanConfirmScale {
+		t.Fatalf("with a landed write + good verdict the boxes must unlock: %+v", snap)
 	}
 }

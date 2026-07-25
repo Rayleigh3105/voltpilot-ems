@@ -6,7 +6,10 @@ package agent
 // certification hand-off (persisted, merged into controlCertified).
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,6 +20,41 @@ import (
 )
 
 func bptr(v bool) *bool { return &v }
+
+// proveCalibration runs the full Gap-B evidence flow so the confirm + certify gates
+// pass: a live battery reading that matches a -0.5 kW discharge test, a calibration
+// write->readback with a full register match, then the two evidence-gated confirmations.
+// Leaves the session ready to certify (a test is still active until its TTL/abort).
+func proveCalibration(t *testing.T, a *Agent) {
+	t.Helper()
+	now := time.Now().UTC()
+	// A live reading matching a -0.5 kW discharge (battery moving in the commanded direction).
+	a.mu.Lock()
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 3, GridLimitKw: guards.Unknown()}
+	a.lastBattKw = fptr(-0.48)
+	a.mu.Unlock()
+
+	a.calMu.Lock()
+	a.cal.Arm()
+	err := a.cal.StartTest(calibration.Discharge, 0.5, calibration.Reading{BatteryKw: fptr(0)}, now)
+	a.calMu.Unlock()
+	if err != nil {
+		t.Fatalf("StartTest: %v", err)
+	}
+
+	// The calibration write reads back a FULL match -> the landed-write evidence.
+	rb, _ := json.Marshal(map[string]any{
+		"ts": now.Format(time.RFC3339), "family": "hybrid_3p", "source": "calibration",
+		"mode": "normal", "all_match": true,
+		"registers": []map[string]any{{"role": "battery_power", "match": true}},
+	})
+	a.onControlReadback("", rb)
+
+	// Now the operator confirmations pass their evidence gate.
+	if _, err := a.CalibrationConfirm(bptr(true), bptr(true)); err != nil {
+		t.Fatalf("evidence-gated confirm: %v", err)
+	}
+}
 
 // selectDeye selects the pilot Deye (family hybrid_3p) - deliberately UNCERTIFIED.
 func selectDeye(t *testing.T, a *Agent) {
@@ -172,11 +210,12 @@ func TestCalibrationCertificationHandoffIsGatedPersistedAndMerged(t *testing.T) 
 	if a.controlCertified("hybrid_3p") {
 		t.Fatal("precondition: the Deye family is uncertified")
 	}
-	// Certify refused before both confirmations pass.
+	// Certify refused before any evidence (no test, no landed write, no confirmations).
 	if _, err := a.CalibrationCertify(); err == nil {
 		t.Fatal("certification must be refused before sign+scale are confirmed")
 	}
-	a.CalibrationConfirm(bptr(true), bptr(true)) // operator confirms sign + scale
+	// The full Gap-B evidence flow: run a test, land a write->readback, confirm sign+scale.
+	proveCalibration(t, a)
 	snap, err := a.CalibrationCertify()
 	if err != nil {
 		t.Fatalf("certify after passing: %v", err)
@@ -187,9 +226,12 @@ func TestCalibrationCertificationHandoffIsGatedPersistedAndMerged(t *testing.T) 
 	if !a.controlCertified("hybrid_3p") {
 		t.Fatal("the family must be certified for THIS device after First-Light")
 	}
+	// End the calibration test so the normal (optimizer) path resumes.
+	a.CalibrationAbort()
 
 	// The optimizer path now writes live: a plan setpoint carries control_enabled=true.
-	now := time.Now().UTC()
+	// Drive applySetpoint PAST the calibration revert grace so calibration is idle.
+	now := time.Now().UTC().Add(calibration.RevertGrace + 2*time.Minute)
 	a.mu.Lock()
 	a.currentPlan = freshPlan(now, -5, nil)
 	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 3, GridLimitKw: guards.Unknown()}
@@ -222,7 +264,7 @@ func TestCalibrationCorrectionResetsConfirmationsAndDecertifies(t *testing.T) {
 	a, _ := startBusOnlyAgent(t, cfg)
 	selectDeye(t, a)
 
-	a.CalibrationConfirm(bptr(true), bptr(true))
+	proveCalibration(t, a)
 	if _, err := a.CalibrationCertify(); err != nil {
 		t.Fatal(err)
 	}
@@ -245,6 +287,97 @@ func TestCalibrationCorrectionResetsConfirmationsAndDecertifies(t *testing.T) {
 	sel, _ := a.GetInverter()
 	if !sel.Connection.InvertControlSign {
 		t.Fatal("the correction must set invert_control_sign on the inverter connection")
+	}
+}
+
+// TestCalibrationDecertifyRevertsToReadOnly proves Gap A: "Freigabe zurücknehmen"
+// revokes the per-device First-Light certification, flips the family read-only, and
+// persists (a fresh agent on the same data dir is no longer certified).
+func TestCalibrationDecertifyRevertsToReadOnly(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+	selectDeye(t, a)
+
+	proveCalibration(t, a)
+	if _, err := a.CalibrationCertify(); err != nil {
+		t.Fatal(err)
+	}
+	if !a.controlCertified("hybrid_3p") {
+		t.Fatal("certified after First-Light")
+	}
+
+	snap, err := a.CalibrationDecertify()
+	if err != nil {
+		t.Fatalf("decertify: %v", err)
+	}
+	if snap.Certified {
+		t.Fatal("snapshot must report NOT certified after Freigabe zurücknehmen")
+	}
+	if a.controlCertified("hybrid_3p") {
+		t.Fatal("the family must be read-only again after decertify")
+	}
+
+	// Persisted: a fresh agent on the same data dir is NOT certified.
+	a2, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a2.SetInverter(inverter.SelectionRequest{
+		Brand: inverter.BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: inverter.Connection{IP: "192.168.0.28", Serial: "2985159064"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if a2.controlCertified("hybrid_3p") {
+		t.Fatal("decertification must survive a restart (persisted)")
+	}
+}
+
+// TestCalibrationCertInvalidatedOnUpgrade proves the CRITICAL cert-invalidation
+// migration (report §7): a certification recorded BEFORE the evidence gate (a file with
+// no version = v0) is dropped on load, so a stale, unverified grant can never drive the
+// battery once the socket-coordination fix makes writes land. The inverter is read-only
+// until a real, evidence-backed First-Light re-certifies it. It runs exactly once.
+func TestCalibrationCertInvalidatedOnUpgrade(t *testing.T) {
+	dir := t.TempDir()
+	// A pre-evidence-gate certification file (no version field = v0) that granted
+	// hybrid_3p via the OLD manual-tick path - exactly the live Pilsting Deye's state.
+	stale := `{"families":["hybrid_3p"]}`
+	if err := os.WriteFile(filepath.Join(dir, "calibration-certified.json"), []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.controlCertified("hybrid_3p") {
+		t.Fatal("a pre-evidence-gate certification MUST be invalidated on upgrade (read-only until re-certified)")
+	}
+	// The file was rewritten to the current version with an EMPTY family set (one-time).
+	raw, err := os.ReadFile(filepath.Join(dir, "calibration-certified.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Version  int      `json:"version"`
+		Families []string `json:"families"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Version < calibrationCertVersion || len(f.Families) != 0 {
+		t.Fatalf("migration must rewrite an empty, version-stamped file, got %+v", f)
+	}
+	// A SECOND boot no longer re-migrates (the file is at the current version now).
+	a2, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a2.controlCertified("hybrid_3p") {
+		t.Fatal("still read-only on the next boot")
 	}
 }
 

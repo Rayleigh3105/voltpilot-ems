@@ -118,9 +118,16 @@ type ValidationError struct{ Msg string }
 func (e *ValidationError) Error() string { return e.Msg }
 
 // ErrNotArmed / ErrBadMagnitude are the StartTest refusals (classifiable 400s).
+// The Err*Evidence/Observed set are the Gap-B evidence-gate refusals for a TRUE
+// sign/scale confirmation (report §7 Gap B): a confirmation may not be recorded
+// until the SYSTEM has objectively observed a landed write + the measured movement.
 var (
-	ErrNotArmed     = &ValidationError{Msg: "Kalibriermodus ist nicht scharfgeschaltet."}
-	ErrBadMagnitude = &ValidationError{Msg: "ungültiger Testwert."}
+	ErrNotArmed         = &ValidationError{Msg: "Kalibriermodus ist nicht scharfgeschaltet."}
+	ErrBadMagnitude     = &ValidationError{Msg: "ungültiger Testwert."}
+	ErrNoTestYet        = &ValidationError{Msg: "Bitte führen Sie zuerst einen Testlauf durch."}
+	ErrNoWriteEvidence  = &ValidationError{Msg: "Es liegt noch keine bestätigte Rückmeldung des Wechselrichters vor (geschrieben + zurückgelesen). Bitte einen Testlauf durchführen, bis die Register bestätigt sind."}
+	ErrSignNotObserved  = &ValidationError{Msg: "Es wurde noch keine Batteriebewegung in die befohlene Richtung gemessen. Bitte testen, bis sich die Batterie sichtbar bewegt."}
+	ErrScaleNotObserved = &ValidationError{Msg: "Die gemessene Batterieleistung passt noch nicht zum Sollwert. Bitte die Leistungsskalierung prüfen und erneut testen."}
 )
 
 type testState struct {
@@ -145,6 +152,13 @@ type Session struct {
 	// confirmation is stale once the connection config changes).
 	signConfirmed  bool
 	scaleConfirmed bool
+
+	// writeReadbackOK: a control WRITE for the CURRENT test completed with a FULL
+	// register readback MATCH - the objective "the write landed" evidence the
+	// confirm + certify gates require (report §7 Gap B). Set by NoteWriteReadback,
+	// reset whenever the test changes (StartTest / Abort / ResetConfirmations), so a
+	// certification can never precede a real, confirmed write for the current test.
+	writeReadbackOK bool
 }
 
 // NewSession builds a disarmed session with the given envelope.
@@ -192,6 +206,9 @@ func (s *Session) StartTest(dir Direction, magnitudeKw float64, before Reading, 
 		deadline:  now.Add(s.cfg.TTL),
 		before:    before,
 	}
+	// A fresh test starts with NO landed-write evidence (report §7 Gap B): the
+	// operator must observe a real write->readback for THIS test before confirming.
+	s.writeReadbackOK = false
 	return nil
 }
 
@@ -205,6 +222,8 @@ func (s *Session) Abort(now time.Time) {
 		s.test.deadline = now
 	}
 	s.test.aborted = true
+	// The test was cancelled: its landed-write evidence no longer counts.
+	s.writeReadbackOK = false
 }
 
 // Phase reports the current test phase at `now`.
@@ -238,20 +257,85 @@ func (s *Session) Command(now time.Time) (kw float64, active bool) {
 	return 0, false
 }
 
-// ConfirmSign / ConfirmScale record the operator's verdict.
-func (s *Session) ConfirmSign(ok bool)  { s.signConfirmed = ok }
-func (s *Session) ConfirmScale(ok bool) { s.scaleConfirmed = ok }
+// ConfirmSign records the operator's sign confirmation. Setting it TRUE is GATED on
+// OBJECTIVE evidence for the CURRENT test (report §7 Gap B): a control write for this
+// test read back with a full register MATCH (requireMovementEvidence) AND the MEASURED
+// battery moved in the commanded direction (Verdict.SignOK, computed from `after`, the
+// live reading now). Without that evidence a TRUE confirm is REFUSED. Clearing (ok=false)
+// is always allowed. So the operator can no longer tick a box the system never observed.
+func (s *Session) ConfirmSign(ok bool, after Reading) error {
+	if !ok {
+		s.signConfirmed = false
+		return nil
+	}
+	if err := s.requireMovementEvidence(); err != nil {
+		return err
+	}
+	if !Verdict(s.test.commandKw, s.test.before, after).SignOK {
+		return ErrSignNotObserved
+	}
+	s.signConfirmed = true
+	return nil
+}
 
-// ResetConfirmations clears both operator confirmations (the agent calls this when
-// a sign/scale correction is applied - a prior confirmation is then stale).
+// ConfirmScale records the operator's scale confirmation. Gated exactly like ConfirmSign
+// but on Verdict.MagnitudeOK (the measured magnitude matches the commanded one).
+func (s *Session) ConfirmScale(ok bool, after Reading) error {
+	if !ok {
+		s.scaleConfirmed = false
+		return nil
+	}
+	if err := s.requireMovementEvidence(); err != nil {
+		return err
+	}
+	if !Verdict(s.test.commandKw, s.test.before, after).MagnitudeOK {
+		return ErrScaleNotObserved
+	}
+	s.scaleConfirmed = true
+	return nil
+}
+
+// requireMovementEvidence returns nil only when a current test exists AND its control
+// write read back with a full match (writeReadbackOK) - the objective proof a real
+// write landed for THIS test.
+func (s *Session) requireMovementEvidence() error {
+	if s.test == nil {
+		return ErrNoTestYet
+	}
+	if !s.writeReadbackOK {
+		return ErrNoWriteEvidence
+	}
+	return nil
+}
+
+// NoteWriteReadback records the result of the CURRENT test's control write->readback.
+// A full-register match is the "the write landed" evidence the confirm + certify gates
+// require; a mismatch revokes it. No-op when no test is live. The agent calls this from
+// the calibration readback (source=="calibration", a real write - not a release).
+func (s *Session) NoteWriteReadback(allMatch bool) {
+	if s.test == nil {
+		return
+	}
+	s.writeReadbackOK = allMatch
+}
+
+// ResetConfirmations clears both operator confirmations AND the landed-write evidence
+// (the agent calls this when a sign/scale correction is applied - a prior confirmation
+// and its evidence are then stale).
 func (s *Session) ResetConfirmations() {
 	s.signConfirmed = false
 	s.scaleConfirmed = false
+	s.writeReadbackOK = false
 }
 
 // Passed reports whether the operator confirmed BOTH sign and scale - the gate the
 // certification step requires ("Kalibrierung bestanden").
 func (s *Session) Passed() bool { return s.signConfirmed && s.scaleConfirmed }
+
+// CanCertify reports whether certification is allowed: BOTH confirmations pass AND the
+// CURRENT test's write read back with a match (report §7 Gap B - a cert can never
+// precede a real, confirmed write for the current test).
+func (s *Session) CanCertify() bool { return s.Passed() && s.writeReadbackOK }
 
 // Verdict cross-checks a commanded battery setpoint against the MEASURED battery
 // power (the "hat die Batterie sich bewegt?" half). It compares the ABSOLUTE
@@ -365,6 +449,16 @@ type Snapshot struct {
 	SignConfirmed  bool `json:"sign_confirmed"`
 	ScaleConfirmed bool `json:"scale_confirmed"`
 	Passed         bool `json:"passed"`
+
+	// Gap-B evidence gates (report §7): whether the SYSTEM has objectively observed
+	// enough to allow each action, so the card enables the boxes / the "freigeben"
+	// button on these instead of on a manual tick. WriteReadbackOK = the current test's
+	// write read back a full match; CanConfirmSign/Scale add the measured verdict;
+	// CanCertify = both confirmations PLUS the write evidence for the current test.
+	WriteReadbackOK bool `json:"write_readback_ok"`
+	CanConfirmSign  bool `json:"can_confirm_sign"`
+	CanConfirmScale bool `json:"can_confirm_scale"`
+	CanCertify      bool `json:"can_certify"`
 }
 
 // Snapshot builds the pure calibration view at `now` given the live reading and
@@ -372,15 +466,17 @@ type Snapshot struct {
 // the SoC is unknown - the guard chain is the real bound).
 func (s *Session) Snapshot(now time.Time, live Reading, band SocBand) Snapshot {
 	snap := Snapshot{
-		Armed:          s.armed,
-		Phase:          s.Phase(now),
-		MaxKw:          s.cfg.MaxKw,
-		TtlSeconds:     int(s.cfg.TTL / time.Second),
-		SocPct:         live.SocPct,
-		BatteryKw:      live.BatteryKw,
-		SignConfirmed:  s.signConfirmed,
-		ScaleConfirmed: s.scaleConfirmed,
-		Passed:         s.Passed(),
+		Armed:           s.armed,
+		Phase:           s.Phase(now),
+		MaxKw:           s.cfg.MaxKw,
+		TtlSeconds:      int(s.cfg.TTL / time.Second),
+		SocPct:          live.SocPct,
+		BatteryKw:       live.BatteryKw,
+		SignConfirmed:   s.signConfirmed,
+		ScaleConfirmed:  s.scaleConfirmed,
+		Passed:          s.Passed(),
+		WriteReadbackOK: s.writeReadbackOK,
+		CanCertify:      s.CanCertify(),
 	}
 	// Direction testability: unknown SoC -> both testable (guards clamp anyway).
 	if live.SocPct == nil {
@@ -396,6 +492,7 @@ func (s *Session) Snapshot(now time.Time, live Reading, band SocBand) Snapshot {
 		if d := s.test.deadline.Sub(now); d > 0 {
 			left = int(math.Ceil(d.Seconds()))
 		}
+		v := Verdict(s.test.commandKw, s.test.before, live)
 		snap.Test = &TestView{
 			Direction:   s.test.dir,
 			CommandKw:   s.test.commandKw,
@@ -404,8 +501,12 @@ func (s *Session) Snapshot(now time.Time, live Reading, band SocBand) Snapshot {
 			SecondsLeft: left,
 			Phase:       phase,
 			BeforeKw:    s.test.before.BatteryKw,
-			Verdict:     Verdict(s.test.commandKw, s.test.before, live),
+			Verdict:     v,
 		}
+		// The confirm boxes light up only once the write landed AND the measured
+		// verdict agrees (report §7 Gap B) - never on a manual tick alone.
+		snap.CanConfirmSign = s.writeReadbackOK && v.SignOK
+		snap.CanConfirmScale = s.writeReadbackOK && v.MagnitudeOK
 	}
 	return snap
 }

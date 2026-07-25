@@ -29,6 +29,9 @@ const SV5 = require('./deye/solarman-v5');
 const flows = JSON.parse(fs.readFileSync(path.join(__dirname, 'flows.json'), 'utf8'));
 const byId = Object.fromEntries(flows.map((n) => [n.id, n]));
 const DEYE_EXEC = byId['auto-control-exec-deye'].func;
+// The Deye READ POLL body (auto-solarman) - driven concurrently with the write
+// executor below to prove the bidirectional one-socket coordination (report §5.6).
+const READ_POLL = byId['auto-solarman'].func;
 
 const DEYE_SEL = {
   schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', control_tier: 3,
@@ -318,4 +321,154 @@ test('Deye executor ignores a non-Deye plan (the modbus executor owns that path)
     { battery_setpoint_kw: -5, source: 'schedule', control_enabled: true }, {});
   const out = await runExec(DEYE_EXEC, { control: sunspec, setpoint: {} });
   assert.strictEqual(out, null, 'adapter modbus_tcp -> the Solarman-V5 executor no-ops');
+});
+
+// --- one-socket coordination regression (report §5.6, the PRIMARY fix) ---------
+//
+// The real Solarman/LSW3 logger accepts only ONE TCP client. The old stub used a
+// plain net.createServer (unlimited connections) and drove ONLY the write executor,
+// so it could never reproduce the read-poll-vs-write contention that displaced the
+// write on hardware. This SINGLE-CLIENT server RSTs a second concurrent connection
+// (like the real stick) and is driven by the read poll AND the write executor on a
+// SHARED flow context, so the bidirectional sv5_busy / sv5_write_want lock is proven.
+
+// startSingleClientSolarmanServer accepts exactly ONE client at a time; a second
+// concurrent connect is destroyed and flagged (state.sawConcurrent). Optional
+// latencyMs delays every response so an in-flight read genuinely overlaps a write.
+function startSingleClientSolarmanServer(initial = {}, opts = {}) {
+  const store = Object.assign({}, initial);
+  const writes = [];
+  const state = { live: 0, totalConns: 0, sawConcurrent: false };
+  const latencyMs = opts.latencyMs || 0;
+  return new Promise((resolve) => {
+    const server = net.createServer((sock) => {
+      state.totalConns += 1;
+      if (state.live > 0) { state.sawConcurrent = true; sock.destroy(); return; } // single client
+      state.live += 1;
+      let acc = Buffer.alloc(0);
+      sock.on('error', () => {});
+      sock.on('close', () => { state.live -= 1; });
+      sock.on('data', (chunk) => {
+        acc = Buffer.concat([acc, chunk]);
+        let need;
+        try { need = SV5.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
+        while (need !== null && acc.length >= need) {
+          const frame = acc.slice(0, need);
+          acc = acc.slice(need);
+          const seq = frame.readUInt16LE(5);
+          const serial = frame.readUInt32LE(7);
+          const mb = frame.slice(V5_REQ_MODBUS_OFFSET, frame.length - 2);
+          const slave = mb[0];
+          const fn = mb[1];
+          let respMb;
+          if (fn === 0x06) {
+            const reg = mb.readUInt16BE(2);
+            const value = mb.readUInt16BE(4) & 0xffff;
+            store[reg] = value; writes.push({ reg, value });
+            respMb = SV5.writeSingleRegisterRequest(slave, reg, value);
+          } else if (fn === 0x03) {
+            const addr = mb.readUInt16BE(2);
+            const count = mb.readUInt16BE(4);
+            const body = Buffer.alloc(3 + count * 2);
+            body[0] = slave; body[1] = 0x03; body[2] = count * 2;
+            for (let i = 0; i < count; i++) body.writeUInt16BE((store[addr + i] || 0) & 0xffff, 3 + i * 2);
+            const crc = SV5.modbusCrc16(body);
+            respMb = Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
+          } else { sock.destroy(); return; }
+          const resp = buildV5Response(serial, seq, respMb);
+          if (latencyMs > 0) setTimeout(() => { try { sock.write(resp); } catch (e) { /* closed */ } }, latencyMs);
+          else sock.write(resp);
+          try { need = SV5.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
+        }
+      });
+    });
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port, store, writes, state }));
+  });
+}
+
+// The read poll's msg.deye context (what the router emits): identity + one read block.
+function deyeReadMsg(port) {
+  return {
+    deye: {
+      cfg: { ip: '127.0.0.1', port, serial: '2985159064', mb_slave_id: 1 },
+      target: '127.0.0.1:' + port,
+      reads: [{ start: 0x024c, count: 4 }],
+      i: 0, blocks: [],
+    },
+  };
+}
+
+test('single-client Solarman server RSTs a second concurrent connection (models the real LSW3 stick)', async () => {
+  // Sanity: the server models the real constraint the old stub lacked - only one
+  // TCP client at a time. This is what makes the coordination proof below meaningful.
+  const { server, port, state } = await startSingleClientSolarmanServer({}, { latencyMs: 50 });
+  try {
+    const s1 = net.connect(port, '127.0.0.1');
+    await new Promise((res, rej) => { s1.once('connect', res); s1.once('error', rej); });
+    const s2 = net.connect(port, '127.0.0.1');
+    // the second concurrent connect is refused/closed by the single-client server
+    await new Promise((res) => { s2.once('close', res); s2.once('error', () => {}); });
+    assert.strictEqual(state.sawConcurrent, true, 'the server flagged the concurrent connection');
+    s1.destroy();
+  } finally {
+    server.close();
+  }
+});
+
+test('a pending write makes the read poll YIELD the single-client logger (write priority)', async () => {
+  const { server, port, state } = await startSingleClientSolarmanServer({});
+  try {
+    const sharedFlow = {};
+    sharedFlow['sv5_write_want:127.0.0.1:' + port] = Date.now(); // a write announced intent
+    const out = await runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow);
+    assert.strictEqual(out, null, 'the read yields this tick to the pending write');
+    assert.strictEqual(state.totalConns, 0, 'the read did not open a socket while a write is pending');
+  } finally {
+    server.close();
+  }
+});
+
+test('read poll + Deye write executor never collide on the single-client logger, and the write lands', async () => {
+  // THE missing coverage: drive the read poll AND the write executor concurrently
+  // against a single-client logger on a SHARED flow context. tick 1: the read holds
+  // the socket, the write DEFERS (no colliding second connection). tick 2: the read
+  // YIELDS to the pending write, which gets a clean window and lands its ToU registers.
+  const { server, port, store, state } = await startSingleClientSolarmanServer({}, { latencyMs: 40 });
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -20, source: 'calibration', control_enabled: true, soc_min_pct: 10, calibration: true },
+      async (plan) => {
+        plan.connection.port = port;
+        const sharedFlow = {};
+        const readCtx = {};
+        const writeCtx = {};
+
+        // tick 1: read claims the socket first; the write must defer, not collide.
+        const [ro1, wo1] = await Promise.all([
+          runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
+          runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
+        ]);
+        assert.ok(ro1, 'tick1: the read completed');
+        assert.strictEqual(wo1, null, 'tick1: the write deferred to the in-flight read (no second socket)');
+        assert.strictEqual(state.sawConcurrent, false, 'no concurrent connection to the single-client logger');
+
+        // tick 2: the read now yields to the pending write; the write gets a clean
+        // window and completes its write -> readback -> match.
+        const [ro2, wo2] = await Promise.all([
+          runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
+          runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
+        ]);
+        assert.strictEqual(ro2, null, 'tick2: the read yielded to the pending write (write priority)');
+        assert.ok(wo2, 'tick2: the write got a clean socket and completed');
+        assert.ok(wo2.payload.registers.every((r) => r.match), 'tick2: write -> readback matched on the single-client logger');
+        assert.strictEqual(state.sawConcurrent, false, 'still no concurrent connection across both ticks');
+
+        // and the ToU discharge power actually reached the logger.
+        const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+        assert.strictEqual(store[reg.progPowerBase], 20000, 'the discharge power (20 kW -> 20000 W) reached the logger');
+      },
+    );
+  } finally {
+    server.close();
+  }
 });

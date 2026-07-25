@@ -127,9 +127,10 @@ type CalibrationController interface {
 	CalibrationArm(armed bool) (calibration.Snapshot, error)
 	CalibrationStartTest(direction string, magnitudeKw float64) (calibration.Snapshot, error)
 	CalibrationAbort() calibration.Snapshot
-	CalibrationConfirm(sign, scale *bool) calibration.Snapshot
+	CalibrationConfirm(sign, scale *bool) (calibration.Snapshot, error)
 	CalibrationCorrection(invertControlSign *bool, powerScale *float64) (calibration.Snapshot, error)
 	CalibrationCertify() (calibration.Snapshot, error)
+	CalibrationDecertify() (calibration.Snapshot, error)
 }
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
@@ -595,6 +596,8 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		writeJSON(w, http.StatusOK, map[string]any{"calibration": cal.CalibrationAbort()})
 	})
 	// POST /api/calibration/confirm {sign?, scale?} - record the operator's verdict.
+	// EVIDENCE-GATED (report §7 Gap B): a TRUE confirm is refused (400) unless the
+	// system observed a landed write + the measured movement.
 	mux.HandleFunc("POST /api/calibration/confirm", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Sign  *bool `json:"sign"`
@@ -604,7 +607,8 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"calibration": cal.CalibrationConfirm(req.Sign, req.Scale)})
+		snap, err := cal.CalibrationConfirm(req.Sign, req.Scale)
+		calResult(w, snap, err)
 	})
 	// POST /api/calibration/correction {invert_control_sign?, power_scale?} - persist
 	// a sign/scale correction to the inverter connection and retry.
@@ -621,9 +625,16 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		calResult(w, snap, err)
 	})
 	// POST /api/calibration/certify - the deliberate hand-off: certify this device's
-	// family for optimizer control. Refused (400) unless sign AND scale are confirmed.
+	// family for optimizer control. Refused (400) unless sign AND scale are confirmed
+	// AND the current test's write read back a match (Gap B).
 	mux.HandleFunc("POST /api/calibration/certify", func(w http.ResponseWriter, r *http.Request) {
 		snap, err := cal.CalibrationCertify()
+		calResult(w, snap, err)
+	})
+	// POST /api/calibration/decertify - "Freigabe zurücknehmen" (Gap A): revoke this
+	// device's per-device First-Light certification so the family returns to read-only.
+	mux.HandleFunc("POST /api/calibration/decertify", func(w http.ResponseWriter, r *http.Request) {
+		snap, err := cal.CalibrationDecertify()
 		calResult(w, snap, err)
 	})
 

@@ -159,9 +159,11 @@ type fakeCalibration struct {
 	aborts        int
 	lastSign      *bool
 	lastScale     *bool
-	lastInvertSig *bool
-	lastPowScale  *float64
-	certifyCalls  int
+	lastInvertSig  *bool
+	lastPowScale   *float64
+	certifyCalls   int
+	decertifyCalls int
+	confirmErr     error
 }
 
 func (f *fakeCalibration) CalibrationSnapshot() calibration.Snapshot { return f.snap }
@@ -174,9 +176,9 @@ func (f *fakeCalibration) CalibrationStartTest(direction string, magnitudeKw flo
 	return f.snap, f.testErr
 }
 func (f *fakeCalibration) CalibrationAbort() calibration.Snapshot { f.aborts++; return f.snap }
-func (f *fakeCalibration) CalibrationConfirm(sign, scale *bool) calibration.Snapshot {
+func (f *fakeCalibration) CalibrationConfirm(sign, scale *bool) (calibration.Snapshot, error) {
 	f.lastSign, f.lastScale = sign, scale
-	return f.snap
+	return f.snap, f.confirmErr
 }
 func (f *fakeCalibration) CalibrationCorrection(invertControlSign *bool, powerScale *float64) (calibration.Snapshot, error) {
 	f.lastInvertSig, f.lastPowScale = invertControlSign, powerScale
@@ -184,6 +186,10 @@ func (f *fakeCalibration) CalibrationCorrection(invertControlSign *bool, powerSc
 }
 func (f *fakeCalibration) CalibrationCertify() (calibration.Snapshot, error) {
 	f.certifyCalls++
+	return f.snap, nil
+}
+func (f *fakeCalibration) CalibrationDecertify() (calibration.Snapshot, error) {
+	f.decertifyCalls++
 	return f.snap, nil
 }
 
@@ -936,7 +942,7 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 		`id="calLive"`, `id="calArm"`, `id="calTestStep"`, `id="calMag"`,
 		`id="calCharge"`, `id="calDischarge"`, `id="calAbort"`, `id="calVerdict"`,
 		`id="calCorrect"`, `id="calInvert"`, `id="calScale"`, `id="calSign"`,
-		`id="calConfirm"`, `id="calCertify"`, `src="calibration.js"`,
+		`id="calConfirm"`, `id="calCertify"`, `id="calDecertify"`, `src="calibration.js"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html: missing calibration element %s", want)
@@ -947,7 +953,7 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 	for _, want := range []string{
 		"/api/calibration", "/api/calibration/arm", "/api/calibration/test",
 		"/api/calibration/abort", "/api/calibration/correction",
-		"/api/calibration/confirm", "/api/calibration/certify",
+		"/api/calibration/confirm", "/api/calibration/certify", "/api/calibration/decertify",
 	} {
 		if !strings.Contains(calJs, want) {
 			t.Errorf("calibration.js: does not drive %s", want)
@@ -956,6 +962,50 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 	// dashboard.js hands state to the calibration card for the register readback.
 	if !strings.Contains(get("/dashboard.js"), "VPCalibration") {
 		t.Error("dashboard.js: does not feed VPCalibration.onState")
+	}
+}
+
+// TestCalibrationConfirmErrorAndDecertifyRoutes proves the web layer maps an
+// evidence-gate confirm refusal to 400 (Gap B) and routes the new decertify endpoint
+// (Gap A) to the controller.
+func TestCalibrationConfirmErrorAndDecertifyRoutes(t *testing.T) {
+	fc := &fakeCalibration{confirmErr: &calibration.ValidationError{Msg: "noch keine Bewegung"}}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, fc))
+	t.Cleanup(srv.Close)
+
+	// A confirm the agent refuses (evidence gate) -> 400 with the German message.
+	resp, err := http.Post(srv.URL+"/api/calibration/confirm", "application/json", strings.NewReader(`{"sign":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("evidence-gated confirm should be 400, got %d", resp.StatusCode)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	if body.Error != "noch keine Bewegung" {
+		t.Fatalf("confirm error passthrough: %q", body.Error)
+	}
+	if fc.lastSign == nil || *fc.lastSign != true {
+		t.Fatal("confirm route must pass the sign flag to the controller")
+	}
+
+	// Decertify routes to the controller and returns 200.
+	resp2, err := http.Post(srv.URL+"/api/calibration/decertify", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("decertify should be 200, got %d", resp2.StatusCode)
+	}
+	if fc.decertifyCalls != 1 {
+		t.Fatalf("decertify route must call the controller once, got %d", fc.decertifyCalls)
 	}
 }
 

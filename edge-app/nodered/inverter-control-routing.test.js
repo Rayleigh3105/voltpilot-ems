@@ -232,6 +232,10 @@ test('Deye hybrid_3p planned ToU mapping uses the ha-solarman deye_p3 registers'
   assert.strictEqual(p.work_mode.value, C.DEYE_WORK_MODE.EXPORT_FIRST);
   assert.strictEqual(p.tou_enable.addr, reg.touEnable); // 0x0092
   assert.strictEqual(p.tou_enable.value, C.DEYE_TOU_ENABLED_ALL_WEEK);
+  // Program 1 start time written to 00:00 so the commanded slot is the day's BASE
+  // window (report §6): without it a stale time can leave Program 1 inactive at "now".
+  assert.strictEqual(p.program_time.addr, reg.progTimeBase); // 0x0094
+  assert.strictEqual(p.program_time.value, 0);
   // pv_limit 25 kW -> "Grid Max Export power" 0x00E7, scale 10 -> 2500 register
   assert.strictEqual(p.pv_limit.addr, reg.exportLimit); // 0x00E7, NOT the string-only 0x0028
   assert.strictEqual(p.pv_limit.value, 2500);
@@ -248,6 +252,7 @@ test('Deye hybrid_1p uses its own ha-solarman deye_hybrid registers (per-family)
   const reg = C.DEYE_CONTROL_REG.hybrid_1p;
   assert.strictEqual(p.work_mode.addr, reg.workMode); // 0x00F4
   assert.strictEqual(p.tou_enable.addr, reg.touEnable); // 0x00F8
+  assert.strictEqual(p.program_time.addr, reg.progTimeBase); // 0x00FA (Program 1 base window)
   assert.strictEqual(p.battery_power.addr, reg.progPowerBase); // 0x0100
   assert.strictEqual(p.battery_power.value, 6000);
   assert.strictEqual(p.battery_target_soc.addr, reg.progSocBase); // 0x010C
