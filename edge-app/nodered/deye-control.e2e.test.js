@@ -90,7 +90,13 @@ function startSolarmanServer(initial, opts = {}) {
             const reg = mb.readUInt16BE(2);
             const value = mb.readUInt16BE(4) & 0xffff;
             if (!opts.dropWrites) { store[reg] = value; writes.push({ reg, value }); }
-            respMb = SV5.writeSingleRegisterRequest(slave, reg, opts.dropWrites ? (store[reg] || 0) : value); // FC6 echo
+            // writeReply models a logger that ACCEPTS the write frame (it arrives)
+            // but returns a V5 response whose Modbus payload is too short to be a
+            // valid RTU reply - the live-Pilsting shape: 'empty' = no Modbus bytes
+            // (the inverter did not answer), 'stub' = a 1-byte fragment.
+            if (opts.writeReply === 'empty') respMb = Buffer.alloc(0);
+            else if (opts.writeReply === 'stub') respMb = Buffer.from([0x0b]);
+            else respMb = SV5.writeSingleRegisterRequest(slave, reg, opts.dropWrites ? (store[reg] || 0) : value); // FC6 echo
           } else if (fn === 0x03) {
             const addr = mb.readUInt16BE(2);
             const count = mb.readUInt16BE(4);
@@ -109,10 +115,10 @@ function startSolarmanServer(initial, opts = {}) {
   });
 }
 
-async function runExec(func, msg, ctxStore = {}, flowStore = {}) {
+async function runExec(func, msg, ctxStore = {}, flowStore = {}, warns = null) {
   const sandbox = {
     msg,
-    node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
+    node: { status() {}, error() {}, warn(l) { if (warns) warns.push(String(l)); }, log() {}, send() {} },
     context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
     flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
     global: { get: (k) => (k === 'net' ? net : undefined) },
@@ -121,6 +127,30 @@ async function runExec(func, msg, ctxStore = {}, flowStore = {}) {
   const script = new vm.Script('(function(){' + func + '\n})()');
   const ret = script.runInContext(vm.createContext(sandbox));
   return ret && typeof ret.then === 'function' ? await ret : ret;
+}
+
+// runExecWarns - runExec but returns { out, warns } so a test can assert what the
+// node.warn'ed (the raw-frame diagnostic + the "Logger belegt" defer are audible).
+async function runExecWarns(func, msg, ctxStore = {}, flowStore = {}) {
+  const warns = [];
+  const out = await runExec(func, msg, ctxStore, flowStore, warns);
+  return { out, warns };
+}
+
+// waitFor - await a predicate (bounded). Used between coordination ticks so the
+// single-client server has RELEASED the previous connection (state.live -> 0)
+// before the next tick connects. In production the read poll (5 s) and the write
+// republish (10 s) are seconds apart, so the logger socket is long closed; two
+// back-to-back microtask ticks in a test are not, and the server's async 'close'
+// (which decrements state.live) would otherwise race the next connect and be
+// wrongly flagged concurrent. This removes that HARNESS race, not any product
+// behaviour (the sv5_busy/sv5_write_want lock is unchanged).
+async function waitFor(pred, timeoutMs = 3000) {
+  const start = Date.now();
+  while (!pred()) {
+    if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
+    await new Promise((r) => setTimeout(r, 5));
+  }
 }
 
 // Build the executable Deye control plan the way controlRoute WOULD once the family
@@ -451,6 +481,7 @@ test('read poll + Deye write executor never collide on the single-client logger,
         assert.ok(ro1, 'tick1: the read completed');
         assert.strictEqual(wo1, null, 'tick1: the write deferred to the in-flight read (no second socket)');
         assert.strictEqual(state.sawConcurrent, false, 'no concurrent connection to the single-client logger');
+        await waitFor(() => state.live === 0); // logger released the read socket (seconds apart in prod)
 
         // tick 2: the read now yields to the pending write; the write gets a clean
         // window and completes its write -> readback -> match.
@@ -466,6 +497,91 @@ test('read poll + Deye write executor never collide on the single-client logger,
         // and the ToU discharge power actually reached the logger.
         const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
         assert.strictEqual(store[reg.progPowerBase], 20000, 'the discharge power (20 kW -> 20000 W) reached the logger');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+// --- the write-response blocker made visible (report §7.2, the PR z4 fix) -------
+//
+// The live Pilsting logger ACCEPTS the write frame but its V5 response carries a
+// Modbus payload shorter than a valid RTU reply (the inverter did not properly
+// answer). The executor must (1) fail with a NAMED reason - never a bare "zu kurz"
+// - and (2) log the RAW request+response bytes + the parsed V5 header, so ONE more
+// field test settles exactly what the logger returns.
+
+test('Deye executor: a short/empty write reply is NAMED and its raw frames are logged (never bare "zu kurz")', async () => {
+  const { server, port, writes } = await startSolarmanServer({}, { writeReply: 'empty' });
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -0.3, source: 'calibration', control_enabled: true, soc_min_pct: 10, calibration: true },
+      async (plan) => {
+        plan.connection.port = port;
+        const { out, warns } = await runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } });
+        assert.strictEqual(out, null, 'a short write reply cannot be confirmed -> no readback published');
+        assert.ok(writes.length >= 1, 'the write frame DID reach the logger (it just could not be read back)');
+        // (1) named reason, no bare "zu kurz"
+        assert.ok(!warns.some((w) => /zu kurz/.test(w)), 'no bare "zu kurz" surfaced: ' + JSON.stringify(warns));
+        assert.ok(
+          warns.some((w) => /keine Modbus-Nutzlast|nicht geantwortet/.test(w)),
+          'the failure names the reason: ' + JSON.stringify(warns),
+        );
+        // (2) raw request + response frames + the parsed V5 header are logged
+        const raw = warns.find((w) => /Rohframe/.test(w));
+        assert.ok(raw, 'a raw-frame diagnostic was logged: ' + JSON.stringify(warns));
+        assert.match(raw, /Anfrage=\[A5 [0-9A-F ]+\]/, 'the raw REQUEST frame hex is present');
+        assert.match(raw, /Antwort=\[A5 [0-9A-F ]+\]/, 'the raw RESPONSE frame hex is present');
+        assert.match(raw, /Controlcode=0x1510/, 'the parsed V5 control code is present');
+        assert.match(raw, /Seq=\d+/, 'the parsed V5 sequence is present');
+        assert.match(raw, /Logger=2985159064/, 'the parsed logger serial is present');
+        assert.match(raw, /Frametyp=0x2/, 'the parsed V5 frame-type is present');
+        assert.match(raw, /Status=0x1/, 'the parsed V5 status byte is present');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('a deferred Deye write is LOUD (Logger belegt) and still lands once it gets the socket - never silently starved', async () => {
+  // Item 5: the recurring "Logger belegt" must never mean a real write silently never
+  // runs. tick 1: the read holds the single-client socket, the write DEFERS and WARNS
+  // (audible, not just node status). tick 2: the read yields to the announced write,
+  // which gets a clean, bounded window and lands its ToU registers.
+  const { server, port, store, state } = await startSingleClientSolarmanServer({}, { latencyMs: 60 });
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -0.3, source: 'calibration', control_enabled: true, soc_min_pct: 10, calibration: true },
+      async (plan) => {
+        plan.connection.port = port;
+        const sharedFlow = {}; const readCtx = {}; const writeCtx = {};
+
+        // tick 1: the read claims the socket first; the write defers AND warns.
+        const [ro1, w1] = await Promise.all([
+          runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
+          runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
+        ]);
+        assert.ok(ro1, 'tick1: the read completed');
+        assert.strictEqual(w1.out, null, 'tick1: the write deferred to the in-flight read');
+        assert.ok(
+          w1.warns.some((l) => /Logger belegt/.test(l)),
+          'tick1: the deferred write is LOUD (warned), never silent: ' + JSON.stringify(w1.warns),
+        );
+        await waitFor(() => state.live === 0); // logger released the read socket (seconds apart in prod)
+
+        // tick 2: the read yields to the pending write, which lands.
+        const [ro2, w2] = await Promise.all([
+          runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
+          runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
+        ]);
+        assert.strictEqual(ro2, null, 'tick2: the read yielded to the pending write');
+        assert.ok(w2.out, 'tick2: the deferred write got its window and completed');
+        assert.ok(w2.out.payload.registers.every((r) => r.match), 'tick2: write -> readback matched');
+        assert.strictEqual(state.sawConcurrent, false, 'no concurrent connection to the single-client logger');
+        const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+        assert.strictEqual(store[reg.progPowerBase], 300, 'the -0.3 kW setpoint (300 W) reached the logger after the deferral');
       },
     );
   } finally {

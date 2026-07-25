@@ -648,6 +648,9 @@ const embedModule = (file) =>
 // window, and the write still defers to an in-flight read (skip-if-busy) instead
 // of colliding. A swallowed socket error/busy-skip now also emits a rate-limited
 // node.warn so a real hardware issue is visible in the logs, not just node status.
+// On a PARSE failure (the live-Pilsting write-response blocker) it ALSO emits the
+// raw request+response bytes as hex + the parsed V5 header (diagRL), so ONE field
+// test settles exactly what the logger returns for the write.
 const controlExecSolarmanFunc = [
   "// Deye Solarman-V5 Steuerung schreiben + zuruecklesen: nur fuer eine",
   "// ZERTIFIZIERTE Deye-Familie (sonst writes/readbacks leer -> return null).",
@@ -671,6 +674,12 @@ const controlExecSolarmanFunc = [
   "// instead of swallowing it to node status only. Rate-limited (30 s per class) so",
   "// the ~10 s republish cannot spam the log.",
   "const warnRL = (key, line) => { const at = context.get('sv5_warn_' + key) || 0; if (now - at < 30000) return; context.set('sv5_warn_' + key, now); node.warn(line); };",
+  "// Raw-frame diagnostics (report §7.2): on a PARSE failure, emit the raw request",
+  "// AND response bytes as hex plus the parsed V5 header (Frametyp/Status/Controlcode)",
+  "// so ONE field test settles what a real logger returns for the write. Rate-limited",
+  "// like warnRL (30 s) and emitted ONLY here in the write executor - never on the hot",
+  "// read poll. The raw bytes are the only ground truth for the live-Pilsting blocker.",
+  "const diagRL = (line) => { const at = context.get('sv5_diag_at') || 0; if (now - at < 30000) return; context.set('sv5_diag_at', now); node.warn(line); };",
   "// EEPROM write-on-change: skip a register write inside its dwell window or below",
   "// its min_change delta (vs the last WRITTEN value). Readbacks ALWAYS run.",
   "const last = context.get('sv5_ctrl_last') || {};",
@@ -705,11 +714,12 @@ const controlExecSolarmanFunc = [
   "return new Promise((resolve) => {",
   "  const sock = new net.Socket(); sock.setNoDelay(true);",
   "  let done = false, acc = Buffer.alloc(0), pending = null;",
-  "  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); flow.set(wantKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); warnRL('err', 'Deye-Steuerung fehlgeschlagen (' + target + '): ' + err.message); resolve(null); } else { resolve(okMsg); } };",
+  "  let lastReqHex = '';",
+  "  const finish = (err, okMsg) => { if (done) return; done = true; clearTimeout(t); flow.set(busyKey, 0); flow.set(wantKey, 0); try { sock.destroy(); } catch (e) { /* ignore */ } if (err) { node.status({ fill: 'red', shape: 'ring', text: 'Steuerung: ' + err.message }); warnRL('err', 'Deye-Steuerung fehlgeschlagen (' + target + '): ' + err.message); if (err.requestHex || err.responseHex) { const v = err.v5 || {}; const hdr = (v.frameType !== undefined) ? (' Controlcode=0x' + (v.controlCode || 0).toString(16) + ' Seq=' + (v.sequence || 0) + ' Logger=' + (v.loggerSerial || 0) + ' Frametyp=0x' + (v.frameType || 0).toString(16) + '/' + v.frameTypeLabel + ' Status=0x' + (v.status || 0).toString(16)) : ''; diagRL('Deye-Steuerung Rohframe (' + target + '): Anfrage=[' + (err.requestHex || '?') + '] Antwort=[' + (err.responseHex || '?') + ']' + hdr); } resolve(null); } else { resolve(okMsg); } };",
   "  const t = setTimeout(() => finish(new Error('Timeout')), 12000);",
   "  sock.once('error', (e) => finish(e));",
-  "  const txn = (frame, parse) => new Promise((res, rej) => { pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
-  "  sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); let need; try { need = __SV5.expectedFrameLength(acc); } catch (e) { if (pending) { const p = pending; pending = null; p.rej(e); } return; } if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const frame = acc.slice(0, need); acc = acc.slice(need); try { p.res(p.parse(frame)); } catch (e) { p.rej(e); } } });",
+  "  const txn = (frame, parse) => new Promise((res, rej) => { lastReqHex = __SV5.hexdump(frame); pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
+  "  sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); let need; try { need = __SV5.expectedFrameLength(acc); } catch (e) { if (pending) { const p = pending; pending = null; e.requestHex = lastReqHex; e.responseHex = __SV5.hexdump(acc); p.rej(e); } return; } if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const frame = acc.slice(0, need); acc = acc.slice(need); try { p.res(p.parse(frame)); } catch (e) { e.requestHex = lastReqHex; e.responseHex = e.frameHex || __SV5.hexdump(frame); p.rej(e); } } });",
   "  const nextSeq = () => { seq = (seq + 1) & 0xffff; return seq; };",
   "  sock.connect(cport, host, async () => {",
   "    try {",
