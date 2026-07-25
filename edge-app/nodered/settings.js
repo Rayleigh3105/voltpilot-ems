@@ -50,6 +50,21 @@ module.exports = {
     https: require("https"),
   },
 
+  // Durable context store for the Deye control SNAPSHOT (report §8, vp-deye-tou-dir-q5).
+  // Deye has NO revert timer, so the executor captures the installer's pre-control
+  // register values and controlRelease restores them; that snapshot MUST survive a
+  // container restart / crash so the on-start recovery node can hand the inverter back.
+  //  - `default: memory` keeps EVERY existing context call (no store name) in-memory,
+  //    exactly as before - the file store is used ONLY by the explicit
+  //    flow.get/set('deye_ctrl_snapshot', 'file') calls in the control nodes.
+  //  - localfilesystem persists under /data/context, which the vp-nodered-data volume
+  //    keeps across `docker compose up -d` and the template re-seed (runtime state in
+  //    /data is left untouched by reseed-entrypoint.sh).
+  contextStorage: {
+    default: { module: "memory" },
+    file: { module: "localfilesystem" },
+  },
+
   adminAuth: {
     type: "credentials",
     users: [

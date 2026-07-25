@@ -708,3 +708,235 @@ test('a deferred Deye write is LOUD (Logger belegt) and still lands once it gets
     server.close();
   }
 });
+
+// --- snapshot capture + restore + crash recovery (report §8) ----------------------
+//
+// Deye has NO revert timer, so anything we change persists in EEPROM until we change
+// it back. The executor captures the installer's pre-control register values BEFORE
+// its first write (FC3), persists them DURABLY, and controlRelease writes them back on
+// EVERY hand-back path (TTL / abort / disarm / control-off / connection loss all funnel
+// into the same controlRelease at the plan node; startup crash recovery is its own
+// node). These prove that whole loop on a real in-process Solarman-V5 logger.
+
+const REG = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+const RECOVER = byId['auto-control-recover'].func;
+
+// The installer's pre-control state the logger holds before VoltPilot ever writes.
+function installerStore() {
+  return {
+    [REG.energyPattern]: 0,   // Battery First
+    [REG.workMode]: 1,        // Zero-Export-to-Load (NOT our Export First)
+    [REG.maxSellPower]: 8000, // installer sell cap
+    [REG.solarSell]: 0,       // Solar Sell OFF
+    [REG.touEnable]: 0,       // scheduler off (self-consumption)
+    [REG.progTimeBase]: 0,
+    [REG.progPowerBase]: 0,
+    [REG.progSocBase]: 20,
+    [REG.progChargeBase]: 0,
+    [REG.exportLimit]: 9999,
+  };
+}
+
+test('the executor SNAPSHOTS the installer pre-control values BEFORE its first write', async () => {
+  const { server, port, store } = await startSolarmanServer(installerStore());
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
+      async (plan) => {
+        plan.connection.port = port;
+        const flow = {};
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flow);
+        assert.ok(out, 'the write + readback completed');
+        assert.strictEqual(out.payload.snapshot_captured, true, 'a snapshot was captured');
+        const snap = flow['deye_ctrl_snapshot'];
+        assert.ok(snap && snap.regs, 'the snapshot was persisted durably (file store)');
+        // it captured the PRE-control values (before the discharge writes changed them)
+        assert.strictEqual(snap.regs[REG.maxSellPower], 8000, 'captured installer Max-Sell-Power');
+        assert.strictEqual(snap.regs[REG.solarSell], 0, 'captured Solar-Sell OFF');
+        assert.strictEqual(snap.regs[REG.workMode], 1, 'captured installer work-mode');
+        assert.strictEqual(snap.regs[REG.touEnable], 0, 'captured scheduler off');
+        // ... and the writes THEN changed the live registers (post-control)
+        assert.strictEqual(store[REG.solarSell], 1, 'discharge enabled Solar-Sell');
+        assert.strictEqual(store[REG.energyPattern], 1, 'discharge set Load First');
+        assert.strictEqual(store[REG.maxSellPower], 20000, 'discharge set the sell-power forcing lever');
+        assert.strictEqual(store[REG.touEnable], 0x00ff, 'ToU activated last');
+        // the snapshot carries the identity so crash recovery works before config reload
+        assert.strictEqual(snap.family, 'hybrid_3p');
+        assert.strictEqual(snap.connection.serial, '2985159064');
+        assert.strictEqual(snap.connection.control_write_fc, 16);
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('the executor does NOT re-capture once a snapshot exists (one pre-control baseline)', async () => {
+  const { server, port } = await startSolarmanServer(installerStore());
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
+      async (plan) => {
+        plan.connection.port = port;
+        const ctx = {}; const flow = {};
+        const out1 = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flow);
+        assert.strictEqual(out1.payload.snapshot_captured, true);
+        const snap1 = flow['deye_ctrl_snapshot'];
+        // tick 2 (same plan, dwell): NOT re-captured, so a post-control read can never
+        // overwrite the true pre-control baseline; EEPROM cadence unchanged (no writes).
+        const out2 = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flow);
+        assert.strictEqual(out2.payload.snapshot_captured, false, 'no re-capture once a snapshot exists');
+        assert.strictEqual(out2.payload.wrote, false, 'dwell -> no rewrite (cadence unchanged)');
+        assert.strictEqual(flow['deye_ctrl_snapshot'], snap1, 'the baseline snapshot is untouched');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('a RELEASE restores every captured register and CLEARS the snapshot (hand-back)', async () => {
+  const { server, port, store } = await startSolarmanServer(installerStore());
+  try {
+    controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+    try {
+      const sel = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } };
+      // 1) discharge -> capture the snapshot + change the registers
+      const dis = controlRouting.controlRoute(sel, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 }, { ratedKw: 30 });
+      dis.connection.port = port;
+      const flow = {};
+      await runExec(DEYE_EXEC, { control: dis, setpoint: {} }, {}, flow);
+      const snap = flow['deye_ctrl_snapshot'];
+      assert.ok(snap, 'snapshot captured');
+      assert.strictEqual(store[REG.solarSell], 1, 'discharge changed Solar-Sell');
+      // 2) release built FROM the snapshot (as the plan node / crash recovery would). This
+      //    is the SAME release plan for every trigger (TTL/abort/disarm/loss/kill-off).
+      const rel = controlRouting.controlRelease(sel, { snapshot: snap.regs });
+      rel.connection.port = port;
+      const out = await runExec(DEYE_EXEC, { control: rel, setpoint: {} }, {}, flow);
+      assert.ok(out, 'release readback published');
+      assert.strictEqual(out.payload.mode, 'release');
+      // every installer value is restored on the wire - nothing left latched
+      assert.strictEqual(store[REG.solarSell], 0, 'Solar-Sell restored OFF');
+      assert.strictEqual(store[REG.energyPattern], 0, 'Energy-Pattern restored');
+      assert.strictEqual(store[REG.workMode], 1, 'work-mode restored');
+      assert.strictEqual(store[REG.maxSellPower], 8000, 'Max-Sell-Power restored');
+      assert.strictEqual(store[REG.exportLimit], 9999, 'export cap restored');
+      assert.strictEqual(store[REG.touEnable], 0, 'scheduler restored OFF (touEnable last)');
+      assert.ok(out.payload.registers.every((r) => r.match), 'restore confirmed by readback');
+      // the snapshot is CLEARED after a successful hand-back
+      assert.strictEqual(flow['deye_ctrl_snapshot'], null, 'snapshot cleared on release');
+      // idempotent: a second release with no snapshot is the plain touEnable=0 hand-back
+      const rel2 = controlRouting.controlRelease(sel, {});
+      rel2.connection.port = port;
+      const out2 = await runExec(DEYE_EXEC, { control: rel2, setpoint: {} }, {}, flow);
+      assert.ok(out2.payload.registers.every((r) => r.match), 'no-snapshot release still confirms');
+    } finally {
+      controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('CRASH RECOVERY: a leftover snapshot at startup restores the installer values + clears it', async () => {
+  // The logger currently holds VoltPilot's discharge state (we crashed mid-control);
+  // was_controlling lived in volatile context and is gone, but the durable snapshot
+  // survived. The startup recovery node must hand the inverter back.
+  const { server, port, store } = await startSolarmanServer({
+    [REG.energyPattern]: 1, [REG.workMode]: 0, [REG.maxSellPower]: 20000, [REG.solarSell]: 1,
+    [REG.touEnable]: 0x00ff, [REG.progTimeBase]: 0, [REG.progPowerBase]: 20000,
+    [REG.progSocBase]: 10, [REG.progChargeBase]: 0, [REG.exportLimit]: 2500,
+  });
+  try {
+    const flow = { deye_ctrl_snapshot: {
+      family: 'hybrid_3p',
+      connection: { ip: '127.0.0.1', port, serial: '2985159064', mb_slave_id: 1, control_write_fc: 16 },
+      regs: installerStore(),
+    } };
+    // 1) the startup recovery node builds a restore plan from the leftover snapshot
+    const recMsg = await runExec(RECOVER, {}, {}, flow);
+    assert.ok(recMsg && recMsg.control, 'recovery emitted a restore plan');
+    assert.strictEqual(recMsg.control.mode, 'release');
+    assert.ok(recMsg.control.writes.length >= 5, 'the restore plan is executable (calibration bypass)');
+    // 2) the executor restores the installer values + clears the snapshot
+    const out = await runExec(DEYE_EXEC, recMsg, {}, flow);
+    assert.ok(out, 'restore readback published');
+    assert.strictEqual(store[REG.solarSell], 0, 'crash recovery restored Solar-Sell OFF');
+    assert.strictEqual(store[REG.energyPattern], 0, 'restored Energy-Pattern');
+    assert.strictEqual(store[REG.maxSellPower], 8000, 'restored Max-Sell-Power');
+    assert.strictEqual(store[REG.touEnable], 0, 'restored scheduler OFF');
+    assert.ok(out.payload.registers.every((r) => r.match), 'restore confirmed on the wire');
+    assert.strictEqual(flow['deye_ctrl_snapshot'], null, 'snapshot cleared after recovery');
+  } finally {
+    server.close();
+  }
+});
+
+test('CRASH RECOVERY is a no-op when there is no leftover snapshot', async () => {
+  const recMsg = await runExec(RECOVER, {}, {}, {});
+  assert.strictEqual(recMsg, null, 'no snapshot -> nothing to restore');
+});
+
+// --- N1 scale + N2 slot-time detection at the executor ---------------------------
+
+test('N1: the executor WARNS when a battery write goes out with an UNCONFIRMED power_scale', async () => {
+  const { server, port } = await startSolarmanServer({});
+  try {
+    controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+    try {
+      const base = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } };
+      const sp = { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 };
+      // unset power_scale -> powerScaleConfirmed false -> N1 warn
+      const unset = controlRouting.controlRoute(base, sp, { ratedKw: 30 });
+      unset.connection.port = port;
+      const { out, warns } = await runExecWarns(DEYE_EXEC, { control: unset, setpoint: {} }, {}, {});
+      assert.ok(out, 'the write completed');
+      assert.strictEqual(out.payload.power_scale_confirmed, false);
+      assert.ok(warns.some((w) => /N1/.test(w) && /power_scale/.test(w)), 'N1 warn fired: ' + JSON.stringify(warns));
+      // explicit power_scale=10 -> confirmed -> NO N1 warn
+      const hv = controlRouting.controlRoute({ ...base, connection: { ...base.connection, power_scale: 10 } }, sp, { ratedKw: 30 });
+      hv.connection.port = port;
+      const r2 = await runExecWarns(DEYE_EXEC, { control: hv, setpoint: {} }, {}, {});
+      assert.strictEqual(r2.out.payload.power_scale_confirmed, true);
+      assert.ok(!r2.warns.some((w) => /N1/.test(w)), 'confirmed scale -> no N1 warn: ' + JSON.stringify(r2.warns));
+    } finally {
+      controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('N2: the executor reads Programs 1-6 and surfaces a slot-time conflict (never rewrites 2-6)', async () => {
+  // Programs 3 @ 00:01 and 5 @ 00:02 have started before Program 1 (00:00) is due, so at
+  // essentially any time of day a LATER program governs "now" and our Program 1 is inert.
+  const initial = installerStore();
+  initial[REG.progTimeBase + 2] = 1; // Program 3 @ 00:01 (HHMM 1)
+  initial[REG.progTimeBase + 4] = 2; // Program 5 @ 00:02
+  const { server, port, writes } = await startSolarmanServer(initial);
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
+      async (plan) => {
+        plan.connection.port = port;
+        const flow = {};
+        const { out, warns } = await runExecWarns(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flow);
+        assert.ok(out);
+        // the executor READ all 6 program start times into the snapshot
+        const snap = flow['deye_ctrl_snapshot'];
+        assert.deepStrictEqual(snap.programTimes, [0, 0, 1, 0, 2, 0], 'captured all 6 program times');
+        // the conflict flag matches the pure helper on the captured times + wall clock
+        const d = new Date(); const nowMin = d.getHours() * 60 + d.getMinutes();
+        const expected = controlRouting.deyeProgram1Displaced(snap.programTimes, nowMin);
+        assert.strictEqual(out.payload.active_slot_conflict, expected, 'flag matches the pure detection');
+        if (expected) assert.ok(warns.some((w) => /N2/.test(w)), 'displaced -> N2 warn: ' + JSON.stringify(warns));
+        // it NEVER wrote Programs 2-6 (only Program 1's own time is a write op)
+        const timeWrites = writes.filter((w) => w.reg > REG.progTimeBase && w.reg <= REG.progTimeBase + 5);
+        assert.strictEqual(timeWrites.length, 0, 'Programs 2-6 start times are never rewritten');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});

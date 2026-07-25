@@ -373,6 +373,18 @@ test('CHARGE restores Max-Sell-Power to the captured pre-control value when a sn
   assert.strictEqual(ms.encode.kind, 'restore');
 });
 
+test('EEPROM cadence unchanged: every new lever carries dwell_s >= 900 (write-on-change)', () => {
+  // The new levers (energy_pattern, solar_sell, max_sell_power) MUST NOT increase write
+  // frequency - they ride the same EEPROM write-on-change discipline as the existing ops.
+  const dis = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20, pv_limit_kw: 3 }), { ratedKw: 50 });
+  for (const w of dis.planned) {
+    assert.ok(w.dwell_s >= 900, w.role + ' must keep dwell_s >= 900, got ' + w.dwell_s);
+  }
+  for (const role of ['energy_pattern', 'solar_sell', 'max_sell_power']) {
+    assert.strictEqual(dis.planned.find((w) => w.role === role).dwell_s, 900, role + ' dwell 900');
+  }
+});
+
 // --- N1: the power scale, proven on HV (x10) and LV (x1) for 0.3 kW ---------------
 
 test('N1: 0.3 kW discharge encodes correctly on HV (power_scale 10) and LV (power_scale 1)', () => {

@@ -725,14 +725,26 @@ const controlExecSolarmanFunc = [
   "// like warnRL (30 s) and emitted ONLY here in the write executor - never on the hot",
   "// read poll. The raw bytes are the only ground truth for the live-Pilsting blocker.",
   "const diagRL = (line) => { const at = context.get('sv5_diag_at') || 0; if (now - at < 30000) return; context.set('sv5_diag_at', now); node.warn(line); };",
-  "// EEPROM write-on-change: skip a register write inside its dwell window or below",
-  "// its min_change delta (vs the last WRITTEN value). Readbacks ALWAYS run.",
+  "// The controller-owned pre-control SNAPSHOT (report §8): Deye has NO revert timer, so",
+  "// anything we change persists in EEPROM until we change it back. Before the FIRST",
+  "// control write of a session we FC3-read the installer's register values and persist",
+  "// them DURABLY in the 'file' context store (survives a restart); controlRelease (built",
+  "// by the plan node) then RESTORES them on hand-back. The persisted snap also carries",
+  "// the 6 ToU program times for the N2 slot-time check.",
+  "const SNAP_KEY = 'deye_ctrl_snapshot';",
+  "const isRelease = ctrl.mode === 'release';",
+  "let snap = flow.get(SNAP_KEY, 'file') || null;",
+  "const hhmmMin = (v) => { v = Number(v) || 0; return Math.floor(v / 100) * 60 + (v % 100); };",
+  "const program1Displaced = (times, nowMin) => { if (!Array.isArray(times) || times.length < 2) return false; const p1 = hhmmMin(times[0]); for (let i = 1; i < times.length; i++) { const s = hhmmMin(times[i]); if (s > p1 && s <= nowMin) return true; } return false; };",
+  "// EEPROM write-on-change: skip a register write inside its dwell window or below its",
+  "// min_change delta (vs the last WRITTEN value). Readbacks ALWAYS run. A RELEASE (the",
+  "// failsafe hand-back) BYPASSES write-on-change so a restore ALWAYS applies.",
   "const last = context.get('sv5_ctrl_last') || {};",
   "const toWrite = [];",
   "for (const w of (ctrl.writes || [])) {",
   "  const k = String(w.addr); const prev = last[k];",
   "  const dwellMs = (w.dwell_s || 0) * 1000;",
-  "  if (prev) {",
+  "  if (!isRelease && prev) {",
   "    if (now - prev.t < dwellMs) continue;",
   "    const delta = Math.abs((w.value & 0xffff) - (prev.v & 0xffff));",
   "    const threshold = w.min_change > 0 ? w.min_change : 1;",
@@ -766,8 +778,36 @@ const controlExecSolarmanFunc = [
   "  const txn = (frame, parse) => new Promise((res, rej) => { lastReqHex = __SV5.hexdump(frame); pending = { parse, res, rej }; acc = Buffer.alloc(0); sock.write(frame); });",
   "  sock.on('data', (chunk) => { acc = Buffer.concat([acc, chunk]); let need; try { need = __SV5.expectedFrameLength(acc); } catch (e) { if (pending) { const p = pending; pending = null; e.requestHex = lastReqHex; e.responseHex = __SV5.hexdump(acc); p.rej(e); } return; } if (need !== null && acc.length >= need && pending) { const p = pending; pending = null; const frame = acc.slice(0, need); acc = acc.slice(need); lastRespHex = __SV5.hexdump(frame); try { p.res(p.parse(frame)); } catch (e) { e.requestHex = lastReqHex; e.responseHex = e.frameHex || __SV5.hexdump(frame); p.rej(e); } } });",
   "  const nextSeq = () => { seq = (seq + 1) & 0xffff; return seq; };",
+  "  let snapshotCaptured = false, activeSlotConflict = false;",
   "  sock.connect(cport, host, async () => {",
   "    try {",
+  "      // SNAPSHOT (report §8): before the FIRST control write of a session, FC3-read the",
+  "      // installer's pre-control register values (the union controlRoute lists in",
+  "      // snapshotPlan) so controlRelease can RESTORE them, plus the 6 ToU program times",
+  "      // for the N2 check. Captured ONCE (skipped once a snapshot exists) and persisted",
+  "      // durably, so it reads NOTHING to the EEPROM and never adds write frequency.",
+  "      if (!isRelease && !snap && ctrl.snapshotPlan && toWrite.length > 0) {",
+  "        const specRegs = Array.isArray(ctrl.snapshotPlan.registers) ? ctrl.snapshotPlan.registers : [];",
+  "        const ptAddrs = Array.isArray(ctrl.snapshotPlan.programTimes) ? ctrl.snapshotPlan.programTimes : [];",
+  "        const capAddrs = []; const capSeen = {};",
+  "        for (const s of specRegs) { if (!capSeen[s.addr]) { capSeen[s.addr] = 1; capAddrs.push(s.addr); } }",
+  "        for (const a of ptAddrs) { if (!capSeen[a]) { capSeen[a] = 1; capAddrs.push(a); } }",
+  "        const capVal = {};",
+  "        for (const a of capAddrs) { const s = nextSeq(); const regs = await txn(__SV5.buildReadRequest({ loggerSerial: serial, sequence: s, slaveId: slaveId, startReg: a, count: 1 }), (b) => __SV5.readRegistersFromResponse(b, { expectLoggerSerial: serial })); capVal[a] = (regs[0] || 0) & 0xffff; }",
+  "        const snapRegs = {}; for (const s of specRegs) snapRegs[s.addr] = capVal[s.addr];",
+  "        const progTimes = ptAddrs.map((a) => capVal[a]);",
+  "        snap = { family: ctrl.family, connection: { ip: host, port: cport, serial: serial, mb_slave_id: slaveId, control_write_fc: (((toWrite[0] && toWrite[0].fc) === 6) ? 6 : 16) }, regs: snapRegs, programTimes: progTimes, capturedAt: now };",
+  "        flow.set(SNAP_KEY, snap, 'file');",
+  "        snapshotCaptured = true;",
+  "        // N2 (report §8.9): is a LATER Program (2..6) governing 'now', making our",
+  "        // Program 1 inert? Detect + WARN (advisory); we NEVER rewrite Programs 2..6.",
+  "        const d = new Date(); const nowMin = d.getHours() * 60 + d.getMinutes();",
+  "        activeSlotConflict = program1Displaced(progTimes, nowMin);",
+  "        if (activeSlotConflict) warnRL('slot', 'Deye-Steuerung N2 (' + target + '): ein spaeteres ToU-Programm ist um ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + ' Uhr aktiv - Programm 1 wird ignoriert. Startzeiten der Programme 2-6 pruefen (einmalige Inbetriebnahme, siehe DEYE.md).');",
+  "      }",
+  "      // N1 (report §6): warn once if a battery-power write goes out with an UNCONFIRMED",
+  "      // power scale (an HV SG01HP3 under an unset power_scale is under-scaled 10x).",
+  "      if (!isRelease && ctrl.powerScaleConfirmed === false) { let hasBp = false; for (const w of toWrite) { if (w.role === 'battery_power') { hasBp = true; break; } } if (hasBp) warnRL('scale', 'Deye-Steuerung N1 (' + target + '): power_scale unbestaetigt - HV (SG01HP3) muss power_scale=10 setzen, sonst wird die Leistung 10x zu klein geschrieben (DEYE.md).'); }",
   "      // WRITE function code per WriteOp: FC16 (write-multiple, 0x10) is the default",
   "      // because many Deye firmwares IGNORE an FC6 write (accept the frame, never",
   "      // answer, no register change - the live-Pilsting symptom); the working Deye",
@@ -785,13 +825,51 @@ const controlExecSolarmanFunc = [
   "      const all = registers.every((r) => r.match);",
   "      const wrote = toWrite.length > 0;",
   "      const relMode = ctrl.mode === 'release';",
+  "      // A successful hand-back RELEASES control: clear the durable snapshot so the next",
+  "      // control session captures a fresh baseline and crash recovery has nothing to undo.",
+  "      if (relMode && all) { flow.set(SNAP_KEY, null, 'file'); }",
   "      node.status({ fill: all ? 'green' : 'red', shape: 'dot', text: (relMode ? 'Freigabe ' : '') + (all ? ('bestätigt (' + registers.length + ')') : 'Abweichung') + (wrote ? '' : ' (nur gelesen)') });",
   "      const sp = msg.setpoint || {};",
-  "      msg.payload = { ts: new Date().toISOString(), family: ctrl.family, source: sp.source || '', slot_start: sp.slot_start, control_enabled: !!ctrl.controlEnabled, certified: !!ctrl.certified, mode: ctrl.mode || 'normal', wrote: wrote, skipped_dwell: (ctrl.writes || []).length - toWrite.length, registers: registers };",
+  "      msg.payload = { ts: new Date().toISOString(), family: ctrl.family, source: sp.source || '', slot_start: sp.slot_start, control_enabled: !!ctrl.controlEnabled, certified: !!ctrl.certified, mode: ctrl.mode || 'normal', wrote: wrote, skipped_dwell: (ctrl.writes || []).length - toWrite.length, snapshot_captured: snapshotCaptured, active_slot_conflict: activeSlotConflict, power_scale_confirmed: ctrl.powerScaleConfirmed !== false, registers: registers };",
   "      finish(null, msg);",
   "    } catch (e) { finish(e); }",
   "  });",
   "});",
+].join('\n');
+
+// crashRecoveryFunc - the STARTUP crash-recovery path (report §8): Deye has no revert
+// timer, so if a control session was interrupted (crash / power loss / container
+// restart) the installer's changed Energy-Pattern / Solar-Sell / export-limit would
+// stay LATCHED in EEPROM forever. On every flow start this node checks the DURABLE
+// snapshot ('file' store): if one exists (control was held but never handed back) it
+// emits the controlRelease restore plan to the Deye executor, which writes the
+// installer's captured values back and clears the snapshot. `was_controlling` lives in
+// the volatile node context (reset on restart), so a leftover snapshot at startup IS
+// the crash signal. The selection is rebuilt FROM the snapshot itself, so recovery
+// works even before the retained edge/inverter/config reloads. Carries a synced copy
+// of controlRelease() (a flow cannot require a repo file; flows-sync pins it).
+const crashRecoveryFunc = [
+  "// Absturz-Wiederherstellung (report §8): prueft bei jedem Flow-Start, ob ein",
+  "// pre-control Snapshot in der 'file'-Kontextablage liegt (ein Steuerbefehl, der vor",
+  "// einem Absturz/Neustart nie zurueckgegeben wurde). Deye hat KEINEN Revert-Timer,",
+  "// also wuerde eine geaenderte Energy-Pattern/Solar-Sell/Sell-Power sonst dauerhaft im",
+  "// EEPROM stehen bleiben. Snapshot vorhanden -> Restore-Plan an den Deye-Executor.",
+  controlReleaseSource,
+  "var snap = flow.get('deye_ctrl_snapshot', 'file');",
+  "if (!snap || !snap.regs || typeof snap.regs !== 'object') { node.status({ fill: 'grey', shape: 'ring', text: 'kein Snapshot - nichts wiederherzustellen' }); return null; }",
+  "// Rebuild the minimal Deye selection FROM the snapshot (robust: the retained",
+  "// edge/inverter/config may not have reloaded yet this early after start).",
+  "var conn = snap.connection || {};",
+  "var sel = { schema_version: '1.0', brand: 'deye', family: snap.family, communication: 'solarman_v5', control_tier: 3, connection: conn };",
+  "// A calibration-flagged restore so the hand-back is executable even for an uncertified",
+  "// family (mirrors the plan node's auto-revert bypass); the executor clears the snapshot.",
+  "var rel = controlRelease(sel, { calibration: true, snapshot: snap.regs });",
+  "if (!Array.isArray(rel.writes) || rel.writes.length === 0) { node.status({ fill: 'grey', shape: 'ring', text: 'Snapshot ohne Restore-Plan' }); return null; }",
+  "node.warn('Deye-Steuerung Absturz-Wiederherstellung: Snapshot gefunden (' + rel.writes.length + ' Register) - setze die Vor-Steuerungs-Werte des Installateurs zurueck.');",
+  "node.status({ fill: 'yellow', shape: 'dot', text: 'Absturz-Wiederherstellung (' + rel.writes.length + ')' });",
+  "msg.control = rel;",
+  "msg.setpoint = { source: 'crash_recovery' };",
+  "return msg;",
 ].join('\n');
 
 // --- Additional-source read fan-out (multi-source Anlage, Phase 1) -----------
@@ -1456,6 +1534,18 @@ const autoNodes = [
   Object.assign(fn('auto-control-exec', 'SunSpec/Modbus schreiben + zuruecklesen', controlExecFunc, 1, [['auto-control-readback']]), { x: 650, y: 660 }),
   Object.assign(fn('auto-control-exec-deye', 'Deye Solarman-V5 schreiben + zuruecklesen', controlExecSolarmanFunc, 1, [['auto-control-readback']]), { x: 650, y: 720 }),
   { id: 'auto-control-readback', type: 'vp-control-readback', z: TAB, name: 'Rueckmeldung an Core', core: 'cfg-vp-core', x: 930, y: 680, wires: [] },
+
+  // Crash-recovery (report §8): on startup, if a durable pre-control snapshot is left
+  // over (control was held but never handed back), restore the installer's Deye
+  // registers. Deye has no revert timer, so this is what stops a changed Energy-Pattern
+  // / Solar-Sell / export-limit staying latched across a crash. onceDelay lets the
+  // 'file' context store + retained config settle first.
+  {
+    id: 'auto-control-recover-tick', type: 'inject', z: TAB, name: 'Start: Snapshot pruefen',
+    props: [{ p: 'payload' }], repeat: '', crontab: '', once: true, onceDelay: '8',
+    topic: '', payload: '', payloadType: 'date', x: 150, y: 780, wires: [['auto-control-recover']],
+  },
+  Object.assign(fn('auto-control-recover', 'Absturz-Wiederherstellung', crashRecoveryFunc, 1, [['auto-control-exec-deye']]), { x: 400, y: 780 }),
 ];
 
 // --- Simulator tab control path (the safe write->readback proof vs edge/sim) --
