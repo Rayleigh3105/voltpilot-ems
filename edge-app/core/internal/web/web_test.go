@@ -161,6 +161,7 @@ type fakeCalibration struct {
 	lastScale     *bool
 	lastInvertSig  *bool
 	lastPowScale   *float64
+	lastInvertBatt *bool
 	certifyCalls   int
 	decertifyCalls int
 	confirmErr     error
@@ -180,8 +181,8 @@ func (f *fakeCalibration) CalibrationConfirm(sign, scale *bool) (calibration.Sna
 	f.lastSign, f.lastScale = sign, scale
 	return f.snap, f.confirmErr
 }
-func (f *fakeCalibration) CalibrationCorrection(invertControlSign *bool, powerScale *float64) (calibration.Snapshot, error) {
-	f.lastInvertSig, f.lastPowScale = invertControlSign, powerScale
+func (f *fakeCalibration) CalibrationCorrection(invertControlSign *bool, powerScale *float64, invertBattSign *bool) (calibration.Snapshot, error) {
+	f.lastInvertSig, f.lastPowScale, f.lastInvertBatt = invertControlSign, powerScale, invertBattSign
 	return f.snap, nil
 }
 func (f *fakeCalibration) CalibrationCertify() (calibration.Snapshot, error) {
@@ -941,7 +942,7 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 		`id="calCard"`, `id="calState"`, `id="calUnavail"`, `id="calBody"`,
 		`id="calLive"`, `id="calArm"`, `id="calTestStep"`, `id="calMag"`,
 		`id="calCharge"`, `id="calDischarge"`, `id="calAbort"`, `id="calVerdict"`,
-		`id="calCorrect"`, `id="calInvert"`, `id="calScale"`, `id="calSign"`,
+		`id="calCorrect"`, `id="calInvert"`, `id="calBattInvert"`, `id="calScale"`, `id="calSign"`,
 		`id="calConfirm"`, `id="calCertify"`, `id="calDecertify"`, `src="calibration.js"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -2000,6 +2001,14 @@ func TestCalibrationEndpoints(t *testing.T) {
 	}
 	if fc.lastInvertSig == nil || !*fc.lastInvertSig || fc.lastPowScale == nil || *fc.lastPowScale != 10 {
 		t.Fatalf("correction not forwarded: %v %v", fc.lastInvertSig, fc.lastPowScale)
+	}
+	// The READ-side measured-battery-sign correction is forwarded too (Defect 1).
+	fc.lastInvertBatt = nil
+	if code := post("/api/calibration/correction", `{"invert_batt_sign":true}`); code != 200 {
+		t.Fatalf("batt-sign correction status %d", code)
+	}
+	if fc.lastInvertBatt == nil || !*fc.lastInvertBatt {
+		t.Fatalf("invert_batt_sign not forwarded: %v", fc.lastInvertBatt)
 	}
 	if code := post("/api/calibration/certify", ``); code != 200 || fc.certifyCalls != 1 {
 		t.Fatalf("certify status %d calls %d", code, fc.certifyCalls)

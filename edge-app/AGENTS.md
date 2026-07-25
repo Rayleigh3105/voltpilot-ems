@@ -507,6 +507,7 @@ envelope — implemented exactly:
   resets+decertifies), `web` endpoint + card-structure tests, `inverter-control-routing.test.js`
   + `deye-control.e2e.test.js` (real in-process Solarman-V5: a small calibration write
   lands + reads back + matches WITHOUT certifying; the revert disables ToU on the wire).
+- **The verdict is only trustworthy from a QUIET baseline + a LANDED write (fm/vp-deye-sign-fix-v6, 2026-07-25).** Two live-Pilsting defects: (1) `Verdict` judged the ABSOLUTE measured battery power, so the battery's NATURAL activity (a ~31 kW PV-surplus charge) produced a confident verdict unrelated to the command. `calibration.Verdict` now flags `BaselineBusy` (no confident sign/scale) when `|before| > max(0.1, 0.5·|cmd|)` or the baseline is unknown - a ToU command sets absolute power, so absolute-after is fine ONLY from a near-idle baseline. The card also gates the "hat die Batterie sich bewegt?" ROW on `write_readback_ok` for the CURRENT test and marks an idle-phase (stale) test "nicht mehr aktuell" - a stale/never-landed test never shows a confident row again. This makes `CanConfirm*`/`CanCertify` STRICTER, never looser. (2) The MEASURED battery sign was INVERTED - see the read-sign footgun in the Deye-control-WRITE section.
 
 ## vp-modbus-read (MB-M1): generic Modbus flow read + the shared connection manager
 
@@ -588,6 +589,7 @@ facts (branch `fm/vp-deye-write-fix-x2`, PR fixing the reproduced blocker):
   = Program 1 start 00:00, so the commanded slot is the day's BASE window; without it a
   stale program time can leave Program 1 inactive at "now" and the inverter ignores the
   setpoint even though registers echo. Still `bench_pending` (Deye uncertified).
+- **READ-side battery sign is `invert_batt_sign`, plumbed via `BusPayload` (fm/vp-deye-sign-fix-v6, 2026-07-25).** The raw Deye battery register (`0x024E` hybrid_3p) sign is FIRMWARE-DEPENDENT (DEYE.md §5; the live Pilsting SUN-30K-SG01HP3-EU HV reports CHARGE as NEGATIVE), so a self-wired Deye published a `battery_power_kw` inverted vs the documented `+ charge / − discharge` - which the balance-derived house AND the First-Light verdict both assume. FOOTGUN: `deye/deye-decode.js` + `inverter-routing.js` + `build-flows.js` + `flows.json` ALL already forwarded `conn.invert_batt_sign`, but the Go `inverter.Connection`/`BusPayload` never published it, so the whole self-wiring path (the manual "Deye (Vorlage)" tab is retired) silently used the raw sign. Fix = `Connection.InvertBattSign` published on `edge/inverter/config` (solarman_v5 only; cleared elsewhere) - the READ-side twin of `InvertControlSign`. It is an operator setup field + a "Mess-Vorzeichen der Batterie umkehren" toggle on the `:8484` calibration card (resets the proof + decertifies like a control-sign correction). If you add a hybrid READ transport, publish `invert_batt_sign` in `BusPayload` or its measured battery reads backwards on inverted firmwares.
 
 ## Maintaining this file
 

@@ -185,6 +185,8 @@ func solarmanFields() []Field {
 			Help: "Meist 1."},
 		{Key: "invert_grid_sign", Label: "Netz-Vorzeichen invertieren", Type: "checkbox",
 			Help: "Nur setzen, wenn Netzbezug/-einspeisung bei der Kalibrierung vertauscht sind."},
+		{Key: "invert_batt_sign", Label: "Batterie-Vorzeichen invertieren (Messung)", Type: "checkbox",
+			Help: "Nur setzen, wenn die gemessene Batterieleistung verkehrt herum ist: bei Ladung muss der Wert positiv sein. Zeigt die Kalibrierung/das Cockpit die Batterie beim Laden negativ, hier setzen (firmwareabhängig, z. B. bei manchen SG01HP3-HV-Geräten)."},
 		{Key: "power_scale", Label: "Leistungsskalierung", Type: "select", Default: 0,
 			Help: "Wird bei 3-phasigen Hybriden (SG04LP3/SG01HP3) automatisch aus dem Gerät erkannt (Niedervolt = Watt, Hochvolt = Dekawatt ×10). Nur als manuelle Übersteuerung ändern, wenn die automatische Erkennung nicht greift.",
 			Options: []Opt{
@@ -587,6 +589,19 @@ type Connection struct {
 	// transports (solarman_v5 / modbus_tcp / fronius_sunspec).
 	InvertControlSign bool `json:"invert_control_sign,omitempty"`
 
+	// InvertBattSign flips the battery-power READ sign so the decoded
+	// `battery_power_kw` honors the documented convention (+ charge / - discharge),
+	// which the cloud's balance-derived battery_kw and the First-Light verdict both
+	// assume. Like InvertGridSign it is a READ-path sign and, per DEYE.md, the raw
+	// Deye battery register (0x024E) sign is FIRMWARE-DEPENDENT (the captain's live
+	// SUN-30K-SG01HP3-EU HV firmware reports charge as NEGATIVE) - so it is an
+	// operator-set escape hatch, NOT a silent universal flip. It is the read-side
+	// twin of InvertControlSign (which is the write side). The Node-RED Deye reader
+	// already forwards conn.invert_batt_sign into deye/deye-decode.js; this field is
+	// what carries it through the self-wiring path (BusPayload below). Solarman-V5
+	// (Deye) only - the other transports have no hybrid battery register here.
+	InvertBattSign bool `json:"invert_batt_sign,omitempty"`
+
 	// modbus_tcp
 	UnitID  int    `json:"unit_id,omitempty"`
 	Profile string `json:"profile,omitempty"`
@@ -721,6 +736,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Profile = registerFamily // the register-map family IS the Modbus/SunSpec profile
 		// fields of the other transports are not part of this one.
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, false, 0, false, ""
+		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 	case CommFroniusSolarAPI:
 		// The Solar API (HTTP/JSON) needs only host + port; no serial, unit id or
 		// auth. `insecure_tls` and `invert_grid_sign` (shared) are the only extras.
@@ -730,7 +746,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		// fields of the other transports are not part of this one (Fronius Solar API
 		// is read-only, so the control sign is meaningless here).
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.ModelType = "", 0, 0, ""
-		conn.UnitID, conn.Profile, conn.InvertControlSign = 0, "", false
+		conn.UnitID, conn.Profile, conn.InvertControlSign, conn.InvertBattSign = 0, "", false, false
 	case CommFroniusSunSpec:
 		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
 		// hint + the grid-sign escape hatch. The register-map profile is the single
@@ -756,6 +772,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Profile = registerFamily // sunspec_live
 		// fields of the other transports are not part of this one.
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS = "", 0, 0, false
+		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -766,7 +783,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		// consumer source, no control sign).
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
-		conn.InvertControlSign = false
+		conn.InvertControlSign, conn.InvertBattSign = false, false
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -788,6 +805,15 @@ func (s Selection) BusPayload() []byte {
 		conn["serial"] = s.Connection.Serial
 		conn["mb_slave_id"] = s.Connection.MbSlaveID
 		conn["invert_grid_sign"] = s.Connection.InvertGridSign
+		// invert_batt_sign is the READ-path battery sign (firmware-dependent per
+		// DEYE.md): with it the decoded battery_power_kw honors the documented
+		// + charge / - discharge convention the balance-derived battery_kw and the
+		// First-Light verdict assume. The Deye reader already forwards it into
+		// deye/deye-decode.js; publishing it here is what lets the SELF-WIRING path
+		// carry it (without this the field was unreachable and every self-wired Deye
+		// used the raw register sign, inverted on the captain's HV firmware). Absent
+		// = false.
+		conn["invert_batt_sign"] = s.Connection.InvertBattSign
 		conn["power_scale"] = s.Connection.PowerScale
 		// invert_control_sign is the WRITE-path sign the calibration step proves; the
 		// Deye control adapter reads it. Absent = false (no inversion).

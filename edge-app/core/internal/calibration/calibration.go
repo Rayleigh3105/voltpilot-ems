@@ -69,6 +69,26 @@ const RevertGrace = 30 * time.Second
 // live/topology 0.05 kW deadband.
 const moveDeadbandKw = 0.05
 
+// quietBaselineFrac / quietBaselineFloorKw bound how much the battery may ALREADY be
+// moving BEFORE a test for the measured after-value to be attributable to the
+// command. A ToU command sets the battery's ABSOLUTE power, so the verdict judges the
+// after-value - but only from a near-idle baseline. If the battery was already
+// charging/discharging hard (the captain's live case: a ~31 kW PV-surplus charge),
+// the measured after-value reflects that natural activity, NOT our <=1 kW test, so no
+// confident sign/scale verdict may be drawn (Verdict.BaselineBusy). The threshold
+// scales with the command so a bigger test tolerates a slightly busier baseline, with
+// a small absolute floor for BMS standby noise.
+const (
+	quietBaselineFrac    = 0.5
+	quietBaselineFloorKw = 2 * moveDeadbandKw // 0.1 kW
+)
+
+// quietBaselineKw is the largest |before| that still counts as "the battery was in
+// rest" for a test of the given signed command.
+func quietBaselineKw(commandKw float64) float64 {
+	return math.Max(quietBaselineFloorKw, quietBaselineFrac*math.Abs(commandKw))
+}
+
 // magnitudeLo/magnitudeHi bound the |measured|/|commanded| ratio that counts as
 // "scale is right". Outside [Lo, Hi] the scale is wrong; ScaleFactorHigh/Low mark
 // the ~10x (HV decawatt) and ~0.1x errors so the UI can suggest power_scale.
@@ -338,9 +358,13 @@ func (s *Session) Passed() bool { return s.signConfirmed && s.scaleConfirmed }
 func (s *Session) CanCertify() bool { return s.Passed() && s.writeReadbackOK }
 
 // Verdict cross-checks a commanded battery setpoint against the MEASURED battery
-// power (the "hat die Batterie sich bewegt?" half). It compares the ABSOLUTE
-// measured value against the command (the ToU forces the battery toward it), plus
-// the raw before->after delta as supporting context. Pure.
+// power (the "hat die Batterie sich bewegt?" half). A ToU command sets the battery's
+// ABSOLUTE power, so it judges the absolute measured value against the command - but
+// ONLY when the battery was near-idle BEFORE the test (a quiet baseline), so the
+// measured movement is actually attributable to the command and not to the battery's
+// natural charging/discharging. An unquiet (or unknown) baseline yields BaselineBusy
+// and NO confident sign/scale verdict. The raw before->after delta is kept as
+// supporting context. Pure.
 func Verdict(commandKw float64, before, after Reading) VerdictResult {
 	v := VerdictResult{CommandKw: commandKw}
 	if after.BatteryKw != nil {
@@ -353,6 +377,21 @@ func Verdict(commandKw float64, before, after Reading) VerdictResult {
 	}
 	if v.MeasuredKw == nil {
 		v.Text = "Batterie-Leistung wird noch nicht gemessen - warten Sie auf das erste Messwert-Update."
+		return v
+	}
+	// Attribution gate: the measured after-value only reflects the command from a
+	// near-idle baseline. Without it (unknown baseline, or the battery already busy),
+	// the battery's own activity would be mistaken for our small test's effect - the
+	// exact fault behind the false "Richtung stimmt" the operator saw during a ~31 kW
+	// PV-surplus charge. No confident verdict then - the operator retries when quiet.
+	if before.BatteryKw == nil {
+		v.BaselineBusy = true
+		v.Text = "Basislinie unbekannt - bitte den Test erneut starten, damit die Batteriebewegung dem Befehl zugeordnet werden kann."
+		return v
+	}
+	if math.Abs(*before.BatteryKw) > quietBaselineKw(commandKw) {
+		v.BaselineBusy = true
+		v.Text = "Basislinie zu unruhig: die Batterie war vor dem Test nicht in Ruhe. Bitte den Test wiederholen, wenn die Batterie ruhig ist."
 		return v
 	}
 	m := *v.MeasuredKw
@@ -404,6 +443,7 @@ type VerdictResult struct {
 	DeltaKw      *float64 `json:"delta_kw"`      // after - before (supporting)
 	SignOK       bool     `json:"sign_ok"`       // measured direction matches command
 	SignInverted bool     `json:"sign_inverted"` // measured OPPOSITE -> suggest invert_control_sign
+	BaselineBusy bool     `json:"baseline_busy"` // battery was not near-idle before the test -> verdict not attributable
 	MagnitudeOK  bool     `json:"magnitude_ok"`  // |measured| ~= |command|
 	ScaleRatio   *float64 `json:"scale_ratio"`   // |measured| / |command|
 	ScaleHint    string   `json:"scale_hint"`    // "" | "hoch" (x10) | "niedrig"
@@ -438,6 +478,10 @@ type Snapshot struct {
 	// so the correction UI shows what is set. PowerScale 0 = auto-detect.
 	InvertControlSign bool    `json:"invert_control_sign"`
 	PowerScale        float64 `json:"power_scale"`
+	// InvertBattSign is the current READ-path battery sign on the connection (agent-set),
+	// so the correction UI can show + toggle it when the MEASURED battery reads inverted
+	// vs the cockpit (charge must be positive). Deye (solarman_v5) only.
+	InvertBattSign bool `json:"invert_batt_sign"`
 
 	SocPct            *float64 `json:"soc_pct"`
 	BatteryKw         *float64 `json:"battery_kw"`
