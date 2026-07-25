@@ -12,15 +12,6 @@ import type { VerlaufRange, VerlaufSeries } from '../verlauf';
  * dual y-axis — one measurement, one axis. Colored by the measurement's role.
  */
 
-/** The teal grid hue (a flow token, not part of chartTheme). */
-function gridColor(): string {
-  if (typeof window !== 'undefined' && typeof getComputedStyle === 'function') {
-    const v = getComputedStyle(document.documentElement).getPropertyValue('--vp-flow-grid').trim();
-    if (v) return v;
-  }
-  return '#0ea5a3';
-}
-
 /** Series color: per the channel's nature when we know it (so a hybrid's
  * PV-Leistung reads orange, not the component's storage hue), else the role. */
 function seriesColor(channel: string, role: ComponentRole): string {
@@ -41,7 +32,7 @@ function seriesColor(channel: string, role: ComponentRole): string {
       return t.temp;
     case 'power_kw':
     case 'netz':
-      return role === 'grid' ? gridColor() : t.load;
+      return role === 'grid' ? t.flowGrid : t.load;
   }
   switch (role) {
     case 'pv':
@@ -53,7 +44,7 @@ function seriesColor(channel: string, role: ComponentRole): string {
       return t.load;
     case 'grid':
     default:
-      return gridColor();
+      return t.flowGrid;
   }
 }
 

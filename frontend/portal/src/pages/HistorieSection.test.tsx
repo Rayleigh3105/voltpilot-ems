@@ -14,7 +14,7 @@ import {
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
 vi.mock('../HistoryChart', () => ({
   HistoryDayChart: () => <div data-testid="day-chart" />,
-  HistoryEnergyChart: () => <div data-testid="energy-chart" />,
+  HistoryEnergieChart: () => <div data-testid="energy-chart" />,
 }));
 
 const site: Site = {

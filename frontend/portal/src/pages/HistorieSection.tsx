@@ -21,7 +21,7 @@ import { InfoTip } from '../components/InfoTip';
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { VerlaufExplorer } from '../components/VerlaufExplorer';
-import { HistoryDayChart, HistoryEnergyChart } from '../HistoryChart';
+import { HistoryDayChart, HistoryEnergieChart } from '../HistoryChart';
 
 /**
  * Historie has two faces: **Bilanz & Erlöse** (the money/energy balance - the
@@ -278,7 +278,7 @@ function BilanzFace({ site, range, anchor }: { site: Site; range: HistoryRange; 
                   ? 'Der Tagesverlauf Ihrer Anlage: wie viel Strom die PV erzeugt, wie viel das Haus verbraucht und wie viel aus dem Netz kommt oder eingespeist wird.'
                   : 'Erzeugung und Verbrauch je Abschnitt im gewählten Zeitraum - als Energiemengen in Kilowattstunden.'}
               </ChartSubtitle>
-              <HistoryEnergyChart history={history} />
+              <HistoryEnergieChart history={history} />
             </Card>
           </section>
 
