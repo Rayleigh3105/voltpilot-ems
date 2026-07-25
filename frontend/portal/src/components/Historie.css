@@ -81,6 +81,17 @@
   font-size: 0.74rem;
 }
 
+/* --- Vorzeichen um die betonte Nulllinie ---------------------------------- */
+
+.vp-energie-nulllinie {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
 /* --- Der ehrliche Grund einer fehlenden Reihe ------------------------------ */
 
 .vp-energie-fehlt {

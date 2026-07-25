@@ -127,6 +127,11 @@ export function HistoryEnergieChart({ history }: { history: History }) {
           itemStyle: { color },
         };
         // Die betonte Nulllinie hängt an der ersten gezeichneten kW/kWh-Reihe.
+        // Die RICHTUNGSWORTE stehen bewusst NICHT auf der Linie: im echten
+        // Diagramm liegen dort die Kurven, die Beschriftung wurde unlesbar
+        // durchkreuzt (und ECharts zeichnete von zwei Labels auf derselben Linie
+        // nur eines). Sie stehen darum als lesbare Zeile unter der Legende -
+        // gleicher Inhalt, umbruchfähig, auch am Telefon.
         const zeroLine =
           isFirst && !s.zweiteAchse
             ? {
@@ -137,24 +142,7 @@ export function HistoryEnergieChart({ history }: { history: History }) {
                     {
                       yAxis: 0,
                       lineStyle: { color: t.axis, width: 1.6, type: 'solid' as const },
-                      label: {
-                        formatter: '↑ Bezug · Laden',
-                        color: t.axis,
-                        position: 'insideStartTop' as const,
-                        rotate: 0,
-                      },
-                    },
-                    {
-                      yAxis: 0,
-                      // Zweiter Eintrag NUR für das untere Wort - die Linie selbst
-                      // zeichnet der erste (identische Position, unsichtbare Linie).
-                      lineStyle: { opacity: 0 },
-                      label: {
-                        formatter: '↓ Einspeisung · Entladen',
-                        color: t.axis,
-                        position: 'insideStartBottom' as const,
-                        rotate: 0,
-                      },
+                      label: { show: false },
                     },
                     ...(jetztIndex > 0 && jetztIndex < zeiten.length - 1
                       ? [
@@ -203,7 +191,7 @@ export function HistoryEnergieChart({ history }: { history: History }) {
           textStyle: { fontFamily: t.font, color: t.axis },
           grid: {
             top: 26,
-            right: brauchtSoc && !narrow ? 46 : 12,
+            right: brauchtSoc ? (narrow ? 26 : 46) : 12,
             bottom: narrow ? 8 : 34,
             left: 8,
             containLabel: true,
@@ -262,9 +250,17 @@ export function HistoryEnergieChart({ history }: { history: History }) {
               position: 'right',
               min: 0,
               max: 100,
-              show: brauchtSoc && !narrow,
+              // Shown WHENEVER the Ladestand is drawn, phone included: its 0..100
+              // scale does not share the kW zero, so without the labelled axis a
+              // 30 % night reading sits visually BELOW the emphasised zero line
+              // and reads as a negative power (measured in the browser at 375 px).
+              show: brauchtSoc,
               splitLine: { show: false },
-              axisLabel: { color: t.soc, formatter: '{value} %' },
+              axisLabel: {
+                color: t.soc,
+                formatter: narrow ? '{value}' : '{value} %',
+                showMinLabel: false,
+              },
             },
           ],
           // Zoom/Brush: am Telefon entfällt der Streifen (Entwurf), das
@@ -310,6 +306,12 @@ export function HistoryEnergieChart({ history }: { history: History }) {
         hidden={hidden}
         onToggle={(label) => setHidden((prev) => toggleSerie(prev, label, vorhanden.length))}
       />
+      {sichtbar.some((s) => s.signed) && (
+        <p className="vp-energie-nulllinie">
+          <span>↑ über der Nulllinie: Bezug · Laden</span>
+          <span>↓ darunter: Einspeisung · Entladen</span>
+        </p>
+      )}
       {fehlend.length > 0 && (
         <p className="vp-note vp-energie-fehlt">
           {fehlend.map((s) => s.fehlt).join(' ')}
@@ -367,7 +369,10 @@ export function HistoryDayChart({ history }: { history: History }) {
       markLineData.push({
         xAxis: nowIdx,
         lineStyle: { color: t.price, type: 'solid', width: 2 },
-        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop' },
+        // `rotate: 0` is load-bearing: on a category axis an inside-positioned
+        // markLine label otherwise renders ROTATED along the line (the
+        // documented edge-label gotcha) - measured in the browser.
+        label: { formatter: 'Jetzt', color: t.price, position: 'insideStartTop', rotate: 0 },
       });
 
     chart.setOption(
