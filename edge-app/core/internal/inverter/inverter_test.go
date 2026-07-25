@@ -300,6 +300,80 @@ func TestReadBattSignIsPreservedAndPublished(t *testing.T) {
 	}
 }
 
+// TestControlWriteFcIsPreservedAndPublished pins the control WRITE-function-code
+// switch (the fix for the Deye that ignores an FC6 write): the field must survive
+// Normalize on solarman, reach edge/inverter/config so the Node-RED control adapter
+// can honor it, default to 0 (auto -> FC16 for Deye), validate to {0,6,16}, and NOT
+// leak onto the other transports (Deye/Solarman only).
+func TestControlWriteFcIsPreservedAndPublished(t *testing.T) {
+	cat := DefaultCatalog()
+
+	// default (absent) stays 0 = auto -> FC16 downstream.
+	def, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064"},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if def.Connection.ControlWriteFc != 0 {
+		t.Errorf("default control_write_fc should be 0 (auto -> FC16), got %v", def.Connection.ControlWriteFc)
+	}
+
+	// an explicit FC6 flip-back is preserved and published.
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064", ControlWriteFc: 6},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel.Connection.ControlWriteFc != 6 {
+		t.Fatal("Normalize must preserve control_write_fc=6 on a solarman selection")
+	}
+	var m map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
+		t.Fatal(err)
+	}
+	conn, _ := m["connection"].(map[string]any)
+	if conn["control_write_fc"].(float64) != 6 {
+		t.Errorf("edge/inverter/config must carry control_write_fc=6 so the adapter can flip back to FC6, got %v", conn["control_write_fc"])
+	}
+
+	// FC16 is accepted explicitly too; a garbage code is rejected.
+	if _, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064", ControlWriteFc: 16},
+	}, now); err != nil {
+		t.Errorf("control_write_fc=16 must be accepted: %v", err)
+	}
+	if _, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064", ControlWriteFc: 3},
+	}, now); err == nil {
+		t.Error("control_write_fc=3 (not 0/6/16) must be rejected")
+	}
+
+	// The control write-FC is meaningless on transports without the Deye control
+	// path - it must be dropped, exactly like invert_batt_sign.
+	for _, tc := range []struct {
+		name string
+		req  SelectionRequest
+	}{
+		{"generic modbus", SelectionRequest{Brand: BrandGenericModbus, Family: FamSunSpec, Connection: Connection{IP: "10.0.0.9", ControlWriteFc: 6}}},
+		{"fronius solar api", SelectionRequest{Brand: BrandFronius, Family: FamFroniusSolarAPI, Connection: Connection{IP: "10.0.0.9", ControlWriteFc: 6}}},
+		{"go-e", SelectionRequest{Brand: BrandGoe, Family: FamGoeHTTP, Connection: Connection{IP: "10.0.0.9", ControlWriteFc: 6}}},
+	} {
+		s, err := cat.Normalize(tc.req, now)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if s.Connection.ControlWriteFc != 0 {
+			t.Errorf("%s: a transport without the Deye control path must not keep control_write_fc", tc.name)
+		}
+	}
+}
+
 // TestControlTierPerBrand pins the battery-control primitive each catalogued brand
 // declares - the dispatch fact the Node-RED controlRoute keys on. Deye=ToU(3),
 // generic SunSpec + both Fronius brands = SunSpec(1), the go-e wallbox = read-only

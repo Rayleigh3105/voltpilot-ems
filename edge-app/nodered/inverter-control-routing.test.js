@@ -299,6 +299,59 @@ test('Deye string/micro (no battery) only plans the active-power limit at 0x0028
   assert.strictEqual(r.planned.find((w) => w.role === 'battery_power'), undefined);
 });
 
+// --- control_write_fc: FC16 by default, FC6 as the flip-back (PR y7) -----------
+//
+// The live-Pilsting fix: many Deye firmwares ACCEPT an FC6 write but never answer it
+// and do not change the register, so the demonstrably-working Deye integrations write
+// via FC16. Every Deye WriteOp carries the resolved write function code; the executor
+// dispatches on WriteOp.fc. Only the wire function changes - addr/value/order/encode
+// and the two-gate certification discipline are all unchanged.
+
+test('resolveDeyeWriteFc: FC16 by default (auto/absent/16), FC6 only on an explicit 6', () => {
+  assert.strictEqual(C.resolveDeyeWriteFc({}), 16, 'absent -> FC16');
+  assert.strictEqual(C.resolveDeyeWriteFc({ control_write_fc: 0 }), 16, 'auto (0) -> FC16');
+  assert.strictEqual(C.resolveDeyeWriteFc({ control_write_fc: 16 }), 16, 'explicit 16 -> FC16');
+  assert.strictEqual(C.resolveDeyeWriteFc({ control_write_fc: 6 }), 6, 'explicit 6 -> FC6');
+  assert.strictEqual(C.resolveDeyeWriteFc({ control_write_fc: '6' }), 6, 'string "6" -> FC6');
+  assert.strictEqual(C.resolveDeyeWriteFc(null), 16, 'null connection -> FC16');
+});
+
+test('Deye WriteOps carry FC16 by default (the fix), and the register mapping is unchanged', () => {
+  const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 }), { ratedKw: 50 });
+  assert.ok(r.planned.length >= 5, 'the ToU plan is present');
+  assert.ok(r.planned.every((w) => w.fc === 16), 'every Deye WriteOp is FC16 by default: ' + JSON.stringify(r.planned.map((w) => [w.role, w.fc])));
+  // the readbacks are still FC3 (the read function is unchanged)
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  assert.strictEqual(r.planned.find((w) => w.role === 'battery_power').addr, reg.progPowerBase, 'register map untouched');
+});
+
+test('control_write_fc:6 flips every Deye WriteOp back to FC6; explicit 16 keeps FC16', () => {
+  const fc6 = C.controlRoute(
+    { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, control_write_fc: 6 } },
+    enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 }), { ratedKw: 50 },
+  );
+  assert.ok(fc6.planned.every((w) => w.fc === 6), 'control_write_fc:6 -> every WriteOp FC6');
+  const fc16 = C.controlRoute(
+    { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, control_write_fc: 16 } },
+    enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 },
+  );
+  assert.ok(fc16.planned.every((w) => w.fc === 16), 'control_write_fc:16 -> every WriteOp FC16');
+  // string/micro active-power-limit write honors the switch too
+  const str = C.controlRoute(
+    { ...DEYE_SEL, family: 'string', connection: { ...DEYE_SEL.connection, control_write_fc: 6 } },
+    enabled({ battery_setpoint_kw: 0, pv_limit_kw: 3 }), { ratedKw: 6 },
+  );
+  assert.strictEqual(str.planned[0].fc, 6, 'string/micro pv_limit honors control_write_fc');
+});
+
+test('controlRelease honors control_write_fc (FC16 default, FC6 flip-back)', () => {
+  const def = C.controlRelease(DEYE_SEL, {});
+  assert.strictEqual(def.planned[0].role, 'tou_enable');
+  assert.strictEqual(def.planned[0].fc, 16, 'release defaults to FC16');
+  const fc6 = C.controlRelease({ ...DEYE_SEL, connection: { ...DEYE_SEL.connection, control_write_fc: 6 } }, {});
+  assert.strictEqual(fc6.planned[0].fc, 6, 'release honors control_write_fc:6');
+});
+
 // --- Fronius SunSpec curtailment adapter (UNCERTIFIED - planned only) ---------
 
 test('Fronius is UNCERTIFIED: never emits executable writes/readbacks even when control_enabled', () => {
