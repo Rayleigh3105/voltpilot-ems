@@ -250,16 +250,23 @@ test('Deye hybrid_1p uses its own ha-solarman deye_hybrid registers (per-family)
   const r = C.controlRoute(sel, enabled({ battery_setpoint_kw: -6, pv_limit_kw: 4 }), { ratedKw: 8 });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
   const reg = C.DEYE_CONTROL_REG.hybrid_1p;
+  assert.strictEqual(p.energy_pattern.addr, reg.energyPattern); // 0x00F3
   assert.strictEqual(p.work_mode.addr, reg.workMode); // 0x00F4
+  assert.strictEqual(p.solar_sell.addr, reg.solarSell); // 0x00F7
   assert.strictEqual(p.tou_enable.addr, reg.touEnable); // 0x00F8
   assert.strictEqual(p.program_time.addr, reg.progTimeBase); // 0x00FA (Program 1 base window)
   assert.strictEqual(p.battery_power.addr, reg.progPowerBase); // 0x0100
   assert.strictEqual(p.battery_power.value, 6000);
   assert.strictEqual(p.battery_target_soc.addr, reg.progSocBase); // 0x010C
   assert.strictEqual(p.grid_charge_enable.addr, reg.progChargeBase); // 0x0112
-  // 1p feed-in cap maps to Max Sell Power (0x00F5, scale 1): 4 kW -> 4000
-  assert.strictEqual(p.pv_limit.addr, reg.exportLimit);
-  assert.strictEqual(p.pv_limit.value, 4000);
+  // hybrid_1p: "Max Sell Power" (0x00F5) IS the exportLimit register, so the 6b
+  // discharge lever and the curtailment cap COLLAPSE onto ONE op carrying the TIGHTER
+  // (min) value - discharge 6 kW (6000) vs curtail 4 kW (4000) -> 4000. No separate
+  // pv_limit op is emitted (one address is never written twice).
+  assert.strictEqual(p.pv_limit, undefined, 'no separate pv_limit op on hybrid_1p (shared register)');
+  assert.strictEqual(p.max_sell_power.addr, reg.maxSellPower); // 0x00F5 == exportLimit
+  assert.strictEqual(p.max_sell_power.value, 4000, 'min(discharge 6000, curtail 4000)');
+  assert.strictEqual(r.planned.filter((w) => w.addr === reg.maxSellPower).length, 1, 'exactly one op at 0x00F5');
 });
 
 test('Deye HV firmware power_scale=10 scales the Program-Power register (decawatt)', () => {
@@ -297,6 +304,185 @@ test('Deye string/micro (no battery) only plans the active-power limit at 0x0028
   assert.strictEqual(r.planned[0].value, 50); // 3 of 6 kW rated -> 50 %
   // no battery ToU registers for a batteryless family
   assert.strictEqual(r.planned.find((w) => w.role === 'battery_power'), undefined);
+});
+
+// --- corrected DISCHARGE synthesis (report §8): the whole point of this PR --------
+//
+// Strategy A (target-SoC floor + power cap + charge-off) is CORRECT for charge but
+// fundamentally INCOMPLETE for discharge - a Deye ToU target-SoC is a discharge
+// FLOOR not a command, and Export-First charges from surplus before exporting. To
+// actually push power OUT you must ALSO set Energy-Pattern=Load-First + Solar-Sell=ON
+// + the export/sell-power limit (6b), and ACTIVATE ToU strictly LAST.
+
+test('discharge adds the missing forcing levers: Load-First + Solar-Sell + Max-Sell-Power', () => {
+  const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  // 1) Energy-Pattern = Load First (stop prioritising battery charge from PV) - NEW
+  assert.strictEqual(p.energy_pattern.addr, reg.energyPattern); // 0x008D
+  assert.strictEqual(p.energy_pattern.value, C.DEYE_ENERGY_PATTERN.LOAD_FIRST);
+  // 2) Work-Mode = Export First
+  assert.strictEqual(p.work_mode.value, C.DEYE_WORK_MODE.EXPORT_FIRST);
+  // 3) Solar-Sell = ON (enable surplus/battery export) - NEW
+  assert.strictEqual(p.solar_sell.addr, reg.solarSell); // 0x0091
+  assert.strictEqual(p.solar_sell.value, C.DEYE_SOLAR_SELL.ON);
+  // 6b) the forcing lever: Max-Sell-Power = the discharge rate (20 kW -> 20000 W, LV) - NEW
+  assert.strictEqual(p.max_sell_power.addr, reg.maxSellPower); // 0x008F (distinct from 0x00E7)
+  assert.strictEqual(p.max_sell_power.value, 20000);
+  assert.strictEqual(p.max_sell_power.encode.lever, 'force_discharge');
+  // the existing permission levers remain: target-SoC floor + charge disabled
+  assert.strictEqual(p.battery_target_soc.encode.direction, 'discharge');
+  assert.strictEqual(p.grid_charge_enable.value, C.DEYE_PROG_CHARGE.DISABLED);
+  // 6a (max-charge-current 0x006C) is DELIBERATELY NOT wired in this PR
+  assert.strictEqual(r.planned.find((w) => w.addr === reg.maxChargeCurrent), undefined);
+});
+
+test('activation (tou_enable) is the STRICTLY LAST write op, after every config/slot register', () => {
+  for (const kw of [-20, 15]) { // discharge AND charge
+    const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: kw, pv_limit_kw: 3 }), { ratedKw: 50 });
+    const last = r.planned[r.planned.length - 1];
+    assert.strictEqual(last.role, 'tou_enable', 'tou_enable must be LAST for setpoint ' + kw);
+    assert.strictEqual(last.value, C.DEYE_TOU_ENABLED_ALL_WEEK);
+    // and it is the ONLY tou_enable op (never written twice)
+    assert.strictEqual(r.planned.filter((w) => w.role === 'tou_enable').length, 1);
+  }
+});
+
+test('CHARGE keeps Strategy A + Energy-Pattern=Battery-First, and does NOT enable Solar-Sell', () => {
+  const r = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: 15, source: 'schedule', control_enabled: true, grid_charge_allowed: true }, { ratedKw: 50 });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.energy_pattern.value, C.DEYE_ENERGY_PATTERN.BATTERY_FIRST, 'charge -> Battery First');
+  assert.strictEqual(p.battery_target_soc.value, 100, 'charge -> target SoC 100');
+  assert.strictEqual(p.battery_target_soc.encode.direction, 'charge');
+  assert.strictEqual(p.grid_charge_enable.value, C.DEYE_PROG_CHARGE.GRID, 'permitted -> Grid');
+  assert.strictEqual(p.solar_sell, undefined, 'a charge never enables Solar-Sell');
+  // no snapshot -> no maxSellPower op on charge (the executor snapshots first, next tick restores)
+  assert.strictEqual(p.max_sell_power, undefined, 'no maxSellPower restore without a snapshot');
+});
+
+test('CHARGE restores Max-Sell-Power to the captured pre-control value when a snapshot is present', () => {
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  // installer had Max-Sell-Power = 8000 before we ever controlled; a prior discharge
+  // may have lowered it, so a later CHARGE must restore it, not leave the cap latched.
+  const snapshot = { [reg.maxSellPower]: 8000 };
+  const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: 15, snapshot: undefined }), { ratedKw: 50, snapshot });
+  const ms = r.planned.find((w) => w.role === 'max_sell_power');
+  assert.ok(ms, 'the charge plan restores maxSellPower from the snapshot');
+  assert.strictEqual(ms.addr, reg.maxSellPower);
+  assert.strictEqual(ms.value, 8000);
+  assert.strictEqual(ms.encode.kind, 'restore');
+});
+
+// --- N1: the power scale, proven on HV (x10) and LV (x1) for 0.3 kW ---------------
+
+test('N1: 0.3 kW discharge encodes correctly on HV (power_scale 10) and LV (power_scale 1)', () => {
+  const disc = (scale) => C.controlRoute(
+    { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: scale } },
+    enabled({ battery_setpoint_kw: -0.3 }), { ratedKw: 30 },
+  );
+  const g = (r, role) => r.planned.find((w) => w.role === role).value;
+  // LV (scale 1): 300 W. Program-Power AND Max-Sell-Power both x1.
+  const lv = disc(1);
+  assert.strictEqual(g(lv, 'battery_power'), 300, 'LV progPower 300 raw');
+  assert.strictEqual(g(lv, 'max_sell_power'), 300, 'LV maxSell 300 raw');
+  assert.strictEqual(lv.powerScaleConfirmed, true);
+  // HV (scale 10 = decawatt): 30 raw. The N1 bug was under-scaling this 10x.
+  const hv = disc(10);
+  assert.strictEqual(g(hv, 'battery_power'), 30, 'HV progPower 30 raw (decawatt)');
+  assert.strictEqual(g(hv, 'max_sell_power'), 30, 'HV maxSell 30 raw (decawatt)');
+  assert.strictEqual(hv.powerScaleConfirmed, true);
+});
+
+test('N1: an UNSET/auto power_scale falls back to 1 but flags powerScaleConfirmed=false (never silent)', () => {
+  const auto = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 }); // no power_scale
+  assert.strictEqual(auto.powerScaleConfirmed, false, 'unset scale is a FALLBACK, surfaced not silent');
+  assert.strictEqual(auto.planned.find((w) => w.role === 'battery_power').value, 20000, 'fallback scale 1');
+  // an explicit 0 (catalog "auto") is also unconfirmed
+  const zero = C.controlRoute({ ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: 0 } }, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 });
+  assert.strictEqual(zero.powerScaleConfirmed, false);
+});
+
+// --- N2: slot-time conflict detection (report §8.9) - detect + surface, never rewrite
+
+test('N2 helper deyeProgram1Displaced: flags a later program governing "now", ignores all-zero', () => {
+  // Program 1 @ 00:00, Program 3 @ 08:00 (HHMM 800): at 12:00 (720 min) Program 3 governs.
+  assert.strictEqual(C.deyeProgram1Displaced([0, 0, 800, 0, 0, 0], 720), true);
+  // before Program 3 starts (06:00 = 360 min) Program 1 still governs.
+  assert.strictEqual(C.deyeProgram1Displaced([0, 0, 800, 0, 0, 0], 360), false);
+  // all-zero / fresh program times never trip it (no false positive).
+  assert.strictEqual(C.deyeProgram1Displaced([0, 0, 0, 0, 0, 0], 720), false);
+  // 08:30 encodes as HHMM 830 -> 510 minutes.
+  assert.strictEqual(C.deyeHhmmToMinutes(830), 510);
+});
+
+test('N2: the plan carries the 6 program-time addresses so the executor can read + check them', () => {
+  const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 });
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  assert.deepStrictEqual(r.snapshotPlan.programTimes, [0, 1, 2, 3, 4, 5].map((i) => reg.progTimeBase + i));
+  // we only ever WRITE Program 1's own time (report §8.9: never rewrite Programs 2..6)
+  const timeWrites = r.planned.filter((w) => w.role === 'program_time');
+  assert.strictEqual(timeWrites.length, 1);
+  assert.strictEqual(timeWrites[0].addr, reg.progTimeBase); // Program 1 only
+});
+
+// --- snapshot capture spec + restore (report §8) ---------------------------------
+
+test('the plan carries the snapshotPlan register spec (the union to capture), tou_enable last', () => {
+  const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 });
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  const roles = r.snapshotPlan.registers.map((s) => s.role);
+  // the installer-level levers we now touch MUST be captured so release can restore them
+  for (const role of ['energy_pattern', 'work_mode', 'max_sell_power', 'solar_sell', 'export_limit', 'tou_enable']) {
+    assert.ok(roles.includes(role), 'snapshot captures ' + role);
+  }
+  assert.strictEqual(roles[roles.length - 1], 'tou_enable', 'activation restored LAST');
+  // addresses are the real hybrid_3p registers
+  const byRole = Object.fromEntries(r.snapshotPlan.registers.map((s) => [s.role, s.addr]));
+  assert.strictEqual(byRole.energy_pattern, reg.energyPattern);
+  assert.strictEqual(byRole.max_sell_power, reg.maxSellPower);
+  assert.strictEqual(byRole.solar_sell, reg.solarSell);
+});
+
+test('controlRelease RESTORES the snapshot (not just touEnable=0), touEnable restored LAST', () => {
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  // a captured pre-control snapshot: installer was on self-consumption (touEnable 0),
+  // Battery-First (0), Solar-Sell off (0), Max-Sell 8000, export cap 9999.
+  const snapshot = {
+    [reg.energyPattern]: 0, [reg.workMode]: 0, [reg.maxSellPower]: 8000, [reg.solarSell]: 0,
+    [reg.progTimeBase]: 0, [reg.progPowerBase]: 0, [reg.progSocBase]: 20, [reg.progChargeBase]: 0,
+    [reg.exportLimit]: 9999, [reg.touEnable]: 0,
+  };
+  const rel = C.controlRelease(DEYE_SEL, { snapshot });
+  assert.strictEqual(rel.mode, 'release');
+  const byRole = Object.fromEntries(rel.planned.map((w) => [w.role, w]));
+  assert.strictEqual(byRole.max_sell_power.value, 8000, 'restore the installer Max-Sell-Power');
+  assert.strictEqual(byRole.solar_sell.value, 0, 'restore Solar-Sell OFF (never leave export latched)');
+  assert.strictEqual(byRole.energy_pattern.value, 0, 'restore Energy-Pattern');
+  assert.strictEqual(byRole.export_limit.value, 9999, 'restore the export cap');
+  assert.ok(rel.planned.every((w) => w.encode.kind === 'restore'), 'every op restores a captured value');
+  assert.strictEqual(rel.planned[rel.planned.length - 1].role, 'tou_enable', 'touEnable restored LAST');
+});
+
+test('controlRelease WITHOUT a snapshot stays as before: just disable Time-of-Use', () => {
+  const rel = C.controlRelease(DEYE_SEL, {});
+  assert.strictEqual(rel.planned.length, 1);
+  assert.strictEqual(rel.planned[0].role, 'tou_enable');
+  assert.strictEqual(rel.planned[0].value, 0, 'no snapshot -> disable scheduler (self-consumption)');
+});
+
+test('controlRelease restore is idempotent + gated + calibration-bypassable', () => {
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  const snapshot = { [reg.maxSellPower]: 8000, [reg.solarSell]: 0, [reg.touEnable]: 0 };
+  // uncertified default: planned-only, no executable writes
+  const off = C.controlRelease(DEYE_SEL, { snapshot });
+  assert.deepStrictEqual(off.writes, [], 'uncertified restore stays planned-only');
+  assert.ok(off.planned.length >= 3);
+  // idempotent: two identical calls produce the identical restore plan
+  assert.deepStrictEqual(C.controlRelease(DEYE_SEL, { snapshot }).planned, off.planned);
+  // calibration bypass makes the restore executable (dwell_s=0 so it is never blocked)
+  const cal = C.controlRelease(DEYE_SEL, { snapshot, calibration: true });
+  assert.strictEqual(cal.writes.length, cal.planned.length, 'calibration -> executable restore');
+  assert.ok(cal.writes.every((w) => w.dwell_s === 0), 'calibration restore not blocked by dwell');
 });
 
 // --- control_write_fc: FC16 by default, FC6 as the flip-back (PR y7) -----------
