@@ -3,16 +3,25 @@ import {
   findItem,
   firstTarget,
   flattenItems,
+  isSelected,
+  MAX_SELECTED,
   measurementTree,
+  oneDeviceName,
   parseVerlaufParams,
+  railComponentName,
   rangeWord,
+  sameTarget,
+  secondAxisUnit,
+  selectionNote,
   seriesFromEntityHistory,
+  toggleTarget,
   v1FallbackTree,
   v1SeriesFromHistory,
   verlaufHash,
   verlaufStats,
   wordRange,
   V1_ENTITY,
+  type VerlaufGroup,
 } from './verlauf';
 import type {
   EntityHistory,
@@ -426,5 +435,177 @@ describe('verlaufStats', () => {
     expect(st.max?.value).toBe(12);
     expect(st.avg).toBe(12);
     expect(st.last).toBe(12);
+  });
+});
+
+// --- B1-c: Mehrfachauswahl + saubere Leiste ---------------------------------
+
+describe('oneDeviceName — die Leiste ist kein Technik-Dump mehr', () => {
+  it('kollabiert die vier Beinah-Duplikate des Befunds auf EINEN Namen', () => {
+    // Genau die Zeile aus dem Entwurf:
+    // "deye · sun-30k-sg01hp3 · Deye · SUN-30K-SG01HP3-EU · noch keine Daten"
+    const picked = oneDeviceName([
+      { label: 'deye', brand: 'deye' },
+      { label: 'sun-30k-sg01hp3', brand: 'deye' },
+      { label: 'Deye', brand: null },
+      { label: 'SUN-30K-SG01HP3-EU', brand: 'deye' },
+    ]);
+    expect(picked).toEqual({ name: 'Deye SUN-30K-SG01HP3-EU', more: 0 });
+  });
+
+  it('stellt die Marke voran, wenn der Name sie nicht schon trägt', () => {
+    expect(oneDeviceName([{ label: 'SUN-12K', brand: 'deye' }])?.name).toBe('Deye SUN-12K');
+    expect(oneDeviceName([{ label: 'Deye SUN-12K', brand: 'deye' }])?.name).toBe('Deye SUN-12K');
+    // Eine schon groß geschriebene Marke bleibt unverändert.
+    expect(oneDeviceName([{ label: 'Sunny Tripower', brand: 'SMA' }])?.name).toBe('SMA Sunny Tripower');
+  });
+
+  it('zählt WIRKLICH verschiedene Geräte, statt sie aneinanderzureihen', () => {
+    const picked = oneDeviceName([
+      { label: 'SUN-30K', brand: 'Deye' },
+      { label: 'Symo 20', brand: 'Fronius' },
+    ]);
+    expect(picked?.more).toBe(1);
+  });
+
+  it('fällt auf die Marke zurück und ist ohne alles null', () => {
+    expect(oneDeviceName([{ label: '', brand: 'deye' }])?.name).toBe('Deye');
+    expect(oneDeviceName([{ label: '  ', brand: null }])).toBeNull();
+    expect(oneDeviceName([])).toBeNull();
+  });
+});
+
+describe('railComponentName — Klarnamen statt abgeschnittener Typangaben', () => {
+  it('streicht die Typangabe in Klammern', () => {
+    expect(railComponentName('Netzanschluss (Messung)', 'grid')).toBe('Netzanschluss');
+    expect(railComponentName('Batteriespeicher (Hybrid)', 'storage')).toBe('Batteriespeicher');
+    expect(railComponentName('Hausverbrauch (Messung)', 'house')).toBe('Hausverbrauch');
+  });
+
+  it('lässt einen normalen Namen unberührt und fällt sonst auf die Rolle zurück', () => {
+    expect(railComponentName('Wallbox Garage', 'consumer')).toBe('Wallbox Garage');
+    expect(railComponentName('(Messung)', 'grid')).toBe('Netzanschluss');
+    expect(railComponentName('   ', 'pv')).toBe('PV-Erzeugung');
+  });
+});
+
+describe('toggleTarget — Checkbox statt Radiobutton, max. 3', () => {
+  const a = { entityId: 'e1', channel: 'soc_pct' };
+  const b = { entityId: 'e1', channel: 'pv_power_kw' };
+  const c = { entityId: 'e2', channel: 'power_kw' };
+  const d = { entityId: 'e3', channel: 'load_kw' };
+
+  it('nimmt hinzu, bis die Obergrenze erreicht ist', () => {
+    let sel = toggleTarget([], a);
+    sel = toggleTarget(sel, b);
+    sel = toggleTarget(sel, c);
+    expect(sel).toHaveLength(3);
+    // Der vierte wird abgewiesen (unverändert, nicht heimlich ersetzt).
+    expect(toggleTarget(sel, d)).toBe(sel);
+    expect(MAX_SELECTED).toBe(3);
+  });
+
+  it('entfernt einen ausgewählten Messwert wieder', () => {
+    const sel = toggleTarget(toggleTarget([], a), b);
+    expect(toggleTarget(sel, a)).toEqual([b]);
+  });
+
+  it('lässt die LETZTE Auswahl nie entfernen (ein leeres Diagramm ist kein Zustand)', () => {
+    const sel = [a];
+    expect(toggleTarget(sel, a)).toBe(sel);
+  });
+
+  it('erkennt Auswahl und Gleichheit', () => {
+    expect(isSelected([a, b], { entityId: 'e1', channel: 'pv_power_kw' })).toBe(true);
+    expect(isSelected([a], c)).toBe(false);
+    expect(sameTarget(a, { ...a })).toBe(true);
+    expect(sameTarget(a, b)).toBe(false);
+  });
+
+  it('beschriftet die Auswahl ehrlich', () => {
+    expect(selectionNote(2)).toBe('2 von 3 ausgewählt · max. 3');
+  });
+});
+
+describe('Mehrfach-Deep-Link', () => {
+  it('trägt mehrere Messwerte und liest sie zurück', () => {
+    const hash = verlaufHash(
+      'site-1',
+      [
+        { entityId: 'batt', channel: 'soc_pct' },
+        { entityId: 'grid', channel: 'power_kw' },
+      ],
+      'day',
+    );
+    expect(hash).toBe('#/anlage/site-1/historie?m=batt:soc_pct&m=grid:power_kw&z=tag');
+    const p = parseVerlaufParams(hash);
+    expect(p.targets).toEqual([
+      { entityId: 'batt', channel: 'soc_pct' },
+      { entityId: 'grid', channel: 'power_kw' },
+    ]);
+    expect(p.target).toEqual({ entityId: 'batt', channel: 'soc_pct' });
+  });
+
+  it('bleibt für einen EINZELNEN Messwert zeichengleich zum alten Link', () => {
+    expect(verlaufHash('s', { entityId: 'e', channel: 'c' }, 'week')).toBe(
+      '#/anlage/s/historie?m=e:c&z=woche',
+    );
+    // Und ein altes Lesezeichen parst weiterhin.
+    const p = parseVerlaufParams('#/anlage/s/historie?m=e:c&z=woche');
+    expect(p.targets).toEqual([{ entityId: 'e', channel: 'c' }]);
+  });
+
+  it('kappt bei der Obergrenze und überspringt Doppelte/Kaputte', () => {
+    const p = parseVerlaufParams('?m=a:1&m=a:1&m=b:2&m=c:3&m=d:4&m=kaputt');
+    expect(p.targets).toEqual([
+      { entityId: 'a', channel: '1' },
+      { entityId: 'b', channel: '2' },
+      { entityId: 'c', channel: '3' },
+    ]);
+  });
+});
+
+describe('secondAxisUnit — gemischte Einheiten brauchen zwei Achsen', () => {
+  it('nennt die zweite Einheit nur, wenn sie sich unterscheidet', () => {
+    expect(secondAxisUnit(['kW'])).toBeNull();
+    expect(secondAxisUnit(['kW', 'kW'])).toBeNull();
+    expect(secondAxisUnit(['kW', '%'])).toBe('%');
+    expect(secondAxisUnit(['%', 'kW', 'kW'])).toBe('kW');
+  });
+});
+
+describe('firstTarget — landet nie auf einem stillen Erzeuger', () => {
+  const group = (over: Partial<VerlaufGroup>): VerlaufGroup => ({
+    entityId: 'x',
+    label: 'X',
+    rawLabel: 'X',
+    role: 'pv',
+    icon: 'sun',
+    deviceLine: null,
+    health: 'ok',
+    measuredVia: null,
+    items: [{ entityId: 'x', channel: 'c', label: 'C', unit: 'kW', role: 'pv', raw: 'c', producer: false }],
+    ...over,
+  });
+
+  it('überspringt eine Komponente, die über den Wechselrichter gemessen wird', () => {
+    const groups = [
+      group({ entityId: 'pv2', measuredVia: 'über den Wechselrichter gemessen', items: [
+        { entityId: 'pv2', channel: 'pv_power_kw', label: 'PV-Leistung', unit: 'kW', role: 'pv', raw: 'pv_power_kw', producer: true },
+      ] }),
+      group({ entityId: 'batt', role: 'storage', items: [
+        { entityId: 'batt', channel: 'soc_pct', label: 'Ladestand', unit: '%', role: 'storage', raw: 'soc_pct', producer: false },
+      ] }),
+    ];
+    expect(firstTarget(groups)).toEqual({ entityId: 'batt', channel: 'soc_pct' });
+  });
+
+  it('nimmt sie doch, wenn es NUR solche gibt (statt gar nichts zu zeigen)', () => {
+    const groups = [
+      group({ entityId: 'pv2', measuredVia: 'über den Wechselrichter gemessen', items: [
+        { entityId: 'pv2', channel: 'pv_power_kw', label: 'PV-Leistung', unit: 'kW', role: 'pv', raw: 'pv_power_kw', producer: true },
+      ] }),
+    ];
+    expect(firstTarget(groups)).toEqual({ entityId: 'pv2', channel: 'pv_power_kw' });
   });
 });

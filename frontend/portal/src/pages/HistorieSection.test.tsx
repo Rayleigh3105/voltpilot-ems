@@ -146,7 +146,7 @@ describe('HistorieSection', () => {
 
     // The first measurement (Ladestand) is fetched + charted with stats.
     await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)));
-    await screen.findByLabelText('Kennzahlen im Zeitraum');
+    await screen.findByLabelText(/Kennzahlen im Zeitraum/);
     expect(screen.getByText('Durchschnitt')).toBeInTheDocument();
   });
 

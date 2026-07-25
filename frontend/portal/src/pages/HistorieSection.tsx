@@ -390,7 +390,7 @@ export function HistorieSection({ site }: { site: Site }) {
       {tab === 'bilanz' ? (
         <BilanzFace site={site} range={range} anchor={anchor} />
       ) : (
-        <VerlaufExplorer site={site} range={range} anchor={anchor} initialTarget={init.target} />
+        <VerlaufExplorer site={site} range={range} anchor={anchor} initialTargets={init.targets} />
       )}
     </>
   );
