@@ -251,6 +251,55 @@ func TestControlSignIsPreservedAndPublished(t *testing.T) {
 	}
 }
 
+// TestReadBattSignIsPreservedAndPublished pins the READ-side battery-sign plumbing
+// that closes the First-Light verdict hole: without invert_batt_sign reaching the
+// SELF-WIRING path, a Deye whose raw battery register reports charge as negative
+// (the captain's SUN-30K-SG01HP3-EU HV firmware) published an inverted
+// battery_power_kw that the calibration verdict then trusted. The flag must survive
+// Normalize on solarman and be published on edge/inverter/config so the Node-RED
+// Deye reader (which already forwards conn.invert_batt_sign) can honor it. It is the
+// read-side twin of invert_control_sign and must NOT leak onto other transports.
+func TestReadBattSignIsPreservedAndPublished(t *testing.T) {
+	cat := DefaultCatalog()
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "192.168.0.28", Serial: "2985159064", InvertBattSign: true},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sel.Connection.InvertBattSign {
+		t.Fatal("Normalize must preserve invert_batt_sign on a solarman selection")
+	}
+	var m map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
+		t.Fatal(err)
+	}
+	conn, _ := m["connection"].(map[string]any)
+	if conn["invert_batt_sign"] != true {
+		t.Errorf("edge/inverter/config must carry invert_batt_sign=true so the self-wiring reader can honor it, got %v", conn["invert_batt_sign"])
+	}
+
+	// The read-side battery sign is meaningless on transports without a hybrid
+	// battery register here (generic Modbus / Fronius / go-e) - it must be dropped.
+	for _, tc := range []struct {
+		name string
+		req  SelectionRequest
+	}{
+		{"generic modbus", SelectionRequest{Brand: BrandGenericModbus, Family: FamSunSpec, Connection: Connection{IP: "10.0.0.9", InvertBattSign: true}}},
+		{"fronius solar api", SelectionRequest{Brand: BrandFronius, Family: FamFroniusSolarAPI, Connection: Connection{IP: "10.0.0.9", InvertBattSign: true}}},
+		{"go-e", SelectionRequest{Brand: BrandGoe, Family: FamGoeHTTP, Connection: Connection{IP: "10.0.0.9", InvertBattSign: true}}},
+	} {
+		s, err := cat.Normalize(tc.req, now)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if s.Connection.InvertBattSign {
+			t.Errorf("%s: a transport without a hybrid battery register must not keep invert_batt_sign", tc.name)
+		}
+	}
+}
+
 // TestControlTierPerBrand pins the battery-control primitive each catalogued brand
 // declares - the dispatch fact the Node-RED controlRoute keys on. Deye=ToU(3),
 // generic SunSpec + both Fronius brands = SunSpec(1), the go-e wallbox = read-only

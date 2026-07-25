@@ -252,6 +252,44 @@ test('hybrid_3p SG01HP3: sums all 4 MPPTs and decodes an export moment', () => {
   assert.strictEqual(flipped.reading.pv_power_kw, 27, 'PV untouched by sign flags');
 });
 
+// --- the captain's live SUN-30K-SG01HP3-EU: raw charge sign is NEGATIVE --------
+// The First-Light verdict hole (2026-07-25): while this HV device was CHARGING at
+// ~+31 kW (the cockpit's balance-derived battery agreed), the raw battery register
+// 0x024E reported a NEGATIVE value, so the decoded battery_power_kw was inverted vs
+// the documented + charge / - discharge convention. The calibration verdict trusted
+// that inverted measurement and declared "Richtung stimmt". The raw Deye battery
+// sign is FIRMWARE-DEPENDENT (DEYE.md: sunsynk inverts vs ha-solarman raw), so the
+// fix is the operator-set invert_batt_sign escape hatch - NOT a silent universal
+// flip. This pins the boundary: charging -> POSITIVE once invert_batt_sign is set.
+test('hybrid_3p SG01HP3 (HV): a charge that reads negative raw decodes to POSITIVE with invert_batt_sign', () => {
+  // Device register 0x0008 = "HV 3-Phase Inverter 20-50kw" -> auto scale x10.
+  const dev = block(0x0000, 1, { 0x0000: 0x0008 });
+  // 0x024E raw = -3100 decawatts: this firmware reports the +31 kW charge as a
+  // negative register value (the captain's card showed "BATTERIE JETZT -30 kW"
+  // while the cockpit showed the battery CHARGING at 31 kW).
+  const b = block(0x024c, 0x79, {
+    0x024c: 53, // SoC 53 % (rising - the battery was charging)
+    0x024e: (-3100 & 0xffff), // raw charge sign is NEGATIVE on this HV firmware
+    0x026b: (-37600 & 0xffff), // External CT: 37,6 kW export (PV surplus)
+    0x02c4: 0xffff,
+    0x02a0: 78700, // PV low word part; enough to model the surplus (scale x10 below)
+  });
+
+  // DEFAULT (invert_batt_sign unset): the bug - a charge decodes NEGATIVE, the
+  // exact inverted measurement the verdict wrongly trusted.
+  const raw = D.decode([dev, b], { family: 'hybrid_3p' });
+  assert.strictEqual(raw.batt_kw, -31, 'HV x10 auto-detected; raw charge sign is negative on this firmware');
+
+  // FIX: with the operator-set read-side flag the charge decodes POSITIVE, matching
+  // the documented + charge / - discharge convention and the cockpit.
+  const fixed = D.decode([dev, b], { family: 'hybrid_3p', invert_batt_sign: true });
+  assert.strictEqual(fixed.batt_kw, 31, 'invert_batt_sign yields charge -> positive (owner\'s real numbers)');
+  // Sign flip touches the battery ONLY - SoC/PV/grid are untouched by it.
+  assert.strictEqual(fixed.reading.soc_pct, 53);
+  assert.strictEqual(raw.reading.soc_pct, fixed.reading.soc_pct);
+  assert.strictEqual(raw.reading.power_kw, fixed.reading.power_kw, 'grid untouched by invert_batt_sign');
+});
+
 // A BM3 (3-MPPT) unit has no PV4 wired: register 0x02A3 reads 0 and the sum is
 // still correct - proves the 4-register sum is safe on 3-MPPT hardware.
 test('hybrid_3p BM3: absent PV4 (0x02A3=0) does not corrupt the PV sum', () => {
