@@ -367,3 +367,143 @@ test('parseWriteResponse rejects an unexpected function code when asked', () => 
   const mb = Buffer.from([...mbBody, crc & 0xff, (crc >> 8) & 0xff]);
   assert.throws(() => S.parseWriteResponse(mb, { expectFn: 0x10 }), /unerwartete Modbus-Funktion/);
 });
+
+// --- V5 WRITE-response diagnostics (the live-Pilsting blocker, PR z4) ----------
+//
+// The real logger accepts the write frame but its V5 RESPONSE carries a Modbus
+// payload SHORTER than a valid RTU reply (5 bytes). Reads work all day through
+// the SAME offset 25, and a normal FC6 echo is 8 bytes and fits - so this is NOT
+// a wrong offset: it means the logger framed a response the inverter did not
+// (properly) answer. The parser must NAME the reason and attach the raw frame for
+// diagnostics, instead of a bare "zu kurz". These build the exact frame shapes the
+// real logger returns and assert the named reasons + attached raw-frame context.
+
+// Build a V5 *response* wrapping an ARBITRARY (possibly short/empty) Modbus payload
+// and an arbitrary frame type / status byte - the shapes a misbehaving logger sends.
+function makeV5RawPayload(payloadBytes, { loggerSerial = 2985159064, sequence = 5, frameType = 0x02, status = 0x01 } = {}) {
+  const preamble = [frameType, status, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const length = preamble.length + payloadBytes.length;
+  const header = [0xa5, length & 0xff, (length >> 8) & 0xff, 0x10, 0x15, sequence & 0xff, (sequence >> 8) & 0xff];
+  const serial = loggerSerial >>> 0;
+  header.push(serial & 0xff, (serial >> 8) & 0xff, (serial >> 16) & 0xff, (serial >> 24) & 0xff);
+  const frame = [...header, ...preamble, ...payloadBytes, 0x00, 0x15];
+  frame[frame.length - 2] = refV5Checksum(frame);
+  return Buffer.from(frame);
+}
+
+test('write reply: a normal FC6 echo parses at offset 25 (offset is correct, not the bug)', () => {
+  // The control point of the whole PR: a well-formed 8-byte FC6 echo goes through
+  // the SAME response offset the reads use and parses fine.
+  const echo = makeV5WithModbusBody([0x01, 0x06, 0x00, 0x94, 0x00, 0x32], { loggerSerial: 2985159064, sequence: 5 });
+  const r = S.readWriteResultFromResponse(echo, { expectLoggerSerial: 2985159064, expectSequence: 5, expectFn: 0x06 });
+  assert.deepStrictEqual(r, { fn: 0x06, reg: 0x0094, value: 0x0032 });
+});
+
+test('write reply: a genuine Modbus exception frame (5 bytes) is decoded and named, not swallowed', () => {
+  // addr, fn|0x80, code, crc, crc = exactly 5 bytes -> passes the >=5 length guard
+  // and is decoded end-to-end with a plain-German meaning (0x0B = the inverter did
+  // not answer the logger's write on the internal bus).
+  const body = [0x01, 0x86, 0x0b];
+  const crc = refModbusCrc(body);
+  const exc = makeV5WithModbusBody([...body, crc & 0xff, (crc >> 8) & 0xff], { loggerSerial: 2985159064, sequence: 5 });
+  assert.throws(
+    () => S.readWriteResultFromResponse(exc, { expectLoggerSerial: 2985159064, expectSequence: 5, expectFn: 0x06 }),
+    /Ausnahme 0x0b: Wechselrichter hat nicht geantwortet/,
+  );
+});
+
+test('write reply: an EMPTY Modbus payload is named (inverter did not answer), never "zu kurz"', () => {
+  // The exact live-Pilsting shape: valid V5 wrapper, zero Modbus bytes at offset 25.
+  const empty = makeV5RawPayload([], { loggerSerial: 2985159064, sequence: 5 });
+  let thrown;
+  try { S.readWriteResultFromResponse(empty, { expectLoggerSerial: 2985159064, expectSequence: 5, expectFn: 0x06 }); }
+  catch (e) { thrown = e; }
+  assert.ok(thrown, 'an empty payload throws');
+  assert.doesNotMatch(thrown.message, /zu kurz/, 'no more bare "zu kurz"');
+  assert.match(thrown.message, /keine Modbus-Nutzlast/);
+  assert.match(thrown.message, /nicht geantwortet/);
+  // and the raw-frame diagnostics are attached for the write executor to log
+  assert.ok(thrown.v5, 'diagnostic context attached');
+  assert.strictEqual(thrown.v5.frameType, 0x02);
+  assert.strictEqual(thrown.v5.frameTypeLabel, 'Wechselrichter');
+  assert.strictEqual(thrown.v5.status, 0x01);
+  assert.strictEqual(typeof thrown.frameHex, 'string');
+  assert.strictEqual(thrown.frameHex, thrown.v5.frameHex);
+  assert.match(thrown.frameHex, /^A5 /, 'raw frame hex starts at the V5 start byte');
+});
+
+test('write reply: a 1-byte stub is named (verkuerzte Antwort with its hex), never "zu kurz"', () => {
+  const stub = makeV5RawPayload([0x0b], { loggerSerial: 2985159064, sequence: 5 });
+  let thrown;
+  try { S.readWriteResultFromResponse(stub, { expectLoggerSerial: 2985159064, expectSequence: 5, expectFn: 0x06 }); }
+  catch (e) { thrown = e; }
+  assert.doesNotMatch(thrown.message, /zu kurz/);
+  assert.match(thrown.message, /verkuerzte Modbus-Antwort \(1 Byte: 0B\)/);
+  assert.ok(thrown.v5 && thrown.frameHex);
+});
+
+test('write reply: a short stub shaped like an exception (fn|0x80) is decoded to its meaning', () => {
+  // A <5-byte stub whose second byte has the exception bit: name the exception code.
+  const stub = makeV5RawPayload([0x01, 0x84, 0x06], { loggerSerial: 2985159064, sequence: 5 });
+  assert.throws(
+    () => S.readWriteResultFromResponse(stub, { expectLoggerSerial: 2985159064, expectSequence: 5, expectFn: 0x06 }),
+    /Ausnahme 0x06: Wechselrichter beschaeftigt/,
+  );
+});
+
+test('write reply: a non-inverter frame type (0x01/0x00) is named, with diagnostics attached', () => {
+  // The logger answers with a data-logging-stick (0x01) frame, not an inverter one:
+  // the parser must say so, not slice a bogus Modbus frame at offset 25.
+  const stick = makeV5RawPayload([0x01, 0x06, 0x00, 0x94, 0x00, 0x00, 0x00, 0x00], { frameType: 0x01, status: 0x00, loggerSerial: 2985159064, sequence: 5 });
+  let thrown;
+  try { S.readWriteResultFromResponse(stick, { expectLoggerSerial: 2985159064, expectSequence: 5, expectFn: 0x06 }); }
+  catch (e) { thrown = e; }
+  assert.match(thrown.message, /V5-Frametyp 0x01 \(Datenlogger-Stick\)/);
+  assert.match(thrown.message, /keine Antwort vom Wechselrichter/);
+  assert.strictEqual(thrown.v5.frameType, 0x01);
+  assert.strictEqual(thrown.v5.frameTypeLabel, 'Datenlogger-Stick');
+});
+
+test('write reply: a wrong control code (not 0x1510) is still rejected by its own message', () => {
+  const echo = makeV5WithModbusBody([0x01, 0x06, 0x00, 0x94, 0x00, 0x32], { loggerSerial: 2985159064, sequence: 5 });
+  echo.writeUInt16LE(0x4510, 3); // stamp the REQUEST control code onto a "response"
+  echo[echo.length - 2] = refV5Checksum([...echo]); // re-checksum so we hit the control-code check
+  assert.throws(() => S.parseV5Response(echo), /Controlcode/);
+});
+
+// --- raw-frame diagnostic helpers --------------------------------------------
+
+test('hexdump renders uppercase space-separated bytes and tolerates empty/non-buffer input', () => {
+  assert.strictEqual(S.hexdump(Buffer.from([0xa5, 0x0b, 0xff, 0x00])), 'A5 0B FF 00');
+  assert.strictEqual(S.hexdump(Buffer.alloc(0)), '');
+  assert.strictEqual(S.hexdump([0x01, 0x02]), '01 02');
+  assert.strictEqual(S.hexdump(null), '');
+});
+
+test('describeV5Frame decodes the header of a real frame and never throws on a truncated one', () => {
+  const echo = makeV5WithModbusBody([0x01, 0x06, 0x00, 0x94, 0x00, 0x32], { loggerSerial: 2985159064, sequence: 7 });
+  const d = S.describeV5Frame(echo);
+  assert.strictEqual(d.startByte, 0xa5);
+  assert.strictEqual(d.controlCode, 0x1510);
+  assert.strictEqual(d.sequence, 7);
+  assert.strictEqual(d.loggerSerial, 2985159064);
+  assert.strictEqual(d.frameType, 0x02);
+  assert.strictEqual(d.frameTypeLabel, 'Wechselrichter');
+  assert.strictEqual(d.status, 0x01);
+  // modbusHex is the full slice at offset 25 incl. the 2-byte Modbus CRC
+  assert.strictEqual(d.modbusHex, '01 06 00 94 00 32 49 F3');
+  assert.strictEqual(d.modbusLength, 8);
+  assert.strictEqual(d.hex, S.hexdump(echo));
+  // truncated / empty inputs must NOT throw (diagnostics are best-effort)
+  assert.doesNotThrow(() => S.describeV5Frame(echo.slice(0, 4)));
+  assert.doesNotThrow(() => S.describeV5Frame(Buffer.alloc(0)));
+  assert.doesNotThrow(() => S.describeV5Frame(null));
+});
+
+test('modbusExceptionText / v5FrameTypeLabel map codes to plain German (with a safe default)', () => {
+  assert.match(S.modbusExceptionText(0x02), /illegal data address/);
+  assert.match(S.modbusExceptionText(0x0b), /gateway target failed to respond/);
+  assert.match(S.modbusExceptionText(0xff), /unbekannte/);
+  assert.strictEqual(S.v5FrameTypeLabel(0x02), 'Wechselrichter');
+  assert.strictEqual(S.v5FrameTypeLabel(0x99), 'unbekannt');
+});
