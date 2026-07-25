@@ -93,6 +93,32 @@ const CERTIFIED_CONTROL_FAMILIES = new Set(['sunspec']);
 const s16raw = (kw) => Math.round(kw * 100) & 0xffff; // int16, 0.01 kW two's complement
 const clampPct = (v) => Math.max(0, Math.min(100, Math.round(v)));
 
+// The Modbus WRITE function code for a Deye control register write. FC16
+// (write-multiple, 0x10) is the DEFAULT and 0x06 (write-single) the legacy flip-back.
+// WHY FC16 by default: many Deye hybrid firmwares behind the Solarman/LSW3 logger
+// ACCEPT an FC6 write frame at the transport but the inverter never answers it and
+// the register does not change - the live Pilsting symptom (the logger frames a V5
+// reply carrying a 2-byte stub where the FC6 echo belongs). The Deye integrations
+// that demonstrably write to these inverters over the SAME Solarman-V5 logger use
+// FC16 for every register, even a single one: deye-controller
+// (githubDante/deye-controller) writes via `write_multiple_holding_registers(addr,
+// [value])` exclusively, and ha-solarman (davidrapan/ha-solarman) - the source of our
+// register map - writes via pysolarmanv5's FC16 path; the community consensus (DIY
+// Solar / ha-solarman issues) is that some Deye firmware only answers 0x10 and an FC6
+// write "reports success but makes no actual change". So Deye control writes go out as
+// FC16 by default. It stays a per-register write (NOT a contiguous block) so the
+// EEPROM write-on-change discipline is unchanged - block-writing this scattered ToU
+// map would touch unrelated registers and rewrite unchanged ones (evcc #27458
+// documents an adjacent-SoC-register clobber near 0x00A6), and would increase write
+// frequency, which is forbidden. `control_write_fc: 6` on the connection flips back.
+const DEYE_WRITE_FC_FC16 = 16;
+const DEYE_WRITE_FC_FC6 = 6;
+function resolveDeyeWriteFc(conn) {
+  const v = conn ? conn.control_write_fc : undefined;
+  if (v === DEYE_WRITE_FC_FC6 || v === '6') return DEYE_WRITE_FC_FC6;
+  return DEYE_WRITE_FC_FC16; // 0 (auto) / 16 / absent / anything else -> FC16
+}
+
 function isFiniteNum(v) {
   return typeof v === 'number' && isFinite(v);
 }
@@ -273,7 +299,7 @@ function controlRelease(selection, opts = {}) {
     // emitted for an uncertified family EXCEPT a calibration-test revert (dwell_s=0
     // so it is not blocked). String/micro (no ToU) has nothing to release.
     const planned = reg ? [{
-      role: 'tou_enable', fc: 6, addr: reg.touEnable, value: 0,
+      role: 'tou_enable', fc: resolveDeyeWriteFc(conn), addr: reg.touEnable, value: 0,
       encode: { kind: 'tou_mask', all_week: false, release: true },
       dwell_s: calibration ? 0 : 900, min_change: 0, bench_pending: true,
     }] : [];
@@ -657,6 +683,10 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
   const socMin = isFiniteNum(setpoint.soc_min_pct) ? setpoint.soc_min_pct : 5;
   // power_scale mirrors the read map: LV = 1 (register in W), HV = 10 (decawatt).
   const powerScale = Number(conn.power_scale) > 0 ? Number(conn.power_scale) : 1;
+  // The Modbus WRITE function code (FC16 default, FC6 flip-back) - see the
+  // resolveDeyeWriteFc header. ONLY the wire function changes; the register map,
+  // values, ordering and EEPROM write-on-change discipline are untouched.
+  const writeFc = resolveDeyeWriteFc(conn);
 
   const reg = deyeFamilyControlReg(family);
   // The un-gated Deye adapter: the SAME two-gate discipline as sunspecControl.
@@ -711,7 +741,7 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
     const planned = [];
     if (pvLimitKw != null && ratedKw > 0) {
       planned.push({
-        role: 'pv_limit', fc: 6, addr: deyeDecode.POWER_LIMIT_REG,
+        role: 'pv_limit', fc: writeFc, addr: deyeDecode.POWER_LIMIT_REG,
         value: clampPct((pvLimitKw / ratedKw) * 100),
         encode: { kind: 'active_power_pct', rated_kw: ratedKw, kw: pvLimitKw },
         dwell_s: 900, min_change: 1, bench_pending: true,
@@ -740,32 +770,32 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
     {
       // Export First lets the ToU schedule sell surplus (grid arbitrage); the
       // exact work-mode value is bench-verified per firmware.
-      role: 'work_mode', fc: 6, addr: reg.workMode, value: DEYE_WORK_MODE.EXPORT_FIRST,
+      role: 'work_mode', fc: writeFc, addr: reg.workMode, value: DEYE_WORK_MODE.EXPORT_FIRST,
       encode: { kind: 'work_mode', enum: 'export_first' }, dwell_s: 900, min_change: 0, bench_pending: true,
     },
     {
       // Turn the ToU scheduler on for all weekdays (bit0=Enabled, 0x00FF="Week").
-      role: 'tou_enable', fc: 6, addr: reg.touEnable, value: DEYE_TOU_ENABLED_ALL_WEEK,
+      role: 'tou_enable', fc: writeFc, addr: reg.touEnable, value: DEYE_TOU_ENABLED_ALL_WEEK,
       encode: { kind: 'tou_mask', all_week: true }, dwell_s: 900, min_change: 0, bench_pending: true,
     },
     {
       // Set Program 1's start time to 00:00 so the commanded slot is the day's BASE
       // window - otherwise a stale program time may leave Program 1 inactive at "now"
       // and the inverter ignores the setpoint even though the registers echo (report §6).
-      role: 'program_time', fc: 6, addr: reg.progTimeBase + slot, value: DEYE_PROGRAM_TIME_BASE_HHMM,
+      role: 'program_time', fc: writeFc, addr: reg.progTimeBase + slot, value: DEYE_PROGRAM_TIME_BASE_HHMM,
       encode: { kind: 'program_time_hhmm', hhmm: DEYE_PROGRAM_TIME_BASE_HHMM }, dwell_s: 900, min_change: 0, bench_pending: true,
     },
     {
-      role: 'battery_power', fc: 6, addr: reg.progPowerBase + slot, value: powerReg,
+      role: 'battery_power', fc: writeFc, addr: reg.progPowerBase + slot, value: powerReg,
       encode: { kind: 'watt_scaled_u16', scale: powerScale, kw: battKw }, dwell_s: 900, min_change: 50, bench_pending: true,
     },
     {
-      role: 'battery_target_soc', fc: 6, addr: reg.progSocBase + slot, value: targetSoc,
+      role: 'battery_target_soc', fc: writeFc, addr: reg.progSocBase + slot, value: targetSoc,
       encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' },
       dwell_s: 900, min_change: 1, bench_pending: true,
     },
     {
-      role: 'grid_charge_enable', fc: 6, addr: reg.progChargeBase + slot, value: chargeEnum,
+      role: 'grid_charge_enable', fc: writeFc, addr: reg.progChargeBase + slot, value: chargeEnum,
       encode: { kind: 'charge_enum', eeg_gated: true, disabled: DEYE_PROG_CHARGE.DISABLED, grid: DEYE_PROG_CHARGE.GRID },
       dwell_s: 900, min_change: 0, bench_pending: true,
     },
@@ -776,7 +806,7 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
   if (pvLimitKw != null) {
     const capW = Math.max(0, pvLimitKw * 1000);
     planned.push({
-      role: 'pv_limit', fc: 6, addr: reg.exportLimit,
+      role: 'pv_limit', fc: writeFc, addr: reg.exportLimit,
       value: Math.round(capW / reg.exportLimitScale) & 0xffff,
       encode: { kind: 'feed_in_cap_w', scale: reg.exportLimitScale, kw: pvLimitKw },
       dwell_s: 900, min_change: 1, bench_pending: true,
@@ -801,6 +831,9 @@ module.exports = {
   DEYE_CONTROL_SLOT,
   CERTIFIED_CONTROL_FAMILIES,
   SETPOINT_STALE_MS,
+  DEYE_WRITE_FC_FC16,
+  DEYE_WRITE_FC_FC6,
+  resolveDeyeWriteFc,
   resolveControlTier,
   controlRoute,
   controlRelease,

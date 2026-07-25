@@ -328,6 +328,23 @@ test('buildWriteSingleRequest wraps fn-0x06 in an exact V5 request frame', () =>
   assert.strictEqual(frame.length, 11 + 15 + 8 + 2, 'full frame length');
 });
 
+test('buildWriteMultipleRequest wraps fn-0x10 in an exact V5 request frame (the FC16 write path)', () => {
+  // The default Deye control write since PR y7: a single register written as a
+  // 1-register FC16 write, because many Deye firmwares ignore an FC6 write.
+  const loggerSerial = 2985159064;
+  const sequence = 0x0203;
+  const frame = S.buildWriteMultipleRequest({ loggerSerial, sequence, slaveId: 1, startReg: 0x008e, values: [0] });
+  assert.strictEqual(frame[0], 0xa5, 'start');
+  assert.strictEqual(frame[frame.length - 1], 0x15, 'end');
+  assert.strictEqual(frame.readUInt16LE(3), 0x4510, 'request control code');
+  assert.strictEqual(frame.readUInt16LE(5), sequence, 'sequence LE');
+  assert.strictEqual(frame.readUInt32LE(7), loggerSerial, 'logger serial LE32');
+  // embedded modbus fn-0x10 at offset 26: slave, 0x10, addrHi, addrLo, qtyHi, qtyLo, byteCount, valHi, valLo
+  assert.deepStrictEqual([...frame.slice(26, 35)], [0x01, 0x10, 0x00, 0x8e, 0x00, 0x01, 0x02, 0x00, 0x00], 'fn-0x10 write-multiple');
+  assert.strictEqual(frame[frame.length - 2], refV5Checksum([...frame]), 'V5 checksum');
+  assert.strictEqual(frame.length, 11 + 15 + 11 + 2, 'full frame length (modbus 11 bytes)');
+});
+
 test('parseWriteResponse reads back a fn-0x06 echo', () => {
   const mbBody = [0x01, 0x06, 0x00, 0x28, 0x00, 0x64];
   const crc = refModbusCrc(mbBody);
@@ -366,6 +383,18 @@ test('parseWriteResponse rejects an unexpected function code when asked', () => 
   const crc = refModbusCrc(mbBody);
   const mb = Buffer.from([...mbBody, crc & 0xff, (crc >> 8) & 0xff]);
   assert.throws(() => S.parseWriteResponse(mb, { expectFn: 0x10 }), /unerwartete Modbus-Funktion/);
+});
+
+test('parseWriteResponse surfaces a fn-0x10 (FC16) write exception', () => {
+  // An FC16 write exception reply: function 0x10 | 0x80 = 0x90, then the code.
+  // 0x02 = illegal data address (a wrong ToU register). It must be NAMED, never
+  // parsed as a valid ack.
+  const exc = [0x01, 0x90, 0x02];
+  const crc = refModbusCrc(exc);
+  assert.throws(
+    () => S.parseWriteResponse(Buffer.from([...exc, crc & 0xff, (crc >> 8) & 0xff]), { expectFn: 0x10 }),
+    /Ausnahme 0x02/,
+  );
 });
 
 // --- V5 WRITE-response diagnostics (the live-Pilsting blocker, PR z4) ----------

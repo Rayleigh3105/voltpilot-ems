@@ -38,7 +38,7 @@ const DEYE_SEL = {
   communication: 'solarman_v5', connection: { ip: '127.0.0.1', serial: '2985159064', mb_slave_id: 1 },
 };
 
-// --- a real in-process Solarman-V5 logger that honours FC6 writes + FC3 reads ---
+// --- a real in-process Solarman-V5 logger that honours FC6 + FC16 writes + FC3 reads ---
 // It parses the V5 request wrapper, applies the embedded Modbus-RTU frame to a
 // register store, and answers with a V5-wrapped Modbus response - exactly what a
 // real LSW3 stick does, so the executor's whole wire path (framing, checksum, CRC,
@@ -89,7 +89,7 @@ function startSolarmanServer(initial, opts = {}) {
           if (fn === 0x06) {
             const reg = mb.readUInt16BE(2);
             const value = mb.readUInt16BE(4) & 0xffff;
-            if (!opts.dropWrites) { store[reg] = value; writes.push({ reg, value }); }
+            if (!opts.dropWrites) { store[reg] = value; writes.push({ reg, value, fc: 0x06 }); }
             // writeReply models a logger that ACCEPTS the write frame (it arrives)
             // but returns a V5 response whose Modbus payload is too short to be a
             // valid RTU reply - the live-Pilsting shape: 'empty' = no Modbus bytes
@@ -97,6 +97,25 @@ function startSolarmanServer(initial, opts = {}) {
             if (opts.writeReply === 'empty') respMb = Buffer.alloc(0);
             else if (opts.writeReply === 'stub') respMb = Buffer.from([0x0b]);
             else respMb = SV5.writeSingleRegisterRequest(slave, reg, opts.dropWrites ? (store[reg] || 0) : value); // FC6 echo
+          } else if (fn === 0x10) {
+            // FC16 (write-multiple) - the DEFAULT Deye write path. The executor emits
+            // 1-register FC16 writes; a real logger stores them and answers with the
+            // ack echo [slave, 0x10, addrHi, addrLo, qtyHi, qtyLo, crc]. writeReply
+            // still models the short-reply blocker on this path.
+            const reg = mb.readUInt16BE(2);
+            const qty = mb.readUInt16BE(4);
+            for (let i = 0; i < qty; i++) {
+              const v = mb.readUInt16BE(7 + i * 2) & 0xffff;
+              if (!opts.dropWrites) { store[reg + i] = v; writes.push({ reg: reg + i, value: v, fc: 0x10 }); }
+            }
+            if (opts.writeReply === 'empty') respMb = Buffer.alloc(0);
+            else if (opts.writeReply === 'stub') respMb = Buffer.from([0x0b]);
+            else {
+              const body = Buffer.alloc(6);
+              body[0] = slave; body[1] = 0x10; body.writeUInt16BE(reg, 2); body.writeUInt16BE(qty, 4);
+              const crc = SV5.modbusCrc16(body);
+              respMb = Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]); // FC16 ack
+            }
           } else if (fn === 0x03) {
             const addr = mb.readUInt16BE(2);
             const count = mb.readUInt16BE(4);
@@ -190,6 +209,94 @@ test('Deye Solarman-V5 executor writes the ToU plan then reads every register ba
         assert.strictEqual(rb.wrote, true);
         assert.ok(rb.registers.every((r) => r.match), 'all registers confirmed by FC3 readback');
         assert.strictEqual(store[reg.progPowerBase], 20000);
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+// --- FC16 by default, FC6 as the flip-back (the PR y7 fix) --------------------
+//
+// The live Pilsting blocker: the Deye ACCEPTS an FC6 write frame but never answers
+// it and does not change the register (a 2-byte stub where the FC6 echo belongs).
+// The demonstrably-working Deye integrations (deye-controller, ha-solarman via
+// pysolarmanv5) write every register - even one - via FC16, so FC16 is now the
+// default. control_write_fc:6 flips back for a firmware that only answers FC6.
+// These assert the actual WIRE function code the logger saw (writes[].fc), not just
+// that the write "succeeded".
+
+test('Deye executor writes via FC16 (0x10) by default - the fix for firmwares that ignore FC6', async () => {
+  const { server, port, writes } = await startSolarmanServer({});
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
+      async (plan) => {
+        assert.ok(plan.writes.every((w) => w.fc === 16), 'the planner stamps FC16 on every Deye WriteOp by default');
+        plan.connection.port = port;
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} });
+        assert.ok(out, 'the FC16 write produced a readback');
+        assert.ok(writes.length >= 5, 'the ToU plan reached the logger');
+        // the decisive assertion: every write frame on the wire was FC16 (0x10)
+        assert.ok(
+          writes.every((w) => w.fc === 0x10),
+          'every write frame on the wire was FC16 (0x10): ' + JSON.stringify(writes.map((w) => w.fc)),
+        );
+        assert.ok(out.payload.registers.every((r) => r.match), 'write -> FC3 readback matched over FC16');
+        // and the ToU registers actually changed (FC16 is stored, not silently ignored)
+        const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+        assert.strictEqual(out.payload.registers.find((r) => r.role === 'battery_power').actual_raw, 20000);
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('control_write_fc:6 flips the Deye write back to FC6 (0x06) - the escape hatch, still lands', async () => {
+  const { server, port, writes } = await startSolarmanServer({});
+  try {
+    controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+    try {
+      const plan = controlRouting.controlRoute(
+        { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1', control_write_fc: 6 } },
+        { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
+        { ratedKw: 30 },
+      );
+      assert.ok(plan.writes.every((w) => w.fc === 6), 'control_write_fc:6 stamps FC6 on every WriteOp');
+      plan.connection.port = port;
+      const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} });
+      assert.ok(out, 'the FC6 write produced a readback');
+      assert.ok(writes.length >= 5, 'the ToU plan reached the logger');
+      assert.ok(
+        writes.every((w) => w.fc === 0x06),
+        'every write frame on the wire was FC6 (0x06): ' + JSON.stringify(writes.map((w) => w.fc)),
+      );
+      assert.ok(out.payload.registers.every((r) => r.match), 'write -> FC3 readback matched over FC6');
+    } finally {
+      controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('the executor logs ONE known-good FC3 readback frame (comparison baseline vs a bad write reply)', async () => {
+  // Item 5: keep a good FC3 response one log line away, so a future field test can
+  // compare a GOOD read frame against a BAD write reply without guesswork. It is
+  // logged from the write executor (NOT the hot read poll) and once per process.
+  const { server, port } = await startSolarmanServer({});
+  try {
+    await certifiedDeyePlan(
+      { battery_setpoint_kw: -0.3, source: 'calibration', control_enabled: true, soc_min_pct: 10, calibration: true },
+      async (plan) => {
+        plan.connection.port = port;
+        const { out, warns } = await runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } });
+        assert.ok(out, 'the write + readback completed');
+        const ok = warns.find((w) => /Rueckleseframe OK/.test(w));
+        assert.ok(ok, 'a known-good FC3 readback frame was logged: ' + JSON.stringify(warns));
+        assert.match(ok, /Anfrage=\[A5 [0-9A-F ]+\]/, 'the raw FC3 REQUEST frame hex is present');
+        assert.match(ok, /Antwort=\[A5 [0-9A-F ]+\]/, 'the raw FC3 RESPONSE frame hex is present');
       },
     );
   } finally {
@@ -394,8 +501,21 @@ function startSingleClientSolarmanServer(initial = {}, opts = {}) {
           if (fn === 0x06) {
             const reg = mb.readUInt16BE(2);
             const value = mb.readUInt16BE(4) & 0xffff;
-            store[reg] = value; writes.push({ reg, value });
+            store[reg] = value; writes.push({ reg, value, fc: 0x06 });
             respMb = SV5.writeSingleRegisterRequest(slave, reg, value);
+          } else if (fn === 0x10) {
+            // FC16 (write-multiple) - the DEFAULT Deye write path. Stores the words and
+            // answers the ack echo [slave, 0x10, addrHi, addrLo, qtyHi, qtyLo, crc].
+            const reg = mb.readUInt16BE(2);
+            const qty = mb.readUInt16BE(4);
+            for (let i = 0; i < qty; i++) {
+              const v = mb.readUInt16BE(7 + i * 2) & 0xffff;
+              store[reg + i] = v; writes.push({ reg: reg + i, value: v, fc: 0x10 });
+            }
+            const body = Buffer.alloc(6);
+            body[0] = slave; body[1] = 0x10; body.writeUInt16BE(reg, 2); body.writeUInt16BE(qty, 4);
+            const crc = SV5.modbusCrc16(body);
+            respMb = Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
           } else if (fn === 0x03) {
             const addr = mb.readUInt16BE(2);
             const count = mb.readUInt16BE(4);
