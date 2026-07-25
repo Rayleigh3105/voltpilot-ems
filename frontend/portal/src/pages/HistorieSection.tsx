@@ -176,16 +176,20 @@ function BilanzFace({ site, range, anchor }: { site: Site; range: HistoryRange; 
             <KpiCard
               icon={<Icon name="battery-charging" size={20} />}
               category="battery"
-              value={totals?.batterySavingsEur == null ? '-' : eurAmount(totals.batterySavingsEur)}
-              label="Speicher-Ersparnis"
-              title="Aus den gespeicherten Fahrplänen: Kosten gegenüber einem Betrieb ohne Speicher"
+              value={
+                totals?.batterySavingsPlannedEur == null
+                  ? '-'
+                  : eurAmount(totals.batterySavingsPlannedEur)
+              }
+              label="Geplante Speicher-Ersparnis"
+              title="Aus den gespeicherten Fahrplänen GEPLANT: Kosten gegenüber einem Betrieb ohne Speicher. Nicht die gemessene Ersparnis - die steht unter „Erlöse“."
             />
           </section>
-          {(totals?.gridCostEur == null || totals?.batterySavingsEur == null) && (
+          {(totals?.gridCostEur == null || totals?.batterySavingsPlannedEur == null) && (
             <p className="vp-note" style={{ marginTop: 8 }}>
               {totals?.gridCostEur == null && 'Für diesen Zeitraum liegen keine Börsenpreise vor. '}
-              {totals?.batterySavingsEur == null &&
-                'Für diesen Zeitraum liegt kein Batterie-Fahrplan vor - die Ersparnis erscheint, sobald geplant wird.'}
+              {totals?.batterySavingsPlannedEur == null &&
+                'Für diesen Zeitraum liegt kein Batterie-Fahrplan vor - die geplante Ersparnis erscheint, sobald geplant wird.'}
             </p>
           )}
 
