@@ -194,6 +194,13 @@ func solarmanFields() []Field {
 				{Value: 1, Label: "Watt (×1)"},
 				{Value: 10, Label: "Dekawatt (×10)"},
 			}},
+		{Key: "control_write_fc", Label: "Schreib-Funktionscode (Steuerung)", Type: "select", Default: 0,
+			Help: "Modbus-Funktion für Steuerungs-Schreibbefehle. Viele Deye-Hybride nehmen einen Einzelregister-Schreibbefehl (FC6) zwar an, der Wechselrichter antwortet aber nicht und übernimmt den Wert nicht - deshalb ist FC16 (mehrere Register) die Voreinstellung, wie sie die funktionierenden Deye-Integrationen nutzen. Nur auf FC6 zurückstellen, wenn eine abweichende Firmware ausschließlich FC6 beantwortet.",
+			Options: []Opt{
+				{Value: 0, Label: "Automatisch (FC16, empfohlen)"},
+				{Value: 16, Label: "FC16 – mehrere Register (0x10)"},
+				{Value: 6, Label: "FC6 – einzelnes Register (0x06)"},
+			}},
 	}
 }
 
@@ -589,6 +596,21 @@ type Connection struct {
 	// transports (solarman_v5 / modbus_tcp / fronius_sunspec).
 	InvertControlSign bool `json:"invert_control_sign,omitempty"`
 
+	// ControlWriteFc pins the Modbus WRITE function code the Deye control adapter
+	// uses for a control register write: 16 = write-multiple-registers (FC16 / 0x10,
+	// the DEFAULT and firmware-robust path), 6 = write-single-register (FC6 / 0x06,
+	// the legacy path). Many Deye hybrid firmwares (LSW3/Solarman logger) ACCEPT an
+	// FC6 write frame at the transport but the inverter never answers it and the
+	// register does not change - the live Pilsting symptom (a 2-byte stub where the
+	// FC6 echo belongs). The demonstrably-working Deye integrations (deye-controller,
+	// ha-solarman via pysolarmanv5) write every register - even a single one - via
+	// FC16, so FC16 is the default for Deye. This is an operator escape hatch mirroring
+	// PowerScale/InvertBattSign: 0 = auto (-> FC16 for Deye), 16 explicit, 6 to flip
+	// back to FC6 if a different firmware only answers FC6. Solarman-V5 (Deye) only -
+	// the SunSpec/Modbus control path always uses its own FC6 register writes. The
+	// Node-RED control adapter reads conn.control_write_fc (0/absent -> FC16).
+	ControlWriteFc int `json:"control_write_fc,omitempty"`
+
 	// InvertBattSign flips the battery-power READ sign so the decoded
 	// `battery_power_kw` honors the documented convention (+ charge / - discharge),
 	// which the cloud's balance-derived battery_kw and the First-Light verdict both
@@ -721,6 +743,12 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.PowerScale != 0 && conn.PowerScale != 1 && conn.PowerScale != 10 {
 			return Selection{}, invalid("Die Leistungsskalierung muss automatisch (0), 1 oder 10 sein.")
 		}
+		// 0 = auto (-> FC16, the default), 16 = FC16, 6 = FC6. See the ControlWriteFc
+		// doc: Deye firmwares commonly ignore an FC6 write, so FC16 is the default and
+		// FC6 is the flip-back escape hatch. The Node-RED control adapter reads it.
+		if conn.ControlWriteFc != 0 && conn.ControlWriteFc != 6 && conn.ControlWriteFc != 16 {
+			return Selection{}, invalid("Der Schreib-Funktionscode muss automatisch (0), 16 oder 6 sein.")
+		}
 		// fields of the other transports are not part of this one.
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 	case CommModbusTCP:
@@ -737,6 +765,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		// fields of the other transports are not part of this one.
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, false, 0, false, ""
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
+		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
 	case CommFroniusSolarAPI:
 		// The Solar API (HTTP/JSON) needs only host + port; no serial, unit id or
 		// auth. `insecure_tls` and `invert_grid_sign` (shared) are the only extras.
@@ -747,6 +776,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		// is read-only, so the control sign is meaningless here).
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.ModelType = "", 0, 0, ""
 		conn.UnitID, conn.Profile, conn.InvertControlSign, conn.InvertBattSign = 0, "", false, false
+		conn.ControlWriteFc = 0
 	case CommFroniusSunSpec:
 		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
 		// hint + the grid-sign escape hatch. The register-map profile is the single
@@ -773,6 +803,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		// fields of the other transports are not part of this one.
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS = "", 0, 0, false
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
+		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -784,6 +815,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale = "", 0, false, 0
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 		conn.InvertControlSign, conn.InvertBattSign = false, false
+		conn.ControlWriteFc = 0
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -818,6 +850,12 @@ func (s Selection) BusPayload() []byte {
 		// invert_control_sign is the WRITE-path sign the calibration step proves; the
 		// Deye control adapter reads it. Absent = false (no inversion).
 		conn["invert_control_sign"] = s.Connection.InvertControlSign
+		// control_write_fc is the Modbus WRITE function code the Deye control adapter
+		// uses (0/absent -> FC16, the firmware-robust default; 6 flips back to FC6).
+		// Publishing it here is what lets the SELF-WIRING path carry it (like
+		// invert_batt_sign) - without it every self-wired Deye would fall back to the
+		// adapter's own FC16 default with no way to flip back. See ControlWriteFc.
+		conn["control_write_fc"] = s.Connection.ControlWriteFc
 	case CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile
