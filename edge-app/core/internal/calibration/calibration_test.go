@@ -191,6 +191,74 @@ func TestVerdictSignAndScale(t *testing.T) {
 	}
 }
 
+// TestVerdictRequiresAQuietBaseline is the Defect-2 guard: the measured after-value
+// is only attributable to the command from a NEAR-IDLE baseline. The captain's live
+// case was a stale -1 kW discharge test while the battery was naturally CHARGING at
+// ~31 kW - the absolute measured value happened to "match" the command sign yet had
+// nothing to do with it. A busy (or unknown) baseline must never yield a confident
+// sign/scale verdict.
+func TestVerdictRequiresAQuietBaseline(t *testing.T) {
+	// The owner's scenario: discharge -1 kW commanded, but the battery was charging
+	// hard (+31 kW) before AND after the (never-landed) test. Absolute sign would
+	// have said "inverted"; with the corrected read sign it is +31 either way - the
+	// point is neither reading is attributable, so no confident verdict at all.
+	for _, after := range []float64{31, -30} {
+		v := Verdict(-1.0, Reading{BatteryKw: fp(31)}, Reading{BatteryKw: fp(after)})
+		if !v.BaselineBusy {
+			t.Fatalf("a ~31 kW baseline must be flagged busy (after=%.0f): %+v", after, v)
+		}
+		if v.SignOK || v.SignInverted || v.MagnitudeOK {
+			t.Fatalf("a busy baseline must yield NO confident sign/scale verdict (after=%.0f): %+v", after, v)
+		}
+		if v.MeasuredKw == nil || v.Text == "" {
+			t.Fatalf("busy verdict should still report the measured value + an honest text: %+v", v)
+		}
+	}
+
+	// An unknown baseline (no before reading yet) is equally un-attributable.
+	v := Verdict(0.5, Reading{}, Reading{BatteryKw: fp(0.48)})
+	if !v.BaselineBusy || v.SignOK || v.MagnitudeOK {
+		t.Fatalf("an unknown baseline must not yield a confident verdict: %+v", v)
+	}
+
+	// A genuinely quiet baseline still produces a normal verdict (regression): a
+	// small pre-test drift within the threshold does not block it.
+	v = Verdict(0.5, Reading{BatteryKw: fp(0.05)}, Reading{BatteryKw: fp(0.48)})
+	if v.BaselineBusy || !v.SignOK || !v.MagnitudeOK {
+		t.Fatalf("a near-idle baseline must still confirm a good test: %+v", v)
+	}
+	// The threshold scales with the command: 0.4 kW baseline is busy for a 0.5 kW
+	// test (> max(0.1, 0.25)) but quiet for a 1.0 kW test (<= max(0.1, 0.5)).
+	if v := Verdict(0.5, Reading{BatteryKw: fp(0.4)}, Reading{BatteryKw: fp(0.48)}); !v.BaselineBusy {
+		t.Fatalf("0.4 kW baseline must be busy for a 0.5 kW command: %+v", v)
+	}
+	if v := Verdict(1.0, Reading{BatteryKw: fp(0.4)}, Reading{BatteryKw: fp(0.95)}); v.BaselineBusy || !v.SignOK {
+		t.Fatalf("0.4 kW baseline must be quiet for a 1.0 kW command: %+v", v)
+	}
+}
+
+// TestConfirmationRefusedFromABusyBaseline pins that the Gap-B confirm gates get
+// STRICTER with Defect 2: even a landed write + a measured value that "matches" the
+// command sign cannot confirm sign/scale unless the baseline was quiet.
+func TestConfirmationRefusedFromABusyBaseline(t *testing.T) {
+	s := newSession()
+	now := time.Unix(1_700_000_000, 0)
+	s.Arm()
+	// Test started while the battery was already charging hard (busy baseline).
+	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(31)}, now)
+	s.NoteWriteReadback(true) // the write DID read back - evidence exists...
+	busyAfter := Reading{BatteryKw: fp(-0.48)}
+	if err := s.ConfirmSign(true, busyAfter); err != ErrSignNotObserved {
+		t.Fatalf("a busy baseline must refuse a sign confirm even with a landed write: %v", err)
+	}
+	if err := s.ConfirmScale(true, busyAfter); err != ErrScaleNotObserved {
+		t.Fatalf("a busy baseline must refuse a scale confirm even with a landed write: %v", err)
+	}
+	if s.CanCertify() {
+		t.Fatal("nothing confirmed from a busy baseline -> not certifiable")
+	}
+}
+
 // primeEvidence arms + starts a discharge test and records a matching write->readback,
 // so the Gap-B confirm/certify gates have their objective evidence. Returns the "after"
 // reading that yields a good verdict (sign + magnitude OK) for the -0.5 kW command.
