@@ -293,17 +293,38 @@ function controlRelease(selection, opts = {}) {
     const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
     const serial = conn.serial;
     const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
+    const writeFc = resolveDeyeWriteFc(conn);
     const reg = deyeFamilyControlReg(family);
-    // Neutral TOU slot: DISABLE the Time-of-Use scheduler so the inverter reverts to
-    // its own self-consumption logic. EEPROM -> write-on-change (dwell_s), and never
-    // emitted for an uncertified family EXCEPT a calibration-test revert (dwell_s=0
-    // so it is not blocked). String/micro (no ToU) has nothing to release.
-    const planned = reg ? [{
-      role: 'tou_enable', fc: resolveDeyeWriteFc(conn), addr: reg.touEnable, value: 0,
-      encode: { kind: 'tou_mask', all_week: false, release: true },
-      dwell_s: calibration ? 0 : 900, min_change: 0, bench_pending: true,
-    }] : [];
-    const readbacks = reg ? [{ role: 'tou_enable', fc: 3, addr: reg.touEnable, expect: 0, tolerance: 0 }] : [];
+    // The captured pre-control snapshot (report §8). Deye has NO revert timer, so a
+    // release must ACTIVELY hand back: writing only touEnable=0 would leave a changed
+    // Energy-Pattern / Solar-Sell / export-limit LATCHED in EEPROM. When a snapshot is
+    // present, restore every register we may have changed to its captured installer
+    // value; touEnable (activation) is restored LAST so the inverter is never left
+    // running our half-restored program. When NO snapshot exists (nothing was ever
+    // changed) release stays as before: just DISABLE the Time-of-Use scheduler.
+    const snapshot = (opts && opts.snapshot && typeof opts.snapshot === 'object') ? opts.snapshot : null;
+    const restoreDwell = calibration ? 0 : 900;
+    let planned = [];
+    if (reg && snapshot) {
+      const spec = deyeSnapshotSpec(reg, DEYE_CONTROL_SLOT);
+      for (const s of spec) {
+        if (snapshot[s.addr] === undefined) continue; // only restore what we captured
+        planned.push({
+          role: s.role, fc: writeFc, addr: s.addr, value: snapshot[s.addr] & 0xffff,
+          encode: { kind: 'restore', from: 'snapshot' },
+          dwell_s: restoreDwell, min_change: 0, bench_pending: true,
+        });
+      }
+    }
+    if (reg && planned.length === 0) {
+      // No snapshot (or nothing captured): DISABLE the scheduler -> self-consumption.
+      planned = [{
+        role: 'tou_enable', fc: writeFc, addr: reg.touEnable, value: 0,
+        encode: { kind: 'tou_mask', all_week: false, release: true },
+        dwell_s: restoreDwell, min_change: 0, bench_pending: true,
+      }];
+    }
+    const readbacks = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: 0 }));
     return {
       adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
       target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
@@ -655,6 +676,15 @@ const DEYE_CONTROL_REG = {
 
 // ha-solarman enum values (facts from the two Deye definitions).
 const DEYE_WORK_MODE = { EXPORT_FIRST: 0, ZERO_EXPORT_TO_LOAD: 1, ZERO_EXPORT_TO_CT: 2 };
+// "Energy Pattern" 0x008D/0x00F3: Battery First(0) charges the battery from PV
+// BEFORE serving load/export; Load First(1) does not. A DISCHARGE command sets
+// Load First so a midday PV surplus stops preferentially charging the battery
+// (the missing lever, report §1/§8); a CHARGE command sets Battery First.
+const DEYE_ENERGY_PATTERN = { BATTERY_FIRST: 0, LOAD_FIRST: 1 };
+// "Solar Sell" 0x0091/0x00F7: the export-surplus enable. A "discharge to grid"
+// command has nowhere to put the energy but the battery unless an export path is
+// enabled, so every working forced-discharge recipe sets this =1 (report §1/§3/§8).
+const DEYE_SOLAR_SELL = { OFF: 0, ON: 1 };
 // "Time of Use" enable: 0x00FF = "Week" (all 7 weekday bits) with bit0 = Enabled.
 const DEYE_TOU_ENABLED_ALL_WEEK = 0x00ff;
 // "Program N Charging" enum: Disabled / Grid / Generator / Both.
@@ -675,18 +705,111 @@ function deyeFamilyControlReg(family) {
     ? DEYE_CONTROL_REG[family] : null;
 }
 
+// resolveDeyePowerScale - N1 fix (report §6): the Program-Power AND Max-Sell-Power
+// registers are scale [1,10] (LV = 1 -> W, HV = 10 -> decawatt), but the WRITE path
+// never sees the read map's auto-detected HV class - an unset power_scale would
+// SILENTLY default to 1 and under-scale an HV write 10x. So use the EXPLICIT config
+// value only when it is 1 or 10; otherwise fall back to 1 but report confirmed=false
+// so the executor WARNs "Skalierung unbestaetigt" rather than defaulting silently.
+function resolveDeyePowerScale(conn) {
+  const v = Number(conn && conn.power_scale);
+  if (v === 1 || v === 10) return { scale: v, confirmed: true };
+  return { scale: 1, confirmed: false };
+}
+
+// deyeSnapshotSpec - the ORDERED set of control registers deyeControl may write for
+// a battery-hybrid family (report §8 snapshot/restore). Deye has NO revert timer, so
+// anything we change persists in EEPROM until we change it back; the executor
+// FC3-reads these BEFORE its first write to capture the installer's pre-control
+// values, and controlRelease writes them back on hand-back. touEnable (activation)
+// is LAST, so restore re-arms the installer's own ToU state only after every slot/
+// config register is already back to its captured value. Returns [{ role, addr }].
+function deyeSnapshotSpec(reg, slot) {
+  const spec = [
+    { role: 'energy_pattern', addr: reg.energyPattern },
+    { role: 'work_mode', addr: reg.workMode },
+    { role: 'max_sell_power', addr: reg.maxSellPower },
+    { role: 'solar_sell', addr: reg.solarSell },
+    { role: 'program_time', addr: reg.progTimeBase + slot },
+    { role: 'battery_power', addr: reg.progPowerBase + slot },
+    { role: 'battery_target_soc', addr: reg.progSocBase + slot },
+    { role: 'grid_charge_enable', addr: reg.progChargeBase + slot },
+  ];
+  // On hybrid_3p exportLimit (0x00E7) is a SEPARATE register from maxSellPower
+  // (0x008F); on hybrid_1p they are the SAME register (0x00F5, already listed), so
+  // only add it once.
+  if (reg.exportLimit !== reg.maxSellPower) {
+    spec.push({ role: 'export_limit', addr: reg.exportLimit });
+  }
+  spec.push({ role: 'tou_enable', addr: reg.touEnable }); // activation - restore LAST
+  return spec;
+}
+
+// deyeProgramTimeAddrs - the 6 ToU program start-time registers, for the N2 slot-
+// time check (report §8.9): VoltPilot writes Program 1 = 00:00, but if the installer
+// left Programs 2..6 with later start times, a DIFFERENT slot governs "now" and our
+// Program-1 command is inert even though every register reads back. The executor
+// reads these once (at snapshot time) and warns.
+function deyeProgramTimeAddrs(reg) {
+  const out = [];
+  for (let i = 0; i < 6; i++) out.push(reg.progTimeBase + i);
+  return out;
+}
+
+// deyeHhmmToMinutes - decode a Deye ToU program start time (decimal HHMM, e.g.
+// 830 = 08:30) to minutes since midnight. 00:00 = 0 in both decimal-HHMM and BCD;
+// the exact time encoding is firmware-dependent -> VERIFY-on-device (the N2 warning
+// is advisory only, it never changes a write).
+function deyeHhmmToMinutes(hhmm) {
+  const v = Number(hhmm) || 0;
+  return Math.floor(v / 100) * 60 + (v % 100);
+}
+
+// deyeProgram1Displaced - N2 detection (report §8.9): is VoltPilot's Program 1
+// (start 00:00) NOT the governing slot at nowMinutes? True iff some LATER program
+// (2..6, start strictly after Program 1's) has already started (start <= now), so
+// the inverter is running a different slot and IGNORES our Program-1 command. All-
+// zero / unset program times (the fresh state) never trip this.
+function deyeProgram1Displaced(programTimes, nowMinutes) {
+  if (!Array.isArray(programTimes) || programTimes.length < 2) return false;
+  const p1 = deyeHhmmToMinutes(programTimes[0]);
+  for (let i = 1; i < programTimes.length; i++) {
+    const start = deyeHhmmToMinutes(programTimes[i]);
+    if (start > p1 && start <= nowMinutes) return true;
+  }
+  return false;
+}
+
+// deyeControl - the CORRECTED battery-power -> live ToU slot translation (report
+// §8). Strategy A (target-SoC = floor + power cap + grid-charge off) is CORRECT for
+// CHARGE but fundamentally INCOMPLETE for DISCHARGE: on a Deye the ToU target-SoC is
+// a discharge FLOOR (a permission), not a discharge command, and Export/Selling-First
+// charges the battery from surplus BEFORE exporting - so a "discharge to floor"
+// program does not FORCE a discharge, it permits one while the inverter charges
+// instead (the live +12 kW symptom). To actually push power OUT you must ALSO enable
+// Solar Sell, set Energy-Pattern to Load-First, and set the export/sell-power limit
+// (the gentle "6b" forcing lever the owner chose; the heavier "6a" max-charge-current
+// clamp 0x006C is DELIBERATELY NOT wired here). See DEYE.md + CONTROL-BENCH.md; every
+// new lever stays bench_pending until the family is certified.
 function deyeControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
   const serial = conn.serial;
   const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
   const invert = conn.invert_control_sign === true;
   const socMin = isFiniteNum(setpoint.soc_min_pct) ? setpoint.soc_min_pct : 5;
-  // power_scale mirrors the read map: LV = 1 (register in W), HV = 10 (decawatt).
-  const powerScale = Number(conn.power_scale) > 0 ? Number(conn.power_scale) : 1;
+  // N1 fix (report §6): use the EXPLICIT power_scale (1 or 10); confirmed=false when
+  // it had to fall back to 1, so the executor can WARN instead of silently mis-scaling.
+  const ps = resolveDeyePowerScale(conn);
+  const powerScale = ps.scale;
   // The Modbus WRITE function code (FC16 default, FC6 flip-back) - see the
   // resolveDeyeWriteFc header. ONLY the wire function changes; the register map,
   // values, ordering and EEPROM write-on-change discipline are untouched.
   const writeFc = resolveDeyeWriteFc(conn);
+  // The captured pre-control snapshot the executor FC3-read before its first write
+  // (report §8) - a plain map addr->raw, threaded back so the CHARGE plan can RESTORE
+  // maxSellPower to the installer's pre-control value. Absent on the first tick.
+  const snapshot = (opts && opts.snapshot && typeof opts.snapshot === 'object') ? opts.snapshot : null;
+  const snapVal = (addr) => (snapshot && snapshot[addr] !== undefined ? snapshot[addr] & 0xffff : undefined);
 
   const reg = deyeFamilyControlReg(family);
   // The un-gated Deye adapter: the SAME two-gate discipline as sunspecControl.
@@ -703,10 +826,10 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
   // exactly the mechanism for the first real write to prove sign/scale before the
   // bench pass. In production (no calibration flag) Deye stays writes:[] as before.
   const writeAllowed = controlEnabled && (certified || calibration);
-  // Readback tolerance: the power register is decawatt/watt-scaled so allow ±1 raw
+  // Readback tolerance: the power registers are decawatt/watt-scaled so allow ±1 raw
   // unit; the enum/flag registers must match exactly.
-  const deyeRbTol = (role) => (role === 'battery_power' || role === 'pv_limit' ? 1 : 0);
-  const finalize = (planned) => {
+  const deyeRbTol = (role) => (role === 'battery_power' || role === 'pv_limit' || role === 'max_sell_power' ? 1 : 0);
+  const finalize = (planned, extra) => {
     const readbacks = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: deyeRbTol(w.role) }));
     // executable writes carry no bench_pending flag (that is a display marker on
     // `planned`); the two objects otherwise match address-for-address. A CALIBRATION
@@ -728,6 +851,7 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
       readbacks: writeAllowed ? readbacks : [],
       planned,
     };
+    if (extra) Object.assign(out, extra);
     if (!writeAllowed) {
       out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Steuerung für dieses Modell noch nicht freigegeben';
     }
@@ -750,12 +874,15 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
     return finalize(planned);
   }
 
+  const slot = DEYE_CONTROL_SLOT;
   const battKw = invert ? -kw : kw;
   const charging = battKw > 0;
-  // Program Power is the slot's charge/discharge power cap (W / power_scale).
-  const powerReg = Math.max(0, Math.round((Math.abs(battKw) * 1000) / powerScale)) & 0xffff;
-  // Direction is encoded by the slot's target SoC (strategy A): charge -> full,
-  // discharge -> the operating floor. ha-solarman "Program N SOC", %.
+  const watts = Math.abs(battKw) * 1000;
+  // Program Power is the slot's charge/discharge power cap (W / power_scale, N1 fix).
+  const powerReg = Math.max(0, Math.round(watts / powerScale)) & 0xffff;
+  // Direction is PERMITTED by the slot's target SoC (charge -> full, discharge ->
+  // the operating floor) - a permission, NOT a command (report §1); the levers below
+  // are what actually force export.
   const targetSoc = charging ? 100 : clampPct(socMin);
   // Grid-charge is EEG-gated: the slot's "Program N Charging" is only ever set to
   // Grid when the site explicitly permits grid charging (netzladen_erlaubt) AND
@@ -764,56 +891,106 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
   const gridChargeAllowed = setpoint.grid_charge_allowed === true;
   const chargeEnum = gridChargeAllowed && charging
     ? DEYE_PROG_CHARGE.GRID : DEYE_PROG_CHARGE.DISABLED;
+  // The 6b export/sell-power lever: its register is scale [1,10] on hybrid_3p (0x008F,
+  // via power_scale) but a fixed scale-1 W register on hybrid_1p (0x00F5, where it IS
+  // the exportLimit register); pick the scale per family so the magnitude is right.
+  const maxSellScale = (reg.maxSellPower === reg.exportLimit) ? reg.exportLimitScale : powerScale;
 
-  const slot = DEYE_CONTROL_SLOT;
-  const planned = [
-    {
-      // Export First lets the ToU schedule sell surplus (grid arbitrage); the
-      // exact work-mode value is bench-verified per firmware.
-      role: 'work_mode', fc: writeFc, addr: reg.workMode, value: DEYE_WORK_MODE.EXPORT_FIRST,
-      encode: { kind: 'work_mode', enum: 'export_first' }, dwell_s: 900, min_change: 0, bench_pending: true,
-    },
-    {
-      // Turn the ToU scheduler on for all weekdays (bit0=Enabled, 0x00FF="Week").
-      role: 'tou_enable', fc: writeFc, addr: reg.touEnable, value: DEYE_TOU_ENABLED_ALL_WEEK,
-      encode: { kind: 'tou_mask', all_week: true }, dwell_s: 900, min_change: 0, bench_pending: true,
-    },
-    {
-      // Set Program 1's start time to 00:00 so the commanded slot is the day's BASE
-      // window - otherwise a stale program time may leave Program 1 inactive at "now"
-      // and the inverter ignores the setpoint even though the registers echo (report §6).
-      role: 'program_time', fc: writeFc, addr: reg.progTimeBase + slot, value: DEYE_PROGRAM_TIME_BASE_HHMM,
-      encode: { kind: 'program_time_hhmm', hhmm: DEYE_PROGRAM_TIME_BASE_HHMM }, dwell_s: 900, min_change: 0, bench_pending: true,
-    },
-    {
-      role: 'battery_power', fc: writeFc, addr: reg.progPowerBase + slot, value: powerReg,
-      encode: { kind: 'watt_scaled_u16', scale: powerScale, kw: battKw }, dwell_s: 900, min_change: 50, bench_pending: true,
-    },
-    {
-      role: 'battery_target_soc', fc: writeFc, addr: reg.progSocBase + slot, value: targetSoc,
-      encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' },
-      dwell_s: 900, min_change: 1, bench_pending: true,
-    },
-    {
-      role: 'grid_charge_enable', fc: writeFc, addr: reg.progChargeBase + slot, value: chargeEnum,
-      encode: { kind: 'charge_enum', eeg_gated: true, disabled: DEYE_PROG_CHARGE.DISABLED, grid: DEYE_PROG_CHARGE.GRID },
-      dwell_s: 900, min_change: 0, bench_pending: true,
-    },
-  ];
-  // pv_limit -> the family's feed-in cap register, in W / register-scale. Absent
-  // (no curtailment) -> no write, matching the schedule contract (absent = no
-  // limit), so an uncurtailed tick never touches the export cap.
-  if (pvLimitKw != null) {
-    const capW = Math.max(0, pvLimitKw * 1000);
+  // The write plan, in the report §8 order: config/EEPROM levers first, the slot, and
+  // ACTIVATION (touEnable) strictly LAST - so the inverter never runs a half-written
+  // program (the reorder is itself a correctness fix; the old plan enabled ToU second).
+  const cfg = { dwell_s: 900, min_change: 0, bench_pending: true };
+  const planned = [];
+  // 1) Energy-Pattern: discharge -> Load First (stop prioritising battery charge from
+  //    PV, the missing lever); charge -> Battery First (prioritise charging).
+  planned.push({
+    role: 'energy_pattern', fc: writeFc, addr: reg.energyPattern,
+    value: charging ? DEYE_ENERGY_PATTERN.BATTERY_FIRST : DEYE_ENERGY_PATTERN.LOAD_FIRST,
+    encode: { kind: 'energy_pattern', enum: charging ? 'battery_first' : 'load_first' }, ...cfg,
+  });
+  // 2) Work-Mode: Export/Selling First (permit export).
+  planned.push({
+    role: 'work_mode', fc: writeFc, addr: reg.workMode, value: DEYE_WORK_MODE.EXPORT_FIRST,
+    encode: { kind: 'work_mode', enum: 'export_first' }, ...cfg,
+  });
+  // 3) Solar-Sell: ON for a DISCHARGE (enable surplus/battery export - without an
+  //    export path a "discharge to grid" has nowhere to go but the battery). A CHARGE
+  //    leaves it to the snapshot restore, so we never latch export-on for a charge.
+  if (!charging) {
     planned.push({
-      role: 'pv_limit', fc: writeFc, addr: reg.exportLimit,
-      value: Math.round(capW / reg.exportLimitScale) & 0xffff,
-      encode: { kind: 'feed_in_cap_w', scale: reg.exportLimitScale, kw: pvLimitKw },
-      dwell_s: 900, min_change: 1, bench_pending: true,
+      role: 'solar_sell', fc: writeFc, addr: reg.solarSell, value: DEYE_SOLAR_SELL.ON,
+      encode: { kind: 'flag', enum: 'solar_sell_on' }, ...cfg,
     });
   }
+  // 4) Program 1 start 00:00 = the day's BASE window (report §6), so the commanded
+  //    slot governs "now". We only ever write OUR slot's own time, never Programs 2..6.
+  planned.push({
+    role: 'program_time', fc: writeFc, addr: reg.progTimeBase + slot, value: DEYE_PROGRAM_TIME_BASE_HHMM,
+    encode: { kind: 'program_time_hhmm', hhmm: DEYE_PROGRAM_TIME_BASE_HHMM }, ...cfg,
+  });
+  // 5) Program 1 Charging enum (grid-charge, EEG-gated).
+  planned.push({
+    role: 'grid_charge_enable', fc: writeFc, addr: reg.progChargeBase + slot, value: chargeEnum,
+    encode: { kind: 'charge_enum', eeg_gated: true, disabled: DEYE_PROG_CHARGE.DISABLED, grid: DEYE_PROG_CHARGE.GRID }, ...cfg,
+  });
+  // 6) Program 1 target SoC (the discharge floor / charge ceiling - the permission).
+  planned.push({
+    role: 'battery_target_soc', fc: writeFc, addr: reg.progSocBase + slot, value: targetSoc,
+    encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' }, dwell_s: 900, min_change: 1, bench_pending: true,
+  });
+  // 7) Max-Sell-Power (the 6b forcing lever). DISCHARGE -> the export/sell-power limit
+  //    = X so the battery actually exports at the commanded rate. CHARGE -> RESTORE it
+  //    to the installer's pre-control value from the snapshot, so an earlier
+  //    discharge's export cap never latches. No snapshot yet (the very first tick) ->
+  //    omit; the executor snapshots BEFORE writing, so the next tick restores.
+  if (!charging) {
+    planned.push({
+      role: 'max_sell_power', fc: writeFc, addr: reg.maxSellPower,
+      value: Math.max(0, Math.round(watts / maxSellScale)) & 0xffff,
+      encode: { kind: 'watt_scaled_u16', scale: maxSellScale, kw: battKw, lever: 'force_discharge' },
+      dwell_s: 900, min_change: 50, bench_pending: true,
+    });
+  } else if (snapVal(reg.maxSellPower) !== undefined) {
+    planned.push({
+      role: 'max_sell_power', fc: writeFc, addr: reg.maxSellPower, value: snapVal(reg.maxSellPower),
+      encode: { kind: 'restore', from: 'snapshot' }, dwell_s: 900, min_change: 0, bench_pending: true,
+    });
+  }
+  // 8) Program 1 Power = the slot's charge/discharge power cap (N1-scaled).
+  planned.push({
+    role: 'battery_power', fc: writeFc, addr: reg.progPowerBase + slot, value: powerReg,
+    encode: { kind: 'watt_scaled_u16', scale: powerScale, kw: battKw }, dwell_s: 900, min_change: 50, bench_pending: true,
+  });
+  // pv_limit -> the family's feed-in cap register, in W / register-scale. Absent (no
+  // curtailment) -> no write (contract: absent = no limit). On hybrid_1p this IS the
+  // maxSellPower register (0x00F5); dedup to the TIGHTER cap so one addr is never
+  // written twice (on hybrid_3p 0x00E7 != 0x008F, so no clash).
+  if (pvLimitKw != null) {
+    const capRaw = Math.round(Math.max(0, pvLimitKw * 1000) / reg.exportLimitScale) & 0xffff;
+    const clash = planned.find((w) => w.addr === reg.exportLimit);
+    if (clash) {
+      clash.value = Math.min(clash.value & 0xffff, capRaw) & 0xffff;
+      clash.encode = { ...clash.encode, feed_in_cap_kw: pvLimitKw };
+    } else {
+      planned.push({
+        role: 'pv_limit', fc: writeFc, addr: reg.exportLimit, value: capRaw,
+        encode: { kind: 'feed_in_cap_w', scale: reg.exportLimitScale, kw: pvLimitKw },
+        dwell_s: 900, min_change: 1, bench_pending: true,
+      });
+    }
+  }
+  // 9) ACTIVATION: enable the ToU scheduler (all weekdays) - STRICTLY LAST.
+  planned.push({
+    role: 'tou_enable', fc: writeFc, addr: reg.touEnable, value: DEYE_TOU_ENABLED_ALL_WEEK,
+    encode: { kind: 'tou_mask', all_week: true }, ...cfg,
+  });
 
-  return finalize(planned);
+  return finalize(planned, {
+    powerScaleConfirmed: ps.confirmed,
+    // The executor uses these to (a) FC3-snapshot the installer's pre-control values
+    // before the first write, and (b) N2-check whether Program 1 governs "now".
+    snapshotPlan: { registers: deyeSnapshotSpec(reg, slot), programTimes: deyeProgramTimeAddrs(reg) },
+  });
 }
 
 module.exports = {
@@ -826,6 +1003,8 @@ module.exports = {
   NO_PV_LIMIT,
   DEYE_CONTROL_REG,
   DEYE_WORK_MODE,
+  DEYE_ENERGY_PATTERN,
+  DEYE_SOLAR_SELL,
   DEYE_PROG_CHARGE,
   DEYE_TOU_ENABLED_ALL_WEEK,
   DEYE_CONTROL_SLOT,
@@ -834,6 +1013,11 @@ module.exports = {
   DEYE_WRITE_FC_FC16,
   DEYE_WRITE_FC_FC6,
   resolveDeyeWriteFc,
+  resolveDeyePowerScale,
+  deyeSnapshotSpec,
+  deyeProgramTimeAddrs,
+  deyeHhmmToMinutes,
+  deyeProgram1Displaced,
   resolveControlTier,
   controlRoute,
   controlRelease,

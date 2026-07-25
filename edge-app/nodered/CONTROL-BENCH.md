@@ -102,9 +102,30 @@ Schreibpfad + Watchdog + Persistenz), `inverter-control-routing.js` (der Executo
    zeigen (Enums, Prozente, Zeiten), nicht die schwankende Live-Telemetrie aus `0x024C…`/`0x0F00…`.
    Abweichung → Adresse pro Modell in der Config überschreiben (kein Code-Edit), **nie eine
    geratene Adresse als zertifiziert ausliefern**.
-2. **Richtung über Ziel-SoC.** Belegen, dass ein ToU-Slot mit Ziel-SoC = 100 %
-   tatsächlich **lädt** und mit Ziel-SoC = SoC-Untergrenze tatsächlich **entlädt**
-   (Strategie A). Gegen die gemessene Batterieleistung querchecken.
+2. **ENTLADEN: der Ziel-SoC allein reicht NICHT (report `vp-deye-tou-dir-q5` §8/§9).**
+   Der ToU-Ziel-SoC ist ein Entlade-**Boden**, kein Befehl; in Export First lädt der Deye
+   den Überschuss erst in die Batterie. Reihenfolge am Prüfstand:
+   - **(a) Batterie zuerst auf ≈40-70 % entladen.** Bei 100 % SoC ist eine Entladung
+     praktisch unbeobachtbar (die volle Batterie kann kein „+12 kW" aufnehmen, ein
+     „Laden auf 100 %"-No-Op täuscht einen Fix vor). Batterie **ruhig** (`|vorher| <
+     ~0,5·|Befehl|`), idealerweise wenig PV.
+   - **(b) Strategie A billig widerlegen:** den ALTEN Entladeplan (Ziel-SoC 5 %, kein
+     Solar Sell) fahren - er liefert KEINE saubere, gekappte Entladung. Als
+     kontrollierten Beweis protokollieren.
+   - **(c) Korrigierten Plan (§8) testen, 6b ZUERST:** Solar Sell AN (`0x0091`) +
+     Energy Pattern Load First (`0x008D`) + Export-Grenze `0x008F` = X + Ziel-SoC-Boden;
+     jedes Register zurücklesen UND die **gemessene** Batterieleistung muss bei ≈X
+     **negativ** werden. Wenn nicht → auf **6a** eskalieren (Max-Ladestrom `0x006C`
+     klemmen; NICHT in diesem PR verdrahtet). Die Programm-Leistungskappe bestätigen
+     (X = 2 kW schreiben → ≤ 2 kW).
+   - **(d) Ziel-SoC = 100 % lädt** weiterhin (Strategie A fürs Laden, gegen die
+     Telemetrie querchecken).
+   - **(e) `invert_control_sign` AUS lassen** (§5, Ablenkungsmanöver) - nur bei einer
+     *tatsächlich* beobachteten Wire-Level-Inversion NACH korrigiertem Mapping setzen.
+2a. **Aktiver Slot (N2).** Durch Lesen der Programm-2-6-Startzeiten bestätigen, dass
+   Programm 1 zur Testzeit der aktive Slot ist; sonst sind die Programm-1-Schreibvorgänge
+   inert. Der Executor liest die 6 Zeiten und WARNT bei Verdrängung - wir schreiben
+   Programme 2-6 NIE um; einmalige Inbetriebnahme setzt das Slot-Raster (§8.9).
 3. **Vorzeichen jedes geschriebenen Werts.** Firmware-abhängig - nie annehmen. Über
    die vorhandenen `invert_*`-Flags kalibrieren; falls die Schreibrichtung invertiert
    ist, `invert_control_sign` in der Inverter-Config setzen (der Adapter liest es,
@@ -121,10 +142,16 @@ Schreibpfad + Watchdog + Persistenz), `inverter-control-routing.js` (der Executo
    die Write-on-Change-+-Mindestverweildauer-Politik (`dwell_s`/`min_change` je
    WriteOp, slot-orientiert ≤ 4×/h) innerhalb der Herstellerangaben zur
    Schreibfestigkeit liegt.
-7. **Fail-Safe.** Belegen: Steuerung abschalten (`VP_CONTROL_ENABLED=false`) bzw. Plan
-   veraltet (>20 Min) bzw. Verbindungsverlust → der Wechselrichter kehrt in einen
-   sicheren Neutralzustand zurück (Eigenverbrauch / kein erzwungener Sollwert, keine
-   veraltete Begrenzung latch-t). Kein stehender Zwangssollwert.
+7. **Fail-Safe + Snapshot-Restore (Deye hat KEINEN Revert-Timer).** Belegen: Steuerung
+   abschalten (`VP_CONTROL_ENABLED=false`) bzw. Plan veraltet (>20 Min) bzw.
+   Verbindungsverlust → der Wechselrichter kehrt in einen sicheren Neutralzustand
+   zurück. Weil die neuen Hebel (Energy Pattern, Solar Sell, Max Sell Power)
+   Installateur-Einstellungen sind, MUSS `controlRelease` die **vor der Steuerung per
+   FC3 aufgenommenen** Werte zurückschreiben (nicht nur `tou_enable = 0`) - prüfen, dass
+   NICHTS latch-t (kein stehender Export-Enable / geänderte Energy-Pattern / stehende
+   Sell-Power). Auch **Absturz-Wiederherstellung** testen: Steuerung schreiben, Node-RED
+   neu starten (der Snapshot in `/data/context` überlebt) → beim Start setzt der
+   Wiederherstellungs-Knoten die Installateur-Werte zurück.
 
 ## Checkliste Fronius (SunSpec Modbus, Curtailment - Increment 1)
 

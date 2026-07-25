@@ -316,6 +316,49 @@ test('flow control planner matches controlRelease() on a kill-off after controll
   assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(controlRouting.controlRelease(sel, {}))));
 });
 
+// The plan node reads the DURABLE pre-control snapshot (persisted by the executor
+// under flow 'file') and threads it into controlRoute (charge -> restore maxSellPower)
+// AND controlRelease (restore-to-snapshot). These pin that threading to the module.
+test('flow control planner threads the persisted snapshot into a Deye CHARGE restore', () => {
+  const sel = { schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5',
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 } };
+  const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+  const snapRegs = { [reg.maxSellPower]: 8000, [reg.solarSell]: 0, [reg.energyPattern]: 0 };
+  const flow = { inverter_config: sel, deye_ctrl_snapshot: { regs: snapRegs } };
+  const sp = { battery_setpoint_kw: 12, source: 'schedule', ts: new Date().toISOString(), control_enabled: true };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, { msg: { setpoint: sp }, flow, context: {} });
+  const modulePlan = JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, { snapshot: snapRegs })));
+  assert.deepStrictEqual(msg.control, modulePlan, 'inline plan node == module with the snapshot threaded');
+  // and the snapshot actually produced the maxSellPower restore
+  const ms = msg.control.planned.find((w) => w.role === 'max_sell_power');
+  assert.ok(ms && ms.value === 8000 && ms.encode.kind === 'restore');
+});
+
+test('flow control planner threads the snapshot into a Deye RELEASE restore (calibration auto-revert)', () => {
+  // The flow hardcodes Deye read-only, so an executable Deye release only flows during
+  // a First-Light CALIBRATION (the certification-only bypass). Prime was_controlling
+  // with a calibration write, then the auto-revert restores the snapshot.
+  const sel = { schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5', control_tier: 3,
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 } };
+  const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+  const snapRegs = {
+    [reg.energyPattern]: 0, [reg.workMode]: 0, [reg.maxSellPower]: 8000, [reg.solarSell]: 0,
+    [reg.progTimeBase]: 0, [reg.progPowerBase]: 0, [reg.progSocBase]: 20, [reg.progChargeBase]: 0,
+    [reg.exportLimit]: 9999, [reg.touEnable]: 0,
+  };
+  const ctx = {}; const flow = { inverter_config: sel, deye_ctrl_snapshot: { regs: snapRegs } };
+  const plan = byId['auto-control-plan'].func;
+  const fresh = new Date().toISOString();
+  // 1) calibration write primes was_controlling (calibration bypasses the cert gate)
+  runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -0.5, source: 'calibration', ts: fresh, control_enabled: true, calibration: true } }, flow, context: ctx });
+  assert.strictEqual(ctx.was_controlling, true);
+  // 2) kill-off (still calibration) -> the auto-revert restores the snapshot, == module
+  const { msg } = runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -0.5, source: 'calibration', ts: fresh, control_enabled: false, calibration: true } }, flow, context: ctx });
+  assert.strictEqual(msg.control.mode, 'release');
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(controlRouting.controlRelease(sel, { calibration: true, snapshot: snapRegs }))));
+  assert.strictEqual(msg.control.planned.find((w) => w.role === 'max_sell_power').value, 8000, 'release restored maxSellPower');
+});
+
 // A STALE setpoint (core silent >20 min) triggers the same release after controlling.
 test('flow control planner releases on a STALE setpoint after controlling', () => {
   const sel = { schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
