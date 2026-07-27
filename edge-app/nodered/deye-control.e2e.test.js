@@ -1175,3 +1175,33 @@ test('remote: an ABSENT block (Modbus exception) is classified definitively and 
     server.close();
   }
 });
+
+test('remote: remote_mode "off" forces ToU and does NOT deadlock the executor interlock', async () => {
+  // REGRESSION: the interlock compares the plan's assumed path with the probed one.
+  // The operator's force-ToU setting lives on the SELECTION, so unless the plan
+  // carries it into `connection` the executor would compute "remote" from the cached
+  // capability, disagree with the plan's "tou" and skip EVERY tick forever.
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+    try {
+      const cap = ownerCapability();
+      const sel = { ...REMOTE_SEL, connection: { ...REMOTE_SEL.connection, remote_mode: 'off', power_scale: 1 } };
+      const plan = controlRouting.controlRoute(sel,
+        { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+        { ratedKw: 30, deye: cap });
+      assert.strictEqual(plan.controlPath, 'tou', 'the operator forced the ToU path');
+      plan.connection.port = port;
+      const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+      const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flowStore);
+      assert.ok(out, 'the ToU plan RAN - the interlock must not veto a deliberate override');
+      assert.ok(writes.length > 0, 'and it wrote');
+      assert.strictEqual(store[0x044c], undefined, 'remote mode was never enabled');
+      assert.strictEqual(out.payload.control_path, 'tou');
+    } finally {
+      controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+    }
+  } finally {
+    server.close();
+  }
+});

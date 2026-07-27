@@ -337,7 +337,7 @@ function controlRelease(selection, opts = {}) {
       return {
         adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
         controlPath: DEYE_PATH_REMOTE,
-        target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
+        target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId, remote_mode: 'auto' },
         writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? rbs : [],
         planned, capabilityProbe: deyeCapabilityProbeSpec(family),
         reason: releaseAllowed ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
@@ -376,7 +376,7 @@ function controlRelease(selection, opts = {}) {
     return {
       adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
       controlPath: DEYE_PATH_TOU,
-      target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
+      target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId, remote_mode: remoteOff ? 'off' : 'auto' },
       writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? readbacks : [],
       planned, capabilityProbe: deyeCapabilityProbeSpec(family),
       reason: releaseAllowed ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
@@ -1118,7 +1118,11 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
   const base = {
     adapter: 'solarman_v5', family, controlPath: DEYE_PATH_REMOTE,
     target: ip + ':' + port,
-    connection: { ip, port, serial, mb_slave_id: slaveId },
+    // remote_mode rides the CONNECTION because the executor needs it: its
+    // probe-vs-plan interlock must reach the same verdict the plan node did, and
+    // without this an operator's force-ToU setting would make the two disagree
+    // forever (the plan says 'tou', the probe says 'remote' -> skip every tick).
+    connection: { ip, port, serial, mb_slave_id: slaveId, remote_mode: 'auto' },
     certified, controlEnabled, calibration: calibration === true,
     remote: {
       layout: (cap && cap.layout) || 'pr978',
@@ -1266,6 +1270,7 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
   const snapVal = (addr) => (snapshot && snapshot[addr] !== undefined ? snapshot[addr] & 0xffff : undefined);
 
   const reg = deyeFamilyControlReg(family);
+  const remoteModeCfg = (conn.remote_mode === 'off' || conn.remote_mode === false) ? 'off' : 'auto';
   // The un-gated Deye adapter: the SAME two-gate discipline as sunspecControl.
   // `planned` is always the real ToU/power WriteOps (from DEYE_CONTROL_REG); a live
   // write/readback only flows when certified AND control_enabled. Deye stays OUT of
@@ -1299,7 +1304,8 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
     const out = {
       adapter: 'solarman_v5', family, controlPath: DEYE_PATH_TOU,
       target: ip + ':' + port,
-      connection: { ip, port, serial, mb_slave_id: slaveId },
+      // See deyeRemoteControl: the executor's interlock reads remote_mode from here.
+      connection: { ip, port, serial, mb_slave_id: slaveId, remote_mode: remoteModeCfg },
       certified, controlEnabled, calibration: calibration === true,
       writes: writeAllowed ? execWrites : [],
       readbacks: writeAllowed ? readbacks : [],
