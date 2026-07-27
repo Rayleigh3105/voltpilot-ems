@@ -419,6 +419,70 @@ func TestCalibrationCertInvalidatedOnUpgrade(t *testing.T) {
 	}
 }
 
+// Defect 1: during First-Light of an UNCERTIFIED family the calibration write's
+// register readback (commanded vs. actual) must be available on /api/state so the
+// operator can judge the sign/scale conversion - and surfacing it must NEVER
+// certify the family (the certification gate stays untouched).
+func TestCalibrationReadbackDetailSurfacesForUncertifiedFamily(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+	selectDeye(t, a) // uncertified hybrid_3p
+
+	now := time.Now().UTC()
+
+	// Drive an ACTIVE calibration override so /api/state carries control_certified
+	// (false, the family is uncertified) exactly as the browser would see it.
+	a.mu.Lock()
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 3, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.calMu.Lock()
+	a.cal.Arm()
+	if err := a.cal.StartTest(calibration.Discharge, 1.0, calibration.Reading{BatteryKw: fptr(0)}, now); err != nil {
+		a.calMu.Unlock()
+		t.Fatal(err)
+	}
+	a.calMu.Unlock()
+	a.applySetpoint(now.Add(3 * time.Second))
+
+	if s := a.State.Get(); s.ControlCertified {
+		t.Fatal("control_certified must be false during an uncertified calibration write")
+	}
+
+	// The calibration write reads back real per-register commanded/actual values -
+	// the evidence the :8484 card must render even though the family is uncertified.
+	cmd, act := -1.0, -0.9
+	rb, _ := json.Marshal(map[string]any{
+		"ts": now.Format(time.RFC3339), "family": "hybrid_3p", "source": "calibration",
+		"mode": "normal", "all_match": true, "control_path": "remote",
+		"registers": []map[string]any{{
+			"role": "battery_power", "fc": 16, "addr": 1109,
+			"commanded_raw": -33, "commanded_kw": cmd,
+			"actual_raw": -30, "actual_kw": act, "match": true,
+		}},
+	})
+	a.onControlReadback("", rb)
+
+	s := a.State.Get()
+	if s.Control == nil || len(s.Control.Registers) == 0 {
+		t.Fatal("the calibration register readback must be present on /api/state")
+	}
+	if s.Control.Source != "calibration" {
+		t.Fatalf("readback source = %q, want calibration", s.Control.Source)
+	}
+	r := s.Control.Registers[0]
+	if r.Addr != 1109 || r.CommandedKw == nil || *r.CommandedKw != cmd || r.ActualKw == nil || *r.ActualKw != act {
+		t.Fatalf("commanded/actual detail must survive to /api/state: %+v", r)
+	}
+	// The certification gate is UNCHANGED: showing the evidence certifies nothing.
+	if s.ControlCertified {
+		t.Fatal("control_certified must stay false - evidence must never certify")
+	}
+	if a.controlCertified("hybrid_3p") {
+		t.Fatal("the family must still be uncertified after rendering calibration evidence")
+	}
+}
+
 func TestCalibrationSnapshotAvailability(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()

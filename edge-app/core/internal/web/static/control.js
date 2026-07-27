@@ -55,6 +55,10 @@
     tou: "Steuerung über ein Zeitfenster-Programm des Wechselrichters.",
   };
 
+  // Plain-German label per readback source. "calibration" = a First-Light test
+  // write (the source the uncertified-device evidence path renders).
+  var SRC_LABEL = { schedule: "Fahrplan", "default": "Eigenverbrauch", calibration: "Kalibrier-Test" };
+
   function fmtKw(kw) { return (kw == null ? "–" : nf1.format(kw) + " kW"); }
   function fmtCell(reg, kwField) {
     // "−4,0 kW (4000)" for a power register; "1" style raw for flags.
@@ -82,53 +86,9 @@
     $("ctrlEmptyText").textContent = text;
   }
 
-  function onState(s) {
-    if (!s) return;
-    syncClock(s.server_now_ms);
-    var inv = s.inverter;
-    var c = s.control;
-
-    // No inverter chosen yet -> the control surface is not applicable.
-    if (!inv || !inv.configured) {
-      show($("ctrlState"), false);
-      renderEmpty("Noch keine Steuerung.",
-        "Wählen Sie zuerst Ihren Wechselrichter aus. Danach schreibt VoltPilot den " +
-        "Fahrplan und liest ihn zurück - hier sehen Sie register-genau die Bestätigung.");
-      return;
-    }
-
-    // Selected but the model is not bench-certified for control -> read-only.
-    if (s.control_certified === false) {
-      setState("var(--muted, #9aa4b2)", "nur lesen");
-      renderEmpty("Steuerung für dieses Modell noch nicht freigegeben.",
-        "Dieser Wechselrichter wird ausgelesen, aber noch nicht gesteuert. Die " +
-        "Freigabe erfolgt nach der Prüfung am Prüfstand.");
-      return;
-    }
-
-    // No readback yet (certified, but nothing written/confirmed so far).
-    if (!c || !c.registers || !c.registers.length) {
-      if (s.control_enabled === false) {
-        setState("var(--muted, #9aa4b2)", "ausgeschaltet");
-        renderEmpty("Steuerung ist ausgeschaltet.",
-          "Die Wechselrichter-Steuerung ist als Sicherheitsvorgabe deaktiviert " +
-          "(Not-Aus). VoltPilot liest weiter mit, schreibt aber nichts.");
-      } else if (c && c.blocked && c.reason) {
-        // The control plan is EMPTY because something is WRONG (an unknown
-        // nameplate / power scale). Show the CAUSE the operator can act on instead
-        // of an eternal "warte auf Rückmeldung" (Defect 2).
-        setState("var(--warn, #ff9500)", "angehalten");
-        renderEmpty("Steuerung kann gerade nicht ausgeführt werden.", c.reason);
-      } else {
-        setState("var(--brand, #6a8cff)", "wartet");
-        renderEmpty("Noch keine Rückmeldung.",
-          "Sobald der erste Sollwert geschrieben und zurückgelesen wurde, erscheint " +
-          "hier die register-genaue Bestätigung.");
-      }
-      return;
-    }
-
-    // We have a readback: render the confirmation table.
+  // Render the per-register confirmation table (commanded vs. actual + verdict).
+  // `calibrating` reframes it as First-Light evidence instead of a certified plan.
+  function renderReadback(s, c, calibrating) {
     show($("ctrlEmpty"), false);
     show($("ctrlBody"), true);
 
@@ -137,9 +97,10 @@
       if (c.registers[i].role === "battery_power") { batt = c.registers[i]; break; }
     }
     $("ctrlCmdVal").textContent = batt && batt.commanded_kw != null ? nf1.format(batt.commanded_kw) : "–";
+    var lbl = $("ctrlCmdLabel");
+    if (lbl) lbl.textContent = calibrating ? "Kalibrier-Sollwert" : "Fahrplan-Sollwert";
     var badge = $("ctrlModeBadge");
-    var src = c.source === "schedule" ? "Fahrplan" : (c.source === "default" ? "Eigenverbrauch" : "–");
-    badge.textContent = src;
+    badge.textContent = SRC_LABEL[c.source] || "–";
     badge.className = "plan-now-badge " + (c.source === "schedule" ? "charge" : "idle");
     var enabledNote = s.control_enabled === false ? " · Steuerung ausgeschaltet" : "";
     // Which surface is steering this inverter (+ the remote-mode status register).
@@ -150,15 +111,16 @@
         pathNote += " (Status " + c.remote_status_raw + ")";
       }
     }
-    $("ctrlNowSub").textContent = "Geprüft " + (ago(c.checked_at) || "gerade eben") + pathNote + enabledNote;
+    var calNote = calibrating ? "Kalibrier-Test · " : "";
+    $("ctrlNowSub").textContent = calNote + "Geprüft " + (ago(c.checked_at) || "gerade eben") + pathNote + enabledNote;
     $("ctrlNowSub").title = (c.control_path && PATH_HINT[c.control_path]) || "";
 
     var banner = $("ctrlBanner");
     if (c.all_match) {
-      setState("var(--batt, #34c759)", "bestätigt");
+      setState("var(--batt, #34c759)", calibrating ? "Kalibrierung ✓" : "bestätigt");
       show(banner, false);
     } else {
-      setState("var(--warn, #ff9500)", "Abweichung");
+      setState("var(--warn, #ff9500)", calibrating ? "Kalibrierung: Abweichung" : "Abweichung");
       show(banner, true);
       banner.className = "ctrl-banner warn";
       // Dual-controller awareness (report §9 #6): a held-back command may mean a
@@ -186,6 +148,66 @@
           (r.match ? "✓ bestätigt" : "⚠ Abweichung") + "</td>";
       rows.appendChild(tr);
     }
+  }
+
+  function onState(s) {
+    if (!s) return;
+    syncClock(s.server_now_ms);
+    var inv = s.inverter;
+    var c = s.control;
+
+    // No inverter chosen yet -> the control surface is not applicable.
+    if (!inv || !inv.configured) {
+      show($("ctrlState"), false);
+      renderEmpty("Noch keine Steuerung.",
+        "Wählen Sie zuerst Ihren Wechselrichter aus. Danach schreibt VoltPilot den " +
+        "Fahrplan und liest ihn zurück - hier sehen Sie register-genau die Bestätigung.");
+      return;
+    }
+
+    // First-Light calibration is the chicken-and-egg case (Defect 1): the model is
+    // (still) UNCERTIFIED, yet the calibration write produced a register readback -
+    // and on an uncertified device a readback can ONLY come from a calibration test
+    // (production writes nothing until the family is certified). That commanded-vs-
+    // actual detail (e.g. "Leistungs-Sollwert Reg 1109: -33 = -1,0 kW" vs. -0,9 kW)
+    // is exactly the evidence the operator + firstmate need to judge sign/scale, so
+    // the read-only banner must NOT swallow it. Showing evidence certifies NOTHING -
+    // the certification gate (server-side) is untouched.
+    var calibrating = s.control_certified === false && c && c.registers && c.registers.length > 0;
+
+    // Selected but not bench-certified AND no calibration evidence -> genuinely
+    // read-only (keep the honest "not yet released" banner).
+    if (s.control_certified === false && !calibrating) {
+      setState("var(--muted, #9aa4b2)", "nur lesen");
+      renderEmpty("Steuerung für dieses Modell noch nicht freigegeben.",
+        "Dieser Wechselrichter wird ausgelesen, aber noch nicht gesteuert. Die " +
+        "Freigabe erfolgt nach der Prüfung am Prüfstand.");
+      return;
+    }
+
+    // No readback yet (certified path, but nothing written/confirmed so far).
+    if (!c || !c.registers || !c.registers.length) {
+      if (s.control_enabled === false) {
+        setState("var(--muted, #9aa4b2)", "ausgeschaltet");
+        renderEmpty("Steuerung ist ausgeschaltet.",
+          "Die Wechselrichter-Steuerung ist als Sicherheitsvorgabe deaktiviert " +
+          "(Not-Aus). VoltPilot liest weiter mit, schreibt aber nichts.");
+      } else if (c && c.blocked && c.reason) {
+        // The control plan is EMPTY because something is WRONG (an unknown
+        // nameplate / power scale). Show the CAUSE the operator can act on instead
+        // of an eternal "warte auf Rückmeldung" (Defect 2).
+        setState("var(--warn, #ff9500)", "angehalten");
+        renderEmpty("Steuerung kann gerade nicht ausgeführt werden.", c.reason);
+      } else {
+        setState("var(--brand, #6a8cff)", "wartet");
+        renderEmpty("Noch keine Rückmeldung.",
+          "Sobald der erste Sollwert geschrieben und zurückgelesen wurde, erscheint " +
+          "hier die register-genaue Bestätigung.");
+      }
+      return;
+    }
+
+    renderReadback(s, c, calibrating);
   }
 
   global.VPControl = { onState: onState };

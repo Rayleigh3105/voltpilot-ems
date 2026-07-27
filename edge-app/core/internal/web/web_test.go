@@ -1322,6 +1322,48 @@ func TestSteuerungSectionServed(t *testing.T) {
 	}
 }
 
+// Defect 1: the register readback table must be VISIBLE during First-Light
+// calibration even when the family is uncertified (control_certified === false),
+// otherwise the operator/firstmate cannot judge the sign/scale conversion. The
+// read-only banner may only win when there is NO calibration evidence. Pin the
+// client logic + the label id so a regression that re-adds the unconditional
+// uncertified early-return fails here.
+func TestControlCardShowsCalibrationEvidenceForUncertifiedModel(t *testing.T) {
+	srv := serveHandler(t, &fakePlan{})
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	if page := get("/index.html"); !strings.Contains(page, `id="ctrlCmdLabel"`) {
+		t.Error("index.html: missing the ctrlCmdLabel id the calibration framing sets")
+	}
+	js := get("/control.js")
+	for _, want := range []string{
+		// The uncertified branch no longer returns unconditionally: it now gates on
+		// the absence of calibration evidence.
+		"control_certified === false && !calibrating",
+		// The calibration-evidence trigger (uncertified + a register readback).
+		"var calibrating = s.control_certified === false",
+		// The evidence is reframed as a Kalibrier-Test, not a certified plan.
+		"Kalibrier-Test",
+		"Kalibrier-Sollwert",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("control.js: calibration evidence path missing %q", want)
+		}
+	}
+}
+
 // The "Betrieb" card (PS-3: Marktoptimierung + Spitzen-Wache) is built by
 // betrieb.js against fixed element ids and fed by the additive peak fields on
 // /api/state; pin the embedded page + asset so a static/ edit that forgets the
