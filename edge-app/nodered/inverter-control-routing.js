@@ -277,16 +277,28 @@ const SETPOINT_STALE_MS = 20 * 60 * 1000;
  * certification-only bypass, with dwell_s=0 so the revert is not blocked.
  *
  *   selection: the parsed edge/inverter/config (or null)
- *   opts:      { sunspec?: discovery, calibration?: boolean } - live SunSpec model
- *              discovery for Fronius + the calibration-revert bypass.
- * Returns { adapter, family, tier, certified, mode:'release', target, connection,
- *           writes:[WriteOp], readbacks:[ReadOp], planned:[WriteOp], reason? }.
+ *   opts:      { sunspec?: discovery, calibration?: boolean, controlEnabled?: boolean }
+ *              - live SunSpec model discovery for Fronius, the calibration-revert
+ *              bypass, and the core's control_enabled for the setpoint that
+ *              triggered this hand-back.
+ *
+ * controlEnabled is CARRIED THROUGH like every other adapter result (portal-signal
+ * fix, 2026-07-27). It used to be absent here, so the exec node's
+ * `!!ctrl.controlEnabled` stamped a hard `false` on every release readback -
+ * `!!undefined`, not an observation. The cloud heartbeat no longer sources the flag
+ * from a readback at all (agent.controlSummary reads the core), but a readback must
+ * still report what Layer 1 actually saw rather than a structural lie.
+ *
+ * Returns { adapter, family, tier, certified, controlEnabled, mode:'release',
+ *           target, connection, writes:[WriteOp], readbacks:[ReadOp],
+ *           planned:[WriteOp], reason? }.
  */
 function controlRelease(selection, opts = {}) {
   const calibration = opts.calibration === true;
+  const controlEnabled = opts.controlEnabled === true;
   const idle = (reason) => ({
     adapter: 'idle', family: '', tier: CONTROL_TIER.READ_ONLY, certified: false,
-    mode: 'release', writes: [], readbacks: [], planned: [], reason,
+    controlEnabled, mode: 'release', writes: [], readbacks: [], planned: [], reason,
   });
   if (!selection) return idle('keine Auswahl');
   const conn = selection.connection || {};
@@ -335,7 +347,7 @@ function controlRelease(selection, opts = {}) {
       }
       const rbs = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: 0 }));
       return {
-        adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
+        adapter: 'solarman_v5', family, tier, certified, controlEnabled, calibration, mode: 'release',
         controlPath: DEYE_PATH_REMOTE,
         target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId, remote_mode: 'auto' },
         writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? rbs : [],
@@ -374,7 +386,7 @@ function controlRelease(selection, opts = {}) {
     }
     const readbacks = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: 0 }));
     return {
-      adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
+      adapter: 'solarman_v5', family, tier, certified, controlEnabled, calibration, mode: 'release',
       controlPath: DEYE_PATH_TOU,
       target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId, remote_mode: remoteOff ? 'off' : 'auto' },
       writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? readbacks : [],
@@ -386,7 +398,7 @@ function controlRelease(selection, opts = {}) {
   if (tier === CONTROL_TIER.VENDOR_EMS) {
     const port = Number(conn.port) > 0 ? Number(conn.port) : 502;
     return {
-      adapter: 'vendor_ems', family, tier, certified: false, mode: 'release',
+      adapter: 'vendor_ems', family, tier, certified: false, controlEnabled, mode: 'release',
       target: ip + ':' + port, connection: { ip, port },
       writes: [], readbacks: [], planned: [],
       reason: 'Tier-2 Wechselrichtersteuerung (externes EMS) noch nicht implementiert',
@@ -408,7 +420,7 @@ function controlRelease(selection, opts = {}) {
       { role: 'pv_limit', fc: 3, addr: SUNSPEC_REG.PVLIMIT, expect: NO_PV_LIMIT, tolerance: 1 },
     ];
     return {
-      adapter: 'modbus_tcp', family, tier, certified, calibration, mode: 'release', profile: family,
+      adapter: 'modbus_tcp', family, tier, certified, controlEnabled, calibration, mode: 'release', profile: family,
       target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
       writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? readbacks : [],
       planned, reason: releaseAllowed ? undefined : 'Modell noch nicht freigegeben',
@@ -430,7 +442,7 @@ function controlRelease(selection, opts = {}) {
       ...(storage.ok ? storage.writes.map((w) => ({ ...w, bench_pending: true })) : []),
     ];
     return {
-      adapter: 'fronius_sunspec', family, tier, certified, mode: 'release',
+      adapter: 'fronius_sunspec', family, tier, certified, controlEnabled, mode: 'release',
       target: ip + ':' + port, connection: { ip, port, unit_id: unitId },
       writes: [], readbacks: [], planned,
       reason: planned.length > 0 ? 'Fronius SunSpec: Steuerung nicht freigegeben'

@@ -252,6 +252,46 @@ test('First-Light calibration revert hands the uncertified Deye back (controlRel
   assert.strictEqual(rel.readbacks.length, 1);
 });
 
+// The release path used to carry NO controlEnabled at all, so the exec node's
+// `!!ctrl.controlEnabled` stamped a hard false (`!!undefined`) on every release
+// readback - a structural lie, not an observation. On the live pilot that release
+// readback was the LAST one the cloud saw after each First-Light auto-revert, and
+// the portal reported "Steuerung ausgeschaltet" forever. The heartbeat now sources
+// the flag from the CORE (agent.controlSummary), and the readback itself must stop
+// lying too: every controlRelease result carries the flag through, on every branch.
+test('controlRelease carries controlEnabled through on every branch (never !!undefined)', () => {
+  const branches = [
+    ['idle (no selection)', null, {}],
+    ['idle (no ip)', { ...DEYE_SEL, connection: {} }, {}],
+    ['Deye ToU', DEYE_SEL, { calibration: true }],
+    ['Deye remote', DEYE_REMOTE_SEL, { calibration: true, deye: OWNER_CAP }],
+    ['SunSpec', SUNSPEC_SEL, {}],
+    ['Fronius', FRONIUS_SEL, {}],
+    ['vendor EMS', { ...SUNSPEC_SEL, control_tier: 2 }, {}],
+  ];
+  for (const [what, sel, opts] of branches) {
+    const on = C.controlRelease(sel, { ...opts, controlEnabled: true });
+    assert.strictEqual(on.controlEnabled, true, what + ': controlEnabled must be carried through');
+    const off = C.controlRelease(sel, { ...opts, controlEnabled: false });
+    assert.strictEqual(off.controlEnabled, false, what + ': an off gate stays off');
+    // Absent = false (the honest default: no core setpoint drove this hand-back,
+    // e.g. the crash-recovery restore) - but a REAL boolean, never undefined.
+    const bare = C.controlRelease(sel, opts);
+    assert.strictEqual(bare.controlEnabled, false, what + ': absent opts -> a real false');
+    assert.ok('controlEnabled' in bare, what + ': the key must exist');
+  }
+});
+
+// Reporting must never widen a gate: carrying controlEnabled changes the reported
+// flag only - the write/readback gating stays the certification (or calibration
+// bypass) decision it always was.
+test('controlRelease controlEnabled does not gate the release writes', () => {
+  const gatedOn = C.controlRelease(DEYE_SEL, { controlEnabled: true });
+  assert.deepStrictEqual(gatedOn.writes, [], 'an uncertified family stays planned-only');
+  const cal = C.controlRelease(DEYE_SEL, { calibration: true, controlEnabled: false });
+  assert.strictEqual(cal.writes.length, 1, 'the calibration hand-back still executes');
+});
+
 test('Deye hybrid_3p planned ToU mapping uses the ha-solarman deye_p3 registers', () => {
   const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 }), { ratedKw: 50 });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
