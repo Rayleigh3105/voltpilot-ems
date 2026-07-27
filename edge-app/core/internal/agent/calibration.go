@@ -123,6 +123,12 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		"source":              "calibration",
 		"ts":                  now.Format(time.RFC3339Nano),
 		"control_enabled":     controlEnabled,
+		// The per-device certification verdict, carried on EVERY setpoint (see
+		// applySetpoint). During First-Light on a not-yet-released device this is
+		// false and `calibration` alone opens the executor's gate - which is exactly
+		// the point: the grant is EARNED here, not assumed. Once released it reports
+		// true honestly, so a re-test on a released device is not misreported.
+		"device_certified": certified,
 		// The executor's certification bypass marker - only ever set on this bounded
 		// path (never the plan/arbiter path). See inverter-control-routing.js.
 		"calibration": true,

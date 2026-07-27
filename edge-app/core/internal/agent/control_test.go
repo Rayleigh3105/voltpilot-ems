@@ -12,6 +12,7 @@ import (
 
 	pahomqtt "github.com/eclipse/paho.mqtt.golang"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
@@ -634,4 +635,138 @@ func TestSetpointCarriesTheSocCeiling(t *testing.T) {
 		m, ok := sub.latest()
 		return ok && m["soc_min_pct"] == 12.0 && m["soc_max_pct"] == 88.0
 	})
+}
+
+// TestSetpointCarriesThePerDeviceCertificationGrant is the CORE half of carrying the
+// First-Light grant to the component that actually writes.
+//
+// Layer 1 runs its own certification gate from a STATIC family allowlist
+// (inverter-control-routing.js CERTIFIED_CONTROL_FAMILIES = {sunspec}), which cannot
+// know the per-device grant an operator earned at runtime. Before this the grant
+// reached only `control_enabled` - a value that is ALSO false for a plain kill-switch
+// stop, so the executor could not tell "released device, control on" from "not
+// released" and kept planning writes:[] forever on a released Deye. The setpoint now
+// carries the certification verdict ALONE as `device_certified`, so the executor can
+// OR it into its own gate for THIS device without widening the fleet allowlist.
+//
+// This test pins the three states the flow gate distinguishes, on the pilot family:
+// no grant, grant, and grant + kill-switch off.
+func TestSetpointCarriesThePerDeviceCertificationGrant(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	if !cfg.ControlEnabled {
+		t.Fatal("precondition: the kill-switch is ON by default")
+	}
+	a, addr := startBusOnlyAgent(t, cfg)
+	selectDeye(t, a) // hybrid_3p - deliberately NOT in the static env allowlist
+	sub := subscribeSetpoint(t, addr)
+
+	// applySetpoint stamps `ts` from the instant it is given, so waiting for THAT ts
+	// distinguishes this publish from the retained previous one (the subscriber only
+	// keeps the latest message).
+	publishPlanSetpoint := func(now time.Time) map[string]any {
+		t.Helper()
+		want := now.Format(time.RFC3339Nano)
+		a.mu.Lock()
+		a.currentPlan = freshPlan(now, -5, nil)
+		a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 3, GridLimitKw: guards.Unknown()}
+		a.mu.Unlock()
+		a.applySetpoint(now)
+		var got map[string]any
+		waitFor(t, 5*time.Second, "plan setpoint published", func() bool {
+			m, ok := sub.latest()
+			if !ok || m["ts"] != want {
+				return false
+			}
+			got = m
+			return true
+		})
+		if got == nil {
+			t.Fatalf("no plan setpoint with ts %s observed", want)
+		}
+		return got
+	}
+
+	// (a) No grant: the field is present and FALSE. An executor that ORs it in is
+	//     therefore byte-for-byte read-only, exactly as before.
+	m := publishPlanSetpoint(time.Now().UTC())
+	if m["device_certified"] != false {
+		t.Fatalf("an unreleased pilot Deye must report device_certified=false: %v", m)
+	}
+	if m["control_enabled"] != false {
+		t.Fatalf("and control_enabled=false: %v", m)
+	}
+
+	// (b) Earn the grant through the UNCHANGED First-Light evidence gate (a
+	//     readback-confirmed test with measured movement), then release it.
+	proveCalibration(t, a)
+	if _, err := a.CalibrationCertify(); err != nil {
+		t.Fatalf("certify after the evidence flow: %v", err)
+	}
+	a.CalibrationAbort()
+	// Past the revert grace so the calibration override is idle and the PLAN path runs.
+	now := time.Now().UTC().Add(calibration.RevertGrace + 2*time.Minute)
+	m = publishPlanSetpoint(now)
+	if m["device_certified"] != true {
+		t.Fatalf("a released device must carry the grant on the FAHRPLAN setpoint: %v", m)
+	}
+	if m["control_enabled"] != true {
+		t.Fatalf("and control_enabled=true: %v", m)
+	}
+	if m["source"] != "schedule" {
+		t.Fatalf("this must be the plan path, not calibration: %v", m)
+	}
+	if _, isCal := m["calibration"]; isCal {
+		t.Fatalf("a plan setpoint must NEVER carry the calibration bypass marker: %v", m)
+	}
+
+	// (c) The kill-switch is still the outer AND: control_enabled goes false while the
+	//     grant itself stays honestly true (it was earned; the operator stopped control).
+	a.Cfg.ControlEnabled = false
+	m = publishPlanSetpoint(now.Add(time.Minute))
+	if m["control_enabled"] != false {
+		t.Fatalf("VP_CONTROL_ENABLED=false must force control_enabled=false: %v", m)
+	}
+	if m["device_certified"] != true {
+		t.Fatalf("the kill-switch does not revoke the grant: %v", m)
+	}
+}
+
+// TestCalibrationSetpointReportsTheGrantHonestly: the First-Light setpoint carries the
+// verdict too, and during the very first test on a not-yet-released device that verdict
+// is FALSE - `calibration` alone opens the executor's gate. That is the point: the
+// grant is EARNED on this path, never assumed by it.
+func TestCalibrationSetpointReportsTheGrantHonestly(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, addr := startBusOnlyAgent(t, cfg)
+	selectDeye(t, a)
+	sub := subscribeSetpoint(t, addr)
+
+	if _, err := a.CalibrationArm(true); err != nil {
+		t.Fatalf("arm: %v", err)
+	}
+	if _, err := a.CalibrationStartTest("discharge", 0.5); err != nil {
+		t.Fatalf("start test: %v", err)
+	}
+	now := time.Now().UTC()
+	a.mu.Lock()
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 3, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now)
+
+	waitFor(t, 5*time.Second, "calibration setpoint published", func() bool {
+		m, ok := sub.latest()
+		return ok && m["source"] == "calibration"
+	})
+	m, _ := sub.latest()
+	if m["calibration"] != true {
+		t.Fatalf("the bounded test must carry the bypass marker: %v", m)
+	}
+	if m["device_certified"] != false {
+		t.Fatalf("First-Light on an unreleased device must report device_certified=false: %v", m)
+	}
+	if m["control_enabled"] != true {
+		t.Fatalf("the kill-switch is on, so the bounded test may write: %v", m)
+	}
 }
