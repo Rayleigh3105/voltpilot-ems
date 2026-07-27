@@ -361,6 +361,53 @@ through `entityReading` — a REAL per-entity publisher on
   `internal/agent/entities_compose_test.go` (the symptom end to end + the
   uplink boundary + real-telemetry-wins).
 
+## The `:8484` web app: TWO pages + Technikmodus (concept `data/vp-edge-ux-concept/concept.html`)
+
+The device page is **`Betrieb`** (start page, customer-grade - for a plant with
+no cloud link this IS the plant view) and **`Einrichten`** (everything you set
+up, one job on one page). There is no third page: `inverter.html` and
+`einstellungen.html` survive ONLY as redirects into an area anchor of
+`einrichten.html`, so bookmarks and printed install sheets never 404.
+
+- **Technikmodus** (`static/technik.js`, `#techToggle` in the header of BOTH
+  pages, persisted in `localStorage["vp.edge.technik"]`, default OFF) REVEALS,
+  it does not AUTHORIZE. Nothing is gated by it: calibration mutations keep
+  their own admin token (`calGuard` in `web.go`) and the data purge stays
+  red-bordered + type-to-confirm in both modes. Technical blocks are `.tech-only`
+  and sit AT THE PLACE THEY BELONG (registers under the control state, raw
+  source values under the flow), never in a separate dump.
+  Visibility rule: `html:not(.tech-on) .tech-only { display:none !important }` -
+  a plain `.tech-only{display:none}` LOSES the cascade to any later
+  single-class rule that sets a display (`.area-title{display:flex}` leaked a
+  technical heading in normal mode exactly that way).
+- **THE load-bearing rule: hidden content must never hide a CAUSE.** Two pure
+  functions own every plain-German verdict, and each returns a `cause` string
+  that is rendered in NORMAL mode - Technikmodus only ever adds detail beneath
+  it: `static/status.js` `VPStatus.derive(state, nowMs)` (the Betrieb status
+  hero) and `static/control.js` `VPControl.deriveState(state)` (the control
+  sentence; its branch order - no inverter → uncertified → kill-switch off →
+  `blocked`+`reason` → waiting → readback - is the pre-rebuild logic verbatim).
+  `static/commissioning.js` `VPCommissioning.derive(state, sourceCount, nowMs)`
+  applies the same rule to the four guided steps. Adding a new verdict means
+  adding its cause.
+- **The guided commissioning flow** (Einrichten, four steps ending at "Daten
+  kommen an"; releasing CONTROL is deliberately its OWN block below it) is
+  DERIVED from the existing APIs - no new endpoint, no persisted wizard
+  progress. It recedes to one green line once all four are done.
+- **Design tokens are a COPY.** `static/tokens.css` duplicates
+  `frontend/portal/designsystem/tokens/*` + the portal's `--vp-flow-*` hues
+  because the edge has no build step and cannot import from the portal bundle -
+  keep them in sync. `dashboard.css` derives its own aliases from them;
+  `shell.css` owns the shell (top bar, page nav, Technikmodus, status hero,
+  guided steps, `.pill`). NO webfont import: the device may have no internet.
+- **Tests:** `internal/web/jstest/ui.test.js` (`node --test`, vm-realm loading
+  like `nodered/flows-sync.test.js`) unit-tests the three pure derivations +
+  the Technikmodus store; `jsunit_test.go` runs it inside `go test ./...`.
+  Go page-structure tests pin the //go:embed contract, the retired-URL
+  redirects, and that a `reason`-carrying refusal renders outside any
+  `.tech-only` block.
+- `static/*` is `//go:embed`-ed — **rebuild the core binary after any edit**.
+
 ## AE6 :8484 adaptive energy picture (edge half of AE2/AE3)
 
 `static/dashboard.js` renders the topology block: `createFlow($("flowWrap"))`
@@ -409,7 +456,7 @@ allowlist):
   (real in-process HTTP server → publish on output 3), Go
   `inverter_test.go`/`sources_test.go`/`agent/source_agg_test.go`.
 - UI-complete since U6 (`fm/vp-uo-u6-edge`): the `:8484` add-source picker
-  (`static/sources.js` + `inverter.html`) offers a **Verbraucher** role card
+  (`static/sources.js` + `einrichten.html`) offers a **Verbraucher** role card
   (`roleVerbraucher`), brand-by-role filtering (`brandsForRole` — a consumer
   picks the `goe_http_api` driver, Erzeuger/Netz never offer it), a Verbraucher
   list group (`verbList`/`verbEmpty`/`verbNote`) and the consumer `load_kw`
