@@ -74,6 +74,7 @@ type Agent struct {
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
 	lastDriftLog   time.Time // rate-limits the battery cross-check drift log
+	lastCertDivLog time.Time // rate-limits the certified-divergence warning
 
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
@@ -877,6 +878,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.mu.Lock()
 				soc := a.lastRawSoc
 				a.mu.Unlock()
+				a.logCertifiedDivergence(snap)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
@@ -1242,6 +1244,38 @@ func (a *Agent) logDespike(drops []guards.Drop) {
 // despikeLogInterval rate-limits the despike debug log.
 const despikeLogInterval = 30 * time.Second
 
+// certDivergenceLogInterval rate-limits the certified-divergence warning.
+const certDivergenceLogInterval = 10 * time.Minute
+
+// logCertifiedDivergence surfaces the ONE condition the controlSummary fix would
+// otherwise hide: the flow-stamped readback `certified` disagreeing with the
+// core's authoritative First-Light verdict. The core wins (that is the fix), but a
+// disagreement is a real fact worth naming - the expected steady state on a
+// released non-allowlisted family (flow=false, core=true) as much as the inverse
+// (flow=true, core=false), which would mean the executor considers a family
+// certified that the core does not. Rate-limited to one line per interval so a
+// permanent, by-design divergence does not flood the log.
+func (a *Agent) logCertifiedDivergence(snap state.Snapshot) {
+	c := snap.Control
+	if c == nil || c.Blocked || c.Certified == snap.ControlCertified {
+		return
+	}
+	a.mu.Lock()
+	now := time.Now()
+	quiet := now.Sub(a.lastCertDivLog) < certDivergenceLogInterval
+	if !quiet {
+		a.lastCertDivLog = now
+	}
+	a.mu.Unlock()
+	if quiet {
+		return
+	}
+	slog.Warn("control certification sources disagree; reporting the core's First-Light verdict to the cloud",
+		"flow_readback_certified", c.Certified,
+		"core_certified", snap.ControlCertified,
+		"control_path", c.ControlPath)
+}
+
 // onLocalStatus tracks the inverter link state Layer 1 reports.
 func (a *Agent) onLocalStatus(_ string, payload []byte) {
 	var m struct {
@@ -1261,6 +1295,18 @@ func (a *Agent) onLocalStatus(_ string, payload []byte) {
 // block the cloud ingests (report §5.3). Returns nil when no readback exists yet
 // (the block is then omitted). commanded/confirmed kW come from the battery_power
 // register when present.
+//
+// CERTIFIED IS SOURCED FROM THE CORE, NOT FROM THE READBACK (portal-signal fix,
+// 2026-07-27). The readback's `certified` is stamped by the Node-RED flow's
+// STATIC family allowlist (inverter-control-routing.js CERTIFIED = {sunspec}),
+// which cannot know the per-device First-Light grant the operator issued at
+// runtime - so a released Deye reported certified:false to the cloud forever
+// while :8484 (reading snap.ControlCertified) correctly said "freigegeben".
+// snap.ControlCertified is the authoritative value applySetpoint/calibration
+// maintain (controlCertified = env allowlist merged with the persisted grant),
+// and it is exactly what the local card renders, so the cloud now agrees with
+// the device by construction. This changes only what is REPORTED - who may
+// write is still decided by controlEnabled/the executor's own allowlist.
 func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 	c := snap.Control
 	// A blocked control info (empty plan: unknown nameplate/scale) is a local :8484
@@ -1273,7 +1319,7 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 	sum := &cloud.ControlSummary{
 		AllMatch:         c.AllMatch,
 		ControlEnabled:   c.ControlEnabled,
-		Certified:        c.Certified,
+		Certified:        snap.ControlCertified,
 		SlotStart:        c.SlotStart,
 		CheckedAt:        c.CheckedAt.UTC().Format(time.RFC3339Nano),
 		MismatchRoles:    c.MismatchRoles,

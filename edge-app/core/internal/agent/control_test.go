@@ -358,6 +358,64 @@ func TestControlSummaryNilWithoutReadback(t *testing.T) {
 	}
 }
 
+// TestHeartbeatCertifiedFollowsTheCoreNotTheFlowAllowlist pins the portal-signal
+// fix: the readback's `certified` is stamped by the Node-RED flow's STATIC family
+// allowlist ({sunspec}), which can never know the per-device First-Light grant.
+// The heartbeat must therefore report the core's authoritative
+// snap.ControlCertified - exactly what :8484 renders - so the portal agrees with
+// the device instead of saying "noch nicht freigegeben" on a released Deye
+// forever. The divergence itself is a real condition and gets a rate-limited log,
+// never a silent overwrite.
+func TestHeartbeatCertifiedFollowsTheCoreNotTheFlowAllowlist(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+
+	// A released (First-Light certified) Deye: the core knows it, the flow does not.
+	a.State.Update(func(s *state.Snapshot) { s.ControlCertified = true })
+	payload, _ := json.Marshal(map[string]any{
+		"ts": "2026-07-27T12:00:03Z", "family": "hybrid_3p", "source": "schedule",
+		"control_enabled": true,
+		"certified":       false, // the flow's static allowlist - hybrid_3p is not on it
+		"all_match":       true,
+		"control_path":    "remote",
+		"registers": []map[string]any{
+			{"role": "battery_power", "fc": 3, "addr": 0x0455, "commanded_raw": 33, "commanded_kw": -0.99, "actual_raw": 33, "actual_kw": -0.99, "match": true},
+		},
+	})
+	a.onControlReadback(localbus.TopicControlReadback, payload)
+
+	snap := a.State.Get()
+	if snap.Control == nil || snap.Control.Certified {
+		t.Fatalf("the readback must keep carrying the flow's own value: %+v", snap.Control)
+	}
+	sum := controlSummary(snap)
+	if sum == nil {
+		t.Fatal("a matched readback must produce a heartbeat summary")
+	}
+	if !sum.Certified {
+		t.Fatal("the heartbeat must report the core's First-Light verdict (true), not the flow's static allowlist (false)")
+	}
+	// The divergence is named, not swallowed (rate-limited, so this only proves it
+	// runs and does not panic on the disagreeing snapshot).
+	a.logCertifiedDivergence(snap)
+
+	// The inverse must hold too: a core that has NOT certified the family always
+	// wins over a flow that claims it did - reporting never widens certification.
+	a.State.Update(func(s *state.Snapshot) { s.ControlCertified = false })
+	claim, _ := json.Marshal(map[string]any{
+		"ts": "2026-07-27T12:05:03Z", "family": "hybrid_3p", "source": "schedule",
+		"control_enabled": true, "certified": true, "all_match": true,
+		"registers": []map[string]any{
+			{"role": "battery_power", "fc": 3, "addr": 0x0455, "commanded_raw": 0, "actual_raw": 0, "match": true},
+		},
+	})
+	a.onControlReadback(localbus.TopicControlReadback, claim)
+	if sum := controlSummary(a.State.Get()); sum == nil || sum.Certified {
+		t.Fatalf("an uncertified core must report certified=false whatever the flow claims: %+v", sum)
+	}
+}
+
 // TestBlockedControlReadbackSurfacesToTheCardButNotTheHeartbeat pins the Defect 2
 // card path: a control plan that is EMPTY because something is WRONG (unknown
 // nameplate/scale) is published as a blocked readback with NO registers. It must
