@@ -35,6 +35,24 @@
     work_mode: "Arbeitsmodus",
     grid_charge_enable: "Netzladen",
     battery_target_soc: "Ziel-SoC",
+    // Deye REMOTE MODE (registers 1100-1121) - the Tier-2 signed-watt setpoint.
+    remote_mode: "Fernsteuerung aktiv",
+    remote_watchdog: "Totmannschalter",
+    power_control_mode: "Regelseite",
+    battery_strategy: "Regelstrategie",
+    battery_soc_belt: "SoC-Grenze im Gerät",
+  };
+
+  // The control PATH this inverter is being steered through. Plain German, because
+  // the customer must be able to see WHICH surface is driving their battery.
+  var PATH_LABEL = {
+    remote: "Fernsteuerung (Remote Mode)",
+    tou: "Zeitfenster-Steuerung (ToU)",
+  };
+  var PATH_HINT = {
+    remote: "Direkter Leistungssollwert. Der Wechselrichter bricht die Steuerung von " +
+      "selbst ab, wenn VoltPilot verstummt - Ihre Einstellungen werden dabei nicht verändert.",
+    tou: "Steuerung über ein Zeitfenster-Programm des Wechselrichters.",
   };
 
   function fmtKw(kw) { return (kw == null ? "–" : nf1.format(kw) + " kW"); }
@@ -118,7 +136,16 @@
     badge.textContent = src;
     badge.className = "plan-now-badge " + (c.source === "schedule" ? "charge" : "idle");
     var enabledNote = s.control_enabled === false ? " · Steuerung ausgeschaltet" : "";
-    $("ctrlNowSub").textContent = "Geprüft " + (ago(c.checked_at) || "gerade eben") + enabledNote;
+    // Which surface is steering this inverter (+ the remote-mode status register).
+    var pathNote = "";
+    if (c.control_path && PATH_LABEL[c.control_path]) {
+      pathNote = " · " + PATH_LABEL[c.control_path];
+      if (c.control_path === "remote" && c.remote_status_raw != null) {
+        pathNote += " (Status " + c.remote_status_raw + ")";
+      }
+    }
+    $("ctrlNowSub").textContent = "Geprüft " + (ago(c.checked_at) || "gerade eben") + pathNote + enabledNote;
+    $("ctrlNowSub").title = (c.control_path && PATH_HINT[c.control_path]) || "";
 
     var banner = $("ctrlBanner");
     if (c.all_match) {

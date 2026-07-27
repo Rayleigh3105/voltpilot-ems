@@ -35,7 +35,9 @@ const READ_POLL = byId['auto-solarman'].func;
 
 const DEYE_SEL = {
   schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', control_tier: 3,
-  communication: 'solarman_v5', connection: { ip: '127.0.0.1', serial: '2985159064', mb_slave_id: 1 },
+  // power_scale is EXPLICIT (LV = 1): since the N1 fix a Deye whose HV/LV scale is
+  // unknown gets NO ToU write plan at all (see the N1 test below).
+  communication: 'solarman_v5', connection: { ip: '127.0.0.1', serial: '2985159064', mb_slave_id: 1, power_scale: 1 },
 };
 
 // --- a real in-process Solarman-V5 logger that honours FC6 + FC16 writes + FC3 reads ---
@@ -119,6 +121,15 @@ function startSolarmanServer(initial, opts = {}) {
           } else if (fn === 0x03) {
             const addr = mb.readUInt16BE(2);
             const count = mb.readUInt16BE(4);
+            // A firmware WITHOUT the remote block answers a read of it with Modbus
+            // exception 0x02 (illegal data address) - the definitive 'absent' verdict.
+            if (Array.isArray(opts.exceptionFrom) && opts.exceptionFrom.indexOf(addr) !== -1) {
+              const eb = Buffer.from([slave, 0x83, 0x02]);
+              const ecrc = SV5.modbusCrc16(eb);
+              sock.write(buildV5Response(serial, seq, Buffer.concat([eb, Buffer.from([ecrc & 0xff, (ecrc >> 8) & 0xff])])));
+              try { need = SV5.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
+              continue;
+            }
             const body = Buffer.alloc(3 + count * 2);
             body[0] = slave; body[1] = 0x03; body[2] = count * 2;
             for (let i = 0; i < count; i++) body.writeUInt16BE((store[addr + i] || 0) & 0xffff, 3 + i * 2);
@@ -880,26 +891,38 @@ test('CRASH RECOVERY is a no-op when there is no leftover snapshot', async () =>
 
 // --- N1 scale + N2 slot-time detection at the executor ---------------------------
 
-test('N1: the executor WARNS when a battery write goes out with an UNCONFIRMED power_scale', async () => {
-  const { server, port } = await startSolarmanServer({});
+test('N1: an UNCONFIRMED power_scale writes NOTHING to the logger (the 10x bug, live)', async () => {
+  // The live symptom: an HV SG01HP3 on power_scale "Automatisch" fell back to scale 1,
+  // so a commanded 0,3 kW discharge wrote raw 300 which the inverter read as 3000 W -
+  // and the raised export ceiling let it empty the battery at 14,6 kW. Now the whole
+  // plan is withheld until the scale is known: the wire audit must stay EMPTY.
+  const { server, port, writes } = await startSolarmanServer({});
   try {
     controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
     try {
-      const base = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } };
-      const sp = { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 };
-      // unset power_scale -> powerScaleConfirmed false -> N1 warn
+      const base = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1', power_scale: undefined } };
+      const sp = { battery_setpoint_kw: -0.3, source: 'schedule', control_enabled: true, soc_min_pct: 10 };
       const unset = controlRouting.controlRoute(base, sp, { ratedKw: 30 });
+      assert.strictEqual(unset.powerScaleConfirmed, false);
+      assert.deepStrictEqual(unset.writes, [], 'plan withheld');
       unset.connection.port = port;
       const { out, warns } = await runExecWarns(DEYE_EXEC, { control: unset, setpoint: {} }, {}, {});
-      assert.ok(out, 'the write completed');
-      assert.strictEqual(out.payload.power_scale_confirmed, false);
-      assert.ok(warns.some((w) => /N1/.test(w) && /power_scale/.test(w)), 'N1 warn fired: ' + JSON.stringify(warns));
-      // explicit power_scale=10 -> confirmed -> NO N1 warn
-      const hv = controlRouting.controlRoute({ ...base, connection: { ...base.connection, power_scale: 10 } }, sp, { ratedKw: 30 });
+      assert.strictEqual(out, null, 'no readback surface -> nothing published');
+      assert.deepStrictEqual(writes, [], 'NOT ONE register was written to the logger');
+      assert.ok(warns.some((w) => /Faehigkeitspruefung/.test(w)), 'the capability probe ran and reported: ' + JSON.stringify(warns));
+
+      // HV auto-detect from the device register: the SAME setpoint now writes 30 raw
+      // (decawatt), not 300. This is the fix, proven on the wire.
+      const hvCap = controlRouting.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: null });
+      const hv = controlRouting.controlRoute(base, sp, { ratedKw: 30, deye: hvCap });
       hv.connection.port = port;
       const r2 = await runExecWarns(DEYE_EXEC, { control: hv, setpoint: {} }, {}, {});
       assert.strictEqual(r2.out.payload.power_scale_confirmed, true);
       assert.ok(!r2.warns.some((w) => /N1/.test(w)), 'confirmed scale -> no N1 warn: ' + JSON.stringify(r2.warns));
+      const byReg = Object.fromEntries(writes.map((w) => [w.reg, w.value]));
+      const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+      assert.strictEqual(byReg[reg.progPowerBase], 30, 'HV 0,3 kW -> 30 raw (was 300 = the 10x bug)');
+      assert.strictEqual(byReg[reg.maxSellPower], 30, 'the export ceiling is scaled too');
     } finally {
       controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
     }
@@ -936,6 +959,248 @@ test('N2: the executor reads Programs 1-6 and surfaces a slot-time conflict (nev
         assert.strictEqual(timeWrites.length, 0, 'Programs 2-6 start times are never rewritten');
       },
     );
+  } finally {
+    server.close();
+  }
+});
+
+// =============================================================================
+// Deye REMOTE MODE at the EXECUTOR (registers 1100-1121) - the wire proof.
+// Drives the ACTUAL auto-control-exec-deye body from flows.json against the
+// in-process Solarman-V5 logger: capability probe -> path interlock -> the ordered
+// FC16 writes -> FC3 readback (+ the 1121 observation) -> release.
+// =============================================================================
+
+// A logger whose 1100..1121 block answers like the owner's SUN-30K-SG01HP3-EU
+// (live read-only probe 2026-07-27): 1101 = 0xFFFF, 1105 = 2, everything else 0,
+// plus the HV device-identity code 0x0008 in register 0x0000.
+function remoteCapableStore(extra = {}) {
+  return Object.assign({ 0x0000: 0x0008, 0x044d: 0xffff, 0x0451: 0x0002, 0x0456: 0x0320, 0x045b: 0x03e8, 0x045c: 0xffff }, extra);
+}
+const REMOTE_SEL = {
+  schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', control_tier: 3, rated_kw: 30,
+  communication: 'solarman_v5', connection: { ip: '127.0.0.1', serial: '2985159064', mb_slave_id: 1 },
+};
+// Build the remote plan the way controlRoute WOULD once the family is certified.
+function certifiedRemotePlan(setpoint, cap, fn) {
+  controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+  try {
+    return fn(controlRouting.controlRoute(REMOTE_SEL, setpoint, { ratedKw: 30, deye: cap }));
+  } finally {
+    controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+  }
+}
+function ownerCapability() {
+  const b = new Array(22).fill(0);
+  b[1] = 0xffff; b[5] = 0x0002; b[10] = 0x0320; b[15] = 0x03e8; b[16] = 0xffff;
+  return controlRouting.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: b });
+}
+
+test('remote: the executor PROBES 1100..1121, caches the verdict and never writes on that tick', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    // A plan built with NO capability plans the ToU path; the probe then discovers
+    // remote mode, so the executor must SKIP this tick (the plan targets the wrong
+    // registers) and let the next one re-plan. Never write into the void.
+    const tou = controlRouting.controlRoute(
+      { ...REMOTE_SEL, connection: { ...REMOTE_SEL.connection, power_scale: 1 } },
+      { battery_setpoint_kw: -1, source: 'calibration', control_enabled: true, calibration: true, soc_min_pct: 20 },
+      { ratedKw: 30 },
+    );
+    assert.strictEqual(tou.controlPath, 'tou');
+    tou.connection.port = port;
+    const flowStore = {};
+    const { out, warns } = await runExecWarns(DEYE_EXEC, { control: tou, setpoint: {} }, {}, flowStore);
+    assert.strictEqual(out, null, 'the mismatched tick publishes nothing');
+    assert.deepStrictEqual(writes, [], 'and writes NOTHING');
+    assert.ok(warns.some((w) => /Steuerpfad wechselt zu Fernsteuerung/.test(w)), 'the path switch is audible: ' + JSON.stringify(warns));
+    // the verdict is cached under the shared key so the PLAN node picks it up next tick
+    const cap = flowStore[controlRouting.deyeCapabilityKey('127.0.0.1', port)];
+    assert.ok(cap, 'capability cached');
+    assert.strictEqual(cap.present, true);
+    assert.strictEqual(cap.layout, 'pr978');
+    assert.strictEqual(cap.scaleClass, 10, 'the HV identity register was read in the same pass');
+    assert.ok(cap.at > 0);
+    assert.strictEqual(store[0x044c], undefined, 'remote mode was NOT enabled by a probe');
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: the ordered write lands on the wire - watchdog FIRST, enable LAST, 1109 signed', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: -1, source: 'schedule', slot_start: '2026-07-27T12:00:00Z', control_enabled: true, soc_min_pct: 20, soc_max_pct: 95 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        // seed the cache so the interlock sees the SAME path the plan assumed
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, flowStore);
+        assert.ok(out, 'the executor published a readback');
+        // (a) ORDER on the wire is the safety property: the dead-man's switch is armed
+        //     before anything can move, activation is last.
+        const order = writes.map((w) => w.reg);
+        assert.deepStrictEqual(order, [0x044d, 0x0450, 0x0451, 0x0454, 0x0455, 0x044c],
+          'watchdog, battery-side, strategy, SoC belt, setpoint, ENABLE');
+        assert.ok(writes.every((w) => w.fc === 0x10), 'FC16 (write-multiple) - the only code this firmware answers');
+        // (b) the VALUES
+        assert.strictEqual(store[0x044d], 60, 'watchdog 60 s');
+        assert.strictEqual(store[0x0450], 1, 'BATTERY-side (PV production untouched)');
+        assert.strictEqual(store[0x0451], 5, 'Power+SOC strategy');
+        assert.strictEqual(store[0x0454], 20, 'the discharge SoC floor as an on-device belt');
+        assert.strictEqual(store[0x0455], 33, 'discharge 1 kW of 30 kW rated -> +33 (0,1 %/unit)');
+        assert.strictEqual(store[0x044c], 1, 'remote mode ENABLED');
+        // (c) NOT ONE installer register was touched - the whole point of this path.
+        const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+        for (const inst of [reg.energyPattern, reg.workMode, reg.solarSell, reg.maxSellPower, reg.touEnable, reg.exportLimit]) {
+          assert.strictEqual(store[inst], undefined, 'installer register 0x' + inst.toString(16) + ' untouched');
+        }
+        // (d) the readback confirms every commanded register and decodes 1109 to kW
+        const rb = out.payload;
+        assert.strictEqual(rb.control_path, 'remote');
+        assert.ok(rb.registers.every((r) => r.match), 'all registers confirmed');
+        const bp = rb.registers.find((r) => r.role === 'battery_power');
+        assert.strictEqual(bp.actual_raw, 33);
+        // 33 units x 0,1 % of 30 kW = 0,99 kW: the register's ~30 W quantization, not a
+        // rounding bug. Decoded back into OUR sign convention (- = discharge).
+        assert.strictEqual(bp.commanded_kw, -0.99);
+        assert.strictEqual(bp.actual_kw, -0.99);
+        // (e) 1121 rides `observations` - it is READ-ONLY and must never enter the
+        //     commanded-vs-actual list (it would fabricate or break all_match).
+        assert.strictEqual(rb.remote_status_raw, 0);
+        assert.strictEqual(rb.registers.find((r) => r.role === 'remote_status'), undefined);
+        // (f) no snapshot is captured: nothing installer-level was changed.
+        assert.strictEqual(rb.snapshot_captured, false);
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: a CHARGE writes the NEGATED register and the SoC ceiling', async () => {
+  const { server, port, store } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: 3, source: 'schedule', control_enabled: true, soc_min_pct: 20, soc_max_pct: 90 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, flowStore);
+        assert.ok(out);
+        assert.strictEqual(store[0x0455], 0xff9c, 'charge 3 kW of 30 kW -> -100 (two\'s complement)');
+        assert.strictEqual(store[0x0454], 90, 'a charge is bounded by the SoC ceiling');
+        const bp = out.payload.registers.find((r) => r.role === 'battery_power');
+        assert.strictEqual(bp.commanded_kw, 3, '+ = charge in OUR convention');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: EVERY tick re-asserts all six registers - the write IS the watchdog kick', async () => {
+  // RAM registers have no write-endurance cost, and skipping an unchanged value would
+  // let the dead-man's switch expire mid-operation (and leave a reverted 1100 off).
+  const { server, port, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const ctx = {};
+        await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        const first = writes.length;
+        assert.strictEqual(first, 6, 'watchdog, mode, strategy, belt, setpoint, enable');
+        // second tick with the IDENTICAL plan: write-on-change would skip everything.
+        await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        assert.strictEqual(writes.length, first * 2, 'every register re-asserted (watchdog kicked)');
+        assert.ok(writes.slice(first).some((w) => w.reg === 0x044d), 'incl. the watchdog itself');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: release writes 1100 <- 0 and restores NOTHING (no installer setting was touched)', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore({ 0x044c: 1, 0x0455: 33 }));
+  try {
+    const cap = ownerCapability();
+    const rel = controlRouting.controlRelease(REMOTE_SEL, { calibration: true, deye: cap });
+    rel.connection.port = port;
+    const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    const out = await runExec(DEYE_EXEC, { control: rel, setpoint: { source: 'calibration' } }, {}, flowStore);
+    assert.ok(out, 'the release published a readback');
+    assert.strictEqual(store[0x044c], 0, 'remote mode disabled -> the inverter is its own again');
+    assert.deepStrictEqual(writes.map((w) => w.reg), [0x044c], 'exactly ONE register touched on the way out');
+    assert.strictEqual(out.payload.mode, 'release');
+    assert.strictEqual(out.payload.control_path, 'remote');
+    assert.ok(out.payload.registers.every((r) => r.match));
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: an ABSENT block (Modbus exception) is classified definitively and keeps the ToU path', async () => {
+  // A logger that answers the 1100 block with a Modbus exception = firmware without
+  // remote mode. The executor must cache "absent" and run the legacy ToU plan.
+  const { server, port, writes } = await startSolarmanServer({}, { exceptionFrom: [0x044c] });
+  try {
+    const tou = controlRouting.controlRoute(
+      { ...REMOTE_SEL, connection: { ...REMOTE_SEL.connection, power_scale: 1 } },
+      { battery_setpoint_kw: -1, source: 'calibration', control_enabled: true, calibration: true, soc_min_pct: 20 },
+      { ratedKw: 30 },
+    );
+    tou.connection.port = port;
+    const flowStore = {};
+    const { out, warns } = await runExecWarns(DEYE_EXEC, { control: tou, setpoint: {} }, {}, flowStore);
+    const cap = flowStore[controlRouting.deyeCapabilityKey('127.0.0.1', port)];
+    assert.ok(cap, 'a verdict was cached');
+    assert.strictEqual(cap.present, false, 'remote mode absent');
+    assert.strictEqual(cap.definitive, true, 'a Modbus exception is DEFINITIVE');
+    assert.ok(out, 'the ToU plan ran normally (no path switch)');
+    assert.strictEqual(out.payload.control_path, 'tou');
+    assert.ok(writes.some((w) => w.reg === controlRouting.DEYE_CONTROL_REG.hybrid_3p.touEnable), 'the ToU fallback wrote');
+    assert.ok(warns.some((w) => /Faehigkeitspruefung/.test(w) && /nicht vorhanden|nicht lesbar/.test(w)));
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: remote_mode "off" forces ToU and does NOT deadlock the executor interlock', async () => {
+  // REGRESSION: the interlock compares the plan's assumed path with the probed one.
+  // The operator's force-ToU setting lives on the SELECTION, so unless the plan
+  // carries it into `connection` the executor would compute "remote" from the cached
+  // capability, disagree with the plan's "tou" and skip EVERY tick forever.
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
+    try {
+      const cap = ownerCapability();
+      const sel = { ...REMOTE_SEL, connection: { ...REMOTE_SEL.connection, remote_mode: 'off', power_scale: 1 } };
+      const plan = controlRouting.controlRoute(sel,
+        { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+        { ratedKw: 30, deye: cap });
+      assert.strictEqual(plan.controlPath, 'tou', 'the operator forced the ToU path');
+      plan.connection.port = port;
+      const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+      const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, {}, flowStore);
+      assert.ok(out, 'the ToU plan RAN - the interlock must not veto a deliberate override');
+      assert.ok(writes.length > 0, 'and it wrote');
+      assert.strictEqual(store[0x044c], undefined, 'remote mode was never enabled');
+      assert.strictEqual(out.payload.control_path, 'tou');
+    } finally {
+      controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
+    }
   } finally {
     server.close();
   }

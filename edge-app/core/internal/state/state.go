@@ -134,6 +134,15 @@ type ControlInfo struct {
 	AllMatch       bool              `json:"all_match"`
 	MismatchRoles  []string          `json:"mismatch_roles,omitempty"`
 	Registers      []ControlRegister `json:"registers"`
+	// ControlPath names WHICH surface drove the write on a Deye: "remote" = the
+	// Tier-2 register block 1100-1121 (a true signed watt setpoint, armed behind the
+	// inverter's own watchdog, touching no installer setting), "tou" = the legacy
+	// Time-of-Use synthesis. Empty for other adapters / older Layer-1 builds. The
+	// operator must always be able to see which surface is steering the inverter.
+	ControlPath string `json:"control_path,omitempty"`
+	// RemoteStatusRaw is the Deye remote-control STATUS register (1121) - a
+	// read-only OBSERVATION, never part of the commanded-vs-actual comparison.
+	RemoteStatusRaw *int `json:"remote_status_raw,omitempty"`
 	// PossibleConflict is the dual-controller "only-controller" awareness (report
 	// §9 #6): while actively controlling, a commanded register that does not hold
 	// its value means a second controller (the inverter's own smart-control or

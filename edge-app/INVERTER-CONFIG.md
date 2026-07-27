@@ -34,6 +34,7 @@ The core (re-)publishes it at boot and on every change.
   "model": "sun-12k-sg04lp3",               // the concrete model the customer picked
   "family": "hybrid_3p",                    // register-map / profile id (Node-RED routes on THIS)
   "communication": "solarman_v5",           // "solarman_v5" | "modbus_tcp" | "fronius_solar_api" | "fronius_sunspec"
+  "rated_kw": 30,                           // model nameplate AC power in kW (0/absent = unknown)
   "connection": { /* per communication, see below */ },
   "updated_at": "2026-07-03T12:00:00Z"      // RFC 3339, when the choice was saved
 }
@@ -45,6 +46,12 @@ resolves to and stays the field the Node-RED adapter routes on - so a
 `SUN-12K-SG04LP3` (LV) can never be read with an HV profile. `model` is
 **additive**: `schema_version` stays `"1.0"` and a consumer that only knows
 `family` keeps working (unknown fields are ignored per the contract).
+
+`rated_kw` is that model's **catalog nameplate** (additive; 0/absent = unknown,
+e.g. the generic entries). The WRITE side needs it: the Deye remote-mode battery
+setpoint is **0.1 % of RATED power** and the string/micro active-power limit is a
+percentage of it, so a control adapter computes from this and **refuses rather
+than guessing a rating** when it is absent.
 
 The **communication method is fixed per brand** (the captain's rule): a Deye is
 always read through its WiFi datalogger via **Solarman-V5** (TCP 8899); a Fronius
@@ -64,9 +71,22 @@ requested.
   "serial": "2985159064",   // DATALOGGER serial - NOT the inverter serial
   "mb_slave_id": 1,         // Modbus slave id (default 1)
   "invert_grid_sign": false,// flip grid import/export sign if calibration shows it
-  "power_scale": 1          // 1 = Watt (default); 10 = decawatt HV firmware
+  "invert_batt_sign": false,// flip the MEASURED battery sign (firmware-dependent)
+  "power_scale": 0,         // 0 = auto-detect from register 0x0000; 1 = Watt; 10 = decawatt (HV)
+  "invert_control_sign": false, // flip the battery-power WRITE direction (proven by First-Light)
+  "control_write_fc": 0,    // 0 = auto (FC16); 16 = FC16; 6 = FC6 flip-back
+  "remote_mode": "auto",    // "auto" = probe registers 1100-1121; "off" = force Time-of-Use
+  "remote_watchdog_s": 0    // 0 = 60 s; else 10..18000 - the inverter's OWN dead-man's switch
 }
 ```
+
+The last four are **control-path** settings (read-only operation ignores them).
+`remote_mode`/`remote_watchdog_s` drive the Tier-2 **remote-mode** path (Deye
+protocol V105.1+ registers 1100-1121, a true signed watt setpoint): `auto` lets
+the edge PROBE whether this firmware has the block and fall back to Time-of-Use
+when it does not, and the watchdog is the timeout after which the **inverter
+itself** leaves remote mode and reverts, changing nothing. See
+[`nodered/DEYE.md`](nodered/DEYE.md) §"Batteriesteuerung: ZWEI Pfade".
 
 `family` selects the Deye register map (see [`nodered/DEYE.md`](nodered/DEYE.md)):
 `string` · `hybrid_1p` · `hybrid_3p` · `micro`. The customer never picks this

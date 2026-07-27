@@ -826,3 +826,117 @@ func TestGoeCharger_CatalogNormalizeAndBusPayload(t *testing.T) {
 		t.Fatal("go-e must have no RatedKw")
 	}
 }
+
+// TestRemoteModeFieldsAndRatedKwArePublished pins the wiring the Deye REMOTE-MODE
+// control path needs from the core (registers 1100-1121):
+//   - rated_kw: the setpoint register 1109 is 0.1 % of RATED power, so without the
+//     model nameplate the control adapter cannot compute a value and refuses. It
+//     must come from the CATALOG, never a hardcoded number.
+//   - remote_mode / remote_watchdog_s: the operator's force-ToU hatch and the
+//     inverter's own dead-man's timeout, published so the SELF-WIRING path carries
+//     them (the invert_batt_sign / control_write_fc precedent).
+func TestRemoteModeFieldsAndRatedKwArePublished(t *testing.T) {
+	cat := DefaultCatalog()
+
+	sel, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "192.168.254.210", Serial: "1127365518"},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sel.RatedKw != 30 {
+		t.Fatalf("rated_kw must come from the catalog model, got %v", sel.RatedKw)
+	}
+	if sel.Connection.RemoteMode != "auto" {
+		t.Fatalf("remote mode defaults to auto-detect, got %q", sel.Connection.RemoteMode)
+	}
+	if sel.Connection.RemoteWatchdogS != 0 {
+		t.Fatalf("watchdog defaults to 0 = the adapter's documented 60 s, got %v", sel.Connection.RemoteWatchdogS)
+	}
+
+	var m map[string]any
+	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := m["rated_kw"].(float64); got != 30 {
+		t.Fatalf("rated_kw must be published on the retained selection, got %v", m["rated_kw"])
+	}
+	conn, _ := m["connection"].(map[string]any)
+	if conn["remote_mode"] != "auto" {
+		t.Fatalf("remote_mode must be published, got %v", conn["remote_mode"])
+	}
+	if _, ok := conn["remote_watchdog_s"]; !ok {
+		t.Fatal("remote_watchdog_s must be published so the adapter can honour it")
+	}
+
+	// An operator override round-trips.
+	tuned, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-12k-sg04lp3",
+		Connection: Connection{IP: "10.0.0.9", Serial: "123", RemoteMode: "off", RemoteWatchdogS: 120},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tuned.Connection.RemoteMode != "off" || tuned.Connection.RemoteWatchdogS != 120 {
+		t.Fatalf("operator override lost: %+v", tuned.Connection)
+	}
+	if tuned.RatedKw != 12 {
+		t.Fatalf("rated_kw follows the selected model, got %v", tuned.RatedKw)
+	}
+
+	// The watchdog can never be disabled or set outside the protocol's range from
+	// config - the whole safety argument of the remote path is that it exists.
+	for _, bad := range []int{5, 9, 18001, 0xffff} {
+		if _, err := cat.Normalize(SelectionRequest{
+			Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+			Connection: Connection{IP: "10.0.0.9", Serial: "123", RemoteWatchdogS: bad},
+		}, now); err == nil {
+			t.Fatalf("watchdog %d must be rejected", bad)
+		}
+	}
+	if _, err := cat.Normalize(SelectionRequest{
+		Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+		Connection: Connection{IP: "10.0.0.9", Serial: "123", RemoteMode: "nonsense"},
+	}, now); err == nil {
+		t.Fatal("an unknown remote_mode must be rejected")
+	}
+
+	// The fields belong to the Deye transport ONLY - another transport clears them
+	// and publishes no rated_kw-derived remote config.
+	other, err := cat.Normalize(SelectionRequest{
+		Brand: BrandGenericModbus, Model: FamSunSpec,
+		Connection: Connection{IP: "10.0.0.5", RemoteMode: "off", RemoteWatchdogS: 120},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.Connection.RemoteMode != "" || other.Connection.RemoteWatchdogS != 0 {
+		t.Fatalf("remote-mode fields must be cleared on a non-Deye transport: %+v", other.Connection)
+	}
+	var om map[string]any
+	if err := json.Unmarshal(other.BusPayload(), &om); err != nil {
+		t.Fatal(err)
+	}
+	oc, _ := om["connection"].(map[string]any)
+	if _, ok := oc["remote_mode"]; ok {
+		t.Fatal("remote_mode must not be published on a non-Deye transport")
+	}
+
+	// The Deye form offers both as catalog data, so no front-end change is needed.
+	var brand Brand
+	for _, b := range cat.Brands {
+		if b.ID == BrandDeye {
+			brand = b
+		}
+	}
+	keys := map[string]bool{}
+	for _, f := range brand.Fields {
+		keys[f.Key] = true
+	}
+	for _, k := range []string{"remote_mode", "remote_watchdog_s"} {
+		if !keys[k] {
+			t.Fatalf("the Deye connection form must offer %q", k)
+		}
+	}
+}

@@ -67,6 +67,16 @@ function shape(payload) {
     control_enabled,
     certified,
     mode: payload.mode === 'release' ? 'release' : 'normal',
+    // WHICH Deye control path drove this write - 'remote' (the Tier-2 register
+    // block 1100-1121) or 'tou' (the legacy Time-of-Use synthesis). Additive, so an
+    // adapter that does not set it stays byte-compatible. The operator must always
+    // be able to see which surface is steering their inverter.
+    control_path: typeof payload.control_path === 'string' ? payload.control_path : '',
+    // The Deye remote-control STATUS register (1121) - a read-only OBSERVATION, so
+    // it deliberately never enters `registers` (it is not a commanded value and
+    // must not be able to fabricate or break all_match).
+    remote_status_raw: (typeof payload.remote_status_raw === 'number' && isFinite(payload.remote_status_raw))
+      ? payload.remote_status_raw : null,
     registers,
     all_match,
     mismatch_roles,

@@ -61,6 +61,12 @@ function parse(buf) {
     // controlRoute fall back to communication-inference. Only 0..3 are meaningful.
     control_tier: (typeof obj.control_tier === 'number' && obj.control_tier >= 0 && obj.control_tier <= 3)
       ? Math.floor(obj.control_tier) : undefined,
+    // rated_kw is the model's CATALOG nameplate (kW), passed through structurally
+    // like control_tier. The WRITE side needs it (the Deye remote-mode setpoint is
+    // 0.1 % of RATED power); absent -> the control adapter refuses rather than
+    // guessing a rating.
+    rated_kw: (typeof obj.rated_kw === 'number' && isFinite(obj.rated_kw) && obj.rated_kw > 0)
+      ? obj.rated_kw : undefined,
     connection: conn,
     updated_at: typeof obj.updated_at === 'string' ? obj.updated_at : '',
   };

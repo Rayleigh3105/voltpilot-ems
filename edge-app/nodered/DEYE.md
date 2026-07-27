@@ -351,13 +351,63 @@ Der Messwert-Kontrakt (Felder/Einheiten/Vorzeichen, QoS/Kadenz) steht in [`CUSTO
 
 ---
 
-## Ausgeklammert: Hybrid-Batteriesteuerung
+## Batteriesteuerung: ZWEI Pfade (Fernsteuerung bevorzugt, ToU als Rückfall)
 
-**Bewusst NICHT in dieser Vorlage** (sicherheitskritischer Folgeschritt).
+**Sicherheitskritisch. Nichts davon schreibt live, bevor das Modell am Prüfstand freigegeben ist** ([`CONTROL-BENCH.md`](CONTROL-BENCH.md)).
 
-Deye-Hybride haben **keinen direkten Batterie-Watt-Sollwert**. Die Steuerung erfolgt **indirekt** über den *Work Mode* + ein *Time-of-Use-Programm* (Ziel-SoC + Watt + Netzlade-Auswahl) plus **maximale Lade-/Entlade-STROM-Grenzen (Ampere!)**.
-Sie ist modellabhängig, und ein falscher Schreibbefehl kann die Batterie **beschädigen**.
-VoltPilots kontinuierlichen `edge/setpoint` (kW, + laden / − entladen) darauf abzubilden erfordert Software-Klammern **plus Prüfung pro Gerät am Prüfstand** - das ist ein eigenes, sicherheitsgesichertes Arbeitspaket.
+Lange galt: *Deye-Hybride haben keinen direkten Batterie-Watt-Sollwert.* Das war für die **alten** Protokollstände richtig - und ist seit **Protokoll V105.1 (2023-10-06)** falsch. Deye hat einen „Customized register"-Block **1100–1121** ergänzt, der eine echte externe-EMS-Schnittstelle ist. Deshalb gibt es jetzt zwei Pfade, und der Adapter **erkennt selbst**, welcher gilt:
+
+| | **Fernsteuerung (Remote Mode)** — Tier 2, bevorzugt | **Zeitfenster (Time-of-Use)** — Tier 3, Rückfall |
+|---|---|---|
+| Sollwert | **vorzeichenbehaftete Leistung**, 0,1 % der Nennleistung (≈30 W bei 30 kW) | Richtungs-Erlaubnis (Ziel-SoC) + grobe Leistungs-**Kappe** |
+| Speicher | **RAM** → keine EEPROM-Abnutzung, Neuschreiben im 10-s-Takt | EEPROM → Write-on-Change, `dwell_s ≥ 900` |
+| Totmann | **im Wechselrichter** (Register 1101): läuft er ab, verlässt das Gerät die Fernsteuerung von selbst | keiner - der Controller muss ihn selbst bauen |
+| Rückgabe | `1100 ← 0`, oder einfach aufhören zu schreiben | aktiver Restore aus dem Snapshot |
+| Installateur-Einstellungen | **werden NICHT angefasst** | Energy Pattern / Solar Sell / Max Sell Power / ToU-Slot werden verändert (und müssen zurückgesetzt werden) |
+| Fremdes ToU-Programm | irrelevant | kann unseren Slot verdrängen (N2) |
+| Verfügbarkeit | **firmwareabhängig** - wird erkannt | überall |
+
+**Erkennung statt Annahme.** Eine Deye-Firmware hat die Fernsteuerung bei einem Nutzer schon einmal *entfernt* und ein späteres Update sie wieder gebracht. Der Executor liest deshalb (rein lesend, zwei FC3-Lesebefehle, gecacht pro Logger, bei Neustart erneut) das Identitätsregister `0x0000` **und** den Block `0x044C…0x0461` und stuft das Ergebnis ein (`classifyDeyeCapability`). Vorhanden → Fernsteuerung; abwesend / Modbus-Ausnahme / Nur-Nullen / die ältere V105.1-Registerlage → **Zeitfenster-Rückfall**. Der aktive Pfad steht in der Rückmeldung (`control_path`) und auf der `:8484`-Karte - **nie stillschweigend ins Leere schreiben**. Operator-Hebel: `remote_mode = Aus` erzwingt den ToU-Pfad.
+
+### Fernsteuerung: der Registerblock (1100–1121)
+
+Quelle: Deyes eigenes *MODBUS RTU* V105.1 + [`ha-solarman` PR #978](https://github.com/davidrapan/ha-solarman/pull/978) samt Wiki. **Am Gerät des Kapitäns bewiesen** (SUN-30K-SG01HP3-EU, Live-Lesetest 2026-07-27, Logger `192.168.254.210:8899`): `1100=0x0000`, `1101=0xFFFF` (der dokumentierte „Watchdog aus"-Standard), `1104=0x0000`, `1105=0x0002`, `1121=0x0000` → **PR-#978-Lage**, der Sollwert liegt also auf **1109**.
+
+| Dez | Hex | Rolle | Bedeutung |
+|---|---|---|---|
+| 1100 | `0x044C` | `remote_mode` | 0 = aus, 1 = Fernsteuerung 1 |
+| 1101 | `0x044D` | `remote_watchdog` | **Totmann in Sekunden**, [10, 18000]; `0xFFFF` = aus. Läuft er ab, verlässt der Wechselrichter die Fernsteuerung selbst |
+| 1104 | `0x0450` | `power_control_mode` | 0 = AC-seitig, **1 = batterieseitig**, 2 = netzseitig |
+| 1105 | `0x0451` | `battery_strategy` | 2 = Leistung, **5 = Leistung + SoC** |
+| 1108 | `0x0454` | `battery_soc_belt` | Konstant-SoC-Sollwert (die Grenze im Gerät für Strategie 5) |
+| 1109 | `0x0455` | `battery_power` | **Leistungssollwert**, [-1200, 1200] in **0,1 % der Nennleistung**, **− = laden / + = entladen** |
+| 1121 | `0x0461` | `remote_status` | Status (nur lesen) - unsere Beobachtung, **nie** ein Soll-Ist-Vergleich |
+
+**Umrechnung:** `Register = −round(kW / Nennleistung_kW × 1000)`, geklemmt auf ±1200. Das Minus ist der Vorzeichenwechsel: unser Kontrakt ist `+ = laden`, das Deye-Register `− = laden`. Die **Nennleistung kommt aus dem Katalog** (`inverter.Model.RatedKw`, als `rated_kw` auf `edge/inverter/config` veröffentlicht) - **niemals hart kodiert**; ist sie unbekannt, verweigert der Adapter den Plan. Bei 30 kW ist 1 kW ≙ 33 Einheiten (≈30 W Auflösung).
+
+**Schreibreihenfolge - tragend, der Fail-Safe zuerst, die Aktivierung zuletzt:**
+
+| # | Register | Wert | warum an dieser Stelle |
+|---|---|---|---|
+| 1 | `1101` Totmann | 60 s (konfigurierbar) | **den Totmann scharf schalten, bevor sich irgendetwas bewegen kann** |
+| 2 | `1104` Regelseite | 1 = batterieseitig | AC-/netzseitig würde die **PV drosseln**; batterieseitig lässt die Erzeugung unangetastet und passt zu `battery_setpoint_kw` |
+| 3 | `1105` Strategie | 5 (Leistung+SoC), sonst 2 | zweiter Sicherheitsgurt, wenn eine SoC-Grenze bekannt ist |
+| 4 | `1108` SoC-Grenze | Boden beim Entladen, Decke beim Laden | die Grenze **im Gerät** |
+| 5 | `1109` Sollwert | aus dem bereits guard-begrenzten kW | die eigentliche Anweisung |
+| 6 | `1100` Fernsteuerung | 1 | **ZULETZT** - der Wechselrichter läuft nie mit halb geschriebenem Plan |
+
+**Kadenz: `dwell_s = 0`, `min_change = 0`, `always: true`.** Das sind RAM-Register - die EEPROM-Disziplin entfällt hier vollständig, und das **Neuschreiben im normalen ~10-s-Takt IST der Totmann-Tritt** (genau das vorgesehene Muster). Würde ein unveränderter Wert übersprungen, liefe der Totmann mitten im Betrieb ab.
+
+**Rückgabe.** Ausdrücklich: `1100 ← 0` (sofort). Implizit: **einfach aufhören zu schreiben** - der Totmann läuft ab und der Wechselrichter kehrt von selbst zurück, *ohne dass irgendetwas verstellt ist*. Das ist der Fail-Safe letzter Instanz und der Grund, warum der ToU-Snapshot/Restore **für diesen Pfad** überflüssig ist. Ein noch vorhandener ALTER ToU-Snapshot wird trotzdem zurückgeschrieben - nach dem Abschalten der Fernsteuerung.
+
+> ### ⚠ Die SoC-Klammer ist hier sicherheitskritisch
+> Ein Feldbericht (openEMS #2541) sagt: *„die im Deye konfigurierten Batterie-Grenzwerte greifen im Remote Mode offenbar nicht."* Das ist **einmal berichtet**, wird aber als harte Anforderung behandelt: **`guards.Clamp` besitzt das SoC-Band absolut**, der Adapter schreibt den bereits begrenzten Wert unverändert und weitet ihn nie - und zusätzlich wird Strategie **5 + Register 1108** als unabhängiger Gurt im Gerät gesetzt.
+
+**Nicht auf diesem Pfad: PV-Begrenzung/Curtailment.** Die Einspeisekappe des Deye ist ein **Installateur-Register im EEPROM** (`0x00E7`); sie zu schreiben würde genau die Eigenschaft brechen, die diesen Pfad sicher macht. Ein Curtailment-Befehl wird deshalb ehrlich als nicht unterstützt gemeldet (`pvLimitSupported: false`), nie still verworfen und nie still geschrieben.
+
+### Zeitfenster (ToU): der Rückfall
+
+Ohne die Fernsteuerungs-Firmware bleibt die indirekte Steuerung über *Work Mode* + ein *Time-of-Use-Programm* (Ziel-SoC + Watt + Netzlade-Auswahl) plus **Lade-/Entlade-STROM-Grenzen (Ampere!)**. Sie ist modellabhängig, verändert Installateur-Einstellungen und ein falscher Schreibbefehl kann die Batterie **beschädigen** - deshalb Snapshot-and-Restore und Prüfstand pro Modell.
 
 **Steuerregister - jetzt QUELLENBASIERT aus ha-solarman (nicht mehr trianguliert), aber weiterhin pro Modell/Firmware am Prüfstand zu bestätigen.**
 
@@ -410,7 +460,7 @@ ToU-Programme sind 6 zusammenhängende Slots; VoltPilot steuert über **genau EI
 
 **Snapshot-and-Restore (Deye hat KEINEN Revert-Timer).** Alles, was wir ändern, bleibt im EEPROM, bis wir es zurücksetzen. Der Executor liest daher **vor dem ersten Schreibbefehl** die Installateur-Werte der Register per FC3 aus (`snapshotPlan`) und speichert sie **dauerhaft** (Node-RED `contextStorage` `file`, überlebt Neustart/Re-Seed); `controlRelease` schreibt sie auf JEDER Rückgabe zurück (TTL/Abbruch/Not-Aus/Verbindungsverlust laufen im Plan-Knoten in denselben `controlRelease`; Absturz-Wiederherstellung beim Start ist ein eigener Knoten). ToU-Aktivierung wird ZULETZT zurückgesetzt; ohne Snapshot bleibt der Release wie bisher (nur `tou_enable = 0`).
 
-**N1 (Skala):** `progPower` UND `maxSellPower` nutzen `power_scale` konsistent ([1,10]; HV=10 Dekawatt). Eine unbestätigte Skala (nicht explizit 1/10) fällt auf 1 zurück, wird aber `powerScaleConfirmed=false` markiert und im Executor **gewarnt** - nie stumm falsch. **N2 (Slot-Zeit):** der Executor liest alle 6 Programm-Startzeiten und **warnt** (+ `active_slot_conflict`), wenn ein späteres Programm (2-6) „jetzt" aktiv ist und Programm 1 verdrängt - **wir schreiben Programme 2-6 NIE um**. Einmalige Inbetriebnahme (report §8.9): Programme 2-6 so setzen, dass Programm 1 der aktive Slot ist (oder das Raster auf Programm 1 = ganztags kollabieren).
+**N1 (Skala) - der behobene 10×-Livefehler.** `progPower` UND `maxSellPower` nutzen `power_scale` ([1,10]; HV=10 Dekawatt). Bisher fiel eine unbestätigte Skala **still auf 1 zurück** - ein HV-SG01HP3 wurde damit **10-fach zu groß** geschrieben: aus 0,3 kW wurden 3000 W, und die mit angehobene Verkaufs-Kappe ließ die Anlage 14,6 kW ins Netz entladen. Auflösung jetzt: (1) explizites `power_scale` 1/10, sonst (2) die **aus dem Gerät erkannte** LV/HV-Klasse aus Register `0x0000` (dieselbe Auto-Erkennung wie der Lesepfad, aus der Fähigkeitsprüfung), sonst (3) **Verweigerung**: der GESAMTE ToU-Plan wird zurückgehalten (`powerScaleSuppressed`), denn ihn ohne die Leistungsregister zu schreiben wäre genauso gefährlich - ToU + Export First + Solar Sell wären dann gegen die *installateurseitige* Verkaufs-Kappe scharf. Der Executor warnt mit der konkreten Abhilfe. **Der Fernsteuerungspfad kennt `power_scale` gar nicht** - er rechnet aus der Nennleistung. **N2 (Slot-Zeit):** der Executor liest alle 6 Programm-Startzeiten und **warnt** (+ `active_slot_conflict`), wenn ein späteres Programm (2-6) „jetzt" aktiv ist und Programm 1 verdrängt - **wir schreiben Programme 2-6 NIE um**. Einmalige Inbetriebnahme (report §8.9): Programme 2-6 so setzen, dass Programm 1 der aktive Slot ist (oder das Raster auf Programm 1 = ganztags kollabieren).
 
 **Feinregelungs-/Fallback-Register** (alle `bench_pending`, `hybrid_1p` analog): die Strom-Grenzen `0x006C`/`0x006D` (6a-Fallback) bleiben in `DEYE_CONTROL_REG` dokumentiert.
 

@@ -124,6 +124,13 @@ function parseConfig(input) {
     label: typeof obj.label === 'string' ? obj.label : '',
     family,
     communication,
+    // rated_kw is the model's CATALOG nameplate (kW). Additive, forward-compatible
+    // (absent on an older core). The WRITE side needs it: the Deye remote-mode
+    // setpoint is 0.1 % of RATED power and the string/micro active-power limit is a
+    // percentage of it, so without this the control adapter cannot compute a value
+    // and honestly refuses rather than guessing a rating.
+    rated_kw: (typeof obj.rated_kw === 'number' && isFinite(obj.rated_kw) && obj.rated_kw > 0)
+      ? obj.rated_kw : undefined,
     connection: conn,
     updated_at: typeof obj.updated_at === 'string' ? obj.updated_at : '',
   };

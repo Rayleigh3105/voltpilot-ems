@@ -357,3 +357,92 @@ func TestControlSummaryNilWithoutReadback(t *testing.T) {
 		t.Fatal("controlSummary should be nil without a readback")
 	}
 }
+
+// TestRemoteControlPathSurfacesToTheOperator pins the visibility half of the Deye
+// REMOTE-MODE path: which surface is steering the inverter must be visible on the
+// :8484 card AND transmitted to the cloud - we never silently switch control
+// surfaces on a customer's battery. It also pins that the read-only status
+// register (1121) is carried as an OBSERVATION and never as a commanded register
+// (it must not be able to fabricate or break all_match).
+func TestRemoteControlPathSurfacesToTheOperator(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+
+	commanded := -0.99
+	payload, _ := json.Marshal(map[string]any{
+		"ts":                "2026-07-27T12:00:03Z",
+		"family":            "hybrid_3p",
+		"source":            "calibration",
+		"control_enabled":   true,
+		"certified":         false,
+		"all_match":         true,
+		"mismatch_roles":    []string{},
+		"control_path":      "remote",
+		"remote_status_raw": 1,
+		"registers": []map[string]any{
+			// 1109: +33 units of 0.1 % of a 30 kW nameplate = 0,99 kW discharge.
+			{"role": "battery_power", "fc": 3, "addr": 0x0455, "commanded_raw": 33, "commanded_kw": commanded, "actual_raw": 33, "actual_kw": commanded, "match": true},
+			{"role": "remote_mode", "fc": 3, "addr": 0x044c, "commanded_raw": 1, "actual_raw": 1, "match": true},
+		},
+	})
+	a.onControlReadback(localbus.TopicControlReadback, payload)
+
+	snap := a.State.Get()
+	if snap.Control == nil || snap.Control.ControlPath != "remote" {
+		t.Fatalf("the :8484 card must see the active control path: %+v", snap.Control)
+	}
+	if snap.Control.RemoteStatusRaw == nil || *snap.Control.RemoteStatusRaw != 1 {
+		t.Fatalf("the remote-control status register must be surfaced: %+v", snap.Control)
+	}
+	for _, r := range snap.Control.Registers {
+		if r.Role == "remote_status" {
+			t.Fatal("1121 is read-only: it must NEVER sit in the commanded-vs-actual list")
+		}
+	}
+	sum := controlSummary(snap)
+	if sum == nil || sum.ControlPath != "remote" {
+		t.Fatalf("the cloud heartbeat must carry the control path: %+v", sum)
+	}
+	if sum.CommandedKw == nil || *sum.CommandedKw != commanded {
+		t.Fatalf("the remote setpoint must decode to kW for the money/verdict paths: %+v", sum)
+	}
+
+	// A ToU readback (or an older Layer 1 that sets nothing) stays byte-compatible.
+	old, _ := json.Marshal(map[string]any{
+		"ts": "2026-07-27T12:05:03Z", "family": "hybrid_3p", "source": "schedule",
+		"control_enabled": true, "certified": false, "all_match": true,
+		"registers": []map[string]any{
+			{"role": "tou_enable", "fc": 3, "addr": 0x0092, "commanded_raw": 255, "actual_raw": 255, "match": true},
+		},
+	})
+	a.onControlReadback(localbus.TopicControlReadback, old)
+	snap = a.State.Get()
+	if snap.Control.ControlPath != "" || snap.Control.RemoteStatusRaw != nil {
+		t.Fatalf("an adapter that sets neither field must stay unchanged: %+v", snap.Control)
+	}
+}
+
+// TestSetpointCarriesTheSocCeiling pins the ceiling half of the guard band on
+// edge/setpoint. The Deye remote-mode adapter arms the inverter's OWN constant-SoC
+// belt (register 1108) with the bound that matches the command direction, which is
+// safety-critical because a field report says the inverter's own min/max-SoC
+// protections may not apply in remote mode.
+func TestSetpointCarriesTheSocCeiling(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.SocMinPct, cfg.SocMaxPct = 12, 88
+	a, addr := startBusOnlyAgent(t, cfg)
+	sub := subscribeSetpoint(t, addr)
+
+	now := time.Now().UTC()
+	a.mu.Lock()
+	a.currentPlan = freshPlan(now, -5, nil)
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 5, LoadKw: 4, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "setpoint carries both SoC bounds", func() bool {
+		m, ok := sub.latest()
+		return ok && m["soc_min_pct"] == 12.0 && m["soc_max_pct"] == 88.0
+	})
+}
