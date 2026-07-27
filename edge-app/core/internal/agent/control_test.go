@@ -398,7 +398,7 @@ func TestHeartbeatCertifiedFollowsTheCoreNotTheFlowAllowlist(t *testing.T) {
 	}
 	// The divergence is named, not swallowed (rate-limited, so this only proves it
 	// runs and does not panic on the disagreeing snapshot).
-	a.logCertifiedDivergence(snap)
+	a.logControlGateDivergence(snap)
 
 	// The inverse must hold too: a core that has NOT certified the family always
 	// wins over a flow that claims it did - reporting never widens certification.
@@ -413,6 +413,80 @@ func TestHeartbeatCertifiedFollowsTheCoreNotTheFlowAllowlist(t *testing.T) {
 	a.onControlReadback(localbus.TopicControlReadback, claim)
 	if sum := controlSummary(a.State.Get()); sum == nil || sum.Certified {
 		t.Fatalf("an uncertified core must report certified=false whatever the flow claims: %+v", sum)
+	}
+}
+
+// TestHeartbeatControlEnabledFollowsTheCoreNotTheReleaseReadback is the exact live
+// Pilsting failure (2026-07-27): the portal rendered "Die Wechselrichter-Steuerung
+// ist ausgeschaltet" while the edge's own /api/calibration reported
+// control_enabled:true.
+//
+// Mechanism: controlRelease() carried NO controlEnabled at all, so the exec node's
+// `!!ctrl.controlEnabled` stamped FALSE on every release readback. A First-Light
+// test's TTL auto-revert fires exactly such a release, that readback is therefore
+// the LAST one the cloud ever sees on an uncertified family, and every subsequent
+// heartbeat re-published control_enabled:false - pinning the portal indefinitely.
+//
+// The heartbeat must report snap.ControlEnabled (the value applySetpoint/calibration
+// maintain and :8484 renders), not the readback's stamp. This is the twin of the
+// `certified` defect above - the same "gate flag sourced from a readback stamp"
+// class, one field over.
+func TestHeartbeatControlEnabledFollowsTheCoreNotTheReleaseReadback(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+
+	// The live plant's core state: kill-switch on, family released via First-Light.
+	a.State.Update(func(s *state.Snapshot) {
+		s.ControlEnabled = true
+		s.ControlCertified = true
+	})
+
+	// The calibration auto-revert's RELEASE readback: the exec node stamps
+	// control_enabled:false because controlRelease never set the field.
+	release, _ := json.Marshal(map[string]any{
+		"ts": "2026-07-27T12:00:33Z", "family": "hybrid_3p", "source": "calibration",
+		"mode":            "release",
+		"control_enabled": false, // <- the lying stamp
+		"certified":       false, // <- the #253 stamp, already fixed
+		"all_match":       true,
+		"control_path":    "remote",
+		"registers": []map[string]any{
+			{"role": "remote_mode", "fc": 3, "addr": 0x044c, "commanded_raw": 0, "actual_raw": 0, "match": true},
+		},
+	})
+	a.onControlReadback(localbus.TopicControlReadback, release)
+
+	snap := a.State.Get()
+	if snap.Control == nil || snap.Control.ControlEnabled {
+		t.Fatalf("the readback must keep carrying Layer 1's own value: %+v", snap.Control)
+	}
+	sum := controlSummary(snap)
+	if sum == nil {
+		t.Fatal("a matched release readback must still produce a heartbeat summary")
+	}
+	if !sum.ControlEnabled {
+		t.Fatal("the heartbeat must report the core's control_enabled (true), not the release readback's stamp (false)")
+	}
+	if !sum.Certified {
+		t.Fatal("certified must keep following the core too (the #253 fix)")
+	}
+	// The disagreement is named, not swallowed.
+	a.logControlGateDivergence(snap)
+
+	// The inverse must hold: a core kill-switch OFF is reported OFF whatever a stale
+	// readback claims - reporting never widens the gate.
+	a.State.Update(func(s *state.Snapshot) { s.ControlEnabled = false })
+	claim, _ := json.Marshal(map[string]any{
+		"ts": "2026-07-27T12:05:03Z", "family": "hybrid_3p", "source": "schedule",
+		"control_enabled": true, "certified": true, "all_match": true,
+		"registers": []map[string]any{
+			{"role": "battery_power", "fc": 3, "addr": 0x0455, "commanded_raw": 0, "actual_raw": 0, "match": true},
+		},
+	})
+	a.onControlReadback(localbus.TopicControlReadback, claim)
+	if sum := controlSummary(a.State.Get()); sum == nil || sum.ControlEnabled {
+		t.Fatalf("a core with control off must report control_enabled=false whatever the flow claims: %+v", sum)
 	}
 }
 

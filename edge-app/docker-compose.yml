@@ -46,6 +46,12 @@ services:
       VP_SOC_MIN_PCT: ${VP_SOC_MIN_PCT:-5}
       VP_SOC_MAX_PCT: ${VP_SOC_MAX_PCT:-95}
       VP_BUFFER_HOURS: ${VP_BUFFER_HOURS:-48}
+      VP_UNCLAIM_CONFIRM_MINUTES: ${VP_UNCLAIM_CONFIRM_MINUTES:-20}
+      VP_UNCLAIM_CONFIRM_POLLS: ${VP_UNCLAIM_CONFIRM_POLLS:-4}
+      # Globaler Not-Aus der Wechselrichter-Steuerung. Standard 'true' =
+      # exakt der einkompilierte Default; der eigentliche Gerätegate ist die
+      # Freigabe pro Modell (First-Light / Zertifizierungs-Allowlist).
+      VP_CONTROL_ENABLED: ${VP_CONTROL_ENABLED:-true}
       # Dev-only escape hatches (skip enrollment / plain-MQTT cloud). Leave
       # EMPTY on customer devices - see README.
       VP_DEV_TENANT_ID: ${VP_DEV_TENANT_ID:-}

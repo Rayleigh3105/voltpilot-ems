@@ -456,6 +456,14 @@ test('flow control planner releases on a STALE setpoint after controlling', () =
   const oldTs = new Date(Date.now() - 30 * 60 * 1000).toISOString();
   const { msg } = runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -10, source: 'schedule', ts: oldTs, control_enabled: true } }, flow, context: ctx });
   assert.strictEqual(msg.control.mode, 'release', 'stale core -> hand control back');
+  // The plan node threads the core's control_enabled into controlRelease, so the
+  // release readback reports what the core actually set (here: still ON - the core
+  // did not switch control off, it went SILENT) instead of a structural false. This
+  // is the branch where the two values genuinely differ, so it pins the threading.
+  assert.strictEqual(msg.control.controlEnabled, true, 'stale != switched off');
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+    controlRouting.controlRelease(sel, { controlEnabled: true }),
+  )), 'the inline release copy matches the module incl. the threaded controlEnabled');
 });
 
 // The "Fronius PowerFlow -> Messwerte" node (auto-fronius-decode) carries a
