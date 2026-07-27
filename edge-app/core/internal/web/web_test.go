@@ -853,7 +853,10 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		return string(b)
 	}
 
-	page := get("/inverter.html")
+	// The Wechselrichter/Quellen surface now lives as the first AREA of the one
+	// "Einrichten" page; /inverter.html stays only as a redirect (see
+	// TestRetiredPageUrlsRedirectInsteadOfDisappearing).
+	page := get("/einrichten.html")
 	for _, want := range []string{
 		// The model picker (built by inverter.js) is unchanged.
 		`id="modelSearch"`, `id="modelList"`, `role="listbox"`,
@@ -869,11 +872,11 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		`href="dashboard.css"`, `href="inverter.css"`, `src="verify.js"`, `src="inverter.js"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("inverter.html: missing %s", want)
+			t.Errorf("einrichten.html: missing %s", want)
 		}
 	}
 	if strings.Contains(page, "app.css") {
-		t.Error("inverter.html: still references the retired app.css")
+		t.Error("einrichten.html: still references the retired app.css")
 	}
 
 	css := get("/inverter.css")
@@ -909,7 +912,7 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		`id="primGridBlock"`, `id="primGridToggle"`, `id="primGridHelp"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("inverter.html: missing Energiequellen element %s", want)
+			t.Errorf("einrichten.html: missing Energiequellen element %s", want)
 		}
 	}
 	srcJs := get("/sources.js")
@@ -939,7 +942,10 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 		b, _ := io.ReadAll(resp.Body)
 		return string(b)
 	}
-	page := get("/index.html")
+	// First-Light lives in the "Steuerung freigeben" block of the Einrichten
+	// page - deliberately its OWN step, below the guided flow. It must NOT be on
+	// the customer-facing Betrieb page (which shows control state only).
+	page := get("/einrichten.html")
 	for _, want := range []string{
 		`id="calCard"`, `id="calState"`, `id="calUnavail"`, `id="calBody"`,
 		`id="calLive"`, `id="calArm"`, `id="calTestStep"`, `id="calMag"`,
@@ -950,8 +956,11 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 		`id="calRatedNote"`, `id="calAuth"`, `id="calToken"`, `id="calUnlock"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("index.html: missing calibration element %s", want)
+			t.Errorf("einrichten.html: missing calibration element %s", want)
 		}
+	}
+	if strings.Contains(get("/index.html"), `id="calArm"`) {
+		t.Error("index.html (Betrieb): must not carry calibration CONTROLS - state only")
 	}
 	// The script drives the /api/calibration surface end to end, sends the admin token
 	// header, and renders the grace-window + rated-ladder + next-step fields.
@@ -966,9 +975,9 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 			t.Errorf("calibration.js: does not drive %s", want)
 		}
 	}
-	// dashboard.js hands state to the calibration card for the register readback.
-	if !strings.Contains(get("/dashboard.js"), "VPCalibration") {
-		t.Error("dashboard.js: does not feed VPCalibration.onState")
+	// einrichten.js hands state to the calibration card for the register readback.
+	if !strings.Contains(get("/einrichten.js"), "VPCalibration") {
+		t.Error("einrichten.js: does not feed VPCalibration.onState")
 	}
 }
 
@@ -1127,28 +1136,69 @@ func TestSettingsPageServesStructure(t *testing.T) {
 		return string(b)
 	}
 
-	page := get("/einstellungen.html")
+	// The former standalone "Einstellungen" page is now the
+	// Messwert-Aufbereitung AREA of the Einrichten page. Its despike ids are
+	// unchanged except the two buttons, which were renamed to avoid colliding
+	// with the inverter form's #saveBtn now that both live on ONE page.
+	page := get("/einrichten.html")
 	for _, want := range []string{
-		`id="presetSeg"`, `id="chanList"`, `id="expertToggle"`, `id="saveBtn"`,
+		`id="presetSeg"`, `id="chanList"`, `id="expertToggle"`,
+		`id="despikeSaveBtn"`, `id="despikeResetBtn"`, `id="messwerte"`,
 		`href="dashboard.css"`, `href="einstellungen.css"`, `src="einstellungen.js"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("einstellungen.html: missing %s", want)
+			t.Errorf("einrichten.html: missing %s", want)
 		}
 	}
 	if !strings.Contains(get("/einstellungen.css"), ".seg-btn") {
 		t.Error("einstellungen.css: missing preset segmented control styles")
 	}
-	if !strings.Contains(get("/einstellungen.js"), "/api/despike") {
+	js := get("/einstellungen.js")
+	if !strings.Contains(js, "/api/despike") {
 		t.Error("einstellungen.js: does not call the despike API")
 	}
-
-	// The dashboard + inverter pages link to the settings page.
-	if !strings.Contains(get("/index.html"), `href="einstellungen.html"`) {
-		t.Error("index.html: missing the Einstellungen link")
+	if !strings.Contains(js, `$("despikeSaveBtn")`) {
+		t.Error("einstellungen.js: not wired to the renamed despike buttons")
 	}
-	if !strings.Contains(get("/inverter.html"), `href="einstellungen.html"`) {
-		t.Error("inverter.html: missing the Einstellungen link")
+
+	// Both pages reach the other one through the SAME two-page nav.
+	for _, p := range []string{"/index.html", "/einrichten.html"} {
+		nav := get(p)
+		if !strings.Contains(nav, `href="einrichten.html"`) || !strings.Contains(nav, `href="index.html"`) {
+			t.Errorf("%s: missing the two-page nav", p)
+		}
+	}
+}
+
+// TestRetiredPageUrlsRedirectInsteadOfDisappearing: three pages became two, but
+// a bookmark, a printed install sheet or an older doc must never hit a 404.
+// /inverter.html and /einstellungen.html stay as redirects into the matching
+// area of the one Einrichten page.
+func TestRetiredPageUrlsRedirectInsteadOfDisappearing(t *testing.T) {
+	srv, _ := newServer(t)
+	for path, anchor := range map[string]string{
+		"/inverter.html":      "einrichten.html#wechselrichter",
+		"/einstellungen.html": "einrichten.html#messwerte",
+	} {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("GET %s: status %d, must not 404", path, resp.StatusCode)
+		}
+		page := string(body)
+		// Belt and braces: a meta refresh AND a script redirect AND a plain link,
+		// so it works with JS off and is never a dead end.
+		for _, want := range []string{
+			`http-equiv="refresh"`, anchor, `<a href="` + anchor + `"`,
+		} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s: missing redirect element %q", path, want)
+			}
+		}
 	}
 }
 
@@ -1306,7 +1356,10 @@ func TestSteuerungSectionServed(t *testing.T) {
 
 	page := get("/index.html")
 	for _, want := range []string{
-		`id="ctrlRows"`, `id="ctrlBody"`, `id="ctrlEmpty"`, `id="ctrlBanner"`,
+		// Layer 1 - the plain-German state + its reason, always visible.
+		`id="ctrlSummary"`, `id="ctrlSummaryTitle"`, `id="ctrlSummaryText"`,
+		// Layer 2 - the register evidence, on Betrieb behind Technikmodus.
+		`id="ctrlRows"`, `id="ctrlTech"`, `id="ctrlBanner"`,
 		`Wechselrichter-Steuerung`, `src="control.js"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -1315,11 +1368,221 @@ func TestSteuerungSectionServed(t *testing.T) {
 	}
 	js := get("/control.js")
 	if !strings.Contains(js, "VPControl") {
-		t.Error("control.js: does not expose the VPControl hook dashboard.js calls")
+		t.Error("control.js: does not expose the VPControl hook the page controllers call")
 	}
 	if !strings.Contains(js, "Abweichung") {
 		t.Error("control.js: missing the mismatch wording")
 	}
+	if !strings.Contains(js, "deriveState") {
+		t.Error("control.js: the pure state derivation must stay exported for the unit tests")
+	}
+	// The Betrieb page shows STATE only - no arm/test/certify button may appear.
+	for _, forbidden := range []string{`id="calCertify"`, `id="calCharge"`, `id="calArm"`} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("index.html: control BUTTON %s leaked onto the Betrieb page", forbidden)
+		}
+	}
+	// The same control surface is rendered on Einrichten, where the register
+	// evidence is NOT Technikmodus-gated (commissioning is when you need it).
+	setup := get("/einrichten.html")
+	for _, want := range []string{`id="ctrlSummary"`, `id="ctrlRows"`, `id="ctrlTech"`} {
+		if !strings.Contains(setup, want) {
+			t.Errorf("einrichten.html: missing control element %s", want)
+		}
+	}
+}
+
+// TestBlockedControlReasonIsVisibleWithoutTechnikmodus is the regression guard
+// for THE rule of this UI: hidden content must never hide a CAUSE.
+//
+// A control plan that is EMPTY because something is wrong (unknown nameplate /
+// power scale) carries `blocked` + `reason`. That reason must reach the
+// customer with Technikmodus OFF - only the register/frame DETAIL may sit
+// behind the switch.
+func TestBlockedControlReasonIsVisibleWithoutTechnikmodus(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	js := get("/control.js")
+	// The blocked branch must put the raw reason into the summary text (layer 1),
+	// not into the register block.
+	if !strings.Contains(js, "c.blocked && c.reason") || !strings.Contains(js, "text: c.reason") {
+		t.Error("control.js: the blocked branch no longer surfaces c.reason as the plain-German state")
+	}
+
+	page := get("/index.html")
+	// The summary must NOT be inside a tech-only block. Slice from the control
+	// card to the summary and assert no `.tech-only` container opened in between
+	// that is still open (the summary sits directly in the card).
+	cardIdx := strings.Index(page, `id="controlCard"`)
+	sumIdx := strings.Index(page, `id="ctrlSummary"`)
+	techIdx := strings.Index(page, `id="ctrlTech"`)
+	if cardIdx < 0 || sumIdx < 0 || techIdx < 0 {
+		t.Fatal("index.html: control card / summary / tech block not found")
+	}
+	if !(cardIdx < sumIdx && sumIdx < techIdx) {
+		t.Fatal("index.html: the always-visible summary must come BEFORE the tech block")
+	}
+	between := page[cardIdx:sumIdx]
+	if strings.Contains(between, "tech-only") {
+		t.Error("index.html: the control summary sits inside a tech-only block - a cause would be hidden")
+	}
+	// The status hero (which also names causes) must not be tech-gated either.
+	heroIdx := strings.Index(page, `id="statusHero"`)
+	causeIdx := strings.Index(page, `id="statusHeroCause"`)
+	if heroIdx < 0 || causeIdx < 0 {
+		t.Fatal("index.html: status hero / cause not found")
+	}
+	if strings.Contains(page[heroIdx:causeIdx], "tech-only") {
+		t.Error("index.html: the status cause sits inside a tech-only block")
+	}
+	// status.js is the ONE place that decides the plain-German verdict, and every
+	// problem branch it can return carries a cause.
+	st := get("/status.js")
+	for _, want := range []string{"cause:", "VPStatus", "derive"} {
+		if !strings.Contains(st, want) {
+			t.Errorf("status.js: missing %s", want)
+		}
+	}
+}
+
+// TestTechnikmodusIsAVisibilityToggleNotAGate pins the three properties the
+// concept made load-bearing: same switch on every page, OFF by default on a
+// fresh browser, persisted per browser - and NOTHING gated by it.
+func TestTechnikmodusIsAVisibilityToggleNotAGate(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	for _, p := range []string{"/index.html", "/einrichten.html"} {
+		page := get(p)
+		for _, want := range []string{
+			`id="techToggle"`, `aria-pressed="false"`, `aria-label="Technikmodus"`,
+			`id="techBar"`, `id="techBarOff"`, `src="technik.js"`,
+		} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s: missing Technikmodus element %s", p, want)
+			}
+		}
+	}
+
+	js := get("/technik.js")
+	for _, want := range []string{
+		`var KEY = "vp.edge.technik"`, // persisted per browser
+		"localStorage",
+		`classList.toggle("tech-on"`, // pure visibility
+		`aria-pressed`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("technik.js: missing %s", want)
+		}
+	}
+	// It must never touch a credential, a permission or an endpoint: the switch
+	// flips a class and remembers the choice, nothing else.
+	for _, forbidden := range []string{"fetch(", "/api/", "XMLHttpRequest", "setRequestHeader"} {
+		if strings.Contains(js, forbidden) {
+			t.Errorf("technik.js: must not reference %q - it reveals, it does not authorize", forbidden)
+		}
+	}
+	// The destructive action stays red-bordered + confirmation-gated in BOTH
+	// modes, i.e. it is not inside a tech-only block.
+	setup := get("/einrichten.html")
+	pIdx := strings.Index(setup, `id="purgeCard"`)
+	if pIdx < 0 {
+		t.Fatal("einrichten.html: purge card missing")
+	}
+	if !strings.Contains(setup[:pIdx][max(0, pIdx-400):], "danger-card") {
+		t.Error("einrichten.html: the purge card lost its danger-zone framing")
+	}
+	if strings.Contains(setup[max(0, pIdx-400):pIdx], "tech-only") {
+		t.Error("einrichten.html: the destructive action must be visible in BOTH modes")
+	}
+}
+
+// TestEinrichtenPageServesTheGuidedFlowAndItsAreas pins the second page: the
+// derived four-step flow at the top, then the areas in order. Control release
+// is deliberately its OWN block below the flow, not a step of it.
+func TestEinrichtenPageServesTheGuidedFlowAndItsAreas(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	page := get("/einrichten.html")
+	for _, want := range []string{
+		// the guided flow + its receded state
+		`id="setupCard"`, `id="setupSteps"`, `id="setupProgress"`,
+		`id="setupDone"`, `id="setupDetailBtn"`, `Daten kommen an`,
+		// the areas, in order
+		`id="wechselrichter"`, `id="quellen"`, `id="portal"`, `id="steuerung"`,
+		`id="messwerte"`, `id="purgeCard"`,
+		// the portal pairing block (reference is withheld until unlocked)
+		`id="pairLocked"`, `id="pairUnlocked"`, `id="ref"`, `id="copyBtn"`, `id="pairingError"`,
+		`src="commissioning.js"`, `src="einrichten.js"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("einrichten.html: missing %s", want)
+		}
+	}
+	// Order: the guided flow first, control release BELOW it.
+	if strings.Index(page, `id="setupCard"`) > strings.Index(page, `id="steuerung"`) {
+		t.Error("einrichten.html: the control-release block must sit BELOW the guided flow")
+	}
+
+	js := get("/commissioning.js")
+	for _, want := range []string{
+		"VPCommissioning", "derive", "Wechselrichter verbinden",
+		"Erzeuger & Zähler erfassen", "Mit dem Portal koppeln", "Messwerte prüfen",
+		"claim_unlocked", "last_telemetry", "inverter_link",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("commissioning.js: missing %s", want)
+		}
+	}
+	// The guided flow derives its state from the EXISTING APIs - it must not
+	// invent an endpoint or persist wizard progress.
+	if strings.Contains(js, "fetch(") {
+		t.Error("commissioning.js: must stay a pure derivation (no fetch)")
+	}
+}
+
+// max is a tiny local helper (the module targets a Go version where the
+// builtin may be unavailable in this package's context).
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // Defect 1: the register readback table must be VISIBLE during First-Light
@@ -1349,9 +1612,9 @@ func TestControlCardShowsCalibrationEvidenceForUncertifiedModel(t *testing.T) {
 	}
 	js := get("/control.js")
 	for _, want := range []string{
-		// The uncertified branch no longer returns unconditionally: it now gates on
+		// The uncertified branch no longer returns unconditionally: it gates on
 		// the absence of calibration evidence.
-		"control_certified === false && !calibrating",
+		"s.control_certified === false && !calibrating",
 		// The calibration-evidence trigger (uncertified + a register readback).
 		"var calibrating = s.control_certified === false",
 		// The evidence is reframed as a Kalibrier-Test, not a certified plan.

@@ -3,8 +3,9 @@
 // ONE global switch, same position in the header of EVERY page. It REVEALS,
 // it does not AUTHORIZE: no gate, no permission and no capability anywhere in
 // this app depends on it. The calibration mutations stay protected by their own
-// admin token (X-VP-Calibration-Token, server-side calGuard) and destructive
-// actions stay red-bordered + confirmation-gated in BOTH modes.
+// admin token (server-side calGuard in web.go) and destructive actions stay
+// red-bordered + confirmation-gated in BOTH modes. This file therefore talks to
+// no endpoint at all - it only flips a class and remembers the choice.
 //
 // THE RULE THIS ENCODES: hidden content must never hide a CAUSE. Everything
 // behind the switch is DETAIL on top of a plain-German statement that is

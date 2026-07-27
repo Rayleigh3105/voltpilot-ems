@@ -3,84 +3,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#5A8DE8">
-  <title>VoltPilot Edge · Einstellungen</title>
+  <meta name="theme-color" content="#1E3A5F">
+  <title>VoltPilot Edge · Einrichten</title>
+  <!-- The former "Einstellungen" page was three leftovers (Ausreißer-Filter,
+       Expertenwerte, Daten löschen). They are now areas of the ONE "Einrichten"
+       page. This file stays so bookmarks and older docs never hit a 404. -->
+  <meta http-equiv="refresh" content="0; url=einrichten.html#messwerte">
+  <link rel="canonical" href="einrichten.html">
+  <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="dashboard.css">
-  <link rel="stylesheet" href="inverter.css">
-  <link rel="stylesheet" href="einstellungen.css">
+  <link rel="stylesheet" href="shell.css">
+  <script>location.replace("einrichten.html#messwerte");</script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
-      </span>
-      <span>VoltPilot&nbsp;Edge<small>Lokaler Energiemonitor</small></span>
-    </div>
-    <div class="topbar-right">
-      <a class="link-btn" href="index.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
-        <span>Übersicht</span>
-      </a>
-    </div>
-  </header>
-
-  <main class="inv-main">
-    <section class="card inv-head-card">
-      <div class="pairing-head">
-        <span class="pairing-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-        </span>
-        <div>
-          <h1 class="inv-title">Ausreißer-Filter</h1>
-          <p class="inv-lead">
-            Filtert einzelne, unrealistisch sprunghafte Messwerte heraus (z. B. ein
-            Ladestand, der für einen Moment von 94 % auf 2 % springt und sofort
-            zurück). Ein gefilterter Wert wird durch den letzten gültigen Wert
-            ersetzt – die Verläufe bleiben lückenlos.
-          </p>
-        </div>
-      </div>
+  <main>
+    <section class="card" style="margin-top:24px">
+      <h1 style="font-size:19px;margin:0 0 8px">Diese Seite ist umgezogen</h1>
+      <p style="margin:0 0 14px;color:var(--muted)">
+        Ausreißer-Filter, Expertenwerte und das Löschen der Datenaufzeichnungen finden Sie
+        jetzt unter <strong>Einrichten</strong>.
+      </p>
+      <p><a href="einrichten.html#messwerte">Weiter zu „Einrichten“ →</a></p>
     </section>
-
-    <!-- Empfindlichkeit (preset) -->
-    <section class="card set-card">
-      <div class="set-card-head">
-        <h2 class="set-title">Empfindlichkeit</h2>
-        <p class="set-desc">Je strenger, desto eher gilt ein Sprung als Ausreißer. „Aus“ schaltet den Filter komplett ab.</p>
-      </div>
-
-      <div class="seg" id="presetSeg" role="group" aria-label="Empfindlichkeit"></div>
-      <p class="set-preset-note" id="presetNote"></p>
-      <p class="form-ok set-flash" id="flash" hidden>Gespeichert.</p>
-      <p class="form-error set-flash" id="err" hidden></p>
-    </section>
-
-    <!-- Expertenwerte (per-channel numbers) -->
-    <section class="card set-card">
-      <button type="button" class="set-expander" id="expertToggle" aria-expanded="false" aria-controls="expertBody">
-        <span class="set-expander-text">
-          <span class="set-title">Expertenwerte</span>
-          <span class="set-desc">Pro Messwert einstellen, ab wann ein Sprung als Ausreißer gilt.</span>
-        </span>
-        <svg class="set-expander-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-      </button>
-
-      <div id="expertBody" hidden>
-        <div class="chan-list" id="chanList"></div>
-        <div class="set-actions">
-          <button type="button" class="btn-ghost" id="resetBtn">Auf „Normal“ zurücksetzen</button>
-          <button type="button" class="btn-primary" id="saveBtn">Werte übernehmen</button>
-        </div>
-      </div>
-    </section>
-
-    <footer class="foot">
-      Lokale Geräteansicht. Die Einstellung gilt nur für dieses Gerät und wirkt sofort –
-      ein Neustart ist nicht nötig.
-    </footer>
   </main>
-
-  <script src="einstellungen.js"></script>
 </body>
 </html>

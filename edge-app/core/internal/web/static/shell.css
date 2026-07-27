@@ -248,6 +248,14 @@ html.tech-on li.tech-only, html.tech-on .tech-only.is-flex { display: flex; }
 }
 .area-title:first-child { margin-top: 4px; }
 
+/* ---------------- Portal pairing block (Einrichten) ---------------- */
+.pair-card .pair-state {
+  margin: 0 0 12px; font-size: 14.5px; font-weight: var(--vp-weight-semibold);
+  color: var(--ink);
+}
+.pair-card .pair-state.ok { color: #14532D; }
+.pair-card .pair-state.warn { color: #8A5200; }
+
 /* Danger zone: red-bordered + confirmation-gated in BOTH modes. */
 .danger-card { border: 1.5px solid #F2C9C9; box-shadow: none; }
 .danger-card .area-flag {
