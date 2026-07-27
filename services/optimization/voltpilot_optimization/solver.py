@@ -256,6 +256,24 @@ CURTAIL_TIEBREAK_EUR_PER_KW = 1e-6
 # module docstring for why curtailment makes this necessary.
 BATTERY_WEAR_TIEBREAK_EUR_PER_KW = 1e-6
 
+# MIP optimality tolerances (scout vp-fahrplan-idle-n7, "latent defect found in
+# passing"). HiGHS defaults to mip_rel_gap = 1e-4, i.e. on a ~10 EUR objective
+# it stops ~1e-3 EUR short of the true optimum - ORDERS OF MAGNITUDE above the
+# 1e-6 tie-break epsilons above, whose whole job is to decide exact ties. The
+# tie-breaks were therefore not decisive at all: a full 15 kW / 44-slot cycle
+# carries only ~6.6e-4 EUR of tie-break penalty, so "completely idle" and
+# "serve the whole evening" were tolerance-equivalent and WHICH one HiGHS
+# returned was effectively arbitrary - and could flip between two consecutive
+# 15-min re-plans. On a genuinely controllable plant that is an oscillation
+# hazard, so we tighten the gap rather than inflate the epsilons: the gap costs
+# ~10% solve time (measured over the golden suite: 529 ms -> 582 ms for all
+# eight scenarios) and changes NO economics, whereas epsilons big enough to
+# beat a relative gap would distort real decisions. Measured side effect: three
+# of the eight golden scenarios were being solved SUBOPTIMALLY at the default
+# (peak-shaving-ci by 1.2e-3 EUR) and now reach their true optimum.
+MIP_REL_GAP = 1e-9
+MIP_ABS_GAP = 1e-9
+
 
 def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> ConcreteModel:
     """Build the dispatch MILP for one site over the horizon.
@@ -542,6 +560,13 @@ def _solve(model: ConcreteModel) -> None:
 
     solver = Highs()
     solver.config.load_solution = False
+    # Tighten the optimality tolerance so the model's own 1e-6 tie-break
+    # epsilons actually decide ties instead of being swamped by the default
+    # 1e-4 relative gap (see MIP_REL_GAP above).
+    solver.highs_options = {
+        "mip_rel_gap": MIP_REL_GAP,
+        "mip_abs_gap": MIP_ABS_GAP,
+    }
     results = solver.solve(model)
     if results.termination_condition != TerminationCondition.optimal:
         raise InfeasiblePlanError(
