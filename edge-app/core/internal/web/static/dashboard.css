@@ -510,6 +510,18 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .control-card .ctrl-state .ss-dot {
   width: 9px; height: 9px; border-radius: 50%; background: var(--muted);
 }
+/* Layer 1 of the control surface: ONE plain-German sentence plus its reason.
+   Always visible, in both modes - it is what may never be hidden. */
+.ctrl-summary {
+  margin-top: 6px; padding: 13px 14px; border-radius: var(--radius-sm);
+  background: var(--bg-2); border-left: 3px solid var(--muted);
+}
+.ctrl-summary strong { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.35; }
+.ctrl-summary p { margin: 5px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.ctrl-summary.ok { background: var(--ok-soft); border-left-color: var(--ok); }
+.ctrl-summary.ok strong { color: #14532D; }
+.ctrl-summary.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+.ctrl-summary.brand { background: var(--brand-soft); border-left-color: var(--brand); }
 .ctrl-banner {
   margin: 12px 0; padding: 11px 14px; border-radius: 10px;
   font-size: 13px; font-weight: 600; line-height: 1.45;

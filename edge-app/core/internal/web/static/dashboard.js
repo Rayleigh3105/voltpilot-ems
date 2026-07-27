@@ -1,6 +1,11 @@
-// VoltPilot Edge dashboard - renders the device's own live energy data.
+// VoltPilot Edge - the "Betrieb" page: what the plant is doing RIGHT NOW.
 // Loads recent history, then streams live samples + state over SSE (falls back
 // to polling if SSE is unavailable). Read-only; everything stays on the device.
+//
+// This page is customer-grade on purpose: for a plant whose cloud link is down,
+// this IS the plant view. Setting anything up (inverter, sources, portal
+// pairing, measurement processing, control release, data purge) lives on
+// "Einrichten" (einrichten.html / einrichten.js) - never here.
 (function () {
   "use strict";
 
@@ -111,6 +116,12 @@
   }
 
   function kw(v) { return v == null ? "–" : nf1.format(v); }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c];
+    });
+  }
 
   function renderKpis(s) {
     var fresh = s.last_telemetry && (serverAge(s.last_telemetry) < 90);
@@ -266,157 +277,53 @@
 
   function hm(iso) { return new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }); }
 
-  // ---------- Cloud pill (topbar) ----------
+  // ---------- Cloud chip (topbar) ----------
   function renderPill(s) {
-    var pill = $("cloudPill"), txt = $("cloudPillText"), dot = pill.querySelector(".dot");
+    var pill = $("cloudPill"), txt = $("cloudPillText");
+    if (!pill) return;
+    var dot = pill.querySelector(".dot");
     if (s.cloud_connected) {
-      pill.className = "pill ok"; txt.textContent = "Cloud verbunden"; dot.classList.add("live");
+      pill.className = "state-chip ok"; txt.textContent = "Portal verbunden"; dot.classList.add("live");
     } else if (s.pairing_state === "geraet_entfernt") {
-      pill.className = "pill off"; txt.textContent = "Aus Cloud entfernt"; dot.classList.remove("live");
+      pill.className = "state-chip off"; txt.textContent = "Aus dem Portal entfernt"; dot.classList.remove("live");
     } else if (s.last_telemetry && serverAge(s.last_telemetry) < 90) {
-      pill.className = "pill warn"; txt.textContent = "Lokal aktiv · Cloud getrennt"; dot.classList.remove("live");
+      pill.className = "state-chip warn"; txt.textContent = "Lokal aktiv"; dot.classList.remove("live");
     } else {
-      pill.className = "pill off"; txt.textContent = "Cloud getrennt"; dot.classList.remove("live");
+      pill.className = "state-chip off"; txt.textContent = "Portal getrennt"; dot.classList.remove("live");
     }
   }
 
-  // ---------- Guided two-step onboarding card ----------
-  // The customer MUST connect the inverter first; the portal-claim step (with
-  // the reference) stays LOCKED until the inverter actually delivers data. The
-  // gate itself is computed server-side (s.onboarding_step / s.inverter_connected),
-  // and the reference is withheld from /api/state until unlocked, so the wrong
-  // path (claiming before the inverter works) is not reachable in the UI.
-  function renderPairing(s) {
-    var st = s.pairing_state;
-    var step = s.onboarding_step || "inverter"; // "inverter" | "claim" | "done"
-    $("ref").textContent = s.ref || "…";
-    $("version").textContent = (!s.version || s.version === "dev") ? "" : "v" + s.version;
-
-    var connected = st === "verbunden";
-    var done = step === "done";
-
-    // Progress rail: 1 = inverter, 2 = portal, 3 = verbunden.
-    // reached = index of the last completed dot; active = the current dot.
-    var reached = done ? (connected ? 3 : 2) : (step === "claim" ? 1 : 0);
-    var activeIdx = done ? (connected ? 3 : 3) : (step === "claim" ? 2 : 1);
-    document.querySelectorAll("#onboardProgress li[data-p]").forEach(function (li) {
-      var p = parseInt(li.getAttribute("data-p"), 10);
-      li.classList.toggle("done", p <= reached);
-      li.classList.toggle("active", p === activeIdx && p > reached);
-    });
-
-    renderPairingError(st);
-
-    // Collapse the whole onboarding body once the device is claimed (a
-    // certificate is on disk): don't re-prompt on a mere cloud blip.
-    $("pairingCard").classList.toggle("compact", done);
-    $("onboardBody").hidden = done;
-
-    if (done) {
-      if (connected) {
-        $("pairingTitle").textContent = "Gerät verbunden";
-        $("pairingLead").innerHTML = "Referenz <strong>" + escapeHtml(s.ref || "") + "</strong> · erfolgreich mit VoltPilot gekoppelt.";
-      } else {
-        $("pairingTitle").textContent = "Gerät wird verbunden";
-        $("pairingLead").textContent = "Das Gerät ist eingerichtet und stellt die Verbindung zu VoltPilot her.";
-      }
-      return;
-    }
-
-    // Onboarding in progress.
-    $("pairingTitle").textContent = "In zwei Schritten startklar";
-    $("pairingLead").textContent = step === "claim"
-      ? "Ihr Wechselrichter liefert Daten. Schließen Sie jetzt die Kopplung im Portal ab."
-      : "Zuerst den Wechselrichter verbinden - danach schalten Sie das Gerät im Portal frei.";
-
-    renderStep1(s, step);
-    renderStep2(s, step);
-  }
-
-  // Schritt 1 - Wechselrichter verbinden.
-  function renderStep1(s, step) {
-    var block = $("step1");
-    var configured = !!(s.inverter && s.inverter.configured);
-    var invConnected = !!s.inverter_connected;
-    var stateEl = $("step1Status"), txt = $("step1StatusText");
-    var desc = $("step1Desc"), cta = $("step1Cta"), ctaLabel = $("step1CtaLabel");
-
-    // done whenever the customer is past step 1 (inverter delivers data).
-    block.classList.toggle("done", step !== "inverter");
-    block.classList.toggle("active", step === "inverter");
-
-    if (step !== "inverter") {
-      // Inverter connected and delivering data.
-      stateEl.className = "step-status ok";
-      txt.textContent = "Verbunden";
-      desc.textContent = s.inverter && s.inverter.label
-        ? s.inverter.label + " liefert Messwerte."
-        : "Wechselrichter liefert Messwerte.";
-      ctaLabel.textContent = "Einstellungen ändern";
-      cta.className = "step-cta ghost";
-    } else if (!configured) {
-      // Not configured yet - the active task.
-      stateEl.className = "step-status warn";
-      txt.textContent = "Jetzt einrichten";
-      desc.textContent = "Wählen Sie Ihren Wechselrichter aus, damit dieses Gerät Messwerte empfängt. Das dauert nur eine Minute.";
-      ctaLabel.textContent = "Wechselrichter einrichten";
-      cta.className = "step-cta";
-    } else if (!invConnected) {
-      // Configured but no data yet.
-      stateEl.className = "step-status wait";
-      txt.innerHTML = "<span class='ss-spin'></span>Warte auf erste Daten…";
-      desc.textContent = s.inverter && s.inverter.label
-        ? s.inverter.label + " ist eingerichtet - warte auf die ersten Messwerte vom Wechselrichter. Bitte prüfen, ob der Wechselrichter eingeschaltet und erreichbar ist."
-        : "Wechselrichter ist eingerichtet - warte auf die ersten Messwerte.";
-      ctaLabel.textContent = "Einstellungen prüfen";
-      cta.className = "step-cta ghost";
+  // ---------- Status hero: the plain-German verdict + its CAUSE ----------
+  // VPStatus.derive is the single source of truth (status.js). Whatever it
+  // returns as `cause` is rendered HERE, in normal mode - Technikmodus never
+  // owns a message, only detail.
+  var HERO_ICON = {
+    ok: '<path d="M20 6 9 17l-5-5"/>',
+    warn: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+    err: '<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>'
+  };
+  function renderStatusHero(s) {
+    var hero = $("statusHero");
+    if (!hero || !window.VPStatus) return;
+    var v = window.VPStatus.derive(s, deviceNow());
+    hero.className = "status-hero " + v.tone;
+    $("statusHeroTitle").textContent = v.title;
+    var det = $("statusHeroDetail");
+    det.textContent = v.detail || "";
+    det.hidden = !v.detail;
+    var cause = $("statusHeroCause");
+    cause.textContent = v.cause || "";
+    cause.hidden = !v.cause;
+    var ico = $("statusHeroIco");
+    if (ico) {
+      ico.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" ' +
+        'stroke-linecap="round" stroke-linejoin="round">' + (HERO_ICON[v.tone] || HERO_ICON.err) + "</svg>";
     }
   }
 
-  // Schritt 2 - Mit dem VoltPilot-Portal verbinden. Locked until Schritt 1 done.
-  function renderStep2(s, step) {
-    var block = $("step2");
-    var unlocked = step === "claim"; // done is handled by the compact collapse
-    block.classList.toggle("locked", !unlocked);
-    block.classList.toggle("active", unlocked);
-    $("step2Locked").hidden = unlocked;
-    $("step2Unlocked").hidden = !unlocked;
-
-    var stateEl = $("step2Status"), txt = $("step2StatusText");
-    if (unlocked) {
-      stateEl.className = "step-status warn";
-      txt.textContent = "Jetzt koppeln";
-    } else {
-      stateEl.className = "step-status locked";
-      txt.textContent = "Gesperrt";
-    }
-  }
-
-  // The pairing error / status box: transport, local-init and cloud failures
-  // each get an actionable German message.
-  function renderPairingError(st) {
-    var err = $("pairingError");
-    var msg = null, soft = false;
-    if (st === "schluessel_konflikt") {
-      msg = "Registrierung gesperrt: Für diese Referenz ist bereits ein anderes Gerät registriert. Bitte den Support kontaktieren.";
-    } else if (st === "geraet_entfernt") {
-      msg = "Gerät wurde aus der Cloud entfernt – es wartet auf eine erneute Beanspruchung. Fügen Sie das Gerät im Portal wieder hinzu (Referenz unten); die lokale Anzeige läuft weiter, die Aufzeichnung für die Cloud ist pausiert.";
-    } else if (st === "referenz_unbekannt") {
-      msg = "Diese Geräte-ID ist dem System nicht bekannt. Bitte die Referenz auf dem Aufkleber prüfen.";
-    } else if (st === "portal_nicht_erreichbar") {
-      msg = "Gerät kann das Portal nicht erreichen - bitte die Internetverbindung prüfen. Es wird automatisch weiter versucht.";
-    } else if (st === "geraet_fehler") {
-      msg = "Auf dem Gerät ist ein Fehler aufgetreten (z. B. Speicher nicht beschreibbar). Bitte das Gerät neu starten; hält der Fehler an, den Support kontaktieren.";
-    } else if (st === "cloud_fehler") {
-      msg = "Verbindung zu VoltPilot konnte nicht aufgebaut werden. Das Gerät versucht es automatisch erneut.";
-    } else if (st === "cloud_getrennt") {
-      msg = "Verbindung zu VoltPilot unterbrochen - sie wird automatisch wiederhergestellt."; soft = true;
-    }
-    if (msg) { err.hidden = false; err.textContent = msg; err.classList.toggle("soft", soft); }
-    else { err.hidden = true; err.classList.remove("soft"); }
-  }
-
-  function escapeHtml(s) { return s.replace(/[&<>"]/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]; }); }
+  // The guided onboarding (Wechselrichter -> Portal koppeln) moved to the
+  // "Einrichten" page (einrichten.js): one job, one page. This page only ever
+  // SHOWS the resulting state, via the status hero above.
 
   // ---------- Energy flow diagram ----------
   // The controller renders the adaptive N-node topology diagram when the device
@@ -437,12 +344,12 @@
     lastState = s;
     syncClock(s.server_now_ms);
     renderPill(s);
-    renderPairing(s);
+    renderStatusHero(s);
     renderInverterCta(s);
     renderKpis(s);
     renderStatus(s);
-    renderPurge(s);
     renderFlow();
+    renderTechSources(s);
     // Hand the state to the Fahrplan view: it refetches the full plan when a new
     // one arrives and keeps the live setpoint + active slot + freshness current.
     if (window.VPPlan) window.VPPlan.onState(s);
@@ -462,82 +369,85 @@
     if (window.VPActiveControl) window.VPActiveControl.onState(s);
   }
 
-  // ---------- data purge ("Datenaufzeichnungen löschen") ----------
-  // Guarded destructive action: expand -> read the consequences -> type
-  // LÖSCHEN -> confirm. The cloud half is tracked via s.data_purge
-  // (ausstehend -> angefordert -> bestaetigt, see the contract).
-  function renderPurge(s) {
-    var box = $("purgeStatus"), txt = $("purgeStatusText");
-    var dp = s.data_purge;
-    if (!dp) { box.hidden = true; return; }
-    box.hidden = false;
-    if (dp.cloud_state === "bestaetigt") {
-      box.className = "purge-status ok";
-      txt.textContent = "Löschung abgeschlossen - Gerät und Portal sind bereinigt. Neue Messwerte werden wieder aufgezeichnet.";
-    } else if (dp.cloud_state === "angefordert") {
-      box.className = "purge-status wait";
-      txt.textContent = "Auf dem Gerät gelöscht. Die Löschung im Portal wurde angefordert und wird gleich bestätigt…";
+  // ---------- (Technikmodus) raw measurement sources ----------
+  // The picture above is a COMPOSITE: the primary inverter plus every
+  // additional Erzeuger / Netz-Zähler / Verbraucher. This block shows the parts
+  // it is made of, right under the diagram - the technician's answer to "where
+  // do these 21,5 kW come from?". Detail only: a source that is not delivering
+  // already says so in the status hero and on "Einrichten".
+  var techSources = null;      // last /api/sources payload
+  var techSourcesAt = 0;
+
+  var CHANNEL_LABEL = {
+    pv_power_kw: "PV", power_kw: "Netz", load_kw: "Haus",
+    soc_pct: "SoC", grid_limit_kw: "Netz-Limit", battery_power_kw: "Batterie"
+  };
+  var HEALTH_LABEL = { ok: "liefert", warn: "veraltet", pending: "wartet" };
+
+  function fmtChannels(map, units) {
+    var out = [];
+    for (var k in map) {
+      if (!map.hasOwnProperty(k) || map[k] == null) continue;
+      out.push((CHANNEL_LABEL[k] || k) + " " + nf1.format(map[k]) + (units && k === "soc_pct" ? " %" : " kW"));
+    }
+    return out.join(" · ") || "keine Werte";
+  }
+
+  function loadTechSources() {
+    return fetch("/api/sources", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { techSources = d; techSourcesAt = Date.now(); })
+      .catch(function () { /* the block simply stays on the primary reading */ });
+  }
+
+  function renderTechSources(s) {
+    var body = $("techSourcesBody");
+    if (!body) return;
+    var rows = [];
+
+    var prim = s.inverter && s.inverter.configured
+      ? ((s.inverter.label || "Wechselrichter") + " · " + (s.inverter.host || "?") +
+         " · " + (s.inverter.communication || "?"))
+      : null;
+    if (prim) {
+      rows.push(prim + "\n    " + fmtChannels(s.last_reading || {}, true) +
+        "  [" + (s.inverter_link === "down" ? "getrennt" : s.inverter_link === "up" ? "verbunden" : "unbekannt") + "]");
     } else {
-      box.className = "purge-status wait";
-      txt.textContent = "Auf dem Gerät gelöscht. Die Löschung im Portal wird nachgeholt, sobald das Gerät wieder mit der Cloud verbunden ist.";
+      rows.push("kein Wechselrichter ausgewählt");
+    }
+
+    if (techSources && techSources.sources) {
+      for (var i = 0; i < techSources.sources.length; i++) {
+        var src = techSources.sources[i];
+        var st = (techSources.statuses || {})[src.id] || "pending";
+        var rd = (techSources.readings || {})[src.id];
+        var conn = src.connection || {};
+        var where = conn.ip ? conn.ip + (conn.port ? ":" + conn.port : "") : "?";
+        rows.push((src.label || src.model || src.brand || src.id) + " · " + src.role + " · " + where +
+          " · " + (src.communication || "?") +
+          "\n    " + (rd && rd.values ? fmtChannels(rd.values, true) : "keine Werte") +
+          "  [" + (HEALTH_LABEL[st] || st) + "]");
+      }
+    }
+    body.textContent = rows.join("\n");
+
+    var note = $("techSourcesNote");
+    if (note) {
+      note.textContent = "Rohwerte je Messquelle, vor der Zusammenfassung. " +
+        "Zusammensetzung und Verbindungsdaten ändern Sie unter „Einrichten“.";
     }
   }
 
-  function purgeConfirmOpen(open) {
-    $("purgeConfirm").hidden = !open;
-    $("purgeOpenBtn").hidden = open;
-    $("purgeError").hidden = true;
-    var input = $("purgeTypeInput");
-    input.value = "";
-    $("purgeGoBtn").disabled = true;
-    if (open) input.focus();
-  }
-
-  $("purgeOpenBtn").addEventListener("click", function () { purgeConfirmOpen(true); });
-  $("purgeCancelBtn").addEventListener("click", function () { purgeConfirmOpen(false); });
-  $("purgeTypeInput").addEventListener("input", function () {
-    $("purgeGoBtn").disabled = this.value.trim().toUpperCase() !== "LÖSCHEN";
-  });
-
-  $("purgeGoBtn").addEventListener("click", function () {
-    var btn = this;
-    btn.disabled = true;
-    btn.textContent = "Wird gelöscht…";
-    fetch("/api/purge-data", { method: "POST" })
-      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
-      .then(function (res) {
-        if (!res.ok) throw new Error(res.body && res.body.error);
-        purgeConfirmOpen(false);
-        // Drop the local chart data right away; the state stream carries the
-        // cloud progress (renderPurge).
-        pts = [];
-        redrawCharts();
-        if (lastState) {
-          lastState.data_purge = res.body.data_purge;
-          renderPurge(lastState);
-          renderKpis(lastState);
-          renderFlow();
-        }
-      })
-      .catch(function (e) {
-        var err = $("purgeError");
-        err.hidden = false;
-        err.textContent = (e && e.message) ||
-          "Die Aufzeichnungen konnten nicht gelöscht werden. Bitte versuchen Sie es erneut.";
-      })
-      .then(function () {
-        btn.textContent = "Endgültig löschen";
-      });
-  });
 
   // Prominent CTA while no inverter is configured: without it the Node-RED
-  // read flow is idle and NO telemetry ever reaches the device (M1). During
-  // onboarding, Schritt 1 already owns this guidance, so the banner only shows
-  // AFTER the device is paired (step "done") if the inverter is ever missing -
-  // otherwise it would duplicate the onboarding card.
+  // read flow is idle and NO telemetry ever reaches the device (M1). The guided
+  // commissioning lives on "Einrichten" now, so this banner is simply the way
+  // over there and no longer duplicates an onboarding card on this page.
   function renderInverterCta(s) {
-    var need = !(s.inverter && s.inverter.configured) && s.onboarding_step === "done";
-    $("inverterBanner").hidden = !need;
+    var el = $("inverterBanner");
+    if (el) el.hidden = !!(s.inverter && s.inverter.configured);
+    var v = $("version");
+    if (v) v.textContent = (!s.version || s.version === "dev") ? "" : "v" + s.version;
   }
 
   // ---------- data loading + streaming ----------
@@ -582,47 +492,6 @@
     redrawCharts();
   });
 
-  // ---------- copy ----------
-  // The dashboard is served over plain HTTP on a LAN IP - an insecure context
-  // where navigator.clipboard is unavailable (only localhost/https expose it).
-  // Fall back to a hidden-textarea execCommand("copy"), and on genuine failure
-  // tell the user to copy manually instead of silently no-opping.
-  function copyRef(text) {
-    if (navigator.clipboard && window.isSecureContext) {
-      return navigator.clipboard.writeText(text);
-    }
-    return new Promise(function (resolve, reject) {
-      try {
-        var ta = document.createElement("textarea");
-        ta.value = text;
-        ta.setAttribute("readonly", "");
-        ta.style.position = "fixed";
-        ta.style.top = "-9999px";
-        document.body.appendChild(ta);
-        ta.select();
-        ta.setSelectionRange(0, ta.value.length);
-        var ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-        ok ? resolve() : reject(new Error("execCommand copy failed"));
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-
-  $("copyBtn").addEventListener("click", function () {
-    var ref = $("ref").textContent;
-    copyRef(ref)
-      .then(function () {
-        $("copyLabel").textContent = "Kopiert ✓";
-        setTimeout(function () { $("copyLabel").textContent = "Kopieren"; }, 1500);
-      })
-      .catch(function () {
-        $("copyLabel").textContent = "Bitte manuell markieren und kopieren";
-        setTimeout(function () { $("copyLabel").textContent = "Kopieren"; }, 3000);
-      });
-  });
-
   // Keep the axes scrolling even when idle.
   setInterval(redrawCharts, 1000);
 
@@ -630,6 +499,19 @@
   fetch("/api/state", { cache: "no-store" }).then(function (r) { return r.json(); })
     .then(applyState).catch(function () {});
   loadHistory().then(startStream);
+
+  // The raw per-source block only matters in Technikmodus, so it is fetched
+  // once at boot and refreshed lazily (every 30 s) - never on the hot path.
+  loadTechSources().then(function () { if (lastState) renderTechSources(lastState); });
+  setInterval(function () {
+    loadTechSources().then(function () { if (lastState) renderTechSources(lastState); });
+  }, 30000);
+  if (window.VPTechnik) {
+    window.VPTechnik.onChange(function () {
+      if (lastState) renderTechSources(lastState);
+      redrawCharts(); // the canvases resize when a block above them appears
+    });
+  }
 
   // Inject the flow-spoke keyframes once (shared by the v1 and adaptive
   // diagrams so the animation exists even if only the adaptive one is built).

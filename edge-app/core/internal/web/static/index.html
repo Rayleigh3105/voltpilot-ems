@@ -3,115 +3,69 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#5A8DE8">
-  <title>VoltPilot Edge · Energiemonitor</title>
+  <meta name="theme-color" content="#1E3A5F">
+  <title>VoltPilot Edge · Betrieb</title>
+  <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="shell.css">
 </head>
 <body>
+  <!-- ================= App shell (identical on both pages) ================= -->
   <header class="topbar">
-    <div class="brand">
+    <a class="brand" href="index.html">
       <span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
       </span>
-      <span>VoltPilot&nbsp;Edge<small>Lokaler Energiemonitor</small></span>
-    </div>
+      <span>VoltPilot&nbsp;Edge<small>Anlage vor Ort</small></span>
+    </a>
     <div class="topbar-right">
-      <span class="pill off" id="cloudPill"><span class="dot"></span><span id="cloudPillText">–</span></span>
-      <a class="link-btn" href="inverter.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-        <span>Wechselrichter einrichten</span>
-      </a>
-      <a class="link-btn" href="einstellungen.html" title="Einstellungen">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-        <span>Einstellungen</span>
-      </a>
+      <span class="state-chip off" id="cloudPill"><span class="dot"></span><span id="cloudPillText">–</span></span>
+      <!-- The Technikmodus switch: SAME position on every page. It reveals, it
+           never authorizes - see technik.js. -->
+      <button type="button" class="tech-toggle" id="techToggle" aria-pressed="false"
+              aria-label="Technikmodus" title="Technikmodus ein- oder ausschalten">
+        <span class="sw" aria-hidden="true"></span>
+        <span class="tech-toggle-label" aria-hidden="true">Technikmodus</span>
+        <span class="tech-toggle-state" aria-hidden="true">aus</span>
+      </button>
       <span class="version" id="version"></span>
     </div>
   </header>
 
+  <div class="tech-bar" id="techBar" role="status" hidden>
+    <span>◆ Technikmodus aktiv · technische Details werden zusätzlich eingeblendet</span>
+    <button type="button" class="tech-bar-off" id="techBarOff">Technikmodus ausschalten</button>
+  </div>
+
+  <nav class="pagenav" aria-label="Bereiche">
+    <a href="index.html" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      <span>Betrieb</span>
+    </a>
+    <a href="einrichten.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>Einrichten</span>
+    </a>
+  </nav>
+
   <main>
-    <!-- Guided, enforced two-step onboarding (prominent until connected).
-         Schritt 1 = Wechselrichter verbinden; Schritt 2 = im Portal koppeln,
-         GESPERRT bis der Wechselrichter tatsächlich Daten liefert. -->
-    <section class="card onboard-card" id="pairingCard">
-      <div class="pairing-head">
-        <span class="pairing-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-        </span>
-        <div>
-          <h2 id="pairingTitle">In zwei Schritten startklar</h2>
-          <p id="pairingLead">Zuerst den Wechselrichter verbinden, danach das Gerät im Portal freischalten.</p>
-        </div>
+    <!-- ============ 1 · Wie geht es der Anlage? (plain German) ============
+         THE load-bearing element: whenever something is wrong, the CAUSE is
+         written here, in normal mode. Technikmodus only ever adds detail
+         further down - it never carries the message itself. -->
+    <section class="status-hero" id="statusHero" aria-live="polite">
+      <span class="status-hero-ico" id="statusHeroIco" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      </span>
+      <div class="status-hero-main">
+        <p class="status-hero-title" id="statusHeroTitle">Zustand wird geladen …</p>
+        <p class="status-hero-detail" id="statusHeroDetail"></p>
+        <p class="status-hero-cause" id="statusHeroCause" hidden></p>
       </div>
-
-      <!-- Everything below collapses once the device is paired (compact view). -->
-      <div id="onboardBody">
-        <!-- Step progress rail -->
-        <ol class="onboard-progress" id="onboardProgress">
-          <li data-p="1"><span class="op-num">1</span><span class="op-lbl">Wechselrichter</span></li>
-          <li class="op-sep" aria-hidden="true"></li>
-          <li data-p="2"><span class="op-num">2</span><span class="op-lbl">Portal</span></li>
-          <li class="op-sep" aria-hidden="true"></li>
-          <li data-p="3"><span class="op-num">✓</span><span class="op-lbl">Verbunden</span></li>
-        </ol>
-
-        <!-- Schritt 1: Wechselrichter verbinden -->
-        <div class="step-block" id="step1">
-          <div class="step-block-head">
-            <span class="step-tag">Schritt 1</span>
-            <span class="step-status" id="step1Status"><span class="ss-dot"></span><span id="step1StatusText">–</span></span>
-          </div>
-          <h3 class="step-block-title">Wechselrichter verbinden</h3>
-          <p class="step-block-desc" id="step1Desc">Wählen Sie Ihren Wechselrichter aus, damit dieses Gerät Messwerte empfängt.</p>
-          <a class="step-cta" id="step1Cta" href="inverter.html">
-            <span id="step1CtaLabel">Wechselrichter einrichten</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-          </a>
-        </div>
-
-        <!-- Schritt 2: Mit dem VoltPilot-Portal verbinden (locked until Schritt 1 done) -->
-        <div class="step-block locked" id="step2">
-          <div class="step-block-head">
-            <span class="step-tag">Schritt 2</span>
-            <span class="step-status" id="step2Status"><span class="ss-dot"></span><span id="step2StatusText">Gesperrt</span></span>
-          </div>
-          <h3 class="step-block-title">Mit dem VoltPilot-Portal verbinden</h3>
-
-          <!-- Locked hint: shown until the inverter delivers data. No reference here. -->
-          <div class="step-locked-note" id="step2Locked">
-            <span class="lock-ico" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            </span>
-            <p>Zuerst den Wechselrichter verbinden. Sobald er Daten liefert, erscheint hier Ihre Referenz-ID für das Portal.</p>
-          </div>
-
-          <!-- Unlocked content: the reference + copy + portal guidance -->
-          <div id="step2Unlocked" hidden>
-            <div class="ref-block" id="refBlock">
-              <div>
-                <div class="ref-label">Referenz-ID dieses Geräts</div>
-                <div class="ref-row" style="margin-top:8px">
-                  <code class="ref" id="ref">…</code>
-                  <button class="copy" id="copyBtn" title="Referenz kopieren">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span id="copyLabel">Kopieren</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <p class="ref-hint" id="refHint">
-              Portal öffnen und unter <strong>Geräte → ＋ Gerät hinzufügen</strong> diese
-              Referenz eintragen. Das Gerät wird danach automatisch freigeschaltet.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <p class="pairing-error" id="pairingError" hidden></p>
     </section>
 
-    <!-- Setup CTA: shown until an inverter is configured (no inverter = no data) -->
-    <a class="setup-banner" id="inverterBanner" href="inverter.html" hidden>
+    <!-- Nothing is measured yet: send the operator to Einrichten. -->
+    <a class="setup-banner" id="inverterBanner" href="einrichten.html" hidden>
       <span class="setup-banner-ico" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </span>
@@ -122,12 +76,31 @@
       <span class="setup-banner-arrow" aria-hidden="true">→</span>
     </a>
 
-    <!-- At-a-glance KPI cards -->
-    <div class="section-title">Aktuelle Leistung</div>
-    <!-- Adaptive, entity-driven tiles (AE6): filled by dashboard.js from the
-         /api/state topology block. Shown whenever the device carries v2
-         entities; a new entity (Wallbox/Heizstab) appears here automatically.
-         Hidden (and the fixed #kpis shown) on a v1 device with no topology. -->
+    <!-- ==================== 2 · Jetzt: Fluss + Kennzahlen ==================== -->
+    <div class="area-title">Jetzt</div>
+    <section class="card flow-card">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M4 12l4-4M4 12l4 4"/></svg></span>Energiefluss</h3>
+      </div>
+      <div class="flow-wrap" id="flowWrap"><!-- SVG injected by dashboard.js --></div>
+      <div class="flow-legend">
+        <span><i style="background:var(--pv)"></i>PV</span>
+        <span><i style="background:var(--load)"></i>Haus</span>
+        <span><i style="background:var(--batt)"></i>Batterie</span>
+        <span><i style="background:var(--grid-c)"></i>Netz</span>
+      </div>
+
+      <!-- ◆ Technik: the raw per-source values that MAKE the picture above.
+           Right where they belong - directly under the diagram. -->
+      <div class="tech-block tech-only" id="techSources">
+        <p class="tech-h">Messquellen · Rohwerte</p>
+        <div class="tech-mono" id="techSourcesBody">wird geladen …</div>
+        <p class="tech-note" id="techSourcesNote"></p>
+      </div>
+    </section>
+
+    <!-- Adaptive, entity-driven tiles (AE6) filled from the /api/state topology
+         block; the fixed 4 cards stay as the v1 fallback. -->
     <section class="kpis" id="kpisAdaptive" hidden></section>
     <section class="kpis" id="kpis">
       <div class="card kpi pv">
@@ -172,294 +145,8 @@
       </div>
     </section>
 
-    <!-- Energy flow + operational status -->
-    <div class="cols" style="margin-top:16px">
-      <section class="card flow-card">
-        <div class="chart-head">
-          <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M4 12l4-4M4 12l4 4"/></svg></span>Energiefluss</h3>
-        </div>
-        <div class="flow-wrap" id="flowWrap"><!-- SVG injected by dashboard.js --></div>
-        <div class="flow-legend">
-          <span><i style="background:var(--pv)"></i>PV</span>
-          <span><i style="background:var(--load)"></i>Haus</span>
-          <span><i style="background:var(--batt)"></i>Batterie</span>
-          <span><i style="background:var(--grid-c)"></i>Netz</span>
-        </div>
-      </section>
-
-      <section class="card status-card">
-        <div class="chart-head">
-          <h3 class="chart-title"><span class="ico" style="background:var(--bg-2);color:var(--muted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Betrieb &amp; Status</h3>
-        </div>
-        <div class="status-list">
-          <div class="status-row">
-            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>Betriebsmodus</span>
-            <span class="status-val" id="modeVal">–<small id="modeSub"></small></span>
-          </div>
-          <div class="status-row">
-            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A4.5 4.5 0 0 0 6.5 19z"/></svg></span>Cloud-Verbindung</span>
-            <span class="status-val" id="cloudVal">–<small id="cloudSub"></small></span>
-          </div>
-          <div class="status-row">
-            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg></span>Wechselrichter</span>
-            <span class="status-val" id="invVal">–<small id="invSub"></small></span>
-          </div>
-          <div class="status-row">
-            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v6"/></svg></span>Fahrplan</span>
-            <span class="status-val" id="planVal">–<small id="planSub"></small></span>
-          </div>
-          <div class="status-row">
-            <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M12 7v5l3 2"/></svg></span>Letzte Messdaten</span>
-            <span class="status-val" id="telVal">–<small id="telSub"></small></span>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <!-- Battery dispatch plan (Fahrplan) -->
-    <div class="section-title">Batterie-Fahrplan</div>
-    <section class="card plan-card">
-      <div class="chart-head">
-        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v6"/></svg></span>Lade- &amp; Entladeplan</h3>
-        <span class="plan-fresh" id="planFresh"><span class="ss-dot"></span><span id="planFreshText">–</span></span>
-      </div>
-
-      <!-- Filled once a plan is cached -->
-      <div id="planBody" hidden>
-        <!-- Current guard-clamped setpoint + operating mode -->
-        <div class="plan-now" id="planNow" hidden>
-          <div class="plan-now-main">
-            <span class="plan-now-label">Aktueller Sollwert</span>
-            <span class="plan-now-value"><span id="planNowVal">–</span><span class="u">kW</span></span>
-            <span class="plan-now-badge idle" id="planNowBadge">–</span>
-          </div>
-          <p class="plan-now-sub" id="planNowSub"></p>
-        </div>
-
-        <div class="legend" style="margin:12px 0 10px">
-          <span><i class="pl-swatch pl-charge"></i>Laden</span>
-          <span><i class="pl-swatch pl-discharge"></i>Entladen</span>
-          <span id="planCurtailLegend" hidden><i class="pl-swatch pl-curtail"></i>PV-Begrenzung</span>
-        </div>
-
-        <div class="chart-canvas-wrap chart-plan">
-          <canvas id="planChart"></canvas>
-        </div>
-      </div>
-
-      <!-- Honest empty state -->
-      <div class="plan-empty" id="planEmpty" hidden>
-        <span class="plan-empty-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v6M16 4v6"/></svg>
-        </span>
-        <div>
-          <strong>Noch kein Fahrplan empfangen.</strong>
-          <p>Sobald dieses Gerät im Portal gekoppelt und ein Batteriespeicher hinterlegt ist,
-          sendet VoltPilot hier den kostenoptimierten Lade- und Entladeplan.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Inverter control confirmation (Steuerung & Bestätigung) -->
-    <div class="section-title">Steuerung &amp; Bestätigung</div>
-    <section class="card control-card">
-      <div class="chart-head">
-        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3"/></svg></span>Wechselrichter-Steuerung</h3>
-        <span class="ctrl-state" id="ctrlState" hidden><span class="ss-dot"></span><span id="ctrlStateText">–</span></span>
-      </div>
-
-      <!-- The setpoint that was commanded + how it was confirmed -->
-      <div id="ctrlBody" hidden>
-        <div class="plan-now" id="ctrlNow">
-          <div class="plan-now-main">
-            <span class="plan-now-label" id="ctrlCmdLabel">Fahrplan-Sollwert</span>
-            <span class="plan-now-value"><span id="ctrlCmdVal">–</span><span class="u">kW</span></span>
-            <span class="plan-now-badge idle" id="ctrlModeBadge">–</span>
-          </div>
-          <p class="plan-now-sub" id="ctrlNowSub"></p>
-        </div>
-
-        <div class="ctrl-banner" id="ctrlBanner" hidden></div>
-
-        <div class="ctrl-table-wrap">
-          <table class="ctrl-table" id="ctrlTable">
-            <thead>
-              <tr><th>Register</th><th>Befohlen</th><th>Wechselrichter</th><th>Status</th></tr>
-            </thead>
-            <tbody id="ctrlRows"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Not-yet-controlled / read-only states -->
-      <div class="plan-empty" id="ctrlEmpty">
-        <span class="plan-empty-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
-        </span>
-        <div>
-          <strong id="ctrlEmptyTitle">Noch keine Steuerung.</strong>
-          <p id="ctrlEmptyText">Sobald der Fahrplan an den Wechselrichter geschrieben und
-          zurückgelesen wird, sehen Sie hier register-genau, ob der Wechselrichter
-          den Sollwert übernommen hat.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- First-Light calibration: the SAFE, tightly-bounded proof of the inverter's
-         control SIGN + SCALE on the real hardware via small, observed, auto-reverting
-         test writes BEFORE the model is certified. Bounded on every axis (magnitude
-         cap + TTL auto-revert + guards + off by default + global kill-switch). Fed by
-         calibration.js from /api/calibration; the controls POST to /api/calibration/*.
-         The register readback ("Kam der Befehl an?") is the card above. -->
-    <div class="section-title">First-Light-Kalibrierung</div>
-    <section class="card cal-card" id="calCard">
-      <div class="chart-head">
-        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v3M12 19v3M5 12H2M22 12h-3M6.3 6.3 4.5 4.5M19.5 19.5l-1.8-1.8"/><circle cx="12" cy="12" r="4"/></svg></span>Steuerung kalibrieren</h3>
-        <span class="ctrl-state" id="calState" hidden><span class="ss-dot"></span><span id="calStateText">–</span></span>
-      </div>
-
-      <!-- Not applicable / kill-switch off / no controllable inverter -->
-      <div class="plan-empty" id="calUnavail" hidden>
-        <span class="plan-empty-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
-        </span>
-        <div>
-          <strong id="calUnavailTitle">Kalibrierung nicht verfügbar.</strong>
-          <p id="calUnavailText"></p>
-        </div>
-      </div>
-
-      <div id="calBody" hidden>
-        <!-- Admin-Schutz: nur wenn ein Kennwort gesetzt ist (VP_CALIBRATION_ADMIN_SECRET).
-             Die Aktionen (scharfschalten, testen, freigeben) sind serverseitig gesperrt,
-             bis das Kennwort eingegeben wurde; die Ansicht bleibt lesbar. -->
-        <div class="cal-auth" id="calAuth" hidden>
-          <strong>Kalibrierung ist geschützt.</strong>
-          <p class="cal-hint">Bitte das Administrator-Kennwort eingeben, um Testläufe und die Freigabe zu bedienen.</p>
-          <div class="cal-auth-row">
-            <input type="password" id="calToken" autocomplete="off" placeholder="Administrator-Kennwort" />
-            <button type="button" id="calUnlock" class="cal-btn primary">Freischalten</button>
-          </div>
-        </div>
-
-        <p class="cal-intro">Der <strong>allererste echte Schreibbefehl</strong> an Ihre Batterie.
-          VoltPilot schreibt einen <strong>kleinen</strong> Testwert, liest ihn zurück und prüft, ob sich
-          die Batterie in die richtige Richtung und Größe bewegt. Jeder Test <strong>schaltet
-          sich nach kurzer Zeit von selbst wieder ab</strong> (Neutral) – der Befehl bleibt nie stehen.</p>
-
-        <div class="cal-live" id="calLive"></div>
-
-        <!-- Schritt 1: Kalibriermodus scharfschalten -->
-        <div class="cal-step">
-          <div class="cal-arm-row">
-            <label class="cal-switch"><input type="checkbox" id="calArm" /><span class="cal-slider"></span></label>
-            <div>
-              <strong>Kalibriermodus</strong>
-              <p class="cal-hint" id="calArmHint">Erst scharfschalten, dann einen kleinen Test starten.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Schritt 2: kleinen Testbefehl senden -->
-        <div class="cal-step" id="calTestStep" hidden>
-          <div class="cal-mag">
-            <label for="calMag">Testleistung</label>
-            <select id="calMag"></select>
-          </div>
-          <p class="cal-hint" id="calRatedNote" hidden></p>
-          <div class="cal-test-btns">
-            <button type="button" id="calCharge" class="cal-btn charge">Laden testen</button>
-            <button type="button" id="calDischarge" class="cal-btn discharge">Entladen testen</button>
-            <button type="button" id="calAbort" class="cal-btn abort" hidden>Abbrechen → Neutral</button>
-          </div>
-          <p class="cal-err" id="calErr" hidden></p>
-        </div>
-
-        <!-- Schritt 3: beobachten &amp; prüfen -->
-        <div class="cal-verdict" id="calVerdict" hidden></div>
-
-        <!-- Korrektur: Vorzeichen / Skala -->
-        <div class="cal-correct" id="calCorrect" hidden>
-          <div class="cal-correct-title">Stimmt etwas nicht?</div>
-          <button type="button" id="calBattInvert" class="cal-btn ghost">Mess-Vorzeichen der Batterie umkehren</button>
-          <p class="cal-hint">Nur nötig, wenn oben „Batterie jetzt“ verkehrt herum ist (beim Laden muss der Wert positiv sein – zum Vergleich das Cockpit heranziehen).</p>
-          <button type="button" id="calInvert" class="cal-btn ghost">Steuer-Vorzeichen umkehren &amp; erneut testen</button>
-          <div class="cal-scale">
-            <span>Leistungsskalierung:</span>
-            <button type="button" class="cal-btn ghost cal-scale-btn" data-scale="1">×1 (LV)</button>
-            <button type="button" class="cal-btn ghost cal-scale-btn" data-scale="10">×10 (HV)</button>
-          </div>
-        </div>
-
-        <!-- Freigabe: erst nach bestätigtem Vorzeichen UND Skala (aus gemessener Bewegung) -->
-        <div class="cal-confirm" id="calConfirm" hidden>
-          <div class="cal-confirm-checks">
-            <label><input type="checkbox" id="calSign" disabled /> Vorzeichen bestätigt</label>
-            <label><input type="checkbox" id="calScale" disabled /> Skala bestätigt</label>
-          </div>
-          <button type="button" id="calCertify" class="cal-btn primary" disabled>Steuerung freigeben</button>
-          <button type="button" id="calDecertify" class="cal-btn ghost" hidden>Freigabe zurücknehmen</button>
-          <p class="cal-hint" id="calCertHint">Nach der Freigabe steuert der VoltPilot-Fahrplan diesen Wechselrichter automatisch.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Aktive Steuerung (report §7): the READ-ONLY RESULT of the portal-composed
-         flows - deployed @vp-flow tabs + per-entity arbitration winner. The edge
-         shows WHAT is running, never the flow graph (composition stays in the
-         portal). Fed by active-control.js from /api/state.active_control. -->
-    <div class="section-title">Aktive Steuerung</div>
-    <section class="card actctrl-card">
-      <div class="chart-head">
-        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="19" cy="17" r="2"/></svg></span>Was gerade läuft</h3>
-        <span class="actctrl-note">Ergebnis der Portal-Steuerung · nur Anzeige</span>
-      </div>
-
-      <div id="actctrlBody" hidden>
-        <div class="actctrl-group" id="actFlowsGroup" hidden>
-          <div class="actctrl-grp-title">Aktive Modi &amp; Automationen<span class="actctrl-pal" id="actPalette"></span></div>
-          <ul class="actctrl-list" id="actFlowsList"></ul>
-        </div>
-        <div class="actctrl-group" id="actEntsGroup" hidden>
-          <div class="actctrl-grp-title">Steuert gerade</div>
-          <ul class="actctrl-list" id="actEntsList"></ul>
-        </div>
-      </div>
-
-      <!-- Empty state: no flows deployed / nothing steering. -->
-      <div class="plan-empty" id="actctrlEmpty">
-        <span class="plan-empty-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
-        </span>
-        <div>
-          <strong>Keine aktive Steuerung.</strong>
-          <p>Sobald im Portal ein Modus (Eigenverbrauch, Lastspitzenkappung,
-          Marktvermarktung, Atypische Netznutzung) oder eine Automation für
-          diese Anlage aktiviert und auf dieses Gerät verteilt wird, sehen Sie
-          hier, was läuft und was jede Einheit gerade steuert. Die Steuerung
-          selbst richten Sie im Portal ein.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Betrieb (PS-3): market optimization + peak guard, the technician's
-         at-a-glance operating state. Fed by betrieb.js from /api/state. -->
-    <div class="section-title">Betrieb</div>
-    <section class="card betrieb-card">
-      <div class="chart-head">
-        <h3 class="chart-title"><span class="ico" style="background:var(--ok-soft);color:var(--ok)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Marktoptimierung &amp; Spitzen-Wache</h3>
-      </div>
-      <div class="betrieb-rows">
-        <div class="betrieb-row"><span class="bt-label">Marktoptimierung</span><span class="bt-value" id="btMarkt">–</span></div>
-        <div class="betrieb-row"><span class="bt-label">Spitzen-Wache</span><span class="bt-value" id="btWache">inaktiv</span></div>
-        <div class="betrieb-row" id="btMeanRow" hidden><span class="bt-label">Aktuelles 15-min-Mittel</span><span class="bt-value" id="btMean">–</span></div>
-        <div class="betrieb-row" id="btReserveRow" hidden><span class="bt-label">Spitzen-Reserve</span><span class="bt-value" id="btReserve">–</span></div>
-        <div class="betrieb-row"><span class="bt-label">Bei Cloud-Ausfall</span><span class="bt-value bt-plain" id="btOffline">–</span></div>
-      </div>
-    </section>
-
-    <!-- Live power chart -->
-    <div class="section-title">Verlauf</div>
+    <!-- ==================== 3 · Verlauf ==================== -->
+    <div class="area-title">Verlauf</div>
     <section class="card chart-card">
       <div class="chart-head">
         <h3 class="chart-title"><span class="ico" style="background:var(--pv-soft);color:var(--pv)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></span>Leistung</h3>
@@ -481,7 +168,6 @@
       </div>
     </section>
 
-    <!-- SoC chart -->
     <section class="card chart-card" style="margin-top:16px">
       <div class="chart-head">
         <h3 class="chart-title"><span class="ico" style="background:var(--batt-soft);color:var(--batt)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="16" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/></svg></span>Batterie-Ladezustand</h3>
@@ -493,60 +179,178 @@
       </div>
     </section>
 
-    <!-- Data purge (guarded destructive action) -->
-    <div class="section-title">Daten &amp; Datenschutz</div>
-    <section class="card purge-card" id="purgeCard">
-      <div class="purge-head">
-        <span class="purge-ico" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+    <!-- ==================== 4 · Batterie-Fahrplan ==================== -->
+    <div class="area-title">Batterie-Fahrplan</div>
+    <section class="card plan-card">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v6"/></svg></span>Lade- &amp; Entladeplan</h3>
+        <span class="plan-fresh" id="planFresh"><span class="ss-dot"></span><span id="planFreshText">–</span></span>
+      </div>
+
+      <div id="planBody" hidden>
+        <div class="plan-now" id="planNow" hidden>
+          <div class="plan-now-main">
+            <span class="plan-now-label">Aktueller Sollwert</span>
+            <span class="plan-now-value"><span id="planNowVal">–</span><span class="u">kW</span></span>
+            <span class="plan-now-badge idle" id="planNowBadge">–</span>
+          </div>
+          <p class="plan-now-sub" id="planNowSub"></p>
+        </div>
+
+        <div class="legend" style="margin:12px 0 10px">
+          <span><i class="pl-swatch pl-charge"></i>Laden</span>
+          <span><i class="pl-swatch pl-discharge"></i>Entladen</span>
+          <span id="planCurtailLegend" hidden><i class="pl-swatch pl-curtail"></i>PV-Begrenzung</span>
+        </div>
+
+        <div class="chart-canvas-wrap chart-plan">
+          <canvas id="planChart"></canvas>
+        </div>
+      </div>
+
+      <div class="plan-empty" id="planEmpty" hidden>
+        <span class="plan-empty-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v6M16 4v6"/></svg>
         </span>
         <div>
-          <h3>Datenaufzeichnungen löschen</h3>
-          <p>Löscht alle bisher aufgezeichneten Messdaten dieses Geräts - hier auf dem
-          Gerät und im VoltPilot-Portal. Das Gerät bleibt verbunden und zeichnet ab
-          sofort wieder neu auf.</p>
+          <strong>Noch kein Fahrplan empfangen.</strong>
+          <p>Sobald dieses Gerät im Portal gekoppelt und ein Batteriespeicher hinterlegt ist,
+          sendet VoltPilot hier den kostenoptimierten Lade- und Entladeplan.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 5 · Steuerung: Zustand, keine Knöpfe ============
+         One plain-German sentence plus its reason. Every button (arm, test,
+         release, revoke) lives on "Einrichten", behind the calibration token. -->
+    <div class="area-title">Steuerung</div>
+    <section class="card control-card" id="controlCard">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3"/></svg></span>Wechselrichter-Steuerung</h3>
+        <span class="ctrl-state" id="ctrlState" hidden><span class="ss-dot"></span><span id="ctrlStateText">–</span></span>
+      </div>
+
+      <!-- ALWAYS visible, in both modes: the state + its cause. -->
+      <div class="ctrl-summary" id="ctrlSummary">
+        <strong id="ctrlSummaryTitle">Zustand wird geladen …</strong>
+        <p id="ctrlSummaryText"></p>
+      </div>
+
+      <div class="plan-now" id="ctrlNow" hidden>
+        <div class="plan-now-main">
+          <span class="plan-now-label" id="ctrlCmdLabel">Fahrplan-Sollwert</span>
+          <span class="plan-now-value"><span id="ctrlCmdVal">–</span><span class="u">kW</span></span>
+          <span class="plan-now-badge idle" id="ctrlModeBadge">–</span>
+        </div>
+        <p class="plan-now-sub" id="ctrlNowSub"></p>
+      </div>
+
+      <div class="ctrl-banner" id="ctrlBanner" hidden></div>
+
+      <!-- ◆ Technik: register-level evidence, directly under the state it
+           explains. Commanded vs. actual, the control path, the readback age. -->
+      <div class="tech-block tech-only" id="ctrlTech" hidden>
+        <p class="tech-h">Steuerung &amp; Bestätigung · Register</p>
+        <div class="ctrl-table-wrap">
+          <table class="ctrl-table" id="ctrlTable">
+            <thead>
+              <tr><th>Register</th><th>Befohlen</th><th>Wechselrichter</th><th>Status</th></tr>
+            </thead>
+            <tbody id="ctrlRows"></tbody>
+          </table>
+        </div>
+        <p class="tech-note" id="ctrlTechNote"></p>
+      </div>
+    </section>
+
+    <!-- ◆ Technik: Betrieb & Status detail (the summary above already says it
+         in one sentence), the market/peak guard, and what is running. -->
+    <div class="area-title tech-only">◆ Technik · Betriebsdetails</div>
+    <section class="card status-card tech-only">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--bg-2);color:var(--muted)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Betrieb &amp; Status</h3>
+      </div>
+      <div class="status-list">
+        <div class="status-row">
+          <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>Betriebsmodus</span>
+          <span class="status-val" id="modeVal">–<small id="modeSub"></small></span>
+        </div>
+        <div class="status-row">
+          <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6-2A4.5 4.5 0 0 0 6.5 19z"/></svg></span>Cloud-Verbindung</span>
+          <span class="status-val" id="cloudVal">–<small id="cloudSub"></small></span>
+        </div>
+        <div class="status-row">
+          <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg></span>Wechselrichter</span>
+          <span class="status-val" id="invVal">–<small id="invSub"></small></span>
+        </div>
+        <div class="status-row">
+          <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 4v6"/></svg></span>Fahrplan</span>
+          <span class="status-val" id="planVal">–<small id="planSub"></small></span>
+        </div>
+        <div class="status-row">
+          <span class="status-key"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M12 7v5l3 2"/></svg></span>Letzte Messdaten</span>
+          <span class="status-val" id="telVal">–<small id="telSub"></small></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card betrieb-card tech-only" style="margin-top:16px">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--ok-soft);color:var(--ok)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Marktoptimierung &amp; Spitzen-Wache</h3>
+      </div>
+      <div class="betrieb-rows">
+        <div class="betrieb-row"><span class="bt-label">Marktoptimierung</span><span class="bt-value" id="btMarkt">–</span></div>
+        <div class="betrieb-row"><span class="bt-label">Spitzen-Wache</span><span class="bt-value" id="btWache">inaktiv</span></div>
+        <div class="betrieb-row" id="btMeanRow" hidden><span class="bt-label">Aktuelles 15-min-Mittel</span><span class="bt-value" id="btMean">–</span></div>
+        <div class="betrieb-row" id="btReserveRow" hidden><span class="bt-label">Spitzen-Reserve</span><span class="bt-value" id="btReserve">–</span></div>
+        <div class="betrieb-row"><span class="bt-label">Bei Cloud-Ausfall</span><span class="bt-value bt-plain" id="btOffline">–</span></div>
+      </div>
+    </section>
+
+    <section class="card actctrl-card tech-only" style="margin-top:16px">
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--brand-soft);color:var(--brand-deep)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="19" cy="17" r="2"/></svg></span>Was gerade läuft</h3>
+        <span class="actctrl-note">Ergebnis der Portal-Steuerung · nur Anzeige</span>
+      </div>
+
+      <div id="actctrlBody" hidden>
+        <div class="actctrl-group" id="actFlowsGroup" hidden>
+          <div class="actctrl-grp-title">Aktive Modi &amp; Automationen<span class="actctrl-pal" id="actPalette"></span></div>
+          <ul class="actctrl-list" id="actFlowsList"></ul>
+        </div>
+        <div class="actctrl-group" id="actEntsGroup" hidden>
+          <div class="actctrl-grp-title">Steuert gerade</div>
+          <ul class="actctrl-list" id="actEntsList"></ul>
         </div>
       </div>
 
-      <!-- Purge progress/confirmation state (from /api/state data_purge) -->
-      <div class="purge-status" id="purgeStatus" hidden>
-        <span class="ss-dot" aria-hidden="true"></span><span id="purgeStatusText"></span>
-      </div>
-
-      <button class="purge-open" id="purgeOpenBtn" type="button">
-        Datenaufzeichnungen löschen…
-      </button>
-
-      <div class="purge-confirm" id="purgeConfirm" hidden>
-        <p class="purge-confirm-title">Das wird gelöscht - endgültig:</p>
-        <ul>
-          <li>Alle Messwerte auf diesem Gerät (Live-Verlauf und Zwischenspeicher)</li>
-          <li>Alle im VoltPilot-Portal gespeicherten Messdaten dieses Geräts - auch aus Historie und Statistiken</li>
-        </ul>
-        <p class="purge-confirm-note">Das Gerät bleibt verbunden; neue Messwerte werden
-        sofort wieder aufgezeichnet. Ist die Cloud gerade nicht erreichbar, holt das
-        Gerät die Löschung dort automatisch nach, sobald es wieder verbunden ist.</p>
-        <label class="purge-type-label" for="purgeTypeInput">Zur Bestätigung <strong>LÖSCHEN</strong> eintippen</label>
-        <input class="purge-type-input" id="purgeTypeInput" type="text"
-               autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="LÖSCHEN">
-        <div class="purge-actions">
-          <button class="purge-cancel" id="purgeCancelBtn" type="button">Abbrechen</button>
-          <button class="purge-go" id="purgeGoBtn" type="button" disabled>Endgültig löschen</button>
+      <div class="plan-empty" id="actctrlEmpty">
+        <span class="plan-empty-ico" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+        </span>
+        <div>
+          <strong>Keine aktive Steuerung.</strong>
+          <p>Sobald im Portal ein Modus (Eigenverbrauch, Lastspitzenkappung,
+          Marktvermarktung, Atypische Netznutzung) oder eine Automation für
+          diese Anlage aktiviert und auf dieses Gerät verteilt wird, sehen Sie
+          hier, was läuft und was jede Einheit gerade steuert. Die Steuerung
+          selbst richten Sie im Portal ein.</p>
         </div>
-        <p class="pairing-error" id="purgeError" hidden></p>
       </div>
     </section>
 
     <footer class="foot">
-      Lokale Geräteansicht - nur lesend. Die Anlagensteuerung erfolgt über das VoltPilot-Portal.<br>
+      Anlagenansicht vor Ort - nur lesend. Einrichten und Freigeben unter
+      „Einrichten“; die Anlagensteuerung planen Sie im VoltPilot-Portal.<br>
       Alle Daten bleiben auf diesem Gerät und werden verschlüsselt an VoltPilot übertragen.
     </footer>
   </main>
 
+  <script src="technik.js"></script>
+  <script src="status.js"></script>
   <script src="charts.js"></script>
   <script src="plan.js"></script>
   <script src="control.js"></script>
-  <script src="calibration.js"></script>
   <script src="active-control.js"></script>
   <script src="betrieb.js"></script>
   <script src="dashboard.js"></script>
