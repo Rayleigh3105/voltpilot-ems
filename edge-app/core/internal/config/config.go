@@ -86,6 +86,18 @@ type Config struct {
 	// CalibrationTTLSeconds is the config-file/env form of CalibrationTTL.
 	// VP_CALIBRATION_TTL_SECONDS; garbage/<=0 falls back to the default.
 	CalibrationTTLSeconds int `json:"calibration_ttl_seconds"`
+	// CalibrationAdminSecret gates the calibration MUTATION endpoints (arm/disarm,
+	// start test, abort, corrections, certify, decertify). The :8484 surface has no
+	// user model, so this is a single self-contained admin token/password read from
+	// env/config; it needs no cloud and works offline. When set, the web layer rejects
+	// unauthenticated calibration mutations server-side (HTTP 401) and the card prompts
+	// for it; every OTHER surface and all read-only views stay open. EMPTY (the default)
+	// = no gate, unchanged behaviour - so an existing device is never locked out on
+	// upgrade; the owner opts in by setting VP_CALIBRATION_ADMIN_SECRET.
+	// SECURITY SEAM: a broader access model (edge token vs. cloud role) is an open
+	// product decision; this token is the calibration-scoped stopgap the owner asked
+	// for and slots in here without touching any other endpoint.
+	CalibrationAdminSecret string `json:"calibration_admin_secret"`
 
 	// SetpointInterval is how often the current setpoint is recomputed and
 	// re-published on the local bus (the slot boundary is always hit).
@@ -293,6 +305,7 @@ func applyEnv(cfg *Config) {
 	num("VP_UNCLAIM_CONFIRM_POLLS", &cfg.UnclaimConfirmPolls)
 	f64("VP_CALIBRATION_MAX_KW", &cfg.CalibrationMaxKw)
 	num("VP_CALIBRATION_TTL_SECONDS", &cfg.CalibrationTTLSeconds)
+	str("VP_CALIBRATION_ADMIN_SECRET", &cfg.CalibrationAdminSecret)
 	boolEnv := func(key string, dst *bool) {
 		if v := os.Getenv(key); v != "" {
 			*dst = v == "1" || strings.EqualFold(v, "true")

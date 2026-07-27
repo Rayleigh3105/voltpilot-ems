@@ -248,10 +248,11 @@ func TestConfirmationRefusedFromABusyBaseline(t *testing.T) {
 	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(31)}, now)
 	s.NoteWriteReadback(true) // the write DID read back - evidence exists...
 	busyAfter := Reading{BatteryKw: fp(-0.48)}
-	if err := s.ConfirmSign(true, busyAfter); err != ErrSignNotObserved {
+	s.ObserveReading(now, busyAfter) // ... but a busy baseline latches NO evidence.
+	if err := s.ConfirmSign(true, now); err != ErrSignNotObserved {
 		t.Fatalf("a busy baseline must refuse a sign confirm even with a landed write: %v", err)
 	}
-	if err := s.ConfirmScale(true, busyAfter); err != ErrScaleNotObserved {
+	if err := s.ConfirmScale(true, now); err != ErrScaleNotObserved {
 		t.Fatalf("a busy baseline must refuse a scale confirm even with a landed write: %v", err)
 	}
 	if s.CanCertify() {
@@ -259,30 +260,31 @@ func TestConfirmationRefusedFromABusyBaseline(t *testing.T) {
 	}
 }
 
-// primeEvidence arms + starts a discharge test and records a matching write->readback,
-// so the Gap-B confirm/certify gates have their objective evidence. Returns the "after"
-// reading that yields a good verdict (sign + magnitude OK) for the -0.5 kW command.
-func primeEvidence(s *Session, now time.Time) Reading {
+// primeEvidence arms + starts a discharge test, records a matching write->readback AND
+// latches a good measured movement, so the Gap-B confirm/certify gates have their
+// objective, still-valid evidence. Returns the observation time to confirm against.
+func primeEvidence(s *Session, now time.Time) time.Time {
 	s.Arm()
 	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(0)}, now)
 	s.NoteWriteReadback(true) // the write read back a full register match
-	return Reading{BatteryKw: fp(-0.48), SocPct: fp(60)}
+	// A measured movement in the commanded direction while active -> latched evidence.
+	s.ObserveReading(now, Reading{BatteryKw: fp(-0.48), SocPct: fp(60)})
+	return now
 }
 
 func TestConfirmationsAndPassed(t *testing.T) {
 	s := newSession()
-	now := time.Unix(1_700_000_000, 0)
-	after := primeEvidence(s, now)
+	now := primeEvidence(s, time.Unix(1_700_000_000, 0))
 	if s.Passed() {
 		t.Fatal("nothing confirmed -> not passed")
 	}
-	if err := s.ConfirmSign(true, after); err != nil {
+	if err := s.ConfirmSign(true, now); err != nil {
 		t.Fatalf("confirm sign with evidence: %v", err)
 	}
 	if s.Passed() {
 		t.Fatal("only sign -> not passed")
 	}
-	if err := s.ConfirmScale(true, after); err != nil {
+	if err := s.ConfirmScale(true, now); err != nil {
 		t.Fatalf("confirm scale with evidence: %v", err)
 	}
 	if !s.Passed() || !s.CanCertify() {
@@ -304,37 +306,42 @@ func TestConfirmationRequiresObjectiveEvidence(t *testing.T) {
 	good := Reading{BatteryKw: fp(-0.48)}
 
 	// No test at all -> refused.
-	if err := s.ConfirmSign(true, good); err != ErrNoTestYet {
+	if err := s.ConfirmSign(true, now); err != ErrNoTestYet {
 		t.Fatalf("confirm without a test must be refused: %v", err)
 	}
 
 	// A test but NO write->readback yet -> refused (the write never landed).
 	s.Arm()
 	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(0)}, now)
-	if err := s.ConfirmSign(true, good); err != ErrNoWriteEvidence {
+	s.ObserveReading(now, good) // no readback yet -> nothing latches
+	if err := s.ConfirmSign(true, now); err != ErrNoWriteEvidence {
 		t.Fatalf("confirm before a landed write must be refused: %v", err)
 	}
 	if s.CanCertify() {
 		t.Fatal("cannot certify without a landed write")
 	}
 
-	// Write landed, but the battery moved the WRONG way -> sign refused.
+	// Write landed, but the battery moved the WRONG way -> nothing confirmable latches.
 	s.NoteWriteReadback(true)
 	wrongWay := Reading{BatteryKw: fp(0.48)} // command is discharge (-), battery charges (+)
-	if err := s.ConfirmSign(true, wrongWay); err != ErrSignNotObserved {
+	s.ObserveReading(now, wrongWay)
+	if err := s.ConfirmSign(true, now); err != ErrSignNotObserved {
 		t.Fatalf("confirm sign against an inverted movement must be refused: %v", err)
 	}
-	// Write landed, but the magnitude is way off (below the move deadband) -> scale refused.
+	// Write landed, but the magnitude is way off (below the move deadband) -> the tiny
+	// movement is not confirmable, so scale is refused.
 	tinyMove := Reading{BatteryKw: fp(-0.02)}
-	if err := s.ConfirmScale(true, tinyMove); err != ErrScaleNotObserved {
+	s.ObserveReading(now, tinyMove)
+	if err := s.ConfirmScale(true, now); err != ErrScaleNotObserved {
 		t.Fatalf("confirm scale against a bad magnitude must be refused: %v", err)
 	}
 
 	// Write landed AND a good measured verdict -> both confirm, cert allowed.
-	if err := s.ConfirmSign(true, good); err != nil {
+	s.ObserveReading(now, good)
+	if err := s.ConfirmSign(true, now); err != nil {
 		t.Fatalf("good sign confirm: %v", err)
 	}
-	if err := s.ConfirmScale(true, good); err != nil {
+	if err := s.ConfirmScale(true, now); err != nil {
 		t.Fatalf("good scale confirm: %v", err)
 	}
 	if !s.CanCertify() {
@@ -347,15 +354,177 @@ func TestConfirmationRequiresObjectiveEvidence(t *testing.T) {
 		t.Fatal("a readback mismatch must revoke certifiability")
 	}
 
-	// Starting a NEW test resets the write evidence.
+	// Starting a NEW test resets the write evidence AND any prior confirmation.
 	_ = s.StartTest(Discharge, 0.4, Reading{BatteryKw: fp(0)}, now)
-	if s.writeReadbackOK {
-		t.Fatal("a fresh test must reset the landed-write evidence")
+	if s.writeReadbackOK || s.signConfirmed || s.scaleConfirmed {
+		t.Fatal("a fresh test must reset the landed-write evidence and confirmations")
 	}
 	// Clearing a confirmation is always allowed (no evidence needed).
-	if err := s.ConfirmSign(false, Reading{}); err != nil {
+	if err := s.ConfirmSign(false, now); err != nil {
 		t.Fatalf("clearing a confirmation must never error: %v", err)
 	}
+}
+
+// TestConfirmableWithinGraceAfterRevert is the Defect-1 fix: a test's measured movement
+// stays confirmable for ConfirmGrace AFTER the bounded write auto-reverts to neutral, so
+// the operator is not forced to tick the boxes in the ~2 s before the revert. The proof
+// (readback + observed movement) is unchanged; only how long it counts widens.
+func TestConfirmableWithinGraceAfterRevert(t *testing.T) {
+	s := newSession()
+	start := time.Unix(1_700_000_000, 0)
+	s.Arm()
+	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(0), SocPct: fp(60)}, start)
+	s.NoteWriteReadback(true)
+	// A good measured movement observed WHILE active (t+5s) latches the evidence.
+	moving := Reading{BatteryKw: fp(-0.48), SocPct: fp(59)}
+	s.ObserveReading(start.Add(5*time.Second), moving)
+
+	// The test has fully reverted (past TTL + RevertGrace) and the battery is neutral
+	// again - the LIVE reading no longer shows the command.
+	after := start.Add(30*time.Second + RevertGrace + 20*time.Second)
+	neutral := Reading{BatteryKw: fp(0.0), SocPct: fp(59)}
+	snap := s.Snapshot(after, neutral, SocBand{MinPct: 5, MaxPct: 95})
+	if snap.Phase != PhaseIdle {
+		t.Fatalf("test should be idle (reverted) at t+80s: %v", snap.Phase)
+	}
+	if !snap.EvidenceValid || snap.EvidenceAgeSeconds <= 0 {
+		t.Fatalf("the finished test's result must stay valid within the grace window: %+v", snap)
+	}
+	// The displayed verdict is the CAPTURED result, not the reverted-to-neutral live one.
+	if !snap.Test.Verdict.SignOK || !snap.Test.Verdict.MagnitudeOK {
+		t.Fatalf("the shown verdict must be the captured good result: %+v", snap.Test.Verdict)
+	}
+	if !snap.CanConfirmSign || !snap.CanConfirmScale {
+		t.Fatalf("the confirm boxes must stay enabled during the grace window: %+v", snap)
+	}
+	// Confirming AFTER the revert, still inside the grace window, works.
+	if err := s.ConfirmSign(true, after); err != nil {
+		t.Fatalf("sign confirm inside the grace window must succeed: %v", err)
+	}
+	if err := s.ConfirmScale(true, after); err != nil {
+		t.Fatalf("scale confirm inside the grace window must succeed: %v", err)
+	}
+	if !s.CanCertify() {
+		t.Fatal("both confirmed inside the grace window -> certifiable")
+	}
+}
+
+// TestConfirmRefusedAfterGraceExpiry: past ConfirmGrace the evidence is stale and a
+// confirmation is refused - the operator runs a fresh test.
+func TestConfirmRefusedAfterGraceExpiry(t *testing.T) {
+	s := newSession()
+	start := time.Unix(1_700_000_000, 0)
+	s.Arm()
+	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(0), SocPct: fp(60)}, start)
+	s.NoteWriteReadback(true)
+	s.ObserveReading(start.Add(5*time.Second), Reading{BatteryKw: fp(-0.48)})
+
+	expired := start.Add(5*time.Second + ConfirmGrace + time.Second)
+	if err := s.ConfirmSign(true, expired); err != ErrEvidenceExpired {
+		t.Fatalf("a confirmation past the grace window must be refused: %v", err)
+	}
+	snap := s.Snapshot(expired, Reading{BatteryKw: fp(0)}, SocBand{MinPct: 5, MaxPct: 95})
+	if snap.EvidenceValid || snap.CanConfirmSign || snap.CanConfirmScale {
+		t.Fatalf("past the grace window the boxes must lock again: %+v", snap)
+	}
+}
+
+// TestEvidenceInvalidatesOnNewTestAbortAndCorrection: the grace evidence must invalidate
+// on a new test, an abort, and a correction (ResetConfirmations).
+func TestEvidenceInvalidatesOnNewTestAbortAndCorrection(t *testing.T) {
+	mk := func() (*Session, time.Time) {
+		s := newSession()
+		now := primeEvidence(s, time.Unix(1_700_000_000, 0))
+		if !s.evidenceValid(now) {
+			t.Fatal("precondition: evidence must be valid")
+		}
+		return s, now
+	}
+	// A NEW test replaces the evidence.
+	s, now := mk()
+	_ = s.StartTest(Charge, 0.5, Reading{BatteryKw: fp(0)}, now)
+	if s.evidenceValid(now) {
+		t.Fatal("a new test must replace the evidence")
+	}
+	// An abort invalidates it.
+	s, now = mk()
+	s.Abort(now)
+	if s.evidenceValid(now) {
+		t.Fatal("an abort must invalidate the evidence")
+	}
+	// A correction (ResetConfirmations) invalidates it.
+	s, now = mk()
+	s.ResetConfirmations()
+	if s.evidenceValid(now) {
+		t.Fatal("a correction must invalidate the evidence")
+	}
+	// After a correction both the movement evidence AND the landed-write evidence are
+	// gone, so a confirm is refused (ErrNoWriteEvidence) until a fresh test re-proves it.
+	if err := s.ConfirmSign(true, now); err != ErrNoWriteEvidence {
+		t.Fatalf("after a correction, confirm must be refused until a fresh test: %v", err)
+	}
+}
+
+// TestTestStepsForRatedScalesToTheInverter is the Defect-2 fix: the offered test-power
+// ladder is a fraction of rated power, so the smallest rung actually moves the battery on
+// a big unit while staying sensible on a small one. The hard cap max_kw stays the ceiling.
+func TestTestStepsForRatedScalesToTheInverter(t *testing.T) {
+	// 30 kW unit, 1.0 kW hard cap: ~1/3/5 % = 0.3/0.9/1.5, capped to 0.3/0.9/1.0. The
+	// 0.9 kW rung (~3 %) is far above the useless 0.3 kW (~1 %) the owner had on 30 kW.
+	got := TestStepsForRated(30, 1.0)
+	want := []float64{0.3, 0.9, 1.0}
+	if !floatsEqual(got, want) {
+		t.Fatalf("30 kW ladder: got %v want %v", got, want)
+	}
+	// 5 kW household hybrid: ~1/3/5 % = 0.05/0.15/0.25 -> rounded 0.1/0.2/0.3, none capped.
+	got = TestStepsForRated(5, 1.0)
+	want = []float64{0.1, 0.2, 0.3}
+	if !floatsEqual(got, want) {
+		t.Fatalf("5 kW ladder: got %v want %v", got, want)
+	}
+	// Unknown rated -> the fixed fallback ladder, filtered to the cap.
+	got = TestStepsForRated(0, 1.0)
+	want = []float64{0.2, 0.3, 0.5, 1.0}
+	if !floatsEqual(got, want) {
+		t.Fatalf("unknown-rated fallback ladder: got %v want %v", got, want)
+	}
+	// Every rung stays within the hard cap.
+	for _, st := range TestStepsForRated(50, 1.0) {
+		if st > 1.0+1e-9 {
+			t.Fatalf("a ladder rung %v exceeds the hard cap", st)
+		}
+	}
+	// No cap -> nil (defensive).
+	if TestStepsForRated(30, 0) != nil {
+		t.Fatal("a non-positive cap yields no ladder")
+	}
+}
+
+// TestNextStepAbove: the actionable "try a bigger step" suggestion picks the next rung.
+func TestNextStepAbove(t *testing.T) {
+	steps := []float64{0.3, 0.9, 1.0}
+	if got := NextStepAbove(steps, 0.3); got == nil || *got != 0.9 {
+		t.Fatalf("next above 0.3 should be 0.9: %v", got)
+	}
+	// Works on a negative (discharge) command by magnitude.
+	if got := NextStepAbove(steps, -0.3); got == nil || *got != 0.9 {
+		t.Fatalf("next above |-0.3| should be 0.9: %v", got)
+	}
+	if got := NextStepAbove(steps, 1.0); got != nil {
+		t.Fatalf("nothing is larger than the top rung: %v", got)
+	}
+}
+
+func floatsEqual(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if math.Abs(a[i]-b[i]) > 1e-9 {
+			return false
+		}
+	}
+	return true
 }
 
 func TestSnapshotDirectionsTestable(t *testing.T) {

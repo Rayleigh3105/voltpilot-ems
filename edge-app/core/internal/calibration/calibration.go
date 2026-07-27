@@ -31,6 +31,7 @@ package calibration
 
 import (
 	"math"
+	"sort"
 	"time"
 )
 
@@ -63,6 +64,20 @@ const (
 // possible busy-logger skip even when one tick is missed. The calibration write
 // can never re-arm during this window (only a fresh StartTest re-arms).
 const RevertGrace = 30 * time.Second
+
+// ConfirmGrace is how long a FINISHED test's confirmable verdict stays valid after
+// its last attributable measured movement (Defect 1, 2026-07-27). The evidence gate
+// (report §7 Gap B) is unchanged - a confirmation still requires a real,
+// readback-confirmed test with an OBSERVED movement in the commanded direction - but
+// that movement is a fact about the DEVICE, not about whether a bounded command is
+// still active. Treating the proof as expiring the instant the test auto-reverts to
+// neutral gave the operator a ~2 s window to tick the boxes (the captain's live case);
+// so instead the captured evidence stays confirmable for this window. It STILL
+// invalidates on a new test, an abort, a disarm, a sign/scale correction, or when the
+// window elapses. 3 min: long enough to read the tile and tick two boxes + certify
+// without rushing, short enough that the proof is still recent (the device config has
+// not changed and the movement was just measured).
+const ConfirmGrace = 3 * time.Minute
 
 // moveDeadbandKw is the minimum measured battery power (magnitude) that counts as
 // "the battery is moving" - below it the sign is undetermined. Matches the
@@ -130,6 +145,76 @@ func ClampMagnitude(kw, maxKw float64) float64 {
 	return math.Max(-maxKw, math.Min(maxKw, kw))
 }
 
+// fixedTestSteps is the legacy absolute ladder, used only when the inverter's rated
+// power is unknown (fallback). On a big unit its smallest rung is a tiny fraction of
+// rated and may not move the battery at all - which is exactly why the rated-relative
+// ladder below is preferred.
+var fixedTestSteps = []float64{0.2, 0.3, 0.5, 1.0}
+
+// testStepFracs is the rated-relative ladder (~1 %, ~3 %, ~5 % of nameplate). A 0.3 kW
+// step is 1 % of a 30 kW unit (no measurable movement - the captain's live case) but
+// 6 % of a 5 kW hybrid; scaling to rated gives a meaningful ladder on both.
+var testStepFracs = []float64{0.01, 0.03, 0.05}
+
+// TestStepsForRated returns the test-power ladder (kW) offered to the operator, derived
+// from the inverter's rated power so the smallest rung actually moves the battery
+// (Defect 2). Each rung is a fraction of rated, rounded to 0.1 kW (>=0.1), then capped
+// by the hard envelope maxKw (VP_CALIBRATION_MAX_KW stays authoritative - this changes
+// which values are OFFERED, never the ceiling). Duplicates collapse and the result is
+// sorted ascending. When ratedKw is unknown (<=0) it falls back to the fixed ladder
+// filtered to <= maxKw, and the surface tells the operator why.
+func TestStepsForRated(ratedKw, maxKw float64) []float64 {
+	if maxKw <= 0 || math.IsNaN(maxKw) || math.IsInf(maxKw, 0) {
+		return nil
+	}
+	var raw []float64
+	if ratedKw > 0 && !math.IsNaN(ratedKw) && !math.IsInf(ratedKw, 0) {
+		for _, f := range testStepFracs {
+			v := math.Round(ratedKw*f*10) / 10 // nearest 0.1 kW
+			if v < 0.1 {
+				v = 0.1
+			}
+			raw = append(raw, v)
+		}
+	} else {
+		raw = append(raw, fixedTestSteps...)
+	}
+	seen := map[float64]bool{}
+	var out []float64
+	for _, v := range raw {
+		if v > maxKw+1e-9 {
+			v = math.Round(maxKw*10) / 10
+			if v > maxKw+1e-9 {
+				v = maxKw
+			}
+		}
+		if v <= 0 || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	if len(out) == 0 {
+		out = []float64{math.Round(maxKw*10) / 10}
+	}
+	sort.Float64s(out)
+	return out
+}
+
+// NextStepAbove returns the smallest ladder rung strictly greater than |kw|, or nil when
+// none is larger (already at the top of the ladder). It lets the surface name the next
+// larger step to try when a test lands but the battery did not move (Defect 2).
+func NextStepAbove(steps []float64, kw float64) *float64 {
+	m := math.Abs(kw)
+	for _, v := range steps {
+		if v > m+1e-9 {
+			r := v
+			return &r
+		}
+	}
+	return nil
+}
+
 // ValidationError is a user-facing (German) calibration failure. The web layer
 // maps it to HTTP 400; any other error is an internal 500 (the guards.
 // SettingsValidationError precedent).
@@ -148,6 +233,9 @@ var (
 	ErrNoWriteEvidence  = &ValidationError{Msg: "Es liegt noch keine bestätigte Rückmeldung des Wechselrichters vor (geschrieben + zurückgelesen). Bitte einen Testlauf durchführen, bis die Register bestätigt sind."}
 	ErrSignNotObserved  = &ValidationError{Msg: "Es wurde noch keine Batteriebewegung in die befohlene Richtung gemessen. Bitte testen, bis sich die Batterie sichtbar bewegt."}
 	ErrScaleNotObserved = &ValidationError{Msg: "Die gemessene Batterieleistung passt noch nicht zum Sollwert. Bitte die Leistungsskalierung prüfen und erneut testen."}
+	// ErrEvidenceExpired: the last test's confirmable result is older than ConfirmGrace
+	// (Defect 1). The proof must be recent, so the operator runs a fresh test.
+	ErrEvidenceExpired = &ValidationError{Msg: "Das letzte Testergebnis ist zu alt, um es zu bestätigen. Bitte einen neuen Testlauf durchführen."}
 )
 
 type testState struct {
@@ -157,6 +245,15 @@ type testState struct {
 	deadline  time.Time // startedAt + TTL, or the abort instant if earlier
 	aborted   bool
 	before    Reading
+
+	// evidence is the captured confirmable verdict of THIS test (Defect 1): the best
+	// (highest-scoring) attributable measured movement observed WHILE the command was
+	// active, latched by ObserveReading. It survives the auto-revert so the operator
+	// can confirm within ConfirmGrace, and is cleared when the test is replaced/aborted
+	// or a correction lands. nil = no confirmable movement was ever observed.
+	evidence      *VerdictResult
+	evidenceAfter Reading   // the live reading at capture (supporting display)
+	evidenceAt    time.Time // when captured; the ConfirmGrace clock starts here
 }
 
 // Session is the calibration state machine. It is NOT safe for concurrent use;
@@ -228,7 +325,12 @@ func (s *Session) StartTest(dir Direction, magnitudeKw float64, before Reading, 
 	}
 	// A fresh test starts with NO landed-write evidence (report §7 Gap B): the
 	// operator must observe a real write->readback for THIS test before confirming.
+	// It also drops any prior operator confirmations - a new test must be re-verified
+	// on its OWN readback + movement, so confirmations can never carry over onto a
+	// different test (Defect 1: "a new test replaces the evidence").
 	s.writeReadbackOK = false
+	s.signConfirmed = false
+	s.scaleConfirmed = false
 	return nil
 }
 
@@ -277,21 +379,96 @@ func (s *Session) Command(now time.Time) (kw float64, active bool) {
 	return 0, false
 }
 
+// ObserveReading latches a live reading as confirmation EVIDENCE for the current test
+// (Defect 1). It captures the best (highest-scoring) attributable measured movement seen
+// WHILE the command is active - so the proof survives the auto-revert to neutral and the
+// operator can confirm it during ConfirmGrace. It only latches when: a test is live and
+// not aborted; the write already read back a full match (writeReadbackOK, report §7 Gap
+// B); the test is ACTIVE (only then is the measured movement attributable to the command);
+// and the verdict is confirmable (a quiet baseline AND at least sign-or-scale OK). An
+// equal-or-better later reading refreshes the capture, so the ConfirmGrace clock tracks
+// the LAST good active reading (≈ the test end). The agent calls this before every
+// snapshot and before a confirm, so a polling card latches the movement as it happens.
+func (s *Session) ObserveReading(now time.Time, live Reading) {
+	if s.test == nil || s.test.aborted || !s.writeReadbackOK {
+		return
+	}
+	if s.Phase(now) != PhaseActive {
+		return
+	}
+	v := Verdict(s.test.commandKw, s.test.before, live)
+	// Only latch confirmable evidence from a legitimate SAME-DIRECTION movement: an
+	// unattributable (busy baseline) reading, or an INVERTED-sign one (whose magnitude
+	// might coincidentally match), proves nothing certifiable - the operator applies the
+	// sign correction and re-tests.
+	if v.BaselineBusy || v.SignInverted || (!v.SignOK && !v.MagnitudeOK) {
+		return
+	}
+	if s.test.evidence == nil || confirmScore(v) >= confirmScore(*s.test.evidence) {
+		vc := v
+		s.test.evidence = &vc
+		s.test.evidenceAfter = live
+		s.test.evidenceAt = now
+	}
+}
+
+// confirmScore counts how much a verdict proves (sign, magnitude), so ObserveReading
+// keeps the reading that proves the MOST.
+func confirmScore(v VerdictResult) int {
+	n := 0
+	if v.SignOK {
+		n++
+	}
+	if v.MagnitudeOK {
+		n++
+	}
+	return n
+}
+
+// evidenceValid reports whether the current test carries confirmable evidence that is
+// still inside the ConfirmGrace window (and the test was not aborted).
+func (s *Session) evidenceValid(now time.Time) bool {
+	return s.test != nil && !s.test.aborted && s.test.evidence != nil &&
+		now.Sub(s.test.evidenceAt) <= ConfirmGrace
+}
+
+// evidenceForConfirm returns the captured evidence to confirm against, or the specific
+// refusal: no test (ErrNoTestYet), a test but no landed write (ErrNoWriteEvidence),
+// a landed write but no attributable movement latched yet (nil,nil -> the caller maps
+// it to sign/scale-not-observed), or an expired capture (ErrEvidenceExpired).
+func (s *Session) evidenceForConfirm(now time.Time) (*VerdictResult, error) {
+	if s.test == nil {
+		return nil, ErrNoTestYet
+	}
+	if s.test.evidence == nil {
+		if !s.writeReadbackOK {
+			return nil, ErrNoWriteEvidence
+		}
+		return nil, nil // readback landed, but no confirmable movement observed (yet)
+	}
+	if now.Sub(s.test.evidenceAt) > ConfirmGrace {
+		return nil, ErrEvidenceExpired
+	}
+	return s.test.evidence, nil
+}
+
 // ConfirmSign records the operator's sign confirmation. Setting it TRUE is GATED on
-// OBJECTIVE evidence for the CURRENT test (report §7 Gap B): a control write for this
-// test read back with a full register MATCH (requireMovementEvidence) AND the MEASURED
-// battery moved in the commanded direction (Verdict.SignOK, computed from `after`, the
-// live reading now). Without that evidence a TRUE confirm is REFUSED. Clearing (ok=false)
-// is always allowed. So the operator can no longer tick a box the system never observed.
-func (s *Session) ConfirmSign(ok bool, after Reading) error {
+// OBJECTIVE, still-valid evidence for the CURRENT test (report §7 Gap B, Defect 1): the
+// test's write read back a full register MATCH AND a MEASURED movement in the commanded
+// direction was observed while active (Verdict.SignOK), and that capture is within
+// ConfirmGrace. Without it a TRUE confirm is REFUSED. Clearing (ok=false) is always
+// allowed. The evidence widens WHEN a confirmation may be made (past the ~2 s revert),
+// never WHAT counts as evidence.
+func (s *Session) ConfirmSign(ok bool, now time.Time) error {
 	if !ok {
 		s.signConfirmed = false
 		return nil
 	}
-	if err := s.requireMovementEvidence(); err != nil {
+	ev, err := s.evidenceForConfirm(now)
+	if err != nil {
 		return err
 	}
-	if !Verdict(s.test.commandKw, s.test.before, after).SignOK {
+	if ev == nil || !ev.SignOK {
 		return ErrSignNotObserved
 	}
 	s.signConfirmed = true
@@ -300,31 +477,19 @@ func (s *Session) ConfirmSign(ok bool, after Reading) error {
 
 // ConfirmScale records the operator's scale confirmation. Gated exactly like ConfirmSign
 // but on Verdict.MagnitudeOK (the measured magnitude matches the commanded one).
-func (s *Session) ConfirmScale(ok bool, after Reading) error {
+func (s *Session) ConfirmScale(ok bool, now time.Time) error {
 	if !ok {
 		s.scaleConfirmed = false
 		return nil
 	}
-	if err := s.requireMovementEvidence(); err != nil {
+	ev, err := s.evidenceForConfirm(now)
+	if err != nil {
 		return err
 	}
-	if !Verdict(s.test.commandKw, s.test.before, after).MagnitudeOK {
+	if ev == nil || !ev.MagnitudeOK {
 		return ErrScaleNotObserved
 	}
 	s.scaleConfirmed = true
-	return nil
-}
-
-// requireMovementEvidence returns nil only when a current test exists AND its control
-// write read back with a full match (writeReadbackOK) - the objective proof a real
-// write landed for THIS test.
-func (s *Session) requireMovementEvidence() error {
-	if s.test == nil {
-		return ErrNoTestYet
-	}
-	if !s.writeReadbackOK {
-		return ErrNoWriteEvidence
-	}
 	return nil
 }
 
@@ -339,13 +504,16 @@ func (s *Session) NoteWriteReadback(allMatch bool) {
 	s.writeReadbackOK = allMatch
 }
 
-// ResetConfirmations clears both operator confirmations AND the landed-write evidence
-// (the agent calls this when a sign/scale correction is applied - a prior confirmation
-// and its evidence are then stale).
+// ResetConfirmations clears both operator confirmations, the landed-write evidence AND
+// the captured movement evidence (the agent calls this when a sign/scale correction is
+// applied - a prior confirmation and its proof are then stale).
 func (s *Session) ResetConfirmations() {
 	s.signConfirmed = false
 	s.scaleConfirmed = false
 	s.writeReadbackOK = false
+	if s.test != nil {
+		s.test.evidence = nil
+	}
 }
 
 // Passed reports whether the operator confirmed BOTH sign and scale - the gate the
@@ -460,6 +628,10 @@ type TestView struct {
 	Phase       Phase         `json:"phase"`
 	BeforeKw    *float64      `json:"before_kw"`
 	Verdict     VerdictResult `json:"verdict"`
+	// NextStepKw is the next larger ladder rung to suggest when this test landed but
+	// the battery did not move (agent-set from the rated ladder); nil = already at the
+	// top of the ladder.
+	NextStepKw *float64 `json:"next_step_kw,omitempty"`
 }
 
 // Snapshot is the /api/calibration payload. The Session fills the pure fields; the
@@ -471,6 +643,16 @@ type Snapshot struct {
 	Phase          Phase   `json:"phase"`
 	MaxKw          float64 `json:"max_kw"`
 	TtlSeconds     int     `json:"ttl_seconds"`
+	// RatedKw is the selected inverter's nameplate AC power in kW (agent-set; 0 =
+	// unknown). TestSteps is the offered test-power ladder in kW, derived from RatedKw
+	// (agent-set via TestStepsForRated). When RatedKw is 0 the ladder is the fixed
+	// fallback and the surface says why.
+	RatedKw   float64   `json:"rated_kw"`
+	TestSteps []float64 `json:"test_steps"`
+	// AdminGate reports whether the calibration MUTATION endpoints require the admin
+	// secret (agent-set: a secret is configured). Read-only views stay open. When true
+	// the surface prompts for the admin password and sends it with each action.
+	AdminGate bool `json:"admin_gate"`
 	ControlEnabled bool    `json:"control_enabled"` // global kill-switch on (agent-set)
 	Family         string  `json:"family"`          // register-map family (agent-set)
 	Certified      bool    `json:"certified"`       // already certified (agent-set)
@@ -503,12 +685,23 @@ type Snapshot struct {
 	CanConfirmSign  bool `json:"can_confirm_sign"`
 	CanConfirmScale bool `json:"can_confirm_scale"`
 	CanCertify      bool `json:"can_certify"`
+
+	// EvidenceValid reports that a FINISHED test's confirmable result is still inside
+	// the ConfirmGrace window (Defect 1), so the displayed verdict is that captured
+	// result (not the reverted live reading) and the confirm boxes stay enabled.
+	// EvidenceAgeSeconds is how long ago it was captured, so the surface can say
+	// "Ergebnis des letzten Tests (vor N s)".
+	EvidenceValid      bool `json:"evidence_valid"`
+	EvidenceAgeSeconds int  `json:"evidence_age_seconds"`
 }
 
 // Snapshot builds the pure calibration view at `now` given the live reading and
 // the operating SoC band. Directions are testable when there is SoC headroom (or
-// the SoC is unknown - the guard chain is the real bound).
+// the SoC is unknown - the guard chain is the real bound). It also latches the live
+// reading as confirmation evidence (ObserveReading), so a polling surface captures
+// the measured movement while the test is active without a separate call (Defect 1).
 func (s *Session) Snapshot(now time.Time, live Reading, band SocBand) Snapshot {
+	s.ObserveReading(now, live)
 	snap := Snapshot{
 		Armed:           s.armed,
 		Phase:           s.Phase(now),
@@ -536,7 +729,26 @@ func (s *Session) Snapshot(now time.Time, live Reading, band SocBand) Snapshot {
 		if d := s.test.deadline.Sub(now); d > 0 {
 			left = int(math.Ceil(d.Seconds()))
 		}
-		v := Verdict(s.test.commandKw, s.test.before, live)
+		evValid := s.evidenceValid(now)
+		// While ACTIVE the displayed verdict is the real-time live cross-check; after
+		// the test ends we show the CAPTURED evidence (the finished test's result) for
+		// the ConfirmGrace window, so the operator sees what was proven, not the
+		// reverted-to-neutral live reading (Defect 1). Past the window it falls back to
+		// the live verdict (which honestly reads "no movement").
+		var v VerdictResult
+		if phase == PhaseActive {
+			v = Verdict(s.test.commandKw, s.test.before, live)
+		} else if evValid {
+			v = *s.test.evidence
+		} else {
+			v = Verdict(s.test.commandKw, s.test.before, live)
+		}
+		if evValid {
+			snap.EvidenceValid = true
+			if age := now.Sub(s.test.evidenceAt); age > 0 {
+				snap.EvidenceAgeSeconds = int(age.Seconds())
+			}
+		}
 		snap.Test = &TestView{
 			Direction:   s.test.dir,
 			CommandKw:   s.test.commandKw,
@@ -547,10 +759,14 @@ func (s *Session) Snapshot(now time.Time, live Reading, band SocBand) Snapshot {
 			BeforeKw:    s.test.before.BatteryKw,
 			Verdict:     v,
 		}
-		// The confirm boxes light up only once the write landed AND the measured
-		// verdict agrees (report §7 Gap B) - never on a manual tick alone.
-		snap.CanConfirmSign = s.writeReadbackOK && v.SignOK
-		snap.CanConfirmScale = s.writeReadbackOK && v.MagnitudeOK
+		// The confirm boxes light up on the CAPTURED, still-valid evidence (report §7
+		// Gap B, Defect 1) - a real readback-confirmed test with an observed movement -
+		// so they stay enabled through the auto-revert, but only within ConfirmGrace and
+		// never on a manual tick alone.
+		if evValid {
+			snap.CanConfirmSign = s.test.evidence.SignOK
+			snap.CanConfirmScale = s.test.evidence.MagnitudeOK
+		}
 	}
 	return snap
 }

@@ -199,10 +199,15 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 	live := a.liveCalibrationReading()
 	band := calibration.SocBand{MinPct: a.Cfg.SocMinPct, MaxPct: a.Cfg.SocMaxPct}
 	a.calMu.Lock()
+	// Snapshot latches the live reading as confirmation evidence (ObserveReading), so a
+	// polling card captures the measured movement while the test is active (Defect 1).
 	snap := a.cal.Snapshot(now, live, band)
 	a.calMu.Unlock()
 
 	snap.ControlEnabled = a.Cfg.ControlEnabled
+	// The admin gate is active only when a secret is configured (opt-in); the surface
+	// prompts for it and the mutation endpoints enforce it. Read-only views stay open.
+	snap.AdminGate = a.Cfg.CalibrationAdminSecret != ""
 	sel, ok := a.GetInverter()
 	switch {
 	case !ok:
@@ -217,6 +222,14 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 		snap.InvertControlSign = sel.Connection.InvertControlSign
 		snap.PowerScale = sel.Connection.PowerScale
 		snap.InvertBattSign = sel.Connection.InvertBattSign
+		// The test-power ladder is derived from the inverter's nameplate so the smallest
+		// rung actually moves the battery (Defect 2); rated 0 = unknown -> fixed fallback
+		// ladder and the surface says why (Defect 3). The hard cap max_kw stays the ceiling.
+		snap.RatedKw = sel.RatedKw
+		snap.TestSteps = calibration.TestStepsForRated(sel.RatedKw, a.Cfg.CalibrationMaxKw)
+		if snap.Test != nil {
+			snap.Test.NextStepKw = calibration.NextStepAbove(snap.TestSteps, snap.Test.CommandKw)
+		}
 		if snap.BatteryKw == nil && snap.SocPct == nil {
 			snap.Reason = "Der Wechselrichter liefert noch keine Batterie-Messwerte - kurz warten."
 		}
@@ -233,6 +246,12 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 func (a *Agent) CalibrationSnapshot() calibration.Snapshot {
 	return a.calibrationSnapshot(time.Now().UTC())
 }
+
+// CalibrationAdminSecret returns the configured admin secret that gates the
+// calibration MUTATION endpoints (empty = no gate, calibration stays open like the
+// rest of the :8484 surface). The owner sets it with VP_CALIBRATION_ADMIN_SECRET;
+// the web layer rejects unauthenticated mutations server-side when it is set.
+func (a *Agent) CalibrationAdminSecret() string { return a.Cfg.CalibrationAdminSecret }
 
 // CalibrationArm arms/disarms calibration mode. Arming refuses unless the global
 // kill-switch is on AND a battery-controllable inverter is selected. Disarming
@@ -303,12 +322,17 @@ func (a *Agent) CalibrationConfirm(sign, scale *bool) (calibration.Snapshot, err
 	now := time.Now().UTC()
 	after := a.liveCalibrationReading() // acquires a.mu then releases, before calMu
 	a.calMu.Lock()
+	// Latch the current live reading as evidence first (a no-op unless the test is
+	// active + confirmable), then confirm against the captured, still-valid evidence -
+	// so a confirmation made AFTER the test auto-reverted still succeeds within
+	// ConfirmGrace (Defect 1), while an expired one is refused.
+	a.cal.ObserveReading(now, after)
 	var err error
 	if sign != nil {
-		err = a.cal.ConfirmSign(*sign, after)
+		err = a.cal.ConfirmSign(*sign, now)
 	}
 	if err == nil && scale != nil {
-		err = a.cal.ConfirmScale(*scale, after)
+		err = a.cal.ConfirmScale(*scale, now)
 	}
 	a.calMu.Unlock()
 	return a.calibrationSnapshot(now), err
