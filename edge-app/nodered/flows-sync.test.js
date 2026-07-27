@@ -260,7 +260,7 @@ test('flow control planner matches controlRoute() with the kill-switch OFF (no w
 test('flow control planner keeps Deye read-only (uncertified) like the module', () => {
   const sel = {
     schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5',
-    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 },
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 },
   };
   const sp = { battery_setpoint_kw: -20, pv_limit_kw: 25, source: 'schedule', control_enabled: true };
   const flowPlan = runControlPlan(sel, sp);
@@ -286,7 +286,7 @@ test('flow control planner keeps Fronius planned-only (uncertified) like the mod
 });
 
 test('flow control planner matches the module for the OTHER Deye branches (hybrid_1p, string)', () => {
-  const base = { schema_version: '1.0', brand: 'deye', communication: 'solarman_v5', connection: { ip: '10.1.2.3', port: 8899, serial: '2985159064', mb_slave_id: 1 } };
+  const base = { schema_version: '1.0', brand: 'deye', communication: 'solarman_v5', connection: { ip: '10.1.2.3', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 } };
   // hybrid_1p (its own register block) and a charging setpoint that grid-charges.
   const sel1p = { ...base, family: 'hybrid_1p' };
   const sp1p = { battery_setpoint_kw: 6, pv_limit_kw: 4, grid_charge_allowed: true, source: 'schedule', control_enabled: true };
@@ -321,7 +321,7 @@ test('flow control planner matches controlRelease() on a kill-off after controll
 // AND controlRelease (restore-to-snapshot). These pin that threading to the module.
 test('flow control planner threads the persisted snapshot into a Deye CHARGE restore', () => {
   const sel = { schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5',
-    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 } };
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 } };
   const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
   const snapRegs = { [reg.maxSellPower]: 8000, [reg.solarSell]: 0, [reg.energyPattern]: 0 };
   const flow = { inverter_config: sel, deye_ctrl_snapshot: { regs: snapRegs } };
@@ -339,7 +339,7 @@ test('flow control planner threads the snapshot into a Deye RELEASE restore (cal
   // a First-Light CALIBRATION (the certification-only bypass). Prime was_controlling
   // with a calibration write, then the auto-revert restores the snapshot.
   const sel = { schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5', control_tier: 3,
-    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 } };
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 } };
   const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
   const snapRegs = {
     [reg.energyPattern]: 0, [reg.workMode]: 0, [reg.maxSellPower]: 8000, [reg.solarSell]: 0,
@@ -357,6 +357,92 @@ test('flow control planner threads the snapshot into a Deye RELEASE restore (cal
   assert.strictEqual(msg.control.mode, 'release');
   assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(controlRouting.controlRelease(sel, { calibration: true, snapshot: snapRegs }))));
   assert.strictEqual(msg.control.planned.find((w) => w.role === 'max_sell_power').value, 8000, 'release restored maxSellPower');
+});
+
+// --- Deye REMOTE MODE (Tier 2, registers 1100-1121) --------------------------
+//
+// The remote-mode adapter is the safety-critical new write path (a TRUE signed watt
+// setpoint on a LIVE customer battery), so the inline plan-node copy is pinned to the
+// module for BOTH directions and for the release. The capability comes from the same
+// VOLATILE flow-context key the executor writes (deyeCapabilityKey).
+
+const REMOTE_DEYE_SEL = {
+  schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5', control_tier: 3,
+  // rated_kw is the CATALOG nameplate the core publishes on the retained selection -
+  // it is what turns kW into the 0.1 %-of-rated register.
+  rated_kw: 30,
+  connection: { ip: '192.168.254.210', port: 8899, serial: '1127365518', mb_slave_id: 1 },
+};
+// The owner's live probe of the SUN-30K-SG01HP3-EU (2026-07-27, read-only).
+function ownerCap() {
+  const b = new Array(22).fill(0);
+  b[1] = 0xffff; b[5] = 0x0002; b[10] = 0x0320; b[15] = 0x03e8; b[16] = 0xffff;
+  return controlRouting.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: b });
+}
+
+test('flow control planner matches deyeRemoteControl() for a discharge AND a charge', () => {
+  const cap = ownerCap();
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  for (const kw of [-1, 3]) {
+    const sp = { battery_setpoint_kw: kw, source: 'calibration', calibration: true, control_enabled: true, soc_min_pct: 20, soc_max_pct: 90 };
+    const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+      msg: { setpoint: sp },
+      flow: { inverter_config: REMOTE_DEYE_SEL, [capKey]: cap },
+    });
+    const modulePlan = JSON.parse(JSON.stringify(
+      controlRouting.controlRoute(REMOTE_DEYE_SEL, sp, { ratedKw: 30, deye: cap }),
+    ));
+    assert.deepStrictEqual(msg.control, modulePlan, 'inline remote plan == module for ' + kw + ' kW');
+    assert.strictEqual(msg.control.controlPath, 'remote');
+    // the load-bearing order survives the inlining
+    assert.strictEqual(msg.control.planned[0].role, 'remote_watchdog');
+    assert.strictEqual(msg.control.planned[msg.control.planned.length - 1].role, 'remote_mode');
+  }
+});
+
+test('flow control planner falls back to ToU when the cached capability says ABSENT', () => {
+  const absent = controlRouting.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: new Array(22).fill(0) });
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  // power_scale comes from the probe's device class here (the N1 auto-detect path).
+  const cap = Object.assign({}, absent, { scaleClass: 1 });
+  const sp = { battery_setpoint_kw: -5, source: 'schedule', control_enabled: true };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp }, flow: { inverter_config: REMOTE_DEYE_SEL, [capKey]: cap },
+  });
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+    controlRouting.controlRoute(REMOTE_DEYE_SEL, sp, { ratedKw: 30, deye: cap }),
+  )));
+  assert.strictEqual(msg.control.controlPath, 'tou');
+  assert.ok(msg.control.planned.find((w) => w.role === 'tou_enable'));
+});
+
+test('flow control planner withholds the ToU plan when the HV/LV scale is unknown (N1)', () => {
+  const sel = { schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5',
+    connection: { ip: '10.9.9.9', port: 8899, serial: '2985159064', mb_slave_id: 1 } }; // no power_scale
+  const sp = { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, { msg: { setpoint: sp }, flow: { inverter_config: sel } });
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, {}))));
+  assert.deepStrictEqual(msg.control.planned, [], 'nothing planned while the scale is unknown');
+  assert.strictEqual(msg.control.powerScaleSuppressed, true);
+});
+
+test('flow control planner matches the remote controlRelease() on a kill-off', () => {
+  const cap = ownerCap();
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  const ctx = {}; const flow = { inverter_config: REMOTE_DEYE_SEL, [capKey]: cap };
+  const plan = byId['auto-control-plan'].func;
+  const fresh = new Date().toISOString();
+  // 1) a calibration write primes was_controlling (Deye is uncertified)
+  runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -1, source: 'calibration', ts: fresh, control_enabled: true, calibration: true, soc_min_pct: 20 } }, flow, context: ctx });
+  assert.strictEqual(ctx.was_controlling, true);
+  // 2) kill-off -> the inline release == the module's remote release (1100 <- 0)
+  const { msg } = runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -1, source: 'calibration', ts: fresh, control_enabled: false, calibration: true } }, flow, context: ctx });
+  assert.strictEqual(msg.control.mode, 'release');
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+    controlRouting.controlRelease(REMOTE_DEYE_SEL, { calibration: true, deye: cap }),
+  )));
+  assert.strictEqual(msg.control.writes[0].role, 'remote_mode');
+  assert.strictEqual(msg.control.writes[0].value, 0);
 });
 
 // A STALE setpoint (core silent >20 min) triggers the same release after controlling.

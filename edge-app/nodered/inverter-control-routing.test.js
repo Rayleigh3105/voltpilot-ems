@@ -19,9 +19,34 @@ const SUNSPEC_SEL = {
   schema_version: '1.0', brand: 'generic_modbus', family: 'sunspec',
   communication: 'modbus_tcp', connection: { ip: '10.0.0.5', port: 502, unit_id: 1 },
 };
+// A ToU-path Deye. power_scale is EXPLICIT (LV = 1): since the N1 fix a Deye with
+// an UNKNOWN HV/LV scale gets NO write plan at all (see the N1 tests below), so a
+// fixture that exercises the ToU mapping must state its scale like a real device.
 const DEYE_SEL = {
   schema_version: '1.0', brand: 'deye', family: 'hybrid_3p',
-  communication: 'solarman_v5', connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 },
+  communication: 'solarman_v5', connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 },
+};
+// The owner's live capability probe of the SUN-30K-SG01HP3-EU (2026-07-27,
+// read-only, logger 192.168.254.210:8899): 1100=0x0000, 1101=0xFFFF (the
+// documented watchdog-off default), 1104=0x0000, 1105=0x0002, 1121=0x0000 - the
+// PR #978 layout, so the signed power setpoint lives at 1109.
+function ownersRemoteBlock(over = {}) {
+  const b = new Array(22).fill(0);
+  b[1101 - 1100] = 0xffff;
+  b[1105 - 1100] = 0x0002;
+  b[1110 - 1100] = 0x0320;
+  b[1115 - 1100] = 0x03e8;
+  b[1116 - 1100] = 0xffff;
+  for (const k of Object.keys(over)) b[Number(k) - 1100] = over[k];
+  return b;
+}
+// deviceType 0x0008 = ha-solarman "HV 3-Phase Inverter 20-50kw" -> power scale 10.
+const OWNER_CAP = C.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: ownersRemoteBlock() });
+// A remote-capable Deye selection: same device, no explicit power_scale (the remote
+// path derives its scaling from RATED POWER and never touches power_scale).
+const DEYE_REMOTE_SEL = {
+  schema_version: '1.0', brand: 'deye', family: 'hybrid_3p',
+  communication: 'solarman_v5', connection: { ip: '192.168.254.210', port: 8899, serial: '1127365518', mb_slave_id: 1 },
 };
 const FRONIUS_SEL = {
   schema_version: '1.0', brand: 'fronius', family: 'fronius_solar_api',
@@ -405,13 +430,56 @@ test('N1: 0.3 kW discharge encodes correctly on HV (power_scale 10) and LV (powe
   assert.strictEqual(hv.powerScaleConfirmed, true);
 });
 
-test('N1: an UNSET/auto power_scale falls back to 1 but flags powerScaleConfirmed=false (never silent)', () => {
-  const auto = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 }); // no power_scale
-  assert.strictEqual(auto.powerScaleConfirmed, false, 'unset scale is a FALLBACK, surfaced not silent');
-  assert.strictEqual(auto.planned.find((w) => w.role === 'battery_power').value, 20000, 'fallback scale 1');
-  // an explicit 0 (catalog "auto") is also unconfirmed
+test('N1: an UNKNOWN HV/LV scale REFUSES the whole ToU plan (never a silent 10x write)', () => {
+  // THE LIVE BUG (report §2.3): power_scale "Automatisch" fell back to 1, so an HV
+  // SG01HP3 was written 10x TOO LARGE - a 0,3 kW command became a ~15 kW export
+  // ceiling and the plant exported 14,6 kW. Emitting the plan MINUS the power ops
+  // would be just as dangerous (ToU + Export-First + Solar-Sell armed against the
+  // installer's own ceiling), so the ENTIRE plan is withheld.
+  const noScale = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: undefined } };
+  const auto = C.controlRoute(noScale, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 });
+  assert.strictEqual(auto.powerScaleConfirmed, false, 'unknown scale is surfaced, never silent');
+  assert.strictEqual(auto.powerScaleSuppressed, true);
+  assert.deepStrictEqual(auto.planned, [], 'NOTHING is planned while the scale is unknown');
+  assert.deepStrictEqual(auto.writes, []);
+  assert.deepStrictEqual(auto.readbacks, []);
+  assert.match(auto.reason, /Leistungsskalierung unbest/, 'the reason names the scale');
+  // Not even a CALIBRATION write gets through - the operator must state the scale
+  // (or let the device probe detect it) before any live write.
+  const cal = C.controlRoute(noScale, enabled({ battery_setpoint_kw: -0.3, calibration: true }), { ratedKw: 30 });
+  assert.deepStrictEqual(cal.writes, [], 'calibration cannot bypass an unknown scale');
+  // an explicit 0 (catalog "auto") is equally unknown
   const zero = C.controlRoute({ ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: 0 } }, enabled({ battery_setpoint_kw: -20 }), { ratedKw: 50 });
   assert.strictEqual(zero.powerScaleConfirmed, false);
+  assert.deepStrictEqual(zero.planned, []);
+});
+
+test('N1: the DEVICE-DETECTED LV/HV class from the probe un-blocks the plan and scales it right', () => {
+  // Report §9.A.1 option (a): plumb the read path's 0x0000 auto-detect into the WRITE
+  // path. The executor probes it; here it arrives as opts.deye.scaleClass.
+  const noScale = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: undefined } };
+  const g = (r, role) => r.planned.find((w) => w.role === role).value;
+  // HV (device type 0x0008 = "HV 3-Phase Inverter 20-50kw") -> scale 10 (decawatt).
+  const hvCap = C.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: null });
+  assert.strictEqual(hvCap.scaleClass, 10);
+  const hv = C.controlRoute(noScale, enabled({ battery_setpoint_kw: -0.3 }), { ratedKw: 30, deye: hvCap });
+  assert.strictEqual(hv.powerScaleConfirmed, true, 'the device answered - confirmed');
+  assert.strictEqual(g(hv, 'battery_power'), 30, 'HV 0,3 kW -> 30 raw (decawatt), NOT 300');
+  assert.strictEqual(g(hv, 'max_sell_power'), 30);
+  // LV (device type 0x0500) -> scale 1 (native watts).
+  const lvCap = C.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: null });
+  assert.strictEqual(lvCap.scaleClass, 1);
+  const lv = C.controlRoute(noScale, enabled({ battery_setpoint_kw: -0.3 }), { ratedKw: 12, deye: lvCap });
+  assert.strictEqual(g(lv, 'battery_power'), 300, 'LV 0,3 kW -> 300 raw (watts)');
+  // The operator's EXPLICIT power_scale still wins over the detected class.
+  const forced = C.controlRoute({ ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: 1 } },
+    enabled({ battery_setpoint_kw: -0.3 }), { ratedKw: 30, deye: hvCap });
+  assert.strictEqual(g(forced, 'battery_power'), 300, 'explicit config beats the probe');
+  assert.strictEqual(C.resolveDeyePowerScale({ power_scale: 1 }, hvCap).source, 'config');
+  assert.strictEqual(C.resolveDeyePowerScale({}, hvCap).source, 'device');
+  assert.strictEqual(C.resolveDeyePowerScale({}, null).source, 'fallback');
+  // An unreadable device register is NOT a class - it stays unknown (never fabricated).
+  assert.strictEqual(C.classifyDeyeCapability({ deviceType: null, remoteBlock: null }).scaleClass, null);
 });
 
 // --- N2: slot-time conflict detection (report §8.9) - detect + surface, never rewrite
@@ -841,4 +909,320 @@ test('dualControllerSignal applies to the Deye Tier-3 path the same as SunSpec (
   assert.strictEqual(deye.possibleConflict, true);
   assert.strictEqual(sun.possibleConflict, true);
   assert.strictEqual(deye.detector, sun.detector, 'same generic detector regardless of vendor');
+});
+
+// =============================================================================
+// Deye REMOTE MODE (Tier 2, registers 1100-1121) - the payoff of the falsification
+// pass (scout data/vp-deye-approach-w8). A TRUE signed watt setpoint replacing the
+// Time-of-Use hack, armed behind the inverter's OWN watchdog, touching NO installer
+// setting. PROVEN present on the owner's SUN-30K-SG01HP3-EU by a live read-only
+// probe (see OWNER_CAP above).
+// =============================================================================
+
+// --- capability detection ----------------------------------------------------
+
+test('capability: the owner\'s live 1100..1121 read classifies as PRESENT, PR #978 layout', () => {
+  assert.strictEqual(OWNER_CAP.present, true);
+  assert.strictEqual(OWNER_CAP.layout, 'pr978', '1101=0xFFFF + 1104 in 0..2 + 1105 in 0..5 -> setpoint at 1109');
+  assert.strictEqual(OWNER_CAP.supported, true);
+  assert.strictEqual(OWNER_CAP.path, C.DEYE_PATH_REMOTE);
+  assert.strictEqual(OWNER_CAP.watchdogRaw, C.DEYE_REMOTE_WATCHDOG_OFF, 'the documented watchdog-off default');
+  assert.strictEqual(OWNER_CAP.statusRaw, 0);
+  assert.strictEqual(OWNER_CAP.scaleClass, 10, 'device 0x0008 = HV 20-50 kW -> scale 10');
+  assert.strictEqual(C.deyeControlPath(OWNER_CAP), C.DEYE_PATH_REMOTE);
+});
+
+test('capability: ABSENT firmware, an all-zero block and a Modbus exception all fall back to ToU', () => {
+  // (a) the Akkudoktor LV "absent" signature: 1100 reads 0x0500 (out of 0..3).
+  const absent = C.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: ownersRemoteBlock({ 1100: 0x0500, 1101: 0x0500 }) });
+  assert.strictEqual(absent.present, false);
+  assert.strictEqual(C.deyeControlPath(absent), C.DEYE_PATH_TOU);
+  // (b) an ALL-ZERO answer (a logger echoing zeros for an unimplemented range) must
+  //     NOT read as "present": 1101=0 is not a valid watchdog (0xFFFF or 10..18000).
+  const zeros = C.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: new Array(22).fill(0) });
+  assert.strictEqual(zeros.present, false, 'all-zero is not a capability');
+  assert.match(zeros.reason, /nicht vorhanden/);
+  // (c) a Modbus exception / unreadable block.
+  const err = C.classifyDeyeCapability({ deviceType: null, remoteBlock: null, error: 'Modbus-Ausnahme 0x02', definitive: true });
+  assert.strictEqual(err.present, false);
+  assert.strictEqual(err.definitive, true, 'an exception is a DEFINITIVE absent');
+  assert.match(err.reason, /Modbus-Ausnahme/);
+  // (d) a TRANSPORT error is not definitive - it must be re-probed sooner.
+  const soft = C.classifyDeyeCapability({ deviceType: null, remoteBlock: null, error: 'Timeout', definitive: false });
+  assert.strictEqual(soft.definitive, false);
+  // (e) a short/truncated block is never trusted.
+  assert.strictEqual(C.classifyDeyeCapability({ remoteBlock: [0, 0xffff, 0] }).present, false);
+});
+
+test('capability: the older V105.1 layout is DETECTED but NOT written (AC-side semantics)', () => {
+  // 1104/1105 out of range but 1106 in 0..1 and 1111 a plausible +/-1200 value.
+  const b = new Array(22).fill(0);
+  b[1101 - 1100] = 60; b[1104 - 1100] = 9; b[1105 - 1100] = 9; b[1106 - 1100] = 1; b[1111 - 1100] = 0xff9c; // -100
+  const cap = C.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: b });
+  assert.strictEqual(cap.present, true);
+  assert.strictEqual(cap.layout, 'v105_1');
+  assert.strictEqual(cap.supported, false, 'we do not write an unproven AC-side setpoint');
+  assert.strictEqual(C.deyeControlPath(cap), C.DEYE_PATH_TOU, 'falls back to ToU rather than guessing');
+  assert.match(cap.reason, /nicht batterieseitig/);
+});
+
+test('capability: the probe spec is READS ONLY, and only for battery families', () => {
+  const spec = C.deyeCapabilityProbeSpec('hybrid_3p');
+  assert.deepStrictEqual(spec.reads, [
+    { role: 'device_type', addr: 0x0000, count: 1 },
+    { role: 'remote_block', addr: 0x044c, count: 22 },
+  ]);
+  assert.strictEqual(C.deyeCapabilityProbeSpec('hybrid_1p').reads.length, 2);
+  assert.strictEqual(C.deyeCapabilityProbeSpec('string'), null, 'no battery -> no remote-mode probe');
+  assert.strictEqual(C.deyeCapabilityProbeSpec('micro'), null);
+  // every Deye plan carries it so the executor always knows what to read
+  assert.ok(C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -5 }), { ratedKw: 30 }).capabilityProbe);
+  assert.strictEqual(C.deyeCapabilityKey(' 192.168.254.210 ', 0), 'deye_cap:192.168.254.210:8899');
+  assert.strictEqual(C.deyeCapabilityKey('10.0.0.1', 8000), 'deye_cap:10.0.0.1:8000');
+});
+
+// --- the kW <-> register conversion (a slip here is a 10x command) -----------
+
+test('remote: the setpoint is -round(kw / ratedKw * 1000), from the CATALOG rating', () => {
+  const u = (kw, rated) => C.deyeRemoteSetpointUnits(kw, rated).units;
+  // The wiki's own worked example: charge 3 kW on a 20 kW inverter -> -150.
+  assert.strictEqual(u(3, 20), -150);
+  // The owner's 30 kW unit: 1 kW = 33 units (~30 W resolution). OUR contract is
+  // + = charge, the Deye register is - = charge, so the sign FLIPS.
+  assert.strictEqual(u(1, 30), -33, 'charge 1 kW -> -33');
+  assert.strictEqual(u(-1, 30), 33, 'discharge 1 kW -> +33');
+  assert.strictEqual(u(0, 30), 0);
+  // Rated power is what makes the SAME kW a different register on a different unit.
+  assert.strictEqual(u(-10, 30), 333);
+  assert.strictEqual(u(-10, 12), 833);
+  assert.strictEqual(u(-10, 50), 200);
+  // Clamped to the documented +/-1200 (= +/-120 % of rated), both directions.
+  assert.strictEqual(u(-99, 30), 1200);
+  assert.strictEqual(u(99, 30), -1200);
+  assert.strictEqual(C.deyeRemoteSetpointUnits(-99, 30).clamped, true);
+  assert.strictEqual(C.deyeRemoteSetpointUnits(-1, 30).clamped, false);
+  // Negative units encode as two's complement in the u16 register.
+  assert.strictEqual(C.deyeRemoteSetpointUnits(3, 20).raw, 0xff6a);
+  assert.strictEqual(C.deyeRemoteSetpointUnits(-1, 30).raw, 33);
+  // No rating -> not computable (ok:false); we never guess a nameplate.
+  assert.strictEqual(C.deyeRemoteSetpointUnits(-1, 0).ok, false);
+  assert.strictEqual(C.deyeRemoteSetpointUnits(NaN, 30).ok, false);
+});
+
+// --- the write plan ----------------------------------------------------------
+
+function remotePlan(sp, opts = {}) {
+  return C.controlRoute(DEYE_REMOTE_SEL, { source: 'schedule', control_enabled: true, ...sp },
+    { ratedKw: 30, deye: OWNER_CAP, ...opts });
+}
+
+test('remote: the write ORDER is watchdog FIRST, enable LAST', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20, soc_max_pct: 95 });
+  assert.strictEqual(r.controlPath, C.DEYE_PATH_REMOTE);
+  assert.deepStrictEqual(r.planned.map((w) => w.role), [
+    'remote_watchdog', 'power_control_mode', 'battery_strategy', 'battery_soc_belt',
+    'battery_power', 'remote_mode',
+  ]);
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  // 1) the dead-man's switch is armed BEFORE anything can move
+  assert.strictEqual(p.remote_watchdog.addr, C.DEYE_REMOTE_REG.watchdog); // 0x044D / 1101
+  assert.strictEqual(p.remote_watchdog.value, C.DEYE_REMOTE_WATCHDOG_DEFAULT_S);
+  // 2) BATTERY-side (AC-/grid-side would throttle PV)
+  assert.strictEqual(p.power_control_mode.addr, C.DEYE_REMOTE_REG.powerControlMode); // 0x0450 / 1104
+  assert.strictEqual(p.power_control_mode.value, C.DEYE_POWER_CONTROL_MODE.BATTERY_SIDE);
+  // 3) Power+SOC because a belt is known
+  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER_SOC);
+  // 4) the on-device SoC belt: a DISCHARGE is bounded by the floor
+  assert.strictEqual(p.battery_soc_belt.addr, C.DEYE_REMOTE_REG.constantSoc); // 0x0454 / 1108
+  assert.strictEqual(p.battery_soc_belt.value, 20);
+  assert.strictEqual(p.battery_soc_belt.encode.direction, 'discharge_floor');
+  // 5) the signed setpoint
+  assert.strictEqual(p.battery_power.addr, C.DEYE_REMOTE_REG.constantPower); // 0x0455 / 1109
+  assert.strictEqual(p.battery_power.value, 33);
+  // 6) ACTIVATION last
+  assert.strictEqual(r.planned[r.planned.length - 1].role, 'remote_mode');
+  assert.strictEqual(p.remote_mode.addr, C.DEYE_REMOTE_REG.mode); // 0x044C / 1100
+  assert.strictEqual(p.remote_mode.value, C.DEYE_REMOTE_MODE.ON);
+  // FC16 (write-multiple) - the only function code this firmware answers.
+  assert.ok(r.planned.every((w) => w.fc === C.DEYE_WRITE_FC_FC16));
+});
+
+test('remote: a CHARGE flips the sign and bounds itself with the SoC CEILING', () => {
+  const r = remotePlan({ battery_setpoint_kw: 3, soc_min_pct: 20, soc_max_pct: 90 });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.battery_power.value & 0xffff, C.deyeRemoteSetpointUnits(3, 30).raw);
+  assert.strictEqual(p.battery_power.encode.units, -100, 'charge 3 kW of 30 kW -> -100');
+  assert.strictEqual(p.battery_soc_belt.value, 90);
+  assert.strictEqual(p.battery_soc_belt.encode.direction, 'charge_ceiling');
+});
+
+test('remote: NO SoC belt -> plain Power strategy (2) and no 1108 write', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1 }); // no soc_min/soc_max on the setpoint
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(p.battery_soc_belt, undefined);
+});
+
+test('remote: EVERY op is RAM cadence - dwell 0, always re-asserted (the watchdog kick)', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20 });
+  for (const w of r.planned) {
+    assert.strictEqual(w.dwell_s, 0, w.role + ' must not carry an EEPROM dwell');
+    assert.strictEqual(w.min_change, 0, w.role);
+    assert.strictEqual(w.always, true, w.role + ' must be re-asserted every tick');
+  }
+  // and NOTHING is snapshotted: the remote path touches no installer setting.
+  assert.strictEqual(r.snapshotPlan, undefined, 'no snapshot/restore on the remote path');
+});
+
+test('remote: the plan touches ONLY the 1100-1121 block - no installer register', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1, pv_limit_kw: 12, soc_min_pct: 20 });
+  for (const w of r.planned) {
+    assert.ok(w.addr >= 0x044c && w.addr <= 0x0461, 'addr 0x' + w.addr.toString(16) + ' outside the remote block');
+  }
+  const tou = C.DEYE_CONTROL_REG.hybrid_3p;
+  for (const installer of [tou.energyPattern, tou.workMode, tou.solarSell, tou.maxSellPower, tou.touEnable, tou.exportLimit]) {
+    assert.strictEqual(r.planned.find((w) => w.addr === installer), undefined, 'installer register 0x' + installer.toString(16) + ' must never be written');
+  }
+  // curtailment is honestly reported as unsupported here, never silently dropped
+  assert.strictEqual(r.pvLimitSupported, false);
+  assert.strictEqual(r.pvLimitKw, 12);
+  assert.match(r.pvLimitNote, /PV-Begrenzung/);
+});
+
+test('remote: readbacks cover 1109 + 1100 (kW-decoded), and 1121 is an OBSERVATION', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20, calibration: true });
+  const rb = Object.fromEntries(r.readbacks.map((o) => [o.role, o]));
+  assert.strictEqual(rb.battery_power.addr, C.DEYE_REMOTE_REG.constantPower);
+  assert.strictEqual(rb.battery_power.expect, 33);
+  assert.strictEqual(rb.battery_power.tolerance, 1);
+  assert.deepStrictEqual(rb.battery_power.decode, { kind: 'remote_power_permille', rated_kw: 30 });
+  assert.strictEqual(rb.remote_mode.addr, C.DEYE_REMOTE_REG.mode);
+  assert.strictEqual(rb.remote_mode.expect, 1);
+  // 1121 is READ-ONLY: it is not a commanded value, so it must NEVER sit in the
+  // commanded-vs-actual list (it would fabricate or break all_match).
+  assert.strictEqual(rb.remote_status, undefined);
+  assert.deepStrictEqual(r.observations, [{ role: 'remote_status', fc: 3, addr: C.DEYE_REMOTE_REG.status }]);
+});
+
+test('remote: the setpoint is the guard-clamped kW - the adapter never widens it', () => {
+  // Whatever the core's guard chain hands us IS the command. The only extra bound is
+  // the register's own +/-1200, which can only ever REDUCE the magnitude.
+  for (const kw of [-30, -12.5, -0.03, 0, 0.03, 12.5, 30, 45]) {
+    const r = remotePlan({ battery_setpoint_kw: kw, soc_min_pct: 10, soc_max_pct: 95 });
+    const units = r.planned.find((w) => w.role === 'battery_power').encode.units;
+    const want = Math.abs(Math.round(-(kw / 30) * 1000));
+    assert.ok(Math.abs(units) <= Math.max(want, 0), 'never larger than the commanded magnitude for ' + kw);
+    assert.ok(Math.abs(units) <= C.DEYE_REMOTE_SETPOINT_LIMIT);
+    if (kw !== 0) assert.strictEqual(Math.sign(units), -Math.sign(kw), 'sign convention holds for ' + kw);
+  }
+});
+
+test('remote: an unknown model rating REFUSES the plan (a wrong rating IS a scale error)', () => {
+  const r = C.controlRoute(DEYE_REMOTE_SEL, { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true }, { deye: OWNER_CAP });
+  assert.strictEqual(r.controlPath, C.DEYE_PATH_REMOTE);
+  assert.deepStrictEqual(r.planned, []);
+  assert.deepStrictEqual(r.writes, []);
+  assert.match(r.reason, /Nennleistung/);
+});
+
+test('remote: the watchdog is configurable and clamped to the documented [10, 18000] s', () => {
+  const wd = (v) => C.resolveDeyeRemoteWatchdog({ remote_watchdog_s: v });
+  assert.strictEqual(wd(undefined), 60, 'default 60 s = ~6 setpoint ticks of slack');
+  assert.strictEqual(wd(120), 120);
+  assert.strictEqual(wd(10), 10);
+  assert.strictEqual(wd(18000), 18000);
+  assert.strictEqual(wd(5), 60, 'below the documented minimum -> default, never a too-tight watchdog');
+  assert.strictEqual(wd(99999), 60);
+  assert.strictEqual(wd(0xffff), 60, 'config can NEVER disable the watchdog');
+  const r = remotePlan({ battery_setpoint_kw: -1 }, {});
+  assert.strictEqual(r.remote.watchdog_s, 60);
+  const tuned = C.controlRoute({ ...DEYE_REMOTE_SEL, connection: { ...DEYE_REMOTE_SEL.connection, remote_watchdog_s: 120 } },
+    { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true }, { ratedKw: 30, deye: OWNER_CAP });
+  assert.strictEqual(tuned.planned.find((w) => w.role === 'remote_watchdog').value, 120);
+});
+
+test('remote: invert_control_sign stays CONFIGURATION - it flips the register, not the code', () => {
+  const flipped = C.controlRoute({ ...DEYE_REMOTE_SEL, connection: { ...DEYE_REMOTE_SEL.connection, invert_control_sign: true } },
+    { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true }, { ratedKw: 30, deye: OWNER_CAP });
+  assert.strictEqual(flipped.planned.find((w) => w.role === 'battery_power').encode.units, -33);
+});
+
+// --- gates -------------------------------------------------------------------
+
+test('remote: Deye stays UNCERTIFIED - no executable write in production', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20 });
+  assert.strictEqual(r.certified, false);
+  assert.deepStrictEqual(r.writes, [], 'planned only until the bench pass');
+  assert.deepStrictEqual(r.readbacks, []);
+  assert.ok(r.planned.length > 0, 'the intended plan is still surfaced for the bench');
+  assert.match(r.reason, /noch nicht freigegeben/);
+  // First-Light calibration is the ONE bypass (certification only).
+  const cal = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20, calibration: true });
+  assert.strictEqual(cal.writes.length, cal.planned.length);
+  assert.strictEqual(cal.readbacks.length, cal.writes.length);
+  assert.ok(cal.writes.every((w) => w.bench_pending === undefined));
+  // ...and the global kill-switch STILL wins over it.
+  const killed = C.controlRoute(DEYE_REMOTE_SEL, { battery_setpoint_kw: -1, source: 'calibration', control_enabled: false, calibration: true }, { ratedKw: 30, deye: OWNER_CAP });
+  assert.deepStrictEqual(killed.writes, []);
+});
+
+test('remote: no capability yet -> the legacy ToU path (byte-identical to before)', () => {
+  const sp = { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true };
+  const unprobed = C.controlRoute(DEYE_SEL, sp, { ratedKw: 50 });
+  assert.strictEqual(unprobed.controlPath, C.DEYE_PATH_TOU);
+  assert.ok(unprobed.planned.find((w) => w.role === 'tou_enable'), 'the ToU plan is what runs');
+  // an ABSENT capability is the same
+  const absent = C.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: new Array(22).fill(0) });
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(C.controlRoute(DEYE_SEL, sp, { ratedKw: 50, deye: absent }).planned)),
+    JSON.parse(JSON.stringify(unprobed.planned)),
+  );
+});
+
+test('remote: the operator can force the ToU path with remote_mode: off', () => {
+  const off = C.controlRoute({ ...DEYE_SEL, connection: { ...DEYE_SEL.connection, remote_mode: 'off' } },
+    { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true }, { ratedKw: 50, deye: OWNER_CAP });
+  assert.strictEqual(off.controlPath, C.DEYE_PATH_TOU);
+  assert.ok(off.planned.find((w) => w.role === 'tou_enable'));
+});
+
+// --- release -----------------------------------------------------------------
+
+test('remote release: 1100 <- 0 hands control back, and NOTHING is restored', () => {
+  const rel = C.controlRelease(DEYE_REMOTE_SEL, { calibration: true, deye: OWNER_CAP });
+  assert.strictEqual(rel.mode, 'release');
+  assert.strictEqual(rel.controlPath, C.DEYE_PATH_REMOTE);
+  assert.strictEqual(rel.writes.length, 1, 'one write: disable remote mode');
+  assert.strictEqual(rel.writes[0].role, 'remote_mode');
+  assert.strictEqual(rel.writes[0].addr, C.DEYE_REMOTE_REG.mode);
+  assert.strictEqual(rel.writes[0].value, C.DEYE_REMOTE_MODE.OFF);
+  assert.strictEqual(rel.writes[0].always, true, 'a hand-back is never skipped by write-on-change');
+  assert.strictEqual(rel.writes[0].dwell_s, 0);
+  assert.strictEqual(rel.readbacks.length, 1);
+  // no ToU register is touched on the way out either
+  const tou = C.DEYE_CONTROL_REG.hybrid_3p;
+  assert.strictEqual(rel.planned.find((w) => w.addr === tou.touEnable), undefined);
+  // uncertified + not a calibration revert -> planned only, exactly like the ToU path
+  assert.deepStrictEqual(C.controlRelease(DEYE_REMOTE_SEL, { deye: OWNER_CAP }).writes, []);
+});
+
+test('remote release: a LEFTOVER ToU snapshot is still restored, AFTER remote is disabled', () => {
+  // A device that was controlled over ToU before its firmware gained remote mode
+  // (or before we probed) may still hold installer registers we changed. Disable
+  // remote FIRST (immediate hand-back), restore the installer's values after.
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  const snapshot = { [reg.maxSellPower]: 8000, [reg.touEnable]: 0 };
+  const rel = C.controlRelease(DEYE_REMOTE_SEL, { calibration: true, deye: OWNER_CAP, snapshot });
+  assert.strictEqual(rel.writes[0].role, 'remote_mode', 'remote off FIRST');
+  const roles = rel.writes.map((w) => w.role);
+  assert.ok(roles.includes('max_sell_power'));
+  assert.strictEqual(roles[roles.length - 1], 'tou_enable', 'the ToU activation is restored LAST');
+});
+
+test('remote release: with remote ABSENT the release is byte-identical to the ToU release', () => {
+  const absent = C.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: new Array(22).fill(0) });
+  const withCap = C.controlRelease(DEYE_SEL, { calibration: true, deye: absent });
+  const without = C.controlRelease(DEYE_SEL, { calibration: true });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(withCap)), JSON.parse(JSON.stringify(without)));
+  assert.strictEqual(withCap.writes[0].role, 'tou_enable');
 });

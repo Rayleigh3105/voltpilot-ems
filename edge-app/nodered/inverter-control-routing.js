@@ -198,7 +198,17 @@ function controlRoute(selection, setpoint, opts = {}) {
   const tier = resolveControlTier(selection);
   const comm = selection.communication;
   if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
-    return deyeControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts });
+    // A Deye is Tier 3 (ToU) by catalog, but a firmware carrying the V105.1+ remote
+    // block gives it a TRUE Tier-2 setpoint. The PROBED capability (opts.deye, filled
+    // by the executor and cached per logger) decides which adapter runs; no capability
+    // yet -> the legacy ToU path, so a device that was never probed behaves exactly as
+    // before. `remote_mode: 'off'` on the connection is the operator's force-ToU hatch.
+    const cap = (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null;
+    const remoteOff = conn.remote_mode === 'off' || conn.remote_mode === false;
+    if (!remoteOff && deyeControlPath(cap) === DEYE_PATH_REMOTE) {
+      return deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap });
+    }
+    return deyeControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap });
   }
   if (tier === CONTROL_TIER.VENDOR_EMS) {
     return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
@@ -295,6 +305,44 @@ function controlRelease(selection, opts = {}) {
     const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
     const writeFc = resolveDeyeWriteFc(conn);
     const reg = deyeFamilyControlReg(family);
+    // REMOTE MODE release (report §7): trivial, because the inverter owns a native
+    // dead-man's switch. Explicit hand-back = 1100 <- 0 (immediate); the failsafe of
+    // LAST RESORT is simply to stop writing - the watchdog (1101) then expires and the
+    // inverter leaves remote mode by itself with NOTHING changed. Because the remote
+    // path touches no installer setting there is nothing to restore, so this release
+    // deliberately ignores a ToU snapshot UNLESS one exists (a prior ToU session that
+    // never handed back): then remote is disabled FIRST and the installer's captured
+    // registers are restored after it.
+    const remoteCap = (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null;
+    const remoteOff = conn.remote_mode === 'off' || conn.remote_mode === false;
+    const remoteActive = !remoteOff && reg && deyeControlPath(remoteCap) === DEYE_PATH_REMOTE;
+    if (remoteActive) {
+      const snapshot = (opts && opts.snapshot && typeof opts.snapshot === 'object') ? opts.snapshot : null;
+      const planned = [{
+        role: 'remote_mode', fc: writeFc, addr: DEYE_REMOTE_REG.mode, value: DEYE_REMOTE_MODE.OFF,
+        encode: { kind: 'remote_mode', enum: 'off', release: true },
+        dwell_s: 0, min_change: 0, always: true, bench_pending: true,
+      }];
+      if (snapshot) {
+        for (const s of deyeSnapshotSpec(reg, DEYE_CONTROL_SLOT)) {
+          if (snapshot[s.addr] === undefined) continue;
+          planned.push({
+            role: s.role, fc: writeFc, addr: s.addr, value: snapshot[s.addr] & 0xffff,
+            encode: { kind: 'restore', from: 'snapshot' },
+            dwell_s: calibration ? 0 : 900, min_change: 0, always: true, bench_pending: true,
+          });
+        }
+      }
+      const rbs = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: 0 }));
+      return {
+        adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
+        controlPath: DEYE_PATH_REMOTE,
+        target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
+        writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? rbs : [],
+        planned, capabilityProbe: deyeCapabilityProbeSpec(family),
+        reason: releaseAllowed ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
+      };
+    }
     // The captured pre-control snapshot (report §8). Deye has NO revert timer, so a
     // release must ACTIVELY hand back: writing only touEnable=0 would leave a changed
     // Energy-Pattern / Solar-Sell / export-limit LATCHED in EEPROM. When a snapshot is
@@ -327,9 +375,11 @@ function controlRelease(selection, opts = {}) {
     const readbacks = planned.map((w) => ({ role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: 0 }));
     return {
       adapter: 'solarman_v5', family, tier, certified, calibration, mode: 'release',
+      controlPath: DEYE_PATH_TOU,
       target: ip + ':' + port, connection: { ip, port, serial, mb_slave_id: slaveId },
       writes: releaseAllowed ? planned : [], readbacks: releaseAllowed ? readbacks : [],
-      planned, reason: releaseAllowed ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
+      planned, capabilityProbe: deyeCapabilityProbeSpec(family),
+      reason: releaseAllowed ? undefined : 'Steuerung für dieses Modell noch nicht freigegeben',
     };
   }
 
@@ -705,16 +755,257 @@ function deyeFamilyControlReg(family) {
     ? DEYE_CONTROL_REG[family] : null;
 }
 
-// resolveDeyePowerScale - N1 fix (report §6): the Program-Power AND Max-Sell-Power
-// registers are scale [1,10] (LV = 1 -> W, HV = 10 -> decawatt), but the WRITE path
-// never sees the read map's auto-detected HV class - an unset power_scale would
-// SILENTLY default to 1 and under-scale an HV write 10x. So use the EXPLICIT config
-// value only when it is 1 or 10; otherwise fall back to 1 but report confirmed=false
-// so the executor WARNs "Skalierung unbestaetigt" rather than defaulting silently.
-function resolveDeyePowerScale(conn) {
+// resolveDeyePowerScale - N1 fix (report §2.3/§9.A.1). The Program-Power AND
+// Max-Sell-Power registers are scale [1,10] (LV = 1 -> W, HV = 10 -> decawatt).
+// Before this the WRITE path only ever read the EXPLICIT `power_scale` config and
+// silently fell back to 1 - so an HV SG01HP3 left on "Automatisch" was written 10x
+// too LARGE (a commanded 1,5 kW discharge writes raw 1500, the inverter reads
+// 15 000 W; the live plant exported 14,6 kW on a 0,3 kW command). Resolution order:
+//
+//   1. the operator's EXPLICIT power_scale (1 or 10)                -> confirmed
+//   2. the DEVICE-DETECTED LV/HV class from the identity register    -> confirmed
+//      0x0000 (the same auto-detect the READ path already does in
+//      deye/deye-decode.js), probed by the executor and threaded in
+//      via opts.deye.scaleClass - this is report §9.A.1 option (a)
+//   3. nothing known -> scale 1 but confirmed:false. The adapter then REFUSES to
+//      emit the plan at all (report §9.A.1 option (b)) - see deyeControl.
+function resolveDeyePowerScale(conn, cap) {
   const v = Number(conn && conn.power_scale);
-  if (v === 1 || v === 10) return { scale: v, confirmed: true };
-  return { scale: 1, confirmed: false };
+  if (v === 1 || v === 10) return { scale: v, confirmed: true, source: 'config' };
+  const d = Number(cap && cap.scaleClass);
+  if (d === 1 || d === 10) return { scale: d, confirmed: true, source: 'device' };
+  return { scale: 1, confirmed: false, source: 'fallback' };
+}
+
+// --- Deye REMOTE MODE (registers 1100-1121) - the Tier-2 interface ------------
+//
+// Deye's MODBUS RTU protocol V105.1 (2023-10-06) added a "Customized register"
+// block that IS a textbook external-EMS interface: mode enable, a native
+// WATCHDOG, a control-mode selector and a SIGNED power setpoint in 0.1 % of rated
+// power. It supersedes the Time-of-Use hack as the Deye control surface (scout
+// report data/vp-deye-approach-w8 §3/§7/§9) and moves Deye into the same class as
+// the Tier-2 vendors (Sungrow/Kostal/SMA/Huawei).
+//
+// PROVEN on the owner's SUN-30K-SG01HP3-EU (live read-only probe 2026-07-27,
+// logger 192.168.254.210:8899, serial 1127365518, slave 1): FC03 of 0x044C..0x0461
+// answered cleanly with 1100=0x0000, 1101=0xFFFF (the documented "watchdog off"
+// default), 1104=0x0000, 1105=0x0002, 1121=0x0000 - i.e. remote mode is PRESENT
+// and, per the §8.1 discriminator (1101 valid, 1104 in 0..2, 1105 in 0..5), the
+// device uses the PR #978 layout, so the power setpoint is at 1109 (NOT the
+// alternative V105.1 layout's 1111).
+//
+// WHY THIS IS BETTER THAN ToU (report §7), and what it changes for us:
+//   - a TRUE signed watt setpoint (0,1 % of rated = ~30 W on a 30 kW unit),
+//     bidirectional, instead of a direction permission + a coarse power CAP;
+//   - RAM registers -> NO EEPROM wear, so we re-assert on the normal ~10 s tick
+//     (the write IS the heartbeat) instead of a 900 s dwell;
+//   - a NATIVE dead-man's switch (1101): on expiry the inverter leaves remote mode
+//     BY ITSELF and everything reverts - so release is "stop writing", and the
+//     ToU path's snapshot/restore is unnecessary HERE;
+//   - it touches NO installer setting at all (no Energy-Pattern, no Solar-Sell, no
+//     export limit, no ToU slot), so the foreign ToU program stops mattering.
+//
+// THE ONE THING IT DOES NOT GIVE US (report §7, claim 17 - REPORTED ONCE, treated
+// as a hard requirement): a field report says the inverter's OWN min/max-SoC
+// protections may NOT apply in remote mode. So `guards.Clamp`'s SoC band is
+// SAFETY-CRITICAL here, not cosmetic: this adapter writes the ALREADY guard-clamped
+// kW verbatim and never widens it, and it additionally arms strategy 5 (Power+SOC)
+// with the SoC belt in 1108 as an independent ON-DEVICE second belt.
+const DEYE_REMOTE_REG = {
+  mode: 0x044c, // 1100 R/W 0 = disabled, 1..3 = remote mode 1..3
+  watchdog: 0x044d, // 1101 R/W [10,18000] s, 0xFFFF = off (default)
+  powerControlMode: 0x0450, // 1104 R/W 0 = AC-side, 1 = BATTERY-side, 2 = grid-side
+  batteryStrategy: 0x0451, // 1105 R/W 0..5 (2 = Power, 5 = Power+SOC)
+  constantSoc: 0x0454, // 1108 R/W 0..100 % - the on-device floor/ceiling for strategy 5
+  constantPower: 0x0455, // 1109 R/W [-1200,1200] 0.1 % of rated, - = charge / + = discharge
+  status: 0x0461, // 1121 R   bit-coded remote-control execution state (observation)
+};
+// The capability probe block: registers 1100..1121 in ONE FC03 read (22 regs, far
+// under the 125-register limit). Reading an unimplemented block answers with a
+// Modbus exception, which is the definitive "absent" verdict - harmless either way.
+const DEYE_REMOTE_PROBE = { addr: 0x044c, count: 22 };
+// The device-identity register the READ path already auto-detects the LV/HV power
+// scale from (deye/deye-decode.js DEVICE_REG) - probed in the same pass for N1.
+const DEYE_DEVICE_REG = 0x0000;
+const DEYE_DEVICE_TYPES_LV = [0x0005, 0x0500]; // ha-solarman mod 0 -> scale 1
+const DEYE_DEVICE_TYPES_HV = [0x0006, 0x0007, 0x0600, 0x0008, 0x0601]; // mod 1 -> scale 10
+
+const DEYE_REMOTE_MODE = { OFF: 0, ON: 1 };
+const DEYE_POWER_CONTROL_MODE = { AC_SIDE: 0, BATTERY_SIDE: 1, GRID_SIDE: 2 };
+const DEYE_BATTERY_STRATEGY = {
+  VOLTAGE: 0, CURRENT: 1, POWER: 2, SOC: 3, VOLT_CURRENT: 4, POWER_SOC: 5,
+};
+// 1109 is 0.1 % of rated power, range +/-1200 (= +/-120 % of nameplate).
+const DEYE_REMOTE_SETPOINT_UNITS_PER_RATED = 1000;
+const DEYE_REMOTE_SETPOINT_LIMIT = 1200;
+// The dead-man's switch. 60 s is the wiki's recommendation and ~6 ticks of slack on
+// the ~10 s setpoint republish; operators can tune it via connection.remote_watchdog_s.
+const DEYE_REMOTE_WATCHDOG_DEFAULT_S = 60;
+const DEYE_REMOTE_WATCHDOG_MIN_S = 10;
+const DEYE_REMOTE_WATCHDOG_MAX_S = 18000;
+const DEYE_REMOTE_WATCHDOG_OFF = 0xffff;
+
+// The two Deye control PATHS. `remote` = the Tier-2 register block above;
+// `tou` = the legacy Time-of-Use synthesis (the fallback when the firmware has no
+// remote block). Surfaced on the plan + the readback so the operator always sees
+// WHICH path is driving the inverter - we never write into the void silently.
+const DEYE_PATH_REMOTE = 'remote';
+const DEYE_PATH_TOU = 'tou';
+
+/**
+ * deyeCapabilityProbeSpec - what the executor must FC3-read to classify a Deye's
+ * control capability. Battery-hybrid families only (string/micro have no battery
+ * and no remote-mode use). Pure: it describes reads, it never performs them.
+ */
+function deyeCapabilityProbeSpec(family) {
+  if (!deyeFamilyControlReg(family)) return null;
+  return {
+    reads: [
+      { role: 'device_type', addr: DEYE_DEVICE_REG, count: 1 },
+      { role: 'remote_block', addr: DEYE_REMOTE_PROBE.addr, count: DEYE_REMOTE_PROBE.count },
+    ],
+  };
+}
+
+/**
+ * deyeCapabilityKey - the flow-context cache key for a probed capability, keyed by
+ * the logger endpoint. Exported so the plan node and the executor cannot drift.
+ */
+function deyeCapabilityKey(ip, port) {
+  const p = Number(port) > 0 ? Number(port) : 8899;
+  return 'deye_cap:' + String(ip || '').trim() + ':' + p;
+}
+
+function inRange(v, lo, hi) {
+  return typeof v === 'number' && isFinite(v) && v >= lo && v <= hi;
+}
+
+// A plausible watchdog register: the documented "off" sentinel or a real timeout.
+// An all-zero block (a logger answering an unimplemented range with zeros) fails
+// this, which is exactly what keeps it from being misread as "remote mode present".
+function plausibleWatchdog(v) {
+  return v === DEYE_REMOTE_WATCHDOG_OFF
+    || inRange(v, DEYE_REMOTE_WATCHDOG_MIN_S, DEYE_REMOTE_WATCHDOG_MAX_S);
+}
+
+/**
+ * classifyDeyeCapability - the PURE classifier for a capability probe result
+ * (report §8.1's interpretation table). Input:
+ *
+ *   { deviceType?: number|null,       // register 0x0000 (LV/HV scale class)
+ *     remoteBlock?: number[]|null,    // registers 1100..1121, index i = 1100+i
+ *     error?: string, definitive?: boolean }
+ *
+ * Returns { present, layout, supported, path, scaleClass, watchdogRaw, statusRaw,
+ *           reason, definitive } where
+ *   - layout 'pr978'   = the PR #978 / wiki layout: mode selector 1104, strategy
+ *                        1105, SIGNED power setpoint 1109. This is what the owner's
+ *                        SUN-30K-SG01HP3-EU answers, and the ONLY layout this
+ *                        adapter writes.
+ *   - layout 'v105_1'  = the older public-PDF layout (selector 1106, AC-output
+ *                        setpoint 1111). Present but supported:false - its 1111 is
+ *                        an AC-OUTPUT setpoint with no documented battery-side
+ *                        selector, so its semantics do NOT match our
+ *                        battery_setpoint_kw and AC-side control throttles PV
+ *                        (report §7). We fall back to ToU rather than guess.
+ *   - path             = the control path this capability selects ('remote'|'tou').
+ */
+function classifyDeyeCapability(probe) {
+  const p = probe || {};
+  const dev = Number(p.deviceType);
+  let scaleClass = null;
+  if (DEYE_DEVICE_TYPES_HV.indexOf(dev) !== -1) scaleClass = 10;
+  else if (DEYE_DEVICE_TYPES_LV.indexOf(dev) !== -1) scaleClass = 1;
+
+  const out = {
+    present: false, layout: null, supported: false, path: DEYE_PATH_TOU,
+    scaleClass, watchdogRaw: null, statusRaw: null,
+    reason: '', definitive: p.definitive !== false,
+  };
+  const block = Array.isArray(p.remoteBlock) ? p.remoteBlock : null;
+  if (!block || block.length < 22) {
+    out.reason = p.error
+      ? ('Remote-Mode-Register nicht lesbar: ' + p.error)
+      : 'Remote-Mode-Register nicht lesbar (Firmware ohne Fernsteuerung) - Zeitfenster-Steuerung (ToU)';
+    if (p.error) out.definitive = p.definitive === true;
+    return out;
+  }
+  const at = (reg) => block[reg - 1100] & 0xffff;
+  const mode = at(1100);
+  const wd = at(1101);
+  out.watchdogRaw = wd;
+  out.statusRaw = at(1121);
+  const modeOk = inRange(mode, 0, 3);
+  const wdOk = plausibleWatchdog(wd);
+  if (modeOk && wdOk && inRange(at(1104), 0, 2) && inRange(at(1105), 0, 5)) {
+    out.present = true; out.layout = 'pr978'; out.supported = true; out.path = DEYE_PATH_REMOTE;
+    out.reason = 'Fernsteuerung (Remote Mode) verfügbar';
+    return out;
+  }
+  if (modeOk && wdOk && inRange(at(1106), 0, 1) && inRange(s16(at(1111)), -DEYE_REMOTE_SETPOINT_LIMIT, DEYE_REMOTE_SETPOINT_LIMIT)) {
+    out.present = true; out.layout = 'v105_1'; out.supported = false;
+    out.reason = 'Fernsteuerung in der älteren V105.1-Registerlage (AC-seitiger Sollwert 1111) - '
+      + 'diese Variante steuert nicht batterieseitig und wird nicht geschrieben; Zeitfenster-Steuerung (ToU)';
+    return out;
+  }
+  out.reason = 'Fernsteuerung auf dieser Firmware nicht vorhanden - Zeitfenster-Steuerung (ToU)';
+  return out;
+}
+
+/**
+ * deyeControlPath - which Deye control path a (possibly absent) capability selects.
+ * No capability yet -> the legacy ToU path, so behaviour without a probe is
+ * byte-identical to before this feature; the EXECUTOR is what refuses to write
+ * until the probe has answered (never write into the void).
+ */
+function deyeControlPath(cap) {
+  return cap && cap.present === true && cap.supported === true
+    ? DEYE_PATH_REMOTE : DEYE_PATH_TOU;
+}
+
+/**
+ * resolveDeyeRemoteWatchdog - the dead-man's timeout written to 1101. Operator
+ * override connection.remote_watchdog_s, clamped to the documented [10, 18000] s;
+ * anything else -> 60 s. NEVER 0xFFFF (watchdog off) from config: the whole point
+ * of this path is that the inverter reverts on its own if we go silent.
+ */
+function resolveDeyeRemoteWatchdog(conn) {
+  const v = Number(conn && conn.remote_watchdog_s);
+  if (inRange(v, DEYE_REMOTE_WATCHDOG_MIN_S, DEYE_REMOTE_WATCHDOG_MAX_S)) return Math.round(v);
+  return DEYE_REMOTE_WATCHDOG_DEFAULT_S;
+}
+
+/**
+ * deyeRemoteSetpointUnits - the SIGN + SCALE conversion, the one place a slip
+ * becomes a 10x command. Register 1109 is 0.1 % of RATED power with the Deye sign
+ * convention `- = charge / + = discharge`, while OUR contract
+ * (mqtt-schedule.schema.json) is `+ = charge / - = discharge` - so the register is
+ * the NEGATED per-mille of rated:
+ *
+ *     units = -round(kw / ratedKw * 1000),  clamped to +/-1200
+ *
+ * ratedKw comes from the inverter CATALOG (inverter.Model.RatedKw), never a
+ * hardcoded number. On a 30 kW unit 1 kW = 33 units (~30 W resolution).
+ * Returns { units, raw (u16 two's complement), clamped, ok }.
+ */
+function deyeRemoteSetpointUnits(kw, ratedKw) {
+  if (!isFiniteNum(kw) || !(Number(ratedKw) > 0)) {
+    return { units: 0, raw: 0, clamped: false, ok: false };
+  }
+  const exact = -(kw / Number(ratedKw)) * DEYE_REMOTE_SETPOINT_UNITS_PER_RATED;
+  // `|| 0` normalizes JS's negative zero (Math.round(-0.2) is -0), so an idle
+  // command encodes as a plain 0 and never as a surprising -0 in the plan.
+  let units = Math.round(exact) || 0;
+  const clamped = units > DEYE_REMOTE_SETPOINT_LIMIT || units < -DEYE_REMOTE_SETPOINT_LIMIT;
+  units = Math.max(-DEYE_REMOTE_SETPOINT_LIMIT, Math.min(DEYE_REMOTE_SETPOINT_LIMIT, units));
+  return { units, raw: units & 0xffff, clamped, ok: true };
+}
+
+// s16 - two's-complement read of a raw 16-bit register (the readback twin of the
+// `& 0xffff` encode above).
+function s16(raw) {
+  const v = raw & 0xffff;
+  return v > 0x7fff ? v - 0x10000 : v;
 }
 
 // deyeSnapshotSpec - the ORDERED set of control registers deyeControl may write for
@@ -780,6 +1071,168 @@ function deyeProgram1Displaced(programTimes, nowMinutes) {
   return false;
 }
 
+/**
+ * deyeRemoteControl - the Tier-2 REMOTE-MODE write plan: a true signed-watt
+ * battery setpoint (registers 1100-1121, see the DEYE_REMOTE_REG header).
+ *
+ * THE WRITE ORDER IS LOAD-BEARING - the failsafe goes FIRST, activation LAST:
+ *   1. 1101 <- watchdog seconds   arm the dead-man's switch BEFORE anything can move
+ *   2. 1104 <- 1 (BATTERY-side)   battery-side leaves PV production untouched and is
+ *                                 the mode whose semantics match battery_setpoint_kw;
+ *                                 AC-/grid-side would throttle PV (report §7)
+ *   3. 1105 <- 5 (Power+SOC) when a SoC belt is known, else 2 (Power)
+ *   4. 1108 <- the SoC belt       an independent ON-DEVICE second belt (strategy 5)
+ *   5. 1109 <- signed setpoint    derived from the ALREADY guard-clamped kW
+ *   6. 1100 <- 1 (enable)         LAST, so the inverter never runs a half-written plan
+ *
+ * CADENCE: these are RAM registers, so every op carries dwell_s = 0, min_change = 0
+ * AND `always: true` - the executor's EEPROM write-on-change discipline is BYPASSED
+ * here on purpose. Re-asserting every ~10 s tick IS the watchdog kick (the intended
+ * pattern), and without `always` an unchanged value would be skipped and the
+ * watchdog would expire mid-operation.
+ *
+ * RELEASE is trivial on this path (controlRelease below): 1100 <- 0 hands control
+ * back immediately, and simply STOPPING is the failsafe of last resort because the
+ * inverter's own watchdog expires and it reverts by itself. NOTHING installer-level
+ * is touched, so there is no snapshot to restore (`snapshotPlan` is deliberately
+ * absent -> the executor never captures one on this path).
+ *
+ * NOT ON THIS PATH: pv_limit / curtailment. The Deye feed-in cap is an EEPROM
+ * INSTALLER register (0x00E7 "Grid Max Export power"); writing it would break the
+ * "touches no installer setting" property that makes this path safe. A curtailment
+ * command is therefore reported as unsupported (pvLimitSupported:false), never
+ * silently dropped and never silently written.
+ */
+function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap }) {
+  const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
+  const serial = conn.serial;
+  const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
+  const writeFc = resolveDeyeWriteFc(conn);
+  // Sign stays CONFIGURATION, never code (same as every other adapter).
+  const invert = conn.invert_control_sign === true;
+  const battKw = invert ? -kw : kw;
+  const ratedKw = Number(opts.ratedKw) > 0 ? Number(opts.ratedKw) : 0;
+  const watchdogS = resolveDeyeRemoteWatchdog(conn);
+  const writeAllowed = controlEnabled && (certified || calibration);
+
+  const base = {
+    adapter: 'solarman_v5', family, controlPath: DEYE_PATH_REMOTE,
+    target: ip + ':' + port,
+    connection: { ip, port, serial, mb_slave_id: slaveId },
+    certified, controlEnabled, calibration: calibration === true,
+    remote: {
+      layout: (cap && cap.layout) || 'pr978',
+      watchdog_s: watchdogS,
+      rated_kw: ratedKw,
+      status_addr: DEYE_REMOTE_REG.status,
+    },
+    // Curtailment is NOT part of the remote block (see the header).
+    pvLimitSupported: false,
+    pvLimitKw,
+    capabilityProbe: deyeCapabilityProbeSpec(family),
+  };
+
+  // The nameplate is what turns kW into the 0.1 %-of-rated register. Without it we
+  // CANNOT compute a setpoint - refuse rather than guess a rating (a wrong rating is
+  // a scale error, i.e. exactly the N1 class of bug this PR also fixes).
+  if (!(ratedKw > 0)) {
+    return Object.assign(base, {
+      writes: [], readbacks: [], planned: [],
+      reason: 'Fernsteuerung: Nennleistung des Modells unbekannt - bitte das genaue '
+        + 'Wechselrichter-Modell auswählen (der Sollwert ist 0,1 % der Nennleistung).',
+    });
+  }
+
+  const sp = deyeRemoteSetpointUnits(battKw, ratedKw);
+  // The SoC belt (report §7, claim 17): the inverter's own min/max-SoC protection may
+  // NOT apply in remote mode, so guards.Clamp upstream owns the SoC band absolutely -
+  // and we arm strategy 5 with 1108 as an INDEPENDENT on-device belt. Direction picks
+  // which end of the band is the belt: a charge is bounded by the ceiling, a discharge
+  // by the floor. Neither known -> plain Power strategy (2), no 1108 write.
+  const charging = battKw > 0;
+  const socMin = isFiniteNum(setpoint.soc_min_pct) ? clampPct(setpoint.soc_min_pct) : null;
+  const socMax = isFiniteNum(setpoint.soc_max_pct) ? clampPct(setpoint.soc_max_pct) : null;
+  const belt = charging ? socMax : socMin;
+  const strategy = belt == null ? DEYE_BATTERY_STRATEGY.POWER : DEYE_BATTERY_STRATEGY.POWER_SOC;
+  // RAM registers: no dwell, no min_change, and ALWAYS re-written (the write is the
+  // watchdog kick - see the header). `always` is what makes the executor bypass its
+  // EEPROM write-on-change filter for this path only.
+  const ram = { dwell_s: 0, min_change: 0, always: true, bench_pending: true };
+
+  const planned = [];
+  // 1) FAILSAFE FIRST.
+  planned.push({
+    role: 'remote_watchdog', fc: writeFc, addr: DEYE_REMOTE_REG.watchdog, value: watchdogS & 0xffff,
+    encode: { kind: 'remote_watchdog_s', seconds: watchdogS }, ...ram,
+  });
+  // 2) BATTERY-side control (PV production keeps running untouched).
+  planned.push({
+    role: 'power_control_mode', fc: writeFc, addr: DEYE_REMOTE_REG.powerControlMode,
+    value: DEYE_POWER_CONTROL_MODE.BATTERY_SIDE,
+    encode: { kind: 'remote_power_control_mode', enum: 'battery_side' }, ...ram,
+  });
+  // 3) strategy: Power+SOC when a belt exists, else Power.
+  planned.push({
+    role: 'battery_strategy', fc: writeFc, addr: DEYE_REMOTE_REG.batteryStrategy, value: strategy,
+    encode: { kind: 'remote_battery_strategy', enum: strategy === DEYE_BATTERY_STRATEGY.POWER_SOC ? 'power_soc' : 'power' }, ...ram,
+  });
+  // 4) the on-device SoC belt (strategy 5 only).
+  if (belt != null) {
+    planned.push({
+      role: 'battery_soc_belt', fc: writeFc, addr: DEYE_REMOTE_REG.constantSoc, value: belt,
+      encode: { kind: 'pct', direction: charging ? 'charge_ceiling' : 'discharge_floor' }, ...ram,
+    });
+  }
+  // 5) the signed setpoint (0.1 % of rated; - = charge / + = discharge).
+  planned.push({
+    role: 'battery_power', fc: writeFc, addr: DEYE_REMOTE_REG.constantPower, value: sp.raw,
+    encode: {
+      kind: 'remote_power_permille', rated_kw: ratedKw, kw: battKw,
+      units: sp.units, limit: DEYE_REMOTE_SETPOINT_LIMIT, clamped: sp.clamped,
+    }, ...ram,
+  });
+  // 6) ACTIVATION - strictly LAST.
+  planned.push({
+    role: 'remote_mode', fc: writeFc, addr: DEYE_REMOTE_REG.mode, value: DEYE_REMOTE_MODE.ON,
+    encode: { kind: 'remote_mode', enum: 'on' }, ...ram,
+  });
+
+  // Readbacks: the setpoint echo (1109, decoded back to kW so the :8484 card and the
+  // First-Light verdict see real numbers), the mode (1100) and every other commanded
+  // register. 1121 (remote control STATUS) is read-only - it is not a commanded value,
+  // so it rides `observations` and can never fabricate a commanded-vs-actual match.
+  const rbTol = (role) => (role === 'battery_power' ? 1 : 0);
+  const readbacks = planned.map((w) => {
+    const rb = { role: w.role, fc: 3, addr: w.addr, expect: w.value & 0xffff, tolerance: rbTol(w.role) };
+    if (w.role === 'battery_power') rb.decode = { kind: 'remote_power_permille', rated_kw: ratedKw };
+    return rb;
+  });
+  const observations = [{ role: 'remote_status', fc: 3, addr: DEYE_REMOTE_REG.status }];
+
+  const execWrites = planned.map((w) => { const c = { ...w }; delete c.bench_pending; return c; });
+  const out = Object.assign(base, {
+    writes: writeAllowed ? execWrites : [],
+    readbacks: writeAllowed ? readbacks : [],
+    planned,
+    observations,
+    setpointUnits: sp.units,
+    setpointClamped: sp.clamped,
+  });
+  if (pvLimitKw != null) {
+    // Honest, never silent: a curtailment command cannot be served on this path.
+    // Its own field, so it is never swallowed by (or swallowing) a gate reason.
+    out.pvLimitNote = 'Fernsteuerung: PV-Begrenzung wird auf diesem Pfad nicht geschrieben '
+      + '(sie wäre eine Installateur-Einstellung im EEPROM).';
+  }
+  if (!writeAllowed) {
+    out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)'
+      : 'Fernsteuerung erkannt, Steuerung für dieses Modell noch nicht freigegeben';
+  } else if (out.pvLimitNote) {
+    out.reason = out.pvLimitNote;
+  }
+  return out;
+}
+
 // deyeControl - the CORRECTED battery-power -> live ToU slot translation (report
 // §8). Strategy A (target-SoC = floor + power cap + grid-charge off) is CORRECT for
 // CHARGE but fundamentally INCOMPLETE for DISCHARGE: on a Deye the ToU target-SoC is
@@ -791,15 +1244,16 @@ function deyeProgram1Displaced(programTimes, nowMinutes) {
 // (the gentle "6b" forcing lever the owner chose; the heavier "6a" max-charge-current
 // clamp 0x006C is DELIBERATELY NOT wired here). See DEYE.md + CONTROL-BENCH.md; every
 // new lever stays bench_pending until the family is certified.
-function deyeControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts }) {
+function deyeControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
   const serial = conn.serial;
   const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
   const invert = conn.invert_control_sign === true;
   const socMin = isFiniteNum(setpoint.soc_min_pct) ? setpoint.soc_min_pct : 5;
-  // N1 fix (report §6): use the EXPLICIT power_scale (1 or 10); confirmed=false when
-  // it had to fall back to 1, so the executor can WARN instead of silently mis-scaling.
-  const ps = resolveDeyePowerScale(conn);
+  // N1 fix (report §2.3/§9.A.1): the EXPLICIT power_scale, else the DEVICE-DETECTED
+  // LV/HV class from the capability probe; confirmed=false when neither is known -
+  // and then the plan is REFUSED outright below (never a silent 10x write).
+  const ps = resolveDeyePowerScale(conn, cap);
   const powerScale = ps.scale;
   // The Modbus WRITE function code (FC16 default, FC6 flip-back) - see the
   // resolveDeyeWriteFc header. ONLY the wire function changes; the register map,
@@ -843,16 +1297,22 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
       return c;
     });
     const out = {
-      adapter: 'solarman_v5', family,
+      adapter: 'solarman_v5', family, controlPath: DEYE_PATH_TOU,
       target: ip + ':' + port,
       connection: { ip, port, serial, mb_slave_id: slaveId },
       certified, controlEnabled, calibration: calibration === true,
       writes: writeAllowed ? execWrites : [],
       readbacks: writeAllowed ? readbacks : [],
       planned,
+      // What the executor must FC3-read to classify this device's control
+      // capability (remote mode present? LV/HV scale class?). Null for a
+      // batteryless family. Reads only - always safe, never a write.
+      capabilityProbe: deyeCapabilityProbeSpec(family),
     };
     if (extra) Object.assign(out, extra);
-    if (!writeAllowed) {
+    // A reason supplied by the caller (today: the N1 scale refusal) is MORE specific
+    // than the generic gate message and explains an EMPTY plan, so it wins.
+    if (!writeAllowed && !out.reason) {
       out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)' : 'Steuerung für dieses Modell noch nicht freigegeben';
     }
     return out;
@@ -872,6 +1332,27 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
       });
     }
     return finalize(planned);
+  }
+
+  // N1 (report §2.3/§9.A.1) - REFUSE, never guess. On a battery hybrid the whole ToU
+  // plan is power-scaled: Program-Power and (on hybrid_3p) Max-Sell-Power are
+  // scale [1,10]. With the scale UNKNOWN an HV inverter is written 10x too large -
+  // and the failure mode is not a small error: enabling ToU + Export-First +
+  // Solar-Sell with a 10x export ceiling is exactly what emptied the live battery
+  // into the grid at 14,6 kW on a 0,3 kW command. Emitting the plan WITHOUT the
+  // power ops would be just as dangerous (ToU armed against the installer's own,
+  // possibly huge, sell-power ceiling), so the ENTIRE plan is withheld until the
+  // scale is known - from the operator's power_scale or from the device probe.
+  if (!ps.confirmed) {
+    return finalize([], {
+      powerScaleConfirmed: false,
+      powerScaleSource: ps.source,
+      powerScaleSuppressed: true,
+      reason: 'Leistungsskalierung unbestätigt (HV/LV): Der Schreibplan wird zurückgehalten, '
+        + 'damit ein HV-Wechselrichter nicht 10-fach überschrieben wird. Bitte die '
+        + 'Leistungsskalierung am Wechselrichter setzen (HV = 10, LV = 1) oder das Gerät '
+        + 'erreichbar machen, damit sie automatisch erkannt wird.',
+    });
   }
 
   const slot = DEYE_CONTROL_SLOT;
@@ -1012,6 +1493,23 @@ module.exports = {
   SETPOINT_STALE_MS,
   DEYE_WRITE_FC_FC16,
   DEYE_WRITE_FC_FC6,
+  // Deye remote mode (Tier 2, registers 1100-1121)
+  DEYE_REMOTE_REG,
+  DEYE_REMOTE_PROBE,
+  DEYE_REMOTE_MODE,
+  DEYE_POWER_CONTROL_MODE,
+  DEYE_BATTERY_STRATEGY,
+  DEYE_REMOTE_SETPOINT_LIMIT,
+  DEYE_REMOTE_WATCHDOG_DEFAULT_S,
+  DEYE_REMOTE_WATCHDOG_OFF,
+  DEYE_PATH_REMOTE,
+  DEYE_PATH_TOU,
+  deyeCapabilityProbeSpec,
+  deyeCapabilityKey,
+  classifyDeyeCapability,
+  deyeControlPath,
+  resolveDeyeRemoteWatchdog,
+  deyeRemoteSetpointUnits,
   resolveDeyeWriteFc,
   resolveDeyePowerScale,
   deyeSnapshotSpec,
