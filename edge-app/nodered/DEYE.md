@@ -378,8 +378,8 @@ Quelle: Deyes eigenes *MODBUS RTU* V105.1 + [`ha-solarman` PR #978](https://gith
 | 1100 | `0x044C` | `remote_mode` | 0 = aus, 1 = Fernsteuerung 1 |
 | 1101 | `0x044D` | `remote_watchdog` | **Totmann in Sekunden**, [10, 18000]; `0xFFFF` = aus. Läuft er ab, verlässt der Wechselrichter die Fernsteuerung selbst |
 | 1104 | `0x0450` | `power_control_mode` | 0 = AC-seitig, **1 = batterieseitig**, 2 = netzseitig |
-| 1105 | `0x0451` | `battery_strategy` | 2 = Leistung, **5 = Leistung + SoC** |
-| 1108 | `0x0454` | `battery_soc_belt` | Konstant-SoC-Sollwert (die Grenze im Gerät für Strategie 5) |
+| 1105 | `0x0451` | `battery_strategy` | **2 = Leistung (Standard)**, 5 = Leistung + SoC (opt-in, `remote_battery_strategy = 5`) |
+| 1108 | `0x0454` | `battery_soc_belt` | Konstant-SoC-Sollwert (die Grenze im Gerät, **nur bei Strategie 5** - im Standard NICHT geschrieben) |
 | 1109 | `0x0455` | `battery_power` | **Leistungssollwert**, [-1200, 1200] in **0,1 % der Nennleistung**, **− = laden / + = entladen** |
 | 1121 | `0x0461` | `remote_status` | Status (nur lesen) - unsere Beobachtung, **nie** ein Soll-Ist-Vergleich |
 
@@ -391,8 +391,8 @@ Quelle: Deyes eigenes *MODBUS RTU* V105.1 + [`ha-solarman` PR #978](https://gith
 |---|---|---|---|
 | 1 | `1101` Totmann | 60 s (konfigurierbar) | **den Totmann scharf schalten, bevor sich irgendetwas bewegen kann** |
 | 2 | `1104` Regelseite | 1 = batterieseitig | AC-/netzseitig würde die **PV drosseln**; batterieseitig lässt die Erzeugung unangetastet und passt zu `battery_setpoint_kw` |
-| 3 | `1105` Strategie | 5 (Leistung+SoC), sonst 2 | zweiter Sicherheitsgurt, wenn eine SoC-Grenze bekannt ist |
-| 4 | `1108` SoC-Grenze | Boden beim Entladen, Decke beim Laden | die Grenze **im Gerät** |
+| 3 | `1105` Strategie | **2 = Leistung (Standard)**; 5 nur bei `remote_battery_strategy = 5` | Standard: nur den Sollwert vorgeben, kein SoC-Ziel im Gerät |
+| 4 | `1108` SoC-Grenze | **nur bei Strategie 5**: Boden beim Entladen, Decke beim Laden | die Grenze **im Gerät** - im Standard **entfällt dieser Schritt** |
 | 5 | `1109` Sollwert | aus dem bereits guard-begrenzten kW | die eigentliche Anweisung |
 | 6 | `1100` Fernsteuerung | 1 | **ZULETZT** - der Wechselrichter läuft nie mit halb geschriebenem Plan |
 
@@ -401,7 +401,9 @@ Quelle: Deyes eigenes *MODBUS RTU* V105.1 + [`ha-solarman` PR #978](https://gith
 **Rückgabe.** Ausdrücklich: `1100 ← 0` (sofort). Implizit: **einfach aufhören zu schreiben** - der Totmann läuft ab und der Wechselrichter kehrt von selbst zurück, *ohne dass irgendetwas verstellt ist*. Das ist der Fail-Safe letzter Instanz und der Grund, warum der ToU-Snapshot/Restore **für diesen Pfad** überflüssig ist. Ein noch vorhandener ALTER ToU-Snapshot wird trotzdem zurückgeschrieben - nach dem Abschalten der Fernsteuerung.
 
 > ### ⚠ Die SoC-Klammer ist hier sicherheitskritisch
-> Ein Feldbericht (openEMS #2541) sagt: *„die im Deye konfigurierten Batterie-Grenzwerte greifen im Remote Mode offenbar nicht."* Das ist **einmal berichtet**, wird aber als harte Anforderung behandelt: **`guards.Clamp` besitzt das SoC-Band absolut**, der Adapter schreibt den bereits begrenzten Wert unverändert und weitet ihn nie - und zusätzlich wird Strategie **5 + Register 1108** als unabhängiger Gurt im Gerät gesetzt.
+> Ein Feldbericht (openEMS #2541) sagt: *„die im Deye konfigurierten Batterie-Grenzwerte greifen im Remote Mode offenbar nicht."* Das ist **einmal berichtet**, wird aber als harte Anforderung behandelt: **`guards.Clamp` besitzt das SoC-Band absolut** - es klemmt ein **Laden bei SoC ≥ SoC-Max auf 0** und ein **Entladen bei SoC ≤ SoC-Min auf 0**, in jedem Takt neu ausgewertet; der Adapter schreibt den bereits begrenzten Wert unverändert und weitet ihn nie.
+>
+> **Standard = Strategie 2 (nur Leistung), kein 1108.** Der on-device SoC-Gurt (Strategie 5 + Register 1108) ist **opt-in** (`remote_battery_strategy = 5`). Grund (Live-Gerät SUN-30K-SG01HP3-EU, 2026-07-27): mit `1108 = 5 %` und voller Batterie fuhr der Wechselrichter **auf die 5 % als ZIEL zu** und lieferte **~-8,0 kW bei befohlenen -1,0 kW** - jedes Register korrekt zurückgelesen (33 Einheiten = 1 kW von 30 kW), der Wechselrichter las 1108 als Ziel, nicht als Grenze, und unser Leistungswert war nicht die bindende Rate. Deshalb bekommt der Wechselrichter im Standard **nur** den Leistungssollwert; `guards.Clamp` bleibt die einzige SoC-Autorität. Strategie 5 bleibt zum bewussten Nachtesten verfügbar.
 
 **Nicht auf diesem Pfad: PV-Begrenzung/Curtailment.** Die Einspeisekappe des Deye ist ein **Installateur-Register im EEPROM** (`0x00E7`); sie zu schreiben würde genau die Eigenschaft brechen, die diesen Pfad sicher macht. Ein Curtailment-Befehl wird deshalb ehrlich als nicht unterstützt gemeldet (`pvLimitSupported: false`), nie still verworfen und nie still geschrieben.
 

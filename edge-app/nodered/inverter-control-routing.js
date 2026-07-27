@@ -809,8 +809,15 @@ function resolveDeyePowerScale(conn, cap) {
 // as a hard requirement): a field report says the inverter's OWN min/max-SoC
 // protections may NOT apply in remote mode. So `guards.Clamp`'s SoC band is
 // SAFETY-CRITICAL here, not cosmetic: this adapter writes the ALREADY guard-clamped
-// kW verbatim and never widens it, and it additionally arms strategy 5 (Power+SOC)
-// with the SoC belt in 1108 as an independent ON-DEVICE second belt.
+// kW verbatim and never widens it. The battery-side STRATEGY (1105) is selectable and
+// DEFAULTS to 2 (Power) - the signed setpoint (1109) is the ONLY thing the inverter is
+// told, no on-device SoC target. The Power+SOC strategy (5) + the 1108 SoC belt is
+// OPT-IN (connection.remote_battery_strategy = 5): on the live SUN-30K-SG01HP3-EU with
+// the battery at 100 % SoC and 1108 = 5 %, a commanded -1,0 kW discharge (every register
+// echoed) delivered ~-8,0 kW - the inverter drove TOWARD the 1108 % as a TARGET, not as
+// a floor, so the power value was not the binding rate. Strategy 2 tells it only the
+// setpoint; guards.Clamp remains the SoC authority (it clamps charge to 0 at/above
+// SocMax and discharge to 0 at/below SocMin, re-evaluated every tick).
 const DEYE_REMOTE_REG = {
   mode: 0x044c, // 1100 R/W 0 = disabled, 1..3 = remote mode 1..3
   watchdog: 0x044d, // 1101 R/W [10,18000] s, 0xFFFF = off (default)
@@ -976,6 +983,27 @@ function resolveDeyeRemoteWatchdog(conn) {
 }
 
 /**
+ * resolveDeyeRemoteStrategy - which battery-side strategy (register 1105) the remote
+ * path arms. The DEFAULT is POWER (2): the signed power setpoint (1109) is the ONLY
+ * thing the inverter is told, with NO on-device SoC target in 1108. POWER_SOC (5) +
+ * the 1108 SoC belt is OPT-IN via connection.remote_battery_strategy = 5.
+ *
+ * WHY THE DEFAULT FLIPPED TO 2 (live SUN-30K-SG01HP3-EU, 2026-07-27): with strategy 5
+ * and 1108 = 5 % armed on a battery at 100 % SoC, a commanded -1,0 kW discharge (33
+ * units, echoed on every register) delivered ~-8,0 kW - the inverter drove TOWARD the
+ * 1108 % as a TARGET (roughly rate-limited), not as a floor, so our power value was not
+ * the binding rate. Strategy 2 tells the inverter only the setpoint, removing that
+ * failure mode. guards.Clamp's SoC band is the SoC authority on BOTH strategies (it
+ * clamps a commanded charge to 0 at/above SocMax and a discharge to 0 at/below SocMin,
+ * re-evaluated every tick); strategy 5 is a re-testable on-device SECOND belt, not the
+ * default. Absent / anything but 5 -> POWER (2).
+ */
+function resolveDeyeRemoteStrategy(conn) {
+  const v = Number(conn && conn.remote_battery_strategy);
+  return v === DEYE_BATTERY_STRATEGY.POWER_SOC ? DEYE_BATTERY_STRATEGY.POWER_SOC : DEYE_BATTERY_STRATEGY.POWER;
+}
+
+/**
  * deyeRemoteSetpointUnits - the SIGN + SCALE conversion, the one place a slip
  * becomes a 10x command. Register 1109 is 0.1 % of RATED power with the Deye sign
  * convention `- = charge / + = discharge`, while OUR contract
@@ -1080,8 +1108,12 @@ function deyeProgram1Displaced(programTimes, nowMinutes) {
  *   2. 1104 <- 1 (BATTERY-side)   battery-side leaves PV production untouched and is
  *                                 the mode whose semantics match battery_setpoint_kw;
  *                                 AC-/grid-side would throttle PV (report §7)
- *   3. 1105 <- 5 (Power+SOC) when a SoC belt is known, else 2 (Power)
- *   4. 1108 <- the SoC belt       an independent ON-DEVICE second belt (strategy 5)
+ *   3. 1105 <- 2 (Power) by DEFAULT; 5 (Power+SOC) only when the operator opts in via
+ *              connection.remote_battery_strategy = 5 AND a belt value is known
+ *   4. 1108 <- the SoC belt       an independent ON-DEVICE second belt, STRATEGY 5 ONLY
+ *              (omitted entirely on the default Power strategy - the setpoint is the
+ *              only instruction; see resolveDeyeRemoteStrategy + the DEYE_REMOTE_REG
+ *              header for why the live SUN-30K read 1108 as a target, not a floor)
  *   5. 1109 <- signed setpoint    derived from the ALREADY guard-clamped kW
  *   6. 1100 <- 1 (enable)         LAST, so the inverter never runs a half-written plan
  *
@@ -1152,15 +1184,24 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
   }
 
   const sp = deyeRemoteSetpointUnits(battKw, ratedKw);
-  // The SoC belt (report §7, claim 17): the inverter's own min/max-SoC protection may
-  // NOT apply in remote mode, so guards.Clamp upstream owns the SoC band absolutely -
-  // and we arm strategy 5 with 1108 as an INDEPENDENT on-device belt. Direction picks
-  // which end of the band is the belt: a charge is bounded by the ceiling, a discharge
-  // by the floor. Neither known -> plain Power strategy (2), no 1108 write.
+  // The battery-side strategy (register 1105) is SELECTABLE and DEFAULTS to POWER (2):
+  // the signed setpoint (1109) is the ONLY thing the inverter is told, with NO 1108 SoC
+  // target. The Power+SOC strategy (5) + the on-device SoC belt in 1108 is OPT-IN
+  // (connection.remote_battery_strategy = 5), because on the live SUN-30K-SG01HP3-EU it
+  // was read as a TARGET, not a floor - the battery drove toward the 1108 % and delivered
+  // ~8x the commanded power (see resolveDeyeRemoteStrategy + the DEYE_REMOTE_REG header).
+  // guards.Clamp upstream owns the SoC band absolutely EITHER WAY (report §7, claim 17):
+  // it clamps a commanded charge to 0 at/above SocMax and a discharge to 0 at/below
+  // SocMin, so dropping the on-device belt never removes SoC protection - it removes an
+  // on-device TARGET the firmware mishandled. When strategy 5 is chosen, the belt's
+  // direction picks which end of the band it is: a charge is bounded by the ceiling, a
+  // discharge by the floor; with no belt value known it falls back to plain Power.
+  const strategyPref = resolveDeyeRemoteStrategy(conn); // POWER (2, default) or POWER_SOC (5)
   const charging = battKw > 0;
   const socMin = isFiniteNum(setpoint.soc_min_pct) ? clampPct(setpoint.soc_min_pct) : null;
   const socMax = isFiniteNum(setpoint.soc_max_pct) ? clampPct(setpoint.soc_max_pct) : null;
-  const belt = charging ? socMax : socMin;
+  const beltValue = charging ? socMax : socMin;
+  const belt = strategyPref === DEYE_BATTERY_STRATEGY.POWER_SOC && beltValue != null ? beltValue : null;
   const strategy = belt == null ? DEYE_BATTERY_STRATEGY.POWER : DEYE_BATTERY_STRATEGY.POWER_SOC;
   // RAM registers: no dwell, no min_change, and ALWAYS re-written (the write is the
   // watchdog kick - see the header). `always` is what makes the executor bypass its
@@ -1522,6 +1563,7 @@ module.exports = {
   classifyDeyeCapability,
   deyeControlPath,
   resolveDeyeRemoteWatchdog,
+  resolveDeyeRemoteStrategy,
   deyeRemoteSetpointUnits,
   resolveDeyeWriteFc,
   resolveDeyePowerScale,

@@ -209,6 +209,12 @@ func solarmanFields() []Field {
 			}},
 		{Key: "remote_watchdog_s", Label: "Totmannschalter der Fernsteuerung (Sekunden)", Type: "number", Default: 0,
 			Help: "Wie lange der Wechselrichter einen Sollwert ohne neue Nachricht von VoltPilot hält, bevor er die Fernsteuerung von selbst verlässt und normal weiterläuft. Leer/0 = 60 Sekunden (empfohlen, ca. 6 Sollwert-Takte Reserve). Erlaubt sind 10 bis 18000 Sekunden."},
+		{Key: "remote_battery_strategy", Label: "Batterie-Strategie der Fernsteuerung", Type: "select", Default: 0,
+			Help: "Standard: „Nur Leistung\" - der Wechselrichter bekommt ausschließlich den Leistungssollwert, ohne SoC-Ziel im Gerät. Bei „Leistung + SoC-Grenze\" wird zusätzlich eine SoC-Grenze im Gerät gesetzt; auf manchen Firmwares (z. B. SUN-30K-SG01HP3-EU) wurde diese Grenze aber als ZIEL statt als Grenze ausgelegt, sodass die Batterie ein Vielfaches der befohlenen Leistung lieferte. Nur zum Nachtesten umstellen. Die SoC-Grenzen von VoltPilot greifen in beiden Fällen (guards.Clamp).",
+			Options: []Opt{
+				{Value: 0, Label: "Nur Leistung (empfohlen)"},
+				{Value: 5, Label: "Leistung + SoC-Grenze (nur zum Test)"},
+			}},
 	}
 }
 
@@ -637,6 +643,19 @@ type Connection struct {
 	// config - the whole safety argument of this path is that the timer exists.
 	RemoteWatchdogS int `json:"remote_watchdog_s,omitempty"`
 
+	// RemoteBatteryStrategy selects the battery-side strategy (register 1105) the Deye
+	// REMOTE-MODE control path arms: 0/absent = the DEFAULT "Power only" (2) - the signed
+	// setpoint (1109) is the only instruction, NO on-device SoC target in 1108; 5 =
+	// "Power + SOC" (opt-in), which additionally writes an on-device SoC belt in 1108.
+	// The default flipped to Power because on the live SUN-30K-SG01HP3-EU the 1108 SoC
+	// value was driven toward as a TARGET (a ~8x over-delivery on a commanded -1 kW), not
+	// as a floor - so strategy 5 + 1108 is a re-testable variant, not the default, and
+	// guards.Clamp remains the SoC authority either way (it clamps a charge to 0 at/above
+	// SocMax and a discharge to 0 at/below SocMin, every tick). Solarman-V5 (Deye) only.
+	// Read by the Node-RED control adapter as conn.remote_battery_strategy (see
+	// inverter-control-routing.js resolveDeyeRemoteStrategy).
+	RemoteBatteryStrategy int `json:"remote_battery_strategy,omitempty"`
+
 	// InvertBattSign flips the battery-power READ sign so the decoded
 	// `battery_power_kw` honors the documented convention (+ charge / - discharge),
 	// which the cloud's balance-derived battery_kw and the First-Light verdict both
@@ -798,6 +817,13 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.RemoteWatchdogS != 0 && (conn.RemoteWatchdogS < 10 || conn.RemoteWatchdogS > 18000) {
 			return Selection{}, invalid("Der Totmannschalter der Fernsteuerung muss zwischen 10 und 18000 Sekunden liegen.")
 		}
+		// 0 = the default "Power only" battery-side strategy (register 1105 <- 2), no
+		// on-device SoC target; 5 = the opt-in "Power + SOC" strategy that also writes an
+		// on-device SoC belt in 1108. See Connection.RemoteBatteryStrategy. The Node-RED
+		// control adapter reads it (0/anything but 5 -> Power).
+		if conn.RemoteBatteryStrategy != 0 && conn.RemoteBatteryStrategy != 5 {
+			return Selection{}, invalid("Die Batterie-Strategie der Fernsteuerung muss „Nur Leistung\" (0) oder „Leistung + SoC-Grenze\" (5) sein.")
+		}
 		// fields of the other transports are not part of this one.
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 	case CommModbusTCP:
@@ -815,7 +841,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, false, 0, false, ""
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
-		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 	case CommFroniusSolarAPI:
 		// The Solar API (HTTP/JSON) needs only host + port; no serial, unit id or
 		// auth. `insecure_tls` and `invert_grid_sign` (shared) are the only extras.
@@ -827,7 +853,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.ModelType = "", 0, 0, ""
 		conn.UnitID, conn.Profile, conn.InvertControlSign, conn.InvertBattSign = 0, "", false, false
 		conn.ControlWriteFc = 0
-		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 	case CommFroniusSunSpec:
 		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
 		// hint + the grid-sign escape hatch. The register-map profile is the single
@@ -855,7 +881,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS = "", 0, 0, false
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
-		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -868,7 +894,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 		conn.InvertControlSign, conn.InvertBattSign = false, false
 		conn.ControlWriteFc = 0
-		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
+		conn.RemoteMode, conn.RemoteWatchdogS, conn.RemoteBatteryStrategy = "", 0, 0
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -964,6 +990,12 @@ func (s Selection) BusPayload() []byte {
 		// default). Publishing them here is what lets the SELF-WIRING path carry them.
 		conn["remote_mode"] = s.Connection.RemoteMode
 		conn["remote_watchdog_s"] = s.Connection.RemoteWatchdogS
+		// remote_battery_strategy selects the remote-mode battery-side strategy (1105):
+		// 0/absent = "Power only" (2, the default - no on-device 1108 target), 5 = the
+		// opt-in "Power + SOC" belt. Publishing it here is what lets the SELF-WIRING path
+		// carry it (like remote_mode) - without it a self-wired Deye always used the
+		// adapter default. See Connection.RemoteBatteryStrategy.
+		conn["remote_battery_strategy"] = s.Connection.RemoteBatteryStrategy
 	case CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile

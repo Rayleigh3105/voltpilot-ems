@@ -276,6 +276,14 @@ type Session struct {
 	// reset whenever the test changes (StartTest / Abort / ResetConfirmations), so a
 	// certification can never precede a real, confirmed write for the current test.
 	writeReadbackOK bool
+
+	// remotePath is true when the last calibration control readback came over the Deye
+	// REMOTE-MODE path (control_path == "remote"), set by the agent via SetControlPath.
+	// It makes the DISPLAYED scale hint path-aware (Snapshot applies RemoteScaleHint):
+	// the remote setpoint scales from the model's rated power, so the ToU "set
+	// power_scale 10" advice is wrong there. Display only - it never affects a gate, a
+	// fact, or the write path.
+	remotePath bool
 }
 
 // NewSession builds a disarmed session with the given envelope.
@@ -504,6 +512,14 @@ func (s *Session) NoteWriteReadback(allMatch bool) {
 	s.writeReadbackOK = allMatch
 }
 
+// SetControlPath records which control surface last drove a calibration write, from the
+// readback's control_path ("remote" = the Deye Tier-2 register block 1100-1121, else the
+// ToU/default). It steers ONLY the displayed scale hint (RemoteScaleHint): the remote
+// setpoint scales from the model's rated power, so the ToU power_scale advice is wrong
+// there. It never touches a gate, a fact, or the write path. The agent calls it from the
+// calibration readback alongside NoteWriteReadback.
+func (s *Session) SetControlPath(path string) { s.remotePath = path == "remote" }
+
 // ResetConfirmations clears both operator confirmations, the landed-write evidence AND
 // the captured movement evidence (the agent calls this when a sign/scale correction is
 // applied - a prior confirmation and its proof are then stale).
@@ -589,6 +605,9 @@ func Verdict(commandKw float64, before, after Reading) VerdictResult {
 	}
 
 	// One combined German sentence for the common cases (sign wrong already set above).
+	// This is the ToU/decawatt phrasing (power_scale). The REMOTE-MODE path scales from
+	// the model's rated power instead, so a caller on that path post-processes the hint
+	// with RemoteScaleHint (see Snapshot) - never suggesting power_scale there.
 	if v.SignOK {
 		switch {
 		case v.MagnitudeOK:
@@ -600,6 +619,32 @@ func Verdict(commandKw float64, before, after Reading) VerdictResult {
 		default:
 			v.Text = "Richtung stimmt; Größe prüfen (gemessen weicht vom Sollwert ab)."
 		}
+	}
+	return v
+}
+
+// RemoteScaleHint rewrites a sign-OK-but-scale-off verdict for the Deye REMOTE-MODE
+// control path. There the setpoint scale comes from the model's RATED power (register
+// 1109 = 0.1 % of rated), NOT from the ToU decawatt power_scale, so the default
+// "Leistungsskalierung auf 10 (HV)" advice is meaningless and MISLEADING (power_scale
+// only exists on the ToU register map). It replaces that text with model-rating guidance
+// and clears the power_scale ScaleHint. Every FACT (SignOK, MagnitudeOK, ScaleRatio,
+// MeasuredKw, DeltaKw) is left untouched - only the human hint changes, so the confirm
+// gates (which read MagnitudeOK, not the text) are unaffected. A no-op unless the verdict
+// is SignOK && !MagnitudeOK (the only case that emitted a scale hint). Pure.
+func (v VerdictResult) RemoteScaleHint() VerdictResult {
+	if !v.SignOK || v.MagnitudeOK {
+		return v
+	}
+	v.ScaleHint = "" // power_scale does not apply to the remote-mode setpoint
+	if v.ScaleRatio != nil && *v.ScaleRatio >= scaleFactorHigh {
+		v.Text = "Richtung stimmt, aber die Batterie bewegt deutlich mehr als den Sollwert. " +
+			"Bei der Fernsteuerung ergibt sich die Skalierung aus der Nennleistung des Modells - " +
+			"bitte prüfen, ob das genaue Wechselrichter-Modell gewählt ist."
+	} else {
+		v.Text = "Richtung stimmt, die bewegte Leistung weicht aber vom Sollwert ab. " +
+			"Bei der Fernsteuerung ergibt sich die Skalierung aus der Nennleistung des Modells - " +
+			"bitte das genaue Wechselrichter-Modell prüfen."
 	}
 	return v
 }
@@ -742,6 +787,13 @@ func (s *Session) Snapshot(now time.Time, live Reading, band SocBand) Snapshot {
 			v = *s.test.evidence
 		} else {
 			v = Verdict(s.test.commandKw, s.test.before, live)
+		}
+		// Path-aware hint: on the Deye REMOTE-MODE path the scale comes from the model's
+		// rated power, so the ToU "set power_scale 10 (HV)" advice is wrong. Applied at the
+		// display boundary so it covers both the live verdict AND the captured evidence
+		// (facts/gates untouched - RemoteScaleHint only rewrites the human text).
+		if s.remotePath {
+			v = v.RemoteScaleHint()
 		}
 		if evValid {
 			snap.EvidenceValid = true

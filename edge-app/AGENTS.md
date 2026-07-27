@@ -647,8 +647,18 @@ owner's SUN-30K-SG01HP3-EU** (live read-only probe 2026-07-27): `1101=0xFFFF`,
   the answer the executor writes NOTHING that tick and lets the next one re-plan.
 - **The write order is load-bearing:** `1101` watchdog FIRST (arm the dead-man's
   switch before anything can move) → `1104=1` BATTERY-side (AC-/grid-side
-  throttles PV) → `1105` 5 (Power+SOC) or 2 → `1108` SoC belt → `1109` signed
-  setpoint → `1100=1` ENABLE LAST.
+  throttles PV) → `1105` strategy (DEFAULT **2** = Power; **5** = Power+SOC only
+  when `conn.remote_battery_strategy=5`) → `1108` SoC belt (**strategy 5 ONLY** -
+  omitted on the default) → `1109` signed setpoint → `1100=1` ENABLE LAST.
+- **DEFAULT strategy is 2 (Power), NOT 5 (`resolveDeyeRemoteStrategy`, fm/vp-deye-strategy-v2).**
+  On the live SUN-30K-SG01HP3-EU (2026-07-27) strategy 5 + `1108`=5 % with the
+  battery at 100 % SoC drove the battery TOWARD 5 % as a TARGET (every register
+  echoed, yet ~-8,0 kW measured on a commanded -1,0 kW), so the power value was not
+  the binding rate. The default now writes ONLY the setpoint (no `1108`); strategy 5
+  + the belt is an opt-in re-test lever (`connection.remote_battery_strategy=5`,
+  plumbed through Go `Connection.RemoteBatteryStrategy` + `BusPayload`). Dropping the
+  on-device belt does NOT weaken SoC protection - `guards.Clamp` is the SoC authority
+  either way (charge→0 at/above SocMax, discharge→0 at/below SocMin, every tick).
 - **`always: true` + `dwell_s: 0` on every remote WriteOp is NOT optional.** RAM
   registers have no wear cost and re-asserting every ~10 s tick IS the watchdog
   kick; the executor's EEPROM write-on-change filter would otherwise skip an
@@ -667,8 +677,13 @@ owner's SUN-30K-SG01HP3-EU** (live read-only probe 2026-07-27): `1101=0xFFFF`,
 - **⚠ The SoC guard is SAFETY-CRITICAL here.** One field report says the
   inverter's own min/max-SoC protection may NOT apply in remote mode, so
   `guards.Clamp`'s band is the authority (the adapter writes the already-clamped
-  kW verbatim and never widens it) and strategy 5 + `1108` is armed as an
-  independent on-device belt. `edge/setpoint` carries `soc_max_pct` for it.
+  kW verbatim and never widens it): it clamps charge→0 at/above `SocMaxPct` and
+  discharge→0 at/below `SocMinPct`, re-evaluated every tick (`guards.go` step 2).
+  Since the strategy default flipped to 2 the on-device `1108` belt is NO LONGER
+  written by default (it was mishandled as a target - see the strategy bullet);
+  the guard band is now the ONLY SoC protection on the default path, which is why
+  the guard is the load-bearing safety argument. `edge/setpoint` still carries
+  `soc_max_pct`, used by the opt-in strategy-5 belt.
 - **Curtailment is NOT on this path** (`pvLimitSupported:false`, reported never
   silently dropped): the Deye feed-in cap is an EEPROM installer register.
 - `1121` (remote status) is an **observation**, carried in `plan.observations` →
