@@ -264,6 +264,33 @@ describe('planSentence', () => {
       'Der Speicher hält heute seine Ladung.',
     );
   });
+
+  it('names the recorded reason on an all-idle day, or stays silent', () => {
+    const idle = (slotRole: string | null, extra: Record<string, unknown> = {}) =>
+      hours(8, 20, 0, 1).map((s) => ({ ...s, slotRole, priceEurMwh: 200, ...extra }));
+
+    // No reason recorded -> the bare observation, exactly as before.
+    expect(planSentence(idle(null), 'eigenverbrauch', NOW)).toBe(
+      'Der Speicher hält heute seine Ladung.',
+    );
+    expect(
+      planSentence(idle('reserve_halten', { slotFlags: ['reserve_backup'] }), 'eigenverbrauch', NOW),
+    ).toBe('Der Speicher hält seine Ladung heute als Notstrom-Reserve zurück.');
+    expect(
+      planSentence(idle('reserve_halten', { slotFlags: ['reserve_peak'] }), 'eigenverbrauch', NOW),
+    ).toBe(
+      'Der Speicher hält seine Ladung heute als Reserve für die Lastspitzenkappung zurück.',
+    );
+    expect(
+      planSentence(idle('warten', { storedValueCtKwh: 28.3 }), 'eigenverbrauch', NOW),
+    ).toBe(
+      'Der Speicher hält heute seine Ladung - sie ist mit 28,3 ct/kWh bewertet, ' +
+        'mehr als der höchste Preis heute (20,0 ct/kWh).',
+    );
+    expect(planSentence(idle('warten'), 'eigenverbrauch', NOW)).toBe(
+      'Der Speicher wartet heute - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.',
+    );
+  });
 });
 
 describe('planHourBars', () => {
@@ -504,6 +531,106 @@ describe('planInsightParts', () => {
     const s = text(parts);
     expect(s).toContain('in Ruhe');
     expect(s).not.toContain('lädt günstig');
+  });
+
+  /**
+   * The idle sentence used to assert "die Preisunterschiede lohnen kein Laden
+   * und Entladen" as a blanket fallback that inspected no price at all. That
+   * is what hid the flat-tariff freeze (scout vp-fahrplan-idle-n7): the plan
+   * was idle over a 20 ct spread and told its owner the spread was too small.
+   * It must now name the reason the optimizer RECORDED, or say nothing.
+   */
+  describe('names the recorded reason instead of asserting one', () => {
+    const why = (
+      hour: number,
+      slotRole: string | null,
+      slotFlags: string[] | null = null,
+      storedValueCtKwh: number | null = null,
+      priceEurMwh: number | null = 200,
+    ) => ({ ...priced(hour, 0, priceEurMwh), slotRole, slotFlags, storedValueCtKwh });
+
+    it('never repeats the unverified price-difference claim', () => {
+      for (const slots of [
+        [why(3, null), why(19, null)],
+        [why(3, 'warten'), why(19, 'warten')],
+        [why(3, 'reserve_halten', ['reserve_backup'])],
+        [why(3, 'warten', null, 28.3, 200)],
+      ]) {
+        expect(text(planInsightParts(slots, NOW))).not.toContain(
+          'Preisunterschiede lohnen kein Laden und Entladen',
+        );
+      }
+    });
+
+    it('states only the observation when no reason was computed', () => {
+      // Pre-feature rows (an older optimizer, or a failed explain pass): keep
+      // "in Ruhe" and drop the causal clause entirely.
+      const s = text(planInsightParts([why(3, null), why(19, null)], NOW));
+      expect(s).toBe('Der Speicher bleibt in diesem Zeitraum in Ruhe.');
+      expect(s).not.toContain(' - ');
+    });
+
+    it('names a backup reserve', () => {
+      const s = text(
+        planInsightParts([why(3, 'reserve_halten', ['reserve_backup', 'soc_floor'])], NOW),
+      );
+      expect(s).toBe('Der Speicher hält seine Ladung als Notstrom-Reserve zurück.');
+    });
+
+    it('names a peak-shaving reserve', () => {
+      const s = text(
+        planInsightParts([why(3, 'reserve_halten', ['reserve_peak', 'soc_floor'])], NOW),
+      );
+      expect(s).toBe(
+        'Der Speicher hält seine Ladung als Reserve für die Lastspitzenkappung zurück.',
+      );
+    });
+
+    it('names the stored-energy valuation that outranks the whole window', () => {
+      // THE sentence that would have exposed the freeze in one glance: stored
+      // energy valued at 28.3 ct against a 20 ct peak.
+      const s = text(
+        planInsightParts(
+          [why(3, 'warten', null, 28.3, 200), why(19, 'warten', null, 28.3, 180)],
+          NOW,
+        ),
+      );
+      expect(s).toContain('hält seine Ladung');
+      expect(s).toContain('28,3');
+      expect(s).toContain('20,0');
+      expect(s).toContain('mehr als der höchste Preis im Zeitraum');
+    });
+
+    it('falls back to plain waiting when the valuation does not outrank the window', () => {
+      const s = text(
+        planInsightParts([why(3, 'warten', null, 12.0, 200)], NOW),
+      );
+      expect(s).toBe(
+        'Der Speicher wartet - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.',
+      );
+    });
+
+    it('does not claim "mehr als" on a tie', () => {
+      // Equal at the shown precision is a tie, and a tie is honestly just
+      // waiting - the sentence must never read "20,0 ct, mehr als 20,0 ct".
+      const s = text(planInsightParts([why(3, 'warten', null, 20.0, 200)], NOW));
+      expect(s).not.toContain('mehr als');
+      expect(s).toContain('wartet');
+    });
+
+    it('makes no claim for an idle stretch under an unexpected role', () => {
+      const s = text(planInsightParts([why(3, 'irgendwas_neues')], NOW));
+      expect(s).toBe('Der Speicher bleibt in diesem Zeitraum in Ruhe.');
+    });
+
+    it('reads the reason from the IDLE slots, by dominant role', () => {
+      const slots = [
+        why(3, 'warten', null, 28.3, 200),
+        why(4, 'warten', null, 28.3, 200),
+        why(5, 'reserve_halten', ['reserve_backup']),
+      ];
+      expect(text(planInsightParts(slots, NOW))).toContain('mehr als der höchste Preis');
+    });
   });
 
   it('describes a one-directional plan without inventing the other half', () => {

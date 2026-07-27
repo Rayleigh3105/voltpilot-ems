@@ -201,6 +201,134 @@ function ctLabel(v: number): string {
   return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}${NBSP}ct/kWh`;
 }
 
+/** The slot fields the idle-reason derivation reads (all optional: a plan from
+ * a pre-why optimizer simply carries none of them). */
+export interface IdleSlotLike {
+  batteryKw: number | null;
+  priceEurMwh?: number | null;
+  slotRole?: string | null;
+  slotFlags?: string[] | null;
+  storedValueCtKwh?: number | null;
+}
+
+/**
+ * Why an idle stretch of the plan is idle - taken from what the optimizer
+ * RECORDED, never guessed.
+ *
+ * `null` means the reason was not computed (a plan from before the why-layer,
+ * or a run whose explain pass failed). Callers must then say only that the
+ * battery is idle and stop: the whole point of this function is that an
+ * uncomputed cause stays absent instead of being invented.
+ *
+ * Background: the previous copy asserted "die Preisunterschiede lohnen kein
+ * Laden und Entladen" as a blanket fallback that inspected no price at all.
+ * That is what hid the flat-tariff freeze (scout vp-fahrplan-idle-n7) for as
+ * long as it lasted - the plan was idle over a 20 ct spread and told its owner
+ * the spread was too small. Had it named the real cause ("stored energy is
+ * valued at 28.3 ct/kWh, above the 20 ct peak") it would have pointed straight
+ * at the terminal value.
+ */
+export type IdleReason =
+  | { kind: 'reserve'; driver: 'notstrom' | 'lastspitze' | null }
+  | { kind: 'stored_value_above_peak'; storedCt: number; bestCt: number }
+  | { kind: 'warten' };
+
+export function idleReason(slots: IdleSlotLike[]): IdleReason | null {
+  const idle = slots.filter(
+    (s) => Math.abs(Number(s.batteryKw ?? 0)) < SLOT_DEADBAND_KW,
+  );
+  const roles = idle.map((s) => s.slotRole).filter((r): r is string => !!r);
+  if (roles.length === 0) return null; // not computed - say nothing
+
+  const counts = new Map<string, number>();
+  for (const r of roles) counts.set(r, (counts.get(r) ?? 0) + 1);
+  let dominant = roles[0];
+  for (const [role, n] of counts) {
+    if (n > (counts.get(dominant) ?? 0)) dominant = role;
+  }
+
+  const flagged = (flag: string) =>
+    idle.some((s) => s.slotRole === dominant && (s.slotFlags ?? []).includes(flag));
+
+  if (dominant === 'reserve_halten') {
+    if (flagged('reserve_backup')) return { kind: 'reserve', driver: 'notstrom' };
+    if (flagged('reserve_peak')) return { kind: 'reserve', driver: 'lastspitze' };
+    return { kind: 'reserve', driver: null };
+  }
+
+  if (dominant === 'warten') {
+    // The diagnostic that would have exposed the freeze: stored energy valued
+    // above anything the window can pay for it. Compared on the SHOWN (0.1 ct)
+    // precision so the sentence's "mehr als" is always literally true - equal
+    // values are a tie, and a tie is honestly just "waiting".
+    const stored = idle
+      .map((s) => s.storedValueCtKwh)
+      .filter((v): v is number => v != null && Number.isFinite(v));
+    const prices = slots
+      .map((s) => s.priceEurMwh)
+      .filter((v): v is number => v != null && Number.isFinite(v));
+    if (stored.length > 0 && prices.length > 0) {
+      const storedCt = round1(Math.max(...stored));
+      const bestCt = round1(Math.max(...prices) / 10);
+      if (storedCt > bestCt) {
+        return { kind: 'stored_value_above_peak', storedCt, bestCt };
+      }
+    }
+    return { kind: 'warten' };
+  }
+
+  // Any other role on an idle stretch (or a vocabulary we do not know yet):
+  // no verified claim to make.
+  return null;
+}
+
+function round1(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/** The idle reason as bold/plain parts, or the bare "in Ruhe" statement when
+ * the optimizer recorded no reason. */
+function idleParts(slots: IdleSlotLike[]): InsightPart[] {
+  const reason = idleReason(slots);
+  if (reason == null) {
+    // Not computed -> state the observation, claim no cause.
+    return [
+      { text: 'Der Speicher bleibt in diesem Zeitraum ' },
+      { text: 'in Ruhe', strong: true },
+      { text: '.' },
+    ];
+  }
+  if (reason.kind === 'reserve') {
+    const tail =
+      reason.driver === 'notstrom'
+        ? ' als Notstrom-Reserve zurück.'
+        : reason.driver === 'lastspitze'
+          ? ' als Reserve für die Lastspitzenkappung zurück.'
+          : ' als Reserve zurück.';
+    return [
+      { text: 'Der Speicher ' },
+      { text: 'hält seine Ladung', strong: true },
+      { text: tail },
+    ];
+  }
+  if (reason.kind === 'stored_value_above_peak') {
+    return [
+      { text: 'Der Speicher ' },
+      { text: 'hält seine Ladung', strong: true },
+      {
+        text:
+          ` - die gespeicherte Energie ist mit ${ctLabel(reason.storedCt)} bewertet, ` +
+          `mehr als der höchste Preis im Zeitraum (${ctLabel(reason.bestCt)}).`,
+      },
+    ];
+  }
+  return [
+    { text: 'Der Speicher ' },
+    { text: 'wartet', strong: true },
+    { text: ' - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.' },
+  ];
+}
+
 /**
  * The chart's takeaway in plain German, as bold/plain parts (audit F3).
  *
@@ -223,6 +351,10 @@ export function planInsightParts(
     priceEurMwh: number | null;
     costEur: number | null;
     baselineCostEur: number | null;
+    /** Why-layer facts; absent on plans from before the explain layer. */
+    slotRole?: string | null;
+    slotFlags?: string[] | null;
+    storedValueCtKwh?: number | null;
   }[],
   now: Date,
 ): InsightPart[] | null {
@@ -268,10 +400,7 @@ export function planInsightParts(
   }
 
   if (slots.some((s) => s.priceEurMwh != null)) {
-    parts.push({ text: 'Der Speicher bleibt in diesem Zeitraum ' });
-    parts.push({ text: 'in Ruhe', strong: true });
-    parts.push({ text: ' - die Preisunterschiede lohnen kein Laden und Entladen.' });
-    return parts;
+    return idleParts(slots);
   }
   return null;
 }
@@ -287,6 +416,12 @@ export interface PlanSlotLike {
   pvKw?: number | null;
   /** Planned PV curtailment (kW held back, >= 0). */
   curtailKw?: number | null;
+  /** Why-layer facts, used only to name the reason an all-idle day is idle
+   * (absent on plans from before the explain layer). */
+  priceEurMwh?: number | null;
+  slotRole?: string | null;
+  slotFlags?: string[] | null;
+  storedValueCtKwh?: number | null;
 }
 
 /** The plan's slots that fall on the local calendar day of `now`. */
@@ -499,7 +634,25 @@ export function planSentence(
   if (discharge) {
     return `${cap(daypart(midHour(discharge)))} ${verb} (${hourRange(discharge)}).`;
   }
-  return 'Der Speicher hält heute seine Ladung.';
+  // An all-idle day: name the reason the optimizer recorded, or state only the
+  // observation when it recorded none (never a fabricated cause - the same
+  // discipline as planInsightParts).
+  const reason = idleReason(today);
+  if (reason == null) return 'Der Speicher hält heute seine Ladung.';
+  if (reason.kind === 'reserve') {
+    return reason.driver === 'notstrom'
+      ? 'Der Speicher hält seine Ladung heute als Notstrom-Reserve zurück.'
+      : reason.driver === 'lastspitze'
+        ? 'Der Speicher hält seine Ladung heute als Reserve für die Lastspitzenkappung zurück.'
+        : 'Der Speicher hält seine Ladung heute als Reserve zurück.';
+  }
+  if (reason.kind === 'stored_value_above_peak') {
+    return (
+      `Der Speicher hält heute seine Ladung - sie ist mit ${ctLabel(reason.storedCt)} ` +
+      `bewertet, mehr als der höchste Preis heute (${ctLabel(reason.bestCt)}).`
+    );
+  }
+  return 'Der Speicher wartet heute - kein Einsatz, der sich nach Verlusten und Verschleiß lohnt.';
 }
 
 /** Contiguous same-direction windows; gaps of up to 30 min idle are bridged. */
