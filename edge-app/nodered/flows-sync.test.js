@@ -400,6 +400,56 @@ test('flow control planner matches deyeRemoteControl() for a discharge AND a cha
   }
 });
 
+// The PER-DEVICE First-Light grant (setpoint.device_certified) is what actually
+// turns the Fahrplan into live writes on a released pilot, so the inline plan-node
+// copy must agree with the module for BOTH the granted and the ungranted case -
+// on the real (non-calibration) schedule setpoint, not just the calibration one.
+test('flow control planner matches the module for a GRANTED Fahrplan setpoint (remote)', () => {
+  const cap = ownerCap();
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  const fresh = new Date().toISOString();
+  for (const grant of [true, false]) {
+    const sp = { battery_setpoint_kw: -20, source: 'schedule', slot_start: '2026-07-27T19:45:00Z',
+      ts: fresh, control_enabled: true, device_certified: grant, soc_min_pct: 20, soc_max_pct: 95 };
+    const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+      msg: { setpoint: sp }, flow: { inverter_config: REMOTE_DEYE_SEL, [capKey]: cap }, context: {},
+    });
+    assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+      controlRouting.controlRoute(REMOTE_DEYE_SEL, sp, { ratedKw: 30, deye: cap }),
+    )), 'inline == module for device_certified=' + grant);
+    assert.strictEqual(msg.control.writes.length > 0, grant,
+      grant ? 'a granted Fahrplan setpoint writes' : 'an ungranted one stays read-only');
+    if (grant) {
+      assert.strictEqual(msg.control.writes[0].role, 'remote_watchdog', 'watchdog first');
+      assert.strictEqual(msg.control.writes[msg.control.writes.length - 1].role, 'remote_mode', 'enable last');
+    }
+  }
+});
+
+// The plan node threads the grant into controlRelease too, so a device it was
+// allowed to DRIVE can be HANDED BACK on a kill-off. Without the threading the
+// released device would control and then never release.
+test('flow control planner threads device_certified into controlRelease on a kill-off', () => {
+  const cap = ownerCap();
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  const ctx = {}; const flow = { inverter_config: REMOTE_DEYE_SEL, [capKey]: cap };
+  const plan = byId['auto-control-plan'].func;
+  const fresh = new Date().toISOString();
+  // 1) a GRANTED schedule write primes was_controlling (no calibration involved)
+  runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -20, source: 'schedule', ts: fresh, control_enabled: true, device_certified: true, soc_min_pct: 20 } }, flow, context: ctx });
+  assert.strictEqual(ctx.was_controlling, true, 'the Fahrplan really took control');
+  // 2) kill-off -> an EXECUTABLE release, matching the module with the same opts
+  const { msg } = runFunctionNode(plan, { msg: { setpoint: { battery_setpoint_kw: -20, source: 'schedule', ts: fresh, control_enabled: false, device_certified: true } }, flow, context: ctx });
+  assert.strictEqual(msg.control.mode, 'release');
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+    controlRouting.controlRelease(REMOTE_DEYE_SEL, { deviceCertified: true, controlEnabled: false, deye: cap }),
+  )), 'the inline release copy matches the module incl. the threaded grant');
+  assert.strictEqual(msg.control.writes.length, 1, 'the hand-back executes');
+  assert.strictEqual(msg.control.writes[0].role, 'remote_mode');
+  assert.strictEqual(msg.control.writes[0].value, 0, 'remote mode OFF');
+  assert.strictEqual(ctx.was_controlling, false, 'control was handed back');
+});
+
 test('flow control planner falls back to ToU when the cached capability says ABSENT', () => {
   const absent = controlRouting.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: new Array(22).fill(0) });
   const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
