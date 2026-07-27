@@ -151,9 +151,14 @@
     four.action = everDelivered ? { label: "Werte ansehen", href: "index.html", ghost: true } : null;
 
     var steps = [one, two, three, four];
-    var doneCount = 0;
-    for (var i = 0; i < steps.length; i++) if (steps[i].state === "done") doneCount++;
-    return { steps: steps, doneCount: doneCount, allDone: doneCount === steps.length };
+    var doneCount = 0, activeNum = null;
+    for (var i = 0; i < steps.length; i++) {
+      if (steps[i].state === "done") doneCount++;
+      else if (activeNum === null) activeNum = steps[i].num;
+    }
+    // activeNum is the FIRST step that is not done - never doneCount+1, which
+    // would say "Schritt 4 von 4" while step 3 is the one still open.
+    return { steps: steps, doneCount: doneCount, activeNum: activeNum, allDone: activeNum === null };
   }
 
   global.VPCommissioning = {

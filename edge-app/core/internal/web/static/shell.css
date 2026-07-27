@@ -31,13 +31,23 @@
   background: linear-gradient(135deg, var(--vp-primary-light), var(--vp-primary));
 }
 .brand-mark svg { width: 19px; height: 19px; }
-.brand span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brand small {
+.brand-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-label small {
   display: block; font-family: var(--vp-font-body); font-weight: 400;
   font-size: 11px; letter-spacing: .02em; color: rgba(255,255,255,.66); margin-top: -2px;
 }
-.topbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.topbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
 .version { color: rgba(255,255,255,.6); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* One-handed phone: the header must fit the cloud state AND the Technikmodus
+   switch without truncating either. The wordmark is the thing that can go -
+   the page title and the nav already say where you are, and the mark stays a
+   tappable link home. */
+@media (max-width: 759px) {
+  .brand-label { display: none; }
+  .version { display: none; }
+  .tech-bar-long { display: none; }
+}
 
 /* Cloud state chip - readable ON the navy bar (status is text + dot, never
    colour alone). */
@@ -54,6 +64,23 @@
 .state-chip.off { color: rgba(255,255,255,.7); }
 .state-chip .dot.live { animation: pulse 1.8s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* Status pill on a LIGHT card surface (source rows, the inverter summary row,
+   the "Verbindung testen" panel). Built by sources.js / inverter.js / verify.js
+   as `class="pill ok|warn|off"` with a `.dot` inside - that contract is fixed;
+   inverter.css layers the compact `.row .pill` variant on top. Status is always
+   text + dot, never colour alone. */
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: var(--vp-weight-semibold);
+  padding: 7px 12px; border-radius: var(--vp-radius-pill);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
+.pill.ok { color: var(--ok); background: var(--ok-soft); border-color: #CBEBD5; }
+.pill.warn { color: var(--warn); background: var(--warn-soft); border-color: #F3E2C4; }
+.pill.off { color: var(--muted); background: var(--bg-2); border-color: var(--line); }
+.pill .dot.live { animation: pulse 1.8s ease-in-out infinite; }
 
 /* ---------------- Technikmodus switch (same position on every page) ------- */
 .tech-toggle {
@@ -79,7 +106,11 @@
 .tech-toggle[aria-pressed="true"] { background: var(--tech); border-color: var(--tech); }
 .tech-toggle[aria-pressed="true"] .sw { background: rgba(255,255,255,.45); }
 .tech-toggle[aria-pressed="true"] .sw::after { transform: translateX(13px); }
+/* Phone shows "Technik", desktop the full "Technikmodus" - the accessible name
+   is the button's aria-label, so it reads the same at every width. */
 .tech-toggle-label { display: none; }
+.tech-toggle-short { display: inline; }
+.tech-toggle-state { opacity: .75; }
 
 /* The solid violet bar: nobody may sit in the technical view thinking it is
    the normal one. Carries a one-click way out. */
@@ -120,10 +151,13 @@
 /* ---------------- Inline technical blocks (Technikmodus) ----------------
    They appear AT THE PLACE THEY BELONG - registers under the control state,
    raw source values under the flow - never in a separate advanced dump. */
-.tech-only { display: none; }
-html.tech-on .tech-only { display: block; }
-html.tech-on tr.tech-only { display: table-row; }
-html.tech-on li.tech-only, html.tech-on .tech-only.is-flex { display: flex; }
+/* Hidden UNLESS Technikmodus is on. Written as a negated :not() + !important on
+   purpose: a plain `.tech-only { display:none }` loses the cascade to any later
+   single-class rule that sets a display (`.area-title{display:flex}` did
+   exactly that and leaked a technical heading into normal mode). This form is
+   order-independent and keeps each element's natural display when revealed -
+   the same posture as the `[hidden]` rule in dashboard.css. */
+html:not(.tech-on) .tech-only { display: none !important; }
 
 .tech-block {
   border: 1px solid var(--tech-line);
@@ -239,6 +273,19 @@ html.tech-on li.tech-only, html.tech-on .tech-only.is-flex { display: flex; }
   cursor: pointer; min-height: 44px; padding: 0 4px; text-decoration: underline;
 }
 
+/* ---------------- "Jetzt": diagram + tiles ----------------
+   Phone: stacked, diagram first. Desktop: side by side, so the flow picture and
+   all four numbers are on screen together instead of one very tall diagram. */
+.now-grid { display: grid; gap: 16px; }
+.now-grid > .kpis { margin: 0; }
+@media (min-width: 1000px) {
+  .now-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+  .now-grid > .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Belt and braces: the SVG keeps its 400x250 aspect at width:100%, so an
+     unbounded column would render a ~750px-tall diagram. */
+  .now-grid .flow-wrap { max-height: 420px; }
+}
+
 /* ---------------- Section framing ---------------- */
 .page-lead { margin: 0 2px 14px; color: var(--muted); font-size: 13.5px; max-width: 62ch; }
 .area-title {
@@ -264,7 +311,7 @@ html.tech-on li.tech-only, html.tech-on .tech-only.is-flex { display: flex; }
   text-transform: uppercase; color: var(--err);
 }
 
-.foot { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 30px; line-height: var(--vp-leading-normal); }
+/* .foot is owned by dashboard.css. */
 
 /* ---------------- Breakpoints: MORE, not merely wider ---------------- */
 @media (min-width: 760px) {
@@ -273,6 +320,7 @@ html.tech-on li.tech-only, html.tech-on .tech-only.is-flex { display: flex; }
   .brand-mark { width: 38px; height: 38px; }
   .brand-mark svg { width: 22px; height: 22px; }
   .tech-toggle-label { display: inline; }
+  .tech-toggle-short { display: none; }
   .pagenav { padding: 10px 20px 0; }
   .pagenav a { flex: 0 0 auto; min-width: 168px; }
   .setup-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }

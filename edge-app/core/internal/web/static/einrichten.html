@@ -18,13 +18,14 @@
       <span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5L13 2z" fill="currentColor"/></svg>
       </span>
-      <span>VoltPilot&nbsp;Edge<small>Anlage vor Ort</small></span>
+      <span class="brand-label">VoltPilot&nbsp;Edge<small>Anlage vor Ort</small></span>
     </a>
     <div class="topbar-right">
       <span class="state-chip off" id="cloudPill"><span class="dot"></span><span id="cloudPillText">–</span></span>
       <button type="button" class="tech-toggle" id="techToggle" aria-pressed="false"
               aria-label="Technikmodus" title="Technikmodus ein- oder ausschalten">
         <span class="sw" aria-hidden="true"></span>
+        <span class="tech-toggle-short" aria-hidden="true">Technik</span>
         <span class="tech-toggle-label" aria-hidden="true">Technikmodus</span>
         <span class="tech-toggle-state" aria-hidden="true">aus</span>
       </button>
@@ -33,8 +34,8 @@
   </header>
 
   <div class="tech-bar" id="techBar" role="status" hidden>
-    <span>◆ Technikmodus aktiv · technische Details werden zusätzlich eingeblendet</span>
-    <button type="button" class="tech-bar-off" id="techBarOff">Technikmodus ausschalten</button>
+    <span>◆ Technikmodus aktiv<span class="tech-bar-long"> · technische Details werden zusätzlich eingeblendet</span></span>
+    <button type="button" class="tech-bar-off" id="techBarOff">Ausschalten</button>
   </div>
 
   <nav class="pagenav" aria-label="Bereiche">

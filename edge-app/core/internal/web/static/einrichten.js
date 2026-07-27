@@ -93,7 +93,7 @@
       prog.hidden = receded;
       prog.textContent = res.allDone
         ? "alle Schritte erledigt"
-        : "Schritt " + Math.min(res.doneCount + 1, res.steps.length) + " von " + res.steps.length;
+        : "Schritt " + res.activeNum + " von " + res.steps.length;
     }
   }
 
