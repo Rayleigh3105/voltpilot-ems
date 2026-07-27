@@ -358,6 +358,63 @@ func TestControlSummaryNilWithoutReadback(t *testing.T) {
 	}
 }
 
+// TestBlockedControlReadbackSurfacesToTheCardButNotTheHeartbeat pins the Defect 2
+// card path: a control plan that is EMPTY because something is WRONG (unknown
+// nameplate/scale) is published as a blocked readback with NO registers. It must
+// land on the snapshot (so the :8484 card shows the CAUSE instead of an eternal
+// "warte auf Rückmeldung") yet must NOT fold into the status heartbeat (the cloud
+// contract stays byte-identical to before - no summary when nothing is confirmed).
+func TestBlockedControlReadbackSurfacesToTheCardButNotTheHeartbeat(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+
+	reason := "Fernsteuerung: Nennleistung des Modells unbekannt - bitte das genaue Wechselrichter-Modell auswählen."
+	payload, _ := json.Marshal(map[string]any{
+		"ts": "2026-07-27T12:00:03Z", "family": "hybrid_3p", "source": "schedule",
+		"control_enabled": true, "certified": true, "control_path": "remote",
+		"blocked": true, "reason": reason,
+		"registers": []map[string]any{}, // a blocked readback legitimately has none
+	})
+	a.onControlReadback(localbus.TopicControlReadback, payload)
+
+	snap := a.State.Get()
+	if snap.Control == nil {
+		t.Fatal("a blocked readback must land on the snapshot for the card")
+	}
+	if !snap.Control.Blocked || snap.Control.Reason != reason {
+		t.Fatalf("blocked/reason not carried: %+v", snap.Control)
+	}
+	if len(snap.Control.Registers) != 0 {
+		t.Fatalf("a blocked readback must have no registers: %+v", snap.Control.Registers)
+	}
+	// It must NOT fold into the heartbeat (preserve the pre-Defect-2 cloud contract).
+	if sum := controlSummary(snap); sum != nil {
+		t.Fatalf("a blocked control info must not produce a heartbeat summary: %+v", sum)
+	}
+
+	// A genuinely empty (non-blocked) readback is still DROPPED - the blocked path is
+	// the ONLY reason a 0-register message is accepted.
+	before := a.State.Get().Control
+	empty, _ := json.Marshal(map[string]any{"family": "sunspec", "registers": []map[string]any{}})
+	a.onControlReadback(localbus.TopicControlReadback, empty)
+	if a.State.Get().Control != before {
+		t.Fatal("a non-blocked 0-register readback must be dropped, leaving Control unchanged")
+	}
+
+	// A subsequent REAL readback (registers present) clears the blocked state.
+	real, _ := json.Marshal(map[string]any{
+		"family": "hybrid_3p", "source": "schedule", "all_match": true, "control_enabled": true, "certified": true,
+		"registers": []map[string]any{
+			{"role": "battery_power", "fc": 3, "addr": 1109, "commanded_raw": 33, "actual_raw": 33, "match": true},
+		},
+	})
+	a.onControlReadback(localbus.TopicControlReadback, real)
+	if got := a.State.Get().Control; got == nil || got.Blocked || len(got.Registers) != 1 {
+		t.Fatalf("a real readback must clear the blocked state: %+v", got)
+	}
+}
+
 // TestRemoteControlPathSurfacesToTheOperator pins the visibility half of the Deye
 // REMOTE-MODE path: which surface is steering the inverter must be visible on the
 // :8484 card AND transmitted to the cloud - we never silently switch control

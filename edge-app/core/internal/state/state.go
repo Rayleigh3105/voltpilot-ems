@@ -149,6 +149,14 @@ type ControlInfo struct {
 	// another EMS) may be steering it. Surfaced, never silently fought.
 	PossibleConflict bool   `json:"possible_conflict,omitempty"`
 	ConflictReason   string `json:"conflict_reason,omitempty"`
+	// Blocked marks that the control plan was EMPTY because something is WRONG (an
+	// unknown nameplate / power scale) rather than a real readback. Reason carries
+	// the operator-facing cause. The :8484 card renders this instead of an eternal
+	// "warte auf Rückmeldung"; a blocked info deliberately has no Registers and is
+	// NOT folded into the status heartbeat (see controlSummary). Fed by a blocked
+	// edge/control/readback (Defect 2).
+	Blocked bool   `json:"blocked,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // ControlRegister is one control register's commanded-vs-actual readback.

@@ -1205,3 +1205,56 @@ test('remote: remote_mode "off" forces ToU and does NOT deadlock the executor in
     server.close();
   }
 });
+
+// --- Defect 2: a BLOCKED plan (empty because something is WRONG) is never silent ---
+//
+// The remote-mode nameplate-unknown refusal (and the ToU scale-suppressed refusal)
+// carry blocked:true. The executor must SURFACE that - a rate-limited node.warn AND a
+// blocked readback for the :8484 card - instead of the old silent "Probe-only tick"
+// return. A legitimately QUIET plan (uncertified / Not-Aus, no blocked flag) must stay
+// silent. No server needed: a blocked/quiet plan returns before opening a socket (a
+// fresh cached capability makes the probe not-due, so the early-return branch runs).
+test('Defect 2: a blocked (nameplate-unknown) remote plan warns AND publishes a blocked readback', async () => {
+  const cap = ownerCapability();
+  // The live-pilot defect: rated_kw absent from the (old) selection -> the plan node
+  // passes ratedKw undefined -> deyeRemoteControl refuses with blocked:true.
+  const blocked = controlRouting.controlRoute(
+    REMOTE_SEL,
+    { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true },
+    { deye: cap }, // NO ratedKw -> nameplate unknown
+  );
+  assert.strictEqual(blocked.controlPath, 'remote');
+  assert.strictEqual(blocked.blocked, true, 'precondition: the plan is flagged blocked');
+  assert.deepStrictEqual(blocked.readbacks, []);
+  // A FRESH cached capability so the executor's probe is not due -> early-return branch.
+  const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', 8899)]: Object.assign({}, cap, { at: Date.now() }) };
+  const { out, warns } = await runExecWarns(
+    DEYE_EXEC, { control: blocked, setpoint: { source: 'schedule' } }, {}, flowStore,
+  );
+  assert.ok(out && out.payload, 'the executor publishes a blocked readback, not null');
+  assert.strictEqual(out.payload.blocked, true, 'the readback is flagged blocked for the card');
+  assert.match(out.payload.reason, /Nennleistung/, 'the readback carries the cause');
+  // (registers is a vm-realm array, so compare by length, not deepStrictEqual)
+  assert.strictEqual(out.payload.registers.length, 0, 'a blocked readback has no registers');
+  assert.ok(
+    warns.some((w) => /angehalten/.test(w) && /Nennleistung/.test(w)),
+    'the refusal is audible in the log, never silent: ' + JSON.stringify(warns),
+  );
+});
+
+test('Defect 2: a legitimately quiet (uncertified) plan stays SILENT - no warn, no readback', async () => {
+  // A properly-configured but uncertified Deye (the live read-only sites): readbacks
+  // empty, reason "noch nicht freigegeben", NO blocked flag. Its power_scale is known
+  // (DEYE_SEL sets 1), so it is NOT scale-suppressed - purely the routine quiet case.
+  const quiet = controlRouting.controlRoute(
+    DEYE_SEL, { battery_setpoint_kw: -5, source: 'schedule', control_enabled: true }, { ratedKw: 30 },
+  );
+  assert.notStrictEqual(quiet.blocked, true, 'precondition: the quiet plan is not blocked');
+  assert.deepStrictEqual(quiet.readbacks, []);
+  const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', 8899)]: { at: Date.now() } };
+  const { out, warns } = await runExecWarns(
+    DEYE_EXEC, { control: quiet, setpoint: { source: 'schedule' } }, {}, flowStore,
+  );
+  assert.strictEqual(out, null, 'a quiet plan publishes nothing');
+  assert.deepStrictEqual(warns, [], 'and stays silent (the read-only sites must not spam)');
+});

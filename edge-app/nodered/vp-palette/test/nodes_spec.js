@@ -191,6 +191,28 @@ describe('shaping (pure)', function () {
     assert.deepStrictEqual(bad.mismatch_roles, ['battery_power']);
   });
 
+  it('vp-control-readback carries a blocked (empty-because-wrong) readback for the card (Defect 2)', function () {
+    // A control plan refused for a misconfiguration (unknown nameplate/scale) is
+    // published with registers:[] + blocked/reason so the core can show the CAUSE on
+    // the :8484 card instead of an eternal "warte auf Rueckmeldung".
+    const blocked = vpControlReadback.shape({
+      ts: '2026-07-27T12:00:00Z', family: 'hybrid_3p', source: 'schedule',
+      control_path: 'remote', blocked: true,
+      reason: 'Fernsteuerung: Nennleistung des Modells unbekannt',
+      registers: [],
+    });
+    assert.strictEqual(blocked.blocked, true);
+    assert.strictEqual(blocked.reason, 'Fernsteuerung: Nennleistung des Modells unbekannt');
+    assert.strictEqual(blocked.all_match, false, 'nothing was confirmed');
+    assert.deepStrictEqual(blocked.registers, []);
+    // A NORMAL readback is unchanged: blocked false, reason ''.
+    const normal = vpControlReadback.shape({
+      registers: [{ role: 'battery_power', match: true, commanded_raw: 1, actual_raw: 1 }],
+    });
+    assert.strictEqual(normal.blocked, false);
+    assert.strictEqual(normal.reason, '');
+  });
+
   it('vp-control-readback surfaces the dual-controller signal, matching the canonical detector', function () {
     // The canonical, unit-tested detector lives in inverter-control-routing.js; the
     // readback node surfaces it on edge/control/readback. Cross-check that shape()'s

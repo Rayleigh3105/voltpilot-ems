@@ -1138,10 +1138,14 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
 
   // The nameplate is what turns kW into the 0.1 %-of-rated register. Without it we
   // CANNOT compute a setpoint - refuse rather than guess a rating (a wrong rating is
-  // a scale error, i.e. exactly the N1 class of bug this PR also fixes).
+  // a scale error, i.e. exactly the N1 class of bug this PR also fixes). `blocked`
+  // marks this as an empty plan caused by a MISCONFIGURATION the operator can fix
+  // (as opposed to the routine read-only/kill-switch quiet cases) - the executor
+  // surfaces it via node.warn + the :8484 card so it is never silent (Defect 2).
   if (!(ratedKw > 0)) {
     return Object.assign(base, {
       writes: [], readbacks: [], planned: [],
+      blocked: true,
       reason: 'Fernsteuerung: Nennleistung des Modells unbekannt - bitte das genaue '
         + 'Wechselrichter-Modell auswählen (der Sollwert ist 0,1 % der Nennleistung).',
     });
@@ -1354,6 +1358,9 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
       powerScaleConfirmed: false,
       powerScaleSource: ps.source,
       powerScaleSuppressed: true,
+      // A misconfiguration the operator must fix (the HV/LV scale) - surfaced, not
+      // silent (Defect 2); see the `blocked` note in deyeRemoteControl.
+      blocked: true,
       reason: 'Leistungsskalierung unbestätigt (HV/LV): Der Schreibplan wird zurückgehalten, '
         + 'damit ein HV-Wechselrichter nicht 10-fach überschrieben wird. Bitte die '
         + 'Leistungsskalierung am Wechselrichter setzen (HV = 10, LV = 1) oder das Gerät '

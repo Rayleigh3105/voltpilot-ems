@@ -877,6 +877,55 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	return sel, nil
 }
 
+// Backfill re-derives the CATALOG-owned metadata of a PERSISTED selection - the
+// model's nameplate (RatedKw) and the brand's control primitive (ControlTier) -
+// WITHOUT touching any operator-owned setting (the connection fields ip/port/
+// serial/slave/invert_*/power_scale/control_write_fc, the label, family, model id,
+// communication or updated_at all survive byte-identical). It re-derives strictly
+// from the catalog by brand+model.
+//
+// Why it exists: a selection persisted before those fields were added (RatedKw
+// #248, ControlTier #238) reloads with them at 0, and the retained
+// edge/inverter/config the agent re-publishes on boot then carries rated_kw:0 /
+// control_tier:0. The Deye REMOTE-MODE setpoint is 0.1 % of the nameplate, so an
+// unknown rating makes the control adapter refuse every tick (deyeRemoteControl's
+// `if (!(ratedKw > 0))` guard) - the exact live-pilot symptom. Backfilling on load
+// fixes every existing field device with no operator "re-save the inverter" step.
+//
+// changed=true when a field was actually filled or corrected (so the caller can
+// re-persist + log once). resolved=false when brand+model no longer resolve in the
+// catalog - the selection is then returned BYTE-IDENTICAL (a renamed/removed model
+// must never have its metadata silently cleared; the caller logs instead).
+func (c Catalog) Backfill(sel Selection) (out Selection, changed bool, resolved bool) {
+	b, ok := c.brand(strings.TrimSpace(sel.Brand))
+	if !ok {
+		return sel, false, false
+	}
+	// RatedKw comes from the concrete MODEL. A legacy family-only selection (no
+	// model) has no rating to derive - that is correct, not a failure, so it still
+	// resolves and ControlTier is backfilled from the brand.
+	if mID := strings.TrimSpace(sel.Model); mID != "" {
+		if _, mok := b.model(mID); !mok {
+			// Brand known but the model was renamed/removed: leave EVERYTHING
+			// untouched (the "brand+model no longer resolve" case).
+			return sel, false, false
+		}
+	}
+	out = sel
+	if out.ControlTier != b.ControlTier {
+		out.ControlTier = b.ControlTier
+		changed = true
+	}
+	if mID := strings.TrimSpace(sel.Model); mID != "" {
+		m, _ := b.model(mID) // presence verified above
+		if out.RatedKw != m.RatedKw {
+			out.RatedKw = m.RatedKw
+			changed = true
+		}
+	}
+	return out, changed, true
+}
+
 // BusPayload builds the retained edge/inverter/config message: a clean object
 // carrying only the connection fields the chosen communication actually uses,
 // so Node-RED sees a predictable shape per transport.

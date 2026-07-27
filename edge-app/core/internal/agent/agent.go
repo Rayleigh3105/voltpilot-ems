@@ -411,6 +411,22 @@ func New(cfg config.Config) (*Agent, error) {
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
+		// Backfill the catalog-owned metadata (nameplate + control tier) onto a
+		// selection persisted BEFORE those fields existed - otherwise the retained
+		// edge/inverter/config re-published on boot carries rated_kw:0 and the Deye
+		// remote-mode control adapter refuses every tick (0.1 %-of-rated setpoint).
+		// This never touches operator-owned connection settings; see Catalog.Backfill.
+		if filled, changed, resolved := a.invCat.Backfill(sel); !resolved {
+			slog.Warn("stored inverter selection: brand/model no longer in the catalog, control metadata not backfilled",
+				"brand", sel.Brand, "model", sel.Model)
+		} else if changed {
+			sel = filled
+			if err := is.Save(sel); err != nil {
+				slog.Warn("could not persist backfilled inverter selection", "err", err)
+			}
+			slog.Info("backfilled inverter selection metadata from catalog",
+				"brand", sel.Brand, "model", sel.Model, "rated_kw", sel.RatedKw, "control_tier", sel.ControlTier)
+		}
 		a.inv = &sel
 		a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
 		slog.Info("loaded inverter selection from disk", "brand", sel.Brand, "family", sel.Family)
@@ -1247,7 +1263,11 @@ func (a *Agent) onLocalStatus(_ string, payload []byte) {
 // register when present.
 func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 	c := snap.Control
-	if c == nil {
+	// A blocked control info (empty plan: unknown nameplate/scale) is a local :8484
+	// affordance only - it carries no readback and must NOT fold into the heartbeat,
+	// so the cloud contract is byte-identical to before Defect 2 (no summary when
+	// there is nothing confirmed).
+	if c == nil || c.Blocked {
 		return nil
 	}
 	sum := &cloud.ControlSummary{
@@ -1297,7 +1317,13 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		// read-only OBSERVATION deliberately kept OUT of Registers so it can never
 		// fabricate or break all_match. nil = not read (not the remote path).
 		RemoteStatusRaw *int `json:"remote_status_raw"`
-		DualController  struct {
+		// Blocked/Reason: the control plan was EMPTY because something is WRONG
+		// (unknown nameplate / power scale). A blocked readback carries no registers
+		// (there was nothing to write/read) - it exists to show the CAUSE on the
+		// :8484 card instead of an eternal "warte auf Rückmeldung" (Defect 2).
+		Blocked        bool   `json:"blocked"`
+		Reason         string `json:"reason"`
+		DualController struct {
 			OnlyControllerRequired bool   `json:"only_controller_required"`
 			PossibleConflict       bool   `json:"possible_conflict"`
 			Reason                 string `json:"reason"`
@@ -1313,7 +1339,13 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 			Match        bool     `json:"match"`
 		} `json:"registers"`
 	}
-	if err := json.Unmarshal(payload, &m); err != nil || len(m.Registers) == 0 {
+	if err := json.Unmarshal(payload, &m); err != nil {
+		slog.Warn("control readback malformed; skipped")
+		return
+	}
+	// A blocked readback legitimately carries NO registers (the plan was empty
+	// because something is wrong); every other readback must carry registers.
+	if len(m.Registers) == 0 && !m.Blocked {
 		slog.Warn("control readback malformed; skipped")
 		return
 	}
@@ -1336,6 +1368,8 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		RemoteStatusRaw:  m.RemoteStatusRaw,
 		PossibleConflict: m.DualController.PossibleConflict,
 		ConflictReason:   m.DualController.Reason,
+		Blocked:          m.Blocked,
+		Reason:           m.Reason,
 	}
 	for _, r := range m.Registers {
 		info.Registers = append(info.Registers, state.ControlRegister{
@@ -1349,7 +1383,9 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	// "calibration" and NOT the neutral release) is the objective "the write landed"
 	// evidence the sign/scale confirm + certify gates require. Correlate a full-register
 	// match to the current test so certification cannot precede a real, confirmed write.
-	if strings.EqualFold(strings.TrimSpace(m.Source), "calibration") && m.Mode != "release" {
+	// A BLOCKED readback performed no write (the plan was refused), so it is never
+	// write-readback evidence - it must not mark the calibration test as failed.
+	if !m.Blocked && strings.EqualFold(strings.TrimSpace(m.Source), "calibration") && m.Mode != "release" {
 		a.calMu.Lock()
 		a.cal.NoteWriteReadback(m.AllMatch)
 		a.calMu.Unlock()
@@ -1357,7 +1393,11 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	// E2: the register-level proof also surfaces per entity - mirror it onto
 	// the battery entity's readback topic (same payload shape, entity contract
 	// §4) and record the verdict for the heartbeat. No-op without a registry.
-	a.mirrorReadbackToEntity(payload, m.AllMatch)
+	// A blocked readback performed no write, so it must not fabricate an entity
+	// readback / mismatch - the entity + arbitration view stays untouched by it.
+	if !m.Blocked {
+		a.mirrorReadbackToEntity(payload, m.AllMatch)
+	}
 }
 
 // onSchedule handles a (retained) schedule payload from the cloud: validate

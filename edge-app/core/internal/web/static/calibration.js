@@ -31,7 +31,12 @@
   // against the cockpit at a glance (e.g. "+31,1 kW · lädt" / "-1,0 kW · entlädt").
   function fmtBatt(v) {
     if (v == null) return "–";
-    var body = (v > 0 ? "+" : "") + nf1.format(v) + " kW";
+    // Collapse a value that rounds to zero at 1 decimal (e.g. a small negative in
+    // the "ruht" deadband) to POSITIVE zero, so it never renders as "-0,0 kW" - a
+    // negative zero would undermine the very sign-trust this tile exists to build.
+    var r = Math.round(v * 10) / 10;
+    if (r === 0) r = 0;
+    var body = (r > 0 ? "+" : "") + nf1.format(r) + " kW";
     var word = v > 0.05 ? " · lädt" : v < -0.05 ? " · entlädt" : " · ruht";
     return body + word;
   }
