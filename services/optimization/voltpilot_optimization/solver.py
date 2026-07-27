@@ -75,18 +75,25 @@ Design decisions, deliberately:
   Instead the objective credits ``V_end * (soc_T - soc_0)``: stored energy
   left at the horizon end is WORTH something, so the plan discharges whenever
   a slot genuinely beats that value and holds otherwise. ``V_end`` comes from
-  :meth:`OptimizationInput.effective_terminal_value_eur_per_kwh` - a
-  conservative low quantile of the horizon's own best-use prices, times the
-  one-way efficiency, minus the pending discharge wear (derivation + config
-  knobs in :mod:`voltpilot_optimization.config`). Because the same
-  eta/wear terms price the in-horizon discharge, "discharge at exactly the
-  anchor price" is an EXACT tie broken toward holding by the epsilon
-  tie-breaks below: a flat price curve still plans an idle battery (zero
-  savings on flat, preserved by construction), a trough or cheap
-  end-of-horizon tail never triggers a dump (its value is below the anchor),
-  and any genuinely better slot discharges. Note the plan may now realize
-  energy stored BEFORE the horizon (that is the F3 fix); the ex-ante savings
-  figure reflects it, the realized-earnings engine stays the honest number.
+  :meth:`OptimizationInput.effective_terminal_value_eur_per_kwh`, which
+  delegates to the shared
+  :func:`~voltpilot_optimization.domain.derive_terminal_value_eur_per_kwh`: a
+  conservative low quantile of the horizon's REPLACEMENT (refill) prices,
+  times the one-way efficiency, minus the pending discharge wear, scaled down
+  by any free PV refill the horizon offers and held strictly below the best
+  in-horizon use value (derivation + config knobs there and in
+  :mod:`voltpilot_optimization.config`). Because the same eta/wear terms price
+  the in-horizon discharge, "discharge at exactly the anchor price" is an
+  EXACT tie broken toward holding by the epsilon tie-breaks below: a curve
+  with nothing to earn still plans an idle battery (zero savings on flat,
+  preserved by construction), a trough or cheap end-of-horizon tail never
+  triggers a dump (its value is below the anchor), and any genuinely better
+  slot discharges. Note the plan may now realize energy stored BEFORE the
+  horizon (that is the F3 fix); the ex-ante savings figure reflects it, the
+  realized-earnings engine stays the honest number.
+  Anchoring on the best USE instead of the replacement cost was the original
+  formulation and froze every flat-tariff plant outright - see the scout
+  reference in the shared derivation.
 - **The backup-reserve SoC floor is a HARD constraint (P11).** A customer-
   configured ``site.backup_reserve_soc_pct`` raises the battery's lower SoC
   bound (``BatteryParams.soc_floor_kwh``): the plan NEVER schedules below it,
