@@ -589,47 +589,93 @@ test('a pending write makes the read poll YIELD the single-client logger (write 
   }
 });
 
-test('read poll + Deye write executor never collide on the single-client logger, and the write lands', async () => {
-  // THE missing coverage: drive the read poll AND the write executor concurrently
-  // against a single-client logger on a SHARED flow context. tick 1: the read holds
-  // the socket, the write DEFERS (no colliding second connection). tick 2: the read
-  // YIELDS to the pending write, which gets a clean window and lands its ToU registers.
+test('a pending Deye write WINS the single-client logger by waiting out an in-flight read (no collision, lands in one tick)', async () => {
+  // Defect 2, the core fix: drive the read poll AND the write executor concurrently
+  // against a single-client logger on a SHARED flow context. The read claims the
+  // socket first; the write ANNOUNCES intent (sv5_write_want) and WAITS the in-flight
+  // read OUT (bounded), then claims the freed socket and lands its ToU registers - all
+  // within ONE tick, with NEVER a colliding second connection. Previously the write
+  // bounced to the next ~10 s setpoint tick (the "auf den naechsten Takt verschoben"
+  // symptom); now it reliably wins the socket.
   const { server, port, store, state } = await startSingleClientSolarmanServer({}, { latencyMs: 40 });
   try {
     await certifiedDeyePlan(
       { battery_setpoint_kw: -20, source: 'calibration', control_enabled: true, soc_min_pct: 10, calibration: true },
       async (plan) => {
         plan.connection.port = port;
-        const sharedFlow = {};
+        // Snappy acquire polling for the test (production polls every 300 ms).
+        const sharedFlow = { sv5_acquire_poll_ms: 20 };
         const readCtx = {};
         const writeCtx = {};
 
-        // tick 1: read claims the socket first; the write must defer, not collide.
-        const [ro1, wo1] = await Promise.all([
+        const [ro, wo] = await Promise.all([
           runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
           runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
         ]);
-        assert.ok(ro1, 'tick1: the read completed');
-        assert.strictEqual(wo1, null, 'tick1: the write deferred to the in-flight read (no second socket)');
-        assert.strictEqual(state.sawConcurrent, false, 'no concurrent connection to the single-client logger');
-        await waitFor(() => state.live === 0); // logger released the read socket (seconds apart in prod)
-
-        // tick 2: the read now yields to the pending write; the write gets a clean
-        // window and completes its write -> readback -> match.
-        const [ro2, wo2] = await Promise.all([
-          runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
-          runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
-        ]);
-        assert.strictEqual(ro2, null, 'tick2: the read yielded to the pending write (write priority)');
-        assert.ok(wo2, 'tick2: the write got a clean socket and completed');
-        assert.ok(wo2.payload.registers.every((r) => r.match), 'tick2: write -> readback matched on the single-client logger');
-        assert.strictEqual(state.sawConcurrent, false, 'still no concurrent connection across both ticks');
+        assert.ok(ro, 'the read completed');
+        assert.ok(wo, 'the write WON the socket by waiting out the read - it did NOT defer to the next tick');
+        assert.ok(wo.payload.registers.every((r) => r.match), 'write -> readback matched on the single-client logger');
+        assert.strictEqual(state.sawConcurrent, false, 'never a concurrent connection to the single-client logger');
+        // The write releases its intent + resets the deferral counter on a landed write.
+        assert.ok(!sharedFlow['sv5_write_want:127.0.0.1:' + port], 'the write cleared its intent after landing');
+        assert.strictEqual(sharedFlow['sv5_write_defers:127.0.0.1:' + port] || 0, 0, 'a landed write leaves the defer counter at 0');
 
         // and the ToU discharge power actually reached the logger.
         const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
         assert.strictEqual(store[reg.progPowerBase], 20000, 'the discharge power (20 kW -> 20000 W) reached the logger');
       },
     );
+  } finally {
+    server.close();
+  }
+});
+
+test('the read poll yields to a pending write for a BOUNDED number of ticks, then forces a read so telemetry never starves', async () => {
+  // Defect 2, telemetry protection: the read yields to an announced write, but only up
+  // to maxSkips consecutive ticks; past the bound it takes the socket anyway and REPORTS
+  // it, so a stuck write intent can never starve telemetry indefinitely.
+  const { server, port, state } = await startSingleClientSolarmanServer({});
+  try {
+    const target = '127.0.0.1:' + port;
+    const sharedFlow = {};
+    const runRead = () => {
+      sharedFlow['sv5_write_want:' + target] = Date.now(); // keep a fresh write intent each tick
+      return runExecWarns(READ_POLL, deyeReadMsg(port), {}, sharedFlow);
+    };
+    // Non-calibration intent -> the bound is 3 consecutive skips.
+    for (let i = 0; i < 3; i++) {
+      const r = await runRead();
+      assert.strictEqual(r.out, null, 'tick ' + (i + 1) + ': the read yields to the pending write');
+    }
+    assert.strictEqual(state.totalConns, 0, 'no socket opened while yielding');
+    assert.strictEqual(sharedFlow['sv5_read_skips:' + target], 3, 'three consecutive skips recorded');
+
+    // The 4th tick FORCES a read (telemetry protection) and reports it.
+    const forced = await runRead();
+    assert.ok(forced.out, 'the 4th tick forces a read despite the pending write (telemetry never starves)');
+    assert.ok(forced.warns.some((l) => /erzwungen/.test(l)), 'the forced read is reported: ' + JSON.stringify(forced.warns));
+    assert.strictEqual(sharedFlow['sv5_read_skips:' + target], 0, 'the skip counter reset after the forced read');
+  } finally {
+    server.close();
+  }
+});
+
+test('a calibration write earns a STRONGER read-yield claim (a higher skip bound than a normal write)', async () => {
+  // Defect 2: an active First-Light calibration test (bounded, supervised, short) gets a
+  // higher yield budget (6 vs 3), so its write is not forced to compete after 3 ticks.
+  const { server, port } = await startSingleClientSolarmanServer({});
+  try {
+    const target = '127.0.0.1:' + port;
+    const sharedFlow = {};
+    // A normal write would be forced to yield after 3 ticks; a calibration write yields
+    // up to 6, so the read still steps aside on the 4th and 5th ticks.
+    for (let i = 0; i < 5; i++) {
+      sharedFlow['sv5_write_want:' + target] = Date.now();
+      sharedFlow['sv5_write_cal:' + target] = Date.now(); // a calibration test is in progress
+      const r = await runExec(READ_POLL, deyeReadMsg(port), {}, sharedFlow);
+      assert.strictEqual(r, null, 'calibration tick ' + (i + 1) + ': the read still yields (stronger claim)');
+    }
+    assert.strictEqual(sharedFlow['sv5_read_skips:' + target], 5, 'five skips and still yielding for calibration');
   } finally {
     server.close();
   }
@@ -676,41 +722,51 @@ test('Deye executor: a short/empty write reply is NAMED and its raw frames are l
   }
 });
 
-test('a deferred Deye write is LOUD (Logger belegt) and still lands once it gets the socket - never silently starved', async () => {
-  // Item 5: the recurring "Logger belegt" must never mean a real write silently never
-  // runs. tick 1: the read holds the single-client socket, the write DEFERS and WARNS
-  // (audible, not just node status). tick 2: the read yields to the announced write,
-  // which gets a clean, bounded window and lands its ToU registers.
-  const { server, port, store, state } = await startSingleClientSolarmanServer({}, { latencyMs: 60 });
+test('a starved Deye write is DEFERRED, COUNTED and reported LOUDLY (never invisible), then lands once the socket frees', async () => {
+  // Defect 2, measurable: if the write genuinely cannot win the socket within its
+  // acquire budget (a logger held busy by the read poll for too long), it DEFERS one
+  // tick - but a REPEATED deferral must never be invisible. The 1st defer is audible
+  // (rate-limited), the Nth consecutive defer WARNs with the running count, and a
+  // landed write RESETS the counter.
+  const { server, port, store } = await startSingleClientSolarmanServer({});
   try {
     await certifiedDeyePlan(
       { battery_setpoint_kw: -0.3, source: 'calibration', control_enabled: true, soc_min_pct: 10, calibration: true },
       async (plan) => {
         plan.connection.port = port;
-        const sharedFlow = {}; const readCtx = {}; const writeCtx = {};
+        const target = '127.0.0.1:' + port;
+        const busyK = 'sv5_busy:' + target;
+        const deferK = 'sv5_write_defers:' + target;
+        // A short acquire budget + a socket held busy the whole time forces a real,
+        // fast, deterministic deferral (models a read poll that keeps the logger busy).
+        const sharedFlow = { sv5_acquire_ms: 300, sv5_acquire_poll_ms: 30 };
+        const writeCtx = {};
 
-        // tick 1: the read claims the socket first; the write defers AND warns.
-        const [ro1, w1] = await Promise.all([
-          runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
-          runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
-        ]);
-        assert.ok(ro1, 'tick1: the read completed');
-        assert.strictEqual(w1.out, null, 'tick1: the write deferred to the in-flight read');
+        // 1st defer: LOUD via the rate-limited busy warn.
+        sharedFlow[busyK] = Date.now();
+        const d1 = await runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow);
+        assert.strictEqual(d1.out, null, 'the write could not win the busy socket -> deferred');
+        assert.ok(d1.warns.some((l) => /Logger belegt/.test(l)), '1st defer is audible: ' + JSON.stringify(d1.warns));
+        assert.strictEqual(sharedFlow[deferK], 1, 'the consecutive-defer counter incremented');
+        // The write released its intent so a real read poll would resume (telemetry safe).
+        assert.ok(!sharedFlow['sv5_write_want:' + target], 'the deferred write released its intent so reads resume');
+
+        // 2nd consecutive defer: the count-based WARN names the running total.
+        sharedFlow[busyK] = Date.now();
+        const d2 = await runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow);
+        assert.strictEqual(d2.out, null, 'still deferred while the socket stays busy');
         assert.ok(
-          w1.warns.some((l) => /Logger belegt/.test(l)),
-          'tick1: the deferred write is LOUD (warned), never silent: ' + JSON.stringify(w1.warns),
+          d2.warns.some((l) => /Takte in Folge verschoben/.test(l)),
+          '2nd consecutive defer is reported with the running count: ' + JSON.stringify(d2.warns),
         );
-        await waitFor(() => state.live === 0); // logger released the read socket (seconds apart in prod)
+        assert.strictEqual(sharedFlow[deferK], 2, 'the deferral count is now 2');
 
-        // tick 2: the read yields to the pending write, which lands.
-        const [ro2, w2] = await Promise.all([
-          runExec(READ_POLL, deyeReadMsg(port), readCtx, sharedFlow),
-          runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow),
-        ]);
-        assert.strictEqual(ro2, null, 'tick2: the read yielded to the pending write');
-        assert.ok(w2.out, 'tick2: the deferred write got its window and completed');
-        assert.ok(w2.out.payload.registers.every((r) => r.match), 'tick2: write -> readback matched');
-        assert.strictEqual(state.sawConcurrent, false, 'no concurrent connection to the single-client logger');
+        // Socket frees: the write wins it, lands, and RESETS the deferral counter.
+        sharedFlow[busyK] = 0;
+        const done = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'calibration' } }, writeCtx, sharedFlow);
+        assert.ok(done, 'the write lands once the socket frees');
+        assert.ok(done.payload.registers.every((r) => r.match), 'write -> readback matched');
+        assert.strictEqual(sharedFlow[deferK], 0, 'a landed write RESETS the consecutive-defer counter');
         const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
         assert.strictEqual(store[reg.progPowerBase], 300, 'the -0.3 kW setpoint (300 W) reached the logger after the deferral');
       },

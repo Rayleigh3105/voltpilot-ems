@@ -567,6 +567,35 @@ facts (branch `fm/vp-deye-write-fix-x2`, PR fixing the reproduced blocker):
   colliding. `auto-solarman` is edited directly in `flows.json` (its socket wrapper is
   flow-specific, not the `deye/solarman-v5.js` codec copy) then carried through by
   `build-flows.js`; re-run `node build-flows.js` after any change (idempotent).
+- **The write WINS the socket by WAITING OUT an in-flight read, not by bouncing to the
+  next ~10 s setpoint tick (`fm/vp-calib-evidence-u4`, Defect 2).** Announcing intent
+  alone lost in practice: a 5 s read tick already in flight when the write arrived forced
+  the write to `return null` and retry a full setpoint cycle later ("Schreiben auf den
+  naechsten Takt verschoben", 3×/2.5 min live). The executor now ANNOUNCES intent (durable,
+  `sv5_write_cal` for a calibration test = a STRONGER claim) then `acquire()`s the socket
+  with a bounded async wait (`ACQUIRE_MS`, 9 s normal / 14 s calibration, both > the read's
+  8 s socket timeout) — the read yields, so once the in-flight read frees `sv5_busy` the
+  write claims it; worst-case latency ≈ one read duration, never a ~10 s bounce. The reader
+  yields for at most `maxSkips` consecutive ticks (3 normal / 6 calibration, `sv5_read_skips`)
+  then FORCES a read and warns ("Lesezyklus … erzwungen") so telemetry can never starve; a
+  write that can't win the socket within its budget DEFERS, increments `sv5_write_defers`
+  (reset on a landed write in `finish()`) and, past 2 in a row, WARNs the running count
+  ("N Takte in Folge verschoben") so the failure is never invisible. `ACQUIRE_MS`/`POLL_MS`
+  are overridable via flow context (`sv5_acquire_ms`/`sv5_acquire_poll_ms`) for deterministic
+  tests only — never set in production. Proven by the multi-tick coordination tests in
+  `deye-control.e2e.test.js` (win-by-waiting, bounded skip + forced read, calibration higher
+  bound, counted-and-reported deferral). `flows-sync.test.js` covers neither node — this
+  behaviour is proven only by `deye-control.e2e.test.js`.
+- **The First-Light register readback evidence is VISIBLE on the `:8484` control card even
+  for an UNCERTIFIED family (`fm/vp-calib-evidence-u4`, Defect 1).** The calibration write's
+  readback (`state.Control`, `source=="calibration"`) is already on `/api/state`; `control.js`
+  used to short-circuit to the read-only banner on `control_certified===false`, hiding the
+  commanded-vs-actual table exactly when the operator/firstmate need it to judge sign/scale.
+  It now renders the table (reframed as a Kalibrier-Test) whenever an uncertified device has
+  a register readback — production writes nothing to an uncertified device, so a readback
+  there can only be a calibration test. Showing evidence certifies nothing (the server-side
+  gate is untouched). Pinned by `web_test.go TestControlCardShowsCalibrationEvidenceForUncertifiedModel`
+  + `agent/calibration_test.go TestCalibrationReadbackDetailSurfacesForUncertifiedFamily`.
 - **Swallowed write errors are surfaced** via rate-limited `node.warn` (30 s/class) on
   the socket-error + busy-skip paths — a real hardware issue shows in
   `docker compose logs nodered`, not just node status.
