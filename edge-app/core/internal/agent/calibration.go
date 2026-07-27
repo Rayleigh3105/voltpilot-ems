@@ -199,6 +199,8 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 	live := a.liveCalibrationReading()
 	band := calibration.SocBand{MinPct: a.Cfg.SocMinPct, MaxPct: a.Cfg.SocMaxPct}
 	a.calMu.Lock()
+	// Snapshot latches the live reading as confirmation evidence (ObserveReading), so a
+	// polling card captures the measured movement while the test is active (Defect 1).
 	snap := a.cal.Snapshot(now, live, band)
 	a.calMu.Unlock()
 
@@ -217,6 +219,14 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 		snap.InvertControlSign = sel.Connection.InvertControlSign
 		snap.PowerScale = sel.Connection.PowerScale
 		snap.InvertBattSign = sel.Connection.InvertBattSign
+		// The test-power ladder is derived from the inverter's nameplate so the smallest
+		// rung actually moves the battery (Defect 2); rated 0 = unknown -> fixed fallback
+		// ladder and the surface says why (Defect 3). The hard cap max_kw stays the ceiling.
+		snap.RatedKw = sel.RatedKw
+		snap.TestSteps = calibration.TestStepsForRated(sel.RatedKw, a.Cfg.CalibrationMaxKw)
+		if snap.Test != nil {
+			snap.Test.NextStepKw = calibration.NextStepAbove(snap.TestSteps, snap.Test.CommandKw)
+		}
 		if snap.BatteryKw == nil && snap.SocPct == nil {
 			snap.Reason = "Der Wechselrichter liefert noch keine Batterie-Messwerte - kurz warten."
 		}
@@ -303,12 +313,17 @@ func (a *Agent) CalibrationConfirm(sign, scale *bool) (calibration.Snapshot, err
 	now := time.Now().UTC()
 	after := a.liveCalibrationReading() // acquires a.mu then releases, before calMu
 	a.calMu.Lock()
+	// Latch the current live reading as evidence first (a no-op unless the test is
+	// active + confirmable), then confirm against the captured, still-valid evidence -
+	// so a confirmation made AFTER the test auto-reverted still succeeds within
+	// ConfirmGrace (Defect 1), while an expired one is refused.
+	a.cal.ObserveReading(now, after)
 	var err error
 	if sign != nil {
-		err = a.cal.ConfirmSign(*sign, after)
+		err = a.cal.ConfirmSign(*sign, now)
 	}
 	if err == nil && scale != nil {
-		err = a.cal.ConfirmScale(*scale, after)
+		err = a.cal.ConfirmScale(*scale, now)
 	}
 	a.calMu.Unlock()
 	return a.calibrationSnapshot(now), err

@@ -29,6 +29,7 @@
   // Battery power in the SAME convention the portal/cockpit uses: charge POSITIVE,
   // with an explicit sign + a direction word, so the operator can sanity-check it
   // against the cockpit at a glance (e.g. "+31,1 kW · lädt" / "-1,0 kW · entlädt").
+  // The -0,0 kW tile fix (Defect 3) already landed on main (#249), so this keeps it.
   function fmtBatt(v) {
     if (v == null) return "–";
     // Collapse a value that rounds to zero at 1 decimal (e.g. a small negative in
@@ -73,21 +74,37 @@
       .catch(swallow);
   }
 
-  // The magnitude presets, filtered to the hard cap max_kw.
-  function populateMag(maxKw) {
+  // The test-power ladder, provided by the server derived from the inverter's rated
+  // power (Defect 2), so the smallest rung actually moves the battery on a big unit. The
+  // server already caps every rung to the hard envelope max_kw.
+  function populateMag(cal) {
     var sel = $("calMag");
-    if (!sel || sel.dataset.max === String(maxKw)) return;
-    sel.dataset.max = String(maxKw);
-    sel.innerHTML = "";
-    var presets = [0.2, 0.3, 0.5, 1.0].filter(function (v) { return v <= maxKw + 1e-9; });
-    if (presets.length === 0) presets = [maxKw];
-    presets.forEach(function (v) {
-      var o = document.createElement("option");
-      o.value = String(v);
-      o.textContent = nf1.format(v) + " kW";
-      sel.appendChild(o);
-    });
-    sel.value = String(presets[Math.min(1, presets.length - 1)]); // default ~0.3 kW
+    if (!sel) return;
+    var steps = (cal.test_steps && cal.test_steps.length) ? cal.test_steps.slice()
+      : [0.2, 0.3, 0.5, 1.0].filter(function (v) { return v <= (cal.max_kw || 1) + 1e-9; });
+    var key = steps.join(",");
+    if (sel.dataset.steps !== key) {
+      sel.dataset.steps = key;
+      sel.innerHTML = "";
+      steps.forEach(function (v) {
+        var o = document.createElement("option");
+        o.value = String(v);
+        o.textContent = nf1.format(v) + " kW";
+        sel.appendChild(o);
+      });
+      sel.value = String(steps[Math.min(1, steps.length - 1)]); // default ~3 % rung
+    }
+    // Defect 3: if rated power is unknown the ladder is a generic fallback - say why,
+    // rather than silently offering steps that may not fit the plant size.
+    var note = $("calRatedNote");
+    if (note) {
+      var unknown = !(cal.rated_kw > 0);
+      note.hidden = !unknown;
+      if (unknown) {
+        note.textContent = "Nennleistung des Wechselrichters unbekannt – es werden Standard-Teststufen angeboten. " +
+          "Bitte die Wechselrichter-Auswahl erneut speichern, damit die Teststufen zur Anlagengröße passen.";
+      }
+    }
   }
 
   function setPill(color, text) {
@@ -127,31 +144,50 @@
     show(box, true);
     var t = cal.test, v = t.verdict || {};
     var dir = t.direction === "charge" ? "Laden" : "Entladen";
-    var stale = t.phase === "idle";       // the test is over; the live reading no longer reflects the command
+    var active = t.phase === "active";
     var landed = !!cal.write_readback_ok; // the CURRENT test's write read back a full register match
-    var left = t.phase === "active" ? (t.seconds_left + " s bis Neutral")
-      : (t.phase === "revert" ? "schaltet ab …" : (stale ? "veraltet" : "abgeschlossen"));
+    // Defect 1: after a test auto-reverts, its measured result stays confirmable for a
+    // grace window. While it is valid we show the FINISHED test's captured result (with
+    // its age), not the reverted-to-neutral live reading; the boxes stay enabled. Past
+    // the window it is honestly stale again.
+    var showingEvidence = !active && !!cal.evidence_valid;
+    var staleExpired = !active && !cal.evidence_valid;
+
+    var left;
+    if (active) left = t.seconds_left + " s bis Neutral";
+    else if (showingEvidence) left = "Ergebnis des letzten Tests (vor " + nf0.format(cal.evidence_age_seconds || 0) + " s)";
+    else if (t.phase === "revert") left = "schaltet ab …";
+    else left = "veraltet";
+
     var a = arrived();
     var moved = v.measured_kw == null ? "" : " (gemessen " + fmtBatt(v.measured_kw) + ")";
 
-    // "Hat die Batterie sich bewegt?" is only meaningful once the CURRENT test's
-    // write has landed (row 1 confirmed) AND while the test is still current. A
-    // stale/never-landed test must never show a confident-looking verdict (the exact
-    // trap the owner hit); a busy baseline is shown as "not attributable", never a ✓.
+    // "Hat die Batterie sich bewegt?" is only meaningful once the CURRENT test's write
+    // has landed. A never-landed or fully-expired test must never show a confident-looking
+    // verdict (the trap the owner hit); a busy baseline is "not attributable", never a ✓.
     var movementRow;
-    if (stale) {
+    if (staleExpired) {
       movementRow = checkRow("Hat die Batterie sich bewegt?", null,
         "Ergebnis vom letzten Test – nicht mehr aktuell. Für ein aktuelles Ergebnis erneut testen.");
+    } else if (!active && showingEvidence) {
+      // The captured, still-confirmable result of the finished test.
+      movementRow = checkRow("Hat die Batterie sich bewegt?", v.sign_ok && v.magnitude_ok, (v.text || "") + moved);
     } else if (!landed) {
       movementRow = checkRow("Hat die Batterie sich bewegt?", null,
         "Warte auf bestätigtes Schreiben (siehe oben) – erst danach ist die Bewegung aussagekräftig.");
     } else if (v.baseline_busy) {
       movementRow = checkRow("Hat die Batterie sich bewegt?", null, (v.text || "") + moved);
     } else {
-      movementRow = checkRow("Hat die Batterie sich bewegt?", v.sign_ok && v.magnitude_ok, (v.text || "") + moved);
+      // Active + landed. When nothing moved, name the next larger step to try (Defect 2).
+      var detail = (v.text || "") + moved;
+      var notMoving = !v.sign_ok && !v.magnitude_ok && !v.sign_inverted;
+      if (notMoving && t.next_step_kw != null) {
+        detail += " – z. B. mit " + nf1.format(t.next_step_kw) + " kW erneut testen.";
+      }
+      movementRow = checkRow("Hat die Batterie sich bewegt?", v.sign_ok && v.magnitude_ok, detail);
     }
 
-    box.classList.toggle("stale", stale);
+    box.classList.toggle("stale", staleExpired);
     box.innerHTML =
       '<div class="cal-verdict-head"><strong>' + esc(dir) + " · kommandiert " + esc(fmtKw(t.command_kw)) +
       '</strong><span class="cal-count">' + esc(left) + "</span></div>" +
@@ -175,7 +211,7 @@
     }
     show($("calUnavail"), false);
     show($("calBody"), true);
-    populateMag(cal.max_kw || 1);
+    populateMag(cal);
 
     var phase = cal.phase;
     var busyPhase = phase === "active" || phase === "revert";
