@@ -411,6 +411,22 @@ func New(cfg config.Config) (*Agent, error) {
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
+		// Backfill the catalog-owned metadata (nameplate + control tier) onto a
+		// selection persisted BEFORE those fields existed - otherwise the retained
+		// edge/inverter/config re-published on boot carries rated_kw:0 and the Deye
+		// remote-mode control adapter refuses every tick (0.1 %-of-rated setpoint).
+		// This never touches operator-owned connection settings; see Catalog.Backfill.
+		if filled, changed, resolved := a.invCat.Backfill(sel); !resolved {
+			slog.Warn("stored inverter selection: brand/model no longer in the catalog, control metadata not backfilled",
+				"brand", sel.Brand, "model", sel.Model)
+		} else if changed {
+			sel = filled
+			if err := is.Save(sel); err != nil {
+				slog.Warn("could not persist backfilled inverter selection", "err", err)
+			}
+			slog.Info("backfilled inverter selection metadata from catalog",
+				"brand", sel.Brand, "model", sel.Model, "rated_kw", sel.RatedKw, "control_tier", sel.ControlTier)
+		}
 		a.inv = &sel
 		a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
 		slog.Info("loaded inverter selection from disk", "brand", sel.Brand, "family", sel.Family)

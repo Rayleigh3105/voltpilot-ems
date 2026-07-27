@@ -940,3 +940,129 @@ func TestRemoteModeFieldsAndRatedKwArePublished(t *testing.T) {
 		}
 	}
 }
+
+// TestBackfillOldSelectionRestoresNameplateAndTierKeepingConnection reproduces the
+// live-pilot Defect 1: a selection persisted BEFORE rated_kw (#248) / control_tier
+// (#238) existed reloads with them at 0, so the retained edge/inverter/config it
+// re-publishes makes the Deye remote-mode adapter refuse ("Nennleistung unbekannt").
+// Backfill must restore both FROM THE CATALOG by brand+model while leaving every
+// operator-owned connection setting byte-identical.
+func TestBackfillOldSelectionRestoresNameplateAndTierKeepingConnection(t *testing.T) {
+	cat := DefaultCatalog()
+	// An old-shaped stored selection exactly as Store.Load would unmarshal it: the
+	// pilot's SUN-30K-SG01HP3-EU with rated_kw AND control_tier ABSENT, and with the
+	// operator's own calibration/setup fields set (these must survive untouched).
+	const oldJSON = `{
+		"brand": "deye",
+		"label": "Deye · Hybrid, 3-phasig",
+		"model": "sun-30k-sg01hp3",
+		"family": "hybrid_3p",
+		"communication": "solarman_v5",
+		"updated_at": "2026-07-20T09:00:00Z",
+		"connection": {
+			"ip": "192.168.254.210",
+			"port": 8899,
+			"serial": "1127365518",
+			"mb_slave_id": 1,
+			"invert_batt_sign": true,
+			"invert_control_sign": true,
+			"power_scale": 10,
+			"control_write_fc": 16,
+			"remote_mode": "auto",
+			"remote_watchdog_s": 90
+		}
+	}`
+	var old Selection
+	if err := json.Unmarshal([]byte(oldJSON), &old); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	// Precondition: the metadata really is missing (else the test proves nothing).
+	if old.RatedKw != 0 || old.ControlTier != 0 {
+		t.Fatalf("fixture must start with rated_kw/control_tier = 0, got %v/%d", old.RatedKw, old.ControlTier)
+	}
+	// Capture the connection BEFORE the backfill for a byte-identical comparison.
+	beforeConn := old.Connection
+
+	filled, changed, resolved := cat.Backfill(old)
+	if !resolved {
+		t.Fatal("a known brand+model must resolve")
+	}
+	if !changed {
+		t.Fatal("the missing rated_kw/control_tier must be reported as changed")
+	}
+	if filled.RatedKw != 30 {
+		t.Errorf("rated_kw not backfilled from the catalog: got %v, want 30", filled.RatedKw)
+	}
+	if filled.ControlTier != ControlTierToU {
+		t.Errorf("control_tier not backfilled from the brand: got %d, want %d", filled.ControlTier, ControlTierToU)
+	}
+	// EVERY operator-owned connection field survives byte-identical.
+	if filled.Connection != beforeConn {
+		t.Errorf("connection settings disturbed by backfill:\n got  %+v\n want %+v", filled.Connection, beforeConn)
+	}
+	// Nothing else changed either: label/family/model/communication/updated_at.
+	if filled.Label != old.Label || filled.Family != old.Family || filled.Model != old.Model ||
+		filled.Communication != old.Communication || !filled.UpdatedAt.Equal(old.UpdatedAt) {
+		t.Errorf("backfill disturbed a non-metadata field: %+v", filled)
+	}
+
+	// The published BusPayload now carries a usable rated_kw/control_tier (what the
+	// control adapter reads to compute the remote-mode setpoint).
+	var pub map[string]any
+	if err := json.Unmarshal(filled.BusPayload(), &pub); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := pub["rated_kw"].(float64); r != 30 {
+		t.Errorf("published rated_kw: %v", pub["rated_kw"])
+	}
+	if tier, _ := pub["control_tier"].(float64); int(tier) != ControlTierToU {
+		t.Errorf("published control_tier: %v", pub["control_tier"])
+	}
+
+	// Idempotency: a second backfill of the now-current selection changes nothing.
+	if again, changed2, resolved2 := cat.Backfill(filled); !resolved2 || changed2 || again != filled {
+		t.Errorf("backfill must be idempotent, got changed=%v resolved=%v", changed2, resolved2)
+	}
+}
+
+// TestBackfillLeavesUnknownBrandOrModelUntouched: an old selection whose brand or
+// model no longer resolves in the catalog is returned BYTE-IDENTICAL (resolved
+// false, never a field cleared) so a renamed/removed model is never damaged.
+func TestBackfillLeavesUnknownBrandOrModelUntouched(t *testing.T) {
+	cat := DefaultCatalog()
+	base := Selection{
+		Brand: BrandDeye, Model: "sun-99k-removed", Family: "hybrid_3p",
+		Communication: CommSolarmanV5, ControlTier: 3, RatedKw: 99,
+		Connection: Connection{IP: "10.0.0.9", Port: 8899, Serial: "x", MbSlaveID: 1},
+	}
+	if out, changed, resolved := cat.Backfill(base); resolved || changed || out != base {
+		t.Errorf("removed model must be untouched: changed=%v resolved=%v out=%+v", changed, resolved, out)
+	}
+	unknownBrand := base
+	unknownBrand.Brand = "no-such-brand"
+	if out, changed, resolved := cat.Backfill(unknownBrand); resolved || changed || out != unknownBrand {
+		t.Errorf("unknown brand must be untouched: changed=%v resolved=%v", changed, resolved)
+	}
+}
+
+// TestBackfillFamilyOnlySelectionSetsTierNotRating: a legacy family-only selection
+// (no model) has no rating to derive - that is correct, not a failure - so it still
+// resolves and the brand's control_tier is backfilled while rated_kw stays 0.
+func TestBackfillFamilyOnlySelectionSetsTierNotRating(t *testing.T) {
+	cat := DefaultCatalog()
+	legacy := Selection{
+		Brand: BrandDeye, Family: "hybrid_3p", Communication: CommSolarmanV5,
+		Connection: Connection{IP: "10.0.0.8", Port: 8899, Serial: "y", MbSlaveID: 1},
+		// Model empty, ControlTier + RatedKw at 0 (pre-#238/#248 family-only save).
+	}
+	filled, changed, resolved := cat.Backfill(legacy)
+	if !resolved {
+		t.Fatal("a known brand with a family-only selection must resolve")
+	}
+	if !changed || filled.ControlTier != ControlTierToU {
+		t.Errorf("control_tier must be backfilled from the brand: %d changed=%v", filled.ControlTier, changed)
+	}
+	if filled.RatedKw != 0 {
+		t.Errorf("a family-only selection has no model rating to derive: got %v", filled.RatedKw)
+	}
+}
