@@ -24,6 +24,7 @@ from uuid import UUID
 
 from voltpilot_optimization.config import (
     DEFAULT_WEAR_COST_CT_PER_KWH,
+    TERMINAL_VALUE_MARGIN_EUR_PER_KWH,
     terminal_value_quantile,
 )
 
@@ -147,6 +148,113 @@ class BatteryParams:
                 reserve_kwh = self.capacity_kwh * reserve_pct / 100.0
                 floor = min(max(floor, reserve_kwh), self.soc_max_kwh)
         return min(floor, initial_soc_kwh)
+
+
+def derive_terminal_value_eur_per_kwh(
+    *,
+    import_prices: list[float],
+    export_values: list[float],
+    pv_kw: list[float],
+    load_kw: list[float],
+    slot_hours: float,
+    max_charge_kw: float,
+    usable_band_kwh: float,
+    one_way_efficiency: float,
+    wear_eur_per_kwh_each_way: float,
+    grid_charge_allowed: bool,
+    env=None,
+) -> float:
+    """The P3 terminal energy value per STORED kWh, derived from the horizon.
+
+    THE ONE derivation, shared by the v1 :class:`OptimizationInput` and the
+    per-storage co-optimizer twin (``CoOptimizationInput``), so the N=1 adapter
+    reproduces the v1 value bit for bit by construction rather than by two
+    copies agreeing.
+
+    **``V_end`` is a REPLACEMENT cost, not a use value** (scout
+    ``vp-fahrplan-idle-n7``). The question it answers is "what would it cost to
+    put this kWh back after the horizon?", NOT "what is it worth to use?". The
+    old derivation anchored on ``max(import_t, export_t)`` - the best USE - and
+    that is what froze the pilot plant:
+
+      A flat retail tariff (``tarif_art='fest'``) makes ``import_t`` a
+      CONSTANT, and German retail (25-42 ct) exceeds any realistic spot peak,
+      so ``max(import_t, export_t)`` was constant over the whole horizon. With
+      zero dispersion ANY quantile returned retail, ``V_end`` came out at
+      28.3 ct against a 20 ct evening peak, the discharge gradient was exactly
+      0.000, and selling into the peak was STRICTLY rejected - the spot curve
+      never entered the decision. Every ``fest`` plant planned a fully idle
+      battery on essentially every day of the year.
+
+    Three steps, each of which only ever LOWERS the value:
+
+    1. **Charge-side anchor.** The marginal cost of refilling one AC kWh is
+       ``min(import_t, export_t)`` when the battery may charge from the grid
+       (buy it, or forgo exporting your own PV - whichever is cheaper), and
+       ``export_t`` alone in EEG mode, where only PV may charge and the cost is
+       therefore the forgone feed-in. A conservative low quantile (default the
+       30th percentile) of that series is the anchor; ``eta``/``wear`` discount
+       it exactly as before. Under symmetric pricing (import == export == spot,
+       the ``ohne`` model) ``min`` and ``max`` coincide, so this is a no-op -
+       the change bites precisely where import and export diverge, which is
+       where the old formula was wrong.
+    2. **Free-PV refill cap.** Surplus generation in slots whose export value
+       is <= 0 costs the plant NOTHING to store (feeding it in earns nothing or
+       less). Energy the battery could actually absorb from such slots is
+       compared with its usable band: once the horizon offers enough free
+       surplus to refill the band outright, stored energy carries no scarcity
+       value at all and ``V_end`` scales to 0. This is the "tomorrow's PV
+       refills it for free" truth a 70 kWp plant in July needs, and it is why a
+       full battery must not sit on its charge through an evening peak.
+    3. **Strict-dispersion guard.** ``V_end`` is finally held strictly below
+       ``eta * (best in-horizon use value - wear - margin)``, so the plan can
+       ALWAYS realize stored energy in at least its single best slot: the
+       "``V_end`` above every price, discharge structurally impossible" state
+       is unreachable by construction, whatever future pricing does.
+
+       NOTE this deliberately caps against the horizon's BEST use value, where
+       the scout report suggested its WORST (``min(best_use)``). The min-form
+       is unsafe: on a curve with a midday trough it pins ``V_end`` to the
+       trough and the plan then dumps its battery into any mediocre tail above
+       it - re-introducing the dump-to-earn behaviour P3 exists to prevent.
+       The max-form gives the same "equality can never null the gradient"
+       guarantee without stripping the quantile of meaning.
+
+    The margin is smaller than the throughput tie-break (see
+    ``TERMINAL_VALUE_MARGIN_EUR_PER_KWH``), so a genuinely flat curve is still
+    decided by the tie-break and still plans an idle battery - that protection
+    is untouched.
+    """
+    n = len(import_prices)
+    eta = one_way_efficiency
+    wear = wear_eur_per_kwh_each_way  # EUR per AC kWh
+
+    # 1. Charge-side (replacement) anchor.
+    if grid_charge_allowed:
+        refill_eur_mwh = [min(imp, exp) for imp, exp in zip(import_prices, export_values)]
+    else:
+        refill_eur_mwh = list(export_values)
+    quantile = terminal_value_quantile(env)
+    anchor = sorted(refill_eur_mwh)[int(quantile * (n - 1))]
+    v_end = max(0.0, eta * (anchor / 1000.0 - wear))
+
+    # 2. Free-PV refill cap: surplus the battery could absorb in slots where
+    #    feeding in earns nothing (or costs money), so storing it is free.
+    if usable_band_kwh > 0.0:
+        free_kwh = sum(
+            min(max(pv_kw[t] - load_kw[t], 0.0), max_charge_kw) * slot_hours
+            for t in range(n)
+            if export_values[t] <= 0.0
+        )
+        v_end *= 1.0 - min(1.0, free_kwh / usable_band_kwh)
+
+    # 3. Strict-dispersion guard: never at or above the best in-horizon use.
+    best_use = max(max(imp, exp) for imp, exp in zip(import_prices, export_values))
+    v_end = min(
+        v_end,
+        eta * (best_use / 1000.0 - wear - TERMINAL_VALUE_MARGIN_EUR_PER_KWH),
+    )
+    return max(0.0, v_end)
 
 
 @dataclass(frozen=True)
@@ -282,30 +390,27 @@ class OptimizationInput:
     def effective_terminal_value_eur_per_kwh(self, env=None) -> float:
         """The terminal energy value the solver credits per stored kWh at the
         horizon end (P3): the explicit override when set, else derived from
-        the horizon's own prices.
-
-        Derivation (see the P3 section of :mod:`voltpilot_optimization.config`
-        for the reasoning): ``eta * (P_q - wear)``, floored at 0, where
-        ``P_q`` is a conservative low quantile (default the 30th percentile)
-        of the per-slot best-use price ``max(import_price_t, export_value_t)``,
-        ``eta`` the one-way efficiency (a stored kWh only delivers ``eta`` AC
-        kWh) and ``wear`` the per-AC-kWh wear the eventual discharge will
-        cost. Because the same ``eta``/``wear`` price the in-horizon discharge,
-        a slot priced exactly at ``P_q`` ties with holding (the epsilon
-        tie-breaks then prefer holding) - flat curves stay idle by
-        construction.
+        the horizon's own prices by
+        :func:`derive_terminal_value_eur_per_kwh` (see there, and the P3
+        section of :mod:`voltpilot_optimization.config`, for the derivation).
         """
         if self.terminal_value_eur_per_kwh is not None:
             return self.terminal_value_eur_per_kwh
-        best_use = [
-            max(imp, exp)
-            for imp, exp in zip(self.import_prices, self.export_values)
-        ]
-        quantile = terminal_value_quantile(env)
-        anchor = sorted(best_use)[int(quantile * (len(best_use) - 1))]
-        eta = self.battery.one_way_efficiency
-        wear_eur_mwh = self.battery.wear_cost_eur_per_kwh_each_way * 1000.0
-        return max(0.0, eta * (anchor - wear_eur_mwh) / 1000.0)
+        p = self.battery
+        soc0 = p.clamp_soc_kwh(self.initial_soc_kwh)
+        return derive_terminal_value_eur_per_kwh(
+            import_prices=self.import_prices,
+            export_values=self.export_values,
+            pv_kw=self.pv_kw,
+            load_kw=self.load_kw,
+            slot_hours=self.slot_hours,
+            max_charge_kw=p.max_charge_kw,
+            usable_band_kwh=p.soc_max_kwh - p.soc_floor_kwh(soc0),
+            one_way_efficiency=p.one_way_efficiency,
+            wear_eur_per_kwh_each_way=p.wear_cost_eur_per_kwh_each_way,
+            grid_charge_allowed=self.netzladen_erlaubt,
+            env=env,
+        )
 
     def cashflow_cost_eur(self, index: int, grid_kw: float) -> float:
         """Projected cost of one slot at the given net grid power under the

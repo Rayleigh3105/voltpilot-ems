@@ -47,19 +47,34 @@ buy-backs. It is replaced by a terminal VALUE: the objective credits
 ``V_end * (soc_T - soc_0)``, so stored energy left at the horizon end is worth
 money instead of being contractually pinned.
 
-``V_end`` (EUR per stored kWh) is derived per plan from the horizon's own
-prices unless overridden: ``eta * (P_q - wear)`` where ``P_q`` is a
+``V_end`` (EUR per stored kWh) is derived per plan from the horizon's own data
+unless overridden. It is a REPLACEMENT cost - "what would it cost to put this
+kWh back after the horizon?" - NOT a use value. The full derivation and the
+reasoning live in
+:func:`voltpilot_optimization.domain.derive_terminal_value_eur_per_kwh`, which
+is THE one implementation (the v1 input and the per-storage co-optimizer both
+call it). In short: ``eta * (P_q - wear)`` floored at 0, where ``P_q`` is a
 conservative low quantile (default the 30th percentile,
-``OPTIMIZER_TERMINAL_VALUE_QUANTILE``) of the per-slot BEST-USE price
-``max(import_price_t, export_value_t)``, ``eta`` the one-way efficiency (a
-stored kWh delivers only ``eta`` AC kWh) and ``wear`` the pending discharge
-wear - floored at 0 (a fully negative-priced horizon values storage at
-nothing, never below). Because the same ``eta``/``wear`` appear in the
-in-horizon discharge economics, "discharge at exactly ``P_q``" is an EXACT
-tie, broken toward holding by the epsilon tie-breaks - so a flat price curve
-still plans an idle battery (zero savings on flat, by construction), while
-any slot priced above the anchor genuinely beats holding and any slot below
-it (a trough, an end-of-horizon tail) does not - no more dump-to-earn.
+``OPTIMIZER_TERMINAL_VALUE_QUANTILE``) of the per-slot REFILL price -
+``min(import_price_t, export_value_t)`` where the battery may charge from the
+grid, ``export_value_t`` alone in EEG mode where only PV may charge - then
+scaled down by any free PV refill the horizon already offers, and finally held
+strictly below the best in-horizon use value by
+``TERMINAL_VALUE_MARGIN_EUR_PER_KWH``.
+
+Anchoring on the best USE (``max(import_t, export_t)``) was the original
+formulation and it was wrong: a flat retail tariff makes ``import_t`` constant
+and above every spot peak, so the anchor had ZERO dispersion, ``V_end`` came
+out above the horizon's own peak, and the plan could not discharge anywhere -
+scout ``vp-fahrplan-idle-n7``, where the pilot plant idled a full 40 kWh
+battery through a 20 ct spread on essentially every day of the year.
+
+Because the same ``eta``/``wear`` appear in the in-horizon discharge
+economics, "discharge at exactly ``P_q``" remains an EXACT tie broken toward
+holding by the epsilon tie-breaks - so a curve with nothing to earn (no
+dispersion AND no import/export spread) still plans an idle battery, while any
+slot worth more than the replacement cost genuinely beats holding and a trough
+or cheap end-of-horizon tail does not - no dump-to-earn.
 The quantile is deliberately BELOW the median: the estimate must stay under
 typical in-horizon discharge opportunities (or the plan defers real
 consumption value to "tomorrow", the F3 freeze in miniature) while staying
@@ -165,10 +180,26 @@ GRID_LIMIT_MAX_AGE_ENV = "OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES"
 DEFAULT_SOC_MAX_AGE_MINUTES = 120.0
 SOC_MAX_AGE_ENV = "OPTIMIZER_SOC_MAX_AGE_MINUTES"
 
-#: Quantile of the horizon's best-use prices anchoring the derived terminal
-#: energy value (see the P3 section of the module docstring).
+#: Quantile of the horizon's REPLACEMENT (refill) prices anchoring the derived
+#: terminal energy value (see the P3 section of the module docstring).
 DEFAULT_TERMINAL_VALUE_QUANTILE = 0.3
 TERMINAL_VALUE_QUANTILE_ENV = "OPTIMIZER_TERMINAL_VALUE_QUANTILE"
+
+#: Strict-dispersion margin on the derived terminal value (EUR per AC kWh):
+#: ``V_end`` is held strictly BELOW the horizon's best in-horizon use value, so
+#: a stored kWh can always be realized in at least the single best slot and an
+#: equality can never null the discharge gradient (see the P3 section of the
+#: module docstring). Sized deliberately between two hard bounds:
+#:
+#:   solver optimality gap  <<  this margin  <  throughput tie-break per kWh
+#:   (1e-9, solver.MIP_*)        (1e-6)         (4e-6 = 1e-6 / 0.25 h)
+#:
+#: Above the gap so the strict inequality is numerically real; BELOW the
+#: throughput tie-break so it can never override "prefer an idle battery when
+#: cycling moves no money" - a flat price curve must still plan an idle
+#: battery, and that protection is the tie-break's job, not this margin's.
+#: Economically negligible by construction: 1e-4 ct/kWh.
+TERMINAL_VALUE_MARGIN_EUR_PER_KWH = 1e-6
 
 #: Fixed platform override of the terminal energy value (ct per stored kWh);
 #: unset/blank = derive from the horizon's prices.

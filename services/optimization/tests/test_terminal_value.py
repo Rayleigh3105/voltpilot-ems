@@ -24,6 +24,7 @@ from uuid import uuid4
 import pytest
 
 from voltpilot_optimization.config import (
+    TERMINAL_VALUE_MARGIN_EUR_PER_KWH,
     terminal_value_override_eur_per_kwh,
     terminal_value_quantile,
 )
@@ -210,10 +211,17 @@ def test_derived_value_is_the_wear_and_efficiency_discounted_quantile(monkeypatc
     assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
 
 
-def test_derived_value_uses_the_best_use_price_import_or_export(monkeypatch):
+def test_derived_value_is_the_replacement_cost_not_the_best_use_price(monkeypatch):
+    """THE defect (scout vp-fahrplan-idle-n7). A retail site: import (fest 430)
+    dwarfs the export value (82). The old derivation anchored on the best USE
+    (``max(import, export)`` = 430), asserting that a stored kWh carries the
+    retail price as scarcity value - which froze the battery, because no spot
+    peak ever reaches German retail.
+
+    ``V_end`` is a REPLACEMENT cost: this plant is in EEG mode, so only PV may
+    refill the battery and the marginal cost of doing so is the forgone
+    feed-in (82), not the retail price it might later avoid."""
     monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
-    # A retail site: import (fest 430) dwarfs spot - stored energy's future
-    # value is the avoided retail import, not the spot export.
     n = 96
     spot = [100.0] * n
     inp = OptimizationInput(
@@ -230,8 +238,89 @@ def test_derived_value_uses_the_best_use_price_import_or_export(monkeypatch):
         import_price_eur_mwh=[430.0] * n,
         export_value_eur_mwh=[82.0] * n,
     )
-    expected = ETA * (430.0 - WEAR_EUR_MWH) / 1000.0
+    expected = ETA * (82.0 - WEAR_EUR_MWH) / 1000.0
     assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
+    # and emphatically NOT the old best-use anchor
+    assert inp.effective_terminal_value_eur_per_kwh() < ETA * (430.0 - WEAR_EUR_MWH) / 1000.0
+
+
+def test_replacement_cost_is_the_cheaper_of_grid_and_forgone_export(monkeypatch):
+    """With grid charging permitted the battery refills from whichever source
+    is cheaper, so the anchor is ``min(import, export)`` - here the 60 spot
+    import, not the 82 the export would forgo."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    n = 96
+    inp = OptimizationInput(
+        tenant_id=uuid4(),
+        site_id=uuid4(),
+        device_id=None,
+        battery=BATTERY,
+        slot_starts=horizon_slot_starts(T0, n),
+        prices_eur_mwh=[60.0] * n,
+        load_kw=[2.0] * n,
+        pv_kw=[0.0] * n,
+        initial_soc_kwh=5.0,
+        netzladen_erlaubt=True,
+        import_price_eur_mwh=[60.0] * n,
+        export_value_eur_mwh=[82.0] * n,
+    )
+    assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(
+        ETA * (60.0 - WEAR_EUR_MWH) / 1000.0
+    )
+
+
+def test_symmetric_spot_pricing_is_unchanged_by_the_replacement_anchor(monkeypatch):
+    """Regression pin for the plants that already worked: under the symmetric
+    model (``ohne`` - import == export == spot) ``min`` and ``max`` coincide,
+    so the charge-side anchor is a mathematical no-op."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    prices = [40.0] * 30 + [100.0] * 40 + [260.0] * 26
+    for netzladen in (True, False):
+        inp = make_input(prices, netzladen_erlaubt=netzladen)
+        # 30th percentile of the ascending sort: index int(0.3*95) = 28 -> 40.
+        assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(
+            ETA * (40.0 - WEAR_EUR_MWH) / 1000.0
+        )
+
+
+def test_free_pv_refill_scales_the_value_to_zero(monkeypatch):
+    """A plant whose horizon offers enough zero/negative-priced PV surplus to
+    refill the whole usable band carries NO scarcity value in stored energy -
+    it will be full again for free. This is the "tomorrow's PV refills it"
+    truth that must stop a full battery sitting through an evening peak."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    # Ten zero-priced slots, then a dear rest. The 30th percentile lands on
+    # 150 (only ten zeros), and the 300 peak keeps the dispersion guard clear
+    # of the anchor, so the free-PV cap is the only thing under test.
+    prices = [0.0] * 10 + [150.0] * 76 + [300.0] * 10
+    band = BATTERY.soc_max_kwh - BATTERY.soc_min_kwh  # 9.0 kWh
+    uncapped = ETA * (150.0 - WEAR_EUR_MWH) / 1000.0
+
+    # No PV: the value is the plain replacement-cost anchor.
+    dry = make_input(prices, load=2.0, pv=0.0, netzladen_erlaubt=True)
+    assert dry.effective_terminal_value_eur_per_kwh() == pytest.approx(uncapped)
+
+    # A surplus that covers the whole band (charge-power-limited to 5 kW over
+    # 10 slots = 12.5 kWh > 9.0 kWh) zeroes it.
+    covered = make_input(
+        prices, load=2.0, pv=[20.0] * 10 + [0.0] * 86, netzladen_erlaubt=True
+    )
+    assert covered.effective_terminal_value_eur_per_kwh() == 0.0
+
+    # Partial coverage scales proportionally: 2 kW surplus over 10 slots =
+    # 5.0 kWh of the 9.0 kWh band.
+    partial = make_input(
+        prices, load=2.0, pv=[4.0] * 10 + [0.0] * 86, netzladen_erlaubt=True
+    )
+    assert partial.effective_terminal_value_eur_per_kwh() == pytest.approx(
+        uncapped * (1.0 - 5.0 / band), rel=1e-9
+    )
+
+    # Surplus in slots that still EARN something is not free and does not cap.
+    earning = make_input(
+        [150.0] * 96, load=2.0, pv=[20.0] * 96, netzladen_erlaubt=True
+    )
+    assert earning.effective_terminal_value_eur_per_kwh() > 0.0
 
 
 def test_derived_value_never_goes_negative(monkeypatch):
@@ -252,8 +341,20 @@ def test_quantile_env_is_tunable_and_validated(monkeypatch):
     prices = [100.0] * 48 + [200.0] * 48
     inp = make_input(prices, netzladen_erlaubt=True)
     monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", "0.9")
-    expected = ETA * (200.0 - WEAR_EUR_MWH) / 1000.0
-    assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
+    # A high quantile lands the anchor ON the horizon's best use value (200),
+    # which is exactly where the strict-dispersion guard engages: the value is
+    # held one margin BELOW it so the gradient can never be nulled by equality.
+    expected = ETA * (
+        200.0 / 1000.0
+        - WEAR_EUR_MWH / 1000.0
+        - TERMINAL_VALUE_MARGIN_EUR_PER_KWH
+    )
+    assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(
+        expected, rel=1e-12
+    )
+    assert inp.effective_terminal_value_eur_per_kwh() < ETA * (
+        200.0 - WEAR_EUR_MWH
+    ) / 1000.0
 
     monkeypatch.setenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", "1.5")
     with pytest.raises(ValueError):

@@ -52,11 +52,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
-from voltpilot_optimization.config import terminal_value_quantile
 from voltpilot_optimization.domain import (
     BatteryParams,
     OptimizationInput,
     SLOT_MINUTES,
+    derive_terminal_value_eur_per_kwh,
 )
 
 # The mqtt-schedule-2.0 contract's entity_id pattern (MQTT-topic-safe).
@@ -266,22 +266,28 @@ class CoOptimizationInput:
         self, storage: StorageEntity, env=None
     ) -> float:
         """The P3 terminal energy value PER STORAGE ENTITY: the explicit
-        override when set (one platform value for all entities), else derived
-        from the horizon's own prices with the ENTITY's efficiency and wear -
-        the exact per-battery formula of
-        :meth:`OptimizationInput.effective_terminal_value_eur_per_kwh`, so the
-        N=1 adapter reproduces the v1 value bit for bit."""
+        override when set (one platform value for all entities), else THE SAME
+        :func:`~voltpilot_optimization.domain.derive_terminal_value_eur_per_kwh`
+        the v1 input uses, fed the ENTITY's efficiency, wear, usable band and
+        EFFECTIVE grid-charge permission - so the N=1 adapter reproduces the v1
+        value bit for bit by sharing the derivation, not by duplicating it."""
         if self.terminal_value_eur_per_kwh is not None:
             return self.terminal_value_eur_per_kwh
-        best_use = [
-            max(imp, exp)
-            for imp, exp in zip(self.import_prices, self.export_values)
-        ]
-        quantile = terminal_value_quantile(env)
-        anchor = sorted(best_use)[int(quantile * (len(best_use) - 1))]
-        eta = storage.params.one_way_efficiency
-        wear_eur_mwh = storage.params.wear_cost_eur_per_kwh_each_way * 1000.0
-        return max(0.0, eta * (anchor - wear_eur_mwh) / 1000.0)
+        p = storage.params
+        soc0 = p.clamp_soc_kwh(storage.initial_soc_kwh)
+        return derive_terminal_value_eur_per_kwh(
+            import_prices=self.import_prices,
+            export_values=self.export_values,
+            pv_kw=[self.total_pv_kw(t) for t in range(self.slots)],
+            load_kw=self.base_load_kw,
+            slot_hours=self.slot_hours,
+            max_charge_kw=p.max_charge_kw,
+            usable_band_kwh=p.soc_max_kwh - p.soc_floor_kwh(soc0),
+            one_way_efficiency=p.one_way_efficiency,
+            wear_eur_per_kwh_each_way=p.wear_cost_eur_per_kwh_each_way,
+            grid_charge_allowed=self.grid_charge_allowed(storage),
+            env=env,
+        )
 
     def cashflow_cost_eur(self, index: int, grid_kw: float) -> float:
         """Projected cost of one slot at the given net grid power under the
