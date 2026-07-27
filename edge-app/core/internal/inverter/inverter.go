@@ -201,6 +201,14 @@ func solarmanFields() []Field {
 				{Value: 16, Label: "FC16 – mehrere Register (0x10)"},
 				{Value: 6, Label: "FC6 – einzelnes Register (0x06)"},
 			}},
+		{Key: "remote_mode", Label: "Fernsteuerung (Remote Mode)", Type: "select", Default: "auto",
+			Help: "Neuere Deye-Firmware (Protokoll V105.1+) bietet eine echte Fernsteuerung: ein vorzeichenbehafteter Leistungssollwert für die Batterie, abgesichert durch einen Totmannschalter im Wechselrichter. VoltPilot erkennt automatisch, ob Ihr Gerät sie hat, und nutzt sonst die Zeitfenster-Steuerung. Nur auf \"Aus\" stellen, wenn die Fernsteuerung auf Ihrem Gerät Probleme macht.",
+			Options: []Opt{
+				{Value: "auto", Label: "Automatisch erkennen (empfohlen)"},
+				{Value: "off", Label: "Aus – immer Zeitfenster-Steuerung"},
+			}},
+		{Key: "remote_watchdog_s", Label: "Totmannschalter der Fernsteuerung (Sekunden)", Type: "number", Default: 0,
+			Help: "Wie lange der Wechselrichter einen Sollwert ohne neue Nachricht von VoltPilot hält, bevor er die Fernsteuerung von selbst verlässt und normal weiterläuft. Leer/0 = 60 Sekunden (empfohlen, ca. 6 Sollwert-Takte Reserve). Erlaubt sind 10 bis 18000 Sekunden."},
 	}
 }
 
@@ -611,6 +619,24 @@ type Connection struct {
 	// Node-RED control adapter reads conn.control_write_fc (0/absent -> FC16).
 	ControlWriteFc int `json:"control_write_fc,omitempty"`
 
+	// RemoteMode is the operator hatch for the Deye REMOTE-MODE control path
+	// (protocol V105.1+ registers 1100-1121: a true signed watt setpoint for the
+	// battery, armed behind the inverter's OWN watchdog). "auto" (default/empty) =
+	// the edge PROBES the block and uses remote mode when the firmware has it,
+	// falling back to the Time-of-Use path when it does not - a Deye firmware update
+	// has removed the feature from a user's inverter before and a later one restored
+	// it, so it is detected, never assumed. "off" forces the ToU path. Solarman-V5
+	// (Deye) only. Read by the Node-RED control adapter as conn.remote_mode.
+	RemoteMode string `json:"remote_mode,omitempty"`
+
+	// RemoteWatchdogS is the dead-man's timeout (seconds) written to register 1101
+	// while remote mode drives the battery: if VoltPilot goes silent for this long
+	// the inverter LEAVES remote mode by itself and reverts to its own behaviour with
+	// nothing changed. 0/absent = 60 s (the documented recommendation, ~6 setpoint
+	// ticks of slack); the protocol allows 10..18000. It can never be disabled from
+	// config - the whole safety argument of this path is that the timer exists.
+	RemoteWatchdogS int `json:"remote_watchdog_s,omitempty"`
+
 	// InvertBattSign flips the battery-power READ sign so the decoded
 	// `battery_power_kw` honors the documented convention (+ charge / - discharge),
 	// which the cloud's balance-derived battery_kw and the First-Light verdict both
@@ -668,6 +694,11 @@ type Selection struct {
 	// carried through so the Node-RED control adapter can dispatch on it. Purely a
 	// dispatch/documentation fact - it never authorises a write on its own.
 	ControlTier int `json:"control_tier"`
+	// RatedKw is the selected model's catalog nameplate AC power in kW (0 =
+	// unknown, e.g. the generic entries). Published so Layer 1 can turn a kW
+	// setpoint into a rated-relative register value (Deye remote mode 1109 is
+	// 0.1 % of rated; the string/micro active-power limit is a percentage).
+	RatedKw float64 `json:"rated_kw,omitempty"`
 }
 
 // Normalize validates a request against the catalog and returns the normalized
@@ -682,6 +713,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 	// Resolve the concrete model -> its register-map family + label. Model is the
 	// primary selector; a bare Family is accepted for backward compatibility.
 	var modelID, registerFamily, typeLabel string
+	var ratedKw float64
 	if m := strings.TrimSpace(req.Model); m != "" {
 		mod, ok := b.model(m)
 		if !ok {
@@ -690,6 +722,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		modelID = mod.ID
 		registerFamily = mod.Family
 		typeLabel = mod.Label
+		ratedKw = mod.RatedKw
 	} else if fID := strings.TrimSpace(req.Family); fID != "" {
 		fam, ok := b.family(fID)
 		if !ok {
@@ -721,6 +754,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		Communication: b.Communication,
 		UpdatedAt:     now.UTC(),
 		ControlTier:   b.ControlTier,
+		RatedKw:       ratedKw,
 	}
 
 	switch b.Communication {
@@ -749,6 +783,21 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		if conn.ControlWriteFc != 0 && conn.ControlWriteFc != 6 && conn.ControlWriteFc != 16 {
 			return Selection{}, invalid("Der Schreib-Funktionscode muss automatisch (0), 16 oder 6 sein.")
 		}
+		// Remote mode (registers 1100-1121): "auto" (the default) probes the device,
+		// "off" forces the Time-of-Use path. See Connection.RemoteMode.
+		switch strings.TrimSpace(conn.RemoteMode) {
+		case "", "auto":
+			conn.RemoteMode = "auto"
+		case "off":
+			// explicit opt-out, keep as-is
+		default:
+			return Selection{}, invalid("Die Fernsteuerung muss automatisch oder aus sein.")
+		}
+		// 0 = the documented 60 s default; anything else must be inside the protocol's
+		// [10, 18000] s range. It can never be turned off from config.
+		if conn.RemoteWatchdogS != 0 && (conn.RemoteWatchdogS < 10 || conn.RemoteWatchdogS > 18000) {
+			return Selection{}, invalid("Der Totmannschalter der Fernsteuerung muss zwischen 10 und 18000 Sekunden liegen.")
+		}
 		// fields of the other transports are not part of this one.
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 	case CommModbusTCP:
@@ -766,6 +815,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.InvertGridSign, conn.PowerScale, conn.InsecureTLS, conn.ModelType = "", 0, false, 0, false, ""
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
+		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
 	case CommFroniusSolarAPI:
 		// The Solar API (HTTP/JSON) needs only host + port; no serial, unit id or
 		// auth. `insecure_tls` and `invert_grid_sign` (shared) are the only extras.
@@ -777,6 +827,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.ModelType = "", 0, 0, ""
 		conn.UnitID, conn.Profile, conn.InvertControlSign, conn.InvertBattSign = 0, "", false, false
 		conn.ControlWriteFc = 0
+		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
 	case CommFroniusSunSpec:
 		// Real SunSpec over Modbus TCP: host + unit id + an optional model-type
 		// hint + the grid-sign escape hatch. The register-map profile is the single
@@ -804,6 +855,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.Serial, conn.MbSlaveID, conn.PowerScale, conn.InsecureTLS = "", 0, 0, false
 		conn.InvertBattSign = false // the Deye read-side battery sign is not part of this transport
 		conn.ControlWriteFc = 0     // the Deye control write-FC is not part of this transport
+		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
 	case CommGoeHTTP:
 		// go-e HTTP API v2: host + port only. No serial, unit id, auth or sign
 		// escape hatch (charging power is unsigned load).
@@ -816,6 +868,7 @@ func (c Catalog) Normalize(req SelectionRequest, now time.Time) (Selection, erro
 		conn.UnitID, conn.Profile, conn.InsecureTLS, conn.ModelType = 0, "", false, ""
 		conn.InvertControlSign, conn.InvertBattSign = false, false
 		conn.ControlWriteFc = 0
+		conn.RemoteMode, conn.RemoteWatchdogS = "", 0
 	default:
 		return Selection{}, invalid("Unbekannte Kommunikationsmethode.")
 	}
@@ -856,6 +909,12 @@ func (s Selection) BusPayload() []byte {
 		// invert_batt_sign) - without it every self-wired Deye would fall back to the
 		// adapter's own FC16 default with no way to flip back. See ControlWriteFc.
 		conn["control_write_fc"] = s.Connection.ControlWriteFc
+		// remote_mode / remote_watchdog_s drive the Tier-2 REMOTE-MODE control path
+		// (registers 1100-1121). "auto" = probe the device; "off" = force ToU. The
+		// watchdog is the inverter's own dead-man's switch (0 -> the adapter's 60 s
+		// default). Publishing them here is what lets the SELF-WIRING path carry them.
+		conn["remote_mode"] = s.Connection.RemoteMode
+		conn["remote_watchdog_s"] = s.Connection.RemoteWatchdogS
 	case CommModbusTCP:
 		conn["unit_id"] = s.Connection.UnitID
 		conn["profile"] = s.Connection.Profile
@@ -883,8 +942,13 @@ func (s Selection) BusPayload() []byte {
 		// dispatches on (additive; controlRoute falls back to communication-inference
 		// when it is absent, so an older core stays byte-compatible).
 		"control_tier": s.ControlTier,
-		"connection":   conn,
-		"updated_at":   s.UpdatedAt.UTC().Format(time.RFC3339),
+		// `rated_kw` is the selected MODEL's catalog nameplate (kW), 0 when unknown.
+		// The WRITE side needs it: the Deye remote-mode setpoint is 0.1 % of RATED
+		// power and the string/micro active-power limit is a percentage of it, so
+		// without it the control adapter refuses rather than guessing a rating.
+		"rated_kw":   s.RatedKw,
+		"connection": conn,
+		"updated_at": s.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	raw, _ := json.Marshal(payload)
 	return raw

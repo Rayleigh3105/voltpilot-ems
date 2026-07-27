@@ -468,6 +468,10 @@ type ControlSummary struct {
 	SlotStart      string   `json:"slot_start,omitempty"`
 	CheckedAt      string   `json:"checked_at"`
 	MismatchRoles  []string `json:"mismatch_roles"`
+	// ControlPath names WHICH Deye control surface drove the write: "remote" (the
+	// Tier-2 register block 1100-1121) or "tou" (the legacy Time-of-Use synthesis).
+	// Additive and informational - empty for every other adapter.
+	ControlPath string `json:"control_path,omitempty"`
 	// PossibleConflict surfaces the dual-controller "only-controller" awareness to
 	// the cloud (additive; report §9 #6). True = a commanded register is not held
 	// while actively controlling -> a second controller may be steering the inverter.

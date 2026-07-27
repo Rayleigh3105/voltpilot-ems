@@ -1257,6 +1257,7 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 		SlotStart:        c.SlotStart,
 		CheckedAt:        c.CheckedAt.UTC().Format(time.RFC3339Nano),
 		MismatchRoles:    c.MismatchRoles,
+		ControlPath:      c.ControlPath,
 		PossibleConflict: c.PossibleConflict,
 	}
 	if sum.MismatchRoles == nil {
@@ -1288,7 +1289,15 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		Certified      bool     `json:"certified"`
 		AllMatch       bool     `json:"all_match"`
 		MismatchRoles  []string `json:"mismatch_roles"`
-		DualController struct {
+		// ControlPath names WHICH Deye control surface drove this write - "remote"
+		// (the Tier-2 register block 1100-1121) or "tou" (the legacy Time-of-Use
+		// synthesis). Empty for every other adapter. Purely informational.
+		ControlPath string `json:"control_path"`
+		// RemoteStatusRaw is the Deye remote-control STATUS register (1121), a
+		// read-only OBSERVATION deliberately kept OUT of Registers so it can never
+		// fabricate or break all_match. nil = not read (not the remote path).
+		RemoteStatusRaw *int `json:"remote_status_raw"`
+		DualController  struct {
 			OnlyControllerRequired bool   `json:"only_controller_required"`
 			PossibleConflict       bool   `json:"possible_conflict"`
 			Reason                 string `json:"reason"`
@@ -1323,6 +1332,8 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		Certified:        m.Certified,
 		AllMatch:         m.AllMatch,
 		MismatchRoles:    m.MismatchRoles,
+		ControlPath:      m.ControlPath,
+		RemoteStatusRaw:  m.RemoteStatusRaw,
 		PossibleConflict: m.DualController.PossibleConflict,
 		ConflictReason:   m.DualController.Reason,
 	}
@@ -1587,6 +1598,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// until a plan explicitly allows grid charging.
 		"grid_charge_allowed": a.Cfg.GridChargeAllowed && !solarOnly,
 		"soc_min_pct":         a.Cfg.SocMinPct,
+		// soc_max_pct is the ceiling half of the guard band. The Deye REMOTE-MODE
+		// adapter arms the inverter's own constant-SOC belt (register 1108) with the
+		// bound that matches the direction - the floor for a discharge, the ceiling
+		// for a charge - because a field report says the inverter's OWN min/max-SoC
+		// protections may not apply in remote mode. Additive; an adapter that ignores
+		// it is unchanged.
+		"soc_max_pct": a.Cfg.SocMaxPct,
 	}
 	// pv_limit_kw is only present when the active slot caps feed-in; its ABSENCE
 	// tells the adapter to clear any latched limit (backward-compatible: an

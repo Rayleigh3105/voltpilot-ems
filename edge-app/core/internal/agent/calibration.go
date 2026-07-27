@@ -129,6 +129,9 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		// A calibration test never grid-charges (EEG-safe + unnecessary to prove sign/scale).
 		"grid_charge_allowed": false,
 		"soc_min_pct":         a.Cfg.SocMinPct,
+		// The ceiling half of the guard band (see applySetpoint): the Deye remote-mode
+		// adapter arms the inverter's own SoC belt with it on a charge test.
+		"soc_max_pct": a.Cfg.SocMaxPct,
 	}
 	raw, _ := json.Marshal(msg)
 	if err := a.Bus.Publish(localbus.TopicSetpoint, raw, true); err != nil {
