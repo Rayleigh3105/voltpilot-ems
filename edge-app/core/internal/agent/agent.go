@@ -1388,6 +1388,10 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	if !m.Blocked && strings.EqualFold(strings.TrimSpace(m.Source), "calibration") && m.Mode != "release" {
 		a.calMu.Lock()
 		a.cal.NoteWriteReadback(m.AllMatch)
+		// Also record WHICH control surface drove the write ("remote" = the Deye Tier-2
+		// register block, else ToU/default), so the displayed scale hint is path-aware:
+		// the remote setpoint scales from the model's rated power, not the ToU power_scale.
+		a.cal.SetControlPath(m.ControlPath)
 		a.calMu.Unlock()
 	}
 	// E2: the register-level proof also surfaces per entity - mirror it onto

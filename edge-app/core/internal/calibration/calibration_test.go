@@ -2,6 +2,7 @@ package calibration
 
 import (
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -188,6 +189,89 @@ func TestVerdictSignAndScale(t *testing.T) {
 	v = Verdict(0.5, Reading{}, Reading{})
 	if v.SignOK || v.MagnitudeOK || v.MeasuredKw != nil {
 		t.Fatalf("unknown measured verdict: %+v", v)
+	}
+}
+
+// TestRemoteScaleHintIsPathAware pins the fix for the misleading over-delivery hint
+// (task vp-deye-strategy-v2): on the Deye REMOTE-MODE path the setpoint scales from the
+// model's RATED power (register 1109 = 0.1 % of rated), so a scale mismatch must NOT
+// suggest "Leistungsskalierung auf 10 (HV)" - that lever only exists on the ToU/decawatt
+// register map. The ToU verdict keeps the power_scale advice; only the human hint
+// changes, never a fact.
+func TestRemoteScaleHintIsPathAware(t *testing.T) {
+	// The exact live symptom: commanded -1 kW discharge from a quiet baseline, measured
+	// -8 kW (~8x over-delivery).
+	tou := Verdict(-1.0, Reading{BatteryKw: fp(0)}, Reading{BatteryKw: fp(-8.0)})
+	if !tou.SignOK || tou.MagnitudeOK {
+		t.Fatalf("an ~8x over-delivery is same-sign but wrong scale: %+v", tou)
+	}
+	if tou.ScaleHint != "hoch" || !strings.Contains(tou.Text, "Leistungsskalierung auf 10") {
+		t.Fatalf("the ToU verdict must KEEP the power_scale hint: %+v", tou)
+	}
+
+	remote := tou.RemoteScaleHint()
+	// The FACTS survive - only the human hint changes (so confirm gates are unaffected).
+	if !remote.SignOK || remote.MagnitudeOK {
+		t.Fatalf("RemoteScaleHint must not change the sign/magnitude facts: %+v", remote)
+	}
+	if remote.ScaleRatio == nil || tou.ScaleRatio == nil || *remote.ScaleRatio != *tou.ScaleRatio {
+		t.Fatalf("ScaleRatio must survive: %+v", remote)
+	}
+	if remote.ScaleHint != "" {
+		t.Fatalf("the power_scale ScaleHint must be cleared on the remote path: %q", remote.ScaleHint)
+	}
+	if strings.Contains(remote.Text, "Leistungsskalierung") || strings.Contains(remote.Text, "HV") {
+		t.Fatalf("the remote hint must NOT mention power_scale: %q", remote.Text)
+	}
+	if !strings.Contains(remote.Text, "Nennleistung") || !strings.Contains(remote.Text, "Modell") {
+		t.Fatalf("the remote hint must point at the model rating: %q", remote.Text)
+	}
+
+	// A clean verdict (sign + size OK) is a no-op on either path.
+	good := Verdict(-1.0, Reading{BatteryKw: fp(0)}, Reading{BatteryKw: fp(-0.99)})
+	if !good.SignOK || !good.MagnitudeOK {
+		t.Fatalf("precondition (a good verdict): %+v", good)
+	}
+	if got := good.RemoteScaleHint(); got.Text != good.Text || got.ScaleHint != good.ScaleHint {
+		t.Fatalf("RemoteScaleHint must be a no-op when sign+size are OK: %+v", got)
+	}
+	// A wrong-SIGN verdict is also a no-op (RemoteScaleHint only touches scale hints).
+	inv := Verdict(-1.0, Reading{BatteryKw: fp(0)}, Reading{BatteryKw: fp(1.0)})
+	if !inv.SignInverted {
+		t.Fatalf("precondition (inverted): %+v", inv)
+	}
+	if got := inv.RemoteScaleHint(); got.Text != inv.Text {
+		t.Fatalf("RemoteScaleHint must not touch an inverted-sign verdict: %q", got.Text)
+	}
+}
+
+// TestSnapshotAppliesRemoteHintAfterSetControlPath proves the Session surfaces the
+// path-aware hint end to end: once a calibration readback reports control_path "remote"
+// (SetControlPath), the displayed verdict for an over-delivering test uses the remote
+// wording, not the power_scale advice.
+func TestSnapshotAppliesRemoteHintAfterSetControlPath(t *testing.T) {
+	s := newSession()
+	s.Arm()
+	start := time.Unix(1_700_000_000, 0)
+	// Discharge test from a quiet baseline; the battery over-delivers (-8 kW on -0.5 cmd).
+	_ = s.StartTest(Discharge, 0.5, Reading{BatteryKw: fp(0), SocPct: fp(80)}, start)
+	over := Reading{BatteryKw: fp(-8.0), SocPct: fp(78)}
+	band := SocBand{MinPct: 5, MaxPct: 95}
+
+	// Before any readback the path is unknown -> the default (ToU) hint.
+	def := s.Snapshot(start.Add(3*time.Second), over, band)
+	if !strings.Contains(def.Test.Verdict.Text, "Leistungsskalierung") {
+		t.Fatalf("without a remote readback the ToU hint shows: %q", def.Test.Verdict.Text)
+	}
+
+	// A calibration readback over the remote path flips the displayed hint.
+	s.SetControlPath("remote")
+	rem := s.Snapshot(start.Add(3*time.Second), over, band)
+	if strings.Contains(rem.Test.Verdict.Text, "Leistungsskalierung") {
+		t.Fatalf("on the remote path the power_scale hint must be gone: %q", rem.Test.Verdict.Text)
+	}
+	if !strings.Contains(rem.Test.Verdict.Text, "Nennleistung") {
+		t.Fatalf("on the remote path the hint must point at the model rating: %q", rem.Test.Verdict.Text)
 	}
 }
 
