@@ -80,6 +80,13 @@ function shape(payload) {
     registers,
     all_match,
     mismatch_roles,
+    // A control plan that was EMPTY because something is WRONG (an unknown nameplate
+    // / power scale) - carried through so the core can show the CAUSE on the :8484
+    // card instead of an eternal "warte auf Rueckmeldung" (Defect 2). A blocked
+    // readback legitimately has registers: [] (there was nothing to write/read).
+    // Additive: a normal readback leaves blocked false / reason '' and is unchanged.
+    blocked: payload.blocked === true,
+    reason: typeof payload.reason === 'string' ? payload.reason : '',
     // Additive "only-controller" awareness surfaced on the readback path.
     dual_controller: dualControllerAwareness(certified, control_enabled, registers.length, all_match, mismatch_roles),
   };
@@ -111,13 +118,15 @@ module.exports = function (RED) {
           node.status({ fill: 'red', shape: 'ring', text: 'Sendefehler' });
           done(err);
         } else {
-          node.status({
-            fill: shaped.all_match ? 'green' : 'red',
-            shape: 'dot',
-            text: shaped.all_match
-              ? 'bestätigt (' + shaped.registers.length + ' Register)'
-              : 'Abweichung: ' + shaped.mismatch_roles.join(', '),
-          });
+          node.status(shaped.blocked
+            ? { fill: 'yellow', shape: 'ring', text: 'angehalten: ' + (shaped.reason || 'Steuerung blockiert') }
+            : {
+              fill: shaped.all_match ? 'green' : 'red',
+              shape: 'dot',
+              text: shaped.all_match
+                ? 'bestätigt (' + shaped.registers.length + ' Register)'
+                : 'Abweichung: ' + shaped.mismatch_roles.join(', '),
+            });
           done();
         }
       });

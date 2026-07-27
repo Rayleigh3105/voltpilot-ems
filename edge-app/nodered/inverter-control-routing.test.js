@@ -171,6 +171,15 @@ test('Deye is UNCERTIFIED: never emits executable writes even when control_enabl
   assert.deepStrictEqual(r.writes, [], 'no live write to a bench-pending address');
   assert.deepStrictEqual(r.readbacks, [], 'no fake confirmation of unproven registers');
   assert.match(r.reason, /noch nicht freigegeben/);
+  // The routine read-only case is LEGITIMATELY quiet - it must NOT be flagged
+  // blocked, so the executor stays silent for it (Defect 2 distinguishes the two).
+  assert.notStrictEqual(r.blocked, true, 'an uncertified read-only plan is quiet, not blocked');
+});
+
+// Defect 2 also on the kill-switch quiet case: a Not-Aus refusal is not "blocked".
+test('kill-switch: an off (Not-Aus) plan is quiet, never flagged blocked', () => {
+  const r = C.controlRoute(SUNSPEC_SEL, { battery_setpoint_kw: -4, source: 'schedule', control_enabled: false });
+  assert.notStrictEqual(r.blocked, true);
 });
 
 test('un-gate: Deye writes/readbacks are gated ONLY by the certification allowlist (generic gate)', () => {
@@ -444,6 +453,7 @@ test('N1: an UNKNOWN HV/LV scale REFUSES the whole ToU plan (never a silent 10x 
   assert.deepStrictEqual(auto.writes, []);
   assert.deepStrictEqual(auto.readbacks, []);
   assert.match(auto.reason, /Leistungsskalierung unbest/, 'the reason names the scale');
+  assert.strictEqual(auto.blocked, true, 'a scale-suppressed refusal must be flagged blocked (Defect 2)');
   // Not even a CALIBRATION write gets through - the operator must state the scale
   // (or let the device probe detect it) before any live write.
   const cal = C.controlRoute(noScale, enabled({ battery_setpoint_kw: -0.3, calibration: true }), { ratedKw: 30 });
@@ -1123,6 +1133,10 @@ test('remote: an unknown model rating REFUSES the plan (a wrong rating IS a scal
   assert.deepStrictEqual(r.planned, []);
   assert.deepStrictEqual(r.writes, []);
   assert.match(r.reason, /Nennleistung/);
+  // Defect 2: an empty plan caused by a MISCONFIGURATION is flagged blocked so the
+  // executor surfaces the reason (a refusal must never be silent), unlike the
+  // routine read-only/kill-switch quiet cases.
+  assert.strictEqual(r.blocked, true, 'a nameplate-unknown refusal must be flagged blocked');
 });
 
 test('remote: the watchdog is configurable and clamped to the documented [10, 18000] s', () => {

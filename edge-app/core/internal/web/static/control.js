@@ -113,6 +113,12 @@
         renderEmpty("Steuerung ist ausgeschaltet.",
           "Die Wechselrichter-Steuerung ist als Sicherheitsvorgabe deaktiviert " +
           "(Not-Aus). VoltPilot liest weiter mit, schreibt aber nichts.");
+      } else if (c && c.blocked && c.reason) {
+        // The control plan is EMPTY because something is WRONG (an unknown
+        // nameplate / power scale). Show the CAUSE the operator can act on instead
+        // of an eternal "warte auf Rückmeldung" (Defect 2).
+        setState("var(--warn, #ff9500)", "angehalten");
+        renderEmpty("Steuerung kann gerade nicht ausgeführt werden.", c.reason);
       } else {
         setState("var(--brand, #6a8cff)", "wartet");
         renderEmpty("Noch keine Rückmeldung.",
