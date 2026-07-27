@@ -34,7 +34,7 @@ import {
 } from './nav';
 import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, activeKeyForPage, anlageSidebar, resolveAnlage } from './anlageNav';
-import { healthBadge } from './health';
+import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
@@ -626,6 +626,23 @@ function UnifiedPortal() {
     // healthTick is a deliberate dependency: it is what re-evaluates freshness.
   }, [shellSite, devices, healthTick]);
 
+  // The facts only the Anlagen-Seite measures (plan / control / battery link),
+  // reported upward so header and cockpit are ONE health truth — the badge used
+  // to run on device liveness alone, so it could only ever say something about
+  // a device while the cockpit's checklist knew about control and Speicher too.
+  // They are kept per Anlage and dropped the moment the scope changes, so a
+  // switch never carries the previous plant's findings.
+  const [anlageFacts, setAnlageFacts] = useState<{
+    siteId: string;
+    facts: AnlageHealthFacts;
+  } | null>(null);
+  const onHealthFacts = useCallback((siteId: string, facts: AnlageHealthFacts) => {
+    setAnlageFacts((prev) =>
+      prev?.siteId === siteId && sameHealthFacts(prev.facts, facts) ? prev : { siteId, facts },
+    );
+  }, []);
+  const scopedFacts = shellSite && anlageFacts?.siteId === shellSite.id ? anlageFacts.facts : null;
+
   const anlageNav = shellSite
     ? {
         siteId: shellSite.id,
@@ -643,11 +660,15 @@ function UnifiedPortal() {
         onOpenPage: (target: PageId) => navigate(target),
         // "Alle Anlagen" only exists where a fleet level exists.
         onOpenFleet: sites.length > 1 ? () => navigate(pageRoute('anlagen')) : null,
-        // Composed from data already in hand (the devices list) - the badge
-        // must never add a request to the main page. Facts nobody supplied
-        // (plan, control, battery) contribute nothing, so the badge never
+        // Composed from data already in hand - the devices list plus whatever
+        // the Anlagen-Seite already measured and reported up. The badge must
+        // never add a request of its own. A fact nobody supplied contributes
+        // nothing (`healthBadge` drops the row), so the badge still never
         // claims health it did not measure.
-        health: loaded && tenantReady ? healthBadge({ devices: deviceHealth }) : null,
+        health:
+          loaded && tenantReady
+            ? healthBadge({ devices: deviceHealth, ...(scopedFacts ?? {}) })
+            : null,
       }
     : null;
 
@@ -780,6 +801,7 @@ function UnifiedPortal() {
               onNavigate={navigate}
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
+              onHealthFacts={onHealthFacts}
             />
           )}
           {page === 'marktpreise' && (

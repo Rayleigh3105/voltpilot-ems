@@ -165,8 +165,11 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  /* The cause text may be long, so the badge must be allowed to shrink and
+     truncate instead of pushing the top bar into a horizontal overflow. */
   min-width: 0;
+  max-width: min(46vw, 26rem);
   padding: 0.3rem 0.7rem;
   border: 1px solid var(--vp-border);
   border-radius: var(--vp-radius-pill);
@@ -175,20 +178,128 @@
   font-weight: 600;
   color: var(--vp-text-gray);
   white-space: nowrap;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.vp-healthbadge:hover {
+  border-color: var(--vp-text-gray);
+}
+/* The pill stays visually compact but keeps a ≥44px touch target (the
+   `.vp-switch::before` precedent) - it is a real control now. */
+.vp-healthbadge {
+  position: relative;
+}
+.vp-healthbadge::before {
+  content: '';
+  position: absolute;
+  inset: -8px -4px;
 }
 .vp-healthbadge.state-warnung {
   border-color: var(--vp-flow-pv);
   color: var(--vp-text-dark);
 }
-/* Phones keep the dot (the state) but drop the word so the breadcrumb and the
-   user menu keep their room; the title still names the worst finding. */
+/* The CAUSE, visible — never only in a hover title. */
+.vp-healthbadge-cause {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--vp-text-gray);
+}
+.vp-healthbadge-cause::before {
+  content: '· ';
+}
+.vp-healthbadge-caret {
+  flex: 0 0 auto;
+  opacity: 0.6;
+}
+/* Phones keep the dot + the cause (that is the point) but drop the state word,
+   so the breadcrumb and the user menu keep their room. */
 @media (max-width: 720px) {
   .vp-healthbadge-lbl {
     display: none;
   }
+  .vp-healthbadge-cause::before {
+    content: none;
+  }
   .vp-healthbadge {
     padding: 0.3rem 0.45rem;
+    max-width: 62vw;
   }
+  /* The plant name repeats in the page head one line below; the cause of a
+     warning appears nowhere else in the chrome. So the breadcrumb yields
+     room first instead of both truncating equally. */
+  .vp-app .vp-topbar .crumbs {
+    flex-shrink: 4;
+  }
+}
+/* Nothing to report: no cause text, so keep the compact pill. */
+.vp-healthbadge.state-ok {
+  max-width: none;
+}
+
+/* ---------- Health popover (portalled to body) ---------- */
+.vp-healthpop {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: min(20rem, calc(100vw - 24px));
+  padding: var(--vp-space-4, 1rem);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  box-shadow: var(--vp-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.16));
+}
+.vp-healthpop-title {
+  font-size: var(--vp-text-meta);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vp-text-gray);
+}
+.vp-healthpop-ok,
+.vp-healthpop-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--vp-text-sm, 0.9rem);
+  color: var(--vp-text-dark);
+}
+.vp-healthpop-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.2rem 0;
+  overflow-wrap: anywhere;
+}
+.vp-healthpop-mark {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  text-align: center;
+  font-weight: 700;
+  color: var(--vp-text-gray);
+}
+.vp-healthpop-item.tone-warn .vp-healthpop-mark {
+  color: var(--vp-flow-pv);
+}
+.vp-healthpop-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  align-self: flex-start;
+  padding: 0.35rem 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--vp-text-meta);
+  font-weight: 600;
+  color: var(--vp-link, var(--vp-action));
+  cursor: pointer;
 }
 
 /* ---------- Phone bottom bar: five slots ---------- */

@@ -100,7 +100,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     onOpenSub: vi.fn(),
     onOpenPage: vi.fn(),
     onOpenFleet: null,
-    health: { state: 'ok' as const, label: 'Alles in Ordnung', detail: null },
+    health: { state: 'ok' as const, label: 'Alles in Ordnung', detail: null, findings: [] },
   };
 
   const renderShell = (over: Partial<typeof anlage> = {}) =>
@@ -145,15 +145,61 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(screen.getAllByText('3').length).toBe(2);
   });
 
+  const WARN_HEALTH = {
+    state: 'warnung' as const,
+    label: 'Warnung',
+    detail: 'Gerät: meldet sich nicht',
+    findings: [
+      { state: 'warn' as const, text: 'Gerät: meldet sich nicht' },
+      { state: 'off' as const, text: 'Steuerung: noch nicht freigegeben' },
+    ],
+  };
+
   it('renders the health badge with its state and names the worst finding', () => {
-    const { container } = renderShell({
-      health: { state: 'warnung', label: 'Warnung', detail: 'Gerät: meldet sich nicht' },
-    });
+    const { container } = renderShell({ health: WARN_HEALTH });
     const badge = container.querySelector('.vp-topbar .vp-healthbadge');
     expect(badge).not.toBeNull();
     expect(badge?.className).toContain('state-warnung');
     expect(badge?.getAttribute('title')).toBe('Gerät: meldet sich nicht');
     expect(badge?.textContent).toContain('Warnung');
+  });
+
+  it('shows the CAUSE as visible text, not only in a hover title', () => {
+    const { container } = renderShell({ health: WARN_HEALTH });
+    const cause = container.querySelector('.vp-topbar .vp-healthbadge-cause');
+    // The cause must be real text in the DOM - a `title=` alone is invisible
+    // on touch and undiscoverable everywhere else.
+    expect(cause?.textContent).toBe('Gerät: meldet sich nicht');
+  });
+
+  it('is a real, keyboard-reachable control with a cause-carrying accessible name', () => {
+    renderShell({ health: WARN_HEALTH });
+    const badge = screen.getByRole('button', {
+      name: /Zustand der Anlage: Warnung – Gerät: meldet sich nicht/,
+    });
+    expect(badge.tagName).toBe('BUTTON');
+    expect(badge.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('one click opens a popover listing EVERY finding, and drills into the Anlage', () => {
+    const onOpenSub = vi.fn();
+    renderShell({ health: WARN_HEALTH, onOpenSub });
+    fireEvent.click(screen.getByRole('button', { name: /Zustand der Anlage/ }));
+    const pop = screen.getByRole('dialog', { name: 'Zustand der Anlage' });
+    expect(pop.textContent).toContain('Gerät: meldet sich nicht');
+    expect(pop.textContent).toContain('Steuerung: noch nicht freigegeben');
+    // The drill target: the plant's own Zustand card on its cockpit.
+    fireEvent.click(screen.getByRole('button', { name: /Zur Anlage/ }));
+    expect(onOpenSub).toHaveBeenCalledWith(null);
+    expect(screen.queryByRole('dialog', { name: 'Zustand der Anlage' })).toBeNull();
+  });
+
+  it('a healthy plant opens an honest "nichts zu melden" popover', () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Zustand der Anlage/ }));
+    expect(screen.getByRole('dialog', { name: 'Zustand der Anlage' }).textContent).toContain(
+      'nichts zu melden',
+    );
   });
 
   it('renders no health badge when the state is not known yet', () => {

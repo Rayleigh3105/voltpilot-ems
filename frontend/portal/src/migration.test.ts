@@ -177,7 +177,7 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
 
   it('das Gesundheits-Abzeichen erfindet nichts (kein v2-Drift, keine Fakten)', () => {
     // Ohne geladene Fakten: grün, aber OHNE erfundenen Befund.
-    expect(healthBadge({})).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null });
+    expect(healthBadge({})).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null, findings: [] });
     // Eine Bestandsanlage hat keine v2-Entitäten - Soll/Ist-Drift ist damit
     // strukturell unmöglich und darf nie einen Hinweis erzeugen.
     expect(healthBadge({ entityDrift: false }).detail).toBeNull();

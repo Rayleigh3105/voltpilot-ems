@@ -96,12 +96,25 @@ export function healthChecklist(input: HealthInput): HealthItem[] {
 /** The three states of the shell health badge (concept tab 2). */
 export type HealthBadgeState = 'ok' | 'hinweis' | 'warnung';
 
+/** One non-OK finding, named in plain German ("Gerät: meldet sich nicht"). */
+export interface HealthFinding {
+  state: Exclude<HealthState, 'ok'>;
+  text: string;
+}
+
 export interface HealthBadge {
   state: HealthBadgeState;
   /** The badge word itself. */
   label: string;
   /** The WORST finding, named in plain German; null = nothing to report. */
   detail: string | null;
+  /**
+   * EVERY current non-OK finding, worst first (`detail` is `findings[0]`).
+   * A warning must be able to name its cause AND let the customer see the
+   * rest in one click, so the badge carries the whole list - not just the
+   * worst one hidden in a hover title.
+   */
+  findings: HealthFinding[];
 }
 
 /**
@@ -124,6 +137,36 @@ export interface HealthBadgeInput {
    * Absent/false = no finding — an un-migrated plant can never produce one.
    */
   entityDrift?: boolean | null;
+}
+
+/**
+ * The facts only the Anlagen-Seite has measured (plan, control, battery link,
+ * v2 drift). It reports them upward so the shell badge and the plant's own
+ * Zustand card are ONE truth — before this the header ran on device liveness
+ * alone and could disagree with the cockpit about the same Anlage.
+ */
+export type AnlageHealthFacts = Pick<
+  HealthBadgeInput,
+  'plan' | 'controlState' | 'battery' | 'entityDrift'
+>;
+
+/**
+ * Value equality for the reported facts, so a re-render that measured the same
+ * thing does not restate it upward (and the shell does not re-render for
+ * nothing). Absent and present-but-equal are distinguished: `null` (unknown)
+ * must never compare equal to a measured value.
+ */
+export function sameHealthFacts(a: AnlageHealthFacts, b: AnlageHealthFacts): boolean {
+  const plan = (f: AnlageHealthFacts) =>
+    f.plan ? `${f.plan.hasPlanToday}/${f.plan.hasAnyPlan}` : '-';
+  const battery = (f: AnlageHealthFacts) =>
+    f.battery ? `${f.battery.withoutDevice}/${f.battery.linked}` : '-';
+  return (
+    plan(a) === plan(b) &&
+    battery(a) === battery(b) &&
+    (a.controlState ?? null) === (b.controlState ?? null) &&
+    (a.entityDrift ?? null) === (b.entityDrift ?? null)
+  );
 }
 
 const BADGE_LABELS: Record<HealthBadgeState, string> = {
@@ -161,20 +204,23 @@ export function healthBadge(input?: HealthBadgeInput | null): HealthBadge {
     return true;
   });
 
-  const findings: { state: Exclude<HealthState, 'ok'>; text: string }[] = items
+  const collected: HealthFinding[] = items
     .filter((i) => i.state !== 'ok')
     .map((i) => ({ state: i.state as Exclude<HealthState, 'ok'>, text: `${i.label}: ${i.detail}` }));
 
   if (facts.entityDrift) {
-    findings.push({ state: 'off', text: 'Einstellungen: noch nicht auf dem Gerät' });
+    collected.push({ state: 'off', text: 'Einstellungen: noch nicht auf dem Gerät' });
   }
 
   // `healthChecklist` already sorts warn before off; the drift row is appended
   // as an `off`, so a stable sort keeps warnings first either way.
-  const worst =
-    findings.find((f) => f.state === 'warn') ?? findings.find((f) => f.state === 'off') ?? null;
+  const findings = [
+    ...collected.filter((f) => f.state === 'warn'),
+    ...collected.filter((f) => f.state === 'off'),
+  ];
+  const worst = findings[0] ?? null;
   const state: HealthBadgeState = !worst ? 'ok' : worst.state === 'warn' ? 'warnung' : 'hinweis';
-  return { state, label: BADGE_LABELS[state], detail: worst?.text ?? null };
+  return { state, label: BADGE_LABELS[state], detail: worst?.text ?? null, findings };
 }
 
 function controlItem(state: ControlState): HealthItem {

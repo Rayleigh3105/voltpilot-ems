@@ -25,6 +25,7 @@ import {
 } from '../anlageNav';
 import type { HealthBadge } from '../health';
 import type { AnlagenSub } from '../nav';
+import { HealthBadgeButton } from './HealthBadgeButton';
 import './Shell.css';
 
 /**
@@ -370,15 +371,14 @@ export function AppShell({
             </span>
           </div>
           {anlage?.health && (
-            // ONE aggregated plant state, always in sight (concept tab 2). The
-            // title names the worst finding, so it says WHAT is wrong.
-            <span
-              className={`vp-healthbadge state-${anlage.health.state}`}
-              title={anlage.health.detail ?? anlage.health.label}
-            >
-              <span className="vp-health-dot" aria-hidden="true" />
-              <span className="vp-healthbadge-lbl">{anlage.health.label}</span>
-            </span>
+            // ONE aggregated plant state, always in sight (concept tab 2) — and
+            // a REAL control: the worst cause is visible text, one click lists
+            // every finding, and "Zur Anlage" leads to the plant's Zustand card
+            // (a warning names its cause and is reachable in one click).
+            <HealthBadgeButton
+              health={anlage.health}
+              onOpenDetail={() => anlage.onOpenSub(null)}
+            />
           )}
           <div className="spacer" />
 

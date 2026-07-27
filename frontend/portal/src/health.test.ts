@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { healthBadge, healthChecklist, type HealthInput } from './health';
+import {
+  healthBadge,
+  healthChecklist,
+  sameHealthFacts,
+  type HealthInput,
+} from './health';
 
 function input(over: Partial<HealthInput>): HealthInput {
   return {
@@ -76,7 +81,7 @@ describe('healthBadge - the ONE aggregated plant state (v3 M1)', () => {
       controlState: 'healthy',
       battery: { withoutDevice: false, linked: true },
     });
-    expect(badge).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null });
+    expect(badge).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null, findings: [] });
   });
 
   it('goes to WARNUNG while a device is silent, and names the finding', () => {
@@ -115,12 +120,13 @@ describe('healthBadge - the ONE aggregated plant state (v3 M1)', () => {
       state: 'ok',
       label: 'Alles in Ordnung',
       detail: null,
+      findings: [],
     });
   });
 
   it('an empty / absent input is OK without an invented detail', () => {
     for (const arg of [{}, null, undefined] as const) {
-      expect(healthBadge(arg)).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null });
+      expect(healthBadge(arg)).toEqual({ state: 'ok', label: 'Alles in Ordnung', detail: null, findings: [] });
     }
   });
 
@@ -146,5 +152,62 @@ describe('healthBadge - the ONE aggregated plant state (v3 M1)', () => {
     const badge = healthBadge({ devices: { deviceCount: 0, onlineCount: 0, waitingCount: 0 } });
     expect(badge.state).toBe('hinweis');
     expect(badge.detail).toBe('Gerät: noch nicht verbunden');
+  });
+});
+
+describe('the badge carries EVERY finding, not just the worst (portal-signal fix)', () => {
+  it('lists all current findings, worst first, with detail === findings[0]', () => {
+    const badge = healthBadge({
+      devices: { deviceCount: 2, onlineCount: 1, waitingCount: 0 }, // stale -> warn
+      plan: { hasPlanToday: false, hasAnyPlan: false }, // off
+      controlState: 'pending', // off
+      battery: { withoutDevice: true, linked: false }, // warn
+      entityDrift: true, // off
+    });
+    expect(badge.state).toBe('warnung');
+    // Warnings first, then the hints - so the popover reads worst-first too.
+    expect(badge.findings.map((f) => f.text)).toEqual([
+      'Gerät: meldet sich nicht',
+      'Speicher: keinem Gerät zugeordnet',
+      'Fahrplan: noch keiner erstellt',
+      'Steuerung: noch nicht freigegeben',
+      'Einstellungen: noch nicht auf dem Gerät',
+    ]);
+    expect(badge.findings.every((f) => f.state === 'warn' || f.state === 'off')).toBe(true);
+    // The header's visible cause is exactly the first row of the popover.
+    expect(badge.detail).toBe(badge.findings[0].text);
+  });
+
+  it('has no findings when nothing is wrong or nothing was measured', () => {
+    expect(healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 } }).findings)
+      .toEqual([]);
+    expect(healthBadge(null).findings).toEqual([]);
+  });
+
+  it('never invents a finding for a fact the caller did not supply', () => {
+    // Only device data (the pre-fix header input): the Steuerung/Fahrplan/
+    // Speicher rows must NOT appear, even as healthy ones.
+    const badge = healthBadge({ devices: { deviceCount: 1, onlineCount: 1, waitingCount: 0 } });
+    expect(badge.findings).toEqual([]);
+    expect(badge.state).toBe('ok');
+  });
+});
+
+describe('sameHealthFacts - unknown never equals measured', () => {
+  it('is true for value-equal facts', () => {
+    expect(
+      sameHealthFacts(
+        { plan: { hasPlanToday: true, hasAnyPlan: true }, controlState: 'healthy', battery: null },
+        { plan: { hasPlanToday: true, hasAnyPlan: true }, controlState: 'healthy', battery: null },
+      ),
+    ).toBe(true);
+  });
+
+  it('separates absent from measured', () => {
+    expect(sameHealthFacts({ battery: null }, { battery: { withoutDevice: false, linked: false } }))
+      .toBe(false);
+    expect(sameHealthFacts({ controlState: null }, { controlState: 'off' })).toBe(false);
+    expect(sameHealthFacts({ plan: null }, { plan: { hasPlanToday: false, hasAnyPlan: false } }))
+      .toBe(false);
   });
 });

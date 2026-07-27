@@ -32,7 +32,7 @@ import { nextHourIndex, weatherWhy } from '../weather';
 import { controlStrip } from '../control';
 import { todaySlots } from '../schedule';
 import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
-import { healthChecklist } from '../health';
+import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
 import { resolveAnlage } from '../anlageNav';
 import { ControlStrip } from '../components/ControlStrip';
@@ -86,6 +86,13 @@ export interface AnlagenPageProps {
   onNavigate: (route: Route) => void;
   onReload: (selectSiteId?: string) => void;
   isAdmin?: boolean;
+  /**
+   * Reports the health facts only this page measures (plan / control / battery
+   * link) up to the shell, so the top-bar badge and the plant's own Zustand
+   * card are ONE truth. Absent facts stay absent — `healthBadge` drops every
+   * row it was not given, so the badge never claims health it did not measure.
+   */
+  onHealthFacts?: (siteId: string, facts: AnlageHealthFacts) => void;
 }
 
 /**
@@ -398,6 +405,7 @@ export function AnlageSeite({
   onOpenSub,
   onBackToList,
   onReload,
+  onHealthFacts,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -753,7 +761,9 @@ export function AnlageSeite({
   const batteryLinked = plan?.deviceId != null;
   const controlView = controlStrip(controlStatus, now, batteryLinked);
 
-  // The Gesundheits-Checklist (desktop Zone C).
+  // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected
+  // one lists it as its "Zustand" card, so a migrated plant has the surface the
+  // header badge drills to; before this it existed only on the v1 branch).
   const health = healthChecklist({
     deviceCount: ovSite?.deviceCount ?? 0,
     onlineCount: ovSite?.onlineCount ?? 0,
@@ -764,6 +774,34 @@ export function AnlageSeite({
     batteryWithoutDevice: ovSite?.batteryWithoutDevice ?? false,
     batteryLinked,
   });
+
+  // Report the facts only this page measures up to the shell badge, so header
+  // and cockpit can never disagree about the same Anlage. The overview drives
+  // whether the battery fact is KNOWN at all — without it the badge must not
+  // conclude "kein Speicher" (an absent fact contributes nothing).
+  const planKnown = !planLoading && !planFailed;
+  const hasAnyPlan = planSlots.length > 0;
+  const controlState = controlView?.state ?? null;
+  const batteryKnown = ovSite != null;
+  const batteryWithoutDevice = ovSite?.batteryWithoutDevice ?? false;
+  useEffect(() => {
+    if (!onHealthFacts) return;
+    onHealthFacts(site.id, {
+      plan: planKnown ? { hasPlanToday, hasAnyPlan } : null,
+      controlState,
+      battery: batteryKnown ? { withoutDevice: batteryWithoutDevice, linked: batteryLinked } : null,
+    });
+  }, [
+    onHealthFacts,
+    site.id,
+    planKnown,
+    hasPlanToday,
+    hasAnyPlan,
+    controlState,
+    batteryKnown,
+    batteryWithoutDevice,
+    batteryLinked,
+  ]);
 
   // The period label + strip selection follow the SELECTED instance.
   const atDate = at ? new Date(`${at}T12:00:00`) : now;
@@ -954,6 +992,18 @@ export function AnlageSeite({
             at={at}
             dayTotals={dayTotals}
           />
+
+          {/* Zustand: die Erklärung zur Kopfzeilen-Warnung lebt auf der Seite,
+              die der Kunde wirklich sieht. Auf einer migrierten Anlage gab es
+              diese Fläche vorher gar nicht - die Warnung hatte also keinen Ort,
+              an dem sie ihre Ursache nennen konnte. */}
+          {health.length > 0 && (
+            <div className="vp-cockpit-health" id="zustand">
+              <Card padding="lg" radius="lg" style={{ minWidth: 0 }}>
+                <HealthChecklist items={health} />
+              </Card>
+            </div>
+          )}
 
           {/* Die ruhige Toolbox-Zeile - der Abschluss (§1.3). Kein Werben
               für einen bestimmten Modus. Das Wetter ist jetzt eine Kachel. */}

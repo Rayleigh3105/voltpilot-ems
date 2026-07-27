@@ -714,6 +714,25 @@ accident. **Consequence for tests: a Deye fixture that exercises the ToU mapping
 must state `power_scale`** (or supply a capability with a `scaleClass`). The remote
 path derives its scaling from rated power and cannot inherit `power_scale` at all.
 
+## `certified` im Heartbeat kommt aus dem KERN, nicht aus dem Flow-Readback
+
+Zwei Wahrheiten über „zertifiziert" existieren nebeneinander, und nur eine ist
+belastbar: der Node-RED-Flow stempelt `certified` aus seiner STATISCHEN
+Familien-Allowlist (`inverter-control-routing.js` `CERTIFIED = {sunspec}`), die
+die per-Gerät erteilte **First-Light**-Freigabe gar nicht kennen kann — ein
+freigegebener Deye (`hybrid_3p`) meldete darüber dauerhaft `certified:false` ans
+Portal, während `:8484` aus `snap.ControlCertified` korrekt „freigegeben" zeigte.
+`agent.controlSummary` liest deshalb **`snap.ControlCertified`** (gepflegt von
+`applySetpoint`/`calibration.go`, genau der Wert der lokalen Karte). Das ändert
+NUR, was BERICHTET wird — wer schreiben darf, entscheiden weiterhin
+`control_enabled` und die Allowlist des Executors. Den `CERTIFIED`-Map des Flows
+nicht „reparieren": First-Light ist bewusst eine Laufzeit-Freigabe pro Gerät.
+Weichen die beiden Quellen ab (der Normalfall auf jeder freigegebenen
+Nicht-Allowlist-Familie), nennt `logCertifiedDivergence` beide Werte einmal pro
+10 min im Log statt still zu überschreiben. Beweis:
+`agent/control_test.go TestHeartbeatCertifiedFollowsTheCoreNotTheFlowAllowlist`
+(beide Richtungen — ein Flow, der Zertifizierung BEHAUPTET, gewinnt nie).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

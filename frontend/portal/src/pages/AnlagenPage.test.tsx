@@ -250,7 +250,10 @@ function mockSurface(input: AnlageSurfaceInput | null) {
   });
 }
 
-function renderSeite(onOpenSub: (sub: string) => void = () => {}) {
+function renderSeite(
+  onOpenSub: (sub: string) => void = () => {},
+  onHealthFacts?: (siteId: string, facts: unknown) => void,
+) {
   return render(
     <AnlageSeite
       sites={[site]}
@@ -261,6 +264,7 @@ function renderSeite(onOpenSub: (sub: string) => void = () => {}) {
       site={site}
       onOpenSub={onOpenSub as never}
       onBackToList={null}
+      onHealthFacts={onHealthFacts as never}
     />,
   );
 }
@@ -617,5 +621,54 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
       );
     }
     expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')?.innerHTML).toBe(flowBefore);
+  });
+});
+
+describe('Eine Warnung nennt ihre Ursache und ist in einem Klick erreichbar', () => {
+  it('die MIGRIERTE Anlage hat eine „Zustand"-Karte (vorher gab es sie dort nicht)', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    // Ein stilles Gerät: genau der Fall, der oben „Warnung" auslöst.
+    stubApi({ onlineCount: 0, waitingCount: 0, worstStatus: 'stale' });
+    const { container } = renderSeite();
+    await waitFor(() => {
+      expect(container.querySelector('.vp-cockpit-health')).not.toBeNull();
+    });
+    const card = container.querySelector('.vp-cockpit-health');
+    expect(card?.textContent).toContain('Gesundheit');
+    expect(card?.textContent).toContain('meldet sich nicht');
+  });
+
+  it('meldet die selbst gemessenen Fakten (Fahrplan/Steuerung/Speicher) nach oben', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    stubApi({ batteryWithoutDevice: true });
+    const reported: { siteId: string; facts: Record<string, unknown> }[] = [];
+    renderSeite(
+      () => {},
+      (siteId, facts) => reported.push({ siteId, facts: facts as Record<string, unknown> }),
+    );
+    await waitFor(() => {
+      expect(reported.some((r) => r.facts.battery != null)).toBe(true);
+    });
+    const last = reported[reported.length - 1];
+    expect(last.siteId).toBe('s-1');
+    // Der Speicher-Fakt ist GEMESSEN (die Übersicht ist da) ...
+    expect(last.facts.battery).toEqual({ withoutDevice: true, linked: false });
+    // ... der Fahrplan-Fakt ebenfalls (der Abruf ist beantwortet, wenn auch leer).
+    expect(last.facts.plan).toEqual({ hasPlanToday: false, hasAnyPlan: false });
+    // Ohne Rückmeldung bleibt die Steuerung UNBEKANNT - nie ein erfundenes "ok".
+    expect(last.facts.controlState ?? null).toBeNull();
+  });
+
+  it('kommt ohne die optionale Rückmeldung aus (nur Gerätedaten, kein Absturz)', async () => {
+    mockAdaptive(false);
+    mockSurface(LEER);
+    const { container } = renderSeite();
+    await waitFor(() => {
+      expect(container.querySelector('.vp-anlage-dash')).not.toBeNull();
+    });
+    // Kein onHealthFacts übergeben: die Seite rendert unverändert weiter.
+    expect(container.querySelector('.vp-cockpit-health')).toBeNull();
   });
 });
