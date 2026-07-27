@@ -854,6 +854,9 @@ func TestRemoteModeFieldsAndRatedKwArePublished(t *testing.T) {
 	if sel.Connection.RemoteWatchdogS != 0 {
 		t.Fatalf("watchdog defaults to 0 = the adapter's documented 60 s, got %v", sel.Connection.RemoteWatchdogS)
 	}
+	if sel.Connection.RemoteBatteryStrategy != 0 {
+		t.Fatalf("battery strategy defaults to 0 = Power only (no on-device SoC target), got %v", sel.Connection.RemoteBatteryStrategy)
+	}
 
 	var m map[string]any
 	if err := json.Unmarshal(sel.BusPayload(), &m); err != nil {
@@ -869,17 +872,32 @@ func TestRemoteModeFieldsAndRatedKwArePublished(t *testing.T) {
 	if _, ok := conn["remote_watchdog_s"]; !ok {
 		t.Fatal("remote_watchdog_s must be published so the adapter can honour it")
 	}
+	if _, ok := conn["remote_battery_strategy"]; !ok {
+		t.Fatal("remote_battery_strategy must be published so the self-wiring path carries it")
+	}
 
-	// An operator override round-trips.
+	// An operator override round-trips (incl. the opt-in Power+SOC strategy).
 	tuned, err := cat.Normalize(SelectionRequest{
 		Brand: BrandDeye, Model: "sun-12k-sg04lp3",
-		Connection: Connection{IP: "10.0.0.9", Serial: "123", RemoteMode: "off", RemoteWatchdogS: 120},
+		Connection: Connection{IP: "10.0.0.9", Serial: "123", RemoteMode: "off", RemoteWatchdogS: 120, RemoteBatteryStrategy: 5},
 	}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tuned.Connection.RemoteMode != "off" || tuned.Connection.RemoteWatchdogS != 120 {
 		t.Fatalf("operator override lost: %+v", tuned.Connection)
+	}
+	if tuned.Connection.RemoteBatteryStrategy != 5 {
+		t.Fatalf("the opt-in Power+SOC strategy (5) must round-trip, got %v", tuned.Connection.RemoteBatteryStrategy)
+	}
+	// Only 0 (Power) and 5 (Power+SOC) are valid; anything else is rejected.
+	for _, bad := range []int{1, 2, 3, 4, 6, 99} {
+		if _, err := cat.Normalize(SelectionRequest{
+			Brand: BrandDeye, Model: "sun-30k-sg01hp3",
+			Connection: Connection{IP: "10.0.0.9", Serial: "123", RemoteBatteryStrategy: bad},
+		}, now); err == nil {
+			t.Fatalf("remote_battery_strategy %d must be rejected", bad)
+		}
 	}
 	if tuned.RatedKw != 12 {
 		t.Fatalf("rated_kw follows the selected model, got %v", tuned.RatedKw)
@@ -906,12 +924,12 @@ func TestRemoteModeFieldsAndRatedKwArePublished(t *testing.T) {
 	// and publishes no rated_kw-derived remote config.
 	other, err := cat.Normalize(SelectionRequest{
 		Brand: BrandGenericModbus, Model: FamSunSpec,
-		Connection: Connection{IP: "10.0.0.5", RemoteMode: "off", RemoteWatchdogS: 120},
+		Connection: Connection{IP: "10.0.0.5", RemoteMode: "off", RemoteWatchdogS: 120, RemoteBatteryStrategy: 5},
 	}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if other.Connection.RemoteMode != "" || other.Connection.RemoteWatchdogS != 0 {
+	if other.Connection.RemoteMode != "" || other.Connection.RemoteWatchdogS != 0 || other.Connection.RemoteBatteryStrategy != 0 {
 		t.Fatalf("remote-mode fields must be cleared on a non-Deye transport: %+v", other.Connection)
 	}
 	var om map[string]any
@@ -934,7 +952,7 @@ func TestRemoteModeFieldsAndRatedKwArePublished(t *testing.T) {
 	for _, f := range brand.Fields {
 		keys[f.Key] = true
 	}
-	for _, k := range []string{"remote_mode", "remote_watchdog_s"} {
+	for _, k := range []string{"remote_mode", "remote_watchdog_s", "remote_battery_strategy"} {
 		if !keys[k] {
 			t.Fatalf("the Deye connection form must offer %q", k)
 		}
