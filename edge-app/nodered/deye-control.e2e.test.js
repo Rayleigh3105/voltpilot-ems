@@ -1038,10 +1038,12 @@ const REMOTE_SEL = {
   communication: 'solarman_v5', connection: { ip: '127.0.0.1', serial: '2985159064', mb_slave_id: 1 },
 };
 // Build the remote plan the way controlRoute WOULD once the family is certified.
-function certifiedRemotePlan(setpoint, cap, fn) {
+// `sel` defaults to REMOTE_SEL; pass an override (e.g. connection.remote_battery_strategy=5)
+// to exercise the opt-in Power+SOC belt path.
+function certifiedRemotePlan(setpoint, cap, fn, sel = REMOTE_SEL) {
   controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
   try {
-    return fn(controlRouting.controlRoute(REMOTE_SEL, setpoint, { ratedKw: 30, deye: cap }));
+    return fn(controlRouting.controlRoute(sel, setpoint, { ratedKw: 30, deye: cap }));
   } finally {
     controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
   }
@@ -1083,7 +1085,7 @@ test('remote: the executor PROBES 1100..1121, caches the verdict and never write
   }
 });
 
-test('remote: the ordered write lands on the wire - watchdog FIRST, enable LAST, 1109 signed', async () => {
+test('remote: the DEFAULT ordered write lands on the wire - strategy 2, watchdog FIRST, enable LAST, NO 1108', async () => {
   const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
   try {
     const cap = ownerCapability();
@@ -1097,16 +1099,18 @@ test('remote: the ordered write lands on the wire - watchdog FIRST, enable LAST,
         const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, flowStore);
         assert.ok(out, 'the executor published a readback');
         // (a) ORDER on the wire is the safety property: the dead-man's switch is armed
-        //     before anything can move, activation is last.
+        //     before anything can move, activation is last. THE DEFAULT is strategy 2,
+        //     so 1108 (0x0454) is NOT on the wire at all - the setpoint is the only
+        //     instruction (the fix for the live SUN-30K reading 1108 as a target).
         const order = writes.map((w) => w.reg);
-        assert.deepStrictEqual(order, [0x044d, 0x0450, 0x0451, 0x0454, 0x0455, 0x044c],
-          'watchdog, battery-side, strategy, SoC belt, setpoint, ENABLE');
+        assert.deepStrictEqual(order, [0x044d, 0x0450, 0x0451, 0x0455, 0x044c],
+          'watchdog, battery-side, strategy, setpoint, ENABLE - no SoC belt');
         assert.ok(writes.every((w) => w.fc === 0x10), 'FC16 (write-multiple) - the only code this firmware answers');
         // (b) the VALUES
         assert.strictEqual(store[0x044d], 60, 'watchdog 60 s');
         assert.strictEqual(store[0x0450], 1, 'BATTERY-side (PV production untouched)');
-        assert.strictEqual(store[0x0451], 5, 'Power+SOC strategy');
-        assert.strictEqual(store[0x0454], 20, 'the discharge SoC floor as an on-device belt');
+        assert.strictEqual(store[0x0451], 2, 'Power (2) strategy by default');
+        assert.strictEqual(store[0x0454], undefined, 'strategy 2 writes NO on-device SoC belt (1108)');
         assert.strictEqual(store[0x0455], 33, 'discharge 1 kW of 30 kW rated -> +33 (0,1 %/unit)');
         assert.strictEqual(store[0x044c], 1, 'remote mode ENABLED');
         // (c) NOT ONE installer register was touched - the whole point of this path.
@@ -1137,10 +1141,11 @@ test('remote: the ordered write lands on the wire - watchdog FIRST, enable LAST,
   }
 });
 
-test('remote: a CHARGE writes the NEGATED register and the SoC ceiling', async () => {
+test('remote: strategy 5 (opt-in) - a CHARGE writes the NEGATED register and the SoC CEILING', async () => {
   const { server, port, store } = await startSolarmanServer(remoteCapableStore());
   try {
     const cap = ownerCapability();
+    const strat5 = { ...REMOTE_SEL, connection: { ...REMOTE_SEL.connection, remote_battery_strategy: 5 } };
     await certifiedRemotePlan(
       { battery_setpoint_kw: 3, source: 'schedule', control_enabled: true, soc_min_pct: 20, soc_max_pct: 90 },
       cap,
@@ -1149,20 +1154,23 @@ test('remote: a CHARGE writes the NEGATED register and the SoC ceiling', async (
         const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
         const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, flowStore);
         assert.ok(out);
+        assert.strictEqual(store[0x0451], 5, 'Power+SOC strategy (opt-in)');
         assert.strictEqual(store[0x0455], 0xff9c, 'charge 3 kW of 30 kW -> -100 (two\'s complement)');
         assert.strictEqual(store[0x0454], 90, 'a charge is bounded by the SoC ceiling');
         const bp = out.payload.registers.find((r) => r.role === 'battery_power');
         assert.strictEqual(bp.commanded_kw, 3, '+ = charge in OUR convention');
       },
+      strat5,
     );
   } finally {
     server.close();
   }
 });
 
-test('remote: EVERY tick re-asserts all six registers - the write IS the watchdog kick', async () => {
+test('remote: EVERY tick re-asserts all five registers - the write IS the watchdog kick', async () => {
   // RAM registers have no write-endurance cost, and skipping an unchanged value would
   // let the dead-man's switch expire mid-operation (and leave a reverted 1100 off).
+  // The default strategy 2 writes five registers (no 1108 belt).
   const { server, port, writes } = await startSolarmanServer(remoteCapableStore());
   try {
     const cap = ownerCapability();
@@ -1175,7 +1183,7 @@ test('remote: EVERY tick re-asserts all six registers - the write IS the watchdo
         const ctx = {};
         await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
         const first = writes.length;
-        assert.strictEqual(first, 6, 'watchdog, mode, strategy, belt, setpoint, enable');
+        assert.strictEqual(first, 5, 'watchdog, mode, strategy, setpoint, enable');
         // second tick with the IDENTICAL plan: write-on-change would skip everything.
         await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
         assert.strictEqual(writes.length, first * 2, 'every register re-asserted (watchdog kicked)');

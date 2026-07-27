@@ -1021,17 +1021,21 @@ test('remote: the setpoint is -round(kw / ratedKw * 1000), from the CATALOG rati
 
 // --- the write plan ----------------------------------------------------------
 
-function remotePlan(sp, opts = {}) {
-  return C.controlRoute(DEYE_REMOTE_SEL, { source: 'schedule', control_enabled: true, ...sp },
+function remotePlan(sp, opts = {}, connOverride = {}) {
+  const sel = { ...DEYE_REMOTE_SEL, connection: { ...DEYE_REMOTE_SEL.connection, ...connOverride } };
+  return C.controlRoute(sel, { source: 'schedule', control_enabled: true, ...sp },
     { ratedKw: 30, deye: OWNER_CAP, ...opts });
 }
 
-test('remote: the write ORDER is watchdog FIRST, enable LAST', () => {
+test('remote: the DEFAULT plan is strategy 2 (Power) - watchdog FIRST, enable LAST, NO 1108', () => {
+  // THE FIX (live SUN-30K-SG01HP3-EU, 2026-07-27): even with SoC bounds present, the
+  // default is strategy 2 - the signed setpoint (1109) is the ONLY thing the inverter is
+  // told, no on-device 1108 target that the firmware drove toward as a TARGET (~8x over-
+  // delivery on a -1 kW command). guards.Clamp remains the SoC authority.
   const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20, soc_max_pct: 95 });
   assert.strictEqual(r.controlPath, C.DEYE_PATH_REMOTE);
   assert.deepStrictEqual(r.planned.map((w) => w.role), [
-    'remote_watchdog', 'power_control_mode', 'battery_strategy', 'battery_soc_belt',
-    'battery_power', 'remote_mode',
+    'remote_watchdog', 'power_control_mode', 'battery_strategy', 'battery_power', 'remote_mode',
   ]);
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
   // 1) the dead-man's switch is armed BEFORE anything can move
@@ -1040,16 +1044,13 @@ test('remote: the write ORDER is watchdog FIRST, enable LAST', () => {
   // 2) BATTERY-side (AC-/grid-side would throttle PV)
   assert.strictEqual(p.power_control_mode.addr, C.DEYE_REMOTE_REG.powerControlMode); // 0x0450 / 1104
   assert.strictEqual(p.power_control_mode.value, C.DEYE_POWER_CONTROL_MODE.BATTERY_SIDE);
-  // 3) Power+SOC because a belt is known
-  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER_SOC);
-  // 4) the on-device SoC belt: a DISCHARGE is bounded by the floor
-  assert.strictEqual(p.battery_soc_belt.addr, C.DEYE_REMOTE_REG.constantSoc); // 0x0454 / 1108
-  assert.strictEqual(p.battery_soc_belt.value, 20);
-  assert.strictEqual(p.battery_soc_belt.encode.direction, 'discharge_floor');
-  // 5) the signed setpoint
+  // 3) Power (2) by DEFAULT - and NO 1108 belt op at all
+  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(p.battery_soc_belt, undefined, 'strategy 2 writes NO on-device SoC target (1108)');
+  // 4) the signed setpoint
   assert.strictEqual(p.battery_power.addr, C.DEYE_REMOTE_REG.constantPower); // 0x0455 / 1109
   assert.strictEqual(p.battery_power.value, 33);
-  // 6) ACTIVATION last
+  // 5) ACTIVATION last
   assert.strictEqual(r.planned[r.planned.length - 1].role, 'remote_mode');
   assert.strictEqual(p.remote_mode.addr, C.DEYE_REMOTE_REG.mode); // 0x044C / 1100
   assert.strictEqual(p.remote_mode.value, C.DEYE_REMOTE_MODE.ON);
@@ -1057,16 +1058,59 @@ test('remote: the write ORDER is watchdog FIRST, enable LAST', () => {
   assert.ok(r.planned.every((w) => w.fc === C.DEYE_WRITE_FC_FC16));
 });
 
-test('remote: a CHARGE flips the sign and bounds itself with the SoC CEILING', () => {
+test('remote: strategy 5 (opt-in) arms the 1108 belt - a DISCHARGE uses the FLOOR, order preserved', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20, soc_max_pct: 95 },
+    {}, { remote_battery_strategy: 5 });
+  assert.deepStrictEqual(r.planned.map((w) => w.role), [
+    'remote_watchdog', 'power_control_mode', 'battery_strategy', 'battery_soc_belt',
+    'battery_power', 'remote_mode',
+  ]);
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  // Power+SOC + the belt SANDWICHED between the strategy and the setpoint, activation last.
+  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER_SOC);
+  assert.strictEqual(p.battery_soc_belt.addr, C.DEYE_REMOTE_REG.constantSoc); // 0x0454 / 1108
+  assert.strictEqual(p.battery_soc_belt.value, 20);
+  assert.strictEqual(p.battery_soc_belt.encode.direction, 'discharge_floor');
+  assert.strictEqual(r.planned[r.planned.length - 1].role, 'remote_mode');
+  assert.ok(r.planned.every((w) => w.fc === C.DEYE_WRITE_FC_FC16));
+});
+
+test('remote: resolveDeyeRemoteStrategy defaults to Power (2); ONLY 5 opts into Power+SOC', () => {
+  assert.strictEqual(C.resolveDeyeRemoteStrategy({}), C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(C.resolveDeyeRemoteStrategy({ remote_battery_strategy: 2 }), C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(C.resolveDeyeRemoteStrategy({ remote_battery_strategy: 0 }), C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(C.resolveDeyeRemoteStrategy({ remote_battery_strategy: 99 }), C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(C.resolveDeyeRemoteStrategy({ remote_battery_strategy: 5 }), C.DEYE_BATTERY_STRATEGY.POWER_SOC);
+  assert.strictEqual(C.resolveDeyeRemoteStrategy({ remote_battery_strategy: '5' }), C.DEYE_BATTERY_STRATEGY.POWER_SOC);
+});
+
+test('remote: a CHARGE flips the sign (default strategy 2 writes NO belt)', () => {
   const r = remotePlan({ battery_setpoint_kw: 3, soc_min_pct: 20, soc_max_pct: 90 });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
   assert.strictEqual(p.battery_power.value & 0xffff, C.deyeRemoteSetpointUnits(3, 30).raw);
   assert.strictEqual(p.battery_power.encode.units, -100, 'charge 3 kW of 30 kW -> -100');
+  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(p.battery_soc_belt, undefined);
+});
+
+test('remote: strategy 5 (opt-in) - a CHARGE is bounded by the SoC CEILING', () => {
+  const r = remotePlan({ battery_setpoint_kw: 3, soc_min_pct: 20, soc_max_pct: 90 },
+    {}, { remote_battery_strategy: 5 });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.battery_power.encode.units, -100, 'charge 3 kW of 30 kW -> -100');
+  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER_SOC);
   assert.strictEqual(p.battery_soc_belt.value, 90);
   assert.strictEqual(p.battery_soc_belt.encode.direction, 'charge_ceiling');
 });
 
-test('remote: NO SoC belt -> plain Power strategy (2) and no 1108 write', () => {
+test('remote: strategy 5 with NO belt value known falls back to Power (no 1108)', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1 }, {}, { remote_battery_strategy: 5 }); // no soc bounds
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
+  assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER);
+  assert.strictEqual(p.battery_soc_belt, undefined);
+});
+
+test('remote: NO SoC bounds -> plain Power strategy (2) and no 1108 write', () => {
   const r = remotePlan({ battery_setpoint_kw: -1 }); // no soc_min/soc_max on the setpoint
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
   assert.strictEqual(p.battery_strategy.value, C.DEYE_BATTERY_STRATEGY.POWER);
