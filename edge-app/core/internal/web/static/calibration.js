@@ -18,6 +18,11 @@
 
   var lastCal = null;     // latest /api/calibration snapshot
   var lastControl = null; // state.control (register readback) from the state stream
+  // The admin token gating the calibration MUTATION endpoints (opt-in: only when the
+  // device has VP_CALIBRATION_ADMIN_SECRET set). Kept in sessionStorage so it survives a
+  // reload within the tab but never persists to disk; sent as X-VP-Calibration-Token.
+  var adminToken = "";
+  try { adminToken = sessionStorage.getItem("vp.cal.token") || ""; } catch (e) { adminToken = ""; }
 
   function show(el, on) { if (el) el.hidden = !on; }
   function esc(s) {
@@ -43,13 +48,15 @@
   }
 
   function post(path, body) {
+    var headers = { "Content-Type": "application/json" };
+    if (adminToken) headers["X-VP-Calibration-Token"] = adminToken;
     return fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     }).then(function (r) {
-      return r.json().then(function (j) { return { ok: r.ok, body: j }; },
-        function () { return { ok: r.ok, body: {} }; });
+      return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; },
+        function () { return { ok: r.ok, status: r.status, body: {} }; });
     });
   }
 
@@ -60,8 +67,14 @@
     e.hidden = !msg;
   }
 
-  // applyResp updates the view from a POST response ({calibration, error?}).
+  // applyResp updates the view from a POST response ({calibration, error?}). A 401
+  // (auth_required) means the admin gate rejected the token: forget it so the card
+  // re-shows the password prompt.
   function applyResp(resp) {
+    if (resp.status === 401 || (resp.body && resp.body.auth_required)) {
+      adminToken = "";
+      try { sessionStorage.removeItem("vp.cal.token"); } catch (e) {}
+    }
     if (resp.body && resp.body.calibration) { lastCal = resp.body.calibration; render(); }
     showErr(!resp.ok && resp.body ? resp.body.error : "");
   }
@@ -213,6 +226,10 @@
     show($("calBody"), true);
     populateMag(cal);
 
+    // Admin gate (opt-in): when the device has a secret set and we do not hold a token,
+    // show the password prompt; the mutation controls below are enforced server-side.
+    show($("calAuth"), !!cal.admin_gate && !adminToken);
+
     var phase = cal.phase;
     var busyPhase = phase === "active" || phase === "revert";
     if (cal.certified) setPill("var(--batt, #34c759)", "freigegeben");
@@ -278,8 +295,24 @@
     post("/api/calibration/test", { direction: dir, magnitude_kw: kw }).then(applyResp).catch(swallow);
   }
 
+  function unlock() {
+    var inp = $("calToken");
+    var val = inp ? inp.value.trim() : "";
+    if (!val) { showErr("Bitte das Administrator-Kennwort eingeben."); return; }
+    adminToken = val;
+    try { sessionStorage.setItem("vp.cal.token", val); } catch (e) {}
+    if (inp) inp.value = "";
+    showErr("");
+    render();      // hides the auth block; the token now rides every mutation
+    fetchCal();
+  }
+
   function init() {
     if (!$("calCard")) return;
+    if ($("calUnlock")) $("calUnlock").addEventListener("click", unlock);
+    if ($("calToken")) $("calToken").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); unlock(); }
+    });
     $("calArm").addEventListener("change", function () {
       post("/api/calibration/arm", { armed: this.checked }).then(applyResp).catch(swallow);
     });

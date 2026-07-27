@@ -330,6 +330,18 @@
       </div>
 
       <div id="calBody" hidden>
+        <!-- Admin-Schutz: nur wenn ein Kennwort gesetzt ist (VP_CALIBRATION_ADMIN_SECRET).
+             Die Aktionen (scharfschalten, testen, freigeben) sind serverseitig gesperrt,
+             bis das Kennwort eingegeben wurde; die Ansicht bleibt lesbar. -->
+        <div class="cal-auth" id="calAuth" hidden>
+          <strong>Kalibrierung ist geschützt.</strong>
+          <p class="cal-hint">Bitte das Administrator-Kennwort eingeben, um Testläufe und die Freigabe zu bedienen.</p>
+          <div class="cal-auth-row">
+            <input type="password" id="calToken" autocomplete="off" placeholder="Administrator-Kennwort" />
+            <button type="button" id="calUnlock" class="cal-btn primary">Freischalten</button>
+          </div>
+        </div>
+
         <p class="cal-intro">Der <strong>allererste echte Schreibbefehl</strong> an Ihre Batterie.
           VoltPilot schreibt einen <strong>kleinen</strong> Testwert, liest ihn zurück und prüft, ob sich
           die Batterie in die richtige Richtung und Größe bewegt. Jeder Test <strong>schaltet

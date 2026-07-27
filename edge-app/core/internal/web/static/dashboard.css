@@ -643,6 +643,14 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .cal-err { margin: 10px 0 0; padding: 9px 13px; border-radius: 9px; font-size: 13px; font-weight: 600;
   background: var(--err-soft); color: var(--err); border: 1px solid var(--err); }
 
+/* Admin-Schutz-Eingabe (nur wenn VP_CALIBRATION_ADMIN_SECRET gesetzt ist). */
+.cal-auth { margin: 0 0 14px; padding: 12px 14px; border-radius: 11px;
+  background: var(--warn-soft); border: 1px solid var(--warn); }
+.cal-auth strong { display: block; font-size: 14px; }
+.cal-auth-row { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.cal-auth-row input { flex: 1 1 180px; min-width: 0; padding: 8px 12px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 14px; }
+
 .cal-verdict { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
 .cal-verdict-head { display: flex; justify-content: space-between; align-items: center; gap: 10px;
   padding: 11px 14px; background: var(--surface); border-bottom: 1px solid var(--line); font-size: 14px; }

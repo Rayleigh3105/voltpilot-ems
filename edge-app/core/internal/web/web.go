@@ -6,6 +6,7 @@
 package web
 
 import (
+	"crypto/subtle"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -131,6 +132,10 @@ type CalibrationController interface {
 	CalibrationCorrection(invertControlSign *bool, powerScale *float64, invertBattSign *bool) (calibration.Snapshot, error)
 	CalibrationCertify() (calibration.Snapshot, error)
 	CalibrationDecertify() (calibration.Snapshot, error)
+	// CalibrationAdminSecret is the admin token/password that gates the calibration
+	// MUTATION endpoints. Empty = no gate (calibration stays open like the rest of the
+	// surface); non-empty = the mutation endpoints require it (see the calGuard wrapper).
+	CalibrationAdminSecret() string
 }
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
@@ -556,6 +561,33 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		return json.Unmarshal(body, v) == nil
 	}
 
+	// calGuard protects the calibration MUTATION endpoints (arm/disarm, start test,
+	// abort, corrections, certify, decertify) behind the admin secret (owner request
+	// 2026-07-27: "die Kalibrierung will ich schützen"). The gate is server-side and
+	// opt-in: when no secret is configured calibration stays open like the rest of the
+	// :8484 surface; when set, a request without the matching X-VP-Calibration-Token
+	// (constant-time compared) is rejected 401 BEFORE the handler runs. Read-only views
+	// (GET /api/calibration, /api/state) are deliberately NOT guarded. The physical
+	// safety net (TTL auto-revert watchdog, magnitude cap, guards, global kill-switch)
+	// is independent of this token and always applies.
+	calGuard := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			secret := cal.CalibrationAdminSecret()
+			if secret != "" {
+				got := r.Header.Get("X-VP-Calibration-Token")
+				if subtle.ConstantTimeCompare([]byte(got), []byte(secret)) != 1 {
+					writeJSON(w, http.StatusUnauthorized, map[string]any{
+						"error":         "Die Kalibrierung ist geschützt. Bitte das Administrator-Kennwort eingeben.",
+						"auth_required": true,
+						"calibration":   cal.CalibrationSnapshot(),
+					})
+					return
+				}
+			}
+			h(w, r)
+		}
+	}
+
 	// GET /api/calibration - the current calibration state (armed/phase, envelope,
 	// live battery/soc, testable directions, the active test + its live verdict,
 	// confirmations + certification). The surface polls this.
@@ -565,7 +597,7 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	// POST /api/calibration/arm {armed} - arm/disarm calibration mode. Arming
 	// refuses (400) unless the kill-switch is on and a controllable inverter is set;
 	// disarming aborts any active test (auto-revert to neutral).
-	mux.HandleFunc("POST /api/calibration/arm", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/calibration/arm", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Armed bool `json:"armed"`
 		}
@@ -575,10 +607,10 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		snap, err := cal.CalibrationArm(req.Armed)
 		calResult(w, snap, err)
-	})
+	}))
 	// POST /api/calibration/test {direction, magnitude_kw} - start ONE bounded test
 	// write. Over the cap / not armed / not controllable -> 400.
-	mux.HandleFunc("POST /api/calibration/test", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/calibration/test", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Direction   string  `json:"direction"`
 			MagnitudeKw float64 `json:"magnitude_kw"`
@@ -589,16 +621,16 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		snap, err := cal.CalibrationStartTest(req.Direction, req.MagnitudeKw)
 		calResult(w, snap, err)
-	})
+	}))
 	// POST /api/calibration/abort - one-click abort: end the active test now
 	// (auto-revert to neutral). Always 200.
-	mux.HandleFunc("POST /api/calibration/abort", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/calibration/abort", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"calibration": cal.CalibrationAbort()})
-	})
+	}))
 	// POST /api/calibration/confirm {sign?, scale?} - record the operator's verdict.
 	// EVIDENCE-GATED (report §7 Gap B): a TRUE confirm is refused (400) unless the
 	// system observed a landed write + the measured movement.
-	mux.HandleFunc("POST /api/calibration/confirm", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/calibration/confirm", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Sign  *bool `json:"sign"`
 			Scale *bool `json:"scale"`
@@ -609,11 +641,11 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		snap, err := cal.CalibrationConfirm(req.Sign, req.Scale)
 		calResult(w, snap, err)
-	})
+	}))
 	// POST /api/calibration/correction {invert_control_sign?, power_scale?,
 	// invert_batt_sign?} - persist a control-sign / scale / measured-battery-sign
 	// correction to the inverter connection and retry.
-	mux.HandleFunc("POST /api/calibration/correction", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/calibration/correction", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			InvertControlSign *bool    `json:"invert_control_sign"`
 			PowerScale        *float64 `json:"power_scale"`
@@ -625,20 +657,20 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 		}
 		snap, err := cal.CalibrationCorrection(req.InvertControlSign, req.PowerScale, req.InvertBattSign)
 		calResult(w, snap, err)
-	})
+	}))
 	// POST /api/calibration/certify - the deliberate hand-off: certify this device's
 	// family for optimizer control. Refused (400) unless sign AND scale are confirmed
 	// AND the current test's write read back a match (Gap B).
-	mux.HandleFunc("POST /api/calibration/certify", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/calibration/certify", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		snap, err := cal.CalibrationCertify()
 		calResult(w, snap, err)
-	})
+	}))
 	// POST /api/calibration/decertify - "Freigabe zurücknehmen" (Gap A): revoke this
 	// device's per-device First-Light certification so the family returns to read-only.
-	mux.HandleFunc("POST /api/calibration/decertify", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/calibration/decertify", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		snap, err := cal.CalibrationDecertify()
 		calResult(w, snap, err)
-	})
+	}))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		snap := st.Get()

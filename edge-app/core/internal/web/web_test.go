@@ -165,9 +165,11 @@ type fakeCalibration struct {
 	certifyCalls   int
 	decertifyCalls int
 	confirmErr     error
+	adminSecret    string
 }
 
 func (f *fakeCalibration) CalibrationSnapshot() calibration.Snapshot { return f.snap }
+func (f *fakeCalibration) CalibrationAdminSecret() string            { return f.adminSecret }
 func (f *fakeCalibration) CalibrationArm(armed bool) (calibration.Snapshot, error) {
 	f.lastArmed = &armed
 	return f.snap, f.armErr
@@ -944,17 +946,21 @@ func TestCalibrationCardServesStructure(t *testing.T) {
 		`id="calCharge"`, `id="calDischarge"`, `id="calAbort"`, `id="calVerdict"`,
 		`id="calCorrect"`, `id="calInvert"`, `id="calBattInvert"`, `id="calScale"`, `id="calSign"`,
 		`id="calConfirm"`, `id="calCertify"`, `id="calDecertify"`, `src="calibration.js"`,
+		// Defect 2/3 + admin-gate elements.
+		`id="calRatedNote"`, `id="calAuth"`, `id="calToken"`, `id="calUnlock"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html: missing calibration element %s", want)
 		}
 	}
-	// The script drives the /api/calibration surface end to end.
+	// The script drives the /api/calibration surface end to end, sends the admin token
+	// header, and renders the grace-window + rated-ladder + next-step fields.
 	calJs := get("/calibration.js")
 	for _, want := range []string{
 		"/api/calibration", "/api/calibration/arm", "/api/calibration/test",
 		"/api/calibration/abort", "/api/calibration/correction",
 		"/api/calibration/confirm", "/api/calibration/certify", "/api/calibration/decertify",
+		"X-VP-Calibration-Token", "test_steps", "evidence_valid", "next_step_kw", "admin_gate",
 	} {
 		if !strings.Contains(calJs, want) {
 			t.Errorf("calibration.js: does not drive %s", want)
@@ -1007,6 +1013,95 @@ func TestCalibrationConfirmErrorAndDecertifyRoutes(t *testing.T) {
 	}
 	if fc.decertifyCalls != 1 {
 		t.Fatalf("decertify route must call the controller once, got %d", fc.decertifyCalls)
+	}
+}
+
+// TestCalibrationAdminGate proves the calibration MUTATION endpoints are gated by the
+// admin secret server-side when one is configured, while read-only views stay open and
+// an unconfigured secret leaves calibration open (owner request 2026-07-27).
+func TestCalibrationAdminGate(t *testing.T) {
+	const secret = "geheim-123"
+	fc := &fakeCalibration{adminSecret: secret}
+	srv := httptest.NewServer(Handler(state.New("edge-test", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, fc))
+	t.Cleanup(srv.Close)
+
+	postTok := func(path, tok string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(`{"armed":true}`))
+		req.Header.Set("Content-Type", "application/json")
+		if tok != "" {
+			req.Header.Set("X-VP-Calibration-Token", tok)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	// The read-only snapshot stays open (no token).
+	r, err := http.Get(srv.URL + "/api/calibration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /api/calibration must stay open, got %d", r.StatusCode)
+	}
+
+	// Every mutation endpoint is rejected 401 WITHOUT the token, and the controller is
+	// never called.
+	for _, path := range []string{"arm", "test", "abort", "confirm", "correction", "certify", "decertify"} {
+		resp := postTok("/api/calibration/"+path, "")
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("POST /api/calibration/%s without token: got %d, want 401", path, resp.StatusCode)
+		}
+	}
+	if fc.lastArmed != nil || fc.aborts != 0 || fc.certifyCalls != 0 || fc.decertifyCalls != 0 {
+		t.Fatal("an unauthenticated mutation must NOT reach the controller")
+	}
+
+	// A WRONG token is still rejected.
+	resp := postTok("/api/calibration/arm", "falsch")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong token must be 401, got %d", resp.StatusCode)
+	}
+	if fc.lastArmed != nil {
+		t.Fatal("a wrong token must NOT reach the controller")
+	}
+
+	// The CORRECT token passes through to the controller.
+	resp = postTok("/api/calibration/arm", secret)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("correct token should be 200, got %d", resp.StatusCode)
+	}
+	if fc.lastArmed == nil || !*fc.lastArmed {
+		t.Fatal("the correct token must reach the arm controller")
+	}
+
+	// With NO secret configured, calibration stays open (no token needed) - the
+	// non-bricking default that keeps an existing device working on upgrade.
+	fcOpen := &fakeCalibration{}
+	srv2 := httptest.NewServer(Handler(state.New("edge-open", "test"),
+		&fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{},
+		history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, fcOpen))
+	t.Cleanup(srv2.Close)
+	req, _ := http.NewRequest("POST", srv2.URL+"/api/calibration/abort", nil)
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("no-secret calibration must stay open, got %d", resp2.StatusCode)
+	}
+	if fcOpen.aborts != 1 {
+		t.Fatal("no-secret abort must reach the controller")
 	}
 }
 

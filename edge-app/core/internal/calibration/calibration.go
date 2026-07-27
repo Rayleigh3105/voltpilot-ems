@@ -649,6 +649,10 @@ type Snapshot struct {
 	// fallback and the surface says why.
 	RatedKw   float64   `json:"rated_kw"`
 	TestSteps []float64 `json:"test_steps"`
+	// AdminGate reports whether the calibration MUTATION endpoints require the admin
+	// secret (agent-set: a secret is configured). Read-only views stay open. When true
+	// the surface prompts for the admin password and sends it with each action.
+	AdminGate bool `json:"admin_gate"`
 	ControlEnabled bool    `json:"control_enabled"` // global kill-switch on (agent-set)
 	Family         string  `json:"family"`          // register-map family (agent-set)
 	Certified      bool    `json:"certified"`       // already certified (agent-set)

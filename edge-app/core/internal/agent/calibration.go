@@ -205,6 +205,9 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 	a.calMu.Unlock()
 
 	snap.ControlEnabled = a.Cfg.ControlEnabled
+	// The admin gate is active only when a secret is configured (opt-in); the surface
+	// prompts for it and the mutation endpoints enforce it. Read-only views stay open.
+	snap.AdminGate = a.Cfg.CalibrationAdminSecret != ""
 	sel, ok := a.GetInverter()
 	switch {
 	case !ok:
@@ -243,6 +246,12 @@ func (a *Agent) calibrationSnapshot(now time.Time) calibration.Snapshot {
 func (a *Agent) CalibrationSnapshot() calibration.Snapshot {
 	return a.calibrationSnapshot(time.Now().UTC())
 }
+
+// CalibrationAdminSecret returns the configured admin secret that gates the
+// calibration MUTATION endpoints (empty = no gate, calibration stays open like the
+// rest of the :8484 surface). The owner sets it with VP_CALIBRATION_ADMIN_SECRET;
+// the web layer rejects unauthenticated mutations server-side when it is set.
+func (a *Agent) CalibrationAdminSecret() string { return a.Cfg.CalibrationAdminSecret }
 
 // CalibrationArm arms/disarms calibration mode. Arming refuses unless the global
 // kill-switch is on AND a battery-controllable inverter is selected. Disarming
