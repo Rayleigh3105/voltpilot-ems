@@ -213,6 +213,15 @@
   text-decoration: underline;
 }
 
+/* Die "Zustand"-Karte des projizierten Cockpits: das Ziel, zu dem die
+   Kopfzeilen-Warnung führt. Auf einer migrierten Anlage gab es diese Fläche
+   vorher nicht, die Warnung konnte ihre Ursache also nirgends nennen. */
+.vp-cockpit-health {
+  min-width: 0;
+  max-width: 32rem;
+  margin-top: var(--vp-space-4, 16px);
+}
+
 /* Der Abschluss des Stapels: ruhige Toolbox-Zeile + "Mehr" (Wetter). */
 .vp-stack-foot {
   display: flex;
