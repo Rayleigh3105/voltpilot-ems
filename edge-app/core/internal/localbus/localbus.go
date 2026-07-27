@@ -10,7 +10,16 @@
 //	                 "load_kw"?, "grid_limit_kw"?: number}
 //	edge/setpoint   core -> Layer 1   RETAINED battery setpoint command:
 //	                {"battery_setpoint_kw": number, "source": "schedule"|"default",
-//	                 "slot_start"?: RFC3339, "ts": RFC3339}
+//	                 "slot_start"?: RFC3339, "ts": RFC3339,
+//	                 "control_enabled": bool, "device_certified": bool, ...}
+//	                control_enabled is the core's kill-switch ANDed with the
+//	                certification verdict; device_certified is that verdict ALONE
+//	                (Agent.controlCertified = the env family allowlist MERGED with
+//	                the persisted per-device First-Light grant), carried so the
+//	                Layer-1 executor's own certification gate can honour a runtime
+//	                grant it cannot otherwise see. ADDITIVE: an absent field means
+//	                "no runtime grant", i.e. the pre-existing static-allowlist-only
+//	                behaviour.
 //	edge/status     Layer 1 -> core   inverter link state (retained):
 //	                {"inverter_link": "up"|"down", "ts"?: RFC3339}
 //	edge/control/readback  Layer 1 -> core   NOT retained. Per-register

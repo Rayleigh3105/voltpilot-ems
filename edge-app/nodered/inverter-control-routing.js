@@ -20,13 +20,16 @@
  *     family (every Deye/Fronius family) makes control_enabled false and `writes`
  *     EMPTY - the readbacks still run so the UI shows the inverter's ACTUAL state,
  *     but nothing is written. VP_CONTROL_ENABLED=false is the global stop.
- *   - A second, independent gate lives HERE: only families in
- *     CERTIFIED_CONTROL_FAMILIES may ever emit executable writes. An uncertified
- *     family (every Deye family until its model is bench-verified) returns
- *     writes:[] REGARDLESS of control_enabled, so a triangulated-but-unproven
- *     register address can never be written live. Its intended mapping is
- *     surfaced as `planned` (display/tests only, never executed) so the bench
- *     session has something concrete to verify.
+ *   - A second, independent gate lives HERE, and it has TWO halves. FLEET-WIDE:
+ *     families in CERTIFIED_CONTROL_FAMILIES (bench-verified for every device of
+ *     that model class). PER-DEVICE: the runtime First-Light grant the core carries
+ *     on the setpoint as `device_certified` (see deviceGrant). A family that is in
+ *     NEITHER (an unproven Deye) returns writes:[] REGARDLESS of control_enabled, so
+ *     a triangulated-but-unproven register address can never be written live; its
+ *     intended mapping is surfaced as `planned` (display/tests only, never executed)
+ *     so the bench session has something concrete to verify. The per-device half is
+ *     what lets an operator's PROVEN release actually drive the Fahrplan without
+ *     widening the fleet allowlist by one byte.
  *   - Signs are configuration, never code: `connection.invert_control_sign`
  *     flips the battery-power write direction if the bench shows it inverted.
  *   - FIRST-LIGHT CALIBRATION is the ONE deliberate certification bypass: when
@@ -88,7 +91,47 @@ const NO_PV_LIMIT = 0xffff; // pv_limit sentinel: inverter free-runs (no cap)
 // certified because it is proven end-to-end against edge/sim (report §4.4a).
 // Deye families are DELIBERATELY absent - their ToU control addresses are
 // triangulated (DEYE.md) and MUST be bench-verified before any live write.
+//
+// This is the FLEET-WIDE half of the certification gate. It is deliberately NOT
+// "repaired" by adding a family an operator released on one device - see
+// deviceGrant() below for the per-device half.
 const CERTIFIED_CONTROL_FAMILIES = new Set(['sunspec']);
+
+/**
+ * deviceGrant - the PER-DEVICE half of the certification gate: the runtime
+ * First-Light grant the CORE carries on edge/setpoint as `device_certified`.
+ *
+ * WHY THIS EXISTS. First-Light (the guided, bounded, evidence-gated first real
+ * write, internal/calibration + agent/calibration.go) lets an operator PROVE a
+ * battery inverter's sign + scale on real hardware and then release control for
+ * THAT device - a grant the core persists and merges into
+ * Agent.controlCertified(family). The executor's own gate, however, only ever
+ * consulted the STATIC allowlist above, which cannot know a runtime grant. So on
+ * a released pilot (family hybrid_3p) the Fahrplan path computed
+ * `writeAllowed = true && (false || false)` and emitted writes:[] forever, while
+ * the calibration bypass - the one path that skips the family allowlist - kept
+ * working. The proven grant could not reach the component that writes, which made
+ * the whole First-Light mechanism inert for real operation.
+ *
+ * SCOPE OF THIS GATE - what it does NOT do:
+ *   - it does NOT widen the fleet: a device without a grant carries
+ *     `device_certified` false/absent and behaves byte-for-byte as before;
+ *   - it does NOT bypass the kill-switch: `controlEnabled` stays the outer AND in
+ *     every adapter (structure: controlEnabled && (allowlist || grant || calibration));
+ *   - it does NOT change how a grant is EARNED - the evidence gate still demands a
+ *     readback-confirmed test with observed movement inside the confirm window;
+ *   - it does NOT touch guards.Clamp, the SoC band, the magnitude caps, the remote
+ *     watchdog (1101) or the write ORDER. The core clamps first and the adapter may
+ *     only ever narrow.
+ *
+ * The core computes this as `Agent.controlCertified(family)` = the env allowlist
+ * MERGED with the persisted grant, i.e. exactly what `:8484` renders and what the
+ * cloud heartbeat reports - so the executor now agrees with the core by construction
+ * instead of diverging by design (see agent.logControlGateDivergence).
+ */
+function deviceGrant(setpoint) {
+  return !!setpoint && setpoint.device_certified === true;
+}
 
 const s16raw = (kw) => Math.round(kw * 100) & 0xffff; // int16, 0.01 kW two's complement
 const clampPct = (v) => Math.max(0, Math.min(100, Math.round(v)));
@@ -183,7 +226,13 @@ function controlRoute(selection, setpoint, opts = {}) {
   // gate - never control_enabled, never the guard clamp, never the magnitude cap.
   const calibration = setpoint.calibration === true;
   const family = typeof selection.family === 'string' ? selection.family.trim() : '';
-  const certified = CERTIFIED_CONTROL_FAMILIES.has(family);
+  // Certified = the fleet-wide family allowlist OR this device's runtime First-Light
+  // grant (see deviceGrant). ONE variable on purpose: `certified` means "this device
+  // may receive live control writes" at every consumption point - the write gate, the
+  // German reason, the readback stamp, dualControllerSignal - and that is precisely
+  // what the core's own Agent.controlCertified computes. A device with no grant is
+  // unchanged.
+  const certified = CERTIFIED_CONTROL_FAMILIES.has(family) || deviceGrant(setpoint);
   const kw = setpoint.battery_setpoint_kw;
   const pvLimitKw = isFiniteNum(setpoint.pv_limit_kw) && setpoint.pv_limit_kw >= 0
     ? setpoint.pv_limit_kw : null;
@@ -277,10 +326,12 @@ const SETPOINT_STALE_MS = 20 * 60 * 1000;
  * certification-only bypass, with dwell_s=0 so the revert is not blocked.
  *
  *   selection: the parsed edge/inverter/config (or null)
- *   opts:      { sunspec?: discovery, calibration?: boolean, controlEnabled?: boolean }
+ *   opts:      { sunspec?: discovery, calibration?: boolean, controlEnabled?: boolean,
+ *                deviceCertified?: boolean }
  *              - live SunSpec model discovery for Fronius, the calibration-revert
- *              bypass, and the core's control_enabled for the setpoint that
- *              triggered this hand-back.
+ *              bypass, the core's control_enabled for the setpoint that
+ *              triggered this hand-back, and that setpoint's per-device First-Light
+ *              grant (`device_certified`) so a device we may DRIVE can also RELEASE.
  *
  * controlEnabled is CARRIED THROUGH like every other adapter result (portal-signal
  * fix, 2026-07-27). It used to be absent here, so the exec node's
@@ -305,7 +356,11 @@ function controlRelease(selection, opts = {}) {
   const ip = typeof conn.ip === 'string' ? conn.ip.trim() : '';
   if (!ip) return idle('keine IP-Adresse');
   const family = typeof selection.family === 'string' ? selection.family.trim() : '';
-  const certified = CERTIFIED_CONTROL_FAMILIES.has(family);
+  // Same disjunction as controlRoute, and it is LOAD-BEARING here: whatever may be
+  // DRIVEN must be able to be HANDED BACK. Without the grant on this side a released
+  // device would start controlling and then never release on a kill-off / stale core,
+  // which is the one asymmetry that would make the gate change unsafe.
+  const certified = CERTIFIED_CONTROL_FAMILIES.has(family) || opts.deviceCertified === true;
   // releaseAllowed = the family is certified OR this is a calibration-test revert.
   const releaseAllowed = certified || calibration;
   const tier = resolveControlTier(selection);
@@ -1584,6 +1639,7 @@ module.exports = {
   deyeHhmmToMinutes,
   deyeProgram1Displaced,
   resolveControlTier,
+  deviceGrant,
   controlRoute,
   controlRelease,
   setpointStale,

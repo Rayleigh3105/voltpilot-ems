@@ -89,6 +89,29 @@ describe('shaping (pure)', function () {
     assert.strictEqual(parsed.setpoint.source, 'schedule');
   });
 
+  // vp-sollwert must PASS THE WHOLE COMMAND THROUGH, never a field whitelist:
+  // the control gate downstream reads control_enabled AND device_certified (the
+  // per-device First-Light grant) off msg.setpoint. A whitelist here would strip
+  // the grant silently and the Fahrplan would go read-only again with no error
+  // anywhere - the same class of bug as the unpublished invert_batt_sign.
+  it('vp-sollwert passes the WHOLE command through (no field whitelist)', function () {
+    const cmd = {
+      battery_setpoint_kw: -20,
+      source: 'schedule',
+      slot_start: '2026-07-27T19:45:00Z',
+      ts: '2026-07-27T19:45:03Z',
+      control_enabled: true,
+      device_certified: true,
+      grid_charge_allowed: false,
+      soc_min_pct: 20,
+      soc_max_pct: 95,
+    };
+    const parsed = vpSollwert.parse(Buffer.from(JSON.stringify(cmd)));
+    assert.deepStrictEqual(parsed.setpoint, cmd, 'every field reaches the control gate');
+    assert.strictEqual(parsed.setpoint.device_certified, true);
+    assert.strictEqual(parsed.setpoint.control_enabled, true);
+  });
+
   it('vp-sollwert rejects malformed commands', function () {
     assert.strictEqual(vpSollwert.parse(Buffer.from('kaputt')), null);
     assert.strictEqual(vpSollwert.parse(Buffer.from('{}')), null);

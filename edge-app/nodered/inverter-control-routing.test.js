@@ -292,6 +292,159 @@ test('controlRelease controlEnabled does not gate the release writes', () => {
   assert.strictEqual(cal.writes.length, 1, 'the calibration hand-back still executes');
 });
 
+// =============================================================================
+// The PER-DEVICE First-Light grant (setpoint.device_certified) - the second half
+// of the certification gate.
+//
+// The core holds an evidence-gated per-device release (Agent.controlCertified =
+// the env family allowlist MERGED with the persisted First-Light grant) and now
+// carries it on edge/setpoint. Before that, the executor ran the STATIC family
+// allowlist alone, so on a RELEASED pilot the Fahrplan computed
+// `controlEnabled && (false || false)` and emitted writes:[] forever - only the
+// calibration bypass ever wrote. These tests pin the fix AND that it widened
+// nothing else.
+// =============================================================================
+
+test('device grant: a released Deye executes the FAHRPLAN write plan (the blocker)', () => {
+  // The exact live shape: a normal (NON-calibration) schedule setpoint on the
+  // pilot family, with the runtime grant the core earned via First-Light.
+  const sp = { battery_setpoint_kw: -20, source: 'schedule', slot_start: '2026-07-27T19:45:00Z', control_enabled: true, device_certified: true };
+
+  // (a) Without the grant this is byte-for-byte the old read-only behaviour.
+  const noGrant = C.controlRoute(DEYE_SEL, { ...sp, device_certified: false }, { ratedKw: 30 });
+  assert.deepStrictEqual(noGrant.writes, [], 'no grant -> no writes (unchanged)');
+  assert.deepStrictEqual(noGrant.readbacks, []);
+  assert.strictEqual(noGrant.certified, false);
+  assert.match(noGrant.reason, /noch nicht freigegeben/);
+  // An ABSENT field must behave identically (backward compatibility: an older core).
+  const absent = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true }, { ratedKw: 30 });
+  assert.deepStrictEqual(absent.writes, [], 'absent device_certified == no grant');
+
+  // (b) With the grant the SAME plan becomes executable - and it is the real ToU
+  //     plan, not a reduced one: writes == planned, one readback per register.
+  const granted = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+  assert.strictEqual(granted.certified, true, 'the runtime grant certifies THIS device');
+  assert.strictEqual(granted.calibration, false, 'this is the plan path, not a calibration test');
+  assert.ok(granted.writes.length >= 5, 'the Fahrplan write plan is executable');
+  assert.strictEqual(granted.writes.length, granted.planned.length, 'writes == the planned ToU ops');
+  assert.strictEqual(granted.readbacks.length, granted.writes.length, 'a readback per written register');
+  assert.strictEqual(granted.reason, undefined, 'no gate reason when the gate is open');
+  // The grant does NOT turn a plan write into a calibration write: the EEPROM
+  // write-on-change cadence is untouched (dwell_s stays the optimizer cadence).
+  const bp = granted.writes.find((w) => w.role === 'battery_power');
+  assert.strictEqual(bp.dwell_s, 900, 'a Fahrplan write keeps the EEPROM dwell');
+  // ACTIVATION IS STILL LAST (the load-bearing order is not touched by the gate).
+  assert.strictEqual(granted.writes[granted.writes.length - 1].role, 'tou_enable');
+
+  // (c) The static fleet allowlist was NOT widened by any of this.
+  assert.ok(!C.CERTIFIED_CONTROL_FAMILIES.has('hybrid_3p'), 'the fleet allowlist stays {sunspec}');
+});
+
+test('device grant: REMOTE MODE - the full ordered Fahrplan plan, enable LAST', () => {
+  const sp = { battery_setpoint_kw: -1, source: 'schedule', slot_start: '2026-07-27T20:00:00Z', control_enabled: true, device_certified: true, soc_min_pct: 20, soc_max_pct: 95 };
+  const r = C.controlRoute(DEYE_REMOTE_SEL, sp, { ratedKw: 30, deye: OWNER_CAP });
+  assert.strictEqual(r.controlPath, C.DEYE_PATH_REMOTE);
+  assert.strictEqual(r.certified, true);
+  assert.strictEqual(r.calibration, false, 'a normal setpoint, no calibration bypass involved');
+  // The complete remote-mode write plan in the load-bearing order: the dead-man's
+  // switch is armed FIRST, activation is LAST. Nothing about the order, the
+  // register set or the RAM cadence is a function of HOW the gate was opened.
+  assert.deepStrictEqual(r.writes.map((w) => w.role),
+    ['remote_watchdog', 'power_control_mode', 'battery_strategy', 'battery_power', 'remote_mode']);
+  assert.strictEqual(r.writes[0].addr, C.DEYE_REMOTE_REG.watchdog, 'watchdog 1101 first');
+  assert.strictEqual(r.writes[r.writes.length - 1].addr, C.DEYE_REMOTE_REG.mode, 'enable 1100 last');
+  assert.strictEqual(r.writes[r.writes.length - 1].value, 1);
+  assert.ok(r.writes.every((w) => w.always === true && w.dwell_s === 0), 'RAM cadence: every tick re-asserts (the watchdog kick)');
+  assert.strictEqual(r.readbacks.length, r.writes.length, 'a readback per commanded register');
+  // -1 kW of 30 kW rated -> +33 units (our + = charge is NEGATED into the register).
+  assert.strictEqual(r.writes.find((w) => w.role === 'battery_power').value, 33);
+
+  // Byte-for-byte unchanged without the grant.
+  const noGrant = C.controlRoute(DEYE_REMOTE_SEL, { ...sp, device_certified: false }, { ratedKw: 30, deye: OWNER_CAP });
+  assert.deepStrictEqual(noGrant.writes, [], 'no grant -> no writes');
+  assert.deepStrictEqual(noGrant.readbacks, []);
+  assert.match(noGrant.reason, /noch nicht freigegeben/);
+});
+
+test('device grant: the kill-switch is STILL the outer AND (Not-Aus stops a released device dead)', () => {
+  for (const [what, sel, opts, readbacksGated] of [
+    ['ToU', DEYE_SEL, { ratedKw: 30 }, true],
+    ['remote', DEYE_REMOTE_SEL, { ratedKw: 30, deye: OWNER_CAP }, true],
+    // SunSpec deliberately KEEPS its readbacks when writes are gated, so the UI
+    // still shows the inverter's ACTUAL state (module header) - unchanged here.
+    ['SunSpec', SUNSPEC_SEL, {}, false],
+  ]) {
+    const killed = C.controlRoute(sel, { battery_setpoint_kw: -5, source: 'schedule', control_enabled: false, device_certified: true }, opts);
+    assert.deepStrictEqual(killed.writes, [], what + ': kill-switch off -> no writes despite the grant');
+    if (readbacksGated) assert.deepStrictEqual(killed.readbacks, [], what + ': and no readbacks');
+    assert.match(killed.reason, /Not-Aus/, what + ': and it is reported as the Not-Aus, not as "not released"');
+  }
+});
+
+test('device grant: a released device can also be HANDED BACK (controlRelease)', () => {
+  // Load-bearing asymmetry check: whatever may be DRIVEN must be releasable, or a
+  // released device would start controlling and never hand back on a kill-off.
+  const plain = C.controlRelease(DEYE_SEL, {});
+  assert.deepStrictEqual(plain.writes, [], 'no grant -> planned-only (unchanged)');
+
+  const rel = C.controlRelease(DEYE_SEL, { deviceCertified: true, controlEnabled: false });
+  assert.strictEqual(rel.mode, 'release');
+  assert.strictEqual(rel.certified, true);
+  assert.strictEqual(rel.writes.length, 1, 'the neutral ToU-disable executes');
+  assert.strictEqual(rel.writes[0].role, 'tou_enable');
+  assert.strictEqual(rel.writes[0].value, 0);
+  // The remote path's release is the trivial 1100 <- 0.
+  const remoteRel = C.controlRelease(DEYE_REMOTE_SEL, { deviceCertified: true, deye: OWNER_CAP });
+  assert.strictEqual(remoteRel.controlPath, C.DEYE_PATH_REMOTE);
+  assert.strictEqual(remoteRel.writes.length, 1);
+  assert.strictEqual(remoteRel.writes[0].role, 'remote_mode');
+  assert.strictEqual(remoteRel.writes[0].value, 0, 'remote mode OFF - control handed back');
+  // controlEnabled is still only REPORTED, never a release gate (a kill-off release
+  // must execute precisely when control_enabled is false).
+  assert.strictEqual(remoteRel.controlEnabled, false);
+});
+
+test('device grant: only an explicit boolean true opens the gate', () => {
+  // A truthy-but-not-true value must never be read as a grant (the field crosses a
+  // JSON boundary, and this gate ends in a live write to a customer battery).
+  for (const v of [undefined, null, false, 0, 1, 'true', 'yes', {}, []]) {
+    const r = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -5, source: 'schedule', control_enabled: true, device_certified: v }, { ratedKw: 30 });
+    assert.deepStrictEqual(r.writes, [], 'device_certified=' + JSON.stringify(v) + ' must not certify');
+  }
+  assert.strictEqual(C.deviceGrant({ device_certified: true }), true);
+  assert.strictEqual(C.deviceGrant({ device_certified: 'true' }), false);
+  assert.strictEqual(C.deviceGrant(null), false);
+});
+
+test('device grant: does NOT leak to other devices or families', () => {
+  // The grant lives on the SETPOINT, so it is scoped to the device the core
+  // published it for. A different family reading the same allowlist is unaffected,
+  // and an unrelated Fronius stays planned-only whatever the setpoint says.
+  const sp = { battery_setpoint_kw: -3, source: 'schedule', control_enabled: true, device_certified: true };
+  const fronius = C.controlRoute(FRONIUS_SEL, sp, {});
+  assert.deepStrictEqual(fronius.writes, [], 'Fronius has no executor path - never a live write');
+  assert.deepStrictEqual(fronius.readbacks, []);
+  // And the module-level allowlist is untouched by any number of granted setpoints.
+  C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+  assert.deepStrictEqual([...C.CERTIFIED_CONTROL_FAMILIES], ['sunspec'], 'the fleet allowlist is never mutated');
+  assert.deepStrictEqual(C.controlRoute(DEYE_SEL, { ...sp, device_certified: false }, { ratedKw: 30 }).writes, [],
+    'the next ungranted device is read-only again');
+});
+
+test('device grant: an unproven register map is still refused (N1 scale + unknown nameplate)', () => {
+  // The grant opens the CERTIFICATION gate only. Every other refusal that protects
+  // a real inverter from a wrong write survives it.
+  const noScale = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: undefined } };
+  const n1 = C.controlRoute(noScale, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, device_certified: true }, { ratedKw: 30 });
+  assert.deepStrictEqual(n1.writes, [], 'an unconfirmed HV/LV scale still withholds the whole plan');
+  assert.strictEqual(n1.powerScaleSuppressed, true);
+  assert.strictEqual(n1.blocked, true);
+  // Remote mode without a known nameplate cannot compute the setpoint -> refuse.
+  const noRating = C.controlRoute(DEYE_REMOTE_SEL, { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, device_certified: true }, { deye: OWNER_CAP });
+  assert.deepStrictEqual(noRating.writes, [], 'unknown rated power still refuses');
+  assert.strictEqual(noRating.blocked, true);
+});
+
 test('Deye hybrid_3p planned ToU mapping uses the ha-solarman deye_p3 registers', () => {
   const r = C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -20, pv_limit_kw: 25 }), { ratedKw: 50 });
   const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));

@@ -1322,3 +1322,217 @@ test('Defect 2: a legitimately quiet (uncertified) plan stays SILENT - no warn, 
   assert.strictEqual(out, null, 'a quiet plan publishes nothing');
   assert.deepStrictEqual(warns, [], 'and stays silent (the read-only sites must not spam)');
 });
+
+// =============================================================================
+// THE FAHRPLAN PATH, END TO END, WITH A RUNTIME FIRST-LIGHT GRANT.
+//
+// Everything above that exercises a live Deye write either mutates
+// CERTIFIED_CONTROL_FAMILIES (a bench certification we have NOT granted) or sets
+// the calibration bypass. Neither is what runs on the pilot at 20:00: there the
+// core publishes a NORMAL schedule setpoint carrying the per-device First-Light
+// grant it earned. These tests drive the REAL chain - the plan node from
+// flows.json, then the real executor - against the in-process Solarman-V5 logger,
+// with NO allowlist mutation and NO calibration flag anywhere.
+// =============================================================================
+
+// runPlan - run the actual "Steuerung / Schreibplan" node body (auto-control-plan)
+// from flows.json, so the gate under test is the SHIPPED inline copy, not the module.
+function runPlan(msg, ctxStore = {}, flowStore = {}) {
+  const sandbox = {
+    msg,
+    node: { status() {}, error() {}, warn() {}, log() {}, send() {} },
+    context: { get: (k) => ctxStore[k], set: (k, v) => { ctxStore[k] = v; } },
+    flow: { get: (k) => flowStore[k], set: (k, v) => { flowStore[k] = v; } },
+    Buffer, Date, Math, isFinite, Number, Array, Object, JSON,
+  };
+  const script = new vm.Script('(function(){' + byId['auto-control-plan'].func + '\n})()');
+  return script.runInContext(vm.createContext(sandbox));
+}
+
+// The pilot as the core sees it: remote-capable, 30 kW nameplate, on the test logger.
+function pilotSelection(port) {
+  return { ...REMOTE_SEL, connection: { ...REMOTE_SEL.connection, port } };
+}
+// A NORMAL Fahrplan setpoint - source 'schedule', no calibration flag anywhere.
+function fahrplanSetpoint(grant, over = {}) {
+  return {
+    battery_setpoint_kw: -1, source: 'schedule', slot_start: '2026-07-27T19:45:00Z',
+    ts: new Date().toISOString(), control_enabled: true, device_certified: grant,
+    soc_min_pct: 20, soc_max_pct: 95, grid_charge_allowed: false, ...over,
+  };
+}
+
+test('FAHRPLAN e2e: a runtime-granted schedule setpoint drives the real inverter (plan node -> executor -> wire)', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const sel = pilotSelection(port);
+    const cap = ownerCapability();
+    const flowStore = { inverter_config: sel, [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    const ctx = {};
+
+    // 1) THE PLAN NODE - the shipped inline gate, fed the real setpoint shape.
+    const sp = fahrplanSetpoint(true);
+    const planned = runPlan({ setpoint: sp }, ctx, flowStore);
+    assert.ok(planned, 'the plan node emitted a message');
+    assert.strictEqual(planned.control.mode, undefined, 'a normal command, not a release');
+    assert.strictEqual(planned.control.calibration, false, 'NO calibration bypass involved');
+    assert.strictEqual(planned.control.certified, true, 'the runtime grant certified this device');
+    assert.strictEqual(planned.control.controlPath, 'remote');
+    assert.ok(planned.control.writes.length > 0, 'the Fahrplan is executable - THE fix');
+    assert.strictEqual(ctx.was_controlling, true, 'the node recorded that it took control');
+    assert.ok(!controlRouting.CERTIFIED_CONTROL_FAMILIES.has('hybrid_3p'),
+      'and the fleet allowlist was never touched');
+
+    // 2) THE EXECUTOR - the same message, onto the real wire.
+    const out = await runExec(DEYE_EXEC, { control: planned.control, setpoint: sp }, {}, flowStore);
+    assert.ok(out, 'the executor published a readback');
+
+    // 3) THE WIRE: the complete remote write plan, in the load-bearing order.
+    assert.deepStrictEqual(writes.map((w) => w.reg), [0x044d, 0x0450, 0x0451, 0x0455, 0x044c],
+      'watchdog FIRST, battery-side, strategy, setpoint, ENABLE LAST');
+    assert.ok(writes.every((w) => w.fc === 0x10), 'FC16 - the only code this firmware answers');
+    assert.strictEqual(store[0x044d], 60, 'the dead-man\'s switch is armed');
+    assert.strictEqual(store[0x0450], 1, 'BATTERY-side (PV production untouched)');
+    assert.strictEqual(store[0x0451], 2, 'Power strategy (the default)');
+    assert.strictEqual(store[0x0454], undefined, 'no on-device SoC belt on the default strategy');
+    assert.strictEqual(store[0x0455], 33, 'discharge 1 kW of 30 kW rated -> +33');
+    assert.strictEqual(store[0x044c], 1, 'remote mode ENABLED - the inverter is following us');
+    // NOT ONE installer register touched - the property that makes this path safe.
+    const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+    for (const inst of [reg.energyPattern, reg.workMode, reg.solarSell, reg.maxSellPower, reg.touEnable, reg.exportLimit]) {
+      assert.strictEqual(store[inst], undefined, 'installer register 0x' + inst.toString(16) + ' untouched');
+    }
+
+    // 4) THE READBACK the core folds into :8484 + the heartbeat.
+    const rb = out.payload;
+    assert.strictEqual(rb.source, 'schedule', 'this is the Fahrplan, not a calibration test');
+    assert.strictEqual(rb.control_path, 'remote');
+    assert.strictEqual(rb.control_enabled, true);
+    assert.strictEqual(rb.certified, true, 'the readback agrees with the core instead of diverging');
+    assert.ok(rb.registers.every((r) => r.match), 'every commanded register confirmed');
+    assert.strictEqual(rb.wrote, true);
+    const bp = rb.registers.find((r) => r.role === 'battery_power');
+    assert.strictEqual(bp.commanded_kw, -0.99, 'decoded back to kW in OUR sign convention');
+    assert.strictEqual(bp.actual_kw, -0.99);
+  } finally {
+    server.close();
+  }
+});
+
+test('FAHRPLAN e2e: the SAME setpoint without a grant writes NOTHING (no static allowlist entry)', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const sel = pilotSelection(port);
+    const cap = ownerCapability();
+    const flowStore = { inverter_config: sel, [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    const ctx = {};
+
+    const sp = fahrplanSetpoint(false);
+    const planned = runPlan({ setpoint: sp }, ctx, flowStore);
+    assert.ok(planned, 'the plan node still reports (read-only)');
+    assert.strictEqual(planned.control.certified, false);
+    // NOTE the vm-realm rule: a plan built inside the function-node sandbox carries
+    // that realm's Array prototype, so deepStrictEqual against an outer-realm [] fails.
+    // Compare lengths (or JSON round-trip) - see edge-app/AGENTS.md.
+    assert.strictEqual(planned.control.writes.length, 0, 'no grant -> no writes');
+    assert.strictEqual(planned.control.readbacks.length, 0, 'and no readbacks');
+    assert.notStrictEqual(ctx.was_controlling, true, 'it never took control');
+
+    const out = await runExec(DEYE_EXEC, { control: planned.control, setpoint: sp }, {}, flowStore);
+    assert.strictEqual(out, null, 'the executor no-ops');
+    assert.deepStrictEqual(writes, [], 'NOTHING reached the inverter');
+    assert.strictEqual(store[0x044c], undefined, 'remote mode was never enabled');
+
+    // An ABSENT field (an older core that predates the grant) behaves identically.
+    const legacy = fahrplanSetpoint(true);
+    delete legacy.device_certified;
+    const legacyPlan = runPlan({ setpoint: legacy }, {}, flowStore);
+    assert.strictEqual(legacyPlan.control.writes.length, 0, 'absent device_certified == no grant');
+    assert.deepStrictEqual(writes, [], 'still nothing on the wire');
+  } finally {
+    server.close();
+  }
+});
+
+test('FAHRPLAN e2e: control_enabled=false writes NOTHING even with the grant (Not-Aus)', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const sel = pilotSelection(port);
+    const cap = ownerCapability();
+    const flowStore = { inverter_config: sel, [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+
+    // Kill-switch off from boot: was_controlling was never set, so this is NOT a
+    // hand-back either - it is simply quiet. Nothing may reach the inverter.
+    const sp = fahrplanSetpoint(true, { control_enabled: false });
+    const planned = runPlan({ setpoint: sp }, {}, flowStore);
+    assert.strictEqual(planned.control.writes.length, 0, 'Not-Aus -> no writes despite the grant');
+    assert.match(planned.control.reason, /Not-Aus/, 'and it is named as the Not-Aus');
+
+    const out = await runExec(DEYE_EXEC, { control: planned.control, setpoint: sp }, {}, flowStore);
+    assert.strictEqual(out, null);
+    assert.deepStrictEqual(writes, [], 'the global kill-switch still stops everything dead');
+    assert.strictEqual(store[0x044c], undefined);
+  } finally {
+    server.close();
+  }
+});
+
+test('FAHRPLAN e2e: a granted device HANDS CONTROL BACK on a kill-off (1100 <- 0 on the wire)', async () => {
+  // The other half of the gate: whatever the Fahrplan may DRIVE must be releasable,
+  // or a released device would take control and never give it back.
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const sel = pilotSelection(port);
+    const cap = ownerCapability();
+    const flowStore = { inverter_config: sel, [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    const ctx = {};
+
+    // 1) take control via the Fahrplan
+    const took = runPlan({ setpoint: fahrplanSetpoint(true) }, ctx, flowStore);
+    await runExec(DEYE_EXEC, { control: took.control, setpoint: { source: 'schedule' } }, {}, flowStore);
+    assert.strictEqual(store[0x044c], 1, 'remote mode on');
+    const wroteWhileControlling = writes.length;
+
+    // 2) the core switches control off -> a real, EXECUTABLE hand-back
+    const relSp = fahrplanSetpoint(true, { control_enabled: false });
+    const released = runPlan({ setpoint: relSp }, ctx, flowStore);
+    assert.strictEqual(released.control.mode, 'release', 'the failsafe hand-back fires');
+    assert.strictEqual(released.control.writes.length, 1, 'and it is executable thanks to the grant');
+    assert.strictEqual(ctx.was_controlling, false);
+
+    const out = await runExec(DEYE_EXEC, { control: released.control, setpoint: relSp }, {}, flowStore);
+    assert.ok(out, 'the release published a readback');
+    assert.strictEqual(store[0x044c], 0, 'remote mode OFF - the inverter is on its own again');
+    assert.strictEqual(writes.length, wroteWhileControlling + 1, 'exactly one release write');
+    assert.strictEqual(writes[writes.length - 1].reg, 0x044c);
+    assert.ok(out.payload.registers.every((r) => r.match), 'the hand-back is confirmed');
+    // Nothing installer-level was captured or restored: the remote path touches none.
+    assert.strictEqual(out.payload.snapshot_captured, false);
+  } finally {
+    server.close();
+  }
+});
+
+test('FAHRPLAN e2e: a STALE setpoint hands control back too (core went silent)', async () => {
+  const { server, port, store } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const sel = pilotSelection(port);
+    const cap = ownerCapability();
+    const flowStore = { inverter_config: sel, [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+    const ctx = {};
+
+    const took = runPlan({ setpoint: fahrplanSetpoint(true) }, ctx, flowStore);
+    await runExec(DEYE_EXEC, { control: took.control, setpoint: { source: 'schedule' } }, {}, flowStore);
+    assert.strictEqual(store[0x044c], 1);
+
+    // control_enabled is STILL true, but the core's ts is 30 min old -> it went silent.
+    const staleSp = fahrplanSetpoint(true, { ts: new Date(Date.now() - 30 * 60 * 1000).toISOString() });
+    const released = runPlan({ setpoint: staleSp }, ctx, flowStore);
+    assert.strictEqual(released.control.mode, 'release', 'a silent core is a hand-back, not a latch');
+    assert.strictEqual(released.control.controlEnabled, true, 'stale != switched off');
+    await runExec(DEYE_EXEC, { control: released.control, setpoint: staleSp }, {}, flowStore);
+    assert.strictEqual(store[0x044c], 0, 'remote mode released');
+  } finally {
+    server.close();
+  }
+});

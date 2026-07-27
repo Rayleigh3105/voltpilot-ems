@@ -1708,6 +1708,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 		"source":              source,
 		"ts":                  now.Format(time.RFC3339Nano),
 		"control_enabled":     controlEnabled,
+		// device_certified is the CERTIFICATION VERDICT ALONE (control_enabled is
+		// that verdict ANDed with the kill-switch). Layer 1 runs its OWN certification
+		// gate from a STATIC family allowlist that cannot know the per-device
+		// First-Light grant an operator issued at runtime - so a released Deye kept
+		// planning writes:[] forever and the Fahrplan never reached the inverter,
+		// which made the whole First-Light mechanism inert for real operation. The
+		// executor ORs this runtime grant into its gate, scoped to THIS device.
+		// The kill-switch stays the outer AND on both sides, and the grant is still
+		// only obtainable from a readback-confirmed First-Light test (calibration.go)
+		// - this changes who the grant REACHES, never how it is earned.
+		"device_certified": certified,
 		// Most restrictive wins: the device-local VP_GRID_CHARGE_ALLOWED gate
 		// AND the plan-carried site posture (an EEG plan also turns off the
 		// adapter-level grid-charge bit, e.g. Deye ToU Charging=Grid). A plan
