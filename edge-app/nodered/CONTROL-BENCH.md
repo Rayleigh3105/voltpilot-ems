@@ -91,7 +91,64 @@ Schreibpfad + Watchdog + Persistenz), `inverter-control-routing.js` (der Executo
   --ip <logger> --serial <n> --family hybrid_3p`) muss plausible Messwerte liefern,
   bevor überhaupt geschrieben wird.
 
-## Checkliste (pro Modell/Firmware abzuhaken - report §6.3)
+## Deye zuerst: hat dieses Gerät die FERNSTEUERUNG? (10 Sekunden, rein lesend)
+
+Seit Deye-Protokoll **V105.1** gibt es einen echten externen-EMS-Registerblock **1100–1121**
+(Fernsteuerung/Remote Mode): ein vorzeichenbehafteter Leistungssollwert für die Batterie,
+abgesichert durch einen **Totmannschalter im Wechselrichter**. Er ist **firmwareabhängig**.
+Das ist der billigste und entscheidendste Prüfstand-Schritt überhaupt - **vor** allem anderen:
+
+```bash
+# auf der Edge-VM, im selben LAN wie der Logger - NUR LESEN (FC03)
+node edge-app/nodered/deye/solarman-probe.js \
+  --ip <logger-ip> --serial <LOGGER-Seriennummer> \
+  --start 0x044C --count 22          # = Register 1100..1121
+```
+
+| Ergebnis | Bedeutung | weiter |
+|---|---|---|
+| Modbus-Ausnahme / keine Antwort / nur Müll | Fernsteuerung **nicht vorhanden** | Zeitfenster-Checkliste unten |
+| Plausible Werte, insbesondere **`1101 = 0xFFFF`** (der dokumentierte „Watchdog aus"-Standard) | Fernsteuerung **vorhanden** | hier weiter |
+| `1104` in 0..2 **und** `1105` in 0..5 | PR-#978-Lage → Sollwert auf **1109** | der Adapter schreibt genau diese Lage |
+| `1106` in 0..1 und `1111` sieht wie ±1200 aus | ältere V105.1-Lage (AC-seitig) | VoltPilot schreibt sie **nicht** und fällt auf ToU zurück |
+
+Die Edge-App macht dieselbe Prüfung von selbst (zwei FC3-Lesebefehle, gecacht pro Logger, bei
+Neustart erneut) und zeigt das Ergebnis auf der `:8484`-Karte „Steuerung & Bestätigung" als
+**Fernsteuerung (Remote Mode)** bzw. **Zeitfenster-Steuerung (ToU)** an. Fehlt die Fernsteuerung,
+kann Deye-Support sie per Firmware-Update **aus der Ferne** einspielen (`servicede@deye.com.cn`,
+Seriennummer des Wechselrichters angeben) - Quelle: openEMS-Community #2541.
+
+### Checkliste Deye FERNSTEUERUNG (pro Modell/Firmware)
+
+Voraussetzung: **mittlerer SoC (40–70 %)**, ruhige Batterie (siehe „Ruhige Ausgangslage" oben),
+Modell im Katalog ausgewählt (die Nennleistung kommt daher - der Sollwert ist 0,1 % davon).
+
+- [ ] **Der erste Schreibbefehl ist klein.** First-Light-Kalibrierung mit ≤ 1 kW (`VP_CALIBRATION_MAX_KW`),
+      TTL-Auto-Rückgabe aktiv. Nichts von Hand am Register schreiben.
+- [ ] **Reihenfolge auf dem Draht:** `1101` (Totmann) zuerst → `1104=1` → `1105` → `1108` → `1109` →
+      `1100=1` **zuletzt**. Im Log/Readback nachvollziehen.
+- [ ] **Vorzeichen:** ein **Entlade**-Befehl schreibt einen **positiven** Wert nach 1109, ein
+      **Lade**-Befehl einen negativen. Bewegt sich die Batterie in die *falsche* Richtung, ist das ein
+      Konfigurationsfehler → `invert_control_sign` setzen, **niemals** den Code ändern.
+- [ ] **Skala:** die gemessene Batterieleistung entspricht dem Befehl (±Regelabweichung). Bei 30 kW ist
+      1 kW ≙ 33 Einheiten. Weicht sie um Faktor 10 ab, stimmt die Nennleistung des gewählten Modells nicht.
+- [ ] **PV bleibt unangetastet:** batterieseitige Regelung darf die Erzeugung NICHT drosseln.
+      Tut sie es doch, wurde AC-/netzseitig geschrieben - abbrechen.
+- [ ] **Rücklesen:** `1109` echot den Sollwert, `1100` liest 1, `1121` (Status) wird protokolliert.
+- [ ] **Totmann beweisen (der wichtigste Punkt):** aufhören zu schreiben und **warten**. Nach Ablauf von
+      `1101` muss `1100` von selbst auf 0 gehen und der Wechselrichter normal weiterlaufen -
+      **ohne dass eine Einstellung verändert ist**. Am Display steht währenddessen „Remote Mode".
+- [ ] **Ausdrückliche Rückgabe:** `1100 ← 0` beendet die Steuerung sofort.
+- [ ] **SoC-Grenzen:** unterhalb `soc_min` / oberhalb `soc_max` darf kein Befehl mehr in die falsche
+      Richtung wirken. ⚠ Es gibt einen Feldbericht, dass die geräteeigenen SoC-Grenzen im Remote Mode
+      **nicht** greifen - deshalb ist die VoltPilot-Klammer die maßgebliche und muss hier geprüft werden.
+- [ ] **Keine Installateur-Einstellung verändert:** Energy Pattern, Solar Sell, Max Sell Power,
+      Einspeisegrenze und ToU-Slots vorher/nachher vergleichen - sie müssen **identisch** sein.
+      (Der Fernsteuerungspfad schreibt sie gar nicht; dieser Punkt ist die Gegenprobe.)
+
+Erst wenn alles abgehakt ist, kommt die Familie in die Freigabe (siehe unten).
+
+## Checkliste Deye ZEITFENSTER (ToU) - der Rückfall (report §6.3)
 
 1. **Register-Adressen bestätigen.** Die ha-solarman-Adressen für dieses Firmware-Release
    verifizieren: Work Mode (`0x008E` 3p / `0x00F4` 1p), Time-of-Use-Enable (`0x0092` / `0x00F8`),

@@ -594,6 +594,81 @@ facts (branch `fm/vp-deye-write-fix-x2`, PR fixing the reproduced blocker):
 - **The corrected DISCHARGE plan forces export; it never just permits it (`fm/vp-deye-discharge-p3`, report `vp-deye-tou-dir-q5` §8).** Strategy A (ToU target-SoC floor + power cap + grid-charge off) is CORRECT for CHARGE but fundamentally INCOMPLETE for DISCHARGE: on a Deye the ToU target-SoC is a discharge FLOOR (a permission), not a command, and Export/Selling-First charges the battery from surplus BEFORE exporting - so "discharge to floor" never FORCES export while the inverter charges instead (the live −0,3 kW commanded / +12 kW charged symptom). `deyeControl` now synthesises a real discharge with the missing levers, in report §8 order with ACTIVATION (`touEnable`) STRICTLY LAST: `energyPattern 0x008D ← Load First(1)` + `workMode ← Export First` + `solarSell 0x0091 ← ON` + progCharge/progSoc-floor (permissions) + **`maxSellPower 0x008F ← X`** (the gentle "6b" export/sell-power forcing lever the owner chose) + progPower(N1-scaled) + `touEnable ← 0x00FF`. CHARGE keeps Strategy A plus `energyPattern ← Battery First(0)` and restores `maxSellPower` from the snapshot. **The heavier "6a" max-charge-current clamp (`0x006C`) is DELIBERATELY NOT wired** (owner decision) - the code is structured so 6a can be a later fallback if the bench shows 6b unhonoured; do not wire it live. `invert_control_sign` is a RED HERRING for this (direction is target-SoC-encoded, not a signed value; at a full battery a flip is a silent no-op masquerading as a fix) - keep it OFF for Deye discharge. **Deye has NO revert timer**, so the new installer-level levers (energyPattern/solarSell/maxSellPower) would LATCH in EEPROM: the executor SNAPSHOTS the installer's pre-control register values via FC3 BEFORE its first write (the union `controlRoute` lists in `ctrl.snapshotPlan`), persists them DURABLY (`settings.js contextStorage` `file` store under `/data/context`, survives restart + re-seed; `default` stays in-memory so nothing else changes), and `controlRelease` RESTORES them on EVERY hand-back (TTL/abort/disarm/control-off/loss all funnel into the same `controlRelease(sel,{snapshot})` at the plan node; a startup `auto-control-recover` node handles crash recovery from a leftover snapshot, self-contained so it works before the retained config reloads), `touEnable` restored LAST; a successful release CLEARS the snapshot; no snapshot ⇒ the old `tou_enable=0` release. **N1**: progPower AND maxSellPower use `power_scale` consistently ([1,10]; HV=10); an unconfirmed scale flags `powerScaleConfirmed=false` and the executor WARNs (never silently 10x wrong). **N2**: the executor reads all 6 program start-times at snapshot time and WARNs + flags `active_slot_conflict` when a later Program (2-6) governs "now" - we NEVER rewrite Programs 2-6 (a one-time commissioning step sets the slot grid). All levers stay `bench_pending`; `hybrid_3p`/`hybrid_1p` stay OUT of `CERTIFIED_CONTROL_FAMILIES`. On `hybrid_1p` `maxSellPower == exportLimit` (both `0x00F5`) so the 6b lever and the curtailment cap collapse to ONE op (tighter/min value); on `hybrid_3p` they are distinct (`0x008F` vs `0x00E7`). Discharge is unobservable at 100 % SoC - the bench draws the battery to ≈40-70 % first (CONTROL-BENCH.md §2). Proof: `inverter-control-routing.test.js` (synthesis/order/N1 HV+LV/N2/snapshot-restore), `flows-sync.test.js` (inline==module incl. snapshot threading), `deye-control.e2e.test.js` (real Solarman-V5: snapshot capture-before-write, release restore + clear, crash recovery, N1/N2 warns, cadence). Docs: DEYE.md "Korrigierter ENTLADE-Schreibplan" + CONTROL-BENCH.md §2.
 - **Deye control writes go out as FC16 (write-multiple, 0x10) by DEFAULT; FC6 is a per-connection flip-back (`fm/vp-deye-fc16-y7`).** The z4 diagnostics revealed the live-Pilsting blocker precisely: the logger ACCEPTS an FC6 (0x06, write-single) write frame but the inverter never answers it and the register does not change (a 2-byte stub where the FC6 echo belongs). Many Deye hybrid firmwares only answer **FC16 (0x10, write-multiple)** - the Deye integrations that demonstrably write over the SAME Solarman-V5 logger use FC16 for every register even a single one: **deye-controller** (`githubDante/deye-controller`) writes exclusively via `write_multiple_holding_registers(addr, [value])`, **ha-solarman** (`davidrapan/ha-solarman`, our register-map source) via pysolarmanv5's FC16 path; community consensus (DIY-Solar / ha-solarman issues) is that FC6 "reports success but makes no change". So `inverter-control-routing.js deyeControl`/`controlRelease` stamp every Deye WriteOp with `fc = resolveDeyeWriteFc(conn)` (FC16 unless `connection.control_write_fc === 6`), and the executor (`build-flows.js controlExecSolarmanFunc`) DISPATCHES on `w.fc`: FC16 -> `__SV5.buildWriteMultipleRequest({startReg, values:[v]})` + `expectFn 0x10`, FC6 -> `buildWriteSingleRequest` + `expectFn 0x06`. It stays a **1-register write per WriteOp** (NOT a contiguous block): the EEPROM write-on-change discipline (`dwell_s`/`min_change`) is unchanged so write frequency does NOT increase, and block-writing this scattered ToU map would touch unrelated registers and risks the adjacent-SoC clobber (evcc #27458). The codec (`deye/solarman-v5.js`) already had `writeMultipleRegistersRequest`/`buildWriteMultipleRequest` + `parseWriteResponse` handling of the fn-0x10 echo `{startReg,count}` - this PR only ROUTES through them, so `solarman-v5.js` is unchanged. The switch is the `control_write_fc` select on `solarmanFields()` (Go `inverter.Connection.ControlWriteFc`, validated {0,6,16}, published in `BusPayload`, cleared on non-Deye transports), surfaced on the `:8484` inverter form (catalog-driven, no JS change); `0`/absent = auto = FC16. **This PR is the write-side FIX (FC16 makes the inverter answer), whereas z4 only REVEALED the reason.** SunSpec/generic-Modbus control (the certified `sunspec` family, `controlExecFunc`, addr 40/41/42) is a DIFFERENT transport and stays FC6 - untouched. The executor also logs ONE known-good FC3 readback frame per process (`Rueckleseframe OK`, write-path only, never the hot read poll) so a good read vs a bad write reply can be compared. Proof: `inverter-control-routing.test.js` (FC16 default / FC6 flip / release honors it), `deye-control.e2e.test.js` (wire-fc audit: default FC16 lands+reads-back, `control_write_fc:6` lands over FC6, good-readback-frame logged; the in-process logger now honours FC16), `solarman-v5.test.js` (FC16 V5-request shape + FC16 exception), Go `inverter_test.go TestControlWriteFcIsPreservedAndPublished`, `flows-sync.test.js` (inline==module).
 
+## Deye REMOTE MODE (registers 1100-1121) is the PRIMARY Deye control path
+
+Deye protocol **V105.1+** added a "Customized register" block that is a real
+external-EMS interface, and it supersedes the Time-of-Use hack (scout
+`firstmate/data/vp-deye-approach-w8`; the operator picture is
+`nodered/DEYE.md` §"Batteriesteuerung: ZWEI Pfade"). **PROVEN present on the
+owner's SUN-30K-SG01HP3-EU** (live read-only probe 2026-07-27): `1101=0xFFFF`,
+`1104=0`, `1105=2` → the PR #978 layout, setpoint at **1109**.
+
+- **Two paths, DETECTED not assumed.** `inverter-control-routing.js`
+  `deyeCapabilityProbeSpec` (two FC3 READS: the LV/HV identity register `0x0000`
+  + the block `0x044C..0x0461`) and `classifyDeyeCapability` decide; the
+  EXECUTOR performs the probe, caches the verdict per logger in the VOLATILE
+  flow context (`deyeCapabilityKey`, 6 h / 15 min on a transport error, so a
+  restart re-checks) and the PLAN node reads it back. A Deye firmware update has
+  removed remote mode from a user's inverter before and a later one restored it.
+  Absent / all-zero / Modbus exception / the older V105.1 AC-side layout all fall
+  back to the ToU path; `connection.remote_mode = 'off'` forces it.
+- **The path INTERLOCK is the "never write into the void" rule:** the plan is
+  built from whatever capability the plan node saw, so if the probe just changed
+  the answer the executor writes NOTHING that tick and lets the next one re-plan.
+- **The write order is load-bearing:** `1101` watchdog FIRST (arm the dead-man's
+  switch before anything can move) → `1104=1` BATTERY-side (AC-/grid-side
+  throttles PV) → `1105` 5 (Power+SOC) or 2 → `1108` SoC belt → `1109` signed
+  setpoint → `1100=1` ENABLE LAST.
+- **`always: true` + `dwell_s: 0` on every remote WriteOp is NOT optional.** RAM
+  registers have no wear cost and re-asserting every ~10 s tick IS the watchdog
+  kick; the executor's EEPROM write-on-change filter would otherwise skip an
+  unchanged value and let the watchdog expire mid-operation (and leave a reverted
+  `1100` un-re-enabled).
+- **Conversion:** `units = -round(kw / ratedKw * 1000)`, clamped ±1200. The sign
+  FLIPS (our contract is `+ = charge`, the register is `- = charge`) and
+  `ratedKw` comes from the CATALOG (`inverter.Model.RatedKw`, published as
+  `rated_kw` on `edge/inverter/config`) - never hardcoded; unknown rating =
+  refuse. ~30 W resolution on a 30 kW unit, so a commanded 1 kW reads back 0,99.
+- **Release is trivial and that is the point:** `1100 <- 0`, and simply STOPPING
+  is the failsafe of last resort (the inverter's own watchdog reverts it with
+  nothing changed). The path touches **no installer setting at all**, so there is
+  no snapshot to restore - `snapshotPlan` is deliberately absent, and a LEFTOVER
+  ToU snapshot is restored only after remote is disabled.
+- **⚠ The SoC guard is SAFETY-CRITICAL here.** One field report says the
+  inverter's own min/max-SoC protection may NOT apply in remote mode, so
+  `guards.Clamp`'s band is the authority (the adapter writes the already-clamped
+  kW verbatim and never widens it) and strategy 5 + `1108` is armed as an
+  independent on-device belt. `edge/setpoint` carries `soc_max_pct` for it.
+- **Curtailment is NOT on this path** (`pvLimitSupported:false`, reported never
+  silently dropped): the Deye feed-in cap is an EEPROM installer register.
+- `1121` (remote status) is an **observation**, carried in `plan.observations` →
+  `remote_status_raw`, deliberately OUT of `readbacks` so it can never fabricate
+  or break `all_match`. The active path rides `control_path` on the readback →
+  `state.ControlInfo` → the `:8484` card → `cloud.ControlSummary`.
+- Deye stays OUT of `CERTIFIED_CONTROL_FAMILIES`; First-Light calibration is the
+  one certification-only bypass and `VP_CONTROL_ENABLED` still wins. Bench
+  procedure: `nodered/CONTROL-BENCH.md` §"Deye zuerst".
+- Proof: `inverter-control-routing.test.js` (capability vectors incl. the owner's
+  live probe, the conversion on 12/20/30/50 kW units, order, RAM cadence,
+  "touches only 1100-1121", release), `flows-sync.test.js` (the inline plan-node
+  copy == the module for both directions + the release), `deye-control.e2e.test.js`
+  (the REAL executor against an in-process Solarman-V5 logger: probe → interlock →
+  ordered FC16 writes → readback + the 1121 observation → release).
+
+## Deye N1: an UNKNOWN HV/LV power scale now REFUSES the whole ToU plan
+
+The live 10x bug (report §2.3): `power_scale` "Automatisch" fell back to 1, so an
+HV SG01HP3 was written **10x too large** - a 0,3 kW command became a ~15 kW export
+ceiling and the plant exported 14,6 kW. `resolveDeyePowerScale(conn, cap)` now
+resolves explicit config → the DEVICE-DETECTED class from the capability probe
+(register `0x0000`, the read path's own auto-detect) → **refuse**. With the scale
+unknown the ENTIRE ToU plan is withheld (`powerScaleSuppressed`, planned/writes/
+readbacks all empty), because emitting it minus the power ops would arm ToU +
+Export-First + Solar-Sell against the installer's own sell-power ceiling - the same
+accident. **Consequence for tests: a Deye fixture that exercises the ToU mapping
+must state `power_scale`** (or supply a capability with a `scaleClass`). The remote
+path derives its scaling from rated power and cannot inherit `power_scale` at all.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.
