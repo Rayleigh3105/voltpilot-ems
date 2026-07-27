@@ -74,7 +74,7 @@ type Agent struct {
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
 	lastDriftLog   time.Time // rate-limits the battery cross-check drift log
-	lastCertDivLog time.Time // rate-limits the certified-divergence warning
+	lastCertDivLog time.Time // rate-limits the control-gate-divergence warning
 
 	invMu sync.Mutex
 	inv   *inverter.Selection // the customer's inverter choice; nil until set
@@ -878,7 +878,7 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.mu.Lock()
 				soc := a.lastRawSoc
 				a.mu.Unlock()
-				a.logCertifiedDivergence(snap)
+				a.logControlGateDivergence(snap)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
@@ -1247,17 +1247,30 @@ const despikeLogInterval = 30 * time.Second
 // certDivergenceLogInterval rate-limits the certified-divergence warning.
 const certDivergenceLogInterval = 10 * time.Minute
 
-// logCertifiedDivergence surfaces the ONE condition the controlSummary fix would
-// otherwise hide: the flow-stamped readback `certified` disagreeing with the
-// core's authoritative First-Light verdict. The core wins (that is the fix), but a
-// disagreement is a real fact worth naming - the expected steady state on a
-// released non-allowlisted family (flow=false, core=true) as much as the inverse
-// (flow=true, core=false), which would mean the executor considers a family
-// certified that the core does not. Rate-limited to one line per interval so a
-// permanent, by-design divergence does not flood the log.
-func (a *Agent) logCertifiedDivergence(snap state.Snapshot) {
+// logControlGateDivergence surfaces the conditions the controlSummary fix would
+// otherwise hide: a flow-stamped readback GATE FLAG disagreeing with the core's
+// authoritative value. The core wins for BOTH flags (that is the fix), but a
+// disagreement is a real fact worth naming.
+//
+//   - certified: the expected steady state on a released non-allowlisted family
+//     (flow=false, core=true) as much as the inverse (flow=true, core=false),
+//     which would mean the executor considers a family certified that the core
+//     does not.
+//   - control_enabled: the release path (controlRelease) historically carried no
+//     controlEnabled at all, so its readback stamped `false` and pinned the portal
+//     to "ausgeschaltet" after every calibration auto-revert. A divergence here now
+//     means either that old Layer 1 or a real gate disagreement.
+//
+// Rate-limited to one line per interval so a permanent, by-design divergence does
+// not flood the log.
+func (a *Agent) logControlGateDivergence(snap state.Snapshot) {
 	c := snap.Control
-	if c == nil || c.Blocked || c.Certified == snap.ControlCertified {
+	if c == nil || c.Blocked {
+		return
+	}
+	certDiverges := c.Certified != snap.ControlCertified
+	enabledDiverges := c.ControlEnabled != snap.ControlEnabled
+	if !certDiverges && !enabledDiverges {
 		return
 	}
 	a.mu.Lock()
@@ -1270,9 +1283,11 @@ func (a *Agent) logCertifiedDivergence(snap state.Snapshot) {
 	if quiet {
 		return
 	}
-	slog.Warn("control certification sources disagree; reporting the core's First-Light verdict to the cloud",
+	slog.Warn("control gate sources disagree; reporting the core's own values to the cloud",
 		"flow_readback_certified", c.Certified,
 		"core_certified", snap.ControlCertified,
+		"flow_readback_control_enabled", c.ControlEnabled,
+		"core_control_enabled", snap.ControlEnabled,
 		"control_path", c.ControlPath)
 }
 
@@ -1296,17 +1311,29 @@ func (a *Agent) onLocalStatus(_ string, payload []byte) {
 // (the block is then omitted). commanded/confirmed kW come from the battery_power
 // register when present.
 //
-// CERTIFIED IS SOURCED FROM THE CORE, NOT FROM THE READBACK (portal-signal fix,
-// 2026-07-27). The readback's `certified` is stamped by the Node-RED flow's
-// STATIC family allowlist (inverter-control-routing.js CERTIFIED = {sunspec}),
-// which cannot know the per-device First-Light grant the operator issued at
-// runtime - so a released Deye reported certified:false to the cloud forever
-// while :8484 (reading snap.ControlCertified) correctly said "freigegeben".
-// snap.ControlCertified is the authoritative value applySetpoint/calibration
-// maintain (controlCertified = env allowlist merged with the persisted grant),
-// and it is exactly what the local card renders, so the cloud now agrees with
-// the device by construction. This changes only what is REPORTED - who may
-// write is still decided by controlEnabled/the executor's own allowlist.
+// BOTH GATE FLAGS ARE SOURCED FROM THE CORE, NOT FROM THE READBACK (portal-signal
+// fix, 2026-07-27). A readback stamp is a Layer-1 observation, never the authority
+// for a gate flag - the two live defects that proved it:
+//
+//   - `certified` is stamped by the Node-RED flow's STATIC family allowlist
+//     (inverter-control-routing.js CERTIFIED = {sunspec}), which cannot know the
+//     per-device First-Light grant the operator issued at runtime - so a released
+//     Deye reported certified:false to the cloud forever while :8484 (reading
+//     snap.ControlCertified) correctly said "freigegeben".
+//   - `control_enabled` is stamped from ctrl.controlEnabled, which controlRelease
+//     never set - so `!!undefined` === false. After every First-Light test the TTL
+//     auto-revert fires a RELEASE, that release readback is the LAST one the cloud
+//     receives, and every following heartbeat re-published control_enabled:false:
+//     the portal said "Die Wechselrichter-Steuerung ist ausgeschaltet" forever
+//     while the core had it on.
+//
+// snap.ControlEnabled/snap.ControlCertified are the authoritative values
+// applySetpoint/calibration maintain (ControlEnabled = the kill-switch ANDed with
+// certification; ControlCertified = env allowlist merged with the persisted
+// First-Light grant), and they are exactly what the local card renders, so the
+// cloud now agrees with the device by construction. This changes only what is
+// REPORTED - who may WRITE is still decided by the control_enabled the core puts
+// on edge/setpoint and by the executor's own allowlist.
 func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 	c := snap.Control
 	// A blocked control info (empty plan: unknown nameplate/scale) is a local :8484
@@ -1318,7 +1345,7 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 	}
 	sum := &cloud.ControlSummary{
 		AllMatch:         c.AllMatch,
-		ControlEnabled:   c.ControlEnabled,
+		ControlEnabled:   snap.ControlEnabled,
 		Certified:        snap.ControlCertified,
 		SlotStart:        c.SlotStart,
 		CheckedAt:        c.CheckedAt.UTC().Format(time.RFC3339Nano),
