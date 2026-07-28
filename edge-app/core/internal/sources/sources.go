@@ -7,9 +7,14 @@
 // (agent.onLocalTelemetry), so the existing single edge/telemetry contract
 // stays byte-for-byte unchanged downstream.
 //
-// A source is READ-ONLY BY CONSTRUCTION: it never carries control state and the
-// core never wires a setpoint path for it. Control (battery setpoint /
-// curtailment) targets the battery-hybrid inverter (inverter.Selection) ONLY.
+// A source is READ-ONLY in the data sense: it never feeds control state into
+// the guard chain. Battery control targets the battery-hybrid inverter
+// (inverter.Selection) ONLY. The ONE narrow write exception (Fronius
+// Increment 3): PV CURTAILMENT (the Fahrplan's "Abregeln") writes SunSpec
+// Model 123 WMaxLimPct on fronius_sunspec Erzeuger sources - behind the
+// global kill-switch AND a per-UNIT First-Light grant (agent/curtail.go +
+// edge-app/nodered/sunspec/curtail.js); an unreleased unit is only ever
+// observed, never written.
 //
 // Design: report data/vp-multisource-edge-design/report.md §3.1/§3.2 (the
 // role-tagged measurement-point tree; Phase 1 ships the Erzeuger role only).

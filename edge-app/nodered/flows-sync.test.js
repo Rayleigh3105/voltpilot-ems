@@ -904,3 +904,147 @@ test('flow auto-sunspec embeds the current model-discovery.js + sunspec-live.js 
   assert.ok(func.includes("context.get('ss_busy_since')"), 'overlap guard (skip-if-busy) present');
   assert.ok(func.includes('warnFail('), 'failed reads are named via node.warn, never swallowed silently');
 });
+
+// --- PV-Abregelung (fleet curtailment) ---------------------------------------
+//
+// The "PV-Abregelung / Schreibplan" node carries EMBEDDED verbatim copies of
+// sunspec/model-discovery.js + sunspec/curtail.js (the executor carries the
+// same pair for the discovery walk + the enforcement check). Drift guard first,
+// then behavioral equality: the inlined plan node must produce byte-identical
+// fleet plans to sunspec/curtail.planFleetCurtailment().
+
+const curtailMod = require('./sunspec/curtail');
+const modelDiscovery = require('./sunspec/model-discovery');
+
+test('flow curtail plan + exec nodes embed the current model-discovery.js + curtail.js sources', () => {
+  for (const nodeId of ['sources-curtail-plan', 'sources-curtail-exec']) {
+    const func = byId[nodeId].func;
+    for (const rel of ['sunspec/model-discovery.js', 'sunspec/curtail.js']) {
+      const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
+      assert.ok(
+        func.includes(src),
+        'flows.json ' + nodeId + ' node is out of sync with ' + rel + ' - re-run build-flows.js',
+      );
+    }
+  }
+  // The exec keeps the poll-coordination + one-shot-release + dead-man shape.
+  const exec = byId['sources-curtail-exec'].func;
+  assert.ok(exec.includes("flow.set('curtail_want:' + ipKey, Date.now())"), 'write intent announced to the read poll');
+  assert.ok(exec.includes("flow.get('src_reading:' + ipKey)"), 'waits out an in-flight poll read');
+  assert.ok(exec.includes("'curtail_was:'"), 'one-shot release discipline present');
+  assert.ok(exec.includes('evaluateEnforcement'), 'override detection wired');
+  // And the read poll yields to the announced write + stashes last readings.
+  const read = byId['sources-read'].func;
+  assert.ok(read.includes("flow.get('curtail_want:' + ipKey)"), 'read poll yields to the curtail writer');
+  assert.ok(read.includes("flow.set('src_last:' + plan.id"), 'read poll stashes last readings');
+});
+
+// The curtail discovery fixture (the curtail.test.js image builder): one unit
+// with Common + Nameplate + int+SF inverter + Immediate Controls (SF -2).
+function curtailDiscoveryFor(ratedKw) {
+  const D = modelDiscovery;
+  const nameplate = new Array(26).fill(0);
+  nameplate[D.M120.WRtg] = Math.round(ratedKw * 100) & 0xffff;
+  nameplate[D.M120.WRtg_SF] = 1;
+  const controls = new Array(D.M123.LENGTH).fill(0);
+  controls[D.M123.WMaxLimPct_SF] = 0xfffe;
+  const img = new Map();
+  img.set(40000, (D.SID >>> 16) & 0xffff);
+  img.set(40001, D.SID & 0xffff);
+  let addr = 40002;
+  for (const m of [
+    { id: 1, body: new Array(66).fill(0) },
+    { id: D.MODEL.NAMEPLATE, body: nameplate },
+    { id: 103, body: new Array(50).fill(0) },
+    { id: D.MODEL.IMMEDIATE_CONTROLS, body: controls },
+  ]) {
+    img.set(addr, m.id & 0xffff);
+    img.set(addr + 1, m.body.length & 0xffff);
+    for (let i = 0; i < m.body.length; i++) img.set(addr + 2 + i, m.body[i] & 0xffff);
+    addr += 2 + m.body.length;
+  }
+  img.set(addr, D.END_MODEL_ID);
+  img.set(addr + 1, 0);
+  const reader = (a, count) => {
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const w = img.get(a + i);
+      if (w === undefined) break;
+      out.push(w);
+    }
+    return out;
+  };
+  return D.discover(reader, { base: 40000 });
+}
+
+const CURTAIL_PLANS = [
+  { id: 'src-fr1', role: 'pv-generation', adapter: 'sunspec_live', conn: { ip: '192.168.210.40', port: 502, unit_id: 1 } },
+  { id: 'src-fr2', role: 'pv-generation', adapter: 'sunspec_live', conn: { ip: '192.168.210.40', port: 502, unit_id: 2 } },
+];
+
+function runCurtailPlan(sp, flowCtx) {
+  const flow = Object.assign({ source_plans: CURTAIL_PLANS }, flowCtx || {});
+  const { msg } = runFunctionNode(byId['sources-curtail-plan'].func, { msg: { setpoint: sp }, flow });
+  return msg ? msg.curtailFleet : undefined;
+}
+
+test('flow curtail planner matches planFleetCurtailment() for the two-unit Pilsting shape', () => {
+  const d1 = curtailDiscoveryFor(25);
+  const d2 = curtailDiscoveryFor(30);
+  const sp = {
+    battery_setpoint_kw: 0, ts: new Date().toISOString(), pv_limit_kw: 30,
+    curtail: {
+      control_enabled: true, pv_uncontrolled_kw: 12,
+      sources: [
+        { id: 'src-fr1', certified: true, capacity_kwp: 25, label: 'Fronius WR 1' },
+        { id: 'src-fr2', certified: false, capacity_kwp: 30, label: 'Fronius WR 2' },
+      ],
+    },
+  };
+  const flowCtx = {
+    'curtail_disc:192.168.210.40:502#1': { at: Date.now(), disc: d1 },
+    'curtail_disc:192.168.210.40:502#2': { at: Date.now(), disc: d2 },
+    'src_last:src-fr2': { pv_kw: 8, power_kw: null, load_kw: null, at: Date.now() },
+  };
+  const flowFleet = runCurtailPlan(sp, flowCtx);
+  const moduleFleet = JSON.parse(JSON.stringify(curtailMod.planFleetCurtailment({
+    setpoint: sp, plans: CURTAIL_PLANS,
+    discoveries: { '192.168.210.40:502#1': d1, '192.168.210.40:502#2': d2 },
+    readings: { 'src-fr2': { pv_kw: 8, at: Date.now() } },
+    nowMs: Date.now(), disc: modelDiscovery,
+  })));
+  assert.deepStrictEqual(flowFleet, moduleFleet);
+  // Sanity on the meaning: the certified unit writes, the uncertified observes.
+  const u1 = flowFleet.units.find((u) => u.sourceId === 'src-fr1');
+  const u2 = flowFleet.units.find((u) => u.sourceId === 'src-fr2');
+  assert.ok(u1.plan.writes.length > 0);
+  assert.deepStrictEqual(u2.plan.writes, []);
+});
+
+test('flow curtail planner releases without a cap and stops on the kill-switch, like the module', () => {
+  const d1 = curtailDiscoveryFor(25);
+  const flowCtx = { 'curtail_disc:192.168.210.40:502#1': { at: Date.now(), disc: d1 } };
+  const base = {
+    battery_setpoint_kw: 0, ts: new Date().toISOString(),
+    curtail: { control_enabled: true, pv_uncontrolled_kw: 0, sources: [{ id: 'src-fr1', certified: true, capacity_kwp: 25 }] },
+  };
+  // No pv_limit_kw -> release (Ena=0).
+  const rel = runCurtailPlan(base, flowCtx);
+  assert.strictEqual(rel.mode, 'release');
+  const relU = rel.units.find((u) => u.sourceId === 'src-fr1');
+  assert.strictEqual(relU.plan.writes.find((w) => w.role === 'pv_limit_enable').value, 0);
+  // Kill-switch off -> no writes at all, module-identical.
+  const off = Object.assign({}, base, {
+    pv_limit_kw: 20,
+    curtail: { control_enabled: false, pv_uncontrolled_kw: 0, sources: [{ id: 'src-fr1', certified: true, capacity_kwp: 25 }] },
+  });
+  const offFleet = runCurtailPlan(off, flowCtx);
+  const offModule = JSON.parse(JSON.stringify(curtailMod.planFleetCurtailment({
+    setpoint: off, plans: CURTAIL_PLANS, discoveries: { '192.168.210.40:502#1': d1 },
+    readings: {}, nowMs: Date.now(), disc: modelDiscovery,
+  })));
+  assert.deepStrictEqual(offFleet, offModule);
+  const offU = offFleet.units.find((u) => u.sourceId === 'src-fr1');
+  assert.deepStrictEqual(offU.plan.writes, []);
+  assert.ok(offU.plan.readbacks.length > 0, 'readbacks still run (observe-only)');
+});

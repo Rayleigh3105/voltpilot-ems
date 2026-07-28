@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
@@ -147,6 +148,18 @@ type CalibrationController interface {
 	// MUTATION endpoints. Empty = no gate (calibration stays open like the rest of the
 	// surface); non-empty = the mutation endpoints require it (see the calGuard wrapper).
 	CalibrationAdminSecret() string
+
+	// Curtailment First-Light: the per-UNIT PV-Abregelung certification of the
+	// fronius_sunspec Erzeuger sources (Fronius Increment 3). Same surface, same
+	// admin gate, same discipline: a bounded, auto-reverting test (cap = 80 % of
+	// the unit's current output) whose evidence - register readback confirmed
+	// AND measured power dropped to the cap - gates the operator's "Freigeben".
+	// A *curtailcal.ValidationError is a 400.
+	CurtailSnapshot() curtailcal.View
+	CurtailStartTest(sourceID string) (curtailcal.View, error)
+	CurtailAbort() curtailcal.View
+	CurtailCertify(sourceID string) (curtailcal.View, error)
+	CurtailDecertify(sourceID string) (curtailcal.View, error)
 }
 
 // stateEnvelope is the snapshot the dashboard renders, plus the device clock so
@@ -713,6 +726,71 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	mux.HandleFunc("POST /api/calibration/decertify", calGuard(func(w http.ResponseWriter, r *http.Request) {
 		snap, err := cal.CalibrationDecertify()
 		calResult(w, snap, err)
+	}))
+
+	// --- PV-Abregelung First-Light (Fronius Increment 3): the per-UNIT
+	// curtailment certification of the fronius_sunspec Erzeuger sources.
+	// Mutations share the calibration admin gate (calGuard) - it is the same
+	// physical-control calibration surface.
+	curtailResult := func(w http.ResponseWriter, v curtailcal.View, err error) {
+		if err != nil {
+			var ve *curtailcal.ValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg, "curtail": v})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Die Aktion konnte nicht ausgeführt werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"curtail": v})
+	}
+	// GET /api/curtail - per-unit curtailment state: certification, live output,
+	// the running test + its evidence. The calibration surface polls this.
+	mux.HandleFunc("GET /api/curtail", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"curtail": cal.CurtailSnapshot()})
+	})
+	// POST /api/curtail/test {source_id} - start the bounded curtailment test
+	// (cap = 80 % of the unit's current measured output, TTL-limited,
+	// auto-reverting via the core watchdog + the native WMaxLimPct_RvrtTms).
+	mux.HandleFunc("POST /api/curtail/test", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			SourceID string `json:"source_id"`
+		}
+		if !readBody(r, &req) || req.SourceID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		v, err := cal.CurtailStartTest(req.SourceID)
+		curtailResult(w, v, err)
+	}))
+	// POST /api/curtail/abort - end the running curtailment test now.
+	mux.HandleFunc("POST /api/curtail/abort", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"curtail": cal.CurtailAbort()})
+	}))
+	// POST /api/curtail/certify {source_id} - the deliberate per-unit hand-off,
+	// evidence-gated (register confirmed AND observed drop, within grace).
+	mux.HandleFunc("POST /api/curtail/certify", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			SourceID string `json:"source_id"`
+		}
+		if !readBody(r, &req) || req.SourceID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		v, err := cal.CurtailCertify(req.SourceID)
+		curtailResult(w, v, err)
+	}))
+	// POST /api/curtail/decertify {source_id} - "Freigabe zurücknehmen" per unit.
+	mux.HandleFunc("POST /api/curtail/decertify", calGuard(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			SourceID string `json:"source_id"`
+		}
+		if !readBody(r, &req) || req.SourceID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		v, err := cal.CurtailDecertify(req.SourceID)
+		curtailResult(w, v, err)
 	}))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {

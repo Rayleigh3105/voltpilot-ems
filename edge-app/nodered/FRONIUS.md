@@ -230,6 +230,13 @@ Anlage" → Erzeuger hinzufügen), gleiche IP, unterschiedliche Unit-ID:
 
 ## 6. Steuerung (Curtailment + Batterie) - SunSpec Modbus, NUR GEPLANT
 
+> **Increment 3 ist da:** die **PV-Abregelung auf fronius_sunspec-ERZEUGER-
+> QUELLEN** kann inzwischen LIVE gehen - hinter einer Freigabe **je
+> Wechselrichter-Einheit** (First-Light-Test auf `:8484`), nie über die
+> Familien-Allowlist. Siehe **§6b**. DIESER Abschnitt (§6) beschreibt die
+> Steuerung des PRIMÄR-Wechselrichters über `froniusControl` (Curtailment
+> Increment 1 + Batterie Increment 2) - die bleibt unverändert nur geplant.
+
 Fronius-Steuerung läuft über die **standardbasierte SunSpec-Modbus-Schnittstelle**
 (nicht die Solar-API und **nicht** den evcc-`config/timeofuse`-HTTP-Hack - vom
 Design-Bericht `vp-fronius-control-scout-c4` verworfen: undokumentiert,
@@ -297,6 +304,55 @@ Weboberfläche → **Kommunikation → Modbus** → (1) **SunSpec Model Type** w
 ankreuzen (das ist ein zweiter, separater Schalter neben „Solar API aktivieren").
 Ohne „Allow Control" antwortet der Wechselrichter auf keine Schreibbefehle - der
 Steuerpfad bleibt idle-sicher.
+
+## 6b. PV-Abregelung auf ERZEUGER-Quellen (Increment 3 - LIVE hinter Freigabe je Einheit)
+
+Increment 3/3 macht die **Abregelung** (Fahrplan-Phase „Abregeln", `pv_limit_kw`
+am Sollwert) auf den **fronius_sunspec-ERZEUGER-Quellen** physisch ausführbar -
+der Pilsting-Fall: zwei Fronius hinter EINER IP (`192.168.210.40:502`, Unit-IDs
+1 + 2) liefern die Mehrheit der Anlagen-PV, der Deye-Hybrid kann auf seinem
+Remote-Pfad keine PV-Begrenzung schreiben (`pvLimitSupported:false`, bleibt so).
+
+- **Aufteilung (`sunspec/curtail.js` `splitPlantCap`):** die EINE Anlagen-
+  Begrenzung des Fahrplans minus dem **gemessenen unkontrollierbaren Anteil**
+  (der Core rechnet ihn als Gesamt-PV − Fronius-Quellen-PV und schickt ihn als
+  `pv_uncontrolled_kw` im `curtail`-Block des Sollwerts mit; nicht freigegebene
+  Fronius-Einheiten zählt der Flow zusätzlich mit ihrem Messwert dazu) wird
+  **proportional zur Nennleistung** (erkannte `WRtg`, sonst `capacity_kwp`)
+  über die schreibbaren Einheiten verteilt - Wasserfall, nie über die eigene
+  Nennleistung.
+- **Schreiben:** je Einheit `WMaxLimPct` (Wert) → `WMaxLimPct_RvrtTms` (60 s,
+  der native Totmann - der Core republiziert alle ~10 s; hören wir auf, hebt
+  der Wechselrichter die Begrenzung SELBST auf) → `WMaxLim_Ena` (strikt
+  zuletzt), an LIVE ERKANNTEN Modell-123-Adressen. Kein Cap im Fahrplan /
+  Sollwert veraltet → Freigabe (`Ena=0`, einmalig; der Timer räumt Reste ab).
+- **Wirkungs-Prüfung (Override-Erkennung):** Modbus hat auf Fronius die
+  **NIEDRIGSTE Steuer-Priorität** - lokale Einstellungen, Solar.web oder eine
+  Smart-Meter-Regel übersteuern ein bestätigtes Register stillschweigend. Nach
+  einem Settle-Fenster (90 s) gilt: gemessene Leistung ÜBER Begrenzung +
+  Toleranz → „möglicher Override" auf `:8484` + im Heartbeat - nie still.
+  (Leistung UNTER der Begrenzung beweist nichts - Wolken senken sie auch.)
+- **Freigabe JE WECHSELRICHTER-EINHEIT** (`:8484` → Einrichten →
+  „PV-Abregelung kalibrieren", Endpunkte `/api/curtail/*`): ein begrenzter
+  Test drosselt die Einheit auf **80 % ihrer aktuellen Leistung** (verweigert
+  unter 5 kW - kein aussagekräftiger Nachweis), Register werden zurückgelesen
+  UND die gemessene Leistung muss binnen des Testfensters (120 s, danach
+  automatischer Rückfall) tatsächlich fallen. Erst beide Nachweise schalten
+  „Abregelung freigeben" frei; die Freigabe ist am PHYSISCHEN Gerät verankert
+  (`ip:port#unit_id`, `data_dir/curtail-certified.json`) und überlebt das
+  Löschen/Neuanlegen des Quellen-Eintrags. `CERTIFIED_CONTROL_FAMILIES` bleibt
+  unverändert - Fronius kommt NIE über die Flotten-Allowlist live.
+- **Not-Aus:** `VP_CONTROL_ENABLED=false` stoppt auch die Abregelung sofort
+  (der `curtail`-Block trägt den ROHEN Kill-Switch - bewusst nicht das
+  Top-Level-`control_enabled`, das mit der Freigabe des PRIMÄR-Wechselrichters
+  verundet ist und nie ein anderes Gerät gaten darf).
+- **Ehrlichkeit zur Cloud:** der Status-Heartbeat trägt den additiven
+  `curtailment`-Block (Einheiten / freigegebene Einheiten / aktiv / bestätigt /
+  möglicher Override), damit das Portal „geplant und ausgeführt" von „geplant,
+  Anlage kann es (noch) nicht" unterscheiden kann.
+
+Bench-Ablauf: [`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Checkliste Fronius
+PV-Abregelung (Increment 3)".
 
 ## Ausgeklammert (bewusst)
 

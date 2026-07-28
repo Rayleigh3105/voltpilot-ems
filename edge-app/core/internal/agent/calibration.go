@@ -139,6 +139,13 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		// adapter arms the inverter's own SoC belt with it on a charge test.
 		"soc_max_pct": a.Cfg.SocMaxPct,
 	}
+	// The curtailment block rides the calibration setpoint too, so a battery
+	// First-Light test never blanks the Fronius caps (the flow would otherwise
+	// stop refreshing them and the native revert timer would lift a legitimate
+	// plan cap mid-test).
+	if cur := a.curtailSetpointExtras(now); cur != nil {
+		msg["curtail"] = cur
+	}
 	raw, _ := json.Marshal(msg)
 	if err := a.Bus.Publish(localbus.TopicSetpoint, raw, true); err != nil {
 		slog.Error("calibration setpoint publish failed", "err", err)

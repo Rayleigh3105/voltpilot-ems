@@ -425,6 +425,30 @@
       </div>
     </section>
 
+    <!-- PV-Abregelung kalibrieren (Fronius Increment 3): the per-UNIT
+         First-Light for feed-in curtailment on the fronius_sunspec Erzeuger
+         sources. Bounded test (80 % of the current output, auto-reverting via
+         the native Model-123 revert timer), evidence = register readback
+         confirmed AND the measured power dropped. Mutations share the
+         calibration admin gate. Hidden while no Fronius source exists. -->
+    <section class="card" id="curtailCalCard" hidden>
+      <div class="chart-head">
+        <h3 class="chart-title"><span class="ico" style="background:var(--pv-soft, var(--bg-2));color:var(--pv, #f0b400)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.66 1.41M8 16l8-8"/></svg></span>PV-Abregelung kalibrieren</h3>
+      </div>
+      <p class="cal-hint">
+        Damit der Fahrplan bei negativen Preisen wirklich abregeln darf, wird jeder
+        Fronius-Wechselrichter einzeln freigegeben: ein kurzer Test begrenzt ihn auf
+        80&nbsp;% seiner aktuellen Leistung, die Register werden zurückgelesen und die
+        gemessene Leistung muss tatsächlich sinken. Der Test endet automatisch
+        (Rückfall-Timer im Wechselrichter) - die Anlage bleibt nie gedrosselt.
+      </p>
+      <p class="cal-err" id="curtailErr" hidden></p>
+      <div id="curtailCalUnits"></div>
+      <div class="ctrl-summary muted" id="curtailCalEmpty" hidden>
+        <p id="curtailCalEmptyText"></p>
+      </div>
+    </section>
+
     <!-- ==================== Bereich 4 · Messwert-Aufbereitung ============== -->
     <!-- ============== Bereich 5 · Datenfreigabe im Hausnetz ================
          Modbus-Datenspiegel (mirror.js, GET/POST /api/mirror): the READ-ONLY
@@ -639,6 +663,7 @@
   <script src="mirror.js"></script>
   <script src="control.js"></script>
   <script src="calibration.js"></script>
+  <script src="curtail.js"></script>
   <script src="einrichten.js"></script>
 </body>
 </html>
