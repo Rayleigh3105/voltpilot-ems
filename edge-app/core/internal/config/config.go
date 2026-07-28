@@ -127,6 +127,13 @@ type Config struct {
 	// UnclaimConfirmPolls is the minimum number of consecutive clean-404 polls.
 	UnclaimConfirmPolls int `json:"unclaim_confirm_polls"`
 
+	// MirrorAdvertisePort is the HOST port of the Modbus-Datenspiegel as the
+	// compose maps it ("${VP_MIRROR_PORT:-502}:1502") - the :8484 card shows
+	// "<geraet>:<this port>" for the installer to copy. It does NOT change
+	// where the mirror listens (container port, mirror.json); it only keeps
+	// the displayed endpoint truthful when the operator remaps the host port.
+	MirrorAdvertisePort int `json:"mirror_advertise_port"`
+
 	// NodeRedAdminURL is the Node-RED Admin API base for E2 flow deployment
 	// (e.g. "http://nodered:1880"). EMPTY = flow deployment disabled: a
 	// received deployment set is verified + persisted but acked 'error' with a
@@ -184,6 +191,7 @@ func Defaults() Config {
 		CalibrationMaxKw:         1.0,              // small: the first live write must be tiny (report §5.7)
 		CalibrationTTLSeconds:    30,               // auto-revert to neutral fast; the write never latches
 		CalibrationTTL:           30 * time.Second, // derived; Load() recomputes it from the seconds
+		MirrorAdvertisePort:      502,              // lockstep with the compose mapping ${VP_MIRROR_PORT:-502}:1502
 		NodeRedUser:              "voltpilot",
 	}
 }
@@ -246,6 +254,9 @@ func Load() (Config, error) {
 		cfg.CalibrationTTLSeconds = Defaults().CalibrationTTLSeconds
 	}
 	cfg.CalibrationTTL = time.Duration(cfg.CalibrationTTLSeconds) * time.Second
+	if cfg.MirrorAdvertisePort <= 0 || cfg.MirrorAdvertisePort > 65535 {
+		cfg.MirrorAdvertisePort = Defaults().MirrorAdvertisePort
+	}
 	return cfg, nil
 }
 
@@ -306,6 +317,7 @@ func applyEnv(cfg *Config) {
 	f64("VP_CALIBRATION_MAX_KW", &cfg.CalibrationMaxKw)
 	num("VP_CALIBRATION_TTL_SECONDS", &cfg.CalibrationTTLSeconds)
 	str("VP_CALIBRATION_ADMIN_SECRET", &cfg.CalibrationAdminSecret)
+	num("VP_MIRROR_PORT", &cfg.MirrorAdvertisePort)
 	boolEnv := func(key string, dst *bool) {
 		if v := os.Getenv(key); v != "" {
 			*dst = v == "1" || strings.EqualFold(v, "true")

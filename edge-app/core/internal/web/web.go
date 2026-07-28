@@ -22,6 +22,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
@@ -96,6 +97,16 @@ type PlanController interface {
 type DespikeController interface {
 	GetDespike() guards.DespikeStatus
 	SetDespike(guards.DespikeSettings) (guards.DespikeStatus, error)
+}
+
+// MirrorController backs the "Datenfreigabe im Hausnetz" card: the read-only
+// Modbus-TCP mirror's status and its enable/disable + freshness settings.
+// The agent implements it; enabling starts the LAN listener, disabling stops
+// it (the mirror is inert when off). Read-only data sharing - nothing here
+// can ever write to the inverter.
+type MirrorController interface {
+	GetMirror() mirror.Status
+	SetMirror(mirror.SettingsRequest) (mirror.Status, error)
 }
 
 // TopologyController exposes the Anlagen-Topologie-Read-Model (AE1): the site's
@@ -233,7 +244,7 @@ func envelope(st *state.Store, topo TopologyController, ac ActiveControlControll
 func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	despike DespikeController, hist *history.Ring, pl PlanController,
 	src SourcesController, topo TopologyController, ac ActiveControlController,
-	cal CalibrationController) http.Handler {
+	cal CalibrationController, mir MirrorController) http.Handler {
 	mux := http.NewServeMux()
 
 	sub, _ := fs.Sub(staticFS, "static")
@@ -522,6 +533,38 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 			return
 		}
 		writeJSON(w, http.StatusOK, status)
+	})
+
+	// GET /api/mirror - the "Datenfreigabe im Hausnetz" status: whether the
+	// read-only Modbus-TCP mirror is enabled/running, the advertised port for
+	// the copy-paste endpoint, the freshness threshold, the register-area unit
+	// IDs and the auto-learned blocks. The card polls this.
+	mux.HandleFunc("GET /api/mirror", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"mirror": mir.GetMirror()})
+	})
+
+	// POST /api/mirror - enable/disable the mirror and set its freshness
+	// threshold. Validation failures return 400 with a German message the UI
+	// shows inline; on success the new settings are persisted, the listener
+	// starts/stops accordingly, and the updated status is returned.
+	mux.HandleFunc("POST /api/mirror", func(w http.ResponseWriter, r *http.Request) {
+		var req mirror.SettingsRequest
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 16<<10))
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		status, err := mir.SetMirror(req)
+		if err != nil {
+			var ve *mirror.ValidationError
+			if errors.As(err, &ve) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg, "mirror": status})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Einstellungen konnten nicht gespeichert werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"mirror": status})
 	})
 
 	// POST /api/purge-data - "Datenaufzeichnungen löschen": wipe the device's

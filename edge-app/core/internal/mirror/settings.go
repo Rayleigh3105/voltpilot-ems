@@ -113,6 +113,14 @@ func (s Settings) Normalize() (Settings, error) {
 	return out, nil
 }
 
+// SettingsRequest is the POST /api/mirror body: a partial update, nil =
+// keep the stored value. The listen port is deliberately NOT settable here
+// (it is pinned by the compose port mapping - see Settings.Port).
+type SettingsRequest struct {
+	Enabled     *bool `json:"enabled"`
+	StaleAfterS *int  `json:"stale_after_s"`
+}
+
 // Store persists the mirror configuration under data_dir/mirror.json,
 // mirroring guards.SettingsStore's atomic write (despike.json pattern).
 type Store struct{ path string }
