@@ -255,10 +255,172 @@
     }
   }
 
+  /* ------------------------------------------------------------------
+     PV-Abregelung (Fronius Increment 3): the per-unit curtailment evidence.
+     Same two-layer split: deriveCurtail(s) is PURE and returns the plain-
+     German state + its CAUSE (always rendered in normal mode); the per-unit
+     register tables are the technician's evidence beneath it. Hidden entirely
+     while the device reports no curtailment units (older build / no Fronius
+     sources) - byte-identical page then.
+     ------------------------------------------------------------------ */
+  var CURTAIL_ROLE_LABEL = {
+    pv_limit_pct: "PV-Begrenzung (%)",
+    pv_limit_revert_tms: "Rückfall-Timer",
+    pv_limit_enable: "Begrenzung aktiv",
+  };
+  var ENFORCE_LABEL = {
+    ok: "Wirkung bestätigt",
+    settling: "Wirkung wird geprüft …",
+    unknown: "Wirkung nicht prüfbar (kein aktueller Messwert)",
+    inactive: "",
+    possible_override: "Möglicher Override",
+  };
+
+  function deriveCurtail(s) {
+    var units = s && s.curtail_units;
+    if (!units || !units.length) return null;
+
+    var overrideReason = null, blockedReason = null;
+    var applied = 0, released = 0, observed = 0, capSum = 0, mismatch = false;
+    for (var i = 0; i < units.length; i++) {
+      var u = units[i];
+      if (u.possible_override && !overrideReason) {
+        overrideReason = u.override_reason ||
+          "Ein Wechselrichter liefert mehr als seine Begrenzung erlaubt - " +
+          "eine lokale Einstellung, Solar.web oder ein Smart Meter könnte die " +
+          "Modbus-Begrenzung übersteuern. VoltPilot muss der einzige Controller sein.";
+      }
+      if (u.blocked && !blockedReason) blockedReason = u.reason || "Einheit nicht erreichbar.";
+      if (u.applied && u.mode === "apply") {
+        applied++;
+        if (u.cap_kw != null) capSum += u.cap_kw;
+        if (u.all_match === false) mismatch = true;
+      } else if (u.applied && u.mode === "release") {
+        released++;
+      } else {
+        observed++;
+      }
+    }
+
+    if (overrideReason) {
+      return {
+        tone: "warn", units: units,
+        title: "PV-Abregelung: möglicher Override.",
+        text: overrideReason, showTable: true
+      };
+    }
+    if (mismatch) {
+      return {
+        tone: "warn", units: units,
+        title: "PV-Abregelung: der Wechselrichter übernimmt die Begrenzung nicht.",
+        text: "Ein Begrenzungs-Register wurde geschrieben, liest aber anders zurück. " +
+          "Modbus-Steuerung am Datamanager prüfen.",
+        showTable: true
+      };
+    }
+    if (applied > 0) {
+      return {
+        tone: "ok", units: units,
+        title: "VoltPilot begrenzt die PV-Einspeisung.",
+        text: "Der Fahrplan regelt gerade ab: " + applied + " Wechselrichter auf zusammen " +
+          nf1.format(capSum) + " kW begrenzt (bestätigt).",
+        showTable: true
+      };
+    }
+    if (blockedReason) {
+      return {
+        tone: "warn", units: units,
+        title: "PV-Abregelung: Einheit nicht erreichbar.",
+        text: blockedReason, showTable: true
+      };
+    }
+    if (released > 0 && observed === 0) {
+      return {
+        tone: "muted", units: units,
+        title: "Keine PV-Begrenzung aktiv.",
+        text: "Der Fahrplan sieht gerade keine Abregelung vor - die Wechselrichter laufen frei.",
+        showTable: true
+      };
+    }
+    // Observed-only: the plan may curtail, but no unit may be written yet -
+    // THE honesty sentence (a plan step that cannot execute must never look
+    // executed). The cause is named in normal mode.
+    return {
+      tone: "muted", units: units,
+      title: "PV-Abregelung noch nicht freigegeben.",
+      text: "Der Fahrplan kann eine Abregelung vorsehen, aber die Fronius-Wechselrichter " +
+        "sind dafür noch nicht freigegeben - geplante Abregelung wird NICHT ausgeführt. " +
+        "Freigabe: Einrichten → PV-Abregelung kalibrieren.",
+      showTable: true
+    };
+  }
+
+  function renderCurtailUnits(units) {
+    var wrap = $("curtailUnits");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    for (var i = 0; i < units.length; i++) {
+      var u = units[i];
+      var div = global.document.createElement("div");
+      div.className = "curtail-unit";
+      var head = (u.label || u.source_id) + " · " + (u.target || u.unit_key) +
+        " · " + (u.certified ? "freigegeben" : "nicht freigegeben") +
+        (u.calibration ? " · Kalibrier-Test" : "");
+      var rows = "";
+      var regs = u.registers || [];
+      for (var j = 0; j < regs.length; j++) {
+        var r = regs[j];
+        var label = (CURTAIL_ROLE_LABEL[r.role] || r.role) + ' <span class="ctrl-addr">Reg ' + r.addr + "</span>";
+        rows += "<tr" + (u.applied && !r.match ? ' class="mismatch"' : "") + ">" +
+          "<td>" + label + "</td>" +
+          "<td>" + fmtCell(r, "commanded_kw") + "</td>" +
+          "<td>" + fmtCell(r, "actual_kw") + "</td>" +
+          '<td class="ctrl-verdict ' + (u.applied ? (r.match ? "ok" : "bad") : "") + '">' +
+          (u.applied ? (r.match ? "✓ bestätigt" : "⚠ Abweichung") : "nur beobachtet") + "</td></tr>";
+      }
+      var bits = [];
+      bits.push(u.mode === "apply"
+        ? ("Begrenzung " + (u.cap_kw != null ? nf1.format(u.cap_kw) + " kW" : "–"))
+        : "keine Begrenzung (freigegeben)");
+      if (u.measured_kw != null) bits.push("gemessen " + nf1.format(u.measured_kw) + " kW");
+      var enf = ENFORCE_LABEL[u.enforcement_status];
+      if (enf) bits.push(enf);
+      if (u.blocked && u.reason) bits.push(u.reason);
+      bits.push("geprüft " + (ago(u.checked_at) || "gerade eben"));
+      div.innerHTML =
+        '<p class="tech-h">' + head + "</p>" +
+        (rows
+          ? '<div class="ctrl-table-wrap"><table class="ctrl-table"><thead>' +
+            "<tr><th>Register</th><th>Befohlen</th><th>Wechselrichter</th><th>Status</th></tr>" +
+            "</thead><tbody>" + rows + "</tbody></table></div>"
+          : "") +
+        '<p class="tech-note">' + bits.join(" · ") + "</p>";
+      wrap.appendChild(div);
+    }
+  }
+
+  function renderCurtail(s) {
+    var card = $("curtailCard");
+    if (!card) return;
+    var d = deriveCurtail(s);
+    show(card, !!d);
+    if (!d) return;
+    var title = $("curtailTitle");
+    if (title) title.textContent = d.title;
+    var text = $("curtailText");
+    if (text) text.textContent = d.text;
+    var sum = $("curtailSummary");
+    if (sum) sum.className = "ctrl-summary " + d.tone;
+    var dot = card.querySelector(".ss-dot");
+    if (dot) dot.style.background = CHIP_COLOR[d.tone] || CHIP_COLOR.muted;
+    renderCurtailUnits(d.units);
+  }
+
   function onState(s) {
     var d = deriveState(s);
     if (!d) return;
     syncClock(s.server_now_ms);
+    renderCurtail(s);
 
     var chipWrap = $("ctrlState");
     if (chipWrap) {
@@ -294,6 +456,7 @@
   global.VPControl = {
     onState: onState,
     deriveState: deriveState,
+    deriveCurtail: deriveCurtail,
     ROLE_LABEL: ROLE_LABEL,
     PATH_LABEL: PATH_LABEL
   };

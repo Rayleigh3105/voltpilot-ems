@@ -2586,3 +2586,135 @@ func TestCalibrationEndpoints(t *testing.T) {
 		t.Fatalf("a validation error must be 400, got %d", code)
 	}
 }
+
+// TestCurtailmentSurfaceServed pins the //go:embed contract of the PV-
+// curtailment surface: the Betrieb card (summary always visible, per-unit
+// register evidence as Technik detail), the Einrichten calibration card + its
+// script, and the /api/curtail endpoints (GET open; mutations behind the
+// calibration admin gate like every calibration mutation).
+func TestCurtailmentSurfaceServed(t *testing.T) {
+	srv, _ := newServer(t)
+
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	page := get("/")
+	for _, want := range []string{
+		`id="curtailCard"`, `id="curtailSummary"`, `id="curtailTitle"`,
+		`id="curtailText"`, `id="curtailUnits"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html: missing PV-Abregelung element %s", want)
+		}
+	}
+	ein := get("/einrichten.html")
+	for _, want := range []string{
+		`id="curtailCalCard"`, `id="curtailCalUnits"`, `id="curtailErr"`,
+		`src="curtail.js"`,
+	} {
+		if !strings.Contains(ein, want) {
+			t.Errorf("einrichten.html: missing PV-Abregelung element %s", want)
+		}
+	}
+	js := get("/curtail.js")
+	for _, want := range []string{"/api/curtail", "X-VP-Calibration-Token"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("curtail.js: missing %s", want)
+		}
+	}
+	ctrl := get("/control.js")
+	if !strings.Contains(ctrl, "deriveCurtail") {
+		t.Error("control.js: deriveCurtail missing")
+	}
+}
+
+// TestCurtailEndpoints exercises the /api/curtail surface against the fake
+// controller: the GET view, a mutation routed with its source id, the 400
+// mapping of a *curtailcal.ValidationError, and the admin gate on mutations.
+func TestCurtailEndpoints(t *testing.T) {
+	fc := &fakeCalibration{curtailView: curtailcal.View{Available: true,
+		Units: []curtailcal.UnitView{{SourceID: "src-1", UnitKey: "1.2.3.4:502#1"}}}}
+	st := state.New("edge-test", "test")
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, fc, &fakeMirror{}))
+	defer srv.Close()
+
+	// GET is open and carries the view.
+	resp, err := http.Get(srv.URL + "/api/curtail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view struct {
+		Curtail curtailcal.View `json:"curtail"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if len(view.Curtail.Units) != 1 || view.Curtail.Units[0].SourceID != "src-1" {
+		t.Fatalf("view: %+v", view.Curtail)
+	}
+
+	// A mutation routes the source id through.
+	resp, err = http.Post(srv.URL+"/api/curtail/test", "application/json", strings.NewReader(`{"source_id":"src-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fc.lastCurtailTest != "src-1" {
+		t.Fatalf("test mutation: %d, %q", resp.StatusCode, fc.lastCurtailTest)
+	}
+
+	// A ValidationError maps to 400 with the German message.
+	fc.curtailErr = &curtailcal.ValidationError{Msg: "Zu wenig Leistung."}
+	resp, err = http.Post(srv.URL+"/api/curtail/certify", "application/json", strings.NewReader(`{"source_id":"src-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || body["error"] != "Zu wenig Leistung." {
+		t.Fatalf("validation mapping: %d %v", resp.StatusCode, body)
+	}
+	fc.curtailErr = nil
+
+	// With the admin secret set, a mutation without the token is 401; GET stays open.
+	fc.adminSecret = "geheim"
+	resp, err = http.Post(srv.URL+"/api/curtail/abort", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("mutation without token must be 401, got %d", resp.StatusCode)
+	}
+	if fc.curtailAborts != 0 {
+		t.Fatal("the gated mutation must not have run")
+	}
+	resp, err = http.Get(srv.URL + "/api/curtail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET stays open under the gate, got %d", resp.StatusCode)
+	}
+	req, _ := http.NewRequest("POST", srv.URL+"/api/curtail/abort", nil)
+	req.Header.Set("X-VP-Calibration-Token", "geheim")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || fc.curtailAborts != 1 {
+		t.Fatalf("token-carrying mutation must run: %d, aborts=%d", resp.StatusCode, fc.curtailAborts)
+	}
+}

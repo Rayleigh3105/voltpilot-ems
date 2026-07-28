@@ -362,3 +362,65 @@ test("commissioning: the honest in-between states name their cause", () => {
   assert.strictEqual(offline.steps[2].state, "active");
   assert.ok(offline.steps[2].cause.length > 20);
 });
+
+/* ============ control.js: PV curtailment (Fronius) state layer ============ */
+
+function curtailFor(state) {
+  return load(["control.js"]).VPControl.deriveCurtail(state);
+}
+
+test("curtail: no units -> section absent (older build / no Fronius sources)", () => {
+  assert.strictEqual(curtailFor({}), null);
+  assert.strictEqual(curtailFor({ curtail_units: [] }), null);
+});
+
+test("curtail: observed-only units state the honesty sentence (planned is not executed)", () => {
+  const d = curtailFor({
+    curtail_units: [{ source_id: "src-1", unit_key: "k1", applied: false, mode: "apply", certified: false }]
+  });
+  assert.strictEqual(d.tone, "muted");
+  assert.match(d.title, /noch nicht freigegeben/);
+  assert.match(d.text, /NICHT ausgeführt/);
+});
+
+test("curtail: an applied + confirmed cap reads as active curtailment with the summed kW", () => {
+  const d = curtailFor({
+    curtail_units: [
+      { source_id: "a", unit_key: "k1", applied: true, mode: "apply", cap_kw: 8.2, all_match: true },
+      { source_id: "b", unit_key: "k2", applied: true, mode: "apply", cap_kw: 9.8, all_match: true }
+    ]
+  });
+  assert.strictEqual(d.tone, "ok");
+  assert.match(d.title, /begrenzt die PV-Einspeisung/);
+  assert.match(d.text, /18,0\s*kW/);
+});
+
+test("curtail: a possible override names the CAUSE in normal mode and wins over everything", () => {
+  const d = curtailFor({
+    curtail_units: [
+      { source_id: "a", unit_key: "k1", applied: true, mode: "apply", cap_kw: 8, all_match: true },
+      {
+        source_id: "b", unit_key: "k2", applied: true, mode: "apply", cap_kw: 9, all_match: true,
+        possible_override: true, enforcement_status: "possible_override",
+        override_reason: "Der Wechselrichter liefert 20 kW trotz Begrenzung auf 9 kW."
+      }
+    ]
+  });
+  assert.strictEqual(d.tone, "warn");
+  assert.match(d.title, /Override/);
+  assert.match(d.text, /trotz Begrenzung/);
+});
+
+test("curtail: released units read calm, a blocked unit surfaces its reason", () => {
+  const rel = curtailFor({
+    curtail_units: [{ source_id: "a", unit_key: "k1", applied: true, mode: "release", all_match: true }]
+  });
+  assert.strictEqual(rel.tone, "muted");
+  assert.match(rel.title, /Keine PV-Begrenzung aktiv/);
+
+  const blocked = curtailFor({
+    curtail_units: [{ source_id: "a", unit_key: "k1", blocked: true, reason: "Gateway nicht erreichbar" }]
+  });
+  assert.strictEqual(blocked.tone, "warn");
+  assert.match(blocked.text, /Gateway nicht erreichbar/);
+});
