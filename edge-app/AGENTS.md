@@ -904,6 +904,56 @@ oder noch offen, siehe PR fm/vp-control-enabled-y3):
 `VP_FLOW_NODE_STATUS_ENABLED`, `VP_SETPOINT_INTERVAL_SECONDS`,
 `VP_RECONCILE_INTERVAL_SECONDS`, `VP_DEV_INSECURE`.
 
+## PV-Abregelung (Fronius Increment 3): Quellen-Schreibpfad, Freigabe JE EINHEIT, Wirkung > Register
+
+Die Fahrplan-Phase "Abregeln" wird auf **fronius_sunspec-ERZEUGER-QUELLEN**
+physisch ausgefuehrt (Pilsting: zwei Fronius hinter EINER IP, Unit-IDs 1+2).
+Operator-Doku: `nodered/FRONIUS.md` par.6b + `nodered/CONTROL-BENCH.md`
+"Checkliste Fronius PV-Abregelung". Regeln, die halten muessen:
+
+- **EIN Planungs-Truth: `nodered/sunspec/curtail.js`** (pure; model-discovery
+  wird INJIZIERT wie bei sunspec-live) - Aufteilung der Anlagen-Begrenzung
+  (proportional zur Nennleistung, Wasserfall, minus gemessenem
+  unkontrollierbarem Anteil), Gates, Release, Override-Erkennung. Die
+  Flow-Knoten "PV-Abregelung / Schreibplan"+Executor im QUELLEN-Tab betten es
+  ein (flows-sync pinnt); der Go-Zwilling ist NUR der unitKey
+  (`agent/curtail.go curtailUnitKey` == `curtail.js unitKey`, byte-identisch).
+- **Der `curtail`-Block am edge/setpoint traegt den ROHEN Kill-Switch** -
+  bewusst NICHT das Top-Level-`control_enabled` (das ist mit der Freigabe des
+  PRIMAER-Wechselrichters verundet und darf nie ein anderes Geraet gaten).
+  Dazu `pv_uncontrolled_kw` (Composite-PV minus Fronius-Quellen-PV) + je
+  Quelle `certified`/`capacity_kwp`/`test`. Auch der Kalibrier-Override
+  (calibration.go) publiziert den Block, damit ein Batterie-First-Light die
+  Caps nicht kurz aufhebt.
+- **Freigabe JE PHYSISCHER EINHEIT** (`ip:port#unit_id`,
+  `data_dir/curtail-certified.json`, versioniert wie
+  calibration-certified.json): Evidenz = Register-Readback bestaetigt UND
+  gemessene Leistung auf die Begrenzung gefallen (internal/curtailcal;
+  80-%-Test, min. 5 kW, TTL 120 s, 3 min Confirm-Grace, Abort invalidiert).
+  Register allein reichen NIE - Modbus hat auf Fronius die NIEDRIGSTE
+  Prioritaet (lokale Einstellung/Solar.web/Smart Meter uebersteuern still),
+  deshalb prueft der Executor die WIRKUNG nach 90 s Settle und meldet
+  "moeglicher Override" (:8484 + Heartbeat `curtailment`-Block).
+- **Readbacks je Einheit reiten edge/control/readback mit `curtail:true`** -
+  der Core routet sie in `Snapshot.CurtailUnits`, NIE in `Snapshot.Control`
+  (das Primaer-Geraet). Der Heartbeat-`curtailment`-Block traegt die
+  Faehigkeit (Einheiten/freigegeben/Kill-Switch aus dem KERN) + die
+  Beobachtungen (aktiv/bestaetigt/Override) - so unterscheidet die Cloud
+  "geplant und ausgefuehrt" von "geplant, Anlage kann es (noch) nicht".
+  Portal-Rendering des Blocks ist dokumentierter Follow-up.
+- **Socket-Disziplin im Quellen-Tab** (die sv5-Lehre, bidirektional):
+  der Executor kuendigt an (`curtail_want:<ip:port>`) und wartet eine
+  laufende Poll-Lesung aus (`src_reading:`); der Poll weicht einer
+  Angekuendigung aus und stasht je Quelle den letzten Messwert
+  (`src_last:` - Input fuer Split + Wirkungs-Pruefung). Discovery wird 1 h
+  gecacht; ohne Cache ENTDECKT der Tick nur und der naechste plant (nie in
+  die Leere schreiben). Release ist one-shot (`curtail_was:`); der native
+  `WMaxLimPct_RvrtTms` (60 s, ~6 Ticks Slack auf die ~10-s-Republikation)
+  ist der Totmann - aufhoeren zu schreiben IST der Failsafe.
+- `CERTIFIED_CONTROL_FAMILIES` bleibt unveraendert; Batterie-Steuerung, alle
+  Deye-Pfade (`deyeRemoteControl` haelt `pvLimitSupported:false`) und
+  guards.Clamp sind unberuehrt.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

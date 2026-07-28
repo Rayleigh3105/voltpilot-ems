@@ -255,6 +255,47 @@ ein echter Fronius-Write geht erst nach diesem Durchgang live.
    Aktivierung. Bestätigen: Steuerung aus / Plan veraltet / Verbindungsverlust →
    neutraler Zustand (keine stehende Begrenzung).
 
+## Checkliste Fronius PV-Abregelung (Increment 3) - die geführte Freigabe auf der Anlage
+
+Increment 3 macht die Abregelung auf **fronius_sunspec-ERZEUGER-QUELLEN** live -
+aber **NUR je einzeln freigegebener Wechselrichter-Einheit** (First-Light-Grant
+`ip:port#unit_id`, nie die Familien-Allowlist). Der Nachweis ist geführt und
+läuft direkt auf der Anlage (`:8484` → Einrichten → „PV-Abregelung
+kalibrieren") - KEIN Register-Handbetrieb nötig. Für die zwei Pilsting-Fronius
+(`192.168.210.40:502`, Unit 1 + Unit 2), **je Einheit einzeln, bei Sonne
+(≥ 5 kW aktuelle Leistung der Einheit)**:
+
+1. **Voraussetzungen prüfen.** Am Datamanager Kommunikation → Modbus:
+   „Allow Control" ist angehakt (ohne antwortet der Wechselrichter auf keinen
+   Schreibbefehl); `VP_CONTROL_ENABLED=true` auf dem Core; beide Fronius sind
+   als fronius_sunspec-Erzeuger-Quellen eingerichtet und liefern Daten.
+2. **Karte öffnen.** `:8484` → Einrichten → „PV-Abregelung kalibrieren": beide
+   Einheiten erscheinen mit Status „noch nicht freigegeben" + aktueller
+   Leistung. (Ist das Kalibrier-Kennwort gesetzt, fragt die Karte danach.)
+3. **Test starten** („Test: auf X kW begrenzen (80 %)"). Was passieren MUSS,
+   live auf der Karte:
+   - „Register: ✓ bestätigt" - `WMaxLimPct`/`RvrtTms`/`Ena` wurden geschrieben
+     und unverändert zurückgelesen (an live erkannten Modell-123-Adressen);
+   - der „Tiefste Messwert" fällt binnen ~1-2 Minuten auf die Test-Begrenzung
+     (z. B. 21,4 kW → ≤ ~17,1 kW). Fällt er NICHT, obwohl die Register
+     bestätigt sind, übersteuert etwas die Modbus-Begrenzung (lokale
+     Einstellung / Solar.web / Smart-Meter-Regel - Modbus hat auf Fronius die
+     NIEDRIGSTE Priorität): NICHT freigeben, Ursache am Gerät klären.
+4. **Automatischer Rückfall.** Nach spätestens 120 s endet der Test von selbst
+   und die Leistung erholt sich (der native `WMaxLimPct_RvrtTms` = 60 s ist
+   dabei der Geräte-Totmann - auch bei Absturz des Core bleibt nichts
+   gedrosselt). Das MUSS sichtbar passieren, bevor freigegeben wird.
+5. **Freigeben.** „Abregelung freigeben" wird erst aktiv, wenn BEIDE Nachweise
+   vorliegen (Register bestätigt + Leistung gefallen) und bleibt es für 3 min
+   nach Testende. Die Freigabe gilt dieser EINEN Einheit (physisch verankert,
+   überlebt Neustart + Quellen-Neuanlage); „Freigabe zurücknehmen" jederzeit.
+6. **Wiederholen für Unit 2**, dann Gegenprobe im Betrieb: bei der nächsten
+   „Abregeln"-Phase des Fahrplans zeigt die Betrieb-Karte „VoltPilot begrenzt
+   die PV-Einspeisung … (bestätigt)" mit der Summe der Einzel-Begrenzungen,
+   und der Export am Netzanschluss folgt. Ein „möglicher Override" auf der
+   Karte / im Portal-Heartbeat ist IMMER ein Handlungsauftrag (fremden
+   Controller abschalten), nie zu ignorieren.
+
 ## Checkliste Fronius (SunSpec Modbus, Batterie-Laden/-Entladen - Increment 2)
 
 Batterie-Laden/-Entladen läuft über **SunSpec Modell 124 (Storage)** (+ 802/803 für
