@@ -23,6 +23,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/config"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
@@ -94,6 +95,16 @@ type Agent struct {
 	cal         *calibration.Session
 	calWatchdog *time.Timer
 	calCert     map[string]bool
+
+	// PV-curtailment First-Light (agent/curtail.go): the per-UNIT certification
+	// of the fronius_sunspec Erzeuger sources (keyed ip:port#unit_id), the
+	// bounded curtailment test session, its auto-revert watchdog and the latest
+	// per-unit readbacks - all guarded by curtailMu (never nested with calMu).
+	curtailMu       sync.Mutex
+	curtailCal      *curtailcal.Session
+	curtailWatchdog *time.Timer
+	curtailCert     map[string]bool
+	curtailUnits    map[string]state.CurtailUnit
 
 	// Per-node live flow state (Portal v3 M5 Part C), recorded from the local
 	// bus and folded into the heartbeat ONLY when the feature flag is on.
@@ -353,6 +364,9 @@ func New(cfg config.Config) (*Agent, error) {
 		despikeStore: ds,
 		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
 		calCert:      map[string]bool{},
+		curtailCal:   curtailcal.New(0),
+		curtailCert:  map[string]bool{},
+		curtailUnits: map[string]state.CurtailUnit{},
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
 		lastReading: guards.Reading{
@@ -395,6 +409,9 @@ func New(cfg config.Config) (*Agent, error) {
 	// operator proved + released via "Steuerung freigeben"). A corrupt/missing file
 	// leaves the set empty - the family stays uncertified, the fail-safe default.
 	a.loadCalibrationCert()
+	// Restore the per-UNIT curtailment certification (Fronius units the operator
+	// proved + released via the bounded curtailment test). Fail-safe like above.
+	a.loadCurtailCert()
 	// Restore the applied v2 entity registry (persisted across restarts); its
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
@@ -904,7 +921,8 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				a.mu.Unlock()
 				a.logControlGateDivergence(snap)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
-					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary()); err != nil {
+					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
+					a.curtailmentSummary()); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():
@@ -1409,6 +1427,16 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 // folded into the status heartbeat so the cloud sees a compact confirmation
 // (report §5). Read-only - it never influences execution.
 func (a *Agent) onControlReadback(_ string, payload []byte) {
+	// Curtailment readbacks (the Fronius fleet write path) ride the SAME topic
+	// with a curtail:true discriminator - they are PER SOURCE UNIT and must
+	// never clobber the primary inverter's control state. Route them off.
+	var probe struct {
+		Curtail bool `json:"curtail"`
+	}
+	if err := json.Unmarshal(payload, &probe); err == nil && probe.Curtail {
+		a.onCurtailReadback(payload)
+		return
+	}
 	var m struct {
 		Ts             string   `json:"ts"`
 		Family         string   `json:"family"`
@@ -1793,6 +1821,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 	if pvLimit != nil {
 		msg["pv_limit_kw"] = *pvLimit
 	}
+	// The additive PV-curtailment block for the fronius_sunspec Erzeuger
+	// sources (agent/curtail.go): kill-switch, uncontrollable PV share and the
+	// per-unit First-Light grants/tests the flow's fleet split consumes. Absent
+	// without curtailment-capable sources - byte-identical setpoint then.
+	if cur := a.curtailSetpointExtras(now); cur != nil {
+		msg["curtail"] = cur
+	}
 	if !slotStart.IsZero() {
 		msg["slot_start"] = slotStart.UTC().Format(time.RFC3339)
 	}
@@ -2079,6 +2114,11 @@ func (a *Agent) onSourceTelemetry(topic string, payload []byte) {
 	}
 	a.srcReadings[id] = sourceReading{pv: pv, grid: grid, load: load, recv: now, period: period}
 	a.srcMu.Unlock()
+	// Feed a running curtailment First-Light test with the unit's measured
+	// output (the enforcement half of the evidence) - a no-op without a test.
+	if pv != nil {
+		a.curtailObserve(id, *pv, now)
+	}
 }
 
 // sourceFresh reports whether a source's last reading is within its freshness

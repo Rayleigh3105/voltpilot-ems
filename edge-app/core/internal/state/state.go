@@ -79,6 +79,14 @@ type Snapshot struct {
 	// "Steuerung & Bestätigung" card + the cloud status heartbeat.
 	Control *ControlInfo `json:"control,omitempty"`
 
+	// CurtailUnits is the latest per-unit PV-curtailment readback state of the
+	// fronius_sunspec Erzeuger sources (Fahrplan "Abregeln" executed on the
+	// Fronius units): commanded-vs-actual registers, the applied cap, and the
+	// EFFECT verdict (possible override - Modbus is the LOWEST Fronius control
+	// priority, so a confirmed register alone proves nothing). Empty until the
+	// first curtailment readback arrives; read-only display + heartbeat proof.
+	CurtailUnits []CurtailUnit `json:"curtail_units,omitempty"`
+
 	// DataPurge tracks a data purge ("Datenaufzeichnungen löschen") triggered
 	// on this device: nil when none is in flight or everything is confirmed.
 	DataPurge *DataPurgeInfo `json:"data_purge,omitempty"`
@@ -169,6 +177,43 @@ type ControlRegister struct {
 	ActualRaw    int      `json:"actual_raw"`
 	ActualKw     *float64 `json:"actual_kw,omitempty"`
 	Match        bool     `json:"match"`
+}
+
+// CurtailUnit is the latest curtailment readback of ONE Fronius
+// (fronius_sunspec) Erzeuger unit: what was commanded, what the registers
+// actually hold, and whether the cap is ENFORCED (override detection by
+// effect). Applied=false with registers = observed-only (uncertified /
+// kill-switch off - the write gate held, the state is still shown honestly).
+type CurtailUnit struct {
+	SourceID       string    `json:"source_id"`
+	UnitKey        string    `json:"unit_key"`
+	Label          string    `json:"label,omitempty"`
+	Target         string    `json:"target,omitempty"`
+	CheckedAt      time.Time `json:"checked_at"`
+	ControlEnabled bool      `json:"control_enabled"`
+	Certified      bool      `json:"certified"`
+	// Calibration marks a bounded First-Light curtailment test write.
+	Calibration bool `json:"calibration,omitempty"`
+	// Mode is "apply" (a cap is commanded) or "release" (limit lifted).
+	Mode    string `json:"mode,omitempty"`
+	Applied bool   `json:"applied"`
+	// CapKw is this unit's share of the plant-level pv_limit_kw (nil on release).
+	CapKw   *float64 `json:"cap_kw,omitempty"`
+	RatedKw *float64 `json:"rated_kw,omitempty"`
+	// AllMatch is nil for an observed-only readback (nothing was commanded).
+	AllMatch      *bool             `json:"all_match,omitempty"`
+	MismatchRoles []string          `json:"mismatch_roles,omitempty"`
+	Registers     []ControlRegister `json:"registers,omitempty"`
+	// EnforcementStatus: inactive|unknown|settling|ok|possible_override - the
+	// EFFECT verdict comparing measured AC power against the commanded cap.
+	EnforcementStatus string   `json:"enforcement_status,omitempty"`
+	PossibleOverride  bool     `json:"possible_override,omitempty"`
+	OverrideReason    string   `json:"override_reason,omitempty"`
+	MeasuredKw        *float64 `json:"measured_kw,omitempty"`
+	// Blocked: the executor could not act (gateway unreachable, no discovery,
+	// no plan) - Reason carries the operator-facing cause, never silent.
+	Blocked bool   `json:"blocked,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // InverterInfo is the UI-facing summary of the selected inverter.

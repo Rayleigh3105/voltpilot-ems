@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
@@ -167,9 +168,33 @@ type fakeCalibration struct {
 	decertifyCalls int
 	confirmErr     error
 	adminSecret    string
+
+	curtailView          curtailcal.View
+	curtailErr           error
+	lastCurtailTest      string
+	curtailAborts        int
+	lastCurtailCertify   string
+	lastCurtailDecertify string
 }
 
 func (f *fakeCalibration) CalibrationSnapshot() calibration.Snapshot { return f.snap }
+
+// The curtailment First-Light surface (same controller interface). The fake
+// records calls; curtailErr lets a test drive the 400 mapping.
+func (f *fakeCalibration) CurtailSnapshot() curtailcal.View { return f.curtailView }
+func (f *fakeCalibration) CurtailStartTest(sourceID string) (curtailcal.View, error) {
+	f.lastCurtailTest = sourceID
+	return f.curtailView, f.curtailErr
+}
+func (f *fakeCalibration) CurtailAbort() curtailcal.View { f.curtailAborts++; return f.curtailView }
+func (f *fakeCalibration) CurtailCertify(sourceID string) (curtailcal.View, error) {
+	f.lastCurtailCertify = sourceID
+	return f.curtailView, f.curtailErr
+}
+func (f *fakeCalibration) CurtailDecertify(sourceID string) (curtailcal.View, error) {
+	f.lastCurtailDecertify = sourceID
+	return f.curtailView, f.curtailErr
+}
 func (f *fakeCalibration) CalibrationAdminSecret() string            { return f.adminSecret }
 func (f *fakeCalibration) CalibrationArm(armed bool) (calibration.Snapshot, error) {
 	f.lastArmed = &armed

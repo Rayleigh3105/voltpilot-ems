@@ -478,6 +478,34 @@ type ControlSummary struct {
 	PossibleConflict bool `json:"possible_conflict,omitempty"`
 }
 
+// CurtailmentSummary is the additive `curtailment` heartbeat block: the
+// device's CURTAILMENT CAPABILITY + latest execution state, so the cloud can
+// distinguish a Fahrplan "Abregeln" slot that is "geplant und ausgeführt" from
+// one that is "geplant, Anlage kann es (noch) nicht" (units exist but none is
+// certified / the kill-switch is off). Gate flags (Units/CertifiedUnits/
+// ControlEnabled) come from the CORE - never from a readback stamp; Active/
+// AllMatch/PossibleOverride are the latest per-unit readback OBSERVATIONS.
+// Additive; the status heartbeat has no frozen schema, schema_version stays
+// "1.0". Portal rendering of this block is a documented follow-up.
+type CurtailmentSummary struct {
+	// Units = curtailment-capable Fronius SunSpec Erzeuger units configured.
+	Units int `json:"units"`
+	// CertifiedUnits = units with a persisted per-unit First-Light grant.
+	CertifiedUnits int  `json:"certified_units"`
+	ControlEnabled bool `json:"control_enabled"`
+	// Active = at least one unit currently APPLIES a cap (written + confirmed
+	// path ran this readback cycle).
+	Active bool `json:"active"`
+	// AppliedCapKw = the summed per-unit caps currently applied (nil = none).
+	AppliedCapKw *float64 `json:"applied_cap_kw,omitempty"`
+	// AllMatch over the applying units' readbacks (nil = nothing applied).
+	AllMatch *bool `json:"all_match,omitempty"`
+	// PossibleOverride: a unit's measured power exceeds its cap after the
+	// settle window - a foreign controller may override the Modbus limit.
+	PossibleOverride bool   `json:"possible_override,omitempty"`
+	CheckedAt        string `json:"checked_at,omitempty"`
+}
+
 // PublishStatus sends the lightweight heartbeat on .../status (no frozen
 // schema; mirrors the Node-RED edge's shape). Fire-and-forget semantics:
 // errors are returned but the caller does not retry status. `control` is the
@@ -487,7 +515,7 @@ type ControlSummary struct {
 // schema_version stays "1.0").
 func (l *Link) PublishStatus(controlSource string, socPct *float64, control *ControlSummary,
 	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
-	flowNodes *FlowNodeStatusSummary) error {
+	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -500,6 +528,9 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if control != nil {
 		payload["control"] = control
+	}
+	if curtail != nil {
+		payload["curtailment"] = curtail
 	}
 	if entities != nil {
 		payload["entities"] = entities
