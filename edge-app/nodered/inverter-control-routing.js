@@ -248,16 +248,20 @@ function controlRoute(selection, setpoint, opts = {}) {
   const comm = selection.communication;
   if (tier === CONTROL_TIER.TOU && comm === COMM_SOLARMAN) {
     // A Deye is Tier 3 (ToU) by catalog, but a firmware carrying the V105.1+ remote
-    // block gives it a TRUE Tier-2 setpoint. The PROBED capability (opts.deye, filled
-    // by the executor and cached per logger) decides which adapter runs; no capability
-    // yet -> the legacy ToU path, so a device that was never probed behaves exactly as
-    // before. `remote_mode: 'off'` on the connection is the operator's force-ToU hatch.
-    const cap = (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null;
+    // block gives it a TRUE Tier-2 setpoint. The STICKY per-device path decision
+    // (opts.deyeSticky, persisted durably by the executor; see deyeUpdateSticky)
+    // decides which adapter runs; without one the raw PROBED capability (opts.deye)
+    // does, and with neither the legacy ToU path plans - but a CERTIFIED device's
+    // ToU writes only engage DELIBERATELY (see the gate in deyeControl).
+    // `remote_mode: 'off'` on the connection is the operator's force-ToU hatch.
+    const sticky = (opts && opts.deyeSticky && typeof opts.deyeSticky === 'object') ? opts.deyeSticky : null;
+    const rawCap = (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null;
+    const cap = deyeEffectiveCap(rawCap, sticky);
     const remoteOff = conn.remote_mode === 'off' || conn.remote_mode === false;
     if (!remoteOff && deyeControlPath(cap) === DEYE_PATH_REMOTE) {
       return deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap });
     }
-    return deyeControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap });
+    return deyeControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap, sticky });
   }
   if (tier === CONTROL_TIER.VENDOR_EMS) {
     return vendorEmsControl({ conn, ip, family, certified, controlEnabled });
@@ -380,7 +384,13 @@ function controlRelease(selection, opts = {}) {
     // deliberately ignores a ToU snapshot UNLESS one exists (a prior ToU session that
     // never handed back): then remote is disabled FIRST and the installer's captured
     // registers are restored after it.
-    const remoteCap = (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null;
+    // The release follows the SAME sticky-decision resolution as controlRoute: what
+    // was DRIVEN is what must be HANDED BACK. A transient probe failure right at
+    // release time must not make a remote hand-back degrade into a ToU restore
+    // (1100 <- 0 is the correct remote release; the watchdog is the last resort).
+    const rawRemoteCap = (opts && opts.deye && typeof opts.deye === 'object') ? opts.deye : null;
+    const remoteSticky = (opts && opts.deyeSticky && typeof opts.deyeSticky === 'object') ? opts.deyeSticky : null;
+    const remoteCap = deyeEffectiveCap(rawRemoteCap, remoteSticky);
     const remoteOff = conn.remote_mode === 'off' || conn.remote_mode === false;
     const remoteActive = !remoteOff && reg && deyeControlPath(remoteCap) === DEYE_PATH_REMOTE;
     if (remoteActive) {
@@ -954,9 +964,12 @@ function inRange(v, lo, hi) {
   return typeof v === 'number' && isFinite(v) && v >= lo && v <= hi;
 }
 
-// A plausible watchdog register: the documented "off" sentinel or a real timeout.
-// An all-zero block (a logger answering an unimplemented range with zeros) fails
-// this, which is exactly what keeps it from being misread as "remote mode present".
+// A plausible watchdog register: the documented "off" sentinel (the FACTORY-FRESH
+// state) or a real [10,18000] s timeout - which is what a device WE have already
+// driven holds (the remote path writes 60 there), so a once-controlled inverter
+// re-classifies as remote-capable after every restart exactly like a fresh one.
+// An all-zero block never reaches this check (classified as the unreachable-logger
+// stub above it, transient); a garbage value here still fails the shape.
 function plausibleWatchdog(v) {
   return v === DEYE_REMOTE_WATCHDOG_OFF
     || inRange(v, DEYE_REMOTE_WATCHDOG_MIN_S, DEYE_REMOTE_WATCHDOG_MAX_S);
@@ -1004,6 +1017,24 @@ function classifyDeyeCapability(probe) {
     if (p.error) out.definitive = p.definitive === true;
     return out;
   }
+  // An ALL-ZERO block is the documented Solarman-logger STUB for "the inverter did
+  // not answer on the RS485 side right now" (the same well-framed zero answer that
+  // fabricated soc_pct=0 - see deye-decode socPlausible), NOT evidence about the
+  // firmware: a real remote-capable block is never all-zero (1101 is 0xFFFF
+  // factory-fresh and [10,18000] once driven), and the observed remote-LESS
+  // firmwares answer their own register values (the Akkudoktor LV reads 0x0500 in
+  // 1100) or a Modbus exception. Before this rule an unreachable-moment stub was
+  // classified "Firmware ohne Fernsteuerung" (DEFINITIVE, cached 6 h) - the exact
+  // restart-window failure that flipped the certified Pilsting pilot from remote
+  // mode to EEPROM ToU writes (live regression 2026-07-28). Transient -> re-probe.
+  let allZero = true;
+  for (let i = 0; i < 22; i++) { if ((block[i] & 0xffff) !== 0) { allZero = false; break; } }
+  if (allZero) {
+    out.definitive = false;
+    out.reason = 'Wechselrichter über den Logger gerade nicht erreichbar (Null-Antwort auf die '
+      + 'Fähigkeitsprüfung) - erneuter Versuch folgt';
+    return out;
+  }
   const at = (reg) => block[reg - 1100] & 0xffff;
   const mode = at(1100);
   const wd = at(1101);
@@ -1035,6 +1066,123 @@ function classifyDeyeCapability(probe) {
 function deyeControlPath(cap) {
   return cap && cap.present === true && cap.supported === true
     ? DEYE_PATH_REMOTE : DEYE_PATH_TOU;
+}
+
+// --- STICKY control-path decision (live regression + flap, Pilsting 2026-07-28) --
+//
+// The control path is a DURABLE property of the device's firmware, not of the last
+// probe read - so it is DECIDED ONCE and changed only on sustained contrary
+// evidence or an operator action, never per tick. Before this, the path was
+// re-derived from the newest raw probe result each tick: a restart wiped the
+// volatile cache, the restart-window probe hit a degenerate answer (the logger's
+// all-zero unreachable stub, or a transient gateway exception 0x0B regex-matched
+// as "Ausnahme" = definitive), the verdict was cached as "Firmware ohne
+// Fernsteuerung" and the certified pilot silently swapped RAM remote control for
+// EEPROM ToU writes that fought the inverter (max_sell_power 0 vs. installer
+// 7182) - and when probe results alternated, the :8484 card flapped between
+// "bestätigt" and "Steuerung kann nicht ausgeführt werden" every ~10 s tick.
+//
+// The decision record (persisted per logger in the DURABLE 'file' flow context by
+// the executor; the plan node only reads it):
+//   { path: 'remote'|'tou', since, contrary, everRemote, verdict, verdictAt }
+//     - path       the DECIDED control path (what the plan node plans)
+//     - contrary   consecutive DEFINITIVE verdicts that disagree with `path`
+//     - everRemote true once remote mode was ever definitively seen (or proven by
+//                  a landed remote write / the core's device_certified_path grant)
+//     - verdict    the last DEFINITIVE classify output (carries scaleClass/layout)
+//
+// HYSTERESIS: a decided path flips only after DEYE_PATH_CONTRARY_N consecutive
+// definitive contrary verdicts. A FAILED/unreachable probe (definitive:false) is
+// NOT evidence - it neither flips the path nor advances the counter; the executor
+// just retries on a bounded cadence. Operator actions bypass the hysteresis:
+// connection.remote_mode='off' forces ToU immediately (handled at the dispatch,
+// not in this record).
+const DEYE_PATH_CONTRARY_N = 3;
+
+/**
+ * deyeUpdateSticky - PURE decision update from a fresh probe verdict. Returns the
+ * next record (the SAME object when nothing changed, so callers can `!==`-check
+ * before persisting). A transient verdict (definitive === false) is no evidence.
+ */
+function deyeUpdateSticky(prev, verdict, nowMs) {
+  const p = (prev && typeof prev === 'object') ? prev : null;
+  if (!verdict || verdict.definitive === false) return p;
+  const vPath = deyeControlPath(verdict);
+  const everRemote = (p && p.everRemote === true) || vPath === DEYE_PATH_REMOTE;
+  if (!p || (p.path !== DEYE_PATH_REMOTE && p.path !== DEYE_PATH_TOU)) {
+    // First definitive answer decides immediately (commissioning stays one probe).
+    return { path: vPath, since: nowMs, contrary: 0, everRemote, verdict, verdictAt: nowMs };
+  }
+  if (vPath === p.path) {
+    return { path: p.path, since: p.since, contrary: 0, everRemote, verdict, verdictAt: nowMs };
+  }
+  const contrary = (Number(p.contrary) || 0) + 1;
+  if (contrary >= DEYE_PATH_CONTRARY_N) {
+    return { path: vPath, since: nowMs, contrary: 0, everRemote, verdict, verdictAt: nowMs };
+  }
+  return { path: p.path, since: p.since, contrary, everRemote, verdict, verdictAt: nowMs };
+}
+
+/**
+ * deyeSeedStickyFromGrant - a fresh volume/context has no decision record, but the
+ * CORE's First-Light grant may carry the path the certification was PROVEN on
+ * (setpoint.device_certified_path, persisted with the grant in
+ * calibration-certified.json). A remote-proven grant seeds the decision, so a
+ * certified pilot plans its proven path from the very first post-restart tick
+ * instead of falling back to ToU until a probe answers. Returns null when the
+ * grant carries no path (older core, ToU grant handled by the normal decision).
+ */
+function deyeSeedStickyFromGrant(setpoint, nowMs) {
+  if (setpoint && setpoint.device_certified === true
+    && setpoint.device_certified_path === DEYE_PATH_REMOTE) {
+    return { path: DEYE_PATH_REMOTE, since: nowMs, contrary: 0, everRemote: true, seededFromGrant: true };
+  }
+  return null;
+}
+
+/**
+ * deyeEffectiveCap - the capability the adapters plan by, honoring the STICKY
+ * decision: a decided path always wins over a raw per-tick verdict (a contrary
+ * verdict inside the hysteresis window, or a transient failure, must not flip the
+ * plan). Without a decision the raw cap passes through (legacy behaviour). When
+ * the sticky record has no usable verdict object a minimal one is synthesized so
+ * the dispatch + release still select the decided path (marked sticky:true).
+ */
+function deyeEffectiveCap(cap, sticky) {
+  const s = (sticky && typeof sticky === 'object') ? sticky : null;
+  if (!s || (s.path !== DEYE_PATH_REMOTE && s.path !== DEYE_PATH_TOU)) return cap || null;
+  if (cap && cap.definitive !== false && deyeControlPath(cap) === s.path) return cap;
+  if (s.verdict && deyeControlPath(s.verdict) === s.path) return s.verdict;
+  const scaleClass = (cap && (cap.scaleClass === 1 || cap.scaleClass === 10)) ? cap.scaleClass
+    : ((s.verdict && (s.verdict.scaleClass === 1 || s.verdict.scaleClass === 10)) ? s.verdict.scaleClass : null);
+  if (s.path === DEYE_PATH_REMOTE) {
+    return {
+      present: true, supported: true, path: DEYE_PATH_REMOTE,
+      layout: (s.verdict && s.verdict.layout) || 'pr978', scaleClass,
+      definitive: true, sticky: true,
+      reason: 'Fernsteuerung (Remote Mode) - nachgewiesener Steuerpfad dieses Geräts',
+    };
+  }
+  return {
+    present: false, supported: false, path: DEYE_PATH_TOU, layout: null, scaleClass,
+    definitive: true, sticky: true,
+    reason: 'Zeitfenster-Steuerung (ToU) - entschiedener Steuerpfad dieses Geräts',
+  };
+}
+
+/**
+ * deyeProbeErrorDefinitive - is a probe-read FAILURE a definitive "this register
+ * block is not implemented" answer? ONLY the Modbus exceptions that indict the
+ * REQUEST are: 0x01 illegal function / 0x02 illegal data address / 0x03 illegal
+ * data value. Everything else - transport errors, timeouts and crucially the
+ * GATEWAY exceptions 0x0A/0x0B (the Solarman logger answered but the inverter
+ * behind it did not) - says nothing about the firmware and must be retried. The
+ * executor's old `/Ausnahme|exception/i` regex matched a transient 0x0B
+ * ("Wechselrichter hat nicht geantwortet") as the definitive absent verdict and
+ * cached ToU for 6 h - half of the live Pilsting path flip.
+ */
+function deyeProbeErrorDefinitive(message) {
+  return /Modbus-Ausnahme 0x0[123]\b/i.test(String(message || ''));
 }
 
 /**
@@ -1360,7 +1508,7 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
 // (the gentle "6b" forcing lever the owner chose; the heavier "6a" max-charge-current
 // clamp 0x006C is DELIBERATELY NOT wired here). See DEYE.md + CONTROL-BENCH.md; every
 // new lever stays bench_pending until the family is certified.
-function deyeControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap }) {
+function deyeControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap, sticky }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
   const serial = conn.serial;
   const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
@@ -1452,6 +1600,46 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
     return finalize(planned);
   }
 
+  // THE DELIBERATE-FALLBACK GATE (live regression 2026-07-28, Pilsting). The ToU
+  // path writes INSTALLER EEPROM registers, so on a device that MAY be written
+  // (family-certified or First-Light-granted, kill-switch on) it may only engage
+  // DELIBERATELY:
+  //   - the operator forced it (connection.remote_mode = 'off'), or
+  //   - this is a bounded, operator-armed First-Light calibration test, or
+  //   - the capability check DEFINITIVELY answered "no remote mode" (a decided
+  //     sticky ToU path, or a definitive raw verdict) AND the device was never
+  //     proven remote-capable.
+  // A FAILED/unreachable probe is NOT an answer, and a device once PROVEN on the
+  // remote path (sticky everRemote, or the core's device_certified_path grant)
+  // must never silently swap RAM remote control for EEPROM ToU control: the
+  // First-Light evidence gate certified REMOTE behaviour - its meaning does not
+  // transfer to a different write surface. Hold off LOUDLY instead; the executor
+  // keeps probing and the next definitive remote answer resumes the proven path.
+  // This gate only ever NARROWS: an uncertified device already had writes:[] and
+  // keeps its own reason; nothing here widens any allowlist or bypass.
+  if (writeAllowed && !calibration && remoteModeCfg !== 'off') {
+    const grantRemote = setpoint.device_certified_path === DEYE_PATH_REMOTE;
+    const everRemote = grantRemote || !!(sticky && sticky.everRemote === true);
+    const definitiveTou = !!(cap && cap.definitive !== false && deyeControlPath(cap) === DEYE_PATH_TOU);
+    if (everRemote) {
+      return finalize([], {
+        blocked: true, pathHold: 'remote_proven',
+        reason: 'Fernsteuerung (Remote Mode) ist für dieses Gerät nachgewiesen, wird aber gerade '
+          + 'nicht bestätigt. Die Zeitfenster-Steuerung (EEPROM) wird nicht automatisch aktiviert - '
+          + 'die Fähigkeitsprüfung läuft weiter und die Fernsteuerung wird wieder aufgenommen, '
+          + 'sobald sie antwortet. (Zeitfenster erzwingen: remote_mode auf "off" setzen oder neu kalibrieren.)',
+      });
+    }
+    if (!definitiveTou) {
+      return finalize([], {
+        blocked: true, pathHold: 'unconfirmed',
+        reason: 'Steuerpfad noch unbestätigt: die Fähigkeitsprüfung (Fernsteuerung vs. Zeitfenster) '
+          + 'hat noch keine eindeutige Antwort vom Wechselrichter. Es wird nichts geschrieben, '
+          + 'bis der Pfad feststeht.',
+      });
+    }
+  }
+
   // N1 (report §2.3/§9.A.1) - REFUSE, never guess. On a battery hybrid the whole ToU
   // plan is power-scaled: Program-Power and (on hybrid_3p) Max-Sell-Power are
   // scale [1,10]. With the scale UNKNOWN an HV inverter is written 10x too large -
@@ -1479,6 +1667,16 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
   const slot = DEYE_CONTROL_SLOT;
   const battKw = invert ? -kw : kw;
   const charging = battKw > 0;
+  // An IDLE slot (0 kW) is NEITHER a charge NOR a discharge: it must not arm the
+  // export-forcing levers. The old `!charging` branches treated idle as a
+  // "discharge at 0 W" and wrote max_sell_power = 0 + Solar-Sell ON - forbidding
+  // ALL selling, which collides with the inverter's own solar-sell logic: the live
+  // Pilsting device kept restoring its installer value (7182) over our 0 and the
+  // conflict warning fired on every readback. Idle now RESTORES max_sell_power
+  // from the pre-control snapshot (the #247 snapshot discipline: never leave an
+  // installer value overwritten) and leaves Solar-Sell alone; the slot's
+  // Program-Power cap of 0 is what keeps the battery still.
+  const discharging = battKw < 0;
   const watts = Math.abs(battKw) * 1000;
   // Program Power is the slot's charge/discharge power cap (W / power_scale, N1 fix).
   const powerReg = Math.max(0, Math.round(watts / powerScale)) & 0xffff;
@@ -1515,10 +1713,11 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
     role: 'work_mode', fc: writeFc, addr: reg.workMode, value: DEYE_WORK_MODE.EXPORT_FIRST,
     encode: { kind: 'work_mode', enum: 'export_first' }, ...cfg,
   });
-  // 3) Solar-Sell: ON for a DISCHARGE (enable surplus/battery export - without an
-  //    export path a "discharge to grid" has nowhere to go but the battery). A CHARGE
-  //    leaves it to the snapshot restore, so we never latch export-on for a charge.
-  if (!charging) {
+  // 3) Solar-Sell: ON for a DISCHARGE only (enable surplus/battery export - without
+  //    an export path a "discharge to grid" has nowhere to go but the battery). A
+  //    CHARGE and an IDLE slot leave it to the snapshot restore, so we never latch
+  //    export-on (or fight the inverter's own solar-sell logic) outside a discharge.
+  if (discharging) {
     planned.push({
       role: 'solar_sell', fc: writeFc, addr: reg.solarSell, value: DEYE_SOLAR_SELL.ON,
       encode: { kind: 'flag', enum: 'solar_sell_on' }, ...cfg,
@@ -1541,11 +1740,13 @@ function deyeControl({ conn, ip, family, certified, controlEnabled, calibration,
     encode: { kind: 'pct', direction: charging ? 'charge' : 'discharge' }, dwell_s: 900, min_change: 1, bench_pending: true,
   });
   // 7) Max-Sell-Power (the 6b forcing lever). DISCHARGE -> the export/sell-power limit
-  //    = X so the battery actually exports at the commanded rate. CHARGE -> RESTORE it
-  //    to the installer's pre-control value from the snapshot, so an earlier
-  //    discharge's export cap never latches. No snapshot yet (the very first tick) ->
-  //    omit; the executor snapshots BEFORE writing, so the next tick restores.
-  if (!charging) {
+  //    = X so the battery actually exports at the commanded rate. CHARGE and IDLE ->
+  //    RESTORE it to the installer's pre-control value from the snapshot, so an
+  //    earlier discharge's export cap never latches - and an idle slot never writes
+  //    the 0 the inverter's own solar-sell logic fights (the live 0-vs-7182 loop).
+  //    No snapshot yet (the very first tick) -> omit; the executor snapshots BEFORE
+  //    writing, so the next tick restores.
+  if (discharging) {
     planned.push({
       role: 'max_sell_power', fc: writeFc, addr: reg.maxSellPower,
       value: Math.max(0, Math.round(watts / maxSellScale)) & 0xffff,
@@ -1629,6 +1830,11 @@ module.exports = {
   deyeCapabilityKey,
   classifyDeyeCapability,
   deyeControlPath,
+  DEYE_PATH_CONTRARY_N,
+  deyeUpdateSticky,
+  deyeSeedStickyFromGrant,
+  deyeEffectiveCap,
+  deyeProbeErrorDefinitive,
   resolveDeyeRemoteWatchdog,
   resolveDeyeRemoteStrategy,
   deyeRemoteSetpointUnits,
