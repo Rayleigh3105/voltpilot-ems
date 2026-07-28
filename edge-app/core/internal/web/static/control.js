@@ -97,7 +97,8 @@
         title: "Noch keine Steuerung.",
         text: "Wählen Sie zuerst Ihren Wechselrichter aus. Danach schreibt VoltPilot den " +
           "Fahrplan und liest ihn zurück - hier sehen Sie, ob der Wechselrichter ihn übernimmt.",
-        showNow: false, showTable: false, calibrating: false, banner: null
+        showNow: false, showTable: false, calibrating: false, banner: null,
+        stateKey: "no-inverter"
       };
     }
 
@@ -116,7 +117,8 @@
         title: "Steuerung für dieses Modell noch nicht freigegeben.",
         text: "Dieser Wechselrichter wird ausgelesen, aber noch nicht gesteuert. Die " +
           "Freigabe erfolgt nach der Prüfung am Prüfstand.",
-        showNow: false, showTable: false, calibrating: false, banner: null
+        showNow: false, showTable: false, calibrating: false, banner: null,
+        stateKey: "uncertified"
       };
     }
 
@@ -128,7 +130,8 @@
           title: "Steuerung ist ausgeschaltet.",
           text: "Die Wechselrichter-Steuerung ist als Sicherheitsvorgabe deaktiviert " +
             "(Not-Aus). VoltPilot liest weiter mit, schreibt aber nichts.",
-          showNow: false, showTable: false, calibrating: false, banner: null
+          showNow: false, showTable: false, calibrating: false, banner: null,
+          stateKey: "off"
         };
       }
       if (c && c.blocked && c.reason) {
@@ -139,7 +142,10 @@
           chip: { tone: "warn", label: "angehalten" },
           title: "Steuerung kann gerade nicht ausgeführt werden.",
           text: c.reason,
-          showNow: false, showTable: false, calibrating: false, banner: null
+          showNow: false, showTable: false, calibrating: false, banner: null,
+          // keyed WITH the reason: a different cause is a different state (its own
+          // "seit"), the SAME cause re-reported every readback stays one state.
+          stateKey: "blocked:" + c.reason
         };
       }
       return {
@@ -147,7 +153,8 @@
         title: "Noch keine Rückmeldung.",
         text: "Sobald der erste Sollwert geschrieben und zurückgelesen wurde, erscheint " +
           "hier die Bestätigung des Wechselrichters.",
-        showNow: false, showTable: false, calibrating: false, banner: null
+        showNow: false, showTable: false, calibrating: false, banner: null,
+        stateKey: "waiting"
       };
     }
 
@@ -160,18 +167,52 @@
         text: calibrating
           ? "Der Testbefehl wurde geschrieben und vom Wechselrichter unverändert zurückgelesen."
           : "Der Wechselrichter hat den geschriebenen Sollwert unverändert zurückgemeldet.",
-        showNow: true, showTable: true, calibrating: calibrating, banner: null
+        showNow: true, showTable: true, calibrating: calibrating, banner: null,
+        stateKey: calibrating ? "ok-cal" : "ok"
       };
     }
     var reason = c.possible_conflict ? MISMATCH_CONFLICT : MISMATCH_PLAIN;
+    var mmRoles = (c.mismatch_roles || []).join(",");
     return {
       chip: { tone: "warn", label: calibrating ? "Kalibrierung: Abweichung" : "Abweichung" },
       title: calibrating
         ? "Kalibrier-Test: der Wechselrichter weicht ab."
         : "Der Wechselrichter übernimmt den Sollwert nicht.",
       text: reason,
-      showNow: true, showTable: true, calibrating: calibrating, banner: reason
+      // ONE message, ONE place: the reason lives in `text` (with its stable
+      // "seit" stamp) - the old extra `banner` rendered the SAME paragraph a
+      // second time on the same card, and with the ~10 s readback cadence the
+      // page read as a warning fired every tick (live Pilsting, 2026-07-28).
+      showNow: true, showTable: true, calibrating: calibrating, banner: null,
+      stateKey: (calibrating ? "mismatch-cal:" : "mismatch:") + mmRoles
     };
+  }
+
+  /* ------------------------------------------------------------------
+     trackStateSince - the stable "seit <Uhrzeit>" behind the card's ONE truth.
+
+     The underlying readback re-fires every ~10 s tick, so any timestamp taken
+     per render churns and the card reads like a NEW warning every tick (the
+     live flap symptom). This pure helper keeps the FIRST-seen time of the
+     current stateKey: the record only changes when the state itself changes,
+     so the rendered "Zustand seit 14:51 Uhr" stays put while the state holds.
+     Session-scoped by design (a page reload starts a fresh observation window;
+     the readback carries no server-side state history to be more precise from).
+     ------------------------------------------------------------------ */
+  function trackStateSince(prev, key, nowMs) {
+    if (prev && prev.key === key) return prev;
+    return { key: key, at: nowMs };
+  }
+
+  var sinceRec = null;
+  var timeFmt = null;
+  function fmtSince(atMs) {
+    try {
+      if (!timeFmt) timeFmt = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" });
+      return timeFmt.format(new Date(atMs));
+    } catch (e) {
+      return "";
+    }
   }
 
   /* ---------------------------- rendering ---------------------------- */
@@ -433,11 +474,17 @@
       }
     }
 
-    // Layer 1 - always visible, always names the reason.
+    // Layer 1 - always visible, always names the reason. ONE stable truth: the
+    // summary carries the state's FIRST-seen time ("Zustand seit …"), which only
+    // moves when the state itself changes - never re-announced per readback tick.
+    sinceRec = trackStateSince(sinceRec, d.stateKey || d.title, Date.now());
     var title = $("ctrlSummaryTitle");
     if (title) title.textContent = d.title;
     var text = $("ctrlSummaryText");
-    if (text) text.textContent = d.text;
+    if (text) {
+      var since = fmtSince(sinceRec.at);
+      text.textContent = d.text + (since ? " (Zustand seit " + since + " Uhr)" : "");
+    }
     var summary = $("ctrlSummary");
     if (summary) summary.className = "ctrl-summary" + (d.chip ? " " + d.chip.tone : "");
 
@@ -457,6 +504,7 @@
     onState: onState,
     deriveState: deriveState,
     deriveCurtail: deriveCurtail,
+    trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,
     PATH_LABEL: PATH_LABEL
   };

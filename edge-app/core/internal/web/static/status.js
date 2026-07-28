@@ -141,16 +141,21 @@
       };
     }
 
-    // 6) The inverter is not holding what VoltPilot commanded.
+    // 6) The inverter is not holding what VoltPilot commanded. The hero carries a
+    //    SHORT cause + a pointer; the FULL explanation (with its stable "Zustand
+    //    seit" stamp) lives exactly ONCE per page, on the Steuerung & Bestätigung
+    //    card - the same paragraph used to render three times on one screen and,
+    //    re-fired per ~10 s readback, read as a warning every tick (live Pilsting).
     if (s.control && s.control.registers && s.control.registers.length && !s.control.all_match) {
+      var mmRoles = (s.control.mismatch_roles || []).join(", ");
       return {
         tone: "warn",
         title: "Wechselrichter übernimmt den Sollwert nicht",
         detail: "Messwerte kommen weiterhin an.",
-        cause: s.control.possible_conflict
-          ? (s.control.conflict_reason ||
-             "Der Wechselrichter hält den Sollwert nicht. Möglicherweise steuert eine zweite Steuerung gegen - VoltPilot muss die einzige sein.")
-          : "Der Wechselrichter hat den geschriebenen Sollwert nicht übernommen. Mögliche Ursache: eine Strom- oder SoC-Grenze im Gerät."
+        cause: (mmRoles
+          ? "Der Wechselrichter hält den geschriebenen Wert nicht (" + mmRoles + ")."
+          : "Der Wechselrichter hält einen geschriebenen Wert nicht.")
+          + " Details unter „Steuerung & Bestätigung“."
       };
     }
 

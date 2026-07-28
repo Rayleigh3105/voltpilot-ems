@@ -229,11 +229,64 @@ test("control: a confirmed readback reads as steering, a mismatch names why", ()
 
   const bad = controlFor({
     inverter: { configured: true }, control_certified: true, control_enabled: true,
-    control: { all_match: false, registers: regs, source: "schedule", possible_conflict: true }
+    control: { all_match: false, registers: regs, source: "schedule", possible_conflict: true, mismatch_roles: ["max_sell_power"] }
   });
   assert.strictEqual(bad.chip.tone, "warn");
   assert.ok(bad.text.length > 40, "a mismatch must explain itself");
-  assert.strictEqual(bad.banner, bad.text, "the banner repeats the same reason, never a different one");
+  // ONE message, ONE place (live Pilsting 2026-07-28): the reason lives in `text`
+  // only - the extra banner used to render the SAME paragraph twice on one card.
+  assert.strictEqual(bad.banner, null, "no duplicated in-card banner");
+  assert.match(bad.stateKey, /^mismatch:max_sell_power$/, "keyed by the mismatching registers");
+});
+
+test("control: every derived state carries a stable stateKey for the 'seit' stamp", () => {
+  const keys = [
+    controlFor({ inverter: { configured: false } }),
+    controlFor({ inverter: { configured: true }, control_certified: false }),
+    controlFor({ inverter: { configured: true }, control_certified: true, control_enabled: false }),
+    controlFor({ inverter: { configured: true }, control_certified: true, control_enabled: true,
+      control: { blocked: true, reason: "Steuerpfad noch unbestätigt", registers: [] } }),
+    controlFor({ inverter: { configured: true }, control_certified: true, control_enabled: true }),
+    controlFor({ inverter: { configured: true }, control_certified: true, control_enabled: true,
+      control: { all_match: true, registers: [{ role: "battery_power", match: true, addr: 1109 }], source: "schedule" } }),
+  ].map((d) => d.stateKey);
+  assert.ok(keys.every((k) => typeof k === "string" && k.length > 0), "every branch is keyed: " + JSON.stringify(keys));
+  assert.strictEqual(new Set(keys).size, keys.length, "distinct states have distinct keys");
+  // a DIFFERENT blocked reason is a DIFFERENT state (its own 'seit'), the same one is not
+  const b1 = controlFor({ inverter: { configured: true }, control_certified: true, control_enabled: true,
+    control: { blocked: true, reason: "A", registers: [] } });
+  const b2 = controlFor({ inverter: { configured: true }, control_certified: true, control_enabled: true,
+    control: { blocked: true, reason: "B", registers: [] } });
+  assert.notStrictEqual(b1.stateKey, b2.stateKey);
+});
+
+test("control: trackStateSince keeps the FIRST-seen time while the state holds (no 10s slideshow)", () => {
+  const track = load(["control.js"]).VPControl.trackStateSince;
+  let rec = track(null, "mismatch:max_sell_power", 1000);
+  assert.strictEqual(rec.key, "mismatch:max_sell_power");
+  assert.strictEqual(rec.at, 1000);
+  // the same state re-derived on every ~10 s readback tick: the record (and thus
+  // the rendered "Zustand seit …") does not move - the SAME object comes back.
+  for (let t = 2000; t <= 60000; t += 10000) {
+    const next = track(rec, "mismatch:max_sell_power", t);
+    assert.strictEqual(next, rec, "an unchanged state never re-stamps");
+  }
+  // a state CHANGE re-stamps once
+  const changed = track(rec, "ok", 70000);
+  assert.strictEqual(changed.key, "ok");
+  assert.strictEqual(changed.at, 70000);
+});
+
+test("status: the hero mismatch is a short pointer, not the card's full paragraph", () => {
+  const d = statusFor({ ...HEALTHY, control: {
+    registers: [{ role: "max_sell_power", match: false, addr: 143 }],
+    all_match: false, possible_conflict: true, mismatch_roles: ["max_sell_power"],
+    conflict_reason: "Der Wechselrichter hält den geschriebenen Sollwert nicht (max_sell_power). Möglicher Konflikt: die eigene Smart-Steuerung des Wechselrichters oder ein zweites EMS könnte gegensteuern - VoltPilot muss der einzige Controller sein."
+  } });
+  assert.strictEqual(d.tone, "warn");
+  assert.match(d.cause, /max_sell_power/, "the cause NAMES the register that is not held");
+  assert.match(d.cause, /Steuerung & Bestätigung/, "and points at the ONE full explanation");
+  assert.ok(!/einzige Controller/.test(d.cause), "the full conflict paragraph lives on the card only");
 });
 
 test("control: an uncertified device WITH calibration evidence keeps its table", () => {
