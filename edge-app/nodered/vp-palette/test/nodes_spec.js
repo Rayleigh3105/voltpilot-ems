@@ -23,6 +23,8 @@ const vpNetz = require('../nodes/vp-netz.js');
 const vpVerbraucher = require('../nodes/vp-verbraucher.js');
 const vpTestRequest = require('../nodes/vp-test-request.js');
 const vpTestResult = require('../nodes/vp-test-result.js');
+const vpRegisterRaw = require('../nodes/vp-register-raw.js');
+const vpRegisterWant = require('../nodes/vp-register-want.js');
 
 helper.init(require.resolve('node-red'));
 
@@ -391,6 +393,42 @@ describe('shaping (pure)', function () {
     assert.strictEqual(vpTestResult.shape(null), null);
     assert.strictEqual(vpTestResult.shape({ ok: true }), null); // no request_id
   });
+
+  it('vp-register-raw shapes the poll blocks and drops unusable payloads', function () {
+    const shaped = vpRegisterRaw.shape({
+      ts: '2026-07-28T10:00:00Z', unit: 2,
+      blocks: [
+        { start: 0x024c, regs: [500, 501] },
+        { start: 0x0060, count: 4, learned: true, regs: [], error: 'Modbus-Ausnahme 0x2' },
+        { start: 0x0100, regs: [] }, // no data AND no error -> nothing servable, dropped
+        { start: -1, regs: [1] }, // invalid start dropped
+      ],
+    });
+    assert.strictEqual(shaped.unit, 2);
+    assert.strictEqual(shaped.ts, '2026-07-28T10:00:00Z');
+    assert.strictEqual(shaped.blocks.length, 2);
+    assert.deepStrictEqual(shaped.blocks[0], { start: 0x024c, regs: [500, 501] });
+    assert.deepStrictEqual(shaped.blocks[1], { start: 0x0060, regs: [], learned: true, count: 4, error: 'Modbus-Ausnahme 0x2' });
+    // A garbage unit falls back to 1; a missing/garbage ts is stamped fresh.
+    const fallback = vpRegisterRaw.shape({ unit: 999, blocks: [{ start: 0, regs: [1] }] });
+    assert.strictEqual(fallback.unit, 1);
+    assert.ok(!isNaN(Date.parse(fallback.ts)));
+    assert.strictEqual(vpRegisterRaw.shape({ blocks: [] }), null);
+    assert.strictEqual(vpRegisterRaw.shape(null), null);
+  });
+
+  it('vp-register-want parses the retained want list incl. the cleared set', function () {
+    const ok = vpRegisterWant.parse(Buffer.from(JSON.stringify({
+      blocks: [{ start: 0x0060, count: 4 }, { start: 'x', count: 1 }, { start: 0xffff, count: 2 }],
+    })));
+    // garbage + beyond-address-space entries dropped, valid one kept
+    assert.deepStrictEqual(ok, { blocks: [{ start: 0x0060, count: 4 }] });
+    // an empty/cleared retained payload means "no learned blocks" (mirror off)
+    assert.deepStrictEqual(vpRegisterWant.parse(Buffer.alloc(0)), { blocks: [] });
+    assert.deepStrictEqual(vpRegisterWant.parse(null), { blocks: [] });
+    assert.strictEqual(vpRegisterWant.parse(Buffer.from('kaputt')), null);
+    assert.strictEqual(vpRegisterWant.parse(Buffer.from('{"no":"blocks"}')), null);
+  });
 });
 
 describe('nodes against a local-bus stand-in', function () {
@@ -689,6 +727,56 @@ describe('nodes against a local-bus stand-in', function () {
       setTimeout(function () {
         q1.receive({ source_id: 'src-a', payload: { pv_power_kw: 33 } });
       }, 300);
+    });
+  });
+
+  it('vp-register-raw publishes the poll blocks RETAINED on edge/registers/raw', function (done) {
+    const flow = coreFlow([
+      { id: 'rr1', type: 'vp-register-raw', core: 'core1' },
+    ]);
+    broker.subscribe('edge/registers/raw', function (packet, cb) {
+      cb();
+      const m = JSON.parse(packet.payload.toString());
+      try {
+        assert.strictEqual(packet.retain, true, 'the mirror needs the LAST blocks after a core restart');
+        assert.strictEqual(m.unit, 1);
+        assert.deepStrictEqual(m.blocks, [{ start: 588, regs: [500, 501] }]);
+        done();
+      } catch (e) {
+        done(e);
+      }
+    }, function () {});
+    helper.load([vpCore, vpRegisterRaw], flow, function () {
+      const rr1 = helper.getNode('rr1');
+      setTimeout(function () {
+        rr1.receive({ payload: { ts: '2026-07-28T10:00:00Z', unit: 1, blocks: [{ start: 588, regs: [500, 501] }] } });
+      }, 300);
+    });
+  });
+
+  it('vp-register-want emits a want list already retained at connect time', function (done) {
+    // Retain-on-connect: the core publishes the learned want set retained, so a
+    // Node-RED that (re)joins the bus keeps polling learned blocks immediately.
+    const pub = mqtt.connect('mqtt://127.0.0.1:' + port);
+    pub.on('connect', function () {
+      pub.publish('edge/registers/want', JSON.stringify({ blocks: [{ start: 96, count: 4 }] }), { retain: true, qos: 1 }, function () {
+        pub.end();
+        const flow = coreFlow([
+          { id: 'rw1', type: 'vp-register-want', core: 'core1', wires: [['h1']] },
+          { id: 'h1', type: 'helper' },
+        ]);
+        helper.load([vpCore, vpRegisterWant], flow, function () {
+          const h1 = helper.getNode('h1');
+          h1.on('input', function (msg) {
+            try {
+              assert.deepStrictEqual(msg.payload, { blocks: [{ start: 96, count: 4 }] });
+              done();
+            } catch (e) {
+              done(e);
+            }
+          });
+        });
+      });
     });
   });
 

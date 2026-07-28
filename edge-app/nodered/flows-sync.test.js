@@ -142,6 +142,105 @@ test('flow router routes to idle (output 5) with no selection', () => {
   assert.ok(ret[4] && ret[4].idle);
 });
 
+// --- Modbus-Datenspiegel: the router's learned-block merge -------------------
+//
+// The mirror's auto-learn want list (flow.mirror_want, from vp-register-want)
+// extends the Deye read plan by AT MOST ONE block per poll cycle - round-robin,
+// appended AFTER the primary blocks, control window 1100-1121 never polled,
+// size/count clamped. These pin that hard cap; with no want list the plan is
+// byte-identical (the solarman_v5 sync test above proves that case).
+
+const MIRROR_SEL = {
+  schema_version: '1.0', brand: 'deye', label: 'Deye', family: 'hybrid_3p',
+  communication: 'solarman_v5',
+  connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1 },
+};
+
+test('router merges AT MOST ONE learned block per cycle, round-robin, after the primary blocks', () => {
+  const flow = {
+    inverter_config: MIRROR_SEL,
+    mirror_want: [{ start: 0x0060, count: 4 }, { start: 0x0100, count: 2 }],
+  };
+  const primary = routing.route(routing.parseConfig(MIRROR_SEL)).reads;
+
+  // Cycle 1: primary blocks first, then EXACTLY ONE learned block.
+  let { ret } = runFunctionNode(byId['auto-router'].func, { flow });
+  let reads = ret[0].deye.reads;
+  assert.strictEqual(reads.length, primary.length + 1, 'exactly one learned block appended');
+  assert.deepStrictEqual(reads.slice(0, primary.length), primary, 'primary blocks lead, unchanged');
+  assert.deepStrictEqual(reads[primary.length], { start: 0x0060, count: 4, learned: true });
+
+  // Cycle 2 on the SAME flow context: the OTHER block (round-robin).
+  ({ ret } = runFunctionNode(byId['auto-router'].func, { flow }));
+  reads = ret[0].deye.reads;
+  assert.deepStrictEqual(reads[primary.length], { start: 0x0100, count: 2, learned: true });
+
+  // Cycle 3 wraps around.
+  ({ ret } = runFunctionNode(byId['auto-router'].func, { flow }));
+  assert.strictEqual(ret[0].deye.reads[primary.length].start, 0x0060);
+});
+
+test('router clamps learned blocks and NEVER polls the control window 1100-1121', () => {
+  const flow = {
+    inverter_config: MIRROR_SEL,
+    // One garbage entry, one control-window block, one oversized block, plus
+    // more blocks than the cap - the sanitizer must survive all of it.
+    mirror_want: [
+      { start: 1100, count: 4 },          // control window -> skipped
+      { start: 1090, count: 40 },         // overlaps the window -> skipped
+      { start: 'x', count: 2 },           // garbage -> skipped
+      { start: 0x0060, count: 500 },      // oversized -> clamped to 64
+    ],
+  };
+  const primary = routing.route(routing.parseConfig(MIRROR_SEL)).reads;
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow });
+  const reads = ret[0].deye.reads;
+  assert.strictEqual(reads.length, primary.length + 1);
+  assert.deepStrictEqual(reads[primary.length], { start: 0x0060, count: 64, learned: true });
+});
+
+test('router with an EMPTY want list emits the byte-identical primary plan', () => {
+  const flow = { inverter_config: MIRROR_SEL, mirror_want: [] };
+  const { ret } = runFunctionNode(byId['auto-router'].func, { flow });
+  assert.deepStrictEqual(ret[0].deye.reads, routing.route(routing.parseConfig(MIRROR_SEL)).reads);
+});
+
+test('mirror want store node keeps flow.mirror_want in sync incl. the cleared set', () => {
+  const flow = {};
+  runFunctionNode(byId['auto-mirror-want'].func, {
+    msg: { payload: { blocks: [{ start: 0x0060, count: 4 }] } }, flow,
+  });
+  assert.deepStrictEqual(flow.mirror_want, [{ start: 0x0060, count: 4 }]);
+  // A cleared want set (mirror disabled) empties the list and resets rotation.
+  flow.mirror_want_rr = 5;
+  runFunctionNode(byId['auto-mirror-want'].func, { msg: { payload: { blocks: [] } }, flow });
+  assert.deepStrictEqual(flow.mirror_want, []);
+  assert.strictEqual(flow.mirror_want_rr, 0);
+});
+
+test('mirror raw shaper turns the poll blocks into the edge/registers/raw payload', () => {
+  const { ret } = runFunctionNode(byId['auto-mirror-raw'].func, {
+    msg: {
+      deye: {
+        cfg: { mb_slave_id: 2 },
+        blocks: [
+          { start: 0x0000, regs: [6] },
+          { start: 0x024c, regs: [500, 501] },
+          { start: 0x0060, count: 4, learned: true, regs: [], error: 'Modbus-Ausnahme 0x2' },
+        ],
+      },
+    },
+  });
+  const p = ret.payload;
+  assert.strictEqual(p.unit, 2);
+  assert.ok(!isNaN(Date.parse(p.ts)), 'poll timestamp stamped');
+  assert.deepStrictEqual(p.blocks[0], { start: 0x0000, regs: [6] });
+  assert.deepStrictEqual(p.blocks[2], { start: 0x0060, regs: [], learned: true, count: 4, error: 'Modbus-Ausnahme 0x2' });
+  // No blocks -> nothing published.
+  const { ret: empty } = runFunctionNode(byId['auto-mirror-raw'].func, { msg: { deye: { cfg: {}, blocks: [] } } });
+  assert.strictEqual(empty, null);
+});
+
 // The "Deye-Register -> Messwerte" node carries a synced copy of deye-decode.js
 // (the generator preserves it verbatim, so nothing else guards the sync). These
 // assert the inline body matches the module - crucially incl. the SoC

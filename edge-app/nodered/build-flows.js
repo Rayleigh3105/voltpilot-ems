@@ -95,6 +95,31 @@ const routerFunc = [
   "    power_scale: num(conn.power_scale, 0)",
   "  };",
   "  msg.deye = { cfg, target: ip + ':' + port, reads: reads.map((r) => ({ start: r.start, count: r.count })), i: 0, blocks: [] };",
+  // Modbus-Datenspiegel (edge-app/MODBUS-SPIEGEL.md): merge AT MOST ONE
+  // auto-learned block per poll cycle into the read plan - round-robin over the
+  // mirror's want list (flow.mirror_want, set by vp-register-want), appended
+  // AFTER the primary blocks so it rides the SAME socket/lock cycle that yields
+  // to control writes. Defense in depth on top of the core's own caps: block
+  // count/size clamped, the control window 1100-1121 NEVER polled. With no want
+  // list this is byte-for-byte the old plan.
+  "  const want = flow.get('mirror_want');",
+  "  if (Array.isArray(want) && want.length) {",
+  "    const CTRL_LO = 1100, CTRL_HI = 1121, MAX_BLOCKS = 8, MAX_COUNT = 64;",
+  "    const ok = [];",
+  "    for (const b of want) {",
+  "      if (!b || ok.length >= MAX_BLOCKS) continue;",
+  "      const start = Number(b.start), count = Number(b.count);",
+  "      if (!Number.isInteger(start) || !Number.isInteger(count)) continue;",
+  "      if (start < 0 || start > 0xffff || count < 1 || start + count > 0x10000) continue;",
+  "      if (start <= CTRL_HI && start + count - 1 >= CTRL_LO) continue;",
+  "      ok.push({ start, count: Math.min(count, MAX_COUNT) });",
+  "    }",
+  "    if (ok.length) {",
+  "      const i = (flow.get('mirror_want_rr') || 0) % ok.length;",
+  "      flow.set('mirror_want_rr', i + 1);",
+  "      msg.deye.reads.push({ start: ok[i].start, count: ok[i].count, learned: true });",
+  "    }",
+  "  }",
   "  node.status({ fill: 'blue', shape: 'dot', text: 'Deye ' + sel.family + ' -> Solarman-V5' });",
   "  return [msg, null, null, null, null];",
   "}",
@@ -320,6 +345,45 @@ const idleFunc = [
   "// kollidieren). Sobald eine gueltige Auswahl retained eintrifft, laeuft der",
   "// passende Lesepfad automatisch an.",
   "node.status({ fill: 'grey', shape: 'ring', text: msg.idle || 'keine Auswahl' });",
+  "return null;",
+].join('\n');
+
+// Modbus-Datenspiegel: shape the poll's raw register blocks into ONE retained
+// edge/registers/raw message (via vp-register-raw). Pure pass-through of data
+// the poll already read - the mirror in the core answers Loxone & Co. from
+// this cache, a consumer never touches the Solarman socket.
+const mirrorRawFunc = [
+  "// Modbus-Datenspiegel: die roh gelesenen Registerbloecke dieses Polls als EINE",
+  "// retained Nachricht an den Core (edge/registers/raw). Reine Weitergabe bereits",
+  "// gelesener Daten - der Nur-Lese-Spiegel im Core beantwortet daraus Modbus-",
+  "// Anfragen aus dem Hausnetz; ein Verbraucher beruehrt den Logger-Socket nie.",
+  "const d = msg.deye;",
+  "if (!d || !Array.isArray(d.blocks) || !d.blocks.length) return null;",
+  "const blocks = d.blocks.map((b) => {",
+  "  const out = { start: b.start, regs: Array.isArray(b.regs) ? b.regs : [] };",
+  "  if (b.learned) out.learned = true;",
+  "  if (Number.isInteger(b.count) && b.count > 0) out.count = b.count;",
+  "  if (b.error) out.error = String(b.error);",
+  "  return out;",
+  "});",
+  "const unit = (d.cfg && Number(d.cfg.mb_slave_id)) || 1;",
+  "node.status({ fill: 'green', shape: 'dot', text: blocks.length + ' Bloecke -> Spiegel' });",
+  "return { payload: { ts: new Date().toISOString(), unit, blocks } };",
+].join('\n');
+
+// Modbus-Datenspiegel: store the mirror's auto-learn want list in the flow
+// context; the router merges at most ONE of these blocks per poll cycle.
+const mirrorWantStoreFunc = [
+  "// Uebernimmt die Auto-Lern-Wunschliste des Modbus-Datenspiegels (retained auf",
+  "// edge/registers/want, von vp-register-want geparst) in den Flow-Kontext. Der",
+  "// Router haengt je Poll-Zyklus HOECHSTENS EINEN dieser Bloecke an den Leseplan",
+  "// an (round-robin, nach den Primaerbloecken) - der harte Deckel, der die",
+  "// Logger-Last verbraucherunabhaengig begrenzt.",
+  "const want = msg.payload;",
+  "const blocks = (want && Array.isArray(want.blocks)) ? want.blocks : [];",
+  "flow.set('mirror_want', blocks);",
+  "if (!blocks.length) flow.set('mirror_want_rr', 0);",
+  "node.status({ fill: blocks.length ? 'green' : 'grey', shape: 'dot', text: blocks.length + ' gelernte Bloecke' });",
   "return null;",
 ].join('\n');
 
@@ -1728,9 +1792,18 @@ const autoNodes = [
   },
   Object.assign(fn('auto-router', 'Router / Leseplan', routerFunc, 5, [['auto-solarman'], ['auto-modbus'], ['auto-fronius'], ['auto-sunspec'], ['auto-idle']]), { x: 320, y: 180 }),
 
-  // Deye Solarman-V5 branch (verbatim reader + decoder)
-  Object.assign(fn('auto-solarman', 'Solarman-V5 lesen (TCP 8899)', solarmanFunc, 1, [['auto-deye-decode']]), { x: 600, y: 140 }),
+  // Deye Solarman-V5 branch (verbatim reader + decoder). The read result also
+  // fans out to the Datenspiegel shaper (a second WIRE, not a second read).
+  Object.assign(fn('auto-solarman', 'Solarman-V5 lesen (TCP 8899)', solarmanFunc, 1, [['auto-deye-decode', 'auto-mirror-raw']]), { x: 600, y: 140 }),
   Object.assign(fn('auto-deye-decode', 'Deye-Register -> Messwerte', deyeDecodeFunc, 2, [['auto-telemetrie'], ['auto-status', 'auto-linkwatch']]), { x: 600, y: 200 }),
+
+  // Modbus-Datenspiegel (edge-app/MODBUS-SPIEGEL.md): raw blocks -> retained
+  // edge/registers/raw; the mirror's auto-learn want list -> flow.mirror_want
+  // (merged by the router, at most one learned block per cycle).
+  Object.assign(fn('auto-mirror-raw', 'Registerbloecke -> Datenspiegel', mirrorRawFunc, 1, [['auto-register-raw']]), { x: 870, y: 100 }),
+  { id: 'auto-register-raw', type: 'vp-register-raw', z: TAB, name: 'Rohregister an Core (retained)', core: 'cfg-vp-core', x: 1100, y: 100, wires: [] },
+  { id: 'auto-mirror-want-cfg', type: 'vp-register-want', z: TAB, name: 'Spiegel-Wunschliste vom Core (retained)', core: 'cfg-vp-core', x: 200, y: 140, wires: [['auto-mirror-want']] },
+  Object.assign(fn('auto-mirror-want', 'Wunschliste uebernehmen', mirrorWantStoreFunc, 1, [[]]), { x: 430, y: 140 }),
 
   // Generic Modbus-TCP branch
   Object.assign(fn('auto-modbus', 'Modbus-TCP lesen (FC3)', modbusReadFunc, 1, [['auto-mb-decode']]), { x: 590, y: 280 }),
