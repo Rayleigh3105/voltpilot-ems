@@ -1,0 +1,38 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-register-raw', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 1,
+    outputs: 0,
+    icon: 'bridge.svg',
+    align: 'right',
+    label: function () { return this.name || 'vp-register-raw'; },
+    paletteLabel: 'vp-register-raw'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-register-raw">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-register-raw">
+  <p>Veröffentlicht die ROHEN Registerblöcke des Wechselrichter-Polls
+  RETAINED auf <code>edge/registers/raw</code> - die Datenquelle des
+  Modbus-Datenspiegels im VoltPilot Core (Nur-Lese-Modbus-Server für die
+  Gebäudeautomation, z.&nbsp;B. Loxone).</p>
+  <p><code>msg.payload</code>: <code>{ ts, unit, blocks: [{ start, regs[],
+  learned?, count?, error? }] }</code>. Reine Weitergabe bereits gelesener
+  Daten - dieser Knoten macht KEIN Geräte-I/O; einen Schreibpfad gibt es
+  konstruktionsbedingt nicht.</p>
+</script>

@@ -375,6 +375,10 @@ services:
       # exakt der einkompilierte Default; der eigentliche Gerätegate ist die
       # Freigabe pro Modell (First-Light / Zertifizierungs-Allowlist).
       VP_CONTROL_ENABLED: \${VP_CONTROL_ENABLED:-true}
+      # Host-Port des Modbus-Datenspiegels (NUR fuer die Anzeige der Adresse
+      # in der Weboberflaeche; das Port-Mapping unten muss denselben Wert
+      # nutzen). Der Spiegel selbst ist standardmaessig AUS (mirror.json).
+      VP_MIRROR_PORT: \${VP_MIRROR_PORT:-502}
       # Dev-only escape hatches (skip enrollment / plain-MQTT cloud). Leave
       # EMPTY on customer devices - the installer never sets them.
       VP_DEV_TENANT_ID: \${VP_DEV_TENANT_ID:-}
@@ -389,6 +393,10 @@ services:
       # Embedded local MQTT bus, host-loopback only (debugging; Layer 1
       # reaches it via the compose network as core:1883).
       - "127.0.0.1:\${VP_BUS_PORT:-1884}:1883"
+      # Modbus-Datenspiegel (LAN, nur Lesen): Gebaeudeautomation liest hier
+      # statt am Ein-Client-Solarman-Logger. Container-Port fest 1502; ohne
+      # aktivierten Spiegel lauscht nichts (Verbindung wird abgewiesen).
+      - "\${VP_MIRROR_PORT:-502}:1502"
 
   nodered:
     image: \${VP_EDGE_NODERED_IMAGE:-${NODERED_REPO}:\${VP_EDGE_IMAGE_TAG:-latest}}

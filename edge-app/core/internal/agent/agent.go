@@ -32,6 +32,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/history"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan2"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
@@ -175,6 +176,15 @@ type Agent struct {
 	entReadback map[string]*bool  // per-entity latest readback all_match
 	arbWake     chan struct{}
 
+	// Modbus-Datenspiegel (agent/mirror.go + internal/mirror): the read-only
+	// Modbus-TCP slave for the customer's building automation. mirSettings is
+	// the persisted config (mirror.json), guarded by mirMu; the server's own
+	// caches are internally synchronized.
+	mirStore    *mirror.Store
+	mir         *mirror.Server
+	mirMu       sync.Mutex
+	mirSettings mirror.Settings
+
 	// goeDoer executes go-e Charger control HTTP (nil = the default http.Client
 	// doer, set in Start; injectable for tests). The consumer-control loop
 	// (agent/consumer_control.go) reads the arbiter's clamped consumer command
@@ -303,6 +313,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	ms, err := mirror.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	es, err := entities.NewStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -329,6 +343,7 @@ func New(cfg config.Config) (*Agent, error) {
 		invCat:       inverter.DefaultCatalog(),
 		srcStore:     ss,
 		balStore:     bs,
+		mirStore:     ms,
 		srcReadings:  map[string]sourceReading{},
 		entReadings:  map[string]entReading{},
 		testReads:    map[string]chan testconn.Result{},
@@ -437,6 +452,10 @@ func New(cfg config.Config) (*Agent, error) {
 	// Configure the physical envelope from the restored primary + sources (its PV
 	// bound is Σ generation nameplate). Safe with no inverter (inactive/PV-only).
 	a.reapplyEnvelope()
+	// Modbus-Datenspiegel: build the mirror from its persisted settings (OFF by
+	// default; the listener comes up in Start when enabled). After the inverter
+	// restore so the native unit follows the selection's mb_slave_id.
+	a.initMirror()
 	// A purge requested before a restart and not yet confirmed by the cloud is
 	// restored and re-sent once connected.
 	a.restorePendingPurge()
@@ -489,6 +508,11 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.publishInverterConfig()
 	// Same for the additional-source config: Node-RED self-wires a read of each.
 	a.publishSourcesConfig()
+	// Modbus-Datenspiegel: raw-block subscription + retained want republish +
+	// (if enabled) the read-only LAN listener.
+	if err := a.startMirror(); err != nil {
+		return err
+	}
 
 	// v2 entity layer: telemetry wildcard subscription (id 6) + boot republish
 	// of the per-entity retained configs. The v2 uplink rides the shared
@@ -1177,6 +1201,19 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		GridLimitKw: ptr("grid_limit_kw"),
 		BattKw:      histBatt,
 	})
+	// Feed the Modbus-Datenspiegel's VoltPilot standard map (unit 100) with the
+	// SAME gated composite the dashboard/cloud see: absent channels stay absent
+	// (served as sentinels, never a fabricated 0); the battery term follows the
+	// history ring's rule (measured register, or a physical 0 on a provably
+	// batteryless primary).
+	a.feedMirrorTelemetry(ts, mirror.Composite{
+		PvKw:        ptr("pv_power_kw"),
+		LoadKw:      ptr("load_kw"),
+		GridKw:      ptr("power_kw"),
+		BattKw:      histBatt,
+		SocPct:      ptr("soc_pct"),
+		GridLimitKw: ptr("grid_limit_kw"),
+	})
 	// Local composition of the composed v2 entities for the device's OWN view
 	// (M-B3-local). Display-only: it feeds Topology() -> the :8484 entity tiles
 	// + Energiefluss, never the buffer/uplink (the cloud fans the very same v1
@@ -1452,6 +1489,22 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		})
 	}
 	a.State.Update(func(s *state.Snapshot) { s.Control = info })
+	// Modbus-Datenspiegel: the ACTUAL values this readback read from the Deye
+	// remote-mode window 1100-1121 make those registers READABLE on the mirror
+	// - fresh from reads the control path performs anyway, never via an extra
+	// poll (and structurally never writable there).
+	if !m.Blocked {
+		ctrlRegs := map[uint16]uint16{}
+		for _, r := range m.Registers {
+			if r.Addr >= mirror.ControlRegFirst && r.Addr <= mirror.ControlRegLast {
+				ctrlRegs[uint16(r.Addr)] = uint16(r.ActualRaw)
+			}
+		}
+		if m.RemoteStatusRaw != nil {
+			ctrlRegs[1121] = uint16(*m.RemoteStatusRaw)
+		}
+		a.feedMirrorControl(checkedAt, ctrlRegs)
+	}
 	// First-Light Gap B (report §7): a calibration WRITE's readback (source ==
 	// "calibration" and NOT the neutral release) is the objective "the write landed"
 	// evidence the sign/scale confirm + certify gates require. Correlate a full-register
@@ -1874,6 +1927,8 @@ func (a *Agent) SetInverter(req inverter.SelectionRequest) (inverter.Selection, 
 	a.State.Update(func(s *state.Snapshot) { s.Inverter = inverterInfo(&sel) })
 	a.applyEnvelope(&sel)
 	a.publishInverterConfig()
+	// The mirror's native pass-through area follows the device's mb_slave_id.
+	a.applyMirrorNativeUnit()
 	slog.Info("inverter selection updated", "brand", sel.Brand, "family", sel.Family,
 		"communication", sel.Communication)
 	return sel, nil
@@ -2691,6 +2746,9 @@ func (a *Agent) Stop() {
 	a.linkMu.Unlock()
 	if a.Bus != nil {
 		_ = a.Bus.Close()
+	}
+	if a.mir != nil {
+		a.mir.Stop()
 	}
 	a.done.Wait()
 	_ = a.buf.Close()

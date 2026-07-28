@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 
 PROJECT="vpedge-e2e-$$"
 COMPOSE=(docker compose -p "$PROJECT" -f docker-compose.yml -f test/docker-compose.e2e.yml --profile sim)
-export VP_WEB_PORT=18484 VP_NODERED_PORT=11881 VP_BUS_PORT=11884
+export VP_WEB_PORT=18484 VP_NODERED_PORT=11881 VP_BUS_PORT=11884 VP_MIRROR_PORT=11502
 # settings.js fails closed without a non-default editor password (S2).
 export VP_NODERED_PASSWORD=vp-e2e-editor-pass
 
@@ -117,5 +117,65 @@ done
 [ -n "$CTRL_OK" ] || { echo "$STATE"; fail "control readback never confirmed reg 40 = -25 kW (all_match)"; }
 echo "control readback confirmed: -25 kW written to reg 40, read back and matched"
 
+echo "--- Modbus-Datenspiegel: off by default, VP map (unit 100) after enabling, writes refused"
+# Disabled (the shipped default): nothing may answer on the mapped port.
+# Docker's userland proxy accepts the TCP connect even with no listener in the
+# container, so the honest check is "a request gets NO Modbus answer" (refused
+# connect, immediate close or silence all pass; any response bytes fail).
+python3 - <<'EOF' || fail "mirror answered a request while DISABLED"
+import socket, struct, sys
+s = socket.socket()
+s.settimeout(3)
+try:
+    s.connect(("127.0.0.1", 11502))
+    s.sendall(struct.pack(">HHHBBHH", 9, 0, 6, 100, 3, 0, 1))
+    data = s.recv(16)
+except OSError:
+    sys.exit(0)  # refused / closed / silent - correct
+sys.exit(1 if data else 0)
+EOF
+
+curl -fsS -X POST -H 'Content-Type: application/json' -d '{"enabled":true}' \
+  "http://127.0.0.1:${VP_WEB_PORT}/api/mirror" | grep -q '"enabled":true' \
+  || fail "POST /api/mirror did not enable the mirror"
+
+# Read the VoltPilot standard map over the mapped port and compare it with the
+# telemetry the core itself reports; then prove a write (FC6) is refused.
+MIRROR_OK=""
+for i in $(seq 1 15); do
+  STATE=$(curl -fsS "http://127.0.0.1:${VP_WEB_PORT}/api/state")
+  if printf '%s' "$STATE" | python3 -c '
+import json, socket, struct, sys
+state = json.load(sys.stdin)
+s = socket.socket(); s.settimeout(5)
+s.connect(("127.0.0.1", 11502))
+def rx(n):
+    b = b""
+    while len(b) < n:
+        c = s.recv(n - len(b))
+        if not c: raise EOFError
+        b += c
+    return b
+# FC3 unit 100, regs 0..14 (the frozen VP map v1)
+s.sendall(struct.pack(">HHHBBHH", 1, 0, 6, 100, 3, 0, 15))
+h = rx(9)
+if h[7] != 3: sys.exit(1)  # exception (e.g. no data yet) - retry
+regs = struct.unpack(">15H", rx(30))
+if regs[0] != 0x5650 or regs[1] != 1: sys.exit(1)
+if regs[3] != 0: sys.exit(1)  # quality not ok yet
+soc = regs[12] / 10.0
+if abs(soc - state["soc_pct"]) >= 2.0: sys.exit(1)
+pv = struct.unpack(">i", struct.pack(">HH", regs[4], regs[5]))[0] / 1000.0
+if abs(pv - state["pv_kw"]) >= 5.0: sys.exit(1)
+# FC6 write attempt -> exception 0x01 ILLEGAL FUNCTION (read-only mirror)
+s.sendall(struct.pack(">HHHBBHH", 2, 0, 6, 100, 6, 0, 0xDEAD))
+h = rx(9)
+sys.exit(0 if (h[7] == 0x86 and h[8] == 0x01) else 1)
+'; then MIRROR_OK=1; break; fi
+  sleep 2
+done
+[ -n "$MIRROR_OK" ] || fail "mirror never served the VP map matching /api/state (or refused-write check failed)"
+echo "mirror serves unit 100 from the gated telemetry; FC6 write refused with ILLEGAL FUNCTION"
+
 echo
-echo "E2E OK: full loop verified (sim -> nodered/vp-palette -> core -> cloud broker; schedule -> guards -> sim; control write -> readback -> match)."
+echo "E2E OK: full loop verified (sim -> nodered/vp-palette -> core -> cloud broker; schedule -> guards -> sim; control write -> readback -> match; read-only Modbus mirror)."

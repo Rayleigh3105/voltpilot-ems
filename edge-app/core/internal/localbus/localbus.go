@@ -50,6 +50,24 @@
 //	edge/test-read/result   Layer 1 -> core   NOT retained. The one-shot result:
 //	                {request_id, ok, error_code?, reading?{pv_kw?,load_kw?,
 //	                 grid_kw?,soc_pct?}}. Correlated to the request by request_id.
+//	edge/registers/raw   Layer 1 -> core   RETAINED. The raw register blocks
+//	                the inverter poll read this cycle, byte-faithful, for the
+//	                Modbus-Datenspiegel (internal/mirror):
+//	                {"ts": RFC3339, "unit": <mb_slave_id>, "blocks":
+//	                 [{"start", "regs":[u16...], "learned"?: true,
+//	                   "count"?, "error"?: string}]}.
+//	                A "learned" block is one the mirror asked for (see below);
+//	                a failed learned read carries error instead of regs and
+//	                never aborts the primary poll. ts is the POLL time - the
+//	                mirror's staleness guard keys on it, so a stale retained
+//	                message after a restart serves nothing as fresh.
+//	edge/registers/want  core -> Layer 1   RETAINED. The mirror's auto-learned
+//	                want set: {"blocks":[{"start","count"}]}. Node-RED merges
+//	                AT MOST ONE of these blocks per poll cycle into the read
+//	                plan (round-robin, after the primary blocks, inside the
+//	                same sv5 lock that yields to control writes) - the hard
+//	                cap that bounds consumer-driven socket load. The control
+//	                window 1100-1121 never appears here.
 //
 // v2 entity topic family (E1a; CONTRACT-grade, unlike the versionless v1
 // namespace above - docs/contracts/v2/edge-desired-arbitration.md §1 +
@@ -103,6 +121,10 @@ const (
 	// by the vp-node-status palette node that flowc wires from the compiled
 	// nodes. Read-only telemetry ABOUT a flow - it never commands anything.
 	TopicFlowNodeStatus = "edge/flow/node-status"
+	// TopicRegistersRaw/Want are the Modbus-Datenspiegel pair (see the header):
+	// the poll's raw register blocks up, the mirror's learned want set down.
+	TopicRegistersRaw  = "edge/registers/raw"
+	TopicRegistersWant = "edge/registers/want"
 )
 
 // Bus wraps the embedded broker.

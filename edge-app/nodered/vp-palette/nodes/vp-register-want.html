@@ -1,0 +1,37 @@
+<script type="text/javascript">
+  RED.nodes.registerType('vp-register-want', {
+    category: 'VoltPilot',
+    color: '#95B9FF',
+    defaults: {
+      name: { value: '' },
+      core: { value: '', type: 'vp-core', required: true }
+    },
+    inputs: 0,
+    outputs: 1,
+    icon: 'bridge.svg',
+    label: function () { return this.name || 'vp-register-want'; },
+    paletteLabel: 'vp-register-want'
+  });
+</script>
+
+<script type="text/html" data-template-name="vp-register-want">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+  <div class="form-row">
+    <label for="node-input-core"><i class="fa fa-server"></i> Core</label>
+    <input type="text" id="node-input-core">
+  </div>
+</script>
+
+<script type="text/html" data-help-name="vp-register-want">
+  <p>Abonniert die RETAINED Auto-Lern-Wunschliste des Modbus-Datenspiegels
+  (<code>edge/registers/want</code>) und gibt sie aus:
+  <code>{ blocks: [{ start, count }] }</code>.</p>
+  <p>Der Poll liest davon höchstens EINEN Block je Zyklus (round-robin, nach
+  den Primärblöcken, innerhalb derselben Socket-Disziplin, in der
+  Steuer-Schreibbefehle Vorrang haben) - so ist die Belastung des Loggers
+  hart gedeckelt, egal was der Verbraucher tut. Das Steuerfenster 1100-1121
+  wird nie gepollt.</p>
+</script>

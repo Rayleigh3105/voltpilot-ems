@@ -426,6 +426,43 @@
     </section>
 
     <!-- ==================== Bereich 4 · Messwert-Aufbereitung ============== -->
+    <!-- ============== Bereich 5 · Datenfreigabe im Hausnetz ================
+         Modbus-Datenspiegel (mirror.js, GET/POST /api/mirror): the READ-ONLY
+         Modbus-TCP mirror the building automation (z. B. Loxone) reads instead
+         of the single-client Solarman logger. A NORMAL-mode section (not
+         Technik-gated - the toggle is visibility-only and this is a customer-
+         facing choice). SELF-CONTAINED card: own ids (#mirror*), own script -
+         movable as one unit. -->
+    <div class="area-title" id="datenfreigabe">Datenfreigabe im Hausnetz</div>
+    <section class="card set-card mirror-card" id="mirrorCard">
+      <div class="set-card-head">
+        <h2 class="set-title">Messwerte im Hausnetz bereitstellen</h2>
+        <span class="pill off" id="mirrorPill" hidden><span class="dot"></span>Aus</span>
+      </div>
+      <p class="set-desc mirror-lead">Für Gebäudeautomation (z.&nbsp;B. Loxone). Die Steuerung durch
+        VoltPilot wird dadurch nicht beeinflusst.</p>
+      <label class="mirror-toggle-row" for="mirrorToggle">
+        <span class="cal-switch">
+          <input type="checkbox" id="mirrorToggle">
+          <span class="cal-slider"></span>
+        </span>
+        <span>Messwerte per Modbus&nbsp;TCP bereitstellen (nur Lesen)</span>
+      </label>
+      <div class="mirror-endpoint" id="mirrorEndpointRow" hidden>
+        <span>Adresse für die Gebäudeautomation:</span>
+        <code id="mirrorEndpoint">–</code>
+        <button type="button" class="link-btn-txt" id="mirrorCopy">Kopieren</button>
+      </div>
+      <p class="form-error" id="mirrorError" hidden></p>
+
+      <!-- ◆ Technik: register areas, learned blocks, freshness. The customer
+           view above stays at one toggle + the copy-ready address. -->
+      <div class="tech-block tech-only">
+        <p class="tech-h">Modbus-Datenspiegel</p>
+        <p class="tech-note" id="mirrorDetail"></p>
+      </div>
+    </section>
+
     <div class="area-title" id="messwerte">Messwert-Aufbereitung</div>
     <section class="card set-card">
       <div class="set-card-head">
@@ -463,7 +500,7 @@
       </div>
     </section>
 
-    <!-- ==================== Bereich 5 · Unumkehrbar ==================== -->
+    <!-- ==================== Bereich 6 · Unumkehrbar ==================== -->
     <div class="area-title">
       Unumkehrbar
       <span class="area-flag">nicht rückgängig zu machen</span>
@@ -599,6 +636,7 @@
   <script src="inverter.js"></script>
   <script src="sources.js"></script>
   <script src="einstellungen.js"></script>
+  <script src="mirror.js"></script>
   <script src="control.js"></script>
   <script src="calibration.js"></script>
   <script src="einrichten.js"></script>
