@@ -76,6 +76,14 @@
     var lines = [];
     if (u.live_pv_kw != null) lines.push("Aktuelle Leistung: " + nf1.format(u.live_pv_kw) + " kW");
     else lines.push("Kein aktueller Messwert - der Test braucht Live-Daten.");
+    // The CAUSE of a failed/hanging execution is never hidden: the latest
+    // blocked reason from the write path (Gateway nicht erreichbar, Timeout,
+    // Discovery fehlgeschlagen, ...) renders right on the card.
+    var lastErr = "";
+    if (u.last_error) {
+      lastErr = "⚠ Letzte Störung: " + u.last_error +
+        (u.last_error_age_seconds ? " (vor " + u.last_error_age_seconds + " s)" : "");
+    }
 
     var body = "";
     if (u.test) {
@@ -107,6 +115,7 @@
     div.innerHTML =
       '<p class="tech-h">' + head + " " + status + "</p>" +
       '<p class="cal-hint">' + lines.join(" · ") + "</p>" +
+      (lastErr ? '<p class="cal-hint curtail-err">' + lastErr + "</p>" : "") +
       '<div class="cal-actions">' + body + "</div>";
 
     div.addEventListener("click", function (ev) {

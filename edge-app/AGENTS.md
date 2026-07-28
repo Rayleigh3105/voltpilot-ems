@@ -941,15 +941,32 @@ Operator-Doku: `nodered/FRONIUS.md` par.6b + `nodered/CONTROL-BENCH.md`
   Beobachtungen (aktiv/bestaetigt/Override) - so unterscheidet die Cloud
   "geplant und ausgefuehrt" von "geplant, Anlage kann es (noch) nicht".
   Portal-Rendering des Blocks ist dokumentierter Follow-up.
-- **Socket-Disziplin im Quellen-Tab** (die sv5-Lehre, bidirektional):
-  der Executor kuendigt an (`curtail_want:<ip:port>`) und wartet eine
-  laufende Poll-Lesung aus (`src_reading:`); der Poll weicht einer
-  Angekuendigung aus und stasht je Quelle den letzten Messwert
-  (`src_last:` - Input fuer Split + Wirkungs-Pruefung). Discovery wird 1 h
-  gecacht; ohne Cache ENTDECKT der Tick nur und der naechste plant (nie in
-  die Leere schreiben). Release ist one-shot (`curtail_was:`); der native
-  `WMaxLimPct_RvrtTms` (60 s, ~6 Ticks Slack auf die ~10-s-Republikation)
-  ist der Totmann - aufhoeren zu schreiben IST der Failsafe.
+- **Socket-Disziplin im Quellen-Tab = die BEGRENZTE Schreib-Lease**
+  (`nodered/sunspec/curtail-lease.js`, von Poll UND Executor eingebettet;
+  Live-Vorfall Pilsting 2026-07-28: der unbegrenzte Vorgaenger - Anspruch auf
+  JEDEM Takt auch fuers reine Beobachten, Walk-Retry ohne Backoff, kein
+  Zyklus-Deadline, Poll wich bedingungslos aus - liess beide Quellen 15+ min
+  verhungern, das seltene freie Fenster fiel immer an Quelle #1). Regeln, die
+  halten muessen: der Executor beansprucht `curtail_want:<ip:port>` NUR wenn
+  der Takt wirklich schreibt oder eine Discovery ansteht (reines Ruecklesen:
+  kein Anspruch, weicht `src_reading:` aus, max. 1x/OBSERVE_MIN_MS je
+  Gateway); die Lease wird zwischen Ops NEU gestempelt (Herzschlag) und in
+  JEDEM Ausgang (finally) freigegeben; ein Gateway-Zyklus laeuft unter
+  EXEC_DEADLINE_MS (Op-Timeouts aufs Restbudget gekappt); eine
+  FEHLGESCHLAGENE Discovery wird `{failed:true, reason}` mit
+  DISC_FAIL_BACKOFF_MS gecacht (Erfolg: 1 h). Der Poll weicht einer frischen
+  Lease max. MAX_CLAIM_SKIPS Ticks je Quelle aus, ERZWINGT dann die Lesung
+  (Warn "Telemetrie darf nicht verhungern"), verwirft eine Lease ohne
+  Herzschlag nach CLAIM_TTL_MS laut (verwaister Executor) und ROTIERT den
+  Zyklus-Start ueber die Quellen. Fehlgruende erreichen die Karte:
+  `curtailcal.UnitView.last_error` traegt den letzten blocked-Readback-Grund
+  (< 15 min, gesundes Readback loescht). `src_last:` (Messwert-Stash fuer
+  Split + Wirkungs-Pruefung), One-Shot-Release (`curtail_was:`) und der
+  native `WMaxLimPct_RvrtTms`-Totmann (60 s) sind unveraendert - aufhoeren
+  zu schreiben IST der Failsafe. Beweise: `curtail-lease.e2e.test.js` (echte
+  Node-Bodies gegen In-Process-Gateways incl. hang), `curtail-lease.test.js`,
+  flows-sync-Pins. Test-Override `flow.curtail_deadline_ms` nur fuer Tests
+  (sv5_acquire_ms-Praezedenz).
 - `CERTIFIED_CONTROL_FAMILIES` bleibt unveraendert; Batterie-Steuerung, alle
   Deye-Pfade (`deyeRemoteControl` haelt `pvLimitSupported:false`) und
   guards.Clamp sind unberuehrt.

@@ -917,9 +917,13 @@ const curtailMod = require('./sunspec/curtail');
 const modelDiscovery = require('./sunspec/model-discovery');
 
 test('flow curtail plan + exec nodes embed the current model-discovery.js + curtail.js sources', () => {
-  for (const nodeId of ['sources-curtail-plan', 'sources-curtail-exec']) {
+  const embeds = {
+    'sources-curtail-plan': ['sunspec/model-discovery.js', 'sunspec/curtail.js'],
+    'sources-curtail-exec': ['sunspec/model-discovery.js', 'sunspec/curtail.js', 'sunspec/curtail-lease.js'],
+  };
+  for (const nodeId of Object.keys(embeds)) {
     const func = byId[nodeId].func;
-    for (const rel of ['sunspec/model-discovery.js', 'sunspec/curtail.js']) {
+    for (const rel of embeds[nodeId]) {
       const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
       assert.ok(
         func.includes(src),
@@ -927,15 +931,26 @@ test('flow curtail plan + exec nodes embed the current model-discovery.js + curt
       );
     }
   }
-  // The exec keeps the poll-coordination + one-shot-release + dead-man shape.
+  // The exec keeps the LEASE discipline (Pilsting 2026-07-28: a priority claim
+  // must never outlive its work) + one-shot-release + dead-man shape.
   const exec = byId['sources-curtail-exec'].func;
-  assert.ok(exec.includes("flow.set('curtail_want:' + ipKey, Date.now())"), 'write intent announced to the read poll');
+  assert.ok(exec.includes('const beat = () => flow.set(wantKey, Date.now())'), 'lease heartbeat present');
+  assert.ok(exec.includes('flow.set(wantKey, 0)'), 'lease released on every exit (finally + refusal)');
+  assert.ok(exec.includes('__LEASE.discoveryState'), 'failed-discovery backoff wired');
+  assert.ok(exec.includes('__LEASE.observeDue'), 'observe-only ticks are throttled and claimless');
+  assert.ok(exec.includes('__LEASE.opTimeoutMs(deadlineAt'), 'per-op timeouts capped to the cycle budget');
   assert.ok(exec.includes("flow.get('src_reading:' + ipKey)"), 'waits out an in-flight poll read');
   assert.ok(exec.includes("'curtail_was:'"), 'one-shot release discipline present');
   assert.ok(exec.includes('evaluateEnforcement'), 'override detection wired');
-  // And the read poll yields to the announced write + stashes last readings.
+  // And the read poll takes the BOUNDED lease decision (yield <= MAX_CLAIM_SKIPS,
+  // force + warn, expire an orphaned claim), rotates fairly + stashes readings.
   const read = byId['sources-read'].func;
-  assert.ok(read.includes("flow.get('curtail_want:' + ipKey)"), 'read poll yields to the curtail writer');
+  const leaseSrc = fs.readFileSync(path.join(__dirname, 'sunspec/curtail-lease.js'), 'utf8');
+  assert.ok(read.includes(leaseSrc), 'sources-read embeds curtail-lease.js - re-run build-flows.js');
+  assert.ok(read.includes('__LEASE.pollDecision'), 'read poll takes the bounded lease decision');
+  assert.ok(read.includes("ld.action === 'force'"), 'starvation fallback: a read is forced past the skip budget');
+  assert.ok(read.includes("ld.action === 'expire'"), 'an orphaned claim is expired + warned');
+  assert.ok(read.includes("context.set('src_rr'"), 'fairness rotation across sources');
   assert.ok(read.includes("flow.set('src_last:' + plan.id"), 'read poll stashes last readings');
 });
 

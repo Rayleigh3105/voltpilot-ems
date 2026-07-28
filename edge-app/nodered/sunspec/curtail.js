@@ -294,9 +294,14 @@ function planFleetCurtailment(args) {
       capKw = caps[row.p.id];
     }
     const release = capKw == null;
+    // nameplateKw: the resolved rating (discovered ?? configured kWp) - the
+    // configured fallback must reach planCurtailment too, or a unit whose live
+    // WRtg read failed is classified writable, joins the split, and then
+    // refuses its own plan with "Nennleistung unbekannt" (float-audit §6.1).
     const plan = disc.planCurtailment({
       discovery: row.discovery,
       pvLimitKw: release ? null : capKw,
+      nameplateKw: row.ratedKw,
       rvrtTms: DEFAULT_RVRT_TMS,
     });
     // The certification bypass is EXACTLY the bounded test (never wider); the
