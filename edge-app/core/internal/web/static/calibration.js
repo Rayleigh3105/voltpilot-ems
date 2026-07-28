@@ -254,6 +254,11 @@
       ? "Bereits freigegeben. Sie können bei Bedarf erneut testen."
       : "Erst scharfschalten, dann einen kleinen Test starten. Jeder Test schaltet sich nach kurzer Zeit selbst ab.";
 
+    // The register evidence table left this page (it is live monitoring and
+    // lives on "Betrieb" under Technikmodus) - while a calibration is armed or
+    // a test is running, the workflow links to it.
+    show($("calRegisterLink"), !!cal.armed || busyPhase);
+
     // Step 2: test controls (only while armed).
     show($("calTestStep"), cal.armed);
     $("calCharge").disabled = !cal.charge_testable || busyPhase;

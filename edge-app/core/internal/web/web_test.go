@@ -965,9 +965,11 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		`id="modelSearch"`, `id="modelList"`, `role="listbox"`,
 		`id="modelEmpty"`, `id="modelChosen"`,
 		// The role-grouped "Meine Anlage" card: the Wechselrichter summary/edit
-		// group + the Erzeuger/Netz/Verbraucher groups + the add-source CTA.
+		// group + the Erzeuger/Netz/Verbraucher groups. Empty categories are a
+		// "+ hinzufügen" row inside the group, never standalone empty cards.
 		`id="anlageCard"`, `id="invGroup"`, `id="invRows"`, `id="invEmpty"`,
-		`id="erzList"`, `id="netzList"`, `id="verbList"`, `id="srcAddToggle"`,
+		`id="erzList"`, `id="netzList"`, `id="verbList"`,
+		`id="erzAdd"`, `id="netzAdd"`, `id="verbAdd"`,
 		// The "Zuletzt gelesen" line of the Wechselrichter summary row.
 		`id="invRead"`,
 		// The "Verbindung testen" buttons + result panels (inverter form + drawer).
@@ -1010,7 +1012,7 @@ func TestInverterPageServesModelPickerStructure(t *testing.T) {
 		// card so a go-e consumer source is UI-complete end to end).
 		`id="roleErz"`, `id="roleNetz"`, `id="roleVerbraucher"`,
 		// The Verbraucher list group.
-		`id="verbList"`, `id="verbEmpty"`, `id="verbNote"`,
+		`id="verbList"`, `id="verbAdd"`, `id="verbNote"`,
 		// The "Primär misst den gesamten Netzübergang" toggle (Netz group).
 		`id="primGridBlock"`, `id="primGridToggle"`, `id="primGridHelp"`,
 	} {
@@ -1485,13 +1487,26 @@ func TestSteuerungSectionServed(t *testing.T) {
 			t.Errorf("index.html: control BUTTON %s leaked onto the Betrieb page", forbidden)
 		}
 	}
-	// The same control surface is rendered on Einrichten, where the register
-	// evidence is NOT Technikmodus-gated (commissioning is when you need it).
+	// The control STATE is rendered on Einrichten too, but the register
+	// evidence table left that page entirely (rework decision 1): it is live
+	// monitoring and lives ONLY here on Betrieb, under Technikmodus. The
+	// Freigabe workflow links back to it while a calibration is armed/running.
 	setup := get("/einrichten.html")
-	for _, want := range []string{`id="ctrlSummary"`, `id="ctrlRows"`, `id="ctrlTech"`} {
-		if !strings.Contains(setup, want) {
-			t.Errorf("einrichten.html: missing control element %s", want)
+	if !strings.Contains(setup, `id="ctrlSummary"`) {
+		t.Error("einrichten.html: missing the control state summary")
+	}
+	for _, forbidden := range []string{`id="ctrlRows"`, `id="ctrlTech"`, `id="ctrlTable"`} {
+		if strings.Contains(setup, forbidden) {
+			t.Errorf("einrichten.html: register evidence %s must live only on Betrieb", forbidden)
 		}
+	}
+	if !strings.Contains(setup, `id="calRegisterLink"`) ||
+		!strings.Contains(setup, `href="index.html#controlCard"`) {
+		t.Error("einrichten.html: the calibration workflow must link to the register evidence on Betrieb")
+	}
+	calJs := get("/calibration.js")
+	if !strings.Contains(calJs, "calRegisterLink") {
+		t.Error("calibration.js: does not toggle the register-evidence link while armed/running")
 	}
 }
 
@@ -1643,18 +1658,24 @@ func TestEinrichtenPageServesTheGuidedFlowAndItsAreas(t *testing.T) {
 
 	page := get("/einrichten.html")
 	for _, want := range []string{
-		// the guided flow + its receded state
-		`id="setupCard"`, `id="setupSteps"`, `id="setupProgress"`,
-		`id="setupDone"`, `id="setupDetailBtn"`, `Daten kommen an`,
-		// the areas, in order
+		// the guided flow (it disappears entirely once done - no receded line)
+		`id="setupCard"`, `id="setupSteps"`, `id="setupProgress"`, `Daten kommen an`,
+		// the legacy anchors, still landing inside the accordion groups
 		`id="wechselrichter"`, `id="quellen"`, `id="portal"`, `id="steuerung"`,
 		`id="messwerte"`, `id="purgeCard"`,
 		// the portal pairing block (reference is withheld until unlocked)
 		`id="pairLocked"`, `id="pairUnlocked"`, `id="ref"`, `id="copyBtn"`, `id="pairingError"`,
-		`src="commissioning.js"`, `src="einrichten.js"`,
+		`src="commissioning.js"`, `src="groups.js"`, `src="einrichten.js"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("einrichten.html: missing %s", want)
+		}
+	}
+	// The green "Eingerichtet" banner is GONE with no replacement (rework
+	// decision 3): Betrieb's status hero is the single health voice.
+	for _, forbidden := range []string{`id="setupDone"`, `id="setupDetailBtn"`, `Eingerichtet · Daten kommen an`} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("einrichten.html: the receded green banner must be gone, found %s", forbidden)
 		}
 	}
 	// Order: the guided flow first, control release BELOW it.
@@ -1676,6 +1697,96 @@ func TestEinrichtenPageServesTheGuidedFlowAndItsAreas(t *testing.T) {
 	// invent an endpoint or persist wizard progress.
 	if strings.Contains(js, "fetch(") {
 		t.Error("commissioning.js: must stay a pure derivation (no fetch)")
+	}
+}
+
+// TestEinrichtenAccordionIsFourClosedGroups pins the rework's core shape: the
+// steady state of the page is exactly FOUR accordion groups - Anlage /
+// Steuerung / Datenfreigabe / Erweitert - each ONE row (status dot + title +
+// summary) built as a real <button> with aria-expanded/-controls, and every
+// body CLOSED in the served markup. Healthy = all closed, every visit; any
+// opening happens client-side (groups.js shouldAutoOpen on a NEW problem, or
+// a deep-link anchor). Presentation only: no gate, no API, no state machine
+// changed - the same scripts drive the same endpoints as before.
+func TestEinrichtenAccordionIsFourClosedGroups(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	page := get("/einrichten.html")
+	// Exactly four group rows, in the decided order, keyboard-accessible.
+	if n := strings.Count(page, `class="card acc-head"`); n != 4 {
+		t.Errorf("einrichten.html: want exactly 4 accordion group rows, got %d", n)
+	}
+	last := -1
+	for _, g := range []string{"anlage", "steuerung", "datenfreigabe", "erweitert"} {
+		at := strings.Index(page, `data-group="`+g+`"`)
+		if at < 0 {
+			t.Errorf("einrichten.html: missing accordion group %q", g)
+			continue
+		}
+		if at < last {
+			t.Errorf("einrichten.html: group %q out of order", g)
+		}
+		last = at
+	}
+	for _, body := range []string{"anlageBody", "steuerungBody", "datenfreigabeBody", "erweitertBody"} {
+		if !strings.Contains(page, `aria-controls="`+body+`"`) {
+			t.Errorf("einrichten.html: no acc-head controls %q", body)
+		}
+		if !strings.Contains(page, `id="`+body+`" hidden`) {
+			t.Errorf("einrichten.html: group body %q must be CLOSED in the served markup", body)
+		}
+	}
+	if n := strings.Count(page, `class="card acc-head" aria-expanded="false"`); n != 4 {
+		t.Errorf("einrichten.html: all 4 group rows must serve aria-expanded=false, got %d", n)
+	}
+
+	// The Netzmessung expert exception left the main axis (rework ④): the
+	// balance toggle and the purge card both live INSIDE the Erweitert body.
+	erwAt := strings.Index(page, `id="erweitertBody"`)
+	for _, id := range []string{`id="primGridBlock"`, `id="messwerte"`, `id="expertToggle"`, `id="purgeCard"`} {
+		if at := strings.Index(page, id); at < erwAt {
+			t.Errorf("einrichten.html: %s must sit inside the Erweitert group", id)
+		}
+	}
+	// The raw "Zuletzt gelesen" line of the inverter row is Technik detail now.
+	if !strings.Contains(page, `class="row-meta row-read tech-only" id="invRead"`) {
+		t.Error(`einrichten.html: the inverter "Zuletzt gelesen" line must be Technik-gated`)
+	}
+
+	// groups.js owns the pure summaries + the auto-open rule; einrichten.js
+	// wires the rows, the deep-link reveal and the paired-hides-pairing toggle.
+	js := get("/groups.js")
+	for _, want := range []string{"VPGroups", "anlageSummary", "steuerungSummary",
+		"datenfreigabeSummary", "erweitertSummary", "shouldAutoOpen", "groupForAnchor"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("groups.js: missing %s", want)
+		}
+	}
+	ej := get("/einrichten.js")
+	for _, want := range []string{"groupForAnchor", "shouldAutoOpen", "aria-expanded",
+		"vp:mirror-state", "revealHash", "hashchange"} {
+		if !strings.Contains(ej, want) {
+			t.Errorf("einrichten.js: missing %s", want)
+		}
+	}
+	// Once paired, the pairing card leaves the normal-mode page (tech-only);
+	// while unpaired the guided flow still shows it. The mechanism is a class
+	// toggle - the server keeps withholding the reference until claim_unlocked.
+	if !strings.Contains(ej, `classList.toggle("tech-only", isTechOnly)`) {
+		t.Error("einrichten.js: the paired pairing card must recede to Technikmodus")
 	}
 }
 

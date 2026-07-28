@@ -63,6 +63,11 @@
     } else {
       errBox.hidden = true;
     }
+    // The Datenfreigabe accordion row (einrichten.js) derives its summary
+    // ("Aus" / "An · ip:port · nur Lesen") from the same object.
+    try {
+      window.dispatchEvent(new CustomEvent('vp:mirror-state', { detail: m }));
+    } catch (e) { /* older browsers: the row keeps its last summary */ }
   }
 
   async function load() {

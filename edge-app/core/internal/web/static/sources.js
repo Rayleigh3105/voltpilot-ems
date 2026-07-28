@@ -96,9 +96,10 @@
     main.appendChild(el("span", { class: "row-meta" }, meta.join(" · ")));
     // "Zuletzt gelesen": the source's last accepted value + when it was read.
     // No reading yet -> no line at all (the pill already says "Wartet auf
-    // erste Daten"); a stale one keeps showing with its honest age.
+    // erste Daten"); a stale one keeps showing with its honest age. The raw
+    // line is Technik detail - the pill carries the customer verdict.
     var line = window.VP.lastReadLine(readingParts(readings[s.id]), readAtMs(readings[s.id]), serverNowMs);
-    if (line) main.appendChild(el("span", { class: "row-meta row-read" }, line));
+    if (line) main.appendChild(el("span", { class: "row-meta row-read tech-only" }, line));
     li.appendChild(main);
 
     var badge = el("span", { class: "row-badge" });
@@ -129,17 +130,16 @@
 
     var erzUl = $("erzList"); erzUl.innerHTML = "";
     erz.forEach(function (s) { erzUl.appendChild(buildRow(s)); });
-    $("erzEmpty").hidden = erz.length > 0;
     $("erzNote").textContent = "· " + erz.length + (erz.length === 1 ? " zusätzliche Quelle" : " zusätzliche Quellen");
 
     var netzUl = $("netzList"); netzUl.innerHTML = "";
     netz.forEach(function (s) { netzUl.appendChild(buildRow(s)); });
-    $("netzEmpty").hidden = netz.length > 0;
+    // At most one grid meter per plant: the add-row disappears once one exists.
+    $("netzAdd").hidden = hasNetz;
     $("netzNote").textContent = hasNetz ? "· 1 von 1" : "· optional, max. 1";
 
     var verbUl = $("verbList"); verbUl.innerHTML = "";
     verb.forEach(function (s) { verbUl.appendChild(buildRow(s)); });
-    $("verbEmpty").hidden = verb.length > 0;
     $("verbNote").textContent = "· " + verb.length + (verb.length === 1 ? " Verbraucher" : " Verbraucher");
     renderBalance();
   }
@@ -335,7 +335,9 @@
 
   /* ---------------- drawer ---------------- */
 
-  function openDrawer() {
+  // openDrawer(role): each per-category "+ hinzufügen" row opens the drawer
+  // with ITS role preselected; the role picker stays available to change it.
+  function openDrawer(role) {
     // Reset the form and role selection each time it opens.
     $("srcLabel").value = "";
     $("srcKwp").value = "";
@@ -346,7 +348,7 @@
     $("roleNetz").disabled = hasNetz;
     $("roleNetz").classList.toggle("locked", hasNetz);
     $("netzLockedNote").hidden = !hasNetz;
-    setRole(ROLE_ERZEUGER);
+    setRole(role === ROLE_NETZ || role === ROLE_CONSUMER ? role : ROLE_ERZEUGER);
     if ($("srcBrand").options.length === 0 && catalog) populateBrands();
     else onBrandChange();
     $("srcDrawerBackdrop").hidden = false;
@@ -480,7 +482,11 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     if (!$("anlageCard")) return;
-    $("srcAddToggle").addEventListener("click", openDrawer);
+    // One "+ hinzufügen" row per category (the empty-state cards are gone);
+    // each opens the drawer with its role preselected.
+    $("erzAdd").addEventListener("click", function () { openDrawer(ROLE_ERZEUGER); });
+    $("netzAdd").addEventListener("click", function () { openDrawer(ROLE_NETZ); });
+    $("verbAdd").addEventListener("click", function () { openDrawer(ROLE_CONSUMER); });
     $("srcClose").addEventListener("click", closeDrawer);
     $("srcDrawerBackdrop").addEventListener("click", function (e) {
       if (e.target === $("srcDrawerBackdrop")) closeDrawer();
