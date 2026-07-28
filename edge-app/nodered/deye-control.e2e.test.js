@@ -185,10 +185,17 @@ async function waitFor(pred, timeoutMs = 3000) {
 
 // Build the executable Deye control plan the way controlRoute WOULD once the family
 // is bench-certified (the un-gate). Restores the allowlist in the finally.
+// The deliberate-fallback gate (2026-07-28): certified ToU writes engage only on a
+// DEFINITIVE "no remote mode" capability verdict (or remote_mode=off / a calibration
+// test) - never on a guess. These e2e tests exercise the ToU WIRE path, so they plan
+// with the definitive absent verdict (an unreadable block with no error), exactly what
+// the executor caches after a real 0x02 illegal-data-address answer.
+const TOU_E2E_CAP = controlRouting.classifyDeyeCapability({ deviceType: null, remoteBlock: null });
+
 function certifiedDeyePlan(setpoint, fn) {
   controlRouting.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
   try {
-    const plan = controlRouting.controlRoute({ ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } }, setpoint, { ratedKw: 30 });
+    const plan = controlRouting.controlRoute({ ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } }, setpoint, { ratedKw: 30, deye: TOU_E2E_CAP });
     return fn(plan);
   } finally {
     controlRouting.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
@@ -272,7 +279,7 @@ test('control_write_fc:6 flips the Deye write back to FC6 (0x06) - the escape ha
       const plan = controlRouting.controlRoute(
         { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1', control_write_fc: 6 } },
         { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
-        { ratedKw: 30 },
+        { ratedKw: 30, deye: TOU_E2E_CAP },
       );
       assert.ok(plan.writes.every((w) => w.fc === 6), 'control_write_fc:6 stamps FC6 on every WriteOp');
       plan.connection.port = port;
@@ -869,7 +876,7 @@ test('a RELEASE restores every captured register and CLEARS the snapshot (hand-b
     try {
       const sel = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1' } };
       // 1) discharge -> capture the snapshot + change the registers
-      const dis = controlRouting.controlRoute(sel, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 }, { ratedKw: 30 });
+      const dis = controlRouting.controlRoute(sel, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 }, { ratedKw: 30, deye: TOU_E2E_CAP });
       dis.connection.port = port;
       const flow = {};
       await runExec(DEYE_EXEC, { control: dis, setpoint: {} }, {}, flow);
@@ -958,7 +965,7 @@ test('N1: an UNCONFIRMED power_scale writes NOTHING to the logger (the 10x bug, 
     try {
       const base = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, ip: '127.0.0.1', power_scale: undefined } };
       const sp = { battery_setpoint_kw: -0.3, source: 'schedule', control_enabled: true, soc_min_pct: 10 };
-      const unset = controlRouting.controlRoute(base, sp, { ratedKw: 30 });
+      const unset = controlRouting.controlRoute(base, sp, { ratedKw: 30, deye: TOU_E2E_CAP });
       assert.strictEqual(unset.powerScaleConfirmed, false);
       assert.deepStrictEqual(unset.writes, [], 'plan withheld');
       unset.connection.port = port;
@@ -1532,6 +1539,152 @@ test('FAHRPLAN e2e: a STALE setpoint hands control back too (core went silent)',
     assert.strictEqual(released.control.controlEnabled, true, 'stale != switched off');
     await runExec(DEYE_EXEC, { control: released.control, setpoint: staleSp }, {}, flowStore);
     assert.strictEqual(store[0x044c], 0, 'remote mode released');
+  } finally {
+    server.close();
+  }
+});
+
+// =============================================================================
+// The 2026-07-28 live Pilsting regression, end to end: a RESTART plus degenerate
+// probe answers must never flip a certified remote pilot onto the EEPROM ToU
+// path - and the path decision is STICKY (no per-tick flap), with bounded
+// re-probing until the proven path resumes.
+// =============================================================================
+
+test('PILSTING e2e: grant-carried remote path drives the Fahrplan even while the probe answers zeros (restart moment)', async () => {
+  // The restart moment: the volatile capability cache is GONE, and the logger
+  // answers the probe with the all-zero "inverter did not answer" stub (the RS485
+  // side is busy with the reconnect burst). The NEW core carries the proven path
+  // on the setpoint (device_certified_path), so the plan node seeds the sticky
+  // decision and plans REMOTE from the very first tick - no ToU detour at all.
+  const { server, port, store, writes } = await startSolarmanServer({});
+  try {
+    const sel = pilotSelection(port);
+    const flowStore = { inverter_config: sel }; // NO cap, NO sticky - a fresh restart
+    const ctx = {};
+    const sp = fahrplanSetpoint(true, { device_certified_path: 'remote' });
+
+    const planned = runPlan({ setpoint: sp }, ctx, flowStore);
+    assert.ok(planned, 'the plan node emitted a plan');
+    assert.strictEqual(planned.control.controlPath, 'remote', 'the PROVEN path is planned, not ToU');
+    assert.ok(planned.control.writes.length > 0, 'and it is executable');
+
+    const out = await runExec(DEYE_EXEC, { control: planned.control, setpoint: sp }, {}, flowStore);
+    assert.ok(out, 'the executor published a readback');
+    assert.strictEqual(out.payload.control_path, 'remote');
+    // The probe ran, read zeros, and classified TRANSIENT - which must neither
+    // veto the proven path (interlock) nor be cached as a definitive ToU verdict.
+    const cap = flowStore['deye_cap:127.0.0.1:' + port];
+    assert.ok(cap, 'the probe ran and cached its verdict');
+    assert.strictEqual(cap.definitive, false, 'an all-zero stub is transient, never "Firmware ohne Fernsteuerung"');
+    // The remote writes LANDED (watchdog first, enable last) and NOT ONE installer
+    // EEPROM register was touched - the old behaviour wrote the full ToU set here.
+    assert.strictEqual(store[0x044c], 1, 'remote mode enabled');
+    const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+    for (const inst of [reg.energyPattern, reg.workMode, reg.solarSell, reg.maxSellPower, reg.touEnable, reg.exportLimit]) {
+      assert.strictEqual(store[inst], undefined, 'installer register 0x' + inst.toString(16) + ' untouched');
+    }
+    assert.ok(writes.every((w) => w.reg >= 0x044c && w.reg <= 0x0461), 'only remote-block registers written');
+    // The landed write recorded the proven path DURABLY - the device is now
+    // self-standing even if the core stops sending the path field.
+    const sticky = flowStore['deye_path:127.0.0.1:' + port];
+    assert.ok(sticky && sticky.path === 'remote' && sticky.everRemote === true, 'proven path persisted durably');
+  } finally {
+    server.close();
+  }
+});
+
+test('PILSTING e2e: an OLD core (no path field) HOLDS instead of ToU, bounded re-probe, remote resumes', async () => {
+  // Same restart, but the setpoint carries only device_certified (an older core).
+  // The old behaviour: plan ToU + write the full EEPROM set + fight the inverter.
+  // New: the plan is HELD (blocked, loud), the probe retries bounded (60 s), and
+  // the first successful probe decides REMOTE - which then drives the Fahrplan.
+  const { server, port, store, writes } = await startSolarmanServer({});
+  try {
+    const sel = pilotSelection(port);
+    const flowStore = { inverter_config: sel };
+    const ctx = {};
+    const sp = fahrplanSetpoint(true); // no device_certified_path
+
+    // Tick 1: the plan is the HOLD - writes:[], blocked, the honest reason.
+    const p1 = runPlan({ setpoint: sp }, ctx, flowStore);
+    assert.ok(p1, 'a (blocked) plan is still emitted for visibility');
+    assert.strictEqual(p1.control.blocked, true);
+    assert.strictEqual(p1.control.pathHold, 'unconfirmed');
+    assert.strictEqual(p1.control.writes.length, 0, 'NOTHING is written on an unconfirmed path');
+    // Executor tick 1: the probe runs (zeros -> transient), nothing on the wire.
+    await runExec(DEYE_EXEC, { control: p1.control, setpoint: sp }, {}, flowStore);
+    assert.deepStrictEqual(writes, [], 'not one register written while the path is unconfirmed');
+    const capKey = 'deye_cap:127.0.0.1:' + port;
+    assert.strictEqual(flowStore[capKey].definitive, false, 'transient verdict cached');
+    assert.strictEqual(flowStore['deye_path:127.0.0.1:' + port], undefined, 'no path decided from a failure');
+
+    // Executor tick 2 (verdict still fresh): the blocked plan surfaces its reason -
+    // the stable "one truth" the card renders - and still writes nothing.
+    const p2 = runPlan({ setpoint: sp }, ctx, flowStore);
+    const out2 = await runExec(DEYE_EXEC, { control: p2.control, setpoint: sp }, {}, flowStore);
+    assert.ok(out2, 'a blocked readback is published (never silent)');
+    assert.strictEqual(out2.payload.blocked, true);
+    assert.match(out2.payload.reason, /Steuerpfad noch unbestätigt/);
+    assert.deepStrictEqual(writes, []);
+
+    // The device becomes reachable; the 60 s retry window elapses.
+    Object.assign(store, remoteCapableStore());
+    flowStore[capKey] = Object.assign({}, flowStore[capKey], { at: Date.now() - 61 * 1000 });
+
+    // Tick 3: plan still held; the probe now SUCCEEDS -> the sticky decision is
+    // REMOTE; the interlock skips this tick (the held plan assumed 'tou').
+    const p3 = runPlan({ setpoint: sp }, ctx, flowStore);
+    const out3 = await runExec(DEYE_EXEC, { control: p3.control, setpoint: sp }, {}, flowStore);
+    assert.strictEqual(out3, null, 'the path-change tick writes nothing (interlock)');
+    const sticky = flowStore['deye_path:127.0.0.1:' + port];
+    assert.ok(sticky && sticky.path === 'remote' && sticky.everRemote === true, 'remote decided + persisted');
+    assert.deepStrictEqual(writes, [], 'still nothing written before the re-plan');
+
+    // Tick 4: the plan node reads the durable decision -> the REMOTE Fahrplan runs.
+    const p4 = runPlan({ setpoint: sp }, ctx, flowStore);
+    assert.strictEqual(p4.control.controlPath, 'remote', 'recovered to the remote path');
+    const out4 = await runExec(DEYE_EXEC, { control: p4.control, setpoint: sp }, {}, flowStore);
+    assert.ok(out4 && out4.payload.registers.every((r) => r.match), 'remote writes landed + confirmed');
+    assert.strictEqual(store[0x044c], 1, 'remote mode enabled');
+    const reg = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+    for (const inst of [reg.energyPattern, reg.workMode, reg.solarSell, reg.maxSellPower, reg.touEnable, reg.exportLimit]) {
+      assert.strictEqual(store[inst], undefined, 'the ToU/installer registers were NEVER touched');
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('PILSTING e2e: the decided path is STICKY - one contrary definitive verdict never flaps it', async () => {
+  // The flap symptom: the card alternated "bestätigt" -> "Steuerung kann nicht
+  // ausgeführt werden" -> "VoltPilot steuert die Anlage" every ~10 s tick because
+  // the path followed each raw probe result. With the hysteresis (N=3) a single
+  // contrary verdict - here a genuine 0x02 exception on the remote block - only
+  // counts; the plan keeps the decided remote path and keeps driving.
+  const { server, port, store } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const sel = pilotSelection(port);
+    const sticky = { path: 'remote', since: 1, contrary: 0, everRemote: true, verdict: ownerCapability(), verdictAt: 1 };
+    const flowStore = { inverter_config: sel, ['deye_path:127.0.0.1:' + port]: sticky };
+    const ctx = {};
+    const sp = fahrplanSetpoint(true);
+
+    // A REAL contrary verdict arrives (e.g. a firmware update removed the block):
+    // the volatile cache now holds a definitive tou verdict. The hysteresis maths
+    // (contrary counting, N=3 flip) is unit-tested via deyeUpdateSticky; what
+    // matters ON THE WIRE is that the plan node keeps planning the decided remote
+    // path while the raw verdict disagrees - no per-tick alternation.
+    flowStore['deye_cap:127.0.0.1:' + port] = Object.assign(
+      {}, controlRouting.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: null, error: 'Modbus-Ausnahme 0x02: unzulaessige Datenadresse (illegal data address)', definitive: true }),
+      { at: Date.now() },
+    );
+    const p = runPlan({ setpoint: sp }, ctx, flowStore);
+    assert.strictEqual(p.control.controlPath, 'remote', 'the sticky decision beats the raw contrary verdict');
+    assert.ok(p.control.writes.length > 0, 'and keeps driving - no per-tick flap');
+    const out = await runExec(DEYE_EXEC, { control: p.control, setpoint: sp }, {}, flowStore);
+    assert.ok(out && out.payload.registers.every((r) => r.match), 'the remote write landed');
+    assert.strictEqual(store[0x044c], 1);
   } finally {
     server.close();
   }
