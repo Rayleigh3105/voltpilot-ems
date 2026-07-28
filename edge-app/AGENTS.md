@@ -390,10 +390,32 @@ up, one job on one page). There is no third page: `inverter.html` and
   `static/commissioning.js` `VPCommissioning.derive(state, sourceCount, nowMs)`
   applies the same rule to the four guided steps. Adding a new verdict means
   adding its cause.
+- **Einrichten is FOUR accordion groups** (rework `data/vp-einrichten-rework/
+  concept.html`, 2026-07-28): ① Anlage ② Steuerung ③ Datenfreigabe ④ Erweitert,
+  each ONE `<button class="acc-head">` row (dot + title + summary,
+  aria-expanded/-controls). THE rule: big what needs an action, one line for
+  what is finished, folded away what is rare. NO accordion memory - healthy =
+  all closed every visit; a group with a NEW non-OK state opens itself and
+  nothing auto-closes (pure layer `static/groups.js` `VPGroups`: the four
+  summaries + `shouldAutoOpen(prevKey, key)` + `groupForAnchor` - the legacy
+  anchors `#wechselrichter`/`#quellen`/`#messwerte`/`#datenfreigabe`/… open
+  their group via `revealHash` in einrichten.js, so the retired-page redirects
+  keep landing). The register evidence table lives ONLY on Betrieb under
+  Technikmodus (the calibration card links to `index.html#controlCard` via
+  `#calRegisterLink` while armed/running); empty source categories are
+  per-category "+ hinzufügen" rows (`erzAdd`/`netzAdd`/`verbAdd`, role
+  preselected in the drawer - the global add CTA is gone); the Netzmessung
+  expert exception lives in ④ Erweitert. Page-wide warning rule: ONE message,
+  once, in its owning group, with the stable "seit HH:MM" stamp
+  (control.js `trackStateSince`); the group row carries only the dot.
 - **The guided commissioning flow** (Einrichten, four steps ending at "Daten
   kommen an"; releasing CONTROL is deliberately its OWN block below it) is
   DERIVED from the existing APIs - no new endpoint, no persisted wizard
-  progress. It recedes to one green line once all four are done.
+  progress. Once all four are done it DISAPPEARS entirely (no green banner -
+  Betrieb's status hero is the single health voice) and returns only when a
+  step regresses. The Portal-Kopplung card follows the pairing itself: visible
+  while unpaired, `.tech-only` once paired (the reference then lives in the
+  Technikmodus identity block, next to the version).
 - **Design tokens are a COPY.** `static/tokens.css` duplicates
   `frontend/portal/designsystem/tokens/*` + the portal's `--vp-flow-*` hues
   because the edge has no build step and cannot import from the portal bundle -

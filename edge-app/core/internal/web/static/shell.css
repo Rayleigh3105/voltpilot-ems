@@ -181,7 +181,10 @@ html:not(.tech-on) .tech-only { display: none !important; }
 }
 .tech-kv { display: grid; gap: 4px; }
 .tech-kv > div { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
-.tech-kv b { font-weight: var(--vp-weight-semibold); color: var(--tech-deep); }
+.tech-kv b { font-weight: var(--vp-weight-semibold); color: var(--tech-deep); flex: 0 0 auto; }
+/* Long values (UUIDs, hosts) wrap inside their own cell instead of colliding
+   with the label on a phone. */
+.tech-kv span { min-width: 0; overflow-wrap: anywhere; text-align: right; }
 
 /* ---------------- Status hero (the plain-German headline) ----------------
    The load-bearing rule of this page: what is hidden must never hide a CAUSE.
