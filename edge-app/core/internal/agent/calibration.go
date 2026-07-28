@@ -57,6 +57,50 @@ func (a *Agent) controlCertified(family string) bool {
 	return a.calCert[strings.ToLower(strings.TrimSpace(family))]
 }
 
+// certifiedControlPath returns the control surface the family's First-Light grant
+// was proven on ("remote"/"tou"), or "" when unknown (env-allowlisted family, or a
+// pre-path grant that has not been backfilled yet). Published on edge/setpoint as
+// device_certified_path so Layer 1's sticky path decision can seed from it.
+func (a *Agent) certifiedControlPath(family string) string {
+	a.calMu.Lock()
+	defer a.calMu.Unlock()
+	return a.calPath[strings.ToLower(strings.TrimSpace(family))]
+}
+
+// backfillCertifiedControlPath records the driving path ONCE for a family that
+// already carries a device grant but no recorded path (a grant certified before
+// the path field existed - the live Pilsting pilot). Called from onControlReadback
+// with a NORMAL (non-release, non-blocked) readback's control_path: the device is
+// demonstrably being driven on that surface under its grant, which is exactly the
+// fact the record captures. Never overwrites an existing path (only certify does).
+func (a *Agent) backfillCertifiedControlPath(family, path string) {
+	if path != "remote" && path != "tou" {
+		return
+	}
+	fam := strings.ToLower(strings.TrimSpace(family))
+	if fam == "" {
+		return
+	}
+	a.calMu.Lock()
+	_, has := a.calPath[fam]
+	granted := a.calCert[fam]
+	if !granted || has {
+		a.calMu.Unlock()
+		return
+	}
+	a.calPath[fam] = path
+	a.calMu.Unlock()
+	if err := a.persistCalibrationCert(); err != nil {
+		// Undo so a later readback retries the backfill (memory matches disk).
+		a.calMu.Lock()
+		delete(a.calPath, fam)
+		a.calMu.Unlock()
+		slog.Warn("could not persist the certified control path backfill; will retry", "err", err)
+		return
+	}
+	slog.Info("First-Light: recorded the PROVEN control path for an existing grant", "family", fam, "path", path)
+}
+
 // currentFamily is the selected register-map family ("" = none selected).
 func (a *Agent) currentFamily() string {
 	a.invMu.Lock()
@@ -138,6 +182,13 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		// The ceiling half of the guard band (see applySetpoint): the Deye remote-mode
 		// adapter arms the inverter's own SoC belt with it on a charge test.
 		"soc_max_pct": a.Cfg.SocMaxPct,
+	}
+	// The grant's proven path rides the calibration setpoint too (same field as
+	// applySetpoint), so a released device's re-test keeps the sticky decision seeded.
+	if certified {
+		if p := a.certifiedControlPath(family); p != "" {
+			msg["device_certified_path"] = p
+		}
 	}
 	// The curtailment block rides the calibration setpoint too, so a battery
 	// First-Light test never blanks the Fronius caps (the flow would otherwise
@@ -394,6 +445,7 @@ func (a *Agent) CalibrationCorrection(invertSign *bool, powerScale *float64, inv
 	a.cal.ResetConfirmations()
 	decertified := a.calCert[family]
 	delete(a.calCert, family)
+	delete(a.calPath, family)
 	a.calMu.Unlock()
 	if decertified {
 		if err := a.persistCalibrationCert(); err != nil {
@@ -421,8 +473,18 @@ func (a *Agent) CalibrationCertify() (calibration.Snapshot, error) {
 	a.calMu.Lock()
 	passed := a.cal.Passed()
 	canCertify := a.cal.CanCertify() // Passed() AND the current test's write read back a match
+	certPath := ""
 	if canCertify {
 		a.calCert[family] = true
+		// The grant carries the path its EVIDENCE was produced on (the calibration
+		// readback's control_path): "remote" seeds Layer 1's sticky path decision so
+		// the proven surface survives restarts and degenerate probe answers, and a
+		// remote-proven device never silently swaps to EEPROM ToU control. An empty
+		// path (older Layer 1 readback) records nothing - compat, never a guess.
+		if p := a.cal.LastControlPath(); p == "remote" || p == "tou" {
+			a.calPath[family] = p
+			certPath = p
+		}
 	}
 	a.calMu.Unlock()
 	if !canCertify {
@@ -437,10 +499,11 @@ func (a *Agent) CalibrationCertify() (calibration.Snapshot, error) {
 		// otherwise silently drop it and mislead the operator).
 		a.calMu.Lock()
 		delete(a.calCert, family)
+		delete(a.calPath, family)
 		a.calMu.Unlock()
 		return a.calibrationSnapshot(now), calErr("Die Freigabe konnte nicht gespeichert werden.")
 	}
-	slog.Warn("First-Light: inverter control CERTIFIED for this device via calibration", "family", family)
+	slog.Warn("First-Light: inverter control CERTIFIED for this device via calibration", "family", family, "path", certPath)
 	a.nudgeSetpoint() // control_enabled now flips true for the optimizer/arbiter path
 	return a.calibrationSnapshot(now), nil
 }
@@ -463,17 +526,22 @@ func (a *Agent) CalibrationDecertify() (calibration.Snapshot, error) {
 	}
 	a.calMu.Lock()
 	was := a.calCert[family]
+	wasPath := a.calPath[family]
 	delete(a.calCert, family)
+	delete(a.calPath, family)
 	a.calMu.Unlock()
 	if was {
 		if err := a.persistCalibrationCert(); err != nil {
 			// Roll back so memory matches disk (a restart would otherwise re-certify).
 			a.calMu.Lock()
 			a.calCert[family] = true
+			if wasPath != "" {
+				a.calPath[family] = wasPath
+			}
 			a.calMu.Unlock()
 			return a.calibrationSnapshot(now), calErr("Die Freigabe konnte nicht zurückgenommen werden.")
 		}
-		slog.Warn("First-Light: inverter control DECERTIFIED for this device (Freigabe zurückgenommen)", "family", family)
+		slog.Warn("First-Light: inverter control DECERTIFIED for this device (Freigabe zurückgenommen)", "family", family, "was_path", wasPath)
 	}
 	a.nudgeSetpoint() // control_certified now flips false -> the family is read-only again
 	return a.calibrationSnapshot(now), nil
@@ -508,9 +576,18 @@ func (a *Agent) calibrationPreflight() error {
 // driving the battery the moment the socket-coordination fix makes writes land.
 const calibrationCertVersion = 1
 
+// Paths is ADDITIVE (no version bump - bumping would invalidate the live pilot's
+// evidence-gated grant, see the version comment above): per granted family, the
+// control surface the First-Light evidence was produced on ("remote"/"tou").
+// Recorded at certify time from the calibration readback's control_path, and
+// backfilled ONCE for a pre-path grant when a normal certified readback names the
+// driving path (onControlReadback). Published as device_certified_path on
+// edge/setpoint so Layer 1's sticky path decision survives restarts + probe
+// failures. An older core reading a newer file simply ignores the field.
 type calibrationCertFile struct {
-	Version  int      `json:"version"`
-	Families []string `json:"families"`
+	Version  int               `json:"version"`
+	Families []string          `json:"families"`
+	Paths    map[string]string `json:"paths,omitempty"`
 }
 
 func (a *Agent) calibrationCertPath() string {
@@ -555,9 +632,17 @@ func (a *Agent) loadCalibrationCert() {
 			a.calCert[fam] = true
 		}
 	}
+	// The proven control path travels with its grant: only paths of GRANTED
+	// families are applied (a stray path without a grant carries no meaning).
+	for fam, p := range f.Paths {
+		fam = strings.ToLower(strings.TrimSpace(fam))
+		if a.calCert[fam] && (p == "remote" || p == "tou") {
+			a.calPath[fam] = p
+		}
+	}
 	a.calMu.Unlock()
 	if len(f.Families) > 0 {
-		slog.Info("First-Light: restored per-device control certification", "families", f.Families)
+		slog.Info("First-Light: restored per-device control certification", "families", f.Families, "paths", f.Paths)
 	}
 }
 
@@ -571,9 +656,18 @@ func (a *Agent) persistCalibrationCert() error {
 			fams = append(fams, fam)
 		}
 	}
+	var paths map[string]string
+	for fam, p := range a.calPath {
+		if a.calCert[fam] && p != "" {
+			if paths == nil {
+				paths = map[string]string{}
+			}
+			paths[fam] = p
+		}
+	}
 	a.calMu.Unlock()
 	sort.Strings(fams)
-	raw, err := json.MarshalIndent(calibrationCertFile{Version: calibrationCertVersion, Families: fams}, "", "  ")
+	raw, err := json.MarshalIndent(calibrationCertFile{Version: calibrationCertVersion, Families: fams, Paths: paths}, "", "  ")
 	if err != nil {
 		return err
 	}

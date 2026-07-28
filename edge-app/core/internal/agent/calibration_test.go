@@ -43,9 +43,11 @@ func proveCalibration(t *testing.T, a *Agent) {
 	}
 
 	// The calibration write reads back a FULL match -> the landed-write evidence.
+	// control_path "remote" mirrors the live pilot: the certify hand-off records it
+	// with the grant (device_certified_path - the sticky-path seed).
 	rb, _ := json.Marshal(map[string]any{
 		"ts": now.Format(time.RFC3339), "family": "hybrid_3p", "source": "calibration",
-		"mode": "normal", "all_match": true,
+		"mode": "normal", "all_match": true, "control_path": "remote",
 		"registers": []map[string]any{{"role": "battery_power", "match": true}},
 	})
 	a.onControlReadback("", rb)
@@ -500,5 +502,152 @@ func TestCalibrationSnapshotAvailability(t *testing.T) {
 	}
 	if snap.MaxKw != 1.0 || snap.TtlSeconds != 30 || snap.Family != "hybrid_3p" {
 		t.Fatalf("snapshot envelope: %+v", snap)
+	}
+}
+
+// The certified control PATH travels with the grant (the sticky-path fix, live
+// Pilsting regression 2026-07-28): certify records the surface the First-Light
+// evidence was produced on, persists it in calibration-certified.json (ADDITIVE -
+// no version bump, the live grant must survive the deploy), publishes it as
+// device_certified_path on edge/setpoint, and it survives a restart. Decertify
+// revokes it together with the grant.
+func TestCertifiedControlPathIsRecordedPersistedAndPublished(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	a, addr := startBusOnlyAgent(t, cfg)
+	selectDeye(t, a)
+	sub := subscribeSetpoint(t, addr)
+
+	// proveCalibration's readback carries control_path "remote" (the live pilot).
+	proveCalibration(t, a)
+	if _, err := a.CalibrationCertify(); err != nil {
+		t.Fatalf("certify: %v", err)
+	}
+	if got := a.certifiedControlPath("hybrid_3p"); got != "remote" {
+		t.Fatalf("certify must record the proven path, got %q", got)
+	}
+	// Persisted additively: same version, families untouched, paths added.
+	raw, err := os.ReadFile(filepath.Join(dir, "calibration-certified.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Version  int               `json:"version"`
+		Families []string          `json:"families"`
+		Paths    map[string]string `json:"paths"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Version != 1 || len(f.Families) != 1 || f.Families[0] != "hybrid_3p" {
+		t.Fatalf("grant file must stay version 1 with the family: %+v", f)
+	}
+	if f.Paths["hybrid_3p"] != "remote" {
+		t.Fatalf("the proven path must be persisted with the grant: %+v", f)
+	}
+
+	// Published on the normal (schedule) setpoint so Layer 1 seeds its decision.
+	a.CalibrationAbort()
+	now := time.Now().UTC().Add(calibration.RevertGrace + 2*time.Minute)
+	a.mu.Lock()
+	a.currentPlan = freshPlan(now, -5, nil)
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 2, LoadKw: 3, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now)
+	waitFor(t, 5*time.Second, "setpoint carries device_certified_path", func() bool {
+		m, ok := sub.latest()
+		return ok && m["source"] == "schedule" && m["device_certified"] == true && m["device_certified_path"] == "remote"
+	})
+
+	// Survives a restart on the same data dir.
+	a2, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := a2.certifiedControlPath("hybrid_3p"); got != "remote" {
+		t.Fatalf("the proven path must survive a restart, got %q", got)
+	}
+
+	// Decertify revokes the path together with the grant.
+	if _, err := a.CalibrationDecertify(); err != nil {
+		t.Fatalf("decertify: %v", err)
+	}
+	if got := a.certifiedControlPath("hybrid_3p"); got != "" {
+		t.Fatalf("decertify must revoke the path, got %q", got)
+	}
+	raw, _ = os.ReadFile(filepath.Join(dir, "calibration-certified.json"))
+	f.Families, f.Paths = nil, nil // Unmarshal merges into existing maps - reset first
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.Paths) != 0 {
+		t.Fatalf("no grant -> no persisted path: %+v", f)
+	}
+}
+
+// A grant certified BEFORE the path field existed (the live pilot's on-disk state
+// at deploy time) is backfilled ONCE from a normal driving readback - and only
+// from one: a release, a blocked plan or a calibration test never backfills.
+func TestCertifiedControlPathBackfillsOnceFromANormalDrivingReadback(t *testing.T) {
+	dir := t.TempDir()
+	// The pilot's pre-deploy grant file: version 1, family granted, NO paths.
+	pre, _ := json.Marshal(map[string]any{"version": 1, "families": []string{"hybrid_3p"}})
+	if err := os.WriteFile(filepath.Join(dir, "calibration-certified.json"), pre, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Defaults()
+	cfg.DataDir = dir
+	a, _ := startBusOnlyAgent(t, cfg)
+	selectDeye(t, a)
+	if !a.controlCertified("hybrid_3p") {
+		t.Fatal("precondition: the pre-path grant loads")
+	}
+	if got := a.certifiedControlPath("hybrid_3p"); got != "" {
+		t.Fatalf("precondition: no path recorded yet, got %q", got)
+	}
+
+	rb := func(over map[string]any) []byte {
+		m := map[string]any{
+			"ts": time.Now().UTC().Format(time.RFC3339), "family": "hybrid_3p",
+			"source": "schedule", "mode": "normal", "all_match": true, "control_path": "remote",
+			"registers": []map[string]any{{"role": "battery_power", "match": true}},
+		}
+		for k, v := range over {
+			m[k] = v
+		}
+		raw, _ := json.Marshal(m)
+		return raw
+	}
+	// None of these may backfill: a release, a blocked plan, a calibration test,
+	// a readback without a path.
+	a.onControlReadback("", rb(map[string]any{"mode": "release"}))
+	a.onControlReadback("", rb(map[string]any{"blocked": true, "reason": "x", "registers": []map[string]any{}}))
+	a.onControlReadback("", rb(map[string]any{"source": "calibration"}))
+	a.onControlReadback("", rb(map[string]any{"control_path": ""}))
+	if got := a.certifiedControlPath("hybrid_3p"); got != "" {
+		t.Fatalf("no backfill from release/blocked/calibration/pathless readbacks, got %q", got)
+	}
+
+	// A NORMAL driving readback backfills once + persists.
+	a.onControlReadback("", rb(nil))
+	if got := a.certifiedControlPath("hybrid_3p"); got != "remote" {
+		t.Fatalf("backfill must record the driving path, got %q", got)
+	}
+	var f struct {
+		Paths map[string]string `json:"paths"`
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "calibration-certified.json"))
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Paths["hybrid_3p"] != "remote" {
+		t.Fatalf("the backfilled path must be persisted: %+v", f)
+	}
+	// Never overwritten by a later readback naming a different path (only certify
+	// or a re-certification changes a recorded path).
+	a.onControlReadback("", rb(map[string]any{"control_path": "tou"}))
+	if got := a.certifiedControlPath("hybrid_3p"); got != "remote" {
+		t.Fatalf("backfill is once-only, got %q", got)
 	}
 }

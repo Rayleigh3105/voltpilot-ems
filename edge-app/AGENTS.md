@@ -680,18 +680,47 @@ external-EMS interface, and it supersedes the Time-of-Use hack (scout
 owner's SUN-30K-SG01HP3-EU** (live read-only probe 2026-07-27): `1101=0xFFFF`,
 `1104=0`, `1105=2` → the PR #978 layout, setpoint at **1109**.
 
-- **Two paths, DETECTED not assumed.** `inverter-control-routing.js`
+- **Two paths, DETECTED not assumed - and the decision is STICKY (live regression
+  Pilsting 2026-07-28, PR fm/vp-remote-probe-d4).** `inverter-control-routing.js`
   `deyeCapabilityProbeSpec` (two FC3 READS: the LV/HV identity register `0x0000`
   + the block `0x044C..0x0461`) and `classifyDeyeCapability` decide; the
-  EXECUTOR performs the probe, caches the verdict per logger in the VOLATILE
-  flow context (`deyeCapabilityKey`, 6 h / 15 min on a transport error, so a
-  restart re-checks) and the PLAN node reads it back. A Deye firmware update has
-  removed remote mode from a user's inverter before and a later one restored it.
-  Absent / all-zero / Modbus exception / the older V105.1 AC-side layout all fall
-  back to the ToU path; `connection.remote_mode = 'off'` forces it.
+  EXECUTOR performs the probe and the PLAN node reads the result back. A Deye
+  firmware update has removed remote mode from a user's inverter before and a
+  later one restored it. THE RESTART REGRESSION taught three laws:
+  (1) **Evidence classes.** The shape check accepts a ONCE-DRIVEN register state
+  (`1101 = 60`, our own watchdog value, is a plausible watchdog - the factory
+  `0xFFFF` is not required). DEFINITIVE "absent" = a remote-less firmware's own
+  register values, the v105_1 layout, or the request-indicting Modbus exceptions
+  0x01/0x02/0x03 (`deyeProbeErrorDefinitive`). TRANSIENT (60 s retry, NEVER a
+  path change) = the ALL-ZERO logger stub ("inverter did not answer", the
+  soc_pct=0 class), the gateway exceptions 0x0A/0x0B, and transport errors -
+  the old code cached a restart-window stub as the definitive "Firmware ohne
+  Fernsteuerung" for 6 h and the certified pilot silently swapped to EEPROM
+  ToU writes that fought the inverter (max_sell_power 0 vs installer 7182).
+  (2) **The path is decided ONCE and kept durably** (`deye_path:<target>` in the
+  'file' flow context, `deyeUpdateSticky`): it flips only after
+  `DEYE_PATH_CONTRARY_N = 3` consecutive DEFINITIVE contrary verdicts or an
+  operator action (`remote_mode = 'off'`), never per probe tick - the fix for
+  the per-tick card flap. A landed remote write records `everRemote` durably;
+  the core seeds the decision via `device_certified_path` on edge/setpoint (the
+  grant carries the path its First-Light evidence was produced on,
+  `calibration-certified.json` `paths` - ADDITIVE, no version bump).
+  (3) **Certified ToU only engages DELIBERATELY** (the gate in `deyeControl`):
+  a definitive verdict, `remote_mode='off'`, or a calibration test - never a
+  failed probe; and a remote-proven device (everRemote / grant path) NEVER
+  auto-engages ToU, it holds off loudly (`pathHold: 'remote_proven'|'unconfirmed'`,
+  blocked + reason) until remote answers again. Only ever narrows - uncertified
+  devices and every gate are untouched. An IDLE (0 kW) ToU slot restores
+  max_sell_power from the snapshot instead of commanding 0 (the live fight).
+  Proofs: the sticky/hold/idle units in `inverter-control-routing.test.js`, the
+  three PILSTING e2e tests in `deye-control.e2e.test.js` (plan node -> executor
+  -> in-process logger: grant-path drives through a zeros-probe restart; old-core
+  hold -> bounded retry -> remote resumes; one contrary verdict never flaps),
+  and the sticky flows-sync pins.
 - **The path INTERLOCK is the "never write into the void" rule:** the plan is
-  built from whatever capability the plan node saw, so if the probe just changed
-  the answer the executor writes NOTHING that tick and lets the next one re-plan.
+  built from whatever DECISION the plan node saw, so if the probe just changed
+  the decided path the executor writes NOTHING that tick and lets the next one
+  re-plan (the comparison is against the sticky decision, not the raw verdict).
 - **The write order is load-bearing:** `1101` watchdog FIRST (arm the dead-man's
   switch before anything can move) → `1104=1` BATTERY-side (AC-/grid-side
   throttles PV) → `1105` strategy (DEFAULT **2** = Power; **5** = Power+SOC only

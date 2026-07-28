@@ -575,6 +575,63 @@ test('flow control planner withholds the ToU plan when the HV/LV scale is unknow
   assert.strictEqual(msg.control.powerScaleSuppressed, true);
 });
 
+// --- the STICKY path decision in the plan node (live regression 2026-07-28) --
+//
+// The plan node reads the DURABLE per-logger decision record ('file' store, key
+// deye_path:<target>) and seeds it from the core's First-Light grant path - so a
+// certified remote pilot plans its PROVEN path from the first post-restart tick
+// and a raw contrary/failed probe verdict can never flap the executing path.
+
+test('flow control planner reads the durable sticky decision and plans the decided path', () => {
+  const sticky = { path: 'remote', since: 1, contrary: 0, everRemote: true, verdict: ownerCap(), verdictAt: 1 };
+  const pathKey = 'deye_path:192.168.254.210:8899';
+  // the volatile cache holds a CONTRARY definitive verdict (inside the hysteresis
+  // window) - the decided path must win, byte-identical to the module.
+  const contrary = controlRouting.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: new Array(22).fill(0).map((_, i) => (i === 0 ? 0x0500 : 0)) });
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  const sp = { battery_setpoint_kw: -1, source: 'schedule', ts: new Date().toISOString(), control_enabled: true, device_certified: true, soc_min_pct: 20 };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp }, flow: { inverter_config: REMOTE_DEYE_SEL, [capKey]: contrary, [pathKey]: sticky }, context: {},
+  });
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+    controlRouting.controlRoute(REMOTE_DEYE_SEL, sp, { ratedKw: 30, deye: contrary, deyeSticky: sticky }),
+  )), 'inline == module with the sticky decision threaded');
+  assert.strictEqual(msg.control.controlPath, 'remote', 'the decided path wins over the raw contrary verdict');
+  assert.ok(msg.control.writes.length > 0, 'and keeps driving');
+});
+
+test('flow control planner seeds the sticky decision from the core grant path (fresh volume)', () => {
+  // NO durable record, NO volatile cap (a fresh restart) - the setpoint's
+  // device_certified_path seeds the decision, so the plan is REMOTE immediately.
+  const sp = { battery_setpoint_kw: -1, source: 'schedule', ts: new Date().toISOString(), control_enabled: true, device_certified: true, device_certified_path: 'remote', soc_min_pct: 20 };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp }, flow: { inverter_config: REMOTE_DEYE_SEL }, context: {},
+  });
+  const seeded = controlRouting.deyeSeedStickyFromGrant(sp, Date.now());
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+    controlRouting.controlRoute(REMOTE_DEYE_SEL, sp, { ratedKw: 30, deyeSticky: seeded }),
+  )), 'inline == module with the grant-seeded decision');
+  assert.strictEqual(msg.control.controlPath, 'remote');
+  assert.ok(msg.control.writes.length > 0, 'the proven path is executable from tick one');
+});
+
+test('flow control planner HOLDS a certified ToU plan while the path is unconfirmed', () => {
+  // Certified (grant) but NO decision, NO verdict: the deliberate-fallback gate
+  // withholds the EEPROM ToU writes with the loud blocked reason - never a guess.
+  const sel = { schema_version: '1.0', brand: 'deye', family: 'hybrid_3p', communication: 'solarman_v5', control_tier: 3,
+    connection: { ip: '192.168.0.28', port: 8899, serial: '2985159064', mb_slave_id: 1, power_scale: 1 } };
+  const sp = { battery_setpoint_kw: -20, source: 'schedule', ts: new Date().toISOString(), control_enabled: true, device_certified: true };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp }, flow: { inverter_config: sel }, context: {},
+  });
+  assert.deepStrictEqual(msg.control, JSON.parse(JSON.stringify(
+    controlRouting.controlRoute(sel, sp, { snapshot: undefined }),
+  )), 'inline == module for the unconfirmed hold');
+  assert.strictEqual(msg.control.blocked, true);
+  assert.strictEqual(msg.control.pathHold, 'unconfirmed');
+  assert.strictEqual(msg.control.writes.length, 0);
+});
+
 test('flow control planner matches the remote controlRelease() on a kill-off', () => {
   const cap = ownerCap();
   const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);

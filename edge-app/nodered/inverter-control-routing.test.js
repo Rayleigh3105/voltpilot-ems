@@ -42,6 +42,14 @@ function ownersRemoteBlock(over = {}) {
 }
 // deviceType 0x0008 = ha-solarman "HV 3-Phase Inverter 20-50kw" -> power scale 10.
 const OWNER_CAP = C.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: ownersRemoteBlock() });
+// A DEFINITIVE "no remote mode" verdict (the Akkudoktor LV absent signature: 1100
+// reads the device's own 0x0500, out of the 0..3 mode range). Since the deliberate-
+// fallback gate, a CERTIFIED device's ToU writes engage only on such a definitive
+// verdict (or remote_mode='off' / a calibration test) - never on a failed probe.
+const TOU_CAP = C.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: ownersRemoteBlock({ 1100: 0x0500, 1101: 0x0500 }) });
+// The same definitive-absent verdict WITHOUT a scale class (unreadable block, no
+// error): for tests that pin the N1 unknown-scale refusal on a certified device.
+const TOU_CAP_NOSCALE = C.classifyDeyeCapability({ deviceType: null, remoteBlock: null });
 // A remote-capable Deye selection: same device, no explicit power_scale (the remote
 // path derives its scaling from RATED POWER and never touches power_scale).
 const DEYE_REMOTE_SEL = {
@@ -190,23 +198,25 @@ test('un-gate: Deye writes/readbacks are gated ONLY by the certification allowli
   assert.ok(off.planned.length >= 5, 'the real ToU plan is always in planned[]');
   // Certifying the family (a bench pass) is the ONLY thing that turns writes on -
   // NO code change. This IS the un-gate. Restored immediately so the production
-  // default stays read-only.
+  // default stays read-only. The DELIBERATE-fallback gate additionally requires a
+  // definitive "no remote mode" capability verdict before certified ToU writes
+  // engage (deye: TOU_CAP) - a certified device never EEPROM-writes on a guess.
   C.CERTIFIED_CONTROL_FAMILIES.add('hybrid_3p');
   try {
-    const on = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+    const on = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: TOU_CAP });
     assert.strictEqual(on.certified, true);
     assert.strictEqual(on.writes.length, off.planned.length, 'writes == the planned ToU ops');
     assert.strictEqual(on.readbacks.length, on.writes.length, 'a readback per written register');
     assert.ok(on.writes.every((w) => w.bench_pending === undefined), 'executable writes are not bench_pending markers');
     // The kill-switch still gates independently: certified but control_enabled=false
     // writes NOTHING (two-gate discipline, identical to sunspecControl).
-    const killed = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: false }, { ratedKw: 30 });
+    const killed = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: false }, { ratedKw: 30, deye: TOU_CAP });
     assert.deepStrictEqual(killed.writes, [], 'certified + kill-switch off -> still no writes');
     assert.deepStrictEqual(killed.readbacks, []);
   } finally {
     C.CERTIFIED_CONTROL_FAMILIES.delete('hybrid_3p');
   }
-  assert.deepStrictEqual(C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 }).writes, [], 'production default is read-only again');
+  assert.deepStrictEqual(C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: TOU_CAP }).writes, [], 'production default is read-only again');
 });
 
 test('First-Light calibration bypasses ONLY the certification gate (never the kill-switch)', () => {
@@ -307,22 +317,24 @@ test('controlRelease controlEnabled does not gate the release writes', () => {
 
 test('device grant: a released Deye executes the FAHRPLAN write plan (the blocker)', () => {
   // The exact live shape: a normal (NON-calibration) schedule setpoint on the
-  // pilot family, with the runtime grant the core earned via First-Light.
+  // pilot family, with the runtime grant the core earned via First-Light. The ToU
+  // path additionally needs the definitive "no remote mode" verdict (TOU_CAP) -
+  // the deliberate-fallback gate never EEPROM-writes a certified device on a guess.
   const sp = { battery_setpoint_kw: -20, source: 'schedule', slot_start: '2026-07-27T19:45:00Z', control_enabled: true, device_certified: true };
 
   // (a) Without the grant this is byte-for-byte the old read-only behaviour.
-  const noGrant = C.controlRoute(DEYE_SEL, { ...sp, device_certified: false }, { ratedKw: 30 });
+  const noGrant = C.controlRoute(DEYE_SEL, { ...sp, device_certified: false }, { ratedKw: 30, deye: TOU_CAP });
   assert.deepStrictEqual(noGrant.writes, [], 'no grant -> no writes (unchanged)');
   assert.deepStrictEqual(noGrant.readbacks, []);
   assert.strictEqual(noGrant.certified, false);
   assert.match(noGrant.reason, /noch nicht freigegeben/);
   // An ABSENT field must behave identically (backward compatibility: an older core).
-  const absent = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true }, { ratedKw: 30 });
+  const absent = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true }, { ratedKw: 30, deye: TOU_CAP });
   assert.deepStrictEqual(absent.writes, [], 'absent device_certified == no grant');
 
   // (b) With the grant the SAME plan becomes executable - and it is the real ToU
   //     plan, not a reduced one: writes == planned, one readback per register.
-  const granted = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+  const granted = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: TOU_CAP });
   assert.strictEqual(granted.certified, true, 'the runtime grant certifies THIS device');
   assert.strictEqual(granted.calibration, false, 'this is the plan path, not a calibration test');
   assert.ok(granted.writes.length >= 5, 'the Fahrplan write plan is executable');
@@ -435,7 +447,7 @@ test('device grant: an unproven register map is still refused (N1 scale + unknow
   // The grant opens the CERTIFICATION gate only. Every other refusal that protects
   // a real inverter from a wrong write survives it.
   const noScale = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, power_scale: undefined } };
-  const n1 = C.controlRoute(noScale, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, device_certified: true }, { ratedKw: 30 });
+  const n1 = C.controlRoute(noScale, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, device_certified: true }, { ratedKw: 30, deye: TOU_CAP_NOSCALE });
   assert.deepStrictEqual(n1.writes, [], 'an unconfirmed HV/LV scale still withholds the whole plan');
   assert.strictEqual(n1.powerScaleSuppressed, true);
   assert.strictEqual(n1.blocked, true);
@@ -1140,11 +1152,15 @@ test('capability: ABSENT firmware, an all-zero block and a Modbus exception all 
   const absent = C.classifyDeyeCapability({ deviceType: 0x0500, remoteBlock: ownersRemoteBlock({ 1100: 0x0500, 1101: 0x0500 }) });
   assert.strictEqual(absent.present, false);
   assert.strictEqual(C.deyeControlPath(absent), C.DEYE_PATH_TOU);
-  // (b) an ALL-ZERO answer (a logger echoing zeros for an unimplemented range) must
-  //     NOT read as "present": 1101=0 is not a valid watchdog (0xFFFF or 10..18000).
+  // (b) an ALL-ZERO answer is the Solarman logger's "inverter did not answer" STUB
+  //     (the same well-framed zeros that fabricated soc_pct=0): it must NOT read as
+  //     "present" - and since the live Pilsting path flip it must NOT read as the
+  //     DEFINITIVE "Firmware ohne Fernsteuerung" either, or a restart-moment stub
+  //     locks a certified remote pilot onto EEPROM ToU writes for 6 h. Transient.
   const zeros = C.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: new Array(22).fill(0) });
   assert.strictEqual(zeros.present, false, 'all-zero is not a capability');
-  assert.match(zeros.reason, /nicht vorhanden/);
+  assert.strictEqual(zeros.definitive, false, 'all-zero is UNREACHABLE, not an answer - re-probe');
+  assert.match(zeros.reason, /nicht erreichbar/);
   // (c) a Modbus exception / unreadable block.
   const err = C.classifyDeyeCapability({ deviceType: null, remoteBlock: null, error: 'Modbus-Ausnahme 0x02', definitive: true });
   assert.strictEqual(err.present, false);
@@ -1167,6 +1183,226 @@ test('capability: the older V105.1 layout is DETECTED but NOT written (AC-side s
   assert.strictEqual(cap.supported, false, 'we do not write an unproven AC-side setpoint');
   assert.strictEqual(C.deyeControlPath(cap), C.DEYE_PATH_TOU, 'falls back to ToU rather than guessing');
   assert.match(cap.reason, /nicht batterieseitig/);
+});
+
+test('capability: a device WE have already driven re-classifies as remote after a restart', () => {
+  // The live Pilsting register state after a day of remote-mode operation and a
+  // nodered restart (2026-07-28): 1100 = 0 (released), 1101 = 60 (OUR watchdog
+  // value, no longer the factory 0xFFFF), 1104 = 1 (battery-side), 1105 = 2
+  // (Power), 1109 = 0 (idle release). The shape discriminator MUST accept this -
+  // if it required the factory signature, every once-controlled device would flip
+  // to ToU on its next restart (a guaranteed fleet regression).
+  const driven = C.classifyDeyeCapability({
+    deviceType: 0x0008,
+    remoteBlock: ownersRemoteBlock({ 1100: 0, 1101: 60, 1104: 1, 1105: 2, 1108: 47, 1109: 0 }),
+  });
+  assert.strictEqual(driven.present, true, 'once-driven register state is still remote-capable');
+  assert.strictEqual(driven.layout, 'pr978');
+  assert.strictEqual(driven.supported, true);
+  assert.strictEqual(driven.watchdogRaw, 60, 'our own watchdog value is a plausible watchdog');
+  assert.strictEqual(C.deyeControlPath(driven), C.DEYE_PATH_REMOTE);
+  // 1100 = 1 (still enabled, e.g. a crash mid-operation) classifies the same.
+  const midOp = C.classifyDeyeCapability({
+    deviceType: 0x0008,
+    remoteBlock: ownersRemoteBlock({ 1100: 1, 1101: 60, 1104: 1, 1105: 2 }),
+  });
+  assert.strictEqual(midOp.present, true);
+  assert.strictEqual(midOp.supported, true);
+});
+
+test('capability: probe-error definitiveness - only illegal-request exceptions are an answer', () => {
+  // 0x01/0x02/0x03 indict the REQUEST (block not implemented) -> definitive absent.
+  assert.strictEqual(C.deyeProbeErrorDefinitive('Modbus-Ausnahme 0x02: unzulaessige Datenadresse (illegal data address)'), true);
+  assert.strictEqual(C.deyeProbeErrorDefinitive('Modbus-Ausnahme 0x01: unzulaessige Funktion (illegal function)'), true);
+  assert.strictEqual(C.deyeProbeErrorDefinitive('Modbus-Ausnahme 0x03: unzulaessiger Datenwert (illegal data value)'), true);
+  // The GATEWAY exceptions say "the logger answered, the inverter did not" - the
+  // live Pilsting flip: a transient 0x0B was regex-matched as "Ausnahme" and cached
+  // 6 h as "Firmware ohne Fernsteuerung". NEVER definitive.
+  assert.strictEqual(C.deyeProbeErrorDefinitive('Modbus-Ausnahme 0x0b: Wechselrichter hat nicht geantwortet (gateway target failed to respond)'), false);
+  assert.strictEqual(C.deyeProbeErrorDefinitive('Modbus-Ausnahme 0x0a: Gateway-Pfad nicht verfuegbar (gateway path unavailable)'), false);
+  assert.strictEqual(C.deyeProbeErrorDefinitive('Modbus-Ausnahme 0x06: Wechselrichter beschaeftigt (slave device busy)'), false);
+  assert.strictEqual(C.deyeProbeErrorDefinitive('Timeout'), false);
+  assert.strictEqual(C.deyeProbeErrorDefinitive('connect ECONNREFUSED'), false);
+  assert.strictEqual(C.deyeProbeErrorDefinitive(''), false);
+  assert.strictEqual(C.deyeProbeErrorDefinitive(null), false);
+});
+
+// --- the STICKY path decision (hysteresis - the per-tick flap killer) ---------
+
+test('sticky: the first definitive verdict decides; failures are NOT evidence', () => {
+  const remote = OWNER_CAP;
+  const fail = C.classifyDeyeCapability({ deviceType: null, remoteBlock: null, error: 'Timeout', definitive: false });
+  // undecided + failure -> still undecided (bounded retry is the executor's job)
+  assert.strictEqual(C.deyeUpdateSticky(null, fail, 1000), null);
+  // undecided + definitive remote -> decided immediately (commissioning = one probe)
+  const d1 = C.deyeUpdateSticky(null, remote, 2000);
+  assert.strictEqual(d1.path, C.DEYE_PATH_REMOTE);
+  assert.strictEqual(d1.everRemote, true);
+  assert.strictEqual(d1.contrary, 0);
+  // decided + N failures -> the SAME record object (nothing to persist, no flap)
+  let s = d1;
+  for (let i = 0; i < 10; i++) s = C.deyeUpdateSticky(s, fail, 3000 + i);
+  assert.strictEqual(s, d1, 'a failed probe never moves the decision');
+  // an ALL-ZERO logger stub is a failure too (classified definitive:false)
+  const zeros = C.classifyDeyeCapability({ deviceType: 0x0008, remoteBlock: new Array(22).fill(0) });
+  assert.strictEqual(C.deyeUpdateSticky(d1, zeros, 4000), d1, 'the unreachable stub never flips the path');
+});
+
+test('sticky: a decided path flips only after N consecutive definitive contrary verdicts', () => {
+  const remote = OWNER_CAP;
+  const tou = TOU_CAP;
+  const fail = C.classifyDeyeCapability({ deviceType: null, remoteBlock: null, error: 'Timeout', definitive: false });
+  let s = C.deyeUpdateSticky(null, remote, 1);
+  // two contrary verdicts do not flip (N = 3)
+  s = C.deyeUpdateSticky(s, tou, 2);
+  assert.strictEqual(s.path, C.DEYE_PATH_REMOTE, 'contrary 1/3 holds');
+  assert.strictEqual(s.contrary, 1);
+  s = C.deyeUpdateSticky(s, tou, 3);
+  assert.strictEqual(s.path, C.DEYE_PATH_REMOTE, 'contrary 2/3 holds');
+  // an AGREEING verdict resets the counter (the flap can never accumulate)
+  s = C.deyeUpdateSticky(s, remote, 4);
+  assert.strictEqual(s.contrary, 0, 'agreement resets the contrary counter');
+  // a failure in between neither advances nor resets
+  s = C.deyeUpdateSticky(s, tou, 5);
+  s = C.deyeUpdateSticky(s, fail, 6);
+  assert.strictEqual(s.contrary, 1, 'a failure freezes the counter');
+  // three consecutive definitive contrary verdicts flip - and everRemote SURVIVES
+  s = C.deyeUpdateSticky(s, tou, 7);
+  s = C.deyeUpdateSticky(s, tou, 8);
+  assert.strictEqual(s.path, C.DEYE_PATH_TOU, 'flipped after ' + C.DEYE_PATH_CONTRARY_N + ' contrary verdicts');
+  assert.strictEqual(s.everRemote, true, 'the remote-proven fact survives the flip (drives the hold-off)');
+  assert.strictEqual(s.contrary, 0);
+});
+
+test('sticky: deyeEffectiveCap - the decided path beats a raw per-tick verdict', () => {
+  const remote = OWNER_CAP;
+  const tou = TOU_CAP;
+  // no decision -> raw cap passes through (legacy behaviour)
+  assert.strictEqual(C.deyeEffectiveCap(remote, null), remote);
+  assert.strictEqual(C.deyeEffectiveCap(null, null), null);
+  // decided remote + a contrary raw tou verdict (inside the hysteresis window):
+  // the plan must STAY remote - this is the per-tick flap killer.
+  const sRemote = C.deyeUpdateSticky(null, remote, 1);
+  const effA = C.deyeEffectiveCap(tou, sRemote);
+  assert.strictEqual(C.deyeControlPath(effA), C.DEYE_PATH_REMOTE, 'sticky remote wins over a raw tou verdict');
+  // decided remote + no verdict object at all (grant-seeded, fresh volume):
+  // a minimal remote capability is synthesized so the dispatch still selects remote.
+  const seeded = C.deyeSeedStickyFromGrant({ device_certified: true, device_certified_path: 'remote' }, 5);
+  const effB = C.deyeEffectiveCap(null, seeded);
+  assert.strictEqual(C.deyeControlPath(effB), C.DEYE_PATH_REMOTE);
+  assert.strictEqual(effB.sticky, true);
+  assert.strictEqual(effB.layout, 'pr978');
+  // decided tou + a raw remote verdict (contrary, pending hysteresis) stays tou.
+  const sTou = C.deyeUpdateSticky(null, tou, 1);
+  assert.strictEqual(C.deyeControlPath(C.deyeEffectiveCap(remote, sTou)), C.DEYE_PATH_TOU, 'sticky tou wins until the hysteresis flips');
+  // no grant / wrong path -> no seed
+  assert.strictEqual(C.deyeSeedStickyFromGrant({ device_certified: true }, 1), null);
+  assert.strictEqual(C.deyeSeedStickyFromGrant({ device_certified: false, device_certified_path: 'remote' }, 1), null);
+  assert.strictEqual(C.deyeSeedStickyFromGrant(null, 1), null);
+});
+
+// --- the DELIBERATE-fallback gate (certified ToU never engages on a guess) ----
+
+test('deliberate fallback: a certified device with an UNCONFIRMED path writes NOTHING', () => {
+  // The restart moment: no capability verdict yet (or only failed probes). The old
+  // behaviour planned the full certified ToU EEPROM write set immediately - the
+  // live Pilsting regression. Now the plan is HELD, loudly, until the path is known.
+  const sp = { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, device_certified: true };
+  const held = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30 });
+  assert.deepStrictEqual(held.writes, [], 'no writes on an unconfirmed path');
+  assert.deepStrictEqual(held.readbacks, []);
+  assert.strictEqual(held.blocked, true, 'surfaced, never silent');
+  assert.strictEqual(held.pathHold, 'unconfirmed');
+  assert.match(held.reason, /Steuerpfad noch unbestätigt/);
+  assert.ok(held.capabilityProbe, 'the probe spec rides along so the executor resolves the path');
+  // a FAILED probe verdict is not an answer either
+  const fail = C.classifyDeyeCapability({ deviceType: null, remoteBlock: null, error: 'Timeout', definitive: false });
+  const held2 = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: fail });
+  assert.deepStrictEqual(held2.writes, [], 'a failed probe never engages certified ToU');
+  assert.strictEqual(held2.pathHold, 'unconfirmed');
+  // the ROUTINE quiet cases are untouched: uncertified stays quiet-not-blocked...
+  const unc = C.controlRoute(DEYE_SEL, { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true }, { ratedKw: 30 });
+  assert.notStrictEqual(unc.blocked, true, 'uncertified read-only stays quiet');
+  assert.match(unc.reason, /noch nicht freigegeben/);
+  // ...and a definitive tou verdict, remote_mode=off, or a calibration test engage.
+  assert.ok(C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: TOU_CAP }).writes.length >= 5, 'definitive verdict -> deliberate');
+  const off = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, remote_mode: 'off' } };
+  assert.ok(C.controlRoute(off, sp, { ratedKw: 30 }).writes.length >= 5, 'operator remote_mode=off -> deliberate');
+  assert.ok(C.controlRoute(DEYE_SEL, enabled({ battery_setpoint_kw: -0.5, calibration: true }), { ratedKw: 30 }).writes.length >= 5,
+    'an operator-armed calibration test -> deliberate');
+});
+
+test('deliberate fallback: a REMOTE-PROVEN certified device never silently engages ToU', () => {
+  // The Q3 decision: the First-Light grant was earned on the REMOTE path - its
+  // meaning does not transfer to EEPROM ToU control. Even a DEFINITIVE "remote
+  // absent" verdict (a real firmware downgrade) holds off with a loud reason; the
+  // operator either forces ToU (remote_mode=off) or re-certifies.
+  const sp = { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, device_certified: true, device_certified_path: 'remote' };
+  // (a) via the core's grant path (fresh volume, no sticky record):
+  const heldGrant = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: TOU_CAP });
+  // grant-path remote + definitive tou verdict -> hold, not ToU
+  assert.deepStrictEqual(heldGrant.writes, [], 'grant proves remote -> no silent ToU');
+  assert.strictEqual(heldGrant.pathHold, 'remote_proven');
+  assert.match(heldGrant.reason, /nicht automatisch aktiviert/);
+  // (b) via the sticky everRemote fact (the device once answered remote):
+  let sticky = C.deyeUpdateSticky(null, OWNER_CAP, 1);
+  sticky = C.deyeUpdateSticky(sticky, TOU_CAP, 2);
+  sticky = C.deyeUpdateSticky(sticky, TOU_CAP, 3);
+  sticky = C.deyeUpdateSticky(sticky, TOU_CAP, 4); // flipped to tou, everRemote survives
+  assert.strictEqual(sticky.path, C.DEYE_PATH_TOU);
+  const spNoGrantPath = { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, device_certified: true };
+  const heldSticky = C.controlRoute(DEYE_SEL, spNoGrantPath, { ratedKw: 30, deyeSticky: sticky });
+  assert.deepStrictEqual(heldSticky.writes, [], 'everRemote -> no silent ToU');
+  assert.strictEqual(heldSticky.pathHold, 'remote_proven');
+  // (c) the operator hatch still works: remote_mode=off forces ToU deliberately.
+  const off = { ...DEYE_SEL, connection: { ...DEYE_SEL.connection, remote_mode: 'off' } };
+  const forced = C.controlRoute(off, sp, { ratedKw: 30, deye: TOU_CAP, deyeSticky: sticky });
+  assert.ok(forced.writes.length >= 5, 'remote_mode=off is the deliberate operator decision');
+  assert.strictEqual(forced.controlPath, C.DEYE_PATH_TOU);
+});
+
+test('sticky: a grant-seeded/sticky remote decision plans REMOTE across a restart', () => {
+  // The recovery guarantee: after a nodered restart (volatile cache wiped) the plan
+  // node seeds the decision from the core's device_certified_path (or the durable
+  // record) and plans the PROVEN remote path from the first tick - no ToU detour,
+  // no per-tick flap while probes are still failing.
+  const sp = { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, device_certified: true, device_certified_path: 'remote', soc_min_pct: 20 };
+  const seeded = C.deyeSeedStickyFromGrant(sp, 1000);
+  const r = C.controlRoute(DEYE_REMOTE_SEL, sp, { ratedKw: 30, deyeSticky: seeded });
+  assert.strictEqual(r.controlPath, C.DEYE_PATH_REMOTE, 'plans the proven remote path');
+  assert.deepStrictEqual(r.writes.map((w) => w.role),
+    ['remote_watchdog', 'power_control_mode', 'battery_strategy', 'battery_power', 'remote_mode']);
+  // and the release hands back 1100 <- 0 on the same resolution
+  const rel = C.controlRelease(DEYE_REMOTE_SEL, { deviceCertified: true, deyeSticky: seeded });
+  assert.strictEqual(rel.controlPath, C.DEYE_PATH_REMOTE);
+  assert.strictEqual(rel.writes[0].role, 'remote_mode');
+  assert.strictEqual(rel.writes[0].value, 0);
+});
+
+// --- the idle-slot ToU levers (the live max_sell_power 0-vs-7182 fight) -------
+
+test('ToU idle slot (0 kW) restores max_sell_power and never forces solar-sell', () => {
+  const reg = C.DEYE_CONTROL_REG.hybrid_3p;
+  const snapshot = { [reg.maxSellPower]: 7182 };
+  const sp = { battery_setpoint_kw: 0, source: 'schedule', control_enabled: true, device_certified: true };
+  const idle = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: TOU_CAP, snapshot });
+  const roles = Object.fromEntries(idle.planned.map((w) => [w.role, w]));
+  // the live fight: idle used to take the discharge branch and command
+  // max_sell_power = 0, which the inverter's own solar-sell logic kept
+  // restoring to the installer's 7182 - a mismatch warning every readback.
+  assert.strictEqual(roles.max_sell_power.value, 7182, 'idle RESTORES the installer value from the snapshot');
+  assert.strictEqual(roles.max_sell_power.encode.kind, 'restore');
+  assert.strictEqual(roles.solar_sell, undefined, 'idle never forces Solar-Sell ON');
+  assert.strictEqual(roles.battery_power.value, 0, 'the Program-Power cap of 0 is what keeps the battery still');
+  // without a snapshot the idle slot simply omits the lever (never a fabricated 0)
+  const bare = C.controlRoute(DEYE_SEL, sp, { ratedKw: 30, deye: TOU_CAP });
+  assert.strictEqual(bare.planned.find((w) => w.role === 'max_sell_power'), undefined,
+    'no snapshot -> the installer value is left alone');
+  // a REAL discharge still forces the export lever (unchanged)
+  const dis = C.controlRoute(DEYE_SEL, { ...sp, battery_setpoint_kw: -10 }, { ratedKw: 30, deye: TOU_CAP });
+  const disMs = dis.planned.find((w) => w.role === 'max_sell_power');
+  assert.strictEqual(disMs.value, 10000, 'discharge writes the sell-power forcing lever');
+  assert.ok(dis.planned.find((w) => w.role === 'solar_sell'), 'discharge enables Solar-Sell');
 });
 
 test('capability: the probe spec is READS ONLY, and only for battery families', () => {
