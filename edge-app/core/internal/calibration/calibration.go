@@ -278,12 +278,14 @@ type Session struct {
 	writeReadbackOK bool
 
 	// remotePath is true when the last calibration control readback came over the Deye
-	// REMOTE-MODE path (control_path == "remote"), set by the agent via SetControlPath.
+	// REMOTE-MODE path (control_path == "remote"), set by the agent via SetControlPath;
+	// lastPath keeps the raw string so certify can persist the proven path with the grant.
 	// It makes the DISPLAYED scale hint path-aware (Snapshot applies RemoteScaleHint):
 	// the remote setpoint scales from the model's rated power, so the ToU "set
 	// power_scale 10" advice is wrong there. Display only - it never affects a gate, a
 	// fact, or the write path.
 	remotePath bool
+	lastPath   string
 }
 
 // NewSession builds a disarmed session with the given envelope.
@@ -514,11 +516,23 @@ func (s *Session) NoteWriteReadback(allMatch bool) {
 
 // SetControlPath records which control surface last drove a calibration write, from the
 // readback's control_path ("remote" = the Deye Tier-2 register block 1100-1121, else the
-// ToU/default). It steers ONLY the displayed scale hint (RemoteScaleHint): the remote
+// ToU/default). It steers the displayed scale hint (RemoteScaleHint): the remote
 // setpoint scales from the model's rated power, so the ToU power_scale advice is wrong
-// there. It never touches a gate, a fact, or the write path. The agent calls it from the
-// calibration readback alongside NoteWriteReadback.
-func (s *Session) SetControlPath(path string) { s.remotePath = path == "remote" }
+// there. Since the sticky-path fix it is ALSO the raw path string CalibrationCertify
+// records with the grant (LastControlPath) - the certified path is part of the grant's
+// meaning ("proven ON this write surface"). It still never touches a gate, a fact, or
+// the write path itself. The agent calls it from the calibration readback alongside
+// NoteWriteReadback.
+func (s *Session) SetControlPath(path string) {
+	s.remotePath = path == "remote"
+	s.lastPath = path
+}
+
+// LastControlPath returns the raw control path of the last calibration readback
+// ("remote"/"tou"; empty when no readback carried one - an older Layer 1). The agent
+// persists it with the certification grant at certify time, so the grant carries the
+// path its evidence was produced on.
+func (s *Session) LastControlPath() string { return s.lastPath }
 
 // ResetConfirmations clears both operator confirmations, the landed-write evidence AND
 // the captured movement evidence (the agent calls this when a sign/scale correction is

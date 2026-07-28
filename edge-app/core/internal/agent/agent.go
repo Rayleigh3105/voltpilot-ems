@@ -95,6 +95,13 @@ type Agent struct {
 	cal         *calibration.Session
 	calWatchdog *time.Timer
 	calCert     map[string]bool
+	// calPath records, per granted family, WHICH control surface the First-Light
+	// evidence was produced on ("remote"/"tou") - persisted with the grant in
+	// calibration-certified.json and published as device_certified_path on
+	// edge/setpoint, so Layer 1 can hold the proven path across restarts instead
+	// of re-deriving it from a single (possibly degenerate) probe answer. Absent
+	// for pre-path grants until certify or the one-time readback backfill records it.
+	calPath map[string]string
 
 	// PV-curtailment First-Light (agent/curtail.go): the per-UNIT certification
 	// of the fronius_sunspec Erzeuger sources (keyed ip:port#unit_id), the
@@ -364,6 +371,7 @@ func New(cfg config.Config) (*Agent, error) {
 		despikeStore: ds,
 		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
 		calCert:      map[string]bool{},
+		calPath:      map[string]string{},
 		curtailCal:   curtailcal.New(0),
 		curtailCert:  map[string]bool{},
 		curtailUnits: map[string]state.CurtailUnit{},
@@ -1548,6 +1556,13 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		a.cal.SetControlPath(m.ControlPath)
 		a.calMu.Unlock()
 	}
+	// Sticky-path backfill (2026-07-28): a NORMAL driving readback names the surface
+	// a device-granted family is actually controlled on. For a grant certified before
+	// the path field existed (the live pilot) this records the proven path ONCE, so
+	// device_certified_path starts flowing without a re-certification.
+	if !m.Blocked && m.Mode != "release" && !strings.EqualFold(strings.TrimSpace(m.Source), "calibration") {
+		a.backfillCertifiedControlPath(m.Family, m.ControlPath)
+	}
 	// E2: the register-level proof also surfaces per entity - mirror it onto
 	// the battery entity's readback topic (same payload shape, entity contract
 	// §4) and record the verdict for the heartbeat. No-op without a registry.
@@ -1814,6 +1829,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// protections may not apply in remote mode. Additive; an adapter that ignores
 		// it is unchanged.
 		"soc_max_pct": a.Cfg.SocMaxPct,
+	}
+	// device_certified_path names the control surface the grant's First-Light
+	// evidence was produced on ("remote"/"tou") - Layer 1's plan node seeds its
+	// durable sticky path decision from it, so a certified remote pilot plans its
+	// PROVEN path from the first post-restart tick instead of falling back to the
+	// EEPROM ToU writes on a degenerate probe answer (live regression 2026-07-28).
+	// Absent for env-allowlisted families and pre-path grants (backward-compatible).
+	if certified {
+		if p := a.certifiedControlPath(family); p != "" {
+			msg["device_certified_path"] = p
+		}
 	}
 	// pv_limit_kw is only present when the active slot caps feed-in; its ABSENCE
 	// tells the adapter to clear any latched limit (backward-compatible: an
