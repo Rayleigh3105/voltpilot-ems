@@ -396,3 +396,23 @@
   .link-btn-txt { min-height: 44px; display: inline-flex; align-items: center; }
   .btn-secondary { min-height: 44px; }
 }
+
+/* --- Datenfreigabe im Hausnetz (Modbus-Datenspiegel, mirror.js) -------------
+   Scoped to #mirrorCard: the card is self-contained (markup in
+   einrichten.html + mirror.js + this block) and movable as one unit. The
+   switch reuses dashboard.css's .cal-switch/.cal-slider; the pill shell.css. */
+#mirrorCard .set-card-head { display: flex; align-items: flex-start; gap: 10px; }
+#mirrorCard .set-card-head .pill { margin-left: auto; flex: none; }
+#mirrorCard .mirror-toggle-row {
+  display: flex; align-items: center; gap: 12px; cursor: pointer;
+  font-size: 14px; font-weight: 600; margin: 12px 0 10px;
+}
+#mirrorCard .mirror-endpoint {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 4px 0 8px; font-size: 13.5px;
+}
+#mirrorCard .mirror-endpoint code {
+  background: var(--bg-2, #EEF2F7); border: 1px solid var(--line, #E1E8F0);
+  border-radius: 8px; padding: 4px 10px; font-size: 14px; font-weight: 700;
+  user-select: all;
+}

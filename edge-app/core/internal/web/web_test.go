@@ -1654,6 +1654,69 @@ func TestEinrichtenPageServesTheGuidedFlowAndItsAreas(t *testing.T) {
 	}
 }
 
+// The "Datenfreigabe im Hausnetz" card (Modbus-Datenspiegel) is a CUSTOMER
+// control on the Einrichten page: visible and operable in NORMAL mode - the
+// toggle and the copy-ready address must NOT sit behind Technikmodus or any
+// admin token; only the register-area/learned-block detail is Technik-gated.
+// //go:embed contract: mirror.js must ship and drive GET/POST /api/mirror.
+func TestEinrichtenServesTheMirrorCardAsANormalModeCustomerControl(t *testing.T) {
+	srv, _ := newServer(t)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("GET %s: status %d", path, resp.StatusCode)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+
+	page := get("/einrichten.html")
+	for _, want := range []string{
+		`id="datenfreigabe"`, `id="mirrorCard"`, `id="mirrorToggle"`, `id="mirrorPill"`,
+		`id="mirrorEndpointRow"`, `id="mirrorEndpoint"`, `id="mirrorCopy"`,
+		`id="mirrorDetail"`, `id="mirrorError"`, `src="mirror.js"`,
+		`Messwerte per Modbus&nbsp;TCP bereitstellen (nur Lesen)`,
+		`Die Steuerung durch
+        VoltPilot wird dadurch nicht beeinflusst.`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("einrichten.html: missing mirror element %s", want)
+		}
+	}
+	// The customer toggle + address sit OUTSIDE the tech-only block; only the
+	// detail line is Technik-gated. Structural check: within the mirror card,
+	// the tech-only block starts AFTER the toggle and the endpoint row.
+	card := page[strings.Index(page, `id="mirrorCard"`):]
+	if end := strings.Index(card, "</section>"); end > 0 {
+		card = card[:end]
+	}
+	techAt := strings.Index(card, "tech-only")
+	if techAt < 0 {
+		t.Fatal("mirror card: missing the Technik detail block")
+	}
+	if at := strings.Index(card, `id="mirrorToggle"`); at < 0 || at > techAt {
+		t.Error("mirror card: the toggle must be a NORMAL-mode control, before the tech-only block")
+	}
+	if at := strings.Index(card, `id="mirrorEndpoint"`); at < 0 || at > techAt {
+		t.Error("mirror card: the copy-ready address must be NORMAL-mode, before the tech-only block")
+	}
+	if at := strings.Index(card, `id="mirrorDetail"`); at < 0 || at < techAt {
+		t.Error("mirror card: the register/learned-block detail belongs INSIDE the tech-only block")
+	}
+
+	js := get("/mirror.js")
+	for _, want := range []string{"/api/mirror", "mirrorToggle", "advertise_port", "location.hostname"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("mirror.js: missing %s", want)
+		}
+	}
+}
+
 // max is a tiny local helper (the module targets a Go version where the
 // builtin may be unavailable in this package's context).
 func max(a, b int) int {
