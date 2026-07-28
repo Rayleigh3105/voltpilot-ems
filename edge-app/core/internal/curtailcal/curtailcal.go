@@ -252,6 +252,14 @@ type UnitView struct {
 	// Evidence of the most recent (possibly just-ended) test, while valid.
 	Evidence   *Evidence `json:"evidence,omitempty"`
 	CanCertify bool      `json:"can_certify"`
+	// LastError surfaces the most recent EXECUTION failure reported for this
+	// unit (the flow's blocked readback reason - "Gateway nicht erreichbar",
+	// "SunSpec-Modelle nicht lesbar", "Schreiben fehlgeschlagen: Timeout", ...)
+	// so the card names the CAUSE of a failed/hanging test instead of leaving
+	// a bare "warte auf Bestätigung". Empty when the latest readback was fine
+	// or none is recent.
+	LastError           string `json:"last_error,omitempty"`
+	LastErrorAgeSeconds int    `json:"last_error_age_seconds,omitempty"`
 }
 
 // TestView is the running test, rendered.

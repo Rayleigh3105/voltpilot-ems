@@ -355,6 +355,15 @@ func (a *Agent) curtailView(now time.Time) curtailcal.View {
 		}
 		u.Evidence = a.curtailCal.EvidenceFor(s.ID, now)
 		u.CanCertify = a.curtailCal.CanCertify(s.ID, now)
+		// The card must name the CAUSE of a failed/hanging execution: surface
+		// the latest BLOCKED readback reason for this unit (kept while it is
+		// the newest word from the executor and recent enough to matter).
+		if ru, ok := a.curtailUnits[key]; ok && ru.Blocked && ru.Reason != "" && now.Sub(ru.CheckedAt) < 15*time.Minute {
+			u.LastError = ru.Reason
+			if age := now.Sub(ru.CheckedAt); age > 0 {
+				u.LastErrorAgeSeconds = int(age / time.Second)
+			}
+		}
 		v.Units = append(v.Units, u)
 	}
 	return v

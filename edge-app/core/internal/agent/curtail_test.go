@@ -312,3 +312,61 @@ func TestCurtailFirstLightJourneyEvidenceGatePersistenceAndRevocation(t *testing
 		t.Fatal("revocation must survive a restart")
 	}
 }
+
+func TestCurtailCardSurfacesTheLatestExecutionFailureAsCause(t *testing.T) {
+	// The live wedge (Pilsting 2026-07-28) failed with the flow publishing
+	// blocked readbacks ("Gateway nicht erreichbar", "SunSpec-Modelle nicht
+	// lesbar", "Schreiben fehlgeschlagen: Timeout") - but the :8484 curtail
+	// card polls /api/curtail (curtailcal.View), which never carried them, so
+	// the operator saw a bare "warte auf Bestätigung"/✗ with no cause. The
+	// view now surfaces the latest blocked reason per unit.
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	cfg.ControlEnabled = true
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr1 := addFronius(t, a, 1, 25)
+	key := "192.168.210.40:502#1"
+
+	mkReadback := func(blocked bool, reason string) []byte {
+		payload := map[string]any{
+			"ts": time.Now().UTC().Format(time.RFC3339Nano), "curtail": true,
+			"source_id": fr1.ID, "unit_key": key, "label": fr1.Label,
+			"target": "192.168.210.40:502 (Unit 1)", "family": "fronius_sunspec",
+			"control_enabled": true, "certified": false, "calibration": true,
+			"mode": "apply", "blocked": blocked, "reason": reason,
+			"registers": []map[string]any{},
+		}
+		raw, _ := json.Marshal(payload)
+		return raw
+	}
+
+	a.onControlReadback("", mkReadback(true, "Gateway nicht erreichbar"))
+	now := time.Now().UTC()
+	v := a.curtailView(now)
+	if len(v.Units) != 1 {
+		t.Fatalf("one unit expected: %+v", v.Units)
+	}
+	if v.Units[0].LastError != "Gateway nicht erreichbar" {
+		t.Fatalf("the card must name the execution failure: %+v", v.Units[0])
+	}
+
+	// The newest word from the executor wins: a healthy readback clears it.
+	a.onControlReadback("", mkReadback(false, ""))
+	if got := a.curtailView(now).Units[0].LastError; got != "" {
+		t.Fatalf("a healthy readback clears the stale cause, got %q", got)
+	}
+
+	// A failure is not shown forever: past 15 min it ages out of the card.
+	a.onControlReadback("", mkReadback(true, "Schreiben fehlgeschlagen: Timeout"))
+	fresh := a.curtailView(time.Now().UTC())
+	if fresh.Units[0].LastError == "" {
+		t.Fatal("a fresh failure must show")
+	}
+	aged := a.curtailView(time.Now().UTC().Add(16 * time.Minute))
+	if got := aged.Units[0].LastError; got != "" {
+		t.Fatalf("a 16-min-old failure must age out, got %q", got)
+	}
+}
