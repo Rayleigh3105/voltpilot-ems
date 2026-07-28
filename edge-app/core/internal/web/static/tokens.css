@@ -1,0 +1,80 @@
+/* ============================================================
+   VoltPilot Edge - design tokens.
+
+   These are a COPY of the portal design system
+   (frontend/portal/designsystem/tokens/{colors,typography,effects,spacing}.css)
+   plus the portal's energy-flow hues (frontend/portal/src/index.css --vp-flow-*).
+   The edge serves static files straight out of //go:embed - it has no build
+   step and cannot import from the portal bundle - so the VALUES are duplicated
+   here on purpose. KEEP THEM IN SYNC: when a portal token changes, change it
+   here too, or the device page and the portal drift apart visually.
+
+   Deliberate deviation: the portal loads Inter / Inter Tight from Google Fonts.
+   The edge may have NO internet at all, so we only declare the same family
+   STACKS and let the device fall back to its system UI font. No CDN, ever.
+   ============================================================ */
+
+:root {
+  /* --- Brand (portal colors.css) --- */
+  --vp-primary:       #95B9FF;
+  --vp-primary-dark:  #7BA3F7;
+  --vp-primary-light: #B8D4FF;
+  --vp-primary-deep:  #5A8DE8;
+  --vp-navy:          #1E3A5F;
+  --vp-navy-2:        #2C5282;
+  --vp-action:        #2C5282;  /* the ONE deep blue that passes AA both ways */
+
+  /* --- Neutrals --- */
+  --vp-text-dark:  #1A1A1A;
+  --vp-text-gray:  #6C757D;
+  --vp-bg-light:   #F8F9FA;
+  --vp-surface:    #FFFFFF;
+  --vp-border:     #E9ECEF;
+  --vp-gray:       #CED4DA;
+
+  /* --- Status --- */
+  --vp-green:      #4CAF50;
+  --vp-solar:      #FF9800;
+  --vp-industry:   #F44336;
+
+  /* --- Typography (portal typography.css) --- */
+  --vp-font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --vp-font-heading: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --vp-weight-semibold: 600;
+  --vp-weight-bold:     700;
+  --vp-weight-extrabold: 800;
+  --vp-leading-tight:  1.15;
+  --vp-leading-snug:   1.4;
+  --vp-leading-normal: 1.6;
+  --vp-tracking-tight: -0.4px;
+  --vp-tracking-wide:  0.04em;
+
+  /* --- Effects (portal effects.css) --- */
+  --vp-radius-sm:   10px;
+  --vp-radius-btn:  12px;
+  --vp-radius-md:   16px;
+  --vp-radius-lg:   24px;
+  --vp-radius-pill: 50px;
+  --vp-shadow-sm:   0 2px 8px rgba(0, 0, 0, 0.04);
+  --vp-shadow-md:   0 4px 20px rgba(0, 0, 0, 0.08);
+  --vp-ease:        cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- Energy flow hues (portal src/index.css --vp-flow-*) --- */
+  --vp-flow-pv:        #f59e0b;
+  --vp-flow-pv-soft:   #fef3e2;
+  --vp-flow-load:      #8b5cf6;
+  --vp-flow-load-soft: #f1ecfd;
+  --vp-flow-grid:      #0ea5a3;
+  --vp-flow-grid-soft: #e2f6f5;
+  --vp-flow-batt:      #16a34a;
+  --vp-flow-batt-soft: #e7f6ec;
+
+  /* --- Technikmodus: the ONE violet that marks technical depth ---
+     It is a VISIBILITY marker, never a permission. Anything wearing it is
+     detail on top of a plain-German statement that is already visible. */
+  --tech:       #7C3AED;
+  --tech-deep:  #5B21B6;
+  --tech-soft:  #F3EFFF;
+  --tech-line:  #DDD0FF;
+  --tech-ink:   #3B2A63;
+}

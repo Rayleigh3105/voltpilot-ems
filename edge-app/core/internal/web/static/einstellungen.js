@@ -165,8 +165,8 @@
   }
 
   function setBusy(b) {
-    $("saveBtn").disabled = b;
-    $("resetBtn").disabled = b;
+    $("despikeSaveBtn").disabled = b;
+    $("despikeResetBtn").disabled = b;
     $("presetSeg").querySelectorAll(".seg-btn").forEach(function (btn) { btn.disabled = b; });
   }
 
@@ -215,8 +215,8 @@
     body.hidden = !open;
     $("expertToggle").setAttribute("aria-expanded", open ? "true" : "false");
   });
-  $("saveBtn").addEventListener("click", applyCustom);
-  $("resetBtn").addEventListener("click", function () { applyPreset("normal"); });
+  $("despikeSaveBtn").addEventListener("click", applyCustom);
+  $("despikeResetBtn").addEventListener("click", function () { applyPreset("normal"); });
 
   load();
 })();

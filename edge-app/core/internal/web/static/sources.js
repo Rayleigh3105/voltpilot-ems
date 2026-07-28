@@ -469,6 +469,12 @@
       serverNowMs = data.server_now_ms || 0;
       if (data.balance) balance = data.balance;
       renderGroups(data.sources || []);
+      // The guided commissioning flow counts sources for its step 2; tell it
+      // immediately instead of making it wait for its own slow refresh.
+      try {
+        window.dispatchEvent(new CustomEvent("vp:sources-changed",
+          { detail: { count: (data.sources || []).length } }));
+      } catch (e) { /* older browsers: the periodic refresh still catches up */ }
     }).catch(function () { /* keep the page usable; the inverter form still works */ });
   }
 

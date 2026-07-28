@@ -1,0 +1,334 @@
+/* VoltPilot Edge - app shell.
+   Loaded AFTER tokens.css + dashboard.css. Owns everything that is the same on
+   BOTH pages: the top bar, the two-page nav, the Technikmodus switch + bar +
+   inline technical blocks, the plain-German status hero, the guided
+   commissioning steps and the danger zone framing.
+
+   Mobile-first: every rule below is the PHONE layout; the >=760px and >=1100px
+   breakpoints add columns and detail, they never merely widen. Touch targets
+   are >= 44px. Nothing may scroll the page horizontally - wide content
+   (register tables, charts, raw values) scrolls inside its own container. */
+
+/* ---------------- Top bar ---------------- */
+.topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--vp-navy);
+  color: #fff;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  font-family: var(--vp-font-heading);
+  font-weight: var(--vp-weight-extrabold);
+  font-size: 16px; letter-spacing: var(--vp-tracking-tight);
+  color: #fff; text-decoration: none;
+}
+.brand-mark {
+  width: 32px; height: 32px; flex: 0 0 auto; display: grid; place-items: center;
+  border-radius: var(--vp-radius-sm); color: var(--vp-navy);
+  background: linear-gradient(135deg, var(--vp-primary-light), var(--vp-primary));
+}
+.brand-mark svg { width: 19px; height: 19px; }
+.brand-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-label small {
+  display: block; font-family: var(--vp-font-body); font-weight: 400;
+  font-size: 11px; letter-spacing: .02em; color: rgba(255,255,255,.66); margin-top: -2px;
+}
+.topbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 0 auto; }
+.version { color: rgba(255,255,255,.6); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* One-handed phone: the header must fit the cloud state AND the Technikmodus
+   switch without truncating either. The wordmark is the thing that can go -
+   the page title and the nav already say where you are, and the mark stays a
+   tappable link home. */
+@media (max-width: 759px) {
+  .brand-label { display: none; }
+  .version { display: none; }
+  .tech-bar-long { display: none; }
+}
+
+/* Cloud state chip - readable ON the navy bar (status is text + dot, never
+   colour alone). */
+.state-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: var(--vp-weight-semibold);
+  padding: 5px 10px; border-radius: var(--vp-radius-pill);
+  background: rgba(255,255,255,.12); color: rgba(255,255,255,.92);
+  border: 1px solid rgba(255,255,255,.16); white-space: nowrap;
+}
+.state-chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.state-chip.ok { color: #8CE7AC; }
+.state-chip.warn { color: #FFD08A; }
+.state-chip.off { color: rgba(255,255,255,.7); }
+.state-chip .dot.live { animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* Status pill on a LIGHT card surface (source rows, the inverter summary row,
+   the "Verbindung testen" panel). Built by sources.js / inverter.js / verify.js
+   as `class="pill ok|warn|off"` with a `.dot` inside - that contract is fixed;
+   inverter.css layers the compact `.row .pill` variant on top. Status is always
+   text + dot, never colour alone. */
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12.5px; font-weight: var(--vp-weight-semibold);
+  padding: 7px 12px; border-radius: var(--vp-radius-pill);
+  border: 1px solid transparent; white-space: nowrap;
+}
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
+.pill.ok { color: var(--ok); background: var(--ok-soft); border-color: #CBEBD5; }
+.pill.warn { color: var(--warn); background: var(--warn-soft); border-color: #F3E2C4; }
+.pill.off { color: var(--muted); background: var(--bg-2); border-color: var(--line); }
+.pill .dot.live { animation: pulse 1.8s ease-in-out infinite; }
+
+/* ---------------- Technikmodus switch (same position on every page) ------- */
+.tech-toggle {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0 12px 0 10px;
+  border-radius: var(--vp-radius-pill);
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.10);
+  color: #fff; font: inherit; font-size: 12.5px; font-weight: var(--vp-weight-semibold);
+  cursor: pointer; white-space: nowrap;
+}
+.tech-toggle:hover { background: rgba(255,255,255,.18); }
+.tech-toggle .sw {
+  width: 30px; height: 17px; flex: 0 0 auto; border-radius: 999px;
+  background: rgba(255,255,255,.28); position: relative;
+  transition: background .18s var(--vp-ease);
+}
+.tech-toggle .sw::after {
+  content: ""; position: absolute; top: 2.5px; left: 2.5px;
+  width: 12px; height: 12px; border-radius: 50%; background: #fff;
+  transition: transform .18s var(--vp-ease);
+}
+.tech-toggle[aria-pressed="true"] { background: var(--tech); border-color: var(--tech); }
+.tech-toggle[aria-pressed="true"] .sw { background: rgba(255,255,255,.45); }
+.tech-toggle[aria-pressed="true"] .sw::after { transform: translateX(13px); }
+/* Phone shows "Technik", desktop the full "Technikmodus" - the accessible name
+   is the button's aria-label, so it reads the same at every width. */
+.tech-toggle-label { display: none; }
+.tech-toggle-short { display: inline; }
+.tech-toggle-state { opacity: .75; }
+
+/* The solid violet bar: nobody may sit in the technical view thinking it is
+   the normal one. Carries a one-click way out. */
+.tech-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 14px;
+  background: var(--tech); color: #fff;
+  font-size: 12.5px; font-weight: var(--vp-weight-bold); letter-spacing: .02em;
+  position: sticky; top: 52px; z-index: 25;
+}
+.tech-bar-off {
+  border: 1px solid rgba(255,255,255,.4); background: rgba(255,255,255,.12);
+  color: #fff; font: inherit; font-size: 12px; font-weight: var(--vp-weight-semibold);
+  border-radius: var(--vp-radius-pill); padding: 6px 12px; min-height: 34px; cursor: pointer;
+}
+.tech-bar-off:hover { background: rgba(255,255,255,.22); }
+
+/* ---------------- Page nav (two pages, never more) ---------------- */
+.pagenav {
+  display: flex; gap: 6px; padding: 8px 14px 0;
+  max-width: 1200px; margin: 0 auto;
+}
+.pagenav a {
+  flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 44px; padding: 0 12px;
+  border-radius: var(--vp-radius-btn) var(--vp-radius-btn) 0 0;
+  border: 1px solid var(--line); border-bottom: 0;
+  background: var(--bg-2); color: var(--muted);
+  font-size: 14px; font-weight: var(--vp-weight-semibold); text-decoration: none;
+}
+.pagenav a svg { width: 17px; height: 17px; }
+.pagenav a[aria-current="page"] {
+  background: var(--surface); color: var(--vp-action);
+  box-shadow: inset 0 3px 0 var(--vp-action);
+}
+.pagenav + main { padding-top: 14px; }
+
+/* ---------------- Inline technical blocks (Technikmodus) ----------------
+   They appear AT THE PLACE THEY BELONG - registers under the control state,
+   raw source values under the flow - never in a separate advanced dump. */
+/* Hidden UNLESS Technikmodus is on. Written as a negated :not() + !important on
+   purpose: a plain `.tech-only { display:none }` loses the cascade to any later
+   single-class rule that sets a display (`.area-title{display:flex}` did
+   exactly that and leaked a technical heading into normal mode). This form is
+   order-independent and keeps each element's natural display when revealed -
+   the same posture as the `[hidden]` rule in dashboard.css. */
+html:not(.tech-on) .tech-only { display: none !important; }
+
+.tech-block {
+  border: 1px solid var(--tech-line);
+  background: var(--tech-soft);
+  border-radius: var(--vp-radius-md);
+  padding: 14px 15px;
+  margin-top: 12px;
+}
+.tech-block > .tech-h {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  font-size: 11.5px; font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide); text-transform: uppercase;
+  color: var(--tech-deep); margin: 0 0 9px;
+}
+.tech-block > .tech-h::before { content: "\25C6"; font-size: 10px; line-height: 1; }
+.tech-block .tech-note { margin: 8px 0 0; font-size: 12.5px; color: var(--tech-ink); }
+.tech-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.65; color: var(--tech-ink);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.tech-kv { display: grid; gap: 4px; }
+.tech-kv > div { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+.tech-kv b { font-weight: var(--vp-weight-semibold); color: var(--tech-deep); }
+
+/* ---------------- Status hero (the plain-German headline) ----------------
+   The load-bearing rule of this page: what is hidden must never hide a CAUSE.
+   Whenever something is wrong the reason is written HERE, in normal mode. */
+.status-hero {
+  display: flex; gap: 12px; align-items: flex-start;
+  border-radius: var(--vp-radius-md); border: 1px solid var(--line);
+  background: var(--surface); box-shadow: var(--vp-shadow-sm);
+  padding: 15px 16px;
+}
+.status-hero-ico {
+  width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%;
+  display: grid; place-items: center; background: var(--bg-2); color: var(--muted);
+}
+.status-hero-ico svg { width: 19px; height: 19px; }
+.status-hero-main { min-width: 0; }
+.status-hero-title {
+  margin: 0; font-family: var(--vp-font-heading); font-size: 17px;
+  font-weight: var(--vp-weight-bold); line-height: var(--vp-leading-snug); color: var(--ink);
+}
+.status-hero-detail { margin: 3px 0 0; font-size: 13.5px; color: var(--muted); }
+.status-hero-cause {
+  margin: 9px 0 0; padding: 9px 11px; border-radius: var(--vp-radius-sm);
+  background: var(--bg-2); color: var(--ink-2); font-size: 13.5px;
+  border-left: 3px solid var(--muted);
+}
+.status-hero.ok  { border-color: #CBEBD5; background: var(--ok-soft); }
+.status-hero.ok  .status-hero-ico { background: #D5F0DE; color: var(--ok); }
+.status-hero.ok  .status-hero-title { color: #14532D; }
+.status-hero.warn { border-color: #F3E2C4; background: var(--warn-soft); }
+.status-hero.warn .status-hero-ico { background: #FAE6C4; color: var(--warn); }
+.status-hero.warn .status-hero-cause { border-left-color: var(--warn); background: rgba(255,255,255,.7); }
+.status-hero.err { border-color: #F2C9C9; background: var(--err-soft); }
+.status-hero.err .status-hero-ico { background: #F8D8D8; color: var(--err); }
+.status-hero.err .status-hero-title { color: #7F1D1D; }
+.status-hero.err .status-hero-cause { border-left-color: var(--err); background: rgba(255,255,255,.7); }
+
+/* ---------------- Guided commissioning (Einrichten) ---------------- */
+.setup-card { padding: 16px; }
+.setup-card.done { padding: 13px 15px; }
+.setup-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.setup-title {
+  margin: 0; font-family: var(--vp-font-heading); font-size: 17px;
+  font-weight: var(--vp-weight-bold); color: var(--ink);
+}
+.setup-progress { font-size: 12.5px; font-weight: var(--vp-weight-semibold); color: var(--muted); }
+.setup-steps { list-style: none; margin: 13px 0 0; padding: 0; display: grid; gap: 8px; }
+.setup-step {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 11px; align-items: start;
+  padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--vp-radius-sm);
+  background: var(--surface);
+}
+.setup-step .n {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: var(--vp-weight-bold); color: #fff; background: var(--vp-gray);
+}
+.setup-step.done { background: var(--ok-soft); border-color: #CBEBD5; }
+.setup-step.done .n { background: var(--ok); }
+.setup-step.active { background: var(--warn-soft); border-color: #F3E2C4; }
+.setup-step.active .n { background: var(--warn); }
+.setup-step.blocked { background: var(--err-soft); border-color: #F2C9C9; }
+.setup-step.blocked .n { background: var(--err); }
+.setup-step .t { font-size: 14px; font-weight: var(--vp-weight-semibold); line-height: var(--vp-leading-snug); }
+.setup-step .s { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.setup-step .cause {
+  margin-top: 6px; font-size: 12.5px; color: var(--ink-2);
+  background: rgba(255,255,255,.72); border-left: 3px solid var(--warn);
+  border-radius: 0 6px 6px 0; padding: 6px 9px;
+}
+.setup-step.blocked .cause { border-left-color: var(--err); }
+.setup-step .step-link {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+  min-height: 40px; padding: 0 13px; border-radius: var(--vp-radius-btn);
+  background: var(--vp-action); color: #fff; text-decoration: none;
+  font-size: 13px; font-weight: var(--vp-weight-semibold); border: 0; cursor: pointer;
+}
+.setup-step .step-link.ghost { background: var(--surface); color: var(--vp-action); border: 1px solid var(--vp-gray); }
+
+/* The receded state: a plant that has run for a year must not be shouted at. */
+.setup-done-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.setup-done-line .ok-dot {
+  width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%;
+  background: var(--ok); color: #fff; display: grid; place-items: center; font-size: 12px;
+}
+.setup-done-line strong { font-size: 14.5px; color: #14532D; }
+.setup-detail-btn {
+  margin-left: auto; background: none; border: 0; color: var(--vp-action);
+  font: inherit; font-size: 13px; font-weight: var(--vp-weight-semibold);
+  cursor: pointer; min-height: 44px; padding: 0 4px; text-decoration: underline;
+}
+
+/* ---------------- "Jetzt": diagram + tiles ----------------
+   Phone: stacked, diagram first. Desktop: side by side, so the flow picture and
+   all four numbers are on screen together instead of one very tall diagram. */
+.now-grid { display: grid; gap: 16px; }
+.now-grid > .kpis { margin: 0; }
+@media (min-width: 1000px) {
+  .now-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+  .now-grid > .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* Belt and braces: the SVG keeps its 400x250 aspect at width:100%, so an
+     unbounded column would render a ~750px-tall diagram. */
+  .now-grid .flow-wrap { max-height: 420px; }
+}
+
+/* ---------------- Section framing ---------------- */
+.page-lead { margin: 0 2px 14px; color: var(--muted); font-size: 13.5px; max-width: 62ch; }
+.area-title {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin: 26px 2px 11px; font-size: 12.5px; font-weight: var(--vp-weight-bold);
+  letter-spacing: var(--vp-tracking-wide); text-transform: uppercase; color: var(--muted);
+}
+.area-title:first-child { margin-top: 4px; }
+
+/* ---------------- Portal pairing block (Einrichten) ---------------- */
+.pair-card .pair-state {
+  margin: 0 0 12px; font-size: 14.5px; font-weight: var(--vp-weight-semibold);
+  color: var(--ink);
+}
+.pair-card .pair-state.ok { color: #14532D; }
+.pair-card .pair-state.warn { color: #8A5200; }
+
+/* Danger zone: red-bordered + confirmation-gated in BOTH modes. */
+.danger-card { border: 1.5px solid #F2C9C9; box-shadow: none; }
+.danger-card .area-flag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: var(--vp-weight-bold); letter-spacing: var(--vp-tracking-wide);
+  text-transform: uppercase; color: var(--err);
+}
+
+/* .foot is owned by dashboard.css. */
+
+/* ---------------- Breakpoints: MORE, not merely wider ---------------- */
+@media (min-width: 760px) {
+  .topbar { padding: 11px 20px; }
+  .brand { font-size: 18px; }
+  .brand-mark { width: 38px; height: 38px; }
+  .brand-mark svg { width: 22px; height: 22px; }
+  .tech-toggle-label { display: inline; }
+  .tech-toggle-short { display: none; }
+  .pagenav { padding: 10px 20px 0; }
+  .pagenav a { flex: 0 0 auto; min-width: 168px; }
+  .setup-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-hero { padding: 18px 20px; }
+  .status-hero-title { font-size: 19px; }
+  .tech-kv > div { justify-content: flex-start; }
+}
+@media (min-width: 1100px) {
+  .setup-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .setup-card { padding: 20px 22px; }
+}

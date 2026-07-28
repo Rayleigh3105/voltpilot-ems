@@ -1,24 +1,28 @@
 /* VoltPilot Edge - local energy dashboard.
-   Self-contained (no CDN, works offline on the device). Brand + neutral tokens
-   are the VoltPilot design system baked in; the semantic energy palette (PV /
-   Last / Netz / Batterie) is defined once here and reused by cards, the flow
-   diagram and the charts (charts.js reads --ink/--muted/--grid/--surface). */
+   Self-contained (no CDN, works offline on the device). Load ORDER matters:
+   tokens.css (the copied portal design system) -> dashboard.css -> shell.css.
+
+   The semantic aliases below are the edge's own vocabulary; every one of them
+   is DERIVED from a portal token in tokens.css so the device page and the
+   portal cannot drift. The energy palette (PV / Last / Netz / Batterie) is the
+   portal's --vp-flow-* set verbatim and is reused by cards, the flow diagram
+   and the charts (charts.js reads --ink/--muted/--grid/--surface). */
 
 :root {
-  /* Brand */
-  --brand: #5A8DE8;
-  --brand-deep: #3E72CE;
+  /* Brand - the portal's interactive ink, not the decorative cornflower. */
+  --brand: var(--vp-primary-deep);
+  --brand-deep: var(--vp-action);
   --brand-soft: #EAF1FE;
 
-  /* Neutral surfaces + ink */
-  --bg: #EEF2F8;
-  --bg-2: #F6F8FC;
-  --surface: #FFFFFF;
-  --ink: #131A24;
+  /* Neutral surfaces + ink (portal neutrals) */
+  --bg: var(--vp-bg-light);
+  --bg-2: #F1F3F5;
+  --surface: var(--vp-surface);
+  --ink: var(--vp-text-dark);
   --ink-2: #33414F;
-  --muted: #64748B;
-  --grid: #E9EEF5;
-  --line: #E3E9F1;
+  --muted: var(--vp-text-gray);
+  --grid: #F1F3F5;
+  --line: var(--vp-border);
 
   /* Status */
   --ok: #16A34A;
@@ -28,92 +32,47 @@
   --err: #DC2626;
   --err-soft: #FBEBEB;
 
-  /* Energy semantics */
-  --pv: #F59E0B;      /* Erzeugung / Sonne */
-  --pv-soft: #FEF3E2;
-  --load: #8B5CF6;    /* Hausverbrauch */
-  --load-soft: #F1ECFD;
-  --grid-c: #0EA5A3;  /* Netz (bidirektional) */
-  --grid-soft: #E2F6F5;
-  --batt: #16A34A;    /* Batterie / SoC */
-  --batt-soft: #E7F6EC;
+  /* Energy semantics = the portal's --vp-flow-* hues */
+  --pv: var(--vp-flow-pv);            /* Erzeugung / Sonne */
+  --pv-soft: var(--vp-flow-pv-soft);
+  --load: var(--vp-flow-load);        /* Hausverbrauch */
+  --load-soft: var(--vp-flow-load-soft);
+  --grid-c: var(--vp-flow-grid);      /* Netz (bidirektional) */
+  --grid-soft: var(--vp-flow-grid-soft);
+  --batt: var(--vp-flow-batt);        /* Batterie / SoC */
+  --batt-soft: var(--vp-flow-batt-soft);
   --import: #E0563B;  /* Netzbezug */
   --export: #16A34A;  /* Einspeisung */
 
-  --radius: 16px;
-  --radius-sm: 10px;
-  --shadow: 0 1px 2px rgba(19, 26, 36, .06), 0 8px 24px rgba(19, 26, 36, .06);
-  --shadow-sm: 0 1px 2px rgba(19, 26, 36, .06), 0 2px 8px rgba(19, 26, 36, .05);
+  --radius: var(--vp-radius-md);
+  --radius-sm: var(--vp-radius-sm);
+  --shadow: var(--vp-shadow-sm);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .04);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; min-width: 0; }
 [hidden] { display: none !important; }
 
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  font-family: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background:
-    radial-gradient(1200px 500px at 100% -10%, #E5EDFA 0%, rgba(229,237,250,0) 60%),
-    var(--bg);
+  font-family: var(--vp-font-body);
+  background: var(--bg);
   color: var(--ink);
-  line-height: 1.5;
-  font-feature-settings: "cv11", "ss01";
+  line-height: var(--vp-leading-normal);
+  -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  overflow-x: hidden;
 }
+h1, h2, h3, h4 { font-family: var(--vp-font-heading); letter-spacing: var(--vp-tracking-tight); }
+:focus-visible { outline: 2px solid var(--vp-action); outline-offset: 2px; border-radius: 4px; }
 
-/* ---------------- Top bar ---------------- */
-.topbar {
-  position: sticky; top: 0; z-index: 20;
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px;
-  padding: 12px 22px;
-  background: rgba(255,255,255,.82);
-  backdrop-filter: saturate(160%) blur(12px);
-  border-bottom: 1px solid var(--line);
-}
-.brand { display: flex; align-items: center; gap: 12px; font-weight: 750; font-size: 19px; letter-spacing: -.01em; min-width: 0; }
-.brand-mark {
-  width: 40px; height: 40px; display: grid; place-items: center;
-  border-radius: 11px; color: #fff;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
-  box-shadow: 0 2px 10px rgba(62,114,206,.35);
-}
-.brand-mark svg { width: 23px; height: 23px; }
-.brand small { display: block; font-weight: 500; font-size: 11.5px; color: var(--muted); letter-spacing: .02em; margin-top: -1px; }
-
-.topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.link-btn {
-  display: inline-flex; align-items: center; gap: 7px;
-  color: var(--ink-2); text-decoration: none; font-size: 13.5px; font-weight: 600;
-  padding: 8px 13px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface);
-  min-height: 40px;
-}
-.link-btn:hover { background: var(--bg-2); border-color: #D3DCE8; }
-.link-btn svg { width: 16px; height: 16px; }
-.version { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-
-/* Cloud pill */
-.pill {
-  display: inline-flex; align-items: center; gap: 7px;
-  font-size: 12.5px; font-weight: 650; padding: 7px 12px; border-radius: 999px;
-  border: 1px solid transparent; white-space: nowrap;
-}
-.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 3px rgba(0,0,0,.06); }
-.pill.ok { color: var(--ok); background: var(--ok-soft); border-color: #CBEBD5; }
-.pill.warn { color: var(--warn); background: var(--warn-soft); border-color: #F3E2C4; }
-.pill.off { color: var(--muted); background: #EEF2F7; border-color: #E1E8F0; }
-.pill .dot.live { animation: pulse 1.8s ease-in-out infinite; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+/* The app shell (top bar, page nav, Technikmodus, status hero, guided steps)
+   lives in shell.css, which is loaded AFTER this file. Status pills (.pill) and
+   the cloud dot are shell components too - sources.js/verify.js build them. */
 
 /* ---------------- Layout ---------------- */
 main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
-.section-title {
-  display: flex; align-items: center; gap: 9px;
-  margin: 26px 2px 12px; font-size: 13px; font-weight: 700; letter-spacing: .04em;
-  text-transform: uppercase; color: var(--muted);
-}
-.section-title:first-child { margin-top: 4px; }
 
 .card {
   background: var(--surface);
@@ -124,82 +83,6 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 }
 
 /* ---------------- Pairing / onboarding ---------------- */
-.onboard-card { padding: 26px; margin-bottom: 20px; overflow: hidden; position: relative; }
-.onboard-card.compact { padding: 14px 18px; }
-.pairing-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.pairing-icon {
-  width: 46px; height: 46px; flex: none; border-radius: 12px; display: grid; place-items: center;
-  background: var(--brand-soft); color: var(--brand-deep);
-}
-.pairing-icon svg { width: 24px; height: 24px; }
-.pairing-head h2 { margin: 0; font-size: 17px; font-weight: 700; }
-.pairing-head p { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; }
-
-/* Step progress rail (1 → 2 → ✓) */
-.onboard-progress {
-  list-style: none; margin: 22px 0 4px; padding: 0;
-  display: flex; align-items: center; gap: 8px;
-}
-.onboard-progress li[data-p] {
-  display: inline-flex; align-items: center; gap: 9px; flex: none;
-  font-size: 13px; font-weight: 650; color: var(--muted);
-}
-.onboard-progress .op-num {
-  width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center;
-  border: 2px solid #C7D2E0; background: #fff; color: var(--muted); font-size: 12.5px; font-weight: 700;
-}
-.onboard-progress li.active { color: var(--ink); }
-.onboard-progress li.active .op-num { border-color: var(--brand-deep); color: var(--brand-deep); background: var(--brand-soft); }
-.onboard-progress li.done { color: var(--ink-2); }
-.onboard-progress li.done .op-num { border-color: var(--ok); background: var(--ok); color: #fff; }
-.onboard-progress .op-sep { flex: 1 1 auto; height: 2px; min-width: 14px; background: var(--line); border-radius: 2px; }
-
-/* Step blocks */
-.step-block {
-  margin-top: 14px; padding: 18px; border-radius: var(--radius);
-  border: 1px solid var(--line); background: var(--bg-2);
-  transition: border-color .2s, background .2s, opacity .2s;
-}
-.step-block.active { border-color: var(--brand); background: linear-gradient(180deg, #fff, var(--brand-soft)); box-shadow: var(--shadow-sm); }
-.step-block.done { border-color: #CBEBD5; background: linear-gradient(180deg, #fff, var(--ok-soft)); }
-.step-block.locked { opacity: .72; }
-.step-block-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.step-tag { font-size: 11.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
-.step-block.active .step-tag { color: var(--brand-deep); }
-.step-block.done .step-tag { color: var(--ok); }
-.step-block-title { margin: 8px 0 0; font-size: 16px; font-weight: 700; }
-.step-block-desc { margin: 5px 0 0; color: var(--ink-2); font-size: 13.5px; max-width: 620px; }
-
-/* Step status chip */
-.step-status { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 650; color: var(--muted); }
-.step-status .ss-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
-.step-status.ok { color: var(--ok); }
-.step-status.warn { color: var(--warn); }
-.step-status.wait { color: var(--brand-deep); }
-.step-status.locked { color: var(--muted); }
-.step-status.locked .ss-dot { background: #B4C0CF; }
-.ss-spin {
-  width: 12px; height: 12px; flex: none; border-radius: 50%;
-  border: 2px solid rgba(62,114,206,.3); border-top-color: var(--brand-deep);
-  display: inline-block; animation: ss-spin .7s linear infinite;
-}
-@keyframes ss-spin { to { transform: rotate(360deg); } }
-
-/* Step CTA button */
-.step-cta {
-  display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
-  padding: 11px 18px; border-radius: 11px; min-height: 44px;
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%); color: #fff;
-  font-size: 14px; font-weight: 700; text-decoration: none;
-  box-shadow: 0 2px 10px rgba(62,114,206,.32);
-}
-.step-cta:hover { filter: brightness(1.04); }
-.step-cta svg { width: 17px; height: 17px; }
-.step-cta.ghost {
-  background: var(--surface); color: var(--brand-deep);
-  border: 1px solid var(--line); box-shadow: none;
-}
-.step-cta.ghost:hover { background: var(--brand-soft); border-color: #D3DCE8; filter: none; }
 
 /* Step 2 locked note */
 .step-locked-note { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
@@ -337,7 +220,6 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .chart-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
   color: var(--muted); font-size: 13.5px; pointer-events: none; }
 .chart-empty div { max-width: 300px; }
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
 /* ---------------- Fahrplan (battery dispatch plan) ---------------- */
 .chart-plan { height: 220px; }
@@ -460,7 +342,6 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 @media (max-width: 960px) {
   .kpis { grid-template-columns: repeat(2, 1fr); }
   .cols { grid-template-columns: 1fr; }
-  .grid-2 { grid-template-columns: 1fr; }
 }
 
 /* Phone: the top bar's status cluster drops to its own full-width row so the
@@ -476,20 +357,11 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
   .topbar-right { width: 100%; justify-content: space-between; gap: 8px; }
   .pill { flex: 0 1 auto; min-width: 0; }
   .pill span:not(.dot) { overflow: hidden; text-overflow: ellipsis; }
-  .link-btn { padding: 0; width: 44px; min-height: 44px; justify-content: center; flex: none; }
-  .link-btn span { display: none; }
 
-  .section-title { margin: 22px 2px 10px; }
   .card { padding: 18px; }
-  .onboard-card { padding: 20px; }
-  .onboard-card.compact { padding: 14px 16px; }
 
   /* Progress rail: hide the word labels on phones, keep the numbered dots +
      connectors so the 1 → 2 → ✓ sequence stays clear without wrapping. */
-  .onboard-progress { gap: 6px; }
-  .onboard-progress .op-lbl { display: none; }
-  .step-block { padding: 16px; }
-  .step-cta { width: 100%; justify-content: center; }
 
   .kpis { grid-template-columns: 1fr 1fr; gap: 12px; }
   .kpi { padding: 15px; }
@@ -545,12 +417,29 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 .control-card .ctrl-state .ss-dot {
   width: 9px; height: 9px; border-radius: 50%; background: var(--muted);
 }
+/* Layer 1 of the control surface: ONE plain-German sentence plus its reason.
+   Always visible, in both modes - it is what may never be hidden. */
+.ctrl-summary {
+  margin-top: 6px; padding: 13px 14px; border-radius: var(--radius-sm);
+  background: var(--bg-2); border-left: 3px solid var(--muted);
+}
+.ctrl-summary strong { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.35; }
+.ctrl-summary p { margin: 5px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.ctrl-summary.ok { background: var(--ok-soft); border-left-color: var(--ok); }
+.ctrl-summary.ok strong { color: #14532D; }
+.ctrl-summary.warn { background: var(--warn-soft); border-left-color: var(--warn); }
+.ctrl-summary.brand { background: var(--brand-soft); border-left-color: var(--brand); }
 .ctrl-banner {
   margin: 12px 0; padding: 11px 14px; border-radius: 10px;
   font-size: 13px; font-weight: 600; line-height: 1.45;
 }
 .ctrl-banner.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid #F3E2C4; }
-.ctrl-table-wrap { overflow-x: auto; }
+/* Wide content scrolls inside its OWN container - the page never scrolls
+   sideways. The min-width keeps the four columns legible on a phone instead of
+   squeezing "Regelseite Reg 1104" into three wrapped lines. */
+.ctrl-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.ctrl-table { min-width: 470px; }
+.ctrl-addr { white-space: nowrap; }
 .ctrl-table {
   width: 100%; border-collapse: collapse; font-size: 13.5px;
   font-variant-numeric: tabular-nums;
