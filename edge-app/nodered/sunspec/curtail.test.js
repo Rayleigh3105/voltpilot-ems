@@ -187,6 +187,32 @@ test('a unit WITHOUT a discovery gets no plan and an honest reason - never a fab
   assert.strictEqual(u1.plan.ok, true);
 });
 
+test('a unit whose live WRtg read failed still plans from the CONFIGURED kWp (float-audit §6.1)', () => {
+  // A discovery WITHOUT a readable nameplate (Model 120 absent): the resolved
+  // rating falls back to the curtail-block entry's capacity_kwp - and that
+  // fallback must reach planCurtailment, or the unit is classified writable,
+  // joins the split, and then refuses its own plan with "Nennleistung
+  // (Nameplate WRtg) unbekannt".
+  const controls = new Array(D.M123.LENGTH).fill(0);
+  controls[D.M123.WMaxLimPct_SF] = 0xfffe;
+  const img = buildImage(40000, [
+    { id: 1, body: new Array(66).fill(0) },
+    { id: 103, body: new Array(50).fill(0) },
+    { id: D.MODEL.IMMEDIATE_CONTROLS, body: controls },
+  ]);
+  const dNoRtg = D.discover(readerOver(img), { base: 40000 });
+  assert.ok(dNoRtg.ok && dNoRtg.controls.present, 'fixture: controls discovered');
+  assert.ok(!(dNoRtg.nameplateKw > 0), 'fixture: no live nameplate rating');
+  const f = fleet({}, { [KEY1]: dNoRtg, [KEY2]: discoveryFor(30) });
+  const u1 = f.units.find((u) => u.sourceId === 'src-fr1');
+  assert.strictEqual(u1.ratedKw, 25, 'rating falls back to the configured capacity_kwp');
+  assert.strictEqual(u1.plan.ok, true, 'the fallback reaches planCurtailment - no refusal');
+  assert.ok(u1.plan.writes.length > 0, 'the certified unit writes');
+  const w = u1.plan.writes.find((x) => x.role === 'pv_limit_pct');
+  assert.strictEqual(w.encode.rated_kw, 25, 'the pct conversion uses the configured kWp');
+  assert.ok(Math.abs(w.encode.pct - (u1.capKw / 25) * 100) < 1e-9, 'pct = cap / configured rating');
+});
+
 // --- release discipline ------------------------------------------------------
 
 test('an uncurtailed slot (pv_limit_kw absent) releases: WMaxLim_Ena=0', () => {
