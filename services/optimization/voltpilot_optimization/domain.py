@@ -190,14 +190,27 @@ def derive_terminal_value_eur_per_kwh(
 
     1. **Charge-side anchor.** The marginal cost of refilling one AC kWh is
        ``min(import_t, export_t)`` when the battery may charge from the grid
-       (buy it, or forgo exporting your own PV - whichever is cheaper), and
-       ``export_t`` alone in EEG mode, where only PV may charge and the cost is
-       therefore the forgone feed-in. A conservative low quantile (default the
-       30th percentile) of that series is the anchor; ``eta``/``wear`` discount
-       it exactly as before. Under symmetric pricing (import == export == spot,
-       the ``ohne`` model) ``min`` and ``max`` coincide, so this is a no-op -
-       the change bites precisely where import and export diverge, which is
-       where the old formula was wrong.
+       (buy it, or forgo exporting your own PV - whichever is cheaper). In EEG
+       mode only PV may charge, so the per-slot entry splits on whether the
+       slot actually OFFERS a PV refill (S2, scout ``vp-nacht-bezug-e7`` §1.5):
+       in a SURPLUS slot (``pv_t > load_t``) the refill channel exists and its
+       cost is the forgone feed-in ``export_t``; in a DEFICIT slot there is
+       nothing to refill from - the marginal stored kWh serves the HOUSE
+       instead, and its worth is the avoided import ``import_t``
+       (Bezugsvermeidung - the value of storing for the house, not for the
+       grid). The pre-S2 form (``export_t`` in every slot) under-valued stored
+       energy on exactly the winter/bad-weather horizons where refilling is
+       impossible, and the plan then sold the battery into a cheap tail (0.4-6
+       ct) that real all-in import (~30 ct) makes a plain loss. The share of
+       deficit slots decides how much the quantile feels this: on a sunny
+       horizon the low quantile still lands in the surplus/export range
+       (behavior unchanged), on a no-surplus day the whole series is import and
+       the anchor honestly carries the avoided Bezug. A conservative low
+       quantile (default the 30th percentile) of that series is the anchor;
+       ``eta``/``wear`` discount it exactly as before. Under symmetric pricing
+       (import == export == spot, the ``ohne`` model) every branch coincides,
+       so this is a no-op - the change bites precisely where import and export
+       diverge, which is where the old formula was wrong.
     2. **Free-PV refill cap.** Surplus generation in slots whose export value
        is <= 0 costs the plant NOTHING to store (feeding it in earns nothing or
        less). Energy the battery could actually absorb from such slots is
@@ -233,7 +246,12 @@ def derive_terminal_value_eur_per_kwh(
     if grid_charge_allowed:
         refill_eur_mwh = [min(imp, exp) for imp, exp in zip(import_prices, export_values)]
     else:
-        refill_eur_mwh = list(export_values)
+        # S2: surplus slot -> refill = forgone feed-in; deficit slot -> no PV
+        # to refill from, the stored kWh's worth is the avoided import.
+        refill_eur_mwh = [
+            exp if pv_kw[t] > load_kw[t] else imp
+            for t, (imp, exp) in enumerate(zip(import_prices, export_values))
+        ]
     quantile = terminal_value_quantile(env)
     anchor = sorted(refill_eur_mwh)[int(quantile * (n - 1))]
     v_end = max(0.0, eta * (anchor / 1000.0 - wear))

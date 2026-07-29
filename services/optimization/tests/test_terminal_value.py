@@ -211,6 +211,34 @@ def test_derived_value_is_the_wear_and_efficiency_discounted_quantile(monkeypatc
     assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
 
 
+def _asymmetric_eeg_input(
+    *,
+    spot: list[float],
+    import_eur_mwh: list[float],
+    export_eur_mwh: list[float],
+    pv_kw: list[float],
+    load_kw: float = 2.0,
+    soc0_kwh: float = 5.0,
+    terminal_value_eur_per_kwh: float | None = None,
+) -> OptimizationInput:
+    n = len(spot)
+    return OptimizationInput(
+        tenant_id=uuid4(),
+        site_id=uuid4(),
+        device_id=None,
+        battery=BATTERY,
+        slot_starts=horizon_slot_starts(T0, n),
+        prices_eur_mwh=spot,
+        load_kw=[load_kw] * n,
+        pv_kw=pv_kw,
+        initial_soc_kwh=soc0_kwh,
+        netzladen_erlaubt=False,
+        import_price_eur_mwh=import_eur_mwh,
+        export_value_eur_mwh=export_eur_mwh,
+        terminal_value_eur_per_kwh=terminal_value_eur_per_kwh,
+    )
+
+
 def test_derived_value_is_the_replacement_cost_not_the_best_use_price(monkeypatch):
     """THE defect (scout vp-fahrplan-idle-n7). A retail site: import (fest 430)
     dwarfs the export value (82). The old derivation anchored on the best USE
@@ -219,29 +247,116 @@ def test_derived_value_is_the_replacement_cost_not_the_best_use_price(monkeypatc
     peak ever reaches German retail.
 
     ``V_end`` is a REPLACEMENT cost: this plant is in EEG mode, so only PV may
-    refill the battery and the marginal cost of doing so is the forgone
-    feed-in (82), not the retail price it might later avoid."""
+    refill the battery, and wherever the horizon OFFERS that refill (PV surplus
+    slots - the pilot plant has 70 kWp, its summer horizon is full of them) the
+    marginal cost is the forgone feed-in (82), not the retail price it might
+    later avoid. The retail level plays no role at all then - a twin with
+    bare-spot import derives the identical value."""
     monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
     n = 96
-    spot = [100.0] * n
-    inp = OptimizationInput(
-        tenant_id=uuid4(),
-        site_id=uuid4(),
-        device_id=None,
-        battery=BATTERY,
-        slot_starts=horizon_slot_starts(T0, n),
-        prices_eur_mwh=spot,
-        load_kw=[2.0] * n,
-        pv_kw=[0.0] * n,
-        initial_soc_kwh=5.0,
-        netzladen_erlaubt=False,
-        import_price_eur_mwh=[430.0] * n,
-        export_value_eur_mwh=[82.0] * n,
+    # 32 surplus slots (a sunny third of the day) put the 30th-percentile
+    # anchor (index 28) firmly in the refill-on-offer range. The export series
+    # carries a small evening peaklet so the best in-horizon use stays clear of
+    # the anchor (the strict-dispersion guard is not what is under test here).
+    pv = [20.0] * 32 + [0.0] * 64
+    exports = [82.0] * 92 + [200.0] * 4
+    retail = _asymmetric_eeg_input(
+        spot=[100.0] * n,
+        import_eur_mwh=[430.0] * n,
+        export_eur_mwh=exports,
+        pv_kw=pv,
     )
     expected = ETA * (82.0 - WEAR_EUR_MWH) / 1000.0
-    assert inp.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
+    assert retail.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
     # and emphatically NOT the old best-use anchor
-    assert inp.effective_terminal_value_eur_per_kwh() < ETA * (430.0 - WEAR_EUR_MWH) / 1000.0
+    assert retail.effective_terminal_value_eur_per_kwh() < ETA * (430.0 - WEAR_EUR_MWH) / 1000.0
+    # Gegenprobe: where the refill is on offer the import level is irrelevant -
+    # a spot-priced twin (Bezug NOT dearer than the feed-in) values identically.
+    spot_priced = _asymmetric_eeg_input(
+        spot=[100.0] * n,
+        import_eur_mwh=[82.0] * n,
+        export_eur_mwh=exports,
+        pv_kw=pv,
+    )
+    assert spot_priced.effective_terminal_value_eur_per_kwh() == pytest.approx(expected)
+
+
+def test_eeg_anchor_carries_the_avoided_import_when_nothing_refills(monkeypatch):
+    """S2 (scout vp-nacht-bezug-e7 §1.5): the same retail site on a winter/
+    bad-weather horizon with NO PV surplus anywhere. There is no forgone
+    feed-in because there is nothing to feed in - refilling is impossible, and
+    the true worth of a stored kWh is the (high) import it lets the house
+    avoid. The pre-S2 export-only anchor said 82 here, and the plan then sold
+    the battery into any cheap tail above ~3 ct - energy the house re-buys at
+    43 ct the next morning.
+
+    The strict-dispersion guard is untouched: the flat 430 import series has
+    zero dispersion, so the anchor lands ON the best in-horizon use value and
+    is held one margin BELOW it (the flat-tariff trap: a constant ``fest``
+    import series must never lift ``V_end`` over the horizon's best use)."""
+    monkeypatch.delenv("OPTIMIZER_TERMINAL_VALUE_QUANTILE", raising=False)
+    n = 96
+    winter = _asymmetric_eeg_input(
+        spot=[100.0] * n,
+        import_eur_mwh=[430.0] * n,
+        export_eur_mwh=[82.0] * n,
+        pv_kw=[0.0] * n,
+    )
+    capped = ETA * (
+        430.0 / 1000.0 - WEAR_EUR_MWH / 1000.0 - TERMINAL_VALUE_MARGIN_EUR_PER_KWH
+    )
+    assert winter.effective_terminal_value_eur_per_kwh() == pytest.approx(capped, rel=1e-12)
+    # strictly below the best in-horizon use - the guard survives S2
+    assert winter.effective_terminal_value_eur_per_kwh() < ETA * (430.0 - WEAR_EUR_MWH) / 1000.0
+    # and far above the pre-S2 export-only anchor
+    assert winter.effective_terminal_value_eur_per_kwh() > ETA * (82.0 - WEAR_EUR_MWH) / 1000.0
+
+
+@needs_highs
+def test_eeg_winter_day_banks_stored_energy_for_the_house_instead_of_selling_out():
+    """S2 behaviorally: EEG plant, cloudy day (no PV), all-in import = spot +
+    25 ct, tiny house load - so the in-horizon load cannot absorb the battery
+    and the old plan SOLD the surplus into the 20 ct evening (the report's
+    sell-out: feed-in at spot while tomorrow's Bezug costs 30+ ct). With the
+    avoided import in the anchor, holding beats every export on this horizon:
+    the plan never exports a single slot and banks the energy for the house.
+
+    The contrast run (V_end explicitly zeroed) proves the anchor is what
+    prevents the sell-out; the symmetric twin (Bezug == feed-in, nothing
+    dearer to avoid) still sells the evening - the hold is driven by the
+    import/export asymmetry, not by a new blanket conservatism."""
+    n = 96
+    spot = [50.0] * 40 + [200.0] * 24 + [60.0] * 32
+    imports = [s + 250.0 for s in spot]
+
+    plan = solve(
+        _asymmetric_eeg_input(
+            spot=spot, import_eur_mwh=imports, export_eur_mwh=spot,
+            pv_kw=[0.0] * n, load_kw=0.2, soc0_kwh=9.0,
+        )
+    )
+    assert all(s.grid_kw >= -1e-6 for s in plan.slots), "kein Ausverkauf ins Netz"
+    assert plan.slots[-1].soc_kwh > 5.0, "the bulk is banked for tomorrow's Bezug"
+
+    dumped = solve(
+        _asymmetric_eeg_input(
+            spot=spot, import_eur_mwh=imports, export_eur_mwh=spot,
+            pv_kw=[0.0] * n, load_kw=0.2, soc0_kwh=9.0,
+            terminal_value_eur_per_kwh=0.0,
+        )
+    )
+    assert any(s.grid_kw < -1e-6 for s in dumped.slots), "without V_end it sells"
+    assert dumped.slots[-1].soc_kwh == pytest.approx(BATTERY.soc_min_kwh, abs=1e-3)
+
+    symmetric = solve(
+        _asymmetric_eeg_input(
+            spot=spot, import_eur_mwh=spot, export_eur_mwh=spot,
+            pv_kw=[0.0] * n, load_kw=0.2, soc0_kwh=9.0,
+        )
+    )
+    assert any(s.grid_kw < -1e-6 for s in symmetric.slots), (
+        "where Bezug is not dearer, selling the 200-evening stays correct"
+    )
 
 
 def test_replacement_cost_is_the_cheaper_of_grid_and_forgone_export(monkeypatch):

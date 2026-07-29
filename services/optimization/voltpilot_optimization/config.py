@@ -57,10 +57,13 @@ call it). In short: ``eta * (P_q - wear)`` floored at 0, where ``P_q`` is a
 conservative low quantile (default the 30th percentile,
 ``OPTIMIZER_TERMINAL_VALUE_QUANTILE``) of the per-slot REFILL price -
 ``min(import_price_t, export_value_t)`` where the battery may charge from the
-grid, ``export_value_t`` alone in EEG mode where only PV may charge - then
-scaled down by any free PV refill the horizon already offers, and finally held
-strictly below the best in-horizon use value by
-``TERMINAL_VALUE_MARGIN_EUR_PER_KWH``.
+grid; in EEG mode (only PV may charge) the slot entry is ``export_value_t``
+where the slot has PV surplus (a refill is on offer, its cost the forgone
+feed-in) and ``import_price_t`` where it has none (nothing to refill from -
+the stored kWh serves the house, worth the avoided import; S2, scout
+``vp-nacht-bezug-e7``) - then scaled down by any free PV refill the horizon
+already offers, and finally held strictly below the best in-horizon use value
+by ``TERMINAL_VALUE_MARGIN_EUR_PER_KWH``.
 
 Anchoring on the best USE (``max(import_t, export_t)``) was the original
 formulation and it was wrong: a flat retail tariff makes ``import_t`` constant
