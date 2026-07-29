@@ -27,11 +27,13 @@ package sources
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,7 +211,9 @@ func Normalize(cat inverter.Catalog, req Request, now time.Time) (Source, error)
 // idAlphabet has no 0/O/1/l/i lookalikes (same rationale as the device ref).
 const idAlphabet = "abcdefghjkmnpqrstuvwxyz23456789"
 
-// NewID returns a short, stable, local source id.
+// NewID returns a short random local source id. Since the deterministic ids
+// below it is only the COLLISION fallback (a second source with the identical
+// transport identity - not a valid setup, but never a crash).
 func NewID() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
@@ -219,6 +223,41 @@ func NewID() string {
 		b[i] = idAlphabet[int(b[i])%len(idAlphabet)]
 	}
 	return "src-" + string(b)
+}
+
+// DeterministicID derives the source id from the TRANSPORT IDENTITY (role +
+// communication + ip/port + the per-transport device discriminator), so
+// deleting and re-adding the SAME physical device converges on the SAME id.
+//
+// This is load-bearing for the cloud (scout vp-vier-erzeuger-p9): the portal
+// pins an adopted entity to the source id (measurement_point.edge_source_id).
+// With random ids, every delete + re-add - the only way to "rename" a source
+// before the label PUT existed - minted a new id, orphaned the pin, made the
+// same physical inverter reappear as "Neues Gerät gefunden", and the re-
+// adoption created a SECOND entity for it (the Pilsting ghost producer). With
+// deterministic ids the pin survives the churn.
+//
+// The role is part of the identity ON PURPOSE: re-adding the same box under a
+// DIFFERENT role (Erzeuger -> Netz-Zähler) must NOT revive a pin whose entity
+// carries the old role - that mismatch surfaces honestly as an orphaned pin
+// instead. Labels/intervals/kWp are display/master data and deliberately NOT
+// part of the identity.
+func DeterministicID(s Source) string {
+	parts := []string{s.Role, s.Communication, strings.TrimSpace(s.Connection.IP),
+		strconv.Itoa(s.Connection.Port)}
+	switch s.Communication {
+	case inverter.CommSolarmanV5:
+		parts = append(parts, strings.TrimSpace(s.Connection.Serial),
+			strconv.Itoa(s.Connection.MbSlaveID))
+	case inverter.CommModbusTCP, inverter.CommFroniusSunSpec:
+		parts = append(parts, strconv.Itoa(s.Connection.UnitID))
+	}
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\n")))
+	id := make([]byte, 8)
+	for i := range id {
+		id[i] = idAlphabet[int(sum[i])%len(idAlphabet)]
+	}
+	return "src-" + string(id)
 }
 
 // TopicPrefix is the local-bus namespace additional sources publish their

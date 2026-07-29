@@ -110,12 +110,62 @@
     li.appendChild(badge);
 
     var actions = el("span", { class: "row-actions" });
+    var ren = el("button", { type: "button", class: "icon-btn",
+      title: "Umbenennen (Enter speichert, Esc bricht ab)", "aria-label": "Quelle umbenennen",
+      html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>' });
+    ren.addEventListener("click", function () { startRename(li, s); });
+    actions.appendChild(ren);
     var del = el("button", { type: "button", class: "icon-btn danger", title: "Entfernen", "aria-label": "Quelle entfernen",
       html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>' });
     del.addEventListener("click", function () { removeSource(s); });
     actions.appendChild(del);
     li.appendChild(actions);
     return li;
+  }
+
+  // startRename swaps the row's name for an inline input (Enter = speichern,
+  // Escape/Blur = abbrechen). Rename is LABEL-ONLY on purpose: the source id -
+  // and with it the portal's adoption pin (measurement_point.edge_source_id) -
+  // stays. Before this endpoint existed the only "rename" was delete + re-add,
+  // which minted a new id and orphaned the pin (vp-vier-erzeuger-p9).
+  function startRename(li, s) {
+    var nameEl = li.querySelector(".row-name");
+    if (!nameEl || li.querySelector(".row-rename")) return;
+    var input = el("input", { type: "text", class: "row-rename", maxlength: "64",
+      "aria-label": "Neuer Name" });
+    input.value = s.label || "";
+    var err = el("span", { class: "row-meta row-rename-err" });
+    err.hidden = true;
+    nameEl.replaceWith(input);
+    input.insertAdjacentElement("afterend", err);
+    input.focus();
+    input.select();
+    var done = false;
+    function finish(save) {
+      if (done) return;
+      done = true;
+      var v = (input.value || "").trim();
+      if (!save || v === "" || v === s.label) { load(); return; }
+      fetch("/api/sources/" + encodeURIComponent(s.id), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: v })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (!r.ok) throw new Error((b && b.error) || "Umbenennen fehlgeschlagen.");
+        });
+      }).then(function () { load(); }).catch(function (e) {
+        done = false;
+        err.hidden = false;
+        err.textContent = e.message;
+        input.focus();
+      });
+    }
+    input.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); finish(true); }
+      if (ev.key === "Escape") finish(false);
+    });
+    input.addEventListener("blur", function () { finish(false); });
   }
 
   function renderGroups(list) {

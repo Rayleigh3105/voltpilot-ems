@@ -2669,8 +2669,22 @@ func (a *Agent) AddSource(req sources.Request) (sources.Source, error) {
 	if err != nil {
 		return sources.Source{}, err
 	}
-	src.ID = sources.NewID()
+	// Deterministic id from the transport identity: deleting + re-adding the
+	// same physical device converges on the SAME id, so the portal's adoption
+	// pin survives (vp-vier-erzeuger-p9). An already-taken id (a second source
+	// with the identical transport identity - not a valid setup) falls back to
+	// a random id so both rows stay addressable, loudly.
+	src.ID = sources.DeterministicID(src)
 	a.srcMu.Lock()
+	for i := range a.srcs {
+		if a.srcs[i].ID == src.ID {
+			src.ID = sources.NewID()
+			slog.Warn("source id collision: identical transport identity already configured; "+
+				"falling back to a random id", "existing", a.srcs[i].ID, "fallback", src.ID,
+				"ip", src.Connection.IP)
+			break
+		}
+	}
 	a.srcs = append(a.srcs, src)
 	list := append([]sources.Source(nil), a.srcs...)
 	a.srcMu.Unlock()
@@ -2727,6 +2741,50 @@ func (a *Agent) DeleteSource(id string) error {
 	a.reapplyEnvelope()
 	slog.Info("measurement point removed", "id", id)
 	return nil
+}
+
+// RenameSource updates ONLY the label of an existing source - identity
+// (id/transport) and master data stay untouched. This is the "Umbenennen
+// ohne Identitätswechsel" the sources UI lacked: before it, the only way to
+// rename was delete + re-add, which minted a new id and orphaned the portal's
+// adoption pin (vp-vier-erzeuger-p9). Unknown id -> sources.ErrNotFound; an
+// empty/oversized label -> *sources.ValidationError (HTTP 400 upstream).
+func (a *Agent) RenameSource(id, label string) (sources.Source, error) {
+	label = strings.TrimSpace(label)
+	if label == "" || len([]rune(label)) > 64 {
+		return sources.Source{}, &sources.ValidationError{
+			Msg: "Bitte einen Namen mit 1 bis 64 Zeichen angeben."}
+	}
+	a.srcMu.Lock()
+	idx := -1
+	for i := range a.srcs {
+		if a.srcs[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		a.srcMu.Unlock()
+		return sources.Source{}, sources.ErrNotFound
+	}
+	previous := a.srcs[idx].Label
+	a.srcs[idx].Label = label
+	updated := a.srcs[idx]
+	list := append([]sources.Source(nil), a.srcs...)
+	a.srcMu.Unlock()
+	if err := a.srcStore.Save(list); err != nil {
+		// Roll back the in-memory rename so disk + memory stay consistent
+		// (the AddSource/DeleteSource discipline).
+		a.srcMu.Lock()
+		if idx < len(a.srcs) && a.srcs[idx].ID == id {
+			a.srcs[idx].Label = previous
+		}
+		a.srcMu.Unlock()
+		return sources.Source{}, fmt.Errorf("Energiequelle konnte nicht umbenannt werden: %w", err)
+	}
+	a.publishSourcesConfig()
+	slog.Info("measurement point renamed", "id", id)
+	return updated, nil
 }
 
 func removeSourceByID(list []sources.Source, id string) []sources.Source {

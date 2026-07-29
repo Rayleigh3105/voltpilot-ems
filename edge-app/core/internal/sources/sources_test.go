@@ -336,3 +336,74 @@ func TestNormalizeAcceptsConsumerGoeSource(t *testing.T) {
 		t.Fatalf("bus entry connection wrong: %+v", e["connection"])
 	}
 }
+
+// DeterministicID: the source id derives from the TRANSPORT IDENTITY, so
+// delete + re-add of the same physical device converges on the SAME id and the
+// portal's adoption pin survives (vp-vier-erzeuger-p9). Every identity part -
+// role, transport, endpoint, per-transport discriminator - must change the id.
+func TestDeterministicIDIsStablePerTransportIdentity(t *testing.T) {
+	base := Source{
+		Role:          RoleErzeuger,
+		Communication: inverter.CommFroniusSunSpec,
+		Connection:    inverter.Connection{IP: "192.168.210.40", Port: 502, UnitID: 1},
+	}
+	id := DeterministicID(base)
+	if id != DeterministicID(base) {
+		t.Fatalf("not deterministic: %q vs %q", id, DeterministicID(base))
+	}
+	if len(id) != len("src-")+8 || id[:4] != "src-" {
+		t.Fatalf("id format wrong: %q", id)
+	}
+	for _, c := range id[4:] {
+		if !containsRune(idAlphabet, c) {
+			t.Fatalf("id %q uses a char outside the alphabet: %q", id, c)
+		}
+	}
+
+	// Labels / intervals / kWp are NOT identity: same id.
+	relabeled := base
+	relabeled.Label = "Fronius Anlage WR2"
+	relabeled.IntervalS = 30
+	relabeled.CapacityKwp = 35
+	if DeterministicID(relabeled) != id {
+		t.Fatalf("label/master data must not change the id")
+	}
+
+	// Every identity part IS identity: different id.
+	variations := []func(s *Source){
+		func(s *Source) { s.Connection.UnitID = 2 },
+		func(s *Source) { s.Connection.IP = "192.168.210.41" },
+		func(s *Source) { s.Connection.Port = 1502 },
+		func(s *Source) { s.Role = RoleNetz },
+		func(s *Source) { s.Communication = inverter.CommModbusTCP },
+	}
+	seen := map[string]bool{id: true}
+	for i, mutate := range variations {
+		v := base
+		mutate(&v)
+		vid := DeterministicID(v)
+		if seen[vid] {
+			t.Fatalf("variation %d collides: %q", i, vid)
+		}
+		seen[vid] = true
+	}
+
+	// Solarman identity keys on the logger serial + slave id.
+	sol := Source{Role: RoleErzeuger, Communication: inverter.CommSolarmanV5,
+		Connection: inverter.Connection{IP: "192.168.254.210", Port: 8899,
+			Serial: "2985159064", MbSlaveID: 1}}
+	solOther := sol
+	solOther.Connection.Serial = "2985159065"
+	if DeterministicID(sol) == DeterministicID(solOther) {
+		t.Fatalf("solarman serial must be part of the identity")
+	}
+}
+
+func containsRune(s string, r rune) bool {
+	for _, c := range s {
+		if c == r {
+			return true
+		}
+	}
+	return false
+}

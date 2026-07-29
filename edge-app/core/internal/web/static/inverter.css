@@ -38,6 +38,11 @@
 .row-dot.off { background: #B4C0CF; box-shadow: 0 0 0 3px #EEF2F7; }
 .row-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
 .row-name { font-size: 13.8px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Inline rename (label-only; Enter speichert, Esc bricht ab). */
+.row-rename { font: inherit; font-size: 13.8px; font-weight: 700; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px;
+  min-width: 0; max-width: 320px; }
+.row-rename-err { color: var(--err); }
 .row-meta { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* "Zuletzt gelesen": the per-device last-read values; tabular digits so the
    line does not wobble as values tick with each refresh. */
