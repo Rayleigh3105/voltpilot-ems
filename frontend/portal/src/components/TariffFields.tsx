@@ -1,5 +1,7 @@
 import { Input } from '../../designsystem/components/forms/Input';
 import type { TarifArt } from '../api';
+import { SupplyPriceFields } from './SupplyPriceFields';
+import type { SupplyPriceFormValues } from '../supplyPrice';
 
 /**
  * The site tariff inputs (captain decision 1+5, 2026-07-08): a Tarif-Art select
@@ -18,12 +20,21 @@ export function TariffFields({
   param,
   onParam,
   idPrefix,
+  supplyValues,
+  onSupplyChange,
 }: {
   tarifArt: TarifArt;
   onTarifArt: (art: TarifArt) => void;
   param: string;
   onParam: (text: string) => void;
   idPrefix: string;
+  /**
+   * The structured Bezugspreis-Komponenten (Stufe 2). When provided, the
+   * component fields render behind the Tarif-Art select; omit them to keep the
+   * plain tariff form (e.g. the admin create drawer).
+   */
+  supplyValues?: SupplyPriceFormValues;
+  onSupplyChange?: (field: keyof SupplyPriceFormValues, value: string) => void;
 }) {
   return (
     <>
@@ -74,6 +85,14 @@ export function TariffFields({
             Ihr fester Arbeitspreis - siehe Stromrechnung.
           </p>
         </div>
+      )}
+      {supplyValues && onSupplyChange && (
+        <SupplyPriceFields
+          tarifArt={tarifArt}
+          values={supplyValues}
+          onChange={onSupplyChange}
+          idPrefix={`${idPrefix}-supply`}
+        />
       )}
     </>
   );

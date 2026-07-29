@@ -26,12 +26,19 @@
  * Speicherschonung nur bei Änderung. Die Schreibpfade sind unverändert
  * (`api.updateSite`/`api.saveBattery`); die Gates bleiben unangetastet.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, type EarningsSite, type SiteAsset, type Site, type TarifArt } from '../api';
+import {
+  api,
+  type EarningsSite,
+  type SiteAsset,
+  type Site,
+  type SupplyPriceUpdate,
+  type TarifArt,
+} from '../api';
 import { modeViewItems, type NavTarget } from '../anlageNav';
 import { buildSitePayload } from '../anlage';
 import { settingsForMode, type ModeSettingDef } from '../modeSettings';
@@ -56,6 +63,11 @@ import { SpeicherschonungField } from './SpeicherschonungField';
 import { NetzladenField } from './NetzladenField';
 import { AnzulegenderWertField } from './AnzulegenderWertField';
 import { TariffFields } from './TariffFields';
+import {
+  buildSupplyPricePatch,
+  supplyPriceFormValues,
+  type SupplyPriceFormValues,
+} from '../supplyPrice';
 import '../components/Profile.css';
 import './ModusContainer.css';
 
@@ -630,8 +642,27 @@ function StromtarifEditor({
 }) {
   const [tarifArt, setTarifArt] = useState<TarifArt>(site.tarifArt ?? 'ohne');
   const [param, setParam] = useState(premiumInputText(site.tarifParamCtKwh ?? null));
+  // The structured Bezugspreis-Komponenten sheet, loaded lazily (Stufe 2). Null
+  // until fetched; the form prefills the researched suggestions for a site
+  // without a maintained sheet.
+  const [supply, setSupply] = useState<SupplyPriceFormValues | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .supplyPrice(site.id)
+      .then((sheet) => alive && setSupply(supplyPriceFormValues(sheet)))
+      .catch(() => alive && setSupply(supplyPriceFormValues(null)));
+    return () => {
+      alive = false;
+    };
+  }, [site.id]);
+
+  function changeSupply(field: keyof SupplyPriceFormValues, value: string) {
+    setSupply((s) => (s ? { ...s, [field]: value } : s));
+  }
 
   async function save() {
     const paramValue = tarifArt === 'ohne' ? null : parsePremiumInput(param);
@@ -643,6 +674,15 @@ function StromtarifEditor({
       );
       return;
     }
+    let supplyPatch: SupplyPriceUpdate | null = null;
+    if (supply) {
+      const built = buildSupplyPricePatch(supply);
+      if ('error' in built) {
+        setError(built.error);
+        return;
+      }
+      supplyPatch = built.patch;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -650,6 +690,11 @@ function StromtarifEditor({
         site.id,
         buildSitePayload(site, { tarifArt, tarifParamCtKwh: paramValue }),
       );
+      // The sheet is a separate row; persist it so the operator's maintained
+      // components activate the structured import price (Stufe-1 semantics).
+      if (supplyPatch) {
+        await api.updateSupplyPrice(site.id, supplyPatch);
+      }
       onSaved(updated);
     } catch {
       setError(SITE_SAVE_ERROR);
@@ -667,6 +712,8 @@ function StromtarifEditor({
           param={param}
           onParam={setParam}
           idPrefix="modus-tarif"
+          supplyValues={supply ?? undefined}
+          onSupplyChange={changeSupply}
         />
       </div>
       {error && <div className="vp-alert vp-alert-err">{error}</div>}

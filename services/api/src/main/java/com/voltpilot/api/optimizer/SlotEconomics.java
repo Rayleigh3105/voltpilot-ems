@@ -169,6 +169,43 @@ public final class SlotEconomics {
         return spotCt(spotEurMwh);
     }
 
+    /**
+     * Which rule sets this site's import price, for the admin diagnostics echo
+     * (report vp-nacht-bezug-e7 Stufe 2) - branch-for-branch identical to
+     * {@link #importPriceCtKwh(Double)}:
+     * <ul>
+     *   <li>{@code fest} - the flat all-in retail price (a maintained sheet is
+     *       ignored: "fest gewinnt");</li>
+     *   <li>{@code preisblatt} - the maintained {@code site_supply_price}
+     *       components (the structured composition is active);</li>
+     *   <li>{@code sammelaufschlag} - the legacy single {@code dynamisch}
+     *       Aufschlag on spot;</li>
+     *   <li>{@code default-flag} - the researched default component set stands
+     *       in behind {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS};</li>
+     *   <li>{@code spot} - bare spot (the un-maintained {@code ohne}/
+     *       {@code dynamisch}-without-Aufschlag default - the dangerous one the
+     *       report is about).</li>
+     * </ul>
+     */
+    public String importPriceSource() {
+        boolean maintained = site.supplyPrice() != null && site.supplyPrice().hasComponents();
+        if ("fest".equals(site.tarifArt()) && site.tarifParamCtKwh() != null) {
+            return "fest";
+        }
+        boolean structured = "dynamisch".equals(site.tarifArt())
+                || "ohne".equals(site.tarifArt());
+        if (structured && maintained) {
+            return "preisblatt";
+        }
+        if ("dynamisch".equals(site.tarifArt()) && site.tarifParamCtKwh() != null) {
+            return "sammelaufschlag";
+        }
+        if (structured && defaultSupplyComponents) {
+            return "default-flag";
+        }
+        return "spot";
+    }
+
     /** {@code (spot + Σ Komponenten netto) × (1 + USt)}, in ct/kWh. */
     private static Double structuredImportCtKwh(SupplyPrice supply, Double spotEurMwh) {
         if (spotEurMwh == null) {

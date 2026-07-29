@@ -70,6 +70,7 @@ function makeDiag(over: Partial<OptimizerDiagnostics> = {}): OptimizerDiagnostic
     },
     activeLoadModel: 'load-persistence',
     activePvModel: 'pv-physical',
+    priceSource: 'spot',
     storedEnergyValueIsApproximation: true,
     slots: [
       {

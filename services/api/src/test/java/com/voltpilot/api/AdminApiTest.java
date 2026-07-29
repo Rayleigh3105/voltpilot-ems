@@ -990,6 +990,8 @@ class AdminApiTest {
         assertThat(dvBody).containsEntry("generatedAt", genNew.toString());
         assertThat(dvBody).containsEntry("plantKind", "direktvermarktung");
         assertThat(dvBody).containsEntry("tarifArt", "dynamisch");
+        // Stufe 2 admin echo: dynamisch + Aufschlag, no sheet yet => Sammelaufschlag.
+        assertThat(dvBody).containsEntry("priceSource", "sammelaufschlag");
         assertThat(dvBody).containsEntry("storedEnergyValueIsApproximation", true);
         @SuppressWarnings("unchecked")
         List<Object> availableRuns = (List<Object>) dvBody.get("availableRuns");
@@ -1111,6 +1113,8 @@ class AdminApiTest {
                 new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> sheetSlots = (List<Map<String, Object>>) sheet.getBody().get("slots");
+        // Stufe 2 admin echo: a maintained sheet => the structured Preisblatt source.
+        assertThat(sheet.getBody()).containsEntry("priceSource", "preisblatt");
         assertThat(num(sheetSlots.get(0), "importPriceCtKwh"))
                 .isCloseTo(30.56634, org.assertj.core.data.Offset.offset(1e-9));
         assertThat(num(sheetSlots.get(1), "importPriceCtKwh"))
@@ -1129,6 +1133,8 @@ class AdminApiTest {
         List<Map<String, Object>> evSheetSlots =
                 (List<Map<String, Object>>) evSheet.getBody().get("slots");
         assertThat(num(evSheetSlots.get(0), "importPriceCtKwh")).isEqualTo(30.0);
+        // fest wins even with a maintained sheet => the flat all-in source.
+        assertThat(evSheet.getBody()).containsEntry("priceSource", "fest");
 
         // ---- auth + tenant scoping -------------------------------------------
         // A customer token is refused outright (backend boundary, not UI).

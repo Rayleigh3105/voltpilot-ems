@@ -112,6 +112,44 @@ export interface Site {
   peakReserveSocPct?: number | null;
 }
 
+/**
+ * One Anlage's structured supply-price sheet (site_supply_price, report
+ * vp-nacht-bezug-e7 §3.1). Components ct/kWh NETTO, all nullable (null =
+ * unknown). `present` = a row exists (false => prefill the suggestions);
+ * `hasComponents` = the activation gate (>= 1 component maintained), i.e. the
+ * optimizer prices import as (spot + Sum Komponenten) x (1+USt) instead of bare
+ * spot.
+ */
+export interface SupplyPrice {
+  present: boolean;
+  hasComponents: boolean;
+  netzentgeltArbeitspreisCt: number | null;
+  stromsteuerCt: number | null;
+  konzessionsabgabeCt: number | null;
+  umlagenCt: number | null;
+  vertriebsaufschlagCt: number | null;
+  ustPct: number | null;
+  /** "Preisblatt gültig ab" (ISO date, JJJJ-MM-TT) or null. */
+  komponentenStand: string | null;
+  updatedAt: string | null;
+}
+
+/**
+ * A PATCH body for the supply-price sheet: any subset of the component fields.
+ * A field ABSENT keeps its stored value; a field present with a value is
+ * written; an explicit `null` clears that component to "unknown". `ustPct` is
+ * NOT NULL - a present null is ignored server-side.
+ */
+export type SupplyPriceUpdate = Partial<{
+  netzentgeltArbeitspreisCt: number | null;
+  stromsteuerCt: number | null;
+  konzessionsabgabeCt: number | null;
+  umlagenCt: number | null;
+  vertriebsaufschlagCt: number | null;
+  ustPct: number | null;
+  komponentenStand: string | null;
+}>;
+
 export interface CreateSiteInput {
   name: string;
   biddingZone?: string;
@@ -1309,6 +1347,15 @@ export const api = {
     request<Site>(`/api/v1/sites/${siteId}`, {
       method: 'PUT',
       body: JSON.stringify(input),
+    }),
+  /** The site's structured supply-price sheet (Bezugspreis-Komponenten). */
+  supplyPrice: (siteId: string) =>
+    request<SupplyPrice>(`/api/v1/sites/${siteId}/supply-price`),
+  /** Upsert the supply-price sheet (PATCH semantics; see SupplyPriceUpdate). */
+  updateSupplyPrice: (siteId: string, patch: SupplyPriceUpdate) =>
+    request<SupplyPrice>(`/api/v1/sites/${siteId}/supply-price`, {
+      method: 'PUT',
+      body: JSON.stringify(patch),
     }),
   /** 409 while the site still has devices (remove them first). */
   deleteSite: (siteId: string) =>

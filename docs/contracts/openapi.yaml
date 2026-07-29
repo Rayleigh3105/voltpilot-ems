@@ -683,6 +683,71 @@ paths:
                 items: { $ref: "#/components/schemas/SiteSource" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/supply-price:
+    get:
+      tags: [sites]
+      summary: The structured supply-price sheet (Bezugspreis-Komponenten).
+      description: >
+        One Anlage's `site_supply_price` Preisblatt (report vp-nacht-bezug-e7
+        Stufe 2): the volumetric grid-import components in ct/kWh NETTO plus the
+        USt rate and the Preisblatt-Stand. `present` says whether a row exists;
+        `hasComponents` is the activation gate - when true, the optimizer prices
+        import as `(spot + Sum Komponenten) x (1+USt)` instead of bare spot. A
+        site without a row reports an empty sheet so the portal can prefill the
+        researched suggestion values. RLS-scoped (foreign site 404; admins via
+        the `X-Tenant-Id` switcher).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The sheet (empty when no row exists).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupplyPrice" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
+    put:
+      tags: [sites]
+      summary: Maintain the structured supply-price sheet.
+      description: >
+        Upsert the site's Preisblatt components. PATCH semantics (the
+        site-update COALESCE pattern): a field ABSENT from the body keeps its
+        stored value; a field present with a value is written, and an explicit
+        `null` CLEARS that component to "unknown" (which suppresses the
+        composition again once the last one is cleared). `ustPct` is NOT NULL - a
+        present `null` there is ignored. This endpoint only makes a maintained
+        sheet possible; the optimizer's behaviour changes when a component is
+        actually saved (a maintained row activates the composition), never on its
+        own. RLS-scoped (foreign site 404); the tenant is taken from the token,
+        never the body.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: >
+                Any subset of the component fields. All ct/kWh NETTO, all
+                nullable (null clears to "unknown").
+              properties:
+                netzentgeltArbeitspreisCt: { type: number, nullable: true, minimum: 0 }
+                stromsteuerCt: { type: number, nullable: true, minimum: 0 }
+                konzessionsabgabeCt: { type: number, nullable: true, minimum: 0 }
+                umlagenCt: { type: number, nullable: true, minimum: 0 }
+                vertriebsaufschlagCt: { type: number, nullable: true, minimum: 0 }
+                ustPct: { type: number, minimum: 0, maximum: 100 }
+                komponentenStand: { type: string, format: date, nullable: true }
+      responses:
+        "200":
+          description: The recomputed sheet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupplyPrice" }
+        "400": { description: A component/USt/date value is invalid (German message). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/topology:
     get:
       tags: [topology]
@@ -4096,6 +4161,23 @@ components:
         health: { type: string, enum: [ok, stale, never] }
         readAt: { type: string, format: date-time, nullable: true }
         reportedAt: { type: string, format: date-time }
+    SupplyPrice:
+      type: object
+      description: >
+        One Anlage's structured supply-price sheet (site_supply_price, report
+        vp-nacht-bezug-e7 §3.1). Components ct/kWh NETTO, all nullable (null =
+        unknown, contributes nothing).
+      properties:
+        present: { type: boolean, description: "A row exists (false => portal prefills suggestions)." }
+        hasComponents: { type: boolean, description: "At least one component maintained (the activation gate)." }
+        netzentgeltArbeitspreisCt: { type: number, nullable: true }
+        stromsteuerCt: { type: number, nullable: true }
+        konzessionsabgabeCt: { type: number, nullable: true }
+        umlagenCt: { type: number, nullable: true, description: "KWKG + Offshore + section 19 StromNEV as ONE sum." }
+        vertriebsaufschlagCt: { type: number, nullable: true }
+        ustPct: { type: number, nullable: true, description: "USt on everything incl. spot; 0 for Vorsteuer-Abzug (C&I)." }
+        komponentenStand: { type: string, format: date, nullable: true, description: "Preisblatt gültig ab." }
+        updatedAt: { type: string, format: date-time, nullable: true }
     UsageProfile:
       type: object
       description: >
