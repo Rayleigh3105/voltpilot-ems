@@ -160,7 +160,6 @@ const SHEET_ONLY_ITEMS: SidebarItem[] = [
 const MODE_TONES: Record<ModeKind, ModeTone> = {
   marktvermarktung: 'markt',
   lastspitzenkappung: 'peak',
-  eigenverbrauch: 'eigen',
   'atypische-netznutzung': 'atyp',
   automation: 'automation',
 };

@@ -235,13 +235,25 @@ class UsageProfileApiTest {
                                 true))));
         assertThat(badGov.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
-        // Auto-start: BERLIN is eigenverbrauch with a battery -> private starter.
+        // Auto-start: BERLIN derives `private` (eigenverbrauch, no market/peak),
+        // and private has NO starter - self-consumption is base behaviour
+        // (report vp-nacht-bezug-e7 §3.3), so the seeding is skipped no_template.
+        ResponseEntity<JsonNode> noStarter = exchange(
+                "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/auto-start", HttpMethod.POST, admin,
+                TENANT_A, null);
+        assertThat(noStarter.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(noStarter.getBody().path("created").asBoolean()).isFalse();
+        assertThat(noStarter.getBody().path("reason").asText()).isEqualTo("no_template");
+
+        // With an arbitrage override the SAME site seeds the market starter.
+        exchange("/api/v1/sites/" + BERLIN_SITE + "/profile", HttpMethod.PUT, admin, TENANT_A,
+                Map.of("override", "arbitrage"));
         ResponseEntity<JsonNode> seeded = exchange(
                 "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/auto-start", HttpMethod.POST, admin,
                 TENANT_A, null);
         assertThat(seeded.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(seeded.getBody().path("created").asBoolean()).isTrue();
-        assertThat(seeded.getBody().path("profile").asText()).isEqualTo("private");
+        assertThat(seeded.getBody().path("profile").asText()).isEqualTo("arbitrage");
         assertThat(seeded.getBody().path("flowId").isNull()).isFalse();
 
         // Idempotent: a second call is a no-op (already_has_flow).
@@ -252,7 +264,7 @@ class UsageProfileApiTest {
         assertThat(again.getBody().path("created").asBoolean()).isFalse();
         assertThat(again.getBody().path("reason").asText()).isEqualTo("already_has_flow");
 
-        // The seeded draft is a valid Eigenverbrauch starter (validates clean).
+        // The seeded draft is a valid market starter (validates clean).
         JsonNode flows = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows", HttpMethod.GET,
                 admin, TENANT_A, null).getBody();
         String flowId = flows.get(0).path("flowId").asText();

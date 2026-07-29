@@ -232,7 +232,7 @@ test('POST /compile compiles the sandboxed code node to its pinned artifact', as
 // documents, so the sidecar is where the regression must be pinned.
 for (const [label, fixtureName, pinName] of [
   ['guided setpoint rule', 'flow-graph.valid.guided-setpoint.json', 'pinned-guided-setpoint-hash.txt'],
-  ['AE7 starter chain', 'flow-graph.valid.selfconsumption-starter.json', 'pinned-selfconsumption-hash.txt'],
+  ['AE7 starter chain', 'flow-graph.valid.market-starter.json', 'pinned-market-starter-hash.txt'],
   ['two-window AND', 'flow-graph.valid.two-window-and.json', 'pinned-two-window-hash.txt'],
 ]) {
   test('POST /compile compiles the ' + label + ' to its pinned artifact', async () => {

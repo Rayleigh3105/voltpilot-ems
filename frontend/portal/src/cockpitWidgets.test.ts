@@ -152,10 +152,11 @@ function ids(site: AnlageSurfaceInput, over: Partial<CockpitWidgetsInput> = {}):
 }
 
 describe('Das Widget-Raster folgt der Projektion', () => {
-  it('Privat: Erlöse + Eigenverbrauch — KEIN Handel, KEINE Lastspitze', () => {
+  it('Privat: kein Handel, keine Lastspitze, KEIN Eigenverbrauchs-Widget (Grundverhalten)', () => {
     const set = ids(PRIVAT);
-    expect(set).toContain('eigenverbrauch');
-    // Negativ-Beweise.
+    // Eigenverbrauch ist kein Modus mehr (report §3.3) - kein Modus-Block, also
+    // keine EV-Kachel im Raster (der Wert lebt in den Hero-Ringen/der MoneyView).
+    expect(set).not.toContain('eigenverbrauch');
     expect(set).not.toContain('handel');
     expect(set).not.toContain('lastspitze');
     expect(set).not.toContain('automatik');

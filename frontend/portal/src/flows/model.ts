@@ -346,7 +346,6 @@ const ID_PREFIX: Record<string, string> = {
   'vp.logic.function': 'code',
   'vp.modbus.read': 'modbus',
   'vp.strategy.market': 'markt',
-  'vp.strategy.selfconsumption': 'eigen',
   'vp.entity.control': 'steuern',
   'vp.notify.push': 'melden',
 };

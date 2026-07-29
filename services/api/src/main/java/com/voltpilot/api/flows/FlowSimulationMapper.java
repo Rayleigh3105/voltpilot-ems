@@ -15,10 +15,9 @@ import java.util.List;
  *
  * <p>Mapping: {@code vp.strategy.market} and {@code vp.strategy.peakshaving} →
  * the "voltpilot" scenario (the co-optimized dispatch, which folds in the
- * site's active modules incl. the PS-1 Leistungspreis epigraph),
- * {@code vp.strategy.selfconsumption} → the "standardSpeicher" scenario (greedy
- * self-consumption). Exactly ONE battery strategy is simulierbar; several
- * conflict under V-5 anyway. {@code vp.strategy.atypical-grid} is deliberately
+ * site's active modules incl. the PS-1 Leistungspreis epigraph). Exactly ONE
+ * battery strategy is simulierbar; several conflict under V-5 anyway.
+ * {@code vp.strategy.atypical-grid} is deliberately
  * NOT simulable - its economics (E5b) are not built, so a flow carrying it
  * cannot reach a dry-run (and thus never activates).
  *
@@ -70,8 +69,7 @@ public final class FlowSimulationMapper {
         boolean atypicalGrid = false;
         for (JsonNode node : doc.path("nodes")) {
             String type = node.path("type").asText();
-            if ("vp.strategy.market".equals(type) || "vp.strategy.selfconsumption".equals(type)
-                    || "vp.strategy.peakshaving".equals(type)) {
+            if ("vp.strategy.market".equals(type) || "vp.strategy.peakshaving".equals(type)) {
                 strategies.add(node);
             } else if ("vp.strategy.atypical-grid".equals(type)) {
                 atypicalGrid = true;
@@ -98,8 +96,8 @@ public final class FlowSimulationMapper {
             }
             return Mapping.unsupported(
                     "Dieser Flow enthält keinen simulierbaren Strategie-Baustein. Für den "
-                            + "Dry-Run braucht es eine Marktoptimierung, eine Lastspitzenkappung "
-                            + "oder einen Eigenverbrauchs-Baustein mit Speicher.");
+                            + "Dry-Run braucht es eine Marktoptimierung oder eine "
+                            + "Lastspitzenkappung mit Speicher.");
         }
         if (strategies.size() > 1) {
             return Mapping.unsupported(
@@ -107,14 +105,10 @@ public final class FlowSimulationMapper {
                             + "reduzieren (pro Speicher darf nur eine Strategie steuern).");
         }
         JsonNode strategy = strategies.get(0);
-        String type = strategy.path("type").asText();
         // Market AND peak-shaving dry-run as the co-optimized "voltpilot"
-        // dispatch (the co-solver folds in the site's Leistungspreis epigraph);
-        // self-consumption is the greedy "standardSpeicher".
-        boolean coOptimized = "vp.strategy.market".equals(type)
-                || "vp.strategy.peakshaving".equals(type);
+        // dispatch (the co-solver folds in the site's Leistungspreis epigraph).
         String schonung = strategy.path("parameters").path("speicherschonung").asText(null);
-        return new Mapping(true, null, coOptimized ? "voltpilot" : "standardSpeicher",
+        return new Mapping(true, null, "voltpilot",
                 schonung, strategy.path("id").asText(), true);
     }
 

@@ -18,7 +18,10 @@ const site: Site = {
   biddingZone: 'DE-LU',
   latitude: null,
   longitude: null,
-  plantKind: 'eigenverbrauch',
+  // Direktvermarktung (market) + Leistungspreis (peak) = TWO battery modes, so
+  // the co-optimization stack renders. Eigenverbrauch is no longer a mode
+  // (report vp-nacht-bezug-e7 §3.3); netzladen stays false so the EEG line shows.
+  plantKind: 'direktvermarktung',
   anzulegenderWertCtKwh: null,
   tarifArt: 'fest',
   tarifParamCtKwh: null,
@@ -111,7 +114,7 @@ beforeEach(() => {
         active: true,
         blockedReason: 'Läuft noch nicht: Ihrer Anlage fehlt ein dynamischer Tarif.',
       }),
-      profile({ id: 'eigenverbrauch', label: 'Eigenverbrauch', active: false }),
+      profile({ id: 'atypische-netznutzung', label: 'Atypische Netznutzung', active: false }),
     ],
   });
   vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
@@ -154,11 +157,11 @@ describe('SteuerungSection (Portal v3 M4)', () => {
     expect(screen.getByText(/dynamischer Tarif/)).toBeInTheDocument();
     expect(screen.queryByText(/Angefragt/)).toBeNull();
     // The off profile still has a real switch.
-    const off = screen.getByRole('switch', { name: /Eigenverbrauch einschalten/ });
+    const off = screen.getByRole('switch', { name: /Atypische Netznutzung einschalten/ });
     expect(off).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(off);
     await waitFor(() =>
-      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'eigenverbrauch', 'an'));
+      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'atypische-netznutzung', 'an'));
   });
 
   it('renders the co-optimization reserve stack in the profile capsule', async () => {
@@ -195,10 +198,10 @@ describe('SteuerungSection (Portal v3 M4)', () => {
   it('toggling a row switch does not open the container', async () => {
     setup();
     render(<SteuerungSection site={site} />);
-    const off = await screen.findByRole('switch', { name: /Eigenverbrauch einschalten/ });
+    const off = await screen.findByRole('switch', { name: /Atypische Netznutzung einschalten/ });
     fireEvent.click(off);
     await waitFor(() =>
-      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'eigenverbrauch', 'an'));
+      expect(api.setSiteProfile).toHaveBeenCalledWith('s-1', 'atypische-netznutzung', 'an'));
     // Still on the capsule surface - the switch never navigated into a container.
     expect(screen.queryByRole('button', { name: /Zur Steuerung/ })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Automationen' })).toBeInTheDocument();

@@ -516,7 +516,9 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     const labels = [...container.querySelectorAll('.vp-widget-label')].map((n) => n.textContent);
     expect(labels).not.toContain('Lastspitze');
     expect(labels).not.toContain('Handel');
-    expect(labels).toContain('Eigenverbrauch');
+    // Eigenverbrauch is base behaviour (report §3.3): no mode card, no EV widget -
+    // its value shows in the hero rings / MoneyView instead.
+    expect(labels).not.toContain('Eigenverbrauch');
   });
 
   it('schließt mit der ruhigen Toolbox-Zeile, ohne einen Modus zu bewerben', async () => {

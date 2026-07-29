@@ -174,8 +174,8 @@ const kinds = (input: AnlageSurfaceInput) => activeModes(input).map((m) => m.kin
 // ---------------------------------------------------------------------------
 
 describe('Ausprägung: Privat-EMS', () => {
-  it('aktiviert Eigenverbrauch plus eine Automation je Regel', () => {
-    expect(kinds(PRIVAT)).toEqual(['eigenverbrauch', 'automation', 'automation']);
+  it('aktiviert nur eine Automation je Regel (Eigenverbrauch ist Grundverhalten, kein Modus)', () => {
+    expect(kinds(PRIVAT)).toEqual(['automation', 'automation']);
     const automations = activeModes(PRIVAT).filter((m) => m.kind === 'automation');
     expect(automations.map((m) => m.label)).toEqual([
       'Heizstab-Zeitplan',
@@ -194,18 +194,19 @@ describe('Ausprägung: Privat-EMS', () => {
     expect(s.deepViews).not.toContain('fahrplan');
   });
 
-  it('führt mit dem Energiefluss-Hub — kein Peak-Band, kein Handel-Block', () => {
+  it('führt mit dem Energiefluss-Hub — kein Peak-Band, kein Handel-Block, kein EV-Block', () => {
     const ids = anlageSurface(PRIVAT).cockpitBlocks.map((b) => b.id);
+    // Eigenverbrauch ist Grundverhalten: kein eigener Modus, also kein
+    // Erlös-Strom und kein Eigenverbrauchs-Block - nur base + Geräte-Automatik.
     expect(ids).toEqual([
       'status',
-      'erloes-komposition',
       'energiefluss',
-      'eigenverbrauch',
       'geraete-automatik',
       'toolbox-pointer',
     ]);
     expect(ids).not.toContain('peak-band');
     expect(ids).not.toContain('handel');
+    expect(ids).not.toContain('eigenverbrauch');
     // Zwei Regeln, EIN Geräte-Automatik-Block - dann ohne einzelnen "von"-Tag.
     const automatik = anlageSurface(PRIVAT).cockpitBlocks.find(
       (b) => b.id === 'geraete-automatik',
@@ -213,12 +214,11 @@ describe('Ausprägung: Privat-EMS', () => {
     expect(automatik.from).toBeNull();
   });
 
-  it('komponiert EV-Wert + Einspeisung und lässt die Automation ehrlich unzugeordnet', () => {
+  it('hat KEINEN zugeordneten Geld-Strom (nur die unzugeordneten Automationen)', () => {
     const streams = anlageSurface(PRIVAT).moneyStreams;
-    expect(streams.filter((s) => !s.unattributed).map((s) => s.id)).toEqual([
-      'eigenverbrauchswert',
-      'einspeisung',
-    ]);
+    // Der Eigenverbrauchs-Wert wird von der MoneyView aus den Earnings gezeigt,
+    // nicht als Modus-Strom projiziert (report §3.3).
+    expect(streams.filter((s) => !s.unattributed)).toEqual([]);
     const automation = streams.filter((s) => s.unattributed);
     expect(automation).toHaveLength(2);
     expect(automation.every((s) => s.sources.length === 0)).toBe(true);
@@ -230,21 +230,20 @@ describe('Ausprägung: Privat-EMS', () => {
 // ---------------------------------------------------------------------------
 
 describe('Ausprägung: Gewerbe', () => {
-  it('aktiviert die UNION aus Lastspitzenkappung und Eigenverbrauch (was AE7 verliert)', () => {
-    expect(kinds(GEWERBE)).toEqual(['lastspitzenkappung', 'eigenverbrauch']);
+  it('aktiviert nur die Lastspitzenkappung (Eigenverbrauch ist Grundverhalten)', () => {
+    expect(kinds(GEWERBE)).toEqual(['lastspitzenkappung']);
   });
 
-  it('führt mit dem Peak-Band und zeigt beide Geld-Ströme mit ihrer Periode', () => {
+  it('führt mit dem Peak-Band und zeigt den Lastspitzen-Strom mit seiner Periode', () => {
     const s = anlageSurface(GEWERBE);
     const ids = s.cockpitBlocks.map((b) => b.id);
     expect(ids[0]).toBe('status');
     expect(ids[1]).toBe('peak-band');
     expect(ids).not.toContain('handel');
+    expect(ids).not.toContain('eigenverbrauch');
     expect(ids).not.toContain('geraete-automatik');
     expect(s.moneyStreams.map((m) => [m.id, m.period])).toEqual([
       ['lastspitzen', 'billing-period'],
-      ['eigenverbrauchswert', 'range'],
-      ['einspeisung', 'range'],
     ]);
   });
 
@@ -274,7 +273,6 @@ describe('Ausprägung: Gewerbe', () => {
 describe('Ausprägung: Marktvermarktung', () => {
   it('aktiviert NUR den Markt-Modus — ein Park bekommt kein Eigenverbrauchs-Cockpit', () => {
     expect(kinds(MARKT)).toEqual(['marktvermarktung']);
-    expect(hasMode(activeModes(MARKT), 'eigenverbrauch')).toBe(false);
     const ids = anlageSurface(MARKT).cockpitBlocks.map((b) => b.id);
     expect(ids).toContain('handel');
     expect(ids).not.toContain('eigenverbrauch');
@@ -319,19 +317,10 @@ describe('Ausprägung: Marktvermarktung', () => {
     expect(markt.manifest.moneyStreams.map((m) => m.id)).toEqual(['einspeisung']);
   });
 
-  it('MIG §5: derselbe Erlös-Strom erscheint nur EINMAL, auch mit EV-Flow', () => {
-    // DV-Anlage MIT explizitem Eigenverbrauchs-Flow: beide Modi nennen jetzt
-    // dieselben Ströme - doppelt gezeigt (und summiert) wäre es falsch.
-    const beides: AnlageSurfaceInput = {
-      ...MARKT,
-      flows: [
-        flow('f-ev', 'Eigenverbrauch', [
-          { id: 'n1', type: 'vp.strategy.selfconsumption' },
-          { id: 'n2', type: 'vp.entity.control' },
-        ]),
-      ],
-    };
-    const streams = anlageSurface(beides).moneyStreams;
+  it('MIG §5: zeigt Einspeise-Erlös + EV-Wert je einmal (Markt-Modus, dyn. Tarif)', () => {
+    // Der Eigenverbrauchswert reist als Strom des Markt-Manifests (kein eigener
+    // EV-Modus mehr, report §3.3) - jeder Strom erscheint genau einmal.
+    const streams = anlageSurface(MARKT).moneyStreams;
     expect(streams.map((s) => s.id)).toEqual(['einspeisung', 'eigenverbrauchswert']);
   });
 
@@ -350,13 +339,13 @@ describe('Ausprägung: Marktvermarktung', () => {
       (m) => m.kind === 'marktvermarktung',
     )!;
     expect(markt.signals).toEqual(['netzladen-and-dynamic-tariff']);
-    // Fester Tarif -> kein Markt-Modus.
+    // Fester Tarif -> kein Markt-Modus (und Eigenverbrauch ist kein Modus mehr).
     expect(
       kinds({
         ...eigenverbrauchMitNetzladen,
         config: { ...eigenverbrauchMitNetzladen.config, tarifArt: 'fest' },
       }),
-    ).toEqual(['eigenverbrauch']);
+    ).toEqual([]);
   });
 });
 
@@ -365,18 +354,17 @@ describe('Ausprägung: Marktvermarktung', () => {
 // ---------------------------------------------------------------------------
 
 describe('Ausprägung: Multi-Modus', () => {
-  it('aktiviert Peak + Markt + Eigenverbrauch + die Automation, kanonisch sortiert', () => {
+  it('aktiviert Peak + Markt + die Automation, kanonisch sortiert (kein EV-Modus)', () => {
     expect(kinds(MULTI)).toEqual([
       'lastspitzenkappung',
       'marktvermarktung',
-      'eigenverbrauch',
       'automation',
     ]);
   });
 
   it('rendert vier Ströme — drei zugeordnet, die Automation ehrlich "—"', () => {
-    // Seit MIG §5 nennen Markt- UND Eigenverbrauchs-Modus dieselben
-    // Erlös-Ströme; der Stapel zeigt jeden genau einmal (erste Nennung).
+    // Der Markt-Modus (dyn. Tarif) trägt Einspeise-Erlös + EV-Wert, Peak den
+    // Lastspitzen-Strom; die Automation bleibt unzugeordnet ("—").
     const streams = anlageSurface(MULTI).moneyStreams;
     expect(streams.map((s) => s.id)).toEqual([
       'lastspitzen',
@@ -394,7 +382,6 @@ describe('Ausprägung: Multi-Modus', () => {
       'erloes-komposition',
       'energiefluss',
       'handel',
-      'eigenverbrauch',
       'geraete-automatik',
       'toolbox-pointer',
     ]);
@@ -411,9 +398,6 @@ describe('Ausprägung: Multi-Modus', () => {
     const peak = modes.find((m) => m.kind === 'lastspitzenkappung')!;
     expect(peak.origin).toBe('masterdata');
     expect(peak.manifest.steuerungCard.action).toBe('none');
-
-    const ev = modes.find((m) => m.kind === 'eigenverbrauch')!;
-    expect(ev.origin).toBe('masterdata');
   });
 
   it('vereinigt die Deep-Views aller Modi (der Union-Beweis)', () => {
@@ -502,26 +486,15 @@ describe('base(entities)', () => {
 // ---------------------------------------------------------------------------
 
 describe('activeModes: Aktivierungsregeln', () => {
-  it('aktiviert Eigenverbrauch aus Speicher ∧ PV — fehlt eines, bleibt er aus', () => {
+  it('Speicher ∧ PV allein aktiviert KEINEN Modus (Eigenverbrauch ist Grundverhalten)', () => {
+    // Eigenverbrauch ist kein wählbarer/abgeleiteter Modus mehr (report §3.3):
+    // eine reine PV+Speicher-Haushaltsanlage ohne Markt/Peak trägt keine Modus-
+    // Karte - ihre Eigenverbrauchs-Kennzahlen zeigt die MoneyView.
     const signals = { ...GEWERBE.signals!, hasLeistungspreis: false };
     const base = { ...GEWERBE, config: { plantKind: 'eigenverbrauch' as const } };
-    expect(kinds({ ...base, signals })).toEqual(['eigenverbrauch']);
+    expect(kinds({ ...base, signals })).toEqual([]);
     expect(kinds({ ...base, signals: { ...signals, hasPv: false } })).toEqual([]);
     expect(kinds({ ...base, signals: { ...signals, hasStorage: false } })).toEqual([]);
-  });
-
-  it('aktiviert Eigenverbrauch auf einer DV-Anlage nur über einen expliziten Flow', () => {
-    expect(hasMode(activeModes(MARKT), 'eigenverbrauch')).toBe(false);
-    const mitFlow: AnlageSurfaceInput = {
-      ...MARKT,
-      flows: [
-        flow('f-ev', 'Eigenverbrauch', [{ id: 'n1', type: 'vp.strategy.selfconsumption' }]),
-      ],
-    };
-    const ev = activeModes(mitFlow).find((m) => m.kind === 'eigenverbrauch')!;
-    expect(ev.signals).toEqual(['strategy-node']);
-    expect(ev.origin).toBe('flow');
-    expect(ev.flowRef).toEqual({ flowId: 'f-ev', name: 'Eigenverbrauch' });
   });
 
   it('aktiviert Lastspitzenkappung auch ohne Leistungspreis über den Strategie-Knoten', () => {
@@ -629,7 +602,6 @@ describe('Komposition', () => {
     const tagged = Object.fromEntries(blocks.map((b) => [b.id, b.from]));
     expect(tagged['peak-band']).toBe('Lastspitzenkappung');
     expect(tagged['handel']).toBe('Marktvermarktung');
-    expect(tagged['eigenverbrauch']).toBe('Eigenverbrauch');
     expect(tagged['geraete-automatik']).toBe('Wallbox nur bei PV-Überschuss');
     expect(tagged['energiefluss']).toBeNull();
     expect(tagged['status']).toBeNull();
@@ -663,11 +635,6 @@ describe('ModeManifest.settings (v3.1-M1, additiv)', () => {
       'anzulegender-wert',
       'stromtarif',
     ]);
-  });
-
-  it('eigenverbrauch beansprucht Tarif + Speicherschonung (Zweit-Claim Batterie)', () => {
-    const ev = activeModes(PRIVAT).find((m) => m.kind === 'eigenverbrauch')!;
-    expect(ev.manifest.settings).toEqual(['stromtarif', 'speicherschonung']);
   });
 
   it('lastspitzenkappung beansprucht die drei Read-only-Ids', () => {

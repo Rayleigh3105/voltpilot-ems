@@ -48,7 +48,7 @@ const ALLE = anlageSurface({
   signals: {
     hasStorage: true,
     hasPv: true,
-    activeStrategyNodeTypes: ['vp.strategy.selfconsumption'],
+    activeStrategyNodeTypes: [],
     plantKind: 'direktvermarktung',
     hasLeistungspreis: true,
   },
@@ -165,10 +165,10 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
     expect(groups[0].items.map((i) => i.key)).toEqual(['lastspitzen']);
   });
 
-  it('emits NO group for a mode whose views are all base areas', () => {
-    // Eigenverbrauch contributes only `erloes-historie` (= the base Historie),
-    // so it is active but adds no navigation of its own.
-    expect(PRIVAT.modes.map((m) => m.kind)).toContain('eigenverbrauch');
+  it('emits NO mode group for a plant with no market/peak/automation mode', () => {
+    // Eigenverbrauch is base behaviour (report vp-nacht-bezug-e7 §3.3): a pure
+    // PV+Speicher plant has no mode, so it adds no navigation of its own.
+    expect(PRIVAT.modes).toEqual([]);
     expect(anlageSidebar(PRIVAT).groups).toHaveLength(1);
   });
 

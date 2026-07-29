@@ -31,7 +31,7 @@ export const MODES: ModeMeta[] = [
   {
     key: 'strategie',
     label: 'Strategien',
-    hint: 'Fortlaufende Ziele, die VoltPilot mit-optimiert - Markt, Lastspitzen, Eigenverbrauch.',
+    hint: 'Fortlaufende Ziele, die VoltPilot mit-optimiert - Markt und Lastspitzen.',
   },
   {
     key: 'automation',

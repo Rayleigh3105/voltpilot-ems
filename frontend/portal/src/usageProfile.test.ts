@@ -77,18 +77,18 @@ describe('usageProfile emphasis map (shared vectors)', () => {
 });
 
 describe('usageProfile helpers', () => {
-  it('isUsageProfile guards the vocabulary', () => {
+  it('isUsageProfile guards the SETTABLE override vocabulary (private is derived-only)', () => {
     expect(isUsageProfile('arbitrage')).toBe(true);
     expect(isUsageProfile('peak')).toBe(true);
-    expect(isUsageProfile('private')).toBe(true);
+    expect(isUsageProfile('private')).toBe(false);
     expect(isUsageProfile('grey')).toBe(false);
     expect(isUsageProfile(null)).toBe(false);
   });
 
-  it('strategyNodeType maps each profile', () => {
+  it('strategyNodeType maps each profile (private has no starter)', () => {
     expect(strategyNodeType('arbitrage')).toBe('vp.strategy.market');
     expect(strategyNodeType('peak')).toBe('vp.strategy.peakshaving');
-    expect(strategyNodeType('private')).toBe('vp.strategy.selfconsumption');
-    expect(strategyNodeType('grey')).toBe('vp.strategy.selfconsumption');
+    expect(strategyNodeType('private')).toBeNull();
+    expect(strategyNodeType('grey')).toBeNull();
   });
 });

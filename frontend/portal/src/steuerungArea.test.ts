@@ -127,11 +127,8 @@ const EARNINGS: EarningsSite = {
 // ---------------------------------------------------------------------------
 
 describe('contributionRows', () => {
-  it('reads the real number of each mode stream (peak = billing period)', () => {
-    const modes = activeModes(GEWERBE);
-    const peak = modes.find((m) => m.kind === 'lastspitzenkappung')!;
-    const ev = modes.find((m) => m.kind === 'eigenverbrauch')!;
-
+  it('reads the real number of each mode stream (peak = billing period, market = range)', () => {
+    const peak = activeModes(GEWERBE).find((m) => m.kind === 'lastspitzenkappung')!;
     const peakRows = contributionRows(peak, EARNINGS);
     expect(peakRows).toHaveLength(1);
     expect(peakRows[0].label).toBe('Vermiedene Leistungskosten');
@@ -139,10 +136,14 @@ describe('contributionRows', () => {
     expect(peakRows[0].period).toBe('billing-period');
     expect(peakRows[0].note).toBe('laufende Abrechnungsperiode');
 
-    const evRows = contributionRows(ev, EARNINGS);
-    expect(evRows.map((r) => r.label)).toEqual(['Wert des Eigenverbrauchs', 'Einspeise-Erlös']);
-    expect(evRows[0].value).toContain('88,25');
-    expect(evRows.every((r) => r.period === 'range')).toBe(true);
+    // Der Eigenverbrauchswert reist im Markt-Manifest (kein EV-Modus mehr).
+    const markt = activeModes(MULTI).find((m) => m.kind === 'marktvermarktung')!;
+    const marktRows = contributionRows(markt, EARNINGS);
+    expect(marktRows.map((r) => r.label)).toEqual([
+      'Einspeise-Erlös',
+      'Wert des Eigenverbrauchs',
+    ]);
+    expect(marktRows.every((r) => r.period === 'range')).toBe(true);
   });
 
   it('shows "—" (null value) instead of a fabricated zero when nothing is attributable', () => {
@@ -154,8 +155,8 @@ describe('contributionRows', () => {
   });
 
   it('yields null values (never 0) when the earnings response is missing', () => {
-    const ev = activeModes(GEWERBE).find((m) => m.kind === 'eigenverbrauch')!;
-    expect(contributionRows(ev, null).every((r) => r.value === null)).toBe(true);
+    const markt = activeModes(MULTI).find((m) => m.kind === 'marktvermarktung')!;
+    expect(contributionRows(markt, null).every((r) => r.value === null)).toBe(true);
   });
 
   it('peakContributionNote is null until the running period measured something', () => {
@@ -231,19 +232,18 @@ describe('modeActions', () => {
 
 describe('coOptimization', () => {
   it('is null below two battery-claiming modes', () => {
-    const single = activeModes({
-      signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
-      config: { plantKind: 'eigenverbrauch' },
-    });
+    // GEWERBE trägt nur noch die Lastspitzenkappung (Eigenverbrauch ist kein
+    // Modus mehr) - genau ein Batterie-Modus.
+    const single = activeModes(GEWERBE);
     expect(batteryModes(single)).toHaveLength(1);
     expect(coOptimization(single)).toBeNull();
   });
 
   it('names the count once two modes share one battery', () => {
-    const co = coOptimization(activeModes(GEWERBE))!;
+    const co = coOptimization(activeModes(MULTI))!;
     expect(co.count).toBe(2);
     expect(co.sentence).toBe('2 Modi, ein Speicher — VoltPilot optimiert sie gemeinsam.');
-    expect(co.modeLabels).toEqual(['Lastspitzenkappung', 'Eigenverbrauch']);
+    expect(co.modeLabels).toEqual(['Lastspitzenkappung', 'Marktvermarktung']);
   });
 
   it('does not count automations or "in Vorbereitung" modes toward the battery set', () => {
@@ -252,7 +252,6 @@ describe('coOptimization', () => {
     expect(batteryModes(modes).map((m) => m.kind)).toEqual([
       'lastspitzenkappung',
       'marktvermarktung',
-      'eigenverbrauch',
     ]);
   });
 });

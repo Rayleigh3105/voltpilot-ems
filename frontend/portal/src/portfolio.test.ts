@@ -108,12 +108,12 @@ describe('modeChips (M6: the projection per portfolio row)', () => {
     expect(chips.map((c) => c.key)).toEqual(['lastspitzenkappung', 'marktvermarktung']);
   });
 
-  it('derives Eigenverbrauch from the entity roles of a non-DV Anlage', () => {
+  it('a non-DV PV+Speicher Anlage has no mode chip (Eigenverbrauch ist Grundverhalten)', () => {
     const chips = modeChips(
       site({ plantKind: 'eigenverbrauch', usageProfile: 'private' }),
       { tarifArt: 'fest', leistungspreisEurKw: null },
     );
-    expect(chips.map((c) => c.kind)).toEqual(['eigenverbrauch']);
+    expect(chips.map((c) => c.kind)).toEqual([]);
   });
 
   it('trusts the server AE7 winner for a flow-driven mode the master data cannot explain', () => {
@@ -167,7 +167,7 @@ describe('modeChips (M6: the projection per portfolio row)', () => {
       site({ plantKind: 'eigenverbrauch', netzladenErlaubt: true, usageProfile: 'private' }),
       { tarifArt: 'dynamisch', leistungspreisEurKw: null },
     );
-    expect(chips.map((c) => c.kind)).toEqual(['marktvermarktung', 'eigenverbrauch']);
+    expect(chips.map((c) => c.kind)).toEqual(['marktvermarktung']);
   });
 });
 

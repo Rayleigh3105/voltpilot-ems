@@ -75,10 +75,11 @@ class UsageProfileDeriverTest {
     }
 
     @Test
-    void isProfileGuardsTheVocabulary() {
+    void isProfileGuardsTheSettableVocabulary() {
         assertThat(UsageProfileDeriver.isProfile("arbitrage")).isTrue();
         assertThat(UsageProfileDeriver.isProfile("peak")).isTrue();
-        assertThat(UsageProfileDeriver.isProfile("private")).isTrue();
+        // private is derived-only, NOT a settable override (report §3.3).
+        assertThat(UsageProfileDeriver.isProfile("private")).isFalse();
         assertThat(UsageProfileDeriver.isProfile("grey")).isFalse();
         assertThat(UsageProfileDeriver.isProfile(null)).isFalse();
     }

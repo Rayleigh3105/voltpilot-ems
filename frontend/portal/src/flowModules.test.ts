@@ -1,25 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { flowModuleCards } from './flowModules';
-import {
-  NODE_ATYPICAL_GRID,
-  NODE_MARKET,
-  NODE_PEAKSHAVING,
-  NODE_SELFCONSUMPTION,
-} from './usageProfile';
+import { NODE_ATYPICAL_GRID, NODE_MARKET, NODE_PEAKSHAVING } from './usageProfile';
 
 describe('flowModuleCards', () => {
-  it('Arbitrage: market + self-consumption both run, no offers', () => {
-    const cards = flowModuleCards('arbitrage', [NODE_MARKET, NODE_SELFCONSUMPTION]);
-    expect(cards.map((c) => c.title)).toEqual(['Marktoptimierung', 'Eigenverbrauch']);
+  it('Arbitrage: market runs (Eigenverbrauch ist kein Baustein mehr)', () => {
+    const cards = flowModuleCards('arbitrage', [NODE_MARKET]);
+    expect(cards.map((c) => c.title)).toEqual(['Marktoptimierung']);
     expect(cards.every((c) => c.state === 'active')).toBe(true);
   });
 
-  it('Privat: self-consumption runs, market offered as a lock', () => {
-    const cards = flowModuleCards('private', [NODE_SELFCONSUMPTION]);
+  it('Privat: market offered as a lock, kein Eigenverbrauchs-Baustein', () => {
+    const cards = flowModuleCards('private', []);
     const market = cards.find((c) => c.title === 'Marktoptimierung')!;
-    const eigen = cards.find((c) => c.title === 'Eigenverbrauch')!;
-    expect(eigen.state).toBe('active');
     expect(market.state).toBe('gated');
+    // Eigenverbrauch ist Grundverhalten, keine Karte (report §3.3).
+    expect(cards.some((c) => c.title === 'Eigenverbrauch')).toBe(false);
     // peak-shaving is NOT offered to a private home.
     expect(cards.some((c) => c.title === 'Lastspitzenkappung')).toBe(false);
   });
@@ -43,7 +38,7 @@ describe('flowModuleCards', () => {
   it('never leaks optimizer-internal vocabulary into the copy', () => {
     const all = [
       ...flowModuleCards('peak', [NODE_PEAKSHAVING, NODE_MARKET, NODE_ATYPICAL_GRID]),
-      ...flowModuleCards('private', [NODE_SELFCONSUMPTION]),
+      ...flowModuleCards('private', []),
     ];
     const text = all.map((c) => `${c.title} ${c.line}`).join(' ').toLowerCase();
     for (const banned of ['milp', 'optimizer', 'modul', 'solver', 'node']) {

@@ -204,9 +204,6 @@ public class SiteProfileService {
         boolean strategyNode = signals.activeStrategyNodeTypes().contains(profile.strategyType())
                 || activeStrategyTypes.contains(profile.strategyType());
         switch (profile.id()) {
-            case SiteProfileCatalog.EIGENVERBRAUCH:
-                return (signals.hasStorage() && signals.hasPv() && !isDirektvermarktung(site))
-                        || strategyNode;
             case SiteProfileCatalog.MARKTVERMARKTUNG:
                 return isDirektvermarktung(site)
                         || (site.netzladenErlaubt() && "dynamisch".equals(site.tarifArt()))
@@ -231,10 +228,6 @@ public class SiteProfileService {
             Signals signals) {
         List<SiteProfilesDto.Requirement> chips = new ArrayList<>();
         switch (profile.id()) {
-            case SiteProfileCatalog.EIGENVERBRAUCH:
-                chips.add(new SiteProfilesDto.Requirement("PV-Erzeugung", signals.hasPv()));
-                chips.add(new SiteProfilesDto.Requirement("Speicher", signals.hasStorage()));
-                break;
             case SiteProfileCatalog.MARKTVERMARKTUNG:
                 chips.add(new SiteProfilesDto.Requirement("Dynamischer Tarif oder "
                         + "Direktvermarktung", hasMarketAccess(site)));
@@ -280,13 +273,13 @@ public class SiteProfileService {
                             + "Ihre Lastspitze nicht bewerten und kappt sie noch nicht.";
                 }
                 return "Ohne Speicher lässt sich Ihre Lastspitze nicht kappen.";
-            case SiteProfileCatalog.EIGENVERBRAUCH:
             default:
+                // A generic honest fallback: every requirement chip is derived,
+                // so name the first unmet one.
                 if (!met(requirements, 0)) {
-                    return "Ohne PV-Erzeugung gibt es keinen Eigenverbrauch zu optimieren.";
+                    return "Für dieses Profil fehlt noch eine Voraussetzung.";
                 }
-                return "Ohne Speicher kann VoltPilot Ihren Solarstrom nicht in den Abend "
-                        + "verschieben.";
+                return null;
         }
     }
 
@@ -297,9 +290,6 @@ public class SiteProfileService {
     /** What switching this profile on adds to the surface (M0 manifests). */
     private SiteProfilesDto.Unlocks unlocks(Profile profile) {
         switch (profile.id()) {
-            case SiteProfileCatalog.EIGENVERBRAUCH:
-                return new SiteProfilesDto.Unlocks(List.of("erloes-historie"),
-                        List.of("eigenverbrauch"), "eigenverbrauchswert");
             case SiteProfileCatalog.MARKTVERMARKTUNG:
                 return new SiteProfilesDto.Unlocks(
                         List.of("fahrplan", "marktpreise", "prognosequalitaet", "erloes-historie"),

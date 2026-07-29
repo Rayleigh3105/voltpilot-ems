@@ -61,7 +61,7 @@ public class UsageProfileController {
         }
         if (override != null && !UsageProfileDeriver.isProfile(override)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "usageProfileOverride muss arbitrage, peak oder private sein (oder leer).");
+                    "usageProfileOverride muss arbitrage oder peak sein (oder leer).");
         }
         if (!sites.setUsageProfileOverride(siteId, override)) {
             throw notFound();

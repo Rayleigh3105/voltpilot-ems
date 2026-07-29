@@ -2426,9 +2426,9 @@ paths:
       tags: [admin]
       summary: Start the flow dry-run (Ersparnis-Simulation mapping).
       description: >
-        Compiles the flow to its deterministic simulation mapping (market
-        strategy -> the voltpilot scenario incl. its Speicherschonung,
-        selfconsumption -> standardSpeicher) and submits an
+        Compiles the flow to its deterministic simulation mapping (a market or
+        peak-shaving strategy -> the voltpilot scenario incl. its
+        Speicherschonung) and submits an
         Ersparnis-Simulation job over the site's real master data. 422 with a
         German reason for an invalid flow or one without a battery strategy.
       parameters:

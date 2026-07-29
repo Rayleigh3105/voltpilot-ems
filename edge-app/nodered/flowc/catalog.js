@@ -232,7 +232,6 @@ const STRATEGY_INPUTS = {
     pv_forecast: { type: 'timeseries' },
     soc: { type: 'timeseries' },
   },
-  selfconsumption: { pv_forecast: { type: 'timeseries' }, soc: { type: 'timeseries' } },
   peakshaving: { soc: { type: 'timeseries' } },
   atypicalGrid: { soc: { type: 'timeseries' } },
 };
@@ -739,7 +738,6 @@ const TYPES = {
   },
 
   'vp.strategy.market': strategyType('Marktoptimierung', STRATEGY_INPUTS.market),
-  'vp.strategy.selfconsumption': strategyType('Eigenverbrauch', STRATEGY_INPUTS.selfconsumption),
   'vp.strategy.peakshaving': strategyType('Lastspitzenkappung', STRATEGY_INPUTS.peakshaving),
   'vp.strategy.atypical-grid': strategyType('Atypische Netznutzung', STRATEGY_INPUTS.atypicalGrid),
 };

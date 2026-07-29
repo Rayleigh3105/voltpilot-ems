@@ -400,8 +400,8 @@ test('entity.control needs at least one connected input', () => {
 // the documented pilot chain wire strategy.wunsch -> control.plan. flowc had
 // neither the `plan` port nor the D-13 plan-fed claim suppression, so an
 // auto-started flow died at activation with V-3/V-1/V-5 findings.
-test('selfconsumption-starter fixture compiles the pilot strategy -> control chain', () => {
-  const graph = fixture('flow-graph.valid.selfconsumption-starter.json');
+test('market-starter fixture compiles the pilot strategy -> control chain', () => {
+  const graph = fixture('flow-graph.valid.market-starter.json');
   assert.deepStrictEqual(validate(graph), [], 'the AE7 starter template validates clean');
   const a = compile(graph);
   for (const n of a.bundle.nodered_flows) {
@@ -420,7 +420,7 @@ test('selfconsumption-starter fixture compiles the pilot strategy -> control cha
 });
 
 test('a plan-fed control node derives NO own claim (D-13 suppression)', () => {
-  const base = fixture('flow-graph.valid.selfconsumption-starter.json');
+  const base = fixture('flow-graph.valid.market-starter.json');
   // Stamping the un-suppressed claim onto the control node must be REFUSED -
   // otherwise the chain would V-5-conflict with the strategy's delegated claim.
   const stamped = JSON.parse(JSON.stringify(base));
@@ -437,9 +437,9 @@ test('a plan-fed control node derives NO own claim (D-13 suppression)', () => {
     'a control node without a delegated feeder keeps its own claim');
 });
 
-test('pinned content hash of the selfconsumption-starter fixture', () => {
-  assertPinned(compile(fixture('flow-graph.valid.selfconsumption-starter.json')),
-    'pinned-selfconsumption-hash.txt');
+test('pinned content hash of the market-starter fixture', () => {
+  assertPinned(compile(fixture('flow-graph.valid.market-starter.json')),
+    'pinned-market-starter-hash.txt');
 });
 
 // H3-b (#519): two vp.schedule.window branches carry NO msg.topic, so the old

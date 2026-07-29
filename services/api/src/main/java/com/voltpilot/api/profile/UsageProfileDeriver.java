@@ -62,7 +62,12 @@ public final class UsageProfileDeriver {
         return PRIVATE;
     }
 
-    /** The effective profile: a valid override wins, else the derived default. */
+    /**
+     * The effective profile: a valid SETTABLE override wins, else the derived
+     * default. {@code private} is derived-only (a household default), never a
+     * settable override, so {@link #isProfile} rejects it and a stored/legacy
+     * {@code private} override falls through to {@link #deriveDefault}.
+     */
     public static String effectiveProfile(Signals s) {
         return isProfile(s.override()) ? s.override() : deriveDefault(s);
     }
@@ -80,7 +85,12 @@ public final class UsageProfileDeriver {
         }
     }
 
+    /**
+     * Whether {@code value} is a SETTABLE usage-profile override. {@code private}
+     * is deliberately NOT settable (it is the derived household default); only
+     * {@code arbitrage} and {@code peak} may be chosen.
+     */
     public static boolean isProfile(String value) {
-        return ARBITRAGE.equals(value) || PEAK.equals(value) || PRIVATE.equals(value);
+        return ARBITRAGE.equals(value) || PEAK.equals(value);
     }
 }

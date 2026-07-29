@@ -15,38 +15,41 @@ import com.voltpilot.api.profile.UsageProfileDeriver;
  * control) with the inputs the chosen strategy declares. Claims + identity are
  * stamped by {@code FlowTemplateService} (it derives claims against the catalog,
  * like the editor). The strategy node type per profile:
- * arbitrage → {@code vp.strategy.market}, peak → {@code vp.strategy.peakshaving},
- * private → {@code vp.strategy.selfconsumption}.
+ * arbitrage → {@code vp.strategy.market}, peak → {@code vp.strategy.peakshaving}.
+ * The {@code private} household profile (and any unknown profile) has NO starter
+ * flow: self-consumption is the platform's BASE behaviour, not a strategy node -
+ * so {@code strategyNodeType} returns {@code null} and the service skips seeding
+ * with {@code no_template}.
  */
 public final class FlowTemplates {
 
-    public static final String NODE_SELFCONSUMPTION = "vp.strategy.selfconsumption";
-
     private FlowTemplates() {}
 
-    /** The strategy node type a profile's starter flow places on the battery. */
+    /**
+     * The strategy node type a profile's starter flow places on the battery, or
+     * {@code null} when the profile has no starter (the {@code private}
+     * household default + any unknown profile).
+     */
     public static String strategyNodeType(String profile) {
         switch (profile == null ? "" : profile) {
             case UsageProfileDeriver.ARBITRAGE:
                 return UsageProfileDeriver.NODE_MARKET;
             case UsageProfileDeriver.PEAK:
                 return UsageProfileDeriver.NODE_PEAKSHAVING;
-            case UsageProfileDeriver.PRIVATE:
             default:
-                return NODE_SELFCONSUMPTION;
+                return null;
         }
     }
 
-    /** The customer-facing name of a profile's starter flow. */
+    /** The customer-facing name of a profile's starter flow, or {@code null}. */
     public static String templateName(String profile) {
         switch (profile == null ? "" : profile) {
             case UsageProfileDeriver.ARBITRAGE:
                 return "Marktoptimierung";
             case UsageProfileDeriver.PEAK:
                 return "Lastspitzenkappung";
-            case UsageProfileDeriver.PRIVATE:
             default:
-                return "Eigenverbrauch";
+                return null;
         }
     }
 
@@ -59,7 +62,7 @@ public final class FlowTemplates {
             String batteryEntityId) {
         String strategyType = strategyNodeType(profile);
         boolean needsPrice = UsageProfileDeriver.NODE_MARKET.equals(strategyType);
-        boolean usesPv = needsPrice || NODE_SELFCONSUMPTION.equals(strategyType);
+        boolean usesPv = needsPrice;
 
         ObjectNode doc = mapper.createObjectNode();
         doc.put("schema_version", "1.0");

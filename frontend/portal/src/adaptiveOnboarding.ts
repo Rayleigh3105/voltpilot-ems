@@ -20,8 +20,13 @@ import type { AutoStartOutcome, EntityTypeDef } from './entitiesApi';
 import { isUsageProfile, type UsageProfile } from './usageProfile';
 import type { SiteEntity, SiteUsageProfile } from './api';
 
-/** The profile the customer picks: one of the three, or auto-derive. */
-export type ProfileChoice = UsageProfile | 'auto';
+/**
+ * The profile the customer picks: a SETTABLE profile, or auto-derive.
+ * `private` is NOT selectable - self-consumption is base behaviour (report
+ * vp-nacht-bezug-e7 §3.3), so a household picks "Automatisch" (which derives
+ * `private` and seeds no starter).
+ */
+export type ProfileChoice = Exclude<UsageProfile, 'private'> | 'auto';
 
 /** One selectable profile card in the wizard (auto + the three profiles). */
 export interface ProfileOption {
@@ -40,6 +45,11 @@ export interface ProfileOption {
  * M0/M1 the Anlagen-Seite is a projection of the ACTIVE MODES (`surface.ts`),
  * not of one winning usage profile - so the copy promises a starting point,
  * never a "Fokus" the portal would then apply.
+ *
+ * Eigenverbrauch is NOT offered as a choice (report vp-nacht-bezug-e7 §3.3):
+ * self-consumption is the platform's base behaviour, so a household picks
+ * "Automatisch" (derives `private`, seeds no starter). Only the two contract-
+ * near use cases (Markt, Lastspitzen) are explicit.
  */
 export const PROFILE_OPTIONS: ProfileOption[] = [
   {
@@ -56,11 +66,6 @@ export const PROFILE_OPTIONS: ProfileOption[] = [
     value: 'peak',
     label: 'Lastspitzen',
     sentence: 'Gewerbe mit Leistungsmessung - wir starten mit der Lastspitzenkappung.',
-  },
-  {
-    value: 'private',
-    label: 'Eigenverbrauch',
-    sentence: 'Haushalt - wir starten mit der Eigenverbrauchs-Optimierung.',
   },
 ];
 

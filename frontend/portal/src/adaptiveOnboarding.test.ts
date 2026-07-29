@@ -48,8 +48,14 @@ function entity(role: string, over: Partial<SiteEntity> = {}): SiteEntity {
 }
 
 describe('PROFILE_OPTIONS (AE5 profile choice)', () => {
-  it('offers auto first, then the three profiles', () => {
-    expect(PROFILE_OPTIONS.map((o) => o.value)).toEqual(['auto', 'arbitrage', 'peak', 'private']);
+  it('offers auto first, then the two settable profiles (Eigenverbrauch is not a choice)', () => {
+    expect(PROFILE_OPTIONS.map((o) => o.value)).toEqual(['auto', 'arbitrage', 'peak']);
+  });
+
+  it('never offers an explicit Eigenverbrauch choice (it is base behaviour)', () => {
+    expect(PROFILE_OPTIONS.map((o) => o.value)).not.toContain('private');
+    const text = PROFILE_OPTIONS.map((o) => `${o.label} ${o.sentence}`).join(' ');
+    expect(text).not.toMatch(/Eigenverbrauch/);
   });
 
   it('never leaks internal vocabulary in the copy', () => {
@@ -88,7 +94,7 @@ describe('initialProfileChoice / overrideForChoice', () => {
   it('maps a choice onto the PUT override (auto -> null)', () => {
     expect(overrideForChoice('auto')).toBeNull();
     expect(overrideForChoice('arbitrage')).toBe('arbitrage');
-    expect(overrideForChoice('private')).toBe('private');
+    expect(overrideForChoice('peak')).toBe('peak');
   });
 });
 

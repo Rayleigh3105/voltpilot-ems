@@ -77,6 +77,13 @@ public class FlowTemplateService {
 
         String kind = usageProfile != null && !usageProfile.isBlank() ? usageProfile
                 : profile.usageProfile();
+        // No starter for the private household default (self-consumption is the
+        // platform's BASE behaviour, not a strategy node) or any unknown profile.
+        if (FlowTemplates.strategyNodeType(kind) == null) {
+            return new AutoStartOutcome(false, "no_template", kind, null, null, null,
+                    "Für dieses Nutzungsprofil gibt es keine Start-Vorlage - der "
+                            + "Eigenverbrauch ist bereits das Grundverhalten.");
+        }
         ObjectNode doc = FlowTemplates.starterFlow(mapper, kind, batteryId.toString());
         FlowTemplates.applyDerivedClaims(doc, catalog);
         UUID flowId = UUID.randomUUID();

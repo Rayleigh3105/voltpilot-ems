@@ -9,8 +9,10 @@
     "usageProfile.ts); both test suites load THIS file. Change the rules in both + the",
     "vectors together (the topology-vectors.json / EdgeRef precedent).",
     "",
-    "deriveDefault(signals) ignores the override; the EFFECTIVE profile = override when set",
-    "and valid, else deriveDefault. Rules, in order (peak beats arbitrage beats private):",
+    "deriveDefault(signals) ignores the override; the EFFECTIVE profile = a SETTABLE override",
+    "when set (only 'arbitrage' | 'peak'), else deriveDefault. 'private' is derived-only - the",
+    "household default, NOT a settable override (report vp-nacht-bezug-e7 §3.3), so a stored/",
+    "legacy 'private' override is ignored. Rules, in order (peak beats arbitrage beats private):",
     "  1. a peak strategy node (vp.strategy.peakshaving / .atypical-grid) OR a configured",
     "     Leistungspreis (site.leistungspreis_eur_kw) -> peak",
     "  2. a market strategy node (vp.strategy.market) OR plant_kind = direktvermarktung",
@@ -42,7 +44,7 @@
     },
     {
       "name": "household-pv-storage-wallbox-private",
-      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": true, "active_strategy_node_types": ["vp.strategy.selfconsumption"], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": null },
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": true, "active_strategy_node_types": [], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": null },
       "expected_derived": "private",
       "expected_profile": "private"
     },
@@ -72,15 +74,15 @@
     },
     {
       "name": "override-flips-private-to-arbitrage",
-      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": true, "active_strategy_node_types": ["vp.strategy.selfconsumption"], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": "arbitrage" },
+      "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": true, "active_strategy_node_types": [], "plant_kind": "eigenverbrauch", "has_leistungspreis": false, "override": "arbitrage" },
       "expected_derived": "private",
       "expected_profile": "arbitrage"
     },
     {
-      "name": "override-flips-arbitrage-to-private",
+      "name": "private-override-is-ignored",
       "signals": { "has_storage": true, "has_pv": true, "has_controllable_consumer": false, "active_strategy_node_types": ["vp.strategy.market"], "plant_kind": "direktvermarktung", "has_leistungspreis": false, "override": "private" },
       "expected_derived": "arbitrage",
-      "expected_profile": "private"
+      "expected_profile": "arbitrage"
     },
     {
       "name": "invalid-override-ignored",

@@ -2,8 +2,8 @@
   "schema_version": "1.0",
   "flow_id": "8e3fa041-6cb2-4d45-8e67-89abcdef0123",
   "flow_version": 1,
-  "name": "Eigenverbrauch",
-  "description": "Die AE7-Startvorlage (FlowTemplates.starterFlow, Profil `private`) und zugleich die dokumentierte Pilot-Kette: Messwerte -> Strategie -> Entität steuern über den Eingang `plan`. Der Steuer-Knoten leitet KEINEN eigenen Anspruch ab, weil ihn eine delegierte Strategie auf derselben Entität speist (D-13).",
+  "name": "Marktoptimierung",
+  "description": "Die AE7-Startvorlage (FlowTemplates.starterFlow, Profil `arbitrage`) und zugleich die dokumentierte Pilot-Kette: Messwerte -> Strategie -> Entität steuern über den Eingang `plan`. Der Steuer-Knoten leitet KEINEN eigenen Anspruch ab, weil ihn eine delegierte Strategie auf derselben Entität speist (D-13).",
   "runtime": "edge",
   "site_id": "00000000-0000-0000-0000-000000000002",
   "tenant_id": "00000000-0000-0000-0000-000000000001",
@@ -16,6 +16,12 @@
       "parameters": { "entity_id": "batt-main", "channel": "soc_pct" }
     },
     {
+      "id": "price1",
+      "type": "vp.price.dayahead",
+      "type_version": "1.0.0",
+      "parameters": {}
+    },
+    {
       "id": "pv1",
       "type": "vp.forecast.pv",
       "type_version": "1.0.0",
@@ -23,9 +29,9 @@
     },
     {
       "id": "strat1",
-      "type": "vp.strategy.selfconsumption",
+      "type": "vp.strategy.market",
       "type_version": "1.0.0",
-      "parameters": { "entity_id": "batt-main" },
+      "parameters": { "entity_id": "batt-main", "speicherschonung": "ausgewogen" },
       "claims": [
         { "entity_id": "batt-main", "commands": ["setpoint_kw"], "delegated": true }
       ]
@@ -39,6 +45,7 @@
   ],
   "edges": [
     { "id": "e_soc", "from": { "node": "soc1", "port": "value" }, "to": { "node": "strat1", "port": "soc" } },
+    { "id": "e_price", "from": { "node": "price1", "port": "prices" }, "to": { "node": "strat1", "port": "price_in" } },
     { "id": "e_pv", "from": { "node": "pv1", "port": "forecast" }, "to": { "node": "strat1", "port": "pv_forecast" } },
     { "id": "e_plan", "from": { "node": "strat1", "port": "wunsch" }, "to": { "node": "ctl1", "port": "plan" } }
   ],

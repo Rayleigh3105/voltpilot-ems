@@ -94,9 +94,9 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   speicherschonung: {
     id: 'speicherschonung',
     label: 'Umgang mit dem Speicher',
-    // Owner-Korrektur: Markt UND Eigenverbrauch. Markt ist das §2-Owner-Beispiel
-    // und per MODE_RANK der Gewinner, wenn beide aktiv sind.
-    claimedBy: ['marktvermarktung', 'eigenverbrauch'],
+    // Eigenverbrauch ist kein Modus mehr (report §3.3); die Batterie-Einstellung
+    // wird nur noch vom Markt-Modus beansprucht.
+    claimedBy: ['marktvermarktung'],
     editability: 'customer',
     readView: 'speicherschonung',
     editForm: 'speicherschonung',
@@ -120,8 +120,9 @@ export const SETTING_DEFS: Record<ModeSettingId, ModeSettingDef> = {
   stromtarif: {
     id: 'stromtarif',
     label: 'Stromtarif',
-    // §2: Eigenverbrauch = Erst-Claim, Marktvermarktung = Zweit-Claim.
-    claimedBy: ['eigenverbrauch', 'marktvermarktung'],
+    // Der Stromtarif wird vom Markt-Modus beansprucht (Eigenverbrauch ist kein
+    // Modus mehr, report §3.3).
+    claimedBy: ['marktvermarktung'],
     editability: 'customer',
     readView: 'stromtarif',
     editForm: 'stromtarif',
