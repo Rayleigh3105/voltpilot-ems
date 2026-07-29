@@ -28,7 +28,9 @@ from voltpilot_optimization.domain import (
     horizon_slot_starts,
 )
 from voltpilot_optimization.pricing import (
+    DEFAULT_SUPPLY_COMPONENTS,
     SiteTariff,
+    SupplyPriceComponents,
     berlin_month,
     export_values,
     feste_verguetung_ct_per_kwh,
@@ -70,6 +72,160 @@ def test_fest_without_price_degrades_to_spot_and_warns(caplog):
 def test_ohne_and_unknown_tarif_art_import_at_spot():
     assert import_prices(SiteTariff(tarif_art="ohne"), SPOT) == SPOT
     assert import_prices(SiteTariff(tarif_art="whatever"), SPOT) == SPOT
+
+
+def test_dynamisch_null_aufschlag_now_warns_loudly(caplog):
+    # The S1 fix (report vp-nacht-bezug-e7 §1.5): the silent NULL -> +0 was
+    # the night-discharge symptom. Value stays legacy bare spot; the log is
+    # as loud as fest+NULL.
+    tariff = SiteTariff(tarif_art="dynamisch", tarif_param_ct_kwh=None)
+    with caplog.at_level("WARNING"):
+        assert import_prices(tariff, SPOT) == SPOT
+    assert any(
+        "dynamisch_tariff_without_aufschlag" in r.message for r in caplog.records
+    )
+
+
+# ---- import side: the structured supply-price sheet (site_supply_price) ------
+# Vectors shared with the api's SlotEconomicsTest (the EegRatesTest twin
+# discipline): sheet 7.6/2.05/1.59/2.946/1.5 = 15.686 ct netto, USt 19% ->
+# spot 100 EUR/MWh composes to (100 + 156.86) * 1.19 = 305.6634 EUR/MWh.
+
+
+SHEET = SupplyPriceComponents(
+    netzentgelt_arbeitspreis_ct=7.6,
+    stromsteuer_ct=2.05,
+    konzessionsabgabe_ct=1.59,
+    umlagen_ct=2.946,
+    vertriebsaufschlag_ct=1.5,
+    ust_pct=19.0,
+)
+
+
+def test_maintained_sheet_composes_spot_plus_components_times_ust():
+    for tarif_art in ("dynamisch", "ohne"):
+        tariff = SiteTariff(tarif_art=tarif_art, supply_price=SHEET)
+        assert import_prices(tariff, SPOT) == pytest.approx(
+            [305.6634, 246.1634, 162.8634, 186.6634]
+        )
+
+
+def test_ust_applies_to_the_spot_share_and_zero_ust_composes_net():
+    # The USt factor covers the SPOT share too - NOT spot + taxed components.
+    taxed = import_prices(
+        SiteTariff(tarif_art="dynamisch", supply_price=SHEET), [100.0]
+    )
+    assert taxed[0] != pytest.approx(100.0 + 156.86 * 1.19)  # 286.6634
+    assert taxed[0] == pytest.approx(305.6634)
+    # C&I with Vorsteuer-Abzug: ust_pct 0 composes the net sum.
+    net_sheet = SupplyPriceComponents(
+        netzentgelt_arbeitspreis_ct=7.6,
+        stromsteuer_ct=2.05,
+        konzessionsabgabe_ct=1.59,
+        umlagen_ct=2.946,
+        vertriebsaufschlag_ct=1.5,
+        ust_pct=0.0,
+    )
+    assert import_prices(
+        SiteTariff(tarif_art="dynamisch", supply_price=net_sheet), [100.0]
+    ) == pytest.approx([256.86])
+
+
+def test_partial_sheet_sums_only_maintained_components():
+    partial = SupplyPriceComponents(
+        netzentgelt_arbeitspreis_ct=7.6, umlagen_ct=2.946, ust_pct=0.0
+    )
+    assert import_prices(
+        SiteTariff(tarif_art="ohne", supply_price=partial), [100.0]
+    ) == pytest.approx([100.0 + 105.46])
+
+
+def test_maintained_sheet_replaces_the_sammelaufschlag_for_dynamisch():
+    tariff = SiteTariff(
+        tarif_art="dynamisch", tarif_param_ct_kwh=18.0, supply_price=SHEET
+    )
+    # The structured sheet wins; the one-pot Aufschlag is NOT added on top.
+    assert import_prices(tariff, [100.0]) == pytest.approx([305.6634])
+
+
+def test_fest_ignores_a_maintained_sheet_and_warns(caplog):
+    # fest is the all-in price: components are never double-counted (§3.1
+    # "fest gewinnt, nichts wird doppelt gezählt").
+    tariff = SiteTariff(
+        tarif_art="fest", tarif_param_ct_kwh=32.0, supply_price=SHEET
+    )
+    with caplog.at_level("WARNING"):
+        assert import_prices(tariff, SPOT) == [320.0] * 4
+    assert any(
+        "fest_ignores_supply_components" in r.message for r in caplog.records
+    )
+
+
+def test_all_null_sheet_behaves_like_no_row():
+    # A degenerate row without a single maintained component composes nothing
+    # (it would tax bare spot and nothing else) - the legacy model applies.
+    empty = SupplyPriceComponents(ust_pct=19.0)
+    assert not empty.has_components()
+    assert import_prices(
+        SiteTariff(tarif_art="dynamisch", tarif_param_ct_kwh=18.0, supply_price=empty),
+        [100.0],
+    ) == [280.0]
+    assert import_prices(
+        SiteTariff(tarif_art="ohne", supply_price=empty), SPOT
+    ) == SPOT
+
+
+# ---- the OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag ----------------------------
+
+
+def test_default_components_flag_prices_the_no_data_cases(monkeypatch, caplog):
+    monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", "true")
+    # The researched household set: 15.686 ct netto + 19% USt - identical to
+    # the SHEET vector above (the report Teil 2 numbers).
+    assert DEFAULT_SUPPLY_COMPONENTS.components_ct_kwh() == pytest.approx(15.686)
+    expected = pytest.approx([305.6634, 246.1634, 162.8634, 186.6634])
+    with caplog.at_level("WARNING"):
+        assert import_prices(SiteTariff(tarif_art="ohne"), SPOT) == expected
+        assert (
+            import_prices(SiteTariff(tarif_art="dynamisch"), SPOT) == expected
+        )
+    assert any(
+        "default_supply_components_applied" in r.message for r in caplog.records
+    )
+
+
+def test_default_components_flag_never_overrides_operator_data(monkeypatch):
+    monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", "true")
+    # A maintained Sammelaufschlag is operator data - it wins.
+    assert import_prices(
+        SiteTariff(tarif_art="dynamisch", tarif_param_ct_kwh=18.0), [100.0]
+    ) == [280.0]
+    # fest is untouched by the flag.
+    assert import_prices(
+        SiteTariff(tarif_art="fest", tarif_param_ct_kwh=32.0), [100.0]
+    ) == [320.0]
+    # A maintained sheet also beats the defaults.
+    assert import_prices(
+        SiteTariff(tarif_art="ohne", supply_price=SHEET), [100.0]
+    ) == pytest.approx([305.6634])
+
+
+def test_default_components_flag_off_is_the_legacy_model(monkeypatch):
+    for value in (None, "false", "0", "off"):
+        if value is None:
+            monkeypatch.delenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", raising=False)
+        else:
+            monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", value)
+        assert import_prices(SiteTariff(tarif_art="ohne"), SPOT) == SPOT
+        assert import_prices(SiteTariff(tarif_art="dynamisch"), SPOT) == SPOT
+
+
+def test_default_components_flag_garbage_raises(monkeypatch):
+    from voltpilot_optimization.config import default_supply_components_enabled
+
+    monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", "maybe")
+    with pytest.raises(ValueError, match="OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS"):
+        default_supply_components_enabled()
 
 
 # ---- export side: Direktvermarktung (spot + Marktprämie) ---------------------
