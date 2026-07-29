@@ -34,6 +34,7 @@ import type {
   TopologyEntity,
 } from './api';
 import { channelLabel } from './channels';
+import { deviceName } from './entityLabel';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
 
 /** The customer-facing component role buckets (the middle column). */
@@ -485,7 +486,9 @@ export function plantModel(
     devices.push({ id, label, brand, componentIds, health: 'ok', messwertCount: 0, summary: '' });
   };
 
-  // 1. Adopted sources feed their one entity.
+  // 1. Adopted sources feed their one entity. The device NAME goes through the
+  //    ONE `entityLabel.deviceName` chain (operator name > brand + short model)
+  //    - never the raw stored string (the Pilsting "fronius_sunspec · …" bug).
   const adoptedById = new Map<string, EntityLocalSetup>();
   for (const l of localSetup) {
     if (l.kind === 'source' && l.adoptedEntityId != null) {
@@ -493,7 +496,8 @@ export function plantModel(
       const comp = componentById.get(l.adoptedEntityId);
       linkDevice(
         l.id,
-        l.label?.trim() || l.brand?.trim() || (comp ? comp.label : 'Gerät'),
+        deviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ??
+          (comp ? comp.label : 'Gerät'),
         l.brand,
         comp ? [comp.id] : [],
       );
@@ -508,7 +512,12 @@ export function plantModel(
   );
   inverters.forEach((inv, i) => {
     const comps = i === 0 ? composed.map((c) => c.id) : [];
-    linkDevice(inv.id, inv.label?.trim() || inv.brand?.trim() || 'Wechselrichter', inv.brand, comps);
+    linkDevice(
+      inv.id,
+      deviceName({ edgeLabel: inv.label, brand: inv.brand, model: inv.model }) ?? 'Wechselrichter',
+      inv.brand,
+      comps,
+    );
   });
 
   // 3. Any still-unassigned component that has a device binding falls into a

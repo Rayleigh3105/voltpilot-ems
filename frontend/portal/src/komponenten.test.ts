@@ -429,3 +429,63 @@ describe('plantModel — IA(5) Datenfluss card + F5 copy', () => {
     expect(cockpit.summary).toMatch(/eigener Knoten/i);
   });
 });
+
+// Gerätenamen sind human (vp-vier-erzeuger-p9): das Anlagen-Modell benennt eine
+// gemeldete Kiste über die EINE deviceName-Kette (Betreibername > Marke +
+// Kurzmodell) - nie über den gespeicherten Roh-String. Die Pilsting-Regression:
+// Geräte hießen "fronius_sunspec · fronius-eco-27-3-s · Fronius Anlage WR2 ·
+// pv-generation", weil das local_setup-Label die Konkatenation trug.
+describe('plantModel - device names are human (vp-vier-erzeuger-p9)', () => {
+  const entities = [
+    entity('p1', 'producer', { label: 'Fronius Anlage WR2', edgeSourceId: 'src-1', deviceId: null }),
+    entity('p2', 'producer', { label: null, edgeSourceId: 'src-2', deviceId: null }),
+  ];
+  const localSetup: EntityLocalSetup[] = [
+    {
+      id: 'src-1',
+      kind: 'source',
+      role: 'pv-generation',
+      brand: 'fronius_sunspec',
+      model: 'fronius-eco-27-3-s',
+      label: 'Fronius Anlage WR2',
+      reportedAt: '',
+      adoptedEntityId: 'p1',
+    },
+    {
+      id: 'src-2',
+      kind: 'source',
+      role: 'pv-generation',
+      brand: 'fronius_sunspec',
+      model: 'fronius-eco-27-3-s',
+      label: null,
+      reportedAt: '',
+      adoptedEntityId: 'p2',
+    },
+  ];
+
+  it('the operator-given name wins; without one it is brand + short model', () => {
+    const m = plantModel(entities, null, localSetup);
+    const byId = new Map(m.devices.map((d) => [d.id, d.label] as const));
+    expect(byId.get('src-1')).toBe('Fronius Anlage WR2');
+    // fronius_sunspec is the Fronius brand read over SunSpec - the raw catalog
+    // token never surfaces.
+    expect(byId.get('src-2')).toBe('Fronius fronius-eco');
+  });
+
+  it('no device name is a raw-token join (no " · " chain, no snake_case id)', () => {
+    const m = plantModel(entities, null, localSetup);
+    for (const d of m.devices) {
+      expect(d.label).not.toContain(' · ');
+      expect(d.label).not.toMatch(/[a-z]_[a-z]/);
+    }
+  });
+
+  it('an inverter without a label reads brand + short model, never bare ids', () => {
+    const m = plantModel(
+      [entity('batt', 'battery-hybrid')],
+      null,
+      [{ ...inverter('inv', 'deye'), model: 'SUN-30K-SG01HP3-EU' }],
+    );
+    expect(m.devices[0].label).toBe('Deye SUN-30K');
+  });
+});

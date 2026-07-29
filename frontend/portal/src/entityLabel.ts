@@ -60,10 +60,24 @@ export function shortModel(model: string): string {
   return groups.slice(0, 2).join('-');
 }
 
+/**
+ * Catalog brand tokens whose raw id is not a customer word: the transport
+ * suffix / technical id must never surface ("fronius_sunspec" is the Fronius
+ * brand read over SunSpec, not a brand of its own). Everything else falls to
+ * {@link brandCase}.
+ */
+const BRAND_DISPLAY: Record<string, string> = {
+  fronius_sunspec: 'Fronius',
+  generic_modbus: 'Modbus-Gerät',
+  'go-e': 'go-e',
+};
+
 /** "deye" -> "Deye"; an already-capitalised or mixed-case brand is left alone. */
 function brandCase(brand: string): string {
   const b = brand.trim();
   if (!b) return '';
+  const known = BRAND_DISPLAY[b.toLowerCase()];
+  if (known) return known;
   if (b !== b.toLowerCase()) return b;
   return b.charAt(0).toUpperCase() + b.slice(1);
 }

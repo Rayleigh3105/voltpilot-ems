@@ -18,6 +18,7 @@ import type {
 } from './api';
 import { isPlatformAdmin } from './auth';
 import { channelLabel } from './channels';
+import { deviceName } from './entityLabel';
 import { defaultRole } from './topology';
 
 /**
@@ -295,10 +296,16 @@ export function suggestEntityType(role: string | null, brand: string | null): st
   }
 }
 
-/** A one-line summary of a reported source (brand · model/label). */
+/**
+ * A one-line summary of a reported source: the ONE `entityLabel.deviceName`
+ * chain (operator name > brand + short model), never a raw-token join - the
+ * old "brand · label" concatenation put catalog ids like `fronius_sunspec`
+ * in front of the customer (scout vp-vier-erzeuger-p9).
+ */
 export function sourceSummary(source: EntityLocalSetup): string {
-  const bits = [source.brand, source.label].filter((b): b is string => !!b && b.trim() !== '');
-  return bits.length > 0 ? Array.from(new Set(bits)).join(' · ') : source.id;
+  return (
+    deviceName({ edgeLabel: source.label, brand: source.brand, model: source.model }) ?? source.id
+  );
 }
 
 /** One adoptable source in "Vom Gerät gemeldet". */
@@ -306,6 +313,7 @@ export interface AdoptableSource {
   id: string;
   role: string | null;
   brand: string | null;
+  model: string | null;
   label: string | null;
   roleLabel: string;
   summary: string;
@@ -325,6 +333,7 @@ export function adoptableSources(localSetup: EntityLocalSetup[]): AdoptableSourc
       id: l.id,
       role: l.role,
       brand: l.brand,
+      model: l.model ?? null,
       label: l.label,
       roleLabel: sourceRoleLabel(l.role),
       summary: sourceSummary(l),

@@ -204,9 +204,24 @@ describe('adoption suggestions', () => {
   it('roleLabel + summary render the report line', () => {
     expect(sourceRoleLabel('consumer')).toBe('Verbraucher');
     expect(sourceRoleLabel(null)).toBe('Energiequelle');
-    expect(sourceSummary(src('goe-1', 'source', 'consumer', 'go-e', 'Charger 3'))).toBe(
-      'go-e · Charger 3',
+    // The summary is the ONE deviceName chain: the operator-given name wins …
+    expect(sourceSummary(src('goe-1', 'source', 'consumer', 'go-e', 'Wallbox Carport'))).toBe(
+      'Wallbox Carport',
     );
+    // … without one it is brand + model, never a raw "brand · label" join, and
+    // a transport-suffixed catalog brand reads as its customer brand.
+    expect(
+      sourceSummary({
+        ...src('goe-2', 'source', 'consumer', 'go-e', null),
+        model: 'Charger 3',
+      }),
+    ).toBe('go-e Charger 3');
+    expect(
+      sourceSummary({
+        ...src('pv-1', 'source', 'pv-generation', 'fronius_sunspec', null),
+        model: 'Eco 27',
+      }),
+    ).toBe('Fronius Eco 27');
     expect(sourceSummary(src('x', 'source', 'consumer', null, null))).toBe('x');
   });
 

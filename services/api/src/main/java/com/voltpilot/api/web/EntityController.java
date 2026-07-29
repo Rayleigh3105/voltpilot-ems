@@ -57,9 +57,12 @@ public class EntityController {
             String syncStatus, ObservedDto observed, String edgeSourceId) {}
 
     /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
-     *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet"). */
-    public record LocalSetupDto(String id, String kind, String role, String brand, String label,
-            Instant reportedAt, String adoptedEntityId) {}
+     *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
+     *  {@code label} is ONLY the operator-given name (may be null); brand/model
+     *  ride separately so consumers build display names via their own fallback
+     *  chain (name > brand+model > id), never from a concatenation. */
+    public record LocalSetupDto(String id, String kind, String role, String brand, String model,
+            String label, Instant reportedAt, String adoptedEntityId) {}
 
     public record RegistrySummaryDto(String revision, Instant composedAt, UUID deviceId,
             String reportedRevision, Instant reportedAt) {}
@@ -125,7 +128,7 @@ public class EntityController {
         for (ObservedRow row : localRows) {
             String sourceId = row.entityId().replaceFirst("^local:", "");
             localSetup.add(new LocalSetupDto(sourceId, row.entityType(), row.edgeRole(),
-                    row.edgeBrand(), row.label(), row.reportedAt(),
+                    row.edgeBrand(), row.edgeModel(), row.label(), row.reportedAt(),
                     adoptedBySource.get(sourceId)));
         }
 

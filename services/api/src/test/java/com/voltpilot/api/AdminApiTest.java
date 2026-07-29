@@ -2209,7 +2209,12 @@ class AdminApiTest {
         List<Map<String, Object>> localSetup =
                 (List<Map<String, Object>>) surface.getBody().get("localSetup");
         assertThat(localSetup).hasSize(1);
-        assertThat((String) localSetup.get(0).get("label")).contains("deye");
+        // Brand/model ride their OWN fields; the label stays the operator-given
+        // name only (absent here) - never a "brand · model · …" concatenation
+        // (the Pilsting ghost-name bug, scout vp-vier-erzeuger-p9).
+        assertThat(localSetup.get(0).get("brand")).isEqualTo("deye");
+        assertThat(localSetup.get(0).get("model")).isEqualTo("SUN-12K-SG04LP3-EU");
+        assertThat(localSetup.get(0).get("label")).isNull();
 
         // Drift is honest, never silently resolved: an OLD applied revision
         // reads pending; a reported ghost entity surfaces as stale-on-device;
@@ -2288,7 +2293,7 @@ class AdminApiTest {
                 + "{\"id\":\"goe-1\",\"kind\":\"source\",\"role\":\"consumer\",\"brand\":\"go-e\","
                 + "\"model\":\"Charger 3\"},"
                 + "{\"id\":\"pv-2\",\"kind\":\"source\",\"role\":\"pv-generation\","
-                + "\"brand\":\"Fronius\",\"model\":\"Eco 27\"}]}}";
+                + "\"brand\":\"Fronius\",\"model\":\"Eco 27\",\"label\":\"PV Halle Ost\"}]}}";
         listener.handle(topic, heartbeat.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         // The entities surface reports the sources with their role/brand, both
@@ -2301,6 +2306,8 @@ class AdminApiTest {
                 .filter(l -> "goe-1".equals(l.get("id"))).findFirst().orElseThrow();
         assertThat(goe.get("role")).isEqualTo("consumer");
         assertThat(goe.get("brand")).isEqualTo("go-e");
+        assertThat(goe.get("model")).isEqualTo("Charger 3");
+        assertThat(goe.get("label")).as("no operator name reported, none invented").isNull();
         assertThat(goe.get("adoptedEntityId")).as("not adopted yet").isNull();
 
         // Adopt the wallbox (non-composed consumer type) -> a v2 entity pinned
@@ -2348,6 +2355,9 @@ class AdminApiTest {
         Map<String, Object> pvSource = ((List<Map<String, Object>>) surface.get("localSetup"))
                 .stream().filter(l -> "pv-2".equals(l.get("id"))).findFirst().orElseThrow();
         assertThat(pvSource.get("adoptedEntityId")).isEqualTo(producerId);
+        // A reported operator name survives EXACTLY as given - no concatenation.
+        assertThat(pvSource.get("label")).isEqualTo("PV Halle Ost");
+        assertThat(pvSource.get("model")).isEqualTo("Eco 27");
 
         // MEDIUM-1: deleting a COMPOSED entity keeps its measurement point (only
         // the entity config is cleared), so the point stays pinned to "pv-2" -
