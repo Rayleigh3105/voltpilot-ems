@@ -455,6 +455,36 @@ class ProvisioningClaimTest {
                 .isEqualTo(11.0);
         assertThat(wallbox.get("guards").get("failsafe").get("behavior").asText())
                 .isEqualTo("release");
+
+        // D-17 (PR 4a, vp-vier-erzeuger-p9): adopting an edge-reported source
+        // re-pushes the registry with the adoption pin (edge_source_id) on the
+        // descriptor, so the device can map its OWN source readings onto the
+        // entity deterministically for its local display.
+        ResponseEntity<Map<String, Object>> adopted = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"),
+                org.springframework.http.HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-abcdef23", "entityType", "producer",
+                        "label", "Fronius Anlage WR2", "capacityKwp", 27), admin),
+                new org.springframework.core.ParameterizedTypeReference<>() {});
+        assertThat(adopted.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String pinnedPayload = pollRetainedContaining(topic, "edge_source_id", 15);
+        assertThat(pinnedPayload).as("re-pushed registry carrying the adoption pin").isNotNull();
+        JsonNode pinned = mapper.readTree(pinnedPayload);
+        JsonNode producer = null;
+        for (JsonNode e : pinned.get("entities")) {
+            if ("producer".equals(e.get("entity_type").asText())) {
+                producer = e;
+            }
+        }
+        assertThat(producer).isNotNull();
+        assertThat(producer.get("edge_source_id").asText()).isEqualTo("src-abcdef23");
+        assertThat(producer.get("label").asText()).isEqualTo("Fronius Anlage WR2");
+        // Un-adopted entities carry NO pin field (optional + additive).
+        for (JsonNode e : pinned.get("entities")) {
+            if ("battery-hybrid".equals(e.get("entity_type").asText())) {
+                assertThat(e.has("edge_source_id")).isFalse();
+            }
+        }
     }
 
     /** Poll the retained topic until the payload contains a marker (re-push). */

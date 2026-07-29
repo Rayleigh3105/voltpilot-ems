@@ -60,6 +60,14 @@ func TestParseRegistryPushAcceptsTheContractFixture(t *testing.T) {
 	if len(producer.Driver) == 0 {
 		t.Fatalf("producer driver block not carried through")
 	}
+	// D-17 (PR 4a): the adoption pin travels with the descriptor so the device
+	// can map its own source readings onto the entity deterministically.
+	if producer.EdgeSourceID != "src-abcdef23" {
+		t.Fatalf("producer edge_source_id = %q, want src-abcdef23", producer.EdgeSourceID)
+	}
+	if battery.EdgeSourceID != "" {
+		t.Fatalf("no pin on the battery in the fixture, got %q", battery.EdgeSourceID)
+	}
 	meter := reg.FirstOfType(TypeGridMeter)
 	if meter == nil || len(meter.Capabilities.Actuate) != 0 {
 		t.Fatalf("grid meter must be measure-only: %+v", meter)

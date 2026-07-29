@@ -863,6 +863,12 @@ public class EntityRegistryService {
         if (row.label() != null && !row.label().isBlank()) {
             d.put("label", row.label());
         }
+        // The adoption pin, echoed to the device (D-17, additive): lets the
+        // edge map its OWN source readings onto the entity for its LOCAL
+        // display - deterministic instead of order-guessing. Old edges ignore it.
+        if (row.edgeSourceId() != null && !row.edgeSourceId().isBlank()) {
+            d.put("edge_source_id", row.edgeSourceId());
+        }
         d.set("capabilities", parseOr(row.capabilitiesJson(), mapper.createObjectNode()));
         d.set("guards", parseOr(row.guardConfigJson(), mapper.createObjectNode()));
         ObjectNode driver = driverBlock(row);

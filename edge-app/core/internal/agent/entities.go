@@ -8,6 +8,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/guards"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/topology"
 )
@@ -391,16 +392,49 @@ func channel(reading map[string]float64, name string) *float64 {
 // without a pushed registry yields an empty topology (byte-for-byte v1). The
 // edge uses default role assignments only; the cloud layers stored overrides
 // on the same defaults (contract docs/contracts/v2/topology-read-model.md).
+//
+// Since PR 4a (vp-vier-erzeuger-p9, contract D-17) an entity whose registry
+// descriptor carries its adoption pin (edge_source_id) and has no reading of
+// its own is filled DISPLAY-ONLY from the device's OWN source readings - the
+// deterministic mapping the cloud pinned, never an order guess. The hybrid's
+// pv then shows the PRE-FOLD primary value so the PV role never double-counts
+// (the composite = primary + Σ sources lives on the fold, not here). Boundary
+// exactly like ComposeLocal: Topology feeds the :8484 view and the /api/state
+// topology block ONLY - never the store-and-forward buffer, the v2 uplink or
+// the heartbeat's observed Ist.
 func (a *Agent) Topology() topology.Topology {
 	now := time.Now()
+	// Source state is read BEFORE entMu (lock-order discipline: these take
+	// srcMu / the state lock internally).
+	srcReadings := a.SourceLastReadings()
+	srcStatuses := a.SourceStatuses()
+	primary := a.State.Get().LastReading
+
 	a.entMu.Lock()
 	reg := a.entRegistry
 	raw := make([]topology.RawEntity, 0, len(reg.Entities))
+	pvFilledFromSource := false
+	hybridIdx := -1
 	for _, e := range reg.Entities {
 		er, ok := a.entityReading(e.ID)
 		re := topology.RawEntity{
 			ID: e.ID, Type: e.Type, Label: e.Label,
 			Category: e.Category(), Health: entityHealth(er, now, ok),
+		}
+		var src *sources.LastReading
+		srcHealth := ""
+		if e.EdgeSourceID != "" {
+			if r, has := srcReadings[e.EdgeSourceID]; has {
+				switch srcStatuses[e.EdgeSourceID] {
+				case "ok":
+					c := r
+					src, srcHealth = &c, "ok"
+				case "warn":
+					// A stale source keeps its last value; the health says so.
+					c := r
+					src, srcHealth = &c, "stale"
+				}
+			}
 		}
 		for _, m := range e.Capabilities.Measure {
 			ch := topology.RawChannel{Channel: m.Channel}
@@ -410,12 +444,65 @@ func (a *Agent) Topology() topology.Topology {
 					ch.Value = &val
 				}
 			}
+			if ch.Value == nil && src != nil {
+				if v := sourceChannelValue(*src, m.Channel); v != nil {
+					ch.Value = v
+					if m.Channel == "pv_power_kw" {
+						pvFilledFromSource = true
+					}
+					if re.Health == "never" {
+						re.Health = srcHealth
+					}
+				}
+			}
 			re.Channels = append(re.Channels, ch)
+		}
+		if e.Type == entities.TypeBatteryHybrid {
+			hybridIdx = len(raw)
 		}
 		raw = append(raw, re)
 	}
 	a.entMu.Unlock()
+
+	// With producers now carrying their OWN source values, the hybrid must
+	// show its pre-fold primary pv - its composed value is the folded site
+	// total (primary + Σ sources) and would double-count in the role sum.
+	if pvFilledFromSource && hybridIdx >= 0 {
+		if v, has := primary["pv_power_kw"]; has {
+			for i := range raw[hybridIdx].Channels {
+				if raw[hybridIdx].Channels[i].Channel == "pv_power_kw" &&
+					raw[hybridIdx].Channels[i].Value != nil {
+					val := v
+					raw[hybridIdx].Channels[i].Value = &val
+				}
+			}
+		}
+	}
 	return topology.Derive(topology.Resolve(raw))
+}
+
+// sourceChannelValue maps one source reading onto an entity measure channel:
+// pv_power_kw <- the source's pv, power_kw <- its signed grid power (a Netz
+// meter) else its consumer load (a wallbox reports load_kw, its entity
+// declares power_kw). Absent stays absent - never a fabricated 0.
+func sourceChannelValue(r sources.LastReading, channel string) *float64 {
+	switch channel {
+	case "pv_power_kw":
+		if r.PvKw != nil {
+			v := *r.PvKw
+			return &v
+		}
+	case "power_kw":
+		if r.PowerKw != nil {
+			v := *r.PowerKw
+			return &v
+		}
+		if r.LoadKw != nil {
+			v := *r.LoadKw
+			return &v
+		}
+	}
+	return nil
 }
 
 // entityHealth maps a reading's freshness to the read-model health word,
