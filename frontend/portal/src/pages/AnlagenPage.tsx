@@ -366,7 +366,10 @@ function AnlagenSubPage({
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
-      {sub === 'modell' && <AnlagenModellSection site={site} />}
+      {/* The Anlagen-Modell names the ONE VoltPilot-Box every reported device
+          hangs off (Captain-Korrektur) — the already-loaded devices list, so no
+          extra request. */}
+      {sub === 'modell' && <AnlagenModellSection site={site} devices={devices} />}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
       {sub === 'steuerung' && (
         <SteuerungSection

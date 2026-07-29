@@ -202,7 +202,11 @@ export function measurementTree(
   const groups: VerlaufGroup[] = [];
   for (const c of model.components) {
     if (c.channels.length === 0) continue;
-    const entity = entityById.get(c.id);
+    // A hybrid's PV ASPECT is a presentation split of an entity that is already
+    // listed with its own channels - charting it would duplicate „PV-Leistung"
+    // under a second name and its `entityId#pv` id has no history behind it.
+    if (c.aspect !== 'main') continue;
+    const entity = entityById.get(c.entityId);
     const producer = entity?.entityType === 'producer';
     const items: VerlaufItem[] = c.channels.map((ch) => ({
       entityId: c.id,
