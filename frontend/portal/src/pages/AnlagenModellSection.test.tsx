@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AnlagenModellSection } from './AnlagenModellSection';
-import { api, ApiError, type Site, type SiteEntities, type SiteTopology } from '../api';
+import {
+  api,
+  ApiError,
+  type Device,
+  type Site,
+  type SiteEntities,
+  type SiteSource,
+  type SiteTopology,
+} from '../api';
 import * as auth from '../auth';
 import { entitiesApi } from '../entitiesApi';
 
@@ -19,6 +27,7 @@ const site: Site = {
   maxFeedInKw: null,
 };
 
+/** The captain's plant shape: ONE VoltPilot-Box, a hybrid + a Fronius behind it. */
 const entities: SiteEntities = {
   registry: null,
   entities: [
@@ -41,9 +50,38 @@ const entities: SiteEntities = {
       observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
       edgeSourceId: null,
     },
+    {
+      id: 'grid',
+      entityType: 'grid-meter',
+      typeLabel: 'Netzanschluss',
+      role: 'grid',
+      label: 'Netzanschluss',
+      control: false,
+      deviceId: 'gw',
+      capabilities: { measure: [{ channel: 'power_kw', unit: 'kW' }] },
+      guards: null,
+      syncStatus: 'in_sync',
+      observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+      edgeSourceId: null,
+    },
+    {
+      id: 'fr1',
+      entityType: 'producer',
+      typeLabel: 'Erzeuger',
+      role: 'pv',
+      label: 'Fronius Anlage',
+      control: false,
+      deviceId: 'gw',
+      capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+      guards: null,
+      syncStatus: 'in_sync',
+      observed: { health: 'ok', lastTelemetryAt: null, channels: [], appliedType: null, reportedAt: '' },
+      edgeSourceId: 'src-1',
+    },
   ],
   localSetup: [
-    { id: 'inv', kind: 'inverter', role: null, brand: 'deye', label: 'SUN-12K', reportedAt: '', adoptedEntityId: null },
+    { id: 'inv', kind: 'inverter', role: null, brand: 'deye', model: 'SUN-30K-SG01HP3-EU', label: null, reportedAt: '', adoptedEntityId: null },
+    { id: 'src-1', kind: 'source', role: 'pv-generation', brand: 'fronius_sunspec', model: null, label: 'Fronius Anlage', reportedAt: '', adoptedEntityId: 'fr1' },
     // A newly reported go-e wallbox — not adopted yet.
     { id: 'goe-1', kind: 'source', role: 'consumer', brand: 'go-e', label: 'Charger 3', reportedAt: '', adoptedEntityId: null },
   ],
@@ -61,18 +99,78 @@ const topology: SiteTopology = {
       category: 'storage',
       health: 'ok',
       capabilities: [
-        { channel: 'pv_power_kw', unit: 'kW', role: 'pv', primary: true, value: 5.8 },
+        { channel: 'pv_power_kw', unit: 'kW', role: 'pv', primary: false, value: 27 },
+        { channel: 'battery_power_kw', unit: 'kW', role: 'storage', primary: true, value: 9.3 },
         { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 76 },
       ],
     },
+    {
+      id: 'grid',
+      entityType: 'grid-meter',
+      typeLabel: 'Netzanschluss',
+      label: 'Netzanschluss',
+      category: 'meter',
+      health: 'ok',
+      capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'grid', primary: true, value: -30 }],
+    },
+    {
+      id: 'fr1',
+      entityType: 'producer',
+      typeLabel: 'Erzeuger',
+      label: 'Fronius Anlage',
+      category: 'producer',
+      health: 'never',
+      capabilities: [],
+    },
   ],
-  topology: { schema_version: '1.0', nodes: [] },
+  topology: {
+    schema_version: '1.0',
+    nodes: [
+      {
+        role: 'pv',
+        flow_active: true,
+        members: [
+          { entity_id: 'batt', label: 'Batteriespeicher', primary: false, value_kw: 27 },
+          { entity_id: 'fr1', label: 'Fronius Anlage', primary: false },
+        ],
+      },
+    ],
+  },
+};
+
+const sources: SiteSource[] = [
+  {
+    deviceId: 'gw',
+    sourceId: 'src-1',
+    kind: 'source',
+    role: 'pv-generation',
+    label: 'Fronius Anlage',
+    brand: 'fronius_sunspec',
+    model: null,
+    pvKw: 21.2,
+    powerKw: null,
+    loadKw: null,
+    health: 'ok',
+    readAt: null,
+    reportedAt: '',
+  },
+];
+
+const boxDevice: Device = {
+  id: 'gw',
+  siteId: 's-1',
+  externalRef: 'VP-ABC123',
+  kind: 'inverter',
+  name: null,
+  status: 'active',
+  lastSeenAt: new Date().toISOString(),
+  createdAt: null,
 };
 
 function stub() {
   vi.spyOn(api, 'siteEntities').mockResolvedValue(entities);
   vi.spyOn(api, 'topology').mockResolvedValue(topology);
-  vi.spyOn(api, 'siteSources').mockResolvedValue([]);
+  vi.spyOn(api, 'siteSources').mockResolvedValue(sources);
   // The installer panel (EntitaetenSection) also reads these — fail-soft, but
   // stub them so an admin render is quiet.
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
@@ -81,29 +179,83 @@ function stub() {
 
 const FORBIDDEN = /Entität|Messpunkt|Quelle|Mess-Einheit|Kanal/;
 
-describe('AnlagenModellSection', () => {
+describe('AnlagenModellSection — Variante A', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders the three columns and highlights a device on click', async () => {
+  it('leads with the Kopfsatz and shows the ONE box with its devices behind it', async () => {
     stub();
-    render(<AnlagenModellSection site={site} />);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
-    // Three columns.
-    expect(await screen.findByRole('group', { name: 'Anlagen-Modell' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Geräte' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Komponenten' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Ihre Anlage' })).toBeInTheDocument();
+    // 1 · der Kopfsatz beantwortet „richtig erkannt?" in einer Zeile.
+    expect(
+      await screen.findByText(/VoltPilot kennt Ihre Anlage als 4 Komponenten, gemessen von 2 Geräten/),
+    ).toBeInTheDocument();
 
-    // Tap the device -> it becomes pressed (its components highlight).
-    const device = screen.getByRole('button', { name: /SUN-12K/ });
+    // 2 · die EINE VoltPilot-Box ist der Vermittler; die Geräte hängen an ihr.
+    expect(screen.getByText('VoltPilot-Box VP-ABC123')).toBeInTheDocument();
+    expect(screen.getByText('Verbunden · empfängt Messwerte von 2 Geräten')).toBeInTheDocument();
+    expect(screen.getByText(/einzige Verbindung zu VoltPilot/)).toBeInTheDocument();
+    // Never a second "box": the inverters read as devices behind it.
+    expect(screen.getAllByText(/VoltPilot-Box/)).toHaveLength(2); // name + hint sentence
+    const strip = screen.getByRole('region', { name: 'Ihre Geräte' });
+    expect(within(strip).getByRole('button', { name: /Deye SUN-30K/ })).toBeInTheDocument();
+
+    // The device verb sub-line replaces the old „liefert N Messwerte".
+    expect(screen.queryByText(/liefert \d+ Messwert/)).toBeNull();
+  });
+
+  it('renders the role groups with live values that add up', async () => {
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const pv = await screen.findByRole('region', { name: 'PV-Erzeugung' });
+    // 21,2 (Fronius, from /sources) + 5,8 (the hybrid's own modules) = 27,0
+    expect(pv.textContent).toContain('21,2');
+    expect(pv.textContent).toContain('5,8');
+    expect(pv.textContent).toContain('Σ 27,0');
+    // Herkunft per component.
+    expect(pv.textContent).toContain('misst selbst');
+    expect(pv.textContent).toContain('gemessen über Deye SUN-30K');
+
+    // The battery: SoC on the row, power in the headline.
+    const storage = screen.getByRole('region', { name: 'Speicher' });
+    expect(storage.textContent).toContain('76,0');
+    expect(storage.textContent).toContain('geladen');
+    expect(storage.textContent).toContain('lädt 9,3');
+    // Steuern ist ein Abzeichen, kein Nebensatz.
+    expect(storage.textContent).toContain('Wird von VoltPilot gesteuert');
+
+    // The grid: a direction WORD, never a minus sign.
+    const grid = screen.getByRole('region', { name: 'Netzanschluss' });
+    expect(grid.textContent).toContain('Einspeisung 30,0');
+    expect(grid.textContent).not.toContain('-30,0');
+    expect(grid.textContent).not.toContain('−30,0');
+  });
+
+  it('highlights a device on click and the third column is gone', async () => {
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const strip = await screen.findByRole('region', { name: 'Ihre Geräte' });
+    const device = within(strip).getByRole('button', { name: /Deye SUN-30K/ });
     expect(device).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(device);
     expect(device).toHaveAttribute('aria-pressed', 'true');
+
+    // Die aufgelöste dritte Spalte („Ihre Anlage" mit fünf Erklärkarten).
+    expect(screen.queryByRole('region', { name: 'Ihre Anlage' })).toBeNull();
+    expect(screen.queryByText('Cockpit & Energiefluss')).toBeNull();
+    // …ihr Rest lebt in der Fußzeile.
+    expect(screen.getByText('→ Historie')).toHaveAttribute('href', '#/anlage/s-1/historie');
+    expect(screen.getByText('→ Steuerung')).toHaveAttribute('href', '#/anlage/s-1/steuerung');
+    expect(screen.getByText(/Schutzgrenzen/)).toBeInTheDocument();
+    // …und „Guard-Kette" ist raus.
+    expect(screen.queryByText(/Guard-Kette/)).toBeNull();
   });
 
   it('shows the newly reported device and opens the one-move assign dialog', async () => {
     stub();
-    render(<AnlagenModellSection site={site} />);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
     const found = await screen.findByText('Neues Gerät gefunden');
     fireEvent.click(found);
@@ -113,45 +265,81 @@ describe('AnlagenModellSection', () => {
     expect(screen.getByText('Wallbox')).toBeInTheDocument();
   });
 
+  it('leads an orphaned pin back into the existing „Wieder verbinden" flow', async () => {
+    const orphaned: SiteEntities = {
+      ...entities,
+      entities: [
+        { ...entities.entities[2], id: 'fr2', label: 'Fronius WR2', edgeSourceId: 'gone', orphanedPin: true },
+      ],
+      localSetup: [
+        { id: 'new-src', kind: 'source', role: 'pv-generation', brand: 'fronius_sunspec', model: null, label: 'Fronius WR2', reportedAt: '', adoptedEntityId: null },
+      ],
+    };
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(orphaned);
+    vi.spyOn(api, 'topology').mockResolvedValue({ ...topology, entities: [], topology: { schema_version: '1.0', nodes: [] } });
+    vi.spyOn(api, 'siteSources').mockResolvedValue([]);
+
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    expect(
+      await screen.findByText(/nicht mehr mit einem gemeldeten Gerät verbunden/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'wieder verbinden' }));
+    // …the SAME dialog, defaulting to re-connecting instead of a duplicate.
+    expect(await screen.findByText('Gerät zuordnen')).toBeInTheDocument();
+    expect(screen.getByText(/Wieder verbinden/)).toBeInTheDocument();
+  });
+
   it('shows the honest fallback when the customer adopt twin is absent (403)', async () => {
     stub();
     vi.spyOn(entitiesApi, 'adopt').mockRejectedValue(new ApiError(403, 'Forbidden'));
-    render(<AnlagenModellSection site={site} />);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
 
     fireEvent.click(await screen.findByText('Neues Gerät gefunden'));
     fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/),
-    );
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/));
   });
 
   it('uses no forbidden customer vocabulary in the customer view', async () => {
     stub();
-    const { container } = render(<AnlagenModellSection site={site} />);
-    await screen.findByRole('group', { name: 'Anlagen-Modell' });
+    const { container } = render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Komponenten' });
     expect(FORBIDDEN.test(container.textContent ?? '')).toBe(false);
   });
 
   // M7 role-gate: two views, one product. A customer never sees the technical
   // installer layer; a platform-admin sees it ADDED to the same page.
-  it('hides the installer layer for a customer (showTechnicalLayer false)', async () => {
+  it('hides the installer layer and the rename pencil for a customer', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(false);
     stub();
-    render(<AnlagenModellSection site={site} />);
-    await screen.findByRole('group', { name: 'Anlagen-Modell' });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+    await screen.findByRole('region', { name: 'Komponenten' });
     expect(screen.queryByText(/Installateur-Ansicht/)).toBeNull();
-    // …and the technical panel's own vocabulary is nowhere on the page.
     expect(screen.queryByText('Rollen & Zuordnung')).toBeNull();
+    // The label PUT is admin-only today, so the customer gets no pencil.
+    expect(screen.queryByRole('button', { name: /umbenennen/ })).toBeNull();
   });
 
-  it('shows the installer layer for a platform-admin, on the same page', async () => {
+  it('shows the installer layer and a working rename for a platform-admin', async () => {
     vi.spyOn(auth, 'isPlatformAdmin').mockReturnValue(true);
     stub();
-    render(<AnlagenModellSection site={site} />);
+    const update = vi
+      .spyOn(entitiesApi, 'update')
+      .mockResolvedValue(entities.entities[0]);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
     // The customer picture is still there…
-    await screen.findByRole('group', { name: 'Anlagen-Modell' });
+    await screen.findByRole('region', { name: 'Komponenten' });
     // …plus the installer panel added on top.
     expect(screen.getByText(/Installateur-Ansicht/)).toBeInTheDocument();
     expect(await screen.findByText('Rollen & Zuordnung')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /„Netzanschluss“ umbenennen/ }));
+    fireEvent.change(await screen.findByLabelText('Name der Komponente'), {
+      target: { value: 'Hausanschluss' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() =>
+      expect(update).toHaveBeenCalledWith('s-1', 'grid', { label: 'Hausanschluss' }),
+    );
   });
 });

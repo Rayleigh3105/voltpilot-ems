@@ -1,44 +1,80 @@
 /**
- * Portal v3 · M6 — the pure derivation behind the Anlagen-Modell
- * (`docs/portal-v3/M6-komponenten.md`, concept tab 7). It turns the v2 entity
- * data into ONE picture: "so ist Ihre Anlage verschaltet." — three columns,
- * **Geräte** (physical boxes) → **Komponenten** (the roles) → **Ihre Anlage**
- * (what the cockpit makes of it).
+ * Portal v3 · M6 — the pure derivation behind the Anlagen-Modell.
+ *
+ * Since the approved UX rework (`data/vp-anlagenmodell-ux-w7`, **Variante A**,
+ * Captain-Go 2026-07-29) the page is no longer three columns of abstraction. It
+ * answers ONE question — „Kennt VoltPilot meine Anlage richtig, und woher kommt
+ * jede Zahl?" — in this order:
+ *
+ *   1. ein Kopfsatz (Zustand in einem Satz),
+ *   2. die EINE VoltPilot-Box als Vermittler, darunter die Geräte, die ihr die
+ *      Messwerte liefern,
+ *   3. die Komponenten in Rollen-Gruppen, **mit Live-Werten und Herkunft**,
+ *   4. eine Fußzeile (Schutz-Satz + wo die Komponenten wieder auftauchen).
+ *
+ * Die frühere dritte Spalte („Ihre Anlage" = fünf Karten Erklärprosa) ist
+ * ersatzlos aufgelöst: ihr Inhalt steckt jetzt im Kopfsatz (Zustand), im
+ * Steuer-Abzeichen (Rechte) und in der Fußzeile (Verweise).
+ *
+ * **Captain-Korrektur (verbindlich):** eine Anlage hat genau EINE VoltPilot-Box.
+ * Deye-Hybrid und die zwei Fronius sind Geräte DAHINTER, die ihr Messwerte
+ * liefern - die Seite darf nie so aussehen, als gäbe es mehrere Boxen. Deshalb
+ * trägt {@link edgeBoxLine} die Box als Vermittler-Zeile über der Geräte-Leiste,
+ * und die Geräte hängen sichtbar an ihr.
  *
  * The customer dictionary is locked (D3): **Gerät / Komponente / Messwert**.
  * The words Entität · Messpunkt · Quelle · Mess-Einheit · Kanal never appear in
  * anything this module produces (they stay in the installer/admin panels). The
- * `komponenten.test.ts` vocabulary guard greps every produced label for them.
+ * `komponenten.test.ts` vocabulary guard greps every produced label for them,
+ * and no device name may be a raw-token join (kein „ · "-Kette, kein snake_case
+ * - vp-vier-erzeuger-p9 / PR #269).
  *
  * Pure + framework-free (the `rollen.ts` / `topology.ts` precedent): components
  * only render what this decides. It REUSES `rollen.ts`
- * (`adoptableSources` / `sourceRoleLabel` / `suggestEntityType`) and
- * `topology.ts` (`defaultRole`) — there is no second role derivation.
+ * (`adoptableSources` / `suggestEntityType`), `entityLabel.ts` (`deviceName` -
+ * die EINE Namenskette) und `pvReconcile.ts` (`reconcileProducerPv` - die EINE
+ * PV-Aufteilung, die auch der Energiefluss benutzt). There is no second role,
+ * name or value derivation.
  *
  * KEY facts of the current backend that shape the mapping:
- * - A Komponente = one v2 entity (its role bucket derived from its type +
- *   topology category). A hybrid inverter composes into SEVERAL entities
- *   (battery-hybrid=Speicher, grid-meter=Netzanschluss, house-load=Haus), so it
- *   feeds several components — exactly the mockup's "liefert 4 Messwerte".
+ * - A Komponente = one v2 entity - PLUS the PV **aspect** of a hybrid inverter:
+ *   the composed backfill mints no separate producer for the inverter's own
+ *   modules, so without that aspect row a plain single-inverter plant would
+ *   render NO PV at all and a multi-inverter plant's Σ would silently miss the
+ *   hybrid's share (see {@link PlantComponent.aspect}).
  * - A Gerät = a physical box the edge REPORTS (`localSetup`), NOT the single
- *   `device` uuid every entity is bound to. The gateway inverter feeds the
- *   composed entities; an adopted source feeds its one entity.
+ *   `device` uuid every entity is bound to. That uuid is the VoltPilot-Box.
+ * - Gerät↔Komponente is matched by PIN (`edgeSourceId` / `adoptedEntityId`,
+ *   PR #272), never by order or by name.
  * - The "—" discipline is law: an unknown value stays absent, never a
  *   fabricated 0, and a component without a device link still renders.
  */
 import type {
+  Device,
   EntityLocalSetup,
   SiteEntity,
   SiteSource,
   SiteTopology,
   TopologyEntity,
 } from './api';
+import { deviceLiveStatus } from './api';
 import { channelLabel } from './channels';
 import { deviceName } from './entityLabel';
+import { fmtNum } from './format';
+import { reconcileProducerPv } from './pvReconcile';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
 
-/** The customer-facing component role buckets (the middle column). */
+/** The customer-facing component role buckets. */
 export type ComponentRole = 'pv' | 'storage' | 'grid' | 'house' | 'consumer';
+
+/** Canonical group order on the page (the energy-flow reading order). */
+export const COMPONENT_ROLE_ORDER: ComponentRole[] = [
+  'pv',
+  'storage',
+  'grid',
+  'house',
+  'consumer',
+];
 
 /**
  * Live health of a device / component. `ok` / `stale` / `never` are the v2
@@ -51,7 +87,7 @@ export type ComponentRole = 'pv' | 'storage' | 'grid' | 'house' | 'consumer';
  */
 export type ComponentHealth = 'ok' | 'stale' | 'never' | 'unknown';
 
-/** German role labels — the customer names for the roles ("PV-Dach", …). */
+/** German role labels — the customer names for the roles. */
 export const COMPONENT_ROLE_LABELS: Record<ComponentRole, string> = {
   pv: 'PV-Erzeugung',
   storage: 'Speicher',
@@ -69,6 +105,9 @@ export const COMPONENT_ROLE_ICONS: Record<ComponentRole, string> = {
   consumer: 'zap',
 };
 
+/** Below this magnitude a reading counts as idle (the live.ts 0.05 kW deadband). */
+const DEADBAND_KW = 0.05;
+
 /** One measured value a device knows about a component (the "Messwert" word). */
 export interface Messwert {
   /** Plain-German label ("PV-Leistung", "Ladestand", …). */
@@ -77,10 +116,32 @@ export interface Messwert {
   raw: string;
 }
 
-/** One Komponente (middle column): the role the plant is thought in. */
+/**
+ * One live reading rendered on a component row.
+ *
+ * The magnitude is ALWAYS positive: a sign never reaches the customer, the
+ * direction is a WORD (`caption`) — the portal-wide `live.ts` convention. The
+ * concept mockup wrote „− 30,0 kW / Einspeisung"; the product rule wins, so we
+ * render „30,0 kW / Einspeisung".
+ */
+export interface LiveReading {
+  value: number;
+  unit: 'kW' | '%';
+  /** The direction/meaning word under the number, or null. */
+  caption: string | null;
+}
+
+/** Which part of an entity a component represents. */
+export type ComponentAspect = 'main' | 'pv';
+
+/** One Komponente: the role the plant is thought in. */
 export interface PlantComponent {
-  /** The v2 entity id. */
+  /** Unique row id (`entityId`, or `entityId#pv` for a hybrid's own modules). */
   id: string;
+  /** The v2 entity this row is derived from. */
+  entityId: string;
+  /** 'main' = the entity itself; 'pv' = the PV aspect of a hybrid inverter. */
+  aspect: ComponentAspect;
   /** Customer-facing name (its own label, else a role/type default). */
   label: string;
   role: ComponentRole;
@@ -88,6 +149,10 @@ export interface PlantComponent {
   summary: string;
   /** The device(s) that feed/host this component (edge source ids). */
   deviceIds: string[];
+  /** „misst selbst" / „gemessen über Deye SUN-30K"; null when meaningless. */
+  provenance: string | null;
+  /** The live reading, or null — never a fabricated 0. */
+  reading: LiveReading | null;
   /** The measured values (Messwerte) — never raw channel names in copy. */
   channels: Messwert[];
   /** Steuerbar (a controllable component — Speicher / Wallbox). */
@@ -105,43 +170,63 @@ export interface PlantComponent {
   /**
    * true = the component's pinned edge source is no longer reported by the
    * device (identity churn, vp-vier-erzeuger-p9) — the UI says „nicht mehr
-   * verbunden" and the Zuordnen dialog offers „Wieder verbinden" instead of
-   * minting a duplicate. Only a PROVEN orphan (backend tri-state true) counts.
+   * verbunden" and offers „Wieder verbinden" instead of minting a duplicate.
+   * Only a PROVEN orphan (backend tri-state true) counts.
    */
   orphaned: boolean;
 }
 
-/** One Gerät (left column): a physical box the edge reports. */
+/** One Gerät: a physical box the edge reports BEHIND the VoltPilot-Box. */
 export interface PlantDevice {
   /** The edge-reported source/inverter id. */
   id: string;
   label: string;
   brand: string | null;
   health: ComponentHealth;
-  /** How many measured values it delivers across its components. */
-  messwertCount: number;
   /** The components it measures / controls. */
   componentIds: string[];
-  /** "verbunden · liefert N Messwerte" — the mockup's device sub-line. */
+  /** The role dots of the strip card, in canonical order. */
+  roles: ComponentRole[];
+  /** „Liefert Daten" — the device's state in one word. */
+  state: string;
+  /** „Misst Netz, Speicher, Haus und eigene PV · steuert den Speicher". */
   summary: string;
 }
 
-/** One "Ihre Anlage" effect card (right column) — what the cockpit makes of it. */
-export interface PlantEffect {
-  key: string;
-  title: string;
-  summary: string;
-  /** 'warn' turns the card amber (the Gesundheit card when a device is silent). */
-  tone: 'plain' | 'warn';
+/** One role group of the components list, with its live headline. */
+export interface RoleGroup {
+  role: ComponentRole;
+  label: string;
+  components: PlantComponent[];
+  /** „Σ 44,9 kW" / „lädt 9,3 kW" / „Einspeisung 30,0 kW"; null = nothing known. */
+  headline: string | null;
+  /** Honest note when the headline covers only part of the group. */
+  note: string | null;
 }
 
-/** The whole three-column model. */
+/** The one-sentence answer to „ist meine Anlage richtig erkannt?". */
+export interface PlantHeadline {
+  tone: 'ok' | 'warn';
+  text: string;
+}
+
+/** The ONE VoltPilot-Box: the mediator every device hangs off. */
+export interface EdgeBoxLine {
+  label: string;
+  health: ComponentHealth;
+  /** „Verbunden · empfängt Messwerte von 3 Geräten". */
+  summary: string;
+}
+
+/** The whole model the page renders. */
 export interface PlantModel {
+  headline: PlantHeadline;
   devices: PlantDevice[];
   components: PlantComponent[];
+  /** The components grouped by role, in canonical order (empty groups dropped). */
+  groups: RoleGroup[];
   /** "Neues Gerät gefunden … jetzt zuordnen" — reported but not yet assigned. */
   newlyReported: AdoptableSource[];
-  effects: PlantEffect[];
 }
 
 /** Composed/pilot entity types that map to a specific customer role bucket. */
@@ -150,8 +235,26 @@ const BATTERY_HYBRID_TYPE = 'battery-hybrid';
 const PRODUCER_TYPE = 'producer';
 const GRID_METER_TYPE = 'grid-meter';
 
+const PV_CHANNEL = 'pv_power_kw';
+const SOC_CHANNEL = 'soc_pct';
+const BATTERY_CHANNEL = 'battery_power_kw';
+
 /** The honest note for a producer whose PV is read through the hybrid inverter. */
 export const MEASURED_VIA_INVERTER = 'über den Wechselrichter gemessen';
+
+/** The customer-German guard footnote (no „Guard-Kette" — that is internal). */
+export const GUARD_FOOTNOTE =
+  'Umbenennen und Zuordnen sind gefahrlos: Sie ändern nur die Darstellung. Was VoltPilot ' +
+  'steuern darf, entscheidet das Gerät selbst mit seinen Schutzgrenzen — erkennbar am grünen ' +
+  'Abzeichen, nie an einem Namen.';
+
+/** The badge on the one component VoltPilot may actually command. */
+export const CONTROL_BADGE = 'Wird von VoltPilot gesteuert';
+
+/** What the mediator line explains, once, in customer German. */
+export const EDGE_BOX_HINT =
+  'Ihre VoltPilot-Box ist die einzige Verbindung zu VoltPilot. Die Geräte darunter liefern ihr ' +
+  'die Messwerte.';
 
 /** Fallback category per entity type when no topology row is present. */
 function inferCategory(entityType: string): string {
@@ -225,10 +328,10 @@ function componentSummary(role: ComponentRole, control: boolean, primary: boolea
       return control ? 'Speichert Strom · steuerbar durch VoltPilot' : 'Speichert Strom';
     case 'grid':
       return primary
-        ? 'Maßgebliche Messung · § 14a überwacht'
+        ? 'Maßgebliche Messung — hier zählen Bezug und Einspeisung'
         : 'Verbindung zum öffentlichen Netz';
     case 'house':
-      return 'Ihr Verbrauch · errechnet aus PV, Netz und Speicher';
+      return 'Errechnet aus PV, Netz und Speicher — braucht kein eigenes Messgerät';
     case 'consumer':
     default:
       return control ? 'Schaltbar per Automation' : 'Verbraucher';
@@ -359,22 +462,106 @@ export function reconnectCandidates(
     }));
 }
 
-/** "verbunden · liefert N Messwerte" — the device sub-line. */
-export function deviceSummary(device: { health: ComponentHealth; messwertCount: number }): string {
-  const state =
-    device.health === 'ok'
-      ? 'verbunden'
-      : device.health === 'stale'
-        ? 'meldet gerade keine Daten'
-        : device.health === 'never'
-          ? 'noch keine Daten'
-          : 'noch keine Rückmeldung';
-  if (device.messwertCount <= 0) return state;
-  const word = device.messwertCount === 1 ? 'Messwert' : 'Messwerte';
-  return `${state} · liefert ${device.messwertCount} ${word}`;
+/**
+ * The reported device this orphaned component most likely IS — the one-click
+ * way from „nicht mehr verbunden" into the EXISTING „Wieder verbinden" flow
+ * (PR #271), instead of leaving the customer to find the right „Neues Gerät"
+ * card themselves. null = no matching offer, and then the row states the fact
+ * without promising a repair.
+ */
+export function reconnectOffer(
+  component: PlantComponent,
+  entities: SiteEntity[],
+  reported: AdoptableSource[],
+): AdoptableSource | null {
+  if (!component.orphaned) return null;
+  for (const s of reported) {
+    if (reconnectCandidates(s, entities).some((c) => c.entityId === component.entityId)) return s;
+  }
+  return null;
 }
 
-/** A device label from its adopted-source name, else a role-derived fallback. */
+/** The device's state in one plain word (never a Messwert count). */
+export function deviceState(health: ComponentHealth): string {
+  switch (health) {
+    case 'ok':
+      return 'Liefert Daten';
+    case 'stale':
+      return 'Meldet sich gerade nicht';
+    case 'never':
+      return 'Wartet auf die ersten Daten';
+    default:
+      return 'Noch keine Rückmeldung';
+  }
+}
+
+/** The role word used when listing what a device measures. */
+const ROLE_MEASURE_WORD: Record<ComponentRole, string> = {
+  pv: 'PV',
+  storage: 'Speicher',
+  grid: 'Netz',
+  house: 'Haus',
+  consumer: 'Verbraucher',
+};
+
+/** „a, b und c" — a German enumeration. */
+function joinDe(words: string[]): string {
+  if (words.length <= 1) return words[0] ?? '';
+  return `${words.slice(0, -1).join(', ')} und ${words[words.length - 1]}`;
+}
+
+/**
+ * What a device does, in verbs instead of counts (concept Teil 6): „Misst seine
+ * PV-Leistung" / „Misst Netz, Speicher, Haus und eigene PV · steuert den
+ * Speicher". A device without a single component says so honestly.
+ */
+export function deviceSummary(components: PlantComponent[]): string {
+  if (components.length === 0) return 'Noch keiner Komponente zugeordnet';
+  const controlled = components.filter((c) => c.control);
+  const controls =
+    controlled.length === 0
+      ? ''
+      : ` · steuert ${
+          controlled.length === 1 && controlled[0].role === 'storage'
+            ? 'den Speicher'
+            : joinDe(controlled.map((c) => c.label))
+        }`;
+  if (components.length === 1) {
+    const only = components[0];
+    // One component that VoltPilot also commands reads as one sentence, never
+    // „Misst X · steuert X".
+    const verb = only.control ? 'Misst und steuert' : 'Misst';
+    switch (only.role) {
+      case 'pv':
+        return `${verb} seine PV-Leistung`;
+      case 'storage':
+        return `${verb} den Speicher`;
+      case 'grid':
+        return `${verb} den Netzanschluss`;
+      case 'house':
+        return `${verb} den Hausverbrauch`;
+      default:
+        return `${verb} ${only.label}`;
+    }
+  }
+  const words: string[] = [];
+  for (const role of COMPONENT_ROLE_ORDER) {
+    const inRole = components.filter((c) => c.role === role);
+    if (inRole.length === 0) continue;
+    // A hybrid's own modules are „eigene PV" - it does not measure the separate
+    // inverters, only what hangs on itself.
+    const ownPvOnly = role === 'pv' && inRole.every((c) => c.aspect === 'pv');
+    words.push(ownPvOnly ? 'eigene PV' : ROLE_MEASURE_WORD[role]);
+  }
+  return `Misst ${joinDe(words)}${controls}`;
+}
+
+/** The role dots of a device card, in canonical order, each role once. */
+function deviceRoles(components: PlantComponent[]): ComponentRole[] {
+  return COMPONENT_ROLE_ORDER.filter((r) => components.some((c) => c.role === r));
+}
+
+/** A device label fallback derived from what it feeds. */
 function fallbackDeviceLabel(components: PlantComponent[]): string {
   if (components.length === 1) return components[0].label;
   // A gateway that feeds Speicher / Netz / Haus is the plant's inverter.
@@ -384,73 +571,195 @@ function fallbackDeviceLabel(components: PlantComponent[]): string {
   return 'Gerät';
 }
 
-/** The fixed "Ihre Anlage" effect cards; Gesundheit reflects the worst device. */
-function plantEffects(devices: PlantDevice[], components: PlantComponent[]): PlantEffect[] {
-  const silent = devices.find((d) => d.health !== 'ok');
-  const health: PlantEffect =
-    silent != null
-      ? {
-          key: 'gesundheit',
-          title: 'Gesundheit',
-          summary: `„${silent.label}“ liefert gerade keine Daten. Das Health-Zeichen oben wird gelb und nennt das Gerät. Nichts rechnet mit erfundenen Nullen.`,
-          tone: 'warn',
-        }
-      : {
-          key: 'gesundheit',
-          title: 'Gesundheit',
-          summary: 'Alle Geräte liefern Daten. Das Health-Zeichen oben bleibt grün.',
-          tone: 'plain',
-        };
-  const effects: PlantEffect[] = [
-    {
-      key: 'cockpit',
-      title: 'Cockpit & Energiefluss',
-      // F5: the flow draws ONE Knoten per Komponente (kein summierter Rollen-
-      // Knoten), also keine falsche Zusage mehr.
-      summary:
-        'Jede Komponente erscheint als eigener Knoten im Energiefluss — so sehen Sie jeden Erzeuger und Verbraucher einzeln.',
-      tone: 'plain',
-    },
-    {
-      key: 'steuerung',
-      title: 'Steuerung',
-      summary:
-        'Profile optimieren den Speicher am maßgeblichen Netzanschluss; Automationen schalten Verbraucher wie die Wallbox.',
-      tone: 'plain',
-    },
-    {
-      key: 'historie',
-      title: 'Historie',
-      summary:
-        'Jeder Messwert jeder Komponente hat automatisch seinen Verlauf — auch eigene Modbus-Messwerte.',
-      tone: 'plain',
-    },
-    health,
-  ];
-  // IA(5): a "Datenfluss"-Erklärer, but only where it explains something — a
-  // hybrid inverter that measures the plant PLUS extra producers whose PV is
-  // read through it. On a plain single-inverter plant it would be noise.
-  const hasHybrid = components.some((c) => c.role === 'storage');
-  const hasProducer = components.some((c) => c.role === 'pv' && c.measuredVia != null);
-  if (hasHybrid && hasProducer) {
-    effects.unshift({
-      key: 'datenfluss',
-      title: 'Datenfluss',
-      summary:
-        'Der Wechselrichter misst Netzanschluss, Speicher, Hausverbrauch und die gesamte PV-Leistung. Weitere Erzeuger liefern ihre Leistung an den Wechselrichter — daraus errechnet VoltPilot Cockpit und Historie.',
-      tone: 'plain',
-    });
-  }
-  return effects;
+/**
+ * The ONE VoltPilot-Box line (Captain-Korrektur): the mediator every reported
+ * device hangs off. Without a claimed device it returns null — nothing is
+ * invented. Several claimed boxes are counted honestly rather than collapsed
+ * into a singular that would be a lie.
+ */
+export function edgeBoxLine(
+  devices: Device[] | null | undefined,
+  reportedDeviceCount: number,
+  now: Date = new Date(),
+): EdgeBoxLine | null {
+  const list = devices ?? [];
+  if (list.length === 0) return null;
+  const healths = list.map((d) => {
+    const status = deviceLiveStatus(d, now);
+    return status === 'online' ? 'ok' : status === 'stale' ? 'stale' : 'never';
+  }) as ComponentHealth[];
+  const health = worstHealth(healths);
+  const name = (d: Device): string => d.name?.trim() || d.externalRef;
+  const label =
+    list.length === 1 ? `VoltPilot-Box ${name(list[0])}` : `${list.length} VoltPilot-Boxen`;
+  const state =
+    health === 'ok'
+      ? 'Verbunden'
+      : health === 'stale'
+        ? 'Meldet sich gerade nicht'
+        : 'Wartet auf die ersten Daten';
+  const feed =
+    reportedDeviceCount === 0
+      ? 'noch kein Gerät gemeldet'
+      : reportedDeviceCount === 1
+        ? 'empfängt Messwerte von 1 Gerät'
+        : `empfängt Messwerte von ${reportedDeviceCount} Geräten`;
+  return { label, health, summary: `${state} · ${feed}` };
+}
+
+/** n × „Komponente"/„Gerät" with the right German plural. */
+function countWord(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 /**
- * The three-column plant model. Pure + deterministic:
- * - components = one per v2 entity (role bucket + Messwerte + health);
- * - devices = the edge-reported physical boxes (adopted sources feed their one
- *   entity; the inverter feeds the composed/gateway entities; any leftover
- *   linked entity falls into a synthetic device so nothing measuring is
- *   orphaned);
+ * The Kopfsatz — Job 1 („richtig erkannt?") answered in one line. Amber the
+ * moment a device is not delivering, and it NAMES that device (the same
+ * mechanic as the cockpit status sentence / `composeFleetSentence`).
+ */
+export function plantHeadline(devices: PlantDevice[], components: PlantComponent[]): PlantHeadline {
+  const base = `VoltPilot kennt Ihre Anlage als ${countWord(
+    components.length,
+    'Komponente',
+    'Komponenten',
+  )}, gemessen von ${countWord(devices.length, 'Gerät', 'Geräten')}`;
+  if (devices.length === 0) {
+    return {
+      tone: 'warn',
+      text: 'Noch kein Gerät gemeldet — sobald sich eines meldet, erscheint hier Ihre Anlage.',
+    };
+  }
+  const silent = devices.find((d) => d.health !== 'ok');
+  if (!silent) return { tone: 'ok', text: `${base} — alle liefern Daten.` };
+  const why =
+    silent.health === 'stale'
+      ? 'meldet sich gerade nicht'
+      : silent.health === 'never'
+        ? 'wartet auf die ersten Daten'
+        : 'hat sich noch nicht zurückgemeldet';
+  return { tone: 'warn', text: `${base}. „${silent.label}“ ${why}.` };
+}
+
+/** The live value + direction word for one component. */
+function readingFor(
+  role: ComponentRole,
+  caps: Map<string, number>,
+  pvKw: number | null,
+): LiveReading | null {
+  switch (role) {
+    case 'pv': {
+      const v = pvKw ?? caps.get(PV_CHANNEL) ?? null;
+      return v == null ? null : { value: round1(Math.max(0, v)), unit: 'kW', caption: null };
+    }
+    case 'storage': {
+      const soc = caps.get(SOC_CHANNEL);
+      if (soc != null) return { value: round1(soc), unit: '%', caption: 'geladen' };
+      const p = caps.get(BATTERY_CHANNEL);
+      if (p == null) return null;
+      return { value: round1(Math.abs(p)), unit: 'kW', caption: batteryWord(p) };
+    }
+    case 'grid': {
+      const p = caps.get('power_kw') ?? caps.get('grid_power_kw');
+      if (p == null) return null;
+      return { value: round1(Math.abs(p)), unit: 'kW', caption: gridWord(p) };
+    }
+    case 'house': {
+      const p = caps.get('load_kw') ?? caps.get('power_kw');
+      return p == null ? null : { value: round1(Math.abs(p)), unit: 'kW', caption: null };
+    }
+    case 'consumer':
+    default: {
+      const p = caps.get('power_kw');
+      return p == null ? null : { value: round1(Math.abs(p)), unit: 'kW', caption: null };
+    }
+  }
+}
+
+function round1(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+function gridWord(p: number): string {
+  if (p > DEADBAND_KW) return 'Bezug';
+  if (p < -DEADBAND_KW) return 'Einspeisung';
+  return 'ausgeglichen';
+}
+
+function batteryWord(p: number): string {
+  if (p > DEADBAND_KW) return 'lädt';
+  if (p < -DEADBAND_KW) return 'entlädt';
+  return 'hält die Ladung';
+}
+
+/**
+ * The group headline: the number the customer checks the cockpit against. It is
+ * ALWAYS the sum of what the group actually shows — a component without a value
+ * is counted in `note`, never as a 0 (so „21,2 + 23,5 + 0,2 = 44,9" holds).
+ */
+function groupHeadline(
+  role: ComponentRole,
+  components: PlantComponent[],
+  batteryKw: number | null,
+): { headline: string | null; note: string | null } {
+  const missing = components.filter((c) => c.reading == null).length;
+  const note =
+    missing === 0
+      ? null
+      : `${countWord(missing, 'Komponente', 'Komponenten')} ohne aktuellen Wert`;
+  if (role === 'storage') {
+    if (batteryKw == null) return { headline: null, note };
+    const word = batteryWord(batteryKw);
+    return {
+      headline:
+        word === 'hält die Ladung' ? word : `${word} ${fmtNum(Math.abs(batteryKw), 'kW')}`,
+      note,
+    };
+  }
+  const kw = components
+    .filter((c) => c.reading?.unit === 'kW')
+    .map((c) => c.reading as LiveReading);
+  if (kw.length === 0) return { headline: null, note };
+  if (role === 'grid') {
+    // A grid group reads as ONE connection point: the maßgebliche measurement
+    // leads, and its direction word carries the sign.
+    const lead = components.find((c) => c.primary && c.reading != null) ?? components.find((c) => c.reading != null);
+    const r = lead?.reading as LiveReading | undefined;
+    if (!r) return { headline: null, note };
+    return {
+      headline: r.caption === 'ausgeglichen' ? r.caption : `${r.caption} ${fmtNum(r.value, 'kW')}`,
+      note,
+    };
+  }
+  const sum = round1(kw.reduce((s, r) => s + r.value, 0));
+  const prefix = kw.length > 1 ? 'Σ ' : '';
+  return { headline: `${prefix}${fmtNum(sum, 'kW')}`, note };
+}
+
+/** Group the components by role, in canonical order; empty groups are dropped. */
+export function roleGroups(components: PlantComponent[], batteryKw: number | null): RoleGroup[] {
+  const out: RoleGroup[] = [];
+  for (const role of COMPONENT_ROLE_ORDER) {
+    // Devices of their own come first; a hybrid's own modules ("Solarmodule am
+    // …") close the group - the reading order of the concept, and stable
+    // (Array.sort is stable, so the backend's entity order survives inside each
+    // block).
+    const inRole = components
+      .filter((c) => c.role === role)
+      .sort((a, b) => (a.aspect === b.aspect ? 0 : a.aspect === 'main' ? -1 : 1));
+    if (inRole.length === 0) continue;
+    const { headline, note } = groupHeadline(role, inRole, role === 'storage' ? batteryKw : null);
+    out.push({ role, label: COMPONENT_ROLE_LABELS[role], components: inRole, headline, note });
+  }
+  return out;
+}
+
+/**
+ * The plant model. Pure + deterministic:
+ * - components = one per v2 entity + the PV aspect of a hybrid inverter;
+ * - devices = the edge-reported physical boxes BEHIND the VoltPilot-Box
+ *   (adopted sources feed their one entity, matched by PIN; the inverter feeds
+ *   the composed entities; any leftover linked entity falls into a synthetic
+ *   device so nothing measuring is orphaned);
  * - newlyReported = reported-but-unassigned sources ("Neues Gerät gefunden").
  */
 export function plantModel(
@@ -465,17 +774,37 @@ export function plantModel(
   // `observed` echo (which is empty-by-construction for composed/adopted
   // entities → false „noch keine Daten" on every migrated plant).
   const topoHealthById = new Map<string, string>();
+  const capsById = new Map<string, Map<string, number>>();
   for (const t of topology?.entities ?? []) {
     const te = t as TopologyEntity;
     categoryById.set(te.id, te.category);
     topoHealthById.set(te.id, te.health);
+    const caps = new Map<string, number>();
+    for (const c of te.capabilities) {
+      if (c.value != null) caps.set(c.channel, c.value);
+    }
+    capsById.set(te.id, caps);
   }
   const sourceByEdgeId = sourceReadingIndex(sources);
 
-  const components: PlantComponent[] = entities.map((e) => {
+  // The per-device PV split: the SAME reconciliation the energy flow uses, so
+  // the Anlagen-Modell can never disagree with the cockpit's PV number. On a
+  // backend that already publishes PV per entity this is a no-op.
+  const pvByEntity = new Map<string, number>();
+  if (topology) {
+    const resolved = reconcileProducerPv(topology, sources);
+    const pvNode = resolved.topology.nodes.find((n) => n.role === 'pv');
+    for (const m of pvNode?.members ?? []) {
+      if (m.value_kw != null) pvByEntity.set(m.entity_id, m.value_kw);
+    }
+  }
+
+  const components: PlantComponent[] = [];
+  for (const e of entities) {
     const role = componentRole(e.entityType, categoryById.get(e.id) ?? null);
     const control = e.control === true;
     const primary = role === 'grid' && isPrimaryGrid(e, topology);
+    const caps = capsById.get(e.id) ?? new Map<string, number>();
     // Prefer the topology (telemetry_v2) liveness; fall back to the edge echo
     // only when no topology row exists (v1/un-migrated site).
     let health = toComponentHealth(topoHealthById.get(e.id) ?? e.observed?.health);
@@ -489,21 +818,50 @@ export function plantModel(
       const src = e.edgeSourceId != null ? sourceByEdgeId.get(e.edgeSourceId) : undefined;
       if (src?.hasReading) health = src.health;
     }
-    return {
+    components.push({
       id: e.id,
+      entityId: e.id,
+      aspect: 'main',
       label: componentLabel(e.label, role, e.typeLabel),
       role,
       summary: componentSummary(role, control, primary),
       deviceIds: [],
+      provenance: null,
+      reading: readingFor(role, caps, role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null),
       channels: componentChannels(e),
       control,
       primary,
       health,
       measuredVia,
       orphaned: e.orphanedPin === true,
-    };
-  });
+    });
+    // The PV ASPECT of a hybrid inverter: the composed backfill mints no own
+    // producer for the modules hanging on the inverter itself, so without this
+    // row a plain single-inverter plant would show no PV at all and a
+    // multi-inverter plant's Σ would silently miss the inverter's share.
+    if (role !== 'pv' && measuresPv(e, capsById.get(e.id))) {
+      components.push({
+        id: `${e.id}#pv`,
+        entityId: e.id,
+        aspect: 'pv',
+        label: 'Solarmodule',
+        role: 'pv',
+        summary: componentSummary('pv', false, false),
+        deviceIds: [],
+        provenance: null,
+        reading: readingFor('pv', caps, pvByEntity.get(e.id) ?? null),
+        channels: [{ label: channelLabel(PV_CHANNEL), raw: PV_CHANNEL }],
+        control: false,
+        primary: false,
+        health,
+        measuredVia: null,
+        orphaned: false,
+      });
+    }
+  }
   const componentById = new Map(components.map((c) => [c.id, c] as const));
+  const componentsOfEntity = (entityId: string): PlantComponent[] =>
+    components.filter((c) => c.entityId === entityId);
 
   const devices: PlantDevice[] = [];
   const assigned = new Set<string>();
@@ -518,32 +876,46 @@ export function plantModel(
       componentById.get(cid)?.deviceIds.push(id);
       assigned.add(cid);
     }
-    devices.push({ id, label, brand, componentIds, health: 'ok', messwertCount: 0, summary: '' });
+    devices.push({
+      id,
+      label,
+      brand,
+      componentIds,
+      health: 'ok',
+      roles: [],
+      state: '',
+      summary: '',
+    });
   };
 
-  // 1. Adopted sources feed their one entity. The device NAME goes through the
+  // 1. Adopted sources feed their one entity, matched by PIN in BOTH directions
+  //    (the entity's `edgeSourceId` and the reported item's `adoptedEntityId`,
+  //    PR #272) — never by order or by name. The device NAME goes through the
   //    ONE `entityLabel.deviceName` chain (operator name > brand + short model)
   //    - never the raw stored string (the Pilsting "fronius_sunspec · …" bug).
-  const adoptedById = new Map<string, EntityLocalSetup>();
+  const pinnedEntityBySource = new Map<string, string>();
+  for (const e of entities) {
+    if (e.edgeSourceId != null) pinnedEntityBySource.set(e.edgeSourceId, e.id);
+  }
   for (const l of localSetup) {
-    if (l.kind === 'source' && l.adoptedEntityId != null) {
-      adoptedById.set(l.adoptedEntityId, l);
-      const comp = componentById.get(l.adoptedEntityId);
-      linkDevice(
-        l.id,
-        deviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ??
-          (comp ? comp.label : 'Gerät'),
-        l.brand,
-        comp ? [comp.id] : [],
-      );
-    }
+    if (l.kind !== 'source') continue;
+    const entityId = pinnedEntityBySource.get(l.id) ?? l.adoptedEntityId;
+    if (entityId == null) continue;
+    const comps = componentsOfEntity(entityId);
+    linkDevice(
+      l.id,
+      deviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ??
+        (comps[0] ? comps[0].label : 'Gerät'),
+      l.brand,
+      comps.map((c) => c.id),
+    );
   }
 
   // 2. The inverter (gateway) feeds the composed entities — those not adopted
   //    from a source. The first reported inverter takes them; extras get [].
   const inverters = localSetup.filter((l) => l.kind === 'inverter');
   const composed = components.filter(
-    (c) => !assigned.has(c.id) && !entities.find((e) => e.id === c.id)?.edgeSourceId,
+    (c) => !assigned.has(c.id) && !entities.find((e) => e.id === c.entityId)?.edgeSourceId,
   );
   inverters.forEach((inv, i) => {
     const comps = i === 0 ? composed.map((c) => c.id) : [];
@@ -560,7 +932,10 @@ export function plantModel(
   const byDeviceId = new Map<string, PlantComponent[]>();
   for (const c of components) {
     if (assigned.has(c.id)) continue;
-    const deviceId = entities.find((e) => e.id === c.id)?.deviceId;
+    // A PROVEN orphan has no reported device — inventing a synthetic box for it
+    // would contradict the row's own „nicht mehr verbunden" (vp-vier-erzeuger-p9).
+    if (c.orphaned) continue;
+    const deviceId = entities.find((e) => e.id === c.entityId)?.deviceId;
     if (deviceId == null) continue;
     const list = byDeviceId.get(deviceId) ?? [];
     list.push(c);
@@ -570,22 +945,58 @@ export function plantModel(
     linkDevice(`dev:${deviceId}`, fallbackDeviceLabel(comps), null, comps.map((c) => c.id));
   }
 
-  // Finalise device health + Messwert count + sub-line from their components.
+  // Finalise device health + the verb sub-line from their components.
+  const deviceLabelById = new Map(devices.map((d) => [d.id, d.label] as const));
   for (const d of devices) {
     const comps = d.componentIds
       .map((cid) => componentById.get(cid))
       .filter((c): c is PlantComponent => c != null);
     d.health = worstHealth(comps.map((c) => c.health));
-    d.messwertCount = comps.reduce((n, c) => n + c.channels.length, 0);
-    d.summary = deviceSummary(d);
+    d.roles = deviceRoles(comps);
+    d.state = deviceState(d.health);
+    d.summary = deviceSummary(comps);
+  }
+
+  // Herkunft is a chip, not a riddle: every component says where its number
+  // comes from. A device measuring ITSELF (an adopted 1:1 box) says so; a
+  // composed one names the box it is read through.
+  for (const c of components) {
+    const label = c.deviceIds.length > 0 ? deviceLabelById.get(c.deviceIds[0]) : undefined;
+    if (c.aspect === 'pv' && label) {
+      // The concept's „Solarmodule am Deye SUN-30K" — the modules of THAT box.
+      c.label = `Solarmodule am ${label}`;
+    }
+    if (c.role === 'house' || label == null) {
+      c.provenance = null;
+      continue;
+    }
+    const ownBox =
+      c.aspect === 'main' && entities.find((e) => e.id === c.entityId)?.edgeSourceId != null;
+    c.provenance = ownBox ? 'misst selbst' : `gemessen über ${label}`;
+  }
+
+  // The storage group's headline is the battery's POWER (the row shows SoC).
+  let batteryKw: number | null = null;
+  for (const c of components) {
+    if (c.role !== 'storage') continue;
+    const p = capsById.get(c.entityId)?.get(BATTERY_CHANNEL);
+    if (p == null) continue;
+    batteryKw = (batteryKw ?? 0) + p;
   }
 
   return {
+    headline: plantHeadline(devices, components),
     devices,
     components,
+    groups: roleGroups(components, batteryKw),
     newlyReported: newlyReported(localSetup, entities),
-    effects: plantEffects(devices, components),
   };
+}
+
+/** True when a non-PV entity ALSO measures PV (a hybrid inverter's own modules). */
+function measuresPv(entity: SiteEntity, caps: Map<string, number> | undefined): boolean {
+  if (caps?.has(PV_CHANNEL)) return true;
+  return (entity.capabilities?.measure ?? []).some((m) => m.channel === PV_CHANNEL);
 }
 
 /** True when this entity carries the maßgebliche (primary) grid capability. */

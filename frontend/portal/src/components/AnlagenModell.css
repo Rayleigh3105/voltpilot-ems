@@ -1,7 +1,11 @@
 /*
- * Portal v3 · M6 — the Anlagen-Modell three-column surface (concept tab 7).
+ * Portal v3 · M6 — the Anlagen-Modell surface, rebuilt to the approved
+ * "Variante A" design (data/vp-anlagenmodell-ux-w7, Captain-Go 2026-07-29):
+ * Kopfsatz → VoltPilot-Box mit ihren Geräten → Komponenten in Rollen-Gruppen
+ * (mit Live-Werten) → Fußzeile. The old three-column grid is gone.
+ *
  * Component-local (the CockpitBlocks.css / Steuerung.css precedent); index.css
- * stays untouched. Columns collapse to a stack below 980px.
+ * stays untouched. Everything stacks on a phone — no horizontal scrolling.
  */
 
 .vp-modell {
@@ -15,127 +19,411 @@
   min-width: 0;
 }
 
-.vp-modell-intro {
-  margin: 0 0 var(--vp-space-4);
-}
+/* --- Kopfsatz -------------------------------------------------------------- */
 
-.vp-modell-foot {
-  margin: var(--vp-space-4) 0 0;
-  font-size: 0.74rem;
-}
-
-/* The three-column wiring picture. */
-.vp-wire3 {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr auto 1fr;
-  gap: var(--vp-space-3);
-  align-items: start;
-  min-width: 0;
-}
-
-.vp-wcol {
+.vp-am-headline {
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
   gap: var(--vp-space-2);
+  margin: 0 0 var(--vp-space-4);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--vp-action);
   min-width: 0;
 }
 
-.vp-wcol-head {
+.vp-am-headline.warn {
+  color: #7a4a05;
+}
+
+.vp-am-headline .vp-health-dot {
+  margin-top: 0.42em;
+}
+
+/* --- Section heads (shared by the device strip + the component list) -------- */
+
+.vp-am-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--vp-space-1);
-  margin: 0 0 var(--vp-space-1);
-  font-size: 0.78rem;
+  margin: 0 0 var(--vp-space-2);
+  font-size: 0.74rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--vp-text-gray, #6b7280);
+  min-width: 0;
 }
 
-.vp-wcol-sub {
+.vp-am-head-sub {
   font-weight: 400;
   text-transform: none;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
-.vp-wire-arrow {
-  align-self: center;
-  color: var(--vp-text-gray, #9aa3af);
-  padding-top: 2rem;
+.vp-am-head.spaced {
+  margin-top: var(--vp-space-4);
 }
 
-/* One box (device, component, effect). Buttons are full-width, left-aligned. */
-.vp-wbox {
+/* --- Die EINE VoltPilot-Box + die Geräte, die an ihr hängen ----------------- */
+
+.vp-am-box {
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 12px);
+  background: var(--vp-tint);
+  padding: var(--vp-space-3);
+  margin-bottom: var(--vp-space-4);
+  min-width: 0;
+}
+
+.vp-am-box-title {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-am-box-sub,
+.vp-am-box-hint {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--vp-text-gray, #6b7280);
+  overflow-wrap: anywhere;
+}
+
+.vp-am-box-hint {
+  margin-top: var(--vp-space-1);
+}
+
+/* The devices hang visibly off the box: an indented rail below it. */
+.vp-am-behind {
+  margin-top: var(--vp-space-3);
+  padding-left: var(--vp-space-3);
+  border-left: 2px solid var(--vp-border, #e5e7eb);
+  min-width: 0;
+}
+
+.vp-am-devstrip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-am-dev {
   display: flex;
   flex-direction: column;
   gap: 2px;
   width: 100%;
   text-align: left;
-  padding: var(--vp-space-2) var(--vp-space-3);
-  border: 1px solid var(--vp-border, #e5e7eb);
-  border-radius: var(--vp-radius-md, 12px);
+  font: inherit;
+  color: inherit;
   background: #fff;
+  border: 1.5px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 12px);
+  padding: var(--vp-space-2) var(--vp-space-3);
   min-width: 0;
+  cursor: pointer;
   transition: opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-button.vp-wbox {
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-}
-
-button.vp-wbox:hover {
+.vp-am-dev:hover {
   border-color: var(--vp-action);
 }
 
-button.vp-wbox:focus-visible {
+.vp-am-dev:focus-visible {
   outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
   outline-offset: 2px;
 }
 
-.vp-wbox.dim {
-  opacity: 0.4;
-}
-
-.vp-wbox.selected {
+.vp-am-dev.selected {
   border-color: var(--vp-action);
   box-shadow: 0 0 0 3px var(--vp-tint);
 }
 
-.vp-wn {
+.vp-am-dev.dim {
+  opacity: 0.42;
+}
+
+.vp-am-dev-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-am-dev-sub {
+  font-size: 0.76rem;
+  color: var(--vp-text-gray, #6b7280);
+  overflow-wrap: anywhere;
+}
+
+.vp-am-roledots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.vp-am-roledot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--role, var(--vp-border));
+}
+
+/* "Neues Gerät gefunden" — dashed, tinted, calls to action. */
+.vp-am-dev.new {
+  border-style: dashed;
+  background: var(--vp-tint);
+}
+
+.vp-am-dev-cta {
+  color: var(--vp-action);
+  font-weight: 700;
+}
+
+/* --- Rollen-Gruppen mit Live-Werten ---------------------------------------- */
+
+.vp-am-group {
+  border: 1px solid var(--vp-border, #e5e7eb);
+  border-radius: var(--vp-radius-md, 12px);
+  background: #fff;
+  margin-bottom: var(--vp-space-3);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.vp-am-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-bottom: 1px solid var(--vp-border, #e5e7eb);
+  background: var(--role-soft, #fafbfc);
+  min-width: 0;
+}
+
+.vp-am-group-head .vp-am-group-icon {
+  color: var(--role, var(--vp-text-gray));
+  flex: 0 0 auto;
+}
+
+.vp-am-group-title {
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-am-group-sum {
+  margin-left: auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-action);
+  white-space: nowrap;
+}
+
+.vp-am-group-note {
+  flex-basis: 100%;
+  font-size: 0.74rem;
+  color: var(--vp-text-gray, #6b7280);
+}
+
+/* One component row. */
+.vp-am-comp {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+  padding: var(--vp-space-2) var(--vp-space-3);
+  border-top: 1px solid var(--vp-border, #f1f3f5);
+  min-width: 0;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.vp-am-comp:first-of-type {
+  border-top: none;
+}
+
+.vp-am-comp.hl {
+  background: var(--vp-tint);
+}
+
+.vp-am-comp.dim {
+  opacity: 0.4;
+}
+
+.vp-am-comp-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.vp-am-comp-name {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
   font-weight: 600;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.vp-wsub {
-  font-size: 0.78rem;
-  color: var(--vp-text-gray, #6b7280);
+/* The name IS the select control (the row hosts a pencil + a Details fold, so
+   it can never be one big button). */
+.vp-am-comp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-/* F1 caveat: "über den Wechselrichter gemessen" — a calm, italic sub-note. */
-.vp-wmeasured {
+.vp-am-comp-btn:hover {
+  color: var(--vp-action);
+}
+
+.vp-am-comp-btn:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.vp-am-comp-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 0.76rem;
+  color: var(--vp-text-gray, #6b7280);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-am-prov {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 0.72rem;
-  font-style: italic;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--vp-border, #e5e7eb);
+  background: #fff;
   color: var(--vp-text-gray, #6b7280);
+  max-width: 100%;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.vp-wchips {
+.vp-am-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #e8f5e9;
+  color: #1b5e20;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-am-comp-val {
+  margin-left: auto;
+  flex: 0 0 auto;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-am-comp-val small {
+  display: block;
+  font-weight: 500;
+  font-size: 0.72rem;
+  color: var(--vp-text-gray, #6b7280);
+}
+
+.vp-am-comp-val.none {
+  color: var(--vp-text-gray, #9aa3af);
+}
+
+/* The rename pencil (technical layer only until the customer route exists). */
+.vp-am-pencil {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #b4bcc6;
+  cursor: pointer;
+}
+
+.vp-am-pencil:hover {
+  color: var(--vp-action);
+  background: var(--vp-tint);
+}
+
+.vp-am-pencil:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+}
+
+/* Per-component "Details" fold — the Messwerte live here, not in the row. */
+.vp-am-details {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.vp-am-details > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  color: var(--vp-text-gray, #6b7280);
+  cursor: pointer;
+  list-style: none;
+}
+
+.vp-am-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-am-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 4px;
 }
 
-.vp-wchips > span {
+.vp-am-chips > span {
   font-size: 0.7rem;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--vp-tint);
   color: var(--vp-text-gray, #4b5563);
@@ -143,67 +431,86 @@ button.vp-wbox:focus-visible {
   overflow-wrap: anywhere;
 }
 
-/* Device box: the health dot sits top-left. */
-.vp-wbox-device {
-  position: relative;
-  padding-left: calc(var(--vp-space-3) + 16px);
+.vp-am-note {
+  font-size: 0.72rem;
+  font-style: italic;
+  color: var(--vp-text-gray, #6b7280);
+  overflow-wrap: anywhere;
 }
 
-.vp-wbox-device .vp-health-dot {
-  position: absolute;
-  left: var(--vp-space-3);
-  top: calc(var(--vp-space-2) + 5px);
-}
-
-/* Component boxes carry a role-coloured left accent. */
-.vp-wbox-part {
-  border-left: 3px solid var(--role, var(--vp-border));
-}
-
-.vp-part-pv {
+/* Role tints, straight from the flow tokens (recognition, not repetition). */
+.vp-am-pv {
   --role: var(--vp-flow-pv);
+  --role-soft: var(--vp-flow-pv-soft);
 }
 
-.vp-part-storage {
+.vp-am-storage {
   --role: var(--vp-flow-batt);
+  --role-soft: var(--vp-flow-batt-soft);
 }
 
-.vp-part-grid {
+.vp-am-grid {
   --role: var(--vp-flow-grid);
+  --role-soft: var(--vp-flow-grid-soft);
 }
 
-.vp-part-house,
-.vp-part-consumer {
+.vp-am-house,
+.vp-am-consumer {
   --role: var(--vp-flow-load);
+  --role-soft: var(--vp-flow-load-soft);
 }
 
-.vp-wbox-part .vp-wn svg {
-  color: var(--role);
-}
+/* --- Orphaned pin: honest state + the way back into "Wieder verbinden" ------ */
 
-/* "Neues Gerät gefunden" — dashed, tinted, calls to action. */
-.vp-wbox-new {
-  border-style: dashed;
-  background: var(--vp-tint);
-}
-
-.vp-wbox-new-title {
+.vp-am-orphan {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--vp-space-2);
+  flex-wrap: wrap;
+  font-size: 0.76rem;
+  color: var(--vp-warn, #c77700);
+  min-width: 0;
+}
+
+.vp-am-orphan-btn {
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--vp-action);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.vp-am-orphan-btn:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+}
+
+/* --- Fußzeile -------------------------------------------------------------- */
+
+.vp-am-foot {
+  margin: var(--vp-space-4) 0 0;
+  padding-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border, #e5e7eb);
+  font-size: 0.78rem;
+  color: var(--vp-text-gray, #6b7280);
+}
+
+.vp-am-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-2);
+  font-size: 0.8rem;
   font-weight: 600;
 }
 
-.vp-wbox-new-cta {
-  color: var(--vp-action);
-}
+/* --- The admin/installer disclosure (unchanged behaviour) ------------------- */
 
-/* Effect cards. */
-.vp-wbox-effect.warn {
-  border-left: 4px solid var(--vp-health-warn, #e8a70b);
-}
-
-/* The admin/installer disclosure. */
 .vp-modell-installer {
   border: 1px solid var(--vp-border, #e5e7eb);
   border-radius: var(--vp-radius-md, 12px);
@@ -241,28 +548,7 @@ button.vp-wbox:focus-visible {
   margin: 0;
 }
 
-/* Stack the columns below 980px; the arrows become horizontal separators. */
-@media (max-width: 980px) {
-  .vp-wire3 {
-    grid-template-columns: 1fr;
-  }
-
-  .vp-wire-arrow {
-    display: none;
-  }
-
-  .vp-wcol {
-    padding-bottom: var(--vp-space-2);
-  }
-}
-
-/* PR3 (vp-vier-erzeuger-p9): orphaned-pin hint + the "Wieder verbinden" choice. */
-.vp-worphan {
-  display: block;
-  font-size: 12px;
-  color: var(--vp-warn, #C77700);
-  margin-top: 2px;
-}
+/* PR3 (vp-vier-erzeuger-p9): the "Wieder verbinden" choice in the dialog. */
 .vp-reconnect {
   display: flex;
   flex-direction: column;
@@ -288,4 +574,27 @@ button.vp-wbox:focus-visible {
   border-radius: var(--vp-radius-md);
   margin-left: 26px;
   max-width: 100%;
+}
+
+/* --- Phone ---------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .vp-am-devstrip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vp-am-behind {
+    padding-left: var(--vp-space-2);
+  }
+
+  /* The value keeps its own line rather than squeezing the name to nothing. */
+  .vp-am-comp-val {
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .vp-am-comp-val small {
+    display: inline;
+    margin-left: 4px;
+  }
 }

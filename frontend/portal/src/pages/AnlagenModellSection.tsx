@@ -1,37 +1,66 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
-import { api, type Site, type SiteEntities, type SiteSource, type SiteTopology } from '../api';
+import { Drawer } from '../../designsystem/components/shell/Drawer';
+import { Input } from '../../designsystem/components/forms/Input';
+import {
+  api,
+  ApiError,
+  type Device,
+  type Site,
+  type SiteEntities,
+  type SiteSource,
+  type SiteTopology,
+} from '../api';
 import {
   COMPONENT_ROLE_ICONS,
+  CONTROL_BADGE,
+  EDGE_BOX_HINT,
+  GUARD_FOOTNOTE,
+  edgeBoxLine,
   plantModel,
+  reconnectCandidates,
+  reconnectOffer,
   type ComponentHealth,
   type PlantComponent,
   type PlantDevice,
-  type PlantEffect,
+  type RoleGroup,
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
-import { reconnectCandidates } from '../komponenten';
+import { InfoTip } from '../components/InfoTip';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
+import { entitiesApi } from '../entitiesApi';
+import { fmtNum } from '../format';
+import { NO_DATA } from '../nodata';
+import { anlageRoute, hashForRoute } from '../nav';
 import { EntitaetenSection } from './EntitaetenSection';
 import '../components/AnlagenModell.css';
 
 /**
- * Portal v3 · M6 — the Anlagen-Modell (concept tab 7). ONE picture of "so ist
- * Ihre Anlage verschaltet": three columns — **Geräte** (physical boxes) →
- * **Komponenten** (the roles) → **Ihre Anlage** (what the cockpit makes of it).
- * Tapping a device highlights the components it feeds; a newly reported device
- * is assigned in one move (`ZuordnenDialog`). Health dots sit on the device,
- * where people look for them.
+ * Portal v3 · M6 — the Anlagen-Modell, rebuilt to the approved **Variante A**
+ * (design `data/vp-anlagenmodell-ux-w7`, Captain-Go 2026-07-29).
+ *
+ * Die Seite beantwortet EINE Frage — „Kennt VoltPilot meine Anlage richtig, und
+ * woher kommt jede Zahl?" — und zwar in dieser Reihenfolge: Kopfsatz (Zustand)
+ * → die EINE VoltPilot-Box mit den Geräten, die ihr Messwerte liefern → die
+ * Komponenten in Rollen-Gruppen MIT Live-Werten und Herkunft → Fußzeile
+ * (Schutz-Satz + wo die Komponenten wieder auftauchen). Die frühere dritte
+ * Spalte („Ihre Anlage") ist aufgelöst.
+ *
+ * Tapping a device highlights the components it measures (the interaction of
+ * the old layout, kept). A newly reported device is assigned in one move
+ * (`ZuordnenDialog`); an orphaned pin leads straight back into the SAME
+ * „Wieder verbinden"-Fluss (PR #271) instead of minting a duplicate.
  *
  * The customer dictionary is Gerät / Komponente / Messwert (D3) — the words
  * Entität / Messpunkt / Quelle live only in the admin/installer panel below,
  * gated by the ONE `showTechnicalLayer()` helper (M7). All derivation is the
  * pure `komponenten.ts`; this file only renders.
  */
-export function AnlagenModellSection({ site }: { site: Site }) {
+export function AnlagenModellSection({ site, devices }: { site: Site; devices?: Device[] }) {
   // The ONE technical-layer decision (M7): a platform-admin sees the installer
   // panel added to the same page; a customer never does.
   const showTechnical = showTechnicalLayer();
@@ -42,6 +71,7 @@ export function AnlagenModellSection({ site }: { site: Site }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
+  const [rename, setRename] = useState<PlantComponent | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -52,13 +82,13 @@ export function AnlagenModellSection({ site }: { site: Site }) {
       () => active && setError(true),
     );
     // Topology fail-soft (a v1/un-migrated site simply lacks it — the model
-    // still renders from the entities + local setup).
+    // still renders from the entities + local setup, then without live values).
     api.topology(site.id).then(
       (t) => active && setTopology(t),
       () => active && setTopology(null),
     );
-    // The reported measurement points (`/sources`), fail-soft — they tell a
-    // producer component whether its PV is actually flowing (F1 caveat).
+    // The reported measurement points (`/sources`), fail-soft — they carry the
+    // honest per-inverter PV split the energy flow uses (F1 caveat).
     api.siteSources(site.id).then(
       (s) => active && setSources(s),
       () => active && setSources(null),
@@ -73,6 +103,19 @@ export function AnlagenModellSection({ site }: { site: Site }) {
   const model = useMemo(
     () => (data ? plantModel(data.entities, topology, data.localSetup, sources) : null),
     [data, topology, sources],
+  );
+
+  // The ONE VoltPilot-Box (Captain-Korrektur): every reported device hangs off
+  // it. Without a claimed device nothing is invented.
+  const box = useMemo(
+    () =>
+      model
+        ? edgeBoxLine(
+            (devices ?? []).filter((d) => d.siteId === site.id),
+            model.devices.length,
+          )
+        : null,
+    [devices, site.id, model],
   );
 
   const isEmpty =
@@ -103,12 +146,6 @@ export function AnlagenModellSection({ site }: { site: Site }) {
   return (
     <div className="vp-modell">
       <Card className="vp-modell-card">
-        <p className="vp-note vp-modell-intro">
-          So ist Ihre Anlage verschaltet: welche Geräte Messwerte liefern, welche Komponenten daraus
-          entstehen und was das Cockpit daraus macht. Tippen Sie ein Gerät an, um seine Komponenten
-          hervorzuheben.
-        </p>
-
         {!data && !error && <TextSkeleton lines={5} />}
         {error && (
           <ErrorState message="Das Anlagen-Modell konnte nicht geladen werden." onRetry={reload} />
@@ -123,90 +160,105 @@ export function AnlagenModellSection({ site }: { site: Site }) {
         )}
 
         {model && !isEmpty && (
-          <div className="vp-wire3" role="group" aria-label="Anlagen-Modell">
-            {/* Column 1 — Geräte */}
-            <section className="vp-wcol" aria-label="Geräte">
-              <h3 className="vp-wcol-head">
-                <Icon name="cpu" size={16} /> Geräte{' '}
-                <span className="vp-wcol-sub">— liefern Messwerte</span>
-              </h3>
-              {model.devices.map((d) => (
-                <DeviceBox
-                  key={d.id}
-                  device={d}
-                  components={model.components}
-                  selected={selected === d.id}
-                  dim={highlightedDevices != null && !highlightedDevices.has(d.id)}
-                  onSelect={() => setSelected(selected === d.id ? null : d.id)}
-                />
-              ))}
-              {model.newlyReported.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className="vp-wbox vp-wbox-new"
-                  onClick={() => setAssign(s)}
-                >
-                  <span className="vp-wbox-new-title">
-                    <Icon name="plus" size={16} /> Neues Gerät gefunden
+          <>
+            {/* 1 · Der Kopfsatz ist die Antwort auf „richtig erkannt?". */}
+            <p className={`vp-am-headline${model.headline.tone === 'warn' ? ' warn' : ''}`}>
+              <span
+                className={`vp-health-dot vp-health-${
+                  model.headline.tone === 'warn' ? 'warn' : 'ok'
+                }`}
+              />
+              <span>{model.headline.text}</span>
+            </p>
+
+            {/* 2 · Die EINE VoltPilot-Box — darunter hängen die Geräte. */}
+            <section aria-label="Ihre Geräte">
+              {box && (
+                <div className="vp-am-box">
+                  <span className="vp-am-box-title">
+                    <span className={`vp-health-dot vp-health-${HEALTH_TONE[box.health]}`} />
+                    <Icon name="wifi" size={16} />
+                    {box.label}
                   </span>
-                  <span className="vp-wsub">
-                    „{s.summary}“ meldet sich — <strong className="vp-wbox-new-cta">jetzt zuordnen</strong>
-                  </span>
-                </button>
-              ))}
-              {model.devices.length === 0 && model.newlyReported.length === 0 && (
-                <p className="vp-note">Noch kein Gerät gemeldet.</p>
+                  <span className="vp-am-box-sub">{box.summary}</span>
+                  <span className="vp-am-box-hint">{EDGE_BOX_HINT}</span>
+                  <div className="vp-am-behind">
+                    <h3 className="vp-am-head">
+                      <Icon name="cpu" size={16} /> Geräte an Ihrer Box{' '}
+                      <span className="vp-am-head-sub">
+                        — antippen markiert, was ein Gerät misst
+                      </span>
+                    </h3>
+                    <DeviceStrip
+                      model={model}
+                      selected={selected}
+                      highlightedDevices={highlightedDevices}
+                      onSelect={setSelected}
+                      onAssign={setAssign}
+                    />
+                  </div>
+                </div>
+              )}
+              {!box && (
+                <>
+                  <h3 className="vp-am-head">
+                    <Icon name="cpu" size={16} /> Ihre Geräte{' '}
+                    <span className="vp-am-head-sub">— antippen markiert, was ein Gerät misst</span>
+                  </h3>
+                  <DeviceStrip
+                    model={model}
+                    selected={selected}
+                    highlightedDevices={highlightedDevices}
+                    onSelect={setSelected}
+                    onAssign={setAssign}
+                  />
+                </>
               )}
             </section>
 
-            <div className="vp-wire-arrow" aria-hidden="true">
-              <Icon name="chevron-right" size={20} />
-            </div>
-
-            {/* Column 2 — Komponenten */}
-            <section className="vp-wcol" aria-label="Komponenten">
-              <h3 className="vp-wcol-head">
-                <Icon name="layers" size={16} /> Komponenten{' '}
-                <span className="vp-wcol-sub">— die Rollen</span>
+            {/* 3 · Die Komponenten — mit Live-Werten wie im Cockpit. */}
+            <section aria-label="Komponenten">
+              <h3 className="vp-am-head spaced">
+                <Icon name="layers" size={16} /> Komponenten Ihrer Anlage{' '}
+                <span className="vp-am-head-sub">— mit den Werten von jetzt</span>
               </h3>
-              {model.components.map((c) => (
-                <ComponentBox
-                  key={c.id}
-                  component={c}
-                  selected={selected === c.id}
-                  highlight={highlightedComponents != null && highlightedComponents.has(c.id)}
-                  dim={highlightedComponents != null && !highlightedComponents.has(c.id)}
-                  onSelect={() => setSelected(selected === c.id ? null : c.id)}
+              {model.groups.map((g) => (
+                <RoleGroupCard
+                  key={g.role}
+                  group={g}
+                  selected={selected}
+                  highlighted={highlightedComponents}
+                  onSelect={setSelected}
+                  onRename={showTechnical ? setRename : undefined}
+                  onReconnect={(c) => {
+                    const offer = data
+                      ? reconnectOffer(c, data.entities, model.newlyReported)
+                      : null;
+                    if (offer) setAssign(offer);
+                  }}
+                  reconnectOfferFor={(c) =>
+                    data ? reconnectOffer(c, data.entities, model.newlyReported) : null
+                  }
                 />
               ))}
               {model.components.length === 0 && (
-                <p className="vp-note">Noch keine Komponente — ordnen Sie ein gemeldetes Gerät zu.</p>
+                <p className="vp-note">
+                  Noch keine Komponente — ordnen Sie ein gemeldetes Gerät zu.
+                </p>
               )}
             </section>
 
-            <div className="vp-wire-arrow" aria-hidden="true">
-              <Icon name="chevron-right" size={20} />
+            {/* 4 · Die Fußzeile: Schutz-Satz + wo die Komponenten wieder auftauchen. */}
+            <div className="vp-am-foot">
+              {GUARD_FOOTNOTE}
+              <div className="vp-am-links">
+                <span>Diese Komponenten begegnen Ihnen überall:</span>
+                <a href={hashForRoute(anlageRoute(site.id))}>→ Cockpit</a>
+                <a href={hashForRoute(anlageRoute(site.id, 'historie'))}>→ Historie</a>
+                <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>→ Steuerung</a>
+              </div>
             </div>
-
-            {/* Column 3 — Ihre Anlage */}
-            <section className="vp-wcol" aria-label="Ihre Anlage">
-              <h3 className="vp-wcol-head">
-                <Icon name="home" size={16} /> Ihre Anlage{' '}
-                <span className="vp-wcol-sub">— was daraus wird</span>
-              </h3>
-              {model.effects.map((e) => (
-                <EffectBox key={e.key} effect={e} />
-              ))}
-            </section>
-          </div>
-        )}
-
-        {model && !isEmpty && (
-          <p className="vp-note vp-modell-foot">
-            Die Zuordnung ändert nie die Steuerung — sie ist Darstellung. Steuer-Rechte hängen am
-            Gerät (Guard-Kette), nicht an der Rolle.
-          </p>
+          </>
         )}
       </Card>
 
@@ -235,6 +287,18 @@ export function AnlagenModellSection({ site }: { site: Site }) {
           }}
         />
       )}
+
+      {rename && (
+        <UmbenennenDialog
+          siteId={site.id}
+          component={rename}
+          onClose={() => setRename(null)}
+          onSaved={() => {
+            setRename(null);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -247,40 +311,76 @@ const HEALTH_TONE: Record<ComponentHealth, 'ok' | 'warn' | 'off'> = {
   unknown: 'off',
 };
 
-/** One physical box in the Geräte column. */
-function DeviceBox({
+/** The devices behind the box + the "Neues Gerät gefunden" call to action. */
+function DeviceStrip({
+  model,
+  selected,
+  highlightedDevices,
+  onSelect,
+  onAssign,
+}: {
+  model: ReturnType<typeof plantModel>;
+  selected: string | null;
+  highlightedDevices: Set<string> | null;
+  onSelect: (id: string | null) => void;
+  onAssign: (s: AdoptableSource) => void;
+}) {
+  return (
+    <div className="vp-am-devstrip">
+      {model.devices.map((d) => (
+        <DeviceCard
+          key={d.id}
+          device={d}
+          selected={selected === d.id}
+          dim={highlightedDevices != null && !highlightedDevices.has(d.id)}
+          onSelect={() => onSelect(selected === d.id ? null : d.id)}
+        />
+      ))}
+      {model.newlyReported.map((s) => (
+        <button key={s.id} type="button" className="vp-am-dev new" onClick={() => onAssign(s)}>
+          <span className="vp-am-dev-name">
+            <Icon name="plus" size={16} /> Neues Gerät gefunden
+          </span>
+          <span className="vp-am-dev-sub">„{s.summary}“ meldet sich —</span>
+          <span className="vp-am-dev-cta">jetzt zuordnen</span>
+        </button>
+      ))}
+      {model.devices.length === 0 && model.newlyReported.length === 0 && (
+        <p className="vp-note">Noch kein Gerät gemeldet.</p>
+      )}
+    </div>
+  );
+}
+
+/** One physical box behind the VoltPilot-Box. */
+function DeviceCard({
   device,
-  components,
   selected,
   dim,
   onSelect,
 }: {
   device: PlantDevice;
-  components: PlantComponent[];
   selected: boolean;
   dim: boolean;
   onSelect: () => void;
 }) {
-  const chips = device.componentIds
-    .map((id) => components.find((c) => c.id === id))
-    .filter((c): c is PlantComponent => c != null);
   return (
     <button
       type="button"
-      className={`vp-wbox vp-wbox-device${selected ? ' selected' : ''}${dim ? ' dim' : ''}`}
+      className={`vp-am-dev${selected ? ' selected' : ''}${dim ? ' dim' : ''}`}
       aria-pressed={selected}
       onClick={onSelect}
     >
-      <span className={`vp-health-dot vp-health-${HEALTH_TONE[device.health]}`} />
-      <span className="vp-wn">{device.label}</span>
-      <span className="vp-wsub">{device.summary}</span>
-      {chips.length > 0 && (
-        <span className="vp-wchips">
-          {chips.map((c) => (
-            <span key={c.id}>
-              {c.control ? 'misst + steuert ' : 'misst '}
-              {c.label}
-            </span>
+      <span className="vp-am-dev-name">
+        <span className={`vp-health-dot vp-health-${HEALTH_TONE[device.health]}`} />
+        {device.label}
+      </span>
+      <span className="vp-am-dev-sub">{device.state}</span>
+      <span className="vp-am-dev-sub">{device.summary}</span>
+      {device.roles.length > 0 && (
+        <span className="vp-am-roledots" aria-hidden="true">
+          {device.roles.map((r) => (
+            <i key={r} className={`vp-am-roledot vp-am-${r}`} />
           ))}
         </span>
       )}
@@ -288,72 +388,229 @@ function DeviceBox({
   );
 }
 
-/** One Komponente in the middle column. */
-function ComponentBox({
+/** One role group ("PV-Erzeugung · Σ 44,9 kW") with its component rows. */
+function RoleGroupCard({
+  group,
+  selected,
+  highlighted,
+  onSelect,
+  onRename,
+  onReconnect,
+  reconnectOfferFor,
+}: {
+  group: RoleGroup;
+  selected: string | null;
+  highlighted: Set<string> | null;
+  onSelect: (id: string | null) => void;
+  onRename?: (c: PlantComponent) => void;
+  onReconnect: (c: PlantComponent) => void;
+  reconnectOfferFor: (c: PlantComponent) => AdoptableSource | null;
+}) {
+  return (
+    <section className={`vp-am-group vp-am-${group.role}`} aria-label={group.label}>
+      <div className="vp-am-group-head">
+        <Icon
+          name={COMPONENT_ROLE_ICONS[group.role] as IconName}
+          size={18}
+          className="vp-am-group-icon"
+        />
+        <span className="vp-am-group-title">{group.label}</span>
+        {group.headline && <span className="vp-am-group-sum">{group.headline}</span>}
+        {group.note && <span className="vp-am-group-note">{group.note}</span>}
+      </div>
+      {group.components.map((c) => (
+        <ComponentRow
+          key={c.id}
+          component={c}
+          selected={selected === c.id}
+          highlight={highlighted != null && highlighted.has(c.id)}
+          dim={highlighted != null && !highlighted.has(c.id)}
+          onSelect={() => onSelect(selected === c.id ? null : c.id)}
+          onRename={onRename}
+          onReconnect={onReconnect}
+          canReconnect={reconnectOfferFor(c) != null}
+        />
+      ))}
+    </section>
+  );
+}
+
+/** The §14a explanation, once, where the maßgebliche Messung is named. */
+const PARAGRAF_14A =
+  'Am maßgeblichen Netzanschluss zählt, was Sie beziehen und einspeisen. Verlangt Ihr ' +
+  'Netzbetreiber kurzzeitig weniger Bezug (§ 14a EnWG), hält VoltPilot diese Grenze ein.';
+
+/** One Komponente: name, Herkunft, Steuer-Abzeichen, Live-Wert. */
+function ComponentRow({
   component,
   selected,
   highlight,
   dim,
   onSelect,
+  onRename,
+  onReconnect,
+  canReconnect,
 }: {
   component: PlantComponent;
   selected: boolean;
   highlight: boolean;
   dim: boolean;
   onSelect: () => void;
+  onRename?: (c: PlantComponent) => void;
+  onReconnect: (c: PlantComponent) => void;
+  canReconnect: boolean;
 }) {
+  const c = component;
   return (
-    <button
-      type="button"
-      className={`vp-wbox vp-wbox-part vp-part-${component.role}${
-        selected || highlight ? ' selected' : ''
-      }${dim ? ' dim' : ''}`}
-      aria-pressed={selected}
-      onClick={onSelect}
-    >
-      <span className="vp-wn">
-        <Icon name={COMPONENT_ROLE_ICONS[component.role] as IconName} size={16} />
-        {component.label}
-      </span>
-      <span className="vp-wsub">{component.summary}</span>
-      {/* F1 caveat: a Fronius/producer is read through the inverter, so an empty
-          per-device chart is expected, not alarming. */}
-      {component.measuredVia && <span className="vp-wmeasured">{component.measuredVia}</span>}
-      {/* Identity churn (vp-vier-erzeuger-p9): the pinned source vanished from
-          the device's report - honest amber hint; the Zuordnen dialog of the
-          re-appeared device offers "Wieder verbinden". */}
-      {component.orphaned && (
-        <span className="vp-worphan">nicht mehr mit einem gemeldeten Gerät verbunden</span>
-      )}
-      {component.channels.length > 0 && (
-        <span className="vp-wchips">
-          {component.channels.map((ch) => (
-            <span key={ch.raw} title={ch.raw}>
-              {ch.label}
-            </span>
-          ))}
+    <div className={`vp-am-comp${selected || highlight ? ' hl' : ''}${dim ? ' dim' : ''}`}>
+      <div className="vp-am-comp-main">
+        <span className="vp-am-comp-name">
+          {/* The name is the control: a real button (keyboard + touch), because
+              the row also hosts a pencil and a Details fold — nesting those in
+              one big button would be invalid markup. */}
+          <button type="button" className="vp-am-comp-btn" aria-pressed={selected} onClick={onSelect}>
+            <span className={`vp-health-dot vp-health-${HEALTH_TONE[c.health]}`} />
+            {c.label}
+          </button>
+          {c.primary && <InfoTip title="Maßgebliche Messung">{PARAGRAF_14A}</InfoTip>}
         </span>
+        <span className="vp-am-comp-sub">
+          {c.provenance && (
+            <span className="vp-am-prov">
+              <Icon name="cpu" size={11} />
+              {c.provenance}
+            </span>
+          )}
+          {c.control && (
+            <span className="vp-am-ctrl">
+              <Icon name="shield" size={12} />
+              {CONTROL_BADGE}
+            </span>
+          )}
+          <span>{c.summary}</span>
+        </span>
+        {/* Identity churn (vp-vier-erzeuger-p9): the pinned device vanished from
+            the report — honest amber state plus the way back into the existing
+            „Wieder verbinden"-Fluss, instead of a silent duplicate. */}
+        {c.orphaned && (
+          <span className="vp-am-orphan">
+            <Icon name="alert-triangle" size={14} />
+            nicht mehr mit einem gemeldeten Gerät verbunden
+            {canReconnect && (
+              <button type="button" className="vp-am-orphan-btn" onClick={() => onReconnect(c)}>
+                wieder verbinden
+              </button>
+            )}
+          </span>
+        )}
+        {/* F1 caveat: a producer read through the inverter has no own series — a
+            plain dot would read „noch keine Daten" forever. */}
+        {c.measuredVia && c.reading == null && <span className="vp-am-note">{c.measuredVia}</span>}
+      </div>
+
+      {onRename && (
+        <button
+          type="button"
+          className="vp-am-pencil"
+          aria-label={`„${c.label}“ umbenennen`}
+          onClick={() => onRename(c)}
+        >
+          <Icon name="pencil" size={15} />
+        </button>
       )}
-    </button>
+
+      <span className={`vp-am-comp-val${c.reading ? '' : ' none'}`}>
+        {c.reading ? fmtNum(c.reading.value, c.reading.unit) : NO_DATA}
+        {c.reading?.caption && <small>{c.reading.caption}</small>}
+      </span>
+
+      {c.channels.length > 0 && (
+        <details className="vp-am-details">
+          <summary>
+            <Icon name="chevron-right" size={12} /> Details
+          </summary>
+          <span className="vp-am-chips">
+            {c.channels.map((ch) => (
+              <span key={ch.raw} title={ch.raw}>
+                {ch.label}
+              </span>
+            ))}
+          </span>
+        </details>
+      )}
+    </div>
   );
 }
 
-const EFFECT_ICONS: Record<string, IconName> = {
-  cockpit: 'activity',
-  steuerung: 'sliders',
-  historie: 'history',
-  gesundheit: 'shield',
-};
+/**
+ * Umbenennen — the technical-layer rename (the label PUT is admin-only today;
+ * the customer twin is the one piece of backend work the design names, so the
+ * pencil renders only behind `showTechnicalLayer()`).
+ */
+function UmbenennenDialog({
+  siteId,
+  component,
+  onClose,
+  onSaved,
+}: {
+  siteId: string;
+  component: PlantComponent;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [label, setLabel] = useState(component.label);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-/** One "Ihre Anlage" effect card in the right column. */
-function EffectBox({ effect }: { effect: PlantEffect }) {
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await entitiesApi.update(siteId, component.entityId, { label: label.trim() || null });
+      onSaved();
+    } catch (e) {
+      setError(
+        e instanceof ApiError && e.message
+          ? e.message
+          : 'Der Name konnte nicht gespeichert werden.',
+      );
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className={`vp-wbox vp-wbox-effect${effect.tone === 'warn' ? ' warn' : ''}`}>
-      <span className="vp-wn">
-        <Icon name={EFFECT_ICONS[effect.key] ?? 'activity'} size={16} />
-        {effect.title}
-      </span>
-      <span className="vp-wsub">{effect.summary}</span>
-    </div>
+    <Drawer
+      open
+      onClose={onClose}
+      title="Komponente umbenennen"
+      icon={<Icon name="pencil" size={20} />}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Abbrechen
+          </Button>
+          <Button onClick={save} disabled={busy}>
+            Speichern
+          </Button>
+        </>
+      }
+    >
+      <div className="vp-form-stack">
+        <Input
+          label="Name der Komponente"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder={component.label}
+        />
+        <p className="vp-note vp-zuordnen-hint">
+          Der Name ist reine Darstellung — er ändert nie die Steuerung.
+        </p>
+        {error && (
+          <div className="vp-alert vp-alert-err" role="alert">
+            {error}
+          </div>
+        )}
+      </div>
+    </Drawer>
   );
 }
