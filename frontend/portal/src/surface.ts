@@ -45,20 +45,19 @@ import {
   isLeistungspreisActive,
   marktoptimierungLine,
 } from './moduleSurface';
-import {
-  NODE_ATYPICAL_GRID,
-  NODE_MARKET,
-  NODE_PEAKSHAVING,
-  NODE_SELFCONSUMPTION,
-} from './usageProfile';
+import { NODE_ATYPICAL_GRID, NODE_MARKET, NODE_PEAKSHAVING } from './usageProfile';
 
 // ---------------------------------------------------------------------------
 // Vokabular
 // ---------------------------------------------------------------------------
 
-/** Die Modus-Arten der Projektion (report §1.2). */
+/**
+ * Die Modus-Arten der Projektion (report §1.2). Eigenverbrauch ist KEIN Modus
+ * mehr - Eigenverbrauch ist Grundverhalten (report vp-nacht-bezug-e7 §3.3); die
+ * Eigenverbrauchs-Kennzahlen (Cockpit-Block `eigenverbrauch`, `eigenverbrauchswert`)
+ * hängen an Daten und werden vom Basissurface / Marktvermarktungs-Manifest getragen.
+ */
 export type ModeKind =
-  | 'eigenverbrauch'
   | 'marktvermarktung'
   | 'lastspitzenkappung'
   | 'atypische-netznutzung'
@@ -323,7 +322,6 @@ export const MODE_LABELS: Record<Exclude<ModeKind, 'automation'>, string> = {
   lastspitzenkappung: 'Lastspitzenkappung',
   'atypische-netznutzung': 'Atypische Netznutzung',
   marktvermarktung: 'Marktvermarktung',
-  eigenverbrauch: 'Eigenverbrauch',
 };
 
 /**
@@ -335,7 +333,6 @@ export const MODE_RANK: Record<ModeKind, number> = {
   lastspitzenkappung: 10,
   'atypische-netznutzung': 20,
   marktvermarktung: 30,
-  eigenverbrauch: 40,
   automation: 50,
 };
 
@@ -507,13 +504,9 @@ function hasLeistungspreis(input: AnlageSurfaceInput): boolean {
  * Die MENGE der aktiven Modi (report §1.2) — dieselben Signale wie
  * `UsageProfileDeriver`, nur OHNE die argmax-Reduktion.
  *
- * Aktivierungsregeln:
- *  - **Eigenverbrauch**: Speicher ∧ PV vorhanden ∨ `vp.strategy.selfconsumption` aktiv.
- *    Die Stammdaten-Verzweigung ist bei einer reinen **Direktvermarktungs**-Anlage
- *    unterdrückt (report §3: der Solarpark hat Speicher UND PV, zeigt aber nachweislich
- *    KEIN Eigenverbrauchs-Cockpit und keine "Haus"-Sprache — die Kategoriefehler-Regel
- *    aus §3 macht das strukturell unmöglich). Ein EXPLIZITER Eigenverbrauchs-Flow
- *    aktiviert den Modus trotzdem, auch auf einer DV-Anlage.
+ * Aktivierungsregeln (Eigenverbrauch ist KEIN Modus mehr — Grundverhalten,
+ * report vp-nacht-bezug-e7 §3.3; seine Kennzahlen trägt das Basissurface bzw.
+ * das Marktvermarktungs-Manifest):
  *  - **Marktvermarktung**: `plant_kind = direktvermarktung` ∨ `vp.strategy.market` aktiv
  *    ∨ (`netzladen_erlaubt` ∧ dynamischer Tarif) — F4 ist entschieden: ja, Netzladen
  *    auf dynamischem Tarif IST de facto Arbitrage.
@@ -585,24 +578,9 @@ export function activeModes(site: AnlageSurfaceInput): ActiveMode[] {
     }
   }
 
-  // --- Eigenverbrauch -----------------------------------------------------
-  {
-    const signals: ModeSignal[] = [];
-    const storageAndPv = input.signals?.hasStorage === true && input.signals?.hasPv === true;
-    if (storageAndPv && !isDirektvermarktung(input)) signals.push('storage-and-pv');
-    if (index.types.has(NODE_SELFCONSUMPTION)) signals.push('strategy-node');
-    if (signals.length > 0) {
-      modes.push(
-        makeMode({
-          kind: 'eigenverbrauch',
-          key: 'eigenverbrauch',
-          label: MODE_LABELS.eigenverbrauch,
-          signals,
-          flowRef: index.flowByType.get(NODE_SELFCONSUMPTION) ?? null,
-        }),
-      );
-    }
-  }
+  // Eigenverbrauch ist Grundverhalten, kein Modus mehr (report §3.3) - seine
+  // Kennzahlen (Wert des Eigenverbrauchs, Autarkie) trägt das Marktvermarktungs-
+  // Manifest bzw. die MoneyView/Historie, nicht eine eigene Modus-Karte.
 
   // --- Automationen (je aktivem Flow ohne Strategie-Knoten) ---------------
   for (const flow of index.automations) {
@@ -755,40 +733,6 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
         // (Zweit-Claim; Erst-Claim ist Eigenverbrauch). Dedupe: `settingsForMode`.
         settings: ['speicherschonung', 'netzladen', 'anzulegender-wert', 'stromtarif'],
       };
-    case 'eigenverbrauch':
-      return {
-        cockpitBlock: block('eigenverbrauch', 'Eigenverbrauch', seed.label),
-        moneyStreams: [
-          {
-            id: 'eigenverbrauchswert',
-            label: 'Wert des Eigenverbrauchs',
-            sources: ['eigenverbrauchsWertEur'],
-            period: 'range',
-            unattributed: false,
-            note: null,
-          },
-          {
-            id: 'einspeisung',
-            label: 'Einspeise-Erlös',
-            sources: ['einspeiseErloesEur'],
-            period: 'range',
-            unattributed: false,
-            note: null,
-          },
-        ],
-        steuerungCard: {
-          title: seed.label,
-          line: 'Ihr Speicher verschiebt Ihren Solarstrom dorthin, wo er am meisten wert ist: tagsüber laden, abends nutzen.',
-          subLine: managed ? VOLTPILOT_MANAGED : null,
-          managed,
-          action,
-          preview,
-        },
-        deepViews: ['erloes-historie'],
-        // §2: Stromtarif (Erst-Claim) + Speicherschonung (Zweit-Claim,
-        // Owner-Korrektur: Batterie wird auch vom Eigenverbrauch beansprucht).
-        settings: ['stromtarif', 'speicherschonung'],
-      };
     case 'automation':
     default:
       return {
@@ -856,10 +800,10 @@ function sortDeepViews(views: DeepViewId[]): DeepViewId[] {
 
 /**
  * Alle Geld-Ströme der aktiven Modi, in Modus-Reihenfolge (report §1.4) —
- * **dedupliziert je Strom-Id**, erste Nennung gewinnt. Seit MIG §5 nennen
- * Marktvermarktung UND Eigenverbrauch dieselben Erlös-Ströme; eine Anlage, auf
- * der beide Modi aktiv sind (DV-Anlage mit explizitem Eigenverbrauchs-Flow),
- * würde denselben Euro sonst zweimal zeigen UND zweimal summieren.
+ * **dedupliziert je Strom-Id**, erste Nennung gewinnt (die Dedupe schützt vor
+ * Doppel-Summierung, falls je zwei Modi denselben Strom nennen). Der
+ * Eigenverbrauchswert ist kein eigener Modus mehr — er reist als Strom des
+ * Marktvermarktungs-Manifests (report vp-nacht-bezug-e7 §3.3).
  */
 export function moneyStreams(modes: ActiveMode[]): MoneyStream[] {
   const seen = new Set<MoneyStreamId>();

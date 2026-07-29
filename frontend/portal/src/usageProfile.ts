@@ -16,7 +16,6 @@ export type EmphasisLevel = 'prominent' | 'secondary' | 'minimal' | 'hidden';
 export const NODE_MARKET = 'vp.strategy.market';
 export const NODE_PEAKSHAVING = 'vp.strategy.peakshaving';
 export const NODE_ATYPICAL_GRID = 'vp.strategy.atypical-grid';
-export const NODE_SELFCONSUMPTION = 'vp.strategy.selfconsumption';
 
 export interface ProfileSignals {
   hasStorage: boolean;
@@ -36,8 +35,16 @@ export interface Emphasis {
   devices: EmphasisLevel;
 }
 
-export function isUsageProfile(value: string | null | undefined): value is UsageProfile {
-  return value === 'arbitrage' || value === 'peak' || value === 'private';
+/**
+ * Whether `value` is a SETTABLE usage-profile override. `private` is deliberately
+ * NOT settable (it is the derived household default, report vp-nacht-bezug-e7
+ * §3.3); only `arbitrage` and `peak` may be chosen, so a stored/legacy `private`
+ * override falls through to the derivation.
+ */
+export function isUsageProfile(
+  value: string | null | undefined,
+): value is Exclude<UsageProfile, 'private'> {
+  return value === 'arbitrage' || value === 'peak';
 }
 
 /** The derived default profile, ignoring any override. */
@@ -71,15 +78,19 @@ export function emphasisFor(profile: string | null | undefined): Emphasis {
   }
 }
 
-/** The strategy node type a profile's auto-start starter flow places on the battery. */
-export function strategyNodeType(profile: string | null | undefined): string {
+/**
+ * The strategy node type a profile's auto-start starter flow places on the
+ * battery, or `null` when the profile has no starter (the `private` household
+ * default + any unknown profile - self-consumption is base behaviour, not a
+ * strategy node). Twin of Java `FlowTemplates.strategyNodeType`.
+ */
+export function strategyNodeType(profile: string | null | undefined): string | null {
   switch (profile) {
     case 'arbitrage':
       return NODE_MARKET;
     case 'peak':
       return NODE_PEAKSHAVING;
-    case 'private':
     default:
-      return NODE_SELFCONSUMPTION;
+      return null;
   }
 }

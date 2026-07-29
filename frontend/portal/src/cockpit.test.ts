@@ -159,13 +159,12 @@ function stackIds(input: AnlageSurfaceInput): string[] {
 // ---------------------------------------------------------------------------
 
 describe('cockpitStack — die kanonische Reihenfolge (report §1.3)', () => {
-  it('Multi-Modus rendert Peak → Erlös → Energiefluss → Handel → EV → Automatik', () => {
+  it('Multi-Modus rendert Peak → Erlös → Energiefluss → Handel → Automatik (kein EV-Block)', () => {
     expect(stackIds(MULTI)).toEqual([
       'peak-band',
       'erloes-komposition',
       'energiefluss',
       'handel',
-      'eigenverbrauch',
       'geraete-automatik',
     ]);
   });
@@ -190,7 +189,6 @@ describe('cockpitStack — die kanonische Reihenfolge (report §1.3)', () => {
     const byId = Object.fromEntries(views.map((v) => [v.id, v]));
     expect(byId['handel'].fromTag).toBe('Marktvermarktung');
     expect(byId['handel'].isBase).toBe(false);
-    expect(byId['eigenverbrauch'].fromTag).toBe('Eigenverbrauch');
     expect(byId['peak-band'].fromTag).toBe('Lastspitzenkappung');
     expect(byId['energiefluss'].fromTag).toBe('Komponenten');
     expect(byId['energiefluss'].isBase).toBe(true);
@@ -214,8 +212,9 @@ describe('leadBlock — peak → money → flow', () => {
   });
 
   it('eine reine Privat-/Fluss-Anlage führt mit dem Hub', () => {
-    // Privat hat einen Geld-Modus (EV) - für die reine Fluss-Führung braucht es
-    // eine Anlage ganz OHNE Geld-Modus: Entitäten + nur eine Automation.
+    // Eigenverbrauch ist kein Geld-Modus mehr (report §3.3), also führt schon
+    // eine reine PV+Speicher+Automation-Anlage mit dem Hub - hier eine Anlage
+    // ganz ohne Geld-Modus: Entitäten + nur eine Automation.
     const nurAutomation: AnlageSurfaceInput = {
       signals: {
         hasStorage: false,
@@ -256,11 +255,11 @@ describe('leadBlock — peak → money → flow', () => {
 // ---------------------------------------------------------------------------
 
 describe('Ausprägungen (report §3)', () => {
-  it('Privat: Hub + EV + Automatik — KEIN Peak, KEIN Handel', () => {
+  it('Privat: Hub + Automatik — KEIN Peak, KEIN Handel, KEIN EV-Block', () => {
     const ids = stackIds(PRIVAT);
     expect(ids).toContain('energiefluss');
-    expect(ids).toContain('eigenverbrauch');
     expect(ids).toContain('geraete-automatik');
+    expect(ids).not.toContain('eigenverbrauch');
     expect(ids).not.toContain('peak-band');
     expect(ids).not.toContain('handel');
   });
@@ -273,9 +272,9 @@ describe('Ausprägungen (report §3)', () => {
     expect(ids).not.toContain('geraete-automatik');
   });
 
-  it('Gewerbe: Peak + EV (die Union), kein Handel, keine Automatik', () => {
+  it('Gewerbe: Peak, kein Handel, keine Automatik, kein EV-Block', () => {
     const ids = stackIds(GEWERBE);
-    expect(ids).toEqual(['peak-band', 'erloes-komposition', 'energiefluss', 'eigenverbrauch']);
+    expect(ids).toEqual(['peak-band', 'erloes-komposition', 'energiefluss']);
   });
 });
 

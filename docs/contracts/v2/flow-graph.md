@@ -14,7 +14,7 @@ A node instance references a **catalog type** (`vp.<domain>.<name>`) at a **semv
 claim derivation) is a versioned platform artifact owned by E2/E4 — the graph document never
 embeds type definitions, only references. Initial catalog domains (from plan §2.3):
 `vp.entity.*` (read/control, capability-based), `vp.strategy.*` (market, peakshaving,
-selfconsumption, atypical-grid — strategy nodes register constraint/objective contributions
+atypical-grid — strategy nodes register constraint/objective contributions
 with the cloud co-optimizer), `vp.price.*`, `vp.schedule.*` (time windows), `vp.logic.*`
 (threshold/hysteresis, and/or/compare), `vp.notify.*`.
 

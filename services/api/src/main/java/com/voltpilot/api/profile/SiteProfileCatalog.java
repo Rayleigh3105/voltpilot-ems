@@ -1,7 +1,6 @@
 package com.voltpilot.api.profile;
 
 import com.voltpilot.api.flows.FlowCatalog;
-import com.voltpilot.api.flows.FlowTemplates;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,7 +22,6 @@ import java.util.Set;
  */
 public final class SiteProfileCatalog {
 
-    public static final String EIGENVERBRAUCH = "eigenverbrauch";
     public static final String MARKTVERMARKTUNG = "marktvermarktung";
     public static final String LASTSPITZENKAPPUNG = "lastspitzenkappung";
     public static final String ATYPISCHE_NETZNUTZUNG = "atypische-netznutzung";
@@ -40,8 +38,6 @@ public final class SiteProfileCatalog {
     public record Profile(String id, String label, String strategyType, String usageProfile) {}
 
     private static final List<Profile> PROFILES = List.of(
-            new Profile(EIGENVERBRAUCH, "Eigenverbrauch", FlowTemplates.NODE_SELFCONSUMPTION,
-                    UsageProfileDeriver.PRIVATE),
             new Profile(MARKTVERMARKTUNG, "Marktoptimierung", UsageProfileDeriver.NODE_MARKET,
                     UsageProfileDeriver.ARBITRAGE),
             new Profile(LASTSPITZENKAPPUNG, "Lastspitzenkappung",
@@ -71,8 +67,8 @@ public final class SiteProfileCatalog {
 
     /**
      * The gated node types this profile opens - catalog-derived: its own
-     * strategy node, kept only when the catalog marks it gated. A free profile
-     * (Eigenverbrauch) opens nothing at all.
+     * strategy node, kept only when the catalog marks it gated. A profile whose
+     * strategy node is not gated opens nothing at all.
      */
     public static Set<String> gatedNodeTypes(Profile profile, FlowCatalog catalog) {
         Set<String> types = new LinkedHashSet<>();

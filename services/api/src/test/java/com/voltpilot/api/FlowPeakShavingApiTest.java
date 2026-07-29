@@ -327,16 +327,16 @@ class FlowPeakShavingApiTest {
         // A BATTERY strategy still runs the full-year simulation - the scoping
         // must not silently skip the economics where they exist.
         String stratFlow = exchange("/api/v1/admin/sites/" + BERLIN_SITE + "/flows",
-                HttpMethod.POST, admin, TENANT_A, Map.of("name", "Eigenverbrauch (Probe)"))
+                HttpMethod.POST, admin, TENANT_A, Map.of("name", "Lastspitzenkappung (Probe)"))
                 .getBody().path("flowId").asText();
         String stratBase = "/api/v1/admin/sites/" + BERLIN_SITE + "/flows/" + stratFlow;
         exchange(stratBase + "/versions/1", HttpMethod.PUT, admin, TENANT_A,
-                Map.of("name", "Eigenverbrauch (Probe)", "document",
-                        selfconsumptionFlow(batteryEntityOf(admin))));
+                Map.of("name", "Lastspitzenkappung (Probe)", "document",
+                        batteryStrategyFlow(batteryEntityOf(admin))));
         ResponseEntity<JsonNode> stratSim = exchange(stratBase + "/versions/1/simulate",
                 HttpMethod.POST, admin, TENANT_A, Map.of());
         assertThat(stratSim.getBody().path("flowScenario").asText())
-                .isEqualTo("standardSpeicher");
+                .isEqualTo("voltpilot");
         assertThat(simulationHttp.submitted)
                 .as("a battery strategy DOES submit the year simulation")
                 .hasSize(submittedBefore + 1);
@@ -372,9 +372,9 @@ class FlowPeakShavingApiTest {
     }
 
     /** A battery strategy flow (the year-simulation contrast). */
-    private static ObjectNode selfconsumptionFlow(String battery) {
-        ObjectNode doc = automationShell("Eigenverbrauch");
-        ObjectNode strategy = addNode(doc, "strat1", "vp.strategy.selfconsumption",
+    private static ObjectNode batteryStrategyFlow(String battery) {
+        ObjectNode doc = automationShell("Lastspitzenkappung");
+        ObjectNode strategy = addNode(doc, "strat1", "vp.strategy.peakshaving",
                 Map.of("entity_id", battery));
         ObjectNode claim = strategy.putArray("claims").addObject();
         claim.put("entity_id", battery);

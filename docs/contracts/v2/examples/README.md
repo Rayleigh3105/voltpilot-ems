@@ -22,7 +22,7 @@ const ajv = new Ajv2020({ strict: false });
 | `flow-graph.valid.pv-surplus-heatrod.json` | flow-graph | valid — read → threshold → on_off control, interval + value-change triggers, explicit claim |
 | `flow-graph.valid.market-battery.json` | flow-graph | valid — strategy node with `delegated: true` claim, slot-boundary trigger |
 | `flow-graph.valid.guided-setpoint.json` | flow-graph | valid — the guided "Sollwert setzen" rule: Bedingung → `vp.logic.if` → control `setpoint` (#519 H3-a) |
-| `flow-graph.valid.selfconsumption-starter.json` | flow-graph | valid — the AE7 starter / pilot chain: delegated strategy → control `plan`, control derives NO own claim (#519 MEDIUM-5) |
+| `flow-graph.valid.market-starter.json` | flow-graph | valid — the AE7 starter / pilot chain (Profil `arbitrage`): delegated strategy → control `plan`, control derives NO own claim (#519 MEDIUM-5, D-13) |
 | `flow-graph.valid.two-window-and.json` | flow-graph | valid — two topic-less `vp.schedule.window` branches through `vp.logic.and` (#519 H3-b) |
 | `flow-graph.invalid.unknown-trigger.json` | flow-graph | **invalid** — trigger `kind: "cron"` is not in the trigger enum |
 | `flow-artifact.valid.artifact.json` | flow-artifact | valid — one compiled artifact (manifest + nodered-tabs bundle with `@vp-flow` tab marker) |

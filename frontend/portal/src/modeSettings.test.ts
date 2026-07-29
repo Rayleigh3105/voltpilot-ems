@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { FlowDocument } from './flows/model';
 import {
   activeModes,
-  MODE_RANK,
   type ActiveMode,
   type AnlageSurfaceInput,
   type ModeKind,
@@ -131,16 +130,14 @@ describe('SETTING_DEFS — der §2-Audit als Registry', () => {
     }
   });
 
-  it('beansprucht die Batterie aus BEIDEN Geld-Modi (Owner-Korrektur)', () => {
-    // Nicht nur der Markt: sonst wäre „Umgang mit dem Speicher" auf einer
-    // EEG-Hausanlage mit ausgeschaltetem Markt-Modus unerreichbar.
-    expect(SETTING_DEFS.speicherschonung.claimedBy).toEqual(['marktvermarktung', 'eigenverbrauch']);
+  it('beansprucht die Batterie aus dem Markt-Modus (Eigenverbrauch ist kein Modus mehr)', () => {
+    expect(SETTING_DEFS.speicherschonung.claimedBy).toEqual(['marktvermarktung']);
   });
 
-  it('ordnet Netzladen + anzulegenden Wert dem Markt, den Tarif Eigenverbrauch (Erst) + Markt (Zweit) zu', () => {
+  it('ordnet Netzladen + anzulegenden Wert + Tarif dem Markt-Modus zu', () => {
     expect(SETTING_DEFS.netzladen.claimedBy).toEqual(['marktvermarktung']);
     expect(SETTING_DEFS['anzulegender-wert'].claimedBy).toEqual(['marktvermarktung']);
-    expect(SETTING_DEFS.stromtarif.claimedBy).toEqual(['eigenverbrauch', 'marktvermarktung']);
+    expect(SETTING_DEFS.stromtarif.claimedBy).toEqual(['marktvermarktung']);
   });
 
   it('macht die drei Lastspitzen-Einstellungen read-only (von VoltPilot)', () => {
@@ -163,7 +160,6 @@ describe('SETTING_DEFS — der §2-Audit als Registry', () => {
     const modeByKind: Record<ModeKind, ActiveMode> = {
       lastspitzenkappung: modeOf(FULL, 'lastspitzenkappung'),
       marktvermarktung: modeOf(FULL, 'marktvermarktung'),
-      eigenverbrauch: modeOf(FULL, 'eigenverbrauch'),
       automation: modeOf(FULL, 'automation'),
       'atypische-netznutzung': modeOf(ATYP_ONLY, 'atypische-netznutzung'),
     };
@@ -193,12 +189,10 @@ describe('settingsForMode — Anzeige je aktivem Modus', () => {
     ]);
   });
 
-  it('zeigt dem Eigenverbrauchs-Container Tarif + Speicherschonung', () => {
-    const modes = activeModes(EV_ONLY);
-    expect(ids(settingsForMode(modeOf(EV_ONLY, 'eigenverbrauch'), modes))).toEqual([
-      'stromtarif',
-      'speicherschonung',
-    ]);
+  it('eine reine PV+Speicher-Anlage ohne Markt/Peak trägt gar keinen Modus (kein Container)', () => {
+    // Eigenverbrauch ist Grundverhalten (report §3.3): EV_ONLY aktiviert keinen
+    // Modus, also lebt keine Einstellung in einem Container - alle ruhen.
+    expect(activeModes(EV_ONLY)).toEqual([]);
   });
 
   it('zeigt dem Lastspitzen-Container die drei Read-only-Einstellungen', () => {
@@ -217,31 +211,10 @@ describe('settingsForMode — Anzeige je aktivem Modus', () => {
     expect(settingsForMode(modeOf(AUTOMATION_ONLY, 'automation'), auto)).toEqual([]);
   });
 
-  it('ist die Batterie-Einstellung aus BEIDEN Geld-Modi erreichbar (jeweils allein aktiv)', () => {
-    // Nur Eigenverbrauch aktiv -> die Batterie lebt in seinem Container.
-    const evModes = activeModes(EV_ONLY);
-    expect(ids(settingsForMode(modeOf(EV_ONLY, 'eigenverbrauch'), evModes))).toContain('speicherschonung');
+  it('ist die Batterie-Einstellung im Markt-Container erreichbar', () => {
     // Nur Markt aktiv -> die Batterie lebt in seinem Container.
     const marktModes = activeModes(MARKT_ONLY);
     expect(ids(settingsForMode(modeOf(MARKT_ONLY, 'marktvermarktung'), marktModes))).toContain('speicherschonung');
-  });
-
-  it('erst-aktiver-gewinnt: geteilte Einstellungen erscheinen bei zwei aktiven Modi nur EINMAL', () => {
-    const modes = activeModes(MARKT_AND_EV);
-    expect(modes.map((m) => m.kind)).toEqual(['marktvermarktung', 'eigenverbrauch']);
-    const marktIds = ids(settingsForMode(modeOf(MARKT_AND_EV, 'marktvermarktung'), modes));
-    const evIds = ids(settingsForMode(modeOf(MARKT_AND_EV, 'eigenverbrauch'), modes));
-    // Markt (Rang 30) gewinnt Speicherschonung UND Tarif vor Eigenverbrauch (40).
-    expect(MODE_RANK.marktvermarktung).toBeLessThan(MODE_RANK.eigenverbrauch);
-    expect(marktIds).toContain('speicherschonung');
-    expect(marktIds).toContain('stromtarif');
-    expect(evIds).not.toContain('speicherschonung');
-    expect(evIds).not.toContain('stromtarif');
-    // EV hat NUR geteilte Claims -> im Doppelfall leerer Container.
-    expect(evIds).toEqual([]);
-    // Nie doppelt: die Vereinigung über alle Modi ist duplikatfrei.
-    const all = modes.flatMap((m) => ids(settingsForMode(m, modes)));
-    expect(new Set(all).size).toBe(all.length);
   });
 
   it('ein NICHT aktiver Modus zeigt keine Einstellungen (Owner: aus ⇒ nichts)', () => {
@@ -271,15 +244,9 @@ describe('orphanedSettings — unbeanspruchte Einstellungen', () => {
       'anzulegender-wert',
       'stromtarif',
     ]);
-    // Nur Eigenverbrauch aktiv -> Netzladen/anzulegender Wert (Markt) + die drei
-    // Lastspitzen-Ids ruhen; Tarif + Speicherschonung sind erreichbar.
-    expect(ids(orphanedSettings(activeModes(EV_ONLY)))).toEqual([
-      'netzladen',
-      'anzulegender-wert',
-      'leistungspreis',
-      'abrechnung-leistung',
-      'lastspitzen-reserve',
-    ]);
+    // Eine reine PV+Speicher-Anlage aktiviert keinen Modus (Eigenverbrauch ist
+    // Grundverhalten, report §3.3) -> ALLE Einstellungen ruhen.
+    expect(ids(orphanedSettings(activeModes(EV_ONLY)))).toEqual(ids(ALL_SETTINGS));
     // Volle Anlage -> jede Einstellung hat einen aktiven Claimer.
     expect(orphanedSettings(activeModes(FULL))).toEqual([]);
   });

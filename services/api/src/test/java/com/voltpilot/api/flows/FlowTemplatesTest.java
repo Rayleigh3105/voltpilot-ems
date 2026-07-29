@@ -26,10 +26,10 @@ class FlowTemplatesTest {
     void strategyNodeTypePerProfile() {
         assertThat(FlowTemplates.strategyNodeType("arbitrage")).isEqualTo("vp.strategy.market");
         assertThat(FlowTemplates.strategyNodeType("peak")).isEqualTo("vp.strategy.peakshaving");
-        assertThat(FlowTemplates.strategyNodeType("private"))
-                .isEqualTo("vp.strategy.selfconsumption");
-        assertThat(FlowTemplates.strategyNodeType("grey"))
-                .isEqualTo("vp.strategy.selfconsumption");
+        // The private household default (and any unknown profile) has NO starter -
+        // self-consumption is base behaviour (report vp-nacht-bezug-e7 §3.3).
+        assertThat(FlowTemplates.strategyNodeType("private")).isNull();
+        assertThat(FlowTemplates.strategyNodeType("grey")).isNull();
     }
 
     @Test
@@ -40,13 +40,6 @@ class FlowTemplatesTest {
     }
 
     @Test
-    void selfconsumptionStarterHasNoPriceFeed() {
-        ObjectNode doc = FlowTemplates.starterFlow(MAPPER, "private", BATTERY);
-        assertThat(nodeTypes(doc)).contains("vp.strategy.selfconsumption")
-                .doesNotContain("vp.price.dayahead");
-    }
-
-    @Test
     void peakStarterCarriesThePeakNode() {
         ObjectNode doc = FlowTemplates.starterFlow(MAPPER, "peak", BATTERY);
         assertThat(nodeTypes(doc)).contains("vp.strategy.peakshaving")
@@ -54,12 +47,13 @@ class FlowTemplatesTest {
     }
 
     @Test
-    void everyProfileStarterValidatesAfterClaimStamping() {
+    void everyStartingProfileValidatesAfterClaimStamping() {
         // A battery-hybrid entity measures soc_pct and actuates setpoint_kw.
         Map<String, EntityCapabilities> view = Map.of(BATTERY,
                 new EntityCapabilities(Set.of("soc_pct", "battery_power_kw", "pv_power_kw"),
                         Set.of("setpoint_kw")));
-        for (String profile : List.of("arbitrage", "peak", "private")) {
+        // Only arbitrage + peak have a starter; private has none (no_template).
+        for (String profile : List.of("arbitrage", "peak")) {
             ObjectNode doc = FlowTemplates.starterFlow(MAPPER, profile, BATTERY);
             doc.put("site_id", "22222222-2222-2222-2222-222222222222");
             FlowTemplates.applyDerivedClaims(doc, CATALOG);
@@ -75,18 +69,18 @@ class FlowTemplatesTest {
      * plan-fed claim suppression) - so an auto-started flow validated, simulated
      * and then died at activation with {@code compiler_rejected}. flowc now
      * pins the SAME shape as the committed contract fixture
-     * {@code flow-graph.valid.selfconsumption-starter.json}; this test keeps the
-     * template and that fixture in lockstep, so a template change that flowc
-     * cannot compile fails HERE instead of at a customer's activation.
+     * {@code flow-graph.valid.market-starter.json}; this test keeps the template
+     * and that fixture in lockstep, so a template change that flowc cannot
+     * compile fails HERE instead of at a customer's activation.
      */
     @Test
-    void privateStarterMatchesTheCompilerPinnedContractFixture() throws Exception {
+    void marketStarterMatchesTheCompilerPinnedContractFixture() throws Exception {
         java.nio.file.Path fixture = java.nio.file.Path.of("..", "..", "docs", "contracts", "v2",
-                "examples", "flow-graph.valid.selfconsumption-starter.json");
+                "examples", "flow-graph.valid.market-starter.json");
         com.fasterxml.jackson.databind.JsonNode pinned =
                 MAPPER.readTree(java.nio.file.Files.readString(fixture));
 
-        ObjectNode doc = FlowTemplates.starterFlow(MAPPER, "private",
+        ObjectNode doc = FlowTemplates.starterFlow(MAPPER, "arbitrage",
                 pinned.path("nodes").get(0).path("parameters").path("entity_id").asText());
         FlowTemplates.applyDerivedClaims(doc, CATALOG);
 

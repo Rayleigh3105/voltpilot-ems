@@ -8,9 +8,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * The deterministic flow → Ersparnis-Simulation mapping: market strategy →
- * the "voltpilot" scenario (with its Speicherschonung), selfconsumption →
- * "standardSpeicher", anything else → an honest German refusal.
+ * The deterministic flow → Ersparnis-Simulation mapping: a market or
+ * peak-shaving strategy → the "voltpilot" scenario (with its Speicherschonung),
+ * anything else → an honest German refusal. (Eigenverbrauch is base behaviour,
+ * no longer a strategy node - report vp-nacht-bezug-e7 §3.3.)
  */
 class FlowSimulationMapperTest {
 
@@ -23,18 +24,6 @@ class FlowSimulationMapperTest {
         assertThat(mapping.speicherschonung()).isEqualTo("ausgewogen");
         assertThat(mapping.strategyNodeId()).isEqualTo("strat1");
         assertThat(mapping.yearSimulation()).isTrue();
-    }
-
-    @Test
-    void selfconsumptionMapsToStandardSpeicher() {
-        ObjectNode doc = FlowGraphValidatorTest.flowShell();
-        FlowGraphValidatorTest.addNode(doc, "s1", "vp.strategy.selfconsumption", "1.0.0",
-                Map.of("entity_id", "batt-main"));
-        FlowGraphValidatorTest.setClaims(doc, "s1", "batt-main", List.of("setpoint_kw"), true);
-        FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
-        assertThat(mapping.supported()).isTrue();
-        assertThat(mapping.scenario()).isEqualTo("standardSpeicher");
-        assertThat(mapping.speicherschonung()).isNull();
     }
 
     @Test
@@ -112,11 +101,11 @@ class FlowSimulationMapperTest {
         ObjectNode market = FlowGraphValidatorTest.pilotFlow("batt-main");
         assertThat(FlowSimulationMapper.map(market).yearSimulation()).isTrue();
 
-        ObjectNode self = FlowGraphValidatorTest.flowShell();
-        FlowGraphValidatorTest.addNode(self, "s1", "vp.strategy.selfconsumption", "1.0.0",
+        ObjectNode peak = FlowGraphValidatorTest.flowShell();
+        FlowGraphValidatorTest.addNode(peak, "s1", "vp.strategy.peakshaving", "1.0.0",
                 Map.of("entity_id", "batt-main"));
-        FlowGraphValidatorTest.setClaims(self, "s1", "batt-main", List.of("setpoint_kw"), true);
-        assertThat(FlowSimulationMapper.map(self).yearSimulation()).isTrue();
+        FlowGraphValidatorTest.setClaims(peak, "s1", "batt-main", List.of("setpoint_kw"), true);
+        assertThat(FlowSimulationMapper.map(peak).yearSimulation()).isTrue();
     }
 
     @Test
@@ -161,7 +150,7 @@ class FlowSimulationMapperTest {
         ObjectNode doc = FlowGraphValidatorTest.flowShell();
         FlowGraphValidatorTest.addNode(doc, "s1", "vp.strategy.market", "1.0.0",
                 Map.of("entity_id", "batt-main"));
-        FlowGraphValidatorTest.addNode(doc, "s2", "vp.strategy.selfconsumption", "1.0.0",
+        FlowGraphValidatorTest.addNode(doc, "s2", "vp.strategy.peakshaving", "1.0.0",
                 Map.of("entity_id", "batt-main"));
         FlowSimulationMapper.Mapping mapping = FlowSimulationMapper.map(doc);
         assertThat(mapping.supported()).isFalse();

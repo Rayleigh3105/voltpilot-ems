@@ -186,11 +186,7 @@ export function modeActions(mode: ActiveMode): ModeActions {
 // ---------------------------------------------------------------------------
 
 /** Welche Modi um DENSELBEN Speicher konkurrieren (und deshalb ko-optimiert werden). */
-const BATTERY_MODE_KINDS: ModeKind[] = [
-  'lastspitzenkappung',
-  'marktvermarktung',
-  'eigenverbrauch',
-];
+const BATTERY_MODE_KINDS: ModeKind[] = ['lastspitzenkappung', 'marktvermarktung'];
 
 export function isBatteryMode(kind: ModeKind): boolean {
   return BATTERY_MODE_KINDS.includes(kind);

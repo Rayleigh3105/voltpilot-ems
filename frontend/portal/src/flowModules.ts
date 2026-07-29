@@ -13,7 +13,6 @@ import {
   NODE_ATYPICAL_GRID,
   NODE_MARKET,
   NODE_PEAKSHAVING,
-  NODE_SELFCONSUMPTION,
   type UsageProfile,
 } from './usageProfile';
 
@@ -36,8 +35,9 @@ interface NodeMeta {
 
 /**
  * The known strategy nodes. `gated` mirrors the AE7 governance / the flow
- * catalog `gated:true` (market-/grid-near = VoltPilot-set; self-consumption =
- * free). Change in lockstep with usageProfile.ts + the flow catalog.
+ * catalog `gated:true` (market-/grid-near = VoltPilot-set). Change in lockstep
+ * with usageProfile.ts + the flow catalog. (Self-consumption is base behaviour,
+ * not a strategy node - report vp-nacht-bezug-e7 §3.3.)
  */
 const NODE_META: Record<string, NodeMeta> = {
   [NODE_MARKET]: {
@@ -45,12 +45,6 @@ const NODE_META: Record<string, NodeMeta> = {
     activeLine: 'Ihr Speicher lädt günstig und verkauft teuer – der Ertrag am Strommarkt.',
     gatedLine: 'Ihr Speicher könnte am Strommarkt Geld verdienen – auf Wunsch schaltet VoltPilot das frei.',
     gated: true,
-  },
-  [NODE_SELFCONSUMPTION]: {
-    title: 'Eigenverbrauch',
-    activeLine: 'Ihr PV-Strom wird bestmöglich selbst genutzt – Haus, Speicher und Verbraucher zuerst.',
-    gatedLine: '',
-    gated: false,
   },
   [NODE_PEAKSHAVING]: {
     title: 'Lastspitzenkappung',
@@ -67,7 +61,7 @@ const NODE_META: Record<string, NodeMeta> = {
 };
 
 /** Fixed display order (headline value modules first). */
-const ORDER = [NODE_MARKET, NODE_SELFCONSUMPTION, NODE_PEAKSHAVING, NODE_ATYPICAL_GRID];
+const ORDER = [NODE_MARKET, NODE_PEAKSHAVING, NODE_ATYPICAL_GRID];
 
 /**
  * Which gated-but-not-active nodes to surface as the honest offer:

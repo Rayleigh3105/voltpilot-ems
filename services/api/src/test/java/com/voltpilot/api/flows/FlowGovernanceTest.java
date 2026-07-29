@@ -22,7 +22,6 @@ class FlowGovernanceTest {
         assertThat(CATALOG.isGated("vp.strategy.market")).isTrue();
         assertThat(CATALOG.isGated("vp.strategy.peakshaving")).isTrue();
         assertThat(CATALOG.isGated("vp.strategy.atypical-grid")).isTrue();
-        assertThat(CATALOG.isGated("vp.strategy.selfconsumption")).isFalse();
         assertThat(CATALOG.isGated("vp.entity.control")).isFalse();
         assertThat(CATALOG.isGated("vp.price.dayahead")).isFalse();
         // Gating is NOT a strategy-only concept: vp.price.current is a DATA node
@@ -39,7 +38,7 @@ class FlowGovernanceTest {
         ObjectNode doc = MAPPER.createObjectNode();
         ArrayNode nodes = doc.putArray("nodes");
         nodes.addObject().put("id", "s1").put("type", "vp.strategy.market");
-        nodes.addObject().put("id", "e1").put("type", "vp.strategy.selfconsumption");
+        nodes.addObject().put("id", "e1").put("type", "vp.entity.read");
         nodes.addObject().put("id", "c1").put("type", "vp.entity.control");
 
         assertThat(FlowGovernance.gatedNodeTypes(doc, CATALOG))
@@ -56,7 +55,7 @@ class FlowGovernanceTest {
     void freeOnlyFlowIsNeverGated() {
         ObjectNode doc = MAPPER.createObjectNode();
         ArrayNode nodes = doc.putArray("nodes");
-        nodes.addObject().put("id", "e1").put("type", "vp.strategy.selfconsumption");
+        nodes.addObject().put("id", "e1").put("type", "vp.entity.read");
         nodes.addObject().put("id", "c1").put("type", "vp.entity.control");
         assertThat(FlowGovernance.gatedNodeTypes(doc, CATALOG)).isEmpty();
         assertThat(FlowGovernance.notEnabledNodeTypes(doc, CATALOG, Set.of())).isEmpty();

@@ -51,8 +51,6 @@ import org.testcontainers.utility.DockerImageName;
  *   <li>a plant with no {@code site_profile_state} rows behaves exactly like
  *       before: every card reads {@code state: null} and only the DERIVED
  *       activation shows;</li>
- *   <li>a FREE profile (Eigenverbrauch) switched on seeds its starter flow and
- *       leaves the gated node types untouched;</li>
  *   <li>a CONTRACT-NEAR profile (Marktoptimierung) without market access still
  *       flips - but its gated node stays closed, no starter is seeded and the
  *       card names the missing prerequisite: NOTHING trades (OPEN(O1));</li>
@@ -173,7 +171,9 @@ class SiteProfileApiTest {
 
         // -- 1. A plant with NO stored intent: every card is `state: null` -------
         JsonNode shelf = customer(profilesPath(), HttpMethod.GET, demo, null).getBody();
-        assertThat(ids(shelf)).containsExactly("eigenverbrauch", "marktvermarktung",
+        // Eigenverbrauch is no longer a shelf profile (report vp-nacht-bezug-e7
+        // §3.3) - it is base behaviour, not a selectable card.
+        assertThat(ids(shelf)).containsExactly("marktvermarktung",
                 "lastspitzenkappung", "atypische-netznutzung");
         for (JsonNode card : shelf.path("profiles")) {
             assertThat(card.path("state").isNull())
@@ -187,14 +187,10 @@ class SiteProfileApiTest {
         // There is no "angefragt" anywhere in the API.
         assertThat(shelf.toString().toLowerCase()).doesNotContain("angefragt");
 
-        // -- 2. A FREE profile: seeds its starter, touches NO gated node ---------
-        JsonNode afterFree = toggle(demo, "eigenverbrauch", "an");
-        assertThat(card(afterFree, "eigenverbrauch").path("state").asText()).isEqualTo("an");
-        assertThat(card(afterFree, "eigenverbrauch").path("gatedNodeTypes")).isEmpty();
-        assertThat(gatedEnabled(demo, MARKET)).as("a free toggle opens nothing").isFalse();
+        // -- 2. Nothing is toggled yet: no gated node is open, no flow exists ----
+        assertThat(gatedEnabled(demo, MARKET)).isFalse();
         assertThat(gatedEnabled(demo, PEAKSHAVING)).isFalse();
-        assertThat(flows(demo).size()).as("the private starter flow was seeded").isEqualTo(1);
-        assertThat(flows(demo).get(0).path("name").asText()).isEqualTo("Eigenverbrauch");
+        assertThat(flows(demo)).as("no flow before any toggle").isEmpty();
 
         // -- 3. Marktoptimierung WITHOUT market access: flips, but nothing trades
         JsonNode blocked = toggle(demo, "marktvermarktung", "an");
@@ -272,7 +268,7 @@ class SiteProfileApiTest {
         assertThat(customer(profilesPath(), HttpMethod.GET, demo2, null).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(customer(profilesPath(), HttpMethod.PUT, demo2,
-                Map.of("profile", "eigenverbrauch", "state", "an")).getStatusCode())
+                Map.of("profile", "marktvermarktung", "state", "an")).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
         // Unknown profile / unknown state are honest 400s with German copy.
@@ -281,7 +277,7 @@ class SiteProfileApiTest {
         assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(unknown.getBody().path("message").asText()).contains("Unbekanntes Profil");
         ResponseEntity<JsonNode> badState = customer(profilesPath(), HttpMethod.PUT, demo,
-                Map.of("profile", "eigenverbrauch", "state", "angefragt"));
+                Map.of("profile", "marktvermarktung", "state", "angefragt"));
         assertThat(badState.getStatusCode()).as("there is no third state").isEqualTo(
                 HttpStatus.BAD_REQUEST);
 

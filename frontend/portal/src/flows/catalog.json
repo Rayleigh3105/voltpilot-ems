@@ -143,23 +143,6 @@
       "hint": "Dieser Baustein meldet seinen Wertstrom an die Co-Optimierung - bei mehreren Strategien rechnet VoltPilot das gemeinsame Optimum."
     },
     {
-      "type": "vp.strategy.selfconsumption",
-      "type_version": "1.0.0",
-      "label": "Eigenverbrauch",
-      "description": "PV-Überschuss in den Speicher, abends nutzen - das klassische Speicherverhalten als expliziter Baustein.",
-      "group": "strategie",
-      "runtimes": ["edge"],
-      "inputs": [
-        { "name": "pv_forecast", "type": "timeseries", "label": "PV-Prognose", "required": false },
-        { "name": "soc", "type": "timeseries", "label": "Ladestand", "required": false }
-      ],
-      "outputs": [{ "name": "wunsch", "type": "plan", "label": "Wunsch" }],
-      "parameters": [
-        { "name": "entity_id", "kind": "entityRef", "label": "Ziel-Gerät", "required": true, "entityTypes": ["battery-hybrid"] }
-      ],
-      "claim_template": { "entity_parameter": "entity_id", "commands": ["setpoint_kw"], "delegated": true }
-    },
-    {
       "type": "vp.strategy.peakshaving",
       "type_version": "1.0.0",
       "label": "Lastspitzenkappung",

@@ -266,7 +266,7 @@ describe('erloesKomposition — Perioden-Disziplin (die tragende Regel)', () => 
     const streams = moneyStreams(
       activeModes({
         signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
-        config: {},
+        config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
         entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
       }),
     );
@@ -287,7 +287,7 @@ describe('erloesKomposition — Perioden-Disziplin (die tragende Regel)', () => 
     const streams = moneyStreams(
       activeModes({
         signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
-        config: {},
+        config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
         entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
       }),
     );
@@ -311,7 +311,7 @@ describe('erloesKomposition — Perioden-Disziplin (die tragende Regel)', () => 
     const streams = moneyStreams(
       activeModes({
         signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
-        config: {},
+        config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
         entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
       }),
     );
@@ -353,7 +353,7 @@ describe('erloesKomposition — ehrliches „—"', () => {
     moneyStreams(
       activeModes({
         signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
-        config: {},
+        config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
         entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
         flows: [automationFlow()],
       }),
@@ -392,7 +392,7 @@ describe('erloesKomposition — ehrliches „—"', () => {
     const streams = moneyStreams(
       activeModes({
         signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
-        config: {},
+        config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
         entities: [{ id: 'e1', entityType: 'battery-hybrid' }],
       }),
     );

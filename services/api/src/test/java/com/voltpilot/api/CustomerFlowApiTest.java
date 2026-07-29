@@ -75,7 +75,6 @@ class CustomerFlowApiTest {
     private static final String BERLIN_SITE = "00000000-0000-0000-0000-000000000002";
     private static final String DACHAU_SITE = "00000000-0000-0000-0000-000000000012";
     private static final String MARKET = "vp.strategy.market";
-    private static final String SELFCONSUMPTION = "vp.strategy.selfconsumption";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -187,19 +186,21 @@ class CustomerFlowApiTest {
                 HttpMethod.GET, demo, null).getBody();
         assertThat(marketEnabled(governance)).isFalse();
 
-        // ---- FREE-node flow: Eigenverbrauch (un-gated) -----------------------
-        String freeBase = createFlow(demo, "Eigenverbrauch");
+        // ---- FREE-node flow: a device automation (un-gated) ------------------
+        // Eigenverbrauch is no longer a strategy node (report vp-nacht-bezug-e7
+        // §3.3); the canonical FREE flow is a Wenn/Dann device automation - it
+        // has no gated node, so it passes the AE7 governance gate.
+        String freeBase = createFlow(demo, "Zeitplan-Regel");
         customer(freeBase + "/versions/1", HttpMethod.PUT, demo,
-                Map.of("name", "Eigenverbrauch",
-                        "document", strategyDocument(battery, SELFCONSUMPTION)));
+                Map.of("name", "Zeitplan-Regel",
+                        "document", freeAutomationDocument(battery)));
         assertThat(customer(freeBase + "/versions/1/validate", HttpMethod.POST, demo, Map.of())
                 .getBody().path("valid").asBoolean())
-                .as("free selfconsumption flow validates clean").isTrue();
+                .as("free device automation validates clean").isTrue();
 
         ResponseEntity<JsonNode> freeSim = customer(freeBase + "/versions/1/simulate",
                 HttpMethod.POST, demo, Map.of());
         assertThat(freeSim.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-        assertThat(freeSim.getBody().path("flowScenario").asText()).isEqualTo("standardSpeicher");
         String freeSimId = freeSim.getBody().path("simulationId").asText();
         assertThat(customer(freeBase + "/versions/1/simulation/" + freeSimId, HttpMethod.GET, demo,
                 null).getBody().path("status").asText()).isEqualTo("done");
@@ -368,21 +369,28 @@ class CustomerFlowApiTest {
         return doc;
     }
 
-    /** A minimal delegated-strategy flow on the battery (soc read → strategy). */
-    private static ObjectNode strategyDocument(String battery, String strategyType) {
+    /**
+     * A FREE device automation on the battery (Zeitfenster → Sollwert setzen):
+     * no strategy node, no gated node - the canonical un-gated flow. The control
+     * node derives its OWN (non-delegated) claim since nothing plan-feeds it.
+     */
+    private static ObjectNode freeAutomationDocument(String battery) {
         ObjectNode doc = MAPPER.createObjectNode();
         doc.put("schema_version", "1.0");
-        doc.put("name", "Strategie");
+        doc.put("name", "Zeitplan-Regel");
         doc.put("runtime", "edge");
         doc.putArray("nodes");
-        addNode(doc, "soc1", "vp.entity.read", Map.of("entity_id", battery, "channel", "soc_pct"));
-        ObjectNode strategy = addNode(doc, "strat1", strategyType, Map.of("entity_id", battery));
-        ObjectNode claim = strategy.putArray("claims").addObject();
+        addNode(doc, "z1", "vp.schedule.window",
+                Map.of("from", "11:00", "to", "15:00", "days", "alle"));
+        ObjectNode control = addNode(doc, "ctl1", "vp.entity.control",
+                Map.of("entity_id", battery, "command", "setpoint_kw"));
+        ((ObjectNode) control.path("parameters")).put("ttl_s", 180);
+        ObjectNode claim = control.putArray("claims").addObject();
         claim.put("entity_id", battery);
         claim.putArray("commands").add("setpoint_kw");
-        claim.put("delegated", true);
+        claim.put("delegated", false);
         ArrayNode edges = doc.putArray("edges");
-        edge(edges, "e1", "soc1", "value", "strat1", "soc");
+        edge(edges, "e1", "z1", "active", "ctl1", "value");
         doc.putArray("triggers").addObject().put("id", "t1").put("kind", "slot-boundary");
         return doc;
     }

@@ -131,15 +131,17 @@ describe('catalog helpers', () => {
     expect(supportsVersion('vp.gibtsnicht.x', '1.0.0')).toBe(false);
   });
 
-  it('the catalog carries the ten initial nodes', () => {
+  it('the catalog carries the initial nodes (Eigenverbrauch ist kein Strategie-Knoten mehr)', () => {
     const expected = [
       'vp.price.dayahead', 'vp.forecast.pv', 'vp.entity.read', 'vp.logic.threshold',
       'vp.schedule.window', 'vp.logic.gate', 'vp.strategy.market',
-      'vp.strategy.selfconsumption', 'vp.entity.control', 'vp.notify.push',
+      'vp.entity.control', 'vp.notify.push',
     ];
     for (const type of expected) {
       expect(catalogType(type), type).not.toBeNull();
     }
+    // The removed self-consumption strategy node is gone (report §3.3).
+    expect(catalogType('vp.strategy.selfconsumption')).toBeNull();
   });
 });
 

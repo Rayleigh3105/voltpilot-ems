@@ -77,11 +77,6 @@ interface ProfileCopy {
 }
 
 const COPY: Record<string, ProfileCopy> = {
-  eigenverbrauch: {
-    benefit:
-      'Ihr Speicher verschiebt Ihren Solarstrom dorthin, wo er am meisten wert ist: tagsüber laden, abends nutzen.',
-    unlocks: ['Eigenverbrauchs-Kachel', 'Wert des Eigenverbrauchs im Erlös'],
-  },
   marktvermarktung: {
     benefit:
       'VoltPilot lädt und entlädt Ihren Speicher nach den Börsenpreisen — teuer verkaufen, günstig laden.',
@@ -163,7 +158,6 @@ const RANK: Record<string, number> = {
   lastspitzenkappung: 10,
   'atypische-netznutzung': 20,
   marktvermarktung: 30,
-  eigenverbrauch: 40,
 };
 
 export interface ShelfCard {

@@ -70,9 +70,10 @@ Consumers **render** this; they never re-decide the emphasis.
 
 Strategy nodes are classified in the flow catalog by a static `gated` flag:
 
-- **free** (a private customer may place + activate on their own): Eigenverbrauch
-  (`vp.strategy.selfconsumption`), device control (`vp.entity.control`), and every non-strategy
-  data/logic/action node.
+- **free** (a private customer may place + activate on their own): device control
+  (`vp.entity.control`) and every non-strategy data/logic/action node. (Self-consumption
+  is the platform's BASE behaviour, not a strategy node — the former
+  `vp.strategy.selfconsumption` was removed, report vp-nacht-bezug-e7 §3.3.)
 - **gated** (needs VoltPilot enablement/contract — Erlösbeteiligung/Messkonzept/Vertrag):
   Arbitrage (`vp.strategy.market`), Peak-Shaving (`vp.strategy.peakshaving`), atypische
   Netznutzung (`vp.strategy.atypical-grid`).
@@ -95,14 +96,16 @@ A new/converted site gets a starter flow **draft** from a template matching the 
 | Profil | Start-Flow strategy node |
 | --- | --- |
 | `arbitrage` | `vp.strategy.market` |
-| `private` | `vp.strategy.selfconsumption` |
 | `peak` | `vp.strategy.peakshaving` |
+| `private` | *(none — self-consumption is base behaviour)* |
 
 Each starter is the pilot chain shape (price/PV/SoC read → strategy → battery control) on the
 battery, with the inputs the chosen strategy declares. Seeding is idempotent (skipped when the
 site already has any flow) and requires a battery-hybrid entity. The arbitrage/peak starters carry
-gated nodes (placeable drafts that need enablement to activate). Enriching the `private` starter
-with consumer device-control (`vp.entity.control` on a wallbox/heating-rod) is AE5/E3b follow-up.
+gated nodes (placeable drafts that need enablement to activate). The `private` profile seeds NO
+starter flow (`no_template`): self-consumption is already the platform's base dispatch, so there is
+no strategy node to place. Enriching a household with consumer device-control (`vp.entity.control`
+on a wallbox/heating-rod) is AE5/E3b follow-up.
 
 ## Surfaces
 
@@ -110,9 +113,10 @@ with consumer device-control (`vp.entity.control` on a wallbox/heating-rod) is A
   the emphasis map, and the raw signals. RLS-scoped (foreign site 404; admins via the
   `X-Tenant-Id` switcher).
 - `PUT /api/v1/sites/{siteId}/profile` — set/clear `site.usage_profile_override` (body
-  `{ "override": "arbitrage"|"peak"|"private"|null }`; null reverts to auto-derive). Customer or
-  admin, RLS-scoped; returns the recomputed profile. The override is also echoed on
-  `SiteDto.usageProfileOverride`.
+  `{ "override": "arbitrage"|"peak"|null }`; null reverts to auto-derive). `private` is NOT a
+  settable override — it is the derived household default (report vp-nacht-bezug-e7 §3.3), so
+  `override: "private"` is a 400. Customer or admin, RLS-scoped; returns the recomputed profile.
+  The override is also echoed on `SiteDto.usageProfileOverride`.
 - `GET`/`PUT /api/v1/admin/sites/{siteId}/flow-node-governance` — the gated node types and their
   per-site enablement (platform-admin).
 - `POST /api/v1/admin/sites/{siteId}/flows/auto-start` — seed the profile's starter flow draft.
