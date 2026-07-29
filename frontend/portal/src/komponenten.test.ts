@@ -687,6 +687,138 @@ describe('plantModel — Rollen-Gruppen mit Live-Werten (Variante A)', () => {
   });
 });
 
+// vp-pin-werte-f8: die Live-Werte folgen STRIKT dem Pin. Captain-Beweis vom
+// 2026-07-29, 17:00 (Anlage Pilsting): die als VERWAIST markierte Komponente
+// „Fronius WR1" zeigte 20,1 kW, während der Geist-Eintrag, dessen Pin auf die
+// LIEFERNDE Quelle zeigt, „–" zeigte - die Werte lagen positionsbasiert auf den
+// falschen Zeilen.
+describe('plantModel — Werte strikt per Pin (Pilsting: Kreuz-Pin + Geist + verwaist)', () => {
+  function crossPinned() {
+    const entities = [
+      entity('batt', 'battery-hybrid', {
+        label: 'Batteriespeicher',
+        capabilities: {
+          measure: [
+            { channel: 'pv_power_kw', unit: 'kW' },
+            { channel: 'soc_pct', unit: '%' },
+          ],
+        },
+      }),
+      // Der VERWAISTE: sein Pin zeigt auf eine Quelle, die es nicht mehr gibt.
+      entity('wr1', 'producer', {
+        label: 'Fronius WR1',
+        edgeSourceId: 'src-weg',
+        orphanedPin: true,
+        deviceId: null,
+      }),
+      // Der GEIST: neu angelegt, gepinnt auf die Quelle, die wirklich liefert.
+      entity('wr2', 'producer', {
+        label: 'Fronius Anlage WR2',
+        edgeSourceId: 'src-live',
+        orphanedPin: false,
+        deviceId: null,
+      }),
+    ];
+    const topology: SiteTopology = {
+      schemaVersion: '1.0',
+      entities: [
+        {
+          ...topoEntity('batt', 'battery-hybrid', 'storage', 'ok'),
+          capabilities: [
+            { channel: 'pv_power_kw', unit: 'kW', role: 'pv', primary: false, value: 43.1 },
+            { channel: 'soc_pct', unit: '%', role: 'storage', primary: true, value: 76 },
+          ],
+        },
+        topoEntity('wr1', 'producer', 'producer', 'never'),
+        topoEntity('wr2', 'producer', 'producer', 'never'),
+      ],
+      topology: {
+        schema_version: '1.0',
+        nodes: [
+          {
+            role: 'pv',
+            flow_active: true,
+            members: [
+              { entity_id: 'batt', label: 'Batteriespeicher', primary: false, value_kw: 43.1 },
+              { entity_id: 'wr1', label: 'Fronius WR1', primary: false },
+              { entity_id: 'wr2', label: 'Fronius Anlage WR2', primary: false },
+            ],
+          },
+        ],
+      },
+    };
+    const localSetup = [
+      inverter('inv', 'deye', null),
+      source('src-live', 'pv-generation', {
+        brand: 'fronius_sunspec',
+        label: 'Fronius Anlage WR2',
+        adoptedEntityId: 'wr2',
+      }),
+    ];
+    return plantModel(entities, topology, localSetup, [
+      siteSource('src-live', { pvKw: 20.1, health: 'ok', label: 'Fronius Anlage WR2' }),
+    ]);
+  }
+
+  it('der Geist bekommt den Wert SEINER gepinnten Quelle, der Verwaiste keinen', () => {
+    const byId = new Map(crossPinned().components.map((c) => [c.id, c] as const));
+    // Der Geist ist gepinnt und bekommt genau 20,1 kW…
+    expect(byId.get('wr2')!.reading?.value).toBe(20.1);
+    // …der Verwaiste trägt NIE einen aktuellen Wert (sein Zustand ist
+    // „nicht mehr verbunden" - ein Wert wäre ein Widerspruch).
+    expect(byId.get('wr1')!.orphaned).toBe(true);
+    expect(byId.get('wr1')!.reading).toBeNull();
+  });
+
+  it('die Rollen-Summe bleibt die Summe der Quellen, mit ehrlichem Hinweis', () => {
+    const pv = crossPinned().groups.find((g) => g.role === 'pv')!;
+    // 20,1 (WR2) + 23,0 (eigene Module am Deye) = 43,1 = die Verbund-Zahl.
+    const shown = pv.components.map((c) => c.reading?.value).filter((v): v is number => v != null);
+    expect(shown).toEqual([20.1, 23]);
+    expect(pv.headline).toBe(`Σ 43,1${NBSP}kW`);
+    expect(pv.note).toBe('1 Komponente ohne aktuellen Wert');
+  });
+
+  it('ohne Pin wird nichts zugeordnet - keine Positions-Zuordnung mehr', () => {
+    const m = crossPinned();
+    // Kontrollprobe: derselbe Aufbau, aber KEIN Pin auf der liefernden Quelle.
+    const entities = m.components
+      .filter((c) => c.aspect === 'main')
+      .map((c) => c.id);
+    expect(entities).toEqual(['batt', 'wr1', 'wr2']);
+    const nopin = plantModel(
+      [
+        entity('wr1', 'producer', { label: 'Fronius WR1', deviceId: null }),
+        entity('wr2', 'producer', { label: 'Fronius WR2', deviceId: null }),
+      ],
+      {
+        schemaVersion: '1.0',
+        entities: [
+          topoEntity('wr1', 'producer', 'producer', 'never'),
+          topoEntity('wr2', 'producer', 'producer', 'never'),
+        ],
+        topology: {
+          schema_version: '1.0',
+          nodes: [
+            {
+              role: 'pv',
+              flow_active: true,
+              members: [
+                { entity_id: 'wr1', label: 'Fronius WR1', primary: false },
+                { entity_id: 'wr2', label: 'Fronius WR2', primary: false },
+              ],
+            },
+          ],
+        },
+      },
+      [],
+      [siteSource('src-live', { pvKw: 20.1, health: 'ok', label: 'Fronius Anlage WR2' })],
+    );
+    // Die erste Zeile rutscht NICHT auf den Wert der Quelle.
+    expect(nopin.components.every((c) => c.reading == null)).toBe(true);
+  });
+});
+
 describe('reconnectOffer — von „nicht mehr verbunden" zurück in den Fluss', () => {
   const orphan = entity('fr2', 'producer', {
     label: 'Fronius WR2',

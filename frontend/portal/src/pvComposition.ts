@@ -20,10 +20,17 @@
  * and `pvReconcile.ts` are deleted without replacement - branch 1 already
  * handles that world, so this is a deletion, not a rewrite.
  *
- * Honesty rules (kept from `pvSources.ts`):
+ * Honesty rules (kept from `pvSources.ts`, extended by `vp-pin-werte-f8`):
  *  - a device without an own value is NEVER counted as 0. It is listed with a
  *    plain-German reason, so the parts always add up to what they claim;
  *  - a stale device keeps its last value and says so (freshness dot);
+ *  - source -> component is matched STRICTLY by the `edgeSourceId` pin. No
+ *    order matching, no name matching — those put values on the wrong rows;
+ *  - a component whose pin is PROVEN orphaned shows NO current value (its own
+ *    state is „nicht mehr verbunden");
+ *  - a delivering source no component is pinned to appears as its OWN row (with
+ *    its edge label) instead of silently sliding onto the next component. The
+ *    role total therefore stays the sum of the SOURCES — physical truth;
  *  - nothing to explain (fewer than two devices) -> null, and the caller shows
  *    no affordance at all.
  *
@@ -31,7 +38,13 @@
  */
 import type { SiteSource, SiteTopology, TopologyEntity } from './api';
 import { deviceName } from './entityLabel';
-import { reconcileProducerPv } from './pvReconcile';
+import {
+  reconcileProducerPv,
+  orphanedEntityIds,
+  producingSourcesById,
+  unassignedProducerSources,
+  type EntityPin,
+} from './pvReconcile';
 import type { FlowMember } from './topology';
 import { sourceLabel } from './pvSources';
 
@@ -50,7 +63,11 @@ export interface PvContribution {
   /** Its share in kW, or null when it has no own value (never a fake 0). */
   kw: number | null;
   health: PvHealth;
-  /** Why `kw` is null, in plain German. null whenever `kw` is a real value. */
+  /**
+   * Why `kw` is null, in plain German — or, on a row that DOES carry a value,
+   * why it needs an aside (a delivering device that is not yet assigned to a
+   * component: {@link UNASSIGNED_NOTE}).
+   */
   note: string | null;
   /** The verbose stored name, kept for the row's tooltip. */
   title: string;
@@ -92,11 +109,15 @@ function healthOf(e: TopologyEntity | undefined): PvHealth {
  * A producer whose output is already inside the hybrid's number is NOT broken,
  * and saying so is the whole point.
  */
-function emptyNote(health: PvHealth, measuredViaInverter: boolean): string {
+function emptyNote(health: PvHealth, measuredViaInverter: boolean, orphaned: boolean): string {
+  if (orphaned) return 'nicht mehr mit einem gemeldeten Gerät verbunden';
   if (measuredViaInverter) return 'über den Wechselrichter mitgemessen';
   if (health === 'never') return 'wartet auf erste Daten';
   return 'meldet sich gerade nicht';
 }
+
+/** The note on a delivering device no component is pinned to. */
+export const UNASSIGNED_NOTE = 'noch keiner Komponente zugeordnet';
 
 /**
  * Does every PV member carry its own measured value? Then the topology is
@@ -116,6 +137,7 @@ function hasNativeValues(members: FlowMember[]): boolean {
 export function pvComposition(
   topology: SiteTopology | null | undefined,
   sources: SiteSource[] | null | undefined,
+  pins?: EntityPin[] | null,
 ): PvComposition | null {
   if (!topology) return null;
   const rawNode = topology.topology.nodes.find((n) => n.role === PV_ROLE);
@@ -123,15 +145,21 @@ export function pvComposition(
 
   const native = hasNativeValues(rawNode.members);
   // Branch 2 (interim): reuse the merged, unit-tested reconciliation rather
-  // than duplicating or fighting it - it fills each producer from /sources and
-  // reduces the hybrid by their sum, so the parts keep summing to the plant.
-  const resolved = native ? topology : reconcileProducerPv(topology, sources);
+  // than duplicating or fighting it - it fills each producer from the source
+  // its PIN names and reduces the hybrid by that sum, so the parts keep summing
+  // to the plant.
+  const resolved = reconcileProducerPv(topology, native ? null : sources, pins);
   const node = resolved.topology.nodes.find((n) => n.role === PV_ROLE) ?? rawNode;
   const origin: PvValueOrigin = native ? 'entity' : 'sources';
 
   const entityById = new Map(resolved.entities.map((e) => [e.id, e] as const));
   const list = sources ?? [];
-  const byName = new Map(list.map((s) => [sourceLabel(s), s] as const));
+  const sourceById = producingSourcesById(list);
+  const orphans = orphanedEntityIds(pins);
+  const pinBySource = new Map<string, string>();
+  for (const p of pins ?? []) {
+    if (p.orphanedPin !== true && p.edgeSourceId != null) pinBySource.set(p.id, p.edgeSourceId);
+  }
   const primary = list.find((s) => s.kind === 'primary') ?? null;
 
   const parts: PvContribution[] = [];
@@ -144,10 +172,11 @@ export function pvComposition(
 
   node.members.forEach((m, i) => {
     const entity = entityById.get(m.entity_id);
+    const orphaned = orphans.has(m.entity_id);
     // The device's name comes from ONE derivation over the edge's own naming:
-    // the matched `/sources` entry, else - for the hybrid - the primary
-    // inverter entry, else the stored entity label.
-    const matched = byName.get(m.label ?? '') ?? (isHybrid(entity) ? primary : null);
+    // the PINNED `/sources` entry, else - for the hybrid - the primary inverter
+    // entry, else the stored entity label. NEVER a name/order lookup.
+    const matched = sourceById.get(pinBySource.get(m.entity_id) ?? '') ?? (isHybrid(entity) ? primary : null);
     const label =
       deviceName({
         edgeLabel: matched?.label,
@@ -156,19 +185,48 @@ export function pvComposition(
         storedLabel: m.label ?? entity?.label,
         typeLabel: entity?.typeLabel,
       }) ?? 'Gerät';
-    const health = matched?.health ?? healthOf(entity);
+    const health = orphaned ? 'never' : (matched?.health ?? healthOf(entity));
     const title = (m.label ?? entity?.label ?? label).trim() || label;
     const row: PvContribution = {
       key: `${m.entity_id}:${i}`,
       label,
       kw: m.value_kw == null ? null : round3(m.value_kw),
       health,
-      note: m.value_kw == null ? emptyNote(health, hybridCarriesTheRest) : null,
+      note: m.value_kw == null ? emptyNote(health, hybridCarriesTheRest && !orphaned, orphaned) : null,
       title,
     };
     if (row.kw == null) unmeasured.push(row);
     else parts.push(row);
   });
+
+  // A delivering source no component is pinned to gets its OWN row instead of
+  // being merged into a neighbour. Its production still sits inside the
+  // hybrid's composite number, so that row is reduced by the same amount —
+  // Σ shown rows stays the sum of the SOURCES (physical truth), by construction.
+  const unassigned = origin === 'sources' ? unassignedProducerSources(list, pins) : [];
+  if (unassigned.length > 0) {
+    let rest = unassigned.reduce((s, u) => s + (u.pvKw as number), 0);
+    for (const p of parts) {
+      if (rest <= 0) break;
+      const isHybridPart = node.members.some(
+        (m, i) => `${m.entity_id}:${i}` === p.key && isHybrid(entityById.get(m.entity_id)),
+      );
+      if (!isHybridPart || p.kw == null) continue;
+      const take = Math.min(p.kw, rest);
+      p.kw = round3(p.kw - take);
+      rest -= take;
+    }
+    for (const u of unassigned) {
+      parts.push({
+        key: `src:${u.sourceId}`,
+        label: deviceName({ edgeLabel: u.label, brand: u.brand, model: u.model }) ?? sourceLabel(u),
+        kw: round3(u.pvKw as number),
+        health: u.health,
+        note: UNASSIGNED_NOTE,
+        title: sourceLabel(u),
+      });
+    }
+  }
 
   const deviceCount = parts.length + unmeasured.length;
   if (deviceCount === 0) return null;

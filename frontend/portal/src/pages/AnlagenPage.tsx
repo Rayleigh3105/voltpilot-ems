@@ -634,7 +634,7 @@ export function AnlageSeite({
   // zone raster. The v1 gate is non-negotiable (report §6.2): without entities
   // (and with the existing `useAdaptiveLive`/`hasTopology` gate closed) the
   // Anlage renders EXACTLY today's default cockpit, byte-identical.
-  const { surface } = useAnlageSurface(site);
+  const { surface, entities: siteEntityPins } = useAnlageSurface(site);
   const projection = projectionActive({
     hasEntities: surface?.base.hasEntities,
     adaptive: adaptiveLive.adaptive,
@@ -974,6 +974,7 @@ export function AnlageSeite({
               snapshot={siteSnapshot(ovSite.live)}
               stale={heroStale}
               sources={sources}
+              pins={siteEntityPins}
               onOpenSub={onOpenSub}
               footer={controlView ? <ControlStrip view={controlView} /> : null}
             />
@@ -1122,6 +1123,7 @@ export function AnlageSeite({
                     <AdaptiveEnergyFlow
                       topology={adaptiveLive.topology}
                       sources={sources}
+                      pins={siteEntityPins}
                       stale={
                         liveState({
                           entityFresh: adaptiveLive.topology.entities.some(
