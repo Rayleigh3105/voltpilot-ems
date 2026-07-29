@@ -57,15 +57,22 @@
 .icon-btn.danger:hover { background: var(--err-soft); color: var(--err); }
 .icon-btn svg { width: 16px; height: 16px; }
 
-.empty-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 11px 13px; border: 1px dashed #C7D2E0; border-radius: var(--radius-sm); background: var(--bg-2);
+/* "+ hinzufügen" rows: an empty category is one quiet dashed row INSIDE the
+   group (never a standalone empty card), and a filled category keeps the same
+   row as its add affordance. >=44px touch target. */
+.add-row {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; min-height: 44px; padding: 9px 13px;
+  border: 1px dashed #C7D2E0; border-radius: var(--radius-sm); background: var(--bg-2);
+  color: var(--muted); font: inherit; font-size: 12.8px; font-weight: 700;
+  cursor: pointer; text-align: left;
 }
-.empty-row p { margin: 0; font-size: 12.8px; color: var(--muted); }
+.add-row:hover { background: var(--surface); color: var(--brand-deep); border-color: var(--brand-deep); }
+.add-row:focus-visible { outline: 2px solid var(--brand-deep); outline-offset: 2px; }
+.add-row-plus { font-size: 14px; line-height: 1; flex: none; }
+.rows:not(:empty) + .add-row { margin-top: 8px; }
 .link-btn-txt { flex: none; background: none; border: 0; color: var(--brand-deep); font-size: 12.8px; font-weight: 700; cursor: pointer; padding: 2px; }
 .link-btn-txt:hover { text-decoration: underline; }
-
-.add-source-cta { display: flex; justify-content: flex-end; margin-top: 16px; }
 
 /* "Primär misst den gesamten Netzübergang" toggle (Netz-Zähler group): the
    meter-less alternative for the true house consumption. Checkbox alignment

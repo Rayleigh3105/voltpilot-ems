@@ -1,13 +1,23 @@
 // VoltPilot Edge - the "Einrichten" page controller.
 //
-// One job, one page: the guided commissioning flow at the top, then the areas
-// in the order you need them - Wechselrichter/Quellen (inverter.js + sources.js),
-// Portal-Kopplung, Steuerung freigeben (control.js + calibration.js),
-// Messwert-Aufbereitung (einstellungen.js), and the danger zone.
+// One rule governs this page: it shows BIG what needs an action, finished
+// things shrink to one line, rare things fold away. Concretely:
+//   * While the plant is not commissioned, the guided four-step flow leads
+//     the page (commissioning.js) together with the Portal-Kopplung block.
+//   * Once everything runs, BOTH disappear (no green banner - Betrieb's status
+//     hero is the single health voice) and the steady state is exactly FOUR
+//     quiet accordion rows: Anlage / Steuerung / Datenfreigabe / Erweitert.
+//   * Healthy = all groups closed, EVERY visit (no accordion memory). A group
+//     with a NEW non-OK state opens itself (VPGroups.shouldAutoOpen); nothing
+//     ever auto-closes over the operator.
 //
-// This file owns only what is NOT already owned by one of those scripts:
+// This file owns only what is NOT already owned by the per-card scripts
+// (inverter.js, sources.js, mirror.js, control.js, calibration.js, curtail.js,
+// einstellungen.js):
 //   * the derived four-step flow (commissioning.js)
-//   * the portal pairing block (reference + copy + honest error copy)
+//   * the portal pairing block (reference + copy + honest error copy),
+//     tech-only once paired
+//   * the accordion shell: summaries (groups.js), auto-open, deep-link anchors
 //   * the data purge (guarded destructive action)
 //   * feeding /api/state to VPControl and VPCalibration
 //
@@ -21,9 +31,8 @@
   var nf0 = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 });
 
   var lastState = null;
-  var sourceCount = 0;
+  var sourcesData = { sources: [], statuses: {} };
   var clockOffset = 0;
-  var detailsForced = false; // "Details ansehen" on a fully-commissioned plant
 
   function deviceNow() { return Date.now() + clockOffset; }
   function syncClock(ms) { if (ms) clockOffset = ms - Date.now(); }
@@ -51,6 +60,67 @@
     if (v) v.textContent = (!s.version || s.version === "dev") ? "" : "v" + s.version;
   }
 
+  /* ---------------- the four accordion groups ----------------
+     The head rows are real <button>s (aria-expanded/-controls); the summaries
+     and the auto-open decision are the PURE derivations in groups.js. There is
+     deliberately NO stored open/closed state: healthy = all closed, every
+     visit, and a group with a NEW problem opens itself. */
+
+  var acc = {}; // group id -> { head, body, dot, summary, problemKey }
+
+  function initAccordion() {
+    var groups = document.querySelectorAll(".acc-group");
+    Array.prototype.forEach.call(groups, function (g) {
+      var id = g.dataset.group;
+      acc[id] = {
+        head: g.querySelector(".acc-head"),
+        body: g.querySelector(".acc-body"),
+        dot: g.querySelector(".acc-dot"),
+        summary: g.querySelector(".acc-summary"),
+        problemKey: null
+      };
+      acc[id].head.addEventListener("click", function () { toggleGroup(id); });
+    });
+  }
+
+  function setOpen(id, open) {
+    var a = acc[id];
+    if (!a) return;
+    a.body.hidden = !open;
+    a.head.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  function toggleGroup(id) {
+    var a = acc[id];
+    if (!a) return;
+    setOpen(id, a.body.hidden);
+  }
+  function openGroup(id) { setOpen(id, true); }
+
+  // applySummary renders one group row (dot + one summary line - the row never
+  // carries the warning message itself) and opens the group when a NEW problem
+  // appeared. The same standing problem never re-opens a group the operator
+  // closed, and nothing is ever auto-closed.
+  function applySummary(id, sum) {
+    var a = acc[id];
+    if (!a || !sum) return;
+    a.summary.textContent = sum.text;
+    a.dot.className = "acc-dot " + (sum.tone || "off");
+    if (window.VPGroups.shouldAutoOpen(a.problemKey, sum.problemKey)) openGroup(id);
+    a.problemKey = sum.problemKey;
+  }
+
+  // Deep links (redirects from the retired pages, the guided flow's step
+  // actions, printed install sheets) must land on a VISIBLE target: open the
+  // group that contains the anchor, then scroll to it.
+  function revealHash() {
+    var h = (location.hash || "").replace(/^#/, "");
+    if (!h) return;
+    var g = window.VPGroups.groupForAnchor(h);
+    if (g) openGroup(g);
+    var el = document.getElementById(h);
+    if (el) el.scrollIntoView({ block: "start" });
+  }
+
   /* ---------------- the guided flow ---------------- */
 
   function stepMarkup(step) {
@@ -70,31 +140,24 @@
     return html + "</div></li>";
   }
 
+  // Once all four steps are done the WHOLE flow disappears - finished is
+  // finished, there is no receded green line (Betrieb's status hero is the
+  // single health voice). It returns, leading again, when a step regresses.
   function renderSetup(s) {
     if (!window.VPCommissioning) return;
-    var res = window.VPCommissioning.derive(s, sourceCount, deviceNow());
+    var res = window.VPCommissioning.derive(s, sourcesData.sources.length, deviceNow());
+    var card = $("setupCard");
+    if (card) card.hidden = res.allDone;
+    if (res.allDone) return;
+
     var list = $("setupSteps");
     if (list) {
       var html = "";
       for (var i = 0; i < res.steps.length; i++) html += stepMarkup(res.steps[i]);
       list.innerHTML = html;
     }
-
-    var card = $("setupCard"), done = $("setupDone"), head = $("setupTitle"),
-        lead = $("setupLead"), prog = $("setupProgress");
-    var receded = res.allDone && !detailsForced;
-
-    if (card) card.classList.toggle("done", receded);
-    if (done) done.hidden = !res.allDone;
-    if (list) list.hidden = receded;
-    if (head) head.hidden = receded;
-    if (lead) lead.hidden = receded;
-    if (prog) {
-      prog.hidden = receded;
-      prog.textContent = res.allDone
-        ? "alle Schritte erledigt"
-        : "Schritt " + res.activeNum + " von " + res.steps.length;
-    }
+    var prog = $("setupProgress");
+    if (prog) prog.textContent = "Schritt " + res.activeNum + " von " + res.steps.length;
   }
 
   /* ---------------- portal pairing block ---------------- */
@@ -117,6 +180,17 @@
 
     var unlocked = !!s.claim_unlocked;
     var isPaired = window.VPCommissioning && window.VPCommissioning.paired(s.pairing_state);
+
+    // Once paired, the pairing card leaves the normal-mode page entirely - the
+    // reference lives only in the Technikmodus identity block (next to the
+    // version). While NOT paired (incl. geraet_entfernt) the guided flow still
+    // needs it, so it renders as today. A regression of the cloud LINK on a
+    // paired device is carried by the guided flow's step 3 + Betrieb's status
+    // hero - one message, one place.
+    var isTechOnly = !!isPaired;
+    var area = $("portal"), card = $("pairingCard");
+    if (area) area.classList.toggle("tech-only", isTechOnly);
+    if (card) card.classList.toggle("tech-only", isTechOnly);
 
     var locked = $("pairLocked"), open = $("pairUnlocked");
     if (locked) locked.hidden = unlocked;
@@ -150,6 +224,7 @@
     if (tech) {
       var rows = [
         ["Referenz", s.ref || "(noch nicht freigegeben)"],
+        ["Version", (!s.version || s.version === "dev") ? "dev" : "v" + s.version],
         ["Kopplungszustand", s.pairing_state || "–"],
         ["Geräte-ID", s.device_id || "–"],
         ["Anlagen-ID", s.site_id || "–"],
@@ -230,7 +305,10 @@
     renderSetup(s);
     renderPairing(s);
     renderPurge(s);
-    // The control state + its register evidence (control.js owns the verdict).
+    applySummary("anlage", window.VPGroups.anlageSummary(s, sourcesData.sources, sourcesData.statuses, deviceNow()));
+    applySummary("steuerung", window.VPGroups.steuerungSummary(s));
+    // The control state (control.js owns the verdict; its register evidence
+    // lives on Betrieb under Technikmodus, not on this page).
     if (window.VPControl) window.VPControl.onState(s);
     // The First-Light calibration card (it also reads state.control for the
     // "Kam der Befehl an?" readback; its own /api/calibration poll drives it).
@@ -240,7 +318,9 @@
   function loadSources() {
     return fetch("/api/sources", { cache: "no-store" })
       .then(function (r) { return r.json(); })
-      .then(function (d) { sourceCount = (d.sources || []).length; })
+      .then(function (d) {
+        sourcesData = { sources: d.sources || [], statuses: d.statuses || {} };
+      })
       .catch(function () { /* the step falls back to "keine weitere Quelle" */ });
   }
 
@@ -252,6 +332,18 @@
   }
 
   /* ---------------- wiring ---------------- */
+
+  initAccordion();
+  applySummary("erweitert", window.VPGroups.erweitertSummary());
+  applySummary("datenfreigabe", window.VPGroups.datenfreigabeSummary(null, location.hostname));
+
+  // mirror.js polls /api/mirror and broadcasts each result; the Datenfreigabe
+  // row derives its "Aus" / "An · ip:port · nur Lesen" line from it.
+  window.addEventListener("vp:mirror-state", function (ev) {
+    applySummary("datenfreigabe", window.VPGroups.datenfreigabeSummary(ev.detail, location.hostname));
+  });
+
+  window.addEventListener("hashchange", revealHash);
 
   var copyBtn = $("copyBtn");
   if (copyBtn) {
@@ -265,16 +357,6 @@
           $("copyLabel").textContent = "Bitte manuell markieren und kopieren";
           setTimeout(function () { $("copyLabel").textContent = "Kopieren"; }, 3000);
         });
-    });
-  }
-
-  var detailBtn = $("setupDetailBtn");
-  if (detailBtn) {
-    detailBtn.addEventListener("click", function () {
-      detailsForced = !detailsForced;
-      detailBtn.setAttribute("aria-expanded", detailsForced ? "true" : "false");
-      detailBtn.textContent = detailsForced ? "Details ausblenden" : "Details ansehen";
-      if (lastState) renderSetup(lastState);
     });
   }
 
@@ -303,14 +385,14 @@
       .then(function () { btn.textContent = "Endgültig löschen"; });
   });
 
-  // The add/remove of a source changes step 2 - re-derive when the list moves.
+  // The add/remove of a source changes step 2 AND the Anlage row - re-derive
+  // when the list moves.
   window.addEventListener("vp:sources-changed", function () {
-    loadSources().then(function () { if (lastState) renderSetup(lastState); });
+    loadSources().then(function () { if (lastState) applyState(lastState); });
   });
 
   /* ---------------- boot ---------------- */
-  loadSources().then(poll);
-  poll();
+  loadSources().then(function () { poll(); revealHash(); });
   setInterval(poll, 3000);
   setInterval(loadSources, 30000);
 })();

@@ -181,7 +181,10 @@ html:not(.tech-on) .tech-only { display: none !important; }
 }
 .tech-kv { display: grid; gap: 4px; }
 .tech-kv > div { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
-.tech-kv b { font-weight: var(--vp-weight-semibold); color: var(--tech-deep); }
+.tech-kv b { font-weight: var(--vp-weight-semibold); color: var(--tech-deep); flex: 0 0 auto; }
+/* Long values (UUIDs, hosts) wrap inside their own cell instead of colliding
+   with the label on a phone. */
+.tech-kv span { min-width: 0; overflow-wrap: anywhere; text-align: right; }
 
 /* ---------------- Status hero (the plain-German headline) ----------------
    The load-bearing rule of this page: what is hidden must never hide a CAUSE.
@@ -285,6 +288,45 @@ html:not(.tech-on) .tech-only { display: none !important; }
      unbounded column would render a ~750px-tall diagram. */
   .now-grid .flow-wrap { max-height: 420px; }
 }
+
+/* ---------------- The four accordion groups (Einrichten) ----------------
+   THE rule of the reworked page: big what needs an action, one line for what
+   is finished, folded away what is rare. Each group is ONE row - status dot +
+   title + summary - and a body that is CLOSED by default on every visit
+   (no memory); a group with a new non-OK state opens itself (einrichten.js +
+   groups.js). Real <button> semantics + aria-expanded for keyboard use;
+   the head is a >=56px touch target. */
+.acc-group { margin-top: 12px; }
+.acc-h { margin: 0; font-size: inherit; font-weight: inherit; }
+.acc-head {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; min-height: 56px; padding: 12px 14px;
+  font: inherit; text-align: left; cursor: pointer; color: inherit;
+}
+.acc-head:focus-visible { outline: 2px solid var(--vp-action); outline-offset: 2px; }
+.acc-dot { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; }
+.acc-dot.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.acc-dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+.acc-dot.off { background: #B4C0CF; box-shadow: 0 0 0 3px #EEF2F7; }
+.acc-text { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
+.acc-title {
+  font-family: var(--vp-font-heading); font-size: 15.5px;
+  font-weight: var(--vp-weight-bold); color: var(--ink); line-height: var(--vp-leading-snug);
+}
+.acc-summary {
+  font-size: 12.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acc-chevron {
+  width: 20px; height: 20px; flex: 0 0 auto; color: var(--muted);
+  transition: transform .18s var(--vp-ease);
+}
+.acc-head[aria-expanded="true"] .acc-chevron { transform: rotate(180deg); }
+.acc-body { display: grid; gap: 14px; margin-top: 10px; padding: 0 0 2px; }
+.acc-body > .page-lead { margin: 0 2px; }
+/* Invisible in-body anchors so the legacy deep links (#wechselrichter,
+   #quellen, ...) keep landing after the page became four groups. */
+.acc-anchor { display: block; width: 0; height: 0; overflow: hidden; }
 
 /* ---------------- Section framing ---------------- */
 .page-lead { margin: 0 2px 14px; color: var(--muted); font-size: 13.5px; max-width: 62ch; }

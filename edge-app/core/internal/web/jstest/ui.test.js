@@ -416,6 +416,172 @@ test("commissioning: the honest in-between states name their cause", () => {
   assert.ok(offline.steps[2].cause.length > 20);
 });
 
+/* ============ groups.js: the four Einrichten accordion groups ============ */
+
+function groupsApi() {
+  return load(["groups.js"]).VPGroups;
+}
+
+// The steady state of a fully commissioned, healthy plant - what the reworked
+// page must render as exactly four QUIET rows.
+const G_STATE = {
+  server_now_ms: NOW,
+  pairing_state: "verbunden",
+  cloud_connected: true,
+  inverter: { configured: true, label: "Deye SUN-30K" },
+  inverter_connected: true,
+  last_telemetry: iso(5),
+  control_certified: true,
+  control_enabled: true,
+  control: { all_match: true, registers: [{ role: "battery_power", match: true, addr: 1109 }], source: "schedule" },
+  curtail_units: [{ source_id: "u1", certified: false }],
+  mode: "fahrplan"
+};
+const G_SOURCES = [
+  { id: "s1", role: "pv-generation", label: "Fronius Anlage", capacity_kwp: 40 },
+  { id: "s2", role: "pv-generation", label: "Fronius WR 2", capacity_kwp: 30 }
+];
+const G_OK = { s1: "ok", s2: "ok" };
+
+test("groups: a healthy plant is four quiet rows - nothing auto-opens", () => {
+  const G = groupsApi();
+
+  const anlage = G.anlageSummary(G_STATE, G_SOURCES, G_OK, NOW);
+  assert.strictEqual(anlage.tone, "ok");
+  assert.match(anlage.text, /Deye SUN-30K/);
+  assert.match(anlage.text, /2 Erzeuger/);
+  assert.match(anlage.text, /70 kWp/);
+  assert.match(anlage.text, /alle liefern/);
+  assert.strictEqual(anlage.problemKey, null);
+
+  const st = G.steuerungSummary(G_STATE);
+  assert.strictEqual(st.text, "Batterie freigegeben · Abregelung nicht freigegeben");
+  assert.strictEqual(st.problemKey, null);
+
+  const dfOff = G.datenfreigabeSummary({ enabled: false }, "192.168.0.10");
+  assert.strictEqual(dfOff.text, "Aus");
+  assert.strictEqual(dfOff.tone, "off");
+  const dfOn = G.datenfreigabeSummary({ enabled: true, running: true, advertise_port: 502 }, "192.168.0.10");
+  assert.strictEqual(dfOn.text, "An · 192.168.0.10:502 · nur Lesen");
+  assert.strictEqual(dfOn.tone, "ok");
+  assert.strictEqual(dfOn.problemKey, null);
+
+  const adv = G.erweitertSummary();
+  assert.match(adv.text, /Daten löschen/);
+  assert.strictEqual(adv.problemKey, null);
+
+  // No problem key anywhere -> no group opens itself. Healthy = all closed.
+  for (const sum of [anlage, st, dfOn, adv]) {
+    assert.strictEqual(G.shouldAutoOpen(null, sum.problemKey), false);
+  }
+});
+
+test("groups: a source that stops delivering turns Anlage amber and opens it ONCE", () => {
+  const G = groupsApi();
+  const warn = G.anlageSummary(G_STATE, G_SOURCES, { s1: "ok", s2: "warn" }, NOW);
+  assert.strictEqual(warn.tone, "warn");
+  assert.match(warn.text, /Fronius WR 2: keine aktuellen Daten/);
+  assert.ok(warn.problemKey, "a stopped source is a problem the group must open for");
+
+  // The problem appears -> open. The SAME standing problem re-derived on every
+  // poll tick never re-opens a group the operator closed; a DIFFERENT one does.
+  assert.strictEqual(G.shouldAutoOpen(null, warn.problemKey), true);
+  assert.strictEqual(G.shouldAutoOpen(warn.problemKey, warn.problemKey), false);
+  const other = G.anlageSummary(G_STATE, G_SOURCES, { s1: "warn", s2: "ok" }, NOW);
+  assert.strictEqual(G.shouldAutoOpen(warn.problemKey, other.problemKey), true);
+
+  // A stale PRIMARY inverter is a problem too.
+  const staleInv = G.anlageSummary({ ...G_STATE, last_telemetry: iso(600) }, [], {}, NOW);
+  assert.strictEqual(staleInv.tone, "warn");
+  assert.ok(staleInv.problemKey);
+});
+
+test("groups: waiting for first data is calm - never an alarm, never auto-open", () => {
+  const G = groupsApi();
+  const pending = G.anlageSummary(G_STATE, G_SOURCES, { s1: "ok", s2: "pending" }, NOW);
+  assert.strictEqual(pending.tone, "off");
+  assert.match(pending.text, /wartet auf Daten/);
+  assert.strictEqual(pending.problemKey, null);
+
+  // Nothing configured yet: the guided flow leads the page; the group stays a
+  // quiet pointer instead of a second nagging voice.
+  const unconfigured = G.anlageSummary({ inverter: null }, [], {}, NOW);
+  assert.strictEqual(unconfigured.tone, "off");
+  assert.strictEqual(unconfigured.problemKey, null);
+});
+
+test("groups: the Steuerung row carries release facts + dot - the warning message lives ONCE, on the card, with its seit stamp", () => {
+  const G = groupsApi();
+  const mismatch = {
+    ...G_STATE,
+    control: {
+      all_match: false, source: "schedule", possible_conflict: true,
+      mismatch_roles: ["max_sell_power"],
+      registers: [{ role: "max_sell_power", match: false, addr: 143 }]
+    }
+  };
+  const sum = G.steuerungSummary(mismatch);
+  assert.strictEqual(sum.tone, "warn");
+  assert.match(sum.problemKey, /^mismatch:max_sell_power$/);
+  // The row must NOT duplicate the warning paragraph (one message, one place).
+  assert.ok(!/Sollwert|Abweichung|Konflikt/.test(sum.text), sum.text);
+  assert.match(sum.text, /Batterie freigegeben/);
+
+  // The ONE message: control.js's derived card text, stamped stable by
+  // trackStateSince ("Zustand seit HH:MM") - pinned in the control tests above.
+  const VPC = load(["control.js"]).VPControl;
+  const card = VPC.deriveState(mismatch);
+  assert.ok(card.text.length > 40, "the card carries the full reason");
+  assert.strictEqual(card.stateKey, "mismatch:max_sell_power");
+  const rec = VPC.trackStateSince(null, card.stateKey, 1000);
+  assert.strictEqual(VPC.trackStateSince(rec, card.stateKey, 99999), rec,
+    "the seit stamp holds while the state holds");
+
+  // A blocked plan opens the group; the reason itself stays on the card.
+  const blocked = G.steuerungSummary({ ...G_STATE, control: { blocked: true, reason: "Nennleistung unbekannt." } });
+  assert.match(blocked.problemKey, /^blocked:/);
+  assert.ok(!blocked.text.includes("Nennleistung"), "the reason renders on the card, not the row");
+
+  // Non-release is a NORMAL state (read-only sites): quiet, never auto-open.
+  const readOnly = G.steuerungSummary({ ...G_STATE, control_certified: false, control: null });
+  assert.strictEqual(readOnly.text, "Batterie nicht freigegeben · Abregelung nicht freigegeben");
+  assert.strictEqual(readOnly.problemKey, null);
+
+  // A running calibration is named (the operator armed it deliberately).
+  const cal = G.steuerungSummary({ ...G_STATE, mode: "kalibrierung" });
+  assert.match(cal.text, /Kalibrierung läuft/);
+});
+
+test("groups: a curtailment override/blocked unit opens Steuerung", () => {
+  const G = groupsApi();
+  const override = G.steuerungSummary({
+    ...G_STATE,
+    curtail_units: [{ source_id: "u1", certified: true, possible_override: true }]
+  });
+  assert.strictEqual(override.tone, "warn");
+  assert.match(override.problemKey, /^curtail-override:/);
+  assert.match(override.text, /Abregelung freigegeben/);
+});
+
+test("groups: only a mirror ERROR opens Datenfreigabe", () => {
+  const G = groupsApi();
+  const err = G.datenfreigabeSummary({ enabled: true, error: "listen tcp :1502: in use" }, "10.0.0.5");
+  assert.strictEqual(err.tone, "warn");
+  assert.ok(err.problemKey);
+  const starting = G.datenfreigabeSummary({ enabled: true, running: false }, "10.0.0.5");
+  assert.strictEqual(starting.problemKey, null, "a transient start is not an alarm");
+});
+
+test("groups: legacy deep-link anchors map into their owning group", () => {
+  const G = groupsApi();
+  assert.strictEqual(G.groupForAnchor("wechselrichter"), "anlage");
+  assert.strictEqual(G.groupForAnchor("quellen"), "anlage");
+  assert.strictEqual(G.groupForAnchor("steuerung"), "steuerung");
+  assert.strictEqual(G.groupForAnchor("datenfreigabe"), "datenfreigabe");
+  assert.strictEqual(G.groupForAnchor("messwerte"), "erweitert");
+  assert.strictEqual(G.groupForAnchor("portal"), null, "the pairing block is not inside the accordion");
+});
+
 /* ============ control.js: PV curtailment (Fronius) state layer ============ */
 
 function curtailFor(state) {
