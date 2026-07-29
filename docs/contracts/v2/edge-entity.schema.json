@@ -116,6 +116,7 @@
         "entity_id": { "$ref": "#/$defs/entity_id" },
         "entity_type": { "$ref": "#/$defs/entity_type" },
         "label": { "type": "string", "maxLength": 200 },
+        "edge_source_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "The edge-local source id this entity was adopted from (:8484 sources selection; the cloud pin measurement_point.edge_source_id). OPTIONAL + ADDITIVE (2026-07-29, vp-vier-erzeuger-p9 PR 4a): lets the device map its OWN source readings onto the entity for its LOCAL display - deterministic instead of order-guessing. An old edge ignores it." },
         "capabilities": { "$ref": "#/$defs/capabilities" },
         "guards": { "$ref": "#/$defs/guards" },
         "driver": { "type": "object" }
@@ -132,6 +133,7 @@
         "entity_id": { "$ref": "#/$defs/entity_id" },
         "entity_type": { "$ref": "#/$defs/entity_type" },
         "label": { "type": "string", "maxLength": 200 },
+        "edge_source_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "The adoption pin, mirrored from the registry descriptor (D-17) - the config IS the descriptor plus the applied revision." },
         "capabilities": { "$ref": "#/$defs/capabilities" },
         "guards": { "$ref": "#/$defs/guards" },
         "driver": { "type": "object" },

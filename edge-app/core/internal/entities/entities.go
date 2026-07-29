@@ -109,6 +109,12 @@ type Entity struct {
 	Guards       Guards       `json:"guards"`
 	// Driver is the opaque Layer-1 self-wiring block, carried through verbatim.
 	Driver json.RawMessage `json:"driver,omitempty"`
+	// EdgeSourceID is the edge-local source id this entity was adopted from
+	// (the cloud's measurement_point.edge_source_id pin, OPTIONAL + additive
+	// since 2026-07-29, vp-vier-erzeuger-p9 PR 4a). It lets the device map its
+	// OWN source readings onto the entity for the LOCAL display (Topology) -
+	// deterministic instead of order-guessing. Empty = not adopted / old cloud.
+	EdgeSourceID string `json:"edge_source_id,omitempty"`
 }
 
 // Registry is the applied entity set of this device.
