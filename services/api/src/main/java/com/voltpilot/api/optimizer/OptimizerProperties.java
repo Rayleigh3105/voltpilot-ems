@@ -27,6 +27,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * ({@code OPTIMIZER_EEG_RATES_JSON}); blank = the built-in schedule. Parsed by
  * {@link EegRates#fromJson(String)} so the api's per-slot export values follow
  * the same correction the solver got.</li>
+ * <li>{@code defaultSupplyComponents} - whether the researched default
+ * supply-price components stand in for a missing {@code site_supply_price}
+ * sheet on {@code dynamisch}-without-Aufschlag / {@code ohne} sites
+ * ({@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}, default false - captain
+ * decision pending; see pricing.py {@code DEFAULT_SUPPLY_COMPONENTS}).</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "voltpilot.optimizer")
@@ -34,7 +39,8 @@ public record OptimizerProperties(
         double defaultWearCostCtPerKwh,
         double terminalValueQuantile,
         String terminalValueCtPerKwh,
-        String eegRatesJson) {
+        String eegRatesJson,
+        boolean defaultSupplyComponents) {
 
     /** The platform usable-SoC band (domain.py DEFAULT_SOC_MIN/MAX_FRACTION). */
     public static final double DEFAULT_SOC_MIN_PCT = 5.0;

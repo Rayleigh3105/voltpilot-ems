@@ -57,6 +57,7 @@ from voltpilot_optimization.domain import (
 from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
 from voltpilot_optimization.pricing import (
     SiteTariff,
+    SupplyPriceComponents,
     berlin_month,
     export_values,
     import_prices,
@@ -138,8 +139,11 @@ class BatterySite:
 
     ``tariff`` carries the pricing-relevant master data (P1: plant_kind,
     tarif_art/param, anzulegender Wert, the PV asset's commissioning date +
-    kWp) feeding the asymmetric import/export pricing; the default reproduces
-    the symmetric bare-spot model.
+    kWp, plus the structured ``site_supply_price`` sheet as
+    ``tariff.supply_price`` - ``None`` when no row is maintained, which keeps
+    the legacy import model byte-identically) feeding the asymmetric
+    import/export pricing; the default reproduces the symmetric bare-spot
+    model.
 
     ``leistungspreis_eur_kw`` (PS-1; ``site.leistungspreis_eur_kw``, nullable)
     is the RLM Leistungspreis in EUR per kW per billing period - non-NULL IS
@@ -186,10 +190,16 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                    a.soc_min_pct, a.soc_max_pct,
                    s.max_feed_in_kw,
                    s.leistungspreis_eur_kw, s.abrechnung_leistung,
-                   s.peak_reserve_soc_pct
+                   s.peak_reserve_soc_pct,
+                   ssp.site_id AS ssp_site_id,
+                   ssp.netzentgelt_arbeitspreis_ct, ssp.stromsteuer_ct,
+                   ssp.konzessionsabgabe_ct, ssp.umlagen_ct,
+                   ssp.vertriebsaufschlag_ct, ssp.ust_pct,
+                   ssp.komponenten_stand
             FROM asset a
             JOIN site s ON s.id = a.site_id
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv' AND pv.is_primary
+            LEFT JOIN site_supply_price ssp ON ssp.site_id = a.site_id
             WHERE a.type = 'battery' AND a.is_primary
             ORDER BY a.site_id
             """
@@ -202,6 +212,9 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                 commissioned_on, pv_kwp, backup_reserve,
                 soc_min_pct, soc_max_pct, max_feed_in,
                 leistungspreis, abrechnung, peak_reserve,
+                ssp_site_id, ssp_netzentgelt, ssp_stromsteuer,
+                ssp_konzession, ssp_umlagen, ssp_vertrieb, ssp_ust,
+                ssp_stand,
             ) = row
             if cap is None or chg is None or dis is None:
                 logger.warning(
@@ -270,10 +283,31 @@ def load_battery_sites(dsn: str) -> list[BatterySite]:
                         ),
                         commissioned_on=commissioned_on,
                         pv_capacity_kwp=float(pv_kwp) if pv_kwp is not None else None,
+                        # No site_supply_price row = None = the legacy import
+                        # model, byte-identically (report §3.1 rollout rule).
+                        supply_price=(
+                            SupplyPriceComponents(
+                                netzentgelt_arbeitspreis_ct=_opt_float(ssp_netzentgelt),
+                                stromsteuer_ct=_opt_float(ssp_stromsteuer),
+                                konzessionsabgabe_ct=_opt_float(ssp_konzession),
+                                umlagen_ct=_opt_float(ssp_umlagen),
+                                vertriebsaufschlag_ct=_opt_float(ssp_vertrieb),
+                                ust_pct=(
+                                    float(ssp_ust) if ssp_ust is not None else 19.0
+                                ),
+                                komponenten_stand=ssp_stand,
+                            )
+                            if ssp_site_id is not None
+                            else None
+                        ),
                     ),
                 )
             )
     return sites
+
+
+def _opt_float(value) -> float | None:
+    return float(value) if value is not None else None
 
 
 def _soc_band(site_id, soc_min_pct, soc_max_pct) -> tuple[float, float]:
@@ -375,7 +409,7 @@ def gather_inputs(
         market_values = _load_market_values(
             dsn, sorted({berlin_month(s) for s in slot_starts})
         )
-    import_series = import_prices(site.tariff, spot)
+    import_series = import_prices(site.tariff, spot, site_id=site.site_id)
     export_series = export_values(
         site.tariff,
         site.netzladen_erlaubt,

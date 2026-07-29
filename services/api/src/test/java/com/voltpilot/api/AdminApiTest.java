@@ -1094,6 +1094,42 @@ class AdminApiTest {
         assertThat(num(evBattery, "wearCostCtPerKwh")).isEqualTo(6.0);
         assertThat(evBattery).containsEntry("wearCostSource", "asset");
 
+        // ---- structured supply-price sheet (site_supply_price) ---------------
+        // A maintained sheet replaces the dynamisch Sammelaufschlag with the
+        // report-§3.1 composition (spot + Σ components netto) × (1 + USt):
+        // sheet 7.6+2.05+1.59+2.946+1.5 = 15.686 ct netto, USt 19% => spot
+        // 100 EUR/MWh composes to 30.56634 ct/kWh, spot -40 to 13.90634 -
+        // the SlotEconomicsTest/test_pricing.py vectors, here through the real
+        // migration + LEFT JOIN + service wiring.
+        exec("INSERT INTO site_supply_price (site_id, tenant_id, "
+                + "netzentgelt_arbeitspreis_ct, stromsteuer_ct, konzessionsabgabe_ct, "
+                + "umlagen_ct, vertriebsaufschlag_ct, ust_pct, komponenten_stand) VALUES ('"
+                + dvSite + "', '" + tenantId + "', 7.6, 2.05, 1.59, 2.946, 1.5, 19.0, "
+                + "DATE '2026-01-01')");
+        ResponseEntity<Map<String, Object>> sheet = rest.exchange(
+                url("/api/v1/admin/sites/" + dvSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> sheetSlots = (List<Map<String, Object>>) sheet.getBody().get("slots");
+        assertThat(num(sheetSlots.get(0), "importPriceCtKwh"))
+                .isCloseTo(30.56634, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(sheetSlots.get(1), "importPriceCtKwh"))
+                .isCloseTo(13.90634, org.assertj.core.data.Offset.offset(1e-9));
+        // Export values are untouched by the sheet (import-only instrument).
+        assertThat(num(sheetSlots.get(0), "exportValueCtKwh"))
+                .isCloseTo(13.61, org.assertj.core.data.Offset.offset(1e-9));
+        // The fest EV site ignores a maintained sheet (never double-counted).
+        exec("INSERT INTO site_supply_price (site_id, tenant_id, "
+                + "netzentgelt_arbeitspreis_ct, ust_pct) VALUES ('"
+                + evSite + "', '" + tenantId + "', 7.6, 19.0)");
+        ResponseEntity<Map<String, Object>> evSheet = rest.exchange(
+                url("/api/v1/admin/sites/" + evSite + "/optimizer-diagnostics"), HttpMethod.GET,
+                new HttpEntity<>(adminTenant), new ParameterizedTypeReference<>() {});
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> evSheetSlots =
+                (List<Map<String, Object>>) evSheet.getBody().get("slots");
+        assertThat(num(evSheetSlots.get(0), "importPriceCtKwh")).isEqualTo(30.0);
+
         // ---- auth + tenant scoping -------------------------------------------
         // A customer token is refused outright (backend boundary, not UI).
         assertThat(rest.exchange(

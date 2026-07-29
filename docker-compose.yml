@@ -298,6 +298,7 @@ services:
       OPTIMIZER_TERMINAL_VALUE_QUANTILE: ${OPTIMIZER_TERMINAL_VALUE_QUANTILE:-0.3}
       OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH: ${OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH:-}
       OPTIMIZER_EEG_RATES_JSON: ${OPTIMIZER_EEG_RATES_JSON:-}
+      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-false}
       # Marktstammdatenregister ("Anlage verknüpfen"): blank = the keyless public
       # JSON backend; set the captain's Webdienst credentials to use the official
       # SOAP webservice instead (see AGENTS.md, "MaStR integration").
@@ -579,6 +580,12 @@ services:
       OPTIMIZER_WEAR_COST_CT_PER_KWH: ${OPTIMIZER_WEAR_COST_CT_PER_KWH:-4.0}
       OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES: ${OPTIMIZER_GRID_LIMIT_MAX_AGE_MINUTES:-60}
       OPTIMIZER_SOC_MAX_AGE_MINUTES: ${OPTIMIZER_SOC_MAX_AGE_MINUTES:-120}
+      # Structured Bezugspreis: researched default supply components as the
+      # fallback for dynamisch-without-Aufschlag / ohne sites WITHOUT a
+      # maintained site_supply_price row (report vp-nacht-bezug-e7 §3.1).
+      # Default OFF - activation is an open captain decision. Mirrored to
+      # the api service (same variable) so display and solver agree.
+      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-false}
       # MIG v1->v2 migration switch (see docs/migration-v1-to-v2.md): comma-
       # separated site UUIDs to ALSO publish a v2 shadow plan for. Empty (the
       # default) = nothing flagged = byte-identical v1.
@@ -607,6 +614,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voltpilot_dev_pw}
       SIM_MAX_WORKERS: ${SIM_MAX_WORKERS:-3}
+      # Same pricing layer as the optimizer - keep the ONE price truth when the
+      # default-supply-components flag is ever flipped platform-wide.
+      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-false}
     ports:
       - "127.0.0.1:${SIM_PORT:-8095}:8095"
 

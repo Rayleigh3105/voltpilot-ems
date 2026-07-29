@@ -230,6 +230,33 @@ def explain_enabled(env=None) -> bool:
     raise ValueError(f"{EXPLAIN_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Researched default supply-price components as the Bezugspreis fallback for
+#: ``dynamisch``-without-Aufschlag and ``ohne`` sites WITHOUT a maintained
+#: ``site_supply_price`` row (report vp-nacht-bezug-e7 Teil 2: household
+#: 7,6/2,05/1,59/2,946/1,5 ct netto + 19 % USt ≈ 18,7 ct brutto over spot).
+#: DEFAULT OFF - activation is an open captain decision; with the flag off the
+#: no-row cases keep today's bare-spot legacy behavior byte-identically. The
+#: default VALUES live in :data:`voltpilot_optimization.pricing
+#: .DEFAULT_SUPPLY_COMPONENTS` (pricing imports config, never the reverse).
+DEFAULT_SUPPLY_COMPONENTS_ENV = "OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS"
+
+
+def default_supply_components_enabled(env=None) -> bool:
+    """Whether the researched default supply components stand in for a missing
+    ``site_supply_price`` row (``dynamisch`` without Aufschlag / ``ohne``).
+    Garbage values raise loudly (the explain_enabled discipline)."""
+    env = os.environ if env is None else env
+    raw = env.get(DEFAULT_SUPPLY_COMPONENTS_ENV)
+    if raw is None or raw.strip() == "":
+        return False
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{DEFAULT_SUPPLY_COMPONENTS_ENV} must be a boolean, got {raw!r}")
+
+
 #: Shave-Target-Ratchet: fraction of the Leistungspreis priced on the plain
 #: horizon peak (below the peak_so_far anchor too) - see module docstring.
 PEAK_RATCHET_FRACTION = 0.03

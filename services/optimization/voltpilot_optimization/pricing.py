@@ -4,11 +4,15 @@ Turns the day-ahead SPOT series into the two price series the market-revenue
 objective consumes (:mod:`voltpilot_optimization.solver`):
 
 - **import_price_t** - what one imported kWh really costs the site, per its
-  supply tariff (``site.tarif_art``/``tarif_param_ct_kwh``, the customer-
-  maintained model the api's ``EarningsRepository`` already values reporting
-  with): ``dynamisch`` = spot + Aufschlag, ``fest`` = the flat retail price,
-  ``ohne`` = bare spot (spot-settled / pure-market load - avoiding an import
-  then has no retail premium, target report §2.3).
+  supply tariff (``site.tarif_art``/``tarif_param_ct_kwh`` plus the structured
+  ``site_supply_price`` sheet, report vp-nacht-bezug-e7 §3.1): ``fest`` = the
+  flat all-in retail price (a maintained sheet is ignored - nothing is
+  double-counted); ``dynamisch``/``ohne`` with a maintained sheet =
+  ``(spot + Σ Komponenten netto) × (1 + USt)``; ``dynamisch`` without a sheet
+  = the legacy spot + Aufschlag; ``ohne``/NULL-Aufschlag without a sheet =
+  bare spot (legacy), optionally replaced by the researched default component
+  set behind the OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag. See
+  :func:`import_prices` for the exact precedence.
 - **export_value_t** - what one exported kWh really earns, per the plant's
   remuneration (``site.plant_kind``): ``direktvermarktung`` = spot + the
   dynamic Marktprämie (``GREATEST(anzulegender_wert - monatsmarktwert, 0)``,
@@ -50,6 +54,7 @@ from zoneinfo import ZoneInfo
 from voltpilot_optimization.config import (
     EegRateBand,
     SOLARSPITZENGESETZ_CUTOFF,
+    default_supply_components_enabled,
     eeg_rate_schedule,
 )
 
@@ -68,14 +73,86 @@ TARIF_OHNE = "ohne"
 
 
 @dataclass(frozen=True)
+class SupplyPriceComponents:
+    """One site's structured supply-price sheet (the ``site_supply_price``
+    row, report vp-nacht-bezug-e7 §3.1): the volumetric Bezugspreis components
+    the operator reads off the grid operator's Preisblatt and the electricity
+    bill, all ct/kWh NETTO, all nullable (NULL = unknown, contributes 0 to the
+    sum). ``ust_pct`` is the multiplicative USt on EVERYTHING incl. the spot
+    share (household 19, C&I with Vorsteuer-Abzug 0). ``komponenten_stand`` is
+    the "Preisblatt gültig ab" date (display/maintenance metadata - never
+    enters the price math).
+    """
+
+    netzentgelt_arbeitspreis_ct: float | None = None
+    stromsteuer_ct: float | None = None
+    konzessionsabgabe_ct: float | None = None
+    umlagen_ct: float | None = None
+    vertriebsaufschlag_ct: float | None = None
+    ust_pct: float = 19.0
+    komponenten_stand: date | None = None
+
+    def components_ct_kwh(self) -> float:
+        """Σ of the maintained (non-NULL) volumetric components, ct netto."""
+        return sum(
+            c
+            for c in (
+                self.netzentgelt_arbeitspreis_ct,
+                self.stromsteuer_ct,
+                self.konzessionsabgabe_ct,
+                self.umlagen_ct,
+                self.vertriebsaufschlag_ct,
+            )
+            if c is not None
+        )
+
+    def has_components(self) -> bool:
+        """Whether at least one component is maintained. Load-bearing gate: a
+        degenerate all-NULL row composes nothing (it would tax bare spot with
+        USt and nothing else), so it behaves exactly like NO row - only an
+        explicitly maintained sheet activates the structured composition."""
+        return any(
+            c is not None
+            for c in (
+                self.netzentgelt_arbeitspreis_ct,
+                self.stromsteuer_ct,
+                self.konzessionsabgabe_ct,
+                self.umlagen_ct,
+                self.vertriebsaufschlag_ct,
+            )
+        )
+
+
+#: The researched household default set (report vp-nacht-bezug-e7 Teil 2,
+#: Stand 2026: Netzentgelt-AP ~7,6 / Stromsteuer 2,05 / Konzession 1,59 (Stadt
+#: <= 100k EW) / Umlagen KWKG+Offshore+§19 2,946 / Vertrieb 1,5 ct netto
+#: = 15,686 ct netto + 19 % USt). Applied ONLY behind the
+#: OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag (default OFF - captain decision
+#: pending) and only where the site has neither a maintained supply-price row
+#: nor an operator Sammelaufschlag; bare spot as a household Bezugspreis is
+#: always MORE wrong than this set (§3.1).
+DEFAULT_SUPPLY_COMPONENTS = SupplyPriceComponents(
+    netzentgelt_arbeitspreis_ct=7.6,
+    stromsteuer_ct=2.05,
+    konzessionsabgabe_ct=1.59,
+    umlagen_ct=2.946,
+    vertriebsaufschlag_ct=1.5,
+    ust_pct=19.0,
+)
+
+
+@dataclass(frozen=True)
 class SiteTariff:
     """The pricing-relevant site master data (all customer-maintained; every
     field's absence degrades that side of the pricing to bare spot).
 
     ``commissioned_on``/``pv_capacity_kwp`` come from the site's PV asset
     (MaStR link or manual entry) and drive the feste-Vergütung lookup for
-    ``eigenverbrauch`` plants. The defaults reproduce today's symmetric-spot
-    model exactly, so an un-wired caller can never invent a price.
+    ``eigenverbrauch`` plants. ``supply_price`` is the site's structured
+    supply-price sheet (``site_supply_price`` row; ``None`` = no row = the
+    legacy import model, byte-identically). The defaults reproduce today's
+    symmetric-spot model exactly, so an un-wired caller can never invent a
+    price.
     """
 
     plant_kind: str = PLANT_KIND_EIGENVERBRAUCH
@@ -84,31 +161,149 @@ class SiteTariff:
     anzulegender_wert_ct_kwh: float | None = None
     commissioned_on: date | None = None
     pv_capacity_kwp: float | None = None
+    supply_price: SupplyPriceComponents | None = None
 
 
-def import_prices(tariff: SiteTariff, spot_eur_mwh: list[float]) -> list[float]:
+def structured_import_prices(
+    supply: SupplyPriceComponents, spot_eur_mwh: list[float]
+) -> list[float]:
+    """The structured Bezugspreis composition (report §3.1):
+    ``(spot + Σ Komponenten netto) × (1 + USt)`` per slot, EUR/MWh. The USt
+    factor deliberately covers the SPOT share too (at 15 ct spot that alone is
+    2,85 ct the legacy model ignored)."""
+    components_eur_mwh = supply.components_ct_kwh() * CT_PER_KWH_TO_EUR_PER_MWH
+    ust_factor = 1.0 + supply.ust_pct / 100.0
+    return [(p + components_eur_mwh) * ust_factor for p in spot_eur_mwh]
+
+
+def import_prices(
+    tariff: SiteTariff, spot_eur_mwh: list[float], site_id=None
+) -> list[float]:
     """The per-slot cost of one imported kWh under the site's supply tariff
-    (EUR/MWh). See the module docstring for the per-``tarif_art`` rule."""
-    if tariff.tarif_art == TARIF_DYNAMISCH:
-        aufschlag = (tariff.tarif_param_ct_kwh or 0.0) * CT_PER_KWH_TO_EUR_PER_MWH
-        return [p + aufschlag for p in spot_eur_mwh]
+    (EUR/MWh).
+
+    Precedence per ``tarif_art`` (report vp-nacht-bezug-e7 §3.1):
+
+    - ``fest``: the flat all-in retail price, UNCHANGED - a maintained
+      supply-price sheet is IGNORED with a warning (fest wins, nothing is ever
+      double-counted).
+    - ``dynamisch``: a maintained sheet (>= 1 component) replaces the
+      Sammelaufschlag with the structured composition; else the legacy
+      ``spot + tarif_param`` Aufschlag; else (NULL Aufschlag) the researched
+      default set behind the OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag; else
+      bare spot with a LOUD warning (the S1 fix - this silent +0 was the
+      night-discharge symptom).
+    - ``ohne``: semantically "dynamisch with components" - a maintained sheet
+      composes, the flag-gated default set stands in, otherwise bare spot
+      (today's spot-settled special case, unchanged).
+
+    Rollout invariance: without a maintained ``site_supply_price`` row and with
+    the flag off, every branch is byte-identical to the legacy model.
+    """
+    ctx = {"site_id": str(site_id)} if site_id is not None else {}
+    supply = tariff.supply_price
+    maintained = supply is not None and supply.has_components()
     if tariff.tarif_art == TARIF_FEST:
+        if maintained:
+            logger.warning(
+                "pricing.fest_ignores_supply_components",
+                extra={
+                    "context": {
+                        **ctx,
+                        "reason": (
+                            "tarif_art='fest' with a maintained "
+                            "site_supply_price sheet - fest is the all-in "
+                            "price and wins, the components are ignored so "
+                            "nothing is double-counted"
+                        ),
+                    }
+                },
+            )
         if tariff.tarif_param_ct_kwh is None:
             logger.warning(
                 "pricing.fest_tariff_without_price",
                 extra={
                     "context": {
+                        **ctx,
                         "reason": (
                             "tarif_art='fest' but tarif_param_ct_kwh is NULL - "
                             "import degrades to bare spot"
-                        )
+                        ),
                     }
                 },
             )
             return list(spot_eur_mwh)
         flat = tariff.tarif_param_ct_kwh * CT_PER_KWH_TO_EUR_PER_MWH
         return [flat] * len(spot_eur_mwh)
-    # 'ohne' (spot-settled) and anything unknown: bare spot.
+    if tariff.tarif_art in (TARIF_DYNAMISCH, TARIF_OHNE):
+        if maintained:
+            if (
+                tariff.tarif_art == TARIF_DYNAMISCH
+                and tariff.tarif_param_ct_kwh is not None
+            ):
+                # Documented §3.1 semantics, not an error: the structured
+                # sheet REPLACES the one-pot Sammelaufschlag (its margin now
+                # lives in vertriebsaufschlag_ct).
+                logger.info(
+                    "pricing.supply_components_replace_aufschlag",
+                    extra={
+                        "context": {
+                            **ctx,
+                            "reason": (
+                                "dynamisch with both a Sammelaufschlag and a "
+                                "maintained site_supply_price sheet - the "
+                                "structured sheet wins, tarif_param_ct_kwh "
+                                "is ignored"
+                            ),
+                        }
+                    },
+                )
+            return structured_import_prices(supply, spot_eur_mwh)
+        if (
+            tariff.tarif_art == TARIF_DYNAMISCH
+            and tariff.tarif_param_ct_kwh is not None
+        ):
+            aufschlag = tariff.tarif_param_ct_kwh * CT_PER_KWH_TO_EUR_PER_MWH
+            return [p + aufschlag for p in spot_eur_mwh]
+        if default_supply_components_enabled():
+            logger.warning(
+                "pricing.default_supply_components_applied",
+                extra={
+                    "context": {
+                        **ctx,
+                        "components_ct_kwh": round(
+                            DEFAULT_SUPPLY_COMPONENTS.components_ct_kwh(), 3
+                        ),
+                        "reason": (
+                            "no maintained supply-price sheet and no "
+                            "Aufschlag - import priced with the researched "
+                            "default components (Vorschlagswerte, bitte "
+                            "Preisblatt prüfen)"
+                        ),
+                    }
+                },
+            )
+            return structured_import_prices(DEFAULT_SUPPLY_COMPONENTS, spot_eur_mwh)
+        if tariff.tarif_art == TARIF_DYNAMISCH:
+            # S1 fix: this silent NULL -> +0 was the night-discharge symptom
+            # (report §1.5) - same loudness as the fest+NULL warning above.
+            logger.warning(
+                "pricing.dynamisch_tariff_without_aufschlag",
+                extra={
+                    "context": {
+                        **ctx,
+                        "reason": (
+                            "tarif_art='dynamisch' but tarif_param_ct_kwh is "
+                            "NULL and no site_supply_price sheet is "
+                            "maintained - import degrades to bare spot, "
+                            "which under-prices the real Bezugspreis by "
+                            "~15-19 ct/kWh (Netzentgelte/Steuern/Umlagen)"
+                        ),
+                    }
+                },
+            )
+        return list(spot_eur_mwh)
+    # Anything unknown: bare spot.
     return list(spot_eur_mwh)
 
 

@@ -41,12 +41,63 @@ public final class SlotEconomics {
     }
 
     /**
+     * One site's structured supply-price sheet (the {@code site_supply_price}
+     * row - the pricing.py {@code SupplyPriceComponents} twin): volumetric
+     * Bezugspreis components in ct/kWh NETTO, all nullable (NULL = unknown,
+     * contributes 0); {@code ustPct} is the multiplicative USt on everything
+     * incl. the spot share (household 19, C&I with Vorsteuer-Abzug 0).
+     */
+    public record SupplyPrice(
+            Double netzentgeltArbeitspreisCt,
+            Double stromsteuerCt,
+            Double konzessionsabgabeCt,
+            Double umlagenCt,
+            Double vertriebsaufschlagCt,
+            double ustPct) {
+
+        /** Σ of the maintained (non-null) components, ct netto. */
+        public double componentsCtKwh() {
+            double sum = 0.0;
+            for (Double c : new Double[] {netzentgeltArbeitspreisCt, stromsteuerCt,
+                    konzessionsabgabeCt, umlagenCt, vertriebsaufschlagCt}) {
+                if (c != null) {
+                    sum += c;
+                }
+            }
+            return sum;
+        }
+
+        /**
+         * Whether at least one component is maintained - the load-bearing
+         * activation gate (mirrors pricing.py {@code has_components}): a
+         * degenerate all-NULL row behaves exactly like NO row, so only an
+         * explicitly maintained sheet activates the structured composition.
+         */
+        public boolean hasComponents() {
+            return netzentgeltArbeitspreisCt != null || stromsteuerCt != null
+                    || konzessionsabgabeCt != null || umlagenCt != null
+                    || vertriebsaufschlagCt != null;
+        }
+    }
+
+    /**
+     * The researched household default set (pricing.py
+     * {@code DEFAULT_SUPPLY_COMPONENTS}, report vp-nacht-bezug-e7 Teil 2):
+     * only ever applied behind the {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}
+     * flag mirrored from the optimizer env - keep both sides in sync.
+     */
+    public static final SupplyPrice DEFAULT_SUPPLY_PRICE =
+            new SupplyPrice(7.6, 2.05, 1.59, 2.946, 1.5, 19.0);
+
+    /**
      * The pricing-relevant site master data (the SiteTariff twin). Battery
      * fields are null for battery-less sites - stored-energy values are then
      * honestly absent. {@code roundtripEfficiency} is the 0..1 fraction
      * (defaulted to 0.92 when the asset column is NULL, mirroring
      * inputs.load_battery_sites); {@code wearCostCtPerKwh} is the EFFECTIVE
      * per-cycle rate (asset override or platform default).
+     * {@code supplyPrice} is the site's structured supply-price sheet (null =
+     * no {@code site_supply_price} row = the legacy import model).
      */
     public record SiteEconomics(
             String plantKind,
@@ -57,39 +108,73 @@ public final class SlotEconomics {
             LocalDate pvCommissionedOn,
             Double pvCapacityKwp,
             Double roundtripEfficiency,
-            Double wearCostCtPerKwh) {
+            Double wearCostCtPerKwh,
+            SupplyPrice supplyPrice) {
     }
 
     private final SiteEconomics site;
     private final EegRates eegRates;
     private final Map<LocalDate, MarketValue> marketValuesByMonth;
+    private final boolean defaultSupplyComponents;
 
     public SlotEconomics(SiteEconomics site, EegRates eegRates,
             Map<LocalDate, MarketValue> marketValuesByMonth) {
+        this(site, eegRates, marketValuesByMonth, false);
+    }
+
+    /**
+     * @param defaultSupplyComponents the mirrored
+     *     {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS} flag: whether the
+     *     researched default component set stands in for a missing sheet on
+     *     {@code dynamisch}-without-Aufschlag / {@code ohne} sites (default
+     *     OFF - captain decision pending).
+     */
+    public SlotEconomics(SiteEconomics site, EegRates eegRates,
+            Map<LocalDate, MarketValue> marketValuesByMonth,
+            boolean defaultSupplyComponents) {
         this.site = site;
         this.eegRates = eegRates;
         this.marketValuesByMonth = marketValuesByMonth;
+        this.defaultSupplyComponents = defaultSupplyComponents;
     }
 
     /**
      * What one imported kWh really costs the site in this slot (ct/kWh), per
-     * its supply tariff: {@code dynamisch} = spot + Aufschlag, {@code fest} =
-     * the flat retail price (spot-independent), {@code ohne}/unknown = bare
-     * spot. Null when the slot has no persisted spot price (except the flat
-     * tariff, which needs none).
+     * its supply tariff - mirrors pricing.py {@code import_prices} branch for
+     * branch (report vp-nacht-bezug-e7 §3.1): {@code fest} = the flat all-in
+     * retail price, UNCHANGED (a maintained sheet is ignored - nothing is
+     * double-counted); {@code dynamisch}/{@code ohne} with a maintained sheet
+     * = {@code (spot + Σ Komponenten netto) × (1 + USt)} - the USt factor
+     * covers the spot share too; {@code dynamisch} without a sheet = the
+     * legacy spot + Aufschlag; no sheet and no Aufschlag = bare spot, or the
+     * researched default set when the mirrored flag is on. Null when the slot
+     * has no persisted spot price (except the flat tariff, which needs none).
      */
     public Double importPriceCtKwh(Double spotEurMwh) {
-        if ("dynamisch".equals(site.tarifArt())) {
-            if (spotEurMwh == null) {
-                return null;
-            }
-            double aufschlag = site.tarifParamCtKwh() != null ? site.tarifParamCtKwh() : 0.0;
-            return spotEurMwh / 10.0 + aufschlag;
-        }
+        boolean maintained = site.supplyPrice() != null && site.supplyPrice().hasComponents();
         if ("fest".equals(site.tarifArt()) && site.tarifParamCtKwh() != null) {
             return site.tarifParamCtKwh();
         }
+        boolean structured = "dynamisch".equals(site.tarifArt())
+                || "ohne".equals(site.tarifArt());
+        if (structured && maintained) {
+            return structuredImportCtKwh(site.supplyPrice(), spotEurMwh);
+        }
+        if ("dynamisch".equals(site.tarifArt()) && site.tarifParamCtKwh() != null) {
+            return spotEurMwh == null ? null : spotEurMwh / 10.0 + site.tarifParamCtKwh();
+        }
+        if (structured && defaultSupplyComponents) {
+            return structuredImportCtKwh(DEFAULT_SUPPLY_PRICE, spotEurMwh);
+        }
         return spotCt(spotEurMwh);
+    }
+
+    /** {@code (spot + Σ Komponenten netto) × (1 + USt)}, in ct/kWh. */
+    private static Double structuredImportCtKwh(SupplyPrice supply, Double spotEurMwh) {
+        if (spotEurMwh == null) {
+            return null;
+        }
+        return (spotEurMwh / 10.0 + supply.componentsCtKwh()) * (1.0 + supply.ustPct() / 100.0);
     }
 
     /**

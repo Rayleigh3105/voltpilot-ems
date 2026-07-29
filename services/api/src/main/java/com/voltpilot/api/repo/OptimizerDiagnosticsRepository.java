@@ -54,8 +54,10 @@ public class OptimizerDiagnosticsRepository {
     /**
      * The site's optimizer-relevant master data in one row: pricing fields,
      * the battery asset's parameters ({@code hasBattery} false when the site
-     * has no battery asset - the optimizer then never plans it) and the PV
-     * asset's remuneration inputs (MaStR commissioning date + kWp).
+     * has no battery asset - the optimizer then never plans it), the PV
+     * asset's remuneration inputs (MaStR commissioning date + kWp) and the
+     * structured supply-price sheet ({@code hasSupplyPrice} false when the
+     * site has no {@code site_supply_price} row - the legacy import model).
      */
     public record SiteContext(
             UUID siteId,
@@ -75,7 +77,14 @@ public class OptimizerDiagnosticsRepository {
             BigDecimal socMinPct,
             BigDecimal socMaxPct,
             LocalDate pvCommissionedOn,
-            BigDecimal pvCapacityKwp) {
+            BigDecimal pvCapacityKwp,
+            boolean hasSupplyPrice,
+            BigDecimal netzentgeltArbeitspreisCt,
+            BigDecimal stromsteuerCt,
+            BigDecimal konzessionsabgabeCt,
+            BigDecimal umlagenCt,
+            BigDecimal vertriebsaufschlagCt,
+            BigDecimal ustPct) {
     }
 
     private final JdbcTemplate jdbc;
@@ -94,10 +103,14 @@ public class OptimizerDiagnosticsRepository {
                         + " s.peak_reserve_soc_pct,"
                         + " b.id AS battery_id, b.capacity_kwh, b.roundtrip_efficiency_pct,"
                         + " b.wear_cost_ct_per_kwh, b.soc_min_pct, b.soc_max_pct,"
-                        + " pv.commissioned_on, pv.pv_capacity_kwp "
+                        + " pv.commissioned_on, pv.pv_capacity_kwp,"
+                        + " ssp.site_id AS ssp_site_id, ssp.netzentgelt_arbeitspreis_ct,"
+                        + " ssp.stromsteuer_ct, ssp.konzessionsabgabe_ct, ssp.umlagen_ct,"
+                        + " ssp.vertriebsaufschlag_ct, ssp.ust_pct "
                         + "FROM site s "
                         + "LEFT JOIN asset b ON b.site_id = s.id AND b.type = 'battery' AND b.is_primary "
                         + "LEFT JOIN asset pv ON pv.site_id = s.id AND pv.type = 'pv' AND pv.is_primary "
+                        + "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id "
                         + "WHERE s.id = ?",
                 OptimizerDiagnosticsRepository::mapContext, siteId);
         return found.isEmpty() ? null : found.get(0);
@@ -224,6 +237,13 @@ public class OptimizerDiagnosticsRepository {
                 rs.getBigDecimal("soc_min_pct"),
                 rs.getBigDecimal("soc_max_pct"),
                 commissioned != null ? commissioned.toLocalDate() : null,
-                rs.getBigDecimal("pv_capacity_kwp"));
+                rs.getBigDecimal("pv_capacity_kwp"),
+                rs.getObject("ssp_site_id", UUID.class) != null,
+                rs.getBigDecimal("netzentgelt_arbeitspreis_ct"),
+                rs.getBigDecimal("stromsteuer_ct"),
+                rs.getBigDecimal("konzessionsabgabe_ct"),
+                rs.getBigDecimal("umlagen_ct"),
+                rs.getBigDecimal("vertriebsaufschlag_ct"),
+                rs.getBigDecimal("ust_pct"));
     }
 }

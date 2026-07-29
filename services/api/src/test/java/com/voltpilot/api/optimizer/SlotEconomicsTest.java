@@ -28,8 +28,20 @@ class SlotEconomicsTest {
     private static SiteEconomics site(String plantKind, boolean netzladen, String tarifArt,
             Double param, Double aw, LocalDate commissioned, Double kwp) {
         return new SiteEconomics(plantKind, netzladen, tarifArt, param, aw,
-                commissioned, kwp, 0.92, 4.0);
+                commissioned, kwp, 0.92, 4.0, null);
     }
+
+    private static SiteEconomics withSupply(SiteEconomics base,
+            SlotEconomics.SupplyPrice supply) {
+        return new SiteEconomics(base.plantKind(), base.netzladenErlaubt(), base.tarifArt(),
+                base.tarifParamCtKwh(), base.anzulegenderWertCtKwh(), base.pvCommissionedOn(),
+                base.pvCapacityKwp(), base.roundtripEfficiency(), base.wearCostCtPerKwh(),
+                supply);
+    }
+
+    /** The report's household sheet: 7.6+2.05+1.59+2.946+1.5 = 15.686 ct netto. */
+    private static final SlotEconomics.SupplyPrice SHEET =
+            new SlotEconomics.SupplyPrice(7.6, 2.05, 1.59, 2.946, 1.5, 19.0);
 
     private static SlotEconomics dv(Double aw, Map<LocalDate, MarketValue> mv) {
         return new SlotEconomics(
@@ -69,6 +81,100 @@ class SlotEconomicsTest {
                 EegRates.defaults(), Map.of());
         assertThat(ohne.importPriceCtKwh(200.0)).isEqualTo(20.0);
         assertThat(ohne.importPriceCtKwh(null)).isNull();
+    }
+
+    // ---- import price: the structured supply-price sheet ----------------------
+    // Vectors shared with services/optimization tests/test_pricing.py (the
+    // EegRatesTest discipline): sheet 7.6/2.05/1.59/2.946/1.5 = 15.686 ct
+    // netto, USt 19% -> spot 100 EUR/MWh composes to (10 + 15.686) * 1.19 =
+    // 30.56634 ct/kWh.
+
+    @Test
+    void maintainedSheetComposesSpotPlusComponentsTimesUstForDynamischAndOhne() {
+        for (String tarifArt : new String[] {"dynamisch", "ohne"}) {
+            SlotEconomics e = new SlotEconomics(
+                    withSupply(site("eigenverbrauch", false, tarifArt, null, null, null, null),
+                            SHEET),
+                    EegRates.defaults(), Map.of());
+            assertThat(e.importPriceCtKwh(100.0)).isCloseTo(30.56634, within(1e-9));
+            assertThat(e.importPriceCtKwh(-20.0)).isCloseTo(16.28634, within(1e-9));
+            assertThat(e.importPriceCtKwh(0.0)).isCloseTo(18.66634, within(1e-9));
+            assertThat(e.importPriceCtKwh(null)).isNull();
+        }
+    }
+
+    @Test
+    void ustAppliesToTheSpotShareTooAndZeroUstComposesNet() {
+        SlotEconomics e = new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "dynamisch", null, null, null, null),
+                        SHEET),
+                EegRates.defaults(), Map.of());
+        // NOT spot + taxed components (28.66634) - the whole sum is taxed.
+        assertThat(e.importPriceCtKwh(100.0)).isNotEqualTo(10.0 + 15.686 * 1.19);
+        // C&I with Vorsteuer-Abzug: ust 0 composes the net sum.
+        SlotEconomics net = new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "dynamisch", null, null, null, null),
+                        new SlotEconomics.SupplyPrice(7.6, 2.05, 1.59, 2.946, 1.5, 0.0)),
+                EegRates.defaults(), Map.of());
+        assertThat(net.importPriceCtKwh(100.0)).isCloseTo(25.686, within(1e-9));
+    }
+
+    @Test
+    void maintainedSheetReplacesTheSammelaufschlagButNeverTouchesFest() {
+        // dynamisch with BOTH a Sammelaufschlag and a sheet: the sheet wins.
+        SlotEconomics dynamisch = new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "dynamisch", 18.0, null, null, null),
+                        SHEET),
+                EegRates.defaults(), Map.of());
+        assertThat(dynamisch.importPriceCtKwh(100.0)).isCloseTo(30.56634, within(1e-9));
+        // fest stays the all-in price - the sheet is ignored (never
+        // double-counted), exactly like pricing.py.
+        SlotEconomics fest = new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "fest", 30.0, null, null, null),
+                        SHEET),
+                EegRates.defaults(), Map.of());
+        assertThat(fest.importPriceCtKwh(100.0)).isEqualTo(30.0);
+        assertThat(fest.importPriceCtKwh(null)).isEqualTo(30.0);
+    }
+
+    @Test
+    void allNullSheetBehavesLikeNoRowAndKeepsTheLegacyModel() {
+        SlotEconomics.SupplyPrice empty =
+                new SlotEconomics.SupplyPrice(null, null, null, null, null, 19.0);
+        SlotEconomics dynamisch = new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "dynamisch", 18.0, null, null, null),
+                        empty),
+                EegRates.defaults(), Map.of());
+        assertThat(dynamisch.importPriceCtKwh(100.0)).isCloseTo(28.0, within(1e-9));
+        SlotEconomics ohne = new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "ohne", null, null, null, null),
+                        empty),
+                EegRates.defaults(), Map.of());
+        assertThat(ohne.importPriceCtKwh(100.0)).isEqualTo(10.0);
+    }
+
+    @Test
+    void mirroredDefaultComponentsFlagStandsInOnlyWithoutSheetAndAufschlag() {
+        // Flag ON + ohne/no sheet: the researched default set composes.
+        SlotEconomics ohne = new SlotEconomics(
+                site("eigenverbrauch", false, "ohne", null, null, null, null),
+                EegRates.defaults(), Map.of(), true);
+        assertThat(ohne.importPriceCtKwh(100.0)).isCloseTo(30.56634, within(1e-9));
+        // Flag ON + dynamisch with a maintained Aufschlag: operator data wins.
+        SlotEconomics aufschlag = new SlotEconomics(
+                site("eigenverbrauch", false, "dynamisch", 18.0, null, null, null),
+                EegRates.defaults(), Map.of(), true);
+        assertThat(aufschlag.importPriceCtKwh(100.0)).isCloseTo(28.0, within(1e-9));
+        // Flag ON + fest: untouched.
+        SlotEconomics fest = new SlotEconomics(
+                site("eigenverbrauch", false, "fest", 30.0, null, null, null),
+                EegRates.defaults(), Map.of(), true);
+        assertThat(fest.importPriceCtKwh(100.0)).isEqualTo(30.0);
+        // Flag OFF (the default constructor): bare spot - the rollout state.
+        SlotEconomics off = new SlotEconomics(
+                site("eigenverbrauch", false, "ohne", null, null, null, null),
+                EegRates.defaults(), Map.of());
+        assertThat(off.importPriceCtKwh(100.0)).isEqualTo(10.0);
     }
 
     // ---- export value: Direktvermarktung (Marktprämie) ------------------------
@@ -188,7 +294,7 @@ class SlotEconomicsTest {
         // Battery-less site (no efficiency/wear) -> all null.
         SlotEconomics noBattery = new SlotEconomics(
                 new SiteEconomics("eigenverbrauch", false, "ohne", null, null,
-                        null, null, null, null),
+                        null, null, null, null, null),
                 EegRates.defaults(), Map.of());
         assertThat(noBattery.storedEnergyValuesCtKwh(List.of(10.0), List.of(5.0)).get(0))
                 .isNull();

@@ -185,7 +185,7 @@ class _SitesCursor:
     def __init__(
         self, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
         max_feed_in=None, leistungspreis=None, abrechnung="jahr",
-        peak_reserve=None,
+        peak_reserve=None, supply_row=None,
     ) -> None:
         self._wear_ct = wear_ct
         self._backup_reserve = backup_reserve
@@ -195,6 +195,10 @@ class _SitesCursor:
         self._leistungspreis = leistungspreis
         self._abrechnung = abrechnung
         self._peak_reserve = peak_reserve
+        # None = no site_supply_price row (the LEFT JOIN yields NULLs);
+        # else a 7-tuple (netzentgelt, stromsteuer, konzession, umlagen,
+        # vertrieb, ust, komponenten_stand).
+        self._supply_row = supply_row
         self._rows: list = []
 
     def __enter__(self):
@@ -213,6 +217,14 @@ class _SitesCursor:
         assert "s.max_feed_in_kw" in sql  # the FK1 feed-in cap is read too
         assert "s.leistungspreis_eur_kw" in sql  # the PS-1 module is read too
         assert "s.peak_reserve_soc_pct" in sql  # the PS-2 reserve is read too
+        # The structured Bezugspreis sheet is read too (site_supply_price):
+        assert "LEFT JOIN site_supply_price ssp" in sql
+        assert "ssp.netzentgelt_arbeitspreis_ct" in sql
+        supply = (
+            (SITE,) + self._supply_row
+            if self._supply_row is not None
+            else (None,) * 8
+        )
         self._rows = [
             (
                 TENANT, SITE, uuid4(), "DE-LU",
@@ -223,6 +235,7 @@ class _SitesCursor:
                 self._max_feed_in,
                 self._leistungspreis, self._abrechnung, self._peak_reserve,
             )
+            + supply
         ]
 
     def fetchall(self):
@@ -232,6 +245,7 @@ class _SitesCursor:
 def _wire_sites(
     monkeypatch, wear_ct, backup_reserve=None, soc_min=None, soc_max=None,
     max_feed_in=None, leistungspreis=None, abrechnung="jahr", peak_reserve=None,
+    supply_row=None,
 ):
     class _Conn:
         def __enter__(self):
@@ -243,7 +257,7 @@ def _wire_sites(
         def cursor(self):
             return _SitesCursor(
                 wear_ct, backup_reserve, soc_min, soc_max, max_feed_in,
-                leistungspreis, abrechnung, peak_reserve,
+                leistungspreis, abrechnung, peak_reserve, supply_row,
             )
 
     monkeypatch.setitem(
@@ -299,6 +313,45 @@ def test_peak_shaving_columns_resolve_to_site_and_battery_params(monkeypatch):
     assert site.leistungspreis_eur_kw == 120.0
     assert site.abrechnung_leistung == "monat"
     assert site.battery.peak_reserve_pct == 40.0
+
+
+def test_supply_price_row_resolves_to_the_site_tariff(monkeypatch):
+    from datetime import date as _date
+
+    # No site_supply_price row (LEFT JOIN NULLs) -> supply_price is None =
+    # the legacy import model, byte-identically (rollout rule).
+    _wire_sites(monkeypatch, None)
+    [site] = load_battery_sites("postgresql://fake")
+    assert site.tariff.supply_price is None
+
+    # A maintained row lands on the SiteTariff with every component + USt.
+    stand = _date(2026, 1, 1)
+    _wire_sites(
+        monkeypatch, None,
+        supply_row=(7.6, 2.05, 1.59, 2.946, 1.5, 19.0, stand),
+    )
+    [site] = load_battery_sites("postgresql://fake")
+    supply = site.tariff.supply_price
+    assert supply is not None
+    assert supply.netzentgelt_arbeitspreis_ct == 7.6
+    assert supply.stromsteuer_ct == 2.05
+    assert supply.konzessionsabgabe_ct == 1.59
+    assert supply.umlagen_ct == 2.946
+    assert supply.vertriebsaufschlag_ct == 1.5
+    assert supply.ust_pct == 19.0
+    assert supply.komponenten_stand == stand
+    assert supply.components_ct_kwh() == pytest.approx(15.686)
+
+    # A row with partial NULL components maps them as None (contribute 0).
+    _wire_sites(
+        monkeypatch, None,
+        supply_row=(7.6, None, None, 2.946, None, 0.0, None),
+    )
+    [site] = load_battery_sites("postgresql://fake")
+    supply = site.tariff.supply_price
+    assert supply.stromsteuer_ct is None
+    assert supply.ust_pct == 0.0
+    assert supply.components_ct_kwh() == pytest.approx(10.546)
 
 
 def test_backup_reserve_column_resolves_to_the_battery_params(monkeypatch):

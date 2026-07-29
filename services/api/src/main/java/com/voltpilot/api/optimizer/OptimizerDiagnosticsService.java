@@ -110,7 +110,8 @@ public class OptimizerDiagnosticsService {
         }
         List<SlotRow> rows = repo.slots(site.siteId(), run);
         Map<LocalDate, MarketValue> marketValues = marketValuesFor(site, rows);
-        SlotEconomics economics = new SlotEconomics(siteEconomics(site), eegRates, marketValues);
+        SlotEconomics economics = new SlotEconomics(siteEconomics(site), eegRates, marketValues,
+                properties.defaultSupplyComponents());
 
         List<Double> importCt = new ArrayList<>(rows.size());
         List<Double> exportCt = new ArrayList<>(rows.size());
@@ -247,7 +248,23 @@ public class OptimizerDiagnosticsService {
                 site.pvCommissionedOn(),
                 toDouble(site.pvCapacityKwp()),
                 roundtrip,
-                wearCt);
+                wearCt,
+                supplyPrice(site));
+    }
+
+    /** The site's structured supply-price sheet, or null without a row (the
+     * legacy import model - mirrors inputs.load_battery_sites). */
+    private static SlotEconomics.SupplyPrice supplyPrice(SiteContext site) {
+        if (!site.hasSupplyPrice()) {
+            return null;
+        }
+        return new SlotEconomics.SupplyPrice(
+                toDouble(site.netzentgeltArbeitspreisCt()),
+                toDouble(site.stromsteuerCt()),
+                toDouble(site.konzessionsabgabeCt()),
+                toDouble(site.umlagenCt()),
+                toDouble(site.vertriebsaufschlagCt()),
+                site.ustPct() != null ? site.ustPct().doubleValue() : 19.0);
     }
 
     private Map<LocalDate, MarketValue> marketValuesFor(SiteContext site, List<SlotRow> rows) {

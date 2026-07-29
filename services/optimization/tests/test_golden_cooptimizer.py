@@ -246,3 +246,51 @@ def test_the_suite_has_its_documented_scenarios():
         "merchant-arbitrage-winter",
         "peak-shaving-ci",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Rollout invariance of the structured Bezugspreis (site_supply_price)
+# ---------------------------------------------------------------------------
+
+# Each golden fixture's committed import series embodies the SiteTariff shape
+# it was generated from (generate_scenarios.py): the flat 21-ct retail day,
+# the dynamisch spot+Aufschlag households/C&I, and the bare-spot (None) merchant
+# scenarios. None = SiteTariff without a supply-price row.
+GOLDEN_TARIFFS = {
+    "excel-reference-day": ("fest", 21.0),
+    "eeg-household-pv-summer": ("dynamisch", 18.0),
+    "merchant-arbitrage-winter": ("ohne", None),
+    "peak-shaving-ci": ("dynamisch", 15.0),
+    "dv-negative-prices": ("dynamisch", 17.0),
+    "grid-limit-14a": ("ohne", None),
+    "custom-soc-band-reserves": ("dynamisch", 19.0),
+    "kitchen-sink-all-modules": ("dynamisch", 16.0),
+}
+
+
+@pytest.mark.parametrize("path", SCENARIO_FILES, ids=SCENARIO_IDS)
+def test_supply_price_rollout_is_byte_identical_without_a_maintained_row(
+    path, monkeypatch
+):
+    """The site_supply_price rollout rule, proven against the golden suite:
+    WITHOUT a maintained components row and with
+    OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS off, ``pricing.import_prices``
+    reproduces every golden scenario's committed import series EXACTLY (``==``
+    on the float lists, no tolerance). The import series is the solver's only
+    pricing input on that side, and the two solvers are deterministic over it
+    (pinned by test_cooptimizer_reproduces_v1_on_golden_scenario +
+    test_fixtures_match_the_generator), so identical series = byte-identical
+    plans for every existing site. The dynamisch-with-NULL-Aufschlag legacy
+    case (bare spot + the new S1 warning) is pinned in test_pricing.py.
+    """
+    from voltpilot_optimization.pricing import SiteTariff, import_prices
+
+    monkeypatch.delenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", raising=False)
+    doc = json.loads(path.read_text())
+    tarif_art, param = GOLDEN_TARIFFS[path.stem]
+    tariff = SiteTariff(tarif_art=tarif_art, tarif_param_ct_kwh=param)
+    assert tariff.supply_price is None  # no row = the legacy model
+    spot = doc["series"]["prices_eur_mwh"]
+    committed = doc["series"]["import_price_eur_mwh"]
+    expected = committed if committed is not None else spot
+    assert import_prices(tariff, spot) == expected
