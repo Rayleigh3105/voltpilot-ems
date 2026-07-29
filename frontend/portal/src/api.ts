@@ -258,6 +258,14 @@ export interface ScheduleSlot {
    */
   pvKw: number | null;
   /**
+   * Load (consumption) forecast the slot planned with (kW,
+   * `schedule.load_kw`). Rendered together with `pvKw` as the two forecast
+   * lines over the Fahrplan bars - they EXPLAIN the plan ("warum hält er
+   * abends? da liegt die Nachtlast"). Null on rows without a persisted load
+   * input; the line is then simply absent, never a fabricated 0.
+   */
+  loadKw: number | null;
+  /**
    * The slot's role in the plan (the "Warum"-layer, design report
    * vp-fahrplan-why-design §5.1/§6): abregeln | reserve_halten | warten |
    * pv_speichern | guenstig_laden | spitze_kappen | verkaufen |

@@ -172,6 +172,93 @@ export function socRangeLine(slots: { socPct: number | null }[]): string | null 
     : `Geplanter Ladestand: ${pct(range.min)} bis ${pct(range.max)} im Tagesverlauf.`;
 }
 
+// ---- Forecast lines: PV + Verbrauch over the plan (captain 2026-07-29) ------
+
+/**
+ * The two forecast INPUTS the optimizer planned each slot with (`schedule.pv_kw`
+ * / `schedule.load_kw`). They are drawn as thin dotted lines over the battery
+ * bars because they EXPLAIN the plan: "warum hält er abends? da liegt die
+ * Nachtlast", "warum lädt er mittags? da ist die PV-Spitze".
+ *
+ * The labels ARE the echarts series names AND the legend keys, so a legend
+ * toggle maps to a hidden series without a second mapping table.
+ */
+export const PV_FORECAST_LABEL = 'PV-Prognose';
+export const LOAD_FORECAST_LABEL = 'Verbrauchsprognose';
+
+export interface ForecastLine {
+  /** The series/legend name (see the two label constants). */
+  label: string;
+  /** One point per slot, `null` where the run carries no value for it. */
+  values: (number | null)[];
+  /** True when at least ONE slot carries a value - else the line is omitted. */
+  present: boolean;
+  /** Largest value on the line (for the kW axis headroom); null when absent. */
+  maxKw: number | null;
+}
+
+export interface ForecastLines {
+  pv: ForecastLine;
+  load: ForecastLine;
+}
+
+function forecastLine(label: string, raw: (number | null | undefined)[]): ForecastLine {
+  const values = raw.map((v) => {
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  });
+  const present = values.some((v) => v != null);
+  const nums = values.filter((v): v is number => v != null);
+  return { label, values, present, maxKw: nums.length ? Math.max(...nums) : null };
+}
+
+/**
+ * The PV + load forecast series of a plan, slot-aligned with the bars.
+ *
+ * Honesty: an absent value stays absent (`null` -> gap in the line), never a
+ * fabricated 0 - a pre-feature run simply has no forecast lines, and a plan
+ * that carries only PV shows only the PV line.
+ */
+export function forecastLines(
+  slots: { pvKw?: number | null; loadKw?: number | null }[],
+): ForecastLines {
+  return {
+    pv: forecastLine(PV_FORECAST_LABEL, slots.map((s) => s.pvKw)),
+    load: forecastLine(LOAD_FORECAST_LABEL, slots.map((s) => s.loadKw)),
+  };
+}
+
+/**
+ * Toggle one series in the hidden set (the legend rows are toggle buttons).
+ * Returns a NEW set so React state updates are honest.
+ */
+export function toggleSeries(hidden: ReadonlySet<string>, label: string): Set<string> {
+  const next = new Set(hidden);
+  if (!next.delete(label)) next.add(label);
+  return next;
+}
+
+/**
+ * Upper bound of the chart's kW axis: the battery peak, plus whatever VISIBLE
+ * forecast line reaches higher (a 60-kW PV forecast must not be clipped by a
+ * 15-kW battery scale), plus the optional peak-shaving target. Always >= 1 so
+ * an all-idle plan still gets a sane axis.
+ */
+export function powerAxisMax(
+  batteryPeakKw: number,
+  lines: ForecastLines,
+  hidden: ReadonlySet<string>,
+  targetKw?: number | null,
+): number {
+  const candidates = [batteryPeakKw, 1];
+  for (const line of [lines.pv, lines.load]) {
+    if (line.present && !hidden.has(line.label) && line.maxKw != null) candidates.push(line.maxKw);
+  }
+  if (targetKw != null && targetKw > 0) candidates.push(targetKw);
+  return Math.max(...candidates);
+}
+
 // ---- The chart takeaway sentence (audit F3) ---------------------------------
 
 /** One piece of the takeaway sentence; `strong` renders bold in the chart. */

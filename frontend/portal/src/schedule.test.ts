@@ -3,15 +3,19 @@ import {
   bankedValueLine,
   chargeKind,
   curtailmentToday,
+  forecastLines,
   daypart,
   hasGridCharge,
   HORIZON_HINT,
   horizonHint,
+  LOAD_FORECAST_LABEL,
   planCoversNow,
   planHourBars,
   planInsightParts,
   planSentence,
   planStaleNote,
+  powerAxisMax,
+  PV_FORECAST_LABEL,
   PLAN_STALE_AFTER_MS,
   PV_SOURCE_DEADBAND_KW,
   savingsTodayEur,
@@ -20,6 +24,7 @@ import {
   socRange,
   socRangeLine,
   todaySlots,
+  toggleSeries,
 } from './schedule';
 import { chartTheme, type ChartTheme } from './chartTheme';
 import { NBSP } from './format';
@@ -688,5 +693,63 @@ describe('slotBarColor', () => {
     const real = chartTheme();
     expect(real.battDischarge).toBe('#2C5282');
     expect(real.battDischarge).not.toBe(real.discharge);
+  });
+});
+
+// ---- Forecast lines (PV + Verbrauch) over the Fahrplan ----------------------
+
+describe('forecastLines / powerAxisMax / toggleSeries', () => {
+  it('builds both slot-aligned series and reports their peaks', () => {
+    const f = forecastLines([
+      { pvKw: 0, loadKw: 1.2 },
+      { pvKw: 4.5, loadKw: 0.8 },
+      { pvKw: 2, loadKw: 3.4 },
+    ]);
+    expect(f.pv.label).toBe(PV_FORECAST_LABEL);
+    expect(f.load.label).toBe(LOAD_FORECAST_LABEL);
+    expect(f.pv.values).toEqual([0, 4.5, 2]);
+    expect(f.load.values).toEqual([1.2, 0.8, 3.4]);
+    expect(f.pv.present).toBe(true);
+    expect(f.load.present).toBe(true);
+    expect(f.pv.maxKw).toBe(4.5);
+    expect(f.load.maxKw).toBe(3.4);
+  });
+
+  it('keeps a missing value ABSENT (a gap), never a fabricated 0', () => {
+    const f = forecastLines([{ pvKw: 3, loadKw: null }, { pvKw: null, loadKw: undefined }]);
+    expect(f.pv.values).toEqual([3, null]);
+    expect(f.load.values).toEqual([null, null]);
+    // A line nothing carries is simply not present - the chart omits it.
+    expect(f.load.present).toBe(false);
+    expect(f.load.maxKw).toBeNull();
+  });
+
+  it('is absent on a pre-feature run that carries neither input', () => {
+    const f = forecastLines([{ pvKw: null }, {}]);
+    expect(f.pv.present).toBe(false);
+    expect(f.load.present).toBe(false);
+  });
+
+  it('lifts the kW axis so a big PV forecast is not clipped by a small battery', () => {
+    const f = forecastLines([{ pvKw: 60, loadKw: 12 }]);
+    const none = new Set<string>();
+    expect(powerAxisMax(15, f, none)).toBe(60);
+    // Hiding the PV line re-tightens the scale to what is still visible.
+    expect(powerAxisMax(15, f, new Set([PV_FORECAST_LABEL]))).toBe(15);
+    // The peak-shaving Ziel still participates.
+    expect(powerAxisMax(15, f, new Set([PV_FORECAST_LABEL, LOAD_FORECAST_LABEL]), 180)).toBe(180);
+    // An all-idle plan without forecasts keeps a sane axis.
+    expect(powerAxisMax(0, forecastLines([{}]), none)).toBe(1);
+  });
+
+  it('toggles one series without touching the others (new set each time)', () => {
+    const a = toggleSeries(new Set<string>(), PV_FORECAST_LABEL);
+    expect([...a]).toEqual([PV_FORECAST_LABEL]);
+    const b = toggleSeries(a, LOAD_FORECAST_LABEL);
+    expect(b.has(PV_FORECAST_LABEL)).toBe(true);
+    expect(b.has(LOAD_FORECAST_LABEL)).toBe(true);
+    const c = toggleSeries(b, PV_FORECAST_LABEL);
+    expect([...c]).toEqual([LOAD_FORECAST_LABEL]);
+    expect(a.has(LOAD_FORECAST_LABEL)).toBe(false); // untouched original
   });
 });

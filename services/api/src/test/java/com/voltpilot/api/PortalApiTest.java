@@ -1006,6 +1006,9 @@ class PortalApiTest {
         // The PV forecast input rides along so the portal's pv-aware
         // "Laden aus dem Netz" derivation (FK3) has its per-slot PV.
         assertThat(((Number) first.get("pvKw")).doubleValue()).isEqualTo(2.0);
+        // ...and so does the LOAD forecast input, so the Fahrplan can draw the
+        // two forecast lines (PV + Verbrauch) that explain the plan.
+        assertThat(((Number) first.get("loadKw")).doubleValue()).isEqualTo(3.0);
         // Fahrplan-Warum null discipline: rows written before the why columns
         // (or with the explain layer off) serve nulls - the portal degrades
         // byte-identically to today, never a fabricated explanation.

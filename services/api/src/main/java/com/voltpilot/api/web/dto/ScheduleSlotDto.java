@@ -24,6 +24,13 @@ import java.util.List;
  * charge BEYOND the slot's available PV - not merely charging while
  * importing. Null on rows without a persisted PV input.
  *
+ * <p>{@code loadKw} is the LOAD (consumption) forecast input the slot planned
+ * with ({@code schedule.load_kw}). Together with {@code pvKw} it is what the
+ * portal draws as the two forecast lines over the Fahrplan bars, so the plan
+ * EXPLAINS itself ("warum hält er abends? da liegt die Nachtlast"). Null on
+ * rows without a persisted load input - the line is then simply absent, never
+ * a fabricated 0.
+ *
  * <p><b>Fahrplan-Warum fields</b> (migration V20260723030000, design scout
  * vp-fahrplan-why-design §5.1) - the optimizer-persisted decision facts:
  * {@code slotRole} is the §6 vocabulary id (warten | pv_speichern |
@@ -50,6 +57,7 @@ public record ScheduleSlotDto(
         BigDecimal baselineCostEur,
         BigDecimal curtailKw,
         BigDecimal pvKw,
+        BigDecimal loadKw,
         String slotRole,
         List<String> slotFlags,
         BigDecimal storedValueCtKwh,

@@ -548,7 +548,9 @@ export function FahrplanSection({ site }: { site: Site }) {
             zeigen, wann er lädt (grün = eigener Solarstrom
             {hasGridCharge(slots) ? ', türkis = günstig aus dem Netz' : ''}) oder entlädt (blau),
             die dünne blaue Linie den Börsen-Strompreis dahinter. Kein Balken heißt: der Speicher
-            hält. Alles links vom „Jetzt“ ist bereits vergangen.
+            hält. Die gepunkteten Linien zeigen die Prognosen, mit denen geplant wurde – Ihre
+            erwartete Solarerzeugung und Ihren erwarteten Verbrauch; über die Legende lassen sie
+            sich ein- und ausblenden. Alles links vom „Jetzt“ ist bereits vergangen.
           </ChartSubtitle>
         )}
         {/* F2: a plan older than ~2 h is not today's plan - say so ABOVE the

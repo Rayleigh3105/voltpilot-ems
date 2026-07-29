@@ -27,6 +27,13 @@ export interface LegendItem {
   unit?: string;
   /** Drawn shape - defaults to a bar swatch. */
   shape?: SwatchShape;
+  /**
+   * Whether THIS row is a toggle when the legend has an `onToggle` (default
+   * true, so legends that toggle everything are unchanged). Set `false` for a
+   * row that does not map to one switchable series - e.g. the Fahrplan's three
+   * bar colours, which are per-slot states of ONE series.
+   */
+  toggleable?: boolean;
 }
 
 function Swatch({ color, shape = 'bar' }: { color: string; shape?: SwatchShape }) {
@@ -55,7 +62,7 @@ export function ChartLegend({
   onToggle,
 }: {
   items: LegendItem[];
-  hidden?: Set<string>;
+  hidden?: ReadonlySet<string>;
   onToggle?: (label: string) => void;
 }) {
   return (
@@ -69,7 +76,7 @@ export function ChartLegend({
             {it.unit && <span className="vp-cl-unit">{it.unit}</span>}
           </>
         );
-        if (onToggle) {
+        if (onToggle && it.toggleable !== false) {
           return (
             <button
               key={it.label}
