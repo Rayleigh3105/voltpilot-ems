@@ -858,6 +858,46 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
         "422": { description: The type is not a guided type (battery-hybrid / house-load / free installer type). }
+  /api/v1/sites/{siteId}/v2-entities/{entityId}/edge-source:
+    post:
+      tags: [topology]
+      summary: Re-pin an entity to a currently reported edge source ("Wieder verbinden").
+      description: >
+        The repair lever for identity churn and crossed pins
+        (vp-vier-erzeuger-p9): a source deleted + re-added on the device got a
+        new id, the entity's pin went stale (orphanedPin on the entities
+        surface) and the same physical device showed up as "Neues Gerät
+        gefunden". Re-pinning RECONNECTS the existing component (label, kWp,
+        history) instead of minting a duplicate. Customer-safe: it moves only
+        the presentation-level source link of the caller's OWN site (RLS) -
+        never guard config or control rights. The target source must be
+        currently reported by the device and role-compatible with the entity's
+        type; a source already pinned to another entity is refused (409); a
+        stale de-entitied point holding the pin is released (kWp delta) so the
+        pin can move. Idempotent for the same sourceId.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceId]
+              properties:
+                sourceId: { type: string, description: The edge source id from local_setup. }
+      responses:
+        "200":
+          description: The re-pinned entity.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/V2Entity" }
+        "400": { description: Missing sourceId. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or entity not found for this tenant. }
+        "409": { description: The source is already pinned to another entity. }
+        "422": { description: The source is not currently reported, or its role does not fit the entity's type. }
   /api/v1/sites/{siteId}/entity-strategies:
     get:
       tags: [topology]
@@ -2012,9 +2052,16 @@ paths:
     delete:
       tags: [admin]
       summary: Remove a v2 entity (v1-backed rows only lose their entity config).
+      description: >
+        purgePoint=true additionally deletes the measurement point outright -
+        its kWp is released from the aggregate asset.pv and its edge-source pin
+        is freed. The duplicate-cleanup lever (vp-vier-erzeuger-p9): without it
+        a wrongly adopted duplicate keeps its pinned point and reappears as
+        "Neues Gerät gefunden" forever.
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: pointId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: purgePoint, in: query, required: false, schema: { type: boolean, default: false } }
       responses:
         "204": { description: Removed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -3171,6 +3218,16 @@ components:
                   typeLabel: { type: string }
                   control: { type: boolean }
                   syncStatus: { type: string, enum: [in_sync, pending, missing_on_device, unreported, never_pushed] }
+                  edgeSourceId: { type: string, nullable: true, description: The edge source this entity was adopted from (U2 pin). }
+                  orphanedPin:
+                    type: boolean
+                    nullable: true
+                    description: >
+                      true = the pinned edge source is no longer among the
+                      device's reported sources (identity churn - offer
+                      re-pin via /v2-entities/{entityId}/edge-source); false =
+                      pinned + reported; null = no pin, or no local view
+                      reported yet (never an unprovable orphan claim).
                   observed:
                     type: object
                     nullable: true

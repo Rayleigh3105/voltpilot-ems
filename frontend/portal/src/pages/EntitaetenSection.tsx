@@ -310,9 +310,22 @@ function EntityCard({
 
   async function remove() {
     if (!window.confirm(`Entität „${entity.label ?? entity.typeLabel}" wirklich entfernen?`)) return;
+    // Composed rows keep their measurement point by default (re-adoption
+    // re-composes it). The second confirm is the duplicate-CLEANUP lever
+    // (vp-vier-erzeuger-p9): purging deletes the point outright, releases its
+    // kWp from the aggregate and frees its source pin.
+    const composedPoint = entity.role === 'pv-generation' || entity.role === 'grid-meter';
+    const purgePoint =
+      composedPoint &&
+      window.confirm(
+        'Auch den Messpunkt endgültig löschen?\n\nOK = endgültig löschen (kWp wird aus der '
+          + 'Anlagen-Summe entfernt, die Quelle wird für eine neue Zuordnung frei).\n'
+          + 'Abbrechen = nur die Entität entfernen; der Messpunkt bleibt für eine erneute '
+          + 'Übernahme erhalten.',
+      );
     setBusy(true);
     try {
-      await entitiesApi.remove(siteId, entity.id);
+      await entitiesApi.remove(siteId, entity.id, { purgePoint });
       onDeleted();
     } catch {
       setBusy(false);

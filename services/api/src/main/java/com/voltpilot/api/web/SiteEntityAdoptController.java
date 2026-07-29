@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.entities.EntityObservedRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityTypeCatalog;
@@ -63,12 +64,17 @@ public class SiteEntityAdoptController {
     private final SiteRepository sites;
     private final EntityRegistryService service;
     private final EntityTypeCatalog catalog;
+    private final EntityObservedRepository observed;
+    private final EntityRegistryRepository registry;
 
     public SiteEntityAdoptController(SiteRepository sites, EntityRegistryService service,
-            EntityTypeCatalog catalog) {
+            EntityTypeCatalog catalog, EntityObservedRepository observed,
+            EntityRegistryRepository registry) {
         this.sites = sites;
         this.service = service;
         this.catalog = catalog;
+        this.observed = observed;
+        this.registry = registry;
     }
 
     @PostMapping("/adopt")
@@ -88,6 +94,77 @@ public class SiteEntityAdoptController {
                 request.registryUnitId());
         return new AdoptedEntityDto(row.id(), row.entityType(), row.role(), row.label(),
                 row.deviceId());
+    }
+
+    /** Re-pin body: the CURRENTLY reported edge source the entity should follow. */
+    public record RepinRequest(@Size(max = 128) String sourceId) {}
+
+    /**
+     * RE-PIN an existing entity to a currently reported edge source - the
+     * repair for identity churn and crossed pins (vp-vier-erzeuger-p9): a
+     * source deleted + re-added on the device got a new id, the entity's pin
+     * went stale ({@code orphanedPin}) and the same physical device showed up
+     * as "Neues Gerät gefunden"; re-pinning RECONNECTS the existing component
+     * instead of minting a duplicate. Safe for customers: it only moves the
+     * presentation-level source link of their OWN site (RLS), never guard
+     * config or control rights. The target must be currently reported by the
+     * device and role-compatible with the entity's type.
+     */
+    @PostMapping("/{entityId}/edge-source")
+    @Transactional
+    public AdoptedEntityDto repin(@PathVariable UUID siteId, @PathVariable UUID entityId,
+            @Valid @RequestBody RepinRequest request) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        String sourceId = request.sourceId() == null ? "" : request.sourceId().trim();
+        if (sourceId.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceId ist erforderlich.");
+        }
+        EntityObservedRepository.ObservedRow local = observed.forSite(siteId).stream()
+                .filter(r -> "local".equals(r.source())
+                        && ("local:" + sourceId).equals(r.entityId()))
+                .findFirst().orElse(null);
+        if (local == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Dieses Gerät meldet sich derzeit nicht - verbinden ist nur mit einem "
+                            + "aktuell gemeldeten Gerät möglich.");
+        }
+        EntityRegistryRepository.EntityRow current = registry.entityForSite(siteId, entityId);
+        if (current == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+        requireRoleFit(local.edgeRole(), current.entityType());
+        EntityRegistryRepository.EntityRow row = service.repin(siteId, entityId, sourceId);
+        if (row == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+        return new AdoptedEntityDto(row.id(), row.entityType(), row.role(), row.label(),
+                row.deviceId());
+    }
+
+    /**
+     * The reported role must fit the entity's type: a producer follows a
+     * pv-generation source, a grid-meter a grid-meter source, a consumer-
+     * category type a consumer source. A report without a role passes (older
+     * edge) - the human confirmed the match in the dialog.
+     */
+    private void requireRoleFit(String edgeRole, String entityType) {
+        if (edgeRole == null || edgeRole.isBlank() || entityType == null) {
+            return;
+        }
+        EntityTypeCatalog.EntityType def = catalog.find(entityType);
+        boolean fits = switch (edgeRole) {
+            case "pv-generation" -> "producer".equals(entityType);
+            case "grid-meter" -> "grid-meter".equals(entityType);
+            case "consumer" -> def != null && "consumer".equals(def.category());
+            default -> true;
+        };
+        if (!fits) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Dieses Gerät meldet eine andere Rolle als die Komponente - bitte als "
+                            + "neue Komponente übernehmen.");
+        }
     }
 
     /**

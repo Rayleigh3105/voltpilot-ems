@@ -13,6 +13,7 @@ import {
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
+import { reconnectCandidates } from '../komponenten';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { EntitaetenSection } from './EntitaetenSection';
 import '../components/AnlagenModell.css';
@@ -226,6 +227,7 @@ export function AnlagenModellSection({ site }: { site: Site }) {
         <ZuordnenDialog
           siteId={site.id}
           source={assign}
+          candidates={data ? reconnectCandidates(assign, data.entities) : []}
           onClose={() => setAssign(null)}
           onAssigned={() => {
             setAssign(null);
@@ -317,6 +319,12 @@ function ComponentBox({
       {/* F1 caveat: a Fronius/producer is read through the inverter, so an empty
           per-device chart is expected, not alarming. */}
       {component.measuredVia && <span className="vp-wmeasured">{component.measuredVia}</span>}
+      {/* Identity churn (vp-vier-erzeuger-p9): the pinned source vanished from
+          the device's report - honest amber hint; the Zuordnen dialog of the
+          re-appeared device offers "Wieder verbinden". */}
+      {component.orphaned && (
+        <span className="vp-worphan">nicht mehr mit einem gemeldeten Gerät verbunden</span>
+      )}
       {component.channels.length > 0 && (
         <span className="vp-wchips">
           {component.channels.map((ch) => (

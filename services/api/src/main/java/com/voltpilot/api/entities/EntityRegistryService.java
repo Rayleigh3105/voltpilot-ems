@@ -631,17 +631,78 @@ public class EntityRegistryService {
      */
     @Transactional
     public boolean deleteEntity(UUID siteId, UUID pointId) {
+        return deleteEntity(siteId, pointId, false);
+    }
+
+    /**
+     * Remove an entity, optionally PURGING its measurement point outright
+     * ({@code purgePoint} - the duplicate-cleanup lever, vp-vier-erzeuger-p9):
+     * the default keep-the-point behavior deliberately leaves a composed row
+     * (with its source pin and its kWp contribution) in place so a re-adoption
+     * re-composes it, but that also means a WRONGLY created duplicate (the
+     * Pilsting ghost) reappears as "Neues Gerät gefunden" forever. The purge
+     * releases the point's kWp from the aggregate {@code asset.pv} and deletes
+     * the row, freeing its edge source for a clean adoption or re-pin.
+     */
+    @Transactional
+    public boolean deleteEntity(UUID siteId, UUID pointId, boolean purgePoint) {
         EntityRow row = repo.entityForSite(siteId, pointId);
         if (row == null) {
             return false;
         }
-        if ("pv-generation".equals(row.role()) || "grid-meter".equals(row.role())) {
+        if (purgePoint) {
+            releaseStalePoint(TenantContext.get(), siteId, row);
+        } else if ("pv-generation".equals(row.role()) || "grid-meter".equals(row.role())) {
             repo.clearEntityConfig(pointId);
         } else {
             repo.deletePoint(pointId);
         }
         pushRegistryBestEffort(siteId);
         return true;
+    }
+
+    /**
+     * RE-PIN an entity to a (different) edge source - the repair lever for
+     * identity churn (vp-vier-erzeuger-p9): a source that was deleted +
+     * re-added on the device minted a new id, so the entity's pin points into
+     * the void ({@code orphanedPin}) and the SAME physical device shows up as
+     * "Neues Gerät gefunden". Re-pinning reconnects the existing entity (its
+     * label, kWp, history) instead of adopting a duplicate; it also repairs a
+     * crossed pin (entity A pinned to device B's source).
+     *
+     * <p>Pin mechanics only - the caller validates that the target source is
+     * currently reported and role-compatible (it holds the observed rows). A
+     * target source already pinned to ANOTHER entity is refused with 409; a
+     * stale DE-ENTITIED point holding the pin (deleted composed entity) is
+     * released (kWp delta + point delete) so the pin can move - the same rule
+     * {@link #adopt} applies. Returns null when the entity is not visible
+     * under the caller's tenant (404 upstream). Idempotent for the same
+     * source id.
+     */
+    @Transactional
+    public EntityRow repin(UUID siteId, UUID entityId, String edgeSourceId) {
+        EntityRow entity = repo.entityForSite(siteId, entityId);
+        if (entity == null) {
+            return null;
+        }
+        if (edgeSourceId == null || edgeSourceId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "sourceId ist erforderlich.");
+        }
+        if (edgeSourceId.equals(entity.edgeSourceId())) {
+            return entity;
+        }
+        EntityRow holder = repo.pointByEdgeSource(siteId, edgeSourceId);
+        if (holder != null && !holder.id().equals(entityId)) {
+            if (holder.entityType() != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Dieses Gerät ist bereits mit einer anderen Komponente verbunden. "
+                                + "Bitte lösen Sie zuerst die bestehende Verbindung.");
+            }
+            releaseStalePoint(TenantContext.get(), siteId, holder);
+        }
+        repo.setEdgeSource(entityId, edgeSourceId);
+        return repo.entityForSite(siteId, entityId);
     }
 
     private static BigDecimal orZero(BigDecimal value) {

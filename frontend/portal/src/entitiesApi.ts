@@ -109,10 +109,31 @@ export const entitiesApi = {
       body: JSON.stringify(body),
     }),
 
-  /** Remove an entity (v1-backed rows only lose their entity config). */
-  remove: (siteId: string, pointId: string) =>
-    request<void>(`/api/v1/admin/sites/${siteId}/v2-entities/${pointId}`, {
-      method: 'DELETE',
+  /**
+   * Remove an entity (v1-backed rows only lose their entity config).
+   * `purgePoint` additionally deletes the measurement point outright - kWp
+   * released from the aggregate, source pin freed - the duplicate-cleanup
+   * lever (vp-vier-erzeuger-p9): without it a wrongly adopted duplicate
+   * reappears as "Neues Gerät gefunden" forever.
+   */
+  remove: (siteId: string, pointId: string, opts?: { purgePoint?: boolean }) =>
+    request<void>(
+      `/api/v1/admin/sites/${siteId}/v2-entities/${pointId}`
+        + (opts?.purgePoint ? '?purgePoint=true' : ''),
+      { method: 'DELETE' },
+    ),
+
+  /**
+   * Re-pin an entity to a currently reported edge source ("Wieder verbinden",
+   * vp-vier-erzeuger-p9). CUSTOMER route (RLS-fenced, own site only) - the
+   * repair for identity churn/crossed pins: reconnects the existing component
+   * instead of adopting a duplicate. 409 = source already pinned elsewhere,
+   * 422 = not reported / role mismatch.
+   */
+  repin: (siteId: string, entityId: string, sourceId: string) =>
+    request<AdminEntity>(`/api/v1/sites/${siteId}/v2-entities/${entityId}/edge-source`, {
+      method: 'POST',
+      body: JSON.stringify({ sourceId }),
     }),
 
   /**

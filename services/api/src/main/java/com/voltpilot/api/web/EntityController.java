@@ -52,9 +52,13 @@ public class EntityController {
     public record ObservedDto(String health, Instant lastTelemetryAt, JsonNode channels,
             String appliedType, Instant reportedAt) {}
 
+    /** {@code orphanedPin}: tri-state - true = the pinned edge source is no
+     *  longer among the device's reported sources (identity churn; offer
+     *  re-pin), false = pinned + reported, null = no pin or no local view
+     *  reported yet (never claim an orphan the report cannot prove). */
     public record EntityDto(UUID id, String entityType, String typeLabel, String role,
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
-            String syncStatus, ObservedDto observed, String edgeSourceId) {}
+            String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin) {}
 
     /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
      *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
@@ -125,8 +129,10 @@ public class EntityController {
         }
 
         List<LocalSetupDto> localSetup = new ArrayList<>();
+        java.util.Set<String> reportedSourceIds = new java.util.HashSet<>();
         for (ObservedRow row : localRows) {
             String sourceId = row.entityId().replaceFirst("^local:", "");
+            reportedSourceIds.add(sourceId);
             localSetup.add(new LocalSetupDto(sourceId, row.entityType(), row.edgeRole(),
                     row.edgeBrand(), row.edgeModel(), row.label(), row.reportedAt(),
                     adoptedBySource.get(sourceId)));
@@ -135,6 +141,10 @@ public class EntityController {
         List<EntityDto> entities = new ArrayList<>();
         for (EntityRow row : rows) {
             ObservedRow obs = byEntity.remove(row.id().toString());
+            // Orphan verdict only when the device actually reported a local
+            // view - an edge that never sent local_setup proves nothing.
+            Boolean orphanedPin = row.edgeSourceId() == null || localRows.isEmpty() ? null
+                    : !reportedSourceIds.contains(row.edgeSourceId());
             entities.add(new EntityDto(row.id(), row.entityType(),
                     catalog.labelFor(row.entityType()), row.role(), row.label(), row.control(),
                     row.deviceId(), parse(row.capabilitiesJson()), parse(row.guardConfigJson()),
@@ -143,7 +153,7 @@ public class EntityController {
                             : new ObservedDto(obs.health(), obs.lastTelemetryAt(),
                                     parse(obs.channelsJson()), obs.entityType(),
                                     obs.reportedAt()),
-                    row.edgeSourceId()));
+                    row.edgeSourceId(), orphanedPin));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());

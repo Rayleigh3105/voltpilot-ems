@@ -2404,6 +2404,30 @@ class AdminApiTest {
         assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
                 + "' AND type = 'pv' AND is_primary")).isEqualTo(40.0); // 37 - 27 + 30
 
+        // PR 3 (vp-vier-erzeuger-p9): purgePoint=true is the duplicate-cleanup
+        // lever - the point is deleted OUTRIGHT (not just de-entitied), its kWp
+        // leaves the aggregate and its source pin is freed, so the source is
+        // cleanly adoptable again as a FRESH row (no 500 from the unique index).
+        assertThat(rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/" + producerId
+                        + "?purgePoint=true"),
+                HttpMethod.DELETE, new HttpEntity<>(adminTenant), String.class)
+                .getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv' AND is_primary")).isEqualTo(10.0); // 40 - 30, back to seed
+        assertThat(queryDouble("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "' AND edge_source_id = 'pv-2'")).as("point gone, pin freed").isEqualTo(0.0);
+        ResponseEntity<Map<String, Object>> afterPurge = rest.exchange(
+                url("/api/v1/admin/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "pv-2", "entityType", "producer",
+                        "capacityKwp", 27), adminTenant),
+                new ParameterizedTypeReference<>() {});
+        assertThat(afterPurge.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(afterPurge.getBody().get("id")).as("a FRESH row after the purge")
+                .isNotEqualTo(producerId);
+        assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv' AND is_primary")).isEqualTo(37.0); // 10 + 27
+
         // battery-hybrid is never adopted as a source (422; a FRESH source id so
         // the idempotency short-circuit does not mask the type refusal).
         assertThat(rest.exchange(

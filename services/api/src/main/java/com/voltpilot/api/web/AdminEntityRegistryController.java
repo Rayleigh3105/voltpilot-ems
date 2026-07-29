@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -137,12 +138,19 @@ public class AdminEntityRegistryController {
         return toDto(row);
     }
 
-    /** Remove an entity (v1-backed rows only lose their entity config). */
+    /**
+     * Remove an entity (v1-backed rows only lose their entity config).
+     * {@code purgePoint=true} additionally deletes the measurement point
+     * outright - kWp released from the aggregate, source pin freed - the
+     * duplicate-cleanup lever (vp-vier-erzeuger-p9); without it a wrongly
+     * adopted duplicate reappears as "Neues Gerät gefunden" forever.
+     */
     @DeleteMapping("/{pointId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID siteId, @PathVariable UUID pointId) {
+    public void delete(@PathVariable UUID siteId, @PathVariable UUID pointId,
+            @RequestParam(defaultValue = "false") boolean purgePoint) {
         requireSite(siteId);
-        if (!service.deleteEntity(siteId, pointId)) {
+        if (!service.deleteEntity(siteId, pointId, purgePoint)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
         }
     }
