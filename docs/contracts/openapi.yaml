@@ -3188,8 +3188,15 @@ components:
             properties:
               id: { type: string }
               kind: { type: string, example: inverter }
-              label: { type: string, nullable: true }
+              role: { type: string, nullable: true, example: pv-generation }
+              brand: { type: string, nullable: true }
+              model: { type: string, nullable: true }
+              label:
+                type: string
+                nullable: true
+                description: The operator-given name only - never a brand/model/role concatenation.
               reportedAt: { type: string, format: date-time }
+              adoptedEntityId: { type: string, nullable: true }
         staleOnDevice:
           type: array
           items: { type: string }

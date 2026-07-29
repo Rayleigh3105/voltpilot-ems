@@ -26,6 +26,11 @@ describe('deviceName · ONE name per box', () => {
   it('falls back to brand + SHORT model, brand properly cased', () => {
     expect(deviceName({ brand: 'deye', model: 'SUN-30K-SG01HP3-EU' })).toBe('Deye SUN-30K');
     expect(deviceName({ brand: 'Fronius' })).toBe('Fronius');
+    // Transport-suffixed catalog brand tokens read as their customer brand -
+    // a raw id like "fronius_sunspec" never surfaces (vp-vier-erzeuger-p9).
+    expect(deviceName({ brand: 'fronius_sunspec', model: 'Eco 27' })).toBe('Fronius Eco 27');
+    expect(deviceName({ brand: 'generic_modbus' })).toBe('Modbus-Gerät');
+    expect(deviceName({ brand: 'go-e', model: 'Charger 3' })).toBe('go-e Charger 3');
   });
 
   it('then the stored label without its qualifier, then the type label', () => {

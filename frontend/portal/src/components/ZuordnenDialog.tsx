@@ -5,6 +5,7 @@ import { Drawer } from '../../designsystem/components/shell/Drawer';
 import { Input } from '../../designsystem/components/forms/Input';
 import { api, ApiError, type TopologyRoleAssignment } from '../api';
 import { entitiesApi } from '../entitiesApi';
+import { deviceName } from '../entityLabel';
 import { suggestEntityType, type AdoptableSource } from '../rollen';
 import { ADOPT_FORBIDDEN_MSG } from '../setupPath';
 
@@ -59,7 +60,12 @@ export function ZuordnenDialog({
   onAssigned: () => void;
 }) {
   const guided = guidedFor(source);
-  const [label, setLabel] = useState(source.label ?? '');
+  // The name suggestion goes through the ONE deviceName chain (operator name >
+  // brand + short model) - NEVER a raw stored string, which is how the Pilsting
+  // "fronius_sunspec · …" ghost got its persisted name (vp-vier-erzeuger-p9).
+  const [label, setLabel] = useState(
+    deviceName({ edgeLabel: source.label, brand: source.brand, model: source.model }) ?? '',
+  );
   const [kwp, setKwp] = useState('');
   const [see, setSee] = useState('');
   const [maxPowerKw, setMaxPowerKw] = useState('');

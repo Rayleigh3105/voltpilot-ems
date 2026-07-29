@@ -688,6 +688,10 @@ export interface EntityLocalSetup {
   /** The reported role of a source (pv-generation | grid-meter | consumer), else null. */
   role: string | null;
   brand: string | null;
+  /** The reported model (own field since the label stopped carrying it; optional
+   *  so an older backend without the field stays type-compatible). */
+  model?: string | null;
+  /** The operator-given name only - never a brand/model/role concatenation. */
   label: string | null;
   reportedAt: string;
   /** Non-null when a v2 entity was already adopted from this source. */

@@ -176,7 +176,7 @@ public class EntityStatusListener {
                 rows.add(new ObservedRow(deviceId, e.getKey(), "registry",
                         o.path("entity_type").asText(null), o.path("health").asText(null), null,
                         optInstant(o, "last_telemetry_at"), revision,
-                        arrayJson(o.get("channels")), reportedAt, null, null));
+                        arrayJson(o.get("channels")), reportedAt, null, null, null));
             }
         }
         JsonNode localSetup = entities.get("local_setup");
@@ -186,9 +186,16 @@ public class EntityStatusListener {
                 if (id.isBlank()) {
                     continue;
                 }
+                // The label stays CLEAN (the operator-given name only); brand/
+                // model/role travel in their own columns. The former localLabel
+                // concatenation ("brand · model · label · role") leaked raw
+                // catalog ids into every customer surface AND - via the adoption
+                // dialogs' prefill - into persisted entity names (the Pilsting
+                // ghost, scout vp-vier-erzeuger-p9).
                 rows.add(new ObservedRow(deviceId, "local:" + id, "local",
-                        l.path("kind").asText(null), null, localLabel(l), null, revision, null,
-                        reportedAt, textOrNull(l, "role"), textOrNull(l, "brand")));
+                        l.path("kind").asText(null), null, textOrNull(l, "label"), null, revision,
+                        null, reportedAt, textOrNull(l, "role"), textOrNull(l, "brand"),
+                        textOrNull(l, "model")));
             }
         }
         TenantContext.set(tenantId);
@@ -203,21 +210,6 @@ public class EntityStatusListener {
         } finally {
             TenantContext.clear();
         }
-    }
-
-    /** A readable one-line label of a local_setup entry (brand/model/role). */
-    private static String localLabel(JsonNode l) {
-        StringBuilder sb = new StringBuilder();
-        for (String field : new String[] {"brand", "model", "label", "role"}) {
-            String v = l.path(field).asText("");
-            if (!v.isBlank()) {
-                if (sb.length() > 0) {
-                    sb.append(" · ");
-                }
-                sb.append(v);
-            }
-        }
-        return sb.isEmpty() ? null : sb.toString();
     }
 
     private static String textOrNull(JsonNode node, String field) {

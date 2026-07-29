@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { channelLabel, commandLabel } from '../channels';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
+import { deviceName } from '../entityLabel';
 import {
   actuateCommands,
   entitiesSummary,
@@ -881,7 +882,11 @@ function AdoptDrawer({
       ? suggested
       : adoptable[0]?.type ?? '';
   const [entityType, setEntityType] = useState(initial);
-  const [label, setLabel] = useState(source.label ?? '');
+  // Prefill via the ONE deviceName chain - never a raw stored string (the
+  // Pilsting ghost-name bug, vp-vier-erzeuger-p9).
+  const [label, setLabel] = useState(
+    deviceName({ edgeLabel: source.label, brand: source.brand, model: source.model }) ?? '',
+  );
   const [maxPowerKw, setMaxPowerKw] = useState('');
   const [kwp, setKwp] = useState('');
   const [see, setSee] = useState('');
