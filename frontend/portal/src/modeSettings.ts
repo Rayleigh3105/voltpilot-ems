@@ -183,11 +183,33 @@ function firstActiveClaimer(def: ModeSettingDef, activeKinds: Set<ModeKind>): Mo
   return winner;
 }
 
+/** Der Anlagen-Kontext, gegen den eine Einstellung auf RELEVANZ geprüft wird. */
+export interface SettingContext {
+  plantKind?: string | null;
+}
+
+/**
+ * Ist die Einstellung für DIESE Anlage überhaupt wirksam? Genau eine kennt
+ * heute so eine Regel: der **anzulegende Wert** ist der Vertragsfakt der
+ * EEG-Marktprämie und wird ausschließlich für eine DIREKTVERMARKTUNGS-Anlage
+ * verrechnet (`EarningsRepository` / `pricing.py`, dieselbe Bedingung, die auch
+ * die Geld-Flächen prüfen). Auf einer Eigenverbrauchs-Anlage — etwa nach einer
+ * Umstellung, bei der der Markt-Modus über Netzladen + dynamischen Tarif
+ * weiterläuft — wäre das Feld eine wirkungslose Eingabe, also erscheint es
+ * nicht. Ohne Kontext (ein Aufrufer ohne Anlagen-Daten) wird NICHTS gefiltert.
+ */
+export function settingRelevant(def: ModeSettingDef, ctx?: SettingContext | null): boolean {
+  if (!ctx) return true;
+  if (def.id === 'anzulegender-wert') return ctx.plantKind === 'direktvermarktung';
+  return true;
+}
+
 /**
  * Die Einstellungen, die dieser AKTIVE Modus in seinem Container zeigt — in der
  * Anzeige-Reihenfolge des Modus-Manifests, DEDUPLIZIERT: eine von mehreren
  * aktiven Modi beanspruchte Einstellung erscheint nur unter dem ranghöchsten
- * aktiven Claimer (erst-aktiver-gewinnt über `MODE_RANK`).
+ * aktiven Claimer (erst-aktiver-gewinnt über `MODE_RANK`) — und gefiltert auf
+ * das, was für diese Anlage wirksam ist (`settingRelevant`).
  *
  * Ist der Modus NICHT aktiv (nicht in `activeModes`), gibt es keine
  * Einstellungen — die Owner-Regel „ein ausgeschalteter Modus zeigt seine
@@ -196,11 +218,13 @@ function firstActiveClaimer(def: ModeSettingDef, activeKinds: Set<ModeKind>): Mo
 export function settingsForMode(
   mode: ActiveMode,
   activeModes: ActiveMode[] | null | undefined,
+  ctx?: SettingContext | null,
 ): ModeSettingDef[] {
   const activeKinds = activeKindsOf(activeModes);
   return (mode.manifest.settings ?? [])
     .map((id) => SETTING_DEFS[id])
-    .filter((def) => firstActiveClaimer(def, activeKinds) === mode.kind);
+    .filter((def) => firstActiveClaimer(def, activeKinds) === mode.kind)
+    .filter((def) => settingRelevant(def, ctx));
 }
 
 /**

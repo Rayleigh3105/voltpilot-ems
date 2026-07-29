@@ -12,15 +12,20 @@
  * Pure + deterministic (the `betriebsart.ts`/`surface.ts` precedent) — no
  * React, no network. The three laws it encodes:
  *
- * 1. **The base group is fixed and ordered.** Four areas, always, in the same
- *    order. Only Steuerung carries a badge (the active-mode count from the M0
- *    read-model), and a 0/unknown count renders NO badge — never a
- *    discouraging "0".
+ * 1. **The base group is fixed and ordered.** The four areas are always there,
+ *    always in the same order. Only Steuerung carries a badge (the active-mode
+ *    count from the M0 read-model), and a 0/unknown count renders NO badge —
+ *    never a discouraging "0". Since the Captain hotfix 2026-07-29 the group
+ *    additionally carries the BASE deep views of the M0 read-model
+ *    (`surface.base.deepViews`): **Fahrplan** right behind Steuerung on every
+ *    plant with a storage, **Marktpreise** at the end on every plant with a
+ *    spot tariff — both derived, never hardcoded, and reachable without a
+ *    single active mode. See `baseSurface` for the why.
  * 2. **Mode groups are a PROJECTION, never a hardcoded list.** A group exists
  *    for every `activeModes(site)` entry whose manifest contributes at least
- *    one deep view that is not already a base area — so Marktpreise +
- *    Prognosequalität exist exactly while the market mode is active, and a
- *    plain self-consumption plant never sees them.
+ *    one deep view that is not already a base area — so Prognosequalität exists
+ *    exactly while the market mode is active, and a plain self-consumption
+ *    plant never sees it.
  * 3. **Nothing is orphaned.** Every `AnlagenSub` is reachable from the sidebar,
  *    a mode group or the phone Mehr sheet; `anlageNav.test.ts` enforces it, so
  *    a new sub must be mounted somewhere or the test fails.
@@ -87,23 +92,36 @@ export const HELP_TEXT =
   'Ihr VoltPilot-Team hilft Ihnen weiter. Wenden Sie sich an Ihren Ansprechpartner bei VoltPilot — ' +
   'auch wenn Sie Ihr Passwort zurücksetzen möchten oder ein Gerät sich nicht meldet.';
 
-/** The four base areas — fixed, ordered, always present. (The former
- *  Live-Daten area merged into the cockpit — Option A; `#/anlage/{id}/live`
- *  redirects there.) */
-function baseItems(badge: number | null): SidebarItem[] {
-  return [
+/**
+ * The four base areas — fixed, ordered, always present (the former Live-Daten
+ * area merged into the cockpit — Option A; `#/anlage/{id}/live` redirects
+ * there) — PLUS the base deep views the M0 read-model derived for this plant.
+ *
+ * Placement is deliberate: **Fahrplan sits directly behind Steuerung** (it is
+ * what the storage is going to do — the same neighbourhood a customer looks in
+ * when they ask "what does VoltPilot do with my battery?"), **Marktpreise
+ * closes the group** (market data, the one outlier that is not an Anlage
+ * subpage but a top-level page). Neither is a loose special route: both are
+ * regular entries of the Anlage group, so they also travel into the phone
+ * „Mehr"-sheet on their own.
+ */
+function baseItems(badge: number | null, baseViews: readonly DeepViewId[]): SidebarItem[] {
+  const items: SidebarItem[] = [
     { key: 'cockpit', label: 'Cockpit', icon: 'dashboard', target: { kind: 'sub', sub: null }, badge: null },
     { key: 'historie', label: 'Historie', icon: 'history', target: { kind: 'sub', sub: 'historie' }, badge: null },
     { key: 'steuerung', label: 'Steuerung', icon: 'zap', target: { kind: 'sub', sub: 'steuerung' }, badge },
-    {
-      key: 'anlagen-modell',
-      label: 'Anlagen-Modell',
-      icon: 'layers',
-      // M6 built the three-column plant model behind this route.
-      target: { kind: 'sub', sub: 'modell' },
-      badge: null,
-    },
   ];
+  if (baseViews.includes('fahrplan')) items.push(viewItem('fahrplan'));
+  items.push({
+    key: 'anlagen-modell',
+    label: 'Anlagen-Modell',
+    icon: 'layers',
+    // M6 built the three-column plant model behind this route.
+    target: { kind: 'sub', sub: 'modell' },
+    badge: null,
+  });
+  if (baseViews.includes('marktpreise')) items.push(viewItem('marktpreise'));
+  return items;
 }
 
 /**
@@ -121,16 +139,19 @@ function footItems(): SidebarItem[] {
 }
 
 /**
- * Which deep views become their OWN nav entry. Everything else a manifest
- * lists is already a base area (`live`, `geraete`, `telemetrie-historie`,
- * `erloes-historie`, `flow-editor`) or deliberately has no nav entry any more
- * (`wetter` becomes a cockpit card + drill-in in M2; its route stays and the
- * phone sheet keeps it reachable).
+ * Which deep views become their OWN nav entry — ONE definition, used by the
+ * base group AND the mode groups, so a view carries the same label/icon/target
+ * wherever it is mounted. Everything else a manifest lists is already an area
+ * of its own (`live`, `geraete`, `telemetrie-historie`, `erloes-historie`,
+ * `flow-editor`) or deliberately has no nav entry any more (`wetter` becomes a
+ * cockpit card + drill-in in M2; its route stays and the phone sheet keeps it
+ * reachable).
+ *
+ * OPEN(O2, BUILD.md §8) is CLOSED: the owner decided on 2026-07-29 that every
+ * plant with a storage carries the Fahrplan as a BASE entry — the derivation
+ * lives in `baseSurface`, this map only says how the entry looks.
  */
-const MODE_VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
-  // OPEN(O2, BUILD.md §8): Fahrplan currently belongs to the market mode. If
-  // the owner decides every plant with a battery plan should carry it as a BASE
-  // entry, move this one line into `baseItems` — nothing else changes.
+const VIEW_ITEMS: Partial<Record<DeepViewId, Omit<SidebarItem, 'badge'>>> = {
   fahrplan: { key: 'fahrplan', label: 'Fahrplan', icon: 'calendar', target: { kind: 'sub', sub: 'fahrplan' } },
   marktpreise: {
     key: 'marktpreise',
@@ -164,24 +185,42 @@ const MODE_TONES: Record<ModeKind, ModeTone> = {
   automation: 'automation',
 };
 
+function viewItem(view: DeepViewId): SidebarItem {
+  // Nur mit einer Definition aufgerufen (die Aufrufer prüfen vorher).
+  return { ...(VIEW_ITEMS[view] as Omit<SidebarItem, 'badge'>), badge: null };
+}
+
 /**
  * The navigable sidebar entries a set of deep views contributes — the mode
  * group's items, and the SAME list the v3.1-M2 „Modus-Container" renders as its
  * „Ansichten dieses Modus" section. Only deep views that become their OWN nav
- * entry appear (see `MODE_VIEW_ITEMS`); base areas contribute none.
+ * entry appear (see `VIEW_ITEMS`); base areas contribute none.
+ *
+ * `baseViews` (the M0 `surface.base.deepViews`) is subtracted: a view the base
+ * group already carries must not appear a second time under a mode — and the
+ * container must not claim it "becomes available once you switch the mode on"
+ * when it is reachable right now. Omitted = nothing subtracted (the pre-hotfix
+ * behaviour).
  */
-export function modeViewItems(deepViews: readonly DeepViewId[]): SidebarItem[] {
+export function modeViewItems(
+  deepViews: readonly DeepViewId[],
+  baseViews: readonly DeepViewId[] = [],
+): SidebarItem[] {
   const items: SidebarItem[] = [];
   for (const view of deepViews) {
-    const def = MODE_VIEW_ITEMS[view];
-    if (def) items.push({ ...def, badge: null });
+    if (baseViews.includes(view)) continue;
+    if (VIEW_ITEMS[view]) items.push(viewItem(view));
   }
   return items;
 }
 
-function modeGroup(mode: ActiveMode, taken: Set<string>): SidebarGroup | null {
+function modeGroup(
+  mode: ActiveMode,
+  taken: Set<string>,
+  baseViews: readonly DeepViewId[],
+): SidebarGroup | null {
   const items: SidebarItem[] = [];
-  for (const item of modeViewItems(mode.manifest.deepViews)) {
+  for (const item of modeViewItems(mode.manifest.deepViews, baseViews)) {
     if (taken.has(item.key)) continue;
     taken.add(item.key);
     items.push(item);
@@ -210,12 +249,14 @@ export function anlageSidebar(
   const badge =
     typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
 
+  const baseViews = surface?.base?.deepViews ?? [];
   const groups: SidebarGroup[] = [
-    { key: 'base', label: BASE_GROUP_LABEL, tone: null, items: baseItems(badge) },
+    { key: 'base', label: BASE_GROUP_LABEL, tone: null, items: baseItems(badge, baseViews) },
   ];
-  const taken = new Set<string>();
+  // Was die Basis schon trägt, taucht unter keinem Modus ein zweites Mal auf.
+  const taken = new Set<string>(groups[0].items.map((i) => i.key));
   for (const mode of surface?.modes ?? []) {
-    const group = modeGroup(mode, taken);
+    const group = modeGroup(mode, taken, baseViews);
     if (group) groups.push(group);
   }
   return { groups, foot: footItems() };
@@ -251,10 +292,10 @@ export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
 
 /**
  * The "Mehr" sheet: everything the bottom bar does not carry, grouped and
- * colour-tagged exactly like the sidebar — the base remainder (empty since the
- * bar carries all four areas), the mode groups, and a trailing group with the
- * entries that have no sidebar home (Wetter) plus the foot (Einstellungen ·
- * Hilfe & Kontakt).
+ * colour-tagged exactly like the sidebar — the base remainder (the bar carries
+ * the four fixed areas, so this is exactly the derived base views: Fahrplan and
+ * Marktpreise), the mode groups, and a trailing group with the entries that
+ * have no sidebar home (Wetter) plus the foot (Einstellungen · Hilfe & Kontakt).
  */
 export function moreSheetItems(sidebar: AnlageSidebar): SidebarGroup[] {
   const inBottom = new Set<string>(BOTTOM_KEYS);

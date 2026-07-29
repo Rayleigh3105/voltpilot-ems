@@ -15,7 +15,11 @@
  *      read-only (v3.1-M4 trägt ihre Werte nach).
  *   → Voraussetzungen (`requirementChips`, M3-Copy wörtlich)
  *   → Ansichten dieses Modus (dieselben Einträge wie die Sidebar-Gruppe —
- *      EINE Ableitung `manifest.deepViews` → `modeViewItems`)
+ *      EINE Ableitung `manifest.deepViews` → `modeViewItems`; was das
+ *      BASISSURFACE ohnehin trägt (Fahrplan bei Speicher, Marktpreise bei
+ *      Börsentarif) wird abgezogen, sonst behauptete der Abschnitt „wird
+ *      verfügbar, sobald Sie den Modus einschalten" über eine Ansicht, die
+ *      längst in der Navigation steht)
  *   → Herkunft / „Flow öffnen" (`originLine`, „Flow öffnen" nur mit auflösbarem
  *      `flowRef` — §1.2-Ehrlichkeit).
  *
@@ -57,7 +61,7 @@ import {
   type SiteProfile,
 } from '../profiles';
 import { contributionRows } from '../steuerungArea';
-import { modeDeepViews, type ActiveMode, type ModeKind } from '../surface';
+import { modeDeepViews, type ActiveMode, type DeepViewId, type ModeKind } from '../surface';
 import { NetzladenBadge } from './NetzladenBadge';
 import { SpeicherschonungField } from './SpeicherschonungField';
 import { NetzladenField } from './NetzladenField';
@@ -86,6 +90,14 @@ export interface ModusContainerProps {
   mode: ActiveMode | null;
   /** Alle aktiven Modi — für die erst-aktiver-gewinnt-Dedupe der Einstellungen. */
   activeModes: ActiveMode[];
+  /**
+   * Die BASIS-Ansichten der Anlage (`surface.base.deepViews`). Sie werden von
+   * „Ansichten dieses Modus" abgezogen: der Fahrplan einer Speicher-Anlage ist
+   * modus-unabhängig erreichbar, also darf der Container ihn nicht als
+   * Freischaltung dieses Modus ausweisen. Fehlt die Angabe, wird nichts
+   * abgezogen (Verhalten wie vor dem Hotfix).
+   */
+  baseViews?: readonly DeepViewId[];
   /** Die Anlage (Quelle der Site-Einstellungen + Ziel der Voll-Repräsentation). */
   site: Site;
   /** Der Speicher-Asset der Anlage (null = keiner); Quelle der Speicherschonung. */
@@ -112,6 +124,7 @@ export function ModusContainer({
   profile,
   mode,
   activeModes,
+  baseViews = [],
   site,
   battery,
   earnings,
@@ -138,14 +151,17 @@ export function ModusContainer({
   const contrib = on && mode ? contributionRows(mode, earnings) : [];
 
   // Einstellungen — Owner-Korrektur: NUR bei AKTIVEM Modus, kein Teaser bei aus.
-  const settings = on && mode ? settingsForMode(mode, activeModes) : [];
+  // Der Anlagen-Kontext filtert zusätzlich alles heraus, was für DIESE Anlage
+  // wirkungslos wäre (der anzulegende Wert ist ein Direktvermarktungs-Fakt).
+  const settings = on && mode ? settingsForMode(mode, activeModes, { plantKind: site.plantKind }) : [];
 
   const requirements = requirementChips(profile);
 
   // Ansichten dieses Modus — dieselbe Ableitung wie die Sidebar-Gruppe. Bei
   // ausgeschaltetem Modus gibt es kein ActiveMode-Objekt, also die Views je Art.
+  // Was die Basis ohnehin trägt (Fahrplan/Marktpreise), wird abgezogen.
   const deepViews = mode?.manifest.deepViews ?? modeDeepViews(profile.id as ModeKind);
-  const views = modeViewItems(deepViews);
+  const views = modeViewItems(deepViews, baseViews);
 
   const origin = originLine(profile);
   const flowRef = mode?.flowRef ?? null;

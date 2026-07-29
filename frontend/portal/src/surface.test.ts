@@ -185,13 +185,16 @@ describe('Ausprägung: Privat-EMS', () => {
     expect(automations[0].flowRef?.flowId).toBe('f-hz');
   });
 
-  it('zeigt Telemetrie-Historie (base), aber NIRGENDS Marktpreise oder Prognose', () => {
+  it('zeigt Telemetrie-Historie UND Fahrplan (base), aber NIRGENDS Marktpreise oder Prognose', () => {
     const s = anlageSurface(PRIVAT);
     expect(s.deepViews).toContain('telemetrie-historie');
+    // Hotfix 2026-07-29: die Anlage hat einen Speicher, also plant der
+    // Optimierer für sie - der Fahrplan gehört ihr, ganz ohne Modus.
+    expect(s.deepViews).toContain('fahrplan');
+    // Fester Tarif, keine Vermarktung: Marktwissen bleibt aus.
     expect(s.deepViews).not.toContain('marktpreise');
     expect(s.deepViews).not.toContain('prognosequalitaet');
     expect(s.deepViews).not.toContain('lastspitzen');
-    expect(s.deepViews).not.toContain('fahrplan');
   });
 
   it('führt mit dem Energiefluss-Hub — kein Peak-Band, kein Handel-Block, kein EV-Block', () => {
@@ -449,7 +452,7 @@ describe('Ausprägung: Neu / leer', () => {
 
 describe('base(entities)', () => {
   it('enthält Status, Energiefluss, Geräte, Live und die Telemetrie-Historie', () => {
-    const base = baseSurface([BATTERY, PRODUCER]);
+    const base = baseSurface({ entities: [PRODUCER, GRID] });
     expect(base.hasEntities).toBe(true);
     expect(base.blocks.map((b) => b.id)).toEqual(['status', 'energiefluss', 'toolbox-pointer']);
     expect(base.deepViews).toEqual(['live', 'geraete', 'telemetrie-historie', 'wetter']);
@@ -458,7 +461,7 @@ describe('base(entities)', () => {
 
   it('nimmt frei gemappte Modbus-Kanäle als vollwertige Telemetrie auf (MB-M1)', () => {
     const modbus = entity('e-mb', 'modbus-generic', ['kessel_temp_c', 'zaehler_kwh']);
-    const base = baseSurface([BATTERY, modbus]);
+    const base = baseSurface({ entities: [BATTERY, modbus] });
     expect(base.telemetryChannels).toEqual([
       'battery_power_kw',
       'kessel_temp_c',
@@ -469,7 +472,7 @@ describe('base(entities)', () => {
   });
 
   it('verspricht keine Historie, wenn es keinen einzigen Kanal gibt', () => {
-    const base = baseSurface([{ id: 'e', entityType: 'wallbox', capabilities: null }]);
+    const base = baseSurface({ entities: [{ id: 'e', entityType: 'wallbox', capabilities: null }] });
     expect(base.hasEntities).toBe(true);
     expect(base.telemetryChannels).toEqual([]);
     expect(base.deepViews).not.toContain('telemetrie-historie');
@@ -478,6 +481,108 @@ describe('base(entities)', () => {
   it('dedupliziert und sortiert Kanäle deterministisch', () => {
     expect(telemetryChannels([PRODUCER, GRID, WALLBOX])).toEqual(['power_kw', 'pv_power_kw']);
     expect(telemetryChannels(null)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Der Captain-Hotfix 2026-07-29: Fahrplan + Marktpreise sind Basis
+// ---------------------------------------------------------------------------
+
+describe('base: der Fahrplan hängt am Speicher, nicht am Modus (Hotfix 2026-07-29)', () => {
+  /** Der GEMELDETE Vorfall: DV → Eigenverbrauch, fester Tarif, kein Modus mehr. */
+  const UMGESTELLT: AnlageSurfaceInput = {
+    signals: {
+      hasStorage: true,
+      hasPv: true,
+      hasControllableConsumer: false,
+      activeStrategyNodeTypes: [],
+      plantKind: 'eigenverbrauch',
+      hasLeistungspreis: false,
+    },
+    config: { plantKind: 'eigenverbrauch', tarifArt: 'fest', netzladenErlaubt: false },
+    flows: [],
+    entities: [BATTERY, PRODUCER],
+  };
+
+  it('hält den Fahrplan, obwohl KEIN einziger Modus mehr aktiv ist', () => {
+    const s = anlageSurface(UMGESTELLT);
+    expect(s.modes).toEqual([]);
+    expect(s.base.deepViews).toContain('fahrplan');
+    expect(s.deepViews).toContain('fahrplan');
+  });
+
+  it('zeigt einer Anlage OHNE Speicher keinen Fahrplan an der Basis', () => {
+    const ohneSpeicher = anlageSurface({
+      ...UMGESTELLT,
+      signals: { ...UMGESTELLT.signals!, hasStorage: false },
+      entities: [PRODUCER, GRID],
+    });
+    expect(ohneSpeicher.base.deepViews).not.toContain('fahrplan');
+  });
+
+  it('erkennt den Speicher auch dann, wenn die Profil-Antwort fehlt (fail-soft)', () => {
+    // `api.usageProfile` ist fail-soft; ohne diesen Rückfall fiele der Fahrplan
+    // bei einem Netz-Schluckauf aus der Navigation - genau die Fehlerklasse,
+    // die der Hotfix behebt. Die Regel ist dieselbe wie serverseitig
+    // (`topology.defaultRole`: soc_pct/battery_power_kw ⇒ Speicher).
+    expect(baseSurface({ entities: [BATTERY] }).deepViews).toContain('fahrplan');
+    expect(baseSurface({ entities: [entity('e', 'irgendwas', ['soc_pct'])] }).deepViews)
+      .toContain('fahrplan');
+    expect(baseSurface({ entities: [PRODUCER, GRID] }).deepViews).not.toContain('fahrplan');
+  });
+
+  it('zeigt Marktpreise bei dynamischem Tarif auch ohne Markt-Modus', () => {
+    const boersentarif = anlageSurface({
+      ...UMGESTELLT,
+      config: { ...UMGESTELLT.config, tarifArt: 'dynamisch' },
+    });
+    expect(boersentarif.modes).toEqual([]);
+    expect(boersentarif.base.deepViews).toContain('marktpreise');
+    // Prognosequalität + Erlös-Historie bleiben modusgebunden (feedback.md).
+    expect(boersentarif.deepViews).not.toContain('prognosequalitaet');
+    expect(boersentarif.deepViews).not.toContain('erloes-historie');
+  });
+
+  it('zeigt bei festem/keinem Tarif KEINE Marktpreise', () => {
+    expect(anlageSurface(UMGESTELLT).deepViews).not.toContain('marktpreise');
+    expect(
+      anlageSurface({ ...UMGESTELLT, config: { plantKind: 'eigenverbrauch' } }).deepViews,
+    ).not.toContain('marktpreise');
+  });
+
+  it('dedupliziert: der Markt-Modus doppelt die Basis-Ansichten nicht', () => {
+    const markt = anlageSurface({
+      ...UMGESTELLT,
+      config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
+    });
+    expect(hasMode(markt.modes, 'marktvermarktung')).toBe(true);
+    expect(markt.deepViews.filter((v) => v === 'fahrplan')).toHaveLength(1);
+    expect(markt.deepViews.filter((v) => v === 'marktpreise')).toHaveLength(1);
+  });
+
+  it('lässt eine Markt-Anlage OHNE Speicher ihren Fahrplan über den Modus behalten', () => {
+    // Reichweite wird nie kleiner: ein DV-Park ohne Batterie behält den Zugang,
+    // den er heute hat - er kommt dann eben aus dem Modus-Manifest.
+    const park = anlageSurface({
+      signals: {
+        hasStorage: false,
+        hasPv: true,
+        activeStrategyNodeTypes: [],
+        plantKind: 'direktvermarktung',
+      },
+      config: { plantKind: 'direktvermarktung', tarifArt: 'fest' },
+      entities: [PRODUCER],
+    });
+    expect(park.base.deepViews).not.toContain('fahrplan');
+    expect(park.deepViews).toContain('fahrplan');
+  });
+
+  it('erfindet auf einer nie migrierten Anlage nichts', () => {
+    // Weder Signale noch Entitäten ⇒ kein Speicher-Nachweis ⇒ keine neue Ansicht.
+    expect(anlageSurface({}).deepViews).toEqual([]);
+    expect(
+      anlageSurface({ config: { plantKind: 'eigenverbrauch', tarifArt: 'ohne' } }).deepViews,
+    ).toEqual([]);
   });
 });
 
@@ -559,9 +664,9 @@ describe('activeModes: Aktivierungsregeln', () => {
     expect(mode.manifest.steuerungCard.action).toBe('none');
     expect(mode.manifest.steuerungCard.subLine).toBe('In Vorbereitung.');
     // Ein Karten-Modus erzeugt keine Erlös-Komposition.
-    expect(cockpitBlocks(baseSurface([BATTERY]), activeModes(input)).map((b) => b.id)).not.toContain(
-      'erloes-komposition',
-    );
+    expect(
+      cockpitBlocks(baseSurface({ entities: [BATTERY] }), activeModes(input)).map((b) => b.id),
+    ).not.toContain('erloes-komposition');
   });
 
   it('zählt nur AKTIVE Flows — Entwürfe und stillgelegte Flows sind keine Modi', () => {
@@ -590,7 +695,7 @@ describe('activeModes: Aktivierungsregeln', () => {
 
 describe('Komposition', () => {
   it('blendet die Erlös-Komposition nur ein, wenn ein zugeordneter Strom existiert', () => {
-    const base = baseSurface([BATTERY]);
+    const base = baseSurface({ entities: [BATTERY] });
     expect(cockpitBlocks(base, []).map((b) => b.id)).not.toContain('erloes-komposition');
     expect(cockpitBlocks(base, activeModes(GEWERBE)).map((b) => b.id)).toContain(
       'erloes-komposition',
@@ -608,15 +713,18 @@ describe('Komposition', () => {
   });
 
   it('liefert ohne Entitäten auch mit aktiven Modi keine Cockpit-Blöcke', () => {
-    expect(cockpitBlocks(baseSurface([]), activeModes(GEWERBE))).toEqual([]);
+    expect(cockpitBlocks(baseSurface({ entities: [] }), activeModes(GEWERBE))).toEqual([]);
   });
 
   it('moneyStreams/deepViews arbeiten auf einer leeren Modus-Menge', () => {
     expect(moneyStreams([])).toEqual([]);
-    expect(deepViews(baseSurface([BATTERY]), [])).toEqual([
+    // Der Speicher bringt seit dem Hotfix 2026-07-29 den Fahrplan mit - ganz
+    // ohne Modus (die Ansichten stehen in der kanonischen Reihenfolge).
+    expect(deepViews(baseSurface({ entities: [BATTERY] }), [])).toEqual([
       'live',
       'geraete',
       'telemetrie-historie',
+      'fahrplan',
       'wetter',
     ]);
   });

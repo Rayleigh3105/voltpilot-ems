@@ -304,3 +304,63 @@ describe('SteuerungSection (Portal v3 M4)', () => {
     expect(screen.queryByRole('switch')).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Umstellung Direktvermarktung → Eigenverbrauch (Captain-Hotfix 2026-07-29)
+// ---------------------------------------------------------------------------
+
+describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustand', () => {
+  /** Netzladen + dynamischer Tarif: der Markt-Modus überlebt die Umstellung. */
+  const dv: Site = {
+    ...site,
+    plantKind: 'direktvermarktung',
+    tarifArt: 'dynamisch',
+    tarifParamCtKwh: 5,
+    netzladenErlaubt: true,
+    anzulegenderWertCtKwh: 8.11,
+  };
+  const ev: Site = { ...dv, plantKind: 'eigenverbrauch' };
+
+  async function openMarkt(target: Site) {
+    render(<SteuerungSection site={target} />);
+    const row = await screen.findByRole('button', { name: /Marktvermarktung öffnen/ });
+    fireEvent.click(row);
+    return screen.findByRole('button', { name: /Zur Steuerung/ });
+  }
+
+  it('weist den Fahrplan nicht als Freischaltung des Markt-Modus aus', async () => {
+    setup();
+    await openMarkt(dv);
+    const views = screen.getByLabelText('Ansichten dieses Modus');
+    // Fahrplan (Speicher) und Marktpreise (Börsentarif) trägt die Basis - der
+    // Container darf sie nicht als „wird verfügbar, sobald …" behaupten.
+    expect(views).not.toHaveTextContent('Fahrplan');
+    expect(views).not.toHaveTextContent('Marktpreise');
+    expect(views).toHaveTextContent('Prognosequalität');
+  });
+
+  it('zeigt den anzulegenden Wert nur solange die Anlage direkt vermarktet', async () => {
+    setup();
+    await openMarkt(dv);
+    expect(screen.getByText('Anzulegender Wert')).toBeInTheDocument();
+  });
+
+  it('lässt nach der Umstellung keine verwaiste Einstellung und keinen Fehler zurück', async () => {
+    setup();
+    const { container } = render(<SteuerungSection site={ev} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Marktvermarktung öffnen/ }));
+    await screen.findByRole('button', { name: /Zur Steuerung/ });
+
+    // Der Vertragsfakt der Marktprämie gilt nur für eine DV-Anlage.
+    expect(screen.queryByText('Anzulegender Wert')).toBeNull();
+    // Die übrigen Einstellungen des Containers bleiben erreichbar.
+    expect(screen.getByText('Netzladen des Speichers')).toBeInTheDocument();
+    expect(screen.getByText('Stromtarif')).toBeInTheDocument();
+    // Kein Fehlerzustand auf der Fläche.
+    expect(container.querySelector('.vp-flowed-notice.error')).toBeNull();
+
+    // Und zurück zu den zwei Kapseln, ohne Bruch.
+    fireEvent.click(screen.getByRole('button', { name: /Zur Steuerung/ }));
+    expect(await screen.findByRole('heading', { name: 'Automationen' })).toBeInTheDocument();
+  });
+});
