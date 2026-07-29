@@ -80,6 +80,11 @@ public class OptimizerDiagnosticsService {
      */
     public OptimizerDiagnosticsDto diagnose(SiteContext site, Instant generatedAt, LocalDate date) {
         UUID siteId = site.siteId();
+        // The effective import-price source is a SITE-level fact (independent of
+        // any run) - which rule the optimizer prices grid import with today
+        // (report vp-nacht-bezug-e7 Stufe 2 admin echo).
+        String priceSource = new SlotEconomics(siteEconomics(site), eegRates, Map.of(),
+                properties.defaultSupplyComponents()).importPriceSource();
         Instant run = null;
         if (generatedAt != null) {
             run = repo.resolveRun(siteId, generatedAt);
@@ -106,7 +111,7 @@ public class OptimizerDiagnosticsService {
         }
         if (run == null) {
             return dto(site, null, null, day, firstRunDate, lastRunDate, availableRuns,
-                    true, List.of());
+                    priceSource, true, List.of());
         }
         List<SlotRow> rows = repo.slots(site.siteId(), run);
         Map<LocalDate, MarketValue> marketValues = marketValuesFor(site, rows);
@@ -166,7 +171,7 @@ public class OptimizerDiagnosticsService {
                     splitFlags(row.slotFlags())));
         }
         return dto(site, repo.planId(site.siteId(), run), run, day, firstRunDate, lastRunDate,
-                availableRuns, anyApproximated, slots);
+                availableRuns, priceSource, anyApproximated, slots);
     }
 
     /** The persisted binding CSV as a list (null stays null - pre-feature row). */
@@ -180,7 +185,7 @@ public class OptimizerDiagnosticsService {
 
     private OptimizerDiagnosticsDto dto(SiteContext site, UUID planId, Instant run,
             LocalDate availableRunsDate, LocalDate firstRunDate, LocalDate lastRunDate,
-            List<Instant> availableRuns, boolean storedValueIsApproximation,
+            List<Instant> availableRuns, String priceSource, boolean storedValueIsApproximation,
             List<OptimizerDiagnosticsSlotDto> slots) {
         return new OptimizerDiagnosticsDto(
                 site.siteId(),
@@ -200,6 +205,7 @@ public class OptimizerDiagnosticsService {
                 batteryContext(site),
                 activeLoadModel,
                 activePvModel,
+                priceSource,
                 storedValueIsApproximation,
                 slots);
     }

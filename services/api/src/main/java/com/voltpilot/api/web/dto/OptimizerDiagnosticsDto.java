@@ -39,6 +39,15 @@ import java.util.UUID;
  * range so the UI can bound its date picker (all three null for a site
  * without any plan). The hypertable keeps every run - the former unscoped
  * newest-30 list only ever reached ~7.5 hours back at the 15-min MPC cadence.
+ *
+ * <p>{@code priceSource} echoes WHICH rule sets the site's grid-import price
+ * today (report vp-nacht-bezug-e7 Stufe 2 admin echo): {@code fest} (flat
+ * all-in), {@code preisblatt} (the maintained {@code site_supply_price}
+ * components), {@code sammelaufschlag} (the legacy single dynamisch Aufschlag),
+ * {@code default-flag} (the researched default set behind
+ * {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}), or {@code spot} (bare spot - the
+ * un-maintained default the report warns about). Site-level, so it is present
+ * even on a run-less site.
  */
 public record OptimizerDiagnosticsDto(
         UUID siteId,
@@ -58,6 +67,7 @@ public record OptimizerDiagnosticsDto(
         BatteryContext battery,
         String activeLoadModel,
         String activePvModel,
+        String priceSource,
         boolean storedEnergyValueIsApproximation,
         List<OptimizerDiagnosticsSlotDto> slots) {
 

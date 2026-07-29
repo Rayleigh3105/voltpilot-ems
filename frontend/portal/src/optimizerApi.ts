@@ -84,6 +84,13 @@ export interface OptimizerDiagnostics {
   battery: OptimizerBatteryContext | null;
   activeLoadModel: string;
   activePvModel: string;
+  /**
+   * Which rule sets the site's grid-import price today (Stufe 2 admin echo):
+   * `fest` | `preisblatt` | `sammelaufschlag` | `default-flag` | `spot`. A
+   * `spot` value on a household is the dangerous un-maintained default the
+   * Nachtbezug report warns about.
+   */
+  priceSource: string;
   storedEnergyValueIsApproximation: boolean;
   slots: OptimizerSlot[];
 }

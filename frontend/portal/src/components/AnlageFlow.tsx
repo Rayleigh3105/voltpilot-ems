@@ -13,6 +13,7 @@ import {
   type SiteAsset,
   type SiteEntity,
   type SiteUsageProfile,
+  type SupplyPriceUpdate,
   type TarifArt,
 } from '../api';
 import { isPlatformAdmin } from '../auth';
@@ -55,6 +56,12 @@ import { SETUP_NEXT_HINT } from '../setupPath';
 import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
 import { TariffFields } from './TariffFields';
+import {
+  buildSupplyPricePatch,
+  showSupplyPriceFields,
+  supplyPriceFormValues,
+  type SupplyPriceFormValues,
+} from '../supplyPrice';
 
 /**
  * THE register-first "Anlage anlegen" flow (captain 2026-07-09): instead of
@@ -355,6 +362,13 @@ function AnlageStep({
   const [tarifArt, setTarifArt] = useState<TarifArt>('ohne');
   const [tarifParam, setTarifParam] = useState('');
   const [maxFeedIn, setMaxFeedIn] = useState('');
+  // Structured Bezugspreis-Komponenten (Stufe 2): prefilled with the researched
+  // suggestions but only PERSISTED when the operator actually edits them, so a
+  // create that leaves Feineinstellungen untouched never activates the sheet.
+  const [supply, setSupply] = useState<SupplyPriceFormValues>(() =>
+    supplyPriceFormValues(null),
+  );
+  const [supplyTouched, setSupplyTouched] = useState(false);
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -407,6 +421,18 @@ function AnlageStep({
       setErr('Bitte geben Sie die maximale Einspeiseleistung als Zahl in kW an, z. B. 75.');
       return;
     }
+    // Only persist the supply-price sheet when the operator engaged with it and
+    // the Tarif-Art uses it (dynamisch/ohne) - untouched suggestions stay a
+    // prefill, never an auto-activated sheet.
+    let supplyPatch: SupplyPriceUpdate | null = null;
+    if (supplyTouched && showSupplyPriceFields(tarifArt)) {
+      const built = buildSupplyPricePatch(supply);
+      if ('error' in built) {
+        setErr(built.error);
+        return;
+      }
+      supplyPatch = built.patch;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -422,6 +448,15 @@ function AnlageStep({
         netzladenErlaubt: netzladen,
         maxFeedInKw: maxFeedInValue,
       });
+      if (supplyPatch) {
+        // Best-effort: the site exists; a sheet write failure must not block
+        // onboarding (the operator can maintain it later under Marktoptimierung).
+        try {
+          await api.updateSupplyPrice(site.id, supplyPatch);
+        } catch {
+          /* non-fatal */
+        }
+      }
       onCreated(site);
     } catch (e) {
       setErr(
@@ -549,6 +584,11 @@ function AnlageStep({
               param={tarifParam}
               onParam={setTarifParam}
               idPrefix="flow-site"
+              supplyValues={supply}
+              onSupplyChange={(field, value) => {
+                setSupplyTouched(true);
+                setSupply((s) => ({ ...s, [field]: value }));
+              }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <label htmlFor="flow-netzladen" style={{ fontSize: '0.9rem', fontWeight: 600 }}>

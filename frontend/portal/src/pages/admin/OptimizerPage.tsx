@@ -360,6 +360,11 @@ function InputsAtAGlance({ diag }: { diag: OptimizerDiagnostics }) {
           note={`Last: ${diag.activeLoadModel}`}
         />
         <GlanceCard
+          label="Bezugspreis-Quelle"
+          value={priceSourceLabel(diag.priceSource)}
+          note={priceSourceNote(diag.priceSource)}
+        />
+        <GlanceCard
           label="§14a-Limit"
           value="nicht gespeichert"
           note="pro Lauf nicht abgelegt (bekannte Lücke)"
@@ -404,6 +409,37 @@ function tariffNote(diag: OptimizerDiagnostics): string {
       : 'fester Tarif';
   }
   return 'ohne Tarif-Bewertung';
+}
+
+/** The effective import-price source label (Stufe 2 admin echo, priceSource). */
+function priceSourceLabel(source: string): string {
+  switch (source) {
+    case 'fest':
+      return 'Fest (all-in)';
+    case 'preisblatt':
+      return 'Preisblatt (Komponenten)';
+    case 'sammelaufschlag':
+      return 'Sammelaufschlag';
+    case 'default-flag':
+      return 'Default-Vorschlag (Flag)';
+    default:
+      return 'Nur Börsenpreis';
+  }
+}
+
+function priceSourceNote(source: string): string {
+  switch (source) {
+    case 'fest':
+      return 'flacher Endkundenpreis · Komponenten ignoriert';
+    case 'preisblatt':
+      return 'gepflegte site_supply_price-Zeile aktiv';
+    case 'sammelaufschlag':
+      return 'Spot + einzelner dynamisch-Aufschlag';
+    case 'default-flag':
+      return 'recherchierter Default (OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS)';
+    default:
+      return 'nackter Spot – Bezug ohne Netzentgelte/Abgaben (Preisblatt pflegen)';
+  }
 }
 
 function GlanceCard({ label, value, note }: { label: string; value: string; note?: string }) {

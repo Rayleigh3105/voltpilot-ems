@@ -177,6 +177,44 @@ class SlotEconomicsTest {
         assertThat(off.importPriceCtKwh(100.0)).isEqualTo(10.0);
     }
 
+    // ---- Stufe 2 admin echo: importPriceSource, branch-for-branch -------------
+
+    @Test
+    void importPriceSourceEchoesTheEffectiveRule() {
+        // fest wins whether or not a sheet is maintained.
+        assertThat(new SlotEconomics(
+                site("eigenverbrauch", false, "fest", 30.0, null, null, null),
+                EegRates.defaults(), Map.of()).importPriceSource()).isEqualTo("fest");
+        assertThat(new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "fest", 30.0, null, null, null), SHEET),
+                EegRates.defaults(), Map.of()).importPriceSource()).isEqualTo("fest");
+        // A maintained sheet on dynamisch/ohne => Preisblatt.
+        for (String tarifArt : new String[] {"dynamisch", "ohne"}) {
+            assertThat(new SlotEconomics(
+                    withSupply(site("eigenverbrauch", false, tarifArt, null, null, null, null), SHEET),
+                    EegRates.defaults(), Map.of()).importPriceSource())
+                    .as(tarifArt).isEqualTo("preisblatt");
+        }
+        // dynamisch + Aufschlag, no sheet => Sammelaufschlag.
+        assertThat(new SlotEconomics(
+                site("eigenverbrauch", false, "dynamisch", 18.0, null, null, null),
+                EegRates.defaults(), Map.of()).importPriceSource()).isEqualTo("sammelaufschlag");
+        // ohne / dynamisch-without-Aufschlag, no sheet, flag OFF => bare spot.
+        assertThat(new SlotEconomics(
+                site("eigenverbrauch", false, "ohne", null, null, null, null),
+                EegRates.defaults(), Map.of()).importPriceSource()).isEqualTo("spot");
+        // ...and with the mirrored default-components flag ON => default-flag.
+        assertThat(new SlotEconomics(
+                site("eigenverbrauch", false, "ohne", null, null, null, null),
+                EegRates.defaults(), Map.of(), true).importPriceSource()).isEqualTo("default-flag");
+        // A degenerate all-NULL sheet counts as no sheet (matches importPriceCtKwh).
+        SlotEconomics.SupplyPrice empty =
+                new SlotEconomics.SupplyPrice(null, null, null, null, null, 19.0);
+        assertThat(new SlotEconomics(
+                withSupply(site("eigenverbrauch", false, "ohne", null, null, null, null), empty),
+                EegRates.defaults(), Map.of()).importPriceSource()).isEqualTo("spot");
+    }
+
     // ---- export value: Direktvermarktung (Marktprämie) ------------------------
 
     @Test

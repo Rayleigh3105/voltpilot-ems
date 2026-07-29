@@ -3538,6 +3538,120 @@ class PortalApiTest {
         return (String) claim.getBody().get("id");
     }
 
+    // ---- Stufe 2: structured supply-price sheet CRUD ------------------------
+
+    /**
+     * The portal-maintenance CRUD for {@code site_supply_price} (report
+     * vp-nacht-bezug-e7 §3.1, Stufe 2): GET reports the empty sheet before any
+     * row, PUT upserts with PATCH semantics (absent field = keep, explicit
+     * value = write, explicit null = clear a component to "unknown"),
+     * {@code hasComponents} tracks the activation gate, invalid values are
+     * German 400s, and RLS fences the whole thing (a foreign tenant is 404).
+     */
+    @Test
+    void supplyPriceSheetCrudHonoursPatchSemanticsAndTenantScoping() {
+        String demo = token("demo", "demo");
+        String siteId = createSite(demo, "Bezugspreis Werk", "DE-LU", "eigenverbrauch");
+        String base = "/api/v1/sites/" + siteId + "/supply-price";
+
+        // Empty before any row: no components, the activation gate is closed.
+        Map<String, Object> before = getSheet(demo, base);
+        assertThat(before).containsEntry("present", false).containsEntry("hasComponents", false);
+        assertThat(before.get("netzentgeltArbeitspreisCt")).isNull();
+
+        // PUT one component: the sheet is now maintained (gate open).
+        Map<String, Object> one = putSheet(demo, base, mapOf("netzentgeltArbeitspreisCt", 7.6));
+        assertThat(one).containsEntry("present", true).containsEntry("hasComponents", true);
+        assertThat(dbl(one, "netzentgeltArbeitspreisCt")).isEqualTo(7.6);
+        assertThat(one.get("stromsteuerCt")).isNull();
+        assertThat(dbl(one, "ustPct")).isEqualTo(19.0); // the NOT NULL default
+
+        // PATCH: a field ABSENT from the body keeps its stored value.
+        Map<String, Object> two = putSheet(demo, base, mapOf("stromsteuerCt", 2.05));
+        assertThat(dbl(two, "netzentgeltArbeitspreisCt")).isEqualTo(7.6); // kept
+        assertThat(dbl(two, "stromsteuerCt")).isEqualTo(2.05);
+
+        // PATCH: an explicit null CLEARS that component to "unknown".
+        Map<String, Object> cleared = putSheet(demo, base, nullValue("netzentgeltArbeitspreisCt"));
+        assertThat(cleared.get("netzentgeltArbeitspreisCt")).isNull(); // cleared
+        assertThat(dbl(cleared, "stromsteuerCt")).isEqualTo(2.05); // kept
+        assertThat(cleared).containsEntry("hasComponents", true); // stromsteuer still set
+
+        // Full sheet incl. the USt rate and the Preisblatt-Stand.
+        Map<String, Object> full = new java.util.HashMap<>();
+        full.put("netzentgeltArbeitspreisCt", 7.6);
+        full.put("stromsteuerCt", 2.05);
+        full.put("konzessionsabgabeCt", 1.59);
+        full.put("umlagenCt", 2.946);
+        full.put("vertriebsaufschlagCt", 1.5);
+        full.put("ustPct", 19.0);
+        full.put("komponentenStand", "2026-01-01");
+        Map<String, Object> saved = putSheet(demo, base, full);
+        assertThat(dbl(saved, "umlagenCt")).isEqualTo(2.946);
+        assertThat(saved).containsEntry("komponentenStand", "2026-01-01");
+
+        // Clearing every component leaves the row present but the gate closed.
+        Map<String, Object> allNull = new java.util.HashMap<>();
+        for (String f : List.of("netzentgeltArbeitspreisCt", "stromsteuerCt",
+                "konzessionsabgabeCt", "umlagenCt", "vertriebsaufschlagCt")) {
+            allNull.put(f, null);
+        }
+        Map<String, Object> gateClosed = putSheet(demo, base, allNull);
+        assertThat(gateClosed).containsEntry("present", true).containsEntry("hasComponents", false);
+        assertThat(dbl(gateClosed, "ustPct")).isEqualTo(19.0); // ust survives (NOT NULL)
+
+        // Validation: a negative component and a garbage date are German 400s.
+        assertThat(rest.exchange(url(base), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("stromsteuerCt", -1.0), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.exchange(url(base), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("komponentenStand", "keinDatum"), bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // RLS: another tenant can neither read nor write this sheet (404, not 403).
+        String demo2 = token("demo2", "demo2");
+        assertThat(rest.exchange(url(base), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo2)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(rest.exchange(url(base), HttpMethod.PUT,
+                new HttpEntity<>(mapOf("stromsteuerCt", 3.0), bearer(demo2)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        // ...and demo's sheet is provably untouched by the foreign write attempt.
+        assertThat(dbl(getSheet(demo, base), "ustPct")).isEqualTo(19.0);
+    }
+
+    private Map<String, Object> getSheet(String token, String path) {
+        ResponseEntity<Map<String, Object>> r = rest.exchange(url(path), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return r.getBody();
+    }
+
+    private Map<String, Object> putSheet(String token, String path, Map<String, Object> body) {
+        ResponseEntity<Map<String, Object>> r = rest.exchange(url(path), HttpMethod.PUT,
+                new HttpEntity<>(body, bearer(token)), new ParameterizedTypeReference<>() {});
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return r.getBody();
+    }
+
+    private static Map<String, Object> mapOf(String key, Object value) {
+        Map<String, Object> m = new java.util.HashMap<>();
+        m.put(key, value);
+        return m;
+    }
+
+    /** A body with ONE field explicitly set to null (Map.of forbids null values). */
+    private static Map<String, Object> nullValue(String key) {
+        Map<String, Object> m = new java.util.HashMap<>();
+        m.put(key, null);
+        return m;
+    }
+
+    private static Double dbl(Map<String, Object> body, String key) {
+        Object v = body.get(key);
+        return v == null ? null : ((Number) v).doubleValue();
+    }
+
     // ---- Stufe 3: structured supply price on the read side ------------------
 
     /**
