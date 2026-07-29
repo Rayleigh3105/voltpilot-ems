@@ -2687,6 +2687,9 @@ func TestAdaptiveEnergyPictureServed(t *testing.T) {
 		"createFlow", ".topology",
 		// The role vocabulary the adaptive picture groups on.
 		"storage", "consumer",
+		// A1 parity (PR 4b): ONE circle per role + the composition affordance.
+		"ROLE_NODE_LABEL", "subLabelFor", "Geräte", "flow-comp",
+		"über den Wechselrichter mitgemessen",
 	} {
 		if !strings.Contains(dash, want) {
 			t.Errorf("dashboard.js: missing %s", want)

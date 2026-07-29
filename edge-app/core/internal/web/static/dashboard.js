@@ -43,21 +43,6 @@
   function hasTopology(topo) {
     return !!(topo && topo.nodes && topo.nodes.length > 0);
   }
-  function truncate(s, max) {
-    max = max || 11;
-    var t = (s || "").trim();
-    return t.length <= max ? t : t.slice(0, max - 1) + "…";
-  }
-
-  // Diagram node names: an entity label carries a technical qualifier in
-  // parentheses ("Batteriespeicher (Hybrid-Wechselrichter)") that is pure noise
-  // in a 30px circle - drop it, keep the head noun. The full label always stays
-  // reachable as the node's <title> tooltip, so nothing is lost.
-  function shortEntityName(raw) {
-    var t = (raw || "").trim();
-    var head = t.replace(/\s*\([^()]*\)\s*$/, "").trim();
-    return head.length >= 3 ? head : t;
-  }
 
   // --- clock alignment: chart timestamps are device epoch ms ---
   var clockOffset = 0; // deviceNow = Date.now() + clockOffset
@@ -738,12 +723,10 @@
     var ROLE_SIDE = { pv: "top", storage: "left", consumer: "right", grid: "bottom" };
     // Layout constants (portal adaptiveFlow proportions).
     var NODE_R = 30, HUB_R = 24, LEFT_INSET = 62, TOP_INSET = 48,
-        COL_GAP = 148, ROW_GAP = 104, LBL_F = 11.5, VAL_F = 11;
-    // The name sits BELOW the circle (two lines max) instead of inside it: a
-    // 30px circle only fits ~11 characters, which rendered two different nodes
-    // of the same entity as an identical "Batteriesp…". LBL_BLOCK is the room
-    // reserved for it under the lowest row of nodes.
-    var LBL_GAP = 15, LBL_LH = 13, LBL_BLOCK = 32, LBL_MAX = 18;
+        LBL_F = 11.5, VAL_F = 11;
+    // The role name sits BELOW the circle (name + sub line). LBL_BLOCK is the
+    // room reserved for it under the lowest row of nodes.
+    var LBL_GAP = 15, LBL_LH = 13, LBL_BLOCK = 32;
 
     ensureFlowKeyframes();
 
@@ -764,62 +747,66 @@
       return nf1.format(Math.abs(memberKw)) + " kW";
     }
 
-    // layout turns the topology's role nodes into positioned circle vertices.
+    // The customer names of the role circles (portal A1 ROLE_NODE_LABEL - keep
+    // in sync with frontend/portal/src/adaptiveFlow.ts).
+    var ROLE_NODE_LABEL = { pv: "PV-Erzeugung", storage: "Batteriespeicher", consumer: "Hausverbrauch", grid: "Netz" };
+
+    // The second line under a role circle (portal A1 subLabelFor, verbatim
+    // rules): "N Geräte" on a multi-device PV = the click affordance; else the
+    // state in words - never a device name (names live in the composition).
+    function subLabelFor(role, node, memberCount) {
+      if (role === "pv") return memberCount > 1 ? memberCount + " Geräte" : null;
+      if (!node.flow_active || node.value_kw == null) return null;
+      var kw = nf1.format(Math.abs(node.value_kw)) + " kW";
+      if (role === "storage") return node.direction === "out" ? "lädt " + kw : "entlädt " + kw;
+      if (role === "grid") return node.direction === "in" ? "Bezug" : "Einspeisung";
+      return null;
+    }
+
+    // layout turns the topology into positioned circle vertices - ONE circle
+    // per ROLE (portal A1 parity, vp-vier-erzeuger-p9 PR 4b): the viewBox is
+    // CONSTANT (1 or 6 inverters draw the same picture), the per-device
+    // breakdown lives behind a click on the PV circle. Before this, every
+    // member drew its own circle and a producer without an own value rendered
+    // a bare "–" ring (the Pilsting "vier Erzeuger, drei davon –" picture).
     function layout(topo) {
       var nodes = (topo && topo.nodes) || [];
-      var bySide = function (s) {
-        for (var i = 0; i < nodes.length; i++) if (ROLE_SIDE[nodes[i].role] === s) return nodes[i];
-        return null;
-      };
-      var count = function (s) { var n = bySide(s); return n ? n.members.length : 0; };
-      var cols = Math.max(count("top"), count("bottom"), 1);
-      var rows = Math.max(count("left"), count("right"), 1);
-      var W = Math.max(520, (cols - 1) * COL_GAP + 2 * (LEFT_INSET + NODE_R + 40));
-      var H = Math.max(300, (rows - 1) * ROW_GAP + 2 * (TOP_INSET + NODE_R + 34)) + LBL_BLOCK;
+      var W = 520, H = 300 + LBL_BLOCK;
       var hubX = W / 2, hubY = (H - LBL_BLOCK) / 2;
-      var leftX = LEFT_INSET, rightX = W - LEFT_INSET, topY = TOP_INSET, bottomY = H - TOP_INSET - LBL_BLOCK;
+      var POS = {
+        top: { x: hubX, y: TOP_INSET },
+        bottom: { x: hubX, y: H - TOP_INSET - LBL_BLOCK },
+        left: { x: LEFT_INSET, y: hubY },
+        right: { x: W - LEFT_INSET, y: hubY }
+      };
       var vertices = [];
       nodes.forEach(function (node) {
         var side = ROLE_SIDE[node.role];
         if (!side) return; // unknown role - skip (never guessed)
-        var n = node.members.length;
-        if (n === 0) return;
-        var reverse = node.direction === "out";
-        node.members.forEach(function (m, i) {
-          var spread = i - (n - 1) / 2, x, y;
-          if (side === "top") { x = hubX + spread * COL_GAP; y = topY; }
-          else if (side === "bottom") { x = hubX + spread * COL_GAP; y = bottomY; }
-          else if (side === "left") { x = leftX; y = hubY + spread * ROW_GAP; }
-          else { x = rightX; y = hubY + spread * ROW_GAP; }
-          var meta = ROLE_META[node.role] || ROLE_META.consumer;
-          var mag = m.value_kw != null ? m.value_kw : (node.value_kw != null ? node.value_kw : 0);
-          vertices.push({
-            key: m.entity_id + ":" + node.role + ":" + i,
-            role: node.role,
-            x: x, y: y,
-            label: truncate(shortEntityName(m.label) || meta.label, LBL_MAX),
-            fullLabel: (m.label || "").trim() || meta.label,
-            roleLabel: meta.label,
-            value: vertexValue(node.role, node, m.value_kw),
-            spokeActive: !!node.flow_active,
-            reverse: reverse,
-            strokeWidth: strokeWidth(mag),
-            icon: meta.icon, color: meta.color, soft: meta.soft
-          });
+        var members = node.members || [];
+        if (members.length === 0) return;
+        var meta = ROLE_META[node.role] || ROLE_META.consumer;
+        var p = POS[side];
+        var names = [];
+        members.forEach(function (m) {
+          var n = (m.label || "").trim();
+          if (n) names.push(n);
         });
-      });
-      // One entity can sit on SEVERAL role nodes (a hybrid inverter is both a
-      // producer and the storage), and two entities can share a head noun - in
-      // both cases the bare name renders twice and the nodes stop being
-      // tellable apart. Any name that occurs more than once gets its role as a
-      // second line ("Batteriespeicher / · Batterie" vs "… / · PV").
-      var seen = {};
-      vertices.forEach(function (v) {
-        var k = v.label.toLowerCase();
-        seen[k] = (seen[k] || 0) + 1;
-      });
-      vertices.forEach(function (v) {
-        v.roleLine = seen[v.label.toLowerCase()] > 1 ? "· " + v.roleLabel : "";
+        vertices.push({
+          key: node.role + ":" + members.length,
+          role: node.role,
+          x: p.x, y: p.y,
+          label: ROLE_NODE_LABEL[node.role] || meta.label,
+          fullLabel: names.join(", ") || meta.label,
+          subLine: subLabelFor(node.role, node, members.length),
+          value: vertexValue(node.role, node, node.value_kw),
+          spokeActive: !!node.flow_active,
+          reverse: node.direction === "out",
+          strokeWidth: strokeWidth(node.value_kw != null ? node.value_kw : 0),
+          icon: meta.icon, color: meta.color, soft: meta.soft,
+          expandable: node.role === "pv" && members.length > 1,
+          members: members
+        });
       });
       return { W: W, H: H, hubX: hubX, hubY: hubY, vertices: vertices };
     }
@@ -878,15 +865,15 @@
         ico.innerHTML = ICON_PATHS[v.icon] || ICON_PATHS.home;
         g.appendChild(ico);
 
-        // Full entity name as a native tooltip - the visible label is shortened
-        // and may be truncated, this is where the whole thing stays readable.
+        // The member names as a native tooltip - the visible label is the role
+        // word, this is where the devices stay readable.
         var ttl = document.createElementNS(NS, "title");
-        ttl.textContent = v.roleLine ? v.fullLabel + " (" + v.roleLabel + ")" : v.fullLabel;
+        ttl.textContent = v.fullLabel;
         g.appendChild(ttl);
 
-        // Name UNDER the circle (one line, plus the role line when two nodes
-        // would otherwise read the same). A white halo keeps it legible where
-        // it crosses a spoke.
+        // Role name UNDER the circle, plus the sub line ("3 Geräte" on a
+        // multi-device PV = the click affordance, else the state in words). A
+        // white halo keeps it legible where it crosses a spoke.
         var lbl = document.createElementNS(NS, "text");
         lbl.setAttribute("x", v.x); lbl.setAttribute("y", v.y + NODE_R + LBL_GAP);
         lbl.setAttribute("text-anchor", "middle"); lbl.setAttribute("font-weight", "700");
@@ -895,18 +882,14 @@
         lbl.setAttribute("stroke", "#fff"); lbl.setAttribute("stroke-width", "3.5");
         lbl.setAttribute("stroke-linejoin", "round");
         lbl.style.paintOrder = "stroke";
-        lbl.textContent = v.label;
-        if (v.roleLine) {
-          lbl.textContent = "";
-          var t1 = document.createElementNS(NS, "tspan");
-          t1.setAttribute("x", v.x); t1.setAttribute("dy", "0");
-          t1.textContent = v.label;
-          var t2 = document.createElementNS(NS, "tspan");
-          t2.setAttribute("x", v.x); t2.setAttribute("dy", LBL_LH);
-          t2.setAttribute("font-weight", "600"); t2.setAttribute("fill", v.color);
-          t2.textContent = v.roleLine;
-          lbl.appendChild(t1); lbl.appendChild(t2);
-        }
+        var t1 = document.createElementNS(NS, "tspan");
+        t1.setAttribute("x", v.x); t1.setAttribute("dy", "0");
+        t1.textContent = v.label;
+        var t2 = document.createElementNS(NS, "tspan");
+        t2.setAttribute("x", v.x); t2.setAttribute("dy", LBL_LH);
+        t2.setAttribute("font-weight", "600"); t2.setAttribute("fill", "#6B7A89");
+        t2.textContent = v.subLine || "";
+        lbl.appendChild(t1); lbl.appendChild(t2);
         g.appendChild(lbl);
 
         var val = document.createElementNS(NS, "text");
@@ -917,26 +900,97 @@
         val.textContent = v.value;
         g.appendChild(val);
 
+        // The PV circle opens the per-device composition (portal A1 parity) -
+        // a real interactive element: pointer + keyboard, aria-expanded.
+        if (v.expandable) {
+          g.style.cursor = "pointer";
+          g.setAttribute("tabindex", "0");
+          g.setAttribute("role", "button");
+          g.setAttribute("aria-expanded", compOpen ? "true" : "false");
+          g.setAttribute("aria-label", "PV-Erzeugung: Zusammensetzung anzeigen");
+          g.addEventListener("click", toggleComposition);
+          g.addEventListener("keydown", function (ev) {
+            if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleComposition(); }
+          });
+          vtxEls[v.key].expandG = g;
+        }
+
         svg.appendChild(g);
         vtxEls[v.key].val = val;
+        vtxEls[v.key].sub = t2;
       });
+    }
+
+    // ---- PV composition panel ("woraus setzt sich die Erzeugung zusammen?").
+    // A sibling of the SVG inside the flow container; rows update live. A
+    // device without an own value is NAMED with an honest reason, never a
+    // silent "–" circle (the old per-member picture).
+    var compOpen = false;
+    var compEl = null;
+    var lastPvMembers = [];
+
+    function toggleComposition() {
+      compOpen = !compOpen;
+      Object.keys(vtxEls).forEach(function (k) {
+        if (vtxEls[k].expandG) vtxEls[k].expandG.setAttribute("aria-expanded", compOpen ? "true" : "false");
+      });
+      renderComposition();
+    }
+
+    function renderComposition() {
+      if (!compOpen || lastPvMembers.length < 2) {
+        if (compEl) { compEl.remove(); compEl = null; }
+        return;
+      }
+      if (!compEl) {
+        compEl = document.createElement("div");
+        compEl.className = "flow-comp";
+        // A SIBLING of the flow wrap (after the legend), never inside it - the
+        // wrap's SVG keeps 100% height, so a child would overlap the legend
+        // (the portal A1 panel-is-a-sibling rule).
+        (container.parentElement || container).appendChild(compEl);
+      }
+      var anyValue = lastPvMembers.some(function (m) { return m.value_kw != null; });
+      var html = "";
+      lastPvMembers.forEach(function (m) {
+        var name = (m.label || "").trim() || "Gerät";
+        var right = m.value_kw != null
+          ? nf1.format(m.value_kw) + " kW"
+          : (anyValue ? "über den Wechselrichter mitgemessen" : "wartet auf Daten");
+        html += '<div class="flow-comp-row"><span class="flow-comp-name" title="'
+          + esc(name) + '">' + esc(name) + '</span><span class="flow-comp-val'
+          + (m.value_kw == null ? " muted" : "") + '">' + esc(right) + "</span></div>";
+      });
+      compEl.innerHTML = html;
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
     }
 
     // In-place value + spoke update (same node set): keeps the animation running.
     function apply(L) {
+      var pvSeen = false;
       L.vertices.forEach(function (v) {
+        if (v.role === "pv") pvSeen = true;
         var e = vtxEls[v.key];
         if (!e) return;
         e.val.textContent = v.value;
+        if (e.sub) e.sub.textContent = v.subLine || "";
         var f = e.flow;
+        if (v.role === "pv") lastPvMembers = v.members || [];
         if (!v.spokeActive) {
-          f.style.opacity = "0"; f.classList.remove("vp-flow-on", "vp-flow-rev"); return;
+          f.style.opacity = "0"; f.classList.remove("vp-flow-on", "vp-flow-rev");
+        } else {
+          f.style.opacity = "1";
+          f.setAttribute("stroke-width", v.strokeWidth.toFixed(1));
+          f.classList.toggle("vp-flow-rev", v.reverse);
+          f.classList.toggle("vp-flow-on", !v.reverse);
         }
-        f.style.opacity = "1";
-        f.setAttribute("stroke-width", v.strokeWidth.toFixed(1));
-        f.classList.toggle("vp-flow-rev", v.reverse);
-        f.classList.toggle("vp-flow-on", !v.reverse);
       });
+      if (!pvSeen) lastPvMembers = [];
+      renderComposition();
     }
 
     return {
@@ -946,7 +1000,7 @@
         if (newSig !== sig) { rebuild(L); sig = newSig; }
         apply(L);
       },
-      destroy: function () {}
+      destroy: function () { if (compEl) { compEl.remove(); compEl = null; } }
     };
   }
 
