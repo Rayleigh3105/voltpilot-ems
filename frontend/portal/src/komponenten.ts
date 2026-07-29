@@ -447,6 +447,194 @@ export interface ReconnectCandidate {
   label: string;
 }
 
+// ---------------------------------------------------------------------------
+// Bereinigung: Zuordnung ändern + Komponente löschen (vp-bereinigung-ui-k3)
+// ---------------------------------------------------------------------------
+
+/**
+ * The two entity types the PLATFORM composes and maintains — the battery/hybrid
+ * inverter and the derived house consumption. They carry no device pin, they are
+ * the plant's Grundausstattung, and the server refuses to re-pin or delete them.
+ * Offering either action on them would be a button that can only ever fail.
+ */
+export const PLATFORM_COMPONENT_TYPES = ['battery-hybrid', 'house-load'] as const;
+
+/** What a customer may do with one component row. */
+export interface ComponentActions {
+  /** „Zuordnung ändern" — pick which reported device feeds this component. */
+  canRepin: boolean;
+  /** „Komponente löschen" — remove the adopted component outright. */
+  canDelete: boolean;
+}
+
+/**
+ * Which cleanup actions a component offers, mirroring the server guards ONE to
+ * one (`SiteEntityAdoptController`): the PV aspect of a hybrid is not an entity
+ * of its own, the platform-composed types are untouchable, and only a component
+ * that actually carries a device pin can be deleted (a composed grid meter /
+ * house load has none and IS the plant's base).
+ *
+ * This is the fix for the captain's dead end: before it, the ONLY way back was
+ * the „Wieder verbinden"-Dialog of a NEWLY reported device — and on a fully
+ * pinned plant (Pilsting) there is no such device, so nothing was reachable.
+ */
+export function componentActions(
+  component: PlantComponent,
+  entity: SiteEntity | undefined,
+): ComponentActions {
+  if (component.aspect !== 'main' || entity == null) return { canRepin: false, canDelete: false };
+  if ((PLATFORM_COMPONENT_TYPES as readonly string[]).includes(entity.entityType)) {
+    return { canRepin: false, canDelete: false };
+  }
+  return { canRepin: true, canDelete: entity.edgeSourceId != null };
+}
+
+/** One device a component can be assigned to („Zuordnung ändern"). */
+export interface AssignChoice {
+  /** The edge source id — the pin the server writes. */
+  sourceId: string;
+  /** The device name through the ONE `deviceName` chain. */
+  label: string;
+  /** „21,2 kW" — what this device measures right now, or null. */
+  valueLabel: string | null;
+  health: ComponentHealth;
+  /** The component this device currently feeds, or null when it is free. */
+  heldByLabel: string | null;
+  /** true = this is the component's CURRENT assignment. */
+  current: boolean;
+}
+
+/** Does a reported role fit this entity type? (the server's `requireRoleFit`). */
+function sourceFitsType(sourceRole: string | null, entityType: string): boolean {
+  if (sourceRole == null || sourceRole === '') return true;
+  switch (sourceRole) {
+    case 'pv-generation':
+      return entityType === PRODUCER_TYPE;
+    case 'grid-meter':
+      return entityType === GRID_METER_TYPE;
+    case 'consumer':
+      return componentRole(entityType, null) === 'consumer';
+    default:
+      return true;
+  }
+}
+
+/** The live reading a reported device carries, per its role. */
+function sourceValueLabel(source: SiteSource | undefined): string | null {
+  if (!source) return null;
+  const v =
+    source.role === 'grid-meter'
+      ? source.powerKw
+      : source.role === 'consumer'
+        ? source.loadKw
+        : source.pvKw;
+  return v == null ? null : fmtNum(round1(Math.abs(v)), 'kW');
+}
+
+/**
+ * The devices this component can be assigned to — every CURRENTLY reported
+ * device whose role fits, each with its own live value and, when it is already
+ * taken, the component that holds it (so a swap is a decision, not a surprise).
+ *
+ * A device the report no longer carries is deliberately absent: the server
+ * refuses a blind pin (422), so offering it would be a button that fails.
+ */
+export function assignChoices(
+  component: PlantComponent,
+  entities: SiteEntity[],
+  localSetup: EntityLocalSetup[],
+  sources?: SiteSource[] | null,
+): AssignChoice[] {
+  const entity = entities.find((e) => e.id === component.entityId);
+  if (!entity) return [];
+  const sourceById = new Map((sources ?? []).map((s) => [s.sourceId, s] as const));
+  const holderBySource = new Map<string, SiteEntity>();
+  for (const e of entities) {
+    if (e.edgeSourceId != null) holderBySource.set(e.edgeSourceId, e);
+  }
+  const out: AssignChoice[] = [];
+  for (const l of localSetup) {
+    if (l.kind !== 'source') continue;
+    if (!sourceFitsType(l.role, entity.entityType)) continue;
+    const holder = holderBySource.get(l.id);
+    const src = sourceById.get(l.id);
+    out.push({
+      sourceId: l.id,
+      label:
+        deviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ??
+        reportedRoleLabel(l.role),
+      valueLabel: sourceValueLabel(src),
+      health: src ? toComponentHealth(src.health) : 'unknown',
+      heldByLabel:
+        holder == null || holder.id === entity.id
+          ? null
+          : componentLabel(holder.label, componentRole(holder.entityType, null), holder.typeLabel),
+      current: entity.edgeSourceId === l.id,
+    });
+  }
+  return out;
+}
+
+/** The choice a component is currently assigned to, or null (orphaned/unpinned). */
+export function currentChoice(choices: AssignChoice[]): AssignChoice | null {
+  return choices.find((c) => c.current) ?? null;
+}
+
+/**
+ * The consequence sentence of picking an already-taken device: BOTH assignments
+ * move in ONE step (the server swaps them inside one transaction, so the
+ * customer can never strand half-way).
+ *
+ * The second wording is load-bearing: when this component's own device is gone
+ * (the orphan case), the other component is RELEASED rather than handed a dead
+ * assignment — moving the defect would be the worse outcome, and the sentence
+ * says exactly what happens.
+ */
+export function swapNote(choice: AssignChoice, own: AssignChoice | null): string | null {
+  if (choice.heldByLabel == null || choice.current) return null;
+  return own
+    ? `„${choice.heldByLabel}“ übernimmt im Gegenzug „${own.label}“ — beides wird in einem Schritt getauscht.`
+    : `„${choice.heldByLabel}“ ist danach keinem Gerät mehr zugeordnet und zeigt keinen Wert, bis Sie ihm eines zuweisen.`;
+}
+
+/** What deleting a component does, in plain German — the confirm dialog's text. */
+export interface DeleteConsequences {
+  lines: string[];
+  /** „Die hinterlegten 9,8 kWp …" — only when a nameplate hangs on the total. */
+  kwpNote: string | null;
+}
+
+/**
+ * The consequence list of „Komponente löschen". It names the freed device,
+ * because the customer's next step is exactly that: the device comes back as
+ * „Neues Gerät gefunden" and can be assigned to the RIGHT component.
+ *
+ * `deviceLabel` is the CURRENTLY REPORTED device (null for an orphan, whose
+ * device is gone). The freed-device promise is made only then — telling the
+ * owner of an orphan that a vanished device will reappear would be a lie.
+ */
+export function deleteConsequences(
+  component: PlantComponent,
+  entity: SiteEntity | undefined,
+  deviceLabel: string | null,
+): DeleteConsequences {
+  const lines = [
+    `„${component.label}“ verschwindet aus Ihrer Anlage — im Cockpit, in der Historie und in der Steuerung.`,
+    'Bereits aufgezeichnete Werte dieser Komponente werden nicht mehr angezeigt.',
+  ];
+  if (entity?.edgeSourceId != null && deviceLabel) {
+    lines.push(
+      `Das Gerät „${deviceLabel}“ wird wieder frei und erscheint danach als „Neues Gerät gefunden“.`,
+    );
+  }
+  const kwp = entity?.capacityKwp;
+  const kwpNote =
+    kwp == null || kwp === 0
+      ? null
+      : `Die hinterlegten ${fmtNum(kwp, 'kWp')} werden von der Gesamtleistung Ihrer Anlage abgezogen.`;
+  return { lines, kwpNote };
+}
+
 /**
  * Existing components a newly reported source most likely IS (vp-vier-
  * erzeuger-p9): entities whose pin is PROVEN orphaned (their old source id
@@ -466,25 +654,6 @@ export function reconnectCandidates(
       entityId: e.id,
       label: componentLabel(e.label, componentRole(e.entityType, null), e.typeLabel),
     }));
-}
-
-/**
- * The reported device this orphaned component most likely IS — the one-click
- * way from „nicht mehr verbunden" into the EXISTING „Wieder verbinden" flow
- * (PR #271), instead of leaving the customer to find the right „Neues Gerät"
- * card themselves. null = no matching offer, and then the row states the fact
- * without promising a repair.
- */
-export function reconnectOffer(
-  component: PlantComponent,
-  entities: SiteEntity[],
-  reported: AdoptableSource[],
-): AdoptableSource | null {
-  if (!component.orphaned) return null;
-  for (const s of reported) {
-    if (reconnectCandidates(s, entities).some((c) => c.entityId === component.entityId)) return s;
-  }
-  return null;
 }
 
 /** The device's state in one plain word (never a Messwert count). */

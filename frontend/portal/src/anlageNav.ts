@@ -99,10 +99,10 @@ export const HELP_TEXT =
  *
  * Placement is deliberate: **Fahrplan sits directly behind Steuerung** (it is
  * what the storage is going to do — the same neighbourhood a customer looks in
- * when they ask "what does VoltPilot do with my battery?"), **Marktpreise
- * closes the group** (market data, the one outlier that is not an Anlage
- * subpage but a top-level page). Neither is a loose special route: both are
- * regular entries of the Anlage group, so they also travel into the phone
+ * when they ask "what does VoltPilot do with my battery?"), and the two
+ * top-level pages **Marktpreise · Prognosequalität close the group** (the
+ * outliers that are not Anlage subpages). None is a loose special route: all
+ * are regular entries of the Anlage group, so they also travel into the phone
  * „Mehr"-sheet on their own.
  */
 function baseItems(badge: number | null, baseViews: readonly DeepViewId[]): SidebarItem[] {
@@ -121,6 +121,7 @@ function baseItems(badge: number | null, baseViews: readonly DeepViewId[]): Side
     badge: null,
   });
   if (baseViews.includes('marktpreise')) items.push(viewItem('marktpreise'));
+  if (baseViews.includes('prognosequalitaet')) items.push(viewItem('prognosequalitaet'));
   return items;
 }
 

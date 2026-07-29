@@ -875,6 +875,14 @@ paths:
         type; a source already pinned to another entity is refused (409); a
         stale de-entitied point holding the pin is released (kWp delta) so the
         pin can move. Idempotent for the same sourceId.
+
+
+        swap=true (vp-bereinigung-ui-k3) turns the 409 into a guided EXCHANGE:
+        both assignments move inside ONE transaction, so a customer whose plant
+        is fully pinned to the WRONG components can straighten it out and can
+        never strand half-swapped. The other component gets this entity's
+        previous source only when that source is still reported - otherwise its
+        pin is cleared (moving an orphan defect would be the worse outcome).
       parameters:
         - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -887,6 +895,13 @@ paths:
               required: [sourceId]
               properties:
                 sourceId: { type: string, description: The edge source id from local_setup. }
+                swap:
+                  type: boolean
+                  default: false
+                  description: >
+                    Explicit consent to take a source another component holds -
+                    both assignments are exchanged atomically. Absent/false
+                    keeps the 409, so an older client can never steal one.
       responses:
         "200":
           description: The re-pinned entity.
@@ -896,8 +911,30 @@ paths:
         "400": { description: Missing sourceId. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site or entity not found for this tenant. }
-        "409": { description: The source is already pinned to another entity. }
-        "422": { description: The source is not currently reported, or its role does not fit the entity's type. }
+        "409": { description: The source is already pinned to another entity (and swap was not requested). }
+        "422": { description: The source is not currently reported, its role does not fit the entity's type, or the component is platform-composed. }
+  /api/v1/sites/{siteId}/v2-entities/{entityId}:
+    delete:
+      tags: [topology]
+      summary: Delete an adopted component (customer cleanup lever).
+      description: >
+        The customer twin of the admin purgePoint delete: it removes the
+        measurement point outright, releases a producer's kWp from the
+        aggregate asset.pv and frees the edge-source pin, so the device
+        reappears as "Neues Gerät gefunden" and can be assigned to the right
+        component. The registry is re-pushed, so the device drops the component
+        too. Refused (422) for the platform-composed base components
+        (battery-hybrid / house-load) and for any component without a device
+        assignment - a grid meter or house load composed from the plant's own
+        master data is its Grundausstattung, not a mis-adoption.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: entityId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site or entity not found for this tenant. }
+        "422": { description: A platform-composed or unassigned component - not the customer's to remove. }
   /api/v1/sites/{siteId}/entity-strategies:
     get:
       tags: [topology]
@@ -3228,6 +3265,13 @@ components:
                       re-pin via /v2-entities/{entityId}/edge-source); false =
                       pinned + reported; null = no pin, or no local view
                       reported yet (never an unprovable orphan claim).
+                  capacityKwp:
+                    type: number
+                    nullable: true
+                    description: >
+                      The adopted producer's nameplate, which sums into the
+                      plant total - the delete dialog names exactly what gets
+                      subtracted instead of warning vaguely.
                   observed:
                     type: object
                     nullable: true

@@ -16,11 +16,13 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -61,6 +63,9 @@ public class SiteEntityAdoptController {
     /** The two composed types adoptable FROM a source (never battery-hybrid/house-load). */
     private static final Set<String> COMPOSED_ADOPTABLE = Set.of("producer", "grid-meter");
 
+    /** Composed by the platform from the plant's master data - never customer-edited. */
+    private static final Set<String> PLATFORM_MANAGED = Set.of("battery-hybrid", "house-load");
+
     private final SiteRepository sites;
     private final EntityRegistryService service;
     private final EntityTypeCatalog catalog;
@@ -96,8 +101,14 @@ public class SiteEntityAdoptController {
                 row.deviceId());
     }
 
-    /** Re-pin body: the CURRENTLY reported edge source the entity should follow. */
-    public record RepinRequest(@Size(max = 128) String sourceId) {}
+    /**
+     * Re-pin body: the CURRENTLY reported edge source the entity should follow.
+     * {@code swap} (optional, default false) is the customer's explicit consent
+     * to take a source that ANOTHER component currently holds - see
+     * {@link #repin}. Absent = the documented 409, so an older client can never
+     * steal an assignment by accident.
+     */
+    public record RepinRequest(@Size(max = 128) String sourceId, Boolean swap) {}
 
     /**
      * RE-PIN an existing entity to a currently reported edge source - the
@@ -109,6 +120,14 @@ public class SiteEntityAdoptController {
      * presentation-level source link of their OWN site (RLS), never guard
      * config or control rights. The target must be currently reported by the
      * device and role-compatible with the entity's type.
+     *
+     * <p>With {@code swap: true} a target held by ANOTHER component is not
+     * refused but EXCHANGED - both assignments move inside one transaction
+     * (vp-bereinigung-ui-k3). The captain's Pilsting plant is why: with every
+     * reported device already pinned (to the wrong components), plain re-pin
+     * only ever answered 409 and the customer had no way out at all. A
+     * client-side "release, then set" was rejected as the fix - a failure
+     * between the two calls would strand BOTH components unassigned.
      */
     @PostMapping("/{entityId}/edge-source")
     @Transactional
@@ -121,26 +140,90 @@ public class SiteEntityAdoptController {
         if (sourceId.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceId ist erforderlich.");
         }
-        EntityObservedRepository.ObservedRow local = observed.forSite(siteId).stream()
-                .filter(r -> "local".equals(r.source())
-                        && ("local:" + sourceId).equals(r.entityId()))
-                .findFirst().orElse(null);
-        if (local == null) {
+        Set<String> reported = reportedSourceIds(siteId);
+        if (!reported.contains(sourceId)) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Dieses Gerät meldet sich derzeit nicht - verbinden ist nur mit einem "
                             + "aktuell gemeldeten Gerät möglich.");
         }
+        EntityObservedRepository.ObservedRow local = observed.forSite(siteId).stream()
+                .filter(r -> "local".equals(r.source())
+                        && ("local:" + sourceId).equals(r.entityId()))
+                .findFirst().orElseThrow();
         EntityRegistryRepository.EntityRow current = registry.entityForSite(siteId, entityId);
         if (current == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
         }
+        requireCustomerManaged(current.entityType());
         requireRoleFit(local.edgeRole(), current.entityType());
-        EntityRegistryRepository.EntityRow row = service.repin(siteId, entityId, sourceId);
+        EntityRegistryRepository.EntityRow row = service.repin(siteId, entityId, sourceId,
+                Boolean.TRUE.equals(request.swap()), reported);
         if (row == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
         }
         return new AdoptedEntityDto(row.id(), row.entityType(), row.role(), row.label(),
                 row.deviceId());
+    }
+
+    /**
+     * DELETE an adopted component - the cleanup lever the customer was missing
+     * (vp-bereinigung-ui-k3, the captain's "Wie kann ich das Gerät was nichts
+     * misst löschen, ich bekomme es nicht weg."). It PURGES the measurement
+     * point outright (the {@code purgePoint} behaviour of PR #271, until now
+     * reachable only through the platform-admin route): the producer's kWp is
+     * released from the aggregate {@code asset.pv} and the source pin is freed,
+     * so the device reappears as "Neues Gerät gefunden" and can be assigned to
+     * the RIGHT component. The registry re-push makes the device drop it too.
+     *
+     * <p>Two guards keep this the CLEANUP lever and not a demolition button:
+     * the platform-composed base components (battery-hybrid / house-load) are
+     * refused, and so is any component that carries no device assignment at all
+     * - a grid meter or house load composed from the plant's own master data is
+     * its Grundausstattung, not something a customer adopted by mistake.
+     */
+    @DeleteMapping("/{entityId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Transactional
+    public void delete(@PathVariable UUID siteId, @PathVariable UUID entityId) {
+        if (!sites.existsForCurrentTenant(siteId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
+        }
+        EntityRegistryRepository.EntityRow row = registry.entityForSite(siteId, entityId);
+        if (row == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+        requireCustomerManaged(row.entityType());
+        if (row.edgeSourceId() == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Diese Komponente gehört zur Grundausstattung Ihrer Anlage und kann nicht "
+                            + "entfernt werden.");
+        }
+        if (!service.deleteEntity(siteId, entityId, true)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
+        }
+    }
+
+    /** The edge source ids the device currently reports (its local setup view). */
+    private Set<String> reportedSourceIds(UUID siteId) {
+        return observed.forSite(siteId).stream()
+                .filter(r -> "local".equals(r.source()) && r.entityId() != null
+                        && r.entityId().startsWith("local:"))
+                .map(r -> r.entityId().substring("local:".length()))
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    /**
+     * The platform composes and maintains the battery/hybrid inverter and the
+     * derived house consumption from the plant's master data - they carry no
+     * device assignment and are not the customer's to re-pin or remove (the
+     * {@code EntityRegistryService} composition would recreate them anyway).
+     */
+    private void requireCustomerManaged(String entityType) {
+        if (PLATFORM_MANAGED.contains(entityType)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Diese Komponente richtet VoltPilot aus den Daten Ihrer Anlage ein - "
+                            + "sie lässt sich hier nicht ändern.");
+        }
     }
 
     /**

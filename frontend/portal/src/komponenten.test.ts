@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assignChoices,
+  componentActions,
   componentLabel,
   componentRole,
+  currentChoice,
+  deleteConsequences,
   deviceState,
   deviceSummary,
   edgeBoxLine,
@@ -10,8 +14,9 @@ import {
   plantHeadline,
   plantModel,
   reconnectCandidates,
-  reconnectOffer,
+  swapNote,
   toComponentHealth,
+  type AssignChoice,
   type ComponentRole,
   type PlantComponent,
 } from './komponenten';
@@ -819,32 +824,254 @@ describe('plantModel — Werte strikt per Pin (Pilsting: Kreuz-Pin + Geist + ver
   });
 });
 
-describe('reconnectOffer — von „nicht mehr verbunden" zurück in den Fluss', () => {
-  const orphan = entity('fr2', 'producer', {
-    label: 'Fronius WR2',
-    edgeSourceId: 'old-src',
-    orphanedPin: true,
-  });
-  const reported = newlyReported(
-    [source('new-src', 'pv-generation', { brand: 'fronius_sunspec', label: 'Fronius WR2' })],
-    [orphan],
-  );
+/**
+ * Die Pilsting-Konstellation vom 29.07. — JEDE gemeldete Quelle ist verpinnt,
+ * nur an die falschen Komponenten:
+ *   WR1  → verwaist (sein Gerät gibt es nicht mehr, zeigt „–"),
+ *   WR2  → hängt am Gerät „Fronius Anlage" (zeigt dessen 4,0 kW),
+ *   Geist→ hängt am Gerät „Fronius Anlage WR2" (zeigt dessen 16,9 kW).
+ * Weil kein Gerät UNZUGEORDNET ist, gab es kein „Neues Gerät gefunden" — und
+ * damit vor dieser Änderung überhaupt keinen Weg zur Bereinigung.
+ */
+const PILSTING = {
+  entities: [
+    entity('batt', 'battery-hybrid', { label: 'Batteriespeicher', control: true }),
+    entity('haus', 'house-load', { label: 'Haus' }),
+    entity('wr1', 'producer', {
+      label: 'Fronius WR1',
+      edgeSourceId: 'src-weg',
+      orphanedPin: true,
+      capacityKwp: 9.8,
+      capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+    }),
+    entity('wr2', 'producer', {
+      label: 'Fronius WR2',
+      edgeSourceId: 'src-a',
+      orphanedPin: false,
+      capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+    }),
+    entity('geist', 'producer', {
+      label: 'fronius_sunspec · fronius-eco-27-3-s',
+      edgeSourceId: 'src-b',
+      orphanedPin: false,
+      capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+    }),
+  ],
+  localSetup: [
+    inverter('inv', 'deye', null),
+    source('src-a', 'pv-generation', { brand: 'fronius_sunspec', label: 'Fronius Anlage' }),
+    source('src-b', 'pv-generation', { brand: 'fronius_sunspec', label: 'Fronius Anlage WR2' }),
+  ],
+  sources: [
+    siteSource('src-a', { pvKw: 4.0, label: 'Fronius Anlage' }),
+    siteSource('src-b', { pvKw: 16.9, label: 'Fronius Anlage WR2' }),
+  ],
+};
 
-  it('offers the reported device an orphaned component most likely IS', () => {
-    const m = plantModel([orphan], null, [
-      source('new-src', 'pv-generation', { brand: 'fronius_sunspec', label: 'Fronius WR2' }),
-    ]);
-    const c = m.components.find((x) => x.entityId === 'fr2')!;
-    expect(c.orphaned).toBe(true);
-    expect(reconnectOffer(c, [orphan], reported)?.id).toBe('new-src');
+function pilstingComponent(id: string): PlantComponent {
+  const m = plantModel(PILSTING.entities, null, PILSTING.localSetup, PILSTING.sources);
+  return m.components.find((c) => c.entityId === id && c.aspect === 'main')!;
+}
+
+function pilstingEntity(id: string): SiteEntity {
+  return PILSTING.entities.find((e) => e.id === id)!;
+}
+
+describe('componentActions — die Bereinigung hängt an der Komponente', () => {
+  it('offers both levers on an adopted component, orphaned or not', () => {
+    for (const id of ['wr1', 'wr2', 'geist']) {
+      expect(componentActions(pilstingComponent(id), pilstingEntity(id))).toEqual({
+        canRepin: true,
+        canDelete: true,
+      });
+    }
   });
 
-  it('offers nothing for a healthy pin or without a matching report', () => {
-    const healthy = { ...orphan, orphanedPin: false };
-    const m = plantModel([healthy], null, []);
-    expect(reconnectOffer(m.components[0], [healthy], reported)).toBeNull();
-    const m2 = plantModel([orphan], null, []);
-    expect(reconnectOffer(m2.components[0], [orphan], [])).toBeNull();
+  it('never offers them on the platform-composed base components', () => {
+    for (const id of ['batt', 'haus']) {
+      expect(componentActions(pilstingComponent(id), pilstingEntity(id))).toEqual({
+        canRepin: false,
+        canDelete: false,
+      });
+    }
+  });
+
+  it('does not delete a component that carries no device assignment', () => {
+    const composed = entity('netz', 'grid-meter', { label: 'Netzanschluss' });
+    const m = plantModel([composed], null, []);
+    // Re-assigning it is fine; deleting a composed base row is not (the server
+    // refuses it with 422, so the button would only ever fail).
+    expect(componentActions(m.components[0], composed)).toEqual({
+      canRepin: true,
+      canDelete: false,
+    });
+  });
+
+  it('offers nothing on the PV aspect row — it is not a component of its own', () => {
+    const hybrid = entity('b', 'battery-hybrid', {
+      capabilities: { measure: [{ channel: 'pv_power_kw', unit: 'kW' }] },
+    });
+    const m = plantModel([hybrid], null, []);
+    const aspect = m.components.find((c) => c.aspect === 'pv')!;
+    expect(componentActions(aspect, hybrid)).toEqual({ canRepin: false, canDelete: false });
+  });
+});
+
+describe('assignChoices — jedes gemeldete Gerät, mit Wert und Besitzer', () => {
+  it('lists every fitting device with its live value and who holds it', () => {
+    const choices = assignChoices(
+      pilstingComponent('wr1'),
+      PILSTING.entities,
+      PILSTING.localSetup,
+      PILSTING.sources,
+    );
+    expect(choices.map((c) => c.sourceId)).toEqual(['src-a', 'src-b']);
+    expect(choices[0]).toMatchObject({
+      label: 'Fronius Anlage',
+      valueLabel: `4,0${NBSP}kW`,
+      heldByLabel: 'Fronius WR2',
+      current: false,
+    });
+    expect(choices[1]).toMatchObject({
+      label: 'Fronius Anlage WR2',
+      valueLabel: `16,9${NBSP}kW`,
+      heldByLabel: 'fronius_sunspec · fronius-eco-27-3-s',
+    });
+    // The orphan has no current assignment among the REPORTED devices.
+    expect(currentChoice(choices)).toBeNull();
+  });
+
+  it('marks the current assignment and never offers a device of another role', () => {
+    const localSetup = [
+      ...PILSTING.localSetup,
+      source('src-wb', 'consumer', { brand: 'go-e', label: 'Wallbox' }),
+    ];
+    const choices = assignChoices(
+      pilstingComponent('wr2'),
+      PILSTING.entities,
+      localSetup,
+      PILSTING.sources,
+    );
+    expect(choices.map((c) => c.sourceId)).toEqual(['src-a', 'src-b']);
+    expect(currentChoice(choices)?.sourceId).toBe('src-a');
+    // A device with no reading of its own says so instead of showing a 0.
+    const noValue = assignChoices(
+      pilstingComponent('wr2'),
+      PILSTING.entities,
+      PILSTING.localSetup,
+      [],
+    );
+    expect(noValue.every((c) => c.valueLabel === null)).toBe(true);
+  });
+
+  it('never offers an UNREPORTED device — the server refuses a blind assignment', () => {
+    const choices = assignChoices(
+      pilstingComponent('wr1'),
+      PILSTING.entities,
+      PILSTING.localSetup,
+      PILSTING.sources,
+    );
+    expect(choices.some((c) => c.sourceId === 'src-weg')).toBe(false);
+  });
+});
+
+describe('swapNote — der Tausch sagt vorher, was mit der anderen Komponente passiert', () => {
+  it('names the exchange when both components have a device', () => {
+    const choices = assignChoices(
+      pilstingComponent('wr2'),
+      PILSTING.entities,
+      PILSTING.localSetup,
+      PILSTING.sources,
+    );
+    const target = choices.find((c) => c.sourceId === 'src-b')!;
+    const note = swapNote(target, currentChoice(choices));
+    expect(note).toContain('fronius_sunspec');
+    expect(note).toContain('Fronius Anlage');
+    expect(note).toContain('einem Schritt');
+  });
+
+  it('says plainly that the other side is left without a device (orphan case)', () => {
+    const choices = assignChoices(
+      pilstingComponent('wr1'),
+      PILSTING.entities,
+      PILSTING.localSetup,
+      PILSTING.sources,
+    );
+    const note = swapNote(choices[0], currentChoice(choices));
+    expect(note).toContain('„Fronius WR2“ ist danach keinem Gerät mehr zugeordnet');
+  });
+
+  it('has nothing to warn about for a free or the current device', () => {
+    const free: AssignChoice = {
+      sourceId: 'x',
+      label: 'Neu',
+      valueLabel: null,
+      health: 'ok',
+      heldByLabel: null,
+      current: false,
+    };
+    expect(swapNote(free, null)).toBeNull();
+    expect(swapNote({ ...free, heldByLabel: 'Andere', current: true }, null)).toBeNull();
+  });
+});
+
+describe('deleteConsequences — was das Löschen wirklich tut', () => {
+  it('names the freed device and the kWp that leave the plant total', () => {
+    const choices = assignChoices(
+      pilstingComponent('wr2'),
+      PILSTING.entities,
+      PILSTING.localSetup,
+      PILSTING.sources,
+    );
+    const { lines } = deleteConsequences(
+      pilstingComponent('wr2'),
+      pilstingEntity('wr2'),
+      currentChoice(choices)!.label,
+    );
+    expect(lines[0]).toContain('„Fronius WR2“ verschwindet');
+    expect(lines.some((l) => l.includes('Neues Gerät gefunden'))).toBe(true);
+    expect(lines.some((l) => l.includes('Fronius Anlage'))).toBe(true);
+    expect(
+      deleteConsequences(pilstingComponent('wr1'), pilstingEntity('wr1'), 'X').kwpNote,
+    ).toBe(`Die hinterlegten 9,8${NBSP}kWp werden von der Gesamtleistung Ihrer Anlage abgezogen.`);
+  });
+
+  it('promises no returning device for an orphan — its device is gone', () => {
+    // Der verwaiste Pin zeigt auf ein Gerät, das sich nicht mehr meldet: es
+    // taucht auch nach dem Löschen nicht als „Neues Gerät gefunden" auf.
+    const { lines, kwpNote } = deleteConsequences(
+      pilstingComponent('wr1'),
+      pilstingEntity('wr1'),
+      null,
+    );
+    expect(lines.some((l) => l.includes('Neues Gerät gefunden'))).toBe(false);
+    expect(kwpNote).not.toBeNull();
+    // Eine komponierte Komponente hat gar keine Zuordnung - also auch nichts
+    // freizugeben (und wird serverseitig ohnehin nicht gelöscht).
+    const composed = entity('netz', 'grid-meter');
+    const m = plantModel([composed], null, []);
+    const c = deleteConsequences(m.components[0], composed, null);
+    expect(c.lines.some((l) => l.includes('Neues Gerät gefunden'))).toBe(false);
+    expect(c.kwpNote).toBeNull();
+  });
+
+  it('uses no forbidden customer vocabulary', () => {
+    const { lines, kwpNote } = deleteConsequences(
+      pilstingComponent('wr1'),
+      pilstingEntity('wr1'),
+      'Fronius Anlage WR2',
+    );
+    for (const l of [...lines, kwpNote ?? '']) expect(FORBIDDEN.test(l)).toBe(false);
+    const choices = assignChoices(
+      pilstingComponent('wr1'),
+      PILSTING.entities,
+      PILSTING.localSetup,
+      PILSTING.sources,
+    );
+    for (const c of choices) {
+      expect(FORBIDDEN.test(c.label)).toBe(false);
+      expect(FORBIDDEN.test(swapNote(c, null) ?? '')).toBe(false);
+    }
   });
 });
 

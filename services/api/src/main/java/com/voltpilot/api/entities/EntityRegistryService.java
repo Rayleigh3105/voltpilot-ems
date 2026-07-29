@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -681,6 +682,31 @@ public class EntityRegistryService {
      */
     @Transactional
     public EntityRow repin(UUID siteId, UUID entityId, String edgeSourceId) {
+        return repin(siteId, entityId, edgeSourceId, false, Set.of());
+    }
+
+    /**
+     * Re-pin, optionally SWAPPING with the entity that currently holds the
+     * target source (vp-bereinigung-ui-k3). Without {@code allowSwap} a taken
+     * source is still the documented 409 - the swap must be an explicit,
+     * confirmed customer decision, never a silent steal.
+     *
+     * <p><b>Why the swap lives HERE and not in the portal:</b> a client-side
+     * "release, then set" is two requests, and a failure between them strands
+     * the customer with BOTH components unassigned - exactly the half-repaired
+     * state the cleanup is supposed to end. Inside this one transaction the
+     * pins either both move or neither does.
+     *
+     * <p>What the other entity gets back is deliberately NOT always this
+     * entity's previous source: it receives it only when that source is STILL
+     * REPORTED ({@code reportedSourceIds}). Handing over a vanished id would
+     * merely move the orphan defect to the other component; instead its pin is
+     * cleared, which reads as the honest "noch keinem Gerät zugeordnet" and is
+     * one click away from being fixed.
+     */
+    @Transactional
+    public EntityRow repin(UUID siteId, UUID entityId, String edgeSourceId, boolean allowSwap,
+            Set<String> reportedSourceIds) {
         EntityRow entity = repo.entityForSite(siteId, entityId);
         if (entity == null) {
             return null;
@@ -695,13 +721,32 @@ public class EntityRegistryService {
         EntityRow holder = repo.pointByEdgeSource(siteId, edgeSourceId);
         if (holder != null && !holder.id().equals(entityId)) {
             if (holder.entityType() != null) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Dieses Gerät ist bereits mit einer anderen Komponente verbunden. "
-                                + "Bitte lösen Sie zuerst die bestehende Verbindung.");
+                if (!allowSwap) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT,
+                            "Dieses Gerät ist bereits mit einer anderen Komponente verbunden. "
+                                    + "Bitte lösen Sie zuerst die bestehende Verbindung.");
+                }
+                String giveBack = entity.edgeSourceId() != null
+                        && reportedSourceIds.contains(entity.edgeSourceId())
+                                ? entity.edgeSourceId() : null;
+                // Clear first: the pin is unique per (site, source), so the two
+                // updates cannot cross without releasing the target.
+                repo.setEdgeSource(holder.id(), null);
+                repo.setEdgeSource(entityId, edgeSourceId);
+                if (giveBack != null) {
+                    repo.setEdgeSource(holder.id(), giveBack);
+                }
+                pushRegistryBestEffort(siteId);
+                return repo.entityForSite(siteId, entityId);
             }
             releaseStalePoint(TenantContext.get(), siteId, holder);
         }
         repo.setEdgeSource(entityId, edgeSourceId);
+        // The pin is part of the pushed registry (`edge_source_id`, PR #272), so
+        // the device must learn about a re-pin like it learns about an adopt or
+        // a delete - otherwise it keeps serving per-source values against the
+        // OLD assignment and the portal and the device disagree.
+        pushRegistryBestEffort(siteId);
         return repo.entityForSite(siteId, entityId);
     }
 

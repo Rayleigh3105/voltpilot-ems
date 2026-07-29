@@ -576,6 +576,118 @@
   max-width: 100%;
 }
 
+/* --- Bereinigung an der Komponente (vp-bereinigung-ui-k3) ------------------ */
+
+/* Die ruhigen Aktionen im Details-Bereich einer gesunden Komponente. */
+.vp-am-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-am-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--vp-action);
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  min-width: 0;
+}
+
+.vp-am-action.danger,
+.vp-am-orphan-btn.danger {
+  /* The one destructive tone the portal already uses (.vp-btn-danger). */
+  color: var(--vp-industry-end, #b91c1c);
+}
+
+.vp-am-action:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action));
+  outline-offset: 2px;
+}
+
+/* Der Gerätewähler des „Zuordnung ändern"-Dialogs. */
+.vp-zuo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-zuo-opt {
+  display: flex;
+  gap: var(--vp-space-2);
+  align-items: flex-start;
+  cursor: pointer;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  padding: var(--vp-space-2) var(--vp-space-3);
+  min-width: 0;
+}
+
+.vp-zuo-opt.picked {
+  border-color: var(--vp-action);
+  background: var(--vp-tint);
+}
+
+.vp-zuo-opt input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.vp-zuo-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-zuo-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-zuo-tag {
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--vp-tint);
+  color: var(--vp-text-gray, #4b5563);
+}
+
+.vp-zuo-sub {
+  font-size: 0.76rem;
+  color: var(--vp-text-gray, #6b7280);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-loesch-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  font-size: 0.86rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* --- Phone ---------------------------------------------------------------- */
 
 @media (max-width: 640px) {

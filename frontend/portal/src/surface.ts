@@ -449,12 +449,17 @@ function hasStorage(site: AnlageSurfaceInput): boolean {
  *    für JEDE Speicher-Anlage alle 15 Minuten — auch für eine reine
  *    Eigenverbrauchs-Anlage mit festem Tarif. Der Fahrplan darf deshalb nie mit
  *    einem Modus verschwinden.
+ *  - **`prognosequalitaet`**, ebenfalls sobald die Anlage einen Speicher hat
+ *    (Captain 2026-07-29: „hat mit Marktoptimierung wenig zu tun"). Die Last-
+ *    und PV-Prognose ist die EINGABE jedes Fahrplans — sie hängt am Optimierer,
+ *    nicht an der Vermarktung, und darf deshalb genauso wenig mit einem Modus
+ *    verschwinden wie der Fahrplan selbst.
  *  - **`marktpreise`**, sobald ein dynamischer (Börsen-)Tarif hinterlegt ist —
  *    dieser Kunde zahlt viertelstündlich den Spotpreis und braucht die
  *    Preisseite unabhängig davon, ob er vermarktet.
  *
- * `prognosequalitaet` und `erloes-historie` bleiben modusgebunden
- * (feedback.md-Entscheidung, unverändert). Beide Basis-Ansichten sind NICHT an
+ * `erloes-historie` bleibt modusgebunden (feedback.md-Entscheidung, unverändert
+ * — sie zeigt Vermarktungs-Erlöse). Die Basis-Ansichten sind NICHT an
  * `hasEntities` gekoppelt: sie folgen den Stammdaten, nicht dem Migrationsstand.
  */
 export function baseSurface(site: AnlageSurfaceInput): BaseSurface {
@@ -468,7 +473,7 @@ export function baseSurface(site: AnlageSurfaceInput): BaseSurface {
     // sie eine leere Versprechung.
     if (channels.length > 0) deepViews.push('telemetrie-historie');
   }
-  if (hasStorage(input)) deepViews.push('fahrplan');
+  if (hasStorage(input)) deepViews.push('fahrplan', 'prognosequalitaet');
   if (tarifArtOf(input.config) === 'dynamisch') deepViews.push('marktpreise');
 
   if (list.length === 0) {

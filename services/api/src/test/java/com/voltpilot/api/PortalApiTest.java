@@ -1868,6 +1868,160 @@ class PortalApiTest {
     }
 
     /**
+     * vp-bereinigung-ui-k3: the CLEANUP the captain could not reach. On his
+     * Pilsting plant EVERY reported device was already pinned - to the WRONG
+     * components - so there was no "Neues Gerät gefunden" card, plain re-pin
+     * could only answer 409, and the purge-delete lever existed on the
+     * platform-admin route alone. This proves the two customer levers:
+     *
+     * <ul>
+     *   <li>{@code swap: true} EXCHANGES two crossed assignments in ONE call
+     *       (one transaction - never a half-swapped state), and hands the other
+     *       component this entity's previous source only when that source is
+     *       still reported, else releases it (never move an orphan defect);</li>
+     *   <li>{@code DELETE .../v2-entities/{id}} removes an adopted component,
+     *       releases its kWp from the plant total and frees its device, which
+     *       then reappears unassigned.</li>
+     * </ul>
+     * Both are guarded: platform-composed components (battery-hybrid /
+     * house-load) and components without a device assignment are refused, and
+     * a foreign tenant sees nothing (RLS 404).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void customerSwapsCrossedAssignmentsAndDeletesTheGhostComponent() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Pilsting-Bereinigung"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-clean-01");
+
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+        String topic = "ems/" + tenantA + "/" + siteId + "/" + deviceId + "/status";
+        java.util.function.Consumer<String> report = localSetupJson -> listener.handle(topic,
+                ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantA + "\",\"site_id\":\""
+                        + siteId + "\",\"device_id\":\"" + deviceId + "\",\"online\":true,"
+                        + "\"entities\":{\"revision\":\"r1\",\"local_setup\":" + localSetupJson
+                        + "}}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.util.function.Function<String, String> pvSource = (id) ->
+                "{\"id\":\"" + id + "\",\"kind\":\"source\",\"role\":\"pv-generation\","
+                        + "\"brand\":\"fronius_sunspec\",\"label\":\"" + id + "\"}";
+        java.util.function.Function<String, Map<String, Object>> entityById = id -> {
+            ResponseEntity<Map<String, Object>> res = rest.exchange(
+                    url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+            return ((List<Map<String, Object>>) res.getBody().get("entities")).stream()
+                    .filter(e -> id.equals(e.get("id"))).findFirst().orElseThrow();
+        };
+        java.util.function.BiFunction<String, Object, String> adopt = (sourceId, kwp) -> {
+            Map<String, Object> body = new java.util.HashMap<>(Map.of("sourceId", sourceId,
+                    "entityType", "producer", "label", sourceId));
+            if (kwp != null) {
+                body.put("capacityKwp", kwp);
+            }
+            return (String) rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/adopt"),
+                    HttpMethod.POST, new HttpEntity<>(body, bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        };
+
+        // The captain's shape: WR1's device vanished (orphan), while WR2 and the
+        // ghost hold the two devices that ARE reported - crossed.
+        report.accept("[" + pvSource.apply("src-weg") + "]");
+        String wr1 = adopt.apply("src-weg", 9.8);
+        report.accept("[" + pvSource.apply("src-a") + "," + pvSource.apply("src-b") + "]");
+        String wr2 = adopt.apply("src-a", null);
+        String ghost = adopt.apply("src-b", null);
+        assertThat(entityById.apply(wr1).get("orphanedPin")).isEqualTo(true);
+        assertThat(entityById.apply(wr1).get("capacityKwp")).isNotNull();
+
+        // Nothing is unassigned, so the ONLY way out is taking a held device.
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + wr1 + "/edge-source"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("sourceId", "src-a"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        // The swap: WR1 takes src-a. WR2 gets NOTHING back, because WR1's own
+        // source is gone - handing over a dead id would just move the orphan.
+        String revisionBefore = queryText("SELECT revision FROM entity_registry_state "
+                + "WHERE site_id = '" + siteId + "'");
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + wr1 + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-a", "swap", true), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        // The pin rides IN the pushed registry (edge_source_id, PR #272), so a
+        // re-pin MUST re-compose the Soll - otherwise the device keeps serving
+        // its per-source values against the old assignment and the two disagree
+        // (the captain's device still showed the pre-swap picture).
+        assertThat(queryText("SELECT revision FROM entity_registry_state WHERE site_id = '"
+                + siteId + "'")).isNotEqualTo(revisionBefore);
+        assertThat(entityById.apply(wr1).get("edgeSourceId")).isEqualTo("src-a");
+        assertThat(entityById.apply(wr1).get("orphanedPin")).isEqualTo(false);
+        assertThat(entityById.apply(wr2).get("edgeSourceId")).isNull();
+        assertThat(entityById.apply(wr2).get("orphanedPin")).as("no pin = no orphan claim").isNull();
+
+        // A true exchange: both sides hold a REPORTED device, so both move.
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + ghost + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-a", "swap", true), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(entityById.apply(ghost).get("edgeSourceId")).isEqualTo("src-a");
+        assertThat(entityById.apply(wr1).get("edgeSourceId")).isEqualTo("src-b");
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "' AND role = 'pv-generation'")).as("a swap never mints a row").isEqualTo(3L);
+
+        // A component WITHOUT a device assignment is the plant's base, not a
+        // mis-adoption - refused, and provably still there afterwards.
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + wr2),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(entityById.apply(wr2)).isNotNull();
+
+        // Neither is a platform-composed component (seeded like every v2 test).
+        String hybrid = java.util.UUID.randomUUID().toString();
+        exec("INSERT INTO measurement_point (id, tenant_id, site_id, role, label, control, "
+                + "device_id, entity_type, capabilities, guard_config) VALUES ('" + hybrid
+                + "','" + tenantA + "','" + siteId + "','battery-hybrid','Batteriespeicher', "
+                + "FALSE, '" + deviceId + "', 'battery-hybrid', "
+                + "'{\"measure\":[{\"channel\":\"soc_pct\"}]}'::jsonb, '{}'::jsonb)");
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + hybrid),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + hybrid + "/edge-source"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("sourceId", "src-a"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // A foreign tenant can neither see nor delete it (RLS 404).
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + wr1),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        // The delete: the component goes, its kWp leaves the plant total, and
+        // its device is free again - so it can be assigned to the right one.
+        assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv'")).isEqualTo(9.8);
+        assertThat(rest.exchange(url("/api/v1/sites/" + siteId + "/v2-entities/" + wr1),
+                HttpMethod.DELETE, new HttpEntity<>(bearer(demo)), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE id = '" + wr1 + "'"))
+                .isZero();
+        assertThat(queryDouble("SELECT pv_capacity_kwp FROM asset WHERE site_id = '" + siteId
+                + "' AND type = 'pv'")).isEqualTo(0.0);
+        ResponseEntity<Map<String, Object>> surface = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        Map<String, Object> freed = ((List<Map<String, Object>>) surface.getBody()
+                .get("localSetup")).stream().filter(l -> "src-b".equals(l.get("id")))
+                .findFirst().orElseThrow();
+        assertThat(freed.get("adoptedEntityId")).as("freed = 'Neues Gerät gefunden'").isNull();
+    }
+
+    /**
      * MIG v1->v2 history bridge: a migrated site's Historie must NOT reset at
      * the cutover. With v1 5-channel telemetry BEFORE the cutover instant and
      * v2 per-entity telemetry (producer + grid-meter + battery-hybrid) AT/AFTER
@@ -4077,6 +4231,31 @@ class PortalApiTest {
                 java.sql.ResultSet rs = st.executeQuery(sql)) {
             rs.next();
             return rs.getLong(1);
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
+
+    /** Scalar text query as the Postgres superuser (sees all tenants' rows). */
+    private static String queryText(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            return rs.next() ? rs.getString(1) : null;
+        } catch (Exception e) {
+            throw new IllegalStateException("query failed: " + sql, e);
+        }
+    }
+
+    /** Scalar numeric query as the Postgres superuser (sees all tenants' rows). */
+    private static double queryDouble(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                Statement st = c.createStatement();
+                java.sql.ResultSet rs = st.executeQuery(sql)) {
+            rs.next();
+            return rs.getDouble(1);
         } catch (Exception e) {
             throw new IllegalStateException("query failed: " + sql, e);
         }

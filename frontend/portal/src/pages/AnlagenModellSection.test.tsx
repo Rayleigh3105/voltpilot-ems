@@ -265,7 +265,7 @@ describe('AnlagenModellSection — Variante A', () => {
     expect(screen.getByText('Wallbox')).toBeInTheDocument();
   });
 
-  it('leads an orphaned pin back into the existing „Wieder verbinden" flow', async () => {
+  it('leads an orphaned pin back into the assignment picker', async () => {
     const orphaned: SiteEntities = {
       ...entities,
       entities: [
@@ -284,9 +284,8 @@ describe('AnlagenModellSection — Variante A', () => {
       await screen.findByText(/nicht mehr mit einem gemeldeten Gerät verbunden/),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'wieder verbinden' }));
-    // …the SAME dialog, defaulting to re-connecting instead of a duplicate.
-    expect(await screen.findByText('Gerät zuordnen')).toBeInTheDocument();
-    expect(screen.getByText(/Wieder verbinden/)).toBeInTheDocument();
+    expect(await screen.findByText('Zuordnung ändern')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Fronius WR2/ })).toBeInTheDocument();
   });
 
   it('shows the honest fallback when the customer adopt twin is absent (403)', async () => {
@@ -297,6 +296,121 @@ describe('AnlagenModellSection — Variante A', () => {
     fireEvent.click(await screen.findByText('Neues Gerät gefunden'));
     fireEvent.click(await screen.findByRole('button', { name: 'Fertig' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/));
+  });
+
+  /**
+   * Die gemeldete Pilsting-Lage (29.07.): ALLE gemeldeten Geräte sind verpinnt,
+   * nur an die falschen Komponenten — deshalb gab es kein „Neues Gerät
+   * gefunden" und damit vorher keinen einzigen Weg zur Bereinigung.
+   */
+  const pilsting: SiteEntities = {
+    registry: null,
+    entities: [
+      { ...entities.entities[2], id: 'wr1', label: 'Fronius WR1', edgeSourceId: 'src-weg', orphanedPin: true, capacityKwp: 9.8 },
+      { ...entities.entities[2], id: 'wr2', label: 'Fronius WR2', edgeSourceId: 'src-a', orphanedPin: false },
+      { ...entities.entities[2], id: 'geist', label: 'Geist', edgeSourceId: 'src-b', orphanedPin: false },
+    ],
+    localSetup: [
+      { id: 'src-a', kind: 'source', role: 'pv-generation', brand: 'fronius_sunspec', model: null, label: 'Fronius Anlage', reportedAt: '', adoptedEntityId: 'wr2' },
+      { id: 'src-b', kind: 'source', role: 'pv-generation', brand: 'fronius_sunspec', model: null, label: 'Fronius Anlage WR2', reportedAt: '', adoptedEntityId: 'geist' },
+    ],
+    staleOnDevice: [],
+  };
+
+  function stubPilsting() {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(pilsting);
+    vi.spyOn(api, 'topology').mockResolvedValue({
+      ...topology,
+      entities: [],
+      topology: { schema_version: '1.0', nodes: [] },
+    });
+    vi.spyOn(api, 'siteSources').mockResolvedValue([
+      { ...sources[0], sourceId: 'src-a', label: 'Fronius Anlage', pvKw: 4 },
+      { ...sources[0], sourceId: 'src-b', label: 'Fronius Anlage WR2', pvKw: 16.9 },
+    ]);
+  }
+
+  it('offers reconnect AND delete on the orphan even though no device is free', async () => {
+    stubPilsting();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    await screen.findByText(/nicht mehr mit einem gemeldeten Gerät verbunden/);
+    // The dead end: nothing is unassigned, so there is no „Neues Gerät" card…
+    expect(screen.queryByText('Neues Gerät gefunden')).toBeNull();
+    // …and both levers sit right next to the warning anyway.
+    expect(screen.getByRole('button', { name: 'wieder verbinden' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'löschen' })).toBeInTheDocument();
+  });
+
+  it('swaps two crossed assignments in ONE step, never leaving a half state', async () => {
+    stubPilsting();
+    const repin = vi.spyOn(entitiesApi, 'repin').mockResolvedValue({
+      id: 'wr2',
+      entityType: 'producer',
+      role: 'pv-generation',
+      label: 'Fronius WR2',
+      deviceId: null,
+    });
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    // A HEALTHY component keeps its actions in the calm Details fold.
+    const wr2 = (await screen.findAllByText('Fronius WR2'))[0].closest('.vp-am-comp')!;
+    fireEvent.click(within(wr2 as HTMLElement).getByRole('button', { name: /Zuordnung ändern/ }));
+
+    // The dialog is up (its title and the row button share the same words, so
+    // the marker of the CURRENT assignment is the unambiguous handle).
+    expect(await screen.findByText('aktuell zugeordnet')).toBeInTheDocument();
+    expect(screen.getByText(/gehört derzeit zu „Geist“/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: /Fronius Anlage WR2/ }));
+    // The consequence is stated BEFORE the customer commits.
+    expect(screen.getByRole('status').textContent).toMatch(/in einem Schritt getauscht/);
+    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+
+    // ONE call, swap requested — no client-side "release, then set".
+    await waitFor(() =>
+      expect(repin).toHaveBeenCalledWith('s-1', 'wr2', 'src-b', { swap: true }),
+    );
+    expect(repin).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes a component after naming the consequences, freeing its device', async () => {
+    stubPilsting();
+    const remove = vi.spyOn(entitiesApi, 'removeComponent').mockResolvedValue(undefined);
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    await screen.findByText(/nicht mehr mit einem gemeldeten Gerät verbunden/);
+    fireEvent.click(screen.getByRole('button', { name: 'löschen' }));
+
+    expect(await screen.findByRole('button', { name: 'Endgültig löschen' })).toBeInTheDocument();
+    expect(screen.getByText(/„Fronius WR1“ verschwindet/)).toBeInTheDocument();
+    // The kWp hanging on the plant total is NAMED, not vaguely warned about.
+    expect(screen.getByText(/9,8/)).toBeInTheDocument();
+    // Its device is GONE, so no promise that it comes back (the orphan case).
+    expect(screen.queryByText(/Neues Gerät gefunden/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('s-1', 'wr1'));
+  });
+
+  it('shows the honest hint when the cleanup routes are absent (403)', async () => {
+    stubPilsting();
+    vi.spyOn(entitiesApi, 'removeComponent').mockRejectedValue(new ApiError(403, 'Forbidden'));
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    await screen.findByText(/nicht mehr mit einem gemeldeten Gerät verbunden/);
+    fireEvent.click(screen.getByRole('button', { name: 'löschen' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Endgültig löschen' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/VoltPilot/));
+  });
+
+  it('never offers the cleanup levers on the platform-composed components', async () => {
+    stub();
+    render(<AnlagenModellSection site={site} devices={[boxDevice]} />);
+
+    const storage = await screen.findByRole('region', { name: 'Speicher' });
+    expect(within(storage).queryByRole('button', { name: /Komponente löschen/ })).toBeNull();
+    expect(within(storage).queryByRole('button', { name: /Zuordnung ändern/ })).toBeNull();
   });
 
   it('uses no forbidden customer vocabulary in the customer view', async () => {

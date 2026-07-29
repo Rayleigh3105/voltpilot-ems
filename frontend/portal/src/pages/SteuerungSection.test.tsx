@@ -328,15 +328,14 @@ describe('Umstellung des Anlagentyps hinterlässt keinen kaputten Zwischenzustan
     return screen.findByRole('button', { name: /Zur Steuerung/ });
   }
 
-  it('weist den Fahrplan nicht als Freischaltung des Markt-Modus aus', async () => {
+  it('weist keine Basis-Ansicht als Freischaltung des Markt-Modus aus', async () => {
     setup();
     await openMarkt(dv);
-    const views = screen.getByLabelText('Ansichten dieses Modus');
-    // Fahrplan (Speicher) und Marktpreise (Börsentarif) trägt die Basis - der
-    // Container darf sie nicht als „wird verfügbar, sobald …" behaupten.
-    expect(views).not.toHaveTextContent('Fahrplan');
-    expect(views).not.toHaveTextContent('Marktpreise');
-    expect(views).toHaveTextContent('Prognosequalität');
+    // Fahrplan + Prognose (Speicher) und Marktpreise (Börsentarif) trägt die
+    // Basis - der Container darf keine davon als „wird verfügbar, sobald …"
+    // behaupten. Bleibt nichts übrig, entfällt der Abschnitt ganz, statt eine
+    // leere Überschrift zu zeigen.
+    expect(screen.queryByLabelText('Ansichten dieses Modus')).toBeNull();
   });
 
   it('zeigt den anzulegenden Wert nur solange die Anlage direkt vermarktet', async () => {
