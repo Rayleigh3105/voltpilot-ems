@@ -143,9 +143,14 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
     // Preisseite: der Kunde zahlt viertelstündlich den Börsenpreis.
     expect(boerse.modes).toEqual([]);
     const keys = anlageSidebar(boerse).groups[0].items.map((i) => i.key);
-    expect(keys).toEqual([...FIXED.slice(0, 3), 'fahrplan', 'anlagen-modell', 'marktpreise']);
-    // Prognosequalität bleibt modusgebunden.
-    expect(keys).not.toContain('prognose');
+    expect(keys).toEqual([
+      ...FIXED.slice(0, 3),
+      'fahrplan',
+      'anlagen-modell',
+      'marktpreise',
+      // Speicher-Anlage ⇒ Prognosequalität ist Basis (Captain 2026-07-29).
+      'prognose',
+    ]);
     // Fester Tarif: keine Preisseite.
     expect(anlageSidebar(PRIVAT).groups[0].items.map((i) => i.key)).not.toContain('marktpreise');
   });
@@ -183,26 +188,41 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
 
 describe('anlageSidebar - mode groups are a projection, never a hardcoded list', () => {
   it('renders one labelled, colour-tagged group per active mode with own views', () => {
-    const groups = anlageSidebar(MARKT).groups.slice(1);
+    const groups = anlageSidebar(PEAK).groups.slice(1);
     expect(groups).toHaveLength(1);
-    expect(groups[0].label).toBe('Modus · Marktvermarktung');
-    expect(groups[0].tone).toBe('markt');
-    // Fahrplan + Marktpreise trägt die Basis (Speicher bzw. Börsentarif), der
-    // Modus steuert nur noch seine eigene Ansicht bei - nie doppelt.
-    expect(groups[0].items.map((i) => i.key)).toEqual(['prognose']);
+    expect(groups[0].label).toBe('Modus · Lastspitzenkappung');
+    expect(groups[0].tone).toBe('peak');
+    expect(groups[0].items.map((i) => i.key)).toEqual(['lastspitzen']);
   });
 
-  it('shows Prognose ONLY while the market mode is active', () => {
-    const keys = (s: AnlageSurface) =>
+  it('adds NO group for a mode whose views the base already carries', () => {
+    // Seit Fahrplan/Marktpreise/Prognose Basis-Ansichten sind, steuert der
+    // Markt-Modus auf einer Speicher-Anlage mit Börsentarif nichts Eigenes mehr
+    // bei - dann entfällt die Gruppe (dieselbe Regel wie beim Eigenverbrauch),
+    // statt eine leere Überschrift zu zeigen. Erreichbar bleibt alles.
+    expect(anlageSidebar(MARKT).groups.slice(1)).toEqual([]);
+    const baseKeys = anlageSidebar(MARKT).groups[0].items.map((i) => i.key);
+    for (const key of ['fahrplan', 'marktpreise', 'prognose']) {
+      expect(baseKeys).toContain(key);
+    }
+  });
+
+  it('carries Prognose in the BASE group of every storage plant, never in a mode group', () => {
+    // Captain 2026-07-29: die Prognose ist die Eingabe des Fahrplans, nicht
+    // Marktwissen - sie folgt deshalb derselben Basis-Mechanik.
+    const modeKeys = (s: AnlageSurface) =>
       anlageSidebar(s)
         .groups.slice(1)
         .flatMap((g) => g.items.map((i) => i.key));
-    expect(keys(MARKT)).toContain('prognose');
-    // A plain self-consumption plant never sees trading knowledge.
-    expect(keys(PRIVAT)).not.toContain('marktpreise');
-    expect(keys(PRIVAT)).not.toContain('prognose');
-    expect(keys(PEAK)).not.toContain('marktpreise');
-    expect(keys(PEAK)).not.toContain('prognose');
+    const baseKeys = (s: AnlageSurface) => anlageSidebar(s).groups[0].items.map((i) => i.key);
+    for (const s of [MARKT, PRIVAT, PEAK]) {
+      expect(baseKeys(s)).toContain('prognose');
+      expect(modeKeys(s)).not.toContain('prognose');
+    }
+    // Marktwissen bleibt Marktwissen: keine Preisseite ohne Börsentarif/Modus.
+    expect(modeKeys(PRIVAT)).not.toContain('marktpreise');
+    expect(baseKeys(PRIVAT)).not.toContain('marktpreise');
+    expect(modeKeys(PEAK)).not.toContain('marktpreise');
   });
 
   it('keeps a market plant WITHOUT storage on the mode-borne Fahrplan', () => {
@@ -276,12 +296,12 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     // Die Leiste trägt die vier FESTEN Bereiche, der Rest der Basis-Gruppe
     // (Fahrplan/Marktpreise) landet im Blatt - also ist er am Telefon ebenso
     // ohne Modus erreichbar.
-    const groups = moreSheetItems(anlageSidebar(MARKT));
+    const groups = moreSheetItems(anlageSidebar(ALLE));
     expect(groups[0].label).toBe(BASE_GROUP_LABEL);
     expect(groups[0].tone).toBeNull();
-    expect(groups[0].items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise']);
-    expect(groups[1].label).toBe('Modus · Marktvermarktung');
-    expect(groups[1].tone).toBe('markt');
+    expect(groups[0].items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise', 'prognose']);
+    expect(groups[1].label).toBe('Modus · Lastspitzenkappung');
+    expect(groups[1].tone).toBe('peak');
     const last = groups[groups.length - 1];
     expect(last.items.map((i) => i.key)).toEqual(['wetter', 'technik', 'hilfe']);
   });
@@ -374,8 +394,15 @@ describe('modeViewItems - the shared derivation for the sidebar group AND the co
     // Sonst behauptete der Modus-Container „wird verfügbar, sobald Sie den
     // Modus einschalten" über eine Ansicht, die längst in der Navigation steht.
     const markt = MARKT.modes.find((m) => m.kind === 'marktvermarktung');
-    const items = modeViewItems(markt?.manifest.deepViews ?? [], MARKT.base.deepViews);
-    expect(items.map((i) => i.key)).toEqual(['prognose']);
+    // Auf einer Speicher-Anlage mit Börsentarif trägt die BASIS inzwischen
+    // alle drei Ansichten des Markt-Manifests - der Modus doppelt keine davon.
+    expect(modeViewItems(markt?.manifest.deepViews ?? [], MARKT.base.deepViews)).toEqual([]);
+    // Ohne Basis-Ansichten bleiben sie dem Modus (der Rückfall-Beweis).
+    expect(modeViewItems(markt?.manifest.deepViews ?? [], []).map((i) => i.key)).toEqual([
+      'fahrplan',
+      'marktpreise',
+      'prognose',
+    ]);
   });
 
   it('is empty for a mode whose views are all base areas', () => {

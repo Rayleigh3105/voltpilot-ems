@@ -55,10 +55,14 @@ public class EntityController {
     /** {@code orphanedPin}: tri-state - true = the pinned edge source is no
      *  longer among the device's reported sources (identity churn; offer
      *  re-pin), false = pinned + reported, null = no pin or no local view
-     *  reported yet (never claim an orphan the report cannot prove). */
+     *  reported yet (never claim an orphan the report cannot prove).
+     *  {@code capacityKwp}: the adopted producer's nameplate, which sums into
+     *  the plant total - the delete dialog names what gets subtracted instead
+     *  of a vague warning (vp-bereinigung-ui-k3). */
     public record EntityDto(UUID id, String entityType, String typeLabel, String role,
             String label, boolean control, UUID deviceId, JsonNode capabilities, JsonNode guards,
-            String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin) {}
+            String syncStatus, ObservedDto observed, String edgeSourceId, Boolean orphanedPin,
+            java.math.BigDecimal capacityKwp) {}
 
     /** One edge-local commissioning item. {@code adoptedEntityId} != null when a
      *  v2 entity was already adopted from this source (U2 "Vom Gerät gemeldet").
@@ -153,7 +157,7 @@ public class EntityController {
                             : new ObservedDto(obs.health(), obs.lastTelemetryAt(),
                                     parse(obs.channelsJson()), obs.entityType(),
                                     obs.reportedAt()),
-                    row.edgeSourceId(), orphanedPin));
+                    row.edgeSourceId(), orphanedPin, row.capacityKwp()));
         }
         // Whatever the edge still reports that the registry no longer knows.
         List<String> staleOnDevice = new ArrayList<>(byEntity.keySet());

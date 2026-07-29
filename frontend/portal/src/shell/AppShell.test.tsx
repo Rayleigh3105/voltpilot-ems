@@ -85,8 +85,12 @@ describe('AppShell admin tenant switcher', () => {
 });
 
 describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom bar)', () => {
+  // Ein DV-Park OHNE Speicher: dort trägt der Markt-Modus den Fahrplan + die
+  // Prognose selbst, es gibt also eine echte Modus-Gruppe zu rendern. Auf einer
+  // SPEICHER-Anlage sind beide inzwischen Basis-Ansichten (Captain 2026-07-29),
+  // dann entfällt die Gruppe - das prüft `anlageNav.test.ts`.
   const MARKT = anlageSurface({
-    entities: [{ id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } }],
+    entities: [{ id: 'e1', entityType: 'producer', capabilities: { measure: [{ channel: 'pv_power_kw' }] } }],
     config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
   });
 

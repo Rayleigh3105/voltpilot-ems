@@ -19,10 +19,11 @@ import {
   CONTROL_BADGE,
   EDGE_BOX_HINT,
   GUARD_FOOTNOTE,
+  componentActions,
   edgeBoxLine,
   plantModel,
   reconnectCandidates,
-  reconnectOffer,
+  type ComponentActions,
   type ComponentHealth,
   type PlantComponent,
   type PlantDevice,
@@ -30,6 +31,10 @@ import {
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
+import {
+  KomponenteLoeschenDialog,
+  ZuordnungAendernDialog,
+} from '../components/ZuordnungAendern';
 import { InfoTip } from '../components/InfoTip';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { entitiesApi } from '../entitiesApi';
@@ -72,6 +77,9 @@ export function AnlagenModellSection({ site, devices }: { site: Site; devices?: 
   const [selected, setSelected] = useState<string | null>(null);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
   const [rename, setRename] = useState<PlantComponent | null>(null);
+  // Die zwei Bereinigungs-Hebel AN der Komponente (vp-bereinigung-ui-k3).
+  const [repin, setRepin] = useState<PlantComponent | null>(null);
+  const [remove, setRemove] = useState<PlantComponent | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -230,15 +238,14 @@ export function AnlagenModellSection({ site, devices }: { site: Site; devices?: 
                   highlighted={highlightedComponents}
                   onSelect={setSelected}
                   onRename={showTechnical ? setRename : undefined}
-                  onReconnect={(c) => {
-                    const offer = data
-                      ? reconnectOffer(c, data.entities, model.newlyReported)
-                      : null;
-                    if (offer) setAssign(offer);
-                  }}
-                  reconnectOfferFor={(c) =>
-                    data ? reconnectOffer(c, data.entities, model.newlyReported) : null
+                  actionsFor={(c) =>
+                    componentActions(
+                      c,
+                      data?.entities.find((e) => e.id === c.entityId),
+                    )
                   }
+                  onRepin={setRepin}
+                  onRemove={setRemove}
                 />
               ))}
               {model.components.length === 0 && (
@@ -295,6 +302,35 @@ export function AnlagenModellSection({ site, devices }: { site: Site; devices?: 
           onClose={() => setRename(null)}
           onSaved={() => {
             setRename(null);
+            reload();
+          }}
+        />
+      )}
+
+      {repin && data && (
+        <ZuordnungAendernDialog
+          siteId={site.id}
+          component={repin}
+          entities={data.entities}
+          localSetup={data.localSetup}
+          sources={sources}
+          onClose={() => setRepin(null)}
+          onSaved={() => {
+            setRepin(null);
+            reload();
+          }}
+        />
+      )}
+
+      {remove && data && (
+        <KomponenteLoeschenDialog
+          siteId={site.id}
+          component={remove}
+          entities={data.entities}
+          localSetup={data.localSetup}
+          onClose={() => setRemove(null)}
+          onDeleted={() => {
+            setRemove(null);
             reload();
           }}
         />
@@ -395,16 +431,18 @@ function RoleGroupCard({
   highlighted,
   onSelect,
   onRename,
-  onReconnect,
-  reconnectOfferFor,
+  actionsFor,
+  onRepin,
+  onRemove,
 }: {
   group: RoleGroup;
   selected: string | null;
   highlighted: Set<string> | null;
   onSelect: (id: string | null) => void;
   onRename?: (c: PlantComponent) => void;
-  onReconnect: (c: PlantComponent) => void;
-  reconnectOfferFor: (c: PlantComponent) => AdoptableSource | null;
+  actionsFor: (c: PlantComponent) => ComponentActions;
+  onRepin: (c: PlantComponent) => void;
+  onRemove: (c: PlantComponent) => void;
 }) {
   return (
     <section className={`vp-am-group vp-am-${group.role}`} aria-label={group.label}>
@@ -427,8 +465,9 @@ function RoleGroupCard({
           dim={highlighted != null && !highlighted.has(c.id)}
           onSelect={() => onSelect(selected === c.id ? null : c.id)}
           onRename={onRename}
-          onReconnect={onReconnect}
-          canReconnect={reconnectOfferFor(c) != null}
+          actions={actionsFor(c)}
+          onRepin={onRepin}
+          onRemove={onRemove}
         />
       ))}
     </section>
@@ -448,8 +487,9 @@ function ComponentRow({
   dim,
   onSelect,
   onRename,
-  onReconnect,
-  canReconnect,
+  actions,
+  onRepin,
+  onRemove,
 }: {
   component: PlantComponent;
   selected: boolean;
@@ -457,8 +497,9 @@ function ComponentRow({
   dim: boolean;
   onSelect: () => void;
   onRename?: (c: PlantComponent) => void;
-  onReconnect: (c: PlantComponent) => void;
-  canReconnect: boolean;
+  actions: ComponentActions;
+  onRepin: (c: PlantComponent) => void;
+  onRemove: (c: PlantComponent) => void;
 }) {
   const c = component;
   return (
@@ -496,9 +537,21 @@ function ComponentRow({
           <span className="vp-am-orphan">
             <Icon name="alert-triangle" size={14} />
             nicht mehr mit einem gemeldeten Gerät verbunden
-            {canReconnect && (
-              <button type="button" className="vp-am-orphan-btn" onClick={() => onReconnect(c)}>
+            {/* Der Weg zurück steht DIREKT neben der Warnung — vorher hing er am
+                „Wieder verbinden"-Dialog eines NEU gemeldeten Geräts, den es auf
+                einer voll zugeordneten Anlage gar nicht gibt. */}
+            {actions.canRepin && (
+              <button type="button" className="vp-am-orphan-btn" onClick={() => onRepin(c)}>
                 wieder verbinden
+              </button>
+            )}
+            {actions.canDelete && (
+              <button
+                type="button"
+                className="vp-am-orphan-btn danger"
+                onClick={() => onRemove(c)}
+              >
+                löschen
               </button>
             )}
           </span>
@@ -524,18 +577,40 @@ function ComponentRow({
         {c.reading?.caption && <small>{c.reading.caption}</small>}
       </span>
 
-      {c.channels.length > 0 && (
+      {/* Die Bereinigung wohnt hier: an einer gesunden Komponente ruhig im
+          Details-Bereich, an einer verwaisten prominent neben der Warnung. */}
+      {(c.channels.length > 0 || (!c.orphaned && (actions.canRepin || actions.canDelete))) && (
         <details className="vp-am-details">
           <summary>
             <Icon name="chevron-right" size={12} /> Details
           </summary>
-          <span className="vp-am-chips">
-            {c.channels.map((ch) => (
-              <span key={ch.raw} title={ch.raw}>
-                {ch.label}
-              </span>
-            ))}
-          </span>
+          {c.channels.length > 0 && (
+            <span className="vp-am-chips">
+              {c.channels.map((ch) => (
+                <span key={ch.raw} title={ch.raw}>
+                  {ch.label}
+                </span>
+              ))}
+            </span>
+          )}
+          {!c.orphaned && (actions.canRepin || actions.canDelete) && (
+            <span className="vp-am-actions">
+              {actions.canRepin && (
+                <button type="button" className="vp-am-action" onClick={() => onRepin(c)}>
+                  <Icon name="link" size={13} /> Zuordnung ändern
+                </button>
+              )}
+              {actions.canDelete && (
+                <button
+                  type="button"
+                  className="vp-am-action danger"
+                  onClick={() => onRemove(c)}
+                >
+                  <Icon name="trash" size={13} /> Komponente löschen
+                </button>
+              )}
+            </span>
+          )}
         </details>
       )}
     </div>

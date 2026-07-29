@@ -679,6 +679,12 @@ export interface SiteEntity {
   /** The edge source this entity was adopted from (U2 matcher), else null. */
   edgeSourceId: string | null;
   /**
+   * The nameplate (kWp) recorded for an adopted producer — it sums into the
+   * plant's total, so the delete dialog can name what is subtracted. Optional:
+   * an older backend simply omits it (then the dialog stays generic).
+   */
+  capacityKwp?: number | null;
+  /**
    * true = the pinned edge source is no longer among the device's reported
    * sources (identity churn - offer "Wieder verbinden"); false = pinned +
    * reported; null/absent = no pin, or no local view reported yet (an older

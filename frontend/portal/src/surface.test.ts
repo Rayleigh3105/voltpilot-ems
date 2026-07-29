@@ -185,15 +185,17 @@ describe('Ausprägung: Privat-EMS', () => {
     expect(automations[0].flowRef?.flowId).toBe('f-hz');
   });
 
-  it('zeigt Telemetrie-Historie UND Fahrplan (base), aber NIRGENDS Marktpreise oder Prognose', () => {
+  it('zeigt Telemetrie-Historie, Fahrplan UND Prognose (base), aber keine Marktpreise', () => {
     const s = anlageSurface(PRIVAT);
     expect(s.deepViews).toContain('telemetrie-historie');
     // Hotfix 2026-07-29: die Anlage hat einen Speicher, also plant der
-    // Optimierer für sie - der Fahrplan gehört ihr, ganz ohne Modus.
+    // Optimierer für sie - der Fahrplan gehört ihr, ganz ohne Modus…
     expect(s.deepViews).toContain('fahrplan');
+    // …und mit ihm die Prognosequalität: Last- und PV-Prognose sind die
+    // EINGABE dieses Fahrplans, nicht ein Anhängsel der Vermarktung.
+    expect(s.deepViews).toContain('prognosequalitaet');
     // Fester Tarif, keine Vermarktung: Marktwissen bleibt aus.
     expect(s.deepViews).not.toContain('marktpreise');
-    expect(s.deepViews).not.toContain('prognosequalitaet');
     expect(s.deepViews).not.toContain('lastspitzen');
   });
 
@@ -250,12 +252,12 @@ describe('Ausprägung: Gewerbe', () => {
     ]);
   });
 
-  it('zeigt Telemetrie-Historie, aber weder Marktpreise noch Prognose', () => {
+  it('zeigt Telemetrie-Historie + Prognose (Speicher), aber keine Marktpreise', () => {
     const s = anlageSurface(GEWERBE);
     expect(s.deepViews).toContain('telemetrie-historie');
     expect(s.deepViews).toContain('lastspitzen');
+    expect(s.deepViews).toContain('prognosequalitaet');
     expect(s.deepViews).not.toContain('marktpreise');
-    expect(s.deepViews).not.toContain('prognosequalitaet');
   });
 
   it('markiert den reinen Stammdaten-Modus als von VoltPilot eingerichtet (keine Flow-Affordanz)', () => {
@@ -531,6 +533,23 @@ describe('base: der Fahrplan hängt am Speicher, nicht am Modus (Hotfix 2026-07-
     expect(baseSurface({ entities: [PRODUCER, GRID] }).deepViews).not.toContain('fahrplan');
   });
 
+  it('macht die Prognosequalität zur Basis-Ansicht JEDER Speicher-Anlage', () => {
+    // Captain 2026-07-29: „hat mit Marktoptimierung wenig zu tun" - dieselbe
+    // Mechanik wie beim Fahrplan, denn sie ist dessen Eingabe.
+    expect(anlageSurface(UMGESTELLT).base.deepViews).toContain('prognosequalitaet');
+    expect(baseSurface({ entities: [BATTERY] }).deepViews).toContain('prognosequalitaet');
+    // Ohne Speicher plant niemand - dann auch keine Prognose-Ansicht.
+    expect(baseSurface({ entities: [PRODUCER, GRID] }).deepViews)
+      .not.toContain('prognosequalitaet');
+    // Der Markt-Modus trägt sie weiter als RÜCKFALL, die Vereinigung
+    // dedupliziert (Reichweite wird nie kleiner).
+    const markt = anlageSurface({
+      ...UMGESTELLT,
+      config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
+    });
+    expect(markt.deepViews.filter((v) => v === 'prognosequalitaet')).toHaveLength(1);
+  });
+
   it('zeigt Marktpreise bei dynamischem Tarif auch ohne Markt-Modus', () => {
     const boersentarif = anlageSurface({
       ...UMGESTELLT,
@@ -538,8 +557,8 @@ describe('base: der Fahrplan hängt am Speicher, nicht am Modus (Hotfix 2026-07-
     });
     expect(boersentarif.modes).toEqual([]);
     expect(boersentarif.base.deepViews).toContain('marktpreise');
-    // Prognosequalität + Erlös-Historie bleiben modusgebunden (feedback.md).
-    expect(boersentarif.deepViews).not.toContain('prognosequalitaet');
+    // Die Erlös-Historie bleibt modusgebunden (feedback.md) - sie zeigt
+    // Vermarktungs-Erlöse. Die Prognosequalität hängt am Speicher (s. u.).
     expect(boersentarif.deepViews).not.toContain('erloes-historie');
   });
 
@@ -718,13 +737,15 @@ describe('Komposition', () => {
 
   it('moneyStreams/deepViews arbeiten auf einer leeren Modus-Menge', () => {
     expect(moneyStreams([])).toEqual([]);
-    // Der Speicher bringt seit dem Hotfix 2026-07-29 den Fahrplan mit - ganz
-    // ohne Modus (die Ansichten stehen in der kanonischen Reihenfolge).
+    // Der Speicher bringt seit dem Hotfix 2026-07-29 den Fahrplan mit - und
+    // seit derselben Regel die Prognosequalität, ganz ohne Modus (die
+    // Ansichten stehen in der kanonischen Reihenfolge).
     expect(deepViews(baseSurface({ entities: [BATTERY] }), [])).toEqual([
       'live',
       'geraete',
       'telemetrie-historie',
       'fahrplan',
+      'prognosequalitaet',
       'wetter',
     ]);
   });

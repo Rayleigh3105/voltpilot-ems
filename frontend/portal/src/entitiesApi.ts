@@ -130,11 +130,22 @@ export const entitiesApi = {
    * instead of adopting a duplicate. 409 = source already pinned elsewhere,
    * 422 = not reported / role mismatch.
    */
-  repin: (siteId: string, entityId: string, sourceId: string) =>
+  repin: (siteId: string, entityId: string, sourceId: string, opts?: { swap?: boolean }) =>
     request<AdminEntity>(`/api/v1/sites/${siteId}/v2-entities/${entityId}/edge-source`, {
       method: 'POST',
-      body: JSON.stringify({ sourceId }),
+      body: JSON.stringify(opts?.swap ? { sourceId, swap: true } : { sourceId }),
     }),
+
+  /**
+   * Delete an adopted component - the CUSTOMER cleanup lever
+   * (vp-bereinigung-ui-k3). Removes the measurement point outright: its kWp is
+   * released from the plant total and its device becomes free, so it reappears
+   * as "Neues Gerät gefunden" and can be assigned to the right component.
+   * RLS-fenced to the caller's own site; the platform-composed base components
+   * (battery-hybrid / house-load) and unpinned rows are refused with 422.
+   */
+  removeComponent: (siteId: string, entityId: string) =>
+    request<void>(`/api/v1/sites/${siteId}/v2-entities/${entityId}`, { method: 'DELETE' }),
 
   /**
    * AE5 onboarding: compose the site's pilot entities (battery-hybrid / producer
