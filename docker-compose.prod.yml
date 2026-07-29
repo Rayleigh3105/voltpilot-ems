@@ -341,7 +341,7 @@ services:
       OPTIMIZER_TERMINAL_VALUE_QUANTILE: ${OPTIMIZER_TERMINAL_VALUE_QUANTILE:-0.3}
       OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH: ${OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH:-}
       OPTIMIZER_EEG_RATES_JSON: ${OPTIMIZER_EEG_RATES_JSON:-}
-      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-false}
+      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-true}
       # --- First-boot device enrollment over HTTPS (kinderleicht mTLS) --------
       # A fresh device knowing only its ref + portal URL uploads a CSR and polls
       # for its certificate; on claim the api signs it with the device CA
@@ -656,9 +656,11 @@ services:
       # Structured Bezugspreis: researched default supply components as the
       # fallback for dynamisch-without-Aufschlag / ohne sites WITHOUT a
       # maintained site_supply_price row (report vp-nacht-bezug-e7 §3.1).
-      # Default OFF - activation is an open captain decision. Mirrored to
-      # the api service (same variable) so display and solver agree.
-      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-false}
+      # Default ON (captain decision 2026-07-29) - a site without a
+      # maintained price sheet rechnet mit den Default-Komponenten; set
+      # this to false to opt out. Mirrored to the api service (same
+      # variable) so display and solver agree.
+      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-true}
       # MIG v1->v2 migration switch: comma-separated site UUIDs the optimizer
       # ADDITIONALLY publishes a v2 shadow plan for (ems/{t}/{s}/{d}/v2/plan);
       # the v1 /schedule plan is byte-identical for every site. Default EMPTY =
@@ -691,9 +693,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       SIM_MAX_WORKERS: ${SIM_MAX_WORKERS:-3}
-      # Same pricing layer as the optimizer - keep the ONE price truth when the
-      # default-supply-components flag is ever flipped platform-wide.
-      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-false}
+      # Same pricing layer as the optimizer - keep the ONE price truth
+      # (default-supply-components defaults ON platform-wide, opt out with false).
+      OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-true}
 
   # ---------------------------------------------------------------------------
   # flowc-serve: the CLOUD-side flow-graph -> flow-artifact compiler sidecar

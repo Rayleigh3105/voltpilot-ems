@@ -127,8 +127,9 @@ class SupplyPriceComponents:
 #: Stand 2026: Netzentgelt-AP ~7,6 / Stromsteuer 2,05 / Konzession 1,59 (Stadt
 #: <= 100k EW) / Umlagen KWKG+Offshore+§19 2,946 / Vertrieb 1,5 ct netto
 #: = 15,686 ct netto + 19 % USt). Applied ONLY behind the
-#: OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag (default OFF - captain decision
-#: pending) and only where the site has neither a maintained supply-price row
+#: OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag (default ON since captain decision
+#: 2026-07-29; env `false` is the opt-out Notbremse) and only where the site
+#: has neither a maintained supply-price row
 #: nor an operator Sammelaufschlag; bare spot as a household Bezugspreis is
 #: always MORE wrong than this set (§3.1).
 DEFAULT_SUPPLY_COMPONENTS = SupplyPriceComponents(

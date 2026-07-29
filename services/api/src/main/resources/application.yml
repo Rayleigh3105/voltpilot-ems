@@ -109,7 +109,7 @@ voltpilot:
     terminal-value-quantile: ${OPTIMIZER_TERMINAL_VALUE_QUANTILE:0.3}
     terminal-value-ct-per-kwh: ${OPTIMIZER_TERMINAL_VALUE_CT_PER_KWH:}
     eeg-rates-json: ${OPTIMIZER_EEG_RATES_JSON:}
-    default-supply-components: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:false}
+    default-supply-components: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:true}
   # Flow platform (E3a editor + E2 compiler). `compiler.base-url` is the flowc
   # sidecar (edge-app/nodered/flowc/serve.js, compose service "flowc") the
   # activation path POSTs flow graphs to; the api never reimplements the JCS

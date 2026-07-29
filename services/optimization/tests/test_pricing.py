@@ -44,6 +44,16 @@ SPOT = [100.0, 50.0, -20.0, 0.0]
 STARTS = horizon_slot_starts(T0, len(SPOT))
 
 
+@pytest.fixture(autouse=True)
+def _default_supply_components_off(monkeypatch):
+    """This module pins the LEGACY (bare-spot) pricing regime for no-data
+    sites. Since the OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag now defaults ON
+    (captain decision 2026-07-29), pin it explicitly OFF here so every legacy
+    vector stays byte-identical; the flag-specific tests below opt into ON by
+    overriding the env in their own body."""
+    monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", "false")
+
+
 # ---- import side: the supply tariff ------------------------------------------
 
 
@@ -211,13 +221,20 @@ def test_default_components_flag_never_overrides_operator_data(monkeypatch):
 
 
 def test_default_components_flag_off_is_the_legacy_model(monkeypatch):
-    for value in (None, "false", "0", "off"):
-        if value is None:
-            monkeypatch.delenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", raising=False)
-        else:
-            monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", value)
+    # Explicit opt-out (the Notbremse) restores bare-spot legacy pricing.
+    for value in ("false", "0", "off"):
+        monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", value)
         assert import_prices(SiteTariff(tarif_art="ohne"), SPOT) == SPOT
         assert import_prices(SiteTariff(tarif_art="dynamisch"), SPOT) == SPOT
+
+
+def test_default_components_flag_defaults_on_when_env_absent(monkeypatch):
+    # Captain decision 2026-07-29: a missing env now defaults ON, so a
+    # no-data site rechnet mit den Default-Komponenten statt nacktem Spot.
+    monkeypatch.delenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", raising=False)
+    expected = pytest.approx([305.6634, 246.1634, 162.8634, 186.6634])
+    assert import_prices(SiteTariff(tarif_art="ohne"), SPOT) == expected
+    assert import_prices(SiteTariff(tarif_art="dynamisch"), SPOT) == expected
 
 
 def test_default_components_flag_garbage_raises(monkeypatch):
