@@ -290,6 +290,21 @@ func (f *fakeSources) DeleteSource(id string) error {
 	return sources.ErrNotFound
 }
 
+func (f *fakeSources) RenameSource(id, label string) (sources.Source, error) {
+	label = strings.TrimSpace(label)
+	if label == "" || len([]rune(label)) > 64 {
+		return sources.Source{}, &sources.ValidationError{
+			Msg: "Bitte einen Namen mit 1 bis 64 Zeichen angeben."}
+	}
+	for i := range f.list {
+		if f.list[i].ID == id {
+			f.list[i].Label = label
+			return f.list[i], nil
+		}
+	}
+	return sources.Source{}, sources.ErrNotFound
+}
+
 func newServer(t *testing.T) (*httptest.Server, *fakeInverter) {
 	t.Helper()
 	srv, fi, _ := newServerWithHistory(t)
@@ -2141,6 +2156,68 @@ func TestSourcesAddAndDelete(t *testing.T) {
 	d2.Body.Close()
 	if d2.StatusCode != 404 {
 		t.Fatalf("delete unknown status = %d, want 404", d2.StatusCode)
+	}
+}
+
+// Rename is label-only (PUT /api/sources/{id}): the id - and with it the
+// cloud's adoption pin - survives, which is the whole point (before this the
+// only "rename" was delete + re-add = a new id, vp-vier-erzeuger-p9).
+func TestSourcesRenameIsLabelOnly(t *testing.T) {
+	fs := &fakeSources{}
+	srv := sourcesServer(t, fs)
+
+	reqBody := `{"role":"pv-generation","brand":"generic_modbus","model":"sunspec","connection":{"ip":"192.168.0.70"},"capacity_kwp":70}`
+	resp, err := http.Post(srv.URL+"/api/sources", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var added struct {
+		Source sources.Source `json:"source"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&added); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	put := func(id, body string) (*http.Response, sources.Source) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/sources/"+id,
+			strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out struct {
+			Source sources.Source `json:"source"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&out)
+		r.Body.Close()
+		return r, out.Source
+	}
+
+	r, renamed := put(added.Source.ID, `{"label":"Fronius Anlage WR2"}`)
+	if r.StatusCode != 200 {
+		t.Fatalf("rename status %d, want 200", r.StatusCode)
+	}
+	if renamed.ID != added.Source.ID {
+		t.Fatalf("rename must keep the id: %q -> %q", added.Source.ID, renamed.ID)
+	}
+	if renamed.Label != "Fronius Anlage WR2" || fs.list[0].Label != "Fronius Anlage WR2" {
+		t.Fatalf("label not updated: %+v", renamed)
+	}
+	if fs.list[0].Connection.IP != "192.168.0.70" || fs.list[0].CapacityKwp != 70 {
+		t.Fatalf("rename must not touch transport/master data: %+v", fs.list[0])
+	}
+
+	if r, _ := put("nope", `{"label":"X"}`); r.StatusCode != 404 {
+		t.Fatalf("rename unknown id: status %d, want 404", r.StatusCode)
+	}
+	if r, _ := put(added.Source.ID, `{"label":"   "}`); r.StatusCode != 400 {
+		t.Fatalf("empty label: status %d, want 400", r.StatusCode)
+	}
+	if r, _ := put(added.Source.ID, `{nope`); r.StatusCode != 400 {
+		t.Fatalf("malformed body: status %d, want 400", r.StatusCode)
 	}
 }
 

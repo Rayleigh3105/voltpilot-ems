@@ -70,6 +70,10 @@ type SourcesController interface {
 	SourceLastReadings() map[string]sources.LastReading
 	AddSource(sources.Request) (sources.Source, error)
 	DeleteSource(id string) error
+	// RenameSource updates ONLY the label - identity/transport stay untouched,
+	// so the cloud's adoption pin on the source id survives a rename (the
+	// delete+re-add workaround minted a new id and orphaned it).
+	RenameSource(id, label string) (sources.Source, error)
 	// Balance settings: the operator-declared "primary grid CT measures the
 	// whole site connection" toggle rendered in the Netz-Zähler group (it is
 	// the meter-less alternative for the true house consumption). Persisted +
@@ -498,6 +502,35 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 				return
 			}
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Energiequelle konnte nicht gespeichert werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"source": s})
+	})
+
+	// PUT /api/sources/{id} - rename an additional source (label only; identity
+	// and transport are immutable, set at add time). Unknown id -> 404, invalid
+	// label -> 400 with a German message.
+	mux.HandleFunc("PUT /api/sources/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		var req struct {
+			Label string `json:"label"`
+		}
+		body, _ := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Ungültige Anfrage."})
+			return
+		}
+		s, err := src.RenameSource(id, req.Label)
+		if err != nil {
+			var ve *sources.ValidationError
+			switch {
+			case errors.As(err, &ve):
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": ve.Msg})
+			case errors.Is(err, sources.ErrNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]any{"error": "Energiequelle nicht gefunden."})
+			default:
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "Energiequelle konnte nicht umbenannt werden."})
+			}
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"source": s})
