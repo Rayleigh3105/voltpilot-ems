@@ -1,5 +1,7 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.optimizer.OptimizerProperties;
+import com.voltpilot.api.optimizer.SlotEconomics;
 import com.voltpilot.api.web.dto.HistoryBucketDto;
 import com.voltpilot.api.web.dto.HistoryPlanPointDto;
 import java.math.BigDecimal;
@@ -21,6 +23,15 @@ import org.springframework.stereotype.Repository;
  * {@code schedule} hypertable all carry the tenant policy, so no query needs
  * (or trusts) a tenant predicate. {@code day_ahead_prices} is public market
  * data joined read-only.
+ *
+ * <p><b>{@code cost_eur} is the site's REAL supply cost since Stufe 3 of the
+ * structured Bezugspreis</b> (report vp-nacht-bezug-e7 §3.4): import energy ×
+ * the SAME per-slot import-price composition the optimizer plans with
+ * ({@link SlotEconomics#importPriceCtSql} - flat tariff / spot + Aufschlag /
+ * {@code (spot + Preisblatt-Komponenten) × (1+USt)}; a site without any price
+ * data stays at bare spot, byte-identical to before). Like the earnings
+ * engine, every slot is valued at the CURRENTLY maintained tariff - there is
+ * no price-sheet history (documented v1 simplification).
  */
 @Repository
 public class HistoryRepository {
@@ -39,10 +50,26 @@ public class HistoryRepository {
                     + "  ORDER BY (p.resolution = 'PT15M') DESC, p.ts DESC LIMIT 1"
                     + ") p ON true ";
 
+    /** The site + supply-price-sheet join the import valuation needs (fixed
+     * {@code s}/{@code ssp} aliases, the importPriceCtSql contract; the site
+     * id binds a parameter). */
+    private static final String SITE_TARIFF_JOIN =
+            "JOIN site s ON s.id = ? "
+                    + "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id ";
+
     private final JdbcTemplate jdbc;
 
-    public HistoryRepository(JdbcTemplate jdbc) {
+    /** Per-slot grid cost in EUR: import kWh × the ONE import-price
+     * composition (EUR/kWh), flag-built once at construction. */
+    private final String costEur;
+
+    private final String tarifPricedExpr;
+
+    public HistoryRepository(JdbcTemplate jdbc, OptimizerProperties optimizer) {
         this.jdbc = jdbc;
+        this.costEur = "(b.grid_import_kwh * " + SlotEconomics.importPriceCtSql(
+                "p.price_eur_mwh", optimizer.defaultSupplyComponents()) + " / 100.0)";
+        this.tarifPricedExpr = SlotEconomics.tarifPricedSql(optimizer.defaultSupplyComponents());
     }
 
     /**
@@ -78,11 +105,11 @@ public class HistoryRepository {
                         + "  FROM telemetry WHERE site_id = ? AND time >= ? AND time < ?"
                         + "  GROUP BY 1) "
                         + "SELECT b.*, p.price_eur_mwh,"
-                        + "       b.grid_import_kwh * p.price_eur_mwh / 1000 AS cost_eur "
-                        + "FROM b " + PRICE_LATERAL
+                        + "       " + costEur + " AS cost_eur "
+                        + "FROM b " + SITE_TARIFF_JOIN + PRICE_LATERAL
                         + "ORDER BY b.bucket",
                 HistoryRepository::mapBucket,
-                siteId, Timestamp.from(from), Timestamp.from(to), biddingZone);
+                siteId, Timestamp.from(from), Timestamp.from(to), siteId, biddingZone);
     }
 
     /**
@@ -117,8 +144,8 @@ public class HistoryRepository {
         Map<Instant, BigDecimal> costs = new HashMap<>();
         jdbc.query(
                 "SELECT " + bucketExpr + " AS display_bucket,"
-                        + " sum(b.grid_import_kwh * p.price_eur_mwh / 1000) AS cost_eur "
-                        + "FROM telemetry_rollup_15m b " + PRICE_LATERAL
+                        + " sum(" + costEur + ") AS cost_eur "
+                        + "FROM telemetry_rollup_15m b " + SITE_TARIFF_JOIN + PRICE_LATERAL
                         + "WHERE b.site_id = ? AND b.bucket >= ? AND b.bucket < ? "
                         + "GROUP BY 1",
                 rs -> {
@@ -127,7 +154,7 @@ public class HistoryRepository {
                         costs.put(rs.getTimestamp("display_bucket").toInstant(), cost);
                     }
                 },
-                biddingZone, siteId, Timestamp.from(from), Timestamp.from(to));
+                siteId, biddingZone, siteId, Timestamp.from(from), Timestamp.from(to));
         return costs;
     }
 
@@ -150,16 +177,26 @@ public class HistoryRepository {
     }
 
     /**
-     * The site's configured tariff kind ({@code dynamisch|fest|ohne}) - pure
-     * CONTEXT for {@code gridCostEur}, which is always the bare spot cost of the
-     * imported energy and never applies a retail tariff. Without it the portal
-     * labels a spot number "Stromkosten (Netzbezug)" on a plant that has no
-     * tariff configured at all (audit H8). Null only when the site is
-     * unreadable (RLS/deleted).
+     * The labeling context of {@code gridCostEur}: the site's configured
+     * tariff kind ({@code dynamisch|fest|ohne}, audit H8) plus whether the
+     * import valuation actually engaged a tariff/Preisblatt beyond bare spot
+     * ({@code tarifPriced} - the {@link SlotEconomics#tarifPricedSql} branch
+     * conditions, so the label always matches the number: a bare
+     * {@code tarif_art} echo cannot tell an {@code ohne} site with a
+     * maintained sheet from one without). Null when the site is unreadable
+     * (RLS/deleted).
      */
-    public String tarifArt(UUID siteId) {
-        List<String> rows = jdbc.query("SELECT tarif_art FROM site WHERE id = ?",
-                (rs, i) -> rs.getString("tarif_art"), siteId);
+    public record TariffContext(String tarifArt, boolean tarifPriced) {
+    }
+
+    public TariffContext tariffContext(UUID siteId) {
+        List<TariffContext> rows = jdbc.query(
+                "SELECT s.tarif_art, " + tarifPricedExpr + " AS tarif_priced "
+                        + "FROM site s LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id "
+                        + "WHERE s.id = ?",
+                (rs, i) -> new TariffContext(rs.getString("tarif_art"),
+                        rs.getBoolean("tarif_priced")),
+                siteId);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -231,10 +268,10 @@ public class HistoryRepository {
         return jdbc.query(
                 "WITH b AS (" + v2Reconstruction(quarters, "q.bucket") + ") "
                         + "SELECT b.*, p.price_eur_mwh,"
-                        + "       b.grid_import_kwh * p.price_eur_mwh / 1000 AS cost_eur "
-                        + "FROM b " + PRICE_LATERAL + "ORDER BY b.bucket",
+                        + "       " + costEur + " AS cost_eur "
+                        + "FROM b " + SITE_TARIFF_JOIN + PRICE_LATERAL + "ORDER BY b.bucket",
                 HistoryRepository::mapBucket,
-                siteId, Timestamp.from(from), Timestamp.from(to), biddingZone);
+                siteId, Timestamp.from(from), Timestamp.from(to), siteId, biddingZone);
     }
 
     /**
@@ -278,15 +315,15 @@ public class HistoryRepository {
                         + "  WHERE r.site_id = ? AND mp.entity_type = 'grid-meter'"
                         + "    AND r.channel = 'power_kw' AND r.bucket >= ? AND r.bucket < ?) "
                         + "SELECT " + bucketExpr + " AS display_bucket,"
-                        + " sum(b.grid_import_kwh * p.price_eur_mwh / 1000) AS cost_eur "
-                        + "FROM g AS b " + PRICE_LATERAL + "GROUP BY 1",
+                        + " sum(" + costEur + ") AS cost_eur "
+                        + "FROM g AS b " + SITE_TARIFF_JOIN + PRICE_LATERAL + "GROUP BY 1",
                 rs -> {
                     BigDecimal cost = rs.getBigDecimal("cost_eur");
                     if (cost != null) {
                         costs.put(rs.getTimestamp("display_bucket").toInstant(), cost);
                     }
                 },
-                siteId, Timestamp.from(from), Timestamp.from(to), biddingZone);
+                siteId, Timestamp.from(from), Timestamp.from(to), siteId, biddingZone);
         return costs;
     }
 

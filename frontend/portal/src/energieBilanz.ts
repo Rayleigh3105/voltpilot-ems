@@ -149,7 +149,7 @@ export interface EnergieBilanz {
   summen: EnergieSumme[];
   autarkiePct: number | null;
   eigenverbrauchPct: number | null;
-  /** IMMER die reinen Börsenkosten des Netzbezugs (nie der Haustarif). */
+  /** Die realen Bezugskosten des Netzbezugs (siehe `gridCostHinweis`). */
   gridCostEur: number | null;
   /** Der ehrliche Zusatz zu `gridCostEur` — nie ohne ihn anzeigen. */
   gridCostHinweis: string;
@@ -158,15 +158,16 @@ export interface EnergieBilanz {
 }
 
 /**
- * `gridCostEur` ist serverseitig immer der **Börsenpreis-Wert** des Netzbezugs;
- * ein konfigurierter Haustarif ist NICHT eingerechnet (Audit H8). Der Zusatz
- * sagt das — und zwar unterschiedlich, je nachdem ob der Kunde überhaupt einen
- * Tarif hinterlegt hat (sonst wäre „ohne Ihren Tarif" verwirrend).
+ * `gridCostEur` wird serverseitig seit dem strukturierten Bezugspreis (Stufe 3)
+ * mit DERSELBEN Preiskomposition bewertet, mit der auch die Steuerung plant:
+ * hat die Anlage einen Tarif bzw. ein gepflegtes Preisblatt (`tarifPriced`),
+ * ist das der echte Rechnungs-Level („bewertet zu Ihrem Stromtarif"); ohne
+ * jede Preispflege bleibt es der reine Börsenpreis-Wert. Ein älteres Backend
+ * liefert das Flag nicht — dann wird ehrlich „zu Börsenpreisen" gesagt, nie
+ * ein Tarif behauptet, der nicht eingerechnet ist.
  */
-export function gridCostHinweis(tarifArt: History['totals']['tarifArt']): string {
-  return tarifArt === 'fest' || tarifArt === 'dynamisch'
-    ? 'zu Börsenpreisen · ohne Ihren Tarif'
-    : 'zu Börsenpreisen';
+export function gridCostHinweis(tarifPriced: boolean | null | undefined): string {
+  return tarifPriced ? 'bewertet zu Ihrem Stromtarif' : 'zu Börsenpreisen';
 }
 
 export function energieBilanz(history: History): EnergieBilanz {
@@ -176,7 +177,7 @@ export function energieBilanz(history: History): EnergieBilanz {
     autarkiePct: num(history.totals.autarkiePct),
     eigenverbrauchPct: num(history.totals.eigenverbrauchPct),
     gridCostEur: num(history.totals.gridCostEur),
-    gridCostHinweis: gridCostHinweis(history.totals.tarifArt),
+    gridCostHinweis: gridCostHinweis(history.totals.tarifPriced),
     empty: summen.every((s) => s.kwh == null),
   };
 }

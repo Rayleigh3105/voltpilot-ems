@@ -150,14 +150,20 @@ describe('energieBilanz — Summen + Quoten + Kosten', () => {
     expect(energieBilanz(hist([bucket({ loadKwh: 0 })])).empty).toBe(false);
   });
 
-  it('sagt bei den Netzkosten immer, dass es Börsenpreise sind', () => {
-    expect(gridCostHinweis('ohne')).toBe('zu Börsenpreisen');
+  it('benennt die Bewertungsbasis der Netzkosten ehrlich (Stufe 3)', () => {
+    // Seit dem strukturierten Bezugspreis rechnet der Server mit dem Tarif,
+    // sobald einer greift (`tarifPriced`); ohne Preispflege bleibt es der
+    // Börsenpreis - und ein älteres Backend ohne das Flag behauptet nie einen
+    // Tarif, der nicht eingerechnet ist.
+    expect(gridCostHinweis(true)).toBe('bewertet zu Ihrem Stromtarif');
+    expect(gridCostHinweis(false)).toBe('zu Börsenpreisen');
     expect(gridCostHinweis(null)).toBe('zu Börsenpreisen');
-    // Mit hinterlegtem Tarif zusätzlich: der Tarif ist hier NICHT eingerechnet.
-    expect(gridCostHinweis('fest')).toBe('zu Börsenpreisen · ohne Ihren Tarif');
-    expect(gridCostHinweis('dynamisch')).toBe('zu Börsenpreisen · ohne Ihren Tarif');
+    expect(gridCostHinweis(undefined)).toBe('zu Börsenpreisen');
+    expect(energieBilanz(hist([], { tarifArt: 'dynamisch', tarifPriced: true })).gridCostHinweis).toBe(
+      'bewertet zu Ihrem Stromtarif',
+    );
     expect(energieBilanz(hist([], { tarifArt: 'dynamisch' })).gridCostHinweis).toBe(
-      'zu Börsenpreisen · ohne Ihren Tarif',
+      'zu Börsenpreisen',
     );
   });
 });

@@ -177,6 +177,79 @@ public final class SlotEconomics {
         return (spotEurMwh / 10.0 + supply.componentsCtKwh()) * (1.0 + supply.ustPct() / 100.0);
     }
 
+    // ---- SQL twins (the read-side aggregates' ONE price truth) --------------
+    //
+    // The Earnings/History aggregates value MILLIONS of 15-min slots in SQL, so
+    // the import-price composition exists once more as a generated SQL fragment
+    // - generated HERE, next to importPriceCtKwh, so both renderings of the
+    // rule live in one file and change together (Stufe 3 of the
+    // vp-nacht-bezug-e7 report: display and steering tell the SAME math).
+    // Branch order and semantics MUST stay identical to importPriceCtKwh();
+    // the equivalence is pinned vector-for-vector against real Postgres by
+    // PortalApiTest.importPriceSqlMatchesTheSlotEconomicsCompositionVectors.
+
+    /** The maintained-sheet gate in SQL (SupplyPrice.hasComponents twin). */
+    private static final String SQL_SHEET_MAINTAINED =
+            "(ssp.netzentgelt_arbeitspreis_ct IS NOT NULL OR ssp.stromsteuer_ct IS NOT NULL"
+                    + " OR ssp.konzessionsabgabe_ct IS NOT NULL OR ssp.umlagen_ct IS NOT NULL"
+                    + " OR ssp.vertriebsaufschlag_ct IS NOT NULL)";
+
+    /** Σ of the maintained components in SQL (componentsCtKwh twin). */
+    private static final String SQL_SHEET_COMPONENTS_CT =
+            "(COALESCE(ssp.netzentgelt_arbeitspreis_ct, 0) + COALESCE(ssp.stromsteuer_ct, 0)"
+                    + " + COALESCE(ssp.konzessionsabgabe_ct, 0) + COALESCE(ssp.umlagen_ct, 0)"
+                    + " + COALESCE(ssp.vertriebsaufschlag_ct, 0))";
+
+    /**
+     * The SQL twin of {@link #importPriceCtKwh(Double)}: a ct/kWh expression
+     * over a query that aliases the site row as {@code s} and LEFT JOINs its
+     * supply-price sheet as {@code ssp}
+     * ({@code LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id});
+     * {@code spotEurMwhExpr} is the slot's day-ahead price expression in
+     * EUR/MWh (NULL propagates to NULL, exactly like the Java twin - except
+     * the flat {@code fest} tariff, which needs no spot). The
+     * {@code defaultSupplyComponents} flag is folded in at query-build time
+     * from the SAME mirrored {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}
+     * property the diagnostics view reads, its numbers taken from
+     * {@link #DEFAULT_SUPPLY_PRICE} - flag semantics are identical for the
+     * solver, the diagnostics and the earnings/history aggregates.
+     */
+    public static String importPriceCtSql(String spotEurMwhExpr, boolean defaultSupplyComponents) {
+        String spotCt = "(" + spotEurMwhExpr + " / 10.0)";
+        StringBuilder sql = new StringBuilder("(CASE")
+                .append(" WHEN s.tarif_art = 'fest' AND s.tarif_param_ct_kwh IS NOT NULL")
+                .append(" THEN s.tarif_param_ct_kwh")
+                .append(" WHEN s.tarif_art IN ('dynamisch', 'ohne') AND ").append(SQL_SHEET_MAINTAINED)
+                .append(" THEN (").append(spotCt).append(" + ").append(SQL_SHEET_COMPONENTS_CT)
+                .append(") * (1 + ssp.ust_pct / 100.0)")
+                .append(" WHEN s.tarif_art = 'dynamisch' AND s.tarif_param_ct_kwh IS NOT NULL")
+                .append(" THEN ").append(spotCt).append(" + s.tarif_param_ct_kwh");
+        if (defaultSupplyComponents) {
+            sql.append(" WHEN s.tarif_art IN ('dynamisch', 'ohne')")
+                    .append(" THEN (").append(spotCt).append(" + ")
+                    .append(DEFAULT_SUPPLY_PRICE.componentsCtKwh()).append(") * ")
+                    .append(1.0 + DEFAULT_SUPPLY_PRICE.ustPct() / 100.0);
+        }
+        return sql.append(" ELSE ").append(spotCt).append(" END)").toString();
+    }
+
+    /**
+     * SQL boolean: does {@link #importPriceCtSql} value this site's import
+     * beyond bare spot (i.e. did any tariff/sheet/default branch engage)?
+     * Same aliases and branch conditions as the price expression - drives the
+     * honest "bewertet zu Ihrem Stromtarif" vs "zu Börsenpreisen" labeling
+     * (a bare {@code tarif_art} echo cannot tell an {@code ohne} site with a
+     * maintained Preisblatt from one without).
+     */
+    public static String tarifPricedSql(boolean defaultSupplyComponents) {
+        String structured = defaultSupplyComponents
+                ? "s.tarif_art IN ('dynamisch', 'ohne')"
+                : "s.tarif_art IN ('dynamisch', 'ohne') AND " + SQL_SHEET_MAINTAINED;
+        return "((s.tarif_art = 'fest' AND s.tarif_param_ct_kwh IS NOT NULL)"
+                + " OR (" + structured + ")"
+                + " OR (s.tarif_art = 'dynamisch' AND s.tarif_param_ct_kwh IS NOT NULL))";
+    }
+
     /**
      * What one exported kWh really earns in this slot (ct/kWh), per the
      * plant's remuneration: Direktvermarktung = spot + dynamic Marktprämie

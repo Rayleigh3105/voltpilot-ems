@@ -55,7 +55,7 @@ public class HistoryService {
         }
 
         HistoryTotalsDto totals = totals(buckets, repo.savings(siteId, window.from(), window.to()),
-                repo.tarifArt(siteId));
+                repo.tariffContext(siteId));
 
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY
                 ? Tagesprotokoll.build(buckets)
@@ -125,11 +125,12 @@ public class HistoryService {
      * Period totals; see {@link HistoryTotalsDto} for the formulas. Every sum
      * follows the cost fields' discipline: null (not 0) when NO bucket carried
      * the channel, so a 0-bucket day renders "—" rather than a confident zero
-     * (audit V2/X1). {@code tarifArt} is pure context for {@code gridCostEur},
-     * which is always the bare spot cost (audit H8).
+     * (audit V2/X1). {@code tariff} is the labeling context for
+     * {@code gridCostEur} (kind + whether the import valuation engaged a real
+     * tariff/Preisblatt - Stufe 3 of the structured Bezugspreis; audit H8).
      */
     static HistoryTotalsDto totals(List<HistoryBucketDto> buckets, BigDecimal savings,
-            String tarifArt) {
+            HistoryRepository.TariffContext tariff) {
         BigDecimal consumption = sum(buckets, HistoryBucketDto::loadKwh);
         BigDecimal pv = sum(buckets, HistoryBucketDto::pvKwh);
         BigDecimal gridImport = sum(buckets, HistoryBucketDto::gridImportKwh);
@@ -161,7 +162,8 @@ public class HistoryService {
         return HistoryTotalsDto.of(
                 round(consumption), round(pv), round(gridImport), round(gridExport),
                 cost == null ? null : cost.setScale(4, RoundingMode.HALF_UP),
-                tarifArt,
+                tariff == null ? null : tariff.tarifArt(),
+                tariff == null ? null : tariff.tarifPriced(),
                 savings == null ? null : savings.setScale(4, RoundingMode.HALF_UP),
                 autarkie, eigenverbrauch);
     }

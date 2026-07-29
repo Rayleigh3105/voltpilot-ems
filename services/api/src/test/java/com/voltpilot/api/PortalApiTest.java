@@ -3538,6 +3538,278 @@ class PortalApiTest {
         return (String) claim.getBody().get("id");
     }
 
+    // ---- Stufe 3: structured supply price on the read side ------------------
+
+    /**
+     * THE one-price-truth drift guard (Stufe 3, report vp-nacht-bezug-e7
+     * §3.4): the SQL fragment the Earnings/History aggregates value import
+     * with ({@code SlotEconomics.importPriceCtSql}) is evaluated by REAL
+     * Postgres against the Java composition
+     * ({@code SlotEconomics.importPriceCtKwh}) - the same rule the admin
+     * diagnostics mirror from pricing.py - vector for vector, with the
+     * {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS} flag OFF and ON. Any edit
+     * that lets the two renderings drift fails here by name.
+     */
+    @Test
+    void importPriceSqlMatchesTheSlotEconomicsCompositionVectors() {
+        var fullSheet = new com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice(
+                7.6, 2.05, 1.59, 2.946, 1.5, 19.0);
+        var partialSheet = new com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice(
+                7.6, null, null, null, null, 19.0);
+        var vorsteuerSheet = new com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice(
+                7.6, 2.05, 1.59, 2.946, 1.5, 0.0);
+        var allNullSheet = new com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice(
+                null, null, null, null, null, 19.0);
+        record Vec(String tarifArt, Double param,
+                com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice sheet, Double spot) {
+        }
+        java.util.List<Vec> vectors = java.util.List.of(
+                new Vec("fest", 30.0, null, 100.0),
+                new Vec("fest", 30.0, fullSheet, 100.0), // fest wins, sheet ignored
+                new Vec("fest", 30.0, null, null), // flat needs no spot
+                new Vec("fest", null, null, 100.0), // unparametrized fest -> spot
+                new Vec("dynamisch", 18.0, null, 100.0), // legacy Sammelaufschlag
+                new Vec("dynamisch", 18.0, fullSheet, 100.0), // sheet beats Aufschlag
+                new Vec("dynamisch", null, null, 100.0), // S1 case: bare spot / default set
+                new Vec("dynamisch", null, partialSheet, 100.0),
+                new Vec("dynamisch", 18.0, null, null), // no spot -> unknowable
+                new Vec("ohne", null, fullSheet, 100.0),
+                new Vec("ohne", null, fullSheet, -40.0), // negative spot composes too
+                new Vec("ohne", null, vorsteuerSheet, 100.0), // C&I USt 0
+                new Vec("ohne", null, allNullSheet, 100.0), // degenerate row = no row
+                new Vec("ohne", null, null, 100.0), // no price data at all
+                new Vec("ohne", null, null, null));
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+        for (boolean flag : new boolean[] {false, true}) {
+            for (Vec v : vectors) {
+                var site = new com.voltpilot.api.optimizer.SlotEconomics.SiteEconomics(
+                        "eigenverbrauch", false, v.tarifArt(), v.param(),
+                        null, null, null, null, null, v.sheet());
+                Double expected = new com.voltpilot.api.optimizer.SlotEconomics(site,
+                        com.voltpilot.api.optimizer.EegRates.defaults(), Map.of(), flag)
+                        .importPriceCtKwh(v.spot());
+                Double actual = evalImportPriceSql(flag, v.tarifArt(), v.param(), v.sheet(), v.spot());
+                String label = "flag=" + flag + " " + v;
+                if (expected == null) {
+                    assertThat(actual).as(label).isNull();
+                } else {
+                    assertThat(actual).as(label).isNotNull().isCloseTo(expected, eps);
+                }
+            }
+        }
+    }
+
+    /** Evaluates the generated import-price SQL over one bound vector row. */
+    private static Double evalImportPriceSql(boolean flag, String tarifArt, Double param,
+            com.voltpilot.api.optimizer.SlotEconomics.SupplyPrice sheet, Double spot) {
+        String sql = "SELECT "
+                + com.voltpilot.api.optimizer.SlotEconomics.importPriceCtSql("p.price_eur_mwh", flag)
+                + " AS ct FROM (VALUES (?::text, ?::numeric)) AS s(tarif_art, tarif_param_ct_kwh)"
+                + " CROSS JOIN (VALUES (?::numeric, ?::numeric, ?::numeric, ?::numeric, ?::numeric,"
+                + " ?::numeric)) AS ssp(netzentgelt_arbeitspreis_ct, stromsteuer_ct,"
+                + " konzessionsabgabe_ct, umlagen_ct, vertriebsaufschlag_ct, ust_pct)"
+                + " CROSS JOIN (VALUES (?::numeric)) AS p(price_eur_mwh)";
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, tarifArt);
+            ps.setObject(2, param);
+            // A null sheet = no site_supply_price row: the LEFT JOIN's all-NULL
+            // side, incl. ust_pct (the column itself is NOT NULL, but the miss
+            // yields NULL) - bind it exactly like that.
+            ps.setObject(3, sheet == null ? null : sheet.netzentgeltArbeitspreisCt());
+            ps.setObject(4, sheet == null ? null : sheet.stromsteuerCt());
+            ps.setObject(5, sheet == null ? null : sheet.konzessionsabgabeCt());
+            ps.setObject(6, sheet == null ? null : sheet.umlagenCt());
+            ps.setObject(7, sheet == null ? null : sheet.vertriebsaufschlagCt());
+            ps.setObject(8, sheet == null ? null : sheet.ustPct());
+            ps.setObject(9, spot);
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                java.math.BigDecimal ct = rs.getBigDecimal("ct");
+                return ct == null ? null : ct.doubleValue();
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("vector eval failed", e);
+        }
+    }
+
+    /**
+     * Stufe 3 endpoint proof (report §3.4 + §1.5 S3): {@code savedEur} values
+     * AVOIDED IMPORT at the site's structured supply price - the same
+     * composition the solver plans with - while the export side stays at spot,
+     * per hand-computed vectors over identical measurements: {@code fest}
+     * 30 ct, {@code dynamisch} + 18 ct Sammelaufschlag, {@code ohne} with a
+     * maintained Preisblatt (Σ 16 ct netto × 1,19 USt - the USt covers the
+     * spot share too), and a bare {@code ohne} site whose numbers stay
+     * BYTE-IDENTICAL to the legacy symmetric-spot math (the rollout rule,
+     * flag off). Also pins: the {@code tarifPriced} honesty flag, the
+     * export-side slot leaving saved tariff-independent, the
+     * Eigenverbrauchs-Wert/Einspeise-Erlös fields UNCHANGED by the sheet, and
+     * the tariff-valued daily variant (spark bars).
+     */
+    @Test
+    void savedEurValuesAvoidedImportAtTheStructuredSupplyPrice() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String fest = createSiteWithTarif(demo, "Bezug Fest", "AT", "eigenverbrauch", "fest", "30");
+        String dynAuf = createSiteWithTarif(demo, "Bezug Aufschlag", "AT", "eigenverbrauch",
+                "dynamisch", "18");
+        String sheet = createSite(demo, "Bezug Preisblatt", "AT", "eigenverbrauch"); // ohne
+        String bare = createSite(demo, "Bezug Spot", "AT", "eigenverbrauch"); // ohne
+        exec("INSERT INTO site_supply_price (site_id, tenant_id, netzentgelt_arbeitspreis_ct,"
+                + " stromsteuer_ct, konzessionsabgabe_ct, umlagen_ct, vertriebsaufschlag_ct, ust_pct)"
+                + " VALUES ('" + sheet + "', '" + tenantA + "', 8.0, 2.0, 1.5, 3.0, 1.5, 19.0)");
+
+        // Two AT slots on 2026-02-10 (a day no other test owns):
+        //   10:00Z price 100: load 2.0, pv 0.5, imp 1.0, dis 0.5
+        //     baseline_import 1.5, actual import 1.0 -> saved = 0.5 x import_price
+        //   11:00Z price 200: pv 2.0, load 0.5, exp 1.0, chg 0.5
+        //     no import on either side -> saved = -0.10 at SPOT for EVERY tariff
+        //     (baseline export 1.5 vs actual export 1.0 - the export side is
+        //     deliberately unchanged by Stufe 3).
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-02-10T10:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "('2026-02-10T11:00:00Z', 'AT', 'PT15M', 200.0, 'EUR', 'test') "
+                + "ON CONFLICT (bidding_zone, resolution, ts) DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
+        for (String site : new String[] {fest, dynAuf, sheet, bare}) {
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                    + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                    + "('2026-02-10T10:00:00Z', '" + tenantA + "', '" + site + "', 0.5, 2.0, 1.0, 0.0, 0.0, 0.5, 90), "
+                    + "('2026-02-10T11:00:00Z', '" + tenantA + "', '" + site + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90) "
+                    + "ON CONFLICT DO NOTHING");
+        }
+        // The daily variant (spark bars) shares the tariff valuation: one
+        // recent covered slot for the fest site - baseline import 1.0 kWh vs
+        // metered 0.6 -> saved (1.0 - 0.6) x 0.30 = 0.12 on that Berlin day
+        // (the legacy spot math would have said 0.4 x 150/1000 = 0.06).
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "SELECT time_bucket('15 minutes', now() - interval '3 hours'), 'AT', 'PT15M', 150.0, 'EUR', 'test' "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) "
+                + "SELECT time_bucket('15 minutes', now() - interval '3 hours'), '" + tenantA + "', '"
+                + fest + "', 0.0, 1.0, 0.6, 0.0, 0.0, 0.4, 90 ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/earnings?range=day&at=2026-02-10"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        // fest 30 ct: import price is the flat retail price, spot-independent.
+        Map<String, Object> festRow = siteRow(body, fest);
+        assertThat(festRow).containsEntry("tarifPriced", true);
+        assertThat(num(festRow, "baselineEur")).isCloseTo(1.5 * 0.30 - 0.30, eps);
+        assertThat(num(festRow, "actualEur")).isCloseTo(1.0 * 0.30 - 0.20, eps);
+        assertThat(num(festRow, "savedEur")).isCloseTo(0.05, eps);
+
+        // dynamisch + 18 ct Aufschlag: spot/10 + 18 = 28 ct on the 100er slot.
+        Map<String, Object> dynRow = siteRow(body, dynAuf);
+        assertThat(dynRow).containsEntry("tarifPriced", true);
+        assertThat(num(dynRow, "savedEur")).isCloseTo(0.5 * 0.28 - 0.10, eps);
+
+        // Maintained Preisblatt on an 'ohne' site: (10 + 16) x 1.19 = 30.94 ct
+        // - the structured composition, USt on the spot share included.
+        Map<String, Object> sheetRow = siteRow(body, sheet);
+        assertThat(sheetRow).containsEntry("tarifArt", "ohne")
+                .containsEntry("tarifPriced", true);
+        assertThat(num(sheetRow, "savedEur")).isCloseTo(0.5 * 0.3094 - 0.10, eps);
+        // The sheet changes ONLY the import valuation: Einspeise-Erlös stays
+        // the spot-valued export, the Eigenverbrauchs-Wert stays null for an
+        // 'ohne' tariff (Stufe-3 scope: those fields are deliberately
+        // untouched - report §3.4 table).
+        assertThat(num(sheetRow, "einspeiseErloesEur")).isCloseTo(0.20, eps);
+        assertThat(sheetRow).containsEntry("eigenverbrauchsWertEur", null);
+
+        // Bare 'ohne' site, flag off: BYTE-IDENTICAL to the legacy symmetric
+        // spot math - hand-computed with the OLD formula
+        // sum((load-pv)*spot/1000) / sum((imp-exp)*spot/1000).
+        Map<String, Object> bareRow = siteRow(body, bare);
+        assertThat(bareRow).containsEntry("tarifPriced", false);
+        assertThat(num(bareRow, "baselineEur")).isCloseTo(
+                (2.0 - 0.5) * 0.1 + (0.5 - 2.0) * 0.2, eps);
+        assertThat(num(bareRow, "actualEur")).isCloseTo(1.0 * 0.1 - 1.0 * 0.2, eps);
+        assertThat(num(bareRow, "savedEur")).isCloseTo(-0.05, eps);
+
+        // The daily variant carries the SAME tariff valuation (0.12, not the
+        // legacy 0.06).
+        List<Map<String, Object>> festDaily = list(festRow, "dailySaved");
+        assertThat(festDaily).hasSize(1);
+        assertThat(num(festDaily.get(0), "savedEur")).isCloseTo(0.12, eps);
+    }
+
+    /**
+     * Stufe 3 on the Historie side: {@code gridCostEur} is the real supply
+     * cost - import energy x the SAME structured import price the steering
+     * plans with - instead of "bare spot" (audit H8 amended). A {@code fest}
+     * site's cost follows its flat 30 ct on priced AND unpriced buckets (the
+     * flat tariff needs no Börsenpreis), through the day path (raw telemetry)
+     * and the rollup path (week), and the totals carry the honest
+     * {@code tarifPriced} label context. Bare-spot sites stay byte-identical -
+     * pinned by the untouched historyDay/historyWeek tests on the 'ohne'
+     * BERLIN site.
+     */
+    @Test
+    void historyGridCostIsValuedAtTheSiteTariffLikeTheSteering() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String site = createSiteWithTarif(demo, "Historie Tarif", "AT", "eigenverbrauch",
+                "fest", "30");
+        String device = java.util.UUID.randomUUID().toString();
+
+        // Two 15-min buckets on 2026-06-22 (inside the week the rollup refresh
+        // below covers, outside every other test's pinned windows):
+        //   10:00Z (AT price 100): import 2.0 kW -> 0.5 kWh -> cost 0.15
+        //   10:15Z (NO price):     import 1.0 kW -> 0.25 kWh -> cost 0.075
+        exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, power_kw, soc_pct, pv_power_kw, load_kw) VALUES "
+                + "('2026-06-22T10:00:00Z', '" + tenantA + "', '" + site + "', '" + device + "', 2.0, 50.0, 1.0, 3.0), "
+                + "('2026-06-22T10:15:00Z', '" + tenantA + "', '" + site + "', '" + device + "', 1.0, 50.0, 0.0, 1.0) "
+                + "ON CONFLICT DO NOTHING");
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
+                + "('2026-06-22T10:00:00Z', 'AT', 'PT15M', 100.0, 'EUR', 'test') "
+                + "ON CONFLICT (bidding_zone, resolution, ts) DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
+
+        ResponseEntity<Map<String, Object>> day = rest.exchange(
+                url("/api/v1/sites/" + site + "/history?range=day&at=2026-06-22"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(day.getStatusCode()).isEqualTo(HttpStatus.OK);
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+        List<Map<String, Object>> buckets = list(day.getBody(), "buckets");
+        assertThat(buckets).hasSize(2);
+        // Priced bucket: the chart still shows the spot price, the cost is the
+        // tariff value (0.5 kWh x 0.30), NOT 0.5 x spot = 0.05.
+        assertThat(num(buckets.get(0), "priceEurMwh")).isEqualTo(100.0);
+        assertThat(num(buckets.get(0), "costEur")).isCloseTo(0.15, eps);
+        // Unpriced bucket: a flat tariff needs no Börsenpreis - the cost is
+        // present (0.25 x 0.30) instead of a data gap.
+        assertThat(buckets.get(1).get("priceEurMwh")).isNull();
+        assertThat(num(buckets.get(1), "costEur")).isCloseTo(0.075, eps);
+
+        Map<String, Object> totals = map(day.getBody(), "totals");
+        assertThat(num(totals, "gridCostEur")).isCloseTo(0.225, eps);
+        assertThat(totals).containsEntry("tarifArt", "fest")
+                .containsEntry("tarifPriced", true);
+
+        // The rollup path (week) values with the same composition: refresh the
+        // rollups (same CALL the historyWeek test uses) and expect the hour
+        // bucket to carry 0.225.
+        exec("CALL refresh_telemetry_rollups('2026-06-01T00:00:00Z')");
+        ResponseEntity<Map<String, Object>> week = rest.exchange(
+                url("/api/v1/sites/" + site + "/history?range=week&at=2026-06-22"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(week.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> hourBucket = list(week.getBody(), "buckets").stream()
+                .filter(b -> "2026-06-22T10:00:00Z".equals(b.get("start")))
+                .findFirst().orElseThrow();
+        assertThat(num(hourBucket, "costEur")).isCloseTo(0.225, eps);
+        assertThat(num(map(week.getBody(), "totals"), "gridCostEur")).isCloseTo(0.225, eps);
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     /** Scalar count query as the Postgres superuser (sees all tenants' rows). */

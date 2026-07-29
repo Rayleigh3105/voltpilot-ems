@@ -326,13 +326,24 @@ export interface HistoryTotals {
   /** Null when not a single bucket carried the grid channel. */
   gridExportKwh: number | null;
   /**
-   * Always the bare SPOT cost of the imported energy - the site's configured
-   * retail tariff is NOT applied. Null when no price data overlaps the period.
-   * `tarifArt` is the context needed to label it truthfully (audit H8).
+   * The real supply cost of the imported energy - since the structured
+   * Bezugspreis (Stufe 3) valued with the SAME per-slot import-price
+   * composition the optimizer plans with (flat tariff / spot + Aufschlag /
+   * (spot + Preisblatt-Komponenten) × (1+USt)); a site without any price data
+   * stays at bare spot. Null when nothing is computable in the period.
+   * `tarifArt`/`tarifPriced` are the context needed to label it truthfully
+   * (audit H8).
    */
   gridCostEur: number | null;
   /** The site's configured tariff kind; null only when unreadable. */
   tarifArt: TarifArt | null;
+  /**
+   * Whether `gridCostEur` is valued beyond bare spot (tariff parameter,
+   * maintained Preisblatt, or the platform default-components flag): true =
+   * "bewertet zu Ihrem Stromtarif", false = "zu Börsenpreisen". Optional so an
+   * older backend degrades to the spot label, never an over-claim.
+   */
+  tarifPriced?: boolean | null;
   /**
    * The EX-ANTE **planned** battery saving from the persisted optimizer runs -
    * NOT measured money (the measured counterpart is `savedEur` on
@@ -1054,6 +1065,13 @@ export interface EarningsSite {
    */
   tarifArt: TarifArt;
   tarifParamCtKwh: number | null;
+  /**
+   * Whether `savedEur`'s import side is valued beyond bare spot (tariff
+   * parameter, maintained Preisblatt, or the platform default-components
+   * flag) - gates the "bewertet zu Ihrem Stromtarif" provenance sentence.
+   * Optional so an older backend never over-claims.
+   */
+  tarifPriced?: boolean | null;
   einspeiseErloesEur: number | null;
   eigenverbrauchsWertEur: number | null;
   gesamtertragEur: number | null;
