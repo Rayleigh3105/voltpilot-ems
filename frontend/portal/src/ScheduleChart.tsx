@@ -1,11 +1,17 @@
+import { useState } from 'react';
 import type { SchedulePlan } from './api';
 import { chartTheme } from './chartTheme';
 import {
   chargeKind,
+  forecastLines,
   hasGridCharge,
+  LOAD_FORECAST_LABEL,
   planInsightParts,
+  powerAxisMax,
+  PV_FORECAST_LABEL,
   slotBarColor,
   socRangeLine,
+  toggleSeries,
 } from './schedule';
 import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
@@ -20,7 +26,11 @@ import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartEx
  * looks like a negative power value. Grid-charge
  * slots are DERIVED per slot (charging while net-importing, see schedule.ts);
  * on an EEG site ("Nur Solarladen") the türkis color can never appear - the
- * chart itself is the proof that only solar is stored. A "Jetzt"-marker and a shaded past region separate what already
+ * chart itself is the proof that only solar is stored. Over the bars run the
+ * two dotted FORECAST lines the plan was computed from (PV-Prognose orange,
+ * Verbrauchsprognose blau, same kW axis as the bars) - they explain the plan
+ * ("warum hält er abends? da liegt die Nachtlast") and are switchable via the
+ * legend, visible by default. A "Jetzt"-marker and a shaded past region separate what already
  * happened from what is still planned; a dashed line splits today from morgen.
  * The colour swatches + one-line takeaway below the canvas explain the diagram
  * in plain German (captain: the diagrams should be understandable instantly).
@@ -56,6 +66,10 @@ export function ScheduleChart({
   selectedIndex?: number | null;
 }) {
   const t = chartTheme();
+  // Forecast lines are ON by default - they are what makes the plan
+  // self-explaining; the legend rows switch them off for a clean bar read.
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>());
+  const forecast = forecastLines(plan.slots);
 
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
@@ -92,6 +106,12 @@ export function ScheduleChart({
 
     const kwAbs = battery.filter((v): v is number => v != null).map((v) => Math.abs(v));
     const kwMax = kwAbs.length ? Math.max(...kwAbs, 1) : 1;
+    // The forecast lines share the kW axis, so a 60-kW PV forecast must lift
+    // the axis top - otherwise it would be clipped by a 15-kW battery scale.
+    // Only VISIBLE lines count, so hiding one re-tightens the scale.
+    const showPvLine = forecast.pv.present && !hidden.has(PV_FORECAST_LABEL);
+    const showLoadLine = forecast.load.present && !hidden.has(LOAD_FORECAST_LABEL);
+    const axisMax = powerAxisMax(kwMax, forecast, hidden, target);
 
     // The plan's DATE belongs on the axis (audit F2): a plan from yesterday
     // rendered a pure 10:15 … 23:45 time axis and read as today. The first
@@ -200,6 +220,12 @@ export function ScheduleChart({
                 lines.push(`${p.marker} Batterie ${label}${amt}`);
               } else if (p.seriesName === 'Börsenpreis') {
                 lines.push(`${p.marker} Strompreis: ${ct(v)}`);
+              } else if (p.seriesName === PV_FORECAST_LABEL || p.seriesName === LOAD_FORECAST_LABEL) {
+                lines.push(
+                  `${p.marker} ${p.seriesName}: ${v.toLocaleString('de-DE', {
+                    maximumFractionDigits: 2,
+                  })} kW`,
+                );
               } else if (p.seriesName === 'Ladestand') {
                 lines.push(`${p.marker} Ladestand: ${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`);
               }
@@ -249,7 +275,7 @@ export function ScheduleChart({
             // Discharge stays at battery scale; the top grows to keep the peak
             // Ziel visible when the Lastspitzen overlay is on.
             min: -Math.ceil(kwMax),
-            max: Math.ceil(target != null ? Math.max(kwMax, target) : kwMax),
+            max: Math.ceil(axisMax),
             splitLine: { lineStyle: { color: t.grid } },
             axisLabel: { color: t.axis },
           },
@@ -325,6 +351,42 @@ export function ScheduleChart({
             lineStyle: { color: t.price, width: 2 },
             itemStyle: { color: t.price },
           },
+          // The two forecast INPUTS of the plan, on the SAME kW axis as the
+          // bars: dotted + thin so they read as context, never as measured
+          // values, and so they stay distinguishable from the solid price line
+          // (which shares the blue family). An absent value is a GAP, never 0.
+          ...(showPvLine
+            ? [
+                {
+                  name: PV_FORECAST_LABEL,
+                  type: 'line',
+                  yAxisIndex: 0,
+                  data: forecast.pv.values,
+                  smooth: true,
+                  symbol: 'none',
+                  connectNulls: false,
+                  z: 4,
+                  lineStyle: { color: t.pv, width: 1.5, type: 'dotted' },
+                  itemStyle: { color: t.pv },
+                },
+              ]
+            : []),
+          ...(showLoadLine
+            ? [
+                {
+                  name: LOAD_FORECAST_LABEL,
+                  type: 'line',
+                  yAxisIndex: 0,
+                  data: forecast.load.values,
+                  smooth: true,
+                  symbol: 'none',
+                  connectNulls: false,
+                  z: 4,
+                  lineStyle: { color: t.load, width: 1.5, type: 'dotted' },
+                  itemStyle: { color: t.load },
+                },
+              ]
+            : []),
           {
             name: 'Ladestand',
             type: 'line',
@@ -340,7 +402,7 @@ export function ScheduleChart({
       },
       true,
     );
-  }, [plan, t, peakTargetKw, onSlotClick, selectedIndex]);
+  }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden]);
 
   // Insight: charge cheap, discharge expensive, and today's saving - composed
   // by the pure builder so the "flat curve" clause can never contradict a
@@ -355,21 +417,36 @@ export function ScheduleChart({
   // legend must not advertise it - no türkis = provably no Netzstrom stored.
   const gridCharging = hasGridCharge(plan.slots);
   const legend: LegendItem[] = [
-    { color: t.charge, label: 'Laden aus Solarstrom', unit: 'kW', shape: 'bar' },
+    // Everything but the two forecast lines is a plain label: the bar colours
+    // are per-slot STATES of one series, and price/SoC carry the plan's story.
+    { color: t.charge, label: 'Laden aus Solarstrom', unit: 'kW', shape: 'bar', toggleable: false },
     ...(gridCharging
-      ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar' } as LegendItem]
+      ? [{ color: t.gridCharge, label: 'Laden aus dem Netz (günstig)', unit: 'kW', shape: 'bar', toggleable: false } as LegendItem]
       : []),
-    { color: t.battDischarge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar' },
-    { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line' },
-    { color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed' },
+    { color: t.battDischarge, label: 'Entladen (teurer Strom)', unit: 'kW', shape: 'bar', toggleable: false },
+    { color: t.price, label: 'Börsen-Strompreis', unit: 'ct/kWh', shape: 'line', toggleable: false },
+    { color: t.soc, label: 'Ladestand des Speichers', unit: '%', shape: 'dashed', toggleable: false },
     ...(peakTargetKw != null && peakTargetKw > 0
-      ? [{ color: t.discharge, label: 'Ziel Netzbezug (Lastspitze)', unit: 'kW', shape: 'dashed' } as LegendItem]
+      ? [{ color: t.discharge, label: 'Ziel Netzbezug (Lastspitze)', unit: 'kW', shape: 'dashed', toggleable: false } as LegendItem]
+      : []),
+    // The two forecast inputs - the ONLY toggleable rows (the bar entries all
+    // belong to one per-slot-coloured series, so toggling them is meaningless).
+    // A line the run does not carry gets no entry at all.
+    ...(forecast.pv.present
+      ? [{ color: t.pv, label: PV_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: true } as LegendItem]
+      : []),
+    ...(forecast.load.present
+      ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: true } as LegendItem]
       : []),
   ];
 
   return (
     <div>
-      <ChartLegend items={legend} />
+      <ChartLegend
+        items={legend}
+        hidden={hidden}
+        onToggle={(label) => setHidden((cur) => toggleSeries(cur, label))}
+      />
       <div ref={ref} className="vp-chart tall" />
       {socLine && (
         <p className="vp-note vp-plan-soc" style={{ margin: 'var(--vp-space-2) 0 0' }}>

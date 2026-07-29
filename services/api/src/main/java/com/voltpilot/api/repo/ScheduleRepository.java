@@ -49,7 +49,7 @@ public class ScheduleRepository {
         }
         List<ScheduleSlotDto> slots = jdbc.query(
                 "SELECT time, battery_kw, grid_kw, soc_pct, price_eur_mwh, cost_eur, baseline_cost_eur, "
-                        + "curtail_kw, pv_kw, slot_role, slot_flags, stored_value_ct_kwh, "
+                        + "curtail_kw, pv_kw, load_kw, slot_role, slot_flags, stored_value_ct_kwh, "
                         + "grid_value_ct_kwh, peak_pressure_eur_kw "
                         + "FROM schedule WHERE site_id = ? AND generated_at = ? "
                         + "ORDER BY time ASC",
@@ -63,6 +63,7 @@ public class ScheduleRepository {
                         rs.getBigDecimal("baseline_cost_eur"),
                         rs.getBigDecimal("curtail_kw"),
                         rs.getBigDecimal("pv_kw"),
+                        rs.getBigDecimal("load_kw"),
                         rs.getString("slot_role"),
                         splitFlags(rs.getString("slot_flags")),
                         rs.getBigDecimal("stored_value_ct_kwh"),
