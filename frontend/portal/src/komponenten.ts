@@ -102,6 +102,13 @@ export interface PlantComponent {
    * („über den Wechselrichter gemessen") the UI shows instead, or null.
    */
   measuredVia: string | null;
+  /**
+   * true = the component's pinned edge source is no longer reported by the
+   * device (identity churn, vp-vier-erzeuger-p9) — the UI says „nicht mehr
+   * verbunden" and the Zuordnen dialog offers „Wieder verbinden" instead of
+   * minting a duplicate. Only a PROVEN orphan (backend tri-state true) counts.
+   */
+  orphaned: boolean;
 }
 
 /** One Gerät (left column): a physical box the edge reports. */
@@ -325,6 +332,33 @@ export function newlyReported(
     .map((s) => ({ ...s, roleLabel: reportedRoleLabel(s.role) }));
 }
 
+/** One re-connect candidate for a reported-but-unassigned source. */
+export interface ReconnectCandidate {
+  entityId: string;
+  label: string;
+}
+
+/**
+ * Existing components a newly reported source most likely IS (vp-vier-
+ * erzeuger-p9): entities whose pin is PROVEN orphaned (their old source id
+ * vanished — the delete+re-add churn) and whose type matches what the source
+ * would be adopted as. The Zuordnen dialog leads with „Wieder verbinden" for
+ * these — re-adopting would mint a duplicate (the Pilsting ghost).
+ */
+export function reconnectCandidates(
+  source: AdoptableSource,
+  entities: SiteEntity[],
+): ReconnectCandidate[] {
+  const type = source.suggestedType ?? suggestEntityType(source.role, source.brand);
+  if (!type) return [];
+  return entities
+    .filter((e) => e.orphanedPin === true && e.entityType === type)
+    .map((e) => ({
+      entityId: e.id,
+      label: componentLabel(e.label, componentRole(e.entityType, null), e.typeLabel),
+    }));
+}
+
 /** "verbunden · liefert N Messwerte" — the device sub-line. */
 export function deviceSummary(device: { health: ComponentHealth; messwertCount: number }): string {
   const state =
@@ -466,6 +500,7 @@ export function plantModel(
       primary,
       health,
       measuredVia,
+      orphaned: e.orphanedPin === true,
     };
   });
   const componentById = new Map(components.map((c) => [c.id, c] as const));

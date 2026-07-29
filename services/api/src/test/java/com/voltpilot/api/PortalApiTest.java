@@ -108,6 +108,9 @@ class PortalApiTest {
     @Autowired
     com.voltpilot.api.repo.DeviceSourceStatusRepository sourceStatusRepo;
 
+    @Autowired
+    com.voltpilot.api.entities.EntityObservedRepository entityObservedRepo;
+
     // ---- token validation ---------------------------------------------------
 
     @Test
@@ -1731,6 +1734,134 @@ class PortalApiTest {
                 new HttpEntity<>(Map.of("sourceId", "goe-9", "entityType", "wallbox"),
                         bearer(token("demo2", "demo2"))),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * PR 3 (vp-vier-erzeuger-p9): the identity-churn repair. A source deleted +
+     * re-added on the device gets a new id, so the adopted entity's pin goes
+     * stale - the surface marks it {@code orphanedPin} (tri-state, only ever
+     * true when the device REPORTS a local view that lacks the pinned id) and
+     * {@code POST .../v2-entities/{entityId}/edge-source} RECONNECTS the
+     * existing entity to the re-appeared source instead of minting a duplicate.
+     * Guards: target must be currently reported (422), role-compatible (422)
+     * and not pinned to another entity (409); foreign tenant 404 (RLS);
+     * idempotent for the same source id.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void repinReconnectsAnOrphanedEntityAfterSourceChurn() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String siteId = (String) rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Repin-Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        String deviceId = claimDeviceInto(demo, siteId, "edge-repin-01");
+
+        var listener = new com.voltpilot.api.entities.EntityStatusListener(
+                "tcp://localhost:1883", "", "", deviceRepo, entityObservedRepo);
+        String topic = "ems/" + tenantA + "/" + siteId + "/" + deviceId + "/status";
+        java.util.function.Consumer<String> report = localSetupJson -> listener.handle(topic,
+                ("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + tenantA + "\",\"site_id\":\""
+                        + siteId + "\",\"device_id\":\"" + deviceId + "\",\"online\":true,"
+                        + "\"entities\":{\"revision\":\"r1\",\"local_setup\":" + localSetupJson
+                        + "}}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        // The device reports one PV source; the customer adopts it.
+        report.accept("[{\"id\":\"src-old\",\"kind\":\"source\",\"role\":\"pv-generation\","
+                + "\"brand\":\"fronius_sunspec\",\"model\":\"fronius-eco-27-3-s\","
+                + "\"label\":\"Fronius WR2\"}]");
+        String entityId = (String) rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-old", "entityType", "producer",
+                        "label", "Fronius WR2", "capacityKwp", 27), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+
+        java.util.function.Function<String, Map<String, Object>> entityById = id -> {
+            ResponseEntity<Map<String, Object>> res = rest.exchange(
+                    url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+            return ((List<Map<String, Object>>) res.getBody().get("entities")).stream()
+                    .filter(e -> id.equals(e.get("id"))).findFirst().orElseThrow();
+        };
+        assertThat(entityById.apply(entityId).get("orphanedPin"))
+                .as("pinned + reported = not orphaned").isEqualTo(false);
+
+        // Identity churn: the device deletes + re-adds the source (new id).
+        report.accept("[{\"id\":\"src-new\",\"kind\":\"source\",\"role\":\"pv-generation\","
+                + "\"brand\":\"fronius_sunspec\",\"model\":\"fronius-eco-27-3-s\","
+                + "\"label\":\"Fronius Anlage WR2\"}]");
+        assertThat(entityById.apply(entityId).get("orphanedPin"))
+                .as("the pinned id vanished from the report").isEqualTo(true);
+
+        // Re-pin to an UNREPORTED source is refused - never a blind pin.
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-ghost"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // Reconnect to the re-appeared source: same entity, no duplicate row.
+        ResponseEntity<Map<String, Object>> repin = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-new"), bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(repin.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(repin.getBody().get("id")).isEqualTo(entityId);
+        assertThat(entityById.apply(entityId).get("orphanedPin")).isEqualTo(false);
+        assertThat(queryLong("SELECT count(*) FROM measurement_point WHERE site_id = '" + siteId
+                + "' AND role = 'pv-generation'")).as("no duplicate producer").isEqualTo(1L);
+        ResponseEntity<Map<String, Object>> surface = rest.exchange(
+                url("/api/v1/sites/" + siteId + "/entities"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        Map<String, Object> srcNew = ((List<Map<String, Object>>) surface.getBody()
+                .get("localSetup")).stream().filter(l -> "src-new".equals(l.get("id")))
+                .findFirst().orElseThrow();
+        assertThat(srcNew.get("adoptedEntityId")).isEqualTo(entityId);
+
+        // Idempotent for the same source id.
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-new"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // A source already pinned to ANOTHER entity is refused (409): adopt a
+        // second producer, then try to steal src-new for it.
+        report.accept("[{\"id\":\"src-new\",\"kind\":\"source\",\"role\":\"pv-generation\","
+                + "\"brand\":\"fronius_sunspec\",\"model\":\"fronius-eco-27-3-s\","
+                + "\"label\":\"Fronius Anlage WR2\"},"
+                + "{\"id\":\"src-two\",\"kind\":\"source\",\"role\":\"pv-generation\","
+                + "\"brand\":\"fronius_sunspec\",\"model\":\"fronius-eco-27-3-s\","
+                + "\"label\":\"Fronius Anlage\"},"
+                + "{\"id\":\"src-wb\",\"kind\":\"source\",\"role\":\"consumer\","
+                + "\"brand\":\"go-e\",\"model\":\"Charger 3\"}]");
+        String entity2 = (String) rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/adopt"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-two", "entityType", "producer",
+                        "label", "Fronius Anlage"), bearer(demo)),
+                new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + entity2 + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-new"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        // Role mismatch: a producer must not follow a consumer source (422).
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-wb"), bearer(demo)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+
+        // Foreign tenant: 404 via RLS, and the pin provably unchanged.
+        assertThat(rest.exchange(
+                url("/api/v1/sites/" + siteId + "/v2-entities/" + entityId + "/edge-source"),
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("sourceId", "src-new"), bearer(token("demo2", "demo2"))),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(entityById.apply(entityId).get("edgeSourceId")).isEqualTo("src-new");
     }
 
     /**

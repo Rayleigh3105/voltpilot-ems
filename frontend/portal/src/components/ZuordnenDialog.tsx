@@ -6,6 +6,7 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { api, ApiError, type TopologyRoleAssignment } from '../api';
 import { entitiesApi } from '../entitiesApi';
 import { deviceName } from '../entityLabel';
+import type { ReconnectCandidate } from '../komponenten';
 import { suggestEntityType, type AdoptableSource } from '../rollen';
 import { ADOPT_FORBIDDEN_MSG } from '../setupPath';
 
@@ -51,15 +52,26 @@ export function guidedFor(source: AdoptableSource): Guided | null {
 export function ZuordnenDialog({
   siteId,
   source,
+  candidates = [],
   onClose,
   onAssigned,
 }: {
   siteId: string;
   source: AdoptableSource;
+  /** Orphaned same-type components this source most likely IS (re-pin first). */
+  candidates?: ReconnectCandidate[];
   onClose: () => void;
   onAssigned: () => void;
 }) {
   const guided = guidedFor(source);
+  // Identity churn (vp-vier-erzeuger-p9): when an orphaned same-type component
+  // exists, the safe default is RECONNECTING it - adopting again would mint a
+  // duplicate (the Pilsting ghost). "Als neue Komponente anlegen" stays one
+  // click away.
+  const [mode, setMode] = useState<'reconnect' | 'new'>(
+    candidates.length > 0 ? 'reconnect' : 'new',
+  );
+  const [candidateId, setCandidateId] = useState(candidates[0]?.entityId ?? '');
   // The name suggestion goes through the ONE deviceName chain (operator name >
   // brand + short model) - NEVER a raw stored string, which is how the Pilsting
   // "fronius_sunspec · …" ghost got its persisted name (vp-vier-erzeuger-p9).
@@ -73,6 +85,25 @@ export function ZuordnenDialog({
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
+    if (mode === 'reconnect') {
+      setBusy(true);
+      setError(null);
+      try {
+        await entitiesApi.repin(siteId, candidateId, source.id);
+        onAssigned();
+      } catch (e) {
+        const status = e instanceof ApiError ? e.status : 0;
+        if (status === 401 || status === 403 || status === 404) {
+          setError(ADOPT_FORBIDDEN_MSG);
+        } else {
+          setError(
+            e instanceof ApiError ? e.message : 'Das Gerät konnte nicht verbunden werden.',
+          );
+        }
+        setBusy(false);
+      }
+      return;
+    }
     if (!guided) return;
     setBusy(true);
     setError(null);
@@ -139,7 +170,7 @@ export function ZuordnenDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={submit} disabled={busy || !guided}>
+          <Button onClick={submit} disabled={busy || (mode === 'new' && !guided)}>
             Fertig
           </Button>
         </>
@@ -150,7 +181,54 @@ export function ZuordnenDialog({
           Ihr Gerät meldet: <strong>{source.summary}</strong>.
         </p>
 
-        {guided ? (
+        {candidates.length > 0 && (
+          <div className="vp-reconnect" role="radiogroup" aria-label="Zuordnung">
+            <label className="vp-reconnect-opt">
+              <input
+                type="radio"
+                name="vp-zuordnen-mode"
+                checked={mode === 'reconnect'}
+                onChange={() => setMode('reconnect')}
+              />
+              <span>
+                <strong>
+                  Wieder verbinden
+                  {candidates.length === 1 ? ` mit „${candidates[0].label}“` : ''}
+                </strong>
+                <span className="vp-note vp-reconnect-hint">
+                  Dieses Gerät gab es vermutlich schon (z. B. nach einem Umbenennen am
+                  Gerät) — die vorhandene Komponente wird wieder verbunden, nichts wird
+                  doppelt angelegt.
+                </span>
+              </span>
+            </label>
+            {mode === 'reconnect' && candidates.length > 1 && (
+              <select
+                className="vp-reconnect-select"
+                aria-label="Komponente wählen"
+                value={candidateId}
+                onChange={(e) => setCandidateId(e.target.value)}
+              >
+                {candidates.map((c) => (
+                  <option key={c.entityId} value={c.entityId}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <label className="vp-reconnect-opt">
+              <input
+                type="radio"
+                name="vp-zuordnen-mode"
+                checked={mode === 'new'}
+                onChange={() => setMode('new')}
+              />
+              <span>Als neue Komponente anlegen</span>
+            </label>
+          </div>
+        )}
+
+        {mode === 'new' && guided ? (
           <>
             <div className="vp-zuordnen-what">
               <span className="vp-note">Was misst dieses Gerät?</span>
@@ -193,11 +271,11 @@ export function ZuordnenDialog({
               hängen am Gerät, nicht an der Rolle.
             </p>
           </>
-        ) : (
+        ) : mode === 'new' ? (
           <p className="vp-note">
             Dieses Gerät kann VoltPilot für Sie einrichten — sprechen Sie uns an.
           </p>
-        )}
+        ) : null}
 
         {error && (
           <div className="vp-alert vp-alert-err" role="alert" style={{ marginTop: 0 }}>

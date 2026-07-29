@@ -255,3 +255,37 @@ button.vp-wbox:focus-visible {
     padding-bottom: var(--vp-space-2);
   }
 }
+
+/* PR3 (vp-vier-erzeuger-p9): orphaned-pin hint + the "Wieder verbinden" choice. */
+.vp-worphan {
+  display: block;
+  font-size: 12px;
+  color: var(--vp-warn, #C77700);
+  margin-top: 2px;
+}
+.vp-reconnect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  padding: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-reconnect-opt {
+  display: flex;
+  gap: var(--vp-space-2);
+  align-items: flex-start;
+  cursor: pointer;
+  min-width: 0;
+}
+.vp-reconnect-opt input { margin-top: 3px; flex: none; }
+.vp-reconnect-hint { display: block; margin-top: 2px; }
+.vp-reconnect-select {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  margin-left: 26px;
+  max-width: 100%;
+}

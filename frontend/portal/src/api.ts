@@ -670,6 +670,13 @@ export interface SiteEntity {
   observed: EntityObserved | null;
   /** The edge source this entity was adopted from (U2 matcher), else null. */
   edgeSourceId: string | null;
+  /**
+   * true = the pinned edge source is no longer among the device's reported
+   * sources (identity churn - offer "Wieder verbinden"); false = pinned +
+   * reported; null/absent = no pin, or no local view reported yet (an older
+   * backend simply omits the field).
+   */
+  orphanedPin?: boolean | null;
 }
 
 /** The composed registry Soll + the edge's echoed revision. */

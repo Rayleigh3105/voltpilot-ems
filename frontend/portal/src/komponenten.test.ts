@@ -6,9 +6,11 @@ import {
   MEASURED_VIA_INVERTER,
   newlyReported,
   plantModel,
+  reconnectCandidates,
   toComponentHealth,
   type ComponentRole,
 } from './komponenten';
+import type { AdoptableSource } from './rollen';
 import type { EntityLocalSetup, SiteEntity, SiteSource, SiteTopology } from './api';
 
 function siteSource(sourceId: string, overrides: Partial<SiteSource> = {}): SiteSource {
@@ -487,5 +489,60 @@ describe('plantModel - device names are human (vp-vier-erzeuger-p9)', () => {
       [{ ...inverter('inv', 'deye'), model: 'SUN-30K-SG01HP3-EU' }],
     );
     expect(m.devices[0].label).toBe('Deye SUN-30K');
+  });
+});
+
+// PR 3 (vp-vier-erzeuger-p9): orphaned pins are surfaced, and a newly reported
+// source leads to "Wieder verbinden" instead of a duplicate adoption.
+describe('orphaned pins + reconnect candidates', () => {
+  const orphanedWr1 = entity('wr1', 'producer', {
+    label: 'Fronius WR1',
+    edgeSourceId: 'src-dead',
+    orphanedPin: true,
+    deviceId: null,
+  });
+  const healthyWr2 = entity('wr2', 'producer', {
+    label: 'Fronius WR2',
+    edgeSourceId: 'src-live',
+    orphanedPin: false,
+    deviceId: null,
+  });
+
+  it('plantModel marks a component whose pin the device no longer reports', () => {
+    const m = plantModel([orphanedWr1, healthyWr2], null, []);
+    const byId = new Map(m.components.map((c) => [c.id, c] as const));
+    expect(byId.get('wr1')!.orphaned).toBe(true);
+    expect(byId.get('wr2')!.orphaned).toBe(false);
+  });
+
+  it('an absent/null orphanedPin (older backend) never claims an orphan', () => {
+    const m = plantModel([entity('p', 'producer', { edgeSourceId: 'src-x', deviceId: null })], null, []);
+    expect(m.components[0].orphaned).toBe(false);
+  });
+
+  it('reconnectCandidates offers orphaned same-type entities only', () => {
+    const source: AdoptableSource = {
+      id: 'src-new',
+      role: 'pv-generation',
+      brand: 'fronius_sunspec',
+      model: 'fronius-eco-27-3-s',
+      label: 'Fronius Anlage WR2',
+      roleLabel: 'PV-Erzeuger',
+      summary: 'Fronius Anlage WR2',
+      suggestedType: 'producer',
+    };
+    const wallboxOrphan = entity('wb', 'wallbox', {
+      typeLabel: 'Wallbox',
+      edgeSourceId: 'src-wb-dead',
+      orphanedPin: true,
+      deviceId: null,
+    });
+    const out = reconnectCandidates(source, [orphanedWr1, healthyWr2, wallboxOrphan]);
+    expect(out).toEqual([{ entityId: 'wr1', label: 'Fronius WR1' }]);
+    // A consumer source suggests a consumer type - the producer orphan never fits.
+    const goe: AdoptableSource = { ...source, id: 'src-goe', role: 'consumer', brand: 'go-e', suggestedType: null };
+    expect(reconnectCandidates(goe, [orphanedWr1, wallboxOrphan])).toEqual([
+      { entityId: 'wb', label: 'Wallbox' },
+    ]);
   });
 });
