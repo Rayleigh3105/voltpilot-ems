@@ -341,7 +341,11 @@ function ErloeseFace({ site, range, anchor }: { site: Site; range: HistoryRange;
           category="dynamic"
           value={totals.gridCostEur == null ? '-' : eurAmount(totals.gridCostEur)}
           label={`Stromkosten (Netzbezug) · ${periodLabel(anchor, range)}`}
-          title="Bezogene Energie × zugehöriger Börsenpreis, je Viertelstunde. Ein hinterlegter Haustarif ist hier nicht eingerechnet."
+          title={
+            totals.tarifPriced
+              ? 'Bezogene Energie, je Viertelstunde bewertet zu Ihrem Stromtarif statt zum Börsenpreis - dieselbe Rechnung, mit der die Steuerung plant.'
+              : 'Bezogene Energie × zugehöriger Börsenpreis, je Viertelstunde. Ein hinterlegter Stromtarif würde hier eingerechnet.'
+          }
         />
         <KpiCard
           icon={<Icon name="battery-charging" size={20} />}

@@ -307,14 +307,21 @@ export function gesamtertragProvenance(money: EarningsSite): string | null {
 /**
  * "davon durch VoltPilots Steuerung" provenance: the measured extra vs. an
  * unregulated plant (battery off, PV fed in immediately) - what the steering
- * concretely earned/saved.
+ * concretely earned/saved. Since the structured Bezugspreis (Stufe 3) the
+ * avoided grid import inside this number is valued at the SITE'S TARIFF -
+ * the same composition the steering optimizes against - so the sentence says
+ * so when it applies (`tarifPriced`); a site without any price data stays
+ * spot-valued and keeps the plain sentence, never an over-claim.
  */
 export function savedProvenance(money: EarningsSite): string | null {
   if (money.savedEur == null) return null;
   const verb = money.plantKind === 'direktvermarktung' ? 'mehr verdient' : 'gespart';
+  const tarif = money.tarifPriced
+    ? ' Vermiedener Netzbezug ist dabei zu Ihrem Stromtarif bewertet statt zum Börsenpreis - dieselbe Rechnung, mit der die Steuerung plant.'
+    : '';
   return (
     `Gemessen gegenüber einer ungeregelten Anlage (Speicher aus, Solarstrom sofort eingespeist): ` +
-    `so viel hat VoltPilots Steuerung ${verb}.`
+    `so viel hat VoltPilots Steuerung ${verb}.${tarif}`
   );
 }
 

@@ -1,5 +1,7 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.optimizer.OptimizerProperties;
+import com.voltpilot.api.optimizer.SlotEconomics;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -19,23 +21,46 @@ import org.springframework.stereotype.Repository;
  * {@code day_ahead_prices}. Per 15-min slot and site:
  *
  * <pre>
- *   baseline = (load_kwh - pv_kwh) * price/1000        -- unregulated plant, battery idle
- *   actual   = (grid_import_kwh - grid_export_kwh) * price/1000
+ *   baseline = greatest(load - pv, 0) * import_price   -- unregulated plant, battery idle:
+ *            - greatest(pv - load, 0) * price/1000     -- residual imported at the tariff,
+ *                                                      -- surplus fed in at spot (+ premium)
+ *   actual   = grid_import_kwh * import_price - grid_export_kwh * price/1000
  *   saved    = baseline - actual
  * </pre>
  *
- * <p>Both sides are priced symmetrically at spot (the platform's
- * Direktvermarktung MVP assumption, services/optimization domain.py) - that is
- * what makes the counterfactual a pure aggregate: the residual's import/export
- * split within a slot never matters. If asymmetric import/export pricing ever
- * lands, this shortcut breaks and the baseline needs a simulation (the
- * planned Phase-3 counterfactual engine).
+ * <p><b>Asymmetric pricing since Stufe 3 of the structured Bezugspreis
+ * (report vp-nacht-bezug-e7 §3.4).</b> Grid IMPORT is valued at what the site
+ * really pays per its tariff - the SAME composition the optimizer plans with
+ * ({@link com.voltpilot.api.optimizer.SlotEconomics#importPriceCtSql}, the SQL
+ * twin of pricing.py's {@code import_prices}): {@code fest} = the flat all-in
+ * retail price, {@code dynamisch}/{@code ohne} with a maintained
+ * {@code site_supply_price} sheet = {@code (spot + Σ Komponenten) × (1+USt)},
+ * {@code dynamisch} without a sheet = spot + Aufschlag, and a site without any
+ * price data stays at bare spot (byte-identical to the pre-Stufe-3 numbers;
+ * the mirrored {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS} flag substitutes
+ * the researched default set exactly like the solver). Export stays valued at
+ * spot + Marktprämie (below). Because import ≠ export, the counterfactual is
+ * no longer a pure aggregate: the baseline splits each 15-min slot into
+ * {@code greatest(load - pv, 0)} import and {@code greatest(pv - load, 0)}
+ * export - the same intra-slot approximation the premium crediting already
+ * used, and the same sub-slot blindness every 15-min figure carries.
  *
- * <p>By the rollups' power-balance identity ({@code battery = grid - load +
- * pv}, migration V20260701030000), saved equals
- * {@code (battery_discharge_kwh - battery_charge_kwh) * price/1000}: the
- * battery's actual dispatch valued at the actual price. Round-trip losses are
- * automatically debited, so a badly-run battery shows NEGATIVE savings.
+ * <p><b>Historik-Semantik (documented v1 simplification):</b> every slot in
+ * the window - however old - is valued at the CURRENTLY maintained tariff and
+ * Preisblatt; there is no price-sheet history. A tariff change therefore
+ * re-values the past under the new terms, exactly like the netzladen-flag and
+ * Leistungspreis disciplines elsewhere in this class.
+ *
+ * <p>Under symmetric spot pricing, saved reduced to
+ * {@code (battery_discharge_kwh - battery_charge_kwh) * price/1000} by the
+ * rollups' power-balance identity ({@code battery = grid - load + pv},
+ * migration V20260701030000). With a real tariff that shortcut no longer
+ * holds; instead, load-shifting the battery performs against the tariff is
+ * credited at its full avoided-import value, while pure sell-and-buy-back
+ * spot churning loses its phantom contribution (a {@code fest} site's saved
+ * carries no arbitrage at all - only shifted QUANTITIES count). Round-trip
+ * losses still debit VoltPilot, so a badly-run battery shows NEGATIVE
+ * savings.
  *
  * <p><b>Marktprämie (dynamic model, captain domain fix 2026-07-07).</b> The
  * premium of a direct-marketed EEG plant is NOT a fixed ct/kWh: fixed is the
@@ -207,10 +232,49 @@ public class EarningsRepository {
     private static final String BATTERIE_BEWEGT_KWH =
             "(COALESCE(r.battery_charge_kwh, 0) + COALESCE(r.battery_discharge_kwh, 0))";
 
+    /** The supply-price sheet join every import valuation needs (fixed
+     * {@code ssp} alias, the importPriceCtSql contract). */
+    private static final String SUPPLY_PRICE_JOIN =
+            "LEFT JOIN site_supply_price ssp ON ssp.site_id = s.id ";
+
     private final JdbcTemplate jdbc;
 
-    public EarningsRepository(JdbcTemplate jdbc) {
+    /**
+     * The slot's import price in EUR/kWh - the ONE composition truth
+     * ({@link SlotEconomics#importPriceCtSql}), built once at construction
+     * with the mirrored {@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS} flag so
+     * display and solver read the identical flag semantics.
+     */
+    private final String importPriceEurKwh;
+
+    /** Baseline EUR of one covered slot (see the class Javadoc formula). */
+    private final String baselineEur;
+
+    /** Actual EUR of one covered slot (see the class Javadoc formula). */
+    private final String actualEur;
+
+    /** Saved EUR of one covered slot ({@code baseline - actual}, expanded). */
+    private final String savedEur;
+
+    /** The tarifPricedSql boolean for this flag setting (see {@link #tarifPriced}). */
+    private final String tarifPricedExpr;
+
+    public EarningsRepository(JdbcTemplate jdbc, OptimizerProperties optimizer) {
         this.jdbc = jdbc;
+        this.importPriceEurKwh = "(" + SlotEconomics.importPriceCtSql(
+                "p.price_eur_mwh", optimizer.defaultSupplyComponents()) + " / 100.0)";
+        this.baselineEur = "(GREATEST(r.load_kwh - r.pv_kwh, 0) * " + importPriceEurKwh
+                + " - GREATEST(r.pv_kwh - r.load_kwh, 0) * p.price_eur_mwh / 1000"
+                + " - " + BASELINE_PREMIUM_EUR + ")";
+        this.actualEur = "(r.grid_import_kwh * " + importPriceEurKwh
+                + " - r.grid_export_kwh * p.price_eur_mwh / 1000"
+                + " - " + ACTUAL_PREMIUM_EUR + ")";
+        this.savedEur = "((GREATEST(r.load_kwh - r.pv_kwh, 0) - r.grid_import_kwh) * "
+                + importPriceEurKwh
+                + " - (GREATEST(r.pv_kwh - r.load_kwh, 0) - r.grid_export_kwh)"
+                + "   * p.price_eur_mwh / 1000"
+                + " + " + ACTUAL_PREMIUM_EUR + " - " + BASELINE_PREMIUM_EUR + ")";
+        this.tarifPricedExpr = SlotEconomics.tarifPricedSql(optimizer.defaultSupplyComponents());
     }
 
     /**
@@ -319,11 +383,9 @@ public class EarningsRepository {
                         + " count(*) AS bucket_count,"
                         + " count(*) FILTER (WHERE " + CHANNELS_OK + ") AS channel_buckets,"
                         + " count(*) FILTER (WHERE " + COVERED + ") AS covered_slots,"
-                        + " sum((r.load_kwh - r.pv_kwh) * p.price_eur_mwh / 1000"
-                        + "     - " + BASELINE_PREMIUM_EUR + ")"
+                        + " sum(" + baselineEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS baseline_eur,"
-                        + " sum((r.grid_import_kwh - r.grid_export_kwh) * p.price_eur_mwh / 1000"
-                        + "     - " + ACTUAL_PREMIUM_EUR + ")"
+                        + " sum(" + actualEur + ")"
                         + "   FILTER (WHERE " + COVERED + ") AS actual_eur,"
                         + " min(r.bucket) FILTER (WHERE " + COVERED + ") AS first_covered,"
                         + " sum(r.grid_export_kwh * p.price_eur_mwh / 10)"
@@ -348,6 +410,7 @@ public class EarningsRepository {
                         + "   FILTER (WHERE " + COVERED + ") AS batterie_bewegt_kwh "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
+                        + SUPPLY_PRICE_JOIN
                         + PRICE_LATERAL
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? "
@@ -374,6 +437,27 @@ public class EarningsRepository {
                             rs.getBigDecimal("batterie_bewegt_kwh")));
                 },
                 Timestamp.from(from), Timestamp.from(to));
+        return result;
+    }
+
+    /**
+     * Which of the tenant's sites are valued beyond bare spot on the import
+     * side ({@code true} = "bewertet zu Ihrem Stromtarif": a flat/dynamic
+     * tariff parameter, a maintained {@code site_supply_price} sheet, or the
+     * default-components flag engaged) - the honest labeling context the
+     * portal's provenance sentences need, because the {@code tarifArt} echo
+     * alone cannot tell an {@code ohne} site with a maintained Preisblatt
+     * from one without. Same branch conditions as the price expression
+     * ({@link SlotEconomics#tarifPricedSql}). RLS-fenced like every read here.
+     */
+    public Map<UUID, Boolean> tarifPriced() {
+        Map<UUID, Boolean> result = new HashMap<>();
+        jdbc.query(
+                "SELECT s.id, " + tarifPricedExpr + " AS tarif_priced "
+                        + "FROM site s " + SUPPLY_PRICE_JOIN,
+                rs -> {
+                    result.put(rs.getObject("id", UUID.class), rs.getBoolean("tarif_priced"));
+                });
         return result;
     }
 
@@ -422,6 +506,14 @@ public class EarningsRepository {
      * flip are attributed under the CURRENT mode - historical mode tracking is
      * out of scope (a freshly-permitted site simply has no grid-charged slots
      * in its past, so this only matters after a permission is REVOKED).</li>
+     * <li><b>The split's valuation stays at bare spot (v1, Stufe 3).</b>
+     * Grid-charge purchase cost and grid-content discharge revenue are both
+     * spot-priced even though the saved TOTAL now values import at the
+     * structured tariff: attributing the tariff components would need to know
+     * whether each discharged kWh avoided import or was exported, which the
+     * pool walk does not track. The remainder construction keeps
+     * {@code arbitrage + pvShift == saved} exact regardless; netzladen sites
+     * are typically spot-settled merchants, where the two models coincide.</li>
      * </ul>
      *
      * <p>Only covered slots (channels + price) enter the walk - the same
@@ -507,13 +599,12 @@ public class EarningsRepository {
         Map<UUID, List<DailySaved>> result = new HashMap<>();
         jdbc.query(
                 "SELECT r.site_id, time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
-                        // saved = baseline - actual, incl. the premium delta
-                        // (actual premium - baseline premium).
-                        + " sum(((r.load_kwh - r.pv_kwh) - (r.grid_import_kwh - r.grid_export_kwh))"
-                        + "     * p.price_eur_mwh / 1000"
-                        + "     + " + ACTUAL_PREMIUM_EUR + " - " + BASELINE_PREMIUM_EUR + ") AS saved_eur "
+                        // saved = baseline - actual (import at the tariff,
+                        // export at spot, incl. the premium delta).
+                        + " sum(" + savedEur + ") AS saved_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
+                        + SUPPLY_PRICE_JOIN
                         + PRICE_LATERAL
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "

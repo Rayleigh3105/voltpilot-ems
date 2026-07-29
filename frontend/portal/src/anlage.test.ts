@@ -220,6 +220,15 @@ describe('gesamtertrag / saved provenance', () => {
     expect(savedProvenance(makeMoney({ plantKind: 'direktvermarktung' }))).toContain('mehr verdient');
     expect(savedProvenance(makeMoney({ savedEur: null }))).toBeNull();
   });
+  it('saved provenance names the tariff valuation exactly when it applies (Stufe 3)', () => {
+    // tarifPriced = the backend really valued avoided import at the tariff.
+    expect(savedProvenance(makeMoney({ tarifPriced: true }))).toContain(
+      'zu Ihrem Stromtarif bewertet',
+    );
+    // Without the flag (bare-spot site or older backend) no tariff is claimed.
+    expect(savedProvenance(makeMoney())).not.toContain('Stromtarif');
+    expect(savedProvenance(makeMoney({ tarifPriced: false }))).not.toContain('Stromtarif');
+  });
 });
 
 describe('energyTiles (decision 4)', () => {

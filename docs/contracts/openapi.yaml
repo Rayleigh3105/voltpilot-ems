@@ -3422,20 +3422,31 @@ components:
           type: number
           nullable: true
           description: >
-            Signed cost of the unregulated plant (negative = revenue), incl.
-            the Marktprämie its immediate feed-in would earn when configured
-            (suspended in negative-price slots).
+            Signed cost of the unregulated plant (negative = revenue): its
+            per-slot import (greatest(load - pv, 0)) valued at the site's real
+            supply price - the SAME composition the optimizer plans with (flat
+            tariff / spot + Aufschlag / (spot + Preisblatt-Komponenten) x
+            (1+USt); bare spot without any price data) - its export
+            (greatest(pv - load, 0)) at spot, incl. the Marktprämie its
+            immediate feed-in would earn when configured (suspended in
+            negative-price slots). Every slot is valued at the CURRENTLY
+            maintained tariff/Preisblatt (no price-sheet history).
         actualEur:
           type: number
           nullable: true
           description: >
-            Signed measured cost with VoltPilot (negative = revenue), incl.
-            the Marktprämie on metered export when configured (suspended in
-            negative-price slots).
+            Signed measured cost with VoltPilot (negative = revenue): metered
+            import at the site's real supply price (same composition as
+            baselineEur), metered export at spot incl. the Marktprämie when
+            configured (suspended in negative-price slots).
         savedEur:
           type: number
           nullable: true
-          description: baseline - actual; negative when the battery ran at a loss.
+          description: >
+            baseline - actual; negative when the battery ran at a loss. Since
+            the structured Bezugspreis, avoided import counts at the tariff
+            (not bare spot), so load-shifting is credited fully while pure
+            spot churning loses its phantom contribution.
         arbitrageEur:
           type: number
           nullable: true
@@ -3497,6 +3508,16 @@ components:
           description: >
             The tariff parameter (ct/kWh): the fixed retail price for fest, the
             optional spot-price Aufschlag for dynamisch, null for ohne / unset.
+        tarifPriced:
+          type: boolean
+          nullable: true
+          description: >
+            Whether savedEur's import side is valued beyond bare spot (a
+            tariff parameter, a maintained site_supply_price Preisblatt, or
+            the platform default-components flag). Drives the honest
+            "bewertet zu Ihrem Stromtarif" provenance copy - a bare tarifArt
+            echo cannot tell an 'ohne' site with a maintained Preisblatt from
+            one without.
         einspeiseErloesEur:
           type: number
           nullable: true
@@ -4315,8 +4336,9 @@ components:
             pvGenerationKwh: { type: number, nullable: true, description: Null when no bucket carried the channel. }
             gridImportKwh: { type: number, nullable: true, description: Null when no bucket carried the channel. }
             gridExportKwh: { type: number, nullable: true, description: Null when no bucket carried the channel. }
-            gridCostEur: { type: number, nullable: true, description: "Import energy x matching day-ahead price; ALWAYS the bare spot cost (no retail tariff is applied). Null when no price data overlaps the period. See tarifArt for the labeling context." }
-            tarifArt: { type: string, nullable: true, enum: [dynamisch, fest, ohne], description: "The site's configured tariff kind - context for gridCostEur, which is spot-priced regardless. 'ohne' means the number must be labeled as a spot price." }
+            gridCostEur: { type: number, nullable: true, description: "Import energy x the slot's real supply price - the SAME composition the optimizer plans with (flat tariff / spot + Aufschlag / (spot + Preisblatt-Komponenten) x (1+USt); bare spot without any price data, byte-identical to before). Valued at the CURRENTLY maintained tariff (no price-sheet history). Null when nothing is computable in the period. See tarifArt/tarifPriced for the labeling context." }
+            tarifArt: { type: string, nullable: true, enum: [dynamisch, fest, ohne], description: "The site's configured tariff kind - labeling context for gridCostEur." }
+            tarifPriced: { type: boolean, nullable: true, description: "Whether gridCostEur is valued beyond bare spot (tariff parameter, maintained Preisblatt, or the platform default-components flag): true = label 'bewertet zu Ihrem Stromtarif', false = 'zu Börsenpreisen'." }
             batterySavingsPlannedEur: { type: number, nullable: true, description: "EX-ANTE PLANNED savings from the persisted optimizer plans (latest run per slot); null where no plan exists. NOT measured money - the measured counterpart is savedEur on /earnings. Surfaces must say 'geplant'." }
             batterySavingsEur: { type: number, nullable: true, deprecated: true, description: Deprecated alias of batterySavingsPlannedEur (same value); kept one release. }
             autarkiePct: { type: number, nullable: true, description: "(1 - grid import / consumption) x 100, clamped 0..100." }

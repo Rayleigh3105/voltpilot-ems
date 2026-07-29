@@ -11,8 +11,9 @@ import type { HistoryTotals } from './api';
  *  - the planned battery saving is `batterySavingsPlannedEur` - the deprecated
  *    `batterySavingsEur` alias must NOT be part of the portal type, so no new
  *    reader can appear;
- *  - `tarifArt` travels with `gridCostEur` (which is always the bare SPOT cost),
- *    so a surface can label that number truthfully.
+ *  - `tarifArt`/`tarifPriced` travel with `gridCostEur` (valued at the site's
+ *    real supply price since the structured Bezugspreis, bare spot only
+ *    without any price data), so a surface can label that number truthfully.
  *
  * These are compile-time facts; the assertions exist so the intent is visible in
  * the suite and a regression fails the type-check with a named test.
@@ -41,12 +42,14 @@ describe('HistoryTotals mirrors HistoryTotalsDto', () => {
       gridExportKwh: 9.6,
       gridCostEur: 0.94,
       tarifArt: 'dynamisch',
+      tarifPriced: true,
       batterySavingsPlannedEur: 1.2,
       autarkiePct: 82,
       eigenverbrauchPct: 64,
     };
     expect(totals.batterySavingsPlannedEur).toBe(1.2);
     expect(totals.tarifArt).toBe('dynamisch');
+    expect(totals.tarifPriced).toBe(true);
     // The deprecated alias is not part of the portal type.
     expect('batterySavingsEur' in totals).toBe(false);
   });

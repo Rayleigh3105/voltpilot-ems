@@ -78,7 +78,12 @@ public record EarningsDto(
      * Marktprämie) + {@code eigenverbrauchsWertEur} (self-consumed energy valued
      * per the site's tariff). {@code tarifArt}/{@code tarifParamCtKwh} echo the
      * configured tariff ({@code dynamisch}/{@code fest}/{@code ohne} + its
-     * ct/kWh parameter) so the portal can render the provenance sentence. The
+     * ct/kWh parameter) so the portal can render the provenance sentence;
+     * {@code tarifPriced} says whether {@code savedEur}'s import side is
+     * valued beyond bare spot (a tariff parameter, a maintained
+     * {@code site_supply_price} Preisblatt, or the mirrored
+     * default-components flag - Stufe 3 of the structured Bezugspreis), so
+     * the "bewertet zu Ihrem Stromtarif" copy never over- or under-claims. The
      * Eigenverbrauchs-Wert is computed slot-by-slot in the repository:
      * {@code dynamisch} prices each self-consumed kWh at that slot's Börsenpreis
      * + the Aufschlag, {@code fest} at the fixed price. For an {@code ohne}
@@ -131,6 +136,7 @@ public record EarningsDto(
             List<EarningsDailyDto> dailySaved,
             String tarifArt,
             BigDecimal tarifParamCtKwh,
+            Boolean tarifPriced,
             BigDecimal einspeiseErloesEur,
             BigDecimal eigenverbrauchsWertEur,
             BigDecimal gesamtertragEur,

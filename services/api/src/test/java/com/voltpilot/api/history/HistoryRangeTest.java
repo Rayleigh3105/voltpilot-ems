@@ -122,13 +122,22 @@ class HistoryRangeTest {
     @Test
     void totalsCarryThePlannedSavingsNameAndTheTariffContext() {
         HistoryTotalsDto t = HistoryService.totals(
-                List.of(bucket(5, 4, 3, 1, 0.30)), BigDecimal.valueOf(150.26), "ohne");
+                List.of(bucket(5, 4, 3, 1, 0.30)), BigDecimal.valueOf(150.26),
+                new com.voltpilot.api.repo.HistoryRepository.TariffContext("ohne", false));
         assertThat(t.batterySavingsPlannedEur()).isEqualByComparingTo("150.26");
         assertThat(t.batterySavingsEur()).isEqualByComparingTo("150.26"); // deprecated alias
         assertThat(t.tarifArt()).isEqualTo("ohne");
+        // Stufe 3: the label switch travels with the number - a bare-spot site
+        // must read "zu Börsenpreisen", a tariff-valued one the tariff copy.
+        assertThat(t.tarifPriced()).isFalse();
+        assertThat(HistoryService.totals(
+                List.of(bucket(5, 4, 3, 1, 0.30)), null,
+                new com.voltpilot.api.repo.HistoryRepository.TariffContext("fest", true))
+                .tarifPriced()).isTrue();
 
         // No tariff context available (older/unreadable site) -> null, not a guess.
         assertThat(HistoryService.totals(List.of(), null).tarifArt()).isNull();
+        assertThat(HistoryService.totals(List.of(), null).tarifPriced()).isNull();
     }
 
     private static HistoryBucketDto bucket(
