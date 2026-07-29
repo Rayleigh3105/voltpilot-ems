@@ -217,6 +217,25 @@ describe('settingsForMode — Anzeige je aktivem Modus', () => {
     expect(ids(settingsForMode(modeOf(MARKT_ONLY, 'marktvermarktung'), marktModes))).toContain('speicherschonung');
   });
 
+  it('zeigt den anzulegenden Wert nur einer DIREKTVERMARKTUNGS-Anlage', () => {
+    // Nach einer Umstellung DV → Eigenverbrauch kann der Markt-Modus über
+    // Netzladen + dynamischen Tarif weiterlaufen. Der anzulegende Wert ist aber
+    // der Vertragsfakt der EEG-Marktprämie und wird nur für eine DV-Anlage
+    // verrechnet - er darf danach nicht als wirkungslose Eingabe stehenbleiben.
+    const dv = modeOf(MARKT_ONLY, 'marktvermarktung');
+    expect(ids(settingsForMode(dv, activeModes(MARKT_ONLY), { plantKind: 'direktvermarktung' })))
+      .toContain('anzulegender-wert');
+
+    const ev = modeOf(MARKT_AND_EV, 'marktvermarktung');
+    const evIds = ids(settingsForMode(ev, activeModes(MARKT_AND_EV), { plantKind: 'eigenverbrauch' }));
+    expect(evIds).not.toContain('anzulegender-wert');
+    // Alles andere des Markt-Containers bleibt erreichbar.
+    expect(evIds).toEqual(['speicherschonung', 'netzladen', 'stromtarif']);
+
+    // Ohne Kontext (Aufrufer ohne Anlagen-Daten) wird NICHTS gefiltert.
+    expect(ids(settingsForMode(ev, activeModes(MARKT_AND_EV)))).toContain('anzulegender-wert');
+  });
+
   it('ein NICHT aktiver Modus zeigt keine Einstellungen (Owner: aus ⇒ nichts)', () => {
     const markt = modeOf(MARKT_ONLY, 'marktvermarktung');
     // Markt ist nicht in der aktiven Menge -> leer, auch wenn er Ansprüche trägt.

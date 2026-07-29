@@ -62,7 +62,13 @@ import {
   type ReservationInput,
 } from '../steuerungArea';
 import { type ProfileState, type SiteProfiles } from '../profiles';
-import { activeModes, type ActiveMode, type SurfaceFlow, type SurfaceSignals } from '../surface';
+import {
+  activeModes,
+  baseSurface,
+  type ActiveMode,
+  type SurfaceFlow,
+  type SurfaceSignals,
+} from '../surface';
 import { FlowEditorPage } from './admin/FlowEditorPage';
 import '../components/Profile.css';
 
@@ -211,22 +217,31 @@ export function SteuerungSection({
     [enabledGatedTypes],
   );
 
-  /** Die MENGE der aktiven Modi (M0) - hier wird NICHTS neu abgeleitet. */
-  const modes = useMemo<ActiveMode[]>(
-    () =>
-      activeModes({
-        signals,
-        config: {
-          plantKind: siteState.plantKind,
-          tarifArt: siteState.tarifArt,
-          netzladenErlaubt: siteState.netzladenErlaubt,
-          leistungspreisEurKw: siteState.leistungspreisEurKw ?? null,
-        },
-        flows: (flows as SurfaceFlow[] | null) ?? null,
-        entities: null,
-      }),
+  /** Die EINE Projektions-Eingabe dieser Fläche (M0) - nichts wird hier neu abgeleitet. */
+  const surfaceInput = useMemo(
+    () => ({
+      signals,
+      config: {
+        plantKind: siteState.plantKind,
+        tarifArt: siteState.tarifArt,
+        netzladenErlaubt: siteState.netzladenErlaubt,
+        leistungspreisEurKw: siteState.leistungspreisEurKw ?? null,
+      },
+      flows: (flows as SurfaceFlow[] | null) ?? null,
+      entities: null,
+    }),
     [signals, siteState, flows],
   );
+
+  /** Die MENGE der aktiven Modi (M0). */
+  const modes = useMemo<ActiveMode[]>(() => activeModes(surfaceInput), [surfaceInput]);
+
+  /**
+   * Die BASIS-Ansichten (Fahrplan bei Speicher, Marktpreise bei Börsentarif).
+   * Der Modus-Container zieht sie von „Ansichten dieses Modus" ab, damit er
+   * nichts als Freischaltung ausweist, was ohnehin in der Navigation steht.
+   */
+  const baseViews = useMemo(() => baseSurface(surfaceInput).deepViews, [surfaceInput]);
 
   const co = useMemo(() => coOptimization(modes), [modes]);
   const layers = useMemo(() => socReservationStack(reservation), [reservation]);
@@ -393,6 +408,7 @@ export function SteuerungSection({
           profile={openProfile}
           mode={mode}
           activeModes={modes}
+          baseViews={baseViews}
           site={siteState}
           battery={battery}
           earnings={earnings}

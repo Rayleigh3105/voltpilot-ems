@@ -29,9 +29,21 @@
  *     Anlage erzeugt Telemetrie, also ist die Historie der ANGELEGTEN
  *     Telemetriekanäle (inkl. frei gemappter Modbus-Kanäle aus MB-M1) in JEDEM
  *     Modus verfügbar. Die **Erlös-Historie** bleibt am Geld-Modus.
- *  2. **Marktpreise & Prognosequalität gehören zu `module(marktvermarktung)`**,
- *     nicht in eine globale Sidebar-Gruppe — sie erscheinen nur, wenn der
- *     Markt-Modus aktiv ist.
+ *  2. **Prognosequalität gehört zu `module(marktvermarktung)`**, nicht in eine
+ *     globale Sidebar-Gruppe — sie erscheint nur, wenn der Markt-Modus aktiv
+ *     ist. (Für **Marktpreise** hat der Captain das am 2026-07-29 präzisiert,
+ *     siehe unten: eine Anlage mit BÖRSENTARIF braucht die Preisseite auch ohne
+ *     Markt-Modus.)
+ *
+ * **Captain-Hotfix 2026-07-29 — der Fahrplan ist Basis, kein Modus-Anhängsel.**
+ * Eine Anlage wurde von Direktvermarktung auf `eigenverbrauch` umgestellt; damit
+ * fielen die Markt-Signale weg, der Modus „Marktvermarktung" verschwand — und
+ * mit ihm der FAHRPLAN, obwohl der Optimierer unverändert alle 15 Minuten plant
+ * (seit dem Bezugspreis-Umbau ist Eigenverbrauchs-Optimierung Grundverhalten
+ * JEDER Speicher-Anlage: Nachtdeckung, Tarif-Abwägung). Der Fahrplan hängt am
+ * SPEICHER, nicht am Geschäftsmodell — er ist deshalb eine BASIS-Ansicht,
+ * sobald die Anlage einen Speicher hat, und die Marktpreise sind es, sobald ein
+ * dynamischer Tarif hinterlegt ist. Siehe `baseSurface`.
  *
  * NICHTS rendert bisher hieraus — M1–M4 konsumieren dieses Read-Model.
  */
@@ -45,6 +57,7 @@ import {
   isLeistungspreisActive,
   marktoptimierungLine,
 } from './moduleSurface';
+import { defaultRole } from './topology';
 import { NODE_ATYPICAL_GRID, NODE_MARKET, NODE_PEAKSHAVING } from './usageProfile';
 
 // ---------------------------------------------------------------------------
@@ -297,6 +310,10 @@ export interface BaseSurface {
   /** false = "Neu / leer": keine Objekte, KEINE Platzhalter-Karten. */
   hasEntities: boolean;
   blocks: CockpitBlock[];
+  /**
+   * Die modus-UNABHÄNGIGEN Tiefen-Ansichten. Die Navigation (`anlageNav.ts`)
+   * liest sie: was hier steht, ist ohne jeden aktiven Modus erreichbar.
+   */
   deepViews: DeepViewId[];
   /** Alle angelegten Telemetriekanäle (inkl. frei gemappter Modbus-Kanäle). */
   telemetryChannels: string[];
@@ -395,21 +412,73 @@ export function telemetryChannels(entities: SurfaceEntity[] | null | undefined):
 }
 
 /**
+ * Hat die Anlage einen Speicher? Die AE7-Signale sind die Wahrheit
+ * (`UsageProfileService.signals`, fähigkeitsbasiert). Der Rückfall über die
+ * Entitäten greift NUR, wenn `GET /sites/{id}/profile` gerade nicht geladen
+ * werden konnte (jeder Abruf des Hooks ist fail-soft) — sonst würde der
+ * Fahrplan bei einem Netz-Schluckauf aus der Navigation fallen, also genau die
+ * Klasse Fehler, die dieser Hotfix behebt. Er benutzt DIESELBE Kanal-Regel
+ * (`topology.defaultRole`, die auch der Server fährt), es gibt also keine
+ * zweite Wahrheit.
+ *
+ * Grenze, bewusst: eine noch NICHT migrierte v1-Anlage hat weder Signale noch
+ * Entitäten, also auch keinen Speicher-Nachweis — sie bekommt den Fahrplan
+ * weiterhin nur über einen aktiven Modus. Der automatische v2-Backfill (MIG)
+ * komponiert für jede Bestandsanlage mit Batterie eine `battery-hybrid`-
+ * Entität, deshalb ist das kein realer Kundenfall.
+ */
+function hasStorage(site: AnlageSurfaceInput): boolean {
+  if (site.signals?.hasStorage === true) return true;
+  return (site.entities ?? []).some(
+    (e) =>
+      e?.entityType === 'battery-hybrid' ||
+      (e?.capabilities?.measure ?? []).some((m) => defaultRole('', m?.channel ?? '') === 'storage'),
+  );
+}
+
+/**
  * `base(entities)` (report §1.1 + feedback.md Punkt 2): Status-Kopf,
  * Energiefluss-Hub, Geräte, **Telemetrie-Historie** und Live — modus-unabhängig,
- * in JEDEM Modus verfügbar. Ohne Entitäten gibt es NICHTS (kein Platzhalter):
- * das ist die Ausprägung "Neu / leer", deren Cockpit der Einrichtungspfad ist.
+ * in JEDEM Modus verfügbar. Ohne Entitäten gibt es davon NICHTS (kein
+ * Platzhalter): das ist die Ausprägung "Neu / leer", deren Cockpit der
+ * Einrichtungspfad ist.
+ *
+ * **Zwei Ansichten hängen an den STAMMDATEN, nicht an der v2-Registry** (der
+ * Captain-Hotfix 2026-07-29 im Kopf dieser Datei):
+ *  - **`fahrplan`**, sobald die Anlage einen Speicher hat. Der Optimierer plant
+ *    für JEDE Speicher-Anlage alle 15 Minuten — auch für eine reine
+ *    Eigenverbrauchs-Anlage mit festem Tarif. Der Fahrplan darf deshalb nie mit
+ *    einem Modus verschwinden.
+ *  - **`marktpreise`**, sobald ein dynamischer (Börsen-)Tarif hinterlegt ist —
+ *    dieser Kunde zahlt viertelstündlich den Spotpreis und braucht die
+ *    Preisseite unabhängig davon, ob er vermarktet.
+ *
+ * `prognosequalitaet` und `erloes-historie` bleiben modusgebunden
+ * (feedback.md-Entscheidung, unverändert). Beide Basis-Ansichten sind NICHT an
+ * `hasEntities` gekoppelt: sie folgen den Stammdaten, nicht dem Migrationsstand.
  */
-export function baseSurface(entities: SurfaceEntity[] | null | undefined): BaseSurface {
-  const list = entities ?? [];
+export function baseSurface(site: AnlageSurfaceInput): BaseSurface {
+  const input = site ?? {};
+  const list = input.entities ?? [];
   const channels = telemetryChannels(list);
-  if (list.length === 0) {
-    return { hasEntities: false, blocks: [], deepViews: [], telemetryChannels: channels };
+  const deepViews: DeepViewId[] = [];
+  if (list.length > 0) {
+    deepViews.push('live', 'geraete', 'wetter');
+    // Die Historie der ANGELEGTEN Kanäle - nur wenn es Kanäle gibt, sonst wäre
+    // sie eine leere Versprechung.
+    if (channels.length > 0) deepViews.push('telemetrie-historie');
   }
-  const deepViews: DeepViewId[] = ['live', 'geraete', 'wetter'];
-  // Die Historie der ANGELEGTEN Kanäle - nur wenn es Kanäle gibt, sonst wäre
-  // sie eine leere Versprechung.
-  if (channels.length > 0) deepViews.push('telemetrie-historie');
+  if (hasStorage(input)) deepViews.push('fahrplan');
+  if (tarifArtOf(input.config) === 'dynamisch') deepViews.push('marktpreise');
+
+  if (list.length === 0) {
+    return {
+      hasEntities: false,
+      blocks: [],
+      deepViews: sortDeepViews(deepViews),
+      telemetryChannels: channels,
+    };
+  }
   return {
     hasEntities: true,
     blocks: [
@@ -726,8 +795,14 @@ function manifestFor(seed: ModeSeed, origin: ModeOrigin, preview: boolean): Mode
           action,
           preview,
         },
-        // feedback.md Punkt 1: Marktpreise + Prognosequalität sind KEINE
+        // feedback.md Punkt 1: Prognosequalität + Erlös-Historie sind KEINE
         // globalen Seiten - sie hängen am Markt-Modus.
+        //
+        // `fahrplan`/`marktpreise` stehen hier NUR noch als RÜCKFALL: seit dem
+        // Captain-Hotfix 2026-07-29 trägt sie das Basissurface (Speicher bzw.
+        // dynamischer Tarif), und die Vereinigung dedupliziert. Ein Markt-Modus
+        // OHNE Speicher (z. B. ein DV-Solarpark) oder mit festem Tarif behält
+        // sie so trotzdem - Reichweite wird nie kleiner.
         deepViews: ['fahrplan', 'marktpreise', 'prognosequalitaet', 'erloes-historie'],
         // §2: Speicherschonung + Netzladen + anzulegender Wert + Stromtarif
         // (Zweit-Claim; Erst-Claim ist Eigenverbrauch). Dedupe: `settingsForMode`.
@@ -853,7 +928,7 @@ export function deepViews(base: BaseSurface, modes: ActiveMode[]): DeepViewId[] 
 
 /** Die vollständige Projektion — `surface = base(entities) ∪ ⋃ module(m)`. */
 export function anlageSurface(site: AnlageSurfaceInput): AnlageSurface {
-  const base = baseSurface(site?.entities);
+  const base = baseSurface(site ?? {});
   const modes = activeModes(site);
   return {
     base,

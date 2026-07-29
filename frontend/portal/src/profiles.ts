@@ -80,7 +80,10 @@ const COPY: Record<string, ProfileCopy> = {
   marktvermarktung: {
     benefit:
       'VoltPilot lädt und entlädt Ihren Speicher nach den Börsenpreisen — teuer verkaufen, günstig laden.',
-    unlocks: ['Fahrplan', 'Marktpreise', 'Prognosequalität', 'Handels-Kachel', 'Einspeise-Erlös'],
+    // „Fahrplan" steht hier bewusst NICHT mehr (Captain-Hotfix 2026-07-29): der
+    // Fahrplan gehört zum Speicher und ist ohne jeden Modus erreichbar - ihn
+    // als Freischaltung dieses Profils zu nennen, wäre eine Falschaussage.
+    unlocks: ['Marktpreise', 'Prognosequalität', 'Handels-Kachel', 'Einspeise-Erlös'],
   },
   lastspitzenkappung: {
     benefit:

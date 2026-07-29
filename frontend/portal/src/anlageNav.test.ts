@@ -29,6 +29,16 @@ const ENTITIES: AnlageSurfaceInput['entities'] = [
   { id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } },
 ];
 
+/** Eine Anlage ohne Speicher (nur Erzeugung) - kein Fahrplan an der Basis. */
+const PV_ONLY = {
+  id: 'e-pv',
+  entityType: 'producer',
+  capabilities: { measure: [{ channel: 'pv_power_kw' }] },
+};
+
+/** Die vier FESTEN Basis-Bereiche (abgeleitete Ansichten reihen sich ein). */
+const FIXED = ['cockpit', 'historie', 'steuerung', 'anlagen-modell'];
+
 /** A migrated plant with the market mode active. */
 const MARKT = anlageSurface({
   entities: ENTITIES,
@@ -72,27 +82,31 @@ function allSubs(groups: SidebarGroup[]): (AnlagenSub | null)[] {
 }
 
 describe('anlageSidebar - the base group is fixed and ordered', () => {
-  it('is always exactly the four Anlage areas, in that order', () => {
+  it('always carries the four Anlage areas, in that order', () => {
     // Cockpit+Live merge (Option A): the former Live-Daten area is gone — the
     // cockpit hosts the Komponenten-Board + the compact Verlauf itself.
     for (const surface of [MARKT, PEAK, PRIVAT, null, undefined]) {
       const base = anlageSidebar(surface).groups[0];
       expect(base.label).toBe(BASE_GROUP_LABEL);
       expect(base.tone).toBeNull();
-      expect(base.items.map((i) => i.key)).toEqual([
-        'cockpit',
-        'historie',
-        'steuerung',
-        'anlagen-modell',
-      ]);
+      // Die vier festen Bereiche stehen immer und in dieser Reihenfolge da;
+      // abgeleitete Basis-Ansichten (Fahrplan/Marktpreise) reihen sich ein.
+      expect(base.items.map((i) => i.key).filter((k) => FIXED.includes(k))).toEqual(FIXED);
+      // No "Live-Daten" nav item anywhere.
+      expect(base.items.some((i) => i.label.includes('Live'))).toBe(false);
+    }
+  });
+
+  it('is exactly the four areas on a plant with neither storage nor spot tariff', () => {
+    for (const surface of [null, undefined]) {
+      const base = anlageSidebar(surface).groups[0];
+      expect(base.items.map((i) => i.key)).toEqual(FIXED);
       expect(base.items.map((i) => i.label)).toEqual([
         'Cockpit',
         'Historie',
         'Steuerung',
         'Anlagen-Modell',
       ]);
-      // No "Live-Daten" nav item anywhere.
-      expect(base.items.some((i) => i.label.includes('Live'))).toBe(false);
     }
   });
 
@@ -103,6 +117,37 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
       'steuerung',
       'modell',
     ]);
+  });
+
+  it('carries the Fahrplan behind Steuerung on EVERY plant with a storage (Hotfix 2026-07-29)', () => {
+    // Der gemeldete Vorfall: DV → Eigenverbrauch, kein Modus mehr — und der
+    // Fahrplan war weg, obwohl der Optimierer weiterplant. Er hängt am
+    // Speicher, also steht er in der Basis-Gruppe, direkt hinter Steuerung.
+    for (const surface of [PRIVAT, MARKT, PEAK, ALLE]) {
+      const keys = anlageSidebar(surface).groups[0].items.map((i) => i.key);
+      expect(keys).toContain('fahrplan');
+      expect(keys.indexOf('fahrplan')).toBe(keys.indexOf('steuerung') + 1);
+    }
+    // Ohne Speicher-Nachweis bleibt die Basis unverändert.
+    expect(
+      anlageSidebar(anlageSurface({ entities: [PV_ONLY] })).groups[0].items.map((i) => i.key),
+    ).toEqual(FIXED);
+  });
+
+  it('carries Marktpreise at the end of the base group on a spot tariff', () => {
+    const boerse = anlageSurface({
+      entities: ENTITIES,
+      config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' },
+    });
+    // Kein Markt-Modus (Eigenverbrauch, kein Netzladen) - und trotzdem die
+    // Preisseite: der Kunde zahlt viertelstündlich den Börsenpreis.
+    expect(boerse.modes).toEqual([]);
+    const keys = anlageSidebar(boerse).groups[0].items.map((i) => i.key);
+    expect(keys).toEqual([...FIXED.slice(0, 3), 'fahrplan', 'anlagen-modell', 'marktpreise']);
+    // Prognosequalität bleibt modusgebunden.
+    expect(keys).not.toContain('prognose');
+    // Fester Tarif: keine Preisseite.
+    expect(anlageSidebar(PRIVAT).groups[0].items.map((i) => i.key)).not.toContain('marktpreise');
   });
 
   it('badges Steuerung with the active-mode count from the M0 read-model', () => {
@@ -142,20 +187,37 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
     expect(groups).toHaveLength(1);
     expect(groups[0].label).toBe('Modus · Marktvermarktung');
     expect(groups[0].tone).toBe('markt');
-    expect(groups[0].items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise', 'prognose']);
+    // Fahrplan + Marktpreise trägt die Basis (Speicher bzw. Börsentarif), der
+    // Modus steuert nur noch seine eigene Ansicht bei - nie doppelt.
+    expect(groups[0].items.map((i) => i.key)).toEqual(['prognose']);
   });
 
-  it('shows Marktpreise/Prognose ONLY while the market mode is active', () => {
+  it('shows Prognose ONLY while the market mode is active', () => {
     const keys = (s: AnlageSurface) =>
       anlageSidebar(s)
         .groups.slice(1)
         .flatMap((g) => g.items.map((i) => i.key));
-    expect(keys(MARKT)).toContain('marktpreise');
     expect(keys(MARKT)).toContain('prognose');
     // A plain self-consumption plant never sees trading knowledge.
     expect(keys(PRIVAT)).not.toContain('marktpreise');
     expect(keys(PRIVAT)).not.toContain('prognose');
     expect(keys(PEAK)).not.toContain('marktpreise');
+    expect(keys(PEAK)).not.toContain('prognose');
+  });
+
+  it('keeps a market plant WITHOUT storage on the mode-borne Fahrplan', () => {
+    // Reichweite wird nie kleiner: ein DV-Park ohne Batterie behält seinen
+    // Zugang - er kommt dann eben aus der Modus-Gruppe statt aus der Basis.
+    const park = anlageSurface({
+      entities: [PV_ONLY],
+      config: { plantKind: 'direktvermarktung', tarifArt: 'fest' },
+    });
+    expect(anlageSidebar(park).groups[0].items.map((i) => i.key)).toEqual(FIXED);
+    expect(anlageSidebar(park).groups[1].items.map((i) => i.key)).toEqual([
+      'fahrplan',
+      'marktpreise',
+      'prognose',
+    ]);
   });
 
   it('gives the peak mode its own group with Lastspitzen', () => {
@@ -210,15 +272,23 @@ describe('bottomBarSlots - exactly five, Mehr last', () => {
 });
 
 describe('moreSheetItems - everything the bottom bar does not carry', () => {
-  it('keeps the mode groups (colour-tagged) and the foot; no empty base group', () => {
-    // The bottom bar carries all four base areas since the merge, so the base
-    // remainder is empty and the sheet leads with the mode groups.
+  it('carries the derived base views, the mode groups (colour-tagged) and the foot', () => {
+    // Die Leiste trägt die vier FESTEN Bereiche, der Rest der Basis-Gruppe
+    // (Fahrplan/Marktpreise) landet im Blatt - also ist er am Telefon ebenso
+    // ohne Modus erreichbar.
     const groups = moreSheetItems(anlageSidebar(MARKT));
-    expect(groups.some((g) => g.label === BASE_GROUP_LABEL)).toBe(false);
-    expect(groups[0].label).toBe('Modus · Marktvermarktung');
-    expect(groups[0].tone).toBe('markt');
+    expect(groups[0].label).toBe(BASE_GROUP_LABEL);
+    expect(groups[0].tone).toBeNull();
+    expect(groups[0].items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise']);
+    expect(groups[1].label).toBe('Modus · Marktvermarktung');
+    expect(groups[1].tone).toBe('markt');
     const last = groups[groups.length - 1];
     expect(last.items.map((i) => i.key)).toEqual(['wetter', 'technik', 'hilfe']);
+  });
+
+  it('has no base group in the sheet when nothing was derived', () => {
+    const groups = moreSheetItems(anlageSidebar(null));
+    expect(groups.some((g) => g.label === BASE_GROUP_LABEL)).toBe(false);
   });
 });
 
@@ -298,6 +368,14 @@ describe('modeViewItems - the shared derivation for the sidebar group AND the co
     const markt = MARKT.modes.find((m) => m.kind === 'marktvermarktung');
     const items = modeViewItems(markt?.manifest.deepViews ?? []);
     expect(items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise', 'prognose']);
+  });
+
+  it('subtracts what the BASE surface already carries (Hotfix 2026-07-29)', () => {
+    // Sonst behauptete der Modus-Container „wird verfügbar, sobald Sie den
+    // Modus einschalten" über eine Ansicht, die längst in der Navigation steht.
+    const markt = MARKT.modes.find((m) => m.kind === 'marktvermarktung');
+    const items = modeViewItems(markt?.manifest.deepViews ?? [], MARKT.base.deepViews);
+    expect(items.map((i) => i.key)).toEqual(['prognose']);
   });
 
   it('is empty for a mode whose views are all base areas', () => {
