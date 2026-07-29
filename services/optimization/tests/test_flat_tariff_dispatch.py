@@ -46,6 +46,16 @@ needs_highs = pytest.mark.skipif(
     reason="HiGHS wheel unavailable on this platform",
 )
 
+
+@pytest.fixture(autouse=True)
+def _default_supply_components_off(monkeypatch):
+    """These dispatch vectors were calibrated under the LEGACY bare-spot
+    pricing of no-data (``ohne``/``dynamisch``-without-Aufschlag) sites. The
+    OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag now defaults ON (captain decision
+    2026-07-29), so pin it OFF here to keep the pinned kWh/cashflow numbers
+    byte-identical - the default-ON behavior is proven in test_pricing.py."""
+    monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", "false")
+
 BERLIN = ZoneInfo("Europe/Berlin")
 SLOTS = 44
 CAPACITY_KWH = 40.0

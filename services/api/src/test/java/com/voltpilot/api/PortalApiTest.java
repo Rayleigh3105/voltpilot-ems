@@ -76,6 +76,15 @@ class PortalApiTest {
         registry.add("spring.flyway.placeholders.appDbUser", () -> APP_USER);
         registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
 
+        // Pin the LEGACY (bare-spot) pricing regime for no-data sites: the
+        // OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS flag now defaults ON in
+        // application.yml (captain decision 2026-07-29), but the earnings/
+        // history vectors here (e.g. savedEurValuesAvoidedImportAtTheStructured
+        // SupplyPrice's bare `ohne` site) are calibrated flag-OFF. The default-
+        // ON behavior is proven at the composition level by
+        // importPriceSqlMatchesTheSlotEconomicsCompositionVectors (both flags).
+        registry.add("voltpilot.optimizer.default-supply-components", () -> "false");
+
         // OIDC on; issuer == the container's realm, JWKS discovered from it.
         String realm = KEYCLOAK.getAuthServerUrl() + "/realms/voltpilot";
         registry.add("voltpilot.security.oidc.enabled", () -> "true");

@@ -30,8 +30,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <li>{@code defaultSupplyComponents} - whether the researched default
  * supply-price components stand in for a missing {@code site_supply_price}
  * sheet on {@code dynamisch}-without-Aufschlag / {@code ohne} sites
- * ({@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}, default false - captain
- * decision pending; see pricing.py {@code DEFAULT_SUPPLY_COMPONENTS}).</li>
+ * ({@code OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS}, default true - captain
+ * decision 2026-07-29; env {@code false} is the opt-out Notbremse. See
+ * pricing.py {@code DEFAULT_SUPPLY_COMPONENTS}).</li>
  * </ul>
  */
 @ConfigurationProperties(prefix = "voltpilot.optimizer")

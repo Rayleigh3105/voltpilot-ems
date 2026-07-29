@@ -274,18 +274,20 @@ def test_supply_price_rollout_is_byte_identical_without_a_maintained_row(
 ):
     """The site_supply_price rollout rule, proven against the golden suite:
     WITHOUT a maintained components row and with
-    OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS off, ``pricing.import_prices``
-    reproduces every golden scenario's committed import series EXACTLY (``==``
-    on the float lists, no tolerance). The import series is the solver's only
-    pricing input on that side, and the two solvers are deterministic over it
-    (pinned by test_cooptimizer_reproduces_v1_on_golden_scenario +
+    OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS EXPLICITLY off (the opt-out Notbremse
+    since the flag now defaults ON, captain decision 2026-07-29),
+    ``pricing.import_prices`` reproduces every golden scenario's committed
+    import series EXACTLY (``==`` on the float lists, no tolerance). The import
+    series is the solver's only pricing input on that side, and the two solvers
+    are deterministic over it (pinned by
+    test_cooptimizer_reproduces_v1_on_golden_scenario +
     test_fixtures_match_the_generator), so identical series = byte-identical
     plans for every existing site. The dynamisch-with-NULL-Aufschlag legacy
     case (bare spot + the new S1 warning) is pinned in test_pricing.py.
     """
     from voltpilot_optimization.pricing import SiteTariff, import_prices
 
-    monkeypatch.delenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", raising=False)
+    monkeypatch.setenv("OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS", "false")
     doc = json.loads(path.read_text())
     tarif_art, param = GOLDEN_TARIFFS[path.stem]
     tariff = SiteTariff(tarif_art=tarif_art, tarif_param_ct_kwh=param)

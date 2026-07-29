@@ -237,21 +237,25 @@ def explain_enabled(env=None) -> bool:
 #: ``dynamisch``-without-Aufschlag and ``ohne`` sites WITHOUT a maintained
 #: ``site_supply_price`` row (report vp-nacht-bezug-e7 Teil 2: household
 #: 7,6/2,05/1,59/2,946/1,5 ct netto + 19 % USt ≈ 18,7 ct brutto over spot).
-#: DEFAULT OFF - activation is an open captain decision; with the flag off the
-#: no-row cases keep today's bare-spot legacy behavior byte-identically. The
-#: default VALUES live in :data:`voltpilot_optimization.pricing
-#: .DEFAULT_SUPPLY_COMPONENTS` (pricing imports config, never the reverse).
+#: DEFAULT ON (captain decision 2026-07-29): a site with no maintained price
+#: sheet rechnet mit den recherchierten Default-Komponenten statt nacktem Spot,
+#: ohne dass der Betreiber etwas konfigurieren muss; explicitly setting the env
+#: to ``false`` is the Notbremse and restores today's bare-spot legacy behavior
+#: byte-identically. The default VALUES live in
+#: :data:`voltpilot_optimization.pricing.DEFAULT_SUPPLY_COMPONENTS` (pricing
+#: imports config, never the reverse).
 DEFAULT_SUPPLY_COMPONENTS_ENV = "OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS"
 
 
 def default_supply_components_enabled(env=None) -> bool:
     """Whether the researched default supply components stand in for a missing
     ``site_supply_price`` row (``dynamisch`` without Aufschlag / ``ohne``).
+    Default ON (captain decision 2026-07-29); ``false`` is the opt-out Notbremse.
     Garbage values raise loudly (the explain_enabled discipline)."""
     env = os.environ if env is None else env
     raw = env.get(DEFAULT_SUPPLY_COMPONENTS_ENV)
     if raw is None or raw.strip() == "":
-        return False
+        return True
     v = raw.strip().lower()
     if v in ("true", "1", "yes", "on"):
         return True
