@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SiteSource, SiteTopology, TopologyEntity } from './api';
-import { pvComposition, shareOf } from './pvComposition';
+import { pvComposition, shareOf, UNASSIGNED_NOTE } from './pvComposition';
+import type { EntityPin } from './pvReconcile';
 import type { FlowMember } from './topology';
 
 function src(over: Partial<SiteSource>): SiteSource {
@@ -71,6 +72,17 @@ const HYBRID_CARRIES_ALL = topo(
   ],
 );
 
+/**
+ * The PIN facts (`GET /entities`): each producer names the edge source that
+ * measures it. This is the ONLY link - order and names are never consulted
+ * (`vp-pin-werte-f8`).
+ */
+const PINS: EntityPin[] = [
+  { id: 'deye', edgeSourceId: null },
+  { id: 'f1', edgeSourceId: 'a' },
+  { id: 'f2', edgeSourceId: 'b' },
+];
+
 const REAL_SOURCES: SiteSource[] = [
   src({
     sourceId: 'inverter',
@@ -87,7 +99,7 @@ const REAL_SOURCES: SiteSource[] = [
 
 describe('pvComposition · the rows add up to the node total', () => {
   it('explains the captain’s three-inverter plant', () => {
-    const c = pvComposition(HYBRID_CARRIES_ALL, REAL_SOURCES)!;
+    const c = pvComposition(HYBRID_CARRIES_ALL, REAL_SOURCES, PINS)!;
     expect(c.origin).toBe('sources');
     expect(c.deviceCount).toBe(3);
     expect(c.parts.map((p) => p.label)).toEqual([
@@ -102,7 +114,7 @@ describe('pvComposition · the rows add up to the node total', () => {
 
   it('the total is EXACTLY the sum of the parts, whatever the inputs', () => {
     for (const sources of [REAL_SOURCES, REAL_SOURCES.slice(0, 2), []]) {
-      const c = pvComposition(HYBRID_CARRIES_ALL, sources);
+      const c = pvComposition(HYBRID_CARRIES_ALL, sources, PINS);
       if (!c || c.parts.length === 0) continue;
       const sum = c.parts.reduce((s, p) => s + (p.kw as number), 0);
       expect(c.totalKw).toBeCloseTo(sum, 9);
@@ -125,9 +137,93 @@ describe('pvComposition · the rows add up to the node total', () => {
     expect(c.parts.map((p) => p.label)).toEqual(['Deye SUN-30K', 'Fronius WR 1', 'Fronius WR 2']);
     expect(c.totalKw).toBeCloseTo(69.8, 9);
     // …and it stays the truth even when a stale /sources heartbeat disagrees.
-    const withStaleSources = pvComposition(native, REAL_SOURCES)!;
+    const withStaleSources = pvComposition(native, REAL_SOURCES, PINS)!;
     expect(withStaleSources.origin).toBe('entity');
     expect(withStaleSources.parts.map((p) => p.kw)).toEqual([23, 21.3, 25.5]);
+  });
+});
+
+/**
+ * The captain's Pilsting constellation (proof of 2026-07-29, 17:00): the
+ * component „Fronius WR1" is a PROVEN orphan (its pin names a source that
+ * vanished in the delete+re-add churn), while the ghost „Fronius WR2" is pinned
+ * to the source that is actually DELIVERING. Positional matching put 20,1 kW on
+ * the orphan and "–" on the ghost - exactly the wrong way round.
+ */
+describe('pvComposition · strictly pin-based (the Pilsting cross-pin)', () => {
+  const CROSS = topo(
+    [
+      { entity_id: 'deye', label: 'Batteriespeicher', primary: true, value_kw: 43.1 },
+      { entity_id: 'wr1', label: 'Fronius WR1 (Erzeuger)', primary: false },
+      { entity_id: 'wr2', label: 'Fronius WR2 (Erzeuger)', primary: false },
+    ],
+    [
+      entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage', label: 'Deye' }),
+      entity({ id: 'wr1', health: 'never', label: 'Fronius WR1' }),
+      entity({ id: 'wr2', health: 'never', label: 'Fronius WR2' }),
+    ],
+  );
+  const CROSS_SOURCES: SiteSource[] = [
+    src({ sourceId: 'inverter', kind: 'primary', role: null, brand: 'deye', model: 'SUN-30K-SG01HP3-EU', pvKw: 23 }),
+    src({ sourceId: 'live', label: 'Fronius Anlage WR2', pvKw: 20.1 }),
+  ];
+  // wr1's pin points at a source that no longer exists -> PROVEN orphan.
+  const CROSS_PINS: EntityPin[] = [
+    { id: 'deye', edgeSourceId: null },
+    { id: 'wr1', edgeSourceId: 'weg', orphanedPin: true },
+    { id: 'wr2', edgeSourceId: 'live' },
+  ];
+
+  it('gives the value to the PINNED component, never to the row above it', () => {
+    const c = pvComposition(CROSS, CROSS_SOURCES, CROSS_PINS)!;
+    const wr2 = c.parts.find((p) => p.label === 'Fronius Anlage WR2')!;
+    expect(wr2.kw).toBe(20.1);
+    // …and the orphan carries NO value at all - its own state is „nicht verbunden".
+    const wr1 = c.unmeasured.find((p) => p.title.includes('WR1'))!;
+    expect(wr1.kw).toBeNull();
+    expect(wr1.note).toBe('nicht mehr mit einem gemeldeten Gerät verbunden');
+    expect(c.parts.some((p) => p.title.includes('WR1'))).toBe(false);
+    // Σ shown = the composite the edge reported (23 own + 20,1 WR2).
+    expect(c.totalKw).toBeCloseTo(43.1, 9);
+  });
+
+  it('assigns nothing at all without pins - a guess by position is not an option', () => {
+    const c = pvComposition(CROSS, CROSS_SOURCES, null)!;
+    // Neither producer is pinned, so neither is filled…
+    expect(c.unmeasured.map((p) => p.title)).toEqual([
+      'Fronius WR1 (Erzeuger)',
+      'Fronius WR2 (Erzeuger)',
+    ]);
+    // …and the delivering source is NAMED as unassigned instead of sliding onto
+    // the next row. The total still equals the composite (physical truth).
+    const loose = c.parts.find((p) => p.note === UNASSIGNED_NOTE)!;
+    expect(loose.kw).toBe(20.1);
+    expect(loose.label).toBe('Fronius Anlage WR2');
+    expect(c.totalKw).toBeCloseTo(43.1, 9);
+  });
+
+  it('lists a delivering device nobody is pinned to as its own row', () => {
+    const extra = [...CROSS_SOURCES, src({ sourceId: 'neu', label: 'Fronius Carport', pvKw: 4.4 })];
+    const withExtra = topo(
+      [
+        { entity_id: 'deye', label: 'Batteriespeicher', primary: true, value_kw: 47.5 },
+        { entity_id: 'wr2', label: 'Fronius WR2 (Erzeuger)', primary: false },
+      ],
+      [
+        entity({ id: 'deye', entityType: 'battery-hybrid', category: 'storage', label: 'Deye' }),
+        entity({ id: 'wr2', health: 'never', label: 'Fronius WR2' }),
+      ],
+    );
+    const c = pvComposition(withExtra, extra, [
+      { id: 'deye', edgeSourceId: null },
+      { id: 'wr2', edgeSourceId: 'live' },
+    ])!;
+    const loose = c.parts.find((p) => p.label === 'Fronius Carport')!;
+    expect(loose.kw).toBe(4.4);
+    expect(loose.note).toBe(UNASSIGNED_NOTE);
+    // 23 (Deye's own) + 20,1 (WR2) + 4,4 (unassigned) = 47,5 = the composite.
+    expect(c.parts.map((p) => p.kw)).toEqual([23, 20.1, 4.4]);
+    expect(c.totalKw).toBeCloseTo(47.5, 9);
   });
 });
 
@@ -135,7 +231,7 @@ describe('pvComposition · the honest empty state', () => {
   it('names a producer measured through the inverter instead of a bare "–"', () => {
     // Only ONE additional source reported, so the second Fronius has no own
     // value - its output is inside the hybrid's number, and that is what it says.
-    const c = pvComposition(HYBRID_CARRIES_ALL, REAL_SOURCES.slice(0, 2))!;
+    const c = pvComposition(HYBRID_CARRIES_ALL, REAL_SOURCES.slice(0, 2), PINS)!;
     expect(c.parts).toHaveLength(2);
     expect(c.unmeasured).toHaveLength(1);
     expect(c.unmeasured[0].kw).toBeNull();
@@ -174,11 +270,15 @@ describe('pvComposition · the honest empty state', () => {
   });
 
   it('keeps a stale part with its last value and flags it', () => {
-    const c = pvComposition(HYBRID_CARRIES_ALL, [
-      REAL_SOURCES[0],
-      src({ sourceId: 'a', label: 'Fronius Anlage', pvKw: 21.3, health: 'stale' }),
-      REAL_SOURCES[2],
-    ])!;
+    const c = pvComposition(
+      HYBRID_CARRIES_ALL,
+      [
+        REAL_SOURCES[0],
+        src({ sourceId: 'a', label: 'Fronius Anlage', pvKw: 21.3, health: 'stale' }),
+        REAL_SOURCES[2],
+      ],
+      PINS,
+    )!;
     expect(c.parts.find((p) => p.label === 'Fronius Anlage')!.health).toBe('stale');
     expect(c.parts.find((p) => p.label === 'Fronius Anlage')!.kw).toBe(21.3);
   });
@@ -224,20 +324,21 @@ describe('pvComposition · scale', () => {
   });
 
   it('stays out of the way where there is no PV role at all', () => {
-    expect(pvComposition(null, REAL_SOURCES)).toBeNull();
+    expect(pvComposition(null, REAL_SOURCES, PINS)).toBeNull();
     expect(
       pvComposition(
         { schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes: [] } },
         REAL_SOURCES,
+        PINS,
       ),
     ).toBeNull();
-    expect(pvComposition(topo([], []), REAL_SOURCES)).toBeNull();
+    expect(pvComposition(topo([], []), REAL_SOURCES, PINS)).toBeNull();
   });
 });
 
 describe('pvComposition · one vocabulary, no crossed labels', () => {
   it('names every box the way the customer named it on the device', () => {
-    const c = pvComposition(HYBRID_CARRIES_ALL, REAL_SOURCES)!;
+    const c = pvComposition(HYBRID_CARRIES_ALL, REAL_SOURCES, PINS)!;
     // The hybrid's PV share reads as the DEVICE ("Deye SUN-30K"), never as the
     // verbose entity label "Batteriespeicher (Hybrid-Wechselrichter)".
     expect(c.parts[0].label).toBe('Deye SUN-30K');
@@ -250,7 +351,7 @@ describe('pvComposition · one vocabulary, no crossed labels', () => {
   });
 
   it('falls back to the stored name when the edge reported none', () => {
-    const c = pvComposition(HYBRID_CARRIES_ALL, [])!;
+    const c = pvComposition(HYBRID_CARRIES_ALL, [], PINS)!;
     expect(c.parts[0].label).toBe('Batteriespeicher');
     expect(c.unmeasured.map((p) => p.label)).toEqual(['Fronius', 'Fronius 2']);
   });

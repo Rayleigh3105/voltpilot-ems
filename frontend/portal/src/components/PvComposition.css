@@ -102,6 +102,11 @@
 
 /* Der ehrliche Leerzustand: das Gerät wird BENANNT und der Grund gesagt —
    nie ein nacktes „–". */
+.vp-pvcomp-hint {
+  font-size: 0.78rem;
+  color: var(--vp-text-gray);
+}
+
 .vp-pvcomp-note {
   flex: 1 1 160px;
   min-width: 0;

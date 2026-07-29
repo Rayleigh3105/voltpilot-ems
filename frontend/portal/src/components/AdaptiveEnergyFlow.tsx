@@ -4,6 +4,7 @@ import type { SiteSource, SiteTopology } from '../api';
 import { ROLE_META } from '../adaptive';
 import { layoutFlow, NARROW_MAX_PX, type FlowVertex } from '../adaptiveFlow';
 import { pvComposition } from '../pvComposition';
+import type { EntityPin } from '../pvReconcile';
 import { PvCompositionDetails } from './PvBreakdown';
 import type { EnergyFlowSize } from './EnergyFlow';
 
@@ -35,6 +36,7 @@ export function AdaptiveEnergyFlow({
   stale = false,
   size = 'compact',
   sources = null,
+  pins = null,
 }: {
   topology: SiteTopology;
   stale?: boolean;
@@ -50,6 +52,13 @@ export function AdaptiveEnergyFlow({
    * inverters in the composition panel. A no-op otherwise.
    */
   sources?: SiteSource[] | null;
+  /**
+   * The v2 entities' PIN facts (`edgeSourceId` / `orphanedPin`). They are the
+   * ONLY link between a component and the device that measures it - without
+   * them a source is never assigned to a circle (`vp-pin-werte-f8`: matching by
+   * position put values on the wrong rows).
+   */
+  pins?: EntityPin[] | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -68,7 +77,7 @@ export function AdaptiveEnergyFlow({
   const narrow = width > 0 && width < NARROW_MAX_PX;
   // The ONE derivation of what the PV role is made of - it feeds both the number
   // in the circle and the rows behind the click, so they cannot disagree.
-  const composition = pvComposition(topology, sources);
+  const composition = pvComposition(topology, sources, pins);
   const L = layoutFlow(topology.topology, topology.entities, {
     narrow,
     pvTotalKw: composition?.totalKw,

@@ -45,7 +45,13 @@
  * - A Gerät = a physical box the edge REPORTS (`localSetup`), NOT the single
  *   `device` uuid every entity is bound to. That uuid is the VoltPilot-Box.
  * - Gerät↔Komponente is matched by PIN (`edgeSourceId` / `adoptedEntityId`,
- *   PR #272), never by order or by name.
+ *   PR #272), never by order or by name. Since `vp-pin-werte-f8` that holds for
+ *   the LIVE VALUES too: `reconcileProducerPv` fills a producer only from the
+ *   source its own pin names.
+ * - A component whose pin is PROVEN orphaned (`orphanedPin === true`) never
+ *   carries a current value - its state is „nicht mehr verbunden", so a value
+ *   would contradict its own row (the captain's Pilsting proof: the orphan
+ *   showed 20,1 kW while the correctly pinned ghost showed "–").
  * - The "—" discipline is law: an unknown value stays absent, never a
  *   fabricated 0, and a component without a device link still renders.
  */
@@ -792,7 +798,10 @@ export function plantModel(
   // backend that already publishes PV per entity this is a no-op.
   const pvByEntity = new Map<string, number>();
   if (topology) {
-    const resolved = reconcileProducerPv(topology, sources);
+    // Pin-based, never positional: the entities carry `edgeSourceId` /
+    // `orphanedPin`, which is the ONLY link between a component and the edge
+    // device that measures it.
+    const resolved = reconcileProducerPv(topology, sources, entities);
     const pvNode = resolved.topology.nodes.find((n) => n.role === 'pv');
     for (const m of pvNode?.members ?? []) {
       if (m.value_kw != null) pvByEntity.set(m.entity_id, m.value_kw);
@@ -805,6 +814,10 @@ export function plantModel(
     const control = e.control === true;
     const primary = role === 'grid' && isPrimaryGrid(e, topology);
     const caps = capsById.get(e.id) ?? new Map<string, number>();
+    // Honesty rule (vp-pin-werte-f8): a PROVEN orphan says „nicht mehr mit
+    // einem gemeldeten Gerät verbunden" — a current value next to that word
+    // would contradict the row itself, so it carries none at any role.
+    const orphaned = e.orphanedPin === true;
     // Prefer the topology (telemetry_v2) liveness; fall back to the edge echo
     // only when no topology row exists (v1/un-migrated site).
     let health = toComponentHealth(topoHealthById.get(e.id) ?? e.observed?.health);
@@ -827,13 +840,15 @@ export function plantModel(
       summary: componentSummary(role, control, primary),
       deviceIds: [],
       provenance: null,
-      reading: readingFor(role, caps, role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null),
+      reading: orphaned
+        ? null
+        : readingFor(role, caps, role === 'pv' ? (pvByEntity.get(e.id) ?? null) : null),
       channels: componentChannels(e),
       control,
       primary,
       health,
       measuredVia,
-      orphaned: e.orphanedPin === true,
+      orphaned,
     });
     // The PV ASPECT of a hybrid inverter: the composed backfill mints no own
     // producer for the modules hanging on the inverter itself, so without this
@@ -849,7 +864,7 @@ export function plantModel(
         summary: componentSummary('pv', false, false),
         deviceIds: [],
         provenance: null,
-        reading: readingFor('pv', caps, pvByEntity.get(e.id) ?? null),
+        reading: orphaned ? null : readingFor('pv', caps, pvByEntity.get(e.id) ?? null),
         channels: [{ label: channelLabel(PV_CHANNEL), raw: PV_CHANNEL }],
         control: false,
         primary: false,

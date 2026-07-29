@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
-import type { SiteSource, SiteTopology } from '../api';
+import type { SiteEntity, SiteSource, SiteTopology } from '../api';
 import type { CockpitHeroView, HeroRing } from '../cockpitWidgets';
 import type { LiveSnapshot } from '../live';
 import type { AnlagenSub } from '../nav';
@@ -41,6 +41,7 @@ export function CockpitHero({
   snapshot,
   stale = false,
   sources = null,
+  pins = null,
   onOpenSub,
   footer,
 }: {
@@ -56,6 +57,9 @@ export function CockpitHero({
    * NUR noch als Kopf-Chip (R4: eine Frischewahrheit).
    */
   sources?: SiteSource[] | null;
+  /** Die PIN-Fakten der Komponenten (`edgeSourceId`/`orphanedPin`) - sie
+      ordnen jede Quelle ihrer Komponente zu, nie die Reihenfolge. */
+  pins?: SiteEntity[] | null;
   onOpenSub: (sub: AnlagenSub) => void;
   /** Zusatz unter dem Diagramm (heute: der Steuerungs-Streifen). */
   footer?: ReactNode;
@@ -66,7 +70,13 @@ export function CockpitHero({
       <div className="vp-hero-flow">
         {hasFlow ? (
           topology ? (
-            <AdaptiveEnergyFlow topology={topology} stale={stale} size="hero" sources={sources} />
+            <AdaptiveEnergyFlow
+              topology={topology}
+              stale={stale}
+              size="hero"
+              sources={sources}
+              pins={pins}
+            />
           ) : (
             <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />
           )

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Site } from './api';
+import { api, type Site, type SiteEntity } from './api';
 import { customerFlowApi } from './flows/flowsApi';
 import { profileStatesFrom, type SiteProfiles } from './profiles';
 import { anlageSurface, type AnlageSurface, type SurfaceFlow } from './surface';
@@ -19,12 +19,19 @@ export interface AnlageSurfaceState {
   surface: AnlageSurface | null;
   /** The M3 profile shelf (null = older backend / not loaded — fail-soft). */
   profiles: SiteProfiles | null;
+  /**
+   * The raw v2 entities this hook already fetched. Exposed so the live surfaces
+   * can match a source to its component by PIN (`edgeSourceId` / `orphanedPin`,
+   * `vp-pin-werte-f8`) WITHOUT a second request. null = older backend / failed.
+   */
+  entities: SiteEntity[] | null;
   loading: boolean;
 }
 
 export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
   const [surface, setSurface] = useState<AnlageSurface | null>(null);
   const [profiles, setProfiles] = useState<SiteProfiles | null>(null);
+  const [entityList, setEntityList] = useState<SiteEntity[] | null>(null);
   const [loading, setLoading] = useState(site != null);
 
   const siteId = site?.id ?? null;
@@ -39,6 +46,7 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
     if (!siteId) {
       setSurface(null);
       setProfiles(null);
+      setEntityList(null);
       setLoading(false);
       return undefined;
     }
@@ -57,6 +65,7 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
     ]).then(([profile, entities, flows, shelf]) => {
       if (!active) return;
       setProfiles(shelf);
+      setEntityList(entities?.entities ?? null);
       setSurface(
         anlageSurface({
           signals: profile?.signals ?? null,
@@ -79,5 +88,5 @@ export function useAnlageSurface(site: Site | null): AnlageSurfaceState {
     };
   }, [siteId, plantKind, tarifArt, netzladen, leistungspreis]);
 
-  return { surface, profiles, loading };
+  return { surface, profiles, entities: entityList, loading };
 }

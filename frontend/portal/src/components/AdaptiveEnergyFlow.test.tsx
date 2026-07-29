@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { SiteSource, SiteTopology, TopologyEntity } from '../api';
 import type { FlowMember } from '../topology';
+import type { EntityPin } from '../pvReconcile';
 import { AdaptiveEnergyFlow } from './AdaptiveEnergyFlow';
 
 function src(over: Partial<SiteSource>): SiteSource {
@@ -88,6 +89,13 @@ const MULTI_SOURCES: SiteSource[] = [
   src({ sourceId: 'b', label: 'Fronius Anlage WR 2', pvKw: 25.5 }),
 ];
 
+/** The pins: each producer names the source that measures it (never the order). */
+const MULTI_PINS: EntityPin[] = [
+  { id: 'deye', edgeSourceId: null },
+  { id: 'f1', edgeSourceId: 'a' },
+  { id: 'f2', edgeSourceId: 'b' },
+];
+
 const SINGLE = siteTopology(
   [{ entity_id: 'deye', label: 'Deye', primary: true, value_kw: 8.3 }],
   [entity({ id: 'deye' })],
@@ -95,7 +103,7 @@ const SINGLE = siteTopology(
 
 describe('AdaptiveEnergyFlow · one node per role', () => {
   it('draws four circles, not one per device', () => {
-    const { container } = render(<AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} />);
+    const { container } = render(<AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} pins={MULTI_PINS} />);
     const names = Array.from(container.querySelectorAll('svg text')).map((t) => t.textContent);
     expect(names).toContain('PV-Erzeugung');
     expect(names).toContain('Batteriespeicher');
@@ -111,7 +119,7 @@ describe('AdaptiveEnergyFlow · one node per role', () => {
 
 describe('AdaptiveEnergyFlow · click on PV-Erzeugung opens the composition', () => {
   it('offers the details, opens them on click and closes again', () => {
-    const { container } = render(<AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} />);
+    const { container } = render(<AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} pins={MULTI_PINS} />);
     const node = screen.getByRole('button', { name: /PV-Erzeugung/ });
     expect(node).toHaveAttribute('aria-expanded', 'false');
     expect(container.querySelector('.vp-pvcomp')).toBeNull();
@@ -135,7 +143,7 @@ describe('AdaptiveEnergyFlow · click on PV-Erzeugung opens the composition', ()
   });
 
   it('opens on Enter and Space, so it is reachable without a mouse', () => {
-    const { container } = render(<AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} />);
+    const { container } = render(<AdaptiveEnergyFlow topology={MULTI} sources={MULTI_SOURCES} pins={MULTI_PINS} />);
     const node = screen.getByRole('button', { name: /PV-Erzeugung/ });
     expect(node).toHaveAttribute('tabindex', '0');
     fireEvent.keyDown(node, { key: 'Enter' });

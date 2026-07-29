@@ -106,6 +106,10 @@ function Row({ row }: { row: PvContribution }) {
       />
       <span className="vp-pvcomp-name" title={title}>
         {row.label}
+        {/* A row that HAS a value can still need an aside - a delivering device
+            no component is pinned to says so instead of silently sliding its
+            kW onto a neighbour (`vp-pin-werte-f8`). */}
+        {row.kw != null && row.note && <span className="vp-pvcomp-hint"> · {row.note}</span>}
       </span>
       {row.kw == null ? (
         <span className="vp-pvcomp-note">{row.note}</span>
