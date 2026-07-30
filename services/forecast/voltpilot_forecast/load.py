@@ -16,6 +16,19 @@ Two baselines are provided:
 
 Both fall back to a flat last-value forecast when history is too sparse, so they
 always return a full series.
+
+Both see the raw telemetry history ONLY through
+:func:`voltpilot_forecast.domain.slot_means` - a forecast slot is a quarter-hour
+MEAN POWER (the quantity the optimizer plans with), never one of the ~90-180 raw
+samples that fall inside it. The aggregation lives here rather than in the two
+SQL queries that fetch the history (``forecast_collect._telemetry_history`` and
+the optimizer's ``inputs._load_history``) for three reasons: it is ONE place that
+serves BOTH consumers (the collector's baselines and the optimizer's persistence
+fallback in :mod:`voltpilot_optimization.fallback`) so the two can never drift;
+the slot width belongs to :class:`~voltpilot_forecast.domain.Horizon`, not to a
+hard-coded ``time_bucket('15 minutes')`` in the DB; and the ML challengers
+already aggregate in Python (:func:`voltpilot_forecast.features.bucket_15min`,
+now the same function), so the queries must keep returning raw samples.
 """
 
 from __future__ import annotations
@@ -33,6 +46,7 @@ from voltpilot_forecast.domain import (
     Observation,
     ensure_utc,
     floor_to_slot,
+    slot_means,
 )
 
 
@@ -60,12 +74,6 @@ class LoadForecaster(ABC):
         raise NotImplementedError
 
 
-def _sorted_history(history: Sequence[Observation]) -> list[Observation]:
-    """History ascending by timestamp, so 'later obs wins' and history[-1] hold
-    regardless of the order the caller supplied."""
-    return sorted(history, key=lambda obs: ensure_utc(obs.timestamp))
-
-
 def _slot_of_day(ts: datetime, slot_minutes: int) -> int:
     """Index of the slot within the day (0 .. slots_per_day-1), UTC-based."""
     ts = ensure_utc(ts)
@@ -86,7 +94,9 @@ def _flat_last_value(
     method: str,
     model_id: str,
 ) -> ForecastSeries:
-    last = history[-1].value_kw if history else 0.0
+    by_slot = slot_means(history, horizon.slot_minutes)
+    # The most recent SLOT MEAN, not the most recent raw sample (see module docstring).
+    last = by_slot[max(by_slot)] if by_slot else 0.0
     points = [ForecastPoint(ts, round(last, 4)) for ts in horizon.slot_starts(run_at)]
     return ForecastSeries(
         kind=ForecastKind.LOAD,
@@ -102,10 +112,11 @@ def _flat_last_value(
 class SeasonalPersistenceLoadForecaster(LoadForecaster):
     """Persistence baseline: repeat the value from one period ago per slot.
 
-    For each future slot the forecast is the most recent observed value at the
-    same slot-of-day (default period = 1 day). This preserves the daily shape
-    with the minimal assumption "tomorrow looks like the recent same time of day".
-    Falls back to flat last-value when the matching slot has no history.
+    For each future slot the forecast is the MEAN of the observed samples in the
+    most recent matching slot-of-day (default period = 1 day). This preserves the
+    daily shape with the minimal assumption "tomorrow looks like the recent same
+    time of day". Falls back to the most recent slot mean when the matching slot
+    has no history.
     """
 
     method = "persistence"
@@ -130,15 +141,13 @@ class SeasonalPersistenceLoadForecaster(LoadForecaster):
                 self.model_id,
             )
 
-        history = _sorted_history(history)
-        # Index history by its slot boundary for exact same-slot lookup.
-        by_slot: dict[datetime, float] = {}
-        for obs in history:
-            key = floor_to_slot(obs.timestamp, horizon.slot_minutes)
-            by_slot[key] = obs.value_kw  # later obs wins (most recent)
+        # Index history by its slot boundary for exact same-slot lookup. The
+        # value of a slot is the MEAN of its samples, not the last one that
+        # happened to be recorded in it (see the module docstring).
+        by_slot = slot_means(history, horizon.slot_minutes)
 
         earliest = min(by_slot)
-        last = history[-1].value_kw
+        last = by_slot[max(by_slot)]  # the most recent slot mean
         points: list[ForecastPoint] = []
         for ts in horizon.slot_starts(run_at):
             value = None
@@ -191,20 +200,23 @@ class ProfileLoadForecaster(LoadForecaster):
                 self.model_id,
             )
 
-        history = _sorted_history(history)
         slot_minutes = horizon.slot_minutes
-        # Accumulate sums/counts per (weekend, slot) and per slot (all days).
+        # Aggregate to quarter-hour means FIRST (module docstring), then average
+        # those per (weekend, slot-of-day). Averaging the raw samples instead
+        # would weight each historical day by how many samples it happened to
+        # deliver - an outage day would count less than a chatty one.
+        by_slot = slot_means(history, slot_minutes)
         keyed: dict[tuple[bool, int], list[float]] = defaultdict(list)
         per_slot: dict[int, list[float]] = defaultdict(list)
-        for obs in history:
-            slot = _slot_of_day(obs.timestamp, slot_minutes)
-            keyed[(_is_weekend(obs.timestamp), slot)].append(obs.value_kw)
-            per_slot[slot].append(obs.value_kw)
+        for slot_start, value in by_slot.items():
+            slot = _slot_of_day(slot_start, slot_minutes)
+            keyed[(_is_weekend(slot_start), slot)].append(value)
+            per_slot[slot].append(value)
 
         def _avg(values: list[float]) -> float | None:
             return sum(values) / len(values) if values else None
 
-        last = history[-1].value_kw
+        last = by_slot[max(by_slot)]  # the most recent slot mean
         points: list[ForecastPoint] = []
         for ts in horizon.slot_starts(run_at):
             slot = _slot_of_day(ts, slot_minutes)

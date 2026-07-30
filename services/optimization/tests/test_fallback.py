@@ -76,6 +76,28 @@ def test_repeats_yesterdays_same_slot_value():
         assert value == pytest.approx(float(start.hour)), start
 
 
+def test_fallback_uses_the_slot_mean_not_a_single_sample():
+    """The optimizer's OWN forecast path plans the quarter-hour MEAN too.
+
+    The second consumer of the shared forecaster (the collector is the first):
+    raw telemetry at a ~10 s cadence, ~90 samples per slot with an outlier at the
+    slot end. Both paths must read the same quantity, else a stored run and a
+    fallback run would plan two different loads for the same quarter hour.
+    """
+    slot_starts = horizon_slot_starts(T0, 4)
+    yesterday = slot_starts[0] - timedelta(days=1)
+
+    history = [
+        (yesterday + timedelta(seconds=10 * i), 10.0) for i in range(89)
+    ]
+    history.append((yesterday + timedelta(seconds=890), 2.0))  # the last sample
+    expected_mean = (89 * 10.0 + 2.0) / 90
+
+    values = persistence_forecast(history, slot_starts)
+    assert values[0] == pytest.approx(expected_mean, abs=1e-3)
+    assert values[0] != 2.0  # never the single trailing sample
+
+
 def test_empty_history_yields_zeros():
     slot_starts = horizon_slot_starts(T0, 8)
     assert persistence_forecast([], slot_starts) == [0.0] * 8

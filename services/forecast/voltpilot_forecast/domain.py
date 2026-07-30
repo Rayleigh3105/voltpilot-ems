@@ -15,6 +15,7 @@ Conventions:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -195,6 +196,32 @@ def floor_to_slot(dt: datetime, slot_minutes: int) -> datetime:
         microseconds=dt.microsecond,
     )
     return dt - discard
+
+
+def slot_means(
+    history: Iterable["Observation"], slot_minutes: int
+) -> dict[datetime, float]:
+    """Mean value per slot from raw telemetry samples (keyed by UTC slot start).
+
+    THE aggregation every model must see history through. A forecast slot's value
+    is the MEAN POWER over the slot (module docstring above) - the same quantity
+    the optimizer plans with - but telemetry arrives at a ~5-10 s cadence, i.e.
+    ~90-180 samples per quarter hour. Keeping any single one of them (the last,
+    say) makes a quarter-hour forecast a random draw from within the slot: on the
+    Pilsting plant that sampling error alone measured 1.14 kW mean absolute,
+    2.26 kW peak (scout report vp-netzbezug-nacht-s3 section 3, link 3), before
+    any day-to-day deviation is even involved.
+
+    Samples are weighted equally. That is exact for the regular telemetry cadence
+    and honest for an irregular one (no interpolation is invented over gaps).
+    """
+    sums: dict[datetime, float] = {}
+    counts: dict[datetime, int] = {}
+    for obs in history:
+        key = floor_to_slot(obs.timestamp, slot_minutes)
+        sums[key] = sums.get(key, 0.0) + obs.value_kw
+        counts[key] = counts.get(key, 0) + 1
+    return {ts: sums[ts] / counts[ts] for ts in sums}
 
 
 def ensure_utc(dt: datetime) -> datetime:
