@@ -404,6 +404,11 @@ a:focus-visible,
   --vp-flow-grid-soft: #e2f6f5;
   --vp-flow-batt: #16a34a;
   --vp-flow-batt-soft: #e7f6ec;
+  /* Die LESBARE Tiefe desselben Grüns (7,1:1 auf Weiß, 6,3:1 auf -soft) - kein
+     neues Grün, nur der Ton, der hier schon als Literal in `.vp-role-pill`
+     stand, jetzt als Token. Ink für „Alles in Ordnung"-Flächen; das satte
+     `--vp-flow-batt` bleibt für Punkt, Rahmen und Flächen. */
+  --vp-flow-batt-ink: #166534;
   --vp-flow-base: #e3e9f1;
   --vp-flow-ink: #33414f;
 }
@@ -4856,7 +4861,7 @@ button.vp-tech-card-h.toggle {
   border: 1px solid transparent;
 }
 .vp-role-pill.vp-role-pv { background: var(--vp-flow-pv-soft); color: #92590a; }
-.vp-role-pill.vp-role-storage { background: var(--vp-flow-batt-soft); color: #166534; }
+.vp-role-pill.vp-role-storage { background: var(--vp-flow-batt-soft); color: var(--vp-flow-batt-ink, #166534); }
 .vp-role-pill.vp-role-grid { background: var(--vp-flow-grid-soft); color: #0f6d6b; }
 .vp-role-pill.vp-role-consumer { background: var(--vp-flow-load-soft); color: #5b3aa8; }
 .vp-role-pill-star { font-weight: 700; }
@@ -4880,7 +4885,7 @@ button.vp-tech-card-h.toggle {
   align-items: center;
   gap: 6px;
   margin: 0 0 var(--vp-space-3);
-  color: #166534;
+  color: var(--vp-flow-batt-ink, #166534);
   font-size: 0.85rem;
   font-weight: 600;
 }

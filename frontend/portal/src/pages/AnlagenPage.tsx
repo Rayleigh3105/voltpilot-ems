@@ -82,6 +82,12 @@ const TICK_MS = 5_000;
 export interface AnlagenPageProps {
   sites: Site[];
   devices: Device[];
+  /**
+   * Bezugszeit der Geräteliste (Epoch-ms der Server-Antwort). Lebendigkeit wird
+   * dagegen gemessen, nie gegen eine Uhr, die über einen nicht erneuerten
+   * Schnappschuss hinausläuft - siehe `src/liveness.ts`.
+   */
+  devicesFetchedAt?: number | null;
   route: Route;
   onNavigate: (route: Route) => void;
   onReload: (selectSiteId?: string) => void;
@@ -134,6 +140,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
       site={site}
       sites={sites}
       devices={props.devices}
+      devicesFetchedAt={props.devicesFetchedAt ?? null}
       sub={route.sub}
       isAdmin={isAdmin}
       onBack={() => onNavigate(anlageRoute(site.id))}
@@ -335,6 +342,7 @@ function AnlagenSubPage({
   site,
   sites,
   devices,
+  devicesFetchedAt,
   sub,
   isAdmin,
   onBack,
@@ -344,6 +352,7 @@ function AnlagenSubPage({
   site: Site;
   sites: Site[];
   devices: Device[];
+  devicesFetchedAt: number | null;
   sub: AnlagenSub;
   isAdmin: boolean;
   onBack: () => void;
@@ -367,9 +376,13 @@ function AnlagenSubPage({
       {sub === 'historie' && <HistorieSection site={site} />}
       {sub === 'wetter' && <WetterSection site={site} />}
       {/* The Anlagen-Modell names the ONE VoltPilot-Box every reported device
-          hangs off (Captain-Korrektur) — the already-loaded devices list, so no
-          extra request. */}
-      {sub === 'modell' && <AnlagenModellSection site={site} devices={devices} />}
+          hangs off (Captain-Korrektur) — from the devices list the shell already
+          holds and keeps fresh, so this page adds no request of its own. Its
+          Bezugszeit travels along: der Zustand der Box altert gegen die
+          Server-Antwort, nie gegen eine weiterlaufende Uhr (`liveness.ts`). */}
+      {sub === 'modell' && (
+        <AnlagenModellSection site={site} devices={devices} devicesFetchedAt={devicesFetchedAt} />
+      )}
       {sub === 'lastspitzen' && <LastspitzenSection site={site} />}
       {sub === 'steuerung' && (
         <SteuerungSection

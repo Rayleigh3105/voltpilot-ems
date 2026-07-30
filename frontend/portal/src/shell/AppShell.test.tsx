@@ -211,6 +211,23 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(container.querySelector('.vp-healthbadge')).toBeNull();
   });
 
+  it('„Alles in Ordnung" trägt den grünen Zustand - in Kopfzeile UND Anlagen-Karte', () => {
+    const { container } = renderShell();
+    const badge = container.querySelector('.vp-topbar .vp-healthbadge');
+    expect(badge?.className).toContain('state-ok');
+    expect(badge?.textContent).toContain('Alles in Ordnung');
+    // Der Punkt hängt an genau dem Zustand, den das Stylesheet einfärbt.
+    expect(badge?.querySelector('.vp-health-dot')).not.toBeNull();
+    expect(container.querySelector('.vp-anlagenav-health.state-ok')).not.toBeNull();
+    // Eine Warnung behält ihre eigene Farbe - der grüne Zustand darf sie nicht
+    // vereinnahmen.
+    const warn = renderShell({ health: WARN_HEALTH }).container.querySelector(
+      '.vp-topbar .vp-healthbadge',
+    );
+    expect(warn?.className).toContain('state-warnung');
+    expect(warn?.className).not.toContain('state-ok');
+  });
+
   it('shows a static Anlage label with its health line for a single-Anlage customer', () => {
     const { container } = renderShell();
     expect(container.querySelector('.vp-anlagenav-label .t')?.textContent).toBe('Hof Lindenberg');
