@@ -114,7 +114,8 @@ public class OptimizerDiagnosticsService {
                     priceSource, true, List.of());
         }
         List<SlotRow> rows = repo.slots(site.siteId(), run);
-        Map<LocalDate, MarketValue> marketValues = marketValuesFor(site, rows);
+        Map<LocalDate, MarketValue> marketValues = rows.isEmpty() ? Map.of()
+                : marketValuesFor(site, rows.get(0).time(), rows.get(rows.size() - 1).time());
         SlotEconomics economics = new SlotEconomics(siteEconomics(site), eegRates, marketValues,
                 properties.defaultSupplyComponents());
 
@@ -273,18 +274,31 @@ public class OptimizerDiagnosticsService {
                 site.ustPct() != null ? site.ustPct().doubleValue() : 19.0);
     }
 
-    private Map<LocalDate, MarketValue> marketValuesFor(SiteContext site, List<SlotRow> rows) {
+    Map<LocalDate, MarketValue> marketValuesFor(SiteContext site, Instant first, Instant last) {
         // Only DV sites with an anzulegender Wert in EEG mode can earn the
         // premium (pricing.py needs_market_values) - skip the query otherwise.
         boolean needed = !site.netzladenErlaubt()
                 && "direktvermarktung".equals(site.plantKind())
                 && site.anzulegenderWertCtKwh() != null;
-        if (!needed || rows.isEmpty()) {
+        if (!needed) {
             return Map.of();
         }
-        LocalDate from = SlotEconomics.berlinMonth(rows.get(0).time());
-        LocalDate to = SlotEconomics.berlinMonth(rows.get(rows.size() - 1).time());
-        return repo.marketValues(from, to);
+        return repo.marketValues(SlotEconomics.berlinMonth(first), SlotEconomics.berlinMonth(last));
+    }
+
+    /**
+     * The site's {@link SlotEconomics}, or {@code null} when RLS hides the site
+     * (the caller then leaves its slots un-priced instead of guessing). The ONE
+     * recomposition both the admin diagnostics and the customer Fahrplan read -
+     * see {@link SchedulePricingService}.
+     */
+    public SlotEconomics economicsFor(UUID siteId, Instant first, Instant last) {
+        SiteContext site = repo.siteContext(siteId);
+        if (site == null) {
+            return null;
+        }
+        return new SlotEconomics(siteEconomics(site), eegRates,
+                marketValuesFor(site, first, last), properties.defaultSupplyComponents());
     }
 
     private static Double toDouble(BigDecimal v) {

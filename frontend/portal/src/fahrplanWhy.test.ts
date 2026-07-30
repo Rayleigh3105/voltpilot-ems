@@ -286,13 +286,84 @@ describe('slotWhy (per-slot customer sentence)', () => {
     slotFlags: null,
   };
 
-  it('eigenverbrauch compares price against the Wert gespeicherter Energie', () => {
-    expect(slotWhy({ ...base, slotRole: 'eigenverbrauch' }, 'eigenverbrauch')).toBe(
-      'Deckt den Verbrauch aus dem Speicher: Netzstrom wäre jetzt teurer (Börsenpreis 31,5 ct/kWh) als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+  it('eigenverbrauch names the BEZUGSPREIS, not the spot price', () => {
+    expect(
+      slotWhy(
+        {
+          ...base,
+          slotRole: 'eigenverbrauch',
+          importPriceCtKwh: 41.2,
+          importPriceSource: 'preisblatt',
+        },
+        'eigenverbrauch',
+      ),
+    ).toBe(
+      'Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt 41,2 ct/kWh (Börsenpreis 31,5 + Netzentgelte/Abgaben 9,7) – mehr als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
     );
   });
 
+  // The live Pilsting constellation (report vp-netzbezug-nacht-s3 §6): with the
+  // bare spot this read "21,2 wäre teurer als 21,5" - false in itself, and the
+  // NORMAL case (16-23 of 23 sentences contradictory in the replayed run).
+  it('is contradiction-free for the live constellation spot 21,2 / λ 21,5 / Bezug 32,5', () => {
+    const sentence = slotWhy(
+      {
+        ...base,
+        slotRole: 'eigenverbrauch',
+        priceEurMwh: 212,
+        storedValueCtKwh: 21.5,
+        importPriceCtKwh: 32.5,
+        importPriceSource: 'preisblatt',
+      },
+      'direktvermarktung',
+    );
+    expect(sentence).toBe(
+      'Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt 32,5 ct/kWh (Börsenpreis 21,2 + Netzentgelte/Abgaben 11,3) – mehr als der Wert gespeicherter Energie (≈ 21,5 ct/kWh).',
+    );
+    // The claim it makes is the one the numbers support.
+    expect(sentence).not.toContain('Börsenpreis 21,2 ct/kWh');
+    expect(32.5).toBeGreaterThan(21.5);
+  });
+
+  it('states the grid price without a comparison when the claim would not hold', () => {
+    // λ above the grid price (a rare boundary): naming the number is honest,
+    // asserting "mehr als" would not be.
+    expect(
+      slotWhy(
+        {
+          ...base,
+          slotRole: 'eigenverbrauch',
+          storedValueCtKwh: 33,
+          importPriceCtKwh: 32.5,
+          importPriceSource: 'preisblatt',
+        },
+        'eigenverbrauch',
+      ),
+    ).toBe(
+      'Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt 32,5 ct/kWh (Börsenpreis 31,5 + Netzentgelte/Abgaben 1,0).',
+    );
+  });
+
+  it('breaks the price down per source, and never invents components', () => {
+    const at = (importPriceSource: string, importPriceCtKwh: number) =>
+      slotWhy(
+        { ...base, slotRole: 'eigenverbrauch', importPriceCtKwh, importPriceSource },
+        'eigenverbrauch',
+      );
+    // A flat retail price has no spot share.
+    expect(at('fest', 34)).toContain('34,0 ct/kWh (Ihr Festpreis-Tarif)');
+    // Bare spot: import IS the spot price - said so, no fabricated components.
+    expect(at('spot', 31.5)).toContain('31,5 ct/kWh (Börsenpreis)');
+    // Unknown source (a future rule): the number alone, no breakdown.
+    expect(at('sonstiges', 31.5)).toContain('Netzstrom kostet Sie jetzt 31,5 ct/kWh –');
+  });
+
   it('degrades to a number-free sentence when numbers are missing', () => {
+    // No Bezugspreis (a run predating the field) - the spot price is NEVER
+    // passed off as "Netzstrom", even though it is present here.
+    const old = slotWhy({ ...base, slotRole: 'eigenverbrauch' }, 'eigenverbrauch');
+    expect(old).toBe('Deckt den Verbrauch aus dem Speicher und vermeidet teuren Netzbezug.');
+    expect(old).not.toContain('31,5');
     expect(
       slotWhy({ ...base, slotRole: 'eigenverbrauch', priceEurMwh: null }, 'eigenverbrauch'),
     ).toBe('Deckt den Verbrauch aus dem Speicher und vermeidet teuren Netzbezug.');
@@ -307,12 +378,28 @@ describe('slotWhy (per-slot customer sentence)', () => {
     );
   });
 
-  it('guenstig_laden compares purchase price against the stored value', () => {
+  it('guenstig_laden compares the BEZUGSPREIS against the stored value', () => {
     expect(
-      slotWhy({ ...base, slotRole: 'guenstig_laden', priceEurMwh: 158 }, 'eigenverbrauch'),
+      slotWhy(
+        {
+          ...base,
+          slotRole: 'guenstig_laden',
+          priceEurMwh: 58,
+          importPriceCtKwh: 15.8,
+          importPriceSource: 'preisblatt',
+        },
+        'eigenverbrauch',
+      ),
     ).toBe(
-      'Lädt günstig aus dem Netz: Börsenpreis 15,8 ct/kWh liegt unter dem Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
+      'Lädt günstig aus dem Netz: Netzstrom kostet Sie jetzt 15,8 ct/kWh (Börsenpreis 5,8 + Netzentgelte/Abgaben 10,0) – weniger als der Wert gespeicherter Energie (≈ 28,3 ct/kWh).',
     );
+    // Without the Bezugspreis the sentence stays number-free (never spot).
+    const old = slotWhy(
+      { ...base, slotRole: 'guenstig_laden', priceEurMwh: 158 },
+      'eigenverbrauch',
+    );
+    expect(old).toBe('Lädt günstig aus dem Netz für die teuren Stunden.');
+    expect(old).not.toContain('15,8');
   });
 
   it('verkaufen words per plant kind', () => {

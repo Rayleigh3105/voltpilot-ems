@@ -1019,6 +1019,17 @@ class PortalApiTest {
         assertThat(first.get("gridValueCtKwh")).isNull();
         assertThat(first.get("peakPressureEurKw")).isNull();
         assertThat(res.getBody().get("fallback14a")).isNull();
+        // P0 "Textwahrheit": the slot carries the price the optimizer DECIDED
+        // with, recomposed from spot + this site's master data (SlotEconomics),
+        // plus which rule priced it. Berlin has no tariff/Preisblatt maintained,
+        // so import IS bare spot here - and the source says exactly that, which
+        // is what lets the portal's sentence stay truthful instead of passing
+        // spot off as "Netzstrom" (report vp-netzbezug-nacht-s3 §6).
+        assertThat(((Number) first.get("importPriceCtKwh")).doubleValue())
+                .isCloseTo(8.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(((Number) first.get("exportValueCtKwh")).doubleValue())
+                .isCloseTo(8.0, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(first.get("importPriceSource")).isEqualTo("spot");
         // The curtailing slot carries its held-back PV so the portal can quantify
         // the avoided negative-price loss.
         @SuppressWarnings("unchecked")

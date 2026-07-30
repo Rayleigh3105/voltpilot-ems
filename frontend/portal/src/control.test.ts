@@ -121,11 +121,15 @@ describe('controlStrip reason', () => {
       baselineCostEur: 0,
       slotRole: 'guenstig_laden',
       storedValueCtKwh: 28,
+      // The price the optimizer decided with - the strip repeats THAT, not the
+      // bare spot (P0 Textwahrheit).
+      importPriceCtKwh: 13.3,
+      importPriceSource: 'preisblatt',
     };
     const reason = slotWhy(slot, 'eigenverbrauch');
     const v = controlStrip(status({}), NOW, false, reason)!;
     expect(v.reason).toContain('Lädt günstig aus dem Netz');
-    expect(v.reason).toContain('3,3 ct/kWh');
+    expect(v.reason).toContain('13,3 ct/kWh');
     // Customer voice: no internal vocabulary in the reason either.
     expect(v.reason).not.toMatch(/register|modbus|MILP|dual|lambda/i);
   });
