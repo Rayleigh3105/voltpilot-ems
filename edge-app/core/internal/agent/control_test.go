@@ -382,7 +382,7 @@ func TestControlReadbackFlapDoesNotAlarm(t *testing.T) {
 		p, _ := json.Marshal(map[string]any{
 			"family": "hybrid_3p", "source": "schedule", "control_enabled": true, "certified": true,
 			"control_path": "remote", "verify": verify, "unread_roles": unread,
-			"verify_reason": "Der Wechselrichter hat auf die Ruecklese-Anfrage nicht geantwortet.",
+			"verify_reason":  "Der Wechselrichter hat auf die Ruecklese-Anfrage nicht geantwortet.",
 			"mismatch_roles": []string{}, "registers": regs,
 		})
 		return p
