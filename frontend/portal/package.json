@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:csp": "test/csp-smoke.sh"
+    "test:csp": "test/csp-smoke.sh",
+    "test:cache": "test/cache-smoke.sh"
   },
   "dependencies": {
     "echarts": "^5.5.1",

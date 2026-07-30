@@ -360,6 +360,13 @@ ems.example.com {
 `X-Forwarded-Proto: https` is required: Keycloak (`KC_PROXY_HEADERS=xforwarded`) and the frontend nginx both trust it to reconstruct HTTPS URLs, and the `/auth` login flow breaks without it.
 Caddy obtains and renews the certificate for `${DOMAIN}` automatically.
 
+### Do not let the external proxy cache HTML
+
+The portal's cache policy lives in `frontend/portal/nginx.conf`: hashed `/assets/*` are `immutable`, `index.html` (and every SPA fallback route) is `no-cache` = must be revalidated on every request.
+A caching layer in front of it that stores HTML would defeat that and bring back the symptom the policy fixes: after a deploy, a reload renders the PREVIOUS version of the whole app (the stale `index.html` still points at the old bundles).
+So keep the upstream proxy a pure pass-through for HTML - the plain `reverse_proxy` above and NPM's default proxy-host template both are; in NPM specifically, do **not** enable "Cache Assets" for this host.
+If a CDN/proxy is added later, configure it to honour origin `Cache-Control` (then `no-cache` HTML is already correct there) and verify with the `curl -I` checks in `frontend/portal/test/cache-smoke.sh`.
+
 ## Firewall
 
 On the VPS:
