@@ -228,7 +228,11 @@ describe('shaping (pure)', function () {
     });
     assert.strictEqual(blocked.blocked, true);
     assert.strictEqual(blocked.reason, 'Fernsteuerung: Nennleistung des Modells unbekannt');
-    assert.strictEqual(blocked.all_match, false, 'nothing was confirmed');
+    // Nothing was written, so there is NO verdict - null, not a fabricated "false"
+    // (the core ignores the verdict of a blocked readback either way and shows the
+    // reason instead).
+    assert.strictEqual(blocked.all_match, null, 'nothing was confirmed AND nothing deviated');
+    assert.strictEqual(blocked.verify, 'unconfirmed');
     assert.deepStrictEqual(blocked.registers, []);
     // A NORMAL readback is unchanged: blocked false, reason ''.
     const normal = vpControlReadback.shape({
@@ -269,6 +273,65 @@ describe('shaping (pure)', function () {
     const off = vpControlReadback.shape({ ...activeMismatch, control_enabled: false });
     assert.strictEqual(off.dual_controller.only_controller_required, false, 'not controlling -> no conflict claim');
     assert.strictEqual(off.dual_controller.possible_conflict, false);
+  });
+
+  it('vp-control-readback keeps an UNREAD register out of the mismatch verdict', function () {
+    // The flap fix (live Pilsting, 2026-07-30): a register the inverter never
+    // answered is 'unread' - it must not be accused of deviating, and the cycle then
+    // has NO verdict (all_match null, the entity/curtail convention).
+    const silent = vpControlReadback.shape({
+      family: 'hybrid_3p', control_enabled: true, certified: true, control_path: 'remote',
+      verify: 'unconfirmed',
+      registers: [
+        { role: 'remote_watchdog', addr: 1101, commanded_raw: 60, actual_raw: 60, match: true, verdict: 'held' },
+        { role: 'remote_mode', addr: 1100, commanded_raw: 1, actual_raw: null, match: false, verdict: 'unread' },
+      ],
+    });
+    assert.strictEqual(silent.all_match, null);
+    assert.strictEqual(silent.verify, 'unconfirmed');
+    assert.deepStrictEqual(silent.mismatch_roles, []);
+    assert.deepStrictEqual(silent.unread_roles, ['remote_mode']);
+    assert.strictEqual(silent.dual_controller.possible_conflict, false,
+      'no second controller may be blamed for a read that never arrived');
+
+    // A REAL deviation is unchanged: verdict mismatch -> named + conflict hint.
+    const real = vpControlReadback.shape({
+      family: 'hybrid_3p', control_enabled: true, certified: true, verify: 'mismatch',
+      registers: [{ role: 'remote_mode', addr: 1100, commanded_raw: 1, actual_raw: 0, match: false, verdict: 'mismatch' }],
+    });
+    assert.strictEqual(real.all_match, false);
+    assert.deepStrictEqual(real.mismatch_roles, ['remote_mode']);
+    assert.strictEqual(real.dual_controller.possible_conflict, true);
+  });
+
+  it('vp-control-readback passes a CURTAIL readback through with its identity intact', function () {
+    // Two payload FAMILIES ride edge/control/readback. The field whitelist used to
+    // drop `curtail`/`source_id`/`unit_key`/`enforcement`, so the core could not
+    // route it: the curtailment state never reached Snapshot.CurtailUnits AND every
+    // curtailment cycle clobbered the battery control card with pv_limit registers
+    // (observed live on the pilot, 2026-07-30 09:35:48Z).
+    const shaped = vpControlReadback.shape({
+      ts: '2026-07-30T09:35:48.782Z', curtail: true, source_id: 'src-fronius-1',
+      unit_key: '192.168.0.5:502#1', label: 'Fronius Eco 1', family: 'fronius_sunspec',
+      control_enabled: true, certified: false, mode: 'release', applied: false,
+      cap_kw: null, rated_kw: 27, all_match: null,
+      reason: 'Abregelung für diesen Wechselrichter noch nicht freigegeben',
+      enforcement: { status: 'inactive', possible_override: false, reason: '', measured_kw: 4.2 },
+      registers: [
+        { role: 'pv_limit_pct', addr: 40232, commanded_raw: 10000, actual_raw: 10000, match: true },
+        { role: 'pv_limit_enable', addr: 40236, commanded_raw: 0, actual_raw: 1, match: false },
+      ],
+    });
+    assert.strictEqual(shaped.curtail, true, 'the discriminator the core routes on');
+    assert.strictEqual(shaped.source_id, 'src-fronius-1');
+    assert.strictEqual(shaped.unit_key, '192.168.0.5:502#1');
+    assert.strictEqual(shaped.applied, false);
+    assert.strictEqual(shaped.rated_kw, 27);
+    assert.strictEqual(shaped.enforcement.measured_kw, 4.2);
+    assert.strictEqual(shaped.all_match, null, 'the curtail executor owns its own verdict semantics');
+    assert.strictEqual(shaped.registers.length, 2);
+    // ... and it is refused when it carries no identity (the core could not place it).
+    assert.strictEqual(vpControlReadback.shape({ curtail: true, registers: [] }), null);
   });
 
   it('vp-control-readback rejects malformed readbacks', function () {

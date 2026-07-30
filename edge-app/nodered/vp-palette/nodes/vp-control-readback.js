@@ -58,6 +58,18 @@ function dualControllerAwareness(certified, controlEnabled, registerCount, allMa
 
 // shape() is exported for unit tests: validate + normalize the readback payload,
 // or null when it is not a usable readback (never published - stays quiet).
+//
+// TWO payload FAMILIES ride this one topic, and telling them apart is load-bearing:
+// the PRIMARY inverter's control readback (normalized below) and the PER-UNIT PV
+// curtailment readback, marked `curtail: true`. The curtail family is passed
+// through VERBATIM: its identity (source_id / unit_key), its enforcement verdict
+// and its own all_match semantics (applied vs observed-only) are what the core's
+// onCurtailReadback needs, and the field WHITELIST below used to drop every one of
+// them - so the curtailment state never reached Snapshot.CurtailUnits AND every
+// curtailment cycle CLOBBERED the battery control card with pv_limit registers +
+// "Abregelung noch nicht freigegeben" (observed live on the pilot, 2026-07-30
+// 09:35:48Z, between two healthy remote-mode cycles - one of the three causes of
+// the flapping warning).
 function shape(payload) {
   if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) return null;
   if (!Array.isArray(payload.registers)) return null;
@@ -66,6 +78,14 @@ function shape(payload) {
     if (r == null || typeof r !== 'object') return null;
     if (typeof r.role !== 'string' || typeof r.match !== 'boolean') return null;
     registers.push(r);
+  }
+  if (payload.curtail === true) {
+    if (typeof payload.source_id !== 'string' || !payload.source_id) return null;
+    if (typeof payload.unit_key !== 'string' || !payload.unit_key) return null;
+    return Object.assign({}, payload, {
+      ts: typeof payload.ts === 'string' ? payload.ts : new Date().toISOString(),
+      registers,
+    });
   }
   const control_enabled = payload.control_enabled === true;
   const certified = payload.certified === true;
@@ -156,7 +176,10 @@ module.exports = function (RED) {
           done(err);
         } else {
           let st;
-          if (shaped.blocked) {
+          if (shaped.curtail === true) {
+            st = { fill: shaped.all_match === false ? 'red' : 'green', shape: 'dot',
+              text: 'Abregelung ' + shaped.unit_key + ': ' + (shaped.applied ? shaped.mode : 'beobachtet') };
+          } else if (shaped.blocked) {
             st = { fill: 'yellow', shape: 'ring', text: 'angehalten: ' + (shaped.reason || 'Steuerung blockiert') };
           } else if (shaped.all_match === true) {
             st = { fill: 'green', shape: 'dot', text: 'bestätigt (' + shaped.registers.length + ' Register)' };

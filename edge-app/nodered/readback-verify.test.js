@@ -6,11 +6,14 @@
  * The live symptom this pins (Pilsting, 2026-07-30): the inverter demonstrably
  * followed the setpoint while the card reported "uebernimmt den Sollwert nicht"
  * every ~10 s, naming remote_watchdog / power_control_mode / battery_strategy /
- * remote_mode. Both halves are covered here:
- *   - a dynamic register (the watchdog) counting down is HELD, not a mismatch;
- *   - a Solarman zero-answer is UNCONFIRMED (no verdict), not a mismatch;
- * and the honest counter-case stays intact: a real refused write still yields a
- * mismatch cycle.
+ * remote_mode. The MEASURED cycles are the LIVE table below; the two mechanisms
+ * behind them:
+ *   - an out-of-range filler (0xFFFF on a 0..3 / 0..2 / 0..5 register) is no
+ *     answer at all, and neither is a zero-answer block or a failed read;
+ *   - the watchdog is a TIMER the inverter consumes: 51 s of an armed 60 s is it
+ *     WORKING.
+ * The honest counter-cases stay intact: a real refused write, a watchdog switched
+ * off and a genuinely out-of-spec value all still yield a mismatch cycle.
  */
 
 const test = require('node:test');
@@ -31,6 +34,45 @@ function remoteEntries(actuals, setpointRaw = 0) {
   ];
   return plan.map((p) => ({ ...p, actual: actuals[p.role] }));
 }
+
+// --- THE LIVE PROTOCOL (read-only sampling of the pilot's :8484 /api/state, ------
+// 2026-07-30 09:34:36Z .. 09:36:26Z, remote path, idle setpoint 0 kW, SoC 7 %).
+// Each row is ONE observed readback cycle; the `want` is what the operator must be
+// told. Before this fix every "warn" row rendered "Der Wechselrichter uebernimmt
+// den Sollwert nicht" while the battery was following the setpoint.
+const LIVE = [
+  {
+    at: '09:34:36Z', want: 'unconfirmed',
+    actual: { remote_watchdog: 60, power_control_mode: 1, battery_strategy: 2, battery_power: 0, remote_mode: 65535 },
+    unread: ['remote_mode'],
+  },
+  {
+    at: '09:34:46Z', want: 'held',
+    actual: { remote_watchdog: 60, power_control_mode: 1, battery_strategy: 2, battery_power: 0, remote_mode: 1 },
+  },
+  {
+    at: '09:35:06Z', want: 'held', // the watchdog is COUNTING DOWN from our armed 60
+    actual: { remote_watchdog: 51, power_control_mode: 1, battery_strategy: 2, battery_power: 0, remote_mode: 1 },
+  },
+  {
+    at: '09:36:16Z', want: 'unconfirmed',
+    actual: { remote_watchdog: 60, power_control_mode: 65535, battery_strategy: 65535, battery_power: 0, remote_mode: 65535 },
+    unread: ['power_control_mode', 'battery_strategy', 'remote_mode'],
+  },
+  {
+    at: '09:36:26Z', want: 'held',
+    actual: { remote_watchdog: 60, power_control_mode: 1, battery_strategy: 2, battery_power: 0, remote_mode: 1 },
+  },
+];
+
+test('THE LIVE PROTOCOL: no observed cycle of the flapping plant is a refused write', () => {
+  for (const row of LIVE) {
+    const c = V.verifyCycle(remoteEntries(row.actual, 0));
+    assert.strictEqual(c.cycle, row.want, row.at + ' -> ' + c.cycle + ' (' + c.reason + ')');
+    assert.deepStrictEqual(c.mismatchRoles, [], row.at + ': nothing may be accused of refusing the setpoint');
+    if (row.unread) assert.deepStrictEqual(c.unreadRoles, row.unread, row.at + ': what was unreadable is named');
+  }
+});
 
 test('ruleForRole gives the watchdog dynamic semantics and everything else exact', () => {
   assert.strictEqual(V.ruleForRole('remote_watchdog'), 'countdown');
@@ -67,6 +109,23 @@ test('the exact rule still honours the per-register tolerance', () => {
   assert.strictEqual(V.verifyRegister({ role: 'battery_power', expect: 100, actual: 102, tolerance: 1 }).verdict, 'mismatch');
   assert.strictEqual(V.verifyRegister({ role: 'remote_mode', expect: 1, actual: 2 }).verdict, 'mismatch',
     'remote_mode keeps EXACT semantics - a different sub-mode is a real deviation, not tolerated silently');
+});
+
+test('an OUT-OF-RANGE answer is UNREAD (0xFFFF cannot be a mode/strategy value)', () => {
+  for (const role of ['remote_mode', 'power_control_mode', 'battery_strategy']) {
+    const r = V.verifyRegister({ role: role, expect: 1, actual: 0xffff });
+    assert.strictEqual(r.verdict, 'unread', role + ' 65535 is a filler, not a value');
+    assert.match(r.note, /unplausibler Rueckgabewert/);
+  }
+  // In-range values are judged normally - the rule tolerates nothing real.
+  assert.strictEqual(V.verifyRegister({ role: 'remote_mode', expect: 1, actual: 0 }).verdict, 'mismatch',
+    'remote mode OFF is a REAL refusal and stays one');
+  assert.strictEqual(V.verifyRegister({ role: 'battery_strategy', expect: 2, actual: 5 }).verdict, 'mismatch');
+  assert.strictEqual(V.verifyRegister({ role: 'power_control_mode', expect: 1, actual: 1 }).verdict, 'held');
+  // The watchdog deliberately has NO range: 0xFFFF is its documented "off" value.
+  assert.strictEqual(V.verifyRegister({ role: 'remote_watchdog', expect: 60, actual: 0xffff }).verdict, 'mismatch');
+  // An unlisted role keeps pure exact comparison (nothing is tolerated implicitly).
+  assert.strictEqual(V.verifyRegister({ role: 'work_mode', expect: 1, actual: 0xffff }).verdict, 'mismatch');
 });
 
 test('a register with no value is UNREAD, never a fabricated 0', () => {

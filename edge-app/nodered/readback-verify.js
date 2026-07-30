@@ -53,6 +53,40 @@
 /** The documented "watchdog off" sentinel of Deye register 1101. */
 const WATCHDOG_OFF = 0xffff;
 
+/**
+ * The DOCUMENTED value range per control register. A read OUTSIDE its range is not
+ * the inverter's value - it is a filler the logger/gateway substituted for a
+ * register it could not fetch, so it must be treated as "no answer".
+ *
+ * This is the live root cause, measured on the pilot on 2026-07-30 (read-only
+ * sampling of :8484 /api/state, 09:34:36Z-09:36:26Z, remote path, idle setpoint):
+ *
+ *   09:34:36Z  remote_mode                                        = 65535  -> warning
+ *   09:34:46Z  everything correct                                          -> ok
+ *   09:35:06Z  remote_watchdog                                    = 51     -> warning
+ *   09:35:16Z  everything correct                                          -> ok
+ *   09:36:16Z  power_control_mode / battery_strategy / remote_mode = 65535  -> warning
+ *   09:36:26Z  everything correct                                          -> ok
+ *
+ * 65535 (0xFFFF) is IMPOSSIBLE for all three: the protocol defines 1100 as 0..3,
+ * 1104 as 0..2 and 1105 as 0..5 (Deye MODBUS RTU V105.1 "Customized register").
+ * Judging it as "the inverter reports 65535, so it refused our 1" is the same class
+ * of mistake as the SoC 0/100 spikes this repo already gates (deye-decode
+ * socPlausible / guards.SocPlausible) - drop, never fabricate.
+ *
+ * Only registers whose range is DOCUMENTED are listed; anything unlisted keeps
+ * pure exact comparison, so a new role can never be silently tolerated.
+ */
+const VALUE_RANGE = {
+  remote_mode: [0, 3], // 1100: 0 = off, 1..3 = remote mode 1..3
+  power_control_mode: [0, 2], // 1104: 0 AC-side, 1 battery-side, 2 grid-side
+  battery_strategy: [0, 5], // 1105: 0..5 (2 = Power, 5 = Power+SOC)
+  battery_soc_belt: [0, 100], // 1108: percent
+  // 1101 (watchdog) deliberately has NO range entry: 0xFFFF is its DOCUMENTED
+  // "off" sentinel, so it is a real (and alarming) value there, not a filler. The
+  // countdown rule + the core's debounce cover a one-off substitution.
+};
+
 const VERDICT = { HELD: 'held', MISMATCH: 'mismatch', UNREAD: 'unread' };
 const CYCLE = { HELD: 'held', MISMATCH: 'mismatch', UNCONFIRMED: 'unconfirmed' };
 
@@ -101,6 +135,16 @@ function verifyRegister(entry) {
     return { role: role, verdict: VERDICT.UNREAD, note: e.error ? String(e.error) : 'nicht gelesen' };
   }
   const actual = u16(e.actual);
+  // Out of the register's DOCUMENTED range = not a value the inverter can hold =
+  // no answer (see VALUE_RANGE). The commanded value is never questioned - only
+  // what came back.
+  const range = VALUE_RANGE[role];
+  if (range && (actual < range[0] || actual > range[1])) {
+    return {
+      role: role, verdict: VERDICT.UNREAD,
+      note: 'unplausibler Rueckgabewert ' + actual + ' (erlaubt ' + range[0] + '..' + range[1] + ') - keine echte Antwort',
+    };
+  }
   const rule = e.rule || ruleForRole(role);
   if (rule === 'countdown') {
     if (actual === expect) return { role: role, verdict: VERDICT.HELD, note: '' };
@@ -221,6 +265,7 @@ function verifyCycle(entries) {
 
 module.exports = {
   WATCHDOG_OFF,
+  VALUE_RANGE,
   VERDICT,
   CYCLE,
   NO_ANSWER_REASON,

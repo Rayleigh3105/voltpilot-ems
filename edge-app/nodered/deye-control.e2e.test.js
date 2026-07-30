@@ -137,6 +137,18 @@ function startSolarmanServer(initial, opts = {}) {
             // ALL-ZERO register block. Scoped to the remote block (0x044c..0x0461) so
             // the capability probe of the device register 0x0000 stays honest.
             const zeroed = opts.zeroReads && addr >= 0x044c && addr <= 0x0461;
+            // fillerReads models what the pilot's logger ACTUALLY did (live sampling
+            // 2026-07-30 09:34:36Z / 09:36:16Z): individual registers of the remote
+            // block come back 0xFFFF - impossible for a 0..3 / 0..2 / 0..5 register,
+            // so it is a filler for a register the gateway could not fetch.
+            const filler = Array.isArray(opts.fillerReads) && opts.fillerReads.indexOf(addr) !== -1;
+            if (filler) {
+              for (let i = 0; i < count; i++) body.writeUInt16BE(0xffff, 3 + i * 2);
+              const fcrc = SV5.modbusCrc16(body);
+              sock.write(buildV5Response(serial, seq, Buffer.concat([body, Buffer.from([fcrc & 0xff, (fcrc >> 8) & 0xff])])));
+              try { need = SV5.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
+              continue;
+            }
             for (let i = 0; i < count; i++) {
               // watchdogRead models a LIVE countdown: register 1101 answers the
               // remaining seconds, not the value we armed it with a moment ago.
@@ -1318,6 +1330,50 @@ test('FLAP: a Solarman all-zero readback answer is UNCONFIRMED, never "Sollwert 
           'and no second controller is blamed for a read that never arrived');
         // The silence is AUDIBLE in the log instead of being swallowed.
         assert.ok(warns.some((w) => /ohne Rueckmeldung/.test(w)), 'the missing confirmation is logged: ' + warns.join(' | '));
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('FLAP (measured live): 0xFFFF fillers on 1100/1104/1105 are UNCONFIRMED, not a refusal', async () => {
+  // The pilot's exact 09:36:16Z cycle: power_control_mode, battery_strategy and
+  // remote_mode all answered 65535 while the write had just landed. 65535 is
+  // impossible for those registers (0..2 / 0..5 / 0..3), so it is a filler.
+  const opts = { fillerReads: [0x0450, 0x0451, 0x044c] };
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore(), opts);
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const ctx = {};
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, ctx, flowStore);
+        assert.ok(out);
+        assert.strictEqual(writes.length, 5, 'the control writes landed');
+        assert.strictEqual(store[0x044c], 1, 'the device really is in remote mode');
+        const rb = out.payload;
+        assert.strictEqual(rb.verify, 'unconfirmed', 'a filler is no answer - and no accusation');
+        const shaped = require('./vp-palette/nodes/vp-control-readback').shape(rb);
+        assert.deepStrictEqual(shaped.mismatch_roles, []);
+        assert.deepStrictEqual(shaped.unread_roles, ['power_control_mode', 'battery_strategy', 'remote_mode']);
+        assert.strictEqual(shaped.all_match, null);
+        for (const role of ['power_control_mode', 'battery_strategy', 'remote_mode']) {
+          const r = rb.registers.find((x) => x.role === role);
+          assert.strictEqual(r.actual_raw, null, role + ' must not report 65535 as the inverter value');
+          assert.match(r.note, /unplausibler Rueckgabewert 65535/);
+        }
+        // the registers that DID answer are still judged normally
+        assert.strictEqual(rb.registers.find((r) => r.role === 'remote_watchdog').verdict, 'held');
+        assert.strictEqual(rb.registers.find((r) => r.role === 'battery_power').verdict, 'held');
+        // ... and the next healthy cycle confirms again (the "kurz danach geht es wieder")
+        opts.fillerReads = [];
+        const ok = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, ctx, flowStore);
+        assert.strictEqual(ok.payload.verify, 'held');
       },
     );
   } finally {
