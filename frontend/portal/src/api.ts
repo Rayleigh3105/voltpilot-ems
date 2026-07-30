@@ -455,6 +455,35 @@ export interface HistoryPlanPoint {
 }
 
 /**
+ * Die Arten der Ereignis-Spur (F6). **Offen behandeln:** eine unbekannte Art
+ * aus einem neueren Backend wird von `historieEreignisse.ts` übersprungen statt
+ * geraten — ein Marker ohne Bedeutung wäre schlimmer als keiner.
+ */
+export type HistoryEventType =
+  | 'negativpreis'
+  | 'abregelung'
+  | 'netzgrenze'
+  | 'netzladen'
+  | 'datenluecke'
+  | 'geraet-still';
+
+/**
+ * Ein Ereignis im Verlauf (F6) — das Auffällige, das einen Ausreißer im
+ * Diagramm ERKLÄRT. Anders als `protocol` (nur Tag, die gewöhnlichen
+ * Ereignisse eines Tages) gibt es diese Spur in JEDEM Zeitraum.
+ *
+ * **`text` trägt die Aussage OHNE Zeitangabe** — die Zeit steht in
+ * `start`/`end` und wird zeitraumgerecht davor gesetzt (`historieEreignisse.ts`
+ * `ereignisSpur`). `end` ist exklusiv.
+ */
+export interface HistoryEvent {
+  type: HistoryEventType;
+  start: string;
+  end: string;
+  text: string;
+}
+
+/**
  * Wie vollständig der Zeitraum GEMESSEN ist (F4/P7 des Historie-Konzepts) —
  * aus einer eigenen billigen Abfrage auf dem 15-Minuten-Rollup, unabhängig von
  * der Reihe. Gezählt werden **Viertelstunden** (`resolutionMinutes`), nicht
@@ -502,6 +531,13 @@ export interface History {
    * Viertelstunde gemessen hat; optional für ältere Backends.
    */
   coverage?: HistoryCoverage | null;
+  /**
+   * Die Ereignis-Spur des Verlaufs (F6) — in JEDEM Zeitraum. **Optional, und
+   * das ist load-bearing:** fehlt das Feld (älteres Backend), zeigt die Seite
+   * GAR KEINE Spur, statt „keine besonderen Ereignisse" zu behaupten, was
+   * niemand geprüft hat.
+   */
+  events?: HistoryEvent[];
 }
 
 /**

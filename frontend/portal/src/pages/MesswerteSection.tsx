@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -28,6 +28,7 @@ import {
   WELTEN,
   type WeltId,
 } from '../historieWelten';
+import { ankerAusWert } from '../historieZeit';
 import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
 import type { AnlageSurface } from '../surface';
 
@@ -125,12 +126,15 @@ function EnergieKarten({
   vorher,
   range,
   anchor,
+  onTagOeffnen,
 }: {
   history: History;
   /** Die Vorperiode für das Δ (F3) — null, solange sie nicht geladen ist. */
   vorher: History | null;
   range: HistoryRange;
   anchor: Date;
+  /** Der Tagesdrilldown (F5) — im Tages-Zeitraum gibt es nichts zu öffnen. */
+  onTagOeffnen?: (at: string) => void;
 }) {
   const bilanz = energieBilanz(history);
   const now = new Date();
@@ -219,7 +223,7 @@ function EnergieKarten({
               ? 'Der Tagesverlauf Ihrer Anlage in einem Bild: PV-Erzeugung, Hausverbrauch, Netz und Speicher - dazu der Ladestand.'
               : 'Erzeugung, Verbrauch, Netz und Speicher je Abschnitt im gewählten Zeitraum - als Energiemengen in Kilowattstunden, dazu der Ladestand.'}
           </ChartSubtitle>
-          <HistoryEnergieChart history={history} />
+          <HistoryEnergieChart history={history} onTagOeffnen={onTagOeffnen} />
         </Card>
       </section>
     </>
@@ -275,6 +279,35 @@ export function MesswerteSection({
   const welt = WELTEN.messwerte;
   const available = availableWelten(surface);
 
+  /**
+   * **F5 · der Tagesdrilldown.** Ein Tipp auf einen Balken (oder einen
+   * Ereignis-Chip) öffnet DIESEN Tag — in derselben Welt, mit denselben
+   * Bausteinen wie jede andere Zeitraum-Geste: `ankerAusWert` liefert den Anker
+   * (12 Uhr mittags, damit keine Zeitzone ihn über eine Tagesgrenze kippt),
+   * `historieHash` die Adresse. Hier entsteht KEINE eigene Routing-Logik.
+   *
+   * Die Adresse wird mitgeschrieben (`replaceState` wie beim Zuklappen des
+   * Explorers), damit ein Neuladen den gesprungenen Tag zeigt statt der Periode,
+   * aus der man kam.
+   */
+  const oeffneTag = useMemo(
+    () =>
+      range === 'day'
+        ? undefined
+        : (at: string) => {
+            const ziel = ankerAusWert(at, 'day');
+            if (!ziel) return;
+            setRange('day');
+            setAnchor(ziel);
+            window.history.replaceState(
+              null,
+              '',
+              historieHash(site.id, 'messwerte', 'day', at),
+            );
+          },
+    [range, site.id],
+  );
+
   const toggleExplorer = useCallback(() => {
     setExplorerOpen((open) => {
       // Beim Zuklappen die Messwert-Parameter aus der Adresse nehmen, damit ein
@@ -320,7 +353,13 @@ export function MesswerteSection({
             {err && stale && (
               <PeriodeFehlgeschlagen periode={periodLabel(anchor, range)} onRetry={retry} />
             )}
-            <EnergieKarten history={history} vorher={vorher} range={range} anchor={anchor} />
+            <EnergieKarten
+              history={history}
+              vorher={vorher}
+              range={range}
+              anchor={anchor}
+              onTagOeffnen={oeffneTag}
+            />
           </>
         )}
       </div>

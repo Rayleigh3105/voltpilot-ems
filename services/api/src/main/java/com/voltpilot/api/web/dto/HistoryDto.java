@@ -13,6 +13,11 @@ import java.util.List;
  * <p>{@code coverage} ist additiv (F4/P7): wie vollständig der Zeitraum
  * gemessen ist, aus einer eigenen billigen Abfrage - null, wenn die Anlage noch
  * nie eine Viertelstunde gemessen hat.
+ *
+ * <p>{@code events} ist additiv (F6): die Ereignis-Spur des Verlaufs - das
+ * Auffällige, das einen Ausreißer im Diagramm erklärt. Anders als
+ * {@code protocol} gibt es sie in JEDEM Zeitraum; siehe
+ * {@link HistoryEventDto} und {@link com.voltpilot.api.history.Ereignisse}.
  */
 public record HistoryDto(
         String range,
@@ -23,5 +28,6 @@ public record HistoryDto(
         HistoryTotalsDto totals,
         List<ProtocolEventDto> protocol,
         List<HistoryPlanPointDto> plan,
-        HistoryCoverageDto coverage) {
+        HistoryCoverageDto coverage,
+        List<HistoryEventDto> events) {
 }

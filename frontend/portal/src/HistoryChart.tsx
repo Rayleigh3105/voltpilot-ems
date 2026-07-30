@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { History } from './api';
 import { chartTheme, type ChartTheme } from './chartTheme';
 import {
@@ -9,10 +9,45 @@ import {
   type EnergieFarbe,
   type EnergieSerie,
 } from './energieBilanz';
+import {
+  drilldownHinweis,
+  ereignisSpur,
+  tagesSprung,
+  type EreignisSpurView,
+} from './historieEreignisse';
 import { useEChart } from './useEChart';
 import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartExplain';
+import { EreignisSpur, ereignisFarbe } from './components/EreignisSpur';
 
 import './components/Historie.css';
+
+/**
+ * Wie kräftig ein Ereignis-Band unter den Reihen liegt (Ortsangabe, kein
+ * Inhalt). Im Browser bei 1440 UND 375 px eingestellt: darunter verschwindet es
+ * am Telefon hinter den dichten Balken, darüber konkurriert es am Schreibtisch
+ * mit den Reihen, die es erklären soll.
+ */
+const BAND_OPACITY = 0.2;
+
+/**
+ * Die Ereignis-Bänder als ECharts-`markArea` (F6): je Ereignis eine
+ * durchscheinende Fläche über GENAU der Balkenspanne, die
+ * `historieEreignisse.bandSpanne` entschieden hat - in derselben Farbe wie sein
+ * Chip darunter, damit Marker und Erklärung sichtbar zusammengehören.
+ */
+function ereignisBaender(spur: EreignisSpurView | null, t: ChartTheme) {
+  if (!spur || spur.chips.length === 0) return {};
+  const data = spur.chips
+    .filter((c) => c.vonIndex >= 0)
+    .map((c) => [
+      {
+        xAxis: c.vonIndex,
+        itemStyle: { color: ereignisFarbe(t, c.info.farbe), opacity: BAND_OPACITY },
+      },
+      { xAxis: c.bisIndex },
+    ]);
+  return data.length ? { markArea: { silent: true, data } } : {};
+}
 
 /** Bucket label: day -> "12:15", week -> "Mi 06:00", month/year -> "15.06.". */
 function timeLabel(iso: string, range: History['range'], narrow = false): string {
@@ -101,8 +136,24 @@ function num(v: number, digits = 2): string {
  *
  * Ehrlichkeit: eine Reihe ohne einen einzigen Wert wird NICHT als 0-Linie
  * gezeichnet — sie fehlt, und die Legende nennt den Grund.
+ *
+ * Seit PR E trägt es zwei Anschlussfragen mit (Konzept
+ * `data/vp-historie-konzept-t4`): die **Ereignis-Spur** (F6) erklärt die
+ * Ausreißer, und ein **Tipp auf einen Balken öffnet diesen Tag** (F5) - beides
+ * abgeleitet im reinen `historieEreignisse.ts`, die Adresse baut der Aufrufer.
  */
-export function HistoryEnergieChart({ history }: { history: History }) {
+export function HistoryEnergieChart({
+  history,
+  onTagOeffnen,
+}: {
+  history: History;
+  /**
+   * Der Tagesdrilldown (F5): bekommt das Datum (`YYYY-MM-DD`) des angetippten
+   * Balkens. Fehlt er, ist das Diagramm wie bisher nur Anzeige — im
+   * Tages-Zeitraum gibt es ohnehin nichts Feineres zu öffnen.
+   */
+  onTagOeffnen?: (at: string) => void;
+}) {
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const t = chartTheme();
   const diagramm = energieDiagramm(history);
@@ -110,9 +161,43 @@ export function HistoryEnergieChart({ history }: { history: History }) {
   const vorhanden = diagramm.serien.filter((s) => !s.leer);
   const fehlend = diagramm.serien.filter((s) => s.leer);
   const sichtbar = vorhanden.filter((s) => !hidden.has(s.label));
+  const spur = ereignisSpur(history);
+  const sprungHinweis = onTagOeffnen ? drilldownHinweis(history.range) : null;
+
+  // Der Klick-Kontext liegt in einer Ref, damit der zrender-Handler GENAU EINMAL
+  // je Diagramm registriert wird: `useEChart` ruft `render` bei jeder
+  // Container-Größenänderung erneut auf, und ein `zr.off('click')` würde auch
+  // ECharts' eigene Handler (Tooltip!) abräumen.
+  // Der Zeitraum reist MIT: derselbe Diagramm-Baustein zeigt nacheinander Tag,
+  // Woche und Monat - ein im Handler eingeschlossener Zeitraum wäre nach dem
+  // ersten Wechsel falsch.
+  const klick = useRef<{
+    zeiten: string[];
+    range: History['range'];
+    oeffne?: (at: string) => void;
+  }>({ zeiten: [], range: history.range });
+  klick.current = { zeiten: diagramm.zeiten, range: history.range, oeffne: onTagOeffnen };
+  const klickGebunden = useRef(false);
 
   const ref = useEChart(
     (chart, width) => {
+      if (!klickGebunden.current) {
+        klickGebunden.current = true;
+        chart.getZr().on('click', (e: { offsetX: number; offsetY: number }) => {
+          const { zeiten, range, oeffne } = klick.current;
+          if (!oeffne) return;
+          // Der ganze Balken-STREIFEN ist das Ziel, nicht nur der gezeichnete
+          // Balken: in einem Monat ist ein schwacher Tag genau der, den man
+          // antippen will, und der ist nur wenige Pixel hoch.
+          if (!chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY])) return;
+          const roh = chart.convertFromPixel({ xAxisIndex: 0 }, e.offsetX);
+          const idx = Math.round(Number(roh));
+          const iso = zeiten[idx];
+          if (!iso) return;
+          const at = tagesSprung(iso, range);
+          if (at) oeffne(at);
+        });
+      }
       const narrow = width < 480;
       const weekNarrow = narrow && history.range === 'week';
       const { zeiten, einheit, jetztIndex } = diagramm;
@@ -135,6 +220,7 @@ export function HistoryEnergieChart({ history }: { history: History }) {
         const zeroLine =
           isFirst && !s.zweiteAchse
             ? {
+                ...ereignisBaender(spur, t),
                 markLine: {
                   silent: true,
                   symbol: 'none',
@@ -211,6 +297,11 @@ export function HistoryEnergieChart({ history }: { history: History }) {
                 const v = Number(p.value);
                 const label = s.signed ? vorzeichenLabel(s.key, v) : s.label;
                 lines.push(`${p.marker} ${label}: ${num(anzeigeWert(s, v))} ${s.unit}`);
+              }
+              // Die Geste sichtbar machen, wo es sie gibt (F5) - dieselbe
+              // Klick-Zeile wie im Optimizer-Diagramm.
+              if (sprungHinweis) {
+                lines.push('<span style="opacity:.7">Klick: diesen Tag öffnen</span>');
               }
               return lines.join('<br/>');
             },
@@ -317,13 +408,18 @@ export function HistoryEnergieChart({ history }: { history: History }) {
           {fehlend.map((s) => s.fehlt).join(' ')}
         </p>
       )}
-      <div ref={ref} className="vp-chart tall" />
+      <div
+        ref={ref}
+        className={sprungHinweis ? 'vp-chart tall vp-chart-clickable' : 'vp-chart tall'}
+      />
+      {spur && <EreignisSpur spur={spur} onTagOeffnen={onTagOeffnen} />}
       <ChartInsight icon="activity">
         <strong>PV-Erzeugung</strong> und <strong>Hausverbrauch</strong> stehen über der
         Nulllinie. Was darunter liegt, verlässt Ihr Haus: <strong>Einspeisung</strong> ins
         Netz und <strong>Entladen</strong> des Speichers. Der <strong>Ladestand</strong> läuft
         auf der rechten Achse mit. Tippen Sie eine Kachel der Legende an, um eine Reihe aus-
         oder einzublenden; im Diagramm können Sie einen Ausschnitt ziehen.
+        {sprungHinweis ? ` ${sprungHinweis}` : ''}
       </ChartInsight>
     </div>
   );
@@ -343,6 +439,10 @@ export function HistoryEnergieChart({ history }: { history: History }) {
  */
 export function HistoryDayChart({ history }: { history: History }) {
   const t = chartTheme();
+  // Die Ereignis-Spur (F6) kommt aus der Antwort selbst, nicht über eine
+  // Eigenschaft: so trägt sie JEDE Welt, die dieses Diagramm einhängt, ohne dass
+  // die Seite etwas davon wissen muss.
+  const spur = ereignisSpur(history);
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
     const { buckets, plan, bucketMinutes } = history;
@@ -487,6 +587,9 @@ export function HistoryDayChart({ history }: { history: History }) {
             z: 2,
             lineStyle: { color: t.price, width: 2 },
             itemStyle: { color: t.price },
+            // Die Ereignis-Bänder hängen an DIESER Reihe: die Batterie-Reihe
+            // trägt bereits die markArea der vergangenen Stunden.
+            ...ereignisBaender(spur, t),
           },
           {
             name: 'Ladestand',
@@ -520,6 +623,19 @@ export function HistoryDayChart({ history }: { history: History }) {
     <div>
       <ChartLegend items={legend} />
       <div ref={ref} className="vp-chart tall" />
+      {spur && (
+        <EreignisSpur
+          spur={spur}
+          // Am Tag gibt es nichts Feineres zu öffnen; die ausführliche Fassung
+          // steht als Tagesprotokoll auf DERSELBEN Seite - deshalb ein Verweis
+          // in Worten und kein Link, der ins Leere zeigen könnte.
+          protokollHinweis={
+            history.protocol.length > 0
+              ? 'Den ganzen Tag in Sätzen finden Sie unten im Tagesprotokoll.'
+              : null
+          }
+        />
+      )}
       <ChartInsight>
         Grüne Balken zeigen, wann Ihr Speicher <strong>tatsächlich geladen</strong> hat,
         blaue wann er <strong>entladen</strong> hat - gut sichtbar über dem Preisverlauf:
