@@ -293,11 +293,11 @@ describe('Block-Drill-ins (report §2.2 + feedback.md)', () => {
   it('die Tiefen-Sichten hängen an ihrem besitzenden Block', () => {
     const d = drills(MULTI);
     expect(d).toContain('peak-band:lastspitzen:Lastspitzen im Detail');
-    expect(d).toContain('erloes-komposition:historie:Erlöse im Detail');
+    expect(d).toContain('erloes-komposition:erloese:Erlöse im Detail');
     // Cockpit+Live-Merge (Option A): die Live-Tiefe lebt IM Cockpit selbst
     // (Komponenten-Board) — der Energiefluss-Block behält nur den
     // Kanal-Verlauf-Drill-in; ein „Live im Detail"-Absprung existiert nicht mehr.
-    expect(d).toContain('energiefluss:historie:Verlauf');
+    expect(d).toContain('energiefluss:messwerte:Verlauf');
     expect(d.some((x) => x.includes(':live:'))).toBe(false);
     expect(d).toContain('handel:fahrplan:Ganzer Fahrplan');
     expect(d).toContain('geraete-automatik:steuerung:Steuerung');
@@ -312,20 +312,20 @@ describe('Block-Drill-ins (report §2.2 + feedback.md)', () => {
     }
   });
 
-  it('sie ist NICHT die Erlös-Historie — anderes Etikett, eigener Hinweis', () => {
-    // Seit dem Cockpit+Live-Merge teilen sich BEIDE Drill-ins die Historie-
-    // Seite (der Messwerte-Explorer lebt dort als eigener Reiter, `?m=…`);
-    // die Abgrenzung trägt das Etikett + der Hinweis, nicht mehr die Route.
+  it('sie ist NICHT die Erlös-Historie — und seit H1 auch eine andere ROUTE', () => {
+    // Zwei Welten (Captain-Struktur H1, 30.07.2026): die Trennung, die dieses
+    // Modul beschreibt, ist jetzt auch eine der Adressen — Telemetrie-Verlauf
+    // auf `messwerte`, Geld auf `erloese`.
     const s = anlageSurface(MARKT);
     const views = cockpitStack(s.cockpitBlocks, null);
     const hub = views.find((b) => b.id === 'energiefluss');
     const geld = views.find((b) => b.id === 'erloes-komposition');
     const verlauf = hub?.drillIns.find((d) => d.label === 'Verlauf');
     const erloes = geld?.drillIns[0];
-    expect(verlauf?.sub).toBe('historie');
-    expect(erloes?.sub).toBe('historie');
+    expect(verlauf?.sub).toBe('messwerte');
+    expect(erloes?.sub).toBe('erloese');
     expect(verlauf?.label).not.toBe(erloes?.label);
-    expect(verlauf?.hint).toMatch(/getrennt von der Erlös-Historie/);
+    expect(verlauf?.hint).toMatch(/getrennt von den Erlösen/);
   });
 
   it('kein Modus beansprucht die Telemetrie-Historie', () => {

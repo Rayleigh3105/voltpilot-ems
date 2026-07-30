@@ -238,7 +238,7 @@ describe('Ehrlichkeit: weglassen statt 0', () => {
   it('jede Kachel trägt ihr Absprung-Ziel — auf ihre Seite (kein Modal)', () => {
     const w = cockpitWidgets(build(MULTI));
     const target = (id: WidgetId) => w.find((x) => x.id === id)?.target;
-    expect(target('erloes')).toEqual({ kind: 'sub', sub: 'historie' });
+    expect(target('erloes')).toEqual({ kind: 'sub', sub: 'erloese' });
     expect(target('handel')).toEqual({ kind: 'sub', sub: 'fahrplan' });
     expect(target('automatik')).toEqual({ kind: 'sub', sub: 'steuerung' });
   });

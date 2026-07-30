@@ -45,6 +45,7 @@ import { flowHasValues, headSentenceVisible, liveChip } from '../liveDetail';
 import { moneyLayout } from '../moneyEmphasis';
 import { leadArtifact, leadBlock } from '../leadSlot';
 import { useAnlageSurface } from '../useAnlageSurface';
+import type { AnlageSurface } from '../surface';
 import { hasBlock, projectionActive } from '../cockpit';
 import {
   cockpitHero,
@@ -69,7 +70,8 @@ import { AnlageHero, EnergyStatsRow, MonthRail, MonthStrip, PeriodTabs } from '.
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { FahrplanSection, WetterSection } from './DataPages';
-import { HistorieSection } from './HistorieSection';
+import { MesswerteSection } from './MesswerteSection';
+import { ErloeseSection } from './ErloeseSection';
 import { AnlagenModellSection } from './AnlagenModellSection';
 import { LastspitzenSection } from './LastspitzenSection';
 import { SteuerungSection } from './SteuerungSection';
@@ -100,6 +102,12 @@ export interface AnlagenPageProps {
    * row it was not given, so the badge never claims health it did not measure.
    */
   onHealthFacts?: (siteId: string, facts: AnlageHealthFacts) => void;
+  /**
+   * Das M0-Lese-Modell der Anlage, wie es die Schale ohnehin schon geladen hat
+   * (`App.tsx` `useAnlageSurface`) - durchgereicht, damit die Historie-Welten
+   * KEINEN eigenen Abruf brauchen, um zu wissen, ob es die Erlöse-Welt gibt.
+   */
+  surface?: AnlageSurface | null;
 }
 
 /**
@@ -144,6 +152,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
       devicesFetchedAt={props.devicesFetchedAt ?? null}
       sub={route.sub}
       isAdmin={isAdmin}
+      surface={props.surface ?? null}
       onBack={() => onNavigate(anlageRoute(site.id))}
       onOpenSub={(sub) => onNavigate(anlageRoute(site.id, sub))}
       onReload={props.onReload}
@@ -305,14 +314,16 @@ function AnlagenListe({
   );
 }
 
-const SUB_PAGES: Record<AnlagenSub, { title: string; subtitle: string }> = {
+/**
+ * Titel + Untertitel je Unterseite. **Die zwei Historie-Welten stehen bewusst
+ * NICHT darin**: sie tragen ihren eigenen Welt-Kopf (Icon · Titel · Abzeichen ·
+ * Kartenpaar), und eine zweite generische Überschrift darüber wäre genau die
+ * Kopfzone, die das Konzept abbaut.
+ */
+const SUB_PAGES: Partial<Record<AnlagenSub, { title: string; subtitle: string }>> = {
   fahrplan: {
     title: 'Fahrplan',
     subtitle: 'Kostenoptimaler Batterie-Fahrplan aus Börsenpreisen und Prognosen.',
-  },
-  historie: {
-    title: 'Historie & Erlöse',
-    subtitle: 'Was Ihre Anlage getan hat - und was es gekostet oder gespart hat.',
   },
   wetter: {
     title: 'Wetter',
@@ -346,6 +357,7 @@ function AnlagenSubPage({
   devicesFetchedAt,
   sub,
   isAdmin,
+  surface,
   onBack,
   onOpenSub,
   onReload,
@@ -356,6 +368,7 @@ function AnlagenSubPage({
   devicesFetchedAt: number | null;
   sub: AnlagenSub;
   isAdmin: boolean;
+  surface: AnlageSurface | null;
   onBack: () => void;
   onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
@@ -367,14 +380,25 @@ function AnlagenSubPage({
         <Icon name="chevron-left" size={18} />
         Anlage {site.name}
       </button>
-      <div className="vp-page-head">
-        <div className="titles">
-          <h1>{meta.title}</h1>
-          <p>{meta.subtitle}</p>
+      {meta && (
+        <div className="vp-page-head">
+          <div className="titles">
+            <h1>{meta.title}</h1>
+            <p>{meta.subtitle}</p>
+          </div>
         </div>
-      </div>
+      )}
       {sub === 'fahrplan' && <FahrplanSection site={site} />}
-      {sub === 'historie' && <HistorieSection site={site} />}
+      {sub === 'messwerte' && (
+        <MesswerteSection
+          site={site}
+          surface={surface}
+          onOpenWelt={(welt) => onOpenSub(welt)}
+        />
+      )}
+      {sub === 'erloese' && (
+        <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
+      )}
       {sub === 'wetter' && <WetterSection site={site} />}
       {/* The Anlagen-Modell names the ONE VoltPilot-Box every reported device
           hangs off (Captain-Korrektur) — from the devices list the shell already
@@ -1103,7 +1127,7 @@ export function AnlageSeite({
             // Privat-Profil: Geld ist aus dem Hero genommen, aber über ein ruhiges
             // Detail erreichbar - der Fokus liegt auf Live-Flüssen + Steuerung.
             <div className="vp-dash-hero">
-              <MoneyGlanceCard onOpen={() => onOpenSub('historie')} />
+              <MoneyGlanceCard onOpen={() => onOpenSub('erloese')} />
             </div>
           ) : (
             <>
@@ -1274,9 +1298,9 @@ export function AnlageSeite({
             <DetailCard
               icon="history"
               category="home"
-              title="Historie & Erlöse"
-              line="Ihre Tage im Rückblick - Kosten, Ersparnis, Verhalten."
-              onOpen={() => onOpenSub('historie')}
+              title="Messwerte"
+              line="Ihre Tage im Rückblick - Energie, Verlauf, einzelne Messwerte."
+              onOpen={() => onOpenSub('messwerte')}
             />
             <DetailCard
               icon="sun"

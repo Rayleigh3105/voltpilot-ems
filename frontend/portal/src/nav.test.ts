@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   anlagenLabel,
   anlageRoute,
+  canonicalAnlageHash,
   hashForRoute,
   pageLabel,
   pageRoute,
@@ -15,7 +16,8 @@ import { anlageSurface } from './surface';
 /** Every AnlagenSub route that exists. */
 const ALL_SUBS: AnlagenSub[] = [
   'fahrplan',
-  'historie',
+  'messwerte',
+  'erloese',
   'wetter',
   'technik',
   'modell',
@@ -48,7 +50,7 @@ describe('parseRoute', () => {
       siteId: 'site-1',
       sub: null,
     });
-    for (const sub of ['fahrplan', 'historie', 'wetter'] as const) {
+    for (const sub of ['fahrplan', 'messwerte', 'erloese', 'wetter'] as const) {
       expect(parseRoute(`#/anlage/site-1/${sub}`)).toEqual({
         page: 'anlagen',
         siteId: 'site-1',
@@ -60,7 +62,8 @@ describe('parseRoute', () => {
   it('redirects every retired menu hash into the Anlage (bookmarks keep working)', () => {
     // Site-scoped deep views keep their intent as the Anlage subpage...
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
-    expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'historie' });
+    // Die Historie ist zwei Welten - ihre Route erbt die BASIS-Welt.
+    expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'messwerte' });
     expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
     // ...the entity lists land on the Technik subpage (its content moved there
     // behind the gear icon in the money-centric v2).
@@ -139,7 +142,8 @@ describe('hashForRoute', () => {
       pageRoute('anlagen'),
       anlageRoute('site-1'),
       anlageRoute('site-1', 'fahrplan'),
-      anlageRoute('site-1', 'historie'),
+      anlageRoute('site-1', 'messwerte'),
+      anlageRoute('site-1', 'erloese'),
     ];
     for (const r of routes) {
       expect(parseRoute(hashForRoute(r))).toEqual(r);
@@ -177,7 +181,7 @@ describe('M1: no route breaks when the tab bar is retired', () => {
   it('still redirects the retired top-level hashes into the Anlage', () => {
     expect(parseRoute('#/live')).toEqual({ page: 'anlagen', siteId: null, sub: null });
     expect(parseRoute('#/fahrplan')).toEqual({ page: 'anlagen', siteId: null, sub: 'fahrplan' });
-    expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'historie' });
+    expect(parseRoute('#/historie')).toEqual({ page: 'anlagen', siteId: null, sub: 'messwerte' });
     expect(parseRoute('#/wetter')).toEqual({ page: 'anlagen', siteId: null, sub: 'wetter' });
     expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
     expect(parseRoute('#/geraete')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
@@ -221,6 +225,41 @@ describe('M1: no route breaks when the tab bar is retired', () => {
         sub,
       });
     }
+  });
+});
+
+/**
+ * Zwei Welten (Captain-Struktur H1, 30.07.2026): die eine Historie-Seite wurde
+ * zu `messwerte` + `erloese`. Weiterleiten heißt hier ausdrücklich AUCH: die
+ * Parameter überleben - ohne das wäre jedes `?m=…&z=…`-Lesezeichen ein stiller
+ * Datenverlust.
+ */
+describe('zwei Welten: die Historie-Route leitet MIT Parametern weiter', () => {
+  it('parst die alte Route auf die Messwerte-Welt', () => {
+    expect(parseRoute('#/anlage/s-1/historie')).toEqual({
+      page: 'anlagen',
+      siteId: 's-1',
+      sub: 'messwerte',
+    });
+  });
+
+  it('schreibt die Adresse kanonisch um und behält ?m=/z=/at=', () => {
+    expect(canonicalAnlageHash('#/anlage/s-1/historie?m=e:c&z=woche&at=2026-05-01')).toBe(
+      '#/anlage/s-1/messwerte?m=e:c&z=woche&at=2026-05-01',
+    );
+    // Auch ohne Parameter, und für die anderen stillgelegten Unterseiten.
+    expect(canonicalAnlageHash('#/anlage/s-1/historie')).toBe('#/anlage/s-1/messwerte');
+    expect(canonicalAnlageHash('#/anlage/s-1/entitaeten')).toBe('#/anlage/s-1/modell');
+    // `live` zeigt auf das Cockpit selbst (sub null).
+    expect(canonicalAnlageHash('#/anlage/s-1/live?x=1')).toBe('#/anlage/s-1?x=1');
+  });
+
+  it('schreibt NICHTS um, was schon kanonisch ist', () => {
+    expect(canonicalAnlageHash('#/anlage/s-1/messwerte?z=tag')).toBeNull();
+    expect(canonicalAnlageHash('#/anlage/s-1/erloese')).toBeNull();
+    expect(canonicalAnlageHash('#/anlage/s-1')).toBeNull();
+    expect(canonicalAnlageHash('#/marktpreise')).toBeNull();
+    expect(canonicalAnlageHash('')).toBeNull();
   });
 });
 

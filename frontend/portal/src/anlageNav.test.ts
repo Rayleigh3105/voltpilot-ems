@@ -17,7 +17,8 @@ import { anlageSurface, type AnlageSurface, type AnlageSurfaceInput } from './su
 /** Every AnlagenSub that exists - the "nothing is orphaned" ground truth. */
 const ALL_SUBS: AnlagenSub[] = [
   'fahrplan',
-  'historie',
+  'messwerte',
+  'erloese',
   'wetter',
   'technik',
   'modell',
@@ -37,7 +38,10 @@ const PV_ONLY = {
 };
 
 /** Die vier FESTEN Basis-Bereiche (abgeleitete Ansichten reihen sich ein). */
-const FIXED = ['cockpit', 'historie', 'steuerung', 'anlagen-modell'];
+const FIXED = ['cockpit', 'messwerte', 'steuerung', 'anlagen-modell'];
+
+/** Dieselben vier plus die modusgebundene Erlöse-Welt an ihrem Platz. */
+const FIXED_MIT_ERLOESE = ['cockpit', 'messwerte', 'erloese', 'steuerung', 'anlagen-modell'];
 
 /** A migrated plant with the market mode active. */
 const MARKT = anlageSurface({
@@ -103,7 +107,7 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
       expect(base.items.map((i) => i.key)).toEqual(FIXED);
       expect(base.items.map((i) => i.label)).toEqual([
         'Cockpit',
-        'Historie',
+        'Messwerte',
         'Steuerung',
         'Anlagen-Modell',
       ]);
@@ -113,7 +117,7 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
   it('opens the cockpit and the three area routes', () => {
     expect(subsOf(anlageSidebar(null).groups[0].items)).toEqual([
       null,
-      'historie',
+      'messwerte',
       'steuerung',
       'modell',
     ]);
@@ -153,6 +157,29 @@ describe('anlageSidebar - the base group is fixed and ordered', () => {
     ]);
     // Fester Tarif: keine Preisseite.
     expect(anlageSidebar(PRIVAT).groups[0].items.map((i) => i.key)).not.toContain('marktpreise');
+  });
+
+  it('trägt „Erlöse" nur mit Geld-Modus - und immer neben „Messwerte"', () => {
+    // Die Navigation folgt dem Lese-Modell: `telemetrie-historie` ist Basis,
+    // `erloes-historie` modusgebunden. Eine Privat-Anlage bekommt also gar
+    // keinen Erlöse-Eintrag statt einer Fläche, die leer wäre.
+    for (const surface of [MARKT, PEAK, ALLE]) {
+      expect(surface.deepViews).toContain('erloes-historie');
+      const keys = anlageSidebar(surface).groups[0].items.map((i) => i.key);
+      expect(keys).toContain('erloese');
+      // Die zwei Welten sind Geschwister - „Erlöse" steht direkt hinter
+      // „Messwerte", nie in einer Modus-Gruppe.
+      expect(keys.indexOf('erloese')).toBe(keys.indexOf('messwerte') + 1);
+    }
+    for (const surface of [PRIVAT, null, undefined]) {
+      expect(anlageSidebar(surface).groups[0].items.map((i) => i.key)).not.toContain('erloese');
+    }
+    // Und sie taucht nie unter einem Modus auf (die Geschwister-Regel).
+    expect(
+      anlageSidebar(ALLE)
+        .groups.slice(1)
+        .flatMap((g) => g.items.map((i) => i.key)),
+    ).not.toContain('erloese');
   });
 
   it('badges Steuerung with the active-mode count from the M0 read-model', () => {
@@ -232,7 +259,8 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
       entities: [PV_ONLY],
       config: { plantKind: 'direktvermarktung', tarifArt: 'fest' },
     });
-    expect(anlageSidebar(park).groups[0].items.map((i) => i.key)).toEqual(FIXED);
+    // Ein DV-Park hat einen Geld-Modus, also auch die Erlöse-Welt.
+    expect(anlageSidebar(park).groups[0].items.map((i) => i.key)).toEqual(FIXED_MIT_ERLOESE);
     expect(anlageSidebar(park).groups[1].items.map((i) => i.key)).toEqual([
       'fahrplan',
       'marktpreise',
@@ -268,15 +296,16 @@ describe('anlageSidebar - mode groups are a projection, never a hardcoded list',
 });
 
 describe('bottomBarSlots - exactly five, Mehr last', () => {
-  it('is Cockpit · Historie · Steuerung · Anlage · Mehr (owner Q3)', () => {
-    // Historie takes the slot the Live-Daten merge freed — every „Verlauf →"
-    // jump lands there, so it is one thumb away.
+  it('is Cockpit · Messwerte · Steuerung · Anlage · Mehr (owner Q3)', () => {
+    // Die Basis-Welt „Messwerte" nimmt den Platz, den der Live-Daten-Merge frei
+    // gemacht hat — jeder „Verlauf →"-Sprung landet dort, also einen Daumen
+    // entfernt. „Erlöse" ist modusgebunden und reist im Mehr-Blatt.
     for (const surface of [MARKT, PRIVAT, null]) {
       const slots = bottomBarSlots(anlageSidebar(surface));
       expect(slots).toHaveLength(5);
       expect(slots.map((s) => s.label)).toEqual([
         'Cockpit',
-        'Historie',
+        'Messwerte',
         'Steuerung',
         'Anlage',
         'Mehr',
@@ -299,7 +328,12 @@ describe('moreSheetItems - everything the bottom bar does not carry', () => {
     const groups = moreSheetItems(anlageSidebar(ALLE));
     expect(groups[0].label).toBe(BASE_GROUP_LABEL);
     expect(groups[0].tone).toBeNull();
-    expect(groups[0].items.map((i) => i.key)).toEqual(['fahrplan', 'marktpreise', 'prognose']);
+    expect(groups[0].items.map((i) => i.key)).toEqual([
+      'erloese',
+      'fahrplan',
+      'marktpreise',
+      'prognose',
+    ]);
     expect(groups[1].label).toBe('Modus · Lastspitzenkappung');
     expect(groups[1].tone).toBe('peak');
     const last = groups[groups.length - 1];
@@ -337,9 +371,10 @@ describe('no orphaned view: every AnlagenSub is mounted exactly once', () => {
       [...allSubs(sidebar.groups), ...subsOf(sidebar.foot), ...allSubs(moreSheetItems(sidebar))]
         .filter((s): s is AnlagenSub => s != null),
     );
-    // Only the two mode-scoped views are legitimately absent without a mode.
+    // Nur die modusgebundenen Ansichten fehlen legitim ohne Modus - die
+    // Erlöse-Welt gehört seit der Zwei-Welten-Struktur dazu.
     expect([...reachable].sort()).toEqual(
-      ALL_SUBS.filter((s) => s !== 'fahrplan' && s !== 'lastspitzen').sort(),
+      ALL_SUBS.filter((s) => !['fahrplan', 'lastspitzen', 'erloese'].includes(s)).sort(),
     );
   });
 });
@@ -348,7 +383,7 @@ describe('activeAreaKey / activeKeyForPage - ONE highlight rule', () => {
   it('maps the cockpit and every sub onto its own entry', () => {
     expect(activeAreaKey(null)).toBe('cockpit');
     expect(activeAreaKey('modell')).toBe('anlagen-modell');
-    for (const sub of ['historie', 'steuerung', 'fahrplan', 'lastspitzen', 'wetter', 'technik'] as const) {
+    for (const sub of ['messwerte', 'erloese', 'steuerung', 'fahrplan', 'lastspitzen', 'wetter', 'technik'] as const) {
       expect(activeAreaKey(sub)).toBe(sub);
     }
   });

@@ -32,7 +32,8 @@ export type PageId =
 /** Subpages of one Anlage (the deep views behind the Anlagen-Seite). */
 export type AnlagenSub =
   | 'fahrplan'
-  | 'historie'
+  | 'messwerte'
+  | 'erloese'
   | 'wetter'
   | 'technik'
   | 'modell'
@@ -40,7 +41,7 @@ export type AnlagenSub =
   | 'lastspitzen';
 
 const SUBS = new Set<string>([
-  'fahrplan', 'historie', 'wetter', 'technik', 'modell',
+  'fahrplan', 'messwerte', 'erloese', 'wetter', 'technik', 'modell',
   'steuerung', 'lastspitzen',
 ]);
 
@@ -55,12 +56,18 @@ const SUBS = new Set<string>([
  * - `live` -> the cockpit itself (`null`) — the Cockpit + Live-Daten merge
  *   (Option A): the Komponenten-Board and the compact Verlauf chart live ON
  *   the Anlagen-Startseite now, so `#/anlage/{id}/live` lands there.
+ * - `historie` -> `messwerte` (Historie = zwei Welten, Captain-Struktur H1):
+ *   die eine Historie-Seite wurde zu `messwerte` + `erloese`. Die Basis-Welt
+ *   erbt die Route, und `canonicalAnlageHash` schreibt die Adresse UNTER
+ *   BEIBEHALTUNG der Parameter (`?m=`, `z=`, `at=`) um — jeder Deep-Link und
+ *   jedes Lesezeichen bleibt gültig.
  */
 const LEGACY_SUBS: Record<string, AnlagenSub | null> = {
   optimierung: 'steuerung',
   entitaeten: 'modell',
   profile: 'steuerung',
   live: null,
+  historie: 'messwerte',
 };
 
 /**
@@ -152,7 +159,8 @@ const LEGACY_ROUTES: Record<string, AnlagenSub | null> = {
   // Cockpit + Live-Daten merge: `#/live` resolves to the Anlage itself.
   live: null,
   fahrplan: 'fahrplan',
-  historie: 'historie',
+  // Die Historie ist seit der Zwei-Welten-Struktur die Messwerte-Welt.
+  historie: 'messwerte',
   wetter: 'wetter',
   // The former Standorte/Geräte content now lives behind the Technik subpage
   // (money-centric v2: Technik moved behind the gear icon).
@@ -200,6 +208,30 @@ export function parseRoute(hash: string): Route {
 
 export function routeFromHash(): Route {
   return parseRoute(window.location.hash);
+}
+
+/**
+ * Die kanonische Adresse einer Anlagen-Route, wenn der Hash eine STILLGELEGTE
+ * Unterseite benutzt (`historie` → `messwerte`, `entitaeten` → `modell`, …) —
+ * sonst null (nichts umzuschreiben).
+ *
+ * **Die Parameter reisen mit.** Genau daran hängt, dass ein
+ * `#/anlage/{id}/historie?m=…&z=woche&at=…`-Lesezeichen nach der Weiterleitung
+ * noch denselben Messwert im selben Zeitraum öffnet; ohne das wäre die
+ * Weiterleitung ein stiller Datenverlust. Der Aufrufer schreibt sie per
+ * `history.replaceState` (kein Verlaufseintrag, kein `hashchange` - die
+ * geparste Route ist ohnehin identisch).
+ */
+export function canonicalAnlageHash(hash: string): string | null {
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  const segments = pathPart.split('/').filter((s) => s.length > 0);
+  if (segments[0] !== 'anlage' || !segments[1]) return null;
+  const raw = segments[2];
+  if (!raw || !(raw in LEGACY_SUBS)) return null;
+  const sub = LEGACY_SUBS[raw];
+  const path = sub ? `#/anlage/${segments[1]}/${sub}` : `#/anlage/${segments[1]}`;
+  return `${path}${query}`;
 }
 
 /** The canonical hash of a route (what goes into window.location.hash). */

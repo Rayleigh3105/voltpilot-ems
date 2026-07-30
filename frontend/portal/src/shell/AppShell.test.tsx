@@ -125,7 +125,7 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     expect(container.querySelector('.vp-anlagenav .vp-nav-group-label')?.textContent).toBe(
       'Anlage',
     );
-    for (const label of ['Cockpit', 'Historie', 'Steuerung', 'Anlagen-Modell']) {
+    for (const label of ['Cockpit', 'Messwerte', 'Steuerung', 'Anlagen-Modell']) {
       expect(screen.getAllByRole('button', { name: new RegExp(label) }).length).toBeGreaterThanOrEqual(1);
     }
     expect(screen.queryByRole('button', { name: /Live-Daten/ })).toBeNull();

@@ -24,6 +24,7 @@ import {
 import { AppShell } from './shell/AppShell';
 import {
   anlageRoute,
+  canonicalAnlageHash,
   hashForRoute,
   pageRoute,
   PLATFORM_PAGES,
@@ -444,6 +445,17 @@ function UnifiedPortal() {
     return () => window.removeEventListener('hashchange', onHash);
   }, [isAdmin]);
 
+  // Eine stillgelegte Unterseite (`…/historie` → `…/messwerte`, `…/entitaeten`
+  // → `…/modell`, …) wird in der ADRESSE auf die kanonische Route umgeschrieben
+  // - MIT ihren Parametern, damit ein Lesezeichen wie
+  // `…/historie?m=…&z=woche` denselben Messwert im selben Zeitraum öffnet.
+  // `replaceState` erzeugt keinen Verlaufseintrag und kein `hashchange`; die
+  // geparste Route ist ohnehin dieselbe.
+  useEffect(() => {
+    const canonical = canonicalAnlageHash(window.location.hash);
+    if (canonical) window.history.replaceState(null, '', canonical);
+  }, [route]);
+
   const reloadTenants = useCallback(
     (selectId?: string) => {
       if (!isAdmin) return;
@@ -821,6 +833,7 @@ function UnifiedPortal() {
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
               isAdmin={isAdmin}
               onHealthFacts={onHealthFacts}
+              surface={surface}
             />
           )}
           {page === 'marktpreise' && (

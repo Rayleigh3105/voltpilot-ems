@@ -246,7 +246,7 @@ describe('AnlagenModellSection — Variante A', () => {
     expect(screen.queryByRole('region', { name: 'Ihre Anlage' })).toBeNull();
     expect(screen.queryByText('Cockpit & Energiefluss')).toBeNull();
     // …ihr Rest lebt in der Fußzeile.
-    expect(screen.getByText('→ Historie')).toHaveAttribute('href', '#/anlage/s-1/historie');
+    expect(screen.getByText('→ Messwerte')).toHaveAttribute('href', '#/anlage/s-1/messwerte');
     expect(screen.getByText('→ Steuerung')).toHaveAttribute('href', '#/anlage/s-1/steuerung');
     expect(screen.getByText(/Schutzgrenzen/)).toBeInTheDocument();
     // …und „Guard-Kette" ist raus.
