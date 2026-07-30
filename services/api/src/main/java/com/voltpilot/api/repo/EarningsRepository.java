@@ -258,6 +258,17 @@ public class EarningsRepository {
     /** Saved EUR of one covered slot ({@code baseline - actual}, expanded). */
     private final String savedEur;
 
+    /**
+     * Grid supply cost of one covered slot: the METERED import valued at the
+     * site's real import price. This is literally the import term of
+     * {@link #actualEur} - exposed as its own sum so the Erlöse world can show
+     * the composition {@code Einspeise-Erlös + Wert des Eigenverbrauchs −
+     * Stromkosten} and have it reconcile with {@code actualEur} by
+     * construction ({@code stromkosten − einspeise == actual}). NOT a second
+     * money truth: same {@link SlotEconomics#importPriceCtSql} expression.
+     */
+    private final String stromkostenEur;
+
     /** The tarifPricedSql boolean for this flag setting (see {@link #tarifPriced}). */
     private final String tarifPricedExpr;
 
@@ -265,6 +276,7 @@ public class EarningsRepository {
         this.jdbc = jdbc;
         this.importPriceEurKwh = "(" + SlotEconomics.importPriceCtSql(
                 "p.price_eur_mwh", optimizer.defaultSupplyComponents()) + " / 100.0)";
+        this.stromkostenEur = "(r.grid_import_kwh * " + importPriceEurKwh + ")";
         this.baselineEur = "(GREATEST(r.load_kwh - r.pv_kwh, 0) * " + importPriceEurKwh
                 + " - GREATEST(r.pv_kwh - r.load_kwh, 0) * p.price_eur_mwh / 1000"
                 + " - " + BASELINE_PREMIUM_EUR + ")";
@@ -294,6 +306,15 @@ public class EarningsRepository {
      * when any contributing month's value is still the provisional
      * approximation. All three are null when the window has no exported energy
      * (or no market-value rows) - never a fake zero.
+     *
+     * <p>{@code stromkostenEur}/{@code bezogenKwh}/{@code marktpraemieEur} are
+     * the three terms the Erlöse world needs to SHOW its composition instead of
+     * only its result: the metered import valued at the site's real import
+     * price (the import term of {@code actualEur}), the metered import energy
+     * behind it (so an Ø Bezugspreis is a division of two shown sums, not a
+     * new price model), and the Marktprämie already contained in
+     * {@code einspeiseErloesEur} (the {@code ACTUAL_PREMIUM_EUR} term). No new
+     * money math - the same expressions, summed separately.
      */
     public record SiteAggregate(
             long bucketCount,
@@ -309,7 +330,10 @@ public class EarningsRepository {
             BigDecimal eigenverbrauchsWertEur,
             BigDecimal selbstverbrauchKwh,
             BigDecimal eingespeistKwh,
-            BigDecimal batterieBewegtKwh) {
+            BigDecimal batterieBewegtKwh,
+            BigDecimal stromkostenEur,
+            BigDecimal bezogenKwh,
+            BigDecimal marktpraemieEur) {
     }
 
     /**
@@ -322,11 +346,17 @@ public class EarningsRepository {
      * is NULL for an {@code ohne} tariff (never a fabricated euro). The
      * Gesamtertrag ({@code einspeise + eigenverbrauchsWert}, null-safe) is
      * assembled in the controller.
+     *
+     * <p>{@code stromkostenEur} is the bucket's grid supply cost (the same
+     * import term as in {@link SiteAggregate}), so the Erlöse world's money
+     * chart can stack the three parts of ONE bucket and its cumulative line
+     * lands exactly on the period's Netto-Ergebnis.
      */
     public record BucketPoint(
             Instant start,
             BigDecimal einspeiseErloesEur,
-            BigDecimal eigenverbrauchsWertEur) {
+            BigDecimal eigenverbrauchsWertEur,
+            BigDecimal stromkostenEur) {
     }
 
     /** One Europe/Berlin day of realized savings of one site. */
@@ -368,10 +398,42 @@ public class EarningsRepository {
     }
 
     /**
+     * Narrows a query to ONE site (the Anlagen-scharfe Erlöse-Welt, P3 of the
+     * Historie concept) - or to nothing extra when {@code site} is null (the
+     * tenant-wide fleet/portfolio path). RLS still fences the tenant either
+     * way; this only avoids computing four other Anlagen for a page that shows
+     * one. Returns the SQL fragment; {@link #args} appends the matching bind.
+     */
+    private static String siteFilter(UUID site) {
+        return site == null ? "" : " AND r.site_id = ?";
+    }
+
+    /** The bind list of a window query: window twice (CTE + WHERE) + the optional site. */
+    private static Object[] args(Instant from, Instant to, UUID site) {
+        Timestamp f = Timestamp.from(from);
+        Timestamp t = Timestamp.from(to);
+        return site == null
+                ? new Object[] {f, t, f, t}
+                : new Object[] {f, t, f, t, site};
+    }
+
+    /**
      * The per-site earnings aggregate over {@code [from, to)}. Sites without
      * any rollup bucket in the window are absent from the map.
      */
     public Map<UUID, SiteAggregate> aggregate(Instant from, Instant to) {
+        return aggregate(from, to, null);
+    }
+
+    /**
+     * The aggregate of ONE site (P3) - {@code null} when the site has no rollup
+     * bucket in the window. Same SQL, same price truth, one site.
+     */
+    public SiteAggregate aggregateForSite(UUID site, Instant from, Instant to) {
+        return aggregate(from, to, site).get(site);
+    }
+
+    private Map<UUID, SiteAggregate> aggregate(Instant from, Instant to, UUID site) {
         Map<UUID, SiteAggregate> result = new HashMap<>();
         // The benchmark averages weight by EXPORTED energy: realized ct/kWh
         // over priced covered slots (EUR/MWh / 10 = ct/kWh), the market value
@@ -410,13 +472,24 @@ public class EarningsRepository {
                         + " sum(r.grid_export_kwh)"
                         + "   FILTER (WHERE " + COVERED + ") AS eingespeist_kwh,"
                         + " sum(" + BATTERIE_BEWEGT_KWH + ")"
-                        + "   FILTER (WHERE " + COVERED + ") AS batterie_bewegt_kwh "
+                        + "   FILTER (WHERE " + COVERED + ") AS batterie_bewegt_kwh,"
+                        + " sum(" + stromkostenEur + ")"
+                        + "   FILTER (WHERE " + COVERED + ") AS stromkosten_eur,"
+                        + " sum(r.grid_import_kwh)"
+                        + "   FILTER (WHERE " + COVERED + ") AS bezogen_kwh,"
+                        // Only ELIGIBLE slots enter the premium sum, so a site
+                        // without an anzulegender Wert gets NULL ("—" with its
+                        // reason) instead of a fabricated 0,00 €; a site that is
+                        // eligible but earned nothing keeps its measured 0.
+                        + " sum(" + ACTUAL_PREMIUM_EUR + ")"
+                        + "   FILTER (WHERE " + COVERED + " AND " + PREMIUM_ELIGIBLE + ")"
+                        + "   AS marktpraemie_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + SUPPLY_PRICE_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
-                        + "WHERE r.bucket >= ? AND r.bucket < ? "
+                        + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site) + " "
                         + "GROUP BY r.site_id",
                 rs -> {
                     Timestamp firstCovered = rs.getTimestamp("first_covered");
@@ -437,10 +510,12 @@ public class EarningsRepository {
                             rs.getBigDecimal("eigenverbrauchs_wert_eur"),
                             rs.getBigDecimal("selbstverbrauch_kwh"),
                             rs.getBigDecimal("eingespeist_kwh"),
-                            rs.getBigDecimal("batterie_bewegt_kwh")));
+                            rs.getBigDecimal("batterie_bewegt_kwh"),
+                            rs.getBigDecimal("stromkosten_eur"),
+                            rs.getBigDecimal("bezogen_kwh"),
+                            rs.getBigDecimal("marktpraemie_eur")));
                 },
-                Timestamp.from(from), Timestamp.from(to),
-                Timestamp.from(from), Timestamp.from(to));
+                args(from, to, site));
         return result;
     }
 
@@ -463,6 +538,20 @@ public class EarningsRepository {
                     result.put(rs.getObject("id", UUID.class), rs.getBoolean("tarif_priced"));
                 });
         return result;
+    }
+
+    /**
+     * The same honesty switch for ONE site (P3). False for a site the caller
+     * cannot see (RLS) - the label then stays at the conservative
+     * "zu Börsenpreisen", never an over-claimed tariff.
+     */
+    public boolean tarifPricedForSite(UUID site) {
+        Boolean priced = jdbc.query(
+                "SELECT " + tarifPricedExpr + " AS tarif_priced "
+                        + "FROM site s " + SUPPLY_PRICE_JOIN + "WHERE s.id = ?",
+                rs -> rs.next() ? rs.getBoolean("tarif_priced") : Boolean.FALSE,
+                site);
+        return Boolean.TRUE.equals(priced);
     }
 
     /**
@@ -526,6 +615,15 @@ public class EarningsRepository {
      * absent from the map (see {@link ArbitrageSplit}).
      */
     public Map<UUID, ArbitrageSplit> arbitrageSplit(Instant from, Instant to) {
+        return arbitrageSplit(from, to, null);
+    }
+
+    /** The split of ONE site (P3) - null when that site grid-charged nothing. */
+    public ArbitrageSplit arbitrageSplitForSite(UUID site, Instant from, Instant to) {
+        return arbitrageSplit(from, to, site).get(site);
+    }
+
+    private Map<UUID, ArbitrageSplit> arbitrageSplit(Instant from, Instant to, UUID site) {
         Map<UUID, ArbitrageSplit> result = new HashMap<>();
         // One mutable walk state; rows arrive ordered by (site_id, bucket), so
         // a site change closes the previous site's split.
@@ -562,7 +660,8 @@ public class EarningsRepository {
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id AND s.netzladen_erlaubt "
                         + PRICE_JOIN
-                        + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
+                        + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
+                        + " AND " + COVERED + " "
                         + "ORDER BY r.site_id, r.bucket",
                 rs -> {
                     UUID siteId = rs.getObject("site_id", UUID.class);
@@ -590,8 +689,7 @@ public class EarningsRepository {
                         state.arbitrageEur += fromGrid * price / 1000.0;
                     }
                 },
-                Timestamp.from(from), Timestamp.from(to),
-                Timestamp.from(from), Timestamp.from(to));
+                args(from, to, site));
         state.finish();
         return result;
     }
@@ -728,6 +826,16 @@ public class EarningsRepository {
      * dependency). The bucket unit is a fixed enum literal, never client input.
      */
     public Map<UUID, List<BucketPoint>> bucketed(Instant from, Instant to, Bucket bucket) {
+        return bucketed(from, to, bucket, null);
+    }
+
+    /** The bucketed series of ONE site (P3) - empty when nothing is computable. */
+    public List<BucketPoint> bucketedForSite(UUID site, Instant from, Instant to, Bucket bucket) {
+        return bucketed(from, to, bucket, site).getOrDefault(site, List.of());
+    }
+
+    private Map<UUID, List<BucketPoint>> bucketed(Instant from, Instant to, Bucket bucket,
+            UUID site) {
         Map<UUID, List<BucketPoint>> result = new HashMap<>();
         String start = "(date_trunc('" + bucket.unit
                 + "', r.bucket AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')";
@@ -735,12 +843,18 @@ public class EarningsRepository {
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id, " + start + " AS bucket_start,"
                         + " sum(" + EINSPEISE_ERLOES_EUR + ") AS einspeise_erloes_eur,"
-                        + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ") AS eigenverbrauchs_wert_eur "
+                        + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ") AS eigenverbrauchs_wert_eur,"
+                        + " sum(" + stromkostenEur + ") AS stromkosten_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
+                        // The import price reads the supply-price sheet, so the
+                        // Stromkosten sum needs the same LEFT JOIN the aggregate
+                        // uses (one row per site - it cannot fan a bucket out).
+                        + SUPPLY_PRICE_JOIN
                         + PRICE_JOIN
                         + MARKET_VALUE_JOIN
-                        + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
+                        + "WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
+                        + " AND " + COVERED + " "
                         + "GROUP BY r.site_id, bucket_start ORDER BY r.site_id, bucket_start",
                 rs -> {
                     result.computeIfAbsent(rs.getObject("site_id", UUID.class),
@@ -748,10 +862,10 @@ public class EarningsRepository {
                             .add(new BucketPoint(
                                     rs.getTimestamp("bucket_start").toInstant(),
                                     rs.getBigDecimal("einspeise_erloes_eur"),
-                                    rs.getBigDecimal("eigenverbrauchs_wert_eur")));
+                                    rs.getBigDecimal("eigenverbrauchs_wert_eur"),
+                                    rs.getBigDecimal("stromkosten_eur")));
                 },
-                Timestamp.from(from), Timestamp.from(to),
-                Timestamp.from(from), Timestamp.from(to));
+                args(from, to, site));
         return result;
     }
 }

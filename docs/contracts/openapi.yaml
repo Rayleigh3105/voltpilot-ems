@@ -1250,6 +1250,45 @@ paths:
         "400": { description: Unknown range value. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant. }
+  /api/v1/sites/{siteId}/earnings:
+    get:
+      tags: [history]
+      summary: One site's realized money for one period (the "Erlöse" world).
+      description: >
+        The Anlagen-scharfe twin of GET /api/v1/earnings (Historie concept
+        vp-historie-konzept-t4 §4.2 Welt B / F1, performance measure P3): the
+        SAME slot math, the SAME price truth, one site and one period instead
+        of the whole tenant with strip and forward market value. Beyond the
+        fleet fields it exposes the COMPOSITION the money card shows -
+        stromkostenEur (the metered import at the site's real supply price -
+        literally the import term of actualEur), the resulting nettoErgebnisEur
+        = einspeiseErloesEur + eigenverbrauchsWertEur - stromkostenEur, the
+        Marktprämie already contained in the feed-in revenue, the Ø Bezugspreis
+        and a per-bucket series carrying the three parts (so the chart can
+        stack them and its cumulative line lands on nettoErgebnisEur).
+        savedEur stays an ATTRIBUTION inside the result, never a sibling
+        summand. Ranges are the Historie vocabulary (week included);
+        range=all reports the site's first covered Berlin day as `from`.
+        RLS-scoped - a foreign site is 404; admins use the X-Tenant-Id
+        switcher.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: range
+          in: query
+          schema: { type: string, enum: [day, week, month, year, all], default: month }
+        - name: at
+          in: query
+          description: Any date inside the wanted period (default today, Europe/Berlin).
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: The site's realized money for the period.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteEarnings" }
+        "400": { description: Unknown range value. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant. }
   /api/v1/sites/{siteId}/forecast-quality:
     get:
       tags: [forecast-quality]
@@ -3781,6 +3820,113 @@ components:
             site's peak-shaving module is active (non-null
             site.leistungspreis_eur_kw); null otherwise. Range-independent:
             always describes the RUNNING Europe/Berlin billing period.
+    SiteEarnings:
+      type: object
+      description: >
+        One Anlage's MEASURED money over one period (see GET
+        /api/v1/sites/{siteId}/earnings). Every money/energy field is null when
+        it is not computable - never a fabricated 0 - and `reason` says why.
+        Two identities hold by construction: nettoErgebnisEur =
+        einspeiseErloesEur + eigenverbrauchsWertEur - stromkostenEur, and
+        stromkostenEur - einspeiseErloesEur = actualEur.
+      properties:
+        siteId: { type: string, format: uuid }
+        name: { type: string }
+        range: { type: string, enum: [day, week, month, year, all] }
+        from:
+          type: string
+          format: date-time
+          description: Window start; for range=all the site's first covered Berlin day.
+        to: { type: string, format: date-time }
+        plantKind: { type: string, enum: [direktvermarktung, eigenverbrauch] }
+        tarifArt: { type: string, enum: [dynamisch, fest, ohne] }
+        tarifParamCtKwh: { type: number, nullable: true }
+        tarifPriced:
+          type: boolean
+          description: >
+            Whether the import side is valued beyond bare spot (tariff
+            parameter, maintained Preisblatt, or the platform default
+            components) - the "bewertet zu Ihrem Stromtarif" vs "zu
+            Börsenpreisen" switch of the surface copy.
+        anzulegenderWertCtKwh: { type: number, nullable: true }
+        coveredSlots: { type: integer, format: int64 }
+        firstCoveredDate: { type: string, format: date, nullable: true }
+        reason:
+          type: string
+          nullable: true
+          enum: [no_data, missing_channels, no_prices]
+          description: Why nothing is computable; null when coveredSlots > 0.
+        einspeiseErloesEur:
+          type: number
+          nullable: true
+          description: Metered feed-in valued at spot PLUS the Marktprämie.
+        eigenverbrauchsWertEur:
+          type: number
+          nullable: true
+          description: >
+            Self-consumed energy valued per the site's tariff, slot by slot;
+            null for an "ohne" tariff without a maintained Preisblatt (the
+            quantity then lives in selbstverbrauchKwh alone).
+        stromkostenEur:
+          type: number
+          nullable: true
+          description: >
+            The metered grid import valued at the site's real supply price -
+            the import term of actualEur, exposed so the card's composition
+            reconciles with the result it shows.
+        nettoErgebnisEur:
+          type: number
+          nullable: true
+          description: einspeiseErloesEur + eigenverbrauchsWertEur - stromkostenEur.
+        savedEur:
+          type: number
+          nullable: true
+          description: >
+            baselineEur - actualEur, i.e. what VoltPilot's steering contributed
+            against an unregulated plant. It sits INSIDE nettoErgebnisEur and
+            is rendered as an attribution line, never as another summand.
+        arbitrageEur: { type: number, nullable: true }
+        pvShiftEur: { type: number, nullable: true }
+        baselineEur: { type: number, nullable: true }
+        actualEur: { type: number, nullable: true }
+        marktpraemieEur:
+          type: number
+          nullable: true
+          description: >
+            The Marktprämie already CONTAINED in einspeiseErloesEur (shown as
+            provenance, never added again); null without an anzulegender Wert
+            or without a published Monatsmarktwert.
+        bezugspreisCtKwh:
+          type: number
+          nullable: true
+          description: stromkostenEur / bezogenKwh in ct/kWh; null without imported energy.
+        realizedExportCtKwh: { type: number, nullable: true }
+        marketValueSolarCtKwh: { type: number, nullable: true }
+        marketValueProvisional: { type: boolean, nullable: true }
+        bezogenKwh: { type: number, nullable: true }
+        eingespeistKwh: { type: number, nullable: true }
+        selbstverbrauchKwh: { type: number, nullable: true }
+        batterieBewegtKwh: { type: number, nullable: true }
+        series:
+          type: array
+          description: >
+            Money per Europe/Berlin bucket (hour for a day, day for week and
+            month, month for year/all) - only computable buckets are listed.
+          items:
+            type: object
+            properties:
+              start: { type: string, format: date-time }
+              einspeiseErloesEur: { type: number, nullable: true }
+              eigenverbrauchsWertEur: { type: number, nullable: true }
+              stromkostenEur: { type: number, nullable: true }
+              nettoEur: { type: number, nullable: true }
+        peakShaving:
+          allOf: [{ $ref: "#/components/schemas/PeakShaving" }]
+          nullable: true
+          description: >
+            The running billing period's peak-shaving proof; null unless the
+            module is active. Range-INDEPENDENT, so the surface must label its
+            own period and never add it into the period result.
     PeakShaving:
       type: object
       description: >

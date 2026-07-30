@@ -276,7 +276,7 @@ public class EarningsController {
      * inverters); {@code no_prices} - measured slots exist but no day-ahead
      * price covers them yet.
      */
-    private static String reason(EarningsRepository.SiteAggregate agg) {
+    static String reason(EarningsRepository.SiteAggregate agg) {
         if (agg == null || agg.bucketCount() == 0) {
             return "no_data";
         }
@@ -293,7 +293,7 @@ public class EarningsController {
      * avoided-kW floor and the no-pro-rating euro semantics are documented on
      * {@link PeakShavingDto}.
      */
-    private static PeakShavingDto peakShaving(SiteDto site, LocalDate today,
+    static PeakShavingDto peakShaving(SiteDto site, LocalDate today,
             List<PeakShavingRepository.PeriodPeak> rows) {
         BigDecimal leistungspreis = site.leistungspreisEurKw();
         if (leistungspreis == null) {

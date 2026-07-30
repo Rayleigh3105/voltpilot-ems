@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import type { EarningsSite } from './api';
+import type { EarningsSite, SiteEarnings } from './api';
 import {
   DASH,
   ERLOES_HISTORIE,
   STREAM_SOURCES,
   billingPeriodLabel,
+  erloesErgebnis,
   erloesKomposition,
+  geldVerlauf,
+  preisTreiber,
+  verlaufSchritt,
 } from './erloesKomposition';
 import { NBSP } from './format';
 import { activeModes, moneyStreams, type MoneyStream } from './surface';
@@ -461,5 +465,253 @@ describe('erloesKomposition — Leerfall & Drill-in', () => {
       now: NOW,
     });
     expect(view.title).toBe('Ertrag · Heute — alle Ströme');
+  });
+});
+
+// ===========================================================================
+// Welt B · die Erlöse-HISTORIE einer Anlage (F1)
+// ===========================================================================
+
+/** Die Antwort des anlagen-scharfen Endpunkts, mit gutmütigen Vorgaben. */
+function siteMoney(over: Partial<SiteEarnings> = {}): SiteEarnings {
+  return {
+    siteId: 's1',
+    name: 'Solarpark Dachau',
+    range: 'month',
+    from: '2026-07-01T00:00:00Z',
+    to: '2026-08-01T00:00:00Z',
+    plantKind: 'direktvermarktung',
+    tarifArt: 'ohne',
+    tarifParamCtKwh: null,
+    tarifPriced: false,
+    anzulegenderWertCtKwh: null,
+    coveredSlots: 2400,
+    firstCoveredDate: '2026-07-01',
+    reason: null,
+    einspeiseErloesEur: 1059.4,
+    eigenverbrauchsWertEur: null,
+    stromkostenEur: 60.14,
+    nettoErgebnisEur: 999.26,
+    savedEur: 161.44,
+    arbitrageEur: null,
+    pvShiftEur: null,
+    baselineEur: 100,
+    actualEur: -999.26,
+    marktpraemieEur: null,
+    bezugspreisCtKwh: 4.9,
+    realizedExportCtKwh: 8.88,
+    marketValueSolarCtKwh: 5.92,
+    marketValueProvisional: true,
+    bezogenKwh: 1227.3,
+    eingespeistKwh: 9573.8,
+    selbstverbrauchKwh: 97.3,
+    batterieBewegtKwh: 4147.2,
+    series: [],
+    peakShaving: null,
+    ...over,
+  };
+}
+
+describe('erloesErgebnis · Karte 1 der Erlöse-Welt', () => {
+  it('führt mit dem Netto-Ergebnis und macht seine Herkunft nachrechenbar', () => {
+    const view = erloesErgebnis({ money: siteMoney(), periodLabel: 'Juli 2026' });
+
+    expect(view.titel).toBe('Ergebnis · Juli 2026');
+    expect(view.nettoEur).toBe(999.26);
+    // Das Vorzeichen ist ein eigenes Zeichen, der Betrag steht ohne Minus.
+    expect(view.nettoText).toBe(`+ 999,26${NBSP}€`);
+    expect(view.richtung).toBe('ertrag');
+
+    const ids = view.rows.map((r) => r.id);
+    expect(ids).toEqual(['einspeisung', 'eigenverbrauchswert', 'stromkosten']);
+    // Die gezeigten Zeilen ERGEBEN die große Zahl (+ 1.059,40 − 60,14).
+    const rechnung = view.rows
+      .filter((r) => r.period === 'range' && r.eur != null)
+      .reduce((acc, r) => acc + (r.vorzeichen === 'minus' ? -(r.eur as number) : (r.eur as number)), 0);
+    expect(rechnung).toBeCloseTo(view.nettoEur as number, 6);
+  });
+
+  it('zeigt die Zurechnung der Steuerung als UNTERZEILE, nie als weiteren Summanden', () => {
+    const view = erloesErgebnis({ money: siteMoney(), periodLabel: 'Juli 2026' });
+    expect(view.steering).toContain('161,44');
+    expect(view.steering).toContain('durch VoltPilots Steuerung');
+    expect(view.steeringTitel).toContain('ohne Speicher');
+    // savedEur darf in keiner Komposition-Zeile auftauchen.
+    expect(view.rows.some((r) => r.eur === 161.44)).toBe(false);
+  });
+
+  it('schreibt „—" statt einer erfundenen Null und nennt den Grund', () => {
+    const view = erloesErgebnis({
+      money: siteMoney({ eigenverbrauchsWertEur: null, tarifArt: 'ohne', tarifPriced: false }),
+      periodLabel: 'Juli 2026',
+    });
+    const zeile = view.rows.find((r) => r.id === 'eigenverbrauchswert');
+    expect(zeile?.valueText).toBe(DASH);
+    expect(zeile?.eur).toBeNull();
+    expect(zeile?.note).toContain('Ohne hinterlegten Stromtarif');
+    expect(zeile?.note).toContain('97,3');
+    expect(view.footnote).not.toBeNull();
+  });
+
+  it('führt die vermiedenen Leistungskosten mit EIGENER Periode und addiert sie nie mit', () => {
+    const view = erloesErgebnis({
+      money: siteMoney({
+        peakShaving: {
+          leistungspreisEurKw: 120,
+          abrechnung: 'jahr',
+          periodStart: '2026-01-01',
+          peakKw: 80,
+          baselinePeakKw: 95,
+          avoidedKw: 15,
+          avoidedEur: 1800,
+          history: [],
+        },
+      }),
+      periodLabel: 'Juli 2026',
+    });
+    const peak = view.rows.find((r) => r.id === 'lastspitzen');
+    expect(peak?.period).toBe('billing-period');
+    expect(peak?.periodLabel).toBe('Abrechnungsjahr 2026');
+    // Die große Zahl bleibt das Zeitraum-Ergebnis - 1.800 € sind NICHT drin.
+    expect(view.nettoEur).toBe(999.26);
+    expect(view.periodNote).toContain('nicht zu einer Summe addiert');
+    // Und erst JETZT trägt jede Zeile ihr Perioden-Etikett sichtbar.
+    expect(view.mehrerePerioden).toBe(true);
+  });
+
+  it('wiederholt den Zeitraum nicht an jeder Zeile, wenn es nur einen gibt', () => {
+    const view = erloesErgebnis({ money: siteMoney(), periodLabel: 'Juli 2026' });
+    expect(view.mehrerePerioden).toBe(false);
+    expect(view.periodNote).toBeNull();
+    // Das Etikett bleibt als DATUM da - nur die Oberfläche zeigt es dann nicht.
+    expect(view.rows[0].periodLabel).toBe('Juli 2026');
+  });
+
+  it('nennt bei einem leeren Zeitraum den Grund, statt eine Null zu zeigen', () => {
+    const view = erloesErgebnis({
+      money: siteMoney({
+        coveredSlots: 0,
+        reason: 'no_prices',
+        einspeiseErloesEur: null,
+        eigenverbrauchsWertEur: null,
+        stromkostenEur: null,
+        nettoErgebnisEur: null,
+        savedEur: null,
+      }),
+      periodLabel: 'Juli 2026',
+    });
+    expect(view.nettoEur).toBeNull();
+    expect(view.nettoText).toBe(DASH);
+    expect(view.leerText).toContain('Börsenpreise');
+    expect(view.steering).toBeNull();
+  });
+
+  it('bleibt bei einem Verlust vorzeichen-ehrlich', () => {
+    const view = erloesErgebnis({
+      money: siteMoney({ einspeiseErloesEur: 10, stromkostenEur: 22.4, nettoErgebnisEur: -12.4 }),
+      periodLabel: 'Januar 2026',
+    });
+    expect(view.nettoText).toBe(`− 12,40${NBSP}€`);
+    expect(view.richtung).toBe('kosten');
+    expect(view.nettoSatz).toContain('mehr gekostet');
+  });
+});
+
+describe('preisTreiber · Karte 3 „Was den Preis gemacht hat"', () => {
+  it('stellt den erzielten Marktwert dem Monatsdurchschnitt gegenüber', () => {
+    const zeilen = preisTreiber({ money: siteMoney() });
+    const erzielt = zeilen.find((z) => z.id === 'marktwert');
+    expect(erzielt?.wert).toBe('8,9 ct/kWh');
+    expect(erzielt?.note).toBe('3,0 ct über dem Monatsdurchschnitt');
+    const markt = zeilen.find((z) => z.id === 'monatsmarktwert');
+    expect(markt?.wert).toBe('5,9 ct/kWh');
+    expect(markt?.note).toContain('vorläufig');
+  });
+
+  it('benennt den Ø Bezugspreis samt seiner Bewertungsgrundlage', () => {
+    const spot = preisTreiber({ money: siteMoney() }).find((z) => z.id === 'bezugspreis');
+    expect(spot?.wert).toBe('4,9 ct/kWh');
+    expect(spot?.note).toContain('Börsenpreis');
+
+    const tarif = preisTreiber({ money: siteMoney({ tarifPriced: true, tarifArt: 'dynamisch' }) })
+      .find((z) => z.id === 'bezugspreis');
+    expect(tarif?.note).toContain('Stromtarif');
+  });
+
+  it('sagt bei fehlender Zurechnung „—" MIT Grund - nie eine erfundene Null', () => {
+    const zeilen = preisTreiber({ money: siteMoney(), netzladenErlaubt: false });
+    const praemie = zeilen.find((z) => z.id === 'marktpraemie');
+    expect(praemie?.wert).toBe(DASH);
+    expect(praemie?.vorhanden).toBe(false);
+    expect(praemie?.note).toContain('anzulegender Wert');
+
+    const arbitrage = zeilen.find((z) => z.id === 'arbitrage');
+    expect(arbitrage?.wert).toBe(DASH);
+    expect(arbitrage?.note).toContain('Sonnenstrom');
+
+    const erlaubt = preisTreiber({ money: siteMoney(), netzladenErlaubt: true })
+      .find((z) => z.id === 'arbitrage');
+    expect(erlaubt?.note).toContain('nicht aus dem Netz geladen');
+  });
+
+  it('weist eine vorhandene Marktprämie als BEREITS ENTHALTEN aus', () => {
+    const praemie = preisTreiber({
+      money: siteMoney({ marktpraemieEur: 212.4, anzulegenderWertCtKwh: 8.11 }),
+    }).find((z) => z.id === 'marktpraemie');
+    expect(praemie?.wert).toBe(`+ 212,40${NBSP}€`);
+    expect(praemie?.note).toContain('bereits im Einspeise-Erlös');
+  });
+});
+
+describe('geldVerlauf · Karte 2 „Geld im Verlauf"', () => {
+  const buckets = [
+    {
+      start: '2026-07-01T00:00:00Z',
+      einspeiseErloesEur: 30,
+      eigenverbrauchsWertEur: 5,
+      stromkostenEur: 10,
+      nettoEur: 25,
+    },
+    {
+      start: '2026-07-02T00:00:00Z',
+      einspeiseErloesEur: 20,
+      eigenverbrauchsWertEur: null,
+      stromkostenEur: 4,
+      nettoEur: 16,
+    },
+  ];
+
+  it('stapelt Erlöse nach oben, Kosten nach unten - und summiert die Linie auf', () => {
+    const view = geldVerlauf(buckets, 'month');
+    expect(view.leer).toBe(false);
+    expect(view.reihen.map((r) => r.id)).toEqual([
+      'einspeisung',
+      'eigenverbrauchswert',
+      'stromkosten',
+    ]);
+    expect(view.reihen[0].data).toEqual([30, 20]);
+    // Ein fehlender Teil trägt 0 zum STAPEL bei (der Balken existiert), er wird
+    // nie erfunden - die Zeile in Karte 1 sagt „—".
+    expect(view.reihen[1].data).toEqual([5, 0]);
+    // Kosten zeigen nach unten.
+    expect(view.reihen[2].data).toEqual([-10, -4]);
+    expect(view.kumuliert).toEqual([25, 41]);
+    expect(view.kumuliertText).toBe(`kumuliert + 41,00${NBSP}€`);
+  });
+
+  it('bindet den Maßstab an den Zeitraum (P6) - das Jahr zeigt Monate', () => {
+    expect(verlaufSchritt('day')).toBe('Stunde');
+    expect(verlaufSchritt('week')).toBe('Tag');
+    expect(verlaufSchritt('month')).toBe('Tag');
+    expect(verlaufSchritt('year')).toBe('Monat');
+    expect(verlaufSchritt('all')).toBe('Monat');
+    expect(geldVerlauf(buckets, 'year').untertitel).toContain('Je Monat');
+  });
+
+  it('bleibt bei einem leeren Zeitraum ehrlich leer', () => {
+    const view = geldVerlauf([], 'month');
+    expect(view.leer).toBe(true);
+    expect(view.kumuliert).toEqual([]);
+    expect(view.kumuliertText).toBeNull();
   });
 });

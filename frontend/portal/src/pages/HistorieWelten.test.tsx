@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MesswerteSection } from './MesswerteSection';
 import { ErloeseSection } from './ErloeseSection';
 import { clearHistoryCache } from '../historyCache';
+import { clearEarningsCache } from '../useSiteEarnings';
 import { isoDate } from '../periodNav';
 import { anlageSurface, type AnlageSurface } from '../surface';
 import {
@@ -10,6 +11,7 @@ import {
   type EntityHistory,
   type History,
   type Site,
+  type SiteEarnings,
   type SiteEntities,
   type SiteTopology,
 } from '../api';
@@ -213,9 +215,87 @@ const historyWithData: History = {
   },
 };
 
+/**
+ * Die Geld-Antwort der Erlöse-Welt (F1): der anlagen-scharfe Endpunkt
+ * `GET /sites/{id}/earnings`. Die Zahlen sind so gewählt, dass die Komposition
+ * die große Zahl WIRKLICH ergibt (1.059,40 − 60,14 = 999,26).
+ */
+const moneyWithData: SiteEarnings = {
+  siteId: 's-1',
+  name: 'Testanlage',
+  range: 'day',
+  from: '2026-07-24T00:00:00Z',
+  to: '2026-07-25T00:00:00Z',
+  plantKind: 'direktvermarktung',
+  tarifArt: 'ohne',
+  tarifParamCtKwh: null,
+  tarifPriced: false,
+  anzulegenderWertCtKwh: null,
+  coveredSlots: 96,
+  firstCoveredDate: '2026-06-19',
+  reason: null,
+  einspeiseErloesEur: 1059.4,
+  eigenverbrauchsWertEur: null,
+  stromkostenEur: 60.14,
+  nettoErgebnisEur: 999.26,
+  savedEur: 161.44,
+  arbitrageEur: null,
+  pvShiftEur: null,
+  baselineEur: 100,
+  actualEur: -999.26,
+  marktpraemieEur: null,
+  bezugspreisCtKwh: 4.9,
+  realizedExportCtKwh: 8.88,
+  marketValueSolarCtKwh: 5.92,
+  marketValueProvisional: true,
+  bezogenKwh: 1227.3,
+  eingespeistKwh: 9573.8,
+  selbstverbrauchKwh: 97.3,
+  batterieBewegtKwh: 4147.2,
+  series: [
+    {
+      start: '2026-07-24T10:00:00Z',
+      einspeiseErloesEur: 30,
+      eigenverbrauchsWertEur: null,
+      stromkostenEur: 4,
+      nettoEur: 26,
+    },
+  ],
+  peakShaving: null,
+};
+
+/** Ein Zeitraum ohne eine einzige bewertete Viertelstunde. */
+const moneyEmpty: SiteEarnings = {
+  ...moneyWithData,
+  coveredSlots: 0,
+  reason: 'no_data',
+  einspeiseErloesEur: null,
+  eigenverbrauchsWertEur: null,
+  stromkostenEur: null,
+  nettoErgebnisEur: null,
+  savedEur: null,
+  baselineEur: null,
+  actualEur: null,
+  bezugspreisCtKwh: null,
+  realizedExportCtKwh: null,
+  marketValueSolarCtKwh: null,
+  marketValueProvisional: null,
+  bezogenKwh: null,
+  eingespeistKwh: null,
+  selbstverbrauchKwh: null,
+  batterieBewegtKwh: null,
+  series: [],
+};
+
+/** Die Geld-Welt braucht IHREN Endpunkt - die Historie trägt nur noch den Plan. */
+function stubMoney(m: SiteEarnings = moneyWithData) {
+  return vi.spyOn(api, 'siteEarnings').mockResolvedValue(m);
+}
+
 beforeEach(() => {
   window.location.hash = '';
   clearHistoryCache();
+  clearEarningsCache();
   vi.restoreAllMocks();
 });
 
@@ -329,16 +409,50 @@ describe('Der Explorer ist ein Abschnitt DIESER Welt (der dritte Umschalter entf
 });
 
 describe('Welt B · Erlöse', () => {
-  it('trennt die BEWERTETE Zahl von der GEPLANTEN — je Karte ein Abzeichen', async () => {
+  it('führt mit dem GEMESSENEN Ergebnis und macht es nachrechenbar (F1)', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
 
-    await screen.findByLabelText('Geld im Zeitraum');
-    expect(screen.getByText(/Stromkosten \(Netzbezug\)/)).toBeInTheDocument();
+    // Die eine große Zahl - Vorzeichen als eigenes Zeichen.
+    expect(await screen.findByText('+ 999,26 €')).toBeInTheDocument();
+    // ... und die Zeilen, aus denen sie entsteht.
+    const komposition = screen.getByLabelText('Woraus sich das Ergebnis zusammensetzt');
+    expect(komposition).toHaveTextContent('Einspeise-Erlös');
+    expect(komposition).toHaveTextContent('1.059,40 €');
+    expect(komposition).toHaveTextContent('Stromkosten (Netzbezug)');
+    expect(komposition).toHaveTextContent('60,14 €');
+    // Die Zurechnung der Steuerung ist eine UNTERZEILE, kein weiterer Summand.
+    expect(screen.getByText(/durch VoltPilots Steuerung/)).toHaveTextContent('161,44');
+    expect(komposition).not.toHaveTextContent('161,44');
+  });
+
+  it('zeigt Geld im Verlauf und die Preise dahinter - für JEDEN Zeitraum', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney({ ...moneyWithData, range: 'month' });
+    render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
+
+    expect(screen.getByRole('heading', { level: 2, name: /Geld im Verlauf/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Was den Preis gemacht hat' })).toBeInTheDocument();
+    expect(screen.getByText('Ø Bezugspreis')).toBeInTheDocument();
+    expect(screen.getByText('4,9 ct/kWh')).toBeInTheDocument();
+    expect(screen.getByText('8,9 ct/kWh')).toBeInTheDocument();
+    expect(screen.getByText('3,0 ct über dem Monatsdurchschnitt')).toBeInTheDocument();
+  });
+
+  it('trennt die BEWERTETE Zahl von der GEPLANTEN — je Karte ein Abzeichen', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney();
+    render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(screen.getByRole('heading', { level: 2, name: /Geplante Speicher-Ersparnis/ })).toBeInTheDocument();
     // Beide Abzeichen existieren - und zwar an verschiedenen Karten.
     expect(screen.getAllByText('Bewertet').length).toBeGreaterThan(0);
     expect(screen.getByText('Geplant')).toBeInTheDocument();
+    // Die geplante Zahl kommt weiterhin aus der Historie-Antwort.
+    expect(screen.getByText('0,42 €')).toBeInTheDocument();
     // Der Tages-Nachweis + das Tagesprotokoll bleiben hier.
     expect(screen.getByTestId('day-chart')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'Tagesprotokoll' })).toBeInTheDocument();
@@ -348,9 +462,13 @@ describe('Welt B · Erlöse', () => {
 
   it('sagt in der Fußkarte, dass sie bewertet und nicht abgerechnet ist', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
+    stubMoney(moneyEmpty);
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
     expect(screen.getByText(/Bewertet, nicht abgerechnet/)).toBeInTheDocument();
-    await screen.findByText('Keine Daten in diesem Zeitraum');
+    // Ein leerer Zeitraum nennt seinen Grund, statt eine Null zu zeigen.
+    await screen.findByText('Noch kein Ergebnis für diesen Zeitraum');
+    expect(screen.getByText(/noch keine Messwerte/)).toBeInTheDocument();
+    expect(screen.queryByText('0,00 €')).toBeNull();
   });
 });
 
@@ -374,6 +492,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
 
   it('holt beim Wechsel NICHT dieselbe Antwort erneut (P2)', async () => {
     const hist = vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    stubMoney();
     const mess = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
     );
@@ -385,7 +504,7 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     // identischer Abruf derselben Periode.
     mess.unmount();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Geld im Zeitraum');
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(hist.mock.calls.length).toBe(nachErstemAufbau);
 
     // Und zurück - ebenfalls ohne Abruf.
@@ -529,8 +648,9 @@ describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
   it('behauptet ohne Abdeckungsdaten GAR KEINE - auch in der Geld-Welt', async () => {
     const ohne: History = { ...historyWithData, coverage: null };
     vi.spyOn(api, 'history').mockResolvedValue(ohne);
+    stubMoney();
     render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
-    await screen.findByLabelText('Geld im Zeitraum');
+    await screen.findByLabelText('Woraus sich das Ergebnis zusammensetzt');
     expect(screen.queryByText(/Daten ab/)).toBeNull();
     expect(screen.queryByText(/gemessen$/)).toBeNull();
   });
@@ -619,8 +739,9 @@ describe('Die Erlöse-Welt folgt dem Lese-Modell, ist aber nie eine Sackgasse', 
 
   it('führt aus einer per Lesezeichen geöffneten Erlöse-Welt immer zurück', async () => {
     vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
+    stubMoney(moneyEmpty);
     render(<ErloeseSection site={site} surface={PRIVAT} onOpenWelt={() => {}} />);
     expect(screen.getByRole('link', { name: /Messwerte/ })).toBeInTheDocument();
-    await screen.findByText('Keine Daten in diesem Zeitraum');
+    await screen.findByText('Noch kein Ergebnis für diesen Zeitraum');
   });
 });

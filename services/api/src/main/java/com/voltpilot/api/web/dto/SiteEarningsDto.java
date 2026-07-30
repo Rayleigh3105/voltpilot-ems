@@ -1,0 +1,104 @@
+package com.voltpilot.api.web.dto;
+
+import com.voltpilot.api.web.dto.EarningsDto.PeakShavingDto;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * The MEASURED money of ONE Anlage over ONE period - the payload of the Erlöse
+ * world (`#/anlage/{id}/erloese`, Historie concept `vp-historie-konzept-t4`
+ * §4.2 Welt B / feature F1, performance measure P3).
+ *
+ * <p><b>Why an own endpoint next to the tenant-wide {@code /api/v1/earnings}.</b>
+ * The fleet endpoint answers "all my Anlagen, all their series, plus the
+ * 12-month strip and the forward market value" - measured at 3-7,5 s. A page
+ * that shows ONE Anlage needs one Anlage; the tenant-wide endpoint stays where
+ * it belongs (Cockpit, Übersicht, Portfolio).
+ *
+ * <p><b>Every number here comes from the SAME price truth</b> the optimizer
+ * plans with ({@code SlotEconomics.importPriceCtSql}) and the fleet endpoint
+ * reports - this DTO exposes the composition of numbers that already existed,
+ * it does not compute money a second way.
+ *
+ * <p><b>The two reconciliation identities</b> the surface relies on (both hold
+ * by construction, not by rounding luck):
+ * <pre>
+ *   nettoErgebnisEur = einspeiseErloesEur + eigenverbrauchsWertEur − stromkostenEur
+ *   stromkostenEur − einspeiseErloesEur = actualEur          (the metered cash flow)
+ * </pre>
+ *
+ * <p><b>Honesty:</b> every money/energy field is {@code null} when it is not
+ * computable, never a fabricated 0 - {@code reason} says why
+ * ({@code no_data} / {@code missing_channels} / {@code no_prices}, the same
+ * vocabulary as the fleet endpoint). {@code eigenverbrauchsWertEur} is null for
+ * an {@code ohne} tariff without a maintained Preisblatt (self-consumption is
+ * then a kWh quantity only); {@code marktpraemieEur} is null without an
+ * anzulegender Wert; {@code peakShaving} is null unless the module is active.
+ *
+ * @param range the echoed period vocabulary ({@code day|week|month|year|all})
+ * @param from window start - for {@code all} the first covered Berlin day
+ * @param tarifPriced whether the import side is valued beyond bare spot (the
+ *     "bewertet zu Ihrem Stromtarif" vs "zu Börsenpreisen" switch)
+ * @param nettoErgebnisEur the period's result: Ertrag minus Stromkosten
+ * @param savedEur the ATTRIBUTION of VoltPilot's steering - a delta against an
+ *     unregulated plant that already sits INSIDE the result, never a sibling
+ *     summand (the MIG §5 rule the money hero follows too)
+ * @param bezugspreisCtKwh {@code stromkostenEur / bezogenKwh} in ct/kWh - a
+ *     division of two shown sums, so the surface can be checked against itself
+ * @param marktpraemieEur the premium already CONTAINED in
+ *     {@code einspeiseErloesEur} (shown as provenance, never added again)
+ * @param series the money per Berlin bucket (hour for a day, day for week and
+ *     month, month for year/all) - the stacked bars + the cumulative line
+ */
+public record SiteEarningsDto(
+        UUID siteId,
+        String name,
+        String range,
+        Instant from,
+        Instant to,
+        String plantKind,
+        String tarifArt,
+        BigDecimal tarifParamCtKwh,
+        boolean tarifPriced,
+        BigDecimal anzulegenderWertCtKwh,
+        long coveredSlots,
+        LocalDate firstCoveredDate,
+        String reason,
+        BigDecimal einspeiseErloesEur,
+        BigDecimal eigenverbrauchsWertEur,
+        BigDecimal stromkostenEur,
+        BigDecimal nettoErgebnisEur,
+        BigDecimal savedEur,
+        BigDecimal arbitrageEur,
+        BigDecimal pvShiftEur,
+        BigDecimal baselineEur,
+        BigDecimal actualEur,
+        BigDecimal marktpraemieEur,
+        BigDecimal bezugspreisCtKwh,
+        BigDecimal realizedExportCtKwh,
+        BigDecimal marketValueSolarCtKwh,
+        Boolean marketValueProvisional,
+        BigDecimal bezogenKwh,
+        BigDecimal eingespeistKwh,
+        BigDecimal selbstverbrauchKwh,
+        BigDecimal batterieBewegtKwh,
+        List<SiteEarningsBucketDto> series,
+        PeakShavingDto peakShaving) {
+
+    /**
+     * One bucket of the money chart: the three parts that stack (feed-in
+     * revenue and self-consumption value up, grid supply cost down) plus their
+     * net, so the cumulative line is the running sum of {@code nettoEur} and
+     * lands exactly on {@link SiteEarningsDto#nettoErgebnisEur}.
+     */
+    public record SiteEarningsBucketDto(
+            Instant start,
+            BigDecimal einspeiseErloesEur,
+            BigDecimal eigenverbrauchsWertEur,
+            BigDecimal stromkostenEur,
+            BigDecimal nettoEur) {
+    }
+}
