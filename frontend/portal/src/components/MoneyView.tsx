@@ -40,16 +40,32 @@ function ctLabel(value: number): string {
   })} ct/kWh`;
 }
 
-/** The page-level period tabs (Heute/Monat/Jahr/Gesamt) - default Monat. */
+/**
+ * Der Zeitraum-Umschalter (Heute/Monat/Jahr/Gesamt) — **Voreinstellung „Heute"**
+ * (`anlage.ts` `DEFAULT_EARNINGS_RANGE`).
+ *
+ * Zwei Erscheinungsformen, EIN Bauteil:
+ *  - `tabs` (Default) — die vollbreite Pillenzeile des v1-Zonen-Dashboards.
+ *  - `seg`  — das KOMPAKTE Segment der Bilanz-Leiste (Konzept „Die Bühne" §6.3):
+ *    es steht direkt über den Zahlen, die es regiert, statt eine volle
+ *    Seitenzeile für vier Knöpfe zu belegen. Es benutzt den bestehenden
+ *    `.vp-seg`-Baustein — kein neues Farb-/Typo-System.
+ */
 export function PeriodTabs({
   range,
   onRange,
+  variant = 'tabs',
 }: {
   range: EarningsRange;
   onRange: (r: EarningsRange) => void;
+  variant?: 'tabs' | 'seg';
 }) {
   return (
-    <div className="vp-period-tabs" role="tablist" aria-label="Zeitraum">
+    <div
+      className={variant === 'seg' ? 'vp-seg vp-seg-compact' : 'vp-period-tabs'}
+      role="tablist"
+      aria-label="Zeitraum"
+    >
       {RANGES.map((r) => (
         <button
           key={r.id}

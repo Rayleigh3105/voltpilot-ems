@@ -409,12 +409,14 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-hero-rings')).toBeTruthy());
     const labels = [...container.querySelectorAll('.vp-hero-ring-label')].map((n) => n.textContent);
-    // Default-Tab „Monat": die Ringe tragen die Periode des gewählten Zeitraums.
+    // Default-Tab „Heute" (Captain 2026-07-30): die Ringe tragen die Periode
+    // des gewählten Zeitraums.
     const now = new Date();
-    const period = periodLabel('month', now, now);
+    const period = periodLabel('day', now, now);
+    expect(period).toBe('Heute');
     expect(labels).toEqual([`Autarkie · ${period}`, `Eigenverbrauch · ${period}`]);
-    // Nie mehr das zeitraum-blinde „heute".
-    expect(labels.join(' ')).not.toContain('heute');
+    // Nie das zeitraum-blinde kleingeschriebene „heute".
+    expect(labels.join(' ')).not.toContain('· heute');
   });
 
   it('lässt die Ringe WEG, wenn der Tageswert fehlt (nie „0 %")', async () => {
@@ -485,7 +487,7 @@ describe('Portal v3 M2 · Das Live-Cockpit einer migrierten Anlage', () => {
     // Der Hash trägt den Verlauf-Deeplink (Messwert + übernommener Zeitraum).
     expect(window.location.hash).toContain('/anlage/s-1/historie');
     expect(window.location.hash).toContain('m=e-grid:power_kw');
-    expect(window.location.hash).toContain('z=monat'); // Default „Monat" → Monat
+    expect(window.location.hash).toContain('z=tag'); // Default „Heute" → Tag
     // NIE ein Modal — weder am body noch im Container.
     expect(document.body.querySelector('.vp-wmodal')).toBeNull();
     expect(container.querySelector('[role="dialog"]')).toBeNull();
@@ -553,7 +555,9 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
   }
 
   function tab(container: HTMLElement, label: string): HTMLButtonElement {
-    const btn = [...container.querySelectorAll('.vp-period-tabs button')].find(
+    // Seit der Bühne steht der Umschalter als kompaktes Segment IN der
+    // Bilanz-Leiste (`.vp-seg`), nicht mehr als vollbreite Seitenzeile.
+    const btn = [...container.querySelectorAll('[role="tab"]')].find(
       (b) => b.textContent === label,
     );
     return btn as HTMLButtonElement;
@@ -576,12 +580,9 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
 
     const now = new Date();
 
-    // Default „Monat": 64 % unter dem Monatsetikett.
-    await waitFor(() => expect(ringValues(container)[0]).toContain('64'));
-    expect(ringLabels(container)).toEqual([
-      `Autarkie · ${periodLabel('month', now, now)}`,
-      `Eigenverbrauch · ${periodLabel('month', now, now)}`,
-    ]);
+    // Default „Heute" (Captain 2026-07-30): der Tageswert unter dem Tagesetikett.
+    await waitFor(() => expect(ringValues(container)[0]).toContain('40'));
+    expect(ringLabels(container)[0]).toBe('Autarkie · Heute');
 
     // „Jahr": der Wert UND das Etikett folgen dem Tab.
     fireEvent.click(tab(container, 'Jahr'));
@@ -591,10 +592,13 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
       `Eigenverbrauch · ${periodLabel('year', now, now)}`,
     ]);
 
-    // „Heute": das Tagesetikett, der Tageswert.
-    fireEvent.click(tab(container, 'Heute'));
-    await waitFor(() => expect(ringValues(container)[0]).toContain('40'));
-    expect(ringLabels(container)[0]).toBe('Autarkie · Heute');
+    // „Monat": das Monatsetikett, der Monatswert.
+    fireEvent.click(tab(container, 'Monat'));
+    await waitFor(() => expect(ringValues(container)[0]).toContain('64'));
+    expect(ringLabels(container)).toEqual([
+      `Autarkie · ${periodLabel('month', now, now)}`,
+      `Eigenverbrauch · ${periodLabel('month', now, now)}`,
+    ]);
 
     // „Gesamt": kein All-Zeit-Historie-Endpunkt → keine Ringe (nie ein falscher
     // Wert), aber der Energiefluss bleibt live sichtbar.
@@ -616,13 +620,107 @@ describe('Portal v3.2 M1 · die Ring-KPIs folgen dem Zeitraum-Tab, der Fluss ble
     const { container } = renderSeite();
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy());
     const flowBefore = container.querySelector('.vp-hero-flow .vp-flow-wrap')?.innerHTML;
-    for (const label of ['Heute', 'Jahr', 'Gesamt', 'Monat']) {
+    for (const label of ['Monat', 'Jahr', 'Gesamt', 'Heute']) {
       fireEvent.click(tab(container, label));
       await waitFor(() =>
         expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')).toBeTruthy(),
       );
     }
     expect(container.querySelector('.vp-hero-flow .vp-flow-wrap')?.innerHTML).toBe(flowBefore);
+  });
+});
+
+describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
+  it('stellt den Zeitraum IN die Bilanz-Leiste - keine vollbreite Zeile für vier Knöpfe mehr', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    // Das Segment steht in der Leiste, unter dem Etikett „Bilanz" ...
+    const seg = container.querySelector('.vp-hero-side .vp-seg.vp-seg-compact');
+    expect(seg).toBeTruthy();
+    expect(container.querySelector('.vp-hero-seg')?.textContent).toContain('Bilanz');
+    // ... und die alte Seitenzeile gibt es auf der Bühne nicht mehr (P2).
+    expect(container.querySelector('.vp-period-tabs')).toBeNull();
+  });
+
+  it('steht standardmäßig auf HEUTE, nicht auf Monat (Captain 2026-07-30)', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-hero-side .vp-seg')).toBeTruthy());
+    const active = container.querySelector('.vp-hero-side .vp-seg button.active');
+    expect(active?.textContent).toBe('Heute');
+    expect([...container.querySelectorAll('[role="tab"][aria-selected="true"]')]).toHaveLength(1);
+    // Die Kennzahlen, die der Umschalter regiert, tragen dieselbe Periode.
+    expect(container.querySelector('.vp-hero-ring-label')?.textContent).toBe('Autarkie · Heute');
+  });
+
+  it('der Kopfsatz schweigt im Normalfall - der Fluss IST der Satz', async () => {
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    // Keine Prosa-Doppelung der drei Zahlen an den Fluss-Knoten (Befund P1) ...
+    expect(container.querySelector('.vp-anlage-sentence')).toBeNull();
+    // ... aber Name, Statuspunkt und Chips stehen weiterhin da.
+    expect(container.querySelector('.vp-anlage-head h1')?.textContent).toContain('Hof Lindenberg');
+    expect(container.querySelector('.vp-fleet-dot')).toBeTruthy();
+  });
+
+  it('der Kopfsatz kehrt zurück, sobald er etwas anderes sagt als das Diagramm', async () => {
+    // Ein stilles Gerät: die Ursache zeigt kein Kreis.
+    stubApi({ onlineCount: 0, waitingCount: 0, worstStatus: 'stale' });
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-anlage-sentence')).toBeTruthy());
+    const p = container.querySelector('.vp-anlage-sentence')!;
+    expect(p.className).toContain('tone-warn');
+    expect(p.textContent).toContain('meldet sich nicht');
+  });
+
+  it('trägt die Steuerung als Bühnenfuß und den Bestätigungs-Haken am Speicher', async () => {
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+    stubApi();
+    vi.spyOn(api, 'controlStatus').mockResolvedValue({
+      deviceId: 'd-1',
+      commandedKw: 2.1,
+      confirmedKw: 2.1,
+      allMatch: true,
+      controlEnabled: true,
+      certified: true,
+      mismatchRoles: null,
+      slotStart: null,
+      checkedAt: new Date().toISOString(),
+    } as never);
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-stage-foot')).toBeTruthy());
+    const foot = container.querySelector('.vp-stage-foot')!;
+    // Sollwert → Bestätigung, über die volle Breite und ohne Karte-in-Karte.
+    expect(foot.querySelector('.vp-control-foot')).toBeTruthy();
+    expect(foot.textContent).toContain('Fahrplan-Sollwert');
+    expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
+    // Verzahnung: die Bestätigung ist AM Diagramm ablesbar.
+    await waitFor(() => expect(container.querySelector('.vp-flow-confirm')).toBeTruthy());
+    const storageTitle = [...container.querySelectorAll('.vp-hero-flow title')].map(
+      (t) => t.textContent,
+    );
+    expect(storageTitle.some((t) => t?.includes('Sollwert bestätigt'))).toBe(true);
+  });
+
+  it('setzt KEINEN Haken, solange der Wechselrichter nichts bestätigt hat', async () => {
+    // `controlStatus` bleibt null (der Default des Stubs) - nie eine behauptete
+    // Bestätigung.
+    mockAdaptive(true, TOPO);
+    mockSurface(MULTI);
+    const { container } = renderSeite();
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+    expect(container.querySelector('.vp-flow-confirm')).toBeNull();
+    expect(container.querySelector('.vp-stage-foot')).toBeNull();
   });
 });
 

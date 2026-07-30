@@ -156,3 +156,38 @@ export function flowHasValues(
     snapshot.socPct != null
   );
 }
+
+/**
+ * **Die Kopfsatz-Regel der Bühne** (Konzept `vp-cockpit-konzept-f4` §6.2).
+ *
+ * Der Prosa-Satz im Seitenkopf las im Normalfall genau die drei Zahlen vor, die
+ * 100 px tiefer an den Knoten des Energieflusses stehen („erzeugt 38,1 kW, die
+ * Batterie lädt (93 %), 30,0 kW fließen ins Netz") — zwei Zeilen Premium-Fläche
+ * für eine Doppelung, und der Kunde liest dieselbe Aussage zweimal.
+ *
+ * Der Satz wird deshalb **nicht abgeschafft, er bekommt eine Aufgabe**: er
+ * erscheint genau dann, wenn er etwas anderes sagt als das Diagramm.
+ *
+ *  - `tone !== 'ok'` — Warnung, stilles Gerät, „wartet auf erste Daten", und
+ *    ebenso der Lade-/Fehler-Zustand (dann gibt es gar keinen Ton): der Satz
+ *    trägt eine Ursache, die kein Kreis zeigt.
+ *  - **kein zeichenbarer Fluss** (`flowHasValues` false) — dann ersetzt die
+ *    Handlungsanweisung das Diagramm, und der Satz ist die einzige Aussage.
+ *  - **nicht der projizierte Pfad** — das v1-Zonen-Dashboard und der
+ *    Einrichtungspfad (M5) bleiben unangetastet (das v1-Invariant).
+ *
+ * Rein, damit beide Richtungen der Regel unit-getestet sind statt im JSX zu
+ * verschwinden.
+ */
+export function headSentenceVisible(input: {
+  /** true = die Bühne (projiziertes Cockpit) rendert gerade. */
+  projected: boolean;
+  /** Der Ton des komponierten Satzes; null/undefined = noch keiner da. */
+  tone?: 'ok' | 'warn' | 'off' | null;
+  /** Hat der Energiefluss überhaupt einen Wert (`flowHasValues`)? */
+  hasFlow: boolean;
+}): boolean {
+  if (!input.projected) return true;
+  if (!input.hasFlow) return true;
+  return input.tone !== 'ok';
+}

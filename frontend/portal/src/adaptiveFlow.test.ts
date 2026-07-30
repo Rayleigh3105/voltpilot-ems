@@ -226,6 +226,50 @@ describe('the caption under a circle', () => {
   });
 });
 
+describe('Verzahnung: der Bestätigungs-Haken am Speicher-Knoten (Bühne §6.3)', () => {
+  it('setzt ihn NUR am Speicher und nur mit bestätigtem Sollwert', () => {
+    const confirmed = layoutFlow(TOPO, ENTITIES, { controlConfirmed: true });
+    const storage = confirmed.vertices.find((v) => v.role === 'storage')!;
+    expect(storage.confirmed).toBe(true);
+    // Die Zustandszeile selbst bleibt unverändert - der Haken ist ein eigener
+    // Pfad daneben, nie ein Unicode-Häkchen im Text (die Icon-Konvention).
+    expect(storage.subLabel).toBe(`lädt 4,0${NBSP}kW`);
+    // ... und der Wortlaut steht im Tooltip.
+    expect(storage.title).toContain('Sollwert bestätigt');
+    // Keine andere Rolle bekommt ihn.
+    expect(confirmed.vertices.filter((v) => v.confirmed).map((v) => v.role)).toEqual(['storage']);
+  });
+
+  it('behauptet ohne Bestätigung nichts (Default = kein Haken)', () => {
+    const plain = layoutFlow(TOPO, ENTITIES);
+    expect(plain.vertices.every((v) => !v.confirmed)).toBe(true);
+    expect(plain.vertices.find((v) => v.role === 'storage')!.title).not.toContain('bestätigt');
+    const off = layoutFlow(TOPO, ENTITIES, { controlConfirmed: false });
+    expect(off.vertices.every((v) => !v.confirmed)).toBe(true);
+  });
+
+  it('hängt an der Zustandszeile - ein ruhender Speicher bekommt keinen Haken', () => {
+    const idle = layoutFlow(
+      {
+        schema_version: '1.0',
+        nodes: [
+          {
+            role: 'storage',
+            value_kw: 0,
+            soc_pct: 50,
+            flow_active: false,
+            members: [{ entity_id: 'deye', label: 'Deye', primary: true, value_kw: 0 }],
+          },
+        ],
+      },
+      ENTITIES,
+      { controlConfirmed: true },
+    );
+    expect(idle.vertices[0].subLabel).toBeNull();
+    expect(idle.vertices[0].confirmed).toBe(false);
+  });
+});
+
 describe('the geometry never grows with the device count', () => {
   it('draws 1 and 6 inverters on the identical viewBox', () => {
     const one = layoutFlow(withProducers(1), ENTITIES, { pvDeviceCount: 1 });

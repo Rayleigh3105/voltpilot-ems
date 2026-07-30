@@ -12,20 +12,31 @@ import { PvBreakdownLine } from './PvBreakdown';
 import './CockpitBlocks.css';
 
 /**
- * Portal v3 · M2 — der **Hero des Live-Cockpits**.
+ * Der obere Cockpit-Bereich: **die Bühne** (abgenommenes Konzept
+ * `data/vp-cockpit-konzept-f4`, Richtung A; Captain-Go 30.07.2026).
  *
- * Links das **bestehende** Energiefluss-Diagramm, groß und zentral gehostet:
+ * Links, auf ~62 % der Kartenbreite, das **bestehende** Energiefluss-Diagramm —
  * `AdaptiveEnergyFlow` für eine migrierte Anlage (die vorhandene
  * `hasTopology`-Weiche entscheidet), sonst `EnergyFlow`. **Es wird KEIN neues
- * Diagramm gebaut** — die Owner-Entscheidung (BUILD.md §2) ist Wiederverwendung;
- * nur Größe und Platzierung ändern sich (`size="hero"`).
+ * Diagramm gebaut** (BUILD.md §2), und es wird auch nicht kleiner: die bindende
+ * Captain-Vorgabe ist, dass der Fluss groß und präsent bleibt — er FÜLLT jetzt
+ * seine Spalte (`size="hero"`), statt zusätzlich von einem eigenen Deckel
+ * begrenzt zu werden.
  *
- * Rechts die Kennzahlen: **Autarkie** und **Eigenverbrauch** als Ringe, die
- * dem gewählten Zeitraum folgen (v3.2 M1 — Etikett „Autarkie · Monat"), die
- * verdiente Summe des gewählten Zeitraums mit der Steuerungs-Zurechnung als
- * Unterzeile, und die eine Fahrplan-Zeile. Der Energiefluss links bleibt
- * „jetzt gerade". Ein Zeitraum-Wert, der nicht vorliegt, erzeugt **keinen
- * Ring** — nie „0 %".
+ * Rechts die **Bilanz-Leiste**: das kompakte Zeitraum-Segment steht direkt über
+ * den Zahlen, die es regiert (§6.3), darunter der Geldblock mit der
+ * Steuerungs-Zurechnung als Unterzeile, die Ringe (Autarkie/Eigenverbrauch,
+ * die dem Zeitraum folgen — v3.2 M1) und die eine Fahrplan-Zeile. Die Blöcke
+ * verteilen sich per `space-between` über die volle Bühnenhöhe, **deshalb gibt
+ * es die tote Zone unter dem Geldblock strukturell nicht mehr**. Der
+ * Energiefluss selbst bleibt „jetzt gerade". Ein Zeitraum-Wert, der nicht
+ * vorliegt, erzeugt **keinen Ring** — nie „0 %"; und eine Komposition, die
+ * KEINEN Leisten-Block beisteuert, bekommt gar keine Leiste (kein leerer
+ * Rahmen, die Bühne wird dann einspaltig).
+ *
+ * Am Bühnenfuß, über die **volle** Kartenbreite, die schlanke Steuerungs-Zeile
+ * (Sollwert → Bestätigung → Grund, `ControlStrip variant="bare"`): kein
+ * Karte-in-Karte-Rahmen, keine leere Hälfte daneben.
  *
  * Render-only: alles Abgeleitete kommt aus `cockpitWidgets.ts` `cockpitHero`.
  *
@@ -44,6 +55,8 @@ export function CockpitHero({
   pins = null,
   onOpenSub,
   footer,
+  periodSeg = null,
+  controlConfirmed = false,
 }: {
   view: CockpitHeroView;
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
@@ -61,12 +74,47 @@ export function CockpitHero({
       ordnen jede Quelle ihrer Komponente zu, nie die Reihenfolge. */
   pins?: SiteEntity[] | null;
   onOpenSub: (sub: AnlagenSub) => void;
-  /** Zusatz unter dem Diagramm (heute: der Steuerungs-Streifen). */
+  /**
+   * Der **Bühnenfuß** in voller Kartenbreite (heute: die Steuerungs-Zeile).
+   * Er hängt bewusst NICHT mehr in der Fluss-Spalte — dort blieb die rechte
+   * Hälfte daneben leer (Befund P4 des Konzepts).
+   */
   footer?: ReactNode;
+  /**
+   * Das kompakte Zeitraum-Segment der Bilanz-Leiste (`PeriodTabs variant="seg"`).
+   * null = diese Komposition hat keine zeitraum-bezogenen Zahlen, also auch
+   * nichts zu wählen.
+   */
+  periodSeg?: ReactNode;
+  /** Der Wechselrichter bestätigt den Sollwert → Haken am Speicher-Knoten. */
+  controlConfirmed?: boolean;
 }) {
   const hasFlow = flowHasValues(topology, snapshot);
+  const rings =
+    view.rings.length > 0 ? (
+      <div className="vp-hero-rings">
+        {view.rings.map((r) => (
+          <Ring key={r.id} ring={r} />
+        ))}
+      </div>
+    ) : view.ringsNote ? (
+      /* V13: der Platz bleibt reserviert und sagt, warum er leer ist -
+         die Seitenhöhe springt nicht mehr bei jedem Tab-Wechsel. */
+      <div className="vp-hero-rings vp-hero-rings-empty">
+        <p className="vp-muted">{view.ringsNote}</p>
+      </div>
+    ) : null;
+  // Die Leiste verteilt die VORHANDENEN Blöcke über die Höhe. Steuert eine
+  // Komposition keinen einzigen bei, gibt es keine Leiste (und keinen leeren
+  // Rahmen) - die Bühne wird dann einspaltig und der Fluss nimmt sie ganz ein.
+  const hasRail = periodSeg != null || view.money != null || rings != null || view.planSentence != null;
   return (
-    <Card padding="lg" radius="lg" className="vp-cockpit-hero" style={{ minWidth: 0 }}>
+    <Card
+      padding="lg"
+      radius="lg"
+      className={`vp-cockpit-hero${hasRail ? '' : ' vp-stage-norail'}`}
+      style={{ minWidth: 0 }}
+    >
       <div className="vp-hero-flow">
         {hasFlow ? (
           topology ? (
@@ -76,6 +124,7 @@ export function CockpitHero({
               size="hero"
               sources={sources}
               pins={pins}
+              controlConfirmed={controlConfirmed}
             />
           ) : (
             <EnergyFlow snapshot={snapshot} stale={stale} size="hero" />
@@ -88,49 +137,47 @@ export function CockpitHero({
             dann eine zweite, widersprechbare Wahrheit. Die v1-Anlage behält sie:
             ihr Fluss hat keinen anklickbaren PV-Knoten. */}
         {hasFlow && !topology && <PvBreakdownLine sources={sources} />}
-        {footer}
       </div>
 
-      <div className="vp-hero-side">
-        {view.rings.length > 0 ? (
-          <div className="vp-hero-rings">
-            {view.rings.map((r) => (
-              <Ring key={r.id} ring={r} />
-            ))}
-          </div>
-        ) : (
-          view.ringsNote && (
-            /* V13: der Platz bleibt reserviert und sagt, warum er leer ist -
-               die Seitenhöhe springt nicht mehr bei jedem Tab-Wechsel. */
-            <div className="vp-hero-rings vp-hero-rings-empty">
-              <p className="vp-muted">{view.ringsNote}</p>
+      {hasRail && (
+        <div className="vp-hero-side">
+          {periodSeg && (
+            <div className="vp-rail-blk vp-hero-seg">
+              <span className="vp-card-label">Bilanz</span>
+              {periodSeg}
             </div>
-          )
-        )}
+          )}
 
-        {view.money && (
-          <div className="vp-hero-money">
-            <span className="vp-hero-money-label">{view.money.label}</span>
-            <span className="vp-hero-money-value">{view.money.value}</span>
-            {/* Zurechnung IMMER als Unterzeile, nie als eigener Summand. */}
-            {view.money.attribution && (
-              <span className="vp-hero-money-attr">{view.money.attribution}</span>
-            )}
-          </div>
-        )}
+          {view.money && (
+            <div className="vp-rail-blk vp-hero-money">
+              <span className="vp-hero-money-label">{view.money.label}</span>
+              <span className="vp-hero-money-value">{view.money.value}</span>
+              {/* Zurechnung IMMER als Unterzeile, nie als eigener Summand. */}
+              {view.money.attribution && (
+                <span className="vp-hero-money-attr">{view.money.attribution}</span>
+              )}
+            </div>
+          )}
 
-        {view.planSentence && (
-          <button
-            type="button"
-            className="vp-hero-plan"
-            onClick={() => onOpenSub('fahrplan')}
-          >
-            <Icon name="trending-up" size={16} />
-            <span>{view.planSentence}</span>
-            <Icon name="chevron-right" size={14} />
-          </button>
-        )}
-      </div>
+          {rings && <div className="vp-rail-blk">{rings}</div>}
+
+          {view.planSentence && (
+            <div className="vp-rail-blk">
+              <button
+                type="button"
+                className="vp-hero-plan"
+                onClick={() => onOpenSub('fahrplan')}
+              >
+                <Icon name="trending-up" size={16} />
+                <span>{view.planSentence}</span>
+                <Icon name="chevron-right" size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {footer && <div className="vp-stage-foot">{footer}</div>}
     </Card>
   );
 }
