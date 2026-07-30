@@ -273,7 +273,7 @@ export function AnlagenModellSection({
               <div className="vp-am-links">
                 <span>Diese Komponenten begegnen Ihnen überall:</span>
                 <a href={hashForRoute(anlageRoute(site.id))}>→ Cockpit</a>
-                <a href={hashForRoute(anlageRoute(site.id, 'historie'))}>→ Historie</a>
+                <a href={hashForRoute(anlageRoute(site.id, 'messwerte'))}>→ Messwerte</a>
                 <a href={hashForRoute(anlageRoute(site.id, 'steuerung'))}>→ Steuerung</a>
               </div>
             </div>

@@ -164,7 +164,9 @@ describe('v1 bleibt v1 — eine nie migrierte Anlage erzeugt nirgendwo Neues', (
       expect(sidebar.groups[0].label).toBe('Anlage');
       expect(sidebar.groups[0].items.map((i) => i.key)).toEqual([
         'cockpit',
-        'historie',
+        // Die Basis-Welt der Historie; „Erlöse" ist modusgebunden und fehlt
+        // auf einer nie migrierten Anlage folgerichtig.
+        'messwerte',
         'steuerung',
         'anlagen-modell',
       ]);

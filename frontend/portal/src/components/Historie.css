@@ -98,26 +98,323 @@
   margin: 0 0 8px;
 }
 
-/* --- Der Modus-Umschalter „Übersicht | Messwerte" ------------------------- */
+/* ==========================================================================
+ * Die ZWEI WELTEN (Konzept `data/vp-historie-konzept-t4`, Struktur H1):
+ * Welt-Kopf → klebende Zeit-Leiste → Karten → Fußkarte, identisch in beiden
+ * Welten. Der frühere Modus-Umschalter „Übersicht | Messwerte" ist ersatzlos
+ * entfallen (der Explorer ist jetzt ein Abschnitt der Messwerte-Welt).
+ * ========================================================================== */
 
-.vp-energie-modus {
+/* Die zwei Welt-Farben, aus vorhandenen Tokens abgeleitet - nichts Neues:
+   Messwerte = das „dynamic"-Türkis, Erlöse = das Marken-Navy. */
+.vp-welt-messwerte {
+  --vp-welt: #0097a7;
+  --vp-welt-soft: #e2f6f8;
+  --vp-welt-ink: #00636e;
+  --vp-welt-grad: var(--vp-grad-dynamic, linear-gradient(135deg, #00bcd4, #0097a7));
+}
+
+.vp-welt-erloese {
+  --vp-welt: var(--vp-action, #2c5282);
+  --vp-welt-soft: #edf2fa;
+  --vp-welt-ink: var(--vp-navy, #1e3a5f);
+  --vp-welt-grad: linear-gradient(135deg, #5a8de8, #2c5282);
+}
+
+/* --- Welt-Kopf ------------------------------------------------------------ */
+
+.vp-welt-kopf {
+  /* Von `WeltKopf` inline konsumiert (`Card` setzt `padding` sonst selbst) -
+     die Medienabfrage unten schrumpft sie am Telefon. */
+  --vp-welt-pad: var(--vp-card-pad-lg);
+  margin-bottom: var(--vp-space-4);
+}
+
+.vp-welt-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-4);
+  min-width: 0;
+}
+
+.vp-welt-titles {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.vp-welt-titles h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin: 0;
+  font-size: clamp(1.25rem, 4.4vw, 1.5rem);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.vp-welt-titles p {
+  margin: 3px 0 0;
+  color: var(--vp-text-muted, #6c757d);
+  font-size: 0.92rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Welt-Wechsel: das Kartenpaar (ein Klick, Zeitraum reist mit) --------- */
+
+.vp-welt-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: var(--vp-space-4);
+  min-width: 0;
+}
+
+.vp-wsw {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1.5px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+}
+
+.vp-wsw:hover {
+  border-color: var(--vp-welt, var(--vp-action));
+}
+
+.vp-wsw-ico {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: #eef1f5;
+  color: #6c757d;
+}
+
+.vp-wsw-text {
+  min-width: 0;
+}
+
+.vp-wsw-label {
+  display: block;
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-wsw-sub {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--vp-text-muted, #6c757d);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-wsw.on {
+  border-color: var(--vp-welt, var(--vp-action));
+  background: var(--vp-welt-soft, #eef1f5);
+}
+
+.vp-wsw.on .vp-wsw-ico {
+  background: var(--vp-welt, var(--vp-action));
+  color: #fff;
+}
+
+.vp-wsw.on .vp-wsw-label {
+  color: var(--vp-welt-ink, var(--vp-navy));
+}
+
+/* Telefon: die Kopfzone ist hier der knappste Platz des ganzen Portals. Sie
+   schrumpft an genau den Stellen, die nichts erklären - Polsterung, Symbolgröße
+   und die Unterzeile der Wechsel-Karten (die Weltnamen tragen sich selbst).
+   Das Kartenpaar bleibt deshalb ZWEISPALTIG, statt zu stapeln. */
+@media (max-width: 560px) {
+  .vp-welt-kopf {
+    --vp-welt-pad: 12px 14px;
+  }
+  .vp-welt-head {
+    gap: var(--vp-space-3);
+  }
+  .vp-welt-titles h1 {
+    font-size: 1.2rem;
+  }
+  .vp-welt-titles p {
+    margin-top: 2px;
+    font-size: 0.85rem;
+    line-height: 1.35;
+  }
+  .vp-welt-switch {
+    gap: 8px;
+    margin-top: var(--vp-space-3);
+  }
+  .vp-wsw {
+    gap: 8px;
+    padding: 9px 10px;
+    min-height: 44px;
+  }
+  .vp-wsw-ico {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+  }
+  .vp-wsw-sub {
+    display: none;
+  }
+}
+
+/* --- Ehrlichkeits-Abzeichen (report §7) ----------------------------------- */
+
+.vp-prov {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.vp-prov-gemessen {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.vp-prov-bewertet {
+  background: #edf2fa;
+  color: #1e3a5f;
+}
+
+.vp-prov-geplant {
+  background: #eef1f5;
+  color: #4b5563;
+}
+
+/* --- Zeit-Leiste: klebend, unter der Kopfzeile der Schale ----------------- */
+
+.vp-zeitleiste {
+  position: sticky;
+  /* Die Schalen-Kopfzeile ist 68 px hoch und klebt selbst (index.css). */
+  top: 68px;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: var(--vp-space-3);
   flex-wrap: wrap;
+  min-width: 0;
   margin-bottom: var(--vp-space-4);
+  padding: 8px 12px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface, #fff);
+  box-shadow: var(--vp-shadow-sm);
 }
 
-.vp-energie-modus > .vp-seg {
+.vp-zeitleiste > .vp-period-nav {
   margin-left: auto;
 }
 
 @media (max-width: 560px) {
-  .vp-energie-modus > .vp-seg {
-    margin-left: 0;
+  .vp-zeitleiste {
+    gap: 8px;
+    padding: 6px 8px;
+  }
+  .vp-zeitleiste > .vp-seg {
     width: 100%;
   }
-  .vp-energie-modus > .vp-seg > button {
+  .vp-zeitleiste > .vp-seg > button {
     flex: 1 1 0;
   }
+  .vp-zeitleiste > .vp-period-nav {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* --- Blättern leert nicht (P5): die alte Periode bleibt, gedimmt ---------- */
+
+.vp-welt-body {
+  min-width: 0;
+}
+
+.vp-welt-stale {
+  opacity: 0.55;
+  transition: opacity 120ms ease-in;
+}
+
+/* --- Der aufklappbare Abschnitt (Messwerte-Explorer) ---------------------- */
+
+.vp-welt-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vp-wd-title {
+  font-family: 'Inter Tight', Inter, sans-serif;
+  font-weight: 700;
+  font-size: 1.05rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-wd-sub {
+  font-size: 0.75rem;
+  color: var(--vp-text-muted, #6c757d);
+  white-space: nowrap;
+}
+
+.vp-wd-chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--vp-text-muted, #6c757d);
+  transition: transform 120ms ease-in-out;
+}
+
+.vp-welt-disclosure.open .vp-wd-chev {
+  transform: rotate(180deg);
+}
+
+.vp-welt-disclosure-body {
+  margin-top: var(--vp-space-4);
+  min-width: 0;
+}
+
+/* --- Fußkarte „Was diese Zahlen sind" ------------------------------------- */
+
+.vp-welt-fuss {
+  background: #fbfcfd;
+}
+
+.vp-welt-fuss b {
+  font-size: 0.92rem;
+}
+
+.vp-welt-fuss p {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: var(--vp-text-muted, #6c757d);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

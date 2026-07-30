@@ -220,7 +220,7 @@ describe('tree helpers', () => {
 describe('parseVerlaufParams / verlaufHash', () => {
   it('round-trips a full target through hash → params', () => {
     const hash = verlaufHash('site-1', { entityId: 'batt', channel: 'soc_pct' }, 'month', '2026-05-01');
-    expect(hash).toBe('#/anlage/site-1/historie?m=batt:soc_pct&z=monat&at=2026-05-01');
+    expect(hash).toBe('#/anlage/site-1/messwerte?m=batt:soc_pct&z=monat&at=2026-05-01');
     const p = parseVerlaufParams(hash);
     expect(p.target).toEqual({ entityId: 'batt', channel: 'soc_pct' });
     expect(p.range).toBe('month');
@@ -228,7 +228,7 @@ describe('parseVerlaufParams / verlaufHash', () => {
   });
 
   it('omits at when not given and defaults an unknown range word to day', () => {
-    expect(verlaufHash('s', { entityId: 'e', channel: 'c' }, 'week')).toBe('#/anlage/s/historie?m=e:c&z=woche');
+    expect(verlaufHash('s', { entityId: 'e', channel: 'c' }, 'week')).toBe('#/anlage/s/messwerte?m=e:c&z=woche');
     const p = parseVerlaufParams('?m=e:c&z=quatsch');
     expect(p.range).toBe('day');
     expect(p.at).toBeNull();
@@ -537,7 +537,7 @@ describe('Mehrfach-Deep-Link', () => {
       ],
       'day',
     );
-    expect(hash).toBe('#/anlage/site-1/historie?m=batt:soc_pct&m=grid:power_kw&z=tag');
+    expect(hash).toBe('#/anlage/site-1/messwerte?m=batt:soc_pct&m=grid:power_kw&z=tag');
     const p = parseVerlaufParams(hash);
     expect(p.targets).toEqual([
       { entityId: 'batt', channel: 'soc_pct' },
@@ -546,13 +546,15 @@ describe('Mehrfach-Deep-Link', () => {
     expect(p.target).toEqual({ entityId: 'batt', channel: 'soc_pct' });
   });
 
-  it('bleibt für einen EINZELNEN Messwert zeichengleich zum alten Link', () => {
+  it('zeigt seit der Zwei-Welten-Struktur auf die Messwerte-Welt', () => {
     expect(verlaufHash('s', { entityId: 'e', channel: 'c' }, 'week')).toBe(
-      '#/anlage/s/historie?m=e:c&z=woche',
+      '#/anlage/s/messwerte?m=e:c&z=woche',
     );
-    // Und ein altes Lesezeichen parst weiterhin.
+    // Und ein ALTES Lesezeichen parst unverändert weiter (die Weiterleitung
+    // schreibt nur die Adresse um, siehe `nav.canonicalAnlageHash`).
     const p = parseVerlaufParams('#/anlage/s/historie?m=e:c&z=woche');
     expect(p.targets).toEqual([{ entityId: 'e', channel: 'c' }]);
+    expect(p.range).toBe('week');
   });
 
   it('kappt bei der Obergrenze und überspringt Doppelte/Kaputte', () => {

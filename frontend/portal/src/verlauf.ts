@@ -462,7 +462,11 @@ export function parseVerlaufParams(hashOrQuery: string): VerlaufParams {
  * Build the explorer deep-link. `hashForRoute` stays untouched (it drops the
  * query); this is the ONE builder for the `?m&z&at` link (reused by the V2
  * cockpit jump). Several measurements become several `m` params, so a comparison
- * is shareable too; a single target still produces the byte-identical old link.
+ * is shareable too.
+ *
+ * Ziel ist seit der Zwei-Welten-Struktur die **Messwerte-Welt** — der Explorer
+ * ist ihr aufklappbarer Abschnitt. Ältere `…/historie?m=…`-Lesezeichen bleiben
+ * gültig: `nav.ts` leitet sie MIT ihren Parametern hierher weiter.
  */
 export function verlaufHash(
   siteId: string,
@@ -476,7 +480,7 @@ export function verlaufHash(
     .map((t) => `m=${t.entityId}:${t.channel}`)
     .concat(`z=${rangeWord(range)}`);
   if (at) parts.push(`at=${at}`);
-  return `#/anlage/${siteId}/historie?${parts.join('&')}`;
+  return `#/anlage/${siteId}/messwerte?${parts.join('&')}`;
 }
 
 // --- Chart series + stats ----------------------------------------------------

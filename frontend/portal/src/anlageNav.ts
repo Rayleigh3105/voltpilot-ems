@@ -3,8 +3,10 @@
  *
  * v3 gives an Anlage **one** navigation (`docs/portal-v3/M1-shell.md`): the
  * sidebar shows every area of the selected plant openly, grouped into
- * **Anlage** (Cockpit · Historie · Steuerung · Anlagen-Modell — the former
- * Live-Daten area merged INTO the cockpit, owner decision Option A) plus
+ * **Anlage** (Cockpit · Messwerte · [Erlöse] · Steuerung · Anlagen-Modell — the
+ * former Live-Daten area merged INTO the cockpit, owner decision Option A, and
+ * the former single „Historie" split into its two worlds, captain decision H1
+ * 2026-07-30) plus
  * **one group per active mode profile** (`Modus · <Name>`, colour-tagged).
  * The v2 "Mehr ▾" popover and the retired U1 tab strip are gone; phones get a
  * 5-slot bottom bar whose last slot opens a sheet with everything else.
@@ -13,7 +15,11 @@
  * React, no network. The three laws it encodes:
  *
  * 1. **The base group is fixed and ordered.** The four areas are always there,
- *    always in the same order. Only Steuerung carries a badge (the active-mode
+ *    always in the same order — plus „Erlöse", the ONE base-group entry whose
+ *    presence follows the read-model (`erloes-historie` is mode-bound, its
+ *    sibling `telemetrie-historie` is base). Placement is deliberate: the two
+ *    Historie worlds are siblings, so a customer never hunts for the money world
+ *    inside a mode group. Only Steuerung carries a badge (the active-mode
  *    count from the M0 read-model), and a 0/unknown count renders NO badge —
  *    never a discouraging "0". Since the Captain hotfix 2026-07-29 the group
  *    additionally carries the BASE deep views of the M0 read-model
@@ -105,12 +111,35 @@ export const HELP_TEXT =
  * are regular entries of the Anlage group, so they also travel into the phone
  * „Mehr"-sheet on their own.
  */
-function baseItems(badge: number | null, baseViews: readonly DeepViewId[]): SidebarItem[] {
+function baseItems(
+  badge: number | null,
+  baseViews: readonly DeepViewId[],
+  allViews: readonly DeepViewId[],
+): SidebarItem[] {
   const items: SidebarItem[] = [
     { key: 'cockpit', label: 'Cockpit', icon: 'dashboard', target: { kind: 'sub', sub: null }, badge: null },
-    { key: 'historie', label: 'Historie', icon: 'history', target: { kind: 'sub', sub: 'historie' }, badge: null },
-    { key: 'steuerung', label: 'Steuerung', icon: 'zap', target: { kind: 'sub', sub: 'steuerung' }, badge },
+    // Die Messwerte-Welt ist Basis: sie existiert auf JEDER Anlage.
+    { key: 'messwerte', label: 'Messwerte', icon: 'history', target: { kind: 'sub', sub: 'messwerte' }, badge: null },
   ];
+  // Die Erlöse-Welt ist modusgebunden — sie erscheint genau dann, wenn die
+  // Projektion `erloes-historie` beisteuert (`surface.ts`). Eine Privat-Anlage
+  // ohne Geld-Modus bekommt gar keinen Eintrag statt einer leeren Fläche.
+  if (allViews.includes('erloes-historie')) {
+    items.push({
+      key: 'erloese',
+      label: 'Erlöse',
+      icon: 'euro',
+      target: { kind: 'sub', sub: 'erloese' },
+      badge: null,
+    });
+  }
+  items.push({
+    key: 'steuerung',
+    label: 'Steuerung',
+    icon: 'zap',
+    target: { kind: 'sub', sub: 'steuerung' },
+    badge,
+  });
   if (baseViews.includes('fahrplan')) items.push(viewItem('fahrplan'));
   items.push({
     key: 'anlagen-modell',
@@ -251,8 +280,14 @@ export function anlageSidebar(
     typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
 
   const baseViews = surface?.base?.deepViews ?? [];
+  const allViews = surface?.deepViews ?? [];
   const groups: SidebarGroup[] = [
-    { key: 'base', label: BASE_GROUP_LABEL, tone: null, items: baseItems(badge, baseViews) },
+    {
+      key: 'base',
+      label: BASE_GROUP_LABEL,
+      tone: null,
+      items: baseItems(badge, baseViews, allViews),
+    },
   ];
   // Was die Basis schon trägt, taucht unter keinem Modus ein zweites Mal auf.
   const taken = new Set<string>(groups[0].items.map((i) => i.key));
@@ -264,21 +299,22 @@ export function anlageSidebar(
 }
 
 /** The bottom-bar keys, in order — the four core areas plus the Mehr sheet.
- *  Owner Q3: Historie takes the slot the Live-Daten merge freed (every
- *  „Verlauf →" jump lands there — one thumb away). */
-const BOTTOM_KEYS = ['cockpit', 'historie', 'steuerung', 'anlagen-modell'] as const;
+ *  Owner Q3: the Historie slot the Live-Daten merge freed now carries its BASE
+ *  world „Messwerte" (every „Verlauf →" jump lands there — one thumb away);
+ *  „Erlöse" is mode-bound and therefore travels in the Mehr sheet. */
+const BOTTOM_KEYS = ['cockpit', 'messwerte', 'steuerung', 'anlagen-modell'] as const;
 
 /** Shorter phone labels; the sidebar keeps the full words. */
 const BOTTOM_LABELS: Record<string, string> = {
   cockpit: 'Cockpit',
-  historie: 'Historie',
+  messwerte: 'Messwerte',
   steuerung: 'Steuerung',
   'anlagen-modell': 'Anlage',
 };
 
 /**
  * The phone bottom bar: EXACTLY five slots —
- * Cockpit · Historie · Steuerung · Anlage · Mehr. The core areas are always
+ * Cockpit · Messwerte · Steuerung · Anlage · Mehr. The core areas are always
  * one thumb away; nothing hides behind a hamburger.
  */
 export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
@@ -294,8 +330,8 @@ export function bottomBarSlots(sidebar: AnlageSidebar): SidebarItem[] {
 /**
  * The "Mehr" sheet: everything the bottom bar does not carry, grouped and
  * colour-tagged exactly like the sidebar — the base remainder (the bar carries
- * the four fixed areas, so this is exactly the derived base views: Fahrplan and
- * Marktpreise), the mode groups, and a trailing group with the entries that
+ * the four fixed areas, so this is „Erlöse" plus the derived base views:
+ * Fahrplan, Marktpreise, Prognosequalität), the mode groups, and a trailing group with the entries that
  * have no sidebar home (Wetter) plus the foot (Einstellungen · Hilfe & Kontakt).
  */
 export function moreSheetItems(sidebar: AnlageSidebar): SidebarGroup[] {

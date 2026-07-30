@@ -82,12 +82,11 @@ export const BASE_FROM_TAG = 'Komponenten';
  * und ist deshalb in jedem Modus vorhanden.
  */
 export const TELEMETRIE_HISTORIE: BlockDrillIn = {
-  // Seit dem Cockpit+Live-Merge (Option A) lebt der Messwerte-Explorer auf der
-  // Historie-Seite (`?m=…` öffnet ihn vorfokussiert); die frühere Live-Daten-
-  // Seite ist ins Cockpit aufgegangen.
-  sub: 'historie',
+  // Seit der Zwei-Welten-Struktur (Captain H1) ist das die Messwerte-Welt; der
+  // Explorer ist ihr aufklappbarer Abschnitt (`?m=…` öffnet ihn vorfokussiert).
+  sub: 'messwerte',
   label: 'Verlauf',
-  hint: 'Telemetrie-Verlauf aller angelegten Kanäle – getrennt von der Erlös-Historie.',
+  hint: 'Telemetrie-Verlauf aller angelegten Kanäle – getrennt von den Erlösen.',
 };
 
 /** Die Drill-ins je Block (§2.2) — die Tiefen-Sichten der abgelösten Tab-Leiste. */
@@ -95,9 +94,9 @@ const BLOCK_DRILL_INS: Partial<Record<CockpitBlockId, BlockDrillIn[]>> = {
   'peak-band': [{ sub: 'lastspitzen', label: 'Lastspitzen im Detail' }],
   'erloes-komposition': [
     {
-      sub: 'historie',
+      sub: 'erloese',
       label: 'Erlöse im Detail',
-      hint: 'Erlös-Historie – getrennt vom Telemetrie-Verlauf.',
+      hint: 'Die Erlöse-Welt – getrennt vom Telemetrie-Verlauf.',
     },
   ],
   // base: die Live-Tiefe lebt seit dem Merge IM Cockpit selbst (Komponenten-
