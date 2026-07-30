@@ -30,6 +30,7 @@ import {
   type RoleGroup,
 } from '../komponenten';
 import { showTechnicalLayer, type AdoptableSource } from '../rollen';
+import { livenessReference } from '../liveness';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import {
   KomponenteLoeschenDialog,
@@ -65,7 +66,19 @@ import '../components/AnlagenModell.css';
  * gated by the ONE `showTechnicalLayer()` helper (M7). All derivation is the
  * pure `komponenten.ts`; this file only renders.
  */
-export function AnlagenModellSection({ site, devices }: { site: Site; devices?: Device[] }) {
+export function AnlagenModellSection({
+  site,
+  devices,
+  devicesFetchedAt = null,
+}: {
+  site: Site;
+  devices?: Device[];
+  /**
+   * Bezugszeit der Geräteliste. Die Box-Zeile altert dagegen, nie gegen eine
+   * weiterlaufende Wanduhr über einem stehenden Schnappschuss (`liveness.ts`).
+   */
+  devicesFetchedAt?: number | null;
+}) {
   // The ONE technical-layer decision (M7): a platform-admin sees the installer
   // panel added to the same page; a customer never does.
   const showTechnical = showTechnicalLayer();
@@ -115,16 +128,15 @@ export function AnlagenModellSection({ site, devices }: { site: Site; devices?: 
 
   // The ONE VoltPilot-Box (Captain-Korrektur): every reported device hangs off
   // it. Without a claimed device nothing is invented.
-  const box = useMemo(
-    () =>
-      model
-        ? edgeBoxLine(
-            (devices ?? []).filter((d) => d.siteId === site.id),
-            model.devices.length,
-          )
-        : null,
-    [devices, site.id, model],
-  );
+  const box = useMemo(() => {
+    if (!model) return null;
+    const at = livenessReference(devicesFetchedAt, Date.now());
+    return edgeBoxLine(
+      (devices ?? []).filter((d) => d.siteId === site.id),
+      model.devices.length,
+      at == null ? undefined : new Date(at),
+    );
+  }, [devices, devicesFetchedAt, site.id, model]);
 
   const isEmpty =
     model != null &&

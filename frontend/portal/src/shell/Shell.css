@@ -99,6 +99,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Gesund sieht gesund aus - dasselbe satte Grün wie das Abzeichen der
+   Kopfzeile (Punkt aus `--vp-flow-batt`, Schrift in seiner lesbaren Tiefe). */
+.vp-anlagenav-health.state-ok {
+  color: var(--vp-flow-batt-ink, #166534);
+  font-weight: 600;
+}
 
 /* ---------- Mode groups ---------- */
 .vp-navgroup {
@@ -153,7 +159,15 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--vp-flow-batt);
+  background: var(--vp-flow-batt, #16a34a);
+}
+/* „Alles in Ordnung" trägt das satte, freundliche Grün des Portals - derselbe
+   Ton, den Energiefluss, Gesundheits-Checkliste und Ladezustand schon nutzen
+   (`--vp-flow-batt`), mit dem weichen Ring der Live-Punkte. Ein gesunder
+   Zustand soll erkennbar gesund AUSSEHEN, nicht so grau wie ein Hinweis. */
+.state-ok .vp-health-dot {
+  background: var(--vp-flow-batt, #16a34a);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-flow-batt, #16a34a) 22%, transparent);
 }
 .state-hinweis .vp-health-dot {
   background: var(--vp-gray, #ced4da);
@@ -235,9 +249,18 @@
     flex-shrink: 4;
   }
 }
-/* Nothing to report: no cause text, so keep the compact pill. */
+/* Nothing to report: no cause text, so keep the compact pill - und zeig den
+   gesunden Zustand im satten Grün des Portals (Rahmen + weiche Fläche +
+   lesbare Grün-Tiefe als Schrift). Warn-/Hinweis-Zustände behalten ihre
+   Farben unverändert. */
 .vp-healthbadge.state-ok {
   max-width: none;
+  border-color: var(--vp-flow-batt, #16a34a);
+  background: var(--vp-flow-batt-soft, #e7f6ec);
+  color: var(--vp-flow-batt-ink, #166534);
+}
+.vp-healthbadge.state-ok:hover {
+  border-color: var(--vp-flow-batt-ink, #166534);
 }
 
 /* ---------- Health popover (portalled to body) ---------- */
@@ -286,6 +309,19 @@
 }
 .vp-healthpop-item.tone-warn .vp-healthpop-mark {
   color: var(--vp-flow-pv);
+}
+/* Das „nichts zu melden" im selben Grün wie das Abzeichen, das es erklärt. */
+.vp-healthpop-ok {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  color: var(--vp-flow-batt-ink, #166534);
+  font-weight: 600;
+}
+.vp-healthpop-ok::before {
+  content: '✓';
+  color: var(--vp-flow-batt, #16a34a);
+  font-weight: 800;
 }
 .vp-healthpop-link {
   display: inline-flex;

@@ -8,7 +8,6 @@ import { isPlatformAdmin, login, loginWithCredentials } from './auth';
 import {
   api,
   ApiError,
-  deviceLiveStatus,
   register,
   setTenantOverride,
   type Betriebsart,
@@ -35,6 +34,8 @@ import {
 import { showAddAnlageButton } from './addAnlage';
 import { activeAreaKey, activeKeyForPage, anlageSidebar, resolveAnlage } from './anlageNav';
 import { healthBadge, sameHealthFacts, type AnlageHealthFacts } from './health';
+import { deviceHealthForSite, LIVENESS_POLL_MS } from './liveness';
+import { useFreshnessPoll } from './useFreshnessPoll';
 import { useAnlageSurface } from './useAnlageSurface';
 import { AnlageAnlegenDrawer } from './components/AnlageAnlegenDrawer';
 import { OnboardingWizard } from './Onboarding';
@@ -404,6 +405,12 @@ function UnifiedPortal() {
 
   const [sites, setSites] = useState<Site[]>([]);
   const [devices, setDevices] = useState<Device[]>([]);
+  // Die Bezugszeit der Geräteliste: WANN der Server diese `lastSeenAt`-Werte
+  // gemeldet hat. Sie wird NUR gemeinsam mit `devices` gesetzt - genau das
+  // verhindert, dass ein stehender Schnappschuss gegen eine weiterlaufende
+  // Uhr altert und die Kopfzeile grundlos auf „Gerät meldet sich nicht"
+  // kippt (siehe `liveness.ts`).
+  const [devicesAt, setDevicesAt] = useState<number | null>(null);
   // U0 shell frame: the tenant's EFFECTIVE Betriebsart from /tenant-context
   // (resolved server-side; null until loaded or when the call fails - the
   // shell decision then falls back to the v1 site-count heuristic).
@@ -473,6 +480,7 @@ function UnifiedPortal() {
       if (!tenantReady) {
         setSites([]);
         setDevices([]);
+        setDevicesAt(null);
         setBetriebsart(null);
         setSelectedSite(null);
         return;
@@ -490,6 +498,7 @@ function UnifiedPortal() {
         ]);
         setSites(s);
         setDevices(d);
+        setDevicesAt(Date.now());
         if (ctx) setBetriebsart(ctx.betriebsart);
         setSelectedSite((cur) =>
           selectSiteId ?? (cur && s.some((x) => x.id === cur) ? cur : s[0]?.id ?? null),
@@ -599,32 +608,40 @@ function UnifiedPortal() {
         : null;
   const { surface } = useAnlageSurface(shellSite);
 
-  // Re-derive the health badge as time passes: `lastSeenAt` does not change,
-  // but a device crossing the 5-minute window must turn the badge amber
-  // without waiting for the next data load. A pure clock tick, no request.
-  const [healthTick, setHealthTick] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => setHealthTick((t) => t + 1), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
+  // Die stille Auffrischung der Geräteliste - das Gegenstück zur Bezugszeit
+  // oben. Vorher tickte hier nur eine Uhr über einem EINMAL geladenen
+  // Schnappschuss: `lastSeenAt` blieb stehen, `now` lief weiter, also kippte
+  // die Kopfzeile nach fünf Minuten offenem Portal zwangsläufig auf „Gerät
+  // meldet sich nicht" und heilte erst mit F5 (Captain-Meldung 30.07.). Jetzt
+  // wird die Wahrheit selbst nachgeholt: jede erfolgreiche Antwort setzt
+  // Zustand UND Bezugszeit, ein Fehlschlag lässt beides unberührt (er kann den
+  // Zustand also nicht kippen) und meldet NIE das rote Banner - das gehört
+  // einem vom Kunden ausgelösten Laden. Der Tenant wird beim Absenden
+  // festgehalten, damit eine spät eintreffende Antwort nach einem
+  // Mandantenwechsel nicht die falschen Geräte einsetzt.
+  const tenantRef = useRef(tenantId);
+  tenantRef.current = tenantId;
+  const refreshDevices = useCallback(() => {
+    if (!tenantReady) return;
+    const forTenant = tenantRef.current;
+    api.listDevices().then(
+      (d) => {
+        if (tenantRef.current !== forTenant) return;
+        setDevices(d);
+        setDevicesAt(Date.now());
+      },
+      () => {},
+    );
+  }, [tenantReady]);
+  useFreshnessPoll(refreshDevices, LIVENESS_POLL_MS, tenantReady);
 
-  // Device liveness of the Anlage in scope, straight from the already-loaded
-  // devices list (the same 5-minute window `deviceLiveStatus` uses everywhere).
-  const deviceHealth = useMemo(() => {
-    if (!shellSite) return null;
-    const own = devices.filter((d) => d.siteId === shellSite.id);
-    if (own.length === 0) return { deviceCount: 0, onlineCount: 0, waitingCount: 0 };
-    const now = new Date();
-    let onlineCount = 0;
-    let waitingCount = 0;
-    for (const d of own) {
-      const status = deviceLiveStatus(d, now);
-      if (status === 'online') onlineCount += 1;
-      else if (status === 'waiting') waitingCount += 1;
-    }
-    return { deviceCount: own.length, onlineCount, waitingCount };
-    // healthTick is a deliberate dependency: it is what re-evaluates freshness.
-  }, [shellSite, devices, healthTick]);
+  // Device liveness of the Anlage in scope, judged against the moment the
+  // server answered - never against a clock that ran past a snapshot we could
+  // not refresh (`liveness.ts` carries the full rule).
+  const deviceHealth = useMemo(
+    () => (shellSite ? deviceHealthForSite({ devices, fetchedAt: devicesAt }, shellSite.id) : null),
+    [shellSite, devices, devicesAt],
+  );
 
   // The facts only the Anlagen-Seite measures (plan / control / battery link),
   // reported upward so header and cockpit are ONE health truth — the badge used
@@ -660,9 +677,10 @@ function UnifiedPortal() {
         onOpenPage: (target: PageId) => navigate(target),
         // "Alle Anlagen" only exists where a fleet level exists.
         onOpenFleet: sites.length > 1 ? () => navigate(pageRoute('anlagen')) : null,
-        // Composed from data already in hand - the devices list plus whatever
-        // the Anlagen-Seite already measured and reported up. The badge must
-        // never add a request of its own. A fact nobody supplied contributes
+        // Composed from the devices list the shell holds (kept current by the
+        // silent refresh above - a freshness verdict needs FRESH data, not a
+        // clock ticking over a frozen one) plus whatever the Anlagen-Seite
+        // already measured and reported up. A fact nobody supplied contributes
         // nothing (`healthBadge` drops the row), so the badge still never
         // claims health it did not measure.
         health:
@@ -797,6 +815,7 @@ function UnifiedPortal() {
             <AnlagenPage
               sites={sites}
               devices={devices}
+              devicesFetchedAt={devicesAt}
               route={route}
               onNavigate={navigate}
               onReload={(selectSiteId?: string) => void reload(selectSiteId)}
