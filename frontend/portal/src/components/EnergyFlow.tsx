@@ -88,8 +88,14 @@ function nodeValue(key: NodeKey, snap: LiveSnapshot): string {
  */
 export type EnergyFlowSize = 'compact' | 'hero';
 
-/** The WIDE layout's height cap per size (the NARROW phone cross always fills). */
-const WIDE_HEIGHT_CAP: Record<EnergyFlowSize, number> = { compact: 264, hero: 420 };
+/**
+ * The WIDE layout's height cap per size (the NARROW phone cross always fills).
+ *
+ * `hero` = die Bühne: der Deckel wurde von 420 auf 520 px angehoben (Konzept
+ * `vp-cockpit-konzept-f4`, Richtung A — der Fluss soll GRÖSSER werden, nicht
+ * kleiner; die Bühnenspalte begrenzt ihn ohnehin). `compact` ist unverändert.
+ */
+const WIDE_HEIGHT_CAP: Record<EnergyFlowSize, number> = { compact: 264, hero: 520 };
 
 export function EnergyFlow({
   snapshot,

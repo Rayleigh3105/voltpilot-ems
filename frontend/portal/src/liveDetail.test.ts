@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   flowHasValues,
+  headSentenceVisible,
   initialVerlaufOpen,
   LIVE_WINDOWS,
   liveChip,
@@ -189,5 +190,31 @@ describe('flowHasValues — V14: collapse a diagram that would be four dashes', 
         snap({}),
       ),
     ).toBe(true);
+  });
+});
+
+describe('Die Kopfsatz-Regel der Bühne (§6.2)', () => {
+  /** Der Normalfall der Bühne: alles läuft, das Diagramm zeigt es. */
+  const ok = { projected: true, tone: 'ok' as const, hasFlow: true };
+
+  it('schweigt im Normalfall - der Fluss IST der Satz', () => {
+    expect(headSentenceVisible(ok)).toBe(false);
+  });
+
+  it('spricht, sobald er etwas anderes sagt als das Diagramm', () => {
+    // Eine Warnung nennt eine Ursache, die kein Kreis zeigt.
+    expect(headSentenceVisible({ ...ok, tone: 'warn' })).toBe(true);
+    expect(headSentenceVisible({ ...ok, tone: 'off' })).toBe(true);
+    // Kein zeichenbarer Fluss: dann ist der Satz die einzige Aussage.
+    expect(headSentenceVisible({ ...ok, hasFlow: false })).toBe(true);
+    // Noch kein Zustand geladen - nie stillschweigend nichts sagen.
+    expect(headSentenceVisible({ ...ok, tone: null })).toBe(true);
+    expect(headSentenceVisible({ projected: true, hasFlow: true })).toBe(true);
+  });
+
+  it('lässt das v1-Zonen-Dashboard und den Einrichtungspfad unangetastet', () => {
+    // Die Regel gilt NUR auf der Bühne; alles andere rendert wie bisher.
+    expect(headSentenceVisible({ ...ok, projected: false })).toBe(true);
+    expect(headSentenceVisible({ projected: false, tone: 'ok', hasFlow: false })).toBe(true);
   });
 });

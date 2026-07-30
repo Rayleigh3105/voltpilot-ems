@@ -13,6 +13,7 @@ import {
   type Overview,
   type Site,
 } from '../api';
+import { DEFAULT_EARNINGS_RANGE } from '../anlage';
 import { currentUser } from '../auth';
 import { isFleetShell } from '../betriebsart';
 import { fleetDailySaved, fleetKind, premiumDetail, premiumIncluded } from '../fleet';
@@ -142,8 +143,10 @@ function FleetUebersicht({
   const [failed, setFailed] = useState(false);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
   const [earnFailed, setEarnFailed] = useState(false);
-  // Realized-earnings hero period; Monat is the default (captain decision).
-  const [range, setRange] = useState<EarningsRange>('month');
+  // Realized-earnings hero period. Die Voreinstellung ist „Heute" und kommt aus
+  // derselben Konstante wie im Cockpit (`anlage.ts`, Captain 2026-07-30) - der
+  // Umschalter darf auf zwei Flächen nicht verschieden voreingestellt sein.
+  const [range, setRange] = useState<EarningsRange>(DEFAULT_EARNINGS_RANGE);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);

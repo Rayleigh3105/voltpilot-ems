@@ -91,6 +91,20 @@ export function monthLong(monthIso: string): string {
 }
 
 /**
+ * **Der Standard-Zeitraum ist „Heute"** (Captain 2026-07-30: „immer auf heute
+ * standardmäßig stellen statt Monat").
+ *
+ * Es gibt genau EINE Voreinstellung für den Zeitraum-Umschalter, und sie steht
+ * hier: das Cockpit (Bilanz-Leiste + die von ihr regierten Kennzahlen) und die
+ * Flotten-Übersicht lesen dieselbe Konstante. Eine vom Kunden getroffene Wahl
+ * gewinnt weiterhin — sie lebt wie bisher im Seiten-Zustand (es gibt heute
+ * keine Persistenz, und es wird hier auch keine erfunden). Die Historie kennt
+ * ihren eigenen `HistoryRange` und steht schon auf „Tag"; das Portfolio hat
+ * gar keinen Umschalter.
+ */
+export const DEFAULT_EARNINGS_RANGE: EarningsRange = 'day';
+
+/**
  * The period headline of the money hero, from the SELECTED instance: "Heute"
  * for the day range, the month name ("Juli", "Juli 2025" across years) for
  * month, the year for year, "Gesamt" for all. `at` is the effective date the

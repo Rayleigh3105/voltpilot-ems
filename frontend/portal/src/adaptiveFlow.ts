@@ -156,6 +156,18 @@ export interface FlowVertex {
   /** How many devices contribute to this role (>= 1). */
   memberCount: number;
   /**
+   * **Die Verzahnung von Steuerung und Fluss** (Konzept „Die Bühne" §6.3): der
+   * Speicher-Knoten trägt den Bestätigungs-Haken, sobald der Wechselrichter den
+   * Fahrplan-Sollwert bestätigt hat — die Bestätigung ist damit AM Diagramm
+   * ablesbar, der Bühnenfuß liefert Satz und Grund.
+   *
+   * Nur am Speicher, nur wenn er wirklich etwas tut (es gibt eine
+   * Zustandszeile), und NUR im gesunden Zustand (`controlStrip().state ===
+   * 'healthy'`) — eine Abweichung, ein abgeschalteter oder noch nicht
+   * bestätigter Sollwert bekommt keinen Haken (nie eine behauptete Bestätigung).
+   */
+  confirmed: boolean;
+  /**
    * true = a click on this circle opens the composition details. Only where
    * there is something to explain (2+ contributing devices) - a single-inverter
    * plant gets no affordance at all.
@@ -237,6 +249,13 @@ export interface LayoutOpts {
    */
   pvTotalKw?: number | null;
   pvDeviceCount?: number | null;
+  /**
+   * Der Wechselrichter hat den Fahrplan-Sollwert bestätigt (`controlStrip()`
+   * state `healthy`) — der Speicher-Knoten bekommt dann den Haken
+   * ({@link FlowVertex.confirmed}). Additiv: ohne das Flag ist die Geometrie
+   * zeichengleich zu vorher.
+   */
+  controlConfirmed?: boolean;
 }
 
 /**
@@ -329,6 +348,9 @@ export function layoutFlow(
     const half = Math.min((widest * LBL_F * 0.55) / 2, W / 2);
     const labelX = Math.max(half, Math.min(W - half, x));
     const mag = node.value_kw ?? 0;
+    // Der Haken hängt an der ZUSTANDSZEILE des Speichers: ohne „lädt …" gibt es
+    // nichts, was bestätigt worden wäre.
+    const confirmed = node.role === 'storage' && subLabel != null && opts?.controlConfirmed === true;
     vertices.push({
       key: node.role,
       role: node.role,
@@ -338,7 +360,9 @@ export function layoutFlow(
       labelLines,
       labelX,
       subLabel,
-      title: names.length > 0 ? `${label} · ${names.join(', ')}` : label,
+      title:
+        (names.length > 0 ? `${label} · ${names.join(', ')}` : label) +
+        (confirmed ? ' · Sollwert bestätigt' : ''),
       value: vertexValue(node.role, node, opts?.pvTotalKw),
       icon:
         memberCount === 1
@@ -350,6 +374,7 @@ export function layoutFlow(
       spokeX,
       spokeY,
       memberCount: count,
+      confirmed,
       expandable: node.role === 'pv' && count > 1,
     });
   }

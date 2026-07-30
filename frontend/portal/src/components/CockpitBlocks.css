@@ -241,7 +241,14 @@
  * Grid-Kind trägt `min-width: 0`, damit bei 375 px nichts horizontal überläuft.
  * ========================================================================== */
 
-/* --- Hero ----------------------------------------------------------------- */
+/* --- Die Bühne (Konzept `vp-cockpit-konzept-f4`, Richtung A) ---------------
+ *
+ * Fluss links (~62 % der Kartenbreite, GRÖSSER als vorher), Bilanz-Leiste
+ * rechts über die volle Bühnenhöhe (`space-between` statt `align-items:center`
+ * — genau das beseitigt die tote Zone unter dem Geldblock), Steuerungs-Zeile
+ * als Bühnenfuß über die volle Breite. Unter 900 px stapelt alles in
+ * Lese-Reihenfolge.
+ * ------------------------------------------------------------------------- */
 
 .vp-cockpit-hero {
   display: grid;
@@ -253,9 +260,15 @@
 
 @media (min-width: 900px) {
   .vp-cockpit-hero {
-    /* Das Diagramm führt; die Kennzahlen begleiten es ruhig. */
-    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-    align-items: center;
+    /* Das Diagramm führt und bekommt MEHR Raum als bisher (3fr/2fr = 60 %);
+       die Leiste rückt an es heran, statt daneben zu schweben. */
+    grid-template-columns: minmax(0, 1.68fr) minmax(0, 1fr);
+    align-items: stretch;
+  }
+  /* Eine Komposition ohne einen einzigen Leisten-Block bekommt keine leere
+     zweite Spalte - die Bühne gehört dann ganz dem Fluss. */
+  .vp-cockpit-hero.vp-stage-norail {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -264,10 +277,87 @@
   min-width: 0;
 }
 
+/* Der Fluss sitzt mittig in seiner (gestreckten) Bühnenspalte. */
+.vp-hero-flow {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .vp-hero-side {
   display: flex;
   flex-direction: column;
   gap: var(--vp-space-3, 12px);
+}
+
+@media (min-width: 900px) {
+  .vp-hero-side {
+    /* Die Blöcke verteilen sich über die VOLLE Höhe der Bühne. */
+    justify-content: space-between;
+    border-left: 1px solid var(--vp-border, #e2e8f0);
+    padding-left: var(--vp-space-4, 16px);
+  }
+}
+
+@media (max-width: 899px) {
+  /* Gestapelt trennt eine Linie oben statt links (Lese-Reihenfolge). */
+  .vp-hero-side {
+    border-top: 1px solid var(--vp-border, #e2e8f0);
+    padding-top: var(--vp-space-3, 12px);
+  }
+}
+
+.vp-rail-blk {
+  min-width: 0;
+}
+.vp-rail-blk > .vp-card-label {
+  margin-bottom: 6px;
+}
+
+/* Das kompakte Zeitraum-Segment der Leiste: der BESTEHENDE `.vp-seg`-Baustein,
+   eine Spur kleiner. Doppelklasse, damit die Regel unabhängig von der
+   Ladereihenfolge über `index.css` gewinnt (der dokumentierte Footgun der
+   komponenten-lokalen Sheets). */
+.vp-seg.vp-seg-compact {
+  /* Hugs its four Knöpfe (wie `.vp-seg` überall sonst) und bricht um, statt
+     die Leiste zu sprengen. */
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+}
+.vp-seg.vp-seg-compact button {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  min-height: 36px;
+}
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-seg.vp-seg-compact button {
+    min-height: 44px;
+  }
+}
+
+/* Der Bühnenfuß: eine schlanke Zeile über die VOLLE Kartenbreite. */
+.vp-stage-foot {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  padding-top: var(--vp-space-3, 12px);
+}
+
+.vp-control-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vp-control-foot .vp-control-foot-lbl {
+  flex: 0 0 auto;
+}
+.vp-control-foot .vp-control-reason {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
 }
 
 .vp-hero-fresh {

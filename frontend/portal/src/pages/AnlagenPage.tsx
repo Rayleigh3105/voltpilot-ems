@@ -26,7 +26,7 @@ import {
   siteSnapshot,
 } from '../fleet';
 import { eurAmount, fmtNum, plantKindLabel } from '../format';
-import { periodLabel, stripSlots } from '../anlage';
+import { DEFAULT_EARNINGS_RANGE, periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip } from '../control';
@@ -41,7 +41,7 @@ import { EnergyFlow } from '../components/EnergyFlow';
 import { AdaptiveEnergyFlow } from '../components/AdaptiveEnergyFlow';
 import { useAdaptiveLive } from '../useAdaptiveLive';
 import { liveState, type LiveState } from '../adaptiveLive';
-import { liveChip } from '../liveDetail';
+import { flowHasValues, headSentenceVisible, liveChip } from '../liveDetail';
 import { moneyLayout } from '../moneyEmphasis';
 import { leadArtifact, leadBlock } from '../leadSlot';
 import { useAnlageSurface } from '../useAnlageSurface';
@@ -434,7 +434,9 @@ export function AnlageSeite({
   const [earnFailed, setEarnFailed] = useState(false);
   // The period tabs govern the whole page (captain 2026-07-07). `at` is the
   // selected instance (a month tapped in the strip); null = the current period.
-  const [range, setRange] = useState<EarningsRange>('month');
+  // Die Voreinstellung ist „Heute" und steht an EINER Stelle (`anlage.ts`);
+  // eine getroffene Wahl gewinnt danach wie bisher (Captain 2026-07-30).
+  const [range, setRange] = useState<EarningsRange>(DEFAULT_EARNINGS_RANGE);
   const [at, setAt] = useState<string | null>(null);
   const [nextHourTempC, setNextHourTempC] = useState<number | null>(null);
   const [weatherWhyText, setWeatherWhyText] = useState<string | null>(null);
@@ -886,6 +888,19 @@ export function AnlageSeite({
   const heroStale = liveSt === 'stale';
   const chip = ovSite && !showSetup ? liveChip(liveSt, ovSite.live?.ts ?? null, now) : null;
 
+  // Die Kopfsatz-Regel der Bühne (Konzept §6.2): der Prosa-Satz doppelte im
+  // Normalfall die drei Zahlen, die 100 px tiefer an den Fluss-Knoten stehen.
+  // Er wird nicht abgeschafft - er spricht nur noch, wenn er etwas ANDERES
+  // sagt als das Diagramm (Warnung, kein zeichenbarer Fluss, Einrichtung).
+  // `flowHasValues` ist dieselbe reine Funktion, die auch der Hero benutzt -
+  // kein zweites Urteil über dieselbe Frage.
+  const heroSnapshot = ovSite ? siteSnapshot(ovSite.live) : null;
+  const showHeadSentence = headSentenceVisible({
+    projected: projection && !showSetup,
+    tone: sentence?.tone ?? null,
+    hasFlow: flowHasValues(adaptiveLive.topology, heroSnapshot),
+  });
+
   const switchRange = (r: EarningsRange) => {
     setRange(r);
     setAt(null);
@@ -923,7 +938,7 @@ export function AnlageSeite({
           {showSetup ? (
             // M5: der Leer-Zustand spricht nicht von "offline", sondern vom Weg.
             <p className="vp-anlage-sentence tone-warn">{SETUP_STATUS_LINE}</p>
-          ) : sentence ? (
+          ) : !showHeadSentence ? null : sentence ? (
             <p className={`vp-anlage-sentence tone-${sentence.tone}`}>{sentence.text}</p>
           ) : overviewFailed ? (
             <p className="vp-anlage-sentence tone-off">
@@ -984,12 +999,6 @@ export function AnlageSeite({
            ihr Modal (Jetzt | Verlauf). Was kein Modus und keine Quelle
            beisteuert, erscheint nicht - auch nicht als leere Karte. */
         <>
-          {/* Die Zeitraum-Tabs regieren die Geld-Zahlen; ohne Geld-Modus
-              gibt es keinen Zeitraum zu wählen. */}
-          {hasBlock(blocks, 'erloes-komposition') && (
-            <PeriodTabs range={range} onRange={switchRange} />
-          )}
-
           {ovSite == null ? (
             <Skeleton height={320} radius="var(--vp-radius-lg)" />
           ) : (
@@ -1001,7 +1010,19 @@ export function AnlageSeite({
               sources={sources}
               pins={siteEntityPins}
               onOpenSub={onOpenSub}
-              footer={controlView ? <ControlStrip view={controlView} /> : null}
+              /* Der Zeitraum steht in der Bilanz-Leiste, direkt über den
+                 Zahlen, die er regiert (Konzept §6.3) - nicht mehr als volle
+                 Seitenzeile für vier Knöpfe. Ohne Geld-Modus gibt es keinen
+                 Zeitraum zu wählen. */
+              periodSeg={
+                hasBlock(blocks, 'erloes-komposition') ? (
+                  <PeriodTabs range={range} onRange={switchRange} variant="seg" />
+                ) : null
+              }
+              /* Die Bestätigung ist AM Diagramm ablesbar (Speicher-Knoten),
+                 der Bühnenfuß liefert Satz und Grund. */
+              controlConfirmed={controlView?.state === 'healthy'}
+              footer={controlView ? <ControlStrip view={controlView} variant="bare" /> : null}
             />
           )}
 

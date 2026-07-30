@@ -37,6 +37,7 @@ export function AdaptiveEnergyFlow({
   size = 'compact',
   sources = null,
   pins = null,
+  controlConfirmed = false,
 }: {
   topology: SiteTopology;
   stale?: boolean;
@@ -44,6 +45,11 @@ export function AdaptiveEnergyFlow({
    * Portal v3 · M2: `'compact'` (default) keeps today's `maxWidth: L.W` cap
    * byte-for-byte; `'hero'` lifts it so the cockpit hero can host the SAME
    * diagram larger. No geometry / `adaptiveFlow.ts` change.
+   *
+   * Seit der Bühne (Konzept `vp-cockpit-konzept-f4`) FÜLLT `'hero'` die
+   * Bühnenspalte: der frühere Deckel `L.W * 1.6` war ein zweiter, unsichtbarer
+   * Grenzwert neben der Spaltenbreite — das Diagramm soll groß sein, also
+   * entscheidet die Spalte allein (bindende Captain-Vorgabe 30.07.).
    */
   size?: EnergyFlowSize;
   /**
@@ -59,6 +65,12 @@ export function AdaptiveEnergyFlow({
    * position put values on the wrong rows).
    */
   pins?: EntityPin[] | null;
+  /**
+   * Der Wechselrichter bestätigt gerade den Fahrplan-Sollwert
+   * (`controlStrip().state === 'healthy'`) → der Speicher-Knoten trägt den
+   * Bestätigungs-Haken (Konzept §6.3 „Verzahnung"). Additiv.
+   */
+  controlConfirmed?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -82,8 +94,9 @@ export function AdaptiveEnergyFlow({
     narrow,
     pvTotalKw: composition?.totalKw,
     pvDeviceCount: composition?.deviceCount,
+    controlConfirmed,
   });
-  const maxWidth = size === 'hero' ? `${Math.round(L.W * 1.6)}px` : `${L.W}px`;
+  const maxWidth = size === 'hero' ? '100%' : `${L.W}px`;
   const expandable = composition != null && L.vertices.some((v) => v.expandable);
   const showDetails = expandable && open;
 
@@ -279,6 +292,21 @@ function Node({
         >
           {v.subLabel}
         </text>
+      )}
+      {/* Die Verzahnung (Konzept §6.3): der Haken am Speicher-Knoten sagt „der
+          Wechselrichter hat den Fahrplan-Sollwert bestätigt". Als SVG-Pfad wie
+          der Chevron nebenan — nie ein Unicode-Häkchen (die Icon-Konvention).
+          Der volle Wortlaut steht im `<title>` des Knotens. */}
+      {v.confirmed && v.subLabel && (
+        <path
+          className="vp-flow-confirm"
+          d={`M${v.labelX + captionOffset(v)} ${subY - 4} l3 3.2 l5.5 -7`}
+          fill="none"
+          stroke={meta.color}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       )}
       {/* The chevron says "there is more behind this circle". */}
       {interactive && (

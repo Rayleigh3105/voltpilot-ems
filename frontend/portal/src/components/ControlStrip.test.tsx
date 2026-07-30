@@ -28,4 +28,27 @@ describe('ControlStrip', () => {
     expect(container.querySelector('.vp-control-reason')).toBeNull();
     expect(screen.getByText(/Fahrplan-Sollwert/)).toBeInTheDocument();
   });
+
+  describe('Bühnenfuß (variant="bare")', () => {
+    it('ist eine schlanke Zeile OHNE eigenen Kartenrahmen - Sollwert, Bestätigung, Grund', () => {
+      const reason = 'Mittags-PV wird gespeichert und am Abend verkauft.';
+      const { container } = render(<ControlStrip view={view({ reason })} variant="bare" />);
+      const foot = container.querySelector('.vp-control-foot');
+      expect(foot).not.toBeNull();
+      // Karte-in-Karte ist aufgelöst (Befund P5 des Konzepts).
+      expect(container.querySelector('.vp-card')).toBeNull();
+      expect(container.querySelector('.vp-section')).toBeNull();
+      // Alle drei Teile stehen weiterhin da - nur ohne Rahmen.
+      expect(foot?.textContent).toContain('Steuerung');
+      expect(foot?.textContent).toContain('Fahrplan-Sollwert');
+      expect(foot?.textContent).toContain('geprüft vor 3 s');
+      expect(container.querySelector('.vp-control-reason')?.textContent).toBe(reason);
+      expect(container.querySelector('.vp-control-dot.tone-ok')).not.toBeNull();
+    });
+
+    it('behauptet keinen Grund, wenn der Plan keinen aufgezeichnet hat', () => {
+      const { container } = render(<ControlStrip view={view()} variant="bare" />);
+      expect(container.querySelector('.vp-control-reason')).toBeNull();
+    });
+  });
 });

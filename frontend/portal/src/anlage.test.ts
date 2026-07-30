@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coveredSinceLabel } from './anlage';
+import { coveredSinceLabel, DEFAULT_EARNINGS_RANGE } from './anlage';
 import type { EarningsMonth, EarningsSeriesPoint, EarningsSite, Site } from './api';
 import {
   bestBucket,
@@ -74,6 +74,16 @@ describe('month labels', () => {
     expect(monthShort('2026-07-01')).toBe('Jul');
     expect(monthShort('2026-03-01')).toBe('Mär');
     expect(monthLong('2026-07-01')).toBe('Juli');
+  });
+});
+
+describe('DEFAULT_EARNINGS_RANGE', () => {
+  it('ist „Heute" - die EINE Voreinstellung des Zeitraum-Umschalters', () => {
+    // Captain 2026-07-30: „immer auf heute standardmäßig stellen statt Monat".
+    // Cockpit-Bilanz-Leiste und Flotten-Übersicht lesen dieselbe Konstante.
+    expect(DEFAULT_EARNINGS_RANGE).toBe('day');
+    const now = new Date('2026-07-30T10:00:00Z');
+    expect(periodLabel(DEFAULT_EARNINGS_RANGE, now, now)).toBe('Heute');
   });
 });
 
