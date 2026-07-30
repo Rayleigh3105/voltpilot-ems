@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim AS base
 WORKDIR /app
+# Unbuffered stdout: Python block-buffers stdout when it is a pipe (which it
+# always is in a container), so the serve loops' print() output would sit in an
+# 8 KB buffer and never reach `docker logs` / `kubectl logs` in real time.
+# logging already flushes per record; this covers the print() half.
+ENV PYTHONUNBUFFERED=1
 COPY pyproject.toml README.md ./
 COPY voltpilot_market_data/ voltpilot_market_data/
 # Install the DB extra so the containerised job can persist to TimescaleDB.

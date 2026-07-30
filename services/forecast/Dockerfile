@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
 FROM python:3.11-slim AS base
 WORKDIR /app
+# Unbuffered stdout: Python block-buffers stdout when it is a pipe (which it
+# always is in a container), so the serve loops' print() output would sit in an
+# 8 KB buffer and never reach `docker logs` / `kubectl logs` in real time.
+# logging already flushes per record; this covers the print() half.
+ENV PYTHONUNBUFFERED=1
 # libgomp1: OpenMP runtime the xgboost Linux wheel links against (the `ml`
 # extra powering the shadow challengers; macOS devs: `brew install libomp`).
 RUN apt-get update \

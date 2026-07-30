@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
@@ -70,6 +69,7 @@ from voltpilot_forecast.repository import (
     ForecastRepository,
     TimescaleForecastRepository,
 )
+from voltpilot_forecast.runtime import ServeRuntime, serve_health
 
 logger = logging.getLogger("voltpilot.forecast.collect")
 
@@ -93,7 +93,15 @@ def _dsn_from_env(env: dict[str, str]) -> str:
     db = env.get("POSTGRES_DB", "voltpilot")
     user = quote(env.get("POSTGRES_USER", "voltpilot"), safe="")
     password = quote(env.get("POSTGRES_PASSWORD", ""), safe="")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    # connect_timeout bounds the connect: without it libpq waits on the OS
+    # TCP timeout, so an unreachable DB hangs the cycle (and the shutdown
+    # handler) instead of failing into the retry back-off. See
+    # docs/k8s-readiness.md.
+    timeout = env.get("POSTGRES_CONNECT_TIMEOUT", "10")
+    return (
+        f"postgresql://{user}:{password}@{host}:{port}/{db}"
+        f"?connect_timeout={quote(timeout, safe='')}"
+    )
 
 
 def _ml_available() -> bool:
@@ -464,6 +472,12 @@ def main(argv: list[str] | None = None) -> int:
         "--no-eval", action="store_true",
         help="do not trigger the daily forecast/plan evaluation",
     )
+    serve.add_argument(
+        "--health-port", type=int,
+        default=int(os.environ.get("FORECAST_HEALTH_PORT", "8097")),
+        help="probe endpoint port, /health + /ready (default FORECAST_HEALTH_PORT, "
+        "else 8097; 0 disables it)",
+    )
     serve.add_argument("--log-level", default="INFO")
     args = parser.parse_args(argv)
 
@@ -493,9 +507,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         from voltpilot_forecast import evaluate  # noqa: PLC0415
 
+        # Container runtime contract (docs/k8s-readiness.md): SIGTERM-aware
+        # sleep, probe endpoint, and a short exponential back-off after a
+        # failed cycle so a Kubernetes cold start (no depends_on - the DB may
+        # not be up yet) retries in seconds instead of idling a full interval.
+        runtime = ServeRuntime("forecast-collector")
+        runtime.install_signal_handlers()
+        serve_health(runtime, args.health_port)
         last_eval_day: date | None = None
         cycle = 0
-        while True:
+        while not runtime.stopping:
             try:
                 run_cycle(dsn, cfg, cache, ml_available)
                 if not args.no_eval:
@@ -503,12 +524,17 @@ def main(argv: list[str] | None = None) -> int:
                     if last_eval_day != yesterday:
                         evaluate.run_for(dsn, yesterday, days_back=2)
                         last_eval_day = yesterday
+                runtime.record_success()
             except Exception as exc:  # keep the loop alive across DB blips
+                runtime.record_failure(exc)
                 logger.warning("serve.cycle_failed: %s", exc)
             cycle += 1
             if args.max_cycles and cycle >= args.max_cycles:
                 return 0
-            time.sleep(args.interval_seconds)
+            if not runtime.sleep(runtime.next_delay(args.interval_seconds)):
+                break
+        logger.info("serve.stopped cycles=%s", cycle)
+        return 0
 
     return 2
 

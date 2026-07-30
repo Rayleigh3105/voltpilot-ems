@@ -1,6 +1,15 @@
 spring:
   application:
     name: voltpilot-ingest
+
+  # Ceiling for the graceful shutdown below: after this the remaining
+  # in-flight work is cut and the JVM leaves. Must stay COMFORTABLY BELOW the
+  # pod's terminationGracePeriodSeconds (recommendation: 20s here, 45s there,
+  # see docs/k8s-readiness.md) so the process always exits on its own instead
+  # of being SIGKILLed.
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:20s}
+
   # Redpanda (Kafka API) producer target. String key/value; we serialize the
   # telemetry.raw event to JSON ourselves. Idempotent + acks=all for durability.
   kafka:
@@ -14,6 +23,9 @@ spring:
 
 server:
   port: ${INGEST_PORT:8091}
+  # Graceful shutdown (docs/k8s-readiness.md). Ingest serves no user traffic,
+  # but the same lifecycle also drains the MQTT adapter cleanly on SIGTERM.
+  shutdown: graceful
 
 # MQTT ingress (EMQX) + Redpanda egress.
 voltpilot:

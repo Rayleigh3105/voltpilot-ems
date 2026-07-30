@@ -19,7 +19,7 @@ import argparse
 import logging
 import os
 import sys
-import time
+import threading
 from urllib.parse import quote
 
 from voltpilot_optimization.config import v2_plan_site_ids
@@ -27,6 +27,7 @@ from voltpilot_optimization.engine import run_cycle
 from voltpilot_optimization.persistence import TimescaleScheduleRepository
 from voltpilot_optimization.publisher import MqttSchedulePublisher
 from voltpilot_optimization.publisher_v2 import MqttPlanV2Publisher
+from voltpilot_optimization.runtime import ServeRuntime, serve_health
 
 logger = logging.getLogger("voltpilot.optimization")
 
@@ -40,7 +41,15 @@ def _dsn_from_env(env: dict[str, str]) -> str:
     # RLS-scoped app role - same as the weather collector.
     user = quote(env.get("POSTGRES_USER", "voltpilot"), safe="")
     password = quote(env.get("POSTGRES_PASSWORD", ""), safe="")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    # connect_timeout bounds the connect: without it libpq waits on the OS TCP
+    # timeout, and because the cycle is strictly sequential ONE hanging connect
+    # blocks every remaining site (and the shutdown handler). See
+    # docs/k8s-readiness.md.
+    timeout = env.get("POSTGRES_CONNECT_TIMEOUT", "10")
+    return (
+        f"postgresql://{user}:{password}@{host}:{port}/{db}"
+        f"?connect_timeout={quote(timeout, safe='')}"
+    )
 
 
 def _add_common_args(sub: argparse.ArgumentParser) -> None:
@@ -85,6 +94,13 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="stop after N cycles (0 = run forever; used by tests)",
+    )
+    serve.add_argument(
+        "--health-port",
+        type=int,
+        default=int(os.environ.get("OPTIMIZER_HEALTH_PORT", "8096")),
+        help="probe endpoint port, /health + /ready (default OPTIMIZER_HEALTH_PORT, "
+        "else 8096; 0 disables it)",
     )
 
     sim = sub.add_parser(
@@ -190,11 +206,28 @@ def _simulate_serve(args, env: dict[str, str]) -> int:
     )
     store = JobStore(lambda request, publish: run_simulation(request, deps, publish))
     httpd = serve(store, args.port)
+    # SIGTERM handling (docs/k8s-readiness.md): a Python PID 1 without an
+    # explicit handler IGNORES SIGTERM, so the container would always be
+    # SIGKILLed after the full grace period. shutdown() lets serve_forever
+    # return and the socket close cleanly. A RUNNING simulation job is
+    # deliberately abandoned - V1 keeps its job registry in memory, so a job
+    # cannot survive the restart either way and the portal simply re-submits
+    # (the result cache makes the repeat instant).
+    runtime = ServeRuntime("simulation")
+    runtime.install_signal_handlers()
+    stopper = threading.Thread(
+        target=lambda: (runtime.wait_for_stop(), httpd.shutdown()),
+        name="simulation-stopper",
+        daemon=True,
+    )
+    stopper.start()
     logger.info(
         "simulate_serve.start",
         extra={"context": {"port": args.port, "max_workers": args.max_workers}},
     )
     httpd.serve_forever()
+    httpd.server_close()
+    logger.info("simulate_serve.stopped")
     return 0
 
 
@@ -224,22 +257,36 @@ def main(argv: list[str] | None = None) -> int:
         return _simulate_serve(args, env)
 
     if args.command == "serve":
+        # Container runtime contract (docs/k8s-readiness.md): SIGTERM-aware so
+        # the process leaves the 15-min sleep at once instead of being SIGKILLed
+        # after the grace period, probe endpoint for the manifests, and a short
+        # exponential back-off after a failed cycle so a cold start (no
+        # depends_on in Kubernetes: the DB/broker may simply not be up yet)
+        # retries in seconds rather than idling a full interval.
+        runtime = ServeRuntime("optimization")
+        runtime.install_signal_handlers()
+        serve_health(runtime, args.health_port)
         logger.info(
             "serve.start",
             extra={"context": {"interval_seconds": args.interval_seconds}},
         )
         cycle = 0
-        while True:
+        while not runtime.stopping:
             try:
                 _run_one(args, env)
+                runtime.record_success()
             except Exception as exc:  # keep the loop alive across transient blips
+                runtime.record_failure(exc)
                 logger.warning(
                     "serve.cycle_failed", extra={"context": {"error": str(exc)}}
                 )
             cycle += 1
             if args.max_cycles and cycle >= args.max_cycles:
                 return 0
-            time.sleep(args.interval_seconds)
+            if not runtime.sleep(runtime.next_delay(args.interval_seconds)):
+                break
+        logger.info("serve.stopped", extra={"context": {"cycles": cycle}})
+        return 0
 
     return 2
 

@@ -543,6 +543,21 @@ services:
       MARKET_DATA_PUBLICATION_HOUR: ${MARKET_DATA_PUBLICATION_HOUR:-12.75}
       ENTSOE_SECURITY_TOKEN: ${ENTSOE_SECURITY_TOKEN:-}
       ENTSOE_BASE_URL: ${ENTSOE_BASE_URL:-https://web-api.tp.entsoe.eu/api}
+      MARKET_DATA_HEALTH_PORT: ${MARKET_DATA_HEALTH_PORT:-8094}
+      POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
+    healthcheck:
+      # /health is the LIVENESS answer of the serve loop (docs/k8s-readiness.md):
+      # 200 while the process runs, body carries cycles/failures. python:slim has
+      # no curl/wget, so the check uses the interpreter that is already there.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8094/health').read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   # ---------------------------------------------------------------------------
   # Weather collector: hourly forecast (Open-Meteo, keyless, EU-hosted) per
@@ -571,6 +586,21 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       WEATHER_FORECAST_DAYS: ${WEATHER_FORECAST_DAYS:-3}
       WEATHER_REFRESH_SECONDS: ${WEATHER_REFRESH_SECONDS:-10800}
+      WEATHER_HEALTH_PORT: ${WEATHER_HEALTH_PORT:-8098}
+      POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
+    healthcheck:
+      # /health is the LIVENESS answer of the serve loop (docs/k8s-readiness.md):
+      # 200 while the process runs, body carries cycles/failures. python:slim has
+      # no curl/wget, so the check uses the interpreter that is already there.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8098/health').read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   # ---------------------------------------------------------------------------
   # Forecast collector (shadow-mode model registry, docs/forecasting.md): every
@@ -607,6 +637,21 @@ services:
       VOLTPILOT_ML_MIN_DAYS: ${VOLTPILOT_ML_MIN_DAYS:-21}
       VOLTPILOT_ACTIVE_LOAD_MODEL: ${VOLTPILOT_ACTIVE_LOAD_MODEL:-load-persistence}
       VOLTPILOT_ACTIVE_PV_MODEL: ${VOLTPILOT_ACTIVE_PV_MODEL:-pv-physical}
+      FORECAST_HEALTH_PORT: ${FORECAST_HEALTH_PORT:-8097}
+      POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
+    healthcheck:
+      # /health is the LIVENESS answer of the serve loop (docs/k8s-readiness.md):
+      # 200 while the process runs, body carries cycles/failures. python:slim has
+      # no curl/wget, so the check uses the interpreter that is already there.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8097/health').read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # ---------------------------------------------------------------------------
   # Optimization engine: the rolling battery-dispatch planner. Every 15 min,
@@ -668,6 +713,21 @@ services:
       # unset/remove a site to roll back (seconds, no image change). See
       # docs/migration-v1-to-v2.md.
       VOLTPILOT_V2_PLAN_SITES: ${VOLTPILOT_V2_PLAN_SITES:-}
+      OPTIMIZER_HEALTH_PORT: ${OPTIMIZER_HEALTH_PORT:-8096}
+      POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
+    healthcheck:
+      # /health is the LIVENESS answer of the serve loop (docs/k8s-readiness.md):
+      # 200 while the process runs, body carries cycles/failures. python:slim has
+      # no curl/wget, so the check uses the interpreter that is already there.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8096/health').read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Ersparnis-Simulation service: the SAME optimization image with a different
   # entrypoint (the weather-collector pattern). Internal-only (NO public port -
@@ -693,9 +753,23 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-voltpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       SIM_MAX_WORKERS: ${SIM_MAX_WORKERS:-3}
+      POSTGRES_CONNECT_TIMEOUT: ${POSTGRES_CONNECT_TIMEOUT:-10}
       # Same pricing layer as the optimizer - keep the ONE price truth
       # (default-supply-components defaults ON platform-wide, opt out with false).
       OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-true}
+    healthcheck:
+      # /health is the LIVENESS answer of the serve loop (docs/k8s-readiness.md):
+      # 200 while the process runs, body carries cycles/failures. python:slim has
+      # no curl/wget, so the check uses the interpreter that is already there.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8095/health').read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   # ---------------------------------------------------------------------------
   # flowc-serve: the CLOUD-side flow-graph -> flow-artifact compiler sidecar
@@ -710,6 +784,7 @@ services:
     build:
       context: ./edge-app/nodered/flowc
     restart: unless-stopped
+    # /health is defined in the image's own HEALTHCHECK (BusyBox wget).
 
   # ---------------------------------------------------------------------------
   # Frontend: the built SPA on nginx, and the SINGLE public HTTP entry point the
@@ -735,6 +810,15 @@ services:
     depends_on:
       - api
       - keycloak
+    healthcheck:
+      # /healthz is nginx's own 200 (frontend/portal/nginx.conf) - deliberately
+      # says nothing about the api/keycloak upstreams, which have their own
+      # probes. Serving the SPA is what "ready" means here.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
   # A single private bridge network for all services. Only the two published

@@ -5,6 +5,7 @@ This mirrors the proven saalo recipe (single server + external TLS proxy + Forge
 
 This is deliberately the smallest thing that works.
 It is escalatable later (managed Postgres, Kubernetes, a Hetzner/GitOps setup) without changing the application - see [Escalating beyond one VPS](#escalating-beyond-one-vps).
+The per-service operating contract a Kubernetes manifest may rely on (probe path + port, SIGTERM behaviour + recommended grace period, required env, scalability incl. the api singleton blockers) is [`docs/k8s-readiness.md`](k8s-readiness.md).
 
 There are two ways to deploy, both against the same compose file:
 
