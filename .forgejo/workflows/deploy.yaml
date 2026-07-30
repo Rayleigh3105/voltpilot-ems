@@ -119,6 +119,17 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: npm run test:csp
 
+      # Cache smoke: same built image, asserts the SPA cache policy - hashed
+      # /assets/* immutable, index.html + the try_files fallback revalidated
+      # (no Cache-Control at all = a reload after a deploy renders the PREVIOUS
+      # version, captain report 2026-07-30) - and that the security headers
+      # survive on every one of those responses (nginx add_header does not
+      # inherit into inner blocks).
+      - name: Cache smoke (built nginx image + SPA cache policy)
+        if: matrix.type == 'frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run test:cache
+
   # Build + push every deployed image in parallel. The deploy job waits for the
   # whole matrix. Tags: :latest and :${{ github.sha }} (the rollout pins the SHA).
   build:
