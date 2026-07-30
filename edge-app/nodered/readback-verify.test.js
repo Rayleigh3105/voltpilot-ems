@@ -111,6 +111,21 @@ test('the exact rule still honours the per-register tolerance', () => {
     'remote_mode keeps EXACT semantics - a different sub-mode is a real deviation, not tolerated silently');
 });
 
+test('the tolerance is measured on the 16-bit RING (a signed setpoint at the zero crossing)', () => {
+  // Commanded 0, read back -1 unit (0xFFFF) = ~30 W on a 30 kW inverter: inside the
+  // register's 1-unit tolerance. A plain |a-b| measured 65535 and called it a
+  // refused write - on every idle slot.
+  assert.strictEqual(V.regDistance(0, 0xffff), 1);
+  assert.strictEqual(V.regDistance(0xffff, 0), 1);
+  assert.strictEqual(V.regDistance(0, 2), 2);
+  assert.strictEqual(V.regDistance(0, 0x8000), 0x8000, 'the far side of the ring stays far');
+  assert.strictEqual(V.verifyRegister({ role: 'battery_power', expect: 0, actual: 0xffff, tolerance: 1 }).verdict, 'held');
+  assert.strictEqual(V.verifyRegister({ role: 'battery_power', expect: 0, actual: 0xfffd, tolerance: 1 }).verdict, 'mismatch',
+    '-3 units against a commanded 0 is still a real deviation');
+  // a signed charge setpoint away from zero is unaffected
+  assert.strictEqual(V.verifyRegister({ role: 'battery_power', expect: 0xffdf, actual: 0xffde, tolerance: 1 }).verdict, 'held');
+});
+
 test('an OUT-OF-RANGE answer is UNREAD (0xFFFF cannot be a mode/strategy value)', () => {
   for (const role of ['remote_mode', 'power_control_mode', 'battery_strategy']) {
     const r = V.verifyRegister({ role: role, expect: 1, actual: 0xffff });

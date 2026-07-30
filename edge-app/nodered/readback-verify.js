@@ -172,8 +172,23 @@ function verifyRegister(entry) {
     };
   }
   const tol = Number(e.tolerance) > 0 ? Number(e.tolerance) : 0;
-  if (Math.abs(actual - expect) <= tol) return { role: role, verdict: VERDICT.HELD, note: '' };
+  if (regDistance(actual, expect) <= tol) return { role: role, verdict: VERDICT.HELD, note: '' };
   return { role: role, verdict: VERDICT.MISMATCH, note: '' };
+}
+
+/**
+ * regDistance - distance between two 16-bit register words, measured ON THE RING.
+ *
+ * A plain |a - b| is wrong at the zero crossing of a SIGNED register: the remote
+ * setpoint 1109 is signed (- = charge), so a commanded 0 that reads back -1 unit
+ * (0xFFFF, ~30 W on a 30 kW inverter, well inside the register's 1-unit tolerance)
+ * measured 65535 and counted as a refused write - a flap waiting to happen on every
+ * idle slot. The ring distance is correct for signed AND unsigned registers without
+ * needing to know which is which, and a genuinely distant value stays distant.
+ */
+function regDistance(a, b) {
+  const d = Math.abs(u16(a) - u16(b));
+  return Math.min(d, 0x10000 - d);
 }
 
 /**
@@ -270,6 +285,7 @@ module.exports = {
   CYCLE,
   NO_ANSWER_REASON,
   ruleForRole,
+  regDistance,
   verifyRegister,
   isZeroAnswer,
   verifyCycle,
