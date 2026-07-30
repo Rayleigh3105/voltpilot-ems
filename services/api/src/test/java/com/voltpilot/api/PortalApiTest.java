@@ -4547,6 +4547,115 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * The Anlagen-scharfe Erlöse ({@code GET /sites/{id}/earnings}, Historie
+     * concept F1 / P3): one Anlage, one period, and a COMPOSITION the surface
+     * can show without inventing a second money model.
+     *
+     * <p>Hand-computed over two current-month CH slots of a {@code fest} 30
+     * ct/kWh site (so the import price is a flat, checkable number):
+     * <pre>
+     *   11:00 spot 100: pv 2.0 load 0.5 import 0.0 export 1.0
+     *   18:00 spot 200: pv 0.0 load 1.5 import 1.0 export 0.0
+     *   einspeise  = 1.0 * 100/1000                       = 0.10
+     *   selbstverbrauch = 0.5 + 0.5 = 1.0 kWh -> * 0.30   = 0.30
+     *   stromkosten = 1.0 kWh * 0.30 EUR/kWh              = 0.30
+     *   netto      = 0.10 + 0.30 - 0.30                   = 0.10
+     *   actual     = 0.30 - 0.10                          = 0.20  (= stromkosten - einspeise)
+     *   baseline   = -1.5*0.10  +  1.5*0.30               = 0.30
+     *   saved      = 0.30 - 0.20                          = 0.10
+     * </pre>
+     *
+     * <p>Both documented identities are asserted EXACTLY, plus the honest
+     * degradation of a site without data, the week range the fleet endpoint
+     * refuses, and the RLS fence.
+     */
+    @Test
+    void siteEarningsAnswerOneAnlageWithItsReconcilingComposition() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+
+        String site = createSiteWithTarif(demo, "Erloese Welt", "CH", "eigenverbrauch", "fest", "30");
+        String leer = createSite(demo, "Erloese Leer", "CH", "eigenverbrauch");
+
+        String t1 = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '14 days 11 hours') AT TIME ZONE 'Europe/Berlin'";
+        String t2 = "(date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                + " + interval '14 days 18 hours') AT TIME ZONE 'Europe/Berlin'";
+        exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
+                + "VALUES (" + t1 + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
+                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
+                + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
+                + "(" + t1 + ", '" + tenantA + "', '" + site + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
+                + "(" + t2 + ", '" + tenantA + "', '" + site + "', 0.0, 1.5, 1.0, 0.0, 0.0, 0.5, 90) "
+                + "ON CONFLICT DO NOTHING");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + site + "/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = res.getBody();
+        org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+
+        assertThat(body).containsEntry("siteId", site).containsEntry("range", "month")
+                .containsEntry("tarifArt", "fest").containsEntry("tarifPriced", true)
+                .containsEntry("reason", null);
+        assertThat(num(body, "einspeiseErloesEur")).isCloseTo(0.10, eps);
+        assertThat(num(body, "eigenverbrauchsWertEur")).isCloseTo(0.30, eps);
+        assertThat(num(body, "stromkostenEur")).isCloseTo(0.30, eps);
+        assertThat(num(body, "nettoErgebnisEur")).isCloseTo(0.10, eps);
+        assertThat(num(body, "savedEur")).isCloseTo(0.10, eps);
+        assertThat(num(body, "bezogenKwh")).isCloseTo(1.0, eps);
+        assertThat(num(body, "bezugspreisCtKwh")).isCloseTo(30.0, org.assertj.core.data.Offset.offset(1e-6));
+        // No anzulegender Wert -> NOT eligible -> null, so the surface says
+        // "kein anzulegender Wert hinterlegt" instead of a fabricated 0,00 EUR.
+        assertThat(body).containsEntry("marktpraemieEur", null);
+
+        // Identity 1: the composition IS the result the card shows.
+        assertThat(num(body, "nettoErgebnisEur")).isCloseTo(
+                num(body, "einspeiseErloesEur") + num(body, "eigenverbrauchsWertEur")
+                        - num(body, "stromkostenEur"), eps);
+        // Identity 2: the exposed import term is the one inside actualEur.
+        assertThat(num(body, "stromkostenEur") - num(body, "einspeiseErloesEur"))
+                .isCloseTo(num(body, "actualEur"), eps);
+
+        // The money chart carries the three parts per bucket (month -> day),
+        // and its cumulative line lands on the period result.
+        List<Map<String, Object>> series = list(body, "series");
+        assertThat(series).hasSize(1);
+        assertThat(num(series.get(0), "einspeiseErloesEur")).isCloseTo(0.10, eps);
+        assertThat(num(series.get(0), "stromkostenEur")).isCloseTo(0.30, eps);
+        assertThat(num(series.get(0), "nettoEur")).isCloseTo(num(body, "nettoErgebnisEur"), eps);
+
+        // The Historie vocabulary includes the WEEK the fleet endpoint refuses.
+        assertThat(rest.exchange(url("/api/v1/sites/" + site + "/earnings?range=week"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(rest.exchange(url("/api/v1/sites/" + site + "/earnings?range=quartal"),
+                HttpMethod.GET, new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // A site without a measured slot degrades HONESTLY - nulls + a reason,
+        // never a fabricated zero.
+        ResponseEntity<Map<String, Object>> empty = rest.exchange(
+                url("/api/v1/sites/" + leer + "/earnings?range=month"), HttpMethod.GET,
+                new HttpEntity<>(bearer(demo)), new ParameterizedTypeReference<>() {});
+        assertThat(empty.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(empty.getBody()).containsEntry("reason", "no_data")
+                .containsEntry("nettoErgebnisEur", null)
+                .containsEntry("einspeiseErloesEur", null)
+                .containsEntry("stromkostenEur", null)
+                .containsEntry("bezugspreisCtKwh", null)
+                .containsEntry("savedEur", null);
+        assertThat(list(empty.getBody(), "series")).isEmpty();
+
+        // RLS: another tenant does not even see the Anlage.
+        assertThat(rest.exchange(url("/api/v1/sites/" + site + "/earnings?range=month"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     private String url(String path) {
         return "http://localhost:" + port + path;
     }

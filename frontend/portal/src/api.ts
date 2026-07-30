@@ -1262,6 +1262,78 @@ export interface Earnings {
   totals: EarningsTotals;
 }
 
+// ---- Anlagen-scharfe Erlöse (GET /api/v1/sites/{id}/earnings) ---------------
+
+/**
+ * Der Zeitraum der Erlöse-Welt: dieselbe Vokabel wie die Zeit-Leiste
+ * (`HistoryRange`), plus das „Gesamt" der Geld-Ansicht. Der Endpunkt kennt
+ * beides — die Historie hat „Woche", die Geld-Ansicht „Gesamt".
+ */
+export type SiteEarningsRange = HistoryRange | 'all';
+
+/** Ein Balken des Geld-Verlaufs: die drei Teile plus ihr Netto. */
+export interface SiteEarningsBucket {
+  start: string;
+  einspeiseErloesEur: number | null;
+  eigenverbrauchsWertEur: number | null;
+  stromkostenEur: number | null;
+  nettoEur: number | null;
+}
+
+/**
+ * Das GEMESSENE Geld EINER Anlage in EINEM Zeitraum — die Antwort der
+ * Erlöse-Welt (`#/anlage/{id}/erloese`, Konzept `vp-historie-konzept-t4` §4.2
+ * Welt B). Anlagen-scharfer Zwilling von `/api/v1/earnings` (P3): dieselbe
+ * Slot-Rechnung, dieselbe Preiswahrheit, eine Anlage.
+ *
+ * **Zwei Identitäten, auf die sich die Oberfläche verlassen darf** (sie gelten
+ * per Konstruktion, nicht per Rundung):
+ * `nettoErgebnisEur = einspeiseErloesEur + eigenverbrauchsWertEur − stromkostenEur`
+ * und `stromkostenEur − einspeiseErloesEur = actualEur`.
+ *
+ * **Ehrlichkeit:** jedes Geld-/Mengenfeld ist `null`, wenn es nicht berechenbar
+ * ist — nie eine erfundene 0; `reason` sagt warum. `savedEur` ist die
+ * ZURECHNUNG der Steuerung und steckt bereits IM Ergebnis (nie ein weiterer
+ * Summand); `marktpraemieEur` steckt bereits im Einspeise-Erlös;
+ * `peakShaving` gehört einer ANDEREN Periode (laufende Abrechnungsperiode) und
+ * wird nie in die Zeitraum-Summe addiert.
+ */
+export interface SiteEarnings {
+  siteId: string;
+  name: string;
+  range: SiteEarningsRange;
+  from: string;
+  to: string;
+  plantKind: PlantKind;
+  tarifArt: TarifArt;
+  tarifParamCtKwh: number | null;
+  tarifPriced: boolean;
+  anzulegenderWertCtKwh: number | null;
+  coveredSlots: number;
+  firstCoveredDate: string | null;
+  reason: EarningsReason | null;
+  einspeiseErloesEur: number | null;
+  eigenverbrauchsWertEur: number | null;
+  stromkostenEur: number | null;
+  nettoErgebnisEur: number | null;
+  savedEur: number | null;
+  arbitrageEur: number | null;
+  pvShiftEur: number | null;
+  baselineEur: number | null;
+  actualEur: number | null;
+  marktpraemieEur: number | null;
+  bezugspreisCtKwh: number | null;
+  realizedExportCtKwh: number | null;
+  marketValueSolarCtKwh: number | null;
+  marketValueProvisional: boolean | null;
+  bezogenKwh: number | null;
+  eingespeistKwh: number | null;
+  selbstverbrauchKwh: number | null;
+  batterieBewegtKwh: number | null;
+  series: SiteEarningsBucket[];
+  peakShaving?: PeakShaving | null;
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
@@ -1376,6 +1448,15 @@ export const api = {
   earnings: (range: EarningsRange = 'month', at?: string | null) =>
     request<Earnings>(
       `/api/v1/earnings?range=${range}${at ? `&at=${at}` : ''}`,
+    ),
+  /**
+   * Das gemessene Geld EINER Anlage in EINEM Zeitraum (die Erlöse-Welt, P3).
+   * Der mandantenweite `earnings` bleibt fürs Portfolio — diese Fläche zeigt
+   * eine Anlage und bezahlt deshalb auch nur eine.
+   */
+  siteEarnings: (siteId: string, range: SiteEarningsRange = 'month', at?: string | null) =>
+    request<SiteEarnings>(
+      `/api/v1/sites/${siteId}/earnings?range=${range}${at ? `&at=${at}` : ''}`,
     ),
   /**
    * The site's latest inverter-control confirmation (the calm "Steuerung"
