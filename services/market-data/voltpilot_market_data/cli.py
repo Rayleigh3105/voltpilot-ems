@@ -23,7 +23,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -51,6 +50,7 @@ from voltpilot_market_data.refresh import (
     day_fully_covered,
 )
 from voltpilot_market_data.resilience import ResilientPriceSource
+from voltpilot_market_data.runtime import ServeRuntime, serve_health
 from voltpilot_market_data.service import (
     FetchResult,
     backfill_range,
@@ -71,7 +71,15 @@ def _dsn_from_env(env: dict[str, str]) -> str:
     # corrupt the connection URL.
     user = quote(env.get("POSTGRES_USER", "voltpilot"), safe="")
     password = quote(env.get("POSTGRES_PASSWORD", ""), safe="")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    # connect_timeout bounds the connect: without it libpq waits on the OS
+    # TCP timeout, so an unreachable DB hangs the cycle (and the shutdown
+    # handler) instead of failing into the retry back-off. See
+    # docs/k8s-readiness.md.
+    timeout = env.get("POSTGRES_CONNECT_TIMEOUT", "10")
+    return (
+        f"postgresql://{user}:{password}@{host}:{port}/{db}"
+        f"?connect_timeout={quote(timeout, safe='')}"
+    )
 
 
 def _build_source(env: dict[str, str], source_name: str) -> ResilientPriceSource:
@@ -152,6 +160,13 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=0,
         help="stop after N refresh cycles (0 = run forever; used by tests)",
+    )
+    serve.add_argument(
+        "--health-port",
+        type=int,
+        default=int(os.environ.get("MARKET_DATA_HEALTH_PORT", "8094")),
+        help="probe endpoint port, /health + /ready (default MARKET_DATA_HEALTH_PORT, "
+        "else 8094; 0 disables it)",
     )
 
     backfill = sub.add_parser(
@@ -300,6 +315,16 @@ def main(argv: list[str] | None = None) -> int:
         repository = _repository_for(env, args.persist)
         policy = RefreshPolicy.from_env(env, baseline_seconds=args.interval_seconds)
         scheduler = CoverageAwareScheduler(policy=policy, zone=args.zone)
+        # Container runtime contract (docs/k8s-readiness.md): SIGTERM-aware
+        # sleep (the 6 h baseline cadence would otherwise mean every rollout
+        # ends in SIGKILL after the grace period), a probe endpoint, and a
+        # short exponential back-off while cycles fail - so a Kubernetes cold
+        # start (no depends_on: the DB may simply not be up yet) retries in
+        # seconds instead of leaving the fleet without prices for six hours.
+        runtime = ServeRuntime("market-data")
+        runtime.install_signal_handlers()
+        serve_health(runtime, args.health_port)
+        last_error: BaseException | str | None = None
         logging.getLogger("voltpilot.market_data").info(
             "serve.start",
             extra={"context": {
@@ -311,16 +336,18 @@ def main(argv: list[str] | None = None) -> int:
             }},
         )
         cycle = 0
-        while True:
+        while not runtime.stopping:
             today = _today_utc()
             tomorrow = today + timedelta(days=1)
             # Refresh both today (already published) and tomorrow (published
             # ~13:00) so the portal always has a full today+tomorrow curve.
             tomorrow_series = None
+            fetched = 0
             for day in (today, tomorrow):
                 try:
                     result = fetch_and_store(source, args.zone, day, repository)
                     print(_describe_fetch(args.zone, day, result))
+                    fetched += 1
                     if day == tomorrow:
                         tomorrow_series = result.series
                 except Exception as exc:  # keep the loop alive across a bad day
@@ -328,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
                         "serve.fetch_failed",
                         extra={"context": {"day": day.isoformat(), "error": str(exc)}},
                     )
+                    last_error = exc
             if args.persist:
                 # Monthly data, but refreshing each cycle is one cheap request
                 # and keeps the CURRENT month's provisional value tracking the
@@ -340,6 +368,13 @@ def main(argv: list[str] | None = None) -> int:
                         "serve.market_values_failed",
                         extra={"context": {"error": str(exc)}},
                     )
+            # A cycle counts as failed only when NEITHER day could be fetched
+            # (upstream/DB down) - that is the cold-start case the back-off is
+            # for; a single bad delivery day keeps the baseline cadence.
+            if fetched:
+                runtime.record_success()
+            else:
+                runtime.record_failure(last_error or "no day could be fetched")
             cycle += 1
             if args.max_cycles and cycle >= args.max_cycles:
                 return 0
@@ -354,7 +389,13 @@ def main(argv: list[str] | None = None) -> int:
                 covered=day_fully_covered(tomorrow_series, window_start, window_end),
                 slots=covered_slot_count(tomorrow_series, window_start, window_end),
             )
-            time.sleep(delay)
+            # next_delay only shortens the wait while cycles keep failing.
+            if not runtime.sleep(runtime.next_delay(delay)):
+                break
+        logging.getLogger("voltpilot.market_data").info(
+            "serve.stopped", extra={"context": {"cycles": cycle}}
+        )
+        return 0
 
     return 2
 

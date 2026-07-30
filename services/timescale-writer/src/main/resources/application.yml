@@ -1,6 +1,15 @@
 spring:
   application:
     name: voltpilot-timescale-writer
+
+  # Ceiling for the graceful shutdown below: after this the remaining
+  # in-flight work is cut and the JVM leaves. Must stay COMFORTABLY BELOW the
+  # pod's terminationGracePeriodSeconds (recommendation: 20s here, 45s there,
+  # see docs/k8s-readiness.md) so the process always exits on its own instead
+  # of being SIGKILLed.
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:20s}
+
   kafka:
     bootstrap-servers: ${REDPANDA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
@@ -20,9 +29,19 @@ spring:
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
     username: ${APP_DB_USER:voltpilot_app}
     password: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+    # Pool size as an ENV knob (docs/k8s-readiness.md): the Hikari default of
+    # 10 is kept so nothing changes today, but a multi-replica deployment sizes
+    # it per replica against the DB's max_connections without a rebuild.
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
 
 server:
   port: ${WRITER_PORT:8092}
+  # Graceful shutdown (docs/k8s-readiness.md). Load-bearing here: the Kafka
+  # listener container stops as part of the context close, so the in-flight
+  # record finishes and ITS offset is committed before the process leaves -
+  # a rollout replays nothing (the insert is idempotent either way).
+  shutdown: graceful
 
 voltpilot:
   redpanda:

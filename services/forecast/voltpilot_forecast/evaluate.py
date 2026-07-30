@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import logging
 import os
-import time
 from datetime import date, datetime, timedelta, timezone
 
 from voltpilot_forecast import registry
@@ -43,6 +42,7 @@ from voltpilot_forecast.quality_repository import (
     QualityRepository,
     TimescaleQualityRepository,
 )
+from voltpilot_forecast.runtime import ServeRuntime
 
 logger = logging.getLogger("voltpilot.forecast.evaluate")
 
@@ -57,7 +57,15 @@ def _dsn_from_env(env: dict[str, str]) -> str:
     db = env.get("POSTGRES_DB", "voltpilot")
     user = quote(env.get("POSTGRES_USER", "voltpilot"), safe="")
     password = quote(env.get("POSTGRES_PASSWORD", ""), safe="")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    # connect_timeout bounds the connect: without it libpq waits on the OS
+    # TCP timeout, so an unreachable DB hangs the cycle (and the shutdown
+    # handler) instead of failing into the retry back-off. See
+    # docs/k8s-readiness.md.
+    timeout = env.get("POSTGRES_CONNECT_TIMEOUT", "10")
+    return (
+        f"postgresql://{user}:{password}@{host}:{port}/{db}"
+        f"?connect_timeout={quote(timeout, safe='')}"
+    )
 
 
 # ---- DB reads (trusted backend role) ------------------------------------------
@@ -298,16 +306,27 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "serve":
+        # Not a deployed service (the forecast collector triggers the daily
+        # evaluation inline), but the same container contract applies whenever
+        # an operator runs it standalone: SIGTERM must leave the sleep, and a
+        # failed cycle must not idle the full interval. No probe endpoint -
+        # nothing schedules this loop. See docs/k8s-readiness.md.
+        runtime = ServeRuntime("forecast-eval")
+        runtime.install_signal_handlers()
         cycle = 0
-        while True:
+        while not runtime.stopping:
             try:
                 run_for(dsn, yesterday_berlin(), days_back=2)
+                runtime.record_success()
             except Exception as exc:  # keep the loop alive across DB blips
+                runtime.record_failure(exc)
                 logger.warning("eval.cycle_failed: %s", exc)
             cycle += 1
             if args.max_cycles and cycle >= args.max_cycles:
                 return 0
-            time.sleep(args.interval_seconds)
+            if not runtime.sleep(runtime.next_delay(args.interval_seconds)):
+                break
+        return 0
 
     return 2
 

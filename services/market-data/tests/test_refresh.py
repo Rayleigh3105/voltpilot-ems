@@ -296,15 +296,19 @@ def _run_serve(monkeypatch, start_utc: datetime, publish_at: datetime, cycles: i
     now = {"t": start_utc}
     delays: list[int] = []
 
-    def fake_sleep(seconds):
+    # The between-cycles wait is now ServeRuntime.sleep (SIGTERM-interruptible,
+    # docs/k8s-readiness.md) instead of time.sleep; it returns True = "keep
+    # looping". Returning False here would end the loop before --max-cycles.
+    def fake_sleep(_runtime, seconds):
         delays.append(seconds)
         now["t"] += timedelta(seconds=seconds)
+        return True
 
     source = PublicationClockSource(lambda: now["t"], publish_at)
     for var in ("MARKET_DATA_PUBLICATION_HOUR", "MARKET_DATA_FAST_REFRESH_SECONDS"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(cli, "_now_utc", lambda: now["t"])
-    monkeypatch.setattr(cli.time, "sleep", fake_sleep)
+    monkeypatch.setattr(cli.ServeRuntime, "sleep", fake_sleep)
     monkeypatch.setattr(cli, "_build_source", lambda env, name: source)
     rc = cli.main(
         [
@@ -315,6 +319,9 @@ def _run_serve(monkeypatch, start_utc: datetime, publish_at: datetime, cycles: i
             str(BASELINE),
             "--max-cycles",
             str(cycles),
+            # No probe socket in the unit suite (0 = disabled).
+            "--health-port",
+            "0",
         ]
     )
     assert rc == 0

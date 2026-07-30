@@ -105,13 +105,50 @@ function createServer() {
   });
 }
 
-module.exports = { createServer };
+/**
+ * Stop accepting connections, let in-flight compiles finish, then leave.
+ *
+ * Container contract (docs/k8s-readiness.md): Node installs NO default
+ * SIGTERM handler, and the Linux kernel delivers a signal to PID 1 only when
+ * that process registered a handler - so without this the sidecar IGNORES
+ * SIGTERM and every `docker stop` / rolling deploy ends in SIGKILL after the
+ * full grace period. A compile is milliseconds, so the drain is instant; the
+ * timer is only the backstop for a wedged socket.
+ */
+function installShutdownHandlers(server, { timeoutMs = 10000, exit = process.exit } = {}) {
+  let stopping = false;
+  const stop = (signal) => {
+    if (stopping) return;
+    stopping = true;
+    // eslint-disable-next-line no-console
+    console.log(`flowc-serve stopping (${signal})`);
+    const hard = setTimeout(() => exit(0), timeoutMs);
+    if (typeof hard.unref === 'function') hard.unref();
+    server.close(() => {
+      clearTimeout(hard);
+      exit(0);
+    });
+    // Idle keep-alive sockets would otherwise hold close() open until they expire.
+    if (typeof server.closeIdleConnections === 'function') server.closeIdleConnections();
+  };
+  for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => stop(signal));
+  return stop;
+}
+
+module.exports = { createServer, installShutdownHandlers };
 
 if (require.main === module) {
   const port = Number(process.env.FLOWC_PORT || process.env.PORT || DEFAULT_PORT);
   const bind = process.env.FLOWC_BIND || '0.0.0.0';
-  createServer().listen(port, bind, () => {
+  const server = createServer();
+  installShutdownHandlers(server);
+  server.listen(port, bind, () => {
+    // The BOUND port, not the configured one - with FLOWC_PORT=0 (ephemeral,
+    // what the shutdown test uses) the configured value says nothing.
+    const bound = server.address();
     // eslint-disable-next-line no-console
-    console.log(`flowc-serve listening on ${bind}:${port} (compiler ${COMPILER_VERSION})`);
+    console.log(
+      `flowc-serve listening on ${bound.address}:${bound.port} (compiler ${COMPILER_VERSION})`
+    );
   });
 }

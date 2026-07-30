@@ -5,6 +5,11 @@
 #   context: .  /  dockerfile: services/optimization/Dockerfile
 FROM python:3.11-slim AS base
 WORKDIR /app
+# Unbuffered stdout: Python block-buffers stdout when it is a pipe (which it
+# always is in a container), so the serve loops' print() output would sit in an
+# 8 KB buffer and never reach `docker logs` / `kubectl logs` in real time.
+# logging already flushes per record; this covers the print() half.
+ENV PYTHONUNBUFFERED=1
 COPY services/forecast/pyproject.toml services/forecast/README.md forecast/
 COPY services/forecast/voltpilot_forecast/ forecast/voltpilot_forecast/
 COPY services/optimization/pyproject.toml services/optimization/README.md optimization/

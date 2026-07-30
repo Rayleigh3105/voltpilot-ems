@@ -2,11 +2,24 @@ spring:
   application:
     name: voltpilot-api
 
+  # Ceiling for the graceful shutdown below: after this the remaining
+  # in-flight work is cut and the JVM leaves. Must stay COMFORTABLY BELOW the
+  # pod's terminationGracePeriodSeconds (recommendation: 20s here, 45s there,
+  # see docs/k8s-readiness.md) so the process always exits on its own instead
+  # of being SIGKILLed.
+  lifecycle:
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:20s}
+
   # Runtime connection: the NON-privileged app role so Row-Level-Security applies.
   datasource:
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
     username: ${APP_DB_USER:voltpilot_app}
     password: ${APP_DB_PASSWORD:voltpilot_app_dev_pw}
+    # Pool size as an ENV knob (docs/k8s-readiness.md): the Hikari default of
+    # 10 is kept so nothing changes today, but a multi-replica deployment sizes
+    # it per replica against the DB's max_connections without a rebuild.
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
 
   # Migrations run as the Postgres SUPERUSER (owns schema, creates the app role
   # and the RLS policies). baseline-version 0 lets the idempotent V1 run even on
@@ -50,6 +63,13 @@ spring:
 
 server:
   port: ${API_PORT:8090}
+  # Graceful shutdown (docs/k8s-readiness.md): on SIGTERM Tomcat stops
+  # accepting new connections and lets in-flight requests finish instead of
+  # cutting them. That is what makes a rolling deploy invisible to the portal
+  # (which polls every 30 s) - together with a preStop drain so the load
+  # balancer has removed the pod before the signal arrives. Harmless in
+  # compose: `docker compose down` just waits out any in-flight request.
+  shutdown: graceful
 
 # Toggle OIDC resource-server validation. ON by default (fail-secure: a
 # deployment that forgot the env var authenticates rather than permits-all);
