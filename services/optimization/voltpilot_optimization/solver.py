@@ -620,9 +620,12 @@ def _cover_load_from_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
     p = inp.battery
     return cover_load_from_battery(
         battery_kw=slot.battery_kw,
-        # The SOLVED grid power of the slot: <= 0 is the "Netz = 0" kink (role
-        # eigenverbrauch) or an export; a real planned import is a DELIBERATE
-        # cheap-hour purchase the duty must never undo.
+        # The SOLVED grid power of the slot: only the "Netz = 0" kink (role
+        # eigenverbrauch, |grid_kw| within the deadband) may carry the duty. A
+        # real planned IMPORT is a deliberate cheap-hour purchase and a real
+        # planned EXPORT a deliberate sale - the bidirectional edge enforcement
+        # would cut either back to zero grid, so both are excluded HERE, where
+        # the plan's own grid power is known.
         grid_kw=slot.grid_kw,
         # EUR/MWh -> ct/kWh: the asymmetric IMPORT price (bare spot only when the
         # site carries no tariff), i.e. what the avoided grid kWh really costs.

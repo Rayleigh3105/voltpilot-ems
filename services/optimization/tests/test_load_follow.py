@@ -29,6 +29,7 @@ from voltpilot_optimization.domain import (
     horizon_slot_starts,
 )
 from voltpilot_optimization.slot_trim import (
+    PLANNED_GRID_EXCHANGE_DEADBAND_KW,
     cost_to_cover_ct_kwh,
     cover_load_economic,
     cover_load_from_battery,
@@ -179,10 +180,16 @@ def test_a_charging_or_idle_slot_carries_no_load_following_duty():
     assert cover_load_from_battery(battery_kw=-4.0, **common)  # a real discharge
 
 
-def test_a_slot_the_plan_deliberately_buys_in_is_never_flagged():
-    """The consistency guard + the price-arbitrage protection in one: where the
-    plan itself plans a grid IMPORT (the cheap hours), the edge must never be
-    told to undo it."""
+def test_only_the_netz_zero_kink_is_flagged_never_a_deliberate_trade():
+    """The price-arbitrage protection, BOTH sides (P1b, 2026-07-30).
+
+    Only the "Netz = 0" kink of the eigenverbrauch role carries the duty. A
+    planned IMPORT is a deliberate cheap-hour purchase the edge must never undo;
+    a planned EXPORT is a deliberate sale, and since the edge enforcement became
+    bidirectional (it now LIMITS a discharge that overshoots the measured house)
+    marking such a slot would let the edge cut that sale back to zero grid. The
+    edge cannot tell an intended export from a forecast overshoot, so the
+    distinction is made here, where the plan's own grid power is known."""
     common = dict(
         battery_kw=-4.0,
         import_price_ct_kwh=40.0,
@@ -190,12 +197,21 @@ def test_a_slot_the_plan_deliberately_buys_in_is_never_flagged():
         one_way_efficiency=ETA,
         wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
     )
+    # A deliberate purchase: never.
     assert not cover_load_from_battery(grid_kw=3.0, **common)
-    # The "Netz = 0" kink itself (role eigenverbrauch) and an EXPORTING slot both
-    # pass: neither is a deliberate purchase.
+    # A deliberate sale: never either - not even a small one.
+    assert not cover_load_from_battery(grid_kw=-8.0, **common)
+    assert not cover_load_from_battery(grid_kw=-0.3, **common)
+    # The kink itself, and the rounding noise around it on BOTH sides.
     assert cover_load_from_battery(grid_kw=0.0, **common)
-    assert cover_load_from_battery(grid_kw=0.04, **common)  # inside the deadband
-    assert cover_load_from_battery(grid_kw=-8.0, **common)
+    assert cover_load_from_battery(grid_kw=0.04, **common)
+    assert cover_load_from_battery(grid_kw=-0.04, **common)
+    # The deadband is a magnitude, so it is symmetric by construction.
+    assert PLANNED_GRID_EXCHANGE_DEADBAND_KW > 0
+    for sign in (1, -1):
+        edge = sign * PLANNED_GRID_EXCHANGE_DEADBAND_KW
+        assert cover_load_from_battery(grid_kw=edge, **common)
+        assert not cover_load_from_battery(grid_kw=edge * 1.5, **common)
 
 
 def test_the_flag_is_env_switchable_and_defaults_on():
@@ -292,6 +308,65 @@ def test_a_cheap_hour_the_plan_deliberately_buys_in_is_left_alone():
     buying = [s for s in plan.slots if s.grid_kw > 0.05]
     assert buying, "scenario must plan deliberate purchases"
     assert all(not s.cover_load_from_battery for s in buying)
+
+
+@needs_highs
+def test_a_slot_the_plan_deliberately_exports_from_the_battery_is_never_flagged():
+    """The OTHER half of the arbitrage protection (P1b, 2026-07-30): where the
+    plan sells battery energy into the grid on purpose, no slot may carry the
+    duty - the edge enforcement is bidirectional and would otherwise limit that
+    sale back to zero grid, and the edge cannot tell an intended export from a
+    forecast overshoot.
+
+    Deliberately NON-VACUOUS: the test also proves the economics in those slots
+    SAY "covering is economic", i.e. it really is the planned export that
+    suppresses the flag, not a rule that would have refused them anyway."""
+    n = 12
+    pv = [0.0] * n
+    load = [2.0] * n  # a small house against a big, nearly full battery
+    # An expensive peak first, a cheap tail after it: selling into the peak beats
+    # holding the energy, so the plan exports on purpose.
+    spot = [600.0] * 4 + [50.0] * 8
+    imp = [p + 113.3 for p in spot]
+    plan = solve(
+        make_input(spot, load, pv, import_price=imp, export_value=spot, soc0_kwh=57.0)
+    )
+
+    exporting = [
+        (i, s)
+        for i, s in enumerate(plan.slots)
+        if s.battery_kw < -0.05 and s.grid_kw < -PLANNED_GRID_EXCHANGE_DEADBAND_KW
+    ]
+    assert exporting, "scenario must plan real battery exports"
+    assert all(not s.cover_load_from_battery for _, s in exporting)
+
+    economic = [
+        cover_load_economic(
+            import_price_ct_kwh=imp[i] / 10.0,
+            stored_value_ct_kwh=s.stored_value_ct_kwh,
+            one_way_efficiency=BATTERY.one_way_efficiency,
+            wear_ct_per_kwh_each_way=BATTERY.wear_cost_ct_per_kwh / 2.0,
+        )
+        for i, s in exporting
+    ]
+    assert any(economic), (
+        "the scenario must contain exporting slots whose economics WOULD have "
+        "flagged them - otherwise this test proves nothing about the export guard"
+    )
+    # Measured on this scenario: the four peak slots sell at -30 kW battery /
+    # -28 kW grid (role verkaufen) and would have been flagged under the old
+    # grid_kw <= 0 rule, i.e. the edge would have cut the sale back to -2 kW.
+    assert all(s.slot_role == "verkaufen" for _, s in exporting)
+
+    # ...and the SAME plan still flags the eigenverbrauch slots that follow it:
+    # the guard narrows the marking, it does not switch the duty off.
+    covering = [
+        s
+        for s in plan.slots
+        if s.battery_kw < -0.05 and abs(s.grid_kw) <= PLANNED_GRID_EXCHANGE_DEADBAND_KW
+    ]
+    assert covering, "the tail must plan cover-the-house slots"
+    assert all(s.cover_load_from_battery for s in covering)
 
 
 @needs_highs

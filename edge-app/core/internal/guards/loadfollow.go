@@ -69,17 +69,21 @@
 //     which is why FollowResult carries the direction: an unnamed correction
 //     reads as a defect just like an unnamed limitation.
 //
-// SCOPE LIMIT worth knowing: the edge cannot tell a plan's DELIBERATE export
-// apart from a forecast overshoot, because the plan carries only the setpoint,
-// never its own forecast grid power. In a flagged slot it does not have to: the
-// cloud emits the flag on the "eigenverbrauch" shape (a real discharge that does
-// not itself plan to import, slot_trim.cover_load_from_battery), i.e. a slot
-// whose intent is grid ~ 0, not a trading window. An unflagged slot - the
-// deliberate sell windows, the cheap-hour purchases, role "warten" - is
-// byte-for-byte untouched, which is what protects the price arbitrage. Where a
-// flagged slot did plan a small export, reducing it holds that energy in the
-// battery instead (worth at least the water value, and re-dispatched by the next
-// 15-min replan) - a bounded, self-correcting deferral, unlike the unpriced
+// WHY THE FLAG MAY BE READ AS "TARGET GRID 0": the edge cannot tell a plan's
+// DELIBERATE export apart from a forecast overshoot, because the plan carries
+// only the setpoint, never its own forecast grid power. It does not have to -
+// the distinction is made in the cloud, where both numbers exist: the flag is
+// emitted ONLY on the "eigenverbrauch" kink, a real discharge whose planned grid
+// exchange is within a deadband of zero in BOTH directions
+// (slot_trim.cover_load_from_battery, |grid_kw| <= 0.05 kW). So a deliberate
+// sell window and a deliberate cheap-hour purchase are equally unflagged, and an
+// unflagged slot is byte-for-byte untouched here - that is what protects the
+// price arbitrage in both directions.
+//
+// Safety does NOT rest on that, though: a device paired with an older cloud can
+// still see a marked slot that plans a small export. Limiting it then holds that
+// energy in the battery (worth at least the water value, re-dispatched by the
+// next 15-min replan) - a bounded, self-correcting deferral, unlike the unpriced
 // export the correction exists to stop.
 //
 // Anti-flap is SYMMETRIC around the zero-grid target and asymmetric in time,

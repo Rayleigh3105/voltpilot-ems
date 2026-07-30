@@ -1180,14 +1180,15 @@ Plan zu wenig entlädt, begrenzen, wenn er zu viel entlädt. Was zusätzlich zum
   HARTEN Boden bei 0 (nie ein Laden, nie ein Richtungswechsel — deckt PV die Last, geht der Sollwert
   auf 0) und kann den nachfolgenden Peak-Guard nicht aushebeln (sie landet bei Import 0 ≤ jeder
   Freigabe ≥ 0). Ein kommandiertes LADEN bleibt weiterhin unangetastet.
-- **UNMARKIERTE Slots bleiben byte-identisch — in beiden Richtungen.** Die bewussten Verkaufsfenster
-  (±30 kW) und die bewussten Billig-Käufe (Rolle `warten`) trägt die Wolke gar nicht erst als Flag
-  (`grid_kw <= 0` UND echte Entladung), die Preisarbitrage bleibt also unberührt. GRENZE, die man
-  kennen muss: der Edge kann einen ABSICHTLICHEN Export eines markierten Slots nicht von einem
-  Prognose-Überschuss unterscheiden (der Plan trägt nur den Sollwert, nie seine eigene
-  Prognose-Netzleistung) — er begrenzt ihn dann, die Energie BLEIBT im Speicher (≥ Wasserwert) und
-  wird vom nächsten 15-Minuten-Replan neu disponiert. Ein Nachziehen der Wolken-Emission auf
-  `|grid_kw| <= deadband` wäre der saubere Ausschluss; bewusst NICHT getan (Wolke unberührt).
+- **UNMARKIERTE Slots bleiben byte-identisch — in beiden Richtungen.** Die Unterscheidung
+  „absichtlicher Handel vs. Prognose-Abweichung" trifft die WOLKE, nie der Edge: der Edge bekommt nur
+  den Sollwert, nie die Prognose-Netzleistung des Plans. Deshalb markiert `slot_trim.py` seit P1b nur
+  noch den echten „Netz ≈ 0"-Knick — **echte Entladung UND `|grid_kw| <= 0,05 kW`** —, also weder
+  einen geplanten Kauf (Rolle `warten`) noch einen geplanten Verkauf (Rolle `verkaufen`, z. B. das
+  ±30-kW-Fenster). Die Sicherheit hängt aber NICHT daran: ein Gerät an einer ÄLTEREN Wolke kann noch
+  einen markierten Slot mit kleinem Export sehen — dort begrenzt der Guard, die Energie BLEIBT im
+  Speicher (≥ Wasserwert) und wird vom nächsten 15-Minuten-Replan neu disponiert (begrenzte,
+  selbstkorrigierende Verschiebung, anders als der unbepreiste Export, den die Korrektur verhindert).
 - **Die Peak-RESERVE begrenzt nur das ANHEBEN** (`reserveSocPct` hebt den SoC-Boden): gewöhnliches
   Lastdecken ist genau das, was die Reserve überleben muss — dieselbe Regel wie im Rückfall-Pfad. Die
   Peak-VERTEIDIGUNG darf weiterhin darunter (sie läuft danach mit den unveränderten Limits). Das
@@ -1213,7 +1214,9 @@ Plan zu wenig entlädt, begrenzen, wenn er zu viel entlädt. Was zusätzlich zum
   dem Peak-Guard), `agent/load_follow_test.go` (inkl. der 23:12-Konstellation und der EINGECHECKTEN
   Contract-Bytes), `plan/plan_test.go`, `web/jstest/ui.test.js`,
   `services/optimization/tests/test_load_follow.py` (Regel + echter Solver: die Nacht-Slots werden
-  markiert, die billigen Kauf-Stunden nicht, Setpoints byte-identisch).
+  markiert, die billigen Kauf-Stunden UND ein bewusster 28-kW-Export nicht — der Export-Fall ist
+  bewusst NICHT vakuum: er belegt, dass genau diese `verkaufen`-Slots ökonomisch markiert WORDEN
+  WÄREN, Setpoints byte-identisch).
 
 ## Maintaining this file
 
