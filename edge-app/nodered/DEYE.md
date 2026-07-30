@@ -402,7 +402,29 @@ Quelle: Deyes eigenes *MODBUS RTU* V105.1 + [`ha-solarman` PR #978](https://gith
 | 5 | `1109` Sollwert | aus dem bereits guard-begrenzten kW | die eigentliche Anweisung |
 | 6 | `1100` Fernsteuerung | 1 | **ZULETZT** - der Wechselrichter läuft nie mit halb geschriebenem Plan |
 
-**Kadenz: `dwell_s = 0`, `min_change = 0`, `always: true`.** Das sind RAM-Register - die EEPROM-Disziplin entfällt hier vollständig, und das **Neuschreiben im normalen ~10-s-Takt IST der Totmann-Tritt** (genau das vorgesehene Muster). Würde ein unveränderter Wert übersprungen, liefe der Totmann mitten im Betrieb ab.
+**Kadenz: `dwell_s = 0`, `min_change = 0` überall - `always: true` aber nur dort, wo das Neuschreiben der MECHANISMUS ist.** Das sind RAM-Register, die EEPROM-Disziplin entfällt hier vollständig. In jedem ~10-s-Takt gehen **drei** Ops raus: `1101` (das Neuschreiben IST der Totmann-Tritt), `1109` (die Anweisung selbst) und `1100` (damit ein abgelaufener Totmann sich binnen eines Takts selbst heilt). Die reinen **Konfigurations**-Register `1104`/`1105` (+ der opt-in-Gurt `1108`) werden **alle 300 s** (`reassert_s`) und **sofort dann** neu geschrieben, wenn die Rückmeldung sie als *nicht gehalten* zeigt - der Executor verwirft dazu ihren Write-Cache-Eintrag. Grund ist **nicht** die Lebensdauer (RAM), sondern der **eine Socket des Solarman-Loggers**: 2 Schreibvorgänge weniger pro Takt sind Wire-Zeit, die das Rücklesen und der Lese-Poll zurückbekommen - und eine verzögerte/verdrängte Rücklesung war eine der Ursachen der falschen „nicht übernommen"-Meldungen (siehe unten).
+
+### Die Rückmeldung: was ein Register-Ist-Wert BEDEUTET (Live-Vorfall 2026-07-30)
+
+Der Pilot meldete im ~10-s-Takt „Der Wechselrichter übernimmt den Sollwert nicht" (Register `remote_watchdog`, `power_control_mode`, `battery_strategy`, `remote_mode`) und war Sekunden später wieder „bestätigt" - **während die Batterie den Sollwert nachweislich fuhr**. Read-only-Protokoll der Anlage (`GET :8484/api/state`, 09:34:36Z-09:36:26Z, Sollwert 0 kW):
+
+| Zeit (UTC) | `all_match` | Ist-Werte |
+|---|---|---|
+| 09:34:36 | false | `remote_mode` = **65535** |
+| 09:34:46 | true | alles korrekt |
+| 09:35:06 | false | `remote_watchdog` = **51** |
+| 09:35:16 | true | alles korrekt |
+| 09:35:48 | false | **fremde Nutzlast**: `pv_limit_*` + „Abregelung … nicht freigegeben" |
+| 09:36:16 | false | `power_control_mode` / `battery_strategy` / `remote_mode` = **65535** |
+| 09:36:26 | true | alles korrekt |
+
+Drei Mechanismen, kein einziger davon eine verweigerte Übernahme:
+
+1. **`0xFFFF` ist kein Wert, sondern ein Füller.** Für `1100` (0..3), `1104` (0..2) und `1105` (0..5) ist 65535 laut Protokoll **unmöglich** - der Logger/Gateway liefert ihn für ein Register, das er nicht holen konnte (dieselbe Klasse wie die SoC-0/100-Spitzen). Die Halte-Prüfung stuft einen Wert **außerhalb des dokumentierten Bereichs** deshalb als *keine Antwort* ein (`readback-verify.js VALUE_RANGE`), nie als Ist-Wert. **`1101` hat bewusst keinen Bereich**: dort ist `0xFFFF` der dokumentierte „Totmann aus"-Wert und bleibt eine echte Abweichung.
+2. **`1101` zählt wirklich herunter.** 51 s von 60 s scharfgestellt heißt: der Totmann **arbeitet**. Ein dynamisches Register wird nach seiner eigenen Regel geprüft (`1 … scharfgestellt` = gehalten, mit Hinweis „läuft ab (51 s von 60 s)"); nur `0` (abgelaufen) und `0xFFFF` (aus) sind Abweichungen. Nebenbefund: eine 51 bedeutet, dass diese Rücklesung ~9 s nach ihrem Schreibvorgang beantwortet wurde - **Socket-Konkurrenz, sichtbar gemacht**.
+3. **Eine PV-Abregelungs-Rückmeldung darf die Batterie-Karte nicht überschreiben.** Auf `edge/control/readback` fahren ZWEI Nutzlast-Familien; `vp-control-readback.shape()` ließ das Unterscheidungsmerkmal `curtail: true` fallen, sodass der Kern die Abregelungs-Nutzlast nicht zuordnen konnte - sie landete in `state.control`. Behoben: die Abregelungs-Familie wird unverändert durchgereicht (mit Identitätsprüfung).
+
+**Und die Anzeige entprellt.** Ein Zyklus ist eine BEOBACHTUNG; ob daraus eine Warnung wird, entscheidet der Kern (`agent.applyControlConfirm`): `held` → bestätigt, **3 aufeinanderfolgende** Abweichungen → `not_held` (die Warnung, mit Ursache), **6 aufeinanderfolgende** Zyklen ohne Antwort → `no_answer` („keine Bestätigung" - ausdrücklich NICHT „nicht übernommen"; der Sollwert bleibt aktiv). Ein unbestätigter Zyklus hält den letzten bekannten Stand und kann weder Alarm auslösen noch löschen. Ein Register ohne Antwort meldet `actual_raw: null` - **nie eine erfundene 0**, die sonst in die Karte, den Modbus-Datenspiegel und die First-Light-Beweiskette gelaufen wäre.
 
 **Rückgabe.** Ausdrücklich: `1100 ← 0` (sofort). Implizit: **einfach aufhören zu schreiben** - der Totmann läuft ab und der Wechselrichter kehrt von selbst zurück, *ohne dass irgendetwas verstellt ist*. Das ist der Fail-Safe letzter Instanz und der Grund, warum der ToU-Snapshot/Restore **für diesen Pfad** überflüssig ist. Ein noch vorhandener ALTER ToU-Snapshot wird trotzdem zurückgeschrieben - nach dem Abschalten der Fernsteuerung.
 

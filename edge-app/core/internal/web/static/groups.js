@@ -138,12 +138,18 @@
 
     // Warn states open the group; the message itself lives once on the card
     // inside (with its "Zustand seit HH:MM" stamp) - the row only carries the dot.
+    // The problem key follows the CORE's DEBOUNCED confirmation state: a single
+    // deviating readback cycle (or one the inverter never answered) must not open
+    // the group - that is the ~10 s flap the 2026-07-30 fix removed. An older core
+    // sends no `confirm`, so the pre-fix reading applies unchanged there.
     var c = s.control;
     var problemKey = null;
     if (c && c.blocked && c.reason) {
       problemKey = "blocked:" + c.reason;
-    } else if (c && c.registers && c.registers.length > 0 && !c.all_match) {
-      problemKey = "mismatch:" + (c.mismatch_roles || []).join(",");
+    } else if (c && c.registers && c.registers.length > 0) {
+      var conf = c.confirm || (c.all_match ? "held" : "not_held");
+      if (conf === "not_held") problemKey = "mismatch:" + (c.mismatch_roles || []).join(",");
+      else if (conf === "no_answer") problemKey = "no_answer";
     }
     for (var j = 0; j < units.length && !problemKey; j++) {
       var u = units[j];

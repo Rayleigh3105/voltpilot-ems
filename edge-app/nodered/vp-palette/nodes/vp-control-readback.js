@@ -13,9 +13,17 @@
  *   {
  *     ts, family, source, slot_start?, control_enabled, certified,
  *     registers: [ { role, fc, addr, commanded_kw?, commanded_raw,
- *                    actual_raw, actual_kw?, match } ],
- *     all_match: boolean
+ *                    actual_raw, actual_kw?, match, verdict? } ],
+ *     verify?: 'held' | 'mismatch' | 'unconfirmed'
  *   }
+ *
+ * `verdict`/`verify` (readback-verify.js) carry the THREE-state truth of a cycle:
+ * a register the inverter never answered is 'unread', and a cycle without a
+ * usable answer is 'unconfirmed' - neither is evidence of a refused write. This
+ * node therefore publishes `all_match: true | false | null` (null = no verdict,
+ * the same convention the entity + curtailment readbacks already use). An older
+ * adapter that sends only `match` booleans is unchanged: its verdicts are derived
+ * from them and a cycle is then only ever held or mismatch.
  */
 'use strict';
 
@@ -30,11 +38,15 @@ const TOPIC = 'edge/control/readback';
 // detectors (Fronius ChaGriSet AND-link / SolarEdge storage mode) are extension
 // points in dualControllerSignal (Phase D/E); this covers every adapter with readback
 // (Deye Tier-3 included).
+//
+// It keys on a REAL mismatch (allMatch === false), never on an UNCONFIRMED cycle
+// (allMatch === null): blaming a second controller for a read the inverter never
+// answered is exactly the false accusation the flap fix removes.
 function dualControllerAwareness(certified, controlEnabled, registerCount, allMatch, mismatchRoles) {
   const controlling = certified === true && controlEnabled === true && registerCount > 0;
   if (!controlling) return { only_controller_required: false, possible_conflict: false, detector: 'none', reason: '' };
   const out = { only_controller_required: true, possible_conflict: false, detector: 'readback_mismatch', reason: '' };
-  if (allMatch !== true) {
+  if (allMatch === false) {
     out.possible_conflict = true;
     out.reason = 'Der Wechselrichter hält den geschriebenen Sollwert nicht ('
       + (mismatchRoles.join(', ') || 'Register weicht ab')
@@ -46,6 +58,18 @@ function dualControllerAwareness(certified, controlEnabled, registerCount, allMa
 
 // shape() is exported for unit tests: validate + normalize the readback payload,
 // or null when it is not a usable readback (never published - stays quiet).
+//
+// TWO payload FAMILIES ride this one topic, and telling them apart is load-bearing:
+// the PRIMARY inverter's control readback (normalized below) and the PER-UNIT PV
+// curtailment readback, marked `curtail: true`. The curtail family is passed
+// through VERBATIM: its identity (source_id / unit_key), its enforcement verdict
+// and its own all_match semantics (applied vs observed-only) are what the core's
+// onCurtailReadback needs, and the field WHITELIST below used to drop every one of
+// them - so the curtailment state never reached Snapshot.CurtailUnits AND every
+// curtailment cycle CLOBBERED the battery control card with pv_limit registers +
+// "Abregelung noch nicht freigegeben" (observed live on the pilot, 2026-07-30
+// 09:35:48Z, between two healthy remote-mode cycles - one of the three causes of
+// the flapping warning).
 function shape(payload) {
   if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) return null;
   if (!Array.isArray(payload.registers)) return null;
@@ -55,10 +79,37 @@ function shape(payload) {
     if (typeof r.role !== 'string' || typeof r.match !== 'boolean') return null;
     registers.push(r);
   }
+  if (payload.curtail === true) {
+    if (typeof payload.source_id !== 'string' || !payload.source_id) return null;
+    if (typeof payload.unit_key !== 'string' || !payload.unit_key) return null;
+    return Object.assign({}, payload, {
+      ts: typeof payload.ts === 'string' ? payload.ts : new Date().toISOString(),
+      registers,
+    });
+  }
   const control_enabled = payload.control_enabled === true;
   const certified = payload.certified === true;
-  const all_match = registers.length > 0 && registers.every((r) => r.match === true);
-  const mismatch_roles = registers.filter((r) => r.match !== true).map((r) => r.role);
+  // ONE derivation from the per-register verdicts (readback-verify.js): 'unread'
+  // is neither a hold nor a mismatch. `verdict` absent -> derived from `match`,
+  // so an older adapter keeps its exact two-state behaviour.
+  const verdictOf = (r) => {
+    if (r.verdict === 'held' || r.verdict === 'mismatch' || r.verdict === 'unread') return r.verdict;
+    return r.match === true ? 'held' : 'mismatch';
+  };
+  const mismatch_roles = registers.filter((r) => verdictOf(r) === 'mismatch').map((r) => r.role);
+  const unread_roles = registers.filter((r) => verdictOf(r) === 'unread').map((r) => r.role);
+  // all_match: true = every commanded register held, false = a REAL deviation,
+  // null = no verdict (nothing usable was read). null is the established shape of
+  // the entity/curtailment readbacks, and the core treats it as "no evidence".
+  let all_match = null;
+  let verify = 'unconfirmed';
+  if (mismatch_roles.length > 0) {
+    all_match = false;
+    verify = 'mismatch';
+  } else if (registers.length > 0 && unread_roles.length === 0) {
+    all_match = true;
+    verify = 'held';
+  }
   return {
     ts: typeof payload.ts === 'string' ? payload.ts : new Date().toISOString(),
     family: typeof payload.family === 'string' ? payload.family : '',
@@ -79,7 +130,13 @@ function shape(payload) {
       ? payload.remote_status_raw : null,
     registers,
     all_match,
+    // The CYCLE verdict + what could not be read. The core debounces a run of
+    // 'mismatch' cycles into the operator-facing warning; a single flickering
+    // cycle must never raise one, and 'unconfirmed' never counts as evidence.
+    verify,
     mismatch_roles,
+    unread_roles,
+    verify_reason: typeof payload.verify_reason === 'string' ? payload.verify_reason : '',
     // A control plan that was EMPTY because something is WRONG (an unknown nameplate
     // / power scale) - carried through so the core can show the CAUSE on the :8484
     // card instead of an eternal "warte auf Rueckmeldung" (Defect 2). A blocked
@@ -118,15 +175,22 @@ module.exports = function (RED) {
           node.status({ fill: 'red', shape: 'ring', text: 'Sendefehler' });
           done(err);
         } else {
-          node.status(shaped.blocked
-            ? { fill: 'yellow', shape: 'ring', text: 'angehalten: ' + (shaped.reason || 'Steuerung blockiert') }
-            : {
-              fill: shaped.all_match ? 'green' : 'red',
-              shape: 'dot',
-              text: shaped.all_match
-                ? 'bestätigt (' + shaped.registers.length + ' Register)'
-                : 'Abweichung: ' + shaped.mismatch_roles.join(', '),
-            });
+          let st;
+          if (shaped.curtail === true) {
+            st = { fill: shaped.all_match === false ? 'red' : 'green', shape: 'dot',
+              text: 'Abregelung ' + shaped.unit_key + ': ' + (shaped.applied ? shaped.mode : 'beobachtet') };
+          } else if (shaped.blocked) {
+            st = { fill: 'yellow', shape: 'ring', text: 'angehalten: ' + (shaped.reason || 'Steuerung blockiert') };
+          } else if (shaped.all_match === true) {
+            st = { fill: 'green', shape: 'dot', text: 'bestätigt (' + shaped.registers.length + ' Register)' };
+          } else if (shaped.all_match === false) {
+            st = { fill: 'red', shape: 'dot', text: 'Abweichung: ' + shaped.mismatch_roles.join(', ') };
+          } else {
+            // No verdict: the inverter did not answer the readback. Honest and
+            // calm - not an "Abweichung" (that would be the false alarm again).
+            st = { fill: 'yellow', shape: 'ring', text: 'keine Rückmeldung: ' + shaped.unread_roles.join(', ') };
+          }
+          node.status(st);
           done();
         }
       });

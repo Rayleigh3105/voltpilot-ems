@@ -135,6 +135,14 @@ Modell im Katalog ausgewählt (die Nennleistung kommt daher - der Sollwert ist 0
 - [ ] **PV bleibt unangetastet:** batterieseitige Regelung darf die Erzeugung NICHT drosseln.
       Tut sie es doch, wurde AC-/netzseitig geschrieben - abbrechen.
 - [ ] **Rücklesen:** `1109` echot den Sollwert, `1100` liest 1, `1121` (Status) wird protokolliert.
+- [ ] **Rückmeldung ohne Antwort ist KEINE Abweichung** (Live-Vorfall 2026-07-30, siehe
+      `DEYE.md` → „Die Rückmeldung: was ein Register-Ist-Wert BEDEUTET"): ein Ist-Wert
+      **außerhalb** des dokumentierten Bereichs (typisch `65535` auf `1100`/`1104`/`1105`)
+      ist ein Füller des Loggers und muss in der Tabelle als **„keine Antwort"** stehen,
+      nicht als „⚠ Abweichung"; `1101` mit einem Wert **unter** dem scharfgestellten
+      (z. B. 51 von 60) ist der Totmann **im Betrieb** und gilt als bestätigt. Eine
+      Warnung darf erst nach **3 aufeinanderfolgenden** echten Abweichungen erscheinen -
+      ein einzelner Flackerzyklus nie.
 - [ ] **Totmann beweisen (der wichtigste Punkt):** aufhören zu schreiben und **warten**. Nach Ablauf von
       `1101` muss `1100` von selbst auf 0 gehen und der Wechselrichter normal weiterlaufen -
       **ohne dass eine Einstellung verändert ist**. Am Display steht währenddessen „Remote Mode".

@@ -556,6 +556,11 @@ function setpointStale(ts, nowMs) {
  * Neither vendor read is wired yet; the seams keep the generic path untouched when
  * a detector is added.
  *
+ * It keys on a REAL mismatch (allMatch === false), never on an UNCONFIRMED cycle
+ * (allMatch === null - the inverter did not answer the readback; readback-verify.js).
+ * Accusing a second controller over a read that never arrived is exactly the false
+ * alarm the flap fix removes.
+ *
  *   facts: { family, certified, controlEnabled, registerCount, allMatch, mismatchRoles }
  * Returns { onlyControllerRequired, possibleConflict, detector, reason }.
  */
@@ -577,7 +582,7 @@ function dualControllerSignal(facts = {}) {
   //     through to the generic detector without touching it.
 
   // --- generic detector: a commanded register that does not hold its value ---
-  if (facts.allMatch !== true) {
+  if (facts.allMatch === false) {
     const roles = Array.isArray(facts.mismatchRoles) ? facts.mismatchRoles : [];
     out.possibleConflict = true;
     out.reason = 'Der Wechselrichter hält den geschriebenen Sollwert nicht ('
@@ -928,6 +933,12 @@ const DEYE_REMOTE_WATCHDOG_DEFAULT_S = 60;
 const DEYE_REMOTE_WATCHDOG_MIN_S = 10;
 const DEYE_REMOTE_WATCHDOG_MAX_S = 18000;
 const DEYE_REMOTE_WATCHDOG_OFF = 0xffff;
+// How often the remote-mode CONFIGURATION registers (battery-side selector 1104,
+// strategy 1105, the opt-in SoC belt 1108) are re-asserted when nothing changed.
+// They are ALSO re-written immediately whenever a readback shows one of them not
+// held, so this is the drift backstop, not the primary self-heal. 300 s = 30 ticks
+// of the ~10 s setpoint cadence.
+const DEYE_REMOTE_CFG_REASSERT_S = 300;
 
 // The two Deye control PATHS. `remote` = the Tier-2 register block above;
 // `tou` = the legacy Time-of-Use synthesis (the fallback when the firmware has no
@@ -1418,10 +1429,21 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
   const beltValue = charging ? socMax : socMin;
   const belt = strategyPref === DEYE_BATTERY_STRATEGY.POWER_SOC && beltValue != null ? beltValue : null;
   const strategy = belt == null ? DEYE_BATTERY_STRATEGY.POWER : DEYE_BATTERY_STRATEGY.POWER_SOC;
-  // RAM registers: no dwell, no min_change, and ALWAYS re-written (the write is the
-  // watchdog kick - see the header). `always` is what makes the executor bypass its
-  // EEPROM write-on-change filter for this path only.
+  // RAM registers: no dwell, no min_change. `always` makes the executor bypass its
+  // EEPROM write-on-change filter, and it is carried by exactly the three ops that
+  // MUST be re-asserted on every ~10 s tick:
+  //   - the watchdog (the write IS the dead-man's-switch kick),
+  //   - the setpoint (the command itself),
+  //   - the enable (so a watchdog expiry self-heals within one tick).
+  // The two pure CONFIGURATION ops (battery-side selector + strategy, and the
+  // opt-in SoC belt) do not need a per-tick re-write: they are re-asserted every
+  // `reassert_s` and IMMEDIATELY whenever a readback shows them not held (the
+  // executor invalidates their write-cache entry). This is not about EEPROM wear -
+  // 1100-1121 is RAM - it is about the Solarman logger's SINGLE socket: every
+  // avoided write is socket time the read poll (and the readback itself) gets back,
+  // and a starved/interrupted read is what produced the false "not adopted" alarms.
   const ram = { dwell_s: 0, min_change: 0, always: true, bench_pending: true };
+  const ramCfg = { dwell_s: 0, min_change: 0, reassert_s: DEYE_REMOTE_CFG_REASSERT_S, bench_pending: true };
 
   const planned = [];
   // 1) FAILSAFE FIRST.
@@ -1429,22 +1451,23 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
     role: 'remote_watchdog', fc: writeFc, addr: DEYE_REMOTE_REG.watchdog, value: watchdogS & 0xffff,
     encode: { kind: 'remote_watchdog_s', seconds: watchdogS }, ...ram,
   });
-  // 2) BATTERY-side control (PV production keeps running untouched).
+  // 2) BATTERY-side control (PV production keeps running untouched). Configuration:
+  //    re-asserted periodically + on demand, not on every tick (see `ramCfg`).
   planned.push({
     role: 'power_control_mode', fc: writeFc, addr: DEYE_REMOTE_REG.powerControlMode,
     value: DEYE_POWER_CONTROL_MODE.BATTERY_SIDE,
-    encode: { kind: 'remote_power_control_mode', enum: 'battery_side' }, ...ram,
+    encode: { kind: 'remote_power_control_mode', enum: 'battery_side' }, ...ramCfg,
   });
   // 3) strategy: Power+SOC when a belt exists, else Power.
   planned.push({
     role: 'battery_strategy', fc: writeFc, addr: DEYE_REMOTE_REG.batteryStrategy, value: strategy,
-    encode: { kind: 'remote_battery_strategy', enum: strategy === DEYE_BATTERY_STRATEGY.POWER_SOC ? 'power_soc' : 'power' }, ...ram,
+    encode: { kind: 'remote_battery_strategy', enum: strategy === DEYE_BATTERY_STRATEGY.POWER_SOC ? 'power_soc' : 'power' }, ...ramCfg,
   });
   // 4) the on-device SoC belt (strategy 5 only).
   if (belt != null) {
     planned.push({
       role: 'battery_soc_belt', fc: writeFc, addr: DEYE_REMOTE_REG.constantSoc, value: belt,
-      encode: { kind: 'pct', direction: charging ? 'charge_ceiling' : 'discharge_floor' }, ...ram,
+      encode: { kind: 'pct', direction: charging ? 'charge_ceiling' : 'discharge_floor' }, ...ramCfg,
     });
   }
   // 5) the signed setpoint (0.1 % of rated; - = charge / + = discharge).
@@ -1824,6 +1847,7 @@ module.exports = {
   DEYE_REMOTE_SETPOINT_LIMIT,
   DEYE_REMOTE_WATCHDOG_DEFAULT_S,
   DEYE_REMOTE_WATCHDOG_OFF,
+  DEYE_REMOTE_CFG_REASSERT_S,
   DEYE_PATH_REMOTE,
   DEYE_PATH_TOU,
   deyeCapabilityProbeSpec,

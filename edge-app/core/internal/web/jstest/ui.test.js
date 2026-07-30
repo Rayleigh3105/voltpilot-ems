@@ -239,6 +239,80 @@ test("control: a confirmed readback reads as steering, a mismatch names why", ()
   assert.match(bad.stateKey, /^mismatch:max_sell_power$/, "keyed by the mismatching registers");
 });
 
+// --- the FLAP fix (live Pilsting, 2026-07-30) ---------------------------------
+//
+// The card reads the CORE's debounced `confirm` state, so a single deviating
+// readback cycle - and a cycle the inverter never answered at all - is not a
+// warning. `confirm` absent = an older core, then the pre-fix reading applies
+// (proven by the test above, which sends no `confirm`).
+test("control: a flickering cycle keeps the confirmed state AND its 'seit' stamp", () => {
+  const regs = [{ role: "remote_watchdog", commanded_raw: 60, actual_raw: 57, match: true, verdict: "held" }];
+  const base = { inverter: { configured: true }, control_certified: true, control_enabled: true };
+  const held = controlFor({ ...base, control: { confirm: "held", all_match: true, registers: regs, source: "schedule" } });
+  const checking = controlFor({
+    ...base,
+    control: { confirm: "checking", all_match: true, mismatch_cycles: 1, registers: regs, source: "schedule" },
+  });
+  assert.strictEqual(checking.chip.tone, "ok", "one deviating cycle is noise, not a fault");
+  assert.strictEqual(checking.stateKey, held.stateKey, "and the 'Zustand seit' stamp must not move");
+});
+
+test("control: no answer from the inverter is its OWN calm state, never 'nicht übernommen'", () => {
+  // The live shape: every register unread, actual_raw null, all_match null.
+  const regs = [
+    { role: "remote_watchdog", commanded_raw: 60, actual_raw: null, match: false, verdict: "unread" },
+    { role: "remote_mode", commanded_raw: 1, actual_raw: null, match: false, verdict: "unread" },
+  ];
+  const d = controlFor({
+    inverter: { configured: true }, control_certified: true, control_enabled: true,
+    control: {
+      confirm: "no_answer", all_match: null, registers: regs, source: "schedule",
+      unread_roles: ["remote_watchdog", "remote_mode"], unconfirmed_cycles: 7,
+    },
+  });
+  assert.strictEqual(d.chip.tone, "warn", "sustained silence is visible");
+  assert.ok(!/nicht übernommen|hält den Sollwert nicht/.test(d.text),
+    "but it must NOT claim the inverter refused the setpoint: " + d.text);
+  assert.match(d.text, /antwortet|Bestätigung/, "it names the real cause");
+  assert.strictEqual(d.stateKey, "no-answer");
+  assert.strictEqual(d.showTable, true, "the register evidence stays available");
+});
+
+test("status hero: an unanswered readback says 'keine Bestätigung', a confirmed refusal says 'übernimmt nicht'", () => {
+  const regs = [{ role: "remote_mode", commanded_raw: 1, actual_raw: null, match: false, verdict: "unread" }];
+  const silent = statusFor({ ...HEALTHY, control: { confirm: "no_answer", all_match: null, registers: regs } });
+  assert.strictEqual(silent.tone, "warn");
+  assert.match(silent.title, /Keine Bestätigung/);
+  assert.ok(!/übernimmt den Sollwert nicht/.test(silent.title + silent.cause), "no false accusation");
+  assert.match(silent.cause, /Steuerung & Bestätigung/, "and it points at the ONE full explanation");
+
+  const flicker = statusFor({ ...HEALTHY, control: { confirm: "checking", all_match: true, mismatch_cycles: 1, registers: regs } });
+  assert.strictEqual(flicker.tone, "ok", "a single deviating cycle must not raise the hero");
+
+  const real = statusFor({ ...HEALTHY, control: { confirm: "not_held", all_match: false, mismatch_roles: ["remote_mode"], registers: regs } });
+  assert.strictEqual(real.tone, "warn");
+  assert.match(real.title, /übernimmt den Sollwert nicht/);
+  assert.match(real.cause, /remote_mode/);
+});
+
+test("groups: only a CONFIRMED control problem opens the Steuerung group", () => {
+  const G = groupsApi();
+  const regs = [{ role: "remote_mode", commanded_raw: 1, actual_raw: null, match: false, verdict: "unread" }];
+  const base = { inverter: { configured: true }, control_certified: true, control_enabled: true };
+  assert.strictEqual(
+    G.steuerungSummary({ ...base, control: { confirm: "checking", all_match: true, mismatch_cycles: 1, registers: regs } }).problemKey,
+    null, "a flicker never opens the group",
+  );
+  assert.strictEqual(
+    G.steuerungSummary({ ...base, control: { confirm: "no_answer", all_match: null, registers: regs } }).problemKey,
+    "no_answer", "sustained silence has its own key (one message, not a mismatch claim)",
+  );
+  assert.match(
+    G.steuerungSummary({ ...base, control: { confirm: "not_held", all_match: false, mismatch_roles: ["remote_mode"], registers: regs } }).problemKey,
+    /^mismatch:remote_mode$/,
+  );
+});
+
 test("control: every derived state carries a stable stateKey for the 'seit' stamp", () => {
   const keys = [
     controlFor({ inverter: { configured: false } }),
