@@ -183,9 +183,12 @@ type curtailReadbackMsg struct {
 		Addr         int      `json:"addr"`
 		CommandedRaw int      `json:"commanded_raw"`
 		CommandedKw  *float64 `json:"commanded_kw"`
-		ActualRaw    int      `json:"actual_raw"`
-		ActualKw     *float64 `json:"actual_kw"`
-		Match        bool     `json:"match"`
+		// Nullable like the control readback's (state.ControlRegister.ActualRaw):
+		// a register without an answer must not report a fabricated 0. The Fronius
+		// curtailment executor always sends a value today, so this is shape-only.
+		ActualRaw *int     `json:"actual_raw"`
+		ActualKw  *float64 `json:"actual_kw"`
+		Match     bool     `json:"match"`
 	} `json:"registers"`
 }
 

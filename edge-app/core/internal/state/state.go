@@ -142,6 +142,29 @@ type ControlInfo struct {
 	AllMatch       bool              `json:"all_match"`
 	MismatchRoles  []string          `json:"mismatch_roles,omitempty"`
 	Registers      []ControlRegister `json:"registers"`
+	// --- the DEBOUNCED confirmation state (the flap fix, 2026-07-30) -----------
+	// Verify is the RAW verdict of the NEWEST readback cycle as Layer 1 judged it
+	// (readback-verify.js): "held" | "mismatch" | "unconfirmed". "unconfirmed" =
+	// the inverter did not answer the readback, which is NOT evidence that it
+	// refused the write. Empty for an older Layer-1 build (then derived from
+	// AllMatch).
+	Verify string `json:"verify,omitempty"`
+	// UnreadRoles names the registers of the newest cycle that carried no value.
+	UnreadRoles []string `json:"unread_roles,omitempty"`
+	// Confirm is the OPERATOR-FACING state, and the ONLY thing a warning may key
+	// on. One deviating cycle is a flicker, not a fault:
+	//   "held"      - the last KNOWN cycle held (later unconfirmed cycles keep it)
+	//   "checking"  - a deviation was seen but not yet confirmed N times
+	//   "not_held"  - ControlMismatchAlarmCycles consecutive deviating cycles: the
+	//                 inverter really is not holding what we command
+	//   "no_answer" - ControlNoAnswerCycles consecutive cycles without an answer:
+	//                 silence, honestly named - never dressed up as healthy
+	//   "pending"   - no cycle has produced a verdict yet
+	Confirm string `json:"confirm,omitempty"`
+	// MismatchCycles / UnconfirmedCycles are the running consecutive counts behind
+	// Confirm (0 after a held cycle). Shown as the technician's detail.
+	MismatchCycles    int `json:"mismatch_cycles,omitempty"`
+	UnconfirmedCycles int `json:"unconfirmed_cycles,omitempty"`
 	// ControlPath names WHICH surface drove the write on a Deye: "remote" = the
 	// Tier-2 register block 1100-1121 (a true signed watt setpoint, armed behind the
 	// inverter's own watchdog, touching no installer setting), "tou" = the legacy
@@ -174,9 +197,19 @@ type ControlRegister struct {
 	Addr         int      `json:"addr"`
 	CommandedRaw int      `json:"commanded_raw"`
 	CommandedKw  *float64 `json:"commanded_kw,omitempty"`
-	ActualRaw    int      `json:"actual_raw"`
-	ActualKw     *float64 `json:"actual_kw,omitempty"`
-	Match        bool     `json:"match"`
+	// ActualRaw is NIL when the register carried no answer (an empty payload, a
+	// read error, or the Solarman all-zero non-answer). Never a fabricated 0: that
+	// zero would otherwise reach the card, the Modbus mirror and the First-Light
+	// evidence as if the inverter had reported it.
+	ActualRaw *int     `json:"actual_raw"`
+	ActualKw  *float64 `json:"actual_kw,omitempty"`
+	Match     bool     `json:"match"`
+	// Verdict is the per-register semantics result: "held" | "mismatch" | "unread"
+	// (readback-verify.js). Empty for an older Layer-1 build - then Match is the
+	// only truth and "unread" cannot occur. Note carries the plain-German detail
+	// (e.g. a watchdog counting down).
+	Verdict string `json:"verdict,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // CurtailUnit is the latest curtailment readback of ONE Fronius

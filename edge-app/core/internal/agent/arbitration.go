@@ -437,7 +437,10 @@ func (a *Agent) batteryEntityID() string {
 // entity's per-entity readback topic (same payload shape, per the entity
 // contract §4) and records its verdict for the heartbeat. No-op without a
 // battery entity.
-func (a *Agent) mirrorReadbackToEntity(payload []byte, allMatch bool) {
+// allMatch is TRI-STATE: nil = the cycle produced no verdict (the inverter did not
+// answer the readback), and the per-entity verdict then keeps its previous value
+// instead of being overwritten with a fabricated "mismatch".
+func (a *Agent) mirrorReadbackToEntity(payload []byte, allMatch *bool) {
 	id := a.batteryEntityID()
 	if id == "" || a.Bus == nil {
 		return
@@ -445,7 +448,10 @@ func (a *Agent) mirrorReadbackToEntity(payload []byte, allMatch bool) {
 	if err := a.Bus.Publish(entities.ReadbackTopic(id), payload, false); err != nil {
 		slog.Error("entity readback mirror failed", "entity", id, "err", err)
 	}
-	v := allMatch
+	if allMatch == nil {
+		return
+	}
+	v := *allMatch
 	a.arbMu.Lock()
 	if a.entReadback == nil {
 		a.entReadback = map[string]*bool{}

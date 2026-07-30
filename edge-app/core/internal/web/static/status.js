@@ -146,17 +146,36 @@
     //    seit" stamp) lives exactly ONCE per page, on the Steuerung & Bestätigung
     //    card - the same paragraph used to render three times on one screen and,
     //    re-fired per ~10 s readback, read as a warning every tick (live Pilsting).
-    if (s.control && s.control.registers && s.control.registers.length && !s.control.all_match) {
-      var mmRoles = (s.control.mismatch_roles || []).join(", ");
-      return {
-        tone: "warn",
-        title: "Wechselrichter übernimmt den Sollwert nicht",
-        detail: "Messwerte kommen weiterhin an.",
-        cause: (mmRoles
-          ? "Der Wechselrichter hält den geschriebenen Wert nicht (" + mmRoles + ")."
-          : "Der Wechselrichter hält einen geschriebenen Wert nicht.")
-          + " Details unter „Steuerung & Bestätigung“."
-      };
+    //
+    //    It keys on the CORE's debounced `confirm` state, not on a single cycle's
+    //    all_match: one deviating readback is a flicker (the 2026-07-30 flap), and a
+    //    readback the inverter never ANSWERED is silence, not a refusal - which gets
+    //    its own, calmer sentence below. `confirm` absent = an older core, then the
+    //    pre-fix reading applies unchanged.
+    if (s.control && s.control.registers && s.control.registers.length) {
+      var conf = s.control.confirm || (s.control.all_match ? "held" : "not_held");
+      if (conf === "not_held") {
+        var mmRoles = (s.control.mismatch_roles || []).join(", ");
+        return {
+          tone: "warn",
+          title: "Wechselrichter übernimmt den Sollwert nicht",
+          detail: "Messwerte kommen weiterhin an.",
+          cause: (mmRoles
+            ? "Der Wechselrichter hält den geschriebenen Wert nicht (" + mmRoles + ")."
+            : "Der Wechselrichter hält einen geschriebenen Wert nicht.")
+            + " Details unter „Steuerung & Bestätigung“."
+        };
+      }
+      if (conf === "no_answer") {
+        return {
+          tone: "warn",
+          title: "Keine Bestätigung vom Wechselrichter",
+          detail: "Der Sollwert ist geschrieben und bleibt aktiv.",
+          cause: "Der Wechselrichter antwortet gerade nicht auf die Rückfrage, ob er den "
+            + "Sollwert hält - es fehlt die Bestätigung, nicht die Steuerung. "
+            + "Details unter „Steuerung & Bestätigung“."
+        };
+      }
     }
 
     // 7) Buffer overrun during a long outage: data is being dropped.

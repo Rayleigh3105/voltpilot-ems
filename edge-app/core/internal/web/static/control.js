@@ -75,6 +75,26 @@
   var MISMATCH_PLAIN =
     "Der Wechselrichter hat den Sollwert nicht übernommen. " +
     "Mögliche Ursache: Strom-/SoC-Grenze oder eine falsche Register-Adresse.";
+  // Silence is its OWN state, never "not adopted": the setpoint was written and is
+  // still active, only the confirmation is missing (typically a Solarman logger that
+  // cannot reach the inverter right now). Naming it correctly is the whole point of
+  // the 2026-07-30 flap fix.
+  var NO_ANSWER =
+    "Der Wechselrichter antwortet gerade nicht auf die Rückfrage, ob er den Sollwert " +
+    "hält. Der geschriebene Sollwert bleibt aktiv - es fehlt nur die Bestätigung. " +
+    "Hält das an, ist meist die Verbindung zum Wechselrichter (Datenlogger/Netzwerk) die Ursache.";
+  var NOT_CONFIRMED_YET =
+    "Der Sollwert ist geschrieben, der Wechselrichter hat ihn aber noch nicht " +
+    "bestätigt zurückgemeldet.";
+
+  // The confirmation state the card renders. `confirm` is computed by the CORE
+  // (agent.applyControlConfirm): one deviating readback cycle is a flicker, and only
+  // a CONFIRMED run of them ("not_held") is a warning. An older core sends no
+  // `confirm`, so it falls back to the pre-fix two-state reading.
+  function confirmState(c) {
+    if (c.confirm) return c.confirm;
+    return c.all_match ? "held" : "not_held";
+  }
 
   /* ------------------------------------------------------------------
      Layer 1: the pure state derivation.
@@ -158,9 +178,15 @@
       };
     }
 
-    // A readback exists: either everything matched, or the inverter is not
-    // holding what was commanded (that is a cause, so it is in `text`).
-    if (c.all_match) {
+    // A readback exists. FOUR outcomes, and telling them apart is the fix:
+    //   held/checking - the inverter is holding what we command (a single deviating
+    //                   cycle is a flicker; the count lives in the tech note)
+    //   no_answer     - the readback got no answer for a while: honest, calm, NOT
+    //                   "not adopted"
+    //   pending       - written, never yet confirmed
+    //   not_held      - a CONFIRMED refusal: the warning, with its cause
+    var st = confirmState(c);
+    if (st === "held" || st === "checking") {
       return {
         chip: { tone: "ok", label: calibrating ? "Kalibrierung ✓" : "bestätigt" },
         title: calibrating ? "Kalibrier-Test bestätigt." : "VoltPilot steuert die Anlage.",
@@ -168,7 +194,27 @@
           ? "Der Testbefehl wurde geschrieben und vom Wechselrichter unverändert zurückgelesen."
           : "Der Wechselrichter hat den geschriebenen Sollwert unverändert zurückgemeldet.",
         showNow: true, showTable: true, calibrating: calibrating, banner: null,
+        // The state key deliberately does NOT change while a flicker is being
+        // checked: the "Zustand seit" stamp must not move for noise.
         stateKey: calibrating ? "ok-cal" : "ok"
+      };
+    }
+    if (st === "no_answer") {
+      return {
+        chip: { tone: "warn", label: "keine Rückmeldung" },
+        title: "Keine Bestätigung vom Wechselrichter.",
+        text: (c.reason || NO_ANSWER),
+        showNow: true, showTable: true, calibrating: calibrating, banner: null,
+        stateKey: "no-answer"
+      };
+    }
+    if (st === "pending") {
+      return {
+        chip: { tone: "brand", label: "wartet" },
+        title: "Noch keine Bestätigung.",
+        text: NOT_CONFIRMED_YET,
+        showNow: true, showTable: true, calibrating: calibrating, banner: null,
+        stateKey: "not-confirmed"
       };
     }
     var reason = c.possible_conflict ? MISMATCH_CONFLICT : MISMATCH_PLAIN;
@@ -228,12 +274,24 @@
 
   function fmtKw(kw) { return (kw == null ? "–" : nf1.format(kw) + " kW"); }
   function fmtCell(reg, kwField) {
-    // "−4,0 kW (4000)" for a power register; "1" style raw for flags.
+    // "−4,0 kW (4000)" for a power register; "1" style raw for flags. A register
+    // WITHOUT an answer has actual_raw null (never a fabricated 0) -> "–".
     var kw = reg[kwField];
     var raw = kwField === "commanded_kw" ? reg.commanded_raw : reg.actual_raw;
+    if (raw == null && kw == null) return "–";
     if (kw != null) return fmtKw(kw) + " (" + raw + ")";
     return "" + raw;
   }
+
+  // Per-register verdict: 'unread' is neither a hold nor a deviation (the inverter
+  // did not answer this register). An older Layer 1 sends no verdict, so `match` is
+  // the only truth there and 'unread' cannot occur.
+  function regVerdict(r) {
+    if (r.verdict === "held" || r.verdict === "mismatch" || r.verdict === "unread") return r.verdict;
+    return r.match ? "held" : "mismatch";
+  }
+  var REG_VERDICT_TEXT = { held: "✓ bestätigt", mismatch: "⚠ Abweichung", unread: "– keine Antwort" };
+  var REG_VERDICT_CLASS = { held: "ok", mismatch: "bad", unread: "" };
 
   function renderTable(c, calibrating) {
     var rows = $("ctrlRows");
@@ -241,15 +299,16 @@
     rows.innerHTML = "";
     for (var j = 0; j < c.registers.length; j++) {
       var r = c.registers[j];
+      var v = regVerdict(r);
       var tr = global.document.createElement("tr");
-      if (!r.match) tr.className = "mismatch";
+      if (v === "mismatch") tr.className = "mismatch";
       var label = (ROLE_LABEL[r.role] || r.role) + ' <span class="ctrl-addr">Reg ' + r.addr + "</span>";
+      if (r.note) label += ' <span class="ctrl-addr">' + r.note + "</span>";
       tr.innerHTML =
         "<td>" + label + "</td>" +
         "<td>" + fmtCell(r, "commanded_kw") + "</td>" +
         "<td>" + fmtCell(r, "actual_kw") + "</td>" +
-        '<td class="ctrl-verdict ' + (r.match ? "ok" : "bad") + '">' +
-          (r.match ? "✓ bestätigt" : "⚠ Abweichung") + "</td>";
+        '<td class="ctrl-verdict ' + REG_VERDICT_CLASS[v] + '">' + REG_VERDICT_TEXT[v] + "</td>";
       rows.appendChild(tr);
     }
 
@@ -266,6 +325,10 @@
         }
       }
       if (calibrating) bits.push("Quelle: Kalibrier-Test");
+      // The DETAIL behind the debounce: a deviation being checked, or a run of
+      // unanswered cycles. Detail beneath the sentence above, never instead of it.
+      if (c.mismatch_cycles > 0) bits.push("Abweichung in " + c.mismatch_cycles + " Prüfzyklus/-zyklen (Warnung ab 3)");
+      if (c.unconfirmed_cycles > 0) bits.push("ohne Antwort: " + c.unconfirmed_cycles + " Zyklen" + (c.unread_roles && c.unread_roles.length ? " (" + c.unread_roles.join(", ") + ")" : ""));
       bits.push("geprüft " + (ago(c.checked_at) || "gerade eben"));
       note.textContent = bits.join(" · ");
       note.title = (c.control_path && PATH_HINT[c.control_path]) || "";

@@ -331,11 +331,19 @@ func TestControlReadbackMismatchSurfaces(t *testing.T) {
 			{"role": "battery_power", "fc": 3, "addr": 40, "commanded_raw": 64536, "commanded_kw": commanded, "actual_raw": 65416, "actual_kw": actual, "match": false},
 		},
 	})
+	// ONE deviating cycle is a FLICKER: it is recorded, but it does not yet name the
+	// register or claim the inverter is refusing (that is the flap fix - the live
+	// symptom was exactly this warning re-firing every ~10 s tick).
 	a.onControlReadback(localbus.TopicControlReadback, payload)
-
 	snap := a.State.Get()
-	if snap.Control == nil || snap.Control.AllMatch {
-		t.Fatalf("expected a mismatch snapshot: %+v", snap.Control)
+	if snap.Control == nil {
+		t.Fatal("snapshot Control is nil after a readback")
+	}
+	if snap.Control.Confirm != "checking" || snap.Control.MismatchCycles != 1 {
+		t.Fatalf("first deviating cycle must be 'checking': %+v", snap.Control)
+	}
+	if len(controlSummary(snap).MismatchRoles) != 0 {
+		t.Fatal("an unconfirmed flicker must not name registers to the cloud")
 	}
 	// The dual-controller conflict is stored on the snapshot and forwarded to the cloud.
 	if !snap.Control.PossibleConflict {
@@ -344,12 +352,136 @@ func TestControlReadbackMismatchSurfaces(t *testing.T) {
 	if snap.Control.ConflictReason == "" {
 		t.Fatal("conflict reason must be carried for the operator")
 	}
+	// A SUSTAINED deviation is real and must be named - the alarm still fires.
+	a.onControlReadback(localbus.TopicControlReadback, payload)
+	a.onControlReadback(localbus.TopicControlReadback, payload)
+	snap = a.State.Get()
+	if snap.Control.Confirm != "not_held" || snap.Control.AllMatch {
+		t.Fatalf("three deviating cycles must confirm the mismatch: %+v", snap.Control)
+	}
 	sum := controlSummary(snap)
 	if sum.AllMatch || len(sum.MismatchRoles) != 1 || sum.MismatchRoles[0] != "battery_power" {
 		t.Fatalf("mismatch summary: %+v", sum)
 	}
 	if !sum.PossibleConflict {
 		t.Fatal("the heartbeat control summary must forward possible_conflict to the cloud")
+	}
+}
+
+// TestControlReadbackFlapDoesNotAlarm is the live-Pilsting regression (2026-07-30):
+// the Deye followed the setpoint while the page warned "uebernimmt den Sollwert
+// nicht" every ~10 s. Layer 1 now reports the honest per-cycle verdict; the CORE
+// decides when a run of cycles becomes a warning.
+func TestControlReadbackFlapDoesNotAlarm(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+
+	// The five remote-mode registers of the live plant. `mk` builds one cycle.
+	mk := func(verify string, regs []map[string]any, unread []string) []byte {
+		p, _ := json.Marshal(map[string]any{
+			"family": "hybrid_3p", "source": "schedule", "control_enabled": true, "certified": true,
+			"control_path": "remote", "verify": verify, "unread_roles": unread,
+			"verify_reason": "Der Wechselrichter hat auf die Ruecklese-Anfrage nicht geantwortet.",
+			"mismatch_roles": []string{}, "registers": regs,
+		})
+		return p
+	}
+	held := []map[string]any{
+		{"role": "remote_watchdog", "addr": 1101, "commanded_raw": 60, "actual_raw": 57, "match": true, "verdict": "held", "note": "laeuft ab (57 s von 60 s)"},
+		{"role": "power_control_mode", "addr": 1104, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"},
+		{"role": "battery_strategy", "addr": 1105, "commanded_raw": 2, "actual_raw": 2, "match": true, "verdict": "held"},
+		{"role": "battery_power", "addr": 1109, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held"},
+		{"role": "remote_mode", "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"},
+	}
+	// The zero-answer cycle: nothing was read, so nothing is claimed. actual_raw is
+	// null - never the fabricated 0 that used to read as "the inverter reports 0".
+	unreadRegs := []map[string]any{}
+	unreadRoles := []string{}
+	for _, r := range held {
+		c := map[string]any{"role": r["role"], "addr": r["addr"], "commanded_raw": r["commanded_raw"],
+			"actual_raw": nil, "match": false, "verdict": "unread", "note": "keine Antwort (Null-Wert)"}
+		unreadRegs = append(unreadRegs, c)
+		unreadRoles = append(unreadRoles, r["role"].(string))
+	}
+
+	// A healthy cycle establishes the confirmed state.
+	a.onControlReadback(localbus.TopicControlReadback, mk("held", held, nil))
+	if got := a.State.Get().Control; got.Confirm != "held" || !got.AllMatch {
+		t.Fatalf("a held cycle must confirm: %+v", got)
+	}
+	// Now the flap: every other cycle is a zero-answer. NOTHING may turn into a
+	// warning, and the confirmed verdict must survive the silence.
+	for i := 0; i < 4; i++ {
+		a.onControlReadback(localbus.TopicControlReadback, mk("unconfirmed", unreadRegs, unreadRoles))
+		c := a.State.Get().Control
+		if c.Confirm != "held" || !c.AllMatch {
+			t.Fatalf("an unanswered cycle must keep the last known verdict (i=%d): %+v", i, c)
+		}
+		if len(c.MismatchRoles) != 0 || c.MismatchCycles != 0 {
+			t.Fatalf("silence must never be counted as a deviation (i=%d): %+v", i, c)
+		}
+		if len(c.UnreadRoles) != 5 {
+			t.Fatalf("but WHAT was unread is carried for the technician (i=%d): %+v", i, c.UnreadRoles)
+		}
+		// the register table stays honest: no fabricated actual values
+		for _, r := range c.Registers {
+			if r.ActualRaw != nil {
+				t.Fatalf("unread register must not report a value: %+v", r)
+			}
+			if r.Verdict != "unread" {
+				t.Fatalf("verdict must be carried per register: %+v", r)
+			}
+		}
+		a.onControlReadback(localbus.TopicControlReadback, mk("held", held, nil))
+		if c := a.State.Get().Control; c.Confirm != "held" {
+			t.Fatalf("recovery cycle: %+v", c)
+		}
+	}
+	// Sustained silence is NOT dressed up as healthy: after the run length it is
+	// named honestly as "no answer" - which is a different thing from a refusal.
+	for i := 0; i < controlNoAnswerCycles; i++ {
+		a.onControlReadback(localbus.TopicControlReadback, mk("unconfirmed", unreadRegs, unreadRoles))
+	}
+	c := a.State.Get().Control
+	if c.Confirm != "no_answer" {
+		t.Fatalf("sustained silence must be visible: %+v", c)
+	}
+	if len(c.MismatchRoles) != 0 {
+		t.Fatal("...but it must never accuse the inverter of refusing the setpoint")
+	}
+	if c.Reason == "" {
+		t.Fatal("the plain-German cause must reach the card")
+	}
+}
+
+// TestControlReadbackLegacyLayerOneStillWorks pins the mixed-image case: the core
+// may be updated before the Node-RED image is. A readback with only `all_match`
+// and `match` booleans keeps its exact two-state meaning.
+func TestControlReadbackLegacyLayerOneStillWorks(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.DataDir = t.TempDir()
+	a, _ := startBusOnlyAgent(t, cfg)
+
+	legacy := func(allMatch bool) []byte {
+		p, _ := json.Marshal(map[string]any{
+			"family": "sunspec", "source": "schedule", "control_enabled": true, "certified": true,
+			"all_match": allMatch, "mismatch_roles": []string{"battery_power"},
+			"registers": []map[string]any{
+				{"role": "battery_power", "fc": 3, "addr": 40, "commanded_raw": 100, "actual_raw": 100, "match": allMatch},
+			},
+		})
+		return p
+	}
+	a.onControlReadback(localbus.TopicControlReadback, legacy(true))
+	if c := a.State.Get().Control; c.Verify != "held" || c.Confirm != "held" || !c.AllMatch {
+		t.Fatalf("legacy all_match:true -> held: %+v", c)
+	}
+	for i := 0; i < controlMismatchAlarmCycles; i++ {
+		a.onControlReadback(localbus.TopicControlReadback, legacy(false))
+	}
+	if c := a.State.Get().Control; c.Verify != "mismatch" || c.Confirm != "not_held" || c.AllMatch {
+		t.Fatalf("legacy all_match:false -> a confirmed mismatch: %+v", c)
 	}
 }
 

@@ -137,9 +137,16 @@
   }
 
   // "Kam der Befehl an?" from the register readback (state.control).
+  // THREE outcomes since the flap fix (2026-07-30): a cycle the inverter never
+  // ANSWERED (verify === "unconfirmed", all_match null) is still "warte auf
+  // Rückmeldung" - it is not evidence that the test write was refused, and the
+  // core does not record it as First-Light evidence either.
   function arrived() {
     var c = lastControl;
     if (!c || !c.registers || !c.registers.length) return { ok: null, text: "warte auf Rückmeldung …" };
+    if (c.verify === "unconfirmed" || c.all_match == null) {
+      return { ok: null, text: "keine Antwort vom Wechselrichter - warte auf Rückmeldung …" };
+    }
     return { ok: !!c.all_match, text: c.all_match ? "Register bestätigt" : "Wechselrichter hat den Sollwert nicht übernommen" };
   }
 

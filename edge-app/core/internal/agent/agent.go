@@ -1406,6 +1406,11 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 	if c == nil || c.Blocked {
 		return nil
 	}
+	// AllMatch/MismatchRoles carry the DEBOUNCED verdict (state.ControlInfo's
+	// hold-last AllMatch + roles that are only named once "not_held" is confirmed),
+	// so the cloud sees the same calm truth the device shows instead of every
+	// flickering cycle. A cycle without an answer keeps the last known verdict -
+	// the cloud DTO has no third state, and a missing ANSWER is not a mismatch.
 	sum := &cloud.ControlSummary{
 		AllMatch:         c.AllMatch,
 		ControlEnabled:   snap.ControlEnabled,
@@ -1429,6 +1434,102 @@ func controlSummary(snap state.Snapshot) *cloud.ControlSummary {
 	return sum
 }
 
+// The confirmation state machine behind the :8484 warning (the flap fix,
+// 2026-07-30). The Layer-1 readback reports ONE cycle; whether a run of cycles
+// becomes an operator-facing warning is decided HERE, because the live symptom was
+// exactly that a single flickering cycle raised the alarm every ~10 s tick while
+// the battery was demonstrably following the setpoint.
+const (
+	controlCycleHeld        = "held"
+	controlCycleMismatch    = "mismatch"
+	controlCycleUnconfirmed = "unconfirmed"
+
+	// ControlMismatchAlarmCycles consecutive deviating cycles turn the state into
+	// "not_held" (the warning). 3 x the ~10 s setpoint cadence ~= 30 s: long enough
+	// that a flicker is silent, short enough that a real refusal is named quickly.
+	controlMismatchAlarmCycles = 3
+	// ControlNoAnswerCycles consecutive cycles WITHOUT any answer turn the state
+	// into "no_answer": silence must be visible, but it is never "not adopted".
+	controlNoAnswerCycles = 6
+)
+
+// controlCycleVerdict normalizes what Layer 1 reported into the three cycle
+// verdicts. An older Layer-1 build sends no `verify` field, so the verdict is
+// derived from the tri-state all_match: nil there means "no verdict" - the
+// conservative reading, never a fabricated mismatch.
+func controlCycleVerdict(verify string, allMatch *bool) string {
+	switch verify {
+	case controlCycleHeld, controlCycleMismatch, controlCycleUnconfirmed:
+		return verify
+	}
+	if allMatch == nil {
+		return controlCycleUnconfirmed
+	}
+	if *allMatch {
+		return controlCycleHeld
+	}
+	return controlCycleMismatch
+}
+
+// applyControlConfirm folds this cycle into the debounced confirmation state,
+// carrying the run lengths over from the previous readback.
+//
+//	held        -> confirmed, both counters reset
+//	mismatch    -> the mismatch run grows; the REPORTED verdict (AllMatch, and with
+//	               it the heartbeat) flips only when the run reaches the threshold
+//	unconfirmed -> NO evidence: the last known verdict is KEPT (the project's
+//	               hold-last discipline) and the mismatch run is left untouched,
+//	               so silence can neither raise nor clear an alarm.
+func applyControlConfirm(info *state.ControlInfo, prev *state.ControlInfo, cycle string) {
+	// A blocked readback (empty plan, e.g. an unknown nameplate) is not a cycle.
+	if info.Blocked {
+		info.Verify = ""
+		info.Confirm = ""
+		return
+	}
+	held := false
+	mismatchRun, unconfirmedRun := 0, 0
+	if prev != nil && !prev.Blocked {
+		held = prev.AllMatch
+		mismatchRun = prev.MismatchCycles
+		unconfirmedRun = prev.UnconfirmedCycles
+	}
+	switch cycle {
+	case controlCycleHeld:
+		held, mismatchRun, unconfirmedRun = true, 0, 0
+	case controlCycleMismatch:
+		mismatchRun, unconfirmedRun = mismatchRun+1, 0
+		// The REPORTED verdict only flips once the deviation is confirmed: below the
+		// threshold the last known verdict stands, which is what keeps the card AND
+		// the cloud calm through a flicker.
+		if mismatchRun >= controlMismatchAlarmCycles {
+			held = false
+		}
+	default: // unconfirmed
+		unconfirmedRun++
+	}
+	info.AllMatch = held
+	info.MismatchCycles = mismatchRun
+	info.UnconfirmedCycles = unconfirmedRun
+	switch {
+	case mismatchRun >= controlMismatchAlarmCycles:
+		info.Confirm = "not_held"
+	case unconfirmedRun >= controlNoAnswerCycles:
+		info.Confirm = "no_answer"
+	case mismatchRun > 0:
+		info.Confirm = "checking"
+	case held:
+		info.Confirm = "held"
+	default:
+		info.Confirm = "pending"
+	}
+	// The roles are only NAMED once the deviation is confirmed - naming registers
+	// for an unconfirmed flicker is what made the page read like a fault.
+	if info.Confirm != "not_held" {
+		info.MismatchRoles = nil
+	}
+}
+
 // onControlReadback ingests one control readback from Layer 1 (edge/control/
 // readback): the per-register commanded-vs-actual result of a control write. It
 // is stored in the Snapshot for the :8484 "Steuerung & Bestätigung" card and
@@ -1446,15 +1547,23 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		return
 	}
 	var m struct {
-		Ts             string   `json:"ts"`
-		Family         string   `json:"family"`
-		Source         string   `json:"source"`
-		SlotStart      string   `json:"slot_start"`
-		Mode           string   `json:"mode"`
-		ControlEnabled bool     `json:"control_enabled"`
-		Certified      bool     `json:"certified"`
-		AllMatch       bool     `json:"all_match"`
-		MismatchRoles  []string `json:"mismatch_roles"`
+		Ts             string `json:"ts"`
+		Family         string `json:"family"`
+		Source         string `json:"source"`
+		SlotStart      string `json:"slot_start"`
+		Mode           string `json:"mode"`
+		ControlEnabled bool   `json:"control_enabled"`
+		Certified      bool   `json:"certified"`
+		// AllMatch is TRI-STATE since the flap fix: nil = the cycle produced NO
+		// verdict (the inverter did not answer the readback). An older Layer-1 build
+		// sends a plain bool, so nil there means "no verdict" too - never "mismatch".
+		AllMatch *bool `json:"all_match"`
+		// Verify / UnreadRoles / VerifyReason are the Layer-1 cycle verdict
+		// (readback-verify.js). Absent on an older build -> derived from AllMatch.
+		Verify        string   `json:"verify"`
+		UnreadRoles   []string `json:"unread_roles"`
+		VerifyReason  string   `json:"verify_reason"`
+		MismatchRoles []string `json:"mismatch_roles"`
 		// ControlPath names WHICH Deye control surface drove this write - "remote"
 		// (the Tier-2 register block 1100-1121) or "tou" (the legacy Time-of-Use
 		// synthesis). Empty for every other adapter. Purely informational.
@@ -1480,9 +1589,11 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 			Addr         int      `json:"addr"`
 			CommandedRaw int      `json:"commanded_raw"`
 			CommandedKw  *float64 `json:"commanded_kw"`
-			ActualRaw    int      `json:"actual_raw"`
+			ActualRaw    *int     `json:"actual_raw"`
 			ActualKw     *float64 `json:"actual_kw"`
 			Match        bool     `json:"match"`
+			Verdict      string   `json:"verdict"`
+			Note         string   `json:"note"`
 		} `json:"registers"`
 	}
 	if err := json.Unmarshal(payload, &m); err != nil {
@@ -1501,6 +1612,7 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 			checkedAt = t.UTC()
 		}
 	}
+	cycle := controlCycleVerdict(m.Verify, m.AllMatch)
 	info := &state.ControlInfo{
 		CheckedAt:        checkedAt,
 		Family:           m.Family,
@@ -1508,7 +1620,6 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		SlotStart:        m.SlotStart,
 		ControlEnabled:   m.ControlEnabled,
 		Certified:        m.Certified,
-		AllMatch:         m.AllMatch,
 		MismatchRoles:    m.MismatchRoles,
 		ControlPath:      m.ControlPath,
 		RemoteStatusRaw:  m.RemoteStatusRaw,
@@ -1516,15 +1627,26 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 		ConflictReason:   m.DualController.Reason,
 		Blocked:          m.Blocked,
 		Reason:           m.Reason,
+		Verify:           cycle,
+		UnreadRoles:      m.UnreadRoles,
+	}
+	if info.Reason == "" && cycle == controlCycleUnconfirmed {
+		info.Reason = m.VerifyReason
 	}
 	for _, r := range m.Registers {
 		info.Registers = append(info.Registers, state.ControlRegister{
 			Role: r.Role, Fc: r.Fc, Addr: r.Addr,
 			CommandedRaw: r.CommandedRaw, CommandedKw: r.CommandedKw,
 			ActualRaw: r.ActualRaw, ActualKw: r.ActualKw, Match: r.Match,
+			Verdict: r.Verdict, Note: r.Note,
 		})
 	}
-	a.State.Update(func(s *state.Snapshot) { s.Control = info })
+	// Debounce INSIDE the state update so the counters read and written are the same
+	// snapshot's - the previous ControlInfo is the only carrier of the run length.
+	a.State.Update(func(s *state.Snapshot) {
+		applyControlConfirm(info, s.Control, cycle)
+		s.Control = info
+	})
 	// Modbus-Datenspiegel: the ACTUAL values this readback read from the Deye
 	// remote-mode window 1100-1121 make those registers READABLE on the mirror
 	// - fresh from reads the control path performs anyway, never via an extra
@@ -1532,8 +1654,10 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	if !m.Blocked {
 		ctrlRegs := map[uint16]uint16{}
 		for _, r := range m.Registers {
-			if r.Addr >= mirror.ControlRegFirst && r.Addr <= mirror.ControlRegLast {
-				ctrlRegs[uint16(r.Addr)] = uint16(r.ActualRaw)
+			// A register without an answer publishes NOTHING on the mirror - the
+			// alternative would serve a fabricated 0 to every LAN consumer.
+			if r.ActualRaw != nil && r.Addr >= mirror.ControlRegFirst && r.Addr <= mirror.ControlRegLast {
+				ctrlRegs[uint16(r.Addr)] = uint16(*r.ActualRaw)
 			}
 		}
 		if m.RemoteStatusRaw != nil {
@@ -1547,9 +1671,13 @@ func (a *Agent) onControlReadback(_ string, payload []byte) {
 	// match to the current test so certification cannot precede a real, confirmed write.
 	// A BLOCKED readback performed no write (the plan was refused), so it is never
 	// write-readback evidence - it must not mark the calibration test as failed.
-	if !m.Blocked && strings.EqualFold(strings.TrimSpace(m.Source), "calibration") && m.Mode != "release" {
+	// An UNCONFIRMED cycle is not evidence either: the inverter did not answer the
+	// readback, so recording a `false` there would fail a First-Light test over a
+	// missing ANSWER (the flap's second victim). The test simply keeps waiting.
+	if !m.Blocked && cycle != controlCycleUnconfirmed &&
+		strings.EqualFold(strings.TrimSpace(m.Source), "calibration") && m.Mode != "release" {
 		a.calMu.Lock()
-		a.cal.NoteWriteReadback(m.AllMatch)
+		a.cal.NoteWriteReadback(cycle == controlCycleHeld)
 		// Also record WHICH control surface drove the write ("remote" = the Deye Tier-2
 		// register block, else ToU/default), so the displayed scale hint is path-aware:
 		// the remote setpoint scales from the model's rated power, not the ToU power_scale.
