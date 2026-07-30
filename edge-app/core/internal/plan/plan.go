@@ -39,6 +39,19 @@ type Slot struct {
 	// EXECUTE this field (see docs/contracts/mqtt-schedule.schema.json), but it is
 	// retained so the local Fahrplan view can show the planned curtailment.
 	PvLimitKw *float64 `json:"pv_limit_kw,omitempty"`
+	// ChargeFromSurplusOnly is the OPTIONAL price-aware trim duty of the slot
+	// (2026-07-30): true = the cloud determined that topping this slot's charge
+	// up from the GRID costs more than the extra stored kWh earns over the rest
+	// of the horizon, so the executor must clamp commanded CHARGE to the MEASURED
+	// surplus max(pv - load, 0). The edge never evaluates a price - the whole
+	// price decision is the cloud's (guards.PriceTrimmer only enforces).
+	//
+	// FAIL-OPEN, deliberately the OPPOSITE of GridChargeAllowed: absent/false =
+	// no restriction, i.e. byte-for-byte pre-feature behavior. GridChargeAllowed
+	// is REGULATORY (EEG) and therefore fails safe; this one is ECONOMIC, and an
+	// unpriced restriction inferred from a missing field would destroy real
+	// arbitrage on a merchant site. Both compose most-restrictive-wins.
+	ChargeFromSurplusOnly bool `json:"charge_from_surplus_only,omitempty"`
 }
 
 // Plan is the parsed, validated schedule payload.
@@ -122,9 +135,10 @@ type wire struct {
 	GridImportLimitKw *float64 `json:"grid_import_limit_kw"`
 	PeakReserveSocPct *float64 `json:"peak_reserve_soc_pct"`
 	Slots             []struct {
-		Start             string   `json:"start"`
-		BatterySetpointKw float64  `json:"battery_setpoint_kw"`
-		PvLimitKw         *float64 `json:"pv_limit_kw"`
+		Start                 string   `json:"start"`
+		BatterySetpointKw     float64  `json:"battery_setpoint_kw"`
+		PvLimitKw             *float64 `json:"pv_limit_kw"`
+		ChargeFromSurplusOnly *bool    `json:"charge_from_surplus_only"`
 	} `json:"slots"`
 }
 
@@ -191,6 +205,11 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 			return nil, fmt.Errorf("slot start %q: %w", s.Start, err)
 		}
 		slot := Slot{Start: start, BatterySetpointKw: s.BatterySetpointKw}
+		// Only an EXPLICIT true carries the price-aware trim duty; absent/false
+		// is "no restriction" (the field is fail-open by contract).
+		if s.ChargeFromSurplusOnly != nil && *s.ChargeFromSurplusOnly {
+			slot.ChargeFromSurplusOnly = true
+		}
 		// Keep a valid, non-negative feed-in cap only; the contract guarantees
 		// >= 0, and a bad value must never be shown as a real curtailment.
 		if s.PvLimitKw != nil && !math.IsNaN(*s.PvLimitKw) && !math.IsInf(*s.PvLimitKw, 0) && *s.PvLimitKw >= 0 {
@@ -244,6 +263,28 @@ func (p *Plan) ActivePvLimit(now time.Time) *float64 {
 		}
 	}
 	return nil
+}
+
+// ActiveChargeFromSurplusOnly reports whether the slot active at now carries the
+// price-aware trim duty (see Slot.ChargeFromSurplusOnly). It mirrors
+// ActiveSetpoint/ActivePvLimit exactly: false when the plan is nil, STALE, or no
+// slot is active.
+//
+// Deliberately NOT a staleness survivor like PeakImportLimit: the duty is a
+// per-slot price fact that cannot be extrapolated, and the stale-plan fallback
+// (guards.SelfConsumption = pv - load) never grid-charges anyway, so there is
+// nothing left to protect there.
+func (p *Plan) ActiveChargeFromSurplusOnly(now time.Time) bool {
+	if !p.Fresh(now) {
+		return false
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	for _, s := range p.Slots {
+		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
+			return s.ChargeFromSurplusOnly
+		}
+	}
+	return false
 }
 
 // SlotView is one plan slot as the local Fahrplan view renders it.

@@ -61,6 +61,12 @@ type Snapshot struct {
 	PeakGuardActive   bool     `json:"peak_guard_active"`
 	PeakQuarterMeanKw *float64 `json:"peak_quarter_mean_kw,omitempty"`
 
+	// Trim is the price-aware in-slot limitation (2026-07-30), non-nil ONLY while
+	// it is actually lowering the commanded charge. It exists so the card can name
+	// a DELIBERATE limitation: without it the customer would see a confirmed
+	// setpoint far below the Fahrplan and no reason for it.
+	Trim *TrimInfo `json:"trim,omitempty"`
+
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`
 
@@ -126,6 +132,21 @@ type DataPurgeInfo struct {
 	RequestedAt time.Time `json:"requested_at"`
 	CloudState  string    `json:"cloud_state"`
 	ConfirmedAt time.Time `json:"confirmed_at,omitzero"`
+}
+
+// TrimInfo is the UI-facing state of the price-aware in-slot trim: the cloud
+// marked this slot's grid purchases uneconomic, so the commanded CHARGE is being
+// held at the MEASURED surplus. Read-only display of a decision already taken -
+// the limitation itself lives in guards.PriceTrimmer.
+type TrimInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// PlannedKw is the setpoint BEFORE the trim - what the Fahrplan/holder asked
+	// for, so the card can say "der Fahrplan wollte X kW".
+	PlannedKw float64 `json:"planned_kw"`
+	// SurplusKw is the measured surplus the charge is held at; nil when unknown
+	// (then the trim would be inactive anyway - never regulate blind).
+	SurplusKw *float64 `json:"surplus_kw,omitempty"`
 }
 
 // ControlInfo is the UI-facing per-register control readback: what the schedule

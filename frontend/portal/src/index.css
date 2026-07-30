@@ -3373,6 +3373,16 @@ button.vp-tech-card-h.toggle {
   color: var(--vp-text, #1f2733);
 }
 .vp-control-ago { flex: 0 0 auto; white-space: nowrap; }
+/* The plan's own reason for the setpoint (2026-07-30): same voice, one notch
+   quieter, wraps instead of widening the card. */
+.vp-control-reason {
+  margin: 8px 0 0;
+  min-width: 0;
+  font-size: var(--vp-text-xs, 0.82rem);
+  line-height: 1.5;
+  color: var(--vp-text-muted, #5b6672);
+  overflow-wrap: anywhere;
+}
 
 /* ============================================================================
    "Meine Anlage" v4 - the 3-zone desktop dashboard + phone money-first reflow

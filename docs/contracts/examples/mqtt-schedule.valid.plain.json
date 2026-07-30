@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "plan_id": "a81bc81b-dead-4e5d-abff-90865d1e13b1",
+  "generated_at": "2026-07-30T12:30:00Z",
+  "horizon_slots": 4,
+  "slot_minutes": 15,
+  "grid_charge_allowed": false,
+  "slots": [
+    { "start": "2026-07-30T12:30:00Z", "battery_setpoint_kw": 10.8 },
+    { "start": "2026-07-30T12:45:00Z", "battery_setpoint_kw": 10.8 },
+    { "start": "2026-07-30T13:00:00Z", "battery_setpoint_kw": 4.2 },
+    { "start": "2026-07-30T13:15:00Z", "battery_setpoint_kw": -3.5 }
+  ]
+}

@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -398,5 +400,97 @@ func TestActivePvLimitForwardsAndClears(t *testing.T) {
 	stale := &Plan{SlotMinutes: 15, ReceivedAt: now.Add(-30 * time.Minute), Slots: p.Slots}
 	if stale.ActivePvLimit(now) != nil {
 		t.Fatal("stale plan should yield nil pv limit")
+	}
+}
+
+// The price-aware trim duty: only an EXPLICIT true carries it, the flag follows
+// the ACTIVE slot exactly like the PV cap, and a stale plan drops it (the
+// self-consumption fallback never grid-charges, so there is nothing to protect).
+func TestParseAndActivateChargeFromSurplusOnly(t *testing.T) {
+	payload := `{
+      "schema_version": "1.0",
+      "plan_id": "11111111-2222-3333-4444-555555555555",
+      "generated_at": "2026-07-30T12:30:00Z",
+      "slot_minutes": 15,
+      "slots": [
+        { "start": "2026-07-30T12:30:00Z", "battery_setpoint_kw": 10.8, "charge_from_surplus_only": true },
+        { "start": "2026-07-30T12:45:00Z", "battery_setpoint_kw": 10.8, "charge_from_surplus_only": false },
+        { "start": "2026-07-30T13:00:00Z", "battery_setpoint_kw": 10.8 }
+      ]
+    }`
+	rx := time.Date(2026, 7, 30, 12, 31, 0, 0, time.UTC)
+	p, err := Parse([]byte(payload), rx)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := []bool{true, false, false}
+	for i, w := range want {
+		if p.Slots[i].ChargeFromSurplusOnly != w {
+			t.Fatalf("slot %d duty = %v, want %v", i, p.Slots[i].ChargeFromSurplusOnly, w)
+		}
+	}
+	if !p.ActiveChargeFromSurplusOnly(rx) {
+		t.Fatal("the active first slot must carry the duty")
+	}
+	if p.ActiveChargeFromSurplusOnly(time.Date(2026, 7, 30, 12, 46, 0, 0, time.UTC)) {
+		t.Fatal("an explicit false slot carries no duty")
+	}
+	// Stale plan / no active slot -> no duty.
+	stale := &Plan{SlotMinutes: 15, ReceivedAt: rx.Add(-30 * time.Minute), Slots: p.Slots}
+	if stale.ActiveChargeFromSurplusOnly(rx) {
+		t.Fatal("a stale plan must carry no duty")
+	}
+	if p.ActiveChargeFromSurplusOnly(rx.Add(4 * time.Hour)) {
+		t.Fatal("outside every slot there is no duty")
+	}
+	// A legacy payload (no field anywhere) is byte-for-byte the old behavior.
+	legacy := mustParse(t, rx)
+	for i := range legacy.Slots {
+		if legacy.Slots[i].ChargeFromSurplusOnly {
+			t.Fatalf("legacy slot %d must carry no duty", i)
+		}
+	}
+	if legacy.ActiveChargeFromSurplusOnly(time.Date(2026, 7, 1, 9, 5, 0, 0, time.UTC)) {
+		t.Fatal("legacy plan must carry no duty")
+	}
+}
+
+// The COMMITTED contract fixtures are what the device really parses: the same
+// bytes the cloud publishes and the Python contract test validates
+// (docs/contracts/examples/, read by path on purpose - moving a fixture must
+// break this test).
+func TestCommittedContractFixturesParse(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples")
+	rx := time.Date(2026, 7, 30, 12, 31, 0, 0, time.UTC)
+
+	plain, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.plain.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pp, err := Parse(plain, rx)
+	if err != nil {
+		t.Fatalf("plain fixture: %v", err)
+	}
+	if pp.ActiveChargeFromSurplusOnly(rx) {
+		t.Fatal("the plain fixture carries no trim duty")
+	}
+	if kw, _, ok := pp.ActiveSetpoint(rx); !ok || kw != 10.8 {
+		t.Fatalf("plain fixture setpoint = %v ok=%v, want 10.8", kw, ok)
+	}
+
+	trimmed, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.surplus-only-charge.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp, err := Parse(trimmed, rx)
+	if err != nil {
+		t.Fatalf("trimmed fixture: %v", err)
+	}
+	if !tp.ActiveChargeFromSurplusOnly(rx) {
+		t.Fatal("the trimmed fixture's active slot must carry the duty")
+	}
+	// The last slots of that fixture are a plain charge and a discharge.
+	if tp.Slots[2].ChargeFromSurplusOnly || tp.Slots[3].ChargeFromSurplusOnly {
+		t.Fatal("only the marked slots carry the duty")
 	}
 }

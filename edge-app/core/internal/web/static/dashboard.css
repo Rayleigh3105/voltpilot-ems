@@ -433,6 +433,12 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 }
 .ctrl-summary strong { display: block; font-size: 14.5px; font-weight: 700; line-height: 1.35; }
 .ctrl-summary p { margin: 5px 0 0; font-size: 13.5px; color: var(--ink-2); }
+/* The reason line under the state: same voice, one notch quieter, and it wraps
+   instead of pushing the card sideways. */
+.ctrl-summary .ctrl-reason {
+  margin-top: 7px; font-size: 13px; line-height: 1.5; color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
 .ctrl-summary.ok { background: var(--ok-soft); border-left-color: var(--ok); }
 .ctrl-summary.ok strong { color: #14532D; }
 .ctrl-summary.warn { background: var(--warn-soft); border-left-color: var(--warn); }

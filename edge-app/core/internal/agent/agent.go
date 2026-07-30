@@ -71,7 +71,12 @@ type Agent struct {
 	// peak tracks the running wall-clock quarter hour's mean grid import for
 	// the PS-3 peak guard (fed with the gated composite power_kw at
 	// onLocalTelemetry, read at applySetpoint). Concurrency-safe internally.
-	peak           *guards.PeakTracker
+	peak *guards.PeakTracker
+	// trim holds the hysteresis of the price-aware in-slot trim: in a slot the
+	// cloud marked charge_from_surplus_only the commanded CHARGE is capped to the
+	// MEASURED surplus, so a forecast shortfall is no longer covered from the
+	// grid (guards.PriceTrimmer - the edge enforces, the cloud priced).
+	trim           *guards.PriceTrimmer
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
@@ -368,6 +373,7 @@ func New(cfg config.Config) (*Agent, error) {
 		despiker:     guards.NewDespikerWithSettings(despikeCfg),
 		envelope:     guards.NewEnvelope(),
 		peak:         guards.NewPeakTracker(),
+		trim:         guards.NewPriceTrimmer(),
 		despikeStore: ds,
 		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
 		calCert:      map[string]bool{},
@@ -1851,7 +1857,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.PeakReserveSocPct = peakReserve
 			s.PeakGuardActive = false
 			s.PeakQuarterMeanKw = nil
+			// Without a reading the trim cannot regulate (never blind), so any
+			// previous limitation claim is cleared rather than left stale.
+			s.Trim = nil
 		})
+		a.trim.Release()
 		return
 	}
 
@@ -1889,6 +1899,22 @@ func (a *Agent) applySetpoint(now time.Time) {
 			}
 		}
 	}
+
+	// Price-aware in-slot trim (2026-07-30): in a slot the CLOUD marked
+	// charge_from_surplus_only (importing costs more than the extra stored kWh
+	// earns - services/optimization slot_trim.py), cap the commanded CHARGE at the
+	// MEASURED surplus so a forecast shortfall inside the quarter hour is no
+	// longer covered by buying expensive grid energy for the battery. Runs after
+	// every compliance clamp AND after the holder override (so it applies whoever
+	// commanded the charge), and only ever LOWERS charge toward the surplus - the
+	// resulting predicted grid power is >= 0, so no §14a/feed-in bound can be
+	// re-violated (see guards/slottrim.go for the full safety argument). The
+	// self-consumption fallback follows pv - load, i.e. the surplus itself, so the
+	// trim is a no-op there. NOTE the setpoint published below is the TRIMMED
+	// value: the register readback therefore matches it and the confirmation logic
+	// never reads a deliberate limitation as "setpoint not adopted".
+	trimmed := a.trim.Apply(now, kw, p.ActiveChargeFromSurplusOnly(now), r)
+	kw = trimmed.Kw
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
 	// wall-clock quarter hour's projected mean import threatens the target,
@@ -1994,6 +2020,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// plan executor injects the plan as market desires, the failsafe is the
 	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is
 	// retired; without a pushed registry neither path publishes anything.
+	trimInfo := trimSnapshot(trimmed)
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
 		s.SetpointKw = kw
@@ -2004,7 +2031,26 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.PeakReserveSocPct = peakReserve
 		s.PeakGuardActive = peakActive
 		s.PeakQuarterMeanKw = quarterMean
+		s.Trim = trimInfo
 	})
+}
+
+// trimSnapshot turns one trim evaluation into the UI-facing block, or nil when
+// nothing was limited (an untrimmed device then carries no trim key at all - the
+// :8484 card renders exactly as before).
+func trimSnapshot(t guards.TrimResult) *state.TrimInfo {
+	if !t.Active {
+		return nil
+	}
+	info := &state.TrimInfo{
+		Active:    true,
+		PlannedKw: math.Round(t.CommandedKw*1000) / 1000,
+	}
+	if !math.IsNaN(t.SurplusKw) {
+		v := math.Round(t.SurplusKw*1000) / 1000
+		info.SurplusKw = &v
+	}
+	return info
 }
 
 // publisherLoop drains the buffer oldest-first whenever the cloud link is

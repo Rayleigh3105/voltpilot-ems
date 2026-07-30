@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ControlStatus } from './api';
-import { controlStrip } from './control';
+import { controlReasonSlot, controlStrip } from './control';
+import { slotWhy } from './fahrplanWhy';
 
 const NOW = new Date('2026-07-08T12:00:10Z');
 
@@ -77,5 +78,90 @@ describe('controlStrip', () => {
       const v = controlStrip(status(over), NOW)!;
       expect(v.sentence).not.toMatch(/register|modbus|kill-switch|readback/i);
     }
+  });
+});
+
+// --- the REASON line (owner's Pilsting question, 2026-07-30) ------------------
+//
+// "Fahrplan-Sollwert 10,8 kW → Wechselrichter bestätigt 10,8 kW" states a
+// command and its confirmation and reads like a stubborn order. The strip now
+// carries the plan's OWN reason for that setpoint - taken from the optimizer's
+// per-slot why-layer, never invented here.
+describe('controlStrip reason', () => {
+  const REASON =
+    'Lädt günstig aus dem Netz: Börsenpreis 3,3 ct/kWh liegt unter dem Wert gespeicherter Energie (≈ 28,0 ct/kWh).';
+
+  it('carries the reason on the states that show a setpoint', () => {
+    const old = new Date(NOW.getTime() - 6 * 60 * 1000).toISOString();
+    expect(controlStrip(status({}), NOW, false, REASON)!.reason).toBe(REASON);
+    expect(controlStrip(status({ allMatch: false }), NOW, false, REASON)!.reason).toBe(REASON);
+    expect(controlStrip(status({ checkedAt: old }), NOW, false, REASON)!.reason).toBe(REASON);
+  });
+
+  it('never explains a setpoint that is not being executed', () => {
+    // Off / not released / no readback yet: naming a plan reason there would
+    // claim something is happening that is not.
+    expect(controlStrip(status({ controlEnabled: false }), NOW, false, REASON)!.reason).toBeNull();
+    expect(controlStrip(status({ certified: false }), NOW, false, REASON)!.reason).toBeNull();
+    expect(controlStrip(null, NOW, true, REASON)!.reason).toBeNull();
+  });
+
+  it('claims no cause when the plan recorded none (pre-why run)', () => {
+    expect(controlStrip(status({}), NOW).reason).toBeNull();
+  });
+
+  it('is the optimizer why-layer, not a second explanation logic', () => {
+    // Composed exactly like the page does it: the active slot's recorded role +
+    // numbers, through the SHARED slotWhy.
+    const slot = {
+      start: '2026-07-30T12:30:00Z',
+      batteryKw: 10.8,
+      priceEurMwh: 33,
+      costEur: 0,
+      baselineCostEur: 0,
+      slotRole: 'guenstig_laden',
+      storedValueCtKwh: 28,
+    };
+    const reason = slotWhy(slot, 'eigenverbrauch');
+    const v = controlStrip(status({}), NOW, false, reason)!;
+    expect(v.reason).toContain('Lädt günstig aus dem Netz');
+    expect(v.reason).toContain('3,3 ct/kWh');
+    // Customer voice: no internal vocabulary in the reason either.
+    expect(v.reason).not.toMatch(/register|modbus|MILP|dual|lambda/i);
+  });
+
+  it('an unknown role yields no reason - the vocabulary is additive', () => {
+    const slot = {
+      start: '2026-07-30T12:30:00Z',
+      batteryKw: 10.8,
+      priceEurMwh: 33,
+      costEur: 0,
+      baselineCostEur: 0,
+      slotRole: 'ein_neuer_modus_2027',
+    };
+    expect(slotWhy(slot, 'eigenverbrauch')).toBeNull();
+  });
+});
+
+describe('controlReasonSlot', () => {
+  const slots = [
+    { start: '2026-07-30T12:15:00Z', slotRole: 'pv_speichern' },
+    { start: '2026-07-30T12:30:00Z', slotRole: 'guenstig_laden' },
+    { start: '2026-07-30T12:45:00Z', slotRole: 'eigenverbrauch' },
+  ];
+
+  it('picks the slot that contains now', () => {
+    expect(controlReasonSlot(slots, new Date('2026-07-30T12:44:59Z'))!.slotRole).toBe(
+      'guenstig_laden',
+    );
+    expect(controlReasonSlot(slots, new Date('2026-07-30T12:45:00Z'))!.slotRole).toBe(
+      'eigenverbrauch',
+    );
+  });
+
+  it('is null outside the horizon and on an empty plan', () => {
+    expect(controlReasonSlot(slots, new Date('2026-07-30T14:00:00Z'))).toBeNull();
+    expect(controlReasonSlot(slots, new Date('2026-07-30T11:00:00Z'))).toBeNull();
+    expect(controlReasonSlot([], NOW)).toBeNull();
   });
 });
