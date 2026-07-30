@@ -1,0 +1,127 @@
+/* Die Ereignis-Spur unter dem Hauptdiagramm (F6, Konzept
+   `data/vp-historie-konzept-t4`). Komponenten-lokal wie `Steuerung.css` /
+   `CockpitBlocks.css` - `index.css` bleibt unangetastet.
+
+   Die Farbe kommt je Chip als `--dot` aus `chartTheme()` (Canvas kann kein
+   var() auflösen, deshalb liefert die Komponente den fertigen Hex - so trägt
+   ein Chip dieselbe Farbe wie sein Band im Diagramm). */
+
+/* F5: wo ein Balken in seinen Tag führt, sagt der Zeiger es auch. Der ganze
+   Zeichenbereich ist das Ziel (der Klick wird über die Kategorie-Achse
+   aufgelöst, nicht über den gezeichneten Balken), deshalb hängt der Zeiger am
+   Diagramm-Container und nicht an einer einzelnen Reihe. */
+.vp-chart-clickable {
+  cursor: pointer;
+}
+
+.vp-ereignis-spur {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vp-ereignis-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--vp-muted, #6c757d);
+}
+
+.vp-ereignis-legendeitem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-ereignis-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--dot, #90a4ae);
+  flex: 0 0 auto;
+}
+
+.vp-ereignis-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-ereignis-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--vp-border, #e9ecef);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.78rem;
+  color: var(--vp-text, #1a1a1a);
+  text-align: left;
+}
+
+.vp-ereignis-zeit {
+  font-weight: 800;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Der Grund darf umbrechen statt mitten im Wort abgeschnitten zu werden. */
+.vp-ereignis-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Ein Chip, der in seinen Tag führt (F5), sieht auch so aus. */
+.vp-ereignis-chip.is-link {
+  cursor: pointer;
+  border-color: var(--vp-border, #e9ecef);
+}
+
+.vp-ereignis-chip.is-link:hover,
+.vp-ereignis-chip.is-link:focus-visible {
+  border-color: var(--vp-action, #2c5282);
+  background: var(--vp-surface-2, #f6f7f9);
+}
+
+.vp-ereignis-mehr,
+.vp-ereignis-chip.is-link {
+  font-family: inherit;
+}
+
+.vp-ereignis-mehr {
+  border: 0;
+  background: none;
+  padding: 5px 4px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--vp-link, #2c5282);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.vp-ereignis-leer,
+.vp-ereignis-hinweis {
+  margin: 0;
+}
+
+@media (max-width: 560px) {
+  /* Am Telefon bleibt jeder Chip ein 44-px-Ziel und darf die ganze Zeile
+     einnehmen - ein abgeschnittener Grund wäre keiner. */
+  .vp-ereignis-chip {
+    width: 100%;
+    min-height: 44px;
+  }
+  .vp-ereignis-mehr {
+    min-height: 44px;
+  }
+}

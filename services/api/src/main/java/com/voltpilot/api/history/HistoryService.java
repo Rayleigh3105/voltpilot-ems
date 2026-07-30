@@ -4,6 +4,7 @@ import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.web.dto.HistoryBucketDto;
 import com.voltpilot.api.web.dto.HistoryCoverageDto;
 import com.voltpilot.api.web.dto.HistoryDto;
+import com.voltpilot.api.web.dto.HistoryEventDto;
 import com.voltpilot.api.web.dto.HistoryPlanPointDto;
 import com.voltpilot.api.web.dto.HistoryTotalsDto;
 import com.voltpilot.api.web.dto.ProtocolEventDto;
@@ -66,9 +67,42 @@ public class HistoryService {
                 ? repo.planForWindow(siteId, window.from(), window.to())
                 : List.of();
 
+        // Die Abdeckungs-Rohzahlen werden EINMAL geholt und zweimal gelesen: die
+        // Zeit-Leiste zählt daraus die Fehlstellen, die Ereignis-Spur setzt ihre
+        // Rand-Marker auf dieselben Grenzen - sonst stünde „6 Lücken" über vier
+        // Markern.
+        HistoryRepository.CoverageRow coverageRow =
+                repo.coverage(siteId, window.from(), window.to());
+        HistoryCoverageDto coverage = coverage(coverageRow, window, Instant.now());
+
         return new HistoryDto(range.name().toLowerCase(java.util.Locale.ROOT),
                 window.from(), window.to(), range.bucketMinutes(), buckets, totals, protocol, plan,
-                coverage(repo.coverage(siteId, window.from(), window.to()), window, Instant.now()));
+                coverage, events(siteId, biddingZone, range, window, coverageRow, coverage));
+    }
+
+    /**
+     * Die Ereignis-Spur (F6) eines Zeitraums. Jede Abfrage liefert nur die
+     * auffälligen Viertelstunden; Fenster, Texte und Obergrenzen entstehen in der
+     * reinen {@link Ereignisse}.
+     *
+     * <p>Die §-14a-Netzgrenze steht ausschließlich in der ROHEN {@code telemetry}
+     * (die Rollup-Kaskade führt die Spalte nicht), deshalb wird sie nur für
+     * begrenzte Fenster gelesen - {@link Ereignisse#evaluatesGridLimit}. Die
+     * Oberfläche spricht das aus, statt das Fehlen eines Markers als „keine
+     * Netzgrenze" lesen zu lassen.
+     */
+    private List<HistoryEventDto> events(UUID siteId, String biddingZone, HistoryRange range,
+            HistoryRange.Window window, HistoryRepository.CoverageRow coverageRow,
+            HistoryCoverageDto coverage) {
+        return Ereignisse.build(
+                repo.negativePriceSlots(biddingZone, window.from(), window.to()),
+                repo.curtailSlots(siteId, window.from(), window.to()),
+                Ereignisse.evaluatesGridLimit(range)
+                        ? repo.gridLimitSlots(siteId, window.from(), window.to())
+                        : List.of(),
+                repo.gridChargeSlots(siteId, window.from(), window.to()),
+                repo.dataGaps(siteId, window.from(), window.to()),
+                coverageRow, coverage);
     }
 
     // ---- Datenabdeckung (F4/P7) ---------------------------------------------

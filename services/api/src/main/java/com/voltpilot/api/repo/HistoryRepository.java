@@ -444,6 +444,134 @@ public class HistoryRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    // ---- Ereignis-Spur (F6) ---------------------------------------------------
+    //
+    // Vier schmale Abfragen, die je Viertelstunde EINE Tatsache liefern; alles
+    // Weitere - Fenster bilden, Text, Obergrenzen - rechnet die reine,
+    // unit-getestete Klasse com.voltpilot.api.history.Ereignisse. So bleibt hier
+    // nur, was die Datenbank weiß (dasselbe Muster wie CoverageRow).
+
+    /**
+     * Eine Viertelstunde mit EINER Zahl - je nach Abfrage der Preis (EUR/MWh),
+     * die geplante Abregelung (kW), die gemeldete Netzgrenze (kW) oder die aus
+     * dem Netz geladene Energie (kWh). {@code value} darf null sein.
+     */
+    public record ValueSlot(Instant slot, BigDecimal value) {
+    }
+
+    /** Eine Fehlstelle: {@code from} = erste fehlende, {@code to} = erste wieder gemessene Viertelstunde. */
+    public record GapRun(Instant from, Instant to) {
+    }
+
+    /**
+     * Unter dieser Energie je Viertelstunde ist eine Ladung/ein Bezug Rauschen
+     * (0,05 kWh = 0,2 kW über eine Viertelstunde - dieselbe Größenordnung wie
+     * die 0,1-kW-Totzone des Tagesprotokolls).
+     */
+    private static final String NETZLADEN_MIN_KWH = "0.05";
+
+    /**
+     * Die Viertelstunden mit NEGATIVEM Börsenpreis im Fenster - aus derselben
+     * materialisierten Preisreihe, mit der die Buckets bewertet werden
+     * ({@link PriceSlots}), also ohne zusätzliche Preis-Semantik.
+     */
+    public List<ValueSlot> negativePriceSlots(String biddingZone, Instant from, Instant to) {
+        return jdbc.query(
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT slot, price_eur_mwh FROM price_slot"
+                        + " WHERE price_eur_mwh < 0 AND slot >= ? AND slot < ? ORDER BY slot",
+                (rs, i) -> new ValueSlot(rs.getTimestamp("slot").toInstant(),
+                        rs.getBigDecimal("price_eur_mwh")),
+                biddingZone, Timestamp.from(from), Timestamp.from(to),
+                Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
+     * Die GEPLANTE PV-Abregelung je Viertelstunde ({@code schedule.curtail_kw}),
+     * je Slot aus dem NEUESTEN Lauf, der ihn geplant hat - dieselbe
+     * {@code DISTINCT ON}-Regel wie {@link #savings} und
+     * {@link #planForWindow}, damit überlappende MPC-Läufe nie doppelt zählen.
+     * Das ist eine Plan-Aussage; der Ereignistext sagt „eingeplant".
+     */
+    public List<ValueSlot> curtailSlots(UUID siteId, Instant from, Instant to) {
+        return jdbc.query(
+                "SELECT time, curtail_kw FROM ("
+                        + "  SELECT DISTINCT ON (time) time, curtail_kw"
+                        + "  FROM schedule WHERE site_id = ? AND time >= ? AND time < ?"
+                        + "  ORDER BY time, generated_at DESC) s "
+                        + "WHERE curtail_kw IS NOT NULL AND curtail_kw > 0.05 ORDER BY time",
+                (rs, i) -> new ValueSlot(rs.getTimestamp("time").toInstant(),
+                        rs.getBigDecimal("curtail_kw")),
+                siteId, Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
+     * Die vom Gerät gemeldete §-14a-Netzgrenze je Viertelstunde.
+     *
+     * <p><b>Aus der ROHEN {@code telemetry}</b> - die Rollup-Kaskade führt
+     * {@code grid_limit_kw} nicht. Deshalb ruft der Service diese Abfrage nur
+     * für begrenzte Fenster auf (Tag und Woche,
+     * {@link com.voltpilot.api.history.Ereignisse#evaluatesGridLimit}); ein
+     * Jahresfenster wäre ein Scan über Millionen Rohzeilen.
+     */
+    public List<ValueSlot> gridLimitSlots(UUID siteId, Instant from, Instant to) {
+        return jdbc.query(
+                "SELECT time_bucket('15 minutes', time) AS slot,"
+                        + " min(grid_limit_kw) AS limit_kw "
+                        + "FROM telemetry WHERE site_id = ? AND time >= ? AND time < ?"
+                        + " AND grid_limit_kw IS NOT NULL GROUP BY 1 ORDER BY 1",
+                (rs, i) -> new ValueSlot(rs.getTimestamp("slot").toInstant(),
+                        rs.getBigDecimal("limit_kw")),
+                siteId, Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
+     * Die Viertelstunden, in denen der Speicher AUS DEM NETZ geladen hat -
+     * gemessen, aus dem 15-Minuten-Rollup: die Ladung liegt über der PV-Erzeugung
+     * derselben Viertelstunde UND es wurde gleichzeitig Strom bezogen (dieselbe
+     * Regel wie {@code schedule.ts chargeKind} im Portal).
+     *
+     * <p><b>Ohne bekannte PV wird kein Netzladen behauptet</b> ({@code pv_kwh IS
+     * NOT NULL}): eine Anlage, deren PV-Kanal fehlt, würde sonst bei jeder Ladung
+     * als „aus dem Netz geladen" markiert. Der Wert ist die vorsichtigere der
+     * beiden Schranken - mehr als bezogen wurde, kann nicht in den Speicher
+     * gegangen sein.
+     */
+    public List<ValueSlot> gridChargeSlots(UUID siteId, Instant from, Instant to) {
+        return jdbc.query(
+                "SELECT bucket,"
+                        + " least(battery_charge_kwh - pv_kwh, grid_import_kwh) AS netz_kwh "
+                        + "FROM telemetry_rollup_15m"
+                        + " WHERE site_id = ? AND bucket >= ? AND bucket < ?"
+                        + "   AND pv_kwh IS NOT NULL AND battery_charge_kwh IS NOT NULL"
+                        + "   AND grid_import_kwh IS NOT NULL"
+                        + "   AND grid_import_kwh > " + NETZLADEN_MIN_KWH
+                        + "   AND battery_charge_kwh > pv_kwh + " + NETZLADEN_MIN_KWH
+                        + " ORDER BY bucket",
+                (rs, i) -> new ValueSlot(rs.getTimestamp("bucket").toInstant(),
+                        rs.getBigDecimal("netz_kwh")),
+                siteId, Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
+     * Die Fehlstellen ZWISCHEN zwei gemessenen Viertelstunden - dieselbe
+     * {@code lag()}-Regel, mit der {@link #coverage} sie ZÄHLT, hier mit ihren
+     * Rändern, damit Marker und Abdeckungs-Satz nicht auseinanderlaufen können.
+     * Die Ränder des Fensters kennt erst der Service (aus {@link CoverageRow}).
+     */
+    public List<GapRun> dataGaps(UUID siteId, Instant from, Instant to) {
+        return jdbc.query(
+                "SELECT prev + INTERVAL '15 minutes' AS gap_from, bucket AS gap_to FROM ("
+                        + "  SELECT bucket, lag(bucket) OVER (ORDER BY bucket) AS prev"
+                        + "  FROM telemetry_rollup_15m"
+                        + "  WHERE site_id = ? AND bucket >= ? AND bucket < ?) s "
+                        + "WHERE prev IS NOT NULL AND bucket > prev + INTERVAL '15 minutes' "
+                        + "ORDER BY 1",
+                (rs, i) -> new GapRun(rs.getTimestamp("gap_from").toInstant(),
+                        rs.getTimestamp("gap_to").toInstant()),
+                siteId, Timestamp.from(from), Timestamp.from(to));
+    }
+
     private static Instant instantOrNull(Timestamp ts) {
         return ts == null ? null : ts.toInstant();
     }

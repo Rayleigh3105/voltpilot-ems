@@ -4740,6 +4740,31 @@ components:
             measuredBuckets: { type: integer, format: int64, description: Quarter-hours actually measured (capped at expectedBuckets - never over 100 %). }
             gaps: { type: integer, description: Contiguous missing runs inside the span, incl. its leading/trailing edge (0 = continuous). }
             resolutionMinutes: { type: integer, example: 15, description: Length of one counted unit. }
+        events:
+          type: array
+          description: >
+            The event track of the series (F6) - the NOTABLE things that explain
+            an outlier, present in EVERY range (unlike `protocol`, which stays
+            the day's ordinary events as a list). Windows are merged runs of
+            quarter-hours; at most 20 windows per type (the longest first), and
+            the coverage block still reports the true gap count. `text` carries
+            the statement WITHOUT a time - the client puts the range-appropriate
+            time in front. `end` is exclusive.
+
+            netzgrenze is evaluated for day and week only (grid_limit_kw lives in
+            the RAW telemetry, which the rollup cascade does not carry) - a
+            client must SAY so rather than let a missing marker read as "no grid
+            limit". abregelung comes from the persisted plans
+            (`schedule.curtail_kw`), so its text says "eingeplant".
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [negativpreis, abregelung, netzgrenze, netzladen, datenluecke, geraet-still]
+              start: { type: string, format: date-time }
+              end: { type: string, format: date-time, description: Exclusive. }
+              text: { type: string, description: Plain-German statement without a time. }
     ForecastQuality:
       type: object
       description: >
