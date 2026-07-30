@@ -1094,6 +1094,90 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /**
+     * P3 "Ist-Last sichtbar" (report vp-netzbezug-nacht-s3 §6): the plan carries
+     * the MEASURED house consumption of every slot that already happened - the
+     * quarter-hour MEAN of {@code telemetry.load_kw}, the same quantity
+     * {@code loadKw} forecasts - so the portal can draw the forecast error that
+     * made this plant draw from the grid at night.
+     *
+     * <p>Runs on its OWN site and cleans up after itself: a stray site with a
+     * plan + telemetry would move the hand-computed fleet/earnings numbers of
+     * the other tests on tenant A.
+     */
+    @Test
+    void scheduleCarriesTheMeasuredLoadOfSlotsThatAlreadyHappened() {
+        final String site = "0000000a-0000-0000-0000-0000000000f3";
+        final String device = "0000000a-0000-0000-0000-0000000000e3";
+        final String tenant = "00000000-0000-0000-0000-000000000001";
+        exec("INSERT INTO site (id, tenant_id, name, bidding_zone) VALUES ('" + site + "', '"
+                + tenant + "', 'P3 Ist-Last', 'DE-LU') ON CONFLICT DO NOTHING");
+        try {
+            // Four 15-min slots anchored on the RUNNING quarter hour: two are
+            // over, one is running, one is still ahead.
+            //   q-2 : two samples -> mean 3.0 kW   (measured)
+            //   q-1 : no telemetry                 (must stay null)
+            //   q   : running, one sample 7.117 kW (the Pilsting constellation)
+            //   q+1 : future                       (must stay null)
+            String q = "time_bucket('15 minutes', now())";
+            exec("INSERT INTO schedule (time, tenant_id, site_id, device_id, plan_id, generated_at, "
+                    + "battery_kw, grid_kw, soc_pct, load_kw, pv_kw, price_eur_mwh, cost_eur, "
+                    + "baseline_cost_eur) VALUES "
+                    + slotRow(q + " - interval '30 minutes'", site, tenant, device)
+                    + ", " + slotRow(q + " - interval '15 minutes'", site, tenant, device)
+                    + ", " + slotRow(q, site, tenant, device)
+                    + ", " + slotRow(q + " + interval '15 minutes'", site, tenant, device)
+                    + " ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, load_kw) VALUES "
+                    + "(" + q + " - interval '30 minutes', '" + tenant + "', '" + site + "', '"
+                    + device + "', 2.0), "
+                    + "(" + q + " - interval '25 minutes', '" + tenant + "', '" + site + "', '"
+                    + device + "', 4.0), "
+                    + "(" + q + ", '" + tenant + "', '" + site + "', '" + device + "', 7.117)");
+
+            ResponseEntity<Map<String, Object>> res = rest.exchange(
+                    url("/api/v1/sites/" + site + "/schedule"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo", "demo"))),
+                    new ParameterizedTypeReference<>() {});
+            assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+            List<?> slots = (List<?>) res.getBody().get("slots");
+            assertThat(slots).hasSize(4);
+            List<Double> measured = slots.stream()
+                    .map(s -> ((Map<?, ?>) s).get("measuredLoadKw"))
+                    .map(v -> v == null ? null : ((Number) v).doubleValue())
+                    .toList();
+            // The completed slot is the MEAN of its samples (not the last one -
+            // the P2 quarter-hour semantics), the sample-less slot stays null
+            // (never a fabricated 0), the RUNNING slot carries what has been
+            // measured so far, and the future slot can never carry a value.
+            assertThat(measured.get(0)).isEqualTo(3.0);
+            assertThat(measured.get(1)).isNull();
+            assertThat(measured.get(2)).isEqualTo(7.117);
+            assertThat(measured.get(3)).isNull();
+            // The forecast input is untouched next to it - the gap between the
+            // two IS the defect P3 makes visible.
+            assertThat(((Number) ((Map<?, ?>) slots.get(2)).get("loadKw")).doubleValue())
+                    .isEqualTo(4.33);
+
+            // RLS: the measured load is read through the tenant-scoped app role,
+            // so another tenant cannot reach it at all.
+            assertThat(rest.exchange(url("/api/v1/sites/" + site + "/schedule"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            exec("DELETE FROM telemetry WHERE site_id = '" + site + "'");
+            exec("DELETE FROM schedule WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
+    /** One schedule row of the P3 fixture (load forecast 4.33 kW, like Pilsting). */
+    private static String slotRow(String timeExpr, String site, String tenant, String device) {
+        return "(" + timeExpr + ", '" + tenant + "', '" + site + "', '" + device + "', "
+                + "'aaaaaaaa-0000-0000-0000-0000000000f3'"
+                + ", now(), -4.332, 2.8, 77.0, 4.33, 0.0, 212.0, 0.0, 0.0)";
+    }
+
     // ---- Prognosequalität: model states + accuracy series, RLS-scoped ---------
 
     /**

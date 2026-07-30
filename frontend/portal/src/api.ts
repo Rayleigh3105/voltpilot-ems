@@ -266,6 +266,16 @@ export interface ScheduleSlot {
    */
   loadKw: number | null;
   /**
+   * P3 "Ist-Last": the MEASURED house consumption of this slot (kW) - the
+   * quarter-hour mean of `telemetry.load_kw`, i.e. the same quantity `loadKw`
+   * forecasts. Present only for slots that already happened (the RUNNING slot
+   * carries the mean of the samples measured so far); null for future slots,
+   * slots without telemetry and sites that report no load channel - the solid
+   * Ist line is then absent, never a fabricated 0. Optional so an older
+   * backend simply yields no line.
+   */
+  measuredLoadKw?: number | null;
+  /**
    * The slot's role in the plan (the "Warum"-layer, design report
    * vp-fahrplan-why-design §5.1/§6): abregeln | reserve_halten | warten |
    * pv_speichern | guenstig_laden | spitze_kappen | verkaufen |

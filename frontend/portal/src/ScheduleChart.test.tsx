@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ScheduleChart } from './ScheduleChart';
-import { LOAD_FORECAST_LABEL, PV_FORECAST_LABEL } from './schedule';
+import { LOAD_FORECAST_LABEL, MEASURED_LOAD_LABEL, PV_FORECAST_LABEL } from './schedule';
 import type { SchedulePlan, ScheduleSlot } from './api';
 
 /**
@@ -86,5 +86,46 @@ describe('ScheduleChart forecast lines', () => {
     expect(screen.queryByText(LOAD_FORECAST_LABEL)).not.toBeInTheDocument();
     // ...and the bar rows stay plain labels, not toggles.
     expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
+/**
+ * P3 "Ist-Last sichtbar": the measured consumption is a row of its own, right
+ * next to its forecast, and it is honest about being absent.
+ */
+describe('ScheduleChart Ist-Last line', () => {
+  it('offers the measured consumption as its own toggle, on by default', () => {
+    render(
+      <ScheduleChart plan={plan([slot({ loadKw: 4.33, measuredLoadKw: 7.117 })])} />,
+    );
+    const ist = screen.getByRole('button', { name: /Verbrauch \(gemessen\)/ });
+    expect(ist).toHaveAttribute('aria-pressed', 'true');
+    // The forecast row stays its own, independent toggle - the pair is the point.
+    fireEvent.click(ist);
+    expect(ist).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: new RegExp(LOAD_FORECAST_LABEL) })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('names the reason instead of drawing a 0-line when past slots were not measured', () => {
+    // The plan's slot is an hour in the past, so a measurement is expected.
+    const past = new Date(Date.now() - 3600_000).toISOString();
+    render(<ScheduleChart plan={plan([slot({ start: past, loadKw: 4.33 })])} />);
+    expect(screen.queryByText(MEASURED_LOAD_LABEL)).not.toBeInTheDocument();
+    expect(screen.getByText(/keine Messwerte des Verbrauchs/)).toBeInTheDocument();
+  });
+
+  it('stays silent on a plan that is still entirely ahead', () => {
+    const ahead = new Date(Date.now() + 3600_000).toISOString();
+    render(<ScheduleChart plan={plan([slot({ start: ahead, loadKw: 4.33 })])} />);
+    expect(screen.queryByText(MEASURED_LOAD_LABEL)).not.toBeInTheDocument();
+    expect(screen.queryByText(/keine Messwerte des Verbrauchs/)).not.toBeInTheDocument();
+  });
+
+  it('renders exactly today’s legend when the backend serves no measured field', () => {
+    render(<ScheduleChart plan={plan([slot({ pvKw: 4, loadKw: 1.5 })])} />);
+    expect(screen.queryByText(MEASURED_LOAD_LABEL)).not.toBeInTheDocument();
   });
 });

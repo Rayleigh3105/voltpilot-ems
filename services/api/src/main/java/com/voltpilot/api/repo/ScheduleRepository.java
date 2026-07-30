@@ -6,7 +6,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -72,8 +74,12 @@ public class ScheduleRepository {
                         // The decision prices are not persisted columns - they are
                         // recomposed from spot + master data by SlotEconomics and
                         // filled in downstream (SchedulePricingService).
-                        null, null, null),
+                        null, null, null,
+                        // The MEASURED load is a separate aggregation (P3), see
+                        // measuredLoadPerSlot below.
+                        null),
                 siteId, Timestamp.from(generatedAt));
+        slots = MeasuredLoad.assign(slots, measuredLoadPerSlot(siteId, slots, 15));
         List<Object[]> meta = jdbc.query(
                 "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, "
                         + "fallback_14a FROM schedule "
@@ -98,6 +104,47 @@ public class ScheduleRepository {
         return new SchedulePlanDto(planId, deviceId, generatedAt, 15, savings,
                 banked.valueEur(), banked.socStartPct(), banked.socEndPct(), peakTargetKw,
                 fallback14a, slots);
+    }
+
+    /**
+     * The MEASURED house consumption per plan slot (P3 "Ist-Last sichtbar",
+     * report vp-netzbezug-nacht-s3 §6): the quarter-hour MEAN of
+     * {@code telemetry.load_kw}, i.e. the SAME quantity the forecaster predicts
+     * since P2 - so the portal's solid Ist line and its dotted Prognose line are
+     * comparable by construction.
+     *
+     * <p>Read straight from RAW telemetry (the plan window is at most 24 h, and
+     * the 15-min rollups lag their refresh by up to a quarter hour - the running
+     * slot, where the forecast error actually shows, would be missing). The
+     * query is RLS-scoped exactly like every other read here; the window ends at
+     * {@code now}, so a future slot can never receive a value, and a slot with
+     * no samples simply gets no row - null, never a fabricated 0.
+     */
+    private Map<Instant, BigDecimal> measuredLoadPerSlot(
+            UUID siteId, List<ScheduleSlotDto> slots, int slotMinutes) {
+        MeasuredLoad.Window window = MeasuredLoad.window(
+                slots.stream().map(ScheduleSlotDto::start).toList(), slotMinutes, Instant.now());
+        if (window == null) {
+            return Map.of();
+        }
+        List<Object[]> rows = jdbc.query(
+                "SELECT time_bucket('15 minutes', time) AS bucket, avg(load_kw) AS load_kw "
+                        + "FROM telemetry "
+                        + "WHERE site_id = ? AND time >= ? AND time < ? AND load_kw IS NOT NULL "
+                        + "GROUP BY 1",
+                (rs, i) -> new Object[] {
+                        rs.getTimestamp("bucket").toInstant(),
+                        rs.getBigDecimal("load_kw")
+                },
+                siteId, Timestamp.from(window.from()), Timestamp.from(window.to()));
+        Map<Instant, BigDecimal> byBucket = new HashMap<>();
+        for (Object[] row : rows) {
+            BigDecimal value = (BigDecimal) row[1];
+            if (value != null) {
+                byBucket.put((Instant) row[0], value.setScale(3, RoundingMode.HALF_UP));
+            }
+        }
+        return byBucket;
     }
 
     /**
