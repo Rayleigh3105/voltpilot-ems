@@ -8,6 +8,14 @@ equals the same slot yesterday"), fed with raw telemetry history. That baseline
 is generic slot-of-day persistence, so it applies to the PV series exactly as
 to load (yesterday's sun ≈ today's sun is the honest keyless baseline).
 
+Because the forecaster is REUSED rather than reimplemented, this path inherits
+its quarter-hour aggregation for free: the raw telemetry handed over here is
+reduced to slot MEANS inside the forecaster
+(:func:`voltpilot_forecast.domain.slot_means`), never sampled down to one
+instantaneous reading per slot. Both forecast paths - a stored collector run and
+this fallback - therefore plan against the same quantity. Pinned by
+``tests/test_fallback.py::test_fallback_uses_the_slot_mean_not_a_single_sample``.
+
 ``voltpilot-forecast`` is a sibling-path dependency (installed alongside in the
 image / dev venv - see the README); it is imported lazily so the solver-only
 modules and tests never require it.

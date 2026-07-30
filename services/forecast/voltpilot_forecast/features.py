@@ -31,7 +31,12 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from voltpilot_forecast.domain import Observation, ensure_utc, floor_to_slot
+from voltpilot_forecast.domain import (
+    Observation,
+    ensure_utc,
+    floor_to_slot,
+    slot_means,
+)
 from voltpilot_forecast.holidays import is_german_holiday
 from voltpilot_forecast.openmeteo import WeatherPoint
 
@@ -87,14 +92,12 @@ FEATURE_LABELS_DE: Mapping[str, str] = {
 # ---- 15-min bucketing ---------------------------------------------------------
 
 def bucket_15min(history: Sequence[Observation]) -> dict[datetime, float]:
-    """Mean value per 15-min slot from raw telemetry samples (UTC slot starts)."""
-    sums: dict[datetime, float] = {}
-    counts: dict[datetime, int] = {}
-    for obs in history:
-        key = floor_to_slot(obs.timestamp, SLOT_MINUTES)
-        sums[key] = sums.get(key, 0.0) + obs.value_kw
-        counts[key] = counts.get(key, 0) + 1
-    return {ts: sums[ts] / counts[ts] for ts in sums}
+    """Mean value per 15-min slot from raw telemetry samples (UTC slot starts).
+
+    Thin alias of :func:`voltpilot_forecast.domain.slot_means` at the fixed
+    feature slot width - ONE aggregation for challengers and baselines alike.
+    """
+    return slot_means(history, SLOT_MINUTES)
 
 
 def full_days(by_slot: Mapping[datetime, float], min_slots: int = 48) -> int:
