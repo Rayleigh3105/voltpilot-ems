@@ -1156,36 +1156,67 @@ Volles Bild inkl. Ökonomie in der Root-AGENTS.md „Price-aware in-slot trim". 
   `web/jstest/ui.test.js`.
 
 **Die ENTLADE-Seite derselben Lücke = `guards.LoadFollower` (`guards/loadfollow.go`, P1 der
-Pilsting-Nachtanalyse `firstmate/data/vp-netzbezug-nacht-s3`).** Der Sollwert einer Viertelstunde
-stammt aus einer Viertelstunden-LASTPROGNOSE; wird sie unterschätzt, kauft die Anlage die Differenz
-teuer zu (live: Plan −4,332 kW gegen ein 7,117-kW-Haus, 2,79 kW zu ~32,5 ct bei 77 % SoC, ~4,9 € in
-EINER Nacht). Per-Slot-Flag **`cover_load_from_battery`**, Regel in `slot_trim.py`
+Pilsting-Nachtanalyse `firstmate/data/vp-netzbezug-nacht-s3`; seit P1b BEIDSEITIG).** Der Sollwert
+einer Viertelstunde stammt aus einer Viertelstunden-LASTPROGNOSE, also wird ihr Fehler am Netz
+verrechnet — in BEIDE Richtungen, beide live gemessen am 30.07.: 21:22 Plan −4,332 kW gegen ein
+7,117-kW-Haus → 2,79 kW zu ~32,5 ct GEKAUFT bei 77 % SoC (~4,9 € in EINER Nacht); 23:12 spiegelbildlich
+Plan −6,7 kW gegen ein 5,1-kW-Haus → 1,4 kW zu ~21 ct VERSCHENKT, während dieselbe kWh später ~32,5 ct
+wert war. Per-Slot-Flag **`cover_load_from_battery`**, Regel in `slot_trim.py`
 (`import_price > lambda/eta + wear + margin`), eigener Kill-Switch `OPTIMIZER_LOAD_FOLLOW_ENABLED`.
-Was zusätzlich zum Trim gilt:
+**In einem Flag-Slot ist das Ziel `Entladung = max(load − pv, 0)`, also Netz ≈ 0** — anheben, wenn der
+Plan zu wenig entlädt, begrenzen, wenn er zu viel entlädt. Was zusätzlich zum Trim gilt:
 
-- **Es ist `PeakShave` mit Import-Ziel 0 plus Hysterese** — der Guard RUFT `PeakShave(kw, 0, …)` auf,
-  statt die Schranken nachzubauen: Nennband, SoC-Boden und „senkt nur" kommen damit aus EINER
-  bewiesenen Arithmetik. Sicherheit per Algebra: wo er greift ist die vorhergesagte Netzleistung
-  exakt 0, also nie Export → §14a-Exportgrenze/Einspeisedeckel unberührt, der Import-Deckel galt für
-  einen Wert, den er nur weiter senkt.
-- **Er VERTIEFT nur eine bestehende Entladung** — nie ein Richtungswechsel: ein kommandiertes LADEN
-  bleibt unangetastet (der Trim hört spiegelbildlich bei 0 auf), und die Wolke markiert ohnehin nur
-  Slots, die wirklich entladen UND nicht absichtlich einkaufen (`grid_kw <= 0`, Rolle
-  `eigenverbrauch`) — die Preisarbitrage der billigen Stunden bleibt unberührt.
-- **Die Peak-RESERVE begrenzt ihn** (`reserveSocPct` hebt den SoC-Boden): gewöhnliches Lastdecken ist
-  genau das, was die Reserve überleben muss — dieselbe Regel wie im Rückfall-Pfad. Die
-  Peak-VERTEIDIGUNG darf weiterhin darunter (sie läuft danach mit den unveränderten Limits).
+- **Die ANHEBE-Hälfte ist `PeakShave` mit Import-Ziel 0 plus Hysterese** — der Guard RUFT
+  `PeakShave(kw, 0, …)` auf, statt die Schranken nachzubauen: Nennband, SoC-Boden und „senkt nur"
+  kommen damit aus EINER bewiesenen Arithmetik.
+- **Sicherheit per Algebra, EINE Invariante für beide Richtungen:** der Guard schiebt die
+  vorhergesagte Netzleistung immer nur ZUM Nullpunkt HIN — nie darüber hinaus, nie weiter weg. Also
+  nie Export (§14a-Exportgrenze/Einspeisedeckel unberührt) und nie mehr Import als das, was
+  hereinkam (dafür galt der Import-Deckel schon). Wo er greift, hört die BATTERIE auf, am Netzpunkt
+  mitzuwirken: exakt 0 bei Hausdefizit, sonst der verbleibende PV-Überschuss (den aufzunehmen wäre
+  ein LADEN, also eine Preisentscheidung, die dieser Guard nie trifft).
+- **Die BEGRENZEN-Hälfte braucht keine eigene Schranke:** sie verkleinert nur den Entlade-BETRAG
+  (Nennband/SoC-Boden trivial erfüllt), rührt SoC-Decke und EEG-Solar-Clamp nicht an, hat einen
+  HARTEN Boden bei 0 (nie ein Laden, nie ein Richtungswechsel — deckt PV die Last, geht der Sollwert
+  auf 0) und kann den nachfolgenden Peak-Guard nicht aushebeln (sie landet bei Import 0 ≤ jeder
+  Freigabe ≥ 0). Ein kommandiertes LADEN bleibt weiterhin unangetastet.
+- **UNMARKIERTE Slots bleiben byte-identisch — in beiden Richtungen.** Die Unterscheidung
+  „absichtlicher Handel vs. Prognose-Abweichung" trifft die WOLKE, nie der Edge: der Edge bekommt nur
+  den Sollwert, nie die Prognose-Netzleistung des Plans. Deshalb markiert `slot_trim.py` seit P1b nur
+  noch den echten „Netz ≈ 0"-Knick — **echte Entladung UND `|grid_kw| <= 0,05 kW`** —, also weder
+  einen geplanten Kauf (Rolle `warten`) noch einen geplanten Verkauf (Rolle `verkaufen`, z. B. das
+  ±30-kW-Fenster). Die Sicherheit hängt aber NICHT daran: ein Gerät an einer ÄLTEREN Wolke kann noch
+  einen markierten Slot mit kleinem Export sehen — dort begrenzt der Guard, die Energie BLEIBT im
+  Speicher (≥ Wasserwert) und wird vom nächsten 15-Minuten-Replan neu disponiert (begrenzte,
+  selbstkorrigierende Verschiebung, anders als der unbepreiste Export, den die Korrektur verhindert).
+- **Die Peak-RESERVE begrenzt nur das ANHEBEN** (`reserveSocPct` hebt den SoC-Boden): gewöhnliches
+  Lastdecken ist genau das, was die Reserve überleben muss — dieselbe Regel wie im Rückfall-Pfad. Die
+  Peak-VERTEIDIGUNG darf weiterhin darunter (sie läuft danach mit den unveränderten Limits). Das
+  BEGRENZEN schont die Reserve ohnehin und wird von ihr nie gebremst.
+- **Hysterese symmetrisch um das Netz-0-Ziel:** Eingreifen sofort in beide Richtungen
+  (`|predicted| > FollowEngageMarginKw`), Loslassen erst, wenn der PLAN-EIGENE Wert das Defizit
+  `FollowReleaseDwell` lang innerhalb der Marge trifft; ein Richtungswechsel behält den
+  eingerasteten Zustand (eine Anlage, deren Last durch den Sollwert schwingt, zappelt nicht).
 - **Bewusste Abweichung vom Trim: KEIN Schritt-Folger auf dem angewandten Wert.** Beide Richtungen
   sind hier Lastnachführung (Ziel = pv − load); ein gehaltener tieferer Entladewert bei
-  SCHRUMPFENDEM Defizit würde die Anlage in den EXPORT drücken und das Sicherheitsargument brechen.
-  Die Schreib-Entprellung gehört in den Layer-1-Executor (`dwell_s`/`min_change`), nicht hierher.
-- Anzeige: `state.FollowInfo` → `control.js VPControl.deriveFollow` → dieselbe `#ctrlReason`-Zeile
-  (Trim gewinnt, beide schließen sich per Konstruktion aus). Der VERÖFFENTLICHTE Wert ist der
-  nachgeführte, also passt der Readback und die entprellte Bestätigung meldet nie „nicht übernommen".
-- Beweise: `guards/loadfollow_test.go` (u. a. „vertieft nie den Export", Reserve, Rated-Band,
-  SoC-Boden, blind=inaktiv, Hysterese), `agent/load_follow_test.go`, `plan/plan_test.go`,
-  `web/jstest/ui.test.js`, `services/optimization/tests/test_load_follow.py` (Regel + echter Solver:
-  die Nacht-Slots werden markiert, die billigen Kauf-Stunden nicht, Setpoints byte-identisch).
+  SCHRUMPFENDEM Defizit IST genau das 23:12-Symptom. Die Schreib-Entprellung gehört in den
+  Layer-1-Executor (`dwell_s`/`min_change`), nicht hierher.
+- Anzeige: `state.FollowInfo` (mit `direction` = `deepen`|`reduce`) → `control.js
+  VPControl.deriveFollow` → dieselbe `#ctrlReason`-Zeile, die die RICHTUNG benennt („… – Entladung
+  angehoben" / „Folgt dem gemessenen Hausverbrauch … – Entladung begrenzt", jeweils mit der eigenen
+  ehrlichen Ursache; Trim gewinnt, beide schließen sich per Konstruktion aus). Ein älteres Gerät ohne
+  `direction` bekommt die neutrale Formulierung — nie eine Richtung behaupten, die nicht gemeldet
+  wurde. Der VERÖFFENTLICHTE Wert ist der nachgeführte, also passt der Readback und die entprellte
+  Bestätigung meldet auch bei einer BEGRENZUNG nie „nicht übernommen".
+- Beweise: `guards/loadfollow_test.go` (u. a. „schiebt nur zum Nullpunkt hin", Begrenzen auf das
+  gemessene Haus, Boden 0 statt Laden, unmarkierter Slot beidseitig unberührt, Reserve, Rated-Band,
+  SoC-Boden, blind=inaktiv, Hysterese beidseitig, Richtungswechsel ohne Loslassen, Komposition mit
+  dem Peak-Guard), `agent/load_follow_test.go` (inkl. der 23:12-Konstellation und der EINGECHECKTEN
+  Contract-Bytes), `plan/plan_test.go`, `web/jstest/ui.test.js`,
+  `services/optimization/tests/test_load_follow.py` (Regel + echter Solver: die Nacht-Slots werden
+  markiert, die billigen Kauf-Stunden UND ein bewusster 28-kW-Export nicht — der Export-Fall ist
+  bewusst NICHT vakuum: er belegt, dass genau diese `verkaufen`-Slots ökonomisch markiert WORDEN
+  WÄREN, Setpoints byte-identisch).
 
 ## Maintaining this file
 

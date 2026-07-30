@@ -84,10 +84,14 @@ Note this is STRICTLY tighter than :func:`grid_charge_uneconomic` for any
 ``eta <= 1`` and ``wear >= 0``, i.e. a slot that must follow the load is always
 also a slot that must not grid-charge - the two duties can never contradict
 each other. The published flag additionally requires the plan to actually
-DISCHARGE in the slot and not to plan an import (see
+DISCHARGE in the slot and to plan NO grid exchange worth the name
+(``|grid_kw| <= PLANNED_GRID_EXCHANGE_DEADBAND_KW``, see
 :func:`cover_load_from_battery`), which is exactly the "role ``eigenverbrauch``
-with planned grid ~ 0" shape the night analysis identified, and which leaves
-every deliberate purchase (role ``warten``, the cheap hours) untouched.
+with planned grid ~ 0" shape the night analysis identified. Excluding BOTH
+directions is what leaves the price arbitrage alone: a planned import is a
+deliberate cheap-hour purchase (role ``warten``), and a planned export is a
+deliberate sale that the edge - whose enforcement is BIDIRECTIONAL since P1b -
+would otherwise cut back to zero grid.
 """
 
 from __future__ import annotations
@@ -105,9 +109,15 @@ PLANNED_GRID_CHARGE_DEADBAND_KW = 0.05
 #: side, and the same order as the solver's other slot deadbands.
 PLANNED_DISCHARGE_DEADBAND_KW = 0.05
 
-#: Below this a planned grid IMPORT is rounding noise around the "Netz = 0"
-#: kink, not a deliberate purchase (kW).
-PLANNED_GRID_IMPORT_DEADBAND_KW = 0.05
+#: How far a planned grid EXCHANGE may sit from zero and still count as the
+#: "Netz = 0" kink rather than a deliberate trade (kW, magnitude - so it bounds
+#: a planned import AND a planned export). Same order as the solver's other slot
+#: deadbands.
+PLANNED_GRID_EXCHANGE_DEADBAND_KW = 0.05
+
+#: Deprecated alias of :data:`PLANNED_GRID_EXCHANGE_DEADBAND_KW`, kept so an
+#: external reader of the old one-sided name keeps working.
+PLANNED_GRID_IMPORT_DEADBAND_KW = PLANNED_GRID_EXCHANGE_DEADBAND_KW
 
 
 def willingness_to_pay_ct_kwh(
@@ -302,27 +312,38 @@ def cover_load_from_battery(
     Three conditions, all of them - the mirror of
     :func:`charge_from_surplus_only`:
 
-    1. **The plan commands a real DISCHARGE here.** The duty only ever DEEPENS
-       an existing discharge; it never STARTS one, and it never touches a
-       commanded charge. That keeps the behavioural surface on a safety-critical
-       control path as small as the money case needs (every slot of the observed
-       Pilsting night is a planned discharge) and keeps every other payload
-       byte-identical (the ``pv_limit_kw`` discipline). It also costs nothing:
-       an idle slot the plan chose because it HOLDS energy for later carries a
-       high lambda, so condition (2) would refuse it anyway.
+    1. **The plan commands a real DISCHARGE here.** The duty changes the
+       MAGNITUDE of an existing discharge; it never STARTS one, and it never
+       touches a commanded charge. That keeps the behavioural surface on a
+       safety-critical control path as small as the money case needs (every slot
+       of the observed Pilsting night is a planned discharge) and keeps every
+       other payload byte-identical (the ``pv_limit_kw`` discipline). It also
+       costs nothing: an idle slot the plan chose because it HOLDS energy for
+       later carries a high lambda, so condition (2) would refuse it anyway.
     2. **Covering is economic** per :func:`cover_load_economic`.
-    3. **The plan does not itself intend to IMPORT** (``grid_kw`` at or below
-       the deadband - the "Netz = 0" kink, i.e. exactly the ``eigenverbrauch``
-       shape; an EXPORTING slot passes too, and there the edge duty can only
-       ever bite if the measured reality turned that export into an import).
-       Where the plan deliberately buys - the cheap hours, role ``warten`` - the
-       flag is NOT set and the price arbitrage stays untouched. By LP optimality
-       (2) and (3) cannot genuinely disagree on a discharging slot; this is the
+    3. **The plan itself plans NO grid exchange worth the name**: ``|grid_kw|``
+       at or below :data:`PLANNED_GRID_EXCHANGE_DEADBAND_KW`, i.e. exactly the
+       "Netz = 0" kink of the ``eigenverbrauch`` role. Both sides are excluded
+       on purpose, and each for its own reason:
+
+       * a planned IMPORT is a DELIBERATE cheap-hour purchase (role ``warten``)
+         the duty must never undo;
+       * a planned EXPORT is a DELIBERATE sale, and since the edge enforcement
+         became BIDIRECTIONAL (P1b, 2026-07-30 - it now also LIMITS a discharge
+         that overshoots the measured house) marking such a slot would let the
+         edge cut that sale back to zero grid. The edge cannot tell an intended
+         export from a forecast overshoot - the plan carries only the setpoint,
+         never its own forecast grid power - so the distinction has to be made
+         HERE, where both numbers exist. This condition is what keeps the price
+         arbitrage untouched in BOTH directions.
+
+       By LP optimality (2) and (3) cannot genuinely disagree on a discharging
+       slot with no planned exchange; for the import side this is the
        consistency guard against a solver-tolerance artefact, not economics.
     """
     if battery_kw >= -PLANNED_DISCHARGE_DEADBAND_KW:
         return False
-    if grid_kw > PLANNED_GRID_IMPORT_DEADBAND_KW:
+    if abs(grid_kw) > PLANNED_GRID_EXCHANGE_DEADBAND_KW:
         return False
     return cover_load_economic(
         import_price_ct_kwh=import_price_ct_kwh,

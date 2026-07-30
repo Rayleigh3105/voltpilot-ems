@@ -2,10 +2,12 @@ package guards
 
 // In-slot load following (2026-07-30), the discharge-side mirror of the trim.
 // Each test states a property the correction must have: the un-marked slot is
-// untouched, the marked one covers the MEASURED house, the compliance bounds
-// survive (never export, never past the rated band / SoC floor / peak reserve),
-// unknown measurements never regulate blind, and the state cannot flap with the
-// ~10 s setpoint cadence.
+// untouched, the marked one TRACKS the MEASURED house in BOTH directions (raise
+// where the plan falls short, limit where it overshoots, floor at zero - never a
+// charge), the compliance bounds survive (never move the predicted grid past
+// zero, never past the rated band / SoC floor / peak reserve), unknown
+// measurements never regulate blind, and the state cannot flap with the ~10 s
+// setpoint cadence.
 
 import (
 	"math"
@@ -52,6 +54,9 @@ func TestMarkedSlotRaisesTheDischargeToTheMeasuredHouseLoad(t *testing.T) {
 	if got.CommandedKw != -4.332 {
 		t.Fatalf("commanded = %v, want the pre-correction -4.332 (the card names it)", got.CommandedKw)
 	}
+	if got.Direction != FollowDeepen {
+		t.Fatalf("direction = %q, want %q (the card names which way it corrected)", got.Direction, FollowDeepen)
+	}
 	if math.Abs(got.DeficitKw-7.087) > 1e-3 {
 		t.Fatalf("deficit = %v, want 7.087", got.DeficitKw)
 	}
@@ -62,45 +67,116 @@ func TestMarkedSlotRaisesTheDischargeToTheMeasuredHouseLoad(t *testing.T) {
 	}
 }
 
-// THE safety property the whole design rests on: the correction never moves the
-// predicted grid power DOWN past zero. Where it bites it lands exactly at 0, and
-// where the plan's own command already exports it is left alone - so the
-// correction can never re-violate the §14a export bound or a feed-in cap, which
-// were applied to the value entering it.
-func TestTheCorrectionNeverDeepensExport(t *testing.T) {
+// THE OTHER money case (Pilsting 23:12, the mirror of the 21:22 one): the plan
+// discharged 6.7 kW - again its forecast - into a house drawing only 5.1 kW, so
+// 1.4 kW left the site at ~21 ct while that same kWh was worth ~32.5 ct as
+// avoided import a few hours later. The correction must LIMIT the discharge to
+// what the house draws.
+func TestMarkedSlotLimitsADischargeThatOvershootsTheMeasuredHouse(t *testing.T) {
 	f := NewLoadFollower()
-	cases := []Reading{
-		{SocPct: 80, PvKw: 0, LoadKw: 12, GridLimitKw: Unknown()},
-		{SocPct: 80, PvKw: 3.4, LoadKw: 9.1, GridLimitKw: Unknown()},
-		// A PV surplus: the plan's own -1.0 kW already exports 6.7 kW. Nothing to
-		// cover, so the command must come back untouched - the correction must
-		// NOT "improve" it toward zero either (it only ever lowers the setpoint).
-		{SocPct: 80, PvKw: 9.1, LoadKw: 3.4, GridLimitKw: Unknown()},
-		{SocPct: 80, PvKw: 0.03, LoadKw: 7.117, GridLimitKw: Unknown()},
+	r := Reading{SocPct: 77, PvKw: 0, LoadKw: 5.1, GridLimitKw: Unknown()}
+	got := f.Apply(followBase(), -6.7, true, followLimits(), nil, r)
+	if !got.Active {
+		t.Fatal("a marked slot exporting 1.4 kW of battery energy must engage the correction")
 	}
-	for i, r := range cases {
+	if got.Direction != FollowReduce {
+		t.Fatalf("direction = %q, want %q", got.Direction, FollowReduce)
+	}
+	if math.Abs(got.Kw+5.1) > 1e-9 {
+		t.Fatalf("followed setpoint = %v, want the measured deficit -5.1", got.Kw)
+	}
+	if got.CommandedKw != -6.7 {
+		t.Fatalf("commanded = %v, want the pre-correction -6.7 (the card names it)", got.CommandedKw)
+	}
+	// The point: nothing leaves the site unpriced any more.
+	if predicted := r.LoadKw + got.Kw - r.PvKw; math.Abs(predicted) > 1e-9 {
+		t.Fatalf("predicted grid = %v kW, want 0", predicted)
+	}
+}
+
+// The floor of the limiting direction is a STOPPED discharge, never a charge: an
+// economic guard may correct a magnitude, never flip a direction.
+func TestWithNoDeficitTheDischargeStopsAtZeroAndNeverCharges(t *testing.T) {
+	f := NewLoadFollower()
+	// PV covers the house outright, so the deficit is 0.
+	r := Reading{SocPct: 80, PvKw: 9.1, LoadKw: 3.4, GridLimitKw: Unknown()}
+	got := f.Apply(followBase(), -1.0, true, followLimits(), nil, r)
+	if !got.Active || got.Direction != FollowReduce {
+		t.Fatalf("surplus slot: %+v, want the discharge limited", got)
+	}
+	if got.Kw != 0 {
+		t.Fatalf("followed setpoint = %v, want exactly 0 - never a charge", got.Kw)
+	}
+	if got.DeficitKw != 0 {
+		t.Fatalf("deficit = %v, want 0", got.DeficitKw)
+	}
+	// Even a huge surplus never turns into a charge command.
+	f.Release()
+	r.PvKw = 40
+	got = f.Apply(followBase(), -1.0, true, followLimits(), nil, r)
+	if got.Kw > 0 {
+		t.Fatalf("followed setpoint = %v, must never be positive (that would be a direction flip)", got.Kw)
+	}
+}
+
+// THE safety property the whole design rests on, now in both directions: the
+// correction only ever moves the predicted grid power TOWARD zero - never past
+// it, never further away. So it can never push the site into export (the §14a
+// export bound and any feed-in cap were applied to the value entering it and
+// stay valid) and never raise the import beyond what entered it (same for the
+// import bound). Where it bites unbounded it lands at the point where the
+// BATTERY no longer contributes to the grid exchange: exactly 0 whenever the
+// house has a deficit, and the remaining PV surplus where it has none (only a
+// CHARGE could absorb that, and charging is a price decision this guard must
+// never take on its own).
+func TestTheCorrectionOnlyEverMovesThePredictedGridTowardZero(t *testing.T) {
+	f := NewLoadFollower()
+	type tc struct {
+		r  Reading
+		kw float64
+	}
+	cases := []tc{
+		{Reading{SocPct: 80, PvKw: 0, LoadKw: 12, GridLimitKw: Unknown()}, -1.0},        // deep import
+		{Reading{SocPct: 80, PvKw: 3.4, LoadKw: 9.1, GridLimitKw: Unknown()}, -1.0},     // import
+		{Reading{SocPct: 80, PvKw: 9.1, LoadKw: 3.4, GridLimitKw: Unknown()}, -1.0},     // export via pv
+		{Reading{SocPct: 80, PvKw: 0, LoadKw: 5.1, GridLimitKw: Unknown()}, -6.7},       // export via battery
+		{Reading{SocPct: 80, PvKw: 0.03, LoadKw: 7.117, GridLimitKw: Unknown()}, -1.0},  // the 21:22 case
+		{Reading{SocPct: 80, PvKw: 0.03, LoadKw: 7.117, GridLimitKw: Unknown()}, -7.09}, // already tracking
+	}
+	for i, c := range cases {
 		f.Release()
-		before := r.LoadKw + (-1.0) - r.PvKw
-		got := f.Apply(followBase(), -1.0, true, followLimits(), nil, r)
-		after := r.LoadKw + got.Kw - r.PvKw
-		floor := math.Min(before, 0)
-		if after < floor-1e-9 {
-			t.Fatalf("case %d: predicted grid %v -> %v, must never go below min(before, 0) = %v",
-				i, before, after, floor)
+		before := c.r.LoadKw + c.kw - c.r.PvKw
+		got := f.Apply(followBase(), c.kw, true, followLimits(), nil, c.r)
+		after := c.r.LoadKw + got.Kw - c.r.PvKw
+		lo, hi := math.Min(before, 0), math.Max(before, 0)
+		if after < lo-1e-9 || after > hi+1e-9 {
+			t.Fatalf("case %d: predicted grid %v -> %v, must stay within [%v, %v]", i, before, after, lo, hi)
 		}
-		if got.Active && math.Abs(after) > 1e-9 {
-			t.Fatalf("case %d: where it bites the predicted grid must be exactly 0, got %v", i, after)
+		// The battery's own contribution is gone; what remains is the PV surplus.
+		wantAfter := -math.Max(c.r.PvKw-c.r.LoadKw, 0)
+		if got.Active && math.Abs(after-wantAfter) > 1e-9 {
+			t.Fatalf("case %d: where it bites unbounded the predicted grid must be %v, got %v", i, wantAfter, after)
 		}
 	}
 }
 
-// A PV surplus means there is nothing to cover: the plan's own discharge stands.
-func TestASurplusSlotIsLeftAloneEvenWhenMarked(t *testing.T) {
+// The protection of the price arbitrage: an UNMARKED slot is byte-identical in
+// BOTH directions - a deliberate sell window (a deep discharge into the grid)
+// and a deliberate cheap-hour purchase both stand exactly as planned.
+func TestAnUnmarkedSlotIsUntouchedInBothDirections(t *testing.T) {
 	f := NewLoadFollower()
-	r := Reading{SocPct: 80, PvKw: 9.1, LoadKw: 3.4, GridLimitKw: Unknown()}
-	got := f.Apply(followBase(), -1.0, true, followLimits(), nil, r)
-	if got.Active || got.Kw != -1.0 {
-		t.Fatalf("surplus slot: %+v, want the plan's -1.0 untouched", got)
+	// A deliberate 30 kW sell window against a small house.
+	sell := Reading{SocPct: 80, PvKw: 0, LoadKw: 2.0, GridLimitKw: Unknown()}
+	if got := f.Apply(followBase(), -30, false, followLimits(), nil, sell); got.Active || got.Kw != -30 {
+		t.Fatalf("sell window: %+v, want the plan's -30 untouched", got)
+	}
+	// A deliberate purchase: the plan under-discharges on purpose.
+	buy := pilstingNight()
+	if got := f.Apply(followBase(), -1.0, false, followLimits(), nil, buy); got.Active || got.Kw != -1.0 {
+		t.Fatalf("cheap-hour purchase: %+v, want the plan's -1.0 untouched", got)
+	}
+	if f.Engaged() {
+		t.Fatal("an unmarked slot must never engage the correction")
 	}
 }
 
@@ -163,6 +239,17 @@ func TestThePeakReserveStopsOrdinaryLoadCovering(t *testing.T) {
 	if !got.Active {
 		t.Fatalf("above the reserve: %+v, want the correction to engage", got)
 	}
+	// The LIMITING direction is never held back by the reserve - it only ever
+	// preserves stored energy, which is what the reserve wants.
+	f.Release()
+	r.SocPct = 30
+	got = f.Apply(followBase(), -12.0, true, followLimits(), &reserve, r)
+	if !got.Active || got.Direction != FollowReduce {
+		t.Fatalf("below the reserve: %+v, want an overshoot still limited", got)
+	}
+	if math.Abs(got.Kw+7.087) > 1e-3 {
+		t.Fatalf("followed setpoint = %v, want the measured deficit -7.087", got.Kw)
+	}
 }
 
 // Never regulate blind (the economic-guard convention, cf. PeakShave).
@@ -184,33 +271,33 @@ func TestUnknownMeasurementsLeaveTheCommandUntouched(t *testing.T) {
 	}
 }
 
-// Anti-flap, asymmetric like the trim: engaging is immediate, releasing needs
-// the plan's OWN setpoint to comfortably cover the house for the dwell window.
+// Anti-flap, SYMMETRIC around the zero-grid target and asymmetric in time:
+// engaging is immediate in either direction, releasing needs the plan's OWN
+// setpoint to track the deficit within the margin for the dwell window.
 func TestTheCorrectionDoesNotFlapWithTheSetpointCadence(t *testing.T) {
 	f := NewLoadFollower()
 	now := followBase()
 	l := followLimits()
 	r := pilstingNight()
+	tracking := -(r.LoadKw - r.PvKw) // exactly zero grid
 
 	if got := f.Apply(now, -4.332, true, l, nil, r); !got.Active {
 		t.Fatal("engaging must be immediate")
 	}
-	// The plan now covers the house on its own, but only just: still engaged
-	// while the dwell runs.
+	// The plan itself now tracks the house: engaged while the dwell runs.
 	now = now.Add(10 * time.Second)
-	deep := -(r.LoadKw - r.PvKw) - 0.5 // comfortably covering
-	if got := f.Apply(now, deep, true, l, nil, r); !f.Engaged() {
+	if got := f.Apply(now, tracking, true, l, nil, r); !f.Engaged() {
 		t.Fatalf("released after one tick (%+v) - the dwell must hold it", got)
 	}
 	// Still inside the dwell.
 	now = now.Add(30 * time.Second)
-	f.Apply(now, deep, true, l, nil, r)
+	f.Apply(now, tracking, true, l, nil, r)
 	if !f.Engaged() {
 		t.Fatal("released before the dwell elapsed")
 	}
 	// Past the dwell it lets go.
 	now = now.Add(FollowReleaseDwell)
-	f.Apply(now, deep, true, l, nil, r)
+	f.Apply(now, tracking, true, l, nil, r)
 	if f.Engaged() {
 		t.Fatal("the correction must release after the dwell")
 	}
@@ -218,6 +305,66 @@ func TestTheCorrectionDoesNotFlapWithTheSetpointCadence(t *testing.T) {
 	// dwell runs down).
 	if got := f.Apply(now.Add(time.Second), -1.0, true, l, nil, r); !got.Active {
 		t.Fatal("a fresh deficit must re-engage at once")
+	}
+}
+
+// The SAME hysteresis on the limiting side: a plan overshooting the house
+// engages at once, and a dwell of tracking is what releases it - a plan sitting
+// just inside the margin must not toggle the correction every tick.
+func TestTheLimitingDirectionHasTheSameHysteresis(t *testing.T) {
+	f := NewLoadFollower()
+	now := followBase()
+	l := followLimits()
+	r := Reading{SocPct: 77, PvKw: 0, LoadKw: 5.1, GridLimitKw: Unknown()}
+
+	// Inside the engage margin: nothing happens (0.1 kW of export is noise).
+	if got := f.Apply(now, -5.2, true, l, nil, r); got.Active || f.Engaged() {
+		t.Fatalf("%+v: a 0.1 kW overshoot is inside the margin, nothing to correct", got)
+	}
+	// Beyond it: engage immediately.
+	now = now.Add(10 * time.Second)
+	if got := f.Apply(now, -6.7, true, l, nil, r); !got.Active || got.Direction != FollowReduce {
+		t.Fatalf("%+v: a 1.6 kW overshoot must engage the limiting direction", got)
+	}
+	// The plan comes back to the house: held engaged through the dwell...
+	now = now.Add(10 * time.Second)
+	f.Apply(now, -5.1, true, l, nil, r)
+	if !f.Engaged() {
+		t.Fatal("released after one tick - the dwell must hold it")
+	}
+	// ...then released.
+	now = now.Add(FollowReleaseDwell)
+	f.Apply(now, -5.1, true, l, nil, r)
+	if f.Engaged() {
+		t.Fatal("the correction must release after the dwell")
+	}
+	// And an overshoot swinging back re-engages at once.
+	if got := f.Apply(now.Add(time.Second), -6.7, true, l, nil, r); !got.Active {
+		t.Fatal("a fresh overshoot must re-engage at once")
+	}
+}
+
+// The two directions are one state machine: a slot whose measured deficit swings
+// through the plan's setpoint hands over from limiting to deepening without
+// releasing, and the applied value follows the deficit each tick.
+func TestTheEngagedStateCarriesAcrossADirectionChange(t *testing.T) {
+	f := NewLoadFollower()
+	now := followBase()
+	l := followLimits()
+	r := Reading{SocPct: 77, PvKw: 0, LoadKw: 5.1, GridLimitKw: Unknown()}
+
+	got := f.Apply(now, -6.7, true, l, nil, r)
+	if got.Direction != FollowReduce || math.Abs(got.Kw+5.1) > 1e-9 {
+		t.Fatalf("%+v, want the discharge limited to -5.1", got)
+	}
+	// The house steps up past the plan's value.
+	r.LoadKw = 9.0
+	got = f.Apply(now.Add(10*time.Second), -6.7, true, l, nil, r)
+	if got.Direction != FollowDeepen || math.Abs(got.Kw+9.0) > 1e-9 {
+		t.Fatalf("%+v, want the discharge deepened to -9.0", got)
+	}
+	if !f.Engaged() {
+		t.Fatal("the correction must stay engaged across the direction change")
 	}
 }
 
@@ -269,6 +416,17 @@ func TestTheCorrectionComposesWithThePeakGuard(t *testing.T) {
 		Reading{SocPct: 77, PvKw: 0.03, LoadKw: 12, GridLimitKw: Unknown()})
 	if deeper > got.Kw {
 		t.Fatalf("peak guard raised the setpoint (%v -> %v)", got.Kw, deeper)
+	}
+
+	// The LIMITING direction cannot undo the peak guard either: it lands at
+	// predicted import 0, and every allowance the peak guard can compute is >= 0.
+	f.Release()
+	over := Reading{SocPct: 77, PvKw: 0, LoadKw: 5.1, GridLimitKw: Unknown()}
+	limited := f.Apply(followBase(), -6.7, true, l, nil, over)
+	for _, allowed := range []float64{0, 0.5, 25} {
+		if after := PeakShave(limited.Kw, allowed, l, over); after != limited.Kw {
+			t.Fatalf("peak guard (allowed %v) changed the limited %v to %v", allowed, limited.Kw, after)
+		}
 	}
 }
 

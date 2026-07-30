@@ -1928,19 +1928,23 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// In-slot LOAD FOLLOWING (2026-07-30, the discharge-side mirror of the trim
 	// above - firstmate scout vp-netzbezug-nacht-s3 P1): in a slot the CLOUD
 	// marked cover_load_from_battery (covering the house from the battery is
-	// cheaper than importing - lambda/eta + wear below the import price), RAISE
+	// cheaper than importing - lambda/eta + wear below the import price), TRACK
 	// the commanded DISCHARGE to the MEASURED house deficit instead of executing
-	// this slot's forecast-derived watt value rigidly and letting the difference
-	// be bought at the full import price (measured live: 4,33 kW planned into a
-	// 7,12 kW house, 2,79 kW bought at ~32,5 ct with the battery at 77 % SoC).
-	// Runs at the SAME place as the trim - after every compliance clamp and after
-	// the holder override, so it applies to whoever commanded the discharge - and
-	// the two are disjoint by construction (one acts on charge, one on
-	// discharge). It only ever LOWERS the setpoint toward pv - load, so the
-	// predicted grid power lands at 0 and no §14a/feed-in bound can be
-	// re-violated; the raised discharge is bounded by the rated band, the SoC
-	// floor AND the peak reserve (ordinary load covering is exactly what that
-	// reserve must survive - the same rule the stale-plan fallback applies). See
+	// this slot's forecast-derived watt value rigidly and settling the difference
+	// at the grid. BOTH directions, both measured live at Pilsting on the same
+	// night: raise it where the forecast fell short (4,33 kW planned into a
+	// 7,12 kW house -> 2,79 kW bought at ~32,5 ct with the battery at 77 % SoC)
+	// AND limit it where the forecast overshot (6,7 kW planned into a 5,1 kW
+	// house -> 1,4 kW exported at ~21 ct while the same kWh was worth ~32,5 ct
+	// later). Runs at the SAME place as the trim - after every compliance clamp
+	// and after the holder override, so it applies to whoever commanded the
+	// discharge - and the two are disjoint by construction (one acts on charge,
+	// one on discharge). It only ever moves the predicted grid power TOWARD 0,
+	// never past it, so no §14a/feed-in bound can be re-violated; a raised
+	// discharge is bounded by the rated band, the SoC floor AND the peak reserve
+	// (ordinary load covering is exactly what that reserve must survive - the
+	// same rule the stale-plan fallback applies), and a limited one has a hard
+	// floor at zero discharge - the follower never commands a charge. See
 	// guards/loadfollow.go for the full safety argument. NOTE the setpoint
 	// published below is the FOLLOWED value: the register readback therefore
 	// matches it and the confirmation logic never reads a deliberate correction
@@ -2088,14 +2092,17 @@ func trimSnapshot(t guards.TrimResult) *state.TrimInfo {
 }
 
 // followSnapshot turns one load-following evaluation into the UI-facing block,
-// or nil when nothing was raised (a device that is not following carries no
-// follow key at all - the :8484 card renders exactly as before).
+// or nil when nothing was corrected (a device that is not following carries no
+// follow key at all - the :8484 card renders exactly as before). The DIRECTION
+// rides along: raising and limiting a discharge are both deliberate corrections,
+// and the card must be able to say which one it did.
 func followSnapshot(f guards.FollowResult) *state.FollowInfo {
 	if !f.Active {
 		return nil
 	}
 	info := &state.FollowInfo{
 		Active:    true,
+		Direction: f.Direction,
 		PlannedKw: math.Round(f.CommandedKw*1000) / 1000,
 	}
 	if !math.IsNaN(f.DeficitKw) {

@@ -263,28 +263,45 @@
   }
 
   /* ------------------------------------------------------------------
-     The DISCHARGE-side mirror: in-slot load following.
+     The DISCHARGE-side mirror: in-slot load following, BOTH directions.
 
      "Fahrplan-Sollwert -4,3 kW -> bestätigt -4,3 kW" while the house draws
      7,1 kW and the difference is bought at ~32,5 ct is the night half of the
-     same defect (Pilsting, 2026-07-30). Where the cloud marked the slot worth
-     covering, the device raises the discharge to the MEASURED house load - and
-     an unnamed correction reads as a defect just like an unnamed limitation, so
-     the card says so. Mutually exclusive with the trim by construction (one acts
-     on charge, the other on discharge).
+     same defect (Pilsting, 2026-07-30) - and its mirror image an hour later:
+     -6,7 kW into a 5,1-kW-Haus, also 1,4 kW verschenkt. Where the cloud marked
+     the slot worth covering, the device TRACKS the measured house load: it
+     raises the discharge where the plan falls short and limits it where the plan
+     overshoots. An unnamed correction reads as a defect just like an unnamed
+     limitation, so the card says which of the two it did. Mutually exclusive
+     with the trim by construction (one acts on charge, the other on discharge).
      ------------------------------------------------------------------ */
   function deriveFollow(s) {
     var f = s && s.follow;
     if (!f || !f.active) return null;
-    var covered = f.deficit_kw != null ? nf1.format(f.deficit_kw) + " kW" : null;
-    var planned = f.planned_kw != null ? nf1.format(Math.abs(f.planned_kw)) + " kW" : null;
-    var text =
-      "Deckt den gemessenen Hausverbrauch aus dem Speicher" +
-      (covered ? " (" + covered + ")" : "") +
-      ": Netzstrom ist in dieser Viertelstunde teurer als die gespeicherte Energie" +
-      (planned ? " – der Fahrplan hatte " + planned + " vorgesehen" : "") +
-      ". Das ist eine bewusste Nachführung, kein Fehler des Wechselrichters.";
-    return { text: text };
+    var covered = f.deficit_kw != null ? " (" + nf1.format(f.deficit_kw) + " kW)" : "";
+    var planned = f.planned_kw != null
+      ? " – der Fahrplan hatte " + nf1.format(Math.abs(f.planned_kw)) + " kW vorgesehen"
+      : "";
+    var head;
+    if (f.direction === "reduce") {
+      // The 23:12 half: the plan discharged past the house, so the difference
+      // was leaving the site. The honest cause is the giveaway, not the import.
+      head =
+        "Folgt dem gemessenen Hausverbrauch" + covered + " – Entladung begrenzt: " +
+        "was darüber hinausgeht, würde ins Netz abfließen, wo die gespeicherte " +
+        "Energie weniger einbringt, als sie später wert ist";
+    } else {
+      // "deepen" and - defensively - an older device that reports no direction:
+      // never claim one it did not send.
+      head =
+        "Deckt den gemessenen Hausverbrauch aus dem Speicher" + covered +
+        (f.direction === "deepen" ? " – Entladung angehoben" : "") +
+        ": Netzstrom ist in dieser Viertelstunde teurer als die gespeicherte Energie";
+    }
+    return {
+      text: head + planned +
+        ". Das ist eine bewusste Nachführung, kein Fehler des Wechselrichters."
+    };
   }
 
   /* ------------------------------------------------------------------

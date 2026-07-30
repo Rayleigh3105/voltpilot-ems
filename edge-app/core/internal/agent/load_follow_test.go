@@ -6,13 +6,19 @@ package agent
 // The scenario is the live reading of the Pilsting NIGHT (scout report
 // vp-netzbezug-nacht-s3 §2.1): house 7.117 kW, PV 0.03 kW, SoC 77 %, and a plan
 // setpoint of -4.332 kW - which is the slot's LOAD FORECAST, so 2.755 kW was
-// bought at ~32.5 ct while the battery was 77 % full. In a slot the cloud marked
-// worth covering the setpoint published to Layer 1 must be the MEASURED house
-// deficit; in an unmarked one it must be the plan's -4.332 kW; and the published
-// value must ALWAYS equal the state's setpoint (that identity is what keeps a
-// deliberate correction from ever reading as "setpoint not adopted").
+// bought at ~32.5 ct while the battery was 77 % full. Its mirror image was
+// measured on the same night at 23:12: -6.7 kW planned into a 5.1 kW house, so
+// 1.4 kW was EXPORTED at ~21 ct while that kWh was worth ~32.5 ct later. In a
+// slot the cloud marked worth covering the setpoint published to Layer 1 must
+// track the MEASURED house deficit in BOTH directions; in an unmarked one it
+// must be the plan's own value; and the published value must ALWAYS equal the
+// state's setpoint (that identity is what keeps a deliberate correction from
+// ever reading as "setpoint not adopted").
 
 import (
+	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -84,9 +90,134 @@ func TestMarkedSlotCoversTheMeasuredHouseAndSaysWhy(t *testing.T) {
 	if snap.Follow.DeficitKw == nil || *snap.Follow.DeficitKw != 7.087 {
 		t.Fatalf("follow.deficit_kw = %v, want 7.087", snap.Follow.DeficitKw)
 	}
+	if snap.Follow.Direction != guards.FollowDeepen {
+		t.Fatalf("follow.direction = %q, want %q", snap.Follow.Direction, guards.FollowDeepen)
+	}
 	// The money: the house no longer draws from the grid.
 	if got := 7.117 + snap.SetpointKw - 0.03; got > 1e-3 {
 		t.Fatalf("predicted grid = %v kW, want 0 (the whole point)", got)
+	}
+}
+
+// The MIRROR half (Pilsting 23:12): the plan discharges past the house, so the
+// difference leaves the site at the feed-in price while the same kWh is worth
+// more as avoided import later. The published setpoint must be the measured
+// deficit, and the card must say it LIMITED the discharge.
+func TestMarkedSlotLimitsADischargeThatOvershootsTheHouse(t *testing.T) {
+	a := followAgent(t)
+	now := time.Date(2026, 7, 30, 23, 12, 0, 0, time.UTC)
+	p := pilstingNightPlan(now, true)
+	p.Slots[0].BatterySetpointKw = -6.7
+	a.mu.Lock()
+	a.currentPlan = p
+	a.lastReading = guards.Reading{SocPct: 77, PvKw: 0, LoadKw: 5.1, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+
+	a.applySetpoint(now)
+
+	snap := a.State.Get()
+	if snap.Mode != state.ModeSchedule {
+		t.Fatalf("mode = %v, want fahrplan (a correction is not a fallback)", snap.Mode)
+	}
+	if snap.SetpointKw != -5.1 {
+		t.Fatalf("setpoint = %v, want the measured deficit -5.1", snap.SetpointKw)
+	}
+	if snap.Follow == nil || snap.Follow.Direction != guards.FollowReduce {
+		t.Fatalf("follow = %+v, want the limiting direction named", snap.Follow)
+	}
+	if snap.Follow.PlannedKw != -6.7 {
+		t.Fatalf("follow.planned_kw = %v, want the plan's -6.7", snap.Follow.PlannedKw)
+	}
+	// The money: nothing leaves the site unpriced any more.
+	if got := 5.1 + snap.SetpointKw - 0; math.Abs(got) > 1e-3 {
+		t.Fatalf("predicted grid = %v kW, want 0", got)
+	}
+}
+
+// The floor of the limiting direction, end to end: PV covers the house, so the
+// discharge stops at 0 - the follower never turns a discharge into a charge.
+func TestWithNoDeficitTheFollowedSetpointIsZeroAndNeverACharge(t *testing.T) {
+	a := followAgent(t)
+	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	p := pilstingNightPlan(now, true)
+	p.Slots[0].BatterySetpointKw = -3.0
+	a.mu.Lock()
+	a.currentPlan = p
+	a.lastReading = guards.Reading{SocPct: 60, PvKw: 9.1, LoadKw: 3.4, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+
+	a.applySetpoint(now)
+
+	snap := a.State.Get()
+	if snap.SetpointKw != 0 {
+		t.Fatalf("setpoint = %v, want exactly 0 (stop discharging, never charge)", snap.SetpointKw)
+	}
+	if snap.Follow == nil || snap.Follow.Direction != guards.FollowReduce {
+		t.Fatalf("follow = %+v, want the limiting direction named", snap.Follow)
+	}
+}
+
+// The limiting direction on the COMMITTED CONTRACT BYTES (docs/contracts/
+// examples, read by path on purpose - moving the fixture must break this): its
+// active slot carries the duty and discharges 4.332 kW, so against a 2 kW house
+// the published setpoint must be -2 kW. (Its unmarked 30 kW sell window sits
+// half an hour later, i.e. outside the plan's own staleness window, so the
+// unmarked half is proven on a fresh plan below.)
+func TestTheCommittedContractFixtureIsLimitedToTheMeasuredHouse(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(
+		"..", "..", "..", "..", "docs", "contracts", "examples", "mqtt-schedule.valid.cover-load.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rx := time.Date(2026, 7, 30, 19, 16, 0, 0, time.UTC)
+	p, err := plan.Parse(raw, rx)
+	if err != nil {
+		t.Fatalf("cover-load fixture: %v", err)
+	}
+
+	a := followAgent(t)
+	a.mu.Lock()
+	a.currentPlan = p
+	a.lastReading = guards.Reading{SocPct: 77, PvKw: 0, LoadKw: 2.0, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+
+	a.applySetpoint(time.Date(2026, 7, 30, 19, 20, 0, 0, time.UTC))
+
+	snap := a.State.Get()
+	if snap.Mode != state.ModeSchedule {
+		t.Fatalf("mode = %v, want fahrplan", snap.Mode)
+	}
+	if snap.SetpointKw != -2.0 {
+		t.Fatalf("marked slot setpoint = %v, want the measured deficit -2.0", snap.SetpointKw)
+	}
+	if snap.Follow == nil || snap.Follow.Direction != guards.FollowReduce {
+		t.Fatalf("follow = %+v, want the limiting direction named", snap.Follow)
+	}
+	if snap.Follow.PlannedKw != -4.332 {
+		t.Fatalf("follow.planned_kw = %v, want the fixture's -4.332", snap.Follow.PlannedKw)
+	}
+}
+
+// The price arbitrage stays untouched: an UNMARKED slot keeps its deliberate
+// sell window byte-for-byte, however far it overshoots the measured house.
+func TestAnUnmarkedSellWindowIsNeverLimited(t *testing.T) {
+	a := followAgent(t)
+	now := time.Date(2026, 7, 30, 19, 0, 0, 0, time.UTC)
+	p := pilstingNightPlan(now, false)
+	p.Slots[0].BatterySetpointKw = -25.0
+	a.mu.Lock()
+	a.currentPlan = p
+	a.lastReading = guards.Reading{SocPct: 80, PvKw: 0, LoadKw: 2.0, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+
+	a.applySetpoint(now)
+
+	snap := a.State.Get()
+	if snap.SetpointKw != -25.0 {
+		t.Fatalf("setpoint = %v, want the plan's -25 (a deliberate sale stays)", snap.SetpointKw)
+	}
+	if snap.Follow != nil {
+		t.Fatalf("follow = %+v, want none on an unmarked slot", snap.Follow)
 	}
 }
 
@@ -182,6 +313,22 @@ func TestTheFollowedValueIsWhatGetsPublishedSoNoMismatchIsPossible(t *testing.T)
 	if m["source"] != "schedule" {
 		t.Fatalf("source = %v, want schedule (a correction is not a fallback)", m["source"])
 	}
+	if snap := a.State.Get(); snap.SetpointKw != m["battery_setpoint_kw"] {
+		t.Fatalf("state %v != published %v", snap.SetpointKw, m["battery_setpoint_kw"])
+	}
+
+	// The identity must hold for a LIMITED discharge too - that is the direction
+	// a reader could most easily mistake for a refused write.
+	a.mu.Lock()
+	a.lastReading = guards.Reading{SocPct: 77, PvKw: 0, LoadKw: 2.0, GridLimitKw: guards.Unknown()}
+	a.mu.Unlock()
+	a.applySetpoint(now.Add(10 * time.Second))
+
+	waitFor(t, 5*time.Second, "the limited setpoint on the local bus", func() bool {
+		m, ok := sub.latest()
+		return ok && m["battery_setpoint_kw"] == -2.0
+	})
+	m, _ = sub.latest()
 	if snap := a.State.Get(); snap.SetpointKw != m["battery_setpoint_kw"] {
 		t.Fatalf("state %v != published %v", snap.SetpointKw, m["battery_setpoint_kw"])
 	}
