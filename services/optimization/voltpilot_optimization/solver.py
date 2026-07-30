@@ -531,7 +531,11 @@ def _with_explanation(
     unchanged - the why-layer degrades, the plan never sinks.
     """
     try:
-        from voltpilot_optimization.config import explain_enabled, slot_trim_enabled
+        from voltpilot_optimization.config import (
+            explain_enabled,
+            load_follow_enabled,
+            slot_trim_enabled,
+        )
 
         if not explain_enabled():
             return plan
@@ -539,6 +543,7 @@ def _with_explanation(
 
         whys = explain(model, inp, fallback_14a=fallback_14a)
         trim = slot_trim_enabled()
+        follow = load_follow_enabled()
         slots = [
             replace(
                 slot,
@@ -553,6 +558,14 @@ def _with_explanation(
                 # economic, the edge only enforces it against measured values.
                 charge_from_surplus_only=(
                     _charge_from_surplus_only(inp, t, slot, why) if trim else None
+                ),
+                # The DISCHARGE-side mirror (in-slot load following): may the
+                # edge raise this slot's discharge to the MEASURED house deficit
+                # rather than execute the forecast watt value? Same lambda, same
+                # split of authority - its own kill-switch because the two duties
+                # push the setpoint in opposite directions.
+                cover_load_from_battery=(
+                    _cover_load_from_battery(inp, t, slot, why) if follow else None
                 ),
             )
             for t, (slot, why) in enumerate(zip(plan.slots, whys))
@@ -589,6 +602,32 @@ def _charge_from_surplus_only(inp: OptimizationInput, t: int, slot, why) -> bool
         stored_value_ct_kwh=why.stored_value_ct_kwh,
         # ct per AC kWh in ONE direction - the ct/kWh twin of
         # BatteryParams.wear_cost_eur_per_kwh_each_way (which is EUR).
+        wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
+        one_way_efficiency=p.one_way_efficiency,
+    )
+
+
+def _cover_load_from_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
+    """The slot's in-slot load-following duty (the ``cover_load_from_battery``
+    contract flag), from the plan's own numbers + the persisted lambda.
+
+    Like its charge-side twin everything but the import price comes off the
+    EXTRACTED slot (battery/grid) and its why-record (lambda), so the verdict can
+    never describe a different slot than the one it is stamped on.
+    """
+    from voltpilot_optimization.slot_trim import cover_load_from_battery
+
+    p = inp.battery
+    return cover_load_from_battery(
+        battery_kw=slot.battery_kw,
+        # The SOLVED grid power of the slot: <= 0 is the "Netz = 0" kink (role
+        # eigenverbrauch) or an export; a real planned import is a DELIBERATE
+        # cheap-hour purchase the duty must never undo.
+        grid_kw=slot.grid_kw,
+        # EUR/MWh -> ct/kWh: the asymmetric IMPORT price (bare spot only when the
+        # site carries no tariff), i.e. what the avoided grid kWh really costs.
+        import_price_ct_kwh=inp.import_prices[t] / 10.0,
+        stored_value_ct_kwh=why.stored_value_ct_kwh,
         wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
         one_way_efficiency=p.one_way_efficiency,
     )

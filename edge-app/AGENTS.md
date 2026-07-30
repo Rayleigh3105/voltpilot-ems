@@ -1155,6 +1155,38 @@ Volles Bild inkl. Ökonomie in der Root-AGENTS.md „Price-aware in-slot trim". 
   `true` trägt die Pflicht; die eingecheckten Contract-Fixtures werden per PFAD geparst),
   `web/jstest/ui.test.js`.
 
+**Die ENTLADE-Seite derselben Lücke = `guards.LoadFollower` (`guards/loadfollow.go`, P1 der
+Pilsting-Nachtanalyse `firstmate/data/vp-netzbezug-nacht-s3`).** Der Sollwert einer Viertelstunde
+stammt aus einer Viertelstunden-LASTPROGNOSE; wird sie unterschätzt, kauft die Anlage die Differenz
+teuer zu (live: Plan −4,332 kW gegen ein 7,117-kW-Haus, 2,79 kW zu ~32,5 ct bei 77 % SoC, ~4,9 € in
+EINER Nacht). Per-Slot-Flag **`cover_load_from_battery`**, Regel in `slot_trim.py`
+(`import_price > lambda/eta + wear + margin`), eigener Kill-Switch `OPTIMIZER_LOAD_FOLLOW_ENABLED`.
+Was zusätzlich zum Trim gilt:
+
+- **Es ist `PeakShave` mit Import-Ziel 0 plus Hysterese** — der Guard RUFT `PeakShave(kw, 0, …)` auf,
+  statt die Schranken nachzubauen: Nennband, SoC-Boden und „senkt nur" kommen damit aus EINER
+  bewiesenen Arithmetik. Sicherheit per Algebra: wo er greift ist die vorhergesagte Netzleistung
+  exakt 0, also nie Export → §14a-Exportgrenze/Einspeisedeckel unberührt, der Import-Deckel galt für
+  einen Wert, den er nur weiter senkt.
+- **Er VERTIEFT nur eine bestehende Entladung** — nie ein Richtungswechsel: ein kommandiertes LADEN
+  bleibt unangetastet (der Trim hört spiegelbildlich bei 0 auf), und die Wolke markiert ohnehin nur
+  Slots, die wirklich entladen UND nicht absichtlich einkaufen (`grid_kw <= 0`, Rolle
+  `eigenverbrauch`) — die Preisarbitrage der billigen Stunden bleibt unberührt.
+- **Die Peak-RESERVE begrenzt ihn** (`reserveSocPct` hebt den SoC-Boden): gewöhnliches Lastdecken ist
+  genau das, was die Reserve überleben muss — dieselbe Regel wie im Rückfall-Pfad. Die
+  Peak-VERTEIDIGUNG darf weiterhin darunter (sie läuft danach mit den unveränderten Limits).
+- **Bewusste Abweichung vom Trim: KEIN Schritt-Folger auf dem angewandten Wert.** Beide Richtungen
+  sind hier Lastnachführung (Ziel = pv − load); ein gehaltener tieferer Entladewert bei
+  SCHRUMPFENDEM Defizit würde die Anlage in den EXPORT drücken und das Sicherheitsargument brechen.
+  Die Schreib-Entprellung gehört in den Layer-1-Executor (`dwell_s`/`min_change`), nicht hierher.
+- Anzeige: `state.FollowInfo` → `control.js VPControl.deriveFollow` → dieselbe `#ctrlReason`-Zeile
+  (Trim gewinnt, beide schließen sich per Konstruktion aus). Der VERÖFFENTLICHTE Wert ist der
+  nachgeführte, also passt der Readback und die entprellte Bestätigung meldet nie „nicht übernommen".
+- Beweise: `guards/loadfollow_test.go` (u. a. „vertieft nie den Export", Reserve, Rated-Band,
+  SoC-Boden, blind=inaktiv, Hysterese), `agent/load_follow_test.go`, `plan/plan_test.go`,
+  `web/jstest/ui.test.js`, `services/optimization/tests/test_load_follow.py` (Regel + echter Solver:
+  die Nacht-Slots werden markiert, die billigen Kauf-Stunden nicht, Setpoints byte-identisch).
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

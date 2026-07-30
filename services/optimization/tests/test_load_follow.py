@@ -1,0 +1,376 @@
+"""In-slot load following: which slots the cloud marks
+``cover_load_from_battery`` for the edge (2026-07-30, the Pilsting NIGHT half of
+the quarter-hour gap - scout report vp-netzbezug-nacht-s3, P1).
+
+The mirror of :mod:`tests.test_slot_trim`, and proven in the same two layers:
+
+- the pure RULE (:mod:`voltpilot_optimization.slot_trim`, discharge side) -
+  stated as economic properties with the measured live numbers as the anchor; and
+- the rule reaching a real solved plan through the solver's explain stamping,
+  where lambda is the model's OWN marginal value of stored energy.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import math
+from datetime import datetime, timezone
+from uuid import uuid4
+
+import pytest
+
+from voltpilot_optimization.config import (
+    SLOT_TRIM_MARGIN_CT_PER_KWH,
+    load_follow_enabled,
+)
+from voltpilot_optimization.domain import (
+    BatteryParams,
+    OptimizationInput,
+    horizon_slot_starts,
+)
+from voltpilot_optimization.slot_trim import (
+    cost_to_cover_ct_kwh,
+    cover_load_economic,
+    cover_load_from_battery,
+    grid_charge_uneconomic,
+)
+
+needs_highs = pytest.mark.skipif(
+    importlib.util.find_spec("highspy") is None,
+    reason="HiGHS wheel unavailable on this platform",
+)
+
+T0 = datetime(2026, 7, 30, 19, 15, tzinfo=timezone.utc)  # 21:15 CEST
+ETA = math.sqrt(0.92)  # one-way efficiency of the 92 % round trip
+WEAR_EACH_WAY_CT = 2.0  # the 4 ct/kWh-cycle platform default, half per direction
+
+
+# ---- the rule ---------------------------------------------------------------
+
+
+def test_the_observed_pilsting_night_slot_is_flagged():
+    """THE anchor case (report §2.1): import ~32,5 ct all-in, and the stored kWh
+    is worth roughly the ~21,2 ct feed-in it displaces. Covering the house from
+    the battery is clearly right - the rule must say so, otherwise the whole fix
+    would not fire on the very night that motivated it."""
+    stored = ETA * 21.2  # water value of a kWh worth only the forgone feed-in
+    assert cover_load_economic(
+        import_price_ct_kwh=32.5,
+        stored_value_ct_kwh=stored,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+    # ... and the full flag agrees on the observed plan shape (a -4,332 kW
+    # discharge planned against ~0 grid: the "Netz = 0" kink, role eigenverbrauch).
+    assert cover_load_from_battery(
+        battery_kw=-4.332,
+        grid_kw=0.0,
+        import_price_ct_kwh=32.5,
+        stored_value_ct_kwh=stored,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+
+
+def test_a_slot_holding_energy_for_a_more_valuable_hour_is_not_flagged():
+    """The counter-case that keeps the feature from becoming the price-blind
+    self-consumption logic: when the stored kWh is worth MORE elsewhere than the
+    import costs here, covering the house now would destroy value."""
+    stored = ETA * 45.0  # an expensive later hour makes the water value high
+    assert not cover_load_economic(
+        import_price_ct_kwh=32.5,
+        stored_value_ct_kwh=stored,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+
+
+def test_the_cost_to_cover_prices_losses_and_wear_and_never_goes_negative():
+    cost = cost_to_cover_ct_kwh(
+        stored_value_ct_kwh=30.0,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+    assert cost == pytest.approx(30.0 / ETA + 2.0)
+    assert cost > 30.0  # losses + wear always ADD to the raw water value
+    # A worthless (or nonsensically negative) water value floors at zero, so the
+    # cost collapses to the wear alone instead of inventing a negative price.
+    assert cost_to_cover_ct_kwh(
+        stored_value_ct_kwh=-5.0,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    ) == pytest.approx(WEAR_EACH_WAY_CT)
+    # A nonsensical efficiency can never justify a discharge.
+    assert math.isinf(
+        cost_to_cover_ct_kwh(
+            stored_value_ct_kwh=10.0,
+            one_way_efficiency=0.0,
+            wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+        )
+    )
+
+
+def test_the_two_duties_can_never_contradict_each_other():
+    """Covering costs lambda/eta + wear while charging is worth eta*lambda - wear,
+    so 'cover the load' is STRICTLY tighter than 'do not grid-charge': every slot
+    that must follow the load must also not be topped up from the grid. The edge
+    composes them most-restrictive-wins, and this is why they can never fight."""
+    common = dict(
+        one_way_efficiency=ETA, wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT
+    )
+    for stored in (0.0, 5.0, 12.0, 21.2, 30.0, 45.0):
+        for price in (0.0, 8.0, 14.6, 21.2, 32.5, 60.0):
+            if cover_load_economic(
+                import_price_ct_kwh=price, stored_value_ct_kwh=stored, **common
+            ):
+                assert grid_charge_uneconomic(
+                    import_price_ct_kwh=price, stored_value_ct_kwh=stored, **common
+                ), f"stored={stored} price={price}"
+
+
+def test_a_hairline_difference_is_not_flagged_the_margin_is_the_deadband():
+    stored = 20.0
+    cost = cost_to_cover_ct_kwh(
+        stored_value_ct_kwh=stored,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+    common = dict(
+        stored_value_ct_kwh=stored,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+    assert not cover_load_economic(
+        import_price_ct_kwh=cost + SLOT_TRIM_MARGIN_CT_PER_KWH - 0.01, **common
+    )
+    assert cover_load_economic(
+        import_price_ct_kwh=cost + SLOT_TRIM_MARGIN_CT_PER_KWH + 0.01, **common
+    )
+
+
+def test_no_stored_value_and_no_finite_number_make_no_claim():
+    common = dict(one_way_efficiency=ETA, wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT)
+    # No why-layer -> lambda absent -> no duty (fail-open by contract).
+    assert not cover_load_economic(
+        import_price_ct_kwh=40.0, stored_value_ct_kwh=None, **common
+    )
+    # A duty the edge enforces against measured values must never rest on NaN.
+    assert not cover_load_economic(
+        import_price_ct_kwh=float("nan"), stored_value_ct_kwh=1.0, **common
+    )
+    assert not cover_load_economic(
+        import_price_ct_kwh=40.0, stored_value_ct_kwh=float("inf"), **common
+    )
+
+
+def test_a_charging_or_idle_slot_carries_no_load_following_duty():
+    """The duty only ever DEEPENS an existing discharge - it never starts one and
+    never touches a charge."""
+    common = dict(
+        grid_kw=0.0,
+        import_price_ct_kwh=40.0,
+        stored_value_ct_kwh=1.0,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+    assert not cover_load_from_battery(battery_kw=4.0, **common)
+    assert not cover_load_from_battery(battery_kw=0.0, **common)
+    assert not cover_load_from_battery(battery_kw=-0.02, **common)  # noise
+    assert cover_load_from_battery(battery_kw=-4.0, **common)  # a real discharge
+
+
+def test_a_slot_the_plan_deliberately_buys_in_is_never_flagged():
+    """The consistency guard + the price-arbitrage protection in one: where the
+    plan itself plans a grid IMPORT (the cheap hours), the edge must never be
+    told to undo it."""
+    common = dict(
+        battery_kw=-4.0,
+        import_price_ct_kwh=40.0,
+        stored_value_ct_kwh=1.0,
+        one_way_efficiency=ETA,
+        wear_ct_per_kwh_each_way=WEAR_EACH_WAY_CT,
+    )
+    assert not cover_load_from_battery(grid_kw=3.0, **common)
+    # The "Netz = 0" kink itself (role eigenverbrauch) and an EXPORTING slot both
+    # pass: neither is a deliberate purchase.
+    assert cover_load_from_battery(grid_kw=0.0, **common)
+    assert cover_load_from_battery(grid_kw=0.04, **common)  # inside the deadband
+    assert cover_load_from_battery(grid_kw=-8.0, **common)
+
+
+def test_the_flag_is_env_switchable_and_defaults_on():
+    assert load_follow_enabled({}) is True
+    assert load_follow_enabled({"OPTIMIZER_LOAD_FOLLOW_ENABLED": "false"}) is False
+    with pytest.raises(ValueError):
+        load_follow_enabled({"OPTIMIZER_LOAD_FOLLOW_ENABLED": "maybe"})
+
+
+# ---- through the real solver -------------------------------------------------
+
+BATTERY = BatteryParams(
+    capacity_kwh=60.0,
+    max_charge_kw=30.0,
+    max_discharge_kw=30.0,
+    roundtrip_efficiency=0.92,
+)
+
+
+def make_input(
+    spot: list[float],
+    load: list[float],
+    pv: list[float],
+    import_price: list[float] | None = None,
+    export_value: list[float] | None = None,
+    soc0_kwh: float = 46.2,  # the observed 77 % of 60 kWh
+    netzladen_erlaubt: bool = True,
+) -> OptimizationInput:
+    n = len(spot)
+    return OptimizationInput(
+        tenant_id=uuid4(),
+        site_id=uuid4(),
+        device_id=uuid4(),
+        battery=BATTERY,
+        slot_starts=horizon_slot_starts(T0, n),
+        prices_eur_mwh=spot,
+        load_kw=load,
+        pv_kw=pv,
+        initial_soc_kwh=soc0_kwh,
+        netzladen_erlaubt=netzladen_erlaubt,
+        import_price_eur_mwh=import_price,
+        export_value_eur_mwh=export_value,
+    )
+
+
+def solve(inp: OptimizationInput):
+    from voltpilot_optimization.solver import optimize
+
+    return optimize(inp, plan_id=uuid4(), generated_at=T0)
+
+
+@needs_highs
+def test_the_pilsting_night_gets_its_eigenverbrauch_slots_flagged():
+    """The real night shape: no PV, a steady house, a full-enough battery and an
+    import price well above the feed-in. Every slot the plan covers from the
+    battery at ~zero grid must carry the duty - that is exactly where the
+    measured 2,79 kW was being bought."""
+    n = 12
+    pv = [0.0] * n
+    load = [7.1] * n
+    spot = [212.0] * n  # 21,2 ct/kWh
+    imp = [p + 113.3 for p in spot]  # + 11,33 ct Bayernwerk components
+    plan = solve(make_input(spot, load, pv, import_price=imp, export_value=spot))
+
+    covering = [
+        s for s in plan.slots if s.battery_kw < -0.05 and s.grid_kw <= 0.05
+    ]
+    assert covering, "scenario must plan discharge-into-the-house slots"
+    assert all(s.cover_load_from_battery for s in covering)
+    # Every one of them is the eigenverbrauch role the report identified.
+    assert all(s.slot_role == "eigenverbrauch" for s in covering)
+    # Charging / idle slots carry no duty - there is nothing to deepen there.
+    assert all(
+        not s.cover_load_from_battery
+        for s in plan.slots
+        if s.battery_kw >= -0.05
+    )
+
+
+@needs_highs
+def test_a_cheap_hour_the_plan_deliberately_buys_in_is_left_alone():
+    """The price arbitrage must stay untouched: in the cheap half the plan buys
+    (and charges) on purpose, so no slot there may carry the duty - otherwise the
+    edge would fight the very strategy that earns the money."""
+    n = 12
+    pv = [0.0] * n
+    load = [7.1] * n
+    spot = [20.0] * 6 + [400.0] * 6  # cheap night, expensive morning
+    imp = [p + 113.3 for p in spot]
+    plan = solve(
+        make_input(spot, load, pv, import_price=imp, export_value=spot, soc0_kwh=6.0)
+    )
+
+    buying = [s for s in plan.slots if s.grid_kw > 0.05]
+    assert buying, "scenario must plan deliberate purchases"
+    assert all(not s.cover_load_from_battery for s in buying)
+
+
+@needs_highs
+def test_the_flag_is_absent_without_the_explain_layer_and_with_the_switch_off(
+    monkeypatch,
+):
+    n = 12
+    inp = make_input(
+        [212.0] * n,
+        [7.1] * n,
+        [0.0] * n,
+        import_price=[325.3] * n,
+        export_value=[212.0] * n,
+    )
+
+    monkeypatch.setenv("OPTIMIZER_LOAD_FOLLOW_ENABLED", "false")
+    off = solve(inp)
+    assert all(s.cover_load_from_battery is None for s in off.slots)
+    # ... the why-layer AND the charge-side trim still work (its own lever).
+    assert any(s.slot_role for s in off.slots)
+    assert any(s.charge_from_surplus_only is not None for s in off.slots)
+
+    monkeypatch.delenv("OPTIMIZER_LOAD_FOLLOW_ENABLED")
+    monkeypatch.setenv("OPTIMIZER_EXPLAIN_ENABLED", "false")
+    no_explain = solve(inp)
+    assert all(s.cover_load_from_battery is None for s in no_explain.slots)
+    assert all(s.slot_role is None for s in no_explain.slots)
+
+
+@needs_highs
+def test_the_two_switches_are_independent():
+    """An operator must be able to stop ONE of the two in-slot corrections: they
+    push the setpoint in opposite directions on a safety-relevant control path."""
+    import os
+
+    n = 12
+    inp = make_input(
+        [212.0] * n,
+        [7.1] * n,
+        [0.0] * n,
+        import_price=[325.3] * n,
+        export_value=[212.0] * n,
+    )
+    os.environ["OPTIMIZER_SLOT_TRIM_ENABLED"] = "false"
+    try:
+        plan = solve(inp)
+    finally:
+        del os.environ["OPTIMIZER_SLOT_TRIM_ENABLED"]
+    assert all(s.charge_from_surplus_only is None for s in plan.slots)
+    assert any(s.cover_load_from_battery for s in plan.slots), (
+        "killing the charge-side trim must not disable the load following"
+    )
+
+
+@needs_highs
+def test_the_flag_never_changes_the_committed_setpoints():
+    """The duty is stamped POST-HOC like the why-fields: a plan solved with the
+    load following off must carry byte-identical decisions."""
+    import os
+
+    n = 12
+    inp = make_input(
+        [212.0] * n,
+        [7.1] * n,
+        [0.0] * n,
+        import_price=[325.3] * n,
+        export_value=[212.0] * n,
+    )
+
+    on = solve(inp)
+    os.environ["OPTIMIZER_LOAD_FOLLOW_ENABLED"] = "false"
+    try:
+        off = solve(inp)
+    finally:
+        del os.environ["OPTIMIZER_LOAD_FOLLOW_ENABLED"]
+    for a, b in zip(on.slots, off.slots):
+        assert (a.battery_kw, a.grid_kw, a.soc_kwh, a.curtail_kw) == (
+            b.battery_kw,
+            b.grid_kw,
+            b.soc_kwh,
+            b.curtail_kw,
+        )

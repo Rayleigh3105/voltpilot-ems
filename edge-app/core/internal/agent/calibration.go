@@ -209,11 +209,14 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		s.ControlCertified = certified
 		s.PeakGuardActive = false
 		s.PeakQuarterMeanKw = nil
-		// A bounded calibration write is not a plan setpoint, so no price-aware
-		// trim can apply to it - never leave a stale "limited" claim on the card.
+		// A bounded calibration write is not a plan setpoint, so neither the
+		// price-aware trim nor the load following can apply to it - never leave a
+		// stale "limited"/"following" claim on the card.
 		s.Trim = nil
+		s.Follow = nil
 	})
 	a.trim.Release()
+	a.follow.Release()
 	return true
 }
 

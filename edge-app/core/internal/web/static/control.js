@@ -263,6 +263,31 @@
   }
 
   /* ------------------------------------------------------------------
+     The DISCHARGE-side mirror: in-slot load following.
+
+     "Fahrplan-Sollwert -4,3 kW -> bestätigt -4,3 kW" while the house draws
+     7,1 kW and the difference is bought at ~32,5 ct is the night half of the
+     same defect (Pilsting, 2026-07-30). Where the cloud marked the slot worth
+     covering, the device raises the discharge to the MEASURED house load - and
+     an unnamed correction reads as a defect just like an unnamed limitation, so
+     the card says so. Mutually exclusive with the trim by construction (one acts
+     on charge, the other on discharge).
+     ------------------------------------------------------------------ */
+  function deriveFollow(s) {
+    var f = s && s.follow;
+    if (!f || !f.active) return null;
+    var covered = f.deficit_kw != null ? nf1.format(f.deficit_kw) + " kW" : null;
+    var planned = f.planned_kw != null ? nf1.format(Math.abs(f.planned_kw)) + " kW" : null;
+    var text =
+      "Deckt den gemessenen Hausverbrauch aus dem Speicher" +
+      (covered ? " (" + covered + ")" : "") +
+      ": Netzstrom ist in dieser Viertelstunde teurer als die gespeicherte Energie" +
+      (planned ? " – der Fahrplan hatte " + planned + " vorgesehen" : "") +
+      ". Das ist eine bewusste Nachführung, kein Fehler des Wechselrichters.";
+    return { text: text };
+  }
+
+  /* ------------------------------------------------------------------
      trackStateSince - the stable "seit <Uhrzeit>" behind the card's ONE truth.
 
      The underlying readback re-fires every ~10 s tick, so any timestamp taken
@@ -583,7 +608,7 @@
     // it explains (a limitation that is not named reads as a defect).
     var reasonEl = $("ctrlReason");
     if (reasonEl) {
-      var reason = d.showNow ? deriveTrim(s) : null;
+      var reason = d.showNow ? (deriveTrim(s) || deriveFollow(s)) : null;
       show(reasonEl, !!reason);
       if (reason) reasonEl.textContent = reason.text;
     }
@@ -604,6 +629,7 @@
     onState: onState,
     deriveState: deriveState,
     deriveTrim: deriveTrim,
+    deriveFollow: deriveFollow,
     deriveCurtail: deriveCurtail,
     trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,
