@@ -233,6 +233,48 @@ def explain_enabled(env=None) -> bool:
     raise ValueError(f"{EXPLAIN_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Price-aware in-slot trim (2026-07-30): the decision margin, in ct per AC kWh,
+#: a slot's import price must exceed the marginal value of one more stored kWh
+#: by before the cloud declares grid-charging in that slot UNECONOMIC (the
+#: per-slot ``charge_from_surplus_only`` contract flag; the rule itself lives in
+#: :mod:`voltpilot_optimization.slot_trim`). Two jobs:
+#:
+#:   * it swallows the 0.1 ct degeneracy rounding of the persisted stored-energy
+#:     value (<= 0.05 ct on lambda, <= 0.05 ct on the willingness to pay), so a
+#:     rounding artefact can never flip the flag; and
+#:   * it keeps a HAIRLINE-uneconomic slot untrimmed - a restriction the edge
+#:     enforces against measured values should only fire on a real difference,
+#:     not on half a hundredth of a cent.
+#:
+#: 0.5 ct/kWh is an order of magnitude above the rounding and still far below
+#: any real import/value gap (the Pilsting case had ~13 ct of headroom).
+SLOT_TRIM_MARGIN_CT_PER_KWH = 0.5
+
+#: Instant off-switch for publishing the per-slot ``charge_from_surplus_only``
+#: flag. Default ON. With the flag off the payload is byte-identical to before
+#: 2026-07-30 and every edge behaves exactly as it did (the field is FAIL-OPEN
+#: on the edge by contract), so this is a safe ops lever.
+SLOT_TRIM_ENABLED_ENV = "OPTIMIZER_SLOT_TRIM_ENABLED"
+
+
+def slot_trim_enabled(env=None) -> bool:
+    """Whether the optimizer marks uneconomic-grid-charge slots for the edge's
+    price-aware in-slot trim. Default ON; garbage values raise loudly (the
+    :func:`explain_enabled` discipline - the solver calls this inside its
+    fail-soft explain wrapper, so a bad value drops the flag with a warning
+    instead of sinking plans)."""
+    env = os.environ if env is None else env
+    raw = env.get(SLOT_TRIM_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{SLOT_TRIM_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
 #: Researched default supply-price components as the Bezugspreis fallback for
 #: ``dynamisch``-without-Aufschlag and ``ohne`` sites WITHOUT a maintained
 #: ``site_supply_price`` row (report vp-nacht-bezug-e7 Teil 2: household

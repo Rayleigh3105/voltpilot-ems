@@ -209,7 +209,11 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		s.ControlCertified = certified
 		s.PeakGuardActive = false
 		s.PeakQuarterMeanKw = nil
+		// A bounded calibration write is not a plan setpoint, so no price-aware
+		// trim can apply to it - never leave a stale "limited" claim on the card.
+		s.Trim = nil
 	})
+	a.trim.Release()
 	return true
 }
 

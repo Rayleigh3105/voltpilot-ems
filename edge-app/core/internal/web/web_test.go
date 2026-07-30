@@ -1478,6 +1478,10 @@ func TestSteuerungSectionServed(t *testing.T) {
 	for _, want := range []string{
 		// Layer 1 - the plain-German state + its reason, always visible.
 		`id="ctrlSummary"`, `id="ctrlSummaryTitle"`, `id="ctrlSummaryText"`,
+		// WHY the setpoint is what it is (the price-aware in-slot limitation) -
+		// NORMAL mode, inside the summary, never behind Technikmodus: a
+		// limitation nobody names reads as a defect.
+		`id="ctrlReason"`,
 		// Layer 2 - the register evidence, on Betrieb behind Technikmodus.
 		`id="ctrlRows"`, `id="ctrlTech"`, `id="ctrlBanner"`,
 		`Wechselrichter-Steuerung`, `src="control.js"`,
@@ -1495,6 +1499,15 @@ func TestSteuerungSectionServed(t *testing.T) {
 	}
 	if !strings.Contains(js, "deriveState") {
 		t.Error("control.js: the pure state derivation must stay exported for the unit tests")
+	}
+	if !strings.Contains(js, "deriveTrim") {
+		t.Error("control.js: the pure trim-reason derivation must stay exported for the unit tests")
+	}
+	// The reason element must NOT sit in a .tech-only block (the cause rule).
+	reasonIdx := strings.Index(page, `id="ctrlReason"`)
+	techIdx := strings.Index(page, `id="ctrlTech"`)
+	if reasonIdx < 0 || techIdx < 0 || reasonIdx > techIdx {
+		t.Error("index.html: the reason line must be rendered BEFORE (outside) the Technik block")
 	}
 	// The Betrieb page shows STATE only - no arm/test/certify button may appear.
 	for _, forbidden := range []string{`id="calCertify"`, `id="calCharge"`, `id="calArm"`} {

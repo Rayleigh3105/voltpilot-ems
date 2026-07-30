@@ -29,8 +29,9 @@ import { eurAmount, fmtNum, plantKindLabel } from '../format';
 import { periodLabel, stripSlots } from '../anlage';
 import { anlageRoute, type AnlagenSub, type Route } from '../nav';
 import { nextHourIndex, weatherWhy } from '../weather';
-import { controlStrip } from '../control';
+import { controlReasonSlot, controlStrip } from '../control';
 import { todaySlots } from '../schedule';
+import { slotWhy } from '../fahrplanWhy';
 import { planTrafZu, type PlanTrafZu } from '../planAccuracy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
@@ -775,7 +776,18 @@ export function AnlageSeite({
   const planSlots = plan?.slots ?? [];
   const hasPlanToday = todaySlots(planSlots, now).length > 0;
   const batteryLinked = plan?.deviceId != null;
-  const controlView = controlStrip(controlStatus, now, batteryLinked);
+  // WHY the current setpoint is what it is: the OPTIMIZER's own recorded reason
+  // for the slot being executed (Fahrplan-Warum), never a second explanation
+  // logic here. Null outside the horizon or on a plan from before the why-layer
+  // - the strip then claims no cause (the idleReason discipline).
+  const activePlanSlot = controlReasonSlot(planSlots, now, plan?.slotMinutes ?? 15);
+  const controlReason = activePlanSlot
+    ? slotWhy(
+        activePlanSlot,
+        site.plantKind === 'direktvermarktung' ? 'direktvermarktung' : 'eigenverbrauch',
+      )
+    : null;
+  const controlView = controlStrip(controlStatus, now, batteryLinked, controlReason);
 
   // The Gesundheits-Checklist — rendered on BOTH cockpit paths (the projected
   // one lists it as its "Zustand" card, so a migrated plant has the surface the

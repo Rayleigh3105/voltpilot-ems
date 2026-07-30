@@ -235,6 +235,34 @@
   }
 
   /* ------------------------------------------------------------------
+     The REASON line: why the setpoint is what it is.
+
+     "Fahrplan-Sollwert 10,8 kW -> Wechselrichter bestätigt 10,8 kW" reads like a
+     stubborn order and is exactly what made the owner ask whether that is smart
+     (Pilsting, 2026-07-30). The card therefore names the reason underneath - and
+     the ONE reason the DEVICE itself owns is the price-aware in-slot trim: the
+     cloud marked this slot's grid purchases uneconomic, so the commanded charge
+     is being held at the measured solar surplus.
+
+     Deliberately no second explain logic here: the per-slot Fahrplan reason
+     (roles, water value) lives in the cloud's why-layer and is rendered by the
+     PORTAL card, which has that data. The edge explains what the edge decided.
+     No trim -> no line, and the card reads exactly as before.
+     ------------------------------------------------------------------ */
+  function deriveTrim(s) {
+    var t = s && s.trim;
+    if (!t || !t.active) return null;
+    var held = t.surplus_kw != null ? nf1.format(t.surplus_kw) + " kW" : null;
+    var planned = t.planned_kw != null ? nf1.format(t.planned_kw) + " kW" : null;
+    var text =
+      "Auf den gemessenen Solarüberschuss begrenzt" + (held ? " (" + held + ")" : "") +
+      ": Netzstrom ist in dieser Viertelstunde teurer als der Wert der zusätzlich " +
+      "gespeicherten Energie" + (planned ? " – der Fahrplan wollte " + planned : "") +
+      ". Das ist eine bewusste Begrenzung, kein Fehler des Wechselrichters.";
+    return { text: text };
+  }
+
+  /* ------------------------------------------------------------------
      trackStateSince - the stable "seit <Uhrzeit>" behind the card's ONE truth.
 
      The underlying readback re-fires every ~10 s tick, so any timestamp taken
@@ -551,6 +579,15 @@
     var summary = $("ctrlSummary");
     if (summary) summary.className = "ctrl-summary" + (d.chip ? " " + d.chip.tone : "");
 
+    // The reason for the current setpoint - NORMAL mode, right under the state
+    // it explains (a limitation that is not named reads as a defect).
+    var reasonEl = $("ctrlReason");
+    if (reasonEl) {
+      var reason = d.showNow ? deriveTrim(s) : null;
+      show(reasonEl, !!reason);
+      if (reason) reasonEl.textContent = reason.text;
+    }
+
     var banner = $("ctrlBanner");
     if (banner) {
       show(banner, !!d.banner);
@@ -566,6 +603,7 @@
   global.VPControl = {
     onState: onState,
     deriveState: deriveState,
+    deriveTrim: deriveTrim,
     deriveCurtail: deriveCurtail,
     trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,

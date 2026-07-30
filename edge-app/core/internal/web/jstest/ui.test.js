@@ -278,6 +278,54 @@ test("control: no answer from the inverter is its OWN calm state, never 'nicht �
   assert.strictEqual(d.showTable, true, "the register evidence stays available");
 });
 
+// --- the REASON line (price-aware in-slot trim, 2026-07-30) -------------------
+//
+// "Fahrplan-Sollwert 10,8 kW -> bestätigt 10,8 kW" reads like a stubborn order.
+// When the device deliberately holds the charge at the measured surplus, the card
+// must SAY so in normal mode - and it must never look like a refused write.
+function trimFor(state) {
+  return load(["control.js"]).VPControl.deriveTrim(state);
+}
+
+test("control: an active trim names the deliberate limitation with both numbers", () => {
+  const d = trimFor({ trim: { active: true, planned_kw: 10.8, surplus_kw: 7.7 } });
+  assert.ok(d, "an active limitation must produce a reason line");
+  assert.match(d.text, /7,7 kW/, "it names what the charge is held at: " + d.text);
+  assert.match(d.text, /10,8 kW/, "and what the Fahrplan wanted: " + d.text);
+  assert.match(d.text, /bewusste Begrenzung/, "and that it is deliberate: " + d.text);
+  assert.ok(!/nicht übernommen|Abweichung/.test(d.text),
+    "a limitation must never read as a failed write: " + d.text);
+});
+
+test("control: no trim -> no reason line (the card reads exactly as before)", () => {
+  assert.strictEqual(trimFor({}), null);
+  assert.strictEqual(trimFor({ trim: null }), null);
+  assert.strictEqual(trimFor({ trim: { active: false } }), null,
+    "an inactive limitation claims nothing");
+});
+
+test("control: a trim without a known surplus still names the cause", () => {
+  const d = trimFor({ trim: { active: true, planned_kw: 10.8 } });
+  assert.ok(d);
+  assert.match(d.text, /teurer/, "the cause is always stated: " + d.text);
+  assert.ok(!/undefined|NaN/.test(d.text), "and never a broken number: " + d.text);
+});
+
+test("control: a trimmed setpoint keeps the healthy CONFIRMED state", () => {
+  // The trimmed value is what gets written, so the readback matches it - the
+  // state must stay "VoltPilot steuert die Anlage", with the reason underneath.
+  const regs = [{ role: "battery_power", commanded_raw: 7700, commanded_kw: 7.7, actual_raw: 7700, actual_kw: 7.7, match: true, verdict: "held" }];
+  const state = {
+    inverter: { configured: true }, control_certified: true, control_enabled: true,
+    control: { confirm: "held", all_match: true, registers: regs, source: "schedule" },
+    trim: { active: true, planned_kw: 10.8, surplus_kw: 7.7 },
+  };
+  const d = controlFor(state);
+  assert.strictEqual(d.chip.tone, "ok");
+  assert.strictEqual(d.showNow, true, "the reason is only shown where a setpoint is shown");
+  assert.ok(trimFor(state), "and the reason line is there");
+});
+
 test("status hero: an unanswered readback says 'keine Bestätigung', a confirmed refusal says 'übernimmt nicht'", () => {
   const regs = [{ role: "remote_mode", commanded_raw: 1, actual_raw: null, match: false, verdict: "unread" }];
   const silent = statusFor({ ...HEALTHY, control: { confirm: "no_answer", all_match: null, registers: regs } });

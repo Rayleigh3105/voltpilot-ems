@@ -531,13 +531,14 @@ def _with_explanation(
     unchanged - the why-layer degrades, the plan never sinks.
     """
     try:
-        from voltpilot_optimization.config import explain_enabled
+        from voltpilot_optimization.config import explain_enabled, slot_trim_enabled
 
         if not explain_enabled():
             return plan
         from voltpilot_optimization.explain import explain
 
         whys = explain(model, inp, fallback_14a=fallback_14a)
+        trim = slot_trim_enabled()
         slots = [
             replace(
                 slot,
@@ -546,8 +547,15 @@ def _with_explanation(
                 stored_value_ct_kwh=why.stored_value_ct_kwh,
                 grid_value_ct_kwh=why.grid_value_ct_kwh,
                 peak_pressure_eur_kw=why.peak_pressure_eur_kw,
+                # The price-aware in-slot trim duty rides along on the SAME
+                # persisted lambda (voltpilot_optimization.slot_trim): the cloud
+                # decides whether topping this slot's charge up from the grid is
+                # economic, the edge only enforces it against measured values.
+                charge_from_surplus_only=(
+                    _charge_from_surplus_only(inp, t, slot, why) if trim else None
+                ),
             )
-            for slot, why in zip(plan.slots, whys)
+            for t, (slot, why) in enumerate(zip(plan.slots, whys))
         ]
         return replace(plan, slots=slots, fallback_14a=fallback_14a)
     except Exception:
@@ -557,6 +565,33 @@ def _with_explanation(
             exc_info=True,
         )
         return plan
+
+
+def _charge_from_surplus_only(inp: OptimizationInput, t: int, slot, why) -> bool:
+    """The slot's price-aware trim duty (the ``charge_from_surplus_only``
+    contract flag), from the plan's own numbers + the persisted lambda.
+
+    Everything but the import price is read off the extracted slot itself
+    (battery/pv/load/curtail) and its why-record (lambda), so the verdict can
+    never describe a different slot than the one it is stamped on.
+    """
+    from voltpilot_optimization.slot_trim import charge_from_surplus_only
+
+    p = inp.battery
+    return charge_from_surplus_only(
+        battery_kw=slot.battery_kw,
+        pv_kw=slot.pv_kw,
+        load_kw=slot.load_kw,
+        curtail_kw=slot.curtail_kw,
+        # EUR/MWh -> ct/kWh: the asymmetric IMPORT price (bare spot only when
+        # the site carries no tariff), i.e. what a grid kWh really costs here.
+        import_price_ct_kwh=inp.import_prices[t] / 10.0,
+        stored_value_ct_kwh=why.stored_value_ct_kwh,
+        # ct per AC kWh in ONE direction - the ct/kWh twin of
+        # BatteryParams.wear_cost_eur_per_kwh_each_way (which is EUR).
+        wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
+        one_way_efficiency=p.one_way_efficiency,
+    )
 
 
 def _solve(model: ConcreteModel) -> None:

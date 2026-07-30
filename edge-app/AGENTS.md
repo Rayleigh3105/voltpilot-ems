@@ -1124,6 +1124,37 @@ Operator-Doku: `nodered/FRONIUS.md` par.6b + `nodered/CONTROL-BENCH.md`
   Deye-Pfade (`deyeRemoteControl` haelt `pvLimitSupported:false`) und
   guards.Clamp sind unberuehrt.
 
+## Der Edge rechnet NIE mit Preisen — er setzt die Preis-Entscheidung der Wolke durch (`guards.PriceTrimmer`)
+
+Die preisbewusste Begrenzung innerhalb der Viertelstunde (2026-07-30, Captain-Beobachtung Pilsting) ist die dritte
+ökonomische Schutzschicht neben `PeakShave` und den Compliance-Clamps — mit derselben Arbeitsteilung wie überall:
+**die Wolke entscheidet, ob ein Slot teuer ist** (per-Slot-Flag `charge_from_surplus_only` im
+mqtt-schedule-Contract; die Regel steht in `services/optimization/.../slot_trim.py`), **der Edge begrenzt nur**.
+Volles Bild inkl. Ökonomie in der Root-AGENTS.md „Price-aware in-slot trim". Was hier gelten muss:
+
+- **Reihenfolge:** `guards.PriceTrimmer.Apply` läuft in `applySetpoint` NACH `Clamp` und NACH dem
+  Arbiter-Override, VOR `PeakShave` — beide sind restrict-only, also ist die Komposition ein Minimum.
+  Der Trim braucht deshalb kein `Limits`: sein Ergebnis liegt strikt in `[0, kw]`.
+- **Sicherheit per Algebra, nicht per Prüfung:** nach dem Trim ist die vorhergesagte Netzleistung
+  `max(load − pv, 0) ≥ 0` — die Anlage wird nie in die Einspeisung gedrückt, also kann der §14a-EXPORT-Deckel
+  (der `Clamp` sogar Ladeleistung ERHÖHEN darf) nicht verletzt werden, und der Import-Deckel galt für einen
+  Wert, den der Trim nur weiter senkt. FK3 (Laden ≤ gemessene PV-PRODUKTION) bleibt die regulatorische
+  Obergrenze und ist per Konstruktion lockerer als der Überschuss.
+- **Ehrlichkeit:** unbekanntes pv/load ⇒ INAKTIV (nie blind regeln — die PeakShave-Konvention); Entladen und
+  Ruhe sind unberührt; der Eigenverbrauchs-Rückfall IST der Überschuss, dort ist der Trim ein No-op.
+- **Kein Zappeln, asymmetrisch:** Eingreifen sofort (eine durchziehende Wolke ist genau das, was nicht gekauft
+  werden darf), Loslassen erst nach `TrimReleaseDwell` (90 s) ruhigem Unterschreiten; die angewandte Kappung
+  folgt einem FALLENDEN Überschuss sofort, einem steigenden nur in `TrimStepKw`-Schritten.
+- **Eine Begrenzung ist KEIN misslungener Schreibvorgang:** veröffentlicht wird der BEGRENZTE Wert, also passt
+  der Register-Readback dazu und die entprellte Bestätigungslogik kann daraus nie „Sollwert nicht übernommen"
+  machen. Sie wird als EIGENER Zustand gezeigt (`state.TrimInfo` → `control.js VPControl.deriveTrim` → die
+  Begründungszeile `#ctrlReason` der Steuerungs-Karte, NORMAL-Modus) — eine unbenannte Begrenzung liest sich
+  wie ein Defekt. Die per-Slot-Fahrplan-Begründung (Rollen, Wasserwert) bleibt bewusst in der WOLKE und wird
+  vom Portal gerendert; auf `:8484` gibt es dafür keine zweite Erklär-Logik.
+- Beweise: `guards/slottrim_test.go`, `agent/slot_trim_test.go`, `plan/plan_test.go` (nur ein explizites
+  `true` trägt die Pflicht; die eingecheckten Contract-Fixtures werden per PFAD geparst),
+  `web/jstest/ui.test.js`.
+
 ## Maintaining this file
 
 Keep this file for knowledge useful to almost every future agent session in this project.

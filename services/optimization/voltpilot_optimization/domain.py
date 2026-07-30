@@ -491,6 +491,18 @@ class PlanSlot:
     stored_value_ct_kwh: float | None = None  # lambda: value of a stored kWh
     grid_value_ct_kwh: float | None = None  # pi: energy value at the grid point
     peak_pressure_eur_kw: float | None = None  # mu: Leistungspreis allocation
+    # ---- Price-aware in-slot trim (2026-07-30) --------------------------------
+    # True = grid-charging in THIS slot is uneconomic (the slot's import price
+    # exceeds the marginal value of one more stored kWh), so the edge must clamp
+    # commanded CHARGE to the MEASURED surplus max(pv - load, 0) instead of
+    # covering a forecast shortfall from the grid. Derived from the same
+    # persisted lambda the why-fields carry - see
+    # :mod:`voltpilot_optimization.slot_trim` for the rule and why a plain price
+    # threshold was rejected. UNLIKE the why-fields this one DOES reach the MQTT
+    # payload (as the optional per-slot contract field
+    # ``charge_from_surplus_only``): it is a DUTY of the executor, not
+    # presentation. None/False = no restriction = pre-feature behavior.
+    charge_from_surplus_only: bool | None = None
 
     @property
     def pv_limit_kw(self) -> float | None:

@@ -75,6 +75,14 @@ def _slot_payload(slot) -> dict:
     limit = slot.pv_limit_kw
     if limit is not None:
         payload["pv_limit_kw"] = round(limit, 3)
+    # OPTIONAL per the contract (price-aware in-slot trim, 2026-07-30): present
+    # only on slots whose planned charge must NOT be topped up from the grid, so
+    # every other slot stays byte-identical (the pv_limit_kw discipline). False
+    # and None are the same duty - none - and are therefore both omitted; the
+    # contract makes an absent field fail-OPEN precisely so an old edge (and a
+    # run without the why-layer) keeps behaving exactly as before.
+    if slot.charge_from_surplus_only:
+        payload["charge_from_surplus_only"] = True
     return payload
 
 

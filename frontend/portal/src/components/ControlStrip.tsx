@@ -1,6 +1,9 @@
 // The calm "Steuerung" strip on the Anlagen-Seite (captain decision 4): one
 // plain-German line "Fahrplan-Sollwert X -> Wechselrichter bestätigt Y" with a
-// healthy | mismatch | stale | off | pending dot and a "geprüft vor X" note.
+// healthy | mismatch | stale | off | pending dot and a "geprüft vor X" note -
+// PLUS, since 2026-07-30, the plan's own reason for that setpoint underneath.
+// Without the reason the line read like a stubborn order (the owner's Pilsting
+// question); with it the card answers "warum gerade das?" itself.
 // Render-only; all derivation is the pure controlStrip() in src/control.ts.
 import { Card } from '../../designsystem/components/core/Card';
 import type { ControlStripView } from '../control';
@@ -15,6 +18,8 @@ export function ControlStrip({ view }: { view: ControlStripView }) {
           <p className="vp-control-sentence">{view.sentence}</p>
           {view.agoNote && <span className="vp-note vp-control-ago">{view.agoNote}</span>}
         </div>
+        {/* The WHY - only present when the plan actually recorded one. */}
+        {view.reason && <p className="vp-control-reason">{view.reason}</p>}
       </Card>
     </section>
   );

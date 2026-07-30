@@ -28,6 +28,20 @@ export interface ControlStripView {
   agoNote: string;
   /** Maps to the Badge status tone (dot colour). */
   tone: 'ok' | 'warn' | 'off';
+  /**
+   * WHY the setpoint is what it is - the plan's OWN reason for the slot being
+   * executed, in plain German (e.g. "Lädt günstig aus dem Netz: Börsenpreis
+   * 3,3 ct/kWh liegt unter dem Wert gespeicherter Energie (≈ 28,0 ct/kWh).").
+   *
+   * The owner's question at Anlage Pilsting (2026-07-30) was exactly this: the
+   * strip stated a command and its confirmation and read like a stubborn order.
+   * The reason is NOT computed here - it comes from the optimizer's per-slot
+   * why-layer (`slotWhy` over the active plan slot), so there is no second
+   * explanation logic. Null when the plan recorded no reason (a pre-why run, an
+   * unknown role) or when nothing is being executed - the strip then reads
+   * exactly as before, never with an invented cause.
+   */
+  reason: string | null;
 }
 
 // A confirmation older than this reads as "stale" - kept in sync with the
@@ -47,11 +61,18 @@ function kw(v: number | null): string {
  * controlling device, `expectControl = true`) the strip stays honest instead
  * (report N4): "Die Steuerung wird vorbereitet ..." so the "is the plan being
  * executed" loop is always visibly closed rather than silently missing.
+ *
+ * `reason` is the plan's OWN why-sentence for the slot being executed (built by
+ * the caller from `slotWhy(activeSlot)` - see `controlReasonSlot`). It is only
+ * attached to the states that actually SHOW a commanded setpoint: explaining a
+ * setpoint that is not being executed (off / not released / no readback yet)
+ * would be a claim about something that is not happening.
  */
 export function controlStrip(
   status: ControlStatus | null,
   now: Date = new Date(),
   expectControl = false,
+  reason: string | null = null,
 ): ControlStripView | null {
   if (!status) {
     if (!expectControl) return null;
@@ -61,6 +82,7 @@ export function controlStrip(
       sentence:
         'Die Steuerung wird vorbereitet - sobald Ihr Wechselrichter den ersten Sollwert bestätigt, sehen Sie es hier.',
       agoNote: '',
+      reason: null,
     };
   }
 
@@ -71,6 +93,7 @@ export function controlStrip(
       tone: 'off',
       sentence: 'Die Steuerung ist für dieses Modell noch nicht freigegeben - die Anlage wird nur ausgelesen.',
       agoNote: '',
+      reason: null,
     };
   }
 
@@ -87,6 +110,7 @@ export function controlStrip(
       tone: 'off',
       sentence: 'Die Wechselrichter-Steuerung ist ausgeschaltet. VoltPilot liest die Anlage aus, steuert sie aber nicht.',
       agoNote: '',
+      reason: null,
     };
   }
 
@@ -96,6 +120,7 @@ export function controlStrip(
       tone: 'off',
       sentence: `Fahrplan-Sollwert ${commanded} - zuletzt bestätigt ${confirmed}`,
       agoNote: `zuletzt geprüft ${ago}`,
+      reason,
     };
   }
 
@@ -105,6 +130,7 @@ export function controlStrip(
       tone: 'warn',
       sentence: `Fahrplan-Sollwert ${commanded} → Wechselrichter meldet ${confirmed}`,
       agoNote: `Abweichung · geprüft ${ago}`,
+      reason,
     };
   }
 
@@ -113,5 +139,29 @@ export function controlStrip(
     tone: 'ok',
     sentence: `Fahrplan-Sollwert ${commanded} → Wechselrichter bestätigt ${confirmed}`,
     agoNote: `geprüft ${ago}`,
+    reason,
   };
+}
+
+/**
+ * The plan slot the strip explains: the one whose
+ * [start, start + slotMinutes) contains `now`.
+ *
+ * Null outside the plan's horizon - the strip then states the command and its
+ * confirmation and claims NO cause, exactly like a plan from before the
+ * why-layer (idleReason's discipline: an uncomputed cause stays absent instead
+ * of being invented).
+ */
+export function controlReasonSlot<T extends { start: string }>(
+  slots: T[],
+  now: Date = new Date(),
+  slotMinutes = 15,
+): T | null {
+  const t = now.getTime();
+  const width = slotMinutes * 60_000;
+  for (const s of slots) {
+    const start = new Date(s.start).getTime();
+    if (!isNaN(start) && t >= start && t < start + width) return s;
+  }
+  return null;
 }

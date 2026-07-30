@@ -24,6 +24,7 @@ from voltpilot_optimization.publisher import (
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCHEMA_PATH = REPO_ROOT / "docs" / "contracts" / "mqtt-schedule.schema.json"
+EXAMPLES = REPO_ROOT / "docs" / "contracts" / "examples"
 
 T0 = datetime(2026, 7, 1, 22, 0, tzinfo=timezone.utc)
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
@@ -193,3 +194,74 @@ def test_grid_charge_allowed_is_optional_additive_and_validates():
         assert payload["grid_charge_allowed"] is allowed
         errors = list(validator.iter_errors(payload))
         assert errors == [], [e.message for e in errors]
+
+
+def test_charge_from_surplus_only_is_optional_additive_and_validates():
+    # Price-aware in-slot trim (2026-07-30): a slot whose planned charge must
+    # NOT be topped up from the grid carries the boolean duty; every other slot
+    # OMITS the field (False and None are the same duty - none), so a plan
+    # without uneconomic charge slots publishes byte-identical payloads and an
+    # old edge has nothing to ignore.
+    import dataclasses
+
+    validator = load_validator()
+    plan = make_plan(slots=3)
+    trimmed = dataclasses.replace(plan.slots[0], charge_from_surplus_only=True)
+    explicit_false = dataclasses.replace(plan.slots[1], charge_from_surplus_only=False)
+    payload = build_schedule_payload(
+        dataclasses.replace(plan, slots=[trimmed, explicit_false, plan.slots[2]])
+    )
+    assert list(validator.iter_errors(payload)) == []
+
+    first, second, third = payload["slots"]
+    assert first["charge_from_surplus_only"] is True
+    assert "charge_from_surplus_only" not in second
+    assert "charge_from_surplus_only" not in third
+
+
+def test_committed_fixtures_match_the_schema_both_ways():
+    """The committed contract fixtures are executable: the two valid ones must
+    validate, the invalid one must be REJECTED for its documented reason (a
+    fixture that silently starts validating is a contract regression)."""
+    validator = load_validator()
+
+    for name in (
+        "mqtt-schedule.valid.plain.json",
+        "mqtt-schedule.valid.surplus-only-charge.json",
+    ):
+        payload = json.loads((EXAMPLES / name).read_text())
+        errors = list(validator.iter_errors(payload))
+        assert errors == [], [f"{name}: {e.message}" for e in errors]
+
+    bad = json.loads(
+        (EXAMPLES / "mqtt-schedule.invalid.surplus-only-not-boolean.json").read_text()
+    )
+    messages = [e.message for e in validator.iter_errors(bad)]
+    assert messages, "the invalid fixture must be rejected"
+    assert any("charge_from_surplus_only" in m or "boolean" in m for m in messages), messages
+
+
+def test_the_surplus_only_fixture_is_what_the_publisher_actually_emits():
+    """Fixture-vs-producer: the committed 'trimmed' fixture is not hand-fiction -
+    the publisher builds the same slot shape from a plan carrying the duty."""
+    import dataclasses
+
+    fixture = json.loads(
+        (EXAMPLES / "mqtt-schedule.valid.surplus-only-charge.json").read_text()
+    )
+    plan = make_plan(slots=1)
+    slot = dataclasses.replace(
+        plan.slots[0],
+        battery_kw=10.8,
+        charge_from_surplus_only=True,
+        curtail_kw=0.0,
+    )
+    emitted = build_schedule_payload(dataclasses.replace(plan, slots=[slot]))["slots"][0]
+    # Same KEYS (the fixture's trimmed slot carries no field the publisher would
+    # not emit, and vice versa) and the same values for what the duty is about.
+    assert set(emitted) == set(fixture["slots"][0])
+    assert emitted["battery_setpoint_kw"] == fixture["slots"][0]["battery_setpoint_kw"]
+    assert emitted["charge_from_surplus_only"] is True
+    # The plain fixture's slots are the byte-identical legacy shape.
+    plain = json.loads((EXAMPLES / "mqtt-schedule.valid.plain.json").read_text())
+    assert set(plain["slots"][0]) == {"start", "battery_setpoint_kw"}
