@@ -158,13 +158,19 @@ type TrimInfo struct {
 
 // FollowInfo is the UI-facing state of the in-slot load following: the cloud
 // marked this slot worth covering from the battery, so the commanded DISCHARGE
-// is being raised to the MEASURED house deficit instead of executing the
-// forecast watt value. The discharge-side mirror of TrimInfo, and read-only
-// display of a decision already taken - the correction itself lives in
+// is being TRACKED to the MEASURED house deficit - raised where the forecast
+// watt value falls short of it, limited where it exceeds it - instead of being
+// executed rigidly. The discharge-side mirror of TrimInfo, and read-only display
+// of a decision already taken - the correction itself lives in
 // guards.LoadFollower.
 type FollowInfo struct {
 	// Active is always true when the block exists (it is omitted otherwise).
 	Active bool `json:"active"`
+	// Direction is guards.FollowDeepen ("deepen", the discharge was raised to
+	// cover the house) or guards.FollowReduce ("reduce", it was limited to what
+	// the house needs, at most down to zero). The card names it - an unnamed
+	// correction reads as a defect.
+	Direction string `json:"direction,omitempty"`
 	// PlannedKw is the setpoint BEFORE the correction - what the Fahrplan/holder
 	// asked for, so the card can say "der Fahrplan wollte X kW".
 	PlannedKw float64 `json:"planned_kw"`

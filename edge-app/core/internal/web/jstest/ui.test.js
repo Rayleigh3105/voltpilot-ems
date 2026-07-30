@@ -337,15 +337,43 @@ function followFor(state) {
 }
 
 test("control: an active load following names the deliberate correction with both numbers", () => {
-  const d = followFor({ follow: { active: true, planned_kw: -4.332, deficit_kw: 7.087 } });
+  const d = followFor({
+    follow: { active: true, direction: "deepen", planned_kw: -4.332, deficit_kw: 7.087 },
+  });
   assert.ok(d, "an active correction must produce a reason line");
   assert.match(d.text, /7,1 kW/, "it names what is being covered: " + d.text);
   assert.match(d.text, /4,3 kW/, "and what the Fahrplan had planned: " + d.text);
+  assert.match(d.text, /Entladung angehoben/, "and WHICH WAY it corrected: " + d.text);
   assert.match(d.text, /bewusste Nachführung/, "and that it is deliberate: " + d.text);
   assert.ok(!/nicht übernommen|Abweichung/.test(d.text),
     "a correction must never read as a failed write: " + d.text);
   assert.ok(!/-4,3|−4,3/.test(d.text),
     "the planned value is named as a magnitude, not a raw signed number: " + d.text);
+});
+
+test("control: the limiting direction says so, and names the giveaway as the cause", () => {
+  // Pilsting 23:12: -6,7 kW planned into a 5,1 kW house -> 1,4 kW verschenkt.
+  const d = followFor({
+    follow: { active: true, direction: "reduce", planned_kw: -6.7, deficit_kw: 5.1 },
+  });
+  assert.ok(d, "an active correction must produce a reason line");
+  assert.match(d.text, /Entladung begrenzt/, "it names the direction: " + d.text);
+  assert.match(d.text, /5,1 kW/, "what the house draws: " + d.text);
+  assert.match(d.text, /6,7 kW/, "and what the Fahrplan had planned: " + d.text);
+  assert.match(d.text, /Netz/, "the cause is the giveaway, not an import: " + d.text);
+  assert.match(d.text, /bewusste Nachführung/, "and that it is deliberate: " + d.text);
+  assert.ok(!/teurer als die gespeicherte Energie/.test(d.text),
+    "limiting must not borrow the raising direction's cause: " + d.text);
+  assert.ok(!/nicht übernommen|Abweichung/.test(d.text),
+    "a correction must never read as a failed write: " + d.text);
+});
+
+test("control: an unknown direction claims none", () => {
+  const d = followFor({ follow: { active: true, planned_kw: -4.332, deficit_kw: 7.087 } });
+  assert.ok(d);
+  assert.ok(!/angehoben|begrenzt/.test(d.text),
+    "never claim a direction the device did not report: " + d.text);
+  assert.match(d.text, /bewusste Nachführung/, "but still name the correction: " + d.text);
 });
 
 test("control: no load following -> no reason line", () => {
@@ -364,17 +392,25 @@ test("control: a load following without a known deficit still names the cause", 
 
 test("control: a followed setpoint keeps the healthy CONFIRMED state", () => {
   // The followed value is what gets written, so the readback matches it - the
-  // state must stay healthy, with the reason underneath.
-  const regs = [{ role: "battery_power", commanded_raw: -236, commanded_kw: -7.087, actual_raw: -236, actual_kw: -7.087, match: true, verdict: "held" }];
-  const state = {
-    inverter: { configured: true }, control_certified: true, control_enabled: true,
-    control: { confirm: "held", all_match: true, registers: regs, source: "schedule" },
-    follow: { active: true, planned_kw: -4.332, deficit_kw: 7.087 },
-  };
-  const d = controlFor(state);
-  assert.strictEqual(d.chip.tone, "ok");
-  assert.strictEqual(d.showNow, true, "the reason is only shown where a setpoint is shown");
-  assert.ok(followFor(state), "and the reason line is there");
+  // state must stay healthy, with the reason underneath. Both directions: a
+  // LIMITED discharge is a deliberate correction just like a raised one and must
+  // never surface as "Sollwert nicht übernommen" either.
+  for (const follow of [
+    { active: true, direction: "deepen", planned_kw: -4.332, deficit_kw: 7.087 },
+    { active: true, direction: "reduce", planned_kw: -6.7, deficit_kw: 5.1 },
+  ]) {
+    const kw = follow.deficit_kw * -1;
+    const regs = [{ role: "battery_power", commanded_raw: Math.round(kw * 100), commanded_kw: kw, actual_raw: Math.round(kw * 100), actual_kw: kw, match: true, verdict: "held" }];
+    const state = {
+      inverter: { configured: true }, control_certified: true, control_enabled: true,
+      control: { confirm: "held", all_match: true, registers: regs, source: "schedule" },
+      follow: follow,
+    };
+    const d = controlFor(state);
+    assert.strictEqual(d.chip.tone, "ok", follow.direction + ": the state stays healthy");
+    assert.strictEqual(d.showNow, true, "the reason is only shown where a setpoint is shown");
+    assert.ok(followFor(state), "and the reason line is there");
+  }
 });
 
 test("status hero: an unanswered readback says 'keine Bestätigung', a confirmed refusal says 'übernimmt nicht'", () => {
