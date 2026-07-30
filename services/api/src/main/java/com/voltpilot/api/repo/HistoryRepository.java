@@ -37,18 +37,21 @@ import org.springframework.stereotype.Repository;
 public class HistoryRepository {
 
     /**
-     * Matches a 15-min bucket to its day-ahead price slot: the stored slot
-     * (PT15M or PT60M) containing the bucket start, preferring the finer
-     * resolution when both exist.
+     * The price series for the queried zone and window, materialized once per
+     * query - see {@link PriceSlots} for the why and for the proof that the
+     * slot choice is identical to the per-bucket lateral this replaced.
+     * Binds: bidding zone, window start, window end.
      */
-    private static final String PRICE_LATERAL =
-            "LEFT JOIN LATERAL ("
-                    + "  SELECT p.price_eur_mwh FROM day_ahead_prices p"
-                    + "  WHERE p.bidding_zone = ? AND p.ts <= b.bucket"
-                    + "    AND p.ts + (CASE p.resolution WHEN 'PT60M' THEN INTERVAL '60 minutes'"
-                    + "                ELSE INTERVAL '15 minutes' END) > b.bucket"
-                    + "  ORDER BY (p.resolution = 'PT15M') DESC, p.ts DESC LIMIT 1"
-                    + ") p ON true ";
+    private static final String PRICE_SLOT_CTE = PriceSlots.forZone();
+
+    /**
+     * Matches a 15-min bucket (alias {@code b}) to its day-ahead price slot:
+     * the stored slot (PT15M or PT60M) containing the bucket start, preferring
+     * the finer resolution when both exist. The zone is already fixed by
+     * {@link #PRICE_SLOT_CTE}, so the equi-join is on the slot alone.
+     */
+    private static final String PRICE_JOIN =
+            "LEFT JOIN price_slot p ON p.slot = b.bucket ";
 
     /** The site + supply-price-sheet join the import valuation needs (fixed
      * {@code s}/{@code ssp} aliases, the importPriceCtSql contract; the site
@@ -80,7 +83,7 @@ public class HistoryRepository {
      */
     public List<HistoryBucketDto> dayBuckets(UUID siteId, Instant from, Instant to, String biddingZone) {
         return jdbc.query(
-                "WITH b AS ("
+                "WITH " + PRICE_SLOT_CTE + ", b AS ("
                         + "  SELECT time_bucket('15 minutes', time) AS bucket,"
                         + "         avg(pv_power_kw) * 0.25 AS pv_kwh,"
                         + "         avg(load_kw) * 0.25 AS load_kwh,"
@@ -106,10 +109,11 @@ public class HistoryRepository {
                         + "  GROUP BY 1) "
                         + "SELECT b.*, p.price_eur_mwh,"
                         + "       " + costEur + " AS cost_eur "
-                        + "FROM b " + SITE_TARIFF_JOIN + PRICE_LATERAL
+                        + "FROM b " + SITE_TARIFF_JOIN + PRICE_JOIN
                         + "ORDER BY b.bucket",
                 HistoryRepository::mapBucket,
-                siteId, Timestamp.from(from), Timestamp.from(to), siteId, biddingZone);
+                biddingZone, Timestamp.from(from), Timestamp.from(to),
+                siteId, Timestamp.from(from), Timestamp.from(to), siteId);
     }
 
     /**
@@ -143,9 +147,10 @@ public class HistoryRepository {
                 : "time_bucket('1 hour', b.bucket)";
         Map<Instant, BigDecimal> costs = new HashMap<>();
         jdbc.query(
-                "SELECT " + bucketExpr + " AS display_bucket,"
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT " + bucketExpr + " AS display_bucket,"
                         + " sum(" + costEur + ") AS cost_eur "
-                        + "FROM telemetry_rollup_15m b " + SITE_TARIFF_JOIN + PRICE_LATERAL
+                        + "FROM telemetry_rollup_15m b " + SITE_TARIFF_JOIN + PRICE_JOIN
                         + "WHERE b.site_id = ? AND b.bucket >= ? AND b.bucket < ? "
                         + "GROUP BY 1",
                 rs -> {
@@ -154,7 +159,8 @@ public class HistoryRepository {
                         costs.put(rs.getTimestamp("display_bucket").toInstant(), cost);
                     }
                 },
-                siteId, biddingZone, siteId, Timestamp.from(from), Timestamp.from(to));
+                biddingZone, Timestamp.from(from), Timestamp.from(to),
+                siteId, siteId, Timestamp.from(from), Timestamp.from(to));
         return costs;
     }
 
@@ -266,12 +272,14 @@ public class HistoryRepository {
                 + " FROM telemetry_v2 t"
                 + " WHERE t.site_id = ? AND t.time >= ? AND t.time < ? GROUP BY 1, 2, 3";
         return jdbc.query(
-                "WITH b AS (" + v2Reconstruction(quarters, "q.bucket") + ") "
+                "WITH " + PRICE_SLOT_CTE
+                        + ", b AS (" + v2Reconstruction(quarters, "q.bucket") + ") "
                         + "SELECT b.*, p.price_eur_mwh,"
                         + "       " + costEur + " AS cost_eur "
-                        + "FROM b " + SITE_TARIFF_JOIN + PRICE_LATERAL + "ORDER BY b.bucket",
+                        + "FROM b " + SITE_TARIFF_JOIN + PRICE_JOIN + "ORDER BY b.bucket",
                 HistoryRepository::mapBucket,
-                siteId, Timestamp.from(from), Timestamp.from(to), siteId, biddingZone);
+                biddingZone, Timestamp.from(from), Timestamp.from(to),
+                siteId, Timestamp.from(from), Timestamp.from(to), siteId);
     }
 
     /**
@@ -308,7 +316,7 @@ public class HistoryRepository {
                 : "time_bucket('1 hour', b.bucket)";
         Map<Instant, BigDecimal> costs = new HashMap<>();
         jdbc.query(
-                "WITH g AS ("
+                "WITH " + PRICE_SLOT_CTE + ", g AS ("
                         + "  SELECT r.bucket, greatest(r.avg_value, 0) * 0.25 AS grid_import_kwh"
                         + "  FROM telemetry_v2_rollup_15m r"
                         + "  JOIN measurement_point mp ON mp.id::text = r.entity_id"
@@ -316,14 +324,15 @@ public class HistoryRepository {
                         + "    AND r.channel = 'power_kw' AND r.bucket >= ? AND r.bucket < ?) "
                         + "SELECT " + bucketExpr + " AS display_bucket,"
                         + " sum(" + costEur + ") AS cost_eur "
-                        + "FROM g AS b " + SITE_TARIFF_JOIN + PRICE_LATERAL + "GROUP BY 1",
+                        + "FROM g AS b " + SITE_TARIFF_JOIN + PRICE_JOIN + "GROUP BY 1",
                 rs -> {
                     BigDecimal cost = rs.getBigDecimal("cost_eur");
                     if (cost != null) {
                         costs.put(rs.getTimestamp("display_bucket").toInstant(), cost);
                     }
                 },
-                siteId, Timestamp.from(from), Timestamp.from(to), siteId, biddingZone);
+                biddingZone, Timestamp.from(from), Timestamp.from(to),
+                siteId, Timestamp.from(from), Timestamp.from(to), siteId);
         return costs;
     }
 
