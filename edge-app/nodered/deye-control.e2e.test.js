@@ -132,9 +132,28 @@ function startSolarmanServer(initial, opts = {}) {
             }
             const body = Buffer.alloc(3 + count * 2);
             body[0] = slave; body[1] = 0x03; body[2] = count * 2;
-            for (let i = 0; i < count; i++) body.writeUInt16BE((store[addr + i] || 0) & 0xffff, 3 + i * 2);
+            // zeroReads models the DOCUMENTED Solarman failure mode: the logger cannot
+            // reach the inverter yet still answers with a well-framed, CRC-VALID
+            // ALL-ZERO register block. Scoped to the remote block (0x044c..0x0461) so
+            // the capability probe of the device register 0x0000 stays honest.
+            const zeroed = opts.zeroReads && addr >= 0x044c && addr <= 0x0461;
+            for (let i = 0; i < count; i++) {
+              // watchdogRead models a LIVE countdown: register 1101 answers the
+              // remaining seconds, not the value we armed it with a moment ago.
+              const live = (opts.watchdogRead !== undefined && addr + i === 0x044d)
+                ? opts.watchdogRead : (store[addr + i] || 0);
+              body.writeUInt16BE(zeroed ? 0 : live & 0xffff, 3 + i * 2);
+            }
             const crc = SV5.modbusCrc16(body);
             respMb = Buffer.concat([body, Buffer.from([crc & 0xff, (crc >> 8) & 0xff])]);
+            // flakyReads: the first N single-register reads of the remote block come
+            // back GARBLED (broken CRC) on a socket that is otherwise perfectly alive -
+            // this exercises the executor's bounded per-register retry.
+            if (opts.flakyReads > 0 && count === 1 && addr >= 0x044c && addr <= 0x0461) {
+              opts.flakyReads -= 1;
+              respMb = Buffer.from(respMb);
+              respMb[respMb.length - 1] ^= 0xff; // corrupt the CRC
+            }
           } else { sock.destroy(); return; }
           sock.write(buildV5Response(serial, seq, respMb));
           try { need = SV5.expectedFrameLength(acc); } catch (e) { sock.destroy(); return; }
@@ -326,7 +345,17 @@ test('Deye executor flags a mismatch when the logger ignores the write (silent n
   // A logger that acks the write but does NOT store it: the readback then differs
   // from the command (the "der Wechselrichter hat den Sollwert nicht uebernommen"
   // case). readbacks always run, so this is surfaced, never silently believed.
-  const { server, port } = await startSolarmanServer({}, { dropWrites: true });
+  //
+  // The store carries the installer's OWN non-zero values (the live max_sell_power
+  // 7182 is the real one from Pilsting). That matters since the flap fix: an
+  // ALL-ZERO answer to registers we commanded non-zero values into is the Solarman
+  // "inverter did not answer" stub and is reported as UNCONFIRMED, so a faithful
+  // "the device really ignored the write" test must not accidentally use that
+  // shape - a real inverter's registers are not all zero.
+  const { server, port } = await startSolarmanServer(
+    { [controlRouting.DEYE_CONTROL_REG.hybrid_3p.maxSellPower]: 7182 },
+    { dropWrites: true },
+  );
   try {
     await certifiedDeyePlan(
       { battery_setpoint_kw: -20, source: 'schedule', control_enabled: true, soc_min_pct: 10 },
@@ -1174,10 +1203,13 @@ test('remote: strategy 5 (opt-in) - a CHARGE writes the NEGATED register and the
   }
 });
 
-test('remote: EVERY tick re-asserts all five registers - the write IS the watchdog kick', async () => {
-  // RAM registers have no write-endurance cost, and skipping an unchanged value would
-  // let the dead-man's switch expire mid-operation (and leave a reverted 1100 off).
-  // The default strategy 2 writes five registers (no 1108 belt).
+test('remote: every tick re-asserts the watchdog kick + command + enable, and NOT the two config registers', async () => {
+  // RAM registers have no write-endurance cost, but the Solarman logger has ONE
+  // socket: every avoided write is socket time the readback and the read poll get
+  // back. So the per-tick re-assert is scoped to the three ops where it IS the
+  // mechanism (watchdog kick / the command / an enable that self-heals a watchdog
+  // expiry within one tick); the battery-side selector + strategy re-assert on an
+  // interval and on demand (see the mismatch self-heal test below).
   const { server, port, writes } = await startSolarmanServer(remoteCapableStore());
   try {
     const cap = ownerCapability();
@@ -1190,11 +1222,187 @@ test('remote: EVERY tick re-asserts all five registers - the write IS the watchd
         const ctx = {};
         await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
         const first = writes.length;
-        assert.strictEqual(first, 5, 'watchdog, mode, strategy, setpoint, enable');
-        // second tick with the IDENTICAL plan: write-on-change would skip everything.
+        assert.strictEqual(first, 5, 'first tick: watchdog, mode, strategy, setpoint, enable');
+        // second tick with the IDENTICAL plan
         await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
-        assert.strictEqual(writes.length, first * 2, 'every register re-asserted (watchdog kicked)');
-        assert.ok(writes.slice(first).some((w) => w.reg === 0x044d), 'incl. the watchdog itself');
+        const second = writes.slice(first).map((w) => w.reg);
+        assert.deepStrictEqual(second, [0x044d, 0x0455, 0x044c],
+          'watchdog 1101 + setpoint 1109 + enable 1100 - in the load-bearing order, and nothing else');
+        assert.ok(second.includes(0x044d), 'incl. the watchdog itself (the kick must never be skipped)');
+        assert.ok(!second.includes(0x0450) && !second.includes(0x0451),
+          'the configuration registers are not re-written on an unchanged tick');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: a config register the inverter did NOT hold is re-written on the very next tick', async () => {
+  // The self-heal that makes the reduced cadence safe: the readback verdict for
+  // 1104 is 'mismatch', so the executor drops its write-cache entry and the next
+  // tick writes exactly that register again - no waiting for the interval.
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore());
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const ctx = {};
+        await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        const first = writes.length;
+        // the inverter drops the battery-side selector back to AC-side behind our back
+        store[0x0450] = 0;
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        assert.strictEqual(out.payload.verify, 'mismatch', 'a REAL deviation is still reported as one');
+        const pcm = out.payload.registers.find((r) => r.role === 'power_control_mode');
+        assert.strictEqual(pcm.verdict, 'mismatch');
+        assert.strictEqual(pcm.actual_raw, 0);
+        // third tick: the mismatch invalidated the cache -> 1104 is written again
+        const before = writes.length;
+        await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        assert.ok(writes.slice(before).some((w) => w.reg === 0x0450),
+          'the not-held configuration register is re-asserted immediately');
+        assert.strictEqual(store[0x0450], 1, 'and the inverter is back on battery-side control');
+        assert.ok(writes.length > first, 'sanity: writes did happen');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+// --- THE FLAP (live Pilsting, 2026-07-30) -------------------------------------
+//
+// Symptom: "Er uebernimmt den Sollwert, aber jede 8 Sekunden meldet er dass es nicht
+// uebernommen wird und kurz danach geht es wieder ... aber die Batterie macht das was
+// wir ihr sagen", with the register list remote_watchdog, power_control_mode,
+// battery_strategy, remote_mode - i.e. EVERY register whose commanded value is
+// non-zero, while battery_power (commanded ~0 at the time) "matched" a zero.
+// That is the signature of a Solarman zero-answer being read as the inverter's actual
+// value. Here the logger accepts every write and answers the READBACK with a
+// well-framed, CRC-valid all-zero block.
+test('FLAP: a Solarman all-zero readback answer is UNCONFIRMED, never "Sollwert nicht uebernommen"', async () => {
+  const { server, port, store, writes } = await startSolarmanServer(remoteCapableStore(), { zeroReads: true });
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: 0, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const { out, warns } = await runExecWarns(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, flowStore);
+        assert.ok(out, 'the cycle is still PUBLISHED - the operator is not left on a stale verdict');
+        const rb = out.payload;
+        // The control itself happened: every register was written to the inverter.
+        assert.strictEqual(writes.length, 5, 'the writes landed - the battery IS being commanded');
+        assert.strictEqual(store[0x044c], 1, 'remote mode enabled on the device');
+        // ... and the confirmation is honest about knowing nothing.
+        assert.strictEqual(rb.verify, 'unconfirmed');
+        assert.ok(rb.registers.every((r) => r.verdict === 'unread'), 'no register is claimed to deviate');
+        assert.ok(rb.registers.every((r) => r.actual_raw === null), 'and none reports a fabricated 0');
+        assert.ok(rb.registers.every((r) => r.actual_kw === undefined), 'not even a fabricated 0 kW');
+        // The palette node is what publishes all_match/mismatch_roles to the core.
+        const shaped = require('./vp-palette/nodes/vp-control-readback').shape(rb);
+        assert.strictEqual(shaped.all_match, null, 'null = no verdict, NOT a mismatch');
+        assert.deepStrictEqual(shaped.mismatch_roles, [], 'the four registers are NOT accused');
+        assert.deepStrictEqual(
+          shaped.unread_roles,
+          ['remote_watchdog', 'power_control_mode', 'battery_strategy', 'battery_power', 'remote_mode'],
+        );
+        assert.strictEqual(shaped.dual_controller.possible_conflict, false,
+          'and no second controller is blamed for a read that never arrived');
+        // The silence is AUDIBLE in the log instead of being swallowed.
+        assert.ok(warns.some((w) => /ohne Rueckmeldung/.test(w)), 'the missing confirmation is logged: ' + warns.join(' | '));
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('FLAP: a garbled readback frame is RETRIED on the socket we hold and then confirms', async () => {
+  // Coordination + retry instead of alarm: one corrupt FC3 answer (bad CRC) used to
+  // abort the whole tick; now the register is simply read again on the same socket.
+  const { server, port } = await startSolarmanServer(remoteCapableStore(), { flakyReads: 1 });
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, flowStore);
+        assert.ok(out, 'a single garbled frame no longer aborts the tick');
+        assert.strictEqual(out.payload.verify, 'held', 'the retry read the real value -> confirmed');
+        assert.ok(out.payload.registers.every((r) => r.match));
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('FLAP counter-case: a REAL refusal is still reported as a mismatch naming the register', async () => {
+  // The honest other half: the inverter left remote mode (watchdog off, battery-side
+  // reverted, enable 0). That is NOT an all-zero block, so nothing swallows it.
+  const { server, port } = await startSolarmanServer(remoteCapableStore(), { dropWrites: true });
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: { source: 'schedule' } }, {}, flowStore);
+        assert.ok(out);
+        assert.strictEqual(out.payload.verify, 'mismatch');
+        const shaped = require('./vp-palette/nodes/vp-control-readback').shape(out.payload);
+        assert.strictEqual(shaped.all_match, false);
+        assert.ok(shaped.mismatch_roles.includes('remote_mode'), 'the refused enable is named: ' + shaped.mismatch_roles);
+        assert.strictEqual(shaped.dual_controller.possible_conflict, true, 'a real deviation still raises the only-controller hint');
+      },
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('remote: a WATCHDOG counting down reads as HELD (the register is a timer, not a value)', async () => {
+  // The dynamic-register half of the flap: 1101 is a dead-man's timer the inverter
+  // owns after we arm it. A remaining 43 s of an armed 60 s is the timer WORKING.
+  // The register answers the REMAINING seconds (43 of the armed 60), which is what a
+  // live timer does between our write and our read.
+  const opts = { watchdogRead: 43 };
+  const { server, port } = await startSolarmanServer(remoteCapableStore(), opts);
+  try {
+    const cap = ownerCapability();
+    await certifiedRemotePlan(
+      { battery_setpoint_kw: -1, source: 'schedule', control_enabled: true, soc_min_pct: 20 },
+      cap,
+      async (plan) => {
+        plan.connection.port = port;
+        const flowStore = { [controlRouting.deyeCapabilityKey('127.0.0.1', port)]: Object.assign({}, cap, { at: Date.now() }) };
+        const ctx = {};
+        const out = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        assert.strictEqual(out.payload.verify, 'held', 'a counting watchdog is not a refused write');
+        const wd = out.payload.registers.find((r) => r.role === 'remote_watchdog');
+        assert.strictEqual(wd.match, true);
+        assert.strictEqual(wd.actual_raw, 43);
+        assert.match(wd.note, /laeuft ab \(43 s von 60 s\)/, 'and the technician sees WHY it differs');
+        // an EXPIRED / switched-off watchdog stays a real mismatch
+        opts.watchdogRead = 0xffff;
+        const off = await runExec(DEYE_EXEC, { control: plan, setpoint: {} }, ctx, flowStore);
+        assert.strictEqual(off.payload.verify, 'mismatch');
+        const offWd = off.payload.registers.find((r) => r.role === 'remote_watchdog');
+        assert.strictEqual(offWd.verdict, 'mismatch');
+        assert.match(offWd.note, /AUS/);
       },
     );
   } finally {

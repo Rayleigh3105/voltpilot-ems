@@ -366,7 +366,9 @@ test('device grant: REMOTE MODE - the full ordered Fahrplan plan, enable LAST', 
   assert.strictEqual(r.writes[0].addr, C.DEYE_REMOTE_REG.watchdog, 'watchdog 1101 first');
   assert.strictEqual(r.writes[r.writes.length - 1].addr, C.DEYE_REMOTE_REG.mode, 'enable 1100 last');
   assert.strictEqual(r.writes[r.writes.length - 1].value, 1);
-  assert.ok(r.writes.every((w) => w.always === true && w.dwell_s === 0), 'RAM cadence: every tick re-asserts (the watchdog kick)');
+  assert.ok(r.writes.every((w) => w.dwell_s === 0), 'RAM cadence: no EEPROM dwell anywhere on this path');
+  assert.ok(r.writes.filter((w) => ['remote_watchdog', 'battery_power', 'remote_mode'].includes(w.role)).every((w) => w.always === true),
+    'the watchdog kick / the command / the enable re-assert every tick');
   assert.strictEqual(r.readbacks.length, r.writes.length, 'a readback per commanded register');
   // -1 kW of 30 kW rated -> +33 units (our + = charge is NEGATED into the register).
   assert.strictEqual(r.writes.find((w) => w.role === 'battery_power').value, 33);
@@ -1546,13 +1548,28 @@ test('remote: NO SoC bounds -> plain Power strategy (2) and no 1108 write', () =
   assert.strictEqual(p.battery_soc_belt, undefined);
 });
 
-test('remote: EVERY op is RAM cadence - dwell 0, always re-asserted (the watchdog kick)', () => {
-  const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20 });
+test('remote: EVERY op is RAM cadence (dwell 0), and only the three LOAD-BEARING ops re-assert every tick', () => {
+  const r = remotePlan({ battery_setpoint_kw: -1, soc_min_pct: 20, soc_max_pct: 90 }, {}, { remote_battery_strategy: 5 });
+  const p = Object.fromEntries(r.planned.map((w) => [w.role, w]));
   for (const w of r.planned) {
     assert.strictEqual(w.dwell_s, 0, w.role + ' must not carry an EEPROM dwell');
     assert.strictEqual(w.min_change, 0, w.role);
-    assert.strictEqual(w.always, true, w.role + ' must be re-asserted every tick');
   }
+  // The three ops whose per-tick re-write is the MECHANISM (watchdog kick, the
+  // command itself, and an enable that self-heals a watchdog expiry within a tick).
+  for (const role of ['remote_watchdog', 'battery_power', 'remote_mode']) {
+    assert.strictEqual(p[role].always, true, role + ' must be re-asserted every tick');
+    assert.strictEqual(p[role].reassert_s, undefined, role + ' needs no interval - it is unconditional');
+  }
+  // The pure CONFIGURATION ops re-assert on an interval + on demand (the executor
+  // invalidates their write cache when a readback shows them not held), so a tick
+  // spends less time on the logger's single socket - which is what starved the
+  // readback and produced the false "not adopted" alarms.
+  for (const role of ['power_control_mode', 'battery_strategy', 'battery_soc_belt']) {
+    assert.strictEqual(p[role].always, undefined, role + ' must NOT be re-written every tick');
+    assert.strictEqual(p[role].reassert_s, C.DEYE_REMOTE_CFG_REASSERT_S, role + ' re-asserts on the interval');
+  }
+  assert.ok(C.DEYE_REMOTE_CFG_REASSERT_S >= 60, 'the interval is a drift backstop, not a per-tick write');
   // and NOTHING is snapshotted: the remote path touches no installer setting.
   assert.strictEqual(r.snapshotPlan, undefined, 'no snapshot/restore on the remote path');
 });
