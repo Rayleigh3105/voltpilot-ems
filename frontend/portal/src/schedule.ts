@@ -186,8 +186,17 @@ export function socRangeLine(slots: { socPct: number | null }[]): string | null 
 export const PV_FORECAST_LABEL = 'PV-Prognose';
 export const LOAD_FORECAST_LABEL = 'Verbrauchsprognose';
 
-export interface ForecastLine {
-  /** The series/legend name (see the two label constants). */
+/**
+ * P3 "Ist-Last sichtbar" (report vp-netzbezug-nacht-s3 §6): the MEASURED house
+ * consumption next to its forecast. It shares the forecast's colour (same
+ * quantity) but is drawn SOLID while the forecast stays dotted, so the gap
+ * between the two - the forecast error the plan settled at the grid - is the
+ * thing you see. Only slots that already happened carry a value.
+ */
+export const MEASURED_LOAD_LABEL = 'Verbrauch (gemessen)';
+
+export interface PlanLine {
+  /** The series/legend name (see the label constants). */
   label: string;
   /** One point per slot, `null` where the run carries no value for it. */
   values: (number | null)[];
@@ -195,22 +204,29 @@ export interface ForecastLine {
   present: boolean;
   /** Largest value on the line (for the kW axis headroom); null when absent. */
   maxKw: number | null;
+  /** How many slots actually carry a value (drives the point markers). */
+  count: number;
 }
 
 export interface ForecastLines {
-  pv: ForecastLine;
-  load: ForecastLine;
+  pv: PlanLine;
+  load: PlanLine;
 }
 
-function forecastLine(label: string, raw: (number | null | undefined)[]): ForecastLine {
+function forecastLine(label: string, raw: (number | null | undefined)[]): PlanLine {
   const values = raw.map((v) => {
     if (v == null) return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   });
-  const present = values.some((v) => v != null);
   const nums = values.filter((v): v is number => v != null);
-  return { label, values, present, maxKw: nums.length ? Math.max(...nums) : null };
+  return {
+    label,
+    values,
+    present: nums.length > 0,
+    maxKw: nums.length ? Math.max(...nums) : null,
+    count: nums.length,
+  };
 }
 
 /**
@@ -230,6 +246,47 @@ export function forecastLines(
 }
 
 /**
+ * The MEASURED consumption line (P3): `schedule.measuredLoadKw`, the
+ * quarter-hour mean of the metered house load, slot-aligned with the bars.
+ *
+ * Honesty, identical to the forecast lines: an absent measurement stays absent
+ * (`null` -> gap, `connectNulls: false`), never a fabricated 0 - a future slot,
+ * a slot the device did not report and a site with no load channel all simply
+ * have no point. A backend that does not serve the field yields no line at all.
+ */
+export function measuredLoadLine(slots: { measuredLoadKw?: number | null }[]): PlanLine {
+  return forecastLine(MEASURED_LOAD_LABEL, slots.map((s) => s.measuredLoadKw));
+}
+
+/**
+ * True when the measured line is so short that a plain stroke would be
+ * invisible (the normal case: an MPC plan starts at the running quarter hour,
+ * so only one or two slots are in the past). The chart then draws point markers
+ * instead of relying on the stroke - showing the value, never hiding it.
+ */
+export function needsPointMarkers(line: PlanLine): boolean {
+  return line.count > 0 && line.count <= 4;
+}
+
+/**
+ * Why the measured line is missing, in one plain-German sentence - shown only
+ * when the plan HAS slots in the past (before that there is nothing to compare
+ * yet, and claiming a gap would be noise). Null = the line is present, or the
+ * plan is still entirely ahead.
+ */
+export function measuredLoadNote(
+  slots: { start: string; measuredLoadKw?: number | null }[],
+  now: Date,
+  slotMinutes = 15,
+): string | null {
+  if (measuredLoadLine(slots).present) return null;
+  const cutoff = now.getTime() - slotMinutes * 60_000;
+  const elapsed = slots.some((s) => new Date(s.start).getTime() <= cutoff);
+  if (!elapsed) return null;
+  return 'Für die bereits vergangenen Viertelstunden liegen keine Messwerte des Verbrauchs vor.';
+}
+
+/**
  * Toggle one series in the hidden set (the legend rows are toggle buttons).
  * Returns a NEW set so React state updates are honest.
  */
@@ -241,18 +298,22 @@ export function toggleSeries(hidden: ReadonlySet<string>, label: string): Set<st
 
 /**
  * Upper bound of the chart's kW axis: the battery peak, plus whatever VISIBLE
- * forecast line reaches higher (a 60-kW PV forecast must not be clipped by a
- * 15-kW battery scale), plus the optional peak-shaving target. Always >= 1 so
- * an all-idle plan still gets a sane axis.
+ * line reaches higher (a 60-kW PV forecast - or a measured load spike - must
+ * not be clipped by a 15-kW battery scale), plus the optional peak-shaving
+ * target. Always >= 1 so an all-idle plan still gets a sane axis. Accepts the
+ * {@link ForecastLines} pair or an explicit list of lines.
  */
 export function powerAxisMax(
   batteryPeakKw: number,
-  lines: ForecastLines,
+  lines: ForecastLines | readonly PlanLine[],
   hidden: ReadonlySet<string>,
   targetKw?: number | null,
 ): number {
+  const all: readonly PlanLine[] = Array.isArray(lines)
+    ? lines
+    : [(lines as ForecastLines).pv, (lines as ForecastLines).load];
   const candidates = [batteryPeakKw, 1];
-  for (const line of [lines.pv, lines.load]) {
+  for (const line of all) {
     if (line.present && !hidden.has(line.label) && line.maxKw != null) candidates.push(line.maxKw);
   }
   if (targetKw != null && targetKw > 0) candidates.push(targetKw);

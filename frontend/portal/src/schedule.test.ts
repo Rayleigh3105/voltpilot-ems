@@ -9,6 +9,10 @@ import {
   HORIZON_HINT,
   horizonHint,
   LOAD_FORECAST_LABEL,
+  MEASURED_LOAD_LABEL,
+  measuredLoadLine,
+  measuredLoadNote,
+  needsPointMarkers,
   planCoversNow,
   planHourBars,
   planInsightParts,
@@ -751,5 +755,64 @@ describe('forecastLines / powerAxisMax / toggleSeries', () => {
     const c = toggleSeries(b, PV_FORECAST_LABEL);
     expect([...c]).toEqual([LOAD_FORECAST_LABEL]);
     expect(a.has(LOAD_FORECAST_LABEL)).toBe(false); // untouched original
+  });
+});
+
+// ---- P3 "Ist-Last": the MEASURED consumption next to its forecast -----------
+
+describe('measuredLoadLine / needsPointMarkers / measuredLoadNote', () => {
+  const NOW = new Date('2026-07-30T19:22:48Z');
+  const at = (iso: string) => `2026-07-30T${iso}:00Z`;
+
+  it('builds the measured series slot-aligned with the plan', () => {
+    const line = measuredLoadLine([
+      { measuredLoadKw: 5.851 },
+      { measuredLoadKw: 7.117 },
+      { measuredLoadKw: null },
+    ]);
+    expect(line.label).toBe(MEASURED_LOAD_LABEL);
+    expect(line.values).toEqual([5.851, 7.117, null]);
+    expect(line.present).toBe(true);
+    expect(line.count).toBe(2);
+    expect(line.maxKw).toBe(7.117);
+  });
+
+  it('keeps an unmeasured slot ABSENT (a gap), never a fabricated 0', () => {
+    const line = measuredLoadLine([{ measuredLoadKw: null }, {}, { measuredLoadKw: undefined }]);
+    expect(line.values).toEqual([null, null, null]);
+    expect(line.present).toBe(false);
+    expect(line.count).toBe(0);
+    expect(line.maxKw).toBeNull();
+  });
+
+  it('lifts the kW axis so a measured spike is not clipped by a small battery', () => {
+    const f = forecastLines([{ pvKw: 2, loadKw: 4.33 }]);
+    const ist = measuredLoadLine([{ measuredLoadKw: 26 }]);
+    const none = new Set<string>();
+    expect(powerAxisMax(15, [f.pv, f.load, ist], none)).toBe(26);
+    // Hiding the Ist line re-tightens the scale, like every other line.
+    expect(powerAxisMax(15, [f.pv, f.load, ist], new Set([MEASURED_LOAD_LABEL]))).toBe(15);
+  });
+
+  it('asks for point markers while the plan has only a slot or two in the past', () => {
+    // The normal MPC case: one completed + one running slot - a bare stroke
+    // between two points would be nearly invisible.
+    expect(needsPointMarkers(measuredLoadLine([{ measuredLoadKw: 7.1 }]))).toBe(true);
+    const many = Array.from({ length: 9 }, () => ({ measuredLoadKw: 3 }));
+    expect(needsPointMarkers(measuredLoadLine(many))).toBe(false);
+    expect(needsPointMarkers(measuredLoadLine([{ measuredLoadKw: null }]))).toBe(false);
+  });
+
+  it('names the reason when past slots carry no measurement, and stays silent otherwise', () => {
+    const past = [{ start: at('19:00') }, { start: at('19:15') }];
+    expect(measuredLoadNote(past, NOW)).toContain('keine Messwerte');
+    // Present line -> nothing to explain.
+    expect(
+      measuredLoadNote([{ start: at('19:00'), measuredLoadKw: 7.1 }], NOW),
+    ).toBeNull();
+    // A plan entirely ahead has nothing to compare yet - claiming a gap there
+    // would be noise, not honesty.
+    expect(measuredLoadNote([{ start: at('19:30') }, { start: at('19:45') }], NOW)).toBeNull();
+    expect(measuredLoadNote([], NOW)).toBeNull();
   });
 });

@@ -6,6 +6,10 @@ import {
   forecastLines,
   hasGridCharge,
   LOAD_FORECAST_LABEL,
+  MEASURED_LOAD_LABEL,
+  measuredLoadLine,
+  measuredLoadNote,
+  needsPointMarkers,
   planInsightParts,
   powerAxisMax,
   PV_FORECAST_LABEL,
@@ -30,7 +34,10 @@ import { ChartLegend, ChartInsight, type LegendItem } from './components/ChartEx
  * two dotted FORECAST lines the plan was computed from (PV-Prognose orange,
  * Verbrauchsprognose blau, same kW axis as the bars) - they explain the plan
  * ("warum hält er abends? da liegt die Nachtlast") and are switchable via the
- * legend, visible by default. A "Jetzt"-marker and a shaded past region separate what already
+ * legend, visible by default. Next to the Verbrauchsprognose runs its MEASURED
+ * twin (P3 "Ist-Last", solid, same colour) for the slots that already happened,
+ * so the forecast error - the one that made a plant draw from the grid at night
+ * - is visible instead of only computable. A "Jetzt"-marker and a shaded past region separate what already
  * happened from what is still planned; a dashed line splits today from morgen.
  * The colour swatches + one-line takeaway below the canvas explain the diagram
  * in plain German (captain: the diagrams should be understandable instantly).
@@ -70,6 +77,9 @@ export function ScheduleChart({
   // self-explaining; the legend rows switch them off for a clean bar read.
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set<string>());
   const forecast = forecastLines(plan.slots);
+  // P3 "Ist-Last": the measured twin of the Verbrauchsprognose, for the slots
+  // that already happened - the gap between the two is the forecast error.
+  const ist = measuredLoadLine(plan.slots);
 
   const ref = useEChart((chart, width) => {
     const narrow = width < 480;
@@ -111,7 +121,8 @@ export function ScheduleChart({
     // Only VISIBLE lines count, so hiding one re-tightens the scale.
     const showPvLine = forecast.pv.present && !hidden.has(PV_FORECAST_LABEL);
     const showLoadLine = forecast.load.present && !hidden.has(LOAD_FORECAST_LABEL);
-    const axisMax = powerAxisMax(kwMax, forecast, hidden, target);
+    const showIstLine = ist.present && !hidden.has(MEASURED_LOAD_LABEL);
+    const axisMax = powerAxisMax(kwMax, [forecast.pv, forecast.load, ist], hidden, target);
 
     // The plan's DATE belongs on the axis (audit F2): a plan from yesterday
     // rendered a pure 10:15 … 23:45 time axis and read as today. The first
@@ -220,7 +231,11 @@ export function ScheduleChart({
                 lines.push(`${p.marker} Batterie ${label}${amt}`);
               } else if (p.seriesName === 'Börsenpreis') {
                 lines.push(`${p.marker} Strompreis: ${ct(v)}`);
-              } else if (p.seriesName === PV_FORECAST_LABEL || p.seriesName === LOAD_FORECAST_LABEL) {
+              } else if (
+                p.seriesName === PV_FORECAST_LABEL ||
+                p.seriesName === LOAD_FORECAST_LABEL ||
+                p.seriesName === MEASURED_LOAD_LABEL
+              ) {
                 lines.push(
                   `${p.marker} ${p.seriesName}: ${v.toLocaleString('de-DE', {
                     maximumFractionDigits: 2,
@@ -387,6 +402,29 @@ export function ScheduleChart({
                 },
               ]
             : []),
+          // P3: the MEASURED consumption - same colour as its forecast (same
+          // quantity) but SOLID and a touch thicker, so the pair reads as
+          // "geplant vs. wirklich" and the gap between them is the message.
+          // An MPC plan usually has only one or two past slots, so a stroke
+          // alone would be invisible - point markers then carry the value.
+          ...(showIstLine
+            ? [
+                {
+                  name: MEASURED_LOAD_LABEL,
+                  type: 'line',
+                  yAxisIndex: 0,
+                  data: ist.values,
+                  smooth: false,
+                  symbol: 'circle',
+                  symbolSize: 5,
+                  showSymbol: needsPointMarkers(ist),
+                  connectNulls: false,
+                  z: 5,
+                  lineStyle: { color: t.load, width: 2 },
+                  itemStyle: { color: t.load },
+                },
+              ]
+            : []),
           {
             name: 'Ladestand',
             type: 'line',
@@ -402,6 +440,7 @@ export function ScheduleChart({
       },
       true,
     );
+    // `forecast`/`ist` are derived from `plan`, so `plan` covers them.
   }, [plan, t, peakTargetKw, onSlotClick, selectedIndex, hidden]);
 
   // Insight: charge cheap, discharge expensive, and today's saving - composed
@@ -438,7 +477,15 @@ export function ScheduleChart({
     ...(forecast.load.present
       ? [{ color: t.load, label: LOAD_FORECAST_LABEL, unit: 'kW', shape: 'dotted', toggleable: true } as LegendItem]
       : []),
+    // P3: the measured twin - a solid row right under the dotted forecast, so
+    // the pairing is obvious. Absent when nothing was measured yet.
+    ...(ist.present
+      ? [{ color: t.load, label: MEASURED_LOAD_LABEL, unit: 'kW', shape: 'line', toggleable: true } as LegendItem]
+      : []),
   ];
+  // ...and when it is absent although the plan already has past slots, say WHY
+  // instead of leaving a silent gap (never a 0-line).
+  const istNote = measuredLoadNote(plan.slots, new Date(), plan.slotMinutes || 15);
 
   return (
     <div>
@@ -448,6 +495,11 @@ export function ScheduleChart({
         onToggle={(label) => setHidden((cur) => toggleSeries(cur, label))}
       />
       <div ref={ref} className="vp-chart tall" />
+      {istNote && (
+        <p className="vp-note vp-plan-ist" style={{ margin: 'var(--vp-space-2) 0 0' }}>
+          {istNote}
+        </p>
+      )}
       {socLine && (
         <p className="vp-note vp-plan-soc" style={{ margin: 'var(--vp-space-2) 0 0' }}>
           {socLine}

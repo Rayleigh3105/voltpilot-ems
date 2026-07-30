@@ -61,6 +61,17 @@ import java.util.List;
  * diagnostics already runs - no second price rule. Null when the slot has no
  * persisted spot price (or the site is hidden), and the portal then degrades
  * to a number-free sentence rather than passing spot off as "Netzstrom".
+ *
+ * <p><b>Ist-Last</b> (P3 "Ehrlichkeit im Fahrplan", report vp-netzbezug-nacht-s3
+ * §6): {@code measuredLoadKw} is the MEASURED house consumption of this slot -
+ * the quarter-hour MEAN of {@code telemetry.load_kw}, the same aggregation the
+ * forecaster plans with since P2. It is present only for slots that already
+ * happened (the running slot carries the mean of the samples so far), so the
+ * portal can draw it as a solid line next to the dotted {@code loadKw} forecast
+ * and the forecast error - the one that made Pilsting draw from the grid at
+ * night - becomes visible. Null for future slots, for slots without telemetry
+ * and on sites that report no load channel: the line is then simply absent,
+ * never a fabricated 0.
  */
 public record ScheduleSlotDto(
         Instant start,
@@ -80,7 +91,8 @@ public record ScheduleSlotDto(
         BigDecimal peakPressureEurKw,
         BigDecimal importPriceCtKwh,
         BigDecimal exportValueCtKwh,
-        String importPriceSource) {
+        String importPriceSource,
+        BigDecimal measuredLoadKw) {
 
     /** The same slot with its decision prices filled in (P0 Textwahrheit). */
     public ScheduleSlotDto withPrices(
@@ -88,6 +100,14 @@ public record ScheduleSlotDto(
         return new ScheduleSlotDto(start, batteryKw, gridKw, socPct, priceEurMwh, costEur,
                 baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
                 gridValueCtKwh, peakPressureEurKw,
-                importPriceCtKwh, exportValueCtKwh, importPriceSource);
+                importPriceCtKwh, exportValueCtKwh, importPriceSource, measuredLoadKw);
+    }
+
+    /** The same slot with its MEASURED load filled in (P3 Ist-Last). */
+    public ScheduleSlotDto withMeasuredLoadKw(BigDecimal measuredLoadKw) {
+        return new ScheduleSlotDto(start, batteryKw, gridKw, socPct, priceEurMwh, costEur,
+                baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
+                gridValueCtKwh, peakPressureEurKw,
+                importPriceCtKwh, exportValueCtKwh, importPriceSource, measuredLoadKw);
     }
 }
