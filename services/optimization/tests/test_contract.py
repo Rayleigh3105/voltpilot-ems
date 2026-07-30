@@ -228,17 +228,20 @@ def test_committed_fixtures_match_the_schema_both_ways():
     for name in (
         "mqtt-schedule.valid.plain.json",
         "mqtt-schedule.valid.surplus-only-charge.json",
+        "mqtt-schedule.valid.cover-load.json",
     ):
         payload = json.loads((EXAMPLES / name).read_text())
         errors = list(validator.iter_errors(payload))
         assert errors == [], [f"{name}: {e.message}" for e in errors]
 
-    bad = json.loads(
-        (EXAMPLES / "mqtt-schedule.invalid.surplus-only-not-boolean.json").read_text()
-    )
-    messages = [e.message for e in validator.iter_errors(bad)]
-    assert messages, "the invalid fixture must be rejected"
-    assert any("charge_from_surplus_only" in m or "boolean" in m for m in messages), messages
+    for name, field in (
+        ("mqtt-schedule.invalid.surplus-only-not-boolean.json", "charge_from_surplus_only"),
+        ("mqtt-schedule.invalid.cover-load-not-boolean.json", "cover_load_from_battery"),
+    ):
+        bad = json.loads((EXAMPLES / name).read_text())
+        messages = [e.message for e in validator.iter_errors(bad)]
+        assert messages, f"{name}: the invalid fixture must be rejected"
+        assert any(field in m or "boolean" in m for m in messages), (name, messages)
 
 
 def test_the_surplus_only_fixture_is_what_the_publisher_actually_emits():
@@ -265,3 +268,67 @@ def test_the_surplus_only_fixture_is_what_the_publisher_actually_emits():
     # The plain fixture's slots are the byte-identical legacy shape.
     plain = json.loads((EXAMPLES / "mqtt-schedule.valid.plain.json").read_text())
     assert set(plain["slots"][0]) == {"start", "battery_setpoint_kw"}
+
+
+def test_the_cover_load_fixture_is_what_the_publisher_actually_emits():
+    """Fixture-vs-producer for the discharge-side mirror: the committed
+    'covering' fixture is not hand-fiction - the publisher builds the same slot
+    shape from a plan carrying the load-following duty."""
+    import dataclasses
+
+    fixture = json.loads((EXAMPLES / "mqtt-schedule.valid.cover-load.json").read_text())
+    plan = make_plan(slots=1)
+    slot = dataclasses.replace(
+        plan.slots[0],
+        battery_kw=-4.332,
+        cover_load_from_battery=True,
+        curtail_kw=0.0,
+    )
+    emitted = build_schedule_payload(dataclasses.replace(plan, slots=[slot]))["slots"][0]
+    assert set(emitted) == set(fixture["slots"][0])
+    assert emitted["battery_setpoint_kw"] == fixture["slots"][0]["battery_setpoint_kw"]
+    assert emitted["cover_load_from_battery"] is True
+
+
+def test_the_cover_load_flag_is_omitted_unless_true_and_validates():
+    """Same omit-unless-true discipline as the trim: False and None are the same
+    duty (none) and must both keep the payload byte-identical to before, because
+    the contract makes an absent field FAIL-OPEN on the edge."""
+    import dataclasses
+
+    validator = load_validator()
+    plan = make_plan(slots=3)
+    covering = dataclasses.replace(
+        plan.slots[0], battery_kw=-4.332, cover_load_from_battery=True, curtail_kw=0.0
+    )
+    explicit_false = dataclasses.replace(plan.slots[1], cover_load_from_battery=False)
+    payload = build_schedule_payload(
+        dataclasses.replace(plan, slots=[covering, explicit_false, plan.slots[2]])
+    )
+    assert list(validator.iter_errors(payload)) == []
+
+    first, second, third = payload["slots"]
+    assert first["cover_load_from_battery"] is True
+    assert "cover_load_from_battery" not in second
+    assert "cover_load_from_battery" not in third
+
+
+def test_both_in_slot_duties_can_ride_the_same_payload():
+    """They are disjoint in practice (one is about a charge, the other about a
+    discharge), but the SCHEMA must not forbid a payload carrying both - the edge
+    composes them most-restrictive-wins."""
+    import dataclasses
+
+    validator = load_validator()
+    plan = make_plan(slots=1)
+    slot = dataclasses.replace(
+        plan.slots[0],
+        battery_kw=-4.332,
+        charge_from_surplus_only=True,
+        cover_load_from_battery=True,
+        curtail_kw=0.0,
+    )
+    payload = build_schedule_payload(dataclasses.replace(plan, slots=[slot]))
+    assert list(validator.iter_errors(payload)) == []
+    assert payload["slots"][0]["charge_from_surplus_only"] is True
+    assert payload["slots"][0]["cover_load_from_battery"] is True

@@ -455,6 +455,59 @@ func TestParseAndActivateChargeFromSurplusOnly(t *testing.T) {
 	}
 }
 
+// The load-following duty follows the SAME rules as the trim duty: only an
+// EXPLICIT true carries it, it follows the ACTIVE slot, and a stale plan drops it
+// (the self-consumption fallback already follows the measured load).
+func TestParseAndActivateCoverLoadFromBattery(t *testing.T) {
+	payload := `{
+      "schema_version": "1.0",
+      "plan_id": "11111111-2222-3333-4444-555555555555",
+      "generated_at": "2026-07-30T19:10:00Z",
+      "slot_minutes": 15,
+      "slots": [
+        { "start": "2026-07-30T19:15:00Z", "battery_setpoint_kw": -4.332, "cover_load_from_battery": true },
+        { "start": "2026-07-30T19:30:00Z", "battery_setpoint_kw": -4.481, "cover_load_from_battery": false },
+        { "start": "2026-07-30T19:45:00Z", "battery_setpoint_kw": -5.331 }
+      ]
+    }`
+	rx := time.Date(2026, 7, 30, 19, 16, 0, 0, time.UTC)
+	p, err := Parse([]byte(payload), rx)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := []bool{true, false, false}
+	for i, w := range want {
+		if p.Slots[i].CoverLoadFromBattery != w {
+			t.Fatalf("slot %d duty = %v, want %v", i, p.Slots[i].CoverLoadFromBattery, w)
+		}
+	}
+	if !p.ActiveCoverLoadFromBattery(rx) {
+		t.Fatal("the active first slot must carry the duty")
+	}
+	if p.ActiveCoverLoadFromBattery(time.Date(2026, 7, 30, 19, 31, 0, 0, time.UTC)) {
+		t.Fatal("an explicit false slot carries no duty")
+	}
+	// Stale plan / no active slot -> no duty.
+	stale := &Plan{SlotMinutes: 15, ReceivedAt: rx.Add(-30 * time.Minute), Slots: p.Slots}
+	if stale.ActiveCoverLoadFromBattery(rx) {
+		t.Fatal("a stale plan must carry no duty")
+	}
+	if p.ActiveCoverLoadFromBattery(rx.Add(4 * time.Hour)) {
+		t.Fatal("outside every slot there is no duty")
+	}
+	// A legacy payload (no field anywhere) is byte-for-byte the old behavior.
+	legacy := mustParse(t, rx)
+	for i := range legacy.Slots {
+		if legacy.Slots[i].CoverLoadFromBattery {
+			t.Fatalf("legacy slot %d must carry no duty", i)
+		}
+	}
+	// The two duties are INDEPENDENT: neither flag ever implies the other.
+	if p.Slots[0].ChargeFromSurplusOnly {
+		t.Fatal("cover_load_from_battery must not imply charge_from_surplus_only")
+	}
+}
+
 // The COMMITTED contract fixtures are what the device really parses: the same
 // bytes the cloud publishes and the Python contract test validates
 // (docs/contracts/examples/, read by path on purpose - moving a fixture must
@@ -492,5 +545,42 @@ func TestCommittedContractFixturesParse(t *testing.T) {
 	// The last slots of that fixture are a plain charge and a discharge.
 	if tp.Slots[2].ChargeFromSurplusOnly || tp.Slots[3].ChargeFromSurplusOnly {
 		t.Fatal("only the marked slots carry the duty")
+	}
+
+	// The discharge-side fixture (the Pilsting night shape).
+	covering, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.cover-load.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nightRx := time.Date(2026, 7, 30, 19, 16, 0, 0, time.UTC)
+	cp, err := Parse(covering, nightRx)
+	if err != nil {
+		t.Fatalf("cover-load fixture: %v", err)
+	}
+	if !cp.ActiveCoverLoadFromBattery(nightRx) {
+		t.Fatal("the cover-load fixture's active slot must carry the duty")
+	}
+	if kw, _, ok := cp.ActiveSetpoint(nightRx); !ok || kw != -4.332 {
+		t.Fatalf("cover-load fixture setpoint = %v ok=%v, want -4.332", kw, ok)
+	}
+	// Its last two slots are a full-power discharge and an idle slot - neither
+	// carries the duty, and NO slot of it carries the charge-side one.
+	if cp.Slots[2].CoverLoadFromBattery || cp.Slots[3].CoverLoadFromBattery {
+		t.Fatal("only the marked slots carry the duty")
+	}
+	for i := range cp.Slots {
+		if cp.Slots[i].ChargeFromSurplusOnly {
+			t.Fatalf("cover-load fixture slot %d must carry no trim duty", i)
+		}
+	}
+	// ...and the charge-side fixture carries no load-following duty.
+	for i := range tp.Slots {
+		if tp.Slots[i].CoverLoadFromBattery {
+			t.Fatalf("surplus-only fixture slot %d must carry no load-following duty", i)
+		}
+	}
+	// The plain fixture carries neither.
+	if pp.ActiveCoverLoadFromBattery(rx) {
+		t.Fatal("the plain fixture carries no load-following duty")
 	}
 }

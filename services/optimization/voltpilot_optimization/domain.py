@@ -503,6 +503,17 @@ class PlanSlot:
     # ``charge_from_surplus_only``): it is a DUTY of the executor, not
     # presentation. None/False = no restriction = pre-feature behavior.
     charge_from_surplus_only: bool | None = None
+    # ---- In-slot load following (2026-07-30) ----------------------------------
+    # True = covering the house from the battery in THIS slot is economic (the
+    # slot's import price exceeds lambda/eta + wear), so the edge may RAISE the
+    # commanded discharge to the MEASURED deficit max(load - pv, 0) instead of
+    # executing this slot's forecast-derived watt value rigidly and letting the
+    # difference be bought at the full import price. The DISCHARGE-side mirror of
+    # charge_from_surplus_only, from the same persisted lambda - see
+    # :mod:`voltpilot_optimization.slot_trim`. Like its twin it DOES reach the
+    # MQTT payload (as the optional per-slot ``cover_load_from_battery``): it is
+    # an executor duty, not presentation. None/False = pre-feature behavior.
+    cover_load_from_battery: bool | None = None
 
     @property
     def pv_limit_kw(self) -> float | None:

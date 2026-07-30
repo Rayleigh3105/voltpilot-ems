@@ -706,6 +706,17 @@ services:
       # this to false to opt out. Mirrored to the api service (same
       # variable) so display and solver agree.
       OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS: ${OPTIMIZER_DEFAULT_SUPPLY_COMPONENTS:-true}
+      # The two in-slot price-aware duties published per slot (the edge enforces
+      # them against MEASURED values, never a price): the charge-side trim
+      # (charge_from_surplus_only) and the discharge-side load following
+      # (cover_load_from_battery). SEPARATE levers on purpose - they push the
+      # setpoint in opposite directions on a control path, so one must be
+      # stoppable without losing the other. Both default ON; setting one to
+      # false makes its payloads byte-identical to before and every edge behaves
+      # exactly as it did (the fields are FAIL-OPEN on the edge by contract) -
+      # the ops kill-switch for either half, no image change.
+      OPTIMIZER_SLOT_TRIM_ENABLED: ${OPTIMIZER_SLOT_TRIM_ENABLED:-true}
+      OPTIMIZER_LOAD_FOLLOW_ENABLED: ${OPTIMIZER_LOAD_FOLLOW_ENABLED:-true}
       # MIG v1->v2 migration switch: comma-separated site UUIDs the optimizer
       # ADDITIONALLY publishes a v2 shadow plan for (ems/{t}/{s}/{d}/v2/plan);
       # the v1 /schedule plan is byte-identical for every site. Default EMPTY =

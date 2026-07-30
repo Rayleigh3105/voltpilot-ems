@@ -76,7 +76,13 @@ type Agent struct {
 	// cloud marked charge_from_surplus_only the commanded CHARGE is capped to the
 	// MEASURED surplus, so a forecast shortfall is no longer covered from the
 	// grid (guards.PriceTrimmer - the edge enforces, the cloud priced).
-	trim           *guards.PriceTrimmer
+	trim *guards.PriceTrimmer
+	// follow holds the hysteresis of the in-slot load following: in a slot the
+	// cloud marked cover_load_from_battery the commanded DISCHARGE is raised to
+	// the MEASURED house deficit, so an under-forecast quarter hour is no longer
+	// covered from the grid (guards.LoadFollower - the discharge-side mirror of
+	// trim; the edge enforces, the cloud priced).
+	follow         *guards.LoadFollower
 	despikeStore   *guards.SettingsStore
 	lastDespikeLog time.Time
 	lastBalanceLog time.Time // rate-limits the house-balance fallback warning
@@ -374,6 +380,7 @@ func New(cfg config.Config) (*Agent, error) {
 		envelope:     guards.NewEnvelope(),
 		peak:         guards.NewPeakTracker(),
 		trim:         guards.NewPriceTrimmer(),
+		follow:       guards.NewLoadFollower(),
 		despikeStore: ds,
 		cal:          calibration.NewSession(calibration.Config{MaxKw: cfg.CalibrationMaxKw, TTL: cfg.CalibrationTTL}),
 		calCert:      map[string]bool{},
@@ -1857,11 +1864,13 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.PeakReserveSocPct = peakReserve
 			s.PeakGuardActive = false
 			s.PeakQuarterMeanKw = nil
-			// Without a reading the trim cannot regulate (never blind), so any
-			// previous limitation claim is cleared rather than left stale.
+			// Without a reading neither economic correction can regulate (never
+			// blind), so any previous claim is cleared rather than left stale.
 			s.Trim = nil
+			s.Follow = nil
 		})
 		a.trim.Release()
+		a.follow.Release()
 		return
 	}
 
@@ -1915,6 +1924,29 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// never reads a deliberate limitation as "setpoint not adopted".
 	trimmed := a.trim.Apply(now, kw, p.ActiveChargeFromSurplusOnly(now), r)
 	kw = trimmed.Kw
+
+	// In-slot LOAD FOLLOWING (2026-07-30, the discharge-side mirror of the trim
+	// above - firstmate scout vp-netzbezug-nacht-s3 P1): in a slot the CLOUD
+	// marked cover_load_from_battery (covering the house from the battery is
+	// cheaper than importing - lambda/eta + wear below the import price), RAISE
+	// the commanded DISCHARGE to the MEASURED house deficit instead of executing
+	// this slot's forecast-derived watt value rigidly and letting the difference
+	// be bought at the full import price (measured live: 4,33 kW planned into a
+	// 7,12 kW house, 2,79 kW bought at ~32,5 ct with the battery at 77 % SoC).
+	// Runs at the SAME place as the trim - after every compliance clamp and after
+	// the holder override, so it applies to whoever commanded the discharge - and
+	// the two are disjoint by construction (one acts on charge, one on
+	// discharge). It only ever LOWERS the setpoint toward pv - load, so the
+	// predicted grid power lands at 0 and no §14a/feed-in bound can be
+	// re-violated; the raised discharge is bounded by the rated band, the SoC
+	// floor AND the peak reserve (ordinary load covering is exactly what that
+	// reserve must survive - the same rule the stale-plan fallback applies). See
+	// guards/loadfollow.go for the full safety argument. NOTE the setpoint
+	// published below is the FOLLOWED value: the register readback therefore
+	// matches it and the confirmation logic never reads a deliberate correction
+	// as "setpoint not adopted".
+	followed := a.follow.Apply(now, kw, p.ActiveCoverLoadFromBattery(now), limits, peakReserve, r)
+	kw = followed.Kw
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
 	// wall-clock quarter hour's projected mean import threatens the target,
@@ -2021,6 +2053,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is
 	// retired; without a pushed registry neither path publishes anything.
 	trimInfo := trimSnapshot(trimmed)
+	followInfo := followSnapshot(followed)
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
 		s.SetpointKw = kw
@@ -2032,6 +2065,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.PeakGuardActive = peakActive
 		s.PeakQuarterMeanKw = quarterMean
 		s.Trim = trimInfo
+		s.Follow = followInfo
 	})
 }
 
@@ -2049,6 +2083,24 @@ func trimSnapshot(t guards.TrimResult) *state.TrimInfo {
 	if !math.IsNaN(t.SurplusKw) {
 		v := math.Round(t.SurplusKw*1000) / 1000
 		info.SurplusKw = &v
+	}
+	return info
+}
+
+// followSnapshot turns one load-following evaluation into the UI-facing block,
+// or nil when nothing was raised (a device that is not following carries no
+// follow key at all - the :8484 card renders exactly as before).
+func followSnapshot(f guards.FollowResult) *state.FollowInfo {
+	if !f.Active {
+		return nil
+	}
+	info := &state.FollowInfo{
+		Active:    true,
+		PlannedKw: math.Round(f.CommandedKw*1000) / 1000,
+	}
+	if !math.IsNaN(f.DeficitKw) {
+		v := math.Round(f.DeficitKw*1000) / 1000
+		info.DeficitKw = &v
 	}
 	return info
 }

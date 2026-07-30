@@ -83,6 +83,12 @@ def _slot_payload(slot) -> dict:
     # run without the why-layer) keeps behaving exactly as before.
     if slot.charge_from_surplus_only:
         payload["charge_from_surplus_only"] = True
+    # OPTIONAL per the contract (in-slot load following, 2026-07-30): the
+    # DISCHARGE-side mirror, present only on slots whose planned discharge may be
+    # raised to the measured house deficit. Same omit-unless-true discipline, and
+    # absence is fail-OPEN on the edge for the same reason.
+    if slot.cover_load_from_battery:
+        payload["cover_load_from_battery"] = True
     return payload
 
 

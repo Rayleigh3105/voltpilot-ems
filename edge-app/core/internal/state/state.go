@@ -67,6 +67,13 @@ type Snapshot struct {
 	// setpoint far below the Fahrplan and no reason for it.
 	Trim *TrimInfo `json:"trim,omitempty"`
 
+	// Follow is the in-slot load following (2026-07-30), non-nil ONLY while it is
+	// actually deepening the commanded discharge. Same reason as Trim: without it
+	// the customer would see a confirmed setpoint far BELOW the Fahrplan value
+	// (more discharge) and no reason for it. The two are mutually exclusive by
+	// construction - one acts on charge, the other on discharge.
+	Follow *FollowInfo `json:"follow,omitempty"`
+
 	InverterLink     string    `json:"inverter_link"` // "up" | "down" | "" (unknown)
 	InverterLinkSeen time.Time `json:"inverter_link_seen,omitzero"`
 
@@ -147,6 +154,24 @@ type TrimInfo struct {
 	// SurplusKw is the measured surplus the charge is held at; nil when unknown
 	// (then the trim would be inactive anyway - never regulate blind).
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+}
+
+// FollowInfo is the UI-facing state of the in-slot load following: the cloud
+// marked this slot worth covering from the battery, so the commanded DISCHARGE
+// is being raised to the MEASURED house deficit instead of executing the
+// forecast watt value. The discharge-side mirror of TrimInfo, and read-only
+// display of a decision already taken - the correction itself lives in
+// guards.LoadFollower.
+type FollowInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// PlannedKw is the setpoint BEFORE the correction - what the Fahrplan/holder
+	// asked for, so the card can say "der Fahrplan wollte X kW".
+	PlannedKw float64 `json:"planned_kw"`
+	// DeficitKw is the measured house deficit max(load - pv, 0) the discharge
+	// follows; nil when unknown (then the correction would be inactive anyway -
+	// never regulate blind).
+	DeficitKw *float64 `json:"deficit_kw,omitempty"`
 }
 
 // ControlInfo is the UI-facing per-register control readback: what the schedule

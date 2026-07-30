@@ -52,6 +52,20 @@ type Slot struct {
 	// unpriced restriction inferred from a missing field would destroy real
 	// arbitrage on a merchant site. Both compose most-restrictive-wins.
 	ChargeFromSurplusOnly bool `json:"charge_from_surplus_only,omitempty"`
+	// CoverLoadFromBattery is the OPTIONAL in-slot LOAD-FOLLOWING duty of the
+	// slot (2026-07-30, the discharge-side mirror of ChargeFromSurplusOnly):
+	// true = the cloud determined that covering the house from the battery is
+	// economic here (its import price exceeds lambda/eta + wear), so the
+	// executor may RAISE the commanded discharge to the MEASURED deficit
+	// max(load - pv, 0) instead of running this slot's forecast-derived watt
+	// value rigidly and letting the difference be bought from the grid. The edge
+	// never evaluates a price - guards.LoadFollower only enforces.
+	//
+	// FAIL-OPEN exactly like ChargeFromSurplusOnly: absent/false = no load
+	// following = byte-for-byte pre-feature behavior. An inferred duty would be
+	// the price-blind self-consumption logic, which is precisely what the
+	// price-aware plan replaced.
+	CoverLoadFromBattery bool `json:"cover_load_from_battery,omitempty"`
 }
 
 // Plan is the parsed, validated schedule payload.
@@ -139,6 +153,7 @@ type wire struct {
 		BatterySetpointKw     float64  `json:"battery_setpoint_kw"`
 		PvLimitKw             *float64 `json:"pv_limit_kw"`
 		ChargeFromSurplusOnly *bool    `json:"charge_from_surplus_only"`
+		CoverLoadFromBattery  *bool    `json:"cover_load_from_battery"`
 	} `json:"slots"`
 }
 
@@ -209,6 +224,11 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		// is "no restriction" (the field is fail-open by contract).
 		if s.ChargeFromSurplusOnly != nil && *s.ChargeFromSurplusOnly {
 			slot.ChargeFromSurplusOnly = true
+		}
+		// Same rule for the discharge-side mirror: only an EXPLICIT true carries
+		// the load-following duty.
+		if s.CoverLoadFromBattery != nil && *s.CoverLoadFromBattery {
+			slot.CoverLoadFromBattery = true
 		}
 		// Keep a valid, non-negative feed-in cap only; the contract guarantees
 		// >= 0, and a bad value must never be shown as a real curtailment.
@@ -282,6 +302,28 @@ func (p *Plan) ActiveChargeFromSurplusOnly(now time.Time) bool {
 	for _, s := range p.Slots {
 		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
 			return s.ChargeFromSurplusOnly
+		}
+	}
+	return false
+}
+
+// ActiveCoverLoadFromBattery reports whether the slot active at now carries the
+// in-slot load-following duty (see Slot.CoverLoadFromBattery). It mirrors
+// ActiveChargeFromSurplusOnly exactly: false when the plan is nil, STALE, or no
+// slot is active.
+//
+// Like the trim duty it is DELIBERATELY not a staleness survivor (unlike
+// PeakImportLimit): it is a per-slot price fact that cannot be extrapolated, and
+// the stale-plan fallback (guards.SelfConsumption = pv - load) already follows
+// the measured load by construction, so there is nothing left to protect there.
+func (p *Plan) ActiveCoverLoadFromBattery(now time.Time) bool {
+	if !p.Fresh(now) {
+		return false
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	for _, s := range p.Slots {
+		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
+			return s.CoverLoadFromBattery
 		}
 	}
 	return false

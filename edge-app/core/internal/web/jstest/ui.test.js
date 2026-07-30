@@ -326,6 +326,57 @@ test("control: a trimmed setpoint keeps the healthy CONFIRMED state", () => {
   assert.ok(trimFor(state), "and the reason line is there");
 });
 
+// --- the REASON line, discharge side (in-slot load following, 2026-07-30) ----
+//
+// The night half of the same defect: "-4,3 kW angeordnet, -4,3 kW bestätigt"
+// while the house draws 7,1 kW and the difference is bought. When the device
+// raises the discharge to the measured house load, the card must SAY so - and it
+// must never look like a refused write either.
+function followFor(state) {
+  return load(["control.js"]).VPControl.deriveFollow(state);
+}
+
+test("control: an active load following names the deliberate correction with both numbers", () => {
+  const d = followFor({ follow: { active: true, planned_kw: -4.332, deficit_kw: 7.087 } });
+  assert.ok(d, "an active correction must produce a reason line");
+  assert.match(d.text, /7,1 kW/, "it names what is being covered: " + d.text);
+  assert.match(d.text, /4,3 kW/, "and what the Fahrplan had planned: " + d.text);
+  assert.match(d.text, /bewusste Nachführung/, "and that it is deliberate: " + d.text);
+  assert.ok(!/nicht übernommen|Abweichung/.test(d.text),
+    "a correction must never read as a failed write: " + d.text);
+  assert.ok(!/-4,3|−4,3/.test(d.text),
+    "the planned value is named as a magnitude, not a raw signed number: " + d.text);
+});
+
+test("control: no load following -> no reason line", () => {
+  assert.strictEqual(followFor({}), null);
+  assert.strictEqual(followFor({ follow: null }), null);
+  assert.strictEqual(followFor({ follow: { active: false } }), null,
+    "an inactive correction claims nothing");
+});
+
+test("control: a load following without a known deficit still names the cause", () => {
+  const d = followFor({ follow: { active: true, planned_kw: -4.332 } });
+  assert.ok(d);
+  assert.match(d.text, /teurer/, "the cause is always stated: " + d.text);
+  assert.ok(!/undefined|NaN/.test(d.text), "and never a broken number: " + d.text);
+});
+
+test("control: a followed setpoint keeps the healthy CONFIRMED state", () => {
+  // The followed value is what gets written, so the readback matches it - the
+  // state must stay healthy, with the reason underneath.
+  const regs = [{ role: "battery_power", commanded_raw: -236, commanded_kw: -7.087, actual_raw: -236, actual_kw: -7.087, match: true, verdict: "held" }];
+  const state = {
+    inverter: { configured: true }, control_certified: true, control_enabled: true,
+    control: { confirm: "held", all_match: true, registers: regs, source: "schedule" },
+    follow: { active: true, planned_kw: -4.332, deficit_kw: 7.087 },
+  };
+  const d = controlFor(state);
+  assert.strictEqual(d.chip.tone, "ok");
+  assert.strictEqual(d.showNow, true, "the reason is only shown where a setpoint is shown");
+  assert.ok(followFor(state), "and the reason line is there");
+});
+
 test("status hero: an unanswered readback says 'keine Bestätigung', a confirmed refusal says 'übernimmt nicht'", () => {
   const regs = [{ role: "remote_mode", commanded_raw: 1, actual_raw: null, match: false, verdict: "unread" }];
   const silent = statusFor({ ...HEALTHY, control: { confirm: "no_answer", all_match: null, registers: regs } });

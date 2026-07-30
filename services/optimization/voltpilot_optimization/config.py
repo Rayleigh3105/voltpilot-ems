@@ -275,6 +275,34 @@ def slot_trim_enabled(env=None) -> bool:
     raise ValueError(f"{SLOT_TRIM_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Instant off-switch for publishing the per-slot ``cover_load_from_battery``
+#: flag - the DISCHARGE-side mirror of the trim (in-slot load following, P1 of
+#: the Pilsting night analysis). DELIBERATELY ITS OWN LEVER rather than sharing
+#: :data:`SLOT_TRIM_ENABLED_ENV`: the two duties push the setpoint in OPPOSITE
+#: directions on a safety-relevant control path, so an operator must be able to
+#: stop one without losing the other. Default ON; off = byte-identical payloads
+#: to before and every edge behaves exactly as it did (the field is FAIL-OPEN on
+#: the edge by contract). The margin is shared - it is the same marginal test.
+LOAD_FOLLOW_ENABLED_ENV = "OPTIMIZER_LOAD_FOLLOW_ENABLED"
+
+
+def load_follow_enabled(env=None) -> bool:
+    """Whether the optimizer marks slots where covering the MEASURED house load
+    from the battery is economic (the edge then follows the load inside the slot
+    instead of executing the forecast watt value rigidly). Default ON; garbage
+    values raise loudly, exactly like :func:`slot_trim_enabled`."""
+    env = os.environ if env is None else env
+    raw = env.get(LOAD_FOLLOW_ENABLED_ENV)
+    if raw is None or raw.strip() == "":
+        return True
+    v = raw.strip().lower()
+    if v in ("true", "1", "yes", "on"):
+        return True
+    if v in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"{LOAD_FOLLOW_ENABLED_ENV} must be a boolean, got {raw!r}")
+
+
 #: Researched default supply-price components as the Bezugspreis fallback for
 #: ``dynamisch``-without-Aufschlag and ``ohne`` sites WITHOUT a maintained
 #: ``site_supply_price`` row (report vp-nacht-bezug-e7 Teil 2: household

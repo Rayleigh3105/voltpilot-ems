@@ -22,3 +22,9 @@ would make a fixture invalid for the wrong reason):
   there would let a publisher smuggle a limit into a field whose only defined
   semantics is "clamp commanded charge to the measured surplus"; the schema
   rejects it so that ambiguity can never reach an edge.
+- `mqtt-schedule.invalid.cover-load-not-boolean.json` - the same reason for the
+  discharge-side mirror `cover_load_from_battery`: it is a BOOLEAN duty ("cover
+  the MEASURED house load from the battery in this slot"), and the measured
+  value it follows comes from the device, never from the payload. A number there
+  would read like a cloud-supplied load setpoint - which is exactly the rigid
+  forecast watt value this flag exists to stop being executed.
