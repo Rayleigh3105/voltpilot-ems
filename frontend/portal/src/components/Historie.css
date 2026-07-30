@@ -320,25 +320,10 @@
   box-shadow: var(--vp-shadow-sm);
 }
 
-.vp-zeitleiste > .vp-period-nav {
-  margin-left: auto;
-}
-
 @media (max-width: 560px) {
   .vp-zeitleiste {
     gap: 8px;
     padding: 6px 8px;
-  }
-  .vp-zeitleiste > .vp-seg {
-    width: 100%;
-  }
-  .vp-zeitleiste > .vp-seg > button {
-    flex: 1 1 0;
-  }
-  .vp-zeitleiste > .vp-period-nav {
-    margin-left: 0;
-    width: 100%;
-    justify-content: space-between;
   }
 }
 
@@ -417,4 +402,268 @@
   color: var(--vp-text-muted, #6c757d);
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+   In der Vergangenheit navigieren (F2 · F3 · F4, PR D des Historie-Konzepts)
+   ========================================================================== */
+
+/* --- Die Zeit-Leiste trägt jetzt drei Zeilen statt einer ------------------ */
+
+.vp-zeitleiste {
+  /* Die Leiste ist ab hier eine Spalte: Bedienzeile, Monatsstreifen, Datenlage.
+     Die frühere Flex-Zeile lebt als `.vp-zl-row` darin weiter, damit die
+     Umbruch-Regeln der Bedienelemente unverändert gelten.
+     LOAD-BEARING: `flex-wrap: nowrap`. Die Regel oben setzt `wrap` (sie war
+     eine ZEILE); eine umbrechende SPALTE bemisst ihre Breite an den
+     Flex-Linien statt am Container - die Zeile stand dann 690 px breit in
+     einer 343-px-Karte (bei 375 px im echten Browser gemessen). */
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.vp-zl-row {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.vp-zl-row > .vp-period-nav {
+  margin-left: auto;
+}
+
+/* Der Monatsstreifen als Sprungbrett: ohne Wert ist der Chip flacher als in
+   der Geld-Ansicht - die Trefferfläche muss trotzdem 44 px bleiben. */
+.vp-zeitleiste .vp-mstrip {
+  margin-bottom: 0;
+}
+
+.vp-zeitleiste .vp-mstrip-m {
+  min-height: 44px;
+  justify-content: center;
+}
+
+.vp-mstrip-m.leer {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* --- Die Datenlage (F4) --------------------------------------------------- */
+
+.vp-zl-cover {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  font-size: 0.74rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-zl-cover-stale {
+  opacity: 0.55;
+}
+
+.vp-zl-ab {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.vp-zl-bar {
+  flex: 1 1 120px;
+  min-width: 60px;
+  max-width: 220px;
+  height: 5px;
+  border-radius: 3px;
+  background: #eef1f5;
+  overflow: hidden;
+}
+
+.vp-zl-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--vp-primary-deep, #5a8de8);
+}
+
+.vp-zl-sat {
+  white-space: nowrap;
+}
+
+.vp-zl-gap {
+  white-space: nowrap;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* --- Das Sprungfeld (F2) -------------------------------------------------- */
+
+.vp-zl-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--vp-border);
+  border-radius: 9px;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-zl-jump:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color, #5a8de8);
+  outline-offset: 1px;
+}
+
+.vp-zl-jump input,
+.vp-zl-jump select {
+  min-width: 0;
+  max-width: 148px;
+  border: none;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--vp-text, inherit);
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+/* --- P5: eine fehlgeschlagene Periode sagt es --------------------------- */
+
+.vp-zl-fehler {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-bottom: var(--vp-space-3);
+  padding: 8px 12px;
+  border: 1px solid #f6c667;
+  border-radius: var(--vp-radius-md);
+  background: #fff8e6;
+  font-size: 0.83rem;
+  color: #7a5300;
+}
+
+.vp-zl-fehler > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-zl-fehler > button {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid #e0b154;
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #7a5300;
+  cursor: pointer;
+}
+
+/* --- Δ zur Vorperiode (F3) ------------------------------------------------ */
+
+.vp-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 4px;
+  min-width: 0;
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+/* Gewertet wird nur, wo die Richtung eindeutig ist (historieVergleich.ts) -
+   sonst bleibt die Zeile bewusst neutral. */
+.vp-delta-neutral {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-delta-gut {
+  color: #166534;
+}
+
+.vp-delta-schlecht {
+  color: #b3261e;
+}
+
+.vp-karten-vergleich {
+  margin-left: auto;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--vp-text-muted, #6c757d);
+  white-space: nowrap;
+}
+
+.vp-kpi-delta {
+  margin: 6px 0 0;
+  min-width: 0;
+}
+
+.vp-note-laufend {
+  margin-top: 8px;
+}
+
+@media (max-width: 560px) {
+  .vp-zl-row {
+    gap: 8px;
+  }
+  .vp-zl-row > .vp-seg {
+    width: 100%;
+  }
+  .vp-zl-row > .vp-seg > button {
+    flex: 1 1 0;
+  }
+  .vp-zl-row > .vp-period-nav {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+    /* Mit dem Sprungfeld sind es fünf Bedienelemente in einer Zeile; ohne
+       Umbruch quetscht `.label` (min-width 170, nowrap) auf 0 px und der
+       Zeitraum-Name verschwindet - im Browser bei 375 px gemessen. Er bekommt
+       deshalb seine EIGENE erste Zeile. */
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .vp-zl-row > .vp-period-nav > .label {
+    order: -1;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  /* Am Telefon entfällt der Monatsstreifen: das NATIVE Feld daneben ist dort
+     die bessere Sprunggeste (Systemkalender statt zwölf Chips in einem
+     325-px-Scroller), und die Zeit-Leiste KLEBT - jede Zeile darin kostet
+     dauerhaft Bildschirm. Am Schreibtisch bleibt der Streifen, weil er dort
+     zwölf Monate auf einen Blick zeigt. */
+  .vp-zeitleiste .vp-mstrip {
+    display: none;
+  }
+  /* Neu hinzugekommene Bedienelemente bleiben am Telefon ein 44-px-Ziel. */
+  .vp-zl-jump {
+    min-height: 44px;
+  }
+  /* Am Telefon entfällt das führende Kalender-Symbol: das native Feld bringt
+     sein eigenes mit, und die 22 px entscheiden darüber, ob ‹ › Heute 📅 in
+     EINE Zeile passen (bei 375 px gemessen). */
+  .vp-zl-jump > svg {
+    display: none;
+  }
+  .vp-zl-jump input,
+  .vp-zl-jump select {
+    max-width: 116px;
+  }
+  .vp-karten-vergleich {
+    margin-left: 0;
+    width: 100%;
+    white-space: normal;
+  }
 }

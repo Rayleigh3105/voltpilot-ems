@@ -7,6 +7,7 @@ import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.List;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -1350,6 +1351,45 @@ class PortalApiTest {
         assertThat(monthBuckets.get(0)).containsEntry("start", "2026-06-14T22:00:00Z");
         assertThat(num(monthBuckets.get(0), "loadKwh")).isEqualTo(1.25);
         assertThat(num(monthBuckets.get(0), "costEur")).isEqualTo(0.05);
+    }
+
+    /**
+     * F4/P7: die Historie sagt jetzt ihre Datenlage. Der behobene Befund war,
+     * dass eine Lücke von einer gemessenen Null nicht unterscheidbar war - eine
+     * Woche mit zwei gemessenen Viertelstunden sah aus wie eine ruhige Woche.
+     */
+    @Test
+    void historyCarriesTheDataCoverageOfThePeriod() {
+        seedHistoryDay();
+        exec("CALL refresh_telemetry_rollups('2026-06-01T00:00:00Z')");
+
+        ResponseEntity<Map<String, Object>> res = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=week&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo", "demo"))),
+                new ParameterizedTypeReference<>() {});
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> cov = map(res.getBody(), "coverage");
+        assertThat(cov).as("coverage").isNotNull();
+        assertThat(num(cov, "resolutionMinutes")).isEqualTo(15.0);
+
+        // Der erwartete Zeitraum beginnt nie vor der ersten je gemessenen
+        // Viertelstunde: eine Zeit, in der es die Anlage noch nicht gab, ist
+        // nicht lückenhaft (genau dafür reist firstDataAt mit).
+        Instant firstData = Instant.parse((String) cov.get("firstDataAt"));
+        Instant expectedFrom = Instant.parse((String) cov.get("expectedFrom"));
+        assertThat(expectedFrom).isAfterOrEqualTo(firstData);
+
+        // Diese Woche trägt genau zwei gemessene Viertelstunden - die Antwort
+        // sagt das jetzt, statt es zu verschweigen.
+        assertThat(num(cov, "measuredBuckets")).isLessThan(num(cov, "expectedBuckets"));
+        assertThat(num(cov, "gaps")).isGreaterThanOrEqualTo(1.0);
+
+        // Ein FREMDER Mandant kommt hier gar nicht hin (RLS wie überall sonst).
+        ResponseEntity<String> foreign = rest.exchange(
+                url("/api/v1/sites/" + BERLIN_SITE + "/history?range=week&at=2026-06-17"),
+                HttpMethod.GET, new HttpEntity<>(bearer(token("demo2", "demo2"))),
+                String.class);
+        assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test

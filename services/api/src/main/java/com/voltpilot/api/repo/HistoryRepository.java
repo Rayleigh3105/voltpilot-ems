@@ -377,6 +377,77 @@ public class HistoryRepository {
                 + " FROM q GROUP BY " + displayBucketExpr;
     }
 
+    // ---- Datenabdeckung (F4/P7) ---------------------------------------------
+
+    /**
+     * Die Rohzahlen einer Abdeckungs-Abfrage. Alles Weitere (erwarteter
+     * Zeitraum, Rand-Lücken, Prozent) rechnet {@code HistoryService} als reine,
+     * unit-getestete Funktion - hier steht nur, was die Datenbank weiß.
+     *
+     * @param siteFirst     erste je gemessene Viertelstunde der Anlage (null =
+     *                      keine einzige)
+     * @param siteLast      letzte je gemessene Viertelstunde der Anlage
+     * @param measured      gemessene Viertelstunden IM Fenster
+     * @param firstInWindow erste gemessene Viertelstunde im Fenster
+     * @param lastInWindow  letzte gemessene Viertelstunde im Fenster
+     * @param innerGaps     Fehlstellen ZWISCHEN zwei gemessenen Viertelstunden
+     *                      des Fensters (Rand-Lücken kennt erst der Service)
+     */
+    public record CoverageRow(Instant siteFirst, Instant siteLast, long measured,
+            Instant firstInWindow, Instant lastInWindow, int innerGaps) {
+    }
+
+    /**
+     * Die eigene, billige Abdeckungs-Abfrage (P7): {@code min/max/count} auf dem
+     * 15-Minuten-Rollup - bewusst NICHT aus dem Datenblock abgeleitet, damit sie
+     * unabhängig von Reihe und Preis-Join bleibt und der Zeit-Leiste gehört.
+     *
+     * <p>Sie zählt Viertelstunden, nicht Anzeige-Buckets: {@code telemetry_rollup_15m}
+     * hat je gemessener Viertelstunde genau eine Zeile (PK {@code (site_id, bucket)}),
+     * also ist {@code count(*)} die gemessene Menge und ein Sprung von mehr als
+     * 15 Minuten zwischen zwei aufeinanderfolgenden Zeilen genau eine Fehlstelle.
+     *
+     * <p><b>Bewusste Grenze:</b> gezählt wird die v1-Messreihe. Eine Anlage, die
+     * ausschließlich v2-nativ misst (kein v1-Rollup), liefert hier
+     * {@code siteFirst == null} - die Oberfläche zeigt dann gar keine Abdeckung,
+     * statt eine zu behaupten, die niemand gemessen hat. Eine migrierte Anlage
+     * ist nicht betroffen: der Fan-out des Writers speist beide Reihen.
+     *
+     * <p>RLS-gefenced wie jede andere Abfrage hier (kein Mandanten-Prädikat).
+     */
+    public CoverageRow coverage(UUID siteId, Instant from, Instant to) {
+        List<CoverageRow> rows = jdbc.query(
+                "WITH w AS ("
+                        + "  SELECT bucket FROM telemetry_rollup_15m"
+                        + "  WHERE site_id = ? AND bucket >= ? AND bucket < ?), "
+                        + "s AS (SELECT bucket, lag(bucket) OVER (ORDER BY bucket) AS prev FROM w), "
+                        + "a AS ("
+                        + "  SELECT count(*) AS measured, min(bucket) AS first_in,"
+                        + "         max(bucket) AS last_in,"
+                        + "         count(*) FILTER (WHERE prev IS NOT NULL"
+                        + "                    AND bucket > prev + INTERVAL '15 minutes')"
+                        + "           AS inner_gaps"
+                        + "  FROM s), "
+                        + "t AS ("
+                        + "  SELECT min(bucket) AS site_first, max(bucket) AS site_last"
+                        + "  FROM telemetry_rollup_15m WHERE site_id = ?) "
+                        + "SELECT a.measured, a.first_in, a.last_in, a.inner_gaps,"
+                        + "       t.site_first, t.site_last FROM a, t",
+                (rs, i) -> new CoverageRow(
+                        instantOrNull(rs.getTimestamp("site_first")),
+                        instantOrNull(rs.getTimestamp("site_last")),
+                        rs.getLong("measured"),
+                        instantOrNull(rs.getTimestamp("first_in")),
+                        instantOrNull(rs.getTimestamp("last_in")),
+                        rs.getInt("inner_gaps")),
+                siteId, Timestamp.from(from), Timestamp.from(to), siteId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private static Instant instantOrNull(Timestamp ts) {
+        return ts == null ? null : ts.toInstant();
+    }
+
     private static HistoryBucketDto mapBucket(ResultSet rs, int i) throws SQLException {
         return new HistoryBucketDto(
                 rs.getTimestamp("bucket").toInstant(),

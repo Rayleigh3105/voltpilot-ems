@@ -2,6 +2,7 @@ package com.voltpilot.api.history;
 
 import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.web.dto.HistoryBucketDto;
+import com.voltpilot.api.web.dto.HistoryCoverageDto;
 import com.voltpilot.api.web.dto.HistoryDto;
 import com.voltpilot.api.web.dto.HistoryPlanPointDto;
 import com.voltpilot.api.web.dto.HistoryTotalsDto;
@@ -9,6 +10,7 @@ import com.voltpilot.api.web.dto.ProtocolEventDto;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -65,7 +67,95 @@ public class HistoryService {
                 : List.of();
 
         return new HistoryDto(range.name().toLowerCase(java.util.Locale.ROOT),
-                window.from(), window.to(), range.bucketMinutes(), buckets, totals, protocol, plan);
+                window.from(), window.to(), range.bucketMinutes(), buckets, totals, protocol, plan,
+                coverage(repo.coverage(siteId, window.from(), window.to()), window, Instant.now()));
+    }
+
+    // ---- Datenabdeckung (F4/P7) ---------------------------------------------
+
+    /** Die gezählte Einheit: die Messreihe entsteht in Viertelstunden. */
+    static final Duration COVERAGE_RESOLUTION = Duration.ofMinutes(15);
+
+    /**
+     * Wie weit das 15-Minuten-Rollup der Gegenwart hinterherlaufen darf: der
+     * Auffrisch-Job läuft alle 15 Minuten (Migration V20260701030000). Eine
+     * gerade erst beendete Viertelstunde ist deshalb noch keine Fehlstelle - sie
+     * ist nur noch nicht verdichtet. Lieber eine Lücke zu spät melden als eine
+     * erfinden.
+     */
+    static final Duration ROLLUP_LAG = Duration.ofMinutes(15);
+
+    /**
+     * Die reine Abdeckungs-Rechnung (F4/P7): aus den Rohzahlen der Datenbank
+     * plus Fenster und „jetzt" wird der erwartete Zeitraum, die gemessene Menge
+     * und die Zahl der Fehlstellen.
+     *
+     * <p>Drei Entscheidungen stecken darin, alle in Richtung Ehrlichkeit:
+     * <ul>
+     *   <li><b>Erwartet wird erst ab der ersten je gemessenen Viertelstunde.</b>
+     *       Ein Kalenderjahr einer im Juni ans Netz gegangenen Anlage ist nicht
+     *       zu 45 % lückenhaft - es gab die Anlage vorher nicht. Genau dafür
+     *       reist {@code firstDataAt} mit: die Oberfläche sagt „Daten ab …".</li>
+     *   <li><b>Die laufende (und die gerade beendete) Viertelstunde zählt
+     *       nicht.</b> Sie kann nicht fehlen, und das Rollup ist noch nicht so
+     *       weit ({@link #ROLLUP_LAG}).</li>
+     *   <li><b>Kein Prozentsatz.</b> Hier stehen Zähler; wie daraus ein Satz
+     *       wird, entscheidet die Oberfläche (die dort auch die Regel „nie auf
+     *       100 % aufrunden" trägt).</li>
+     * </ul>
+     *
+     * @return null, wenn die Anlage noch nie eine Viertelstunde gemessen hat -
+     *         dann behauptet niemand eine Abdeckung.
+     */
+    static HistoryCoverageDto coverage(HistoryRepository.CoverageRow row,
+            HistoryRange.Window window, Instant now) {
+        if (row == null || row.siteFirst() == null) {
+            return null;
+        }
+        Instant expectedFrom = max(window.from(), row.siteFirst());
+        Instant expectedTo = min(window.to(), floorResolution(now.minus(ROLLUP_LAG)));
+        if (!expectedTo.isAfter(expectedFrom)) {
+            // Ein Zeitraum, der noch gar nicht laufen konnte (Zukunft) - die
+            // Herkunftsangabe bleibt trotzdem nützlich.
+            return new HistoryCoverageDto(row.siteFirst(), row.siteLast(),
+                    expectedFrom, expectedFrom, 0, 0, 0, (int) COVERAGE_RESOLUTION.toMinutes());
+        }
+        long expected = Duration.between(expectedFrom, expectedTo).toMinutes()
+                / COVERAGE_RESOLUTION.toMinutes();
+        // Das Fenster kann durch die Rollup-Toleranz ein paar Viertelstunden
+        // MEHR enthalten als der erwartete Zeitraum - dann ist es voll gemessen,
+        // nie über 100 %.
+        long measured = Math.min(row.measured(), expected);
+
+        int gaps;
+        if (measured == 0) {
+            gaps = expected > 0 ? 1 : 0;
+        } else {
+            gaps = row.innerGaps();
+            if (row.firstInWindow() != null && row.firstInWindow().isAfter(expectedFrom)) {
+                gaps++;
+            }
+            if (row.lastInWindow() != null
+                    && row.lastInWindow().plus(COVERAGE_RESOLUTION).isBefore(expectedTo)) {
+                gaps++;
+            }
+        }
+        return new HistoryCoverageDto(row.siteFirst(), row.siteLast(), expectedFrom, expectedTo,
+                expected, measured, gaps, (int) COVERAGE_RESOLUTION.toMinutes());
+    }
+
+    /** Auf den Beginn der Viertelstunde abrunden (UTC-Raster, wie das Rollup). */
+    private static Instant floorResolution(Instant t) {
+        long step = COVERAGE_RESOLUTION.getSeconds();
+        return Instant.ofEpochSecond(Math.floorDiv(t.getEpochSecond(), step) * step);
+    }
+
+    private static Instant max(Instant a, Instant b) {
+        return a.isAfter(b) ? a : b;
+    }
+
+    private static Instant min(Instant a, Instant b) {
+        return a.isBefore(b) ? a : b;
     }
 
     /** v1-era buckets for a range (day = raw telemetry, else = rollups + cost). */

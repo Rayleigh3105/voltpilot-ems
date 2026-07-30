@@ -9,19 +9,32 @@ import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import { gridCostHinweis, zeitraumHinweis } from '../energieBilanz';
 import {
+  delta,
+  laufendHinweis,
+  vergleichsKopf,
+  vergleichsName,
+} from '../historieVergleich';
+import {
   availableWelten,
   historieHash,
   weltSwitchCards,
   WELTEN,
   type WeltId,
 } from '../historieWelten';
-import { useHistoryPeriod } from '../useHistoryPeriod';
+import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
 import type { AnlageSurface } from '../surface';
 
 import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { HistoryDayChart } from '../HistoryChart';
-import { KartenKopf, WeltFuss, WeltKopf, ZeitLeiste } from '../components/HistorieWelt';
+import {
+  DeltaZeile,
+  KartenKopf,
+  PeriodeFehlgeschlagen,
+  WeltFuss,
+  WeltKopf,
+  ZeitLeiste,
+} from '../components/HistorieWelt';
 
 import '../components/Historie.css';
 
@@ -56,17 +69,41 @@ const EVENT_ICONS: Record<ProtocolEvent['type'], { icon: IconName; label: string
 /** Die Geld-Karten des Zeitraums (je Art eine Karte, je Karte ein Abzeichen). */
 function GeldKarten({
   history,
+  vorher,
   range,
   anchor,
 }: {
   history: History;
+  /** Die Vorperiode für das Δ (F3) — null, solange sie nicht geladen ist. */
+  vorher: History | null;
   range: HistoryRange;
   anchor: Date;
 }) {
   const totals = history.totals;
-  const hinweis = zeitraumHinweis(anchor, range, new Date());
+  const now = new Date();
+  const hinweis = zeitraumHinweis(anchor, range, now);
   const isDay = range === 'day';
   const label = periodLabel(anchor, range);
+  const vergleichName = vergleichsName(anchor, range);
+  const laufend = vorher ? laufendHinweis(anchor, range, now) : null;
+  const kopfVergleich = vorher ? (
+    <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range)}</span>
+  ) : undefined;
+  // Weniger Stromkosten sind eindeutig besser; eine höhere GEPLANTE Ersparnis
+  // ist eine Plan-Aussage, deshalb wird sie nicht als Erfolg gewertet -
+  // gemessene Ersparnis steht im Cockpit.
+  const kostenDelta = delta(
+    totals.gridCostEur,
+    vorher?.totals.gridCostEur,
+    false,
+    vergleichName,
+  );
+  const planDelta = delta(
+    totals.batterySavingsPlannedEur,
+    vorher?.totals.batterySavingsPlannedEur,
+    null,
+    vergleichName,
+  );
 
   if (history.buckets.length === 0) {
     return (
@@ -86,7 +123,13 @@ function GeldKarten({
       {/* Bewertet: was der Strombezug im Zeitraum gekostet hat. */}
       <section className="vp-section">
         <Card padding="lg" radius="lg">
-          <KartenKopf icon="euro" category="primary" titel={`Kosten · ${label}`} art="bewertet" />
+          <KartenKopf
+            icon="euro"
+            category="primary"
+            titel={`Kosten · ${label}`}
+            art="bewertet"
+            extra={kopfVergleich}
+          />
           <section className="vp-kpis" aria-label="Geld im Zeitraum">
             <KpiCard
               icon={<Icon name="euro" size={20} />}
@@ -100,6 +143,12 @@ function GeldKarten({
               }
             />
           </section>
+          {kostenDelta && (
+            <p className="vp-kpi-delta">
+              <DeltaZeile delta={kostenDelta} />
+            </p>
+          )}
+          {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
           <p className="vp-note" style={{ marginTop: 8 }}>
             {totals.gridCostEur == null
               ? 'Für diesen Zeitraum liegen keine Börsenpreise vor. '
@@ -118,6 +167,7 @@ function GeldKarten({
             category="battery"
             titel={`Geplante Speicher-Ersparnis · ${label}`}
             art="geplant"
+            extra={kopfVergleich}
           />
           <section className="vp-kpis" aria-label="Geplante Ersparnis im Zeitraum">
             <KpiCard
@@ -132,6 +182,11 @@ function GeldKarten({
               title="Aus den gespeicherten Fahrplänen GEPLANT: Kosten gegenüber einem Betrieb ohne Speicher. Nicht die gemessene Ersparnis - die steht im Geld-Überblick Ihrer Anlage."
             />
           </section>
+          {planDelta && (
+            <p className="vp-kpi-delta">
+              <DeltaZeile delta={planDelta} />
+            </p>
+          )}
           <p className="vp-note" style={{ marginTop: 8 }}>
             {totals.batterySavingsPlannedEur == null
               ? 'Für diesen Zeitraum liegt kein Batterie-Fahrplan vor - die geplante Ersparnis erscheint, sobald geplant wird.'
@@ -229,6 +284,14 @@ export function ErloeseSection({
 
   const at = isoDate(anchor);
   const { history, loading, stale, err, retry } = useHistoryPeriod(site.id, range, at);
+  // F3: der zweite Abruf mit verschobenem Anker - erst, wenn der gezeigte
+  // Zeitraum überhaupt Zahlen trägt.
+  const vorher = useVergleichsPeriode(
+    site.id,
+    range,
+    anchor,
+    !stale && (history?.buckets.length ?? 0) > 0,
+  );
 
   // Zurück/Vorwärts oder ein Sprung mit Zeitraum: die Periode neu übernehmen.
   useEffect(() => {
@@ -252,7 +315,14 @@ export function ErloeseSection({
         hrefFor={(c) => historieHash(site.id, c.welt.id, range, at)}
         onOpen={(c) => onOpenWelt(c.welt.id)}
       />
-      <ZeitLeiste range={range} anchor={anchor} onRange={setRange} onAnchor={setAnchor} />
+      <ZeitLeiste
+        range={range}
+        anchor={anchor}
+        onRange={setRange}
+        onAnchor={setAnchor}
+        coverage={history?.coverage}
+        stale={stale}
+      />
 
       <div className={stale ? 'vp-welt-body vp-welt-stale' : 'vp-welt-body'}>
         {err && !history ? (
@@ -264,7 +334,12 @@ export function ErloeseSection({
             </Card>
           ) : null
         ) : (
-          <GeldKarten history={history} range={range} anchor={anchor} />
+          <>
+            {err && stale && (
+              <PeriodeFehlgeschlagen periode={periodLabel(anchor, range)} onRetry={retry} />
+            )}
+            <GeldKarten history={history} vorher={vorher} range={range} anchor={anchor} />
+          </>
         )}
       </div>
 

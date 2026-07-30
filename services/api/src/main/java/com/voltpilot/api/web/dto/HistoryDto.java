@@ -9,6 +9,10 @@ import java.util.List;
  * Tagesprotokoll plus the persisted optimizer plan for the plan-vs-actual
  * overlay (both empty lists otherwise). {@code from} is inclusive, {@code to}
  * exclusive; period boundaries are Europe/Berlin local time (DACH product).
+ *
+ * <p>{@code coverage} ist additiv (F4/P7): wie vollständig der Zeitraum
+ * gemessen ist, aus einer eigenen billigen Abfrage - null, wenn die Anlage noch
+ * nie eine Viertelstunde gemessen hat.
  */
 public record HistoryDto(
         String range,
@@ -18,5 +22,6 @@ public record HistoryDto(
         List<HistoryBucketDto> buckets,
         HistoryTotalsDto totals,
         List<ProtocolEventDto> protocol,
-        List<HistoryPlanPointDto> plan) {
+        List<HistoryPlanPointDto> plan,
+        HistoryCoverageDto coverage) {
 }
