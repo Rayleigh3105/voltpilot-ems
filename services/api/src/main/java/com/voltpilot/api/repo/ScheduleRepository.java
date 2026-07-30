@@ -68,7 +68,11 @@ public class ScheduleRepository {
                         splitFlags(rs.getString("slot_flags")),
                         rs.getBigDecimal("stored_value_ct_kwh"),
                         rs.getBigDecimal("grid_value_ct_kwh"),
-                        rs.getBigDecimal("peak_pressure_eur_kw")),
+                        rs.getBigDecimal("peak_pressure_eur_kw"),
+                        // The decision prices are not persisted columns - they are
+                        // recomposed from spot + master data by SlotEconomics and
+                        // filled in downstream (SchedulePricingService).
+                        null, null, null),
                 siteId, Timestamp.from(generatedAt));
         List<Object[]> meta = jdbc.query(
                 "SELECT plan_id, device_id, terminal_value_eur_per_kwh, peak_target_kw, "

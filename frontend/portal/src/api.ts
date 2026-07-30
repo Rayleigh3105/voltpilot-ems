@@ -299,6 +299,30 @@ export interface ScheduleSlot {
    * module is off or on pre-feature rows.
    */
   peakPressureEurKw: number | null;
+  /**
+   * P0 "Textwahrheit": what one IMPORTED kWh really costs this site in the
+   * slot (ct/kWh) - THE PRICE THE OPTIMIZER DECIDED WITH. `priceEurMwh` is
+   * bare spot, which is why a why-sentence built on it contradicts itself in
+   * the normal case ("Börsenpreis 21,2 wäre teurer als der Speicherwert 21,5"
+   * - while grid power really cost 32,5). Recomposed server-side from spot +
+   * the site's tariff/Preisblatt (optimizer/SlotEconomics). Null on older runs
+   * / slots without a spot price: the sentence then degrades to a number-free
+   * form and NEVER passes spot off as "Netzstrom".
+   */
+  importPriceCtKwh: number | null;
+  /**
+   * What one EXPORTED kWh really earns in the slot (ct/kWh): spot + dynamic
+   * Marktprämie (Direktvermarktung) or the feste Vergütung (Eigenverbrauch),
+   * merchant mode bare spot. Null when not computable.
+   */
+  exportValueCtKwh: number | null;
+  /**
+   * Which rule priced the import: `fest` | `preisblatt` | `sammelaufschlag` |
+   * `default-flag` | `spot`. A SITE-level fact (identical on every slot of a
+   * run); it decides whether the sentence may break the price down into
+   * "Börsenpreis X + Netzentgelte/Abgaben Y".
+   */
+  importPriceSource: string | null;
 }
 
 export interface SchedulePlan {

@@ -2,6 +2,7 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.history.HistoryService;
+import com.voltpilot.api.optimizer.SchedulePricingService;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.DeviceSourceStatusRepository;
 import com.voltpilot.api.repo.ForecastQualityRepository;
@@ -73,6 +74,7 @@ public class SiteController {
     private final ForecastQualityRepository forecastQuality;
     private final ControlStatusRepository controlStatus;
     private final DeviceSourceStatusRepository sourceStatus;
+    private final SchedulePricingService schedulePricing;
     private final String activeLoadModel;
     private final String activePvModel;
 
@@ -88,6 +90,7 @@ public class SiteController {
             ForecastQualityRepository forecastQuality,
             ControlStatusRepository controlStatus,
             DeviceSourceStatusRepository sourceStatus,
+            SchedulePricingService schedulePricing,
             @Value("${voltpilot.forecast.active-load-model}") String activeLoadModel,
             @Value("${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
@@ -101,6 +104,7 @@ public class SiteController {
         this.forecastQuality = forecastQuality;
         this.controlStatus = controlStatus;
         this.sourceStatus = sourceStatus;
+        this.schedulePricing = schedulePricing;
         this.activeLoadModel = activeLoadModel;
         this.activePvModel = activePvModel;
     }
@@ -367,7 +371,11 @@ public class SiteController {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
         }
         SchedulePlanDto plan = schedules.latestForSite(siteId);
-        return plan != null ? plan : SchedulePlanDto.empty();
+        // P0 Textwahrheit: the persisted price is bare SPOT - fill in the price
+        // the optimizer actually decided with, so the portal's why-sentence can
+        // name it instead of contradicting itself (report vp-netzbezug-nacht-s3
+        // §6). Pure pass-through of the existing SlotEconomics recomposition.
+        return plan != null ? schedulePricing.priced(siteId, plan) : SchedulePlanDto.empty();
     }
 
     /**

@@ -46,6 +46,21 @@ import java.util.List;
  * All null on pre-feature rows or runs whose explain layer was off/failed -
  * the portal then renders exactly today's view (its {@code chargeKind}
  * fallback), never a fabricated explanation.
+ *
+ * <p><b>Der Preis, mit dem entschieden wurde</b> (P0 "Textwahrheit", report
+ * vp-netzbezug-nacht-s3 §6): {@code priceEurMwh} is the bare SPOT price, but
+ * the optimizer decides against the site's REAL import price / export value -
+ * so a customer sentence built on spot regularly contradicts itself ("21,2
+ * wäre teurer als 21,5"). {@code importPriceCtKwh} is what one imported kWh
+ * really costs the site in this slot, {@code exportValueCtKwh} what one
+ * exported kWh really earns, and {@code importPriceSource} names WHICH rule
+ * priced the import ({@code fest} | {@code preisblatt} |
+ * {@code sammelaufschlag} | {@code default-flag} | {@code spot}). All three
+ * are a pure PASS-THROUGH of the existing {@link
+ * com.voltpilot.api.optimizer.SlotEconomics} recomposition the admin
+ * diagnostics already runs - no second price rule. Null when the slot has no
+ * persisted spot price (or the site is hidden), and the portal then degrades
+ * to a number-free sentence rather than passing spot off as "Netzstrom".
  */
 public record ScheduleSlotDto(
         Instant start,
@@ -62,5 +77,17 @@ public record ScheduleSlotDto(
         List<String> slotFlags,
         BigDecimal storedValueCtKwh,
         BigDecimal gridValueCtKwh,
-        BigDecimal peakPressureEurKw) {
+        BigDecimal peakPressureEurKw,
+        BigDecimal importPriceCtKwh,
+        BigDecimal exportValueCtKwh,
+        String importPriceSource) {
+
+    /** The same slot with its decision prices filled in (P0 Textwahrheit). */
+    public ScheduleSlotDto withPrices(
+            BigDecimal importPriceCtKwh, BigDecimal exportValueCtKwh, String importPriceSource) {
+        return new ScheduleSlotDto(start, batteryKw, gridKw, socPct, priceEurMwh, costEur,
+                baselineCostEur, curtailKw, pvKw, loadKw, slotRole, slotFlags, storedValueCtKwh,
+                gridValueCtKwh, peakPressureEurKw,
+                importPriceCtKwh, exportValueCtKwh, importPriceSource);
+    }
 }

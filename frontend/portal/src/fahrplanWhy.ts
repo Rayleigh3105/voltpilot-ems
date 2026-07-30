@@ -58,6 +58,23 @@ export interface WhySlot {
   /** μ - the slot's share of the Leistungspreis pressure (EUR/kW). */
   peakPressureEurKw?: number | null;
   /**
+   * P0 "Textwahrheit" (report vp-netzbezug-nacht-s3 §6): what one imported
+   * kWh REALLY costs this site in the slot (ct/kWh) - the price the optimizer
+   * decided with. `priceEurMwh` is bare spot; comparing THAT against the
+   * stored-energy value produced the systematically self-contradictory
+   * sentence ("Börsenpreis 21,2 wäre teurer als 21,5" while grid power cost
+   * 32,5). Null on older runs - the sentence degrades to a number-free form.
+   */
+  importPriceCtKwh?: number | null;
+  /** What one exported kWh really earns in the slot (ct/kWh). */
+  exportValueCtKwh?: number | null;
+  /**
+   * Which rule priced the import: fest | preisblatt | sammelaufschlag |
+   * default-flag | spot. Decides whether the sentence may break the price
+   * down into "Börsenpreis X + Netzentgelte/Abgaben Y".
+   */
+  importPriceSource?: string | null;
+  /**
    * Persisted P2 wear the slot spends (EUR). Not part of the §5.1 customer
    * contract yet - when absent the phase-€ falls back to baseline − cost,
    * which matches the page's existing "Heute geplant gespart" framing.
@@ -402,9 +419,57 @@ function ctFmt(v: number): string {
   return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ct/kWh`;
 }
 
+/** de-DE "31,5" - a bare number for use inside a price breakdown. */
+function numFmt(v: number): string {
+  return v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 /** Spot price of a slot in ct/kWh, null-safe. */
 function spotCt(slot: WhySlot): number | null {
   return slot.priceEurMwh == null ? null : Number(slot.priceEurMwh) / 10;
+}
+
+/**
+ * What one imported kWh really costs in this slot (ct/kWh) - the number the
+ * optimizer decided with. Null on runs that predate the field; a sentence
+ * needing it then degrades to its number-free form. NEVER falls back to the
+ * spot price: labeling spot as "Netzstrom" is exactly the bug this closes.
+ */
+function importCt(slot: WhySlot): number | null {
+  return slot.importPriceCtKwh == null ? null : Number(slot.importPriceCtKwh);
+}
+
+/** Below this the breakdown's Aufschlag term is noise, not information. */
+const PRICE_PART_DEADBAND_CT = 0.05;
+
+/**
+ * The parenthetical that makes the grid price VERIFIABLE - only ever from
+ * what the run really carries:
+ *   preisblatt/sammelaufschlag/default-flag → "(Börsenpreis 21,2 +
+ *     Netzentgelte/Abgaben 11,3)" - the remainder is stated, never itemized
+ *     beyond what the API tells us;
+ *   fest → "(Ihr Festpreis-Tarif)" - a flat retail price has no spot share;
+ *   spot → "(Börsenpreis)" - import IS spot here, so no invented components;
+ *   unknown/missing source → no parenthetical at all.
+ */
+function importPriceDetail(slot: WhySlot, imp: number): string | null {
+  const source = slot.importPriceSource ?? null;
+  if (source === 'fest') return '(Ihr Festpreis-Tarif)';
+  if (source === 'spot') return '(Börsenpreis)';
+  if (source !== 'preisblatt' && source !== 'sammelaufschlag' && source !== 'default-flag') {
+    return null;
+  }
+  const spot = spotCt(slot);
+  if (spot == null) return null;
+  const parts = imp - spot;
+  if (parts <= PRICE_PART_DEADBAND_CT) return null;
+  return `(Börsenpreis ${numFmt(spot)} + Netzentgelte/Abgaben ${numFmt(parts)})`;
+}
+
+/** "32,5 ct/kWh (Börsenpreis 21,2 + Netzentgelte/Abgaben 11,3)". */
+function importPricePhrase(slot: WhySlot, imp: number): string {
+  const detail = importPriceDetail(slot, imp);
+  return detail ? `${ctFmt(imp)} ${detail}` : ctFmt(imp);
 }
 
 /** Ø spot price over the plan's priced slots (ct/kWh); null without prices. */
@@ -438,14 +503,28 @@ export function slotWhy(slot: WhySlot, kind: PlanWordingKind): string | null {
       return lam != null
         ? `Überschüssiger Solarstrom wird gespeichert statt eingespeist – gespeicherte Energie ist später ≈ ${ctFmt(lam)} wert.`
         : 'Überschüssiger Solarstrom wird für die teuren Stunden gespeichert.';
-    case 'guenstig_laden':
-      return price != null && lam != null
-        ? `Lädt günstig aus dem Netz: Börsenpreis ${ctFmt(price)} liegt unter dem Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
-        : 'Lädt günstig aus dem Netz für die teuren Stunden.';
-    case 'eigenverbrauch':
-      return price != null && lam != null
-        ? `Deckt den Verbrauch aus dem Speicher: Netzstrom wäre jetzt teurer (Börsenpreis ${ctFmt(price)}) als der Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
-        : 'Deckt den Verbrauch aus dem Speicher und vermeidet teuren Netzbezug.';
+    // The two grid-price roles name the BEZUGSPREIS, never the bare spot
+    // (P0 Textwahrheit): the comparison against the stored-energy value is
+    // only made when it actually holds - otherwise the number is stated
+    // without a claim, so the sentence can never contradict itself.
+    case 'guenstig_laden': {
+      const imp = importCt(slot);
+      if (imp == null || lam == null) return 'Lädt günstig aus dem Netz für die teuren Stunden.';
+      const head = `Lädt günstig aus dem Netz: Netzstrom kostet Sie jetzt ${importPricePhrase(slot, imp)}`;
+      return imp < lam
+        ? `${head} – weniger als der Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
+        : `${head}.`;
+    }
+    case 'eigenverbrauch': {
+      const imp = importCt(slot);
+      if (imp == null || lam == null) {
+        return 'Deckt den Verbrauch aus dem Speicher und vermeidet teuren Netzbezug.';
+      }
+      const head = `Deckt den Verbrauch aus dem Speicher: Netzstrom kostet Sie jetzt ${importPricePhrase(slot, imp)}`;
+      return imp > lam
+        ? `${head} – mehr als der Wert gespeicherter Energie (≈ ${ctFmt(lam)}).`
+        : `${head}.`;
+    }
     case 'verkaufen': {
       const verb = kind === 'direktvermarktung' ? 'Verkauft zum Spitzenpreis' : 'Speist ein';
       return price != null && lam != null
