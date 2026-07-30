@@ -159,6 +159,13 @@ export interface StripSlot {
   value: number | null;
   /** True for the current Berlin month. */
   isCurrent: boolean;
+  /**
+   * Ob der Monat überhaupt Daten trägt — `undefined` heißt **unbekannt** (die
+   * Geld-Ansicht weiß es nicht und graut deshalb nie etwas aus). Die Historie
+   * füllt es aus der Datenabdeckung (`historieZeit.ts`), damit ein Tipp nie in
+   * eine garantiert leere Fläche führt.
+   */
+  hasData?: boolean;
 }
 
 /**

@@ -430,6 +430,38 @@ export interface HistoryPlanPoint {
   socPct: number | null;
 }
 
+/**
+ * Wie vollständig der Zeitraum GEMESSEN ist (F4/P7 des Historie-Konzepts) —
+ * aus einer eigenen billigen Abfrage auf dem 15-Minuten-Rollup, unabhängig von
+ * der Reihe. Gezählt werden **Viertelstunden** (`resolutionMinutes`), nicht
+ * Anzeige-Buckets: so entsteht die Messreihe, egal ob die Seite gerade Tage
+ * oder Stunden zeichnet.
+ *
+ * **Absichtlich ohne Prozentsatz:** die Zähler sind die Tatsache, die
+ * Formulierung gehört der Oberfläche (`historieZeit.ts` — inklusive der Regel
+ * „nie auf 100 % aufrunden"). Optional, damit ein älteres Backend die Fläche
+ * nicht bricht: fehlt das Feld, zeigt die Zeit-Leiste keine Abdeckung, statt
+ * eine zu behaupten.
+ */
+export interface HistoryCoverage {
+  /** Erste je gemessene Viertelstunde der Anlage („Daten ab …"). */
+  firstDataAt: string | null;
+  /** Letzte je gemessene Viertelstunde der Anlage. */
+  lastDataAt: string | null;
+  /** Beginn des Zeitraums, auf den sich die Zähler beziehen. */
+  expectedFrom: string;
+  /** Ende (exklusiv) desselben Zeitraums. */
+  expectedTo: string;
+  /** Viertelstunden, die dieser Zeitraum tragen konnte. */
+  expectedBuckets: number;
+  /** Davon wirklich gemessene Viertelstunden (nie mehr als erwartet). */
+  measuredBuckets: number;
+  /** Zusammenhängende Fehlstellen darin (0 = durchgehend gemessen). */
+  gaps: number;
+  /** Länge einer gezählten Einheit in Minuten (15). */
+  resolutionMinutes: number;
+}
+
 export interface History {
   range: HistoryRange;
   from: string;
@@ -441,6 +473,11 @@ export interface History {
   protocol: ProtocolEvent[];
   /** Plan-vs-actual overlay - day range only, else empty. */
   plan: HistoryPlanPoint[];
+  /**
+   * Datenabdeckung des Zeitraums (F4/P7) — null, wenn die Anlage noch nie eine
+   * Viertelstunde gemessen hat; optional für ältere Backends.
+   */
+  coverage?: HistoryCoverage | null;
 }
 
 /**

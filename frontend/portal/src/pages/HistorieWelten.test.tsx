@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MesswerteSection } from './MesswerteSection';
 import { ErloeseSection } from './ErloeseSection';
 import { clearHistoryCache } from '../historyCache';
+import { isoDate } from '../periodNav';
 import { anlageSurface, type AnlageSurface } from '../surface';
 import {
   api,
@@ -197,6 +198,19 @@ const historyWithData: History = {
     },
   ],
   plan: [],
+  // F4: 1880/2000 Viertelstunden = 94 %, verteilt auf 6 Lücken. Die Zeitpunkte
+  // stehen bewusst mittags, damit die Zeitzone des Testrechners das Datum nicht
+  // über eine Tagesgrenze kippt.
+  coverage: {
+    firstDataAt: '2026-06-19T12:00:00Z',
+    lastDataAt: '2026-07-30T11:45:00Z',
+    expectedFrom: '2026-06-30T22:00:00Z',
+    expectedTo: '2026-07-30T11:45:00Z',
+    expectedBuckets: 2000,
+    measuredBuckets: 1880,
+    gaps: 6,
+    resolutionMinutes: 15,
+  },
 };
 
 beforeEach(() => {
@@ -381,10 +395,15 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
   });
 
   it('zeigt beim Blättern die alte Periode gedimmt statt eines Skeletts (P5)', async () => {
-    let resolve: ((h: History) => void) | null = null;
-    vi.spyOn(api, 'history')
-      .mockResolvedValueOnce(historyWithData)
-      .mockImplementationOnce(() => new Promise<History>((r) => (resolve = r)));
+    // Seit F3 läuft ein ZWEITER Abruf (die Vorperiode) über denselben Endpunkt,
+    // deshalb wird hier nach ANKER unterschieden statt nach Aufrufreihenfolge.
+    const heute = isoDate(new Date());
+    const offen: ((h: History) => void)[] = [];
+    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
+      at === heute
+        ? Promise.resolve(historyWithData)
+        : new Promise<History>((r) => offen.push(r)),
+    );
 
     const { container } = render(
       <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
@@ -397,8 +416,195 @@ describe('Der Welt-Wechsel: ein Klick, der Zeitraum reist mit, KEIN neuer Abruf'
     await waitFor(() => expect(container.querySelector('.vp-welt-stale')).toBeTruthy());
     expect(screen.getByLabelText('Energiemengen im Zeitraum')).toBeInTheDocument();
 
-    resolve?.(historyEmpty);
+    offen.forEach((r) => r(historyEmpty));
     await waitFor(() => expect(container.querySelector('.vp-welt-stale')).toBeNull());
+  });
+
+  it('sagt es, wenn eine Periode NICHT geladen werden konnte (P5) - statt still stehenzubleiben', async () => {
+    const heute = isoDate(new Date());
+    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
+      at === heute ? Promise.resolve(historyWithData) : Promise.reject(new Error('kaputt')),
+    );
+
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+    fireEvent.click(screen.getByLabelText('Vorheriger Zeitraum'));
+
+    await screen.findByText(/konnte nicht geladen werden/);
+    // Die zuletzt geladenen Zahlen bleiben stehen - nur eben beschriftet.
+    expect(screen.getByLabelText('Energiemengen im Zeitraum')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * PR D · F2 — der Zeitraum-Sprung. Vorher gab es GENAU EINE Geste in die
+ * Vergangenheit (‹, ein Zeitraum pro Klick): 211 Klicks vom 30.07. in einen
+ * Januar-Tag.
+ */
+describe('F2 · In der Vergangenheit navigieren', () => {
+  it('bietet neben dem Schrittknopf ein Sprungfeld - begrenzt auf die echte Datenlage', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    const { container } = render(
+      <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
+    );
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+
+    const feld = screen.getByLabelText('Tag wählen') as HTMLInputElement;
+    expect(feld.type).toBe('date');
+    expect(feld.value).toBe(isoDate(new Date()));
+    // Nie in die Zukunft, nie vor die erste gemessene Viertelstunde.
+    expect(feld.max).toBe(isoDate(new Date()));
+    expect(feld.min).toBe('2026-06-19');
+
+    // EIN Sprung, kein Klick-Marathon.
+    fireEvent.change(feld, { target: { value: '2026-01-15' } });
+    await waitFor(() =>
+      expect(container.querySelector('.vp-period-nav .label')).toHaveTextContent('15.01.2026'),
+    );
+  });
+
+  it('wechselt mit dem Zeitraum auch die Art des Sprungfelds', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Monat' }));
+    expect((screen.getByLabelText('Monat wählen') as HTMLInputElement).type).toBe('month');
+    fireEvent.click(screen.getByRole('tab', { name: 'Woche' }));
+    expect((screen.getByLabelText('Woche wählen') as HTMLInputElement).type).toBe('week');
+    // Für das Jahr gibt es kein natives Feld - also eine Auswahlliste.
+    fireEvent.click(screen.getByRole('tab', { name: 'Jahr' }));
+    expect(screen.getByLabelText('Jahr wählen').tagName).toBe('SELECT');
+  });
+
+  it('trägt den Monatsstreifen der Geld-Ansicht - hier als Navigator OHNE erfundene Zahlen', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    const { container } = render(
+      <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
+    );
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+
+    const streifen = screen.getByRole('tablist', { name: 'Monat anspringen' });
+    const chips = within(streifen).getAllByRole('tab');
+    expect(chips).toHaveLength(12);
+    // Kein Chip behauptet einen Wert (die Historie kennt keine Monatswerte).
+    expect(streifen.querySelector('.mv')).toBeNull();
+    // Monate vor der ersten Messung sind nicht anspringbar.
+    expect(chips.some((c) => (c as HTMLButtonElement).disabled)).toBe(true);
+
+    fireEvent.click(within(streifen).getAllByRole('tab', { name: /Jul/ })[0]);
+    await waitFor(() =>
+      expect(container.querySelector('.vp-period-nav .label')?.textContent).toContain('2026'),
+    );
+  });
+
+  it('zeigt den Streifen nur dort, wo Blättern wirklich weh tut', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+    expect(screen.getByRole('tablist', { name: 'Monat anspringen' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Jahr' }));
+    expect(screen.queryByRole('tablist', { name: 'Monat anspringen' })).toBeNull();
+  });
+});
+
+/**
+ * PR D · F4 — die Datenlage. Vorher war eine Lücke von einer gemessenen Null
+ * nicht unterscheidbar, und ein „Jahr" durfte sechs Wochen zeigen, ohne es zu
+ * sagen.
+ */
+describe('F4 · Datenabdeckung in der Zeit-Leiste', () => {
+  it('sagt ab wann es Daten gibt, wie viel gemessen ist und wie viele Lücken', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+
+    expect(screen.getByText('Daten ab 19.06.2026')).toBeInTheDocument();
+    expect(screen.getByText('94 % der Viertelstunden gemessen')).toBeInTheDocument();
+    expect(screen.getByText('· 6 Lücken')).toBeInTheDocument();
+  });
+
+  it('behauptet ohne Abdeckungsdaten GAR KEINE - auch in der Geld-Welt', async () => {
+    const ohne: History = { ...historyWithData, coverage: null };
+    vi.spyOn(api, 'history').mockResolvedValue(ohne);
+    render(<ErloeseSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Geld im Zeitraum');
+    expect(screen.queryByText(/Daten ab/)).toBeNull();
+    expect(screen.queryByText(/gemessen$/)).toBeNull();
+  });
+});
+
+/**
+ * PR D · F3 — Δ zur Vorperiode: die billigste Form von „nachschauen".
+ */
+describe('F3 · Vergleich mit der Vorperiode', () => {
+  /** Eine Antwort mit frei gesetzten Summen (die Buckets tragen die Wahrheit). */
+  function tag(pv: number, bezug: number | null): History {
+    return {
+      ...historyWithData,
+      buckets: [
+        {
+          ...historyWithData.buckets[0],
+          pvKwh: pv,
+          gridImportKwh: bezug,
+          batteryChargeKwh: null,
+          batteryDischargeKwh: null,
+        },
+      ],
+    };
+  }
+
+  it('zeigt je Kennzahl das Δ und wertet nur, wo die Richtung eindeutig ist', async () => {
+    const heute = isoDate(new Date());
+    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
+      Promise.resolve(at === heute ? tag(118, 91) : tag(100, 100)),
+    );
+    const { container } = render(
+      <MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />,
+    );
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+
+    // +18 % Erzeugung ist eindeutig gut, −9 % Netzbezug ebenfalls.
+    await screen.findByText('18 % mehr als am Vortag');
+    expect(screen.getByText('9 % weniger als am Vortag')).toBeInTheDocument();
+    expect(container.querySelectorAll('.vp-delta-gut').length).toBe(2);
+    // Die Karte nennt, womit verglichen wird.
+    expect(screen.getByText(/^Vergleich: /)).toBeInTheDocument();
+  });
+
+  it('vergleicht NIE gegen eine erfundene Null', async () => {
+    const heute = isoDate(new Date());
+    // Die Vorperiode trug den Netzbezug gar nicht.
+    vi.spyOn(api, 'history').mockImplementation((_s, _r, at) =>
+      Promise.resolve(at === heute ? tag(118, 91) : tag(100, null)),
+    );
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByText('18 % mehr als am Vortag');
+    expect(screen.queryByText(/als am Vortag/)).not.toBeNull();
+    // Kein Δ auf der Bezogen-Kachel - lieber keine Aussage als eine falsche.
+    expect(screen.queryByText(/% weniger als am Vortag/)).toBeNull();
+  });
+
+  it('beschriftet eine LAUFENDE Periode als solche', async () => {
+    vi.spyOn(api, 'history').mockResolvedValue(tag(118, 91));
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByLabelText('Energiemengen im Zeitraum');
+    // Der laufende Tag gegen einen vollen Vortag - das muss dastehen.
+    await waitFor(() =>
+      expect(screen.getByText(/läuft noch — verglichen wird mit dem vollständigen/))
+        .toBeInTheDocument(),
+    );
+  });
+
+  it('holt die Vorperiode gar nicht erst, wenn der Zeitraum leer ist', async () => {
+    const hist = vi.spyOn(api, 'history').mockResolvedValue(historyEmpty);
+    render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+    await screen.findByText('Keine Messwerte in diesem Zeitraum');
+    // Nur der EINE Abruf der gezeigten Periode (im StrictMode-freien Test).
+    const anker = new Set(hist.mock.calls.map((c) => c[2]));
+    expect(anker.size).toBe(1);
   });
 });
 

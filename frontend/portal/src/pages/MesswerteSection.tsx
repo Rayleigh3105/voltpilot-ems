@@ -4,7 +4,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { History, HistoryRange, Site } from '../api';
 import { NBSP } from '../format';
-import { isoDate } from '../periodNav';
+import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import {
   energieBilanz,
@@ -13,6 +13,13 @@ import {
   type EnergieFarbe,
   type EnergieSumme,
 } from '../energieBilanz';
+import {
+  delta,
+  ENERGIE_WERTUNG,
+  laufendHinweis,
+  vergleichsKopf,
+  vergleichsName,
+} from '../historieVergleich';
 import { chartTheme } from '../chartTheme';
 import {
   availableWelten,
@@ -21,7 +28,7 @@ import {
   WELTEN,
   type WeltId,
 } from '../historieWelten';
-import { useHistoryPeriod } from '../useHistoryPeriod';
+import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
 import type { AnlageSurface } from '../surface';
 
 import { InfoTip } from '../components/InfoTip';
@@ -29,7 +36,14 @@ import { ChartSubtitle } from '../components/ChartExplain';
 import { ChartCardSkeleton, EmptyState, ErrorState } from '../components/States';
 import { VerlaufExplorer } from '../components/VerlaufExplorer';
 import { HistoryEnergieChart } from '../HistoryChart';
-import { KartenKopf, WeltFuss, WeltKopf, ZeitLeiste } from '../components/HistorieWelt';
+import {
+  DeltaZeile,
+  KartenKopf,
+  PeriodeFehlgeschlagen,
+  WeltFuss,
+  WeltKopf,
+  ZeitLeiste,
+} from '../components/HistorieWelt';
 
 import '../components/Historie.css';
 
@@ -77,8 +91,22 @@ function dotColor(key: EnergieFarbe): string {
   return map[key];
 }
 
-/** One period-total tile: value + coloured dot + plain-German hint. */
-function SummeTile({ summe }: { summe: EnergieSumme }) {
+/**
+ * One period-total tile: value + coloured dot + plain-German hint, darunter das
+ * Δ zur Vorperiode (F3) — das rendert sich selbst weg, wenn es keinen ehrlichen
+ * Vergleich gibt.
+ */
+function SummeTile({
+  summe,
+  vergleichKwh,
+  vergleichName,
+}: {
+  summe: EnergieSumme;
+  /** Dieselbe Summe der Vorperiode — null/undefined = kein Vergleich. */
+  vergleichKwh?: number | null;
+  vergleichName: string;
+}) {
+  const d = delta(summe.kwh, vergleichKwh, ENERGIE_WERTUNG[summe.key], vergleichName);
   return (
     <div className="vp-esum" title={summe.hinweis}>
       <span className="vp-esum-v">{kwh(summe.kwh)}</span>
@@ -86,6 +114,7 @@ function SummeTile({ summe }: { summe: EnergieSumme }) {
         <span className="vp-esum-dot" style={{ ['--dot' as string]: dotColor(summe.farbe) }} />
         {summe.label}
       </span>
+      <DeltaZeile delta={d} />
     </div>
   );
 }
@@ -93,16 +122,23 @@ function SummeTile({ summe }: { summe: EnergieSumme }) {
 /** Karte 1 + 2 der Welt: Energiemengen des Zeitraums und das eine Diagramm. */
 function EnergieKarten({
   history,
+  vorher,
   range,
   anchor,
 }: {
   history: History;
+  /** Die Vorperiode für das Δ (F3) — null, solange sie nicht geladen ist. */
+  vorher: History | null;
   range: HistoryRange;
   anchor: Date;
 }) {
   const bilanz = energieBilanz(history);
-  const hinweis = zeitraumHinweis(anchor, range, new Date());
+  const now = new Date();
+  const hinweis = zeitraumHinweis(anchor, range, now);
   const isDay = range === 'day';
+  const vergleichName = vergleichsName(anchor, range);
+  const vorherSummen = vorher ? energieBilanz(vorher).summen : null;
+  const laufend = vorher ? laufendHinweis(anchor, range, now) : null;
 
   if (history.buckets.length === 0 || bilanz.empty) {
     return (
@@ -121,13 +157,29 @@ function EnergieKarten({
     <>
       <section className="vp-section">
         <Card padding="lg" radius="lg">
-          <KartenKopf icon="zap" titel={summenTitel(anchor, range)} art="gemessen" />
+          <KartenKopf
+            icon="zap"
+            titel={summenTitel(anchor, range)}
+            art="gemessen"
+            extra={
+              vorherSummen ? (
+                <span className="vp-karten-vergleich">{vergleichsKopf(anchor, range)}</span>
+              ) : undefined
+            }
+          />
 
           <div className="vp-energie-summen" aria-label="Energiemengen im Zeitraum">
-            {bilanz.summen.map((s) => (
-              <SummeTile key={s.key} summe={s} />
+            {bilanz.summen.map((s, i) => (
+              <SummeTile
+                key={s.key}
+                summe={s}
+                vergleichKwh={vorherSummen ? vorherSummen[i]?.kwh : null}
+                vergleichName={vergleichName}
+              />
             ))}
           </div>
+
+          {laufend && <p className="vp-note vp-note-laufend">{laufend}</p>}
 
           <div className="vp-energie-chips">
             <span className="vp-energie-chip">
@@ -195,6 +247,14 @@ export function MesswerteSection({
 
   const at = isoDate(anchor);
   const { history, loading, stale, err, retry } = useHistoryPeriod(site.id, range, at);
+  // F3: der zweite Abruf mit verschobenem Anker - erst, wenn der gezeigte
+  // Zeitraum überhaupt Zahlen trägt.
+  const vorher = useVergleichsPeriode(
+    site.id,
+    range,
+    anchor,
+    !stale && (history?.buckets.length ?? 0) > 0,
+  );
 
   // Ein Cockpit-Sprung (oder Zurück/Vorwärts) ändert den Deep-Link, während
   // diese Fläche montiert bleibt - Zeitraum + Explorer daraus neu setzen. Der
@@ -234,7 +294,14 @@ export function MesswerteSection({
         hrefFor={(c) => historieHash(site.id, c.welt.id, range, at)}
         onOpen={(c) => onOpenWelt(c.welt.id)}
       />
-      <ZeitLeiste range={range} anchor={anchor} onRange={setRange} onAnchor={setAnchor} />
+      <ZeitLeiste
+        range={range}
+        anchor={anchor}
+        onRange={setRange}
+        onAnchor={setAnchor}
+        coverage={history?.coverage}
+        stale={stale}
+      />
 
       <div className={stale ? 'vp-welt-body vp-welt-stale' : 'vp-welt-body'}>
         {err && !history ? (
@@ -246,7 +313,15 @@ export function MesswerteSection({
             </Card>
           ) : null
         ) : (
-          <EnergieKarten history={history} range={range} anchor={anchor} />
+          <>
+            {/* P5: fehlgeschlagenes Blättern darf nicht als stiller Stillstand
+                enden - die alte Periode bleibt stehen, sagt aber, dass sie die
+                alte ist. */}
+            {err && stale && (
+              <PeriodeFehlgeschlagen periode={periodLabel(anchor, range)} onRetry={retry} />
+            )}
+            <EnergieKarten history={history} vorher={vorher} range={range} anchor={anchor} />
+          </>
         )}
       </div>
 

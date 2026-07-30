@@ -85,15 +85,27 @@ export function PeriodTabs({
  * The 12-month strip (month mode): a fixed row of the last 12 Berlin months,
  * each a tappable chip with its Gesamtertrag. Horizontally scrollable so all
  * twelve fit on a phone. The selected month is highlighted.
+ *
+ * **Zwei Nutzungen, ein Baustein** (F2 des Historie-Konzepts): die Geld-Ansicht
+ * zeigt je Monat seinen Gesamtertrag; die Historie benutzt denselben Streifen
+ * als reinen **Sprung-Navigator** (`showValues={false}`) — sie kennt keine
+ * Monatswerte, ohne zwölf weitere Abrufe zu bezahlen, und eine erfundene Zahl
+ * käme nicht in Frage. Ein Monat, der laut Datenabdeckung garantiert nichts
+ * trägt (`slot.hasData === false`), ist ausgegraut und nicht tippbar;
+ * `undefined` heißt unbekannt und wird nie ausgegraut.
  */
 export function MonthStrip({
   slots,
   selectedMonth,
   onSelect,
+  showValues = true,
+  ariaLabel = 'Monat wählen',
 }: {
   slots: StripSlot[];
   selectedMonth: string;
   onSelect: (monthIso: string) => void;
+  showValues?: boolean;
+  ariaLabel?: string;
 }) {
   // Keep the selected month in view - the recent months matter most, and on a
   // phone the strip scrolls, so a fresh render must not strand the customer on
@@ -108,20 +120,30 @@ export function MonthStrip({
   }, [selectedMonth, slots]);
 
   return (
-    <div className="vp-mstrip" ref={ref} role="tablist" aria-label="Monat wählen">
-      {slots.map((s) => (
-        <button
-          key={s.month}
-          role="tab"
-          aria-selected={s.month === selectedMonth}
-          className={`vp-mstrip-m${s.month === selectedMonth ? ' on' : ''}`}
-          onClick={() => onSelect(s.month)}
-          title={s.value == null ? s.label : `${s.label}: ${stripValueLabel(s.value)} €`}
-        >
-          <span className="mn">{s.label}</span>
-          <span className="mv">{stripValueLabel(s.value)}</span>
-        </button>
-      ))}
+    <div className="vp-mstrip" ref={ref} role="tablist" aria-label={ariaLabel}>
+      {slots.map((s) => {
+        const leer = s.hasData === false;
+        return (
+          <button
+            key={s.month}
+            role="tab"
+            aria-selected={s.month === selectedMonth}
+            className={`vp-mstrip-m${s.month === selectedMonth ? ' on' : ''}${leer ? ' leer' : ''}`}
+            onClick={() => onSelect(s.month)}
+            disabled={leer}
+            title={
+              leer
+                ? `${s.label}: keine Daten`
+                : showValues && s.value != null
+                  ? `${s.label}: ${stripValueLabel(s.value)} €`
+                  : s.label
+            }
+          >
+            <span className="mn">{s.label}</span>
+            {showValues && <span className="mv">{stripValueLabel(s.value)}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }

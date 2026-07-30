@@ -4559,6 +4559,38 @@ components:
               time: { type: string, format: date-time }
               batteryKw: { type: number, nullable: true, description: "+ = charge, - = discharge." }
               socPct: { type: number, nullable: true }
+        coverage:
+          nullable: true
+          type: object
+          description: >
+            How completely the period is MEASURED (F4/P7) - from its own cheap
+            min/max/count query on telemetry_rollup_15m, independent of the
+            series. Counts QUARTER-HOURS (resolutionMinutes), not display
+            buckets. Null when the site never measured a single quarter-hour
+            (incl. a purely v2-native plant with no v1 rollup) - a surface must
+            then claim no coverage at all. No percentage is served: the counts
+            are the fact, the wording belongs to the client.
+          properties:
+            firstDataAt: { type: string, format: date-time, nullable: true, description: The site's earliest ever measured quarter-hour ("Daten ab …"). }
+            lastDataAt: { type: string, format: date-time, nullable: true, description: The site's latest ever measured quarter-hour. }
+            expectedFrom:
+              type: string
+              format: date-time
+              description: >
+                Start of the span the counters refer to - never before
+                firstDataAt, so a calendar year of a plant commissioned in June
+                is not reported as 45 % incomplete.
+            expectedTo:
+              type: string
+              format: date-time
+              description: >
+                End (exclusive) of that span - never inside the running
+                quarter-hour, and one rollup cadence (15 min) behind now, so a
+                just-finished quarter is not reported as a gap.
+            expectedBuckets: { type: integer, format: int64, description: Quarter-hours the span could have carried. }
+            measuredBuckets: { type: integer, format: int64, description: Quarter-hours actually measured (capped at expectedBuckets - never over 100 %). }
+            gaps: { type: integer, description: Contiguous missing runs inside the span, incl. its leading/trailing edge (0 = continuous). }
+            resolutionMinutes: { type: integer, example: 15, description: Length of one counted unit. }
     ForecastQuality:
       type: object
       description: >
