@@ -125,21 +125,23 @@ public class EarningsRepository {
                     + " AND r.grid_import_kwh IS NOT NULL AND r.grid_export_kwh IS NOT NULL";
 
     /**
-     * Matches a 15-min bucket to its day-ahead price slot in the SITE's bidding
-     * zone: the stored slot (PT15M or PT60M) containing the bucket start,
-     * preferring the finer resolution when both exist - the
-     * HistoryRepository.PRICE_LATERAL approach, with the zone taken from the
-     * joined site row instead of a parameter (each site prices in its own
-     * zone, so multi-zone fleets sum correctly).
+     * The price series of every zone the tenant's sites price in, materialized
+     * once per query over the queried window - see {@link PriceSlots} for the
+     * why (this class ran the old per-bucket lateral FIVE times per
+     * {@code /earnings} request) and for the proof that the slot choice is
+     * identical. Binds: window start, window end.
      */
-    private static final String PRICE_LATERAL =
-            "LEFT JOIN LATERAL ("
-                    + "  SELECT p.price_eur_mwh FROM day_ahead_prices p"
-                    + "  WHERE p.bidding_zone = s.bidding_zone AND p.ts <= r.bucket"
-                    + "    AND p.ts + (CASE p.resolution WHEN 'PT60M' THEN INTERVAL '60 minutes'"
-                    + "                ELSE INTERVAL '15 minutes' END) > r.bucket"
-                    + "  ORDER BY (p.resolution = 'PT15M') DESC, p.ts DESC LIMIT 1"
-                    + ") p ON true ";
+    private static final String PRICE_SLOT_CTE = PriceSlots.forTenantZones();
+
+    /**
+     * Matches a 15-min bucket (alias {@code r}) to its day-ahead price slot in
+     * the SITE's bidding zone: the stored slot (PT15M or PT60M) containing the
+     * bucket start, preferring the finer resolution when both exist. The zone
+     * comes from the joined site row, so a multi-zone fleet sums correctly.
+     */
+    private static final String PRICE_JOIN =
+            "LEFT JOIN price_slot p"
+                    + " ON p.bidding_zone = s.bidding_zone AND p.slot = r.bucket ";
 
     /** A slot enters the sums when its channels AND a price are present. */
     private static final String COVERED = CHANNELS_OK + " AND p.price_eur_mwh IS NOT NULL";
@@ -379,7 +381,8 @@ public class EarningsRepository {
         String exportKwh = "sum(r.grid_export_kwh) FILTER (WHERE " + COVERED + ")";
         String mvFilter = COVERED + " AND mv.value_ct_kwh IS NOT NULL";
         jdbc.query(
-                "SELECT r.site_id,"
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT r.site_id,"
                         + " count(*) AS bucket_count,"
                         + " count(*) FILTER (WHERE " + CHANNELS_OK + ") AS channel_buckets,"
                         + " count(*) FILTER (WHERE " + COVERED + ") AS covered_slots,"
@@ -411,7 +414,7 @@ public class EarningsRepository {
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + SUPPLY_PRICE_JOIN
-                        + PRICE_LATERAL
+                        + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? "
                         + "GROUP BY r.site_id",
@@ -436,6 +439,7 @@ public class EarningsRepository {
                             rs.getBigDecimal("eingespeist_kwh"),
                             rs.getBigDecimal("batterie_bewegt_kwh")));
                 },
+                Timestamp.from(from), Timestamp.from(to),
                 Timestamp.from(from), Timestamp.from(to));
         return result;
     }
@@ -549,14 +553,15 @@ public class EarningsRepository {
             }
         };
         jdbc.query(
-                "SELECT r.site_id,"
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT r.site_id,"
                         + " COALESCE(r.battery_charge_kwh, 0) AS charge_kwh,"
                         + " COALESCE(r.battery_discharge_kwh, 0) AS discharge_kwh,"
                         + " GREATEST(COALESCE(r.pv_kwh - r.load_kwh, 0), 0) AS pv_surplus_kwh,"
                         + " p.price_eur_mwh "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id AND s.netzladen_erlaubt "
-                        + PRICE_LATERAL
+                        + PRICE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
                         + "ORDER BY r.site_id, r.bucket",
                 rs -> {
@@ -585,6 +590,7 @@ public class EarningsRepository {
                         state.arbitrageEur += fromGrid * price / 1000.0;
                     }
                 },
+                Timestamp.from(from), Timestamp.from(to),
                 Timestamp.from(from), Timestamp.from(to));
         state.finish();
         return result;
@@ -598,14 +604,16 @@ public class EarningsRepository {
     public Map<UUID, List<DailySaved>> dailySavedPerSite(Instant from, Instant to) {
         Map<UUID, List<DailySaved>> result = new HashMap<>();
         jdbc.query(
-                "SELECT r.site_id, time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT r.site_id,"
+                        + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
                         // saved = baseline - actual (import at the tariff,
                         // export at spot, incl. the premium delta).
                         + " sum(" + savedEur + ") AS saved_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
                         + SUPPLY_PRICE_JOIN
-                        + PRICE_LATERAL
+                        + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
                         + "GROUP BY 1, 2 ORDER BY 1, 2",
@@ -619,6 +627,7 @@ public class EarningsRepository {
                                         saved));
                     }
                 },
+                Timestamp.from(from), Timestamp.from(to),
                 Timestamp.from(from), Timestamp.from(to));
         return result;
     }
@@ -633,8 +642,8 @@ public class EarningsRepository {
      * ({@code pvModel}) is taken (shadow challengers are never consumed - same
      * rule as the optimizer's {@code inputs.py}); its future slots
      * ({@code time >= now}) are joined to the day-ahead price of the site's OWN
-     * bidding zone with the {@link #PRICE_LATERAL} matching (PT15M preferred,
-     * PT60M fallback). The weighted average
+     * bidding zone with the same {@link PriceSlots} matching the realized
+     * aggregates use (PT15M preferred, PT60M fallback). The weighted average
      * {@code Σ(price × pv) / Σ(pv)} is EUR/MWh; {@code / 10} converts to ct/kWh.
      * The forecast is in POWER (kW, the {@code forecast.value_kw} the optimizer
      * reads); the constant 15-min slot length cancels in the weighted average,
@@ -653,7 +662,8 @@ public class EarningsRepository {
     public Map<UUID, ExpectedMarketValue> expectedMarketValue(String pvModel, Instant now) {
         Map<UUID, ExpectedMarketValue> result = new HashMap<>();
         jdbc.query(
-                "WITH latest_run AS ("
+                "WITH " + PriceSlots.forTenantZonesFrom()
+                        + ", latest_run AS ("
                         + "  SELECT f.site_id, max(f.run_at) AS run_at"
                         + "  FROM forecast f JOIN site s ON s.id = f.site_id"
                         + "  WHERE f.kind = 'pv' AND f.model = ?"
@@ -670,13 +680,8 @@ public class EarningsRepository {
                         + " count(*) AS slots, min(fc.time) AS from_ts, max(fc.time) AS to_ts "
                         + "FROM fc "
                         + "JOIN site s ON s.id = fc.site_id "
-                        + "JOIN LATERAL ("
-                        + "  SELECT p.price_eur_mwh FROM day_ahead_prices p"
-                        + "  WHERE p.bidding_zone = s.bidding_zone AND p.ts <= fc.time"
-                        + "    AND p.ts + (CASE p.resolution WHEN 'PT60M' THEN INTERVAL '60 minutes'"
-                        + "                ELSE INTERVAL '15 minutes' END) > fc.time"
-                        + "  ORDER BY (p.resolution = 'PT15M') DESC, p.ts DESC LIMIT 1"
-                        + ") p ON true "
+                        + "JOIN price_slot p"
+                        + "  ON p.bidding_zone = s.bidding_zone AND p.slot = fc.time "
                         + "GROUP BY fc.site_id",
                 rs -> {
                     BigDecimal ct = rs.getBigDecimal("expected_ct");
@@ -692,7 +697,7 @@ public class EarningsRepository {
                             rs.getTimestamp("to_ts").toInstant(),
                             rs.getLong("slots")));
                 },
-                pvModel, pvModel, Timestamp.from(now));
+                Timestamp.from(now), pvModel, pvModel, Timestamp.from(now));
         return result;
     }
 
@@ -727,12 +732,13 @@ public class EarningsRepository {
         String start = "(date_trunc('" + bucket.unit
                 + "', r.bucket AT TIME ZONE 'Europe/Berlin') AT TIME ZONE 'Europe/Berlin')";
         jdbc.query(
-                "SELECT r.site_id, " + start + " AS bucket_start,"
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT r.site_id, " + start + " AS bucket_start,"
                         + " sum(" + EINSPEISE_ERLOES_EUR + ") AS einspeise_erloes_eur,"
                         + " sum(" + EIGENVERBRAUCHS_WERT_EUR + ") AS eigenverbrauchs_wert_eur "
                         + "FROM telemetry_rollup_15m r "
                         + "JOIN site s ON s.id = r.site_id "
-                        + PRICE_LATERAL
+                        + PRICE_JOIN
                         + MARKET_VALUE_JOIN
                         + "WHERE r.bucket >= ? AND r.bucket < ? AND " + COVERED + " "
                         + "GROUP BY r.site_id, bucket_start ORDER BY r.site_id, bucket_start",
@@ -744,6 +750,7 @@ public class EarningsRepository {
                                     rs.getBigDecimal("einspeise_erloes_eur"),
                                     rs.getBigDecimal("eigenverbrauchs_wert_eur")));
                 },
+                Timestamp.from(from), Timestamp.from(to),
                 Timestamp.from(from), Timestamp.from(to));
         return result;
     }
