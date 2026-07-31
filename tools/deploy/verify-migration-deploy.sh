@@ -9,6 +9,10 @@
 #   3. Every .forgejo/workflows/*.yaml still parses (the deploy pipeline).
 #      Needs PyYAML; without it the script FAILS rather than silently skipping
 #      (ALLOW_MISSING_PYYAML=1 downgrades that to a WARN the summary reports).
+#   4. The project Keycloak image stays in lockstep: its BAKED build options
+#      match the compose runtime (a mismatch makes the cluster's
+#      `start --optimized` refuse to boot), its version pin matches the compose
+#      image default, and both deploy workflows build it (deploy/keycloak/).
 # Uses throwaway placeholder secrets - reads no real .env, connects to nothing.
 #
 # Run from the repo root:  bash tools/deploy/verify-migration-deploy.sh
@@ -94,7 +98,10 @@ fi
 echo "== 3. deploy workflow YAML parses =="
 PYYAML=""
 for py in services/optimization/.venv/bin/python services/forecast/.venv/bin/python python3; do
-  if [ -x "$py" ] && "$py" -c "import yaml" 2>/dev/null; then PYYAML="$py"; break; fi
+  # command -v, not [ -x ]: the bare `python3` fallback is a PATH lookup, and
+  # `[ -x python3 ]` only ever tested a ./python3 in the cwd - so on a machine
+  # without one of the service venvs this loop could never succeed.
+  if command -v "$py" >/dev/null 2>&1 && "$py" -c "import yaml" 2>/dev/null; then PYYAML="$py"; break; fi
 done
 if [ -z "$PYYAML" ]; then
   # A silently skipped check that still printed "ALL DEPLOY CHECKS PASSED" made
@@ -120,6 +127,69 @@ for f in sorted(glob.glob(".forgejo/workflows/*.yaml")):
 sys.exit(1 if bad else 0)
 PY
   then pass "all .forgejo/workflows/*.yaml parse"; else bad "a workflow YAML did not parse"; fi
+fi
+
+echo "== 4. Keycloak image: build-option + version lockstep, and CI builds it =="
+# The k8s Deployment runs `start --optimized`, which REFUSES to boot when a
+# Keycloak BUILD option differs from what the image baked. Three drifts would
+# each surface only at cluster boot (or worse, as two Keycloak versions against
+# one database), so they are checked here instead:
+#   a) every ENV in deploy/keycloak/Dockerfile's builder stage matches the
+#      runtime value the compose keycloak service supplies,
+#   b) ARG KEYCLOAK_VERSION == the version the compose image default pins,
+#   c) both deploy workflows carry the `keycloak` build-matrix entry.
+# The GitOps repo's keycloak.env is the cluster's runtime half; it lives in
+# another repository and is therefore verified there, not here.
+if [ -z "$PYYAML" ]; then
+  note "keycloak lockstep check needs PyYAML too - covered by the section above"
+else
+  if "$PYYAML" - <<'PY'
+import re, sys, yaml
+
+dockerfile = open("deploy/keycloak/Dockerfile").read()
+compose = yaml.safe_load(open("docker-compose.prod.yml"))["services"]["keycloak"]
+ok = True
+
+# (a) baked build options == compose runtime values
+env_block = re.search(r"^ENV (.*?)(?=\n(?:[A-Z]|#|$))", dockerfile, re.S | re.M)
+if not env_block:
+    print("  FAIL deploy/keycloak/Dockerfile has no ENV build-option block"); sys.exit(1)
+baked = dict(p.split("=", 1) for p in env_block.group(1).replace("\\\n", " ").split())
+if not baked:
+    print("  FAIL no build options parsed from the Dockerfile ENV"); sys.exit(1)
+runtime = {str(k): str(v) for k, v in (compose.get("environment") or {}).items()}
+for key, value in sorted(baked.items()):
+    if key not in runtime:
+        print(f"  ok   {key}={value} baked (compose leaves it to the image)")
+    elif runtime[key] == value:
+        print(f"  ok   {key}={value} baked == compose runtime")
+    else:
+        print(f"  FAIL {key}: image bakes {value!r} but compose runs {runtime[key]!r}"); ok = False
+
+# (b) version pin lockstep
+arg = re.search(r"^ARG KEYCLOAK_VERSION=(\S+)", dockerfile, re.M)
+img = re.search(r"quay\.io/keycloak/keycloak:([^}\s]+)", str(compose.get("image", "")))
+if not arg or not img:
+    print("  FAIL could not read the Keycloak version from Dockerfile and/or compose"); ok = False
+elif arg.group(1) != img.group(1):
+    print(f"  FAIL version drift: Dockerfile {arg.group(1)} vs compose {img.group(1)}"); ok = False
+else:
+    print(f"  ok   version {arg.group(1)} pinned identically in Dockerfile and compose")
+
+# (c) CI builds the image in both pipelines
+for wf in (".forgejo/workflows/deploy.yaml", ".forgejo/workflows/deploy-fast.yaml"):
+    entries = yaml.safe_load(open(wf))["jobs"]["build"]["strategy"]["matrix"]["include"]
+    entry = next((e for e in entries if e.get("component") == "keycloak"), None)
+    if entry is None:
+        print(f"  FAIL {wf}: no `keycloak` build-matrix entry"); ok = False
+    elif entry.get("dockerfile") != "./deploy/keycloak/Dockerfile" or entry.get("context") != ".":
+        print(f"  FAIL {wf}: keycloak entry must build ./deploy/keycloak/Dockerfile from the repo root"); ok = False
+    else:
+        print(f"  ok   {wf}: builds keycloak from the repo-root context")
+sys.exit(0 if ok else 1)
+PY
+  then pass "keycloak image: build options, version pin and CI matrix are in lockstep"
+  else bad "keycloak image lockstep broken (see above) - fix before the k8s cutover"; fi
 fi
 
 echo
